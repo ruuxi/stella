@@ -270,6 +270,61 @@ const orchestratorHtmlPayload = (
   return null;
 };
 
+/**
+ * Pull a `canvas-html` payload from any tool-result this turn whose
+ * `fileChanges` touch `state/outputs/html/*.html`. Lets the general
+ * agent (or any future tool that uses `apply_patch`/`exec_command`)
+ * write a canvas to the same conventional output dir and have it
+ * surface as an inline artifact + Canvas tab, the same way the
+ * orchestrator's `html` tool does. The orchestrator's richer
+ * (title-carrying) result is preferred — this is the fallback when no
+ * orchestrator html tool was used. Latest write in the turn wins.
+ */
+const HTML_OUTPUT_PATH_RE = /(?:^|\/)state\/outputs\/html\/([^/]+)\.html$/;
+
+const titleFromHtmlSlug = (slug: string): string => {
+  const trimmed = slug.trim();
+  if (!trimmed) return "Canvas";
+  return trimmed
+    .split("-")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+};
+
+const fileChangeHtmlOutputPayload = (
+  toolEvents: EventRecord[],
+): DisplayPayload | null => {
+  let latest:
+    | { filePath: string; slug: string; createdAt: number }
+    | null = null;
+  for (const event of toolEvents) {
+    if (!isToolResult(event)) continue;
+    if ((event.payload as { error?: unknown }).error) continue;
+    for (const record of fileChangesForResult(event)) {
+      const resolved = resolveFileChange(record, event.timestamp);
+      if (!resolved) continue;
+      const match = HTML_OUTPUT_PATH_RE.exec(resolved.path);
+      if (!match) continue;
+      if (!latest || resolved.timestamp >= latest.createdAt) {
+        latest = {
+          filePath: resolved.path,
+          slug: match[1]!,
+          createdAt: resolved.timestamp,
+        };
+      }
+    }
+  }
+  if (!latest) return null;
+  return {
+    kind: "canvas-html",
+    filePath: latest.filePath,
+    title: titleFromHtmlSlug(latest.slug),
+    slug: latest.slug,
+    createdAt: latest.createdAt,
+  };
+};
+
 const inlineImageGenSubmissionPayload = (
   toolEvents: EventRecord[],
 ): DisplayPayload | null => {
@@ -482,11 +537,17 @@ export const deriveTurnResource = (
 ): DisplayPayload | null => {
   if (toolEvents.length === 0 && !assistantText) return null;
 
-  // Orchestrator's `html` tool wins outright when present — its purpose
-  // is "show this canvas inline + open it in the panel", and an HTML
+  // The `html` canvas wins outright when present — its purpose is
+  // "show this canvas inline + open it in the panel", and an HTML
   // canvas is never the same artifact as an unrelated edited file, so
-  // we skip the file-pool merge and surface it directly.
-  const htmlPayload = orchestratorHtmlPayload(toolEvents);
+  // we skip the file-pool merge and surface it directly. The
+  // orchestrator's first-class `html` tool is preferred (it carries an
+  // explicit title); otherwise any other tool (e.g. the general agent
+  // via `apply_patch`/`exec_command`) writing to
+  // `state/outputs/html/*.html` is treated the same way.
+  const htmlPayload =
+    orchestratorHtmlPayload(toolEvents) ??
+    fileChangeHtmlOutputPayload(toolEvents);
   if (htmlPayload) return htmlPayload;
 
   // Build payloadByPath using rich signals (office previews + image_gen
