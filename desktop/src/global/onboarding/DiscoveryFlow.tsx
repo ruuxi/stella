@@ -216,9 +216,6 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
               ...(synthesisResult.suggestions?.length
                 ? { suggestions: synthesisResult.suggestions }
                 : {}),
-              ...(synthesisResult.appRecommendations?.length
-                ? { appRecommendations: synthesisResult.appRecommendations }
-                : {}),
             });
           } catch (error) {
             console.error(
