@@ -589,24 +589,94 @@ const splashFallbackTimeoutMs = 10_000
 
 const writeSplashHtml = () => {
   const tmpHtml = path.join(repoRootDir, '.stella-dev-splash.html')
+  // Resolve assets via file:// URLs so the splash works without Vite.
+  // Use the same Stella logo + Cormorant Garamond italic the launcher uses
+  // so the dev restart reads as a polished "Stella is reloading" moment
+  // rather than a debug overlay.
+  const logoUrl = `file://${path.join(repoRootDir, 'desktop/public/stella-logo.svg')}`
+  const fontUrl = `file://${path.join(repoRootDir, 'launcher/src/assets/fonts/cormorant-garamond-italic.ttf')}`
   const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <title>Stella</title>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: rgba(15, 15, 18, 0.92); color: rgba(255, 255, 255, 0.9); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-  .label { font-size: 13px; letter-spacing: 0.01em; opacity: 0.85; }
-  .sub { font-size: 11px; opacity: 0.5; }
-  .spinner { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.18); border-top-color: rgba(255,255,255,0.7); animation: spin 0.9s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  @font-face {
+    font-family: "Cormorant Garamond";
+    src: url("${fontUrl}") format("truetype");
+    font-display: block;
+    font-style: italic;
+    font-weight: 400;
+  }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: transparent;
+    color: #1d1d1f;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+  }
+  .card {
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 22px 24px;
+    animation: cardIn 220ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+  .brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .logo {
+    width: 48px;
+    height: 48px;
+  }
+  .name {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 26px;
+    font-style: italic;
+    font-weight: 600;
+    color: #1d1d1f;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .status {
+    font-size: 11.5px;
+    color: #86868b;
+    letter-spacing: 0.005em;
+    text-align: center;
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(4px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+  }
 </style>
 </head>
 <body>
-  <div class="spinner"></div>
-  <div class="label">Restarting to apply change…</div>
-  <div class="sub">In-flight work is preserved.</div>
+  <div class="card">
+    <div class="brand">
+      <img class="logo" src="${logoUrl}" alt="Stella" />
+      <div class="name">Stella</div>
+    </div>
+    <div class="status">Reloading to apply changes</div>
+  </div>
 </body>
 </html>`
   writeFileSync(tmpHtml, html, 'utf8')
@@ -633,10 +703,12 @@ const showRestartSplash = () => {
       app.dock?.hide()
       app.whenReady().then(() => {
         const win = new BrowserWindow({
-          width: 320,
-          height: 160,
+          width: 280,
+          height: 200,
           frame: false,
           transparent: true,
+          backgroundColor: '#00000000',
+          hasShadow: false,
           alwaysOnTop: true,
           resizable: false,
           movable: false,
