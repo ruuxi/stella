@@ -24,6 +24,7 @@ VITE_CONVEX_SITE_URL=https://cloud.stella.sh\n\
 VITE_SITE_URL=https://stella.sh\n";
 
 const GITHUB_REPO: &str = "ruuxi/stella";
+const STELLA_GITHUB_REMOTE_URL: &str = "https://github.com/ruuxi/stella";
 const DEFAULT_DESKTOP_RELEASE_MANIFEST_URL: &str =
     "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/desktop/current.json";
 const DEFAULT_NATIVE_HELPERS_MANIFEST_URL: &str =
@@ -1702,6 +1703,20 @@ async fn init_git_repo(install_dir: &str) {
             }
         }
     }
+
+    // Wire an `origin` remote pointing at the public Stella repo so the
+    // install-update agent can do lazy partial fetches against the real
+    // upstream commits at update time. Cost here is zero — just writes
+    // .git/config — and the agent does its own
+    // `git fetch --depth=1 --filter=blob:none origin <sha> <sha>` later.
+    let mut remote_command = Command::new(&git_bin);
+    remote_command
+        .args(["remote", "add", "origin", STELLA_GITHUB_REMOTE_URL])
+        .current_dir(&cwd)
+        .envs(&env);
+    #[cfg(target_os = "windows")]
+    remote_command.creation_flags(0x08000000);
+    let _ = remote_command.output().await;
 }
 
 async fn update_manifest_install_base_commit(install_dir: &str, sha: &str) -> Result<(), String> {
