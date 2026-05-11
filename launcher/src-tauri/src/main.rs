@@ -211,6 +211,8 @@ fn main() {
                 installer: Mutex::new(initial_state),
                 context: ctx,
                 desktop_watcher: std::sync::Mutex::new(None),
+                desktop_exit_waiter: std::sync::Mutex::new(None),
+                desktop_failure: std::sync::Mutex::new(None),
             };
 
             app.manage(app_state);
@@ -258,6 +260,9 @@ fn main() {
             commands::open_install_location,
             commands::uninstall_stella,
             commands::full_reset_stella,
+            commands::get_desktop_failure,
+            commands::clear_desktop_failure,
+            commands::revert_last_self_mod,
         ])
         .on_window_event(|_window, _event| {})
         .run(tauri::generate_context!())
