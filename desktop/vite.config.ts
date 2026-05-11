@@ -11,7 +11,6 @@ import {
 
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
-const BUNDLED_DEV_SPLASH_ASSET_BASE = '/__stella/bundled-dev-splash'
 const STELLA_REPO_ROOT = path.resolve(__dirname, '..')
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   STELLA_REPO_ROOT,
@@ -25,23 +24,6 @@ const normalizeWatchedFilePath = (filePath: string) =>
 
 const PDF_WORKER_PUBLIC_REL = path.posix.join('vendor', 'pdfjs', 'pdf.worker.min.mjs')
 const PDF_WORKER_PUBLIC_ABS = path.resolve(__dirname, 'public', PDF_WORKER_PUBLIC_REL)
-const SPLASH_LOGO_PATH = path.resolve(__dirname, 'public', 'stella-logo.svg')
-const SPLASH_FONT_PATH = path.resolve(
-  __dirname,
-  'src',
-  'assets',
-  'fonts',
-  'cormorant-garamond-italic.ttf',
-)
-const VITE_CLIENT_PATH = path.resolve(
-  __dirname,
-  '..',
-  'node_modules',
-  'vite',
-  'dist',
-  'client',
-  'client.mjs',
-)
 
 /**
  * Copies the pdfjs-dist worker into `public/vendor/pdfjs/` so the renderer
@@ -153,238 +135,6 @@ function devServerUrl(): Plugin {
       })
     },
   }
-}
-
-function bundledDevReactRefreshOrdering(): Plugin {
-  let enabled = false
-
-  return {
-    name: 'stella:bundled-dev-react-refresh-ordering',
-    apply: 'serve',
-    configResolved(config) {
-      enabled = Boolean(config.experimental.bundledDev)
-    },
-    transform: {
-      order: 'pre',
-      filter: {
-        id: /\.[jt]sx(?:\?.*)?$/,
-      },
-      handler(code, id) {
-        if (!enabled || id.includes('/node_modules/')) {
-          return null
-        }
-
-        return {
-          code: `import { injectIntoGlobalHook as __stellaInjectReactRefreshHook } from "/@react-refresh";
-if (typeof window !== "undefined") {
-  __stellaInjectReactRefreshHook(window);
-  window.$RefreshReg$ ||= () => {};
-  window.$RefreshSig$ ||= () => (type) => type;
-}
-${code}`,
-          map: null,
-        }
-      },
-    },
-  }
-}
-
-function bundledDevSplash(): Plugin {
-  let enabled = false
-  let webSocketToken = ''
-
-  return {
-    name: 'stella:bundled-dev-splash',
-    apply: 'serve',
-    configResolved(config) {
-      enabled = Boolean(config.experimental.bundledDev)
-      webSocketToken = config.webSocketToken
-    },
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        if (!enabled || res.writableEnded || req.method !== 'GET') {
-          return next()
-        }
-
-        const url = req.url?.split('?')[0] ?? ''
-        if (serveBundledDevSplashAsset(url, res)) {
-          return
-        }
-
-        if (!url.endsWith('.html') || req.headers['sec-fetch-dest'] === 'script') {
-          return next()
-        }
-
-        const clientEnvironment = server.environments.client as unknown as {
-          memoryFiles?: { get(file: string): unknown; size: number }
-          triggerBundleRegenerationIfStale?: () => Promise<boolean>
-        }
-        if (
-          !clientEnvironment.memoryFiles ||
-          typeof clientEnvironment.triggerBundleRegenerationIfStale !== 'function'
-        ) {
-          return next()
-        }
-
-        const filePath = decodeURIComponent(url).slice(1)
-        const file = clientEnvironment.memoryFiles.get(filePath)
-        if (!file && clientEnvironment.memoryFiles.size !== 0) {
-          return next()
-        }
-
-        const acceptsDocument = [
-          'document',
-          'iframe',
-          'frame',
-          'fencedframe',
-          '',
-          undefined,
-        ].includes(req.headers['sec-fetch-dest'])
-        if (!acceptsDocument) {
-          return next()
-        }
-
-        const isStale = await clientEnvironment.triggerBundleRegenerationIfStale()
-        if (!isStale && file !== undefined) {
-          return next()
-        }
-
-        res.statusCode = 200
-        res.setHeader('Content-Type', 'text/html')
-        res.end(stellaBundledDevSplashHtml(webSocketToken))
-      })
-    },
-  }
-}
-
-function serveBundledDevSplashAsset(url: string, res: { statusCode: number; setHeader(name: string, value: string): void; end(body?: unknown): void }) {
-  if (url === `${BUNDLED_DEV_SPLASH_ASSET_BASE}/stella-logo.svg`) {
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'image/svg+xml')
-    res.end(fs.readFileSync(SPLASH_LOGO_PATH))
-    return true
-  }
-
-  if (url === `${BUNDLED_DEV_SPLASH_ASSET_BASE}/cormorant-garamond-italic.ttf`) {
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'font/ttf')
-    res.setHeader('Cache-Control', 'no-cache')
-    res.end(fs.readFileSync(SPLASH_FONT_PATH))
-    return true
-  }
-
-  if (url === `${BUNDLED_DEV_SPLASH_ASSET_BASE}/vite-env.mjs`) {
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'text/javascript')
-    res.setHeader('Cache-Control', 'no-cache')
-    res.end('export {};\n')
-    return true
-  }
-
-  if (url === `${BUNDLED_DEV_SPLASH_ASSET_BASE}/vite-client.mjs`) {
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'text/javascript')
-    res.setHeader('Cache-Control', 'no-cache')
-    res.end(bundledDevSplashClientScript(''))
-    return true
-  }
-
-  return false
-}
-
-function bundledDevSplashClientScript(webSocketToken: string) {
-  return fs
-    .readFileSync(VITE_CLIENT_PATH, 'utf8')
-    .replace('import "@vite/env";', `import "${BUNDLED_DEV_SPLASH_ASSET_BASE}/vite-env.mjs";`)
-    .replaceAll('__MODE__', JSON.stringify('development'))
-    .replaceAll('__BASE__', JSON.stringify('/'))
-    .replaceAll('__SERVER_HOST__', 'null')
-    .replaceAll('__HMR_PROTOCOL__', 'null')
-    .replaceAll('__HMR_HOSTNAME__', 'null')
-    .replaceAll('__HMR_PORT__', 'null')
-    .replaceAll('__HMR_DIRECT_TARGET__', 'null')
-    .replaceAll('__HMR_BASE__', JSON.stringify('/'))
-    .replaceAll('__HMR_TIMEOUT__', '30000')
-    .replaceAll('__HMR_ENABLE_OVERLAY__', 'true')
-    .replaceAll('__HMR_CONFIG_NAME__', JSON.stringify('client'))
-    .replaceAll('__WS_TOKEN__', JSON.stringify(webSocketToken))
-    .replaceAll('__SERVER_FORWARD_CONSOLE__', 'false')
-    .replaceAll('__BUNDLED_DEV__', 'true')
-}
-
-function stellaBundledDevSplashHtml(webSocketToken: string) {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Stella</title>
-    <script type="module">
-      ${bundledDevSplashClientScript(webSocketToken).replaceAll('</script>', '<\\/script>')}
-    </script>
-    <style>
-      @font-face {
-        font-family: "Cormorant Garamond Launch";
-        src: url("${BUNDLED_DEV_SPLASH_ASSET_BASE}/cormorant-garamond-italic.ttf") format("truetype");
-        font-display: block;
-        font-style: italic;
-        font-weight: 400;
-      }
-
-      html,
-      body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-      }
-
-      body {
-        display: grid;
-        place-items: center;
-        background: #f2f4f8;
-        color: #161616;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #161616;
-          color: #f2f4f8;
-        }
-      }
-
-      .stella-launch__content {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 14px;
-        transform: translateY(-8px);
-      }
-
-      .stella-launch__logo {
-        width: 72px;
-        height: 72px;
-        object-fit: contain;
-        filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.1));
-      }
-
-      .stella-launch__name {
-        font-family: "Cormorant Garamond Launch", Georgia, serif;
-        font-size: 30px;
-        font-style: italic;
-        font-weight: 400;
-        letter-spacing: -0.03em;
-        line-height: 1;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="stella-launch__content" aria-hidden="true">
-      <img class="stella-launch__logo" src="${BUNDLED_DEV_SPLASH_ASSET_BASE}/stella-logo.svg" alt="" />
-      <div class="stella-launch__name">Stella</div>
-    </div>
-  </body>
-</html>`
 }
 
 type ApplyRunPayload = { runId?: unknown; paths?: unknown; files?: unknown }
@@ -1283,15 +1033,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
     devServerUrl(),
-    bundledDevReactRefreshOrdering(),
-    bundledDevSplash(),
     selfModHmrControl(),
     pdfWorkerAsset(),
   ],
   base: './',
-  experimental: {
-    bundledDev: true,
-  },
   build: {
     outDir: 'dist',
     target: 'chrome134',
