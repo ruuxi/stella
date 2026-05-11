@@ -48,7 +48,11 @@ import {
   LYRIA_MUSIC_ENDPOINT_ID,
   parseMusicStreamRequest,
 } from "../media_lyria";
-import { checkManagedUsageLimit } from "../lib/managed_billing";
+import {
+  checkManagedUsageLimit,
+  isPaidMediaTier,
+  resolveManagedModelAccess,
+} from "../lib/managed_billing";
 import { dollarsToMicroCents } from "../lib/billing_money";
 
 const MEDIA_API_BASE_PATH = "/api/media/v1";
@@ -531,6 +535,22 @@ export const registerMediaRoutes = (http: HttpRouter) => {
           identity?.tokenIdentifier ??
           (isMediaPublicTestModeEnabled() ? PUBLIC_MEDIA_TEST_OWNER_ID : null);
         if (!ownerId) return mediaUnauthorizedResponse(request, origin);
+        // Stella-paid media generation is paid-plans-only. Free/anonymous
+        // users cannot burn Stella's fal/Google credits without a
+        // subscription — direct them to upgrade rather than spending
+        // backend cost.
+        const isAnonymous =
+          (identity as Record<string, unknown> | undefined)?.isAnonymous === true;
+        const access = await resolveManagedModelAccess(ctx, ownerId, {
+          isAnonymous,
+        });
+        if (!isPaidMediaTier(access.modelAudience)) {
+          return errorResponse(
+            402,
+            "Media generation requires a Stella subscription. Upgrade your plan to continue.",
+            origin,
+          );
+        }
         const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId, {
           minimumRemainingMicroCents: MEDIA_DENY_BUFFER_MICRO_CENTS,
         });

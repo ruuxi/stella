@@ -24,6 +24,7 @@ import {
   resolveBillingAudience,
   type ManagedModelAudience,
 } from '@/shared/billing/audience'
+import { BYOK_TOAST_ACTION } from '@/shared/billing/byok-action'
 import { showToast } from '@/ui/toast'
 
 const ORCHESTRATOR_AND_GENERAL = ['orchestrator', 'general'] as const
@@ -114,6 +115,11 @@ export function useTierRestrictedModelToast() {
     for (const agent of ORCHESTRATOR_AND_GENERAL) {
       const override = overrides[agent]?.trim()
       if (!override) continue
+      // Only Stella-provider picks are subject to tier restrictions —
+      // BYOK / OAuth providers (Anthropic, OpenAI, OpenRouter, local
+      // runtime, …) run on the user's own key and are unaffected by
+      // Stella plan limits, so don't toast on them.
+      if (!override.startsWith('stella/')) continue
       const dedupeKey = buildToastDedupeKey(audience, agent, override)
       if (seenRef.current.has(dedupeKey)) continue
       seenRef.current.add(dedupeKey)
@@ -134,6 +140,7 @@ export function useTierRestrictedModelToast() {
             void router.navigate({ to: '/billing' })
           },
         },
+        secondaryAction: BYOK_TOAST_ACTION,
       })
       // One toast per send is enough — don't stack two if both orchestrator
       // and general have non-default overrides.

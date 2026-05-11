@@ -23,6 +23,7 @@ import {
   getModelRestrictionDescription,
   isRestrictedModelOverrideAudience,
 } from "@/shared/billing/audience";
+import { BYOK_TOAST_ACTION } from "@/shared/billing/byok-action";
 import { showToast } from "@/ui/toast";
 import { router } from "@/router";
 import "./AgentModelPicker.css";
@@ -406,11 +407,16 @@ export function AgentModelPicker({
         // backend-chosen model is a no-op at request time (the Stella
         // provider silently coerces). Surface a toast so the user
         // understands their selection won't be honored on this plan —
-        // BUT only when the pick actually resolves to a different
-        // upstream than what the audience would already get. Picking
-        // "Stella Free" on the Free plan is a no-op, not a restriction.
-        const pickedUpstream =
-          stellaModels.find((model) => model.id === value)?.upstreamModel ?? "";
+        // BUT only when:
+        //   1. the pick is a Stella-provider model (BYOK / OAuth picks
+        //      via Anthropic/OpenAI/etc. run locally and aren't subject
+        //      to Stella tier restrictions), and
+        //   2. the pick actually resolves to a different upstream than
+        //      what the audience would already get. Picking "Stella Free"
+        //      on the Free plan is a no-op, not a restriction.
+        const pickedModel = stellaModels.find((model) => model.id === value);
+        const isStellaProviderPick = pickedModel?.provider === "stella";
+        const pickedUpstream = pickedModel?.upstreamModel ?? "";
         const audienceUpstream = resolvedDefaultModelMap[activeAgent] ?? "";
         const resolvesToSameModel =
           pickedUpstream !== "" &&
@@ -418,6 +424,7 @@ export function AgentModelPicker({
           pickedUpstream === audienceUpstream;
         if (
           value !== "" &&
+          isStellaProviderPick &&
           !resolvesToSameModel &&
           isRestrictedModelOverrideAudience(audience)
         ) {
@@ -441,6 +448,7 @@ export function AgentModelPicker({
                 void router.navigate({ to: "/billing" });
               },
             },
+            secondaryAction: BYOK_TOAST_ACTION,
           });
         }
         onSelected?.();

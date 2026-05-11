@@ -186,6 +186,20 @@ const SidebarActionsMenu = ({
   const [themeOpen, setThemeOpen] = useState(false);
   const pendingActionRef = useRef<PendingMenuAction>(null);
 
+  // Cross-component "open the model picker" trigger. Used by toasts that
+  // surface tier/usage rejections so a single click on "Use my own key"
+  // pops the picker right where the user already sees the active model.
+  useEffect(() => {
+    const handler = () => {
+      preloadModelsPicker();
+      setModelsOpen(true);
+    };
+    window.addEventListener("stella:open-model-picker", handler);
+    return () => {
+      window.removeEventListener("stella:open-model-picker", handler);
+    };
+  }, []);
+
   const handleCloseAutoFocus = useCallback(
     (event: Event) => {
       const action = pendingActionRef.current;
