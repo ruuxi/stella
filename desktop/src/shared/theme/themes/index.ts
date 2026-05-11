@@ -44,7 +44,7 @@ export const getThemeById = (id: string): Theme | undefined => {
   return themes.find((t) => t.id === id);
 };
 
-export const defaultTheme = themes.find((t) => t.id === "slate")!;
+export const defaultTheme = themes.find((t) => t.id === "nightowl")!;
 
 export const subscribeThemes = (listener: () => void) => {
   listeners.add(listener);
