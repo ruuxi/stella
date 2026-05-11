@@ -20,11 +20,7 @@ use tauri::{
 use tauri_plugin_updater::UpdaterExt;
 
 const LAUNCHER_UPDATE_INITIAL_DELAY_SECS: u64 = 2;
-const LAUNCHER_UPDATE_POLL_SECS: u64 = 15 * 60;
-/// How long after the last successful launcher-update check to wait before
-/// re-checking on window focus. Keeps the focus-triggered check from spamming
-/// the updater endpoint when the user is rapidly switching windows.
-const LAUNCHER_UPDATE_FOCUS_REFRESH_MS: u64 = 60_000;
+const LAUNCHER_UPDATE_POLL_SECS: u64 = 4 * 60 * 60;
 use tokio::sync::Mutex;
 
 fn cli_dev_path_override() -> Option<String> {
@@ -263,42 +259,7 @@ fn main() {
             commands::uninstall_stella,
             commands::full_reset_stella,
         ])
-        .on_window_event(|window, event| {
-            if cfg!(debug_assertions) {
-                return;
-            }
-            if let tauri::WindowEvent::Focused(true) = event {
-                let app = window.app_handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    let Some(app_state) = app.try_state::<AppState>() else {
-                        return;
-                    };
-                    // Throttle: only re-check if it's been a while since the
-                    // last successful check. Prevents focus thrashing from
-                    // hammering the updater endpoint.
-                    let should_check = {
-                        let installer = app_state.installer.lock().await;
-                        if installer.launcher_update.checking
-                            || installer.launcher_update.installing
-                        {
-                            false
-                        } else {
-                            let now_ms = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .map(|d| d.as_millis() as u64)
-                                .unwrap_or(0);
-                            installer.launcher_update.last_checked_at_ms == 0
-                                || now_ms.saturating_sub(
-                                    installer.launcher_update.last_checked_at_ms,
-                                ) >= LAUNCHER_UPDATE_FOCUS_REFRESH_MS
-                        }
-                    };
-                    if should_check {
-                        let _ = check_for_launcher_update(&app, false).await;
-                    }
-                });
-            }
-        })
+        .on_window_event(|_window, _event| {})
         .run(tauri::generate_context!())
         .expect("error running stella launcher");
 }
