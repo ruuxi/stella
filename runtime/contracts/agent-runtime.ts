@@ -272,7 +272,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     id: AGENT_IDS.INSTALL_UPDATE,
     name: "Install Update",
     description:
-      "Manually applies upstream Stella commits to the user's local install. Walks the GitHub compare API and edits files via apply_patch instead of running git merge.",
+      "Integrates an upstream Stella update into the user's local fork via real `git merge` against attached upstream history. Restricted to a `git`-only exec_command allowlist; biases toward preserving the user's customizations on conflicts.",
     activityLabel: "Updating",
     bundledCore: true,
     runsAsSubagent: false,
