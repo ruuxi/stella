@@ -214,9 +214,9 @@ export const meterCompletedMediaJob = (args: {
         endpointId: args.endpointId,
         billingUnit: "request",
         quantity: 1,
-        unitPriceUsd: 0,
+        unitPriceUsd: 0.08,
         meteredFrom: "request",
-        note: "Lyria pricing is not configured yet; tracked as a generated media request.",
+        note: "Lyria 3 Pro Preview: $0.08 per generated song.",
       });
     case "openai/gpt-image-2":
     case "openai/gpt-image-2/edit": {

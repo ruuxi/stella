@@ -15,16 +15,13 @@ import {
 } from "../lib/rate_limits";
 import { createBackendTools, executeWebSearch } from "../tools/backend";
 import { jsonValueValidator } from "../shared_validators";
-import {
-  buildCartPermalink,
-  cancelCheckout,
-  createCheckout,
-  debugSearchGlobalProducts,
-  discoverCheckoutEndpoint,
-  getGlobalProductDetails,
-  searchGlobalProducts,
-  updateCheckout,
-} from "../lib/shopify_ucp";
+// Shopify integration is currently disabled on the backend. All
+// `shopify*` actions reject with this error so misbehaving clients can't
+// use the backend as a free Shopify proxy/crawler.
+const SHOPIFY_DISABLED_ERROR = new ConvexError({
+  code: "NOT_IMPLEMENTED",
+  message: "Shopify integration is currently disabled.",
+});
 
 const DEFAULT_MAX_AGENT_DEPTH = 2;
 const ALLOWED_LOCAL_RUNTIME_BACKEND_TOOLS = new Set<string>(
@@ -179,13 +176,8 @@ export const shopifySearchProducts = action({
     savedCatalog: v.optional(v.string()),
   },
   returns: v.array(shopifySearchProductValidator),
-  handler: async (_ctx, args) => {
-    return await searchGlobalProducts({
-      query: args.query,
-      ...(args.context !== undefined ? { context: args.context } : {}),
-      ...(args.limit !== undefined ? { limit: args.limit } : {}),
-      ...(args.savedCatalog !== undefined ? { savedCatalog: args.savedCatalog } : {}),
-    });
+  handler: async () => {
+    throw SHOPIFY_DISABLED_ERROR;
   },
 });
 
@@ -197,13 +189,8 @@ export const shopifyDebugSearchProducts = action({
     savedCatalog: v.optional(v.string()),
   },
   returns: jsonValueValidator,
-  handler: async (_ctx, args) => {
-    return await debugSearchGlobalProducts({
-      query: args.query,
-      ...(args.context !== undefined ? { context: args.context } : {}),
-      ...(args.limit !== undefined ? { limit: args.limit } : {}),
-      ...(args.savedCatalog !== undefined ? { savedCatalog: args.savedCatalog } : {}),
-    });
+  handler: async () => {
+    throw SHOPIFY_DISABLED_ERROR;
   },
 });
 
@@ -237,8 +224,8 @@ export const shopifyGetProductDetails = action({
       ),
     }),
   ),
-  handler: async (_ctx, args) => {
-    return await getGlobalProductDetails({ productId: args.productId });
+  handler: async () => {
+    throw SHOPIFY_DISABLED_ERROR;
   },
 });
 
@@ -265,69 +252,8 @@ export const shopifyCreateCheckout = action({
     lines: v.array(checkoutLineValidator),
   },
   returns: checkoutSessionResultValidator,
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceActionRateLimit(
-      ctx,
-      "fashion_shopify_create_checkout",
-      ownerId,
-      RATE_STANDARD,
-      "Too many checkout attempts. Wait a moment and try again.",
-    );
-    if (!args.lines.length) {
-      throw new ConvexError({
-        code: "INVALID_ARGUMENT",
-        message: "At least one line item is required.",
-      });
-    }
-
-    const descriptor = await discoverCheckoutEndpoint({
-      merchantOrigin: args.merchantOrigin,
-    });
-    if (!descriptor) {
-      const cartUrl = buildCartPermalink({
-        merchantOrigin: args.merchantOrigin,
-        lines: args.lines,
-      });
-      if (!cartUrl) {
-        throw new ConvexError({
-          code: "FAILED_PRECONDITION",
-          message:
-            "Merchant does not expose Checkout MCP and we could not build a cart permalink.",
-        });
-      }
-      return {
-        checkoutId: cartUrl,
-        status: "permalink",
-        continueUrl: cartUrl,
-        merchantOrigin: args.merchantOrigin,
-        mcpEndpoint: "",
-        usingMcp: false,
-        cartUrl,
-      };
-    }
-
-    const session = await createCheckout({
-      endpoint: descriptor.endpoint,
-      lines: args.lines,
-    });
-    await ctx.runMutation(internal.data.fashion.recordCheckoutSession, {
-      ownerId,
-      merchantOrigin: descriptor.merchantOrigin,
-      mcpEndpoint: descriptor.endpoint,
-      checkoutId: session.checkoutId,
-      status: session.status,
-      ...(session.continueUrl ? { continueUrl: session.continueUrl } : {}),
-      rawResponse: JSON.stringify(session.raw).slice(0, 60_000),
-    });
-    return {
-      checkoutId: session.checkoutId,
-      status: session.status,
-      ...(session.continueUrl ? { continueUrl: session.continueUrl } : {}),
-      merchantOrigin: descriptor.merchantOrigin,
-      mcpEndpoint: descriptor.endpoint,
-      usingMcp: true,
-    };
+  handler: async () => {
+    throw SHOPIFY_DISABLED_ERROR;
   },
 });
 
@@ -338,28 +264,8 @@ export const shopifyUpdateCheckout = action({
     lines: v.array(checkoutLineValidator),
   },
   returns: checkoutSessionResultValidator,
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceActionRateLimit(
-      ctx,
-      "fashion_shopify_update_checkout",
-      ownerId,
-      RATE_STANDARD,
-      "Too many checkout updates. Wait a moment and try again.",
-    );
-    const session = await updateCheckout({
-      endpoint: args.mcpEndpoint,
-      checkoutId: args.checkoutId,
-      lines: args.lines,
-    });
-    return {
-      checkoutId: session.checkoutId,
-      status: session.status,
-      ...(session.continueUrl ? { continueUrl: session.continueUrl } : {}),
-      merchantOrigin: "",
-      mcpEndpoint: args.mcpEndpoint,
-      usingMcp: true,
-    };
+  handler: async () => {
+    throw SHOPIFY_DISABLED_ERROR;
   },
 });
 
@@ -372,19 +278,8 @@ export const shopifyCancelCheckout = action({
     checkoutId: v.string(),
     status: v.string(),
   }),
-  handler: async (ctx, args) => {
-    const ownerId = await requireUserId(ctx);
-    await enforceActionRateLimit(
-      ctx,
-      "fashion_shopify_cancel_checkout",
-      ownerId,
-      RATE_STANDARD,
-      "Too many checkout cancels. Wait a moment and try again.",
-    );
-    return await cancelCheckout({
-      endpoint: args.mcpEndpoint,
-      checkoutId: args.checkoutId,
-    });
+  handler: async () => {
+    throw SHOPIFY_DISABLED_ERROR;
   },
 });
 
