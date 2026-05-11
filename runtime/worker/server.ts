@@ -82,16 +82,6 @@ type WorkerInitializationState = {
   hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
   modelCatalogUpdatedAt: number | null;
-  /**
-   * Self-mod HMR auth token (dev only). The Electron host generates a
-   * fresh token via `electron-dev-runner.mjs`, but the detached worker
-   * survives across host restarts -- so the worker can't rely on its own
-   * `process.env.STELLA_SELF_MOD_HMR_TOKEN` (frozen at spawn time). The
-   * host pushes its current token on every initialize/configure handshake
-   * and the worker stores it in a mutable cell that the HMR controller
-   * reads through a getter.
-   */
-  selfModHmrAuthToken?: string | null;
 };
 
 const notifyLocalChatUpdated = (
@@ -179,13 +169,6 @@ type WorkerState = {
   runner: RuntimeRunner | null;
   deviceId: string | null;
   selfModHmrController: SelfModHmrController | null;
-  /**
-   * Current self-mod HMR auth token (dev only). Pushed from the host on
-   * every initialize/configure and read by the HMR controller through a
-   * getter so cross-restart token rotation doesn't strand the worker
-   * with a stale 403-triggering value. `null` until the host pushes one.
-   */
-  selfModHmrAuthToken: string | null;
   activeStoreThreadAgentId: string | null;
   activeStoreThreadMessageId: string | null;
   /**
@@ -365,7 +348,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     runner: null,
     deviceId: null,
     selfModHmrController: null,
-    selfModHmrAuthToken: null,
     activeStoreThreadAgentId: null,
     activeStoreThreadMessageId: null,
     runEventLog: null,
@@ -657,20 +639,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       METHOD_NAMES.HOST_DEVICE_IDENTITY_GET,
     );
     state.deviceId = deviceIdentity.deviceId;
-    // Seed the auth-token cell from the host-pushed value if present,
-    // otherwise from this process's env (e.g. when the worker is run
-    // directly outside of the Electron host).
-    if (init.selfModHmrAuthToken !== undefined) {
-      state.selfModHmrAuthToken = init.selfModHmrAuthToken;
-    } else if (state.selfModHmrAuthToken == null) {
-      state.selfModHmrAuthToken =
-        process.env.STELLA_SELF_MOD_HMR_TOKEN ?? null;
-    }
     const selfModHmrController = createSelfModHmrController({
       getDevServerUrl,
       enabled: process.env.NODE_ENV === "development",
       repoRoot: init.stellaRoot,
-      authToken: () => state.selfModHmrAuthToken ?? undefined,
     });
     state.selfModHmrController = selfModHmrController;
     await selfModHmrController.forceResumeAll().catch((error) => {
@@ -1097,9 +1069,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
     if (patch.modelCatalogUpdatedAt !== undefined) {
       state.runner?.setModelCatalogUpdatedAt(patch.modelCatalogUpdatedAt);
-    }
-    if (patch.selfModHmrAuthToken !== undefined) {
-      state.selfModHmrAuthToken = patch.selfModHmrAuthToken;
     }
   };
 

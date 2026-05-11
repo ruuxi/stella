@@ -44,16 +44,6 @@ type HmrControllerOptions = {
    * repo-relative form the tracker and overlay agree on.
    */
   repoRoot: string;
-  /**
-   * Resolver for the self-mod HMR auth token. Called per request rather
-   * than captured at controller construction so the detached runtime
-   * worker can refresh the token on every Electron host reattach (the
-   * dev runner generates a fresh token per launch; without this getter
-   * the worker would keep using whatever token its env had at spawn
-   * time, and 403 against the new Vite). May return undefined when the
-   * Stella runtime is not in dev mode.
-   */
-  authToken?: () => string | undefined;
 };
 
 export type HmrStatus = {
@@ -132,7 +122,6 @@ const postWithRetry = async (args: {
   path: string;
   maxWaitMs: number;
   body?: unknown;
-  authToken?: string;
 }): Promise<boolean> => {
   const startedAt = Date.now();
   let attempt = 0;
@@ -145,12 +134,7 @@ const postWithRetry = async (args: {
     try {
       const response = await fetch(target, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(args.authToken
-            ? { "X-Stella-Self-Mod-Hmr-Token": args.authToken }
-            : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: args.body === undefined ? undefined : JSON.stringify(args.body),
         signal: withTimeoutSignal(REQUEST_TIMEOUT_MS),
       });
@@ -182,7 +166,6 @@ const postJsonWithRetry = async <T>(args: {
   path: string;
   maxWaitMs: number;
   body?: unknown;
-  authToken?: string;
 }): Promise<T | null> => {
   const startedAt = Date.now();
   let attempt = 0;
@@ -195,12 +178,7 @@ const postJsonWithRetry = async <T>(args: {
     try {
       const response = await fetch(target, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(args.authToken
-            ? { "X-Stella-Self-Mod-Hmr-Token": args.authToken }
-            : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: args.body === undefined ? undefined : JSON.stringify(args.body),
         signal: withTimeoutSignal(REQUEST_TIMEOUT_MS),
       });
@@ -414,8 +392,6 @@ export const createSelfModHmrController = (
     );
   };
 
-  const resolveAuthToken = () => options.authToken?.();
-
   const trackPaths = async (paths: string[]): Promise<void> => {
     if (paths.length === 0 || !options.enabled) return;
     const tracked = await postWithRetry({
@@ -423,7 +399,6 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/track-paths`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
-      authToken: resolveAuthToken(),
     });
     if (!tracked) {
       throw new Error("Failed to pin self-mod HMR paths before write.");
@@ -437,7 +412,6 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/pause-client-updates`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { runId },
-      authToken: resolveAuthToken(),
     });
     if (!paused) {
       throw new Error("Failed to pause self-mod HMR client updates.");
@@ -451,7 +425,6 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/release-client-updates`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { runIds },
-      authToken: resolveAuthToken(),
     });
   };
 
@@ -462,7 +435,6 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/untrack-paths`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
-      authToken: resolveAuthToken(),
     });
   };
 
@@ -483,7 +455,6 @@ export const createSelfModHmrController = (
         })),
         ...(applyOptions ? { options: applyOptions } : {}),
       },
-      authToken: resolveAuthToken(),
     });
     return response?.ok ? response : { ok: false };
   };
@@ -505,7 +476,6 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/discard`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
-      authToken: resolveAuthToken(),
     });
   };
 
@@ -515,7 +485,6 @@ export const createSelfModHmrController = (
       getDevServerUrl: options.getDevServerUrl,
       path,
       maxWaitMs: TRACK_MAX_WAIT_MS,
-      authToken: resolveAuthToken(),
     });
   };
 
@@ -679,7 +648,6 @@ export const createSelfModHmrController = (
         getDevServerUrl: options.getDevServerUrl,
         path: `${HMR_ENDPOINT_BASE}/end-shell-mutation`,
         maxWaitMs: TRACK_MAX_WAIT_MS,
-        authToken: resolveAuthToken(),
       });
       if (!response?.ok) {
         return { ok: false, changedPaths: [] };
@@ -713,7 +681,6 @@ export const createSelfModHmrController = (
         getDevServerUrl: options.getDevServerUrl,
         path: `${HMR_ENDPOINT_BASE}/force-resume`,
         maxWaitMs: APPLY_MAX_WAIT_MS,
-        authToken: resolveAuthToken(),
       });
     },
 
@@ -729,16 +696,10 @@ export const createSelfModHmrController = (
       }
       const baseUrl = options.getDevServerUrl().replace(/\/+$/, "");
       const target = `${baseUrl}${HMR_ENDPOINT_BASE}/status`;
-      const statusToken = resolveAuthToken();
       try {
         const response = await fetch(target, {
           method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(statusToken
-              ? { "X-Stella-Self-Mod-Hmr-Token": statusToken }
-              : {}),
-          },
+          headers: { "Content-Type": "application/json" },
           signal: withTimeoutSignal(REQUEST_TIMEOUT_MS),
         });
         if (!response.ok) return null;

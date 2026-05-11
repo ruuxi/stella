@@ -173,15 +173,6 @@ type WorkerInitializationState = {
   hasConnectedAccount: boolean;
   cloudSyncEnabled: boolean;
   modelCatalogUpdatedAt: number | null;
-  /**
-   * Current self-mod HMR auth token from this host process's env. The
-   * detached worker is spawned once and survives Electron host restarts;
-   * `electron-dev-runner.mjs` generates a fresh token per launch so the
-   * worker's spawn-time env can go stale. We push the live token on
-   * every initialize/configure to keep the worker's HMR controller in
-   * sync without forcing a worker restart.
-   */
-  selfModHmrAuthToken: string | null;
 };
 
 const AGENT_EVENT_BUFFER_LIMIT = 1_000;
@@ -1916,7 +1907,6 @@ export class StellaRuntimeHost {
       hasConnectedAccount: this.configCache.hasConnectedAccount ?? false,
       cloudSyncEnabled: this.configCache.cloudSyncEnabled ?? false,
       modelCatalogUpdatedAt: this.configCache.modelCatalogUpdatedAt ?? null,
-      selfModHmrAuthToken: process.env.STELLA_SELF_MOD_HMR_TOKEN ?? null,
     };
   }
 
