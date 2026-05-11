@@ -1,4 +1,4 @@
-import { app, crashReporter, safeStorage } from 'electron'
+import { app, crashReporter } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import {
@@ -48,37 +48,17 @@ const configureDevKeychainBehavior = () => {
     return
   }
 
-  // Stella in production runs as a dev-mode build (launcher unpacks the
-  // repo and runs `bun run electron:dev`). The bundle identity is renamed
-  // and patched at startup -- macOS's Keychain ACL is bound to the original
-  // bundle signature, so any Keychain access from Electron triggers the
-  // "Stella wants to use 'Electron Safe Storage'" prompt every time.
-  //
-  // We don't use Electron's `safeStorage` for protected secrets here -- those
-  // route through the launcher's properly-signed Tauri binary or fall back
-  // to dev-plaintext (`runtime/kernel/shared/protected-storage.ts`). But
-  // Chromium itself eagerly fetches the OSCrypt encryption key on startup
-  // for cookie encryption, and that key lives under "Electron Safe Storage"
-  // in Keychain. `--use-mock-keychain` only stubs the password-manager path,
-  // not OSCrypt. `--password-store=basic` is the documented switch that
-  // tells Chromium to use a file-derived key instead of the Keychain.
+  // Stella's protected secrets route exclusively through the launcher's
+  // signed Tauri binary (see `runtime/kernel/shared/protected-storage.ts`),
+  // so Stella itself does NOT call Electron's `safeStorage` API in this
+  // configuration. The macOS Keychain prompt for "Electron Safe Storage"
+  // would only appear if our code somehow reached `safeStorage`, which the
+  // launcher-mode guard inside `getSafeStorage` now prevents. The Chromium
+  // switches below are kept for cross-platform defense-in-depth: they stop
+  // the cookie-encryption store from initializing a Keychain entry on
+  // platforms where it would otherwise do so.
   app.commandLine.appendSwitch('use-mock-keychain')
   app.commandLine.appendSwitch('password-store', 'basic')
-
-  // Defensive belt-and-suspenders: even though our `protected-storage.ts`
-  // routes around `safeStorage` in this configuration, a stray call (from
-  // a future dependency or an upstream Electron change) would otherwise
-  // touch the real Keychain. `setUsePlainTextEncryption` forces safeStorage
-  // to use a base64-only path with no Keychain access, regardless of caller.
-  app.whenReady().then(() => {
-    try {
-      safeStorage.setUsePlainTextEncryption(true)
-    } catch {
-      // Older Electron builds without the API, or already-initialized
-      // safeStorage -- the basic password-store switch above is the
-      // primary suppression.
-    }
-  })
 }
 
 const startLocalCrashReporter = () => {

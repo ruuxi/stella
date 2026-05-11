@@ -70,6 +70,20 @@ const callLauncherProtectedStorage = (
 }
 
 const getSafeStorage = (): SafeStorageLike => {
+  // When the launcher binary is configured, ALL protected secrets must
+  // route through it. Touching `electron.safeStorage` -- even just calling
+  // `isEncryptionAvailable()` -- triggers a macOS Keychain prompt for the
+  // "Electron Safe Storage" entry whose ACL is bound to whatever bundle
+  // identity Electron had when it first created the entry. Stella's
+  // dev-mode bundle identity does not match that ACL, so every safeStorage
+  // touch surfaces a "Stella wants to use your confidential information"
+  // dialog. Hard-fail here so callers (`protectValue`/`unprotectValue`) take
+  // the launcher path or surface a real error instead of silently prompting.
+  if (useLauncherProtectedStorage()) {
+    throw new Error(
+      'Protected storage is launcher-only; safeStorage must not be called.',
+    )
+  }
   if (safeStorageCache) {
     return safeStorageCache
   }
@@ -101,12 +115,18 @@ const devPrefixForScope = (scope: string) =>
   `${DEV_PLAINTEXT_PREFIX}:${scope}:v1:`
 
 export const protectValue = (scope: string, plaintext: string): string => {
-  const launcherValue = callLauncherProtectedStorage(
-    'protect',
-    scope,
-    plaintext,
-  )
-  if (launcherValue) {
+  if (useLauncherProtectedStorage()) {
+    // Launcher mode: the binary is the single source of truth. Surface its
+    // failure rather than silently falling back to Electron `safeStorage`
+    // (which would prompt the user via macOS Keychain on every call).
+    const launcherValue = callLauncherProtectedStorage(
+      'protect',
+      scope,
+      plaintext,
+    )
+    if (!launcherValue) {
+      throw new Error('Launcher protected storage returned no value.')
+    }
     return launcherValue
   }
 
