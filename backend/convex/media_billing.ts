@@ -50,6 +50,26 @@ const getInputNumber = (
   return null;
 };
 
+const getInputDurationSeconds = (
+  request: MediaRequestSummary,
+  fallbackSeconds: number,
+): { seconds: number; estimated: boolean } => {
+  const input = getInput(request);
+  for (const field of ["duration", "duration_seconds", "target_duration"]) {
+    const value = input[field];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return { seconds: value, estimated: false };
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return { seconds: parsed, estimated: false };
+      }
+    }
+  }
+  return { seconds: fallbackSeconds, estimated: true };
+};
+
 const getInputString = (
   request: MediaRequestSummary,
   ...fields: string[]
@@ -273,41 +293,35 @@ export const meterCompletedMediaJob = (args: {
         unitPriceUsd: 0.022,
         meteredFrom: "request",
       });
-    case "fal-ai/kling-video/v3/pro/motion-control": {
-      const durationSeconds =
-        getInputNumber(args.request, "duration", "duration_seconds") ?? 5;
+    case "bytedance/seedance-2.0/fast/text-to-video":
+    case "bytedance/seedance-2.0/fast/image-to-video": {
+      const duration = getInputDurationSeconds(args.request, 5);
       return buildBillingRecord({
         endpointId: args.endpointId,
         billingUnit: "second",
-        quantity: durationSeconds,
-        unitPriceUsd: 0.168,
+        quantity: duration.seconds,
+        unitPriceUsd: 0.2419,
         meteredFrom: "request",
+        ...(duration.estimated
+          ? { note: "Estimated from Seedance auto duration fallback." }
+          : {}),
       });
     }
-    case "fal-ai/ltx-2.3/extend-video": {
-      const durationSeconds =
-        getInputNumber(
-          args.request,
-          "duration",
-          "target_duration",
-          "duration_seconds",
-        ) ?? 5;
+    case "bytedance/seedance-2.0/fast/reference-to-video": {
+      const duration = getInputDurationSeconds(args.request, 5);
+      const includesVideoInput =
+        getInputArrayLength(args.request, "video_urls") > 0;
       return buildBillingRecord({
         endpointId: args.endpointId,
         billingUnit: "second",
-        quantity: durationSeconds,
-        unitPriceUsd: 0.1,
+        quantity: duration.seconds,
+        unitPriceUsd: includesVideoInput ? 0.14515 : 0.2419,
         meteredFrom: "request",
+        ...(duration.estimated
+          ? { note: "Estimated from Seedance auto duration fallback." }
+          : {}),
       });
     }
-    case "fal-ai/kling-video/o3/pro/video-to-video/reference":
-      return buildBillingRecord({
-        endpointId: args.endpointId,
-        billingUnit: "request",
-        quantity: 1,
-        unitPriceUsd: 0.84,
-        meteredFrom: "request",
-      });
     case "fal-ai/hyper3d/rodin/v2":
       return buildBillingRecord({
         endpointId: args.endpointId,

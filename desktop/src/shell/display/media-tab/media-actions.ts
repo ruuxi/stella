@@ -18,6 +18,7 @@ export type MediaTabItem = {
 
 export type MediaActionId =
   | "text_to_image"
+  | "text_to_video"
   | "image_edit"
   | "image_to_video"
   | "sound_effects"
@@ -44,6 +45,11 @@ export const MEDIA_ACTIONS: MediaAction[] = [
     id: "text_to_image",
     label: "Photo",
     placeholder: "Describe a photo to make",
+  },
+  {
+    id: "text_to_video",
+    label: "Video",
+    placeholder: "Describe a video to make",
   },
   {
     id: "image_edit",
