@@ -134,21 +134,19 @@ jobs:
         shell: pwsh
         run: rustup target add x86_64-pc-windows-msvc
 
-      # Several helpers (dictation_bridge.exe, stella-computer-helper.exe)
-      # do legitimate input synthesis / window control. Windows Defender on
-      # GitHub Actions runners aggressively quarantines those silently after
-      # build, so exclude the build tree before anything compiles.
-      - name: Disable Defender scanning of build tree
+      # dictation_bridge.exe does keyboard input synthesis (paste) which
+      # Windows Defender silently quarantines. Add-MpPreference exclusions
+      # don't apply to Microsoft Defender for Endpoint (what GHA runners use)
+      # so disable real-time monitoring entirely for the build.
+      - name: Disable Defender real-time monitoring
         shell: pwsh
         run: |
           try {
-            Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
-            Add-MpPreference -ExclusionProcess "cl.exe"
-            Add-MpPreference -ExclusionProcess "link.exe"
-            Add-MpPreference -ExclusionProcess "rustc.exe"
-            Write-Host "Defender exclusions added"
+            Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
+            Write-Host "Defender real-time monitoring disabled"
+            Get-MpPreference | Select-Object DisableRealtimeMonitoring
           } catch {
-            Write-Warning "Could not add Defender exclusions: $_"
+            Write-Warning "Could not disable Defender real-time monitoring: $_"
           }
 
       - name: Build native helpers (Windows)
