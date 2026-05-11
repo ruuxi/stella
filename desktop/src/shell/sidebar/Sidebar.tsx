@@ -19,9 +19,14 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type { AppMetadata } from "@/app/_shared/app-metadata";
+import {
+  getSnapshot as getAppRegistrySnapshot,
+  subscribe as subscribeToAppRegistry,
+} from "./app-registry";
 import { useSocialBadges } from "@/app/social/hooks/use-social-badges";
 import { api } from "@/convex/api";
 import {
@@ -318,30 +323,17 @@ const SidebarActionsMenu = ({
   );
 };
 
-/**
- * App discovery: every `desktop/src/app/<id>/metadata.ts` is loaded eagerly
- * by Vite at build time, sorted by `order`, and split into top / bottom slots.
- * Feature folders without a `metadata.ts` (e.g. `home`, `media`, `workspace`)
- * are silently skipped, so having a sidebar entry is opt-in per feature.
- *
- * Add a new app by dropping a `metadata.ts` into `desktop/src/app/<id>/`.
- * No edits to this file are needed.
- */
-const APP_MODULES = import.meta.glob<{ default: AppMetadata }>(
-  "../../app/*/metadata.ts",
-  { eager: true },
-);
-
-const ALL_APPS: AppMetadata[] = Object.values(APP_MODULES)
-  .map((m) => m.default)
-  .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
-
-// Apps can opt out of permanent rail rendering via `hideFromSidebar` — the
-// route stays reachable but the sidebar skips it. Used by Settings, which
-// now lives in the avatar dropdown.
-const VISIBLE_APPS = ALL_APPS.filter((a) => !a.hideFromSidebar);
-const TOP_APPS = VISIBLE_APPS.filter((a) => a.slot === "top");
-const BOTTOM_APPS = VISIBLE_APPS.filter((a) => a.slot === "bottom");
+// App discovery happens in `./app-registry`, which owns the glob over
+// `desktop/src/app/<id>/metadata.ts` and exposes a subscribable snapshot.
+// The registry self-accepts HMR updates so adding a new `metadata.ts`
+// doesn't propagate invalidation up through Sidebar to `__root.tsx` and
+// force a full renderer reload -- the snapshot updates in place and the
+// subscription below re-renders just the list.
+//
+// Add a new app by dropping a `metadata.ts` into `desktop/src/app/<id>/`.
+// No edits to this file are needed.
+const useRegisteredApps = (): readonly AppMetadata[] =>
+  useSyncExternalStore(subscribeToAppRegistry, getAppRegistrySnapshot);
 
 interface SidebarProps {
   className?: string;
@@ -713,6 +705,20 @@ export const Sidebar = ({
   const pageOverride = usePageSidebarOverride();
   const defaultBack = useDefaultPageSidebarBack();
 
+  // Subscribe to the app registry so HMR additions (new sidebar apps
+  // dropped by the agent) re-render the lists without a full reload.
+  const allApps = useRegisteredApps();
+  const { topApps, bottomApps } = useMemo(() => {
+    // Apps can opt out of permanent rail rendering via `hideFromSidebar`
+    // — the route stays reachable but the sidebar skips it. Used by
+    // Settings, which now lives in the avatar dropdown.
+    const visible = allApps.filter((a) => !a.hideFromSidebar);
+    return {
+      topApps: visible.filter((a) => a.slot === "top"),
+      bottomApps: visible.filter((a) => a.slot === "bottom"),
+    };
+  }, [allApps]);
+
   // User-toggled rail (icon-only) collapse. Persisted in localStorage so the
   // preference survives reloads. The window-mode "mini" mode is a separate
   // concept and is forced compact via CSS regardless of this state.
@@ -899,7 +905,7 @@ export const Sidebar = ({
         ) : (
           <>
             <nav className="sidebar-nav">
-              {TOP_APPS.map((app) => (
+              {topApps.map((app) => (
                 <AppNavItem
                   key={app.id}
                   app={app}
@@ -930,7 +936,7 @@ export const Sidebar = ({
               </DropdownMenu>
             </nav>
             <div className="sidebar-footer">
-              {BOTTOM_APPS.map((app) => (
+              {bottomApps.map((app) => (
                 <AppNavItem
                   key={app.id}
                   app={app}

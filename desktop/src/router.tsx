@@ -42,6 +42,29 @@ export const router = createRouter({
   ),
 });
 
+// HMR boundary for `routeTree.gen.ts`. The TanStack Router Vite plugin
+// regenerates that file whenever a route is added, removed, or renamed.
+// Without this accept handler, the new module would propagate up to
+// every importer of `router` (FullShell, etc.) and force a full renderer
+// reload -- visible to the user as a blank flash, even when covered by
+// the morph overlay.
+//
+// Swapping the tree on the existing router instance keeps every
+// subscriber, navigation, and route-state intact: only the route graph
+// updates. New routes become reachable immediately; deleted routes
+// stop being matchable on the next navigation.
+if (import.meta.hot) {
+  import.meta.hot.accept("./routeTree.gen.ts", (newModule) => {
+    const next = (newModule as { routeTree?: unknown } | undefined)?.routeTree;
+    if (!next) return;
+    // `router.update` accepts the same options as `createRouter`, but
+    // applied to the live instance. TanStack handles re-resolving the
+    // current location against the new tree.
+    router.update({ routeTree: next as typeof routeTree });
+    void router.invalidate();
+  });
+}
+
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
