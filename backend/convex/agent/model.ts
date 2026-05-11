@@ -174,7 +174,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     model: "deepseek/deepseek-v4-flash",
     fallbackMode: "fast",
     managedGatewayProvider: "openrouter",
-    temperature: 0.7,
+    temperature: 1.0,
     maxOutputTokens: 512,
     providerOptions: {
       // Mirror the free-tier privacy posture: deny third-party data
