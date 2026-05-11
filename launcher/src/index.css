@@ -365,15 +365,58 @@ body {
 }
 
 .banner-warn {
-	background: #fff8e6;
-	border: 1px solid #f0d060;
-	color: #8a6d00;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	color: var(--text-dim);
 }
 
 .banner-error {
 	background: #fff0f0;
 	border: 1px solid #ffc0c0;
 	color: var(--red);
+}
+
+/* ── Update pill (non-forced launcher update affordance) ───────── */
+
+.update-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	align-self: center;
+	background: color-mix(in oklab, var(--accent) 10%, transparent);
+	border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+	color: var(--accent-hover);
+	border-radius: 999px;
+	padding: 6px 14px;
+	font-family: var(--font);
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+	animation: fadeIn 0.2s ease;
+}
+
+.update-pill:hover:not(:disabled) {
+	background: color-mix(in oklab, var(--accent) 18%, transparent);
+	border-color: color-mix(in oklab, var(--accent) 55%, transparent);
+}
+
+.update-pill:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.update-pill-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--accent);
+	box-shadow: 0 0 6px color-mix(in oklab, var(--accent) 60%, transparent);
+	flex-shrink: 0;
+}
+
+.update-pill-text {
+	white-space: nowrap;
 }
 
 /* ── Checkbox ─────────────────────────────────────────────────────── */
@@ -588,4 +631,233 @@ body {
 
 .link-danger:hover:not(:disabled) {
 	color: var(--red);
+}
+
+/* ── Settings view ────────────────────────────────────────────── */
+
+.settings-view {
+	padding: 12px 24px 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.settings-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.settings-back {
+	color: var(--text-dim);
+}
+
+.settings-back:hover:not(:disabled) {
+	color: var(--text);
+}
+
+.settings-title {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-faint);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+
+.settings-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	overflow-y: auto;
+}
+
+.settings-row {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 14px 16px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg);
+	transition: border-color 0.15s;
+}
+
+.settings-row:hover {
+	border-color: color-mix(in oklab, var(--text-faint) 50%, var(--border));
+}
+
+.settings-row-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+	flex: 1;
+}
+
+.settings-row-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.settings-row-body {
+	font-size: 11px;
+	color: var(--text-dim);
+	line-height: 1.45;
+}
+
+.settings-row-btn {
+	flex-shrink: 0;
+	padding: 7px 14px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg);
+	font-family: var(--font);
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--text);
+	cursor: pointer;
+	transition: background 0.15s, border-color 0.15s, color 0.15s;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.settings-row-btn:hover:not(:disabled) {
+	background: var(--surface);
+	border-color: var(--text-faint);
+}
+
+.settings-row-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.settings-row-btn--danger {
+	color: var(--red);
+	border-color: color-mix(in oklab, var(--red) 30%, var(--border));
+}
+
+.settings-row-btn--danger:hover:not(:disabled) {
+	background: color-mix(in oklab, var(--red) 8%, var(--bg));
+	border-color: color-mix(in oklab, var(--red) 60%, var(--border));
+}
+
+/* ── In-app confirmation dialog ───────────────────────────────── */
+
+.dialog-overlay {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.42);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	z-index: 200;
+	animation: fadeIn 180ms ease;
+	border-radius: var(--radius);
+	-webkit-app-region: no-drag;
+}
+
+.dialog-card {
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+	padding: 20px 22px 18px;
+	max-width: 320px;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	animation: dialogIn 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes dialogIn {
+	from { opacity: 0; transform: scale(0.96) translateY(6px); }
+	to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.dialog-title {
+	font-family: var(--font);
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--text);
+	margin: 0;
+}
+
+.dialog-body {
+	font-size: 12px;
+	line-height: 1.55;
+	color: var(--text-dim);
+	margin: 0;
+}
+
+.dialog-step {
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-faint);
+	margin: 0;
+}
+
+.dialog-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 6px;
+}
+
+.dialog-btn {
+	padding: 7px 14px;
+	border-radius: 999px;
+	font-family: var(--font);
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	border: 1px solid var(--border);
+	background: var(--bg);
+	color: var(--text);
+	transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.dialog-btn:hover:not(:disabled) {
+	background: var(--surface);
+}
+
+.dialog-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.dialog-btn--secondary {
+	color: var(--text-dim);
+}
+
+.dialog-btn--primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+.dialog-btn--primary:hover:not(:disabled) {
+	background: var(--accent-hover);
+	border-color: var(--accent-hover);
+}
+
+.dialog-btn--danger,
+.dialog-btn--primary.dialog-btn--danger {
+	background: var(--red);
+	border-color: var(--red);
+	color: #fff;
+}
+
+.dialog-btn--danger:hover:not(:disabled),
+.dialog-btn--primary.dialog-btn--danger:hover:not(:disabled) {
+	background: color-mix(in oklab, var(--red) 88%, #000);
+	border-color: color-mix(in oklab, var(--red) 88%, #000);
 }

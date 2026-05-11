@@ -3,6 +3,7 @@ export type SetupStepId =
   | "prepare"
   | "parakeet"
   | "payload"
+  | "nativehelpers"
   | "deps"
   | "env"
   | "browser"
