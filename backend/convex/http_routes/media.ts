@@ -162,6 +162,9 @@ const isGptImage2Endpoint = (endpointId: string): boolean =>
   endpointId === "openai/gpt-image-2" ||
   endpointId === "openai/gpt-image-2/edit";
 
+const isSeedanceReferenceToVideoEndpoint = (endpointId: string): boolean =>
+  endpointId === "bytedance/seedance-2.0/fast/reference-to-video";
+
 const applyCapabilityDefaults = (args: {
   capability: MediaCapability;
   profile?: MediaProfile;
@@ -215,6 +218,34 @@ const applyEndpointTransforms = (args: {
     normalized.image_size === undefined
   ) {
     normalized.image_size = "auto";
+  }
+  const targetsSeedanceReference = args.profile
+    ? isSeedanceReferenceToVideoEndpoint(args.profile.endpointId)
+    : args.capability.profiles.some((p) =>
+        isSeedanceReferenceToVideoEndpoint(p.endpointId),
+      );
+  if (targetsSeedanceReference) {
+    if (
+      normalized.image_url !== undefined &&
+      normalized.image_urls === undefined
+    ) {
+      normalized.image_urls = [normalized.image_url];
+      delete normalized.image_url;
+    }
+    if (
+      normalized.video_url !== undefined &&
+      normalized.video_urls === undefined
+    ) {
+      normalized.video_urls = [normalized.video_url];
+      delete normalized.video_url;
+    }
+    if (
+      normalized.audio_url !== undefined &&
+      normalized.audio_urls === undefined
+    ) {
+      normalized.audio_urls = [normalized.audio_url];
+      delete normalized.audio_url;
+    }
   }
   return normalized;
 };
@@ -540,7 +571,8 @@ export const registerMediaRoutes = (http: HttpRouter) => {
         // subscription — direct them to upgrade rather than spending
         // backend cost.
         const isAnonymous =
-          (identity as Record<string, unknown> | undefined)?.isAnonymous === true;
+          (identity as Record<string, unknown> | undefined)?.isAnonymous ===
+          true;
         const access = await resolveManagedModelAccess(ctx, ownerId, {
           isAnonymous,
         });

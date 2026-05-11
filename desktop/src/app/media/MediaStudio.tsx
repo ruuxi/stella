@@ -163,6 +163,15 @@ const CAPABILITIES: CapabilityDef[] = [
     supportsAspectRatio: false,
   },
   {
+    id: "text_to_video",
+    name: "Text to Video",
+    description: "Generate a short video from a text prompt",
+    category: "video",
+    needsPrompt: true,
+    needsSource: false,
+    supportsAspectRatio: true,
+  },
+  {
     id: "image_to_video",
     name: "Image to Video",
     description: "Animate a still image into a short video",
@@ -178,11 +187,11 @@ const CAPABILITIES: CapabilityDef[] = [
     name: "Video Extend",
     description: "Continue or extend a video clip",
     category: "video",
-    needsPrompt: false,
+    needsPrompt: true,
     needsSource: true,
     sourceAccept: "video/*",
     sourceLabel: "Source video",
-    supportsAspectRatio: false,
+    supportsAspectRatio: true,
   },
   {
     id: "video_to_video",
@@ -194,10 +203,7 @@ const CAPABILITIES: CapabilityDef[] = [
     sourceAccept: "video/*",
     sourceLabel: "Source video",
     supportsAspectRatio: true,
-    profiles: [
-      { id: "reference", name: "Reference" },
-      { id: "edit", name: "Edit" },
-    ],
+    profiles: [{ id: "fast", name: "Fast" }],
   },
   {
     id: "text_to_3d",
