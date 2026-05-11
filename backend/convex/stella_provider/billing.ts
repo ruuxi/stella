@@ -41,7 +41,7 @@ export type AnonymousUsageRecord = {
  * runs a managed-LLM completion that Stella pays for, so this stays
  * enforced server-side.
  */
-export const MAX_ANON_REQUESTS = 1;
+export const MAX_ANON_REQUESTS = 5;
 export const DEFAULT_RETRY_AFTER_MS = 60_000;
 export const STELLA_MODELS_RATE_LIMIT = 60;
 export const STELLA_MODELS_RATE_WINDOW_MS = 60_000;

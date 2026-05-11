@@ -105,9 +105,14 @@ export async function authorizeStellaRequest(
       clientAddressKey,
     );
     if (!allowed) {
+      // Prefix is load-bearing: the desktop toast resolver matches
+      // `sign in required` to render a "Sign in" CTA instead of the
+      // generic rate-limit "Upgrade" toast that points at /billing
+      // (which is wrong for an anonymous user with no account to
+      // upgrade).
       return stellaProviderErrorResponse(
         429,
-        "Rate limit exceeded. Please create an account for continued access.",
+        "Sign in required: You've used your free Stella previews. Sign in to keep going.",
         request,
       );
     }

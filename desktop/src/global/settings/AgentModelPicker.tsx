@@ -405,9 +405,20 @@ export function AgentModelPicker({
         // Picking a non-default model on a tier that's pinned to the
         // backend-chosen model is a no-op at request time (the Stella
         // provider silently coerces). Surface a toast so the user
-        // understands their selection won't be honored on this plan.
+        // understands their selection won't be honored on this plan —
+        // BUT only when the pick actually resolves to a different
+        // upstream than what the audience would already get. Picking
+        // "Stella Free" on the Free plan is a no-op, not a restriction.
+        const pickedUpstream =
+          stellaModels.find((model) => model.id === value)?.upstreamModel ?? "";
+        const audienceUpstream = resolvedDefaultModelMap[activeAgent] ?? "";
+        const resolvesToSameModel =
+          pickedUpstream !== "" &&
+          audienceUpstream !== "" &&
+          pickedUpstream === audienceUpstream;
         if (
           value !== "" &&
+          !resolvesToSameModel &&
           isRestrictedModelOverrideAudience(audience)
         ) {
           const modelLabel = getModelDisplayLabel(value, modelNamesById);
@@ -446,7 +457,16 @@ export function AgentModelPicker({
         setPendingAgent(null);
       }
     },
-    [activeAgent, audience, modelNamesById, onSelected, pendingAgent, preferences],
+    [
+      activeAgent,
+      audience,
+      modelNamesById,
+      onSelected,
+      pendingAgent,
+      preferences,
+      resolvedDefaultModelMap,
+      stellaModels,
+    ],
   );
 
   const handleImageSelect = useCallback(

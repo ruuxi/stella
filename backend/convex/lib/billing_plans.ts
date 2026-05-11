@@ -16,10 +16,10 @@ export type PlanCatalog = Record<SubscriptionPlan, PlanConfig>;
 const DEFAULT_FREE_PLAN: PlanConfig = {
   label: "Free",
   monthlyPriceCents: 0,
-  rollingLimitUsd: 1,
+  rollingLimitUsd: 0.75,
   rollingWindowHours: 5,
-  weeklyLimitUsd: 2,
-  monthlyLimitUsd: 4,
+  weeklyLimitUsd: 0.75,
+  monthlyLimitUsd: 0.75,
 };
 
 const DEFAULT_INCLUDED_USAGE_UTILIZATION_RATE = 0.7;
