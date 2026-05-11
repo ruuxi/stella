@@ -7,7 +7,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { InstallerState, SetupStep } from "./types";
+import type { DesktopFailure, InstallerState, SetupStep } from "./types";
 import stellaLogo from "./stella-logo.svg";
 
 const formatBytes = (bytes: number | null): string => {
@@ -129,6 +129,12 @@ function App() {
   const [pendingAction, setPendingAction] = useState<SettingsAction | null>(
     null,
   );
+  const [failure, setFailure] = useState<DesktopFailure | null>(null);
+  const [recoveryAction, setRecoveryAction] = useState<
+    "idle" | "retrying" | "reverting" | "revertFailed"
+  >("idle");
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [showFailureDetails, setShowFailureDetails] = useState(false);
 
   const applyState = useCallback((nextState: InstallerState) => {
     startTransition(() => setState(nextState));
@@ -148,6 +154,33 @@ function App() {
       unlisten.then((fn) => fn());
     };
   }, [applyState]);
+
+  // Recovery view: the launcher's Rust side emits `desktop-failure` when
+  // `bun run electron:dev` exits with a non-zero status. Switching into
+  // this state takes priority over the install/launch UI -- the recovery
+  // card stays visible until the user clicks Try again or undoes the
+  // last update (both flows clear the failure on the Rust side).
+  useEffect(() => {
+    invoke<DesktopFailure | null>("get_desktop_failure")
+      .then((next) => {
+        if (next) {
+          setFailure(next);
+          setShowFailureDetails(false);
+          setRecoveryAction("idle");
+          setRecoveryError(null);
+        }
+      })
+      .catch(() => {});
+    const unlisten = listen<DesktopFailure>("desktop-failure", (event) => {
+      setFailure(event.payload);
+      setShowFailureDetails(false);
+      setRecoveryAction("idle");
+      setRecoveryError(null);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // Poll desktop running state for UI display only. The launcher's Rust side
   // owns the "desktop exited → re-show launcher" transition (see
@@ -256,6 +289,53 @@ function App() {
       setErasing(false);
       setPendingAction(null);
       setView("main");
+    }
+  }, []);
+
+  /* ── Recovery actions ────────────────────────────────────────── */
+
+  const handleRecoveryRetry = useCallback(async () => {
+    setRecoveryAction("retrying");
+    setRecoveryError(null);
+    try {
+      await invoke<{ ok: boolean }>("launch_desktop");
+      // launch_desktop clears the captured failure on the Rust side;
+      // mirror that locally so we exit the recovery view immediately
+      // and the desktop-failure listener takes over from here.
+      setFailure(null);
+    } catch (err) {
+      setRecoveryAction("idle");
+      setRecoveryError(
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "Couldn't relaunch Stella.",
+      );
+    }
+  }, []);
+
+  const handleRecoveryRevert = useCallback(async () => {
+    setRecoveryAction("reverting");
+    setRecoveryError(null);
+    try {
+      await invoke("revert_last_self_mod");
+      // After a successful revert, immediately try to relaunch so the
+      // user lands back in Stella instead of staring at the recovery
+      // view. If the relaunch itself fails, the failure listener
+      // captures the new state.
+      await invoke("clear_desktop_failure");
+      setFailure(null);
+      await invoke<{ ok: boolean }>("launch_desktop");
+    } catch (err) {
+      setRecoveryAction("revertFailed");
+      setRecoveryError(
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "Couldn't roll back the last update.",
+      );
     }
   }, []);
 
@@ -403,6 +483,100 @@ function App() {
   };
 
   const activeDialog = pendingAction ? dialogStepsForAction(pendingAction) : null;
+
+  /* ── Recovery view ───────────────────────────────────────────── */
+
+  if (failure) {
+    const couldntStart = !failure.reachedRunning;
+    const headline = couldntStart ? "Stella didn't start" : "Stella crashed";
+    const sub = couldntStart
+      ? "An update broke something while booting. You can try again, or roll back the last change Stella made to itself."
+      : "Stella started, then ran into an error. You can reload, or roll back the last change Stella made to itself.";
+    const retrying = recoveryAction === "retrying";
+    const reverting = recoveryAction === "reverting";
+    const busy = retrying || reverting;
+    const canRevert = !!failure.revertableCommit;
+    const revertSubject = failure.revertableCommit?.subject ?? "";
+    const revertSha = failure.revertableCommit?.shortSha ?? "";
+    return (
+      <div className="shell shell--complete">
+        <div className="drag-region" />
+        <div className="brand">
+          <img src={stellaLogo} alt="Stella" className="brand-logo" />
+          <h1 className="brand-name">Stella</h1>
+        </div>
+        <main className="body recovery-view" key="recovery">
+          <h2 className="recovery-title">{headline}</h2>
+          <p className="recovery-sub">{sub}</p>
+          <div className="recovery-actions">
+            <button
+              type="button"
+              className="recovery-btn recovery-btn--primary"
+              onClick={handleRecoveryRetry}
+              disabled={busy}
+            >
+              {retrying ? (
+                <>
+                  <span className="link-spinner" />
+                  Reloading...
+                </>
+              ) : (
+                "Try again"
+              )}
+            </button>
+            {canRevert && (
+              <button
+                type="button"
+                className="recovery-btn"
+                onClick={handleRecoveryRevert}
+                disabled={busy}
+                title={`Reverts ${revertSha}: ${revertSubject}`}
+              >
+                {reverting ? (
+                  <>
+                    <span className="link-spinner" />
+                    Undoing...
+                  </>
+                ) : (
+                  "Undo Stella's last update"
+                )}
+              </button>
+            )}
+          </div>
+          {canRevert && (
+            <p className="recovery-revert-hint">
+              Will roll back: <em>{revertSubject || revertSha}</em>
+            </p>
+          )}
+          {!canRevert && (
+            <p className="recovery-revert-hint">
+              The latest change isn't a Stella self-update, so it won't be
+              rolled back automatically. If "Try again" doesn't work, use
+              Settings → Reinstall.
+            </p>
+          )}
+          {recoveryError && (
+            <p className="recovery-error">{recoveryError}</p>
+          )}
+          <div className="recovery-details">
+            <button
+              type="button"
+              className="link-btn recovery-details-toggle"
+              onClick={() => setShowFailureDetails((v) => !v)}
+            >
+              {showFailureDetails ? "Hide details" : "Show details"}
+            </button>
+            {showFailureDetails && (
+              <pre className="recovery-log">
+                {failure.logTail || "(no log output captured)"}
+              </pre>
+            )}
+            <p className="recovery-log-path">{failure.logPath}</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   /* ── Render ──────────────────────────────────────────────────── */
 

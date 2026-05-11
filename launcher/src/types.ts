@@ -64,3 +64,27 @@ export type InstallerState = {
     enoughSpace: boolean;
   };
 };
+
+/**
+ * Captured by the launcher's Rust side when `bun run electron:dev` exits
+ * with a non-zero status. Drives the recovery view (Try again / Undo
+ * Stella's last update / Show details).
+ */
+export type RevertableCommit = {
+  shortSha: string;
+  subject: string;
+};
+
+export type DesktopFailure = {
+  exitCode: number;
+  logTail: string;
+  /**
+   * `true` when the desktop's pid file appeared at least once during the
+   * launch attempt. Distinguishes "Stella couldn't start" (false -- main
+   * file syntax error, vite died, etc.) from "Stella crashed" (true --
+   * post-startup runtime error). Surfaced in the recovery view copy.
+   */
+  reachedRunning: boolean;
+  logPath: string;
+  revertableCommit?: RevertableCommit;
+};

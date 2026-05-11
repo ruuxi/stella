@@ -861,3 +861,138 @@ body {
 	background: color-mix(in oklab, var(--red) 88%, #000);
 	border-color: color-mix(in oklab, var(--red) 88%, #000);
 }
+
+/* ── Recovery view ────────────────────────────────────────────────
+   Shown when `bun run electron:dev` exited non-zero. Mirrors the
+   desktop's CrashSurface aesthetic: white card, brand on top, primary
+   "Try again" + secondary "Undo Stella's last update", optional log
+   tail in a collapsed details expander. */
+
+.recovery-view {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	padding: 8px 32px 24px;
+	overflow-y: auto;
+}
+
+.recovery-title {
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--text);
+	margin: 0 0 6px;
+	text-align: center;
+}
+
+.recovery-sub {
+	font-size: 13px;
+	color: var(--text-dim);
+	margin: 0 0 18px;
+	text-align: center;
+	line-height: 1.5;
+}
+
+.recovery-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.recovery-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 9px 16px;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.15s, opacity 0.15s, border-color 0.15s;
+}
+
+.recovery-btn:hover:not(:disabled) {
+	background: var(--surface);
+	border-color: color-mix(in oklab, var(--border) 70%, var(--text));
+}
+
+.recovery-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.recovery-btn--primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+.recovery-btn--primary:hover:not(:disabled) {
+	background: var(--accent-hover);
+	border-color: var(--accent-hover);
+}
+
+.recovery-revert-hint {
+	font-size: 11.5px;
+	color: var(--text-faint);
+	margin: 0 0 12px;
+	text-align: center;
+	line-height: 1.5;
+}
+
+.recovery-revert-hint em {
+	font-style: normal;
+	color: var(--text-dim);
+}
+
+.recovery-error {
+	font-size: 12px;
+	color: var(--red);
+	margin: 0 0 12px;
+	text-align: center;
+	line-height: 1.5;
+}
+
+.recovery-details {
+	margin-top: 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-items: stretch;
+}
+
+.recovery-details-toggle {
+	align-self: center;
+}
+
+.recovery-log {
+	margin: 0;
+	max-height: 180px;
+	overflow: auto;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 8px 10px;
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--text-dim);
+	white-space: pre-wrap;
+	word-break: break-word;
+	user-select: text;
+}
+
+.recovery-log-path {
+	margin: 0;
+	font-size: 10.5px;
+	font-family: var(--mono);
+	color: var(--text-faint);
+	text-align: center;
+	user-select: text;
+	word-break: break-all;
+}

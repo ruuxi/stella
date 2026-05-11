@@ -362,7 +362,7 @@ fn dugite_git_exec_path_of(d: &str) -> PathBuf {
         root.join("libexec").join("git-core")
     }
 }
-fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
+pub fn dugite_launch_env(install_dir: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
     let mut launch_path =
         prepend_path_entry(&bun_bin_dir(), &std::env::var("PATH").unwrap_or_default());
