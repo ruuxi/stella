@@ -18,6 +18,10 @@ import {
   type ProviderGroup,
 } from "@/global/settings/lib/model-catalog";
 import { STELLA_MODELS_PATH } from "@/shared/stella-api";
+import {
+  resolveBillingAudience,
+  type ManagedModelAudience,
+} from "@/shared/billing/audience";
 
 type CatalogFetchResult = {
   models: CatalogModel[];
@@ -263,6 +267,14 @@ export function useModelCatalog() {
     hasConnectedAccount ? {} : "skip",
   ) as BillingStatus | undefined;
   const billingAudienceKey = getBillingAudienceKey(billingStatus);
+  const audience = useMemo<ManagedModelAudience | null>(
+    () =>
+      resolveBillingAudience({
+        hasConnectedAccount,
+        billingStatus,
+      }),
+    [billingStatus, hasConnectedAccount],
+  );
   const authAudienceKey = useMemo(() => {
     if (session.isPending) {
       return null;
@@ -385,5 +397,6 @@ export function useModelCatalog() {
     modelCatalogUpdatedAt,
     refresh,
     refreshing,
+    audience,
   };
 }
