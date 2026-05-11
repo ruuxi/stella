@@ -9,6 +9,7 @@
  */
 import { useCallback, useState } from "react";
 import { createServiceRequest } from "@/infra/http/service-request";
+import { maybeShowPaidMediaTierToast } from "@/shared/billing/paid-media-tier-toast";
 import type { MediaActionId } from "./media-actions";
 
 export type SubmitMediaJobArgs = {
@@ -47,7 +48,10 @@ export const submitMediaJob = async (
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(text || `Media request failed (${response.status})`);
+    const message = text || `Media request failed (${response.status})`;
+    const error = new Error(message);
+    maybeShowPaidMediaTierToast(error);
+    throw error;
   }
 };
 

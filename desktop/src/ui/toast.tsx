@@ -15,6 +15,7 @@ interface Toast {
   variant?: "default" | "success" | "error" | "loading";
   duration?: number;
   action?: ToastAction;
+  secondaryAction?: ToastAction;
 }
 
 type ToastAction = {
@@ -28,6 +29,8 @@ export interface ToastOptions {
   variant?: "default" | "success" | "error" | "loading";
   duration?: number;
   action?: ToastAction;
+  /** Optional secondary CTA rendered next to `action` (e.g. "Use my own key"). */
+  secondaryAction?: ToastAction;
 }
 
 const ToastContext = React.createContext<ToastContextValue | null>(null);
@@ -90,6 +93,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       addToast(typeof options === "string" ? { description: options } : options);
 
     setToastFn(imperativeToast);
+    if (typeof window !== "undefined") {
+      (window as unknown as { showToast?: typeof showToast }).showToast = showToast;
+    }
 
     return () => {
       if (toastFn === imperativeToast) {
@@ -131,20 +137,38 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
     toast.action?.onClick();
     onClose();
   }, [onClose, toast.action]);
+  const handleSecondaryActionClick = React.useCallback(() => {
+    toast.secondaryAction?.onClick();
+    onClose();
+  }, [onClose, toast.secondaryAction]);
 
   return (
     <li data-component="toast" data-variant={toast.variant}>
       <div data-slot="toast-content">
         {toast.title && <div data-slot="toast-title">{toast.title}</div>}
         {toast.description && <div data-slot="toast-description">{toast.description}</div>}
-        {toast.action && (
-          <button
-            data-slot="toast-action-button"
-            onClick={handleActionClick}
-            type="button"
-          >
-            {toast.action.label}
-          </button>
+        {(toast.action || toast.secondaryAction) && (
+          <div data-slot="toast-actions">
+            {toast.action && (
+              <button
+                data-slot="toast-action-button"
+                onClick={handleActionClick}
+                type="button"
+              >
+                {toast.action.label}
+              </button>
+            )}
+            {toast.secondaryAction && (
+              <button
+                data-slot="toast-action-button"
+                data-variant="secondary"
+                onClick={handleSecondaryActionClick}
+                type="button"
+              >
+                {toast.secondaryAction.label}
+              </button>
+            )}
+          </div>
         )}
       </div>
       <button data-slot="toast-close-button" onClick={onClose} type="button">
@@ -167,4 +191,10 @@ export function showToast(options: ToastOptions | string): string {
   }
   const opts = typeof options === "string" ? { description: options } : options;
   return toastFn(opts);
+}
+
+// Window hook so we can fire toasts from the DevTools console while
+// iterating on copy / styling.
+if (typeof window !== "undefined") {
+  (window as unknown as { showToast?: typeof showToast }).showToast = showToast;
 }

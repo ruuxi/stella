@@ -96,6 +96,31 @@ export async function assertManagedUsageAllowed(
   return result;
 }
 
+/**
+ * Stella-paid media generation (fal images/video, Lyria music, emoji
+ * packs, etc.) is gated to paid plans only — free and anonymous users
+ * cannot burn Stella's third-party API credits without a subscription.
+ * BYOK paths that don't touch Stella's keys should bypass this check.
+ */
+export function isPaidMediaTier(audience: ManagedModelAudience): boolean {
+  return audience !== "anonymous" && audience !== "free";
+}
+
+export async function assertPaidMediaTier(
+  ctx: BillingMutationCtx,
+  ownerId: string,
+  options?: { isAnonymous?: boolean },
+): Promise<ManagedModelAccess> {
+  const access = await resolveManagedModelAccess(ctx, ownerId, options);
+  if (!isPaidMediaTier(access.modelAudience)) {
+    throw new ConvexError({
+      code: "PAID_PLAN_REQUIRED",
+      message: "Media generation requires a Stella subscription. Upgrade your plan to continue.",
+    });
+  }
+  return access;
+}
+
 export async function recordManagedUsage(
   ctx: BillingMutationCtx,
   args: ManagedUsageLogArgs,

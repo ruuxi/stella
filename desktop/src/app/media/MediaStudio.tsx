@@ -9,6 +9,7 @@ import {
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { createServiceRequest } from "@/infra/http/service-request";
+import { maybeShowPaidMediaTierToast } from "@/shared/billing/paid-media-tier-toast";
 import {
   type FormState,
   type HistoryEntry,
@@ -243,7 +244,9 @@ async function generateMedia(
       const text = await res.text().catch(() => "");
       if (text) message = text;
     }
-    throw new Error(message);
+    const error = new Error(message);
+    maybeShowPaidMediaTierToast(error);
+    throw error;
   }
   return res.json() as Promise<GenerateResponse>;
 }

@@ -12,6 +12,8 @@ import { getUserProviderKey } from "../lib/provider_keys";
 import { generateMusic, parseMusicStreamRequest } from "../media_lyria";
 import {
   checkManagedUsageLimit,
+  isPaidMediaTier,
+  resolveManagedModelAccess,
   scheduleManagedUsage,
 } from "../lib/managed_billing";
 import { dollarsToMicroCents } from "../lib/billing_money";
@@ -38,6 +40,14 @@ export const registerMusicRoutes = (http: HttpRouter) => {
           return errorResponse(401, "Unauthorized", origin);
         }
         const ownerId = identity.tokenIdentifier;
+        // Stella-paid music generation is paid-plans-only. BYO Google-key
+        // callers (the branch below) bypass this gate later — only Stella's
+        // GOOGLE_AI_API_KEY path is restricted.
+        const isAnonymous =
+          (identity as Record<string, unknown>).isAnonymous === true;
+        const access = await resolveManagedModelAccess(ctx, ownerId, {
+          isAnonymous,
+        });
 
         const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId);
         if (!subscriptionCheck.allowed) {
@@ -79,10 +89,17 @@ export const registerMusicRoutes = (http: HttpRouter) => {
           ownerId,
           "llm:google",
         );
-        const apiKey = userProvidedKey ?? process.env.GOOGLE_AI_API_KEY ?? null;
         // Only meter against the user's plan when Stella's key paid for it —
         // BYO-key callers don't cost Stella anything.
         const billable = !userProvidedKey;
+        if (billable && !isPaidMediaTier(access.modelAudience)) {
+          return errorResponse(
+            402,
+            "Music generation requires a Stella subscription. Upgrade your plan to continue.",
+            origin,
+          );
+        }
+        const apiKey = userProvidedKey ?? process.env.GOOGLE_AI_API_KEY ?? null;
         if (!apiKey) {
           return errorResponse(
             503,

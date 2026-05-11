@@ -1,4 +1,5 @@
 import { router } from '@/router'
+import { BYOK_TOAST_ACTION } from '@/shared/billing/byok-action'
 import type { ToastOptions } from '@/ui/toast'
 
 const normalizeErrorText = (value: string | null | undefined): string =>
@@ -93,10 +94,11 @@ export const resolveStellaProviderErrorToast = (
     return {
       title: 'Sign in to keep using Stella',
       description:
-        "You've used your free Stella previews. Sign in to keep going.",
+        "You've used your free Stella previews. Sign in to keep going, or use your own provider key.",
       variant: 'error',
       duration: 8000,
       action: signInAction,
+      secondaryAction: BYOK_TOAST_ACTION,
     }
   }
 
@@ -108,6 +110,7 @@ export const resolveStellaProviderErrorToast = (
       variant: 'error',
       duration: 8000,
       action: upgradeAction,
+      secondaryAction: BYOK_TOAST_ACTION,
     }
   }
 
@@ -119,6 +122,7 @@ export const resolveStellaProviderErrorToast = (
       variant: 'error',
       duration: 8000,
       action: upgradeAction,
+      secondaryAction: BYOK_TOAST_ACTION,
     }
   }
 
@@ -140,10 +144,11 @@ export const resolveStellaProviderErrorToast = (
     return {
       title: 'Model not available on your plan',
       description:
-        'Stella will use the recommended model for your current plan. Upgrade to switch models.',
+        'Stella will use the recommended model for your current plan. Upgrade to switch models, or use your own provider key.',
       variant: 'error',
       duration: 8000,
       action: upgradeAction,
+      secondaryAction: BYOK_TOAST_ACTION,
     }
   }
 

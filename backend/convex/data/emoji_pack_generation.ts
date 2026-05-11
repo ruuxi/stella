@@ -11,6 +11,7 @@ import {
   RATE_STANDARD,
   enforceActionRateLimit,
 } from "../lib/rate_limits";
+import { assertPaidMediaTier } from "../lib/managed_billing";
 import { emoji_pack_validator, emoji_pack_visibility_validator } from "../schema/emoji_packs";
 import { requireBoundedString } from "../shared_validators";
 import {
@@ -272,6 +273,8 @@ export const generatePack = action({
   returns: emoji_pack_validator,
   handler: async (ctx, args): Promise<Doc<"emoji_packs">> => {
     const ownerId = await requireConnectedUserIdAction(ctx);
+    // Stella-paid emoji-pack generation (fal/openai-image) is paid-plans-only.
+    await assertPaidMediaTier(ctx, ownerId);
     await enforceActionRateLimit(
       ctx,
       "emojiPacks.generatePack",

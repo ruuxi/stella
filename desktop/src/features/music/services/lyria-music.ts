@@ -1,5 +1,6 @@
 import { postServiceJson } from "@/infra/http/service-request";
 import { generateMusicPrompt, type MusicMood } from "@/prompts/music";
+import { maybeShowPaidMediaTierToast } from "@/shared/billing/paid-media-tier-toast";
 
 export type { MusicMood } from "@/prompts/music";
 export type MusicServiceState = {
@@ -378,6 +379,7 @@ export async function play(): Promise<void> {
       },
       "error",
     );
+    maybeShowPaidMediaTierToast(error);
     setState({
       status: "error",
       error: error instanceof Error ? error.message : "Failed to start music",
