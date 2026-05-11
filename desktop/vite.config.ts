@@ -400,6 +400,12 @@ function selfModHmrControl(): Plugin {
   const appliedOverlay = new Map<string, { content: string; mtime: number }>()
   const shellSnapshotPaths = new Set<string>()
   const suppressedHotUpdatePaths = new Set<string>()
+  // Paths whose synthetic watcher event was just emitted by `applyBatch`.
+  // `handleHotUpdate` consumes (deletes) the entry on first hit so the
+  // standard "pause gate returns []" suppression doesn't fire for the apply
+  // path itself. The set is also cleared on a short timeout as a leak guard
+  // in case the chain never fires.
+  const recentlyEmittedSyntheticPaths = new Set<string>()
   let suppressedClientMessages = 0
   let clientUpdateReleaseDepth = 0
   let clientFullReloadRequestedDuringApply = false
@@ -469,6 +475,7 @@ function selfModHmrControl(): Plugin {
     appliedOverlay.clear()
     shellSnapshotPaths.clear()
     suppressedHotUpdatePaths.clear()
+    recentlyEmittedSyntheticPaths.clear()
     suppressedClientMessages = 0
   }
 
@@ -649,17 +656,19 @@ function selfModHmrControl(): Plugin {
         const modulesToReload: import('vite').ModuleNode[] = []
         const seenModules = new Set<import('vite').ModuleNode>()
         const appliedOverlayPaths = new Set<string>()
-        // A "new" file is one Vite has never resolved before, so no module
-        // currently imports it. `import.meta.glob` callers (e.g. the sidebar's
-        // `app/*/metadata.ts` enumeration) are NOT in `getModulesByFile`'s
-        // result for these paths because their relationship is via a glob
-        // pattern resolved at transform time, not a static import edge. Vite
-        // normally re-runs the importGlob plugin's `hotUpdate({type: 'create'})`
-        // path when its filesystem watcher sees an `add`, which invalidates
-        // every glob-importer that matches the new file. Self-mod's overlay
-        // applies file content out-of-band (Vite's watcher never sees it
-        // during a paused run), so we have to nudge that pipeline ourselves
-        // when finalizing.
+        // Synthetic watcher events to dispatch after the per-file overlay
+        // bookkeeping. Routing through `server.watcher.emit(...)` runs Vite's
+        // native pipeline -- `pluginContainer.watchChange`, importGlob's
+        // `hotUpdate({type:'create'|'delete'})` (which finds glob importers
+        // like `Sidebar.tsx`), `updateModules` (proper invalidation +
+        // importer walking), React-Refresh, and the right WS message
+        // (`update` for HMR-able, `full-reload` otherwise). Without this,
+        // the importGlob plugin never learns about a newly-added file and
+        // Sidebar.tsx keeps its pre-add glob expansion until full relaunch.
+        const watcherEvents: Array<{
+          event: 'add' | 'change' | 'unlink'
+          absPath: string
+        }> = []
         let hasNewFileForGlobInvalidation = false
 
         for (const run of runs) {
@@ -679,33 +688,32 @@ function selfModHmrControl(): Plugin {
             appliedPaths += 1
 
             const mods = server.moduleGraph.getModulesByFile(absPath)
-            if (!mods || mods.size === 0) {
+            const hadExistingModules = !!mods && mods.size > 0
+            if (!hadExistingModules) {
               if (!file.deleted) hasNewFileForGlobInvalidation = true
-              continue
+            } else {
+              for (const mod of mods) {
+                if (seenModules.has(mod)) continue
+                seenModules.add(mod)
+                modulesToReload.push(mod)
+              }
             }
-            for (const mod of mods) {
-              if (seenModules.has(mod)) continue
-              seenModules.add(mod)
-              modulesToReload.push(mod)
+            if (file.deleted) {
+              watcherEvents.push({ event: 'unlink', absPath })
+            } else {
+              watcherEvents.push({
+                event: hadExistingModules ? 'change' : 'add',
+                absPath,
+              })
             }
           }
         }
 
-        // When a self-mod batch introduces a NEW file, blow away the entire
-        // module-graph cache. Vite's `import.meta.glob` plugin maintains a
-        // per-environment map of glob importers and only re-evaluates them
-        // through its `hotUpdate({type:'create'})` path -- which is gated on
-        // the filesystem watcher firing an `add` event. Self-mod's overlay
-        // applies file content out-of-band (Vite's watcher never sees the
-        // change during a paused run), so the importGlob plugin never learns
-        // about the new file and the cached `Sidebar.tsx` transform keeps
-        // serving the pre-add glob expansion. The renderer's hard reload
-        // (`reloadIgnoringCache`) clears the browser cache but NOT the Vite
-        // server's transform cache -- so without this invalidation the new
-        // sidebar app stays invisible until the user fully relaunches Stella.
-        // The cost (re-transform on next module request) is acceptable
-        // because a renderer reload is essentially always paired with new-
-        // file additions in self-mod batches.
+        // Belt-and-suspenders for the new-file glob case. The watcher emit
+        // below should make this redundant in practice, but the synthetic
+        // event chain is fire-and-forget and the renderer reload may race
+        // it -- `invalidateAll` guarantees the next renderer fetch always
+        // re-transforms glob importers fresh.
         if (hasNewFileForGlobInvalidation) {
           server.moduleGraph.invalidateAll()
         }
@@ -724,6 +732,37 @@ function selfModHmrControl(): Plugin {
             true,
           )
         }
+
+        // Dispatch synthetic watcher events so Vite's native pipeline runs
+        // (importGlob hotUpdate, React-Refresh, proper WS messages). The
+        // bypass set lets our own `handleHotUpdate` skip the pause gate for
+        // these specific paths -- without it, concurrent runs that haven't
+        // finalized yet would force a full-reload through the suppression
+        // path. The set is also cleared on a 5s timeout as a leak guard in
+        // case a listener never fires.
+        const emittedKeys: string[] = []
+        for (const { event, absPath } of watcherEvents) {
+          const key = normalizeIdKey(absPath)
+          recentlyEmittedSyntheticPaths.add(key)
+          emittedKeys.push(key)
+          try {
+            server.watcher.emit(event, absPath)
+          } catch (error) {
+            recentlyEmittedSyntheticPaths.delete(key)
+            console.warn(
+              '[self-mod-hmr] watcher emit failed:',
+              (error as Error).message,
+            )
+          }
+        }
+        if (emittedKeys.length > 0) {
+          setTimeout(() => {
+            for (const key of emittedKeys) {
+              recentlyEmittedSyntheticPaths.delete(key)
+            }
+          }, 5_000).unref?.()
+        }
+
         if (suppressClientFullReload) {
           for (const absPath of appliedOverlayPaths) {
             appliedOverlay.delete(absPath)
@@ -998,6 +1037,16 @@ function selfModHmrControl(): Plugin {
     },
     async handleHotUpdate(ctx) {
       const key = normalizeIdKey(ctx.file)
+      if (recentlyEmittedSyntheticPaths.has(key)) {
+        // Self-mod's apply path just emitted this synthetic watcher event
+        // to drive Vite's importGlob/HMR pipeline. Bypass the pause gate so
+        // the standard hotUpdate hooks (importGlob in particular) actually
+        // run. Consume the bypass entry so any later real disk write goes
+        // back through the standard suppression path.
+        recentlyEmittedSyntheticPaths.delete(key)
+        if (appliedOverlay.has(key)) appliedOverlay.delete(key)
+        return undefined
+      }
       if (isClientUpdatePaused()) {
         // While any self-mod run is active, Stella owns when client updates
         // become visible. The worker releases finalized runs from inside the
