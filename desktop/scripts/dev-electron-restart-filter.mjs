@@ -46,5 +46,22 @@ export const shouldRestartElectronForBuildPath = (filename) => {
     return false
   }
 
+  // Webview preloads load with the webview, not with Electron main, so
+  // they do NOT require an Electron restart -- they apply on the next
+  // webview navigation/reload. The store webview's preload was the only
+  // thing left that triggered a spurious restart on agent self-mod runs:
+  // esbuild's bundler context for it occasionally re-emits with different
+  // bytes (likely from tsconfig include-glob FSEvents fan-out around
+  // routeTree regeneration) even though no real code in its tiny import
+  // graph changed. Exclude from restart-relevance so a webview-only
+  // re-bundle never tears down the main process the user's chat is in.
+  const webviewPreloadOutputs = new Set([
+    'desktop/electron/store-web-preload.js',
+    'electron/store-web-preload.js',
+  ])
+  if (webviewPreloadOutputs.has(normalized)) {
+    return false
+  }
+
   return true
 }
