@@ -11,6 +11,11 @@
  * `Authorization` header, and browser WebSockets cannot set custom
  * headers, so the streaming variant would either expose the key or
  * require a stateful WebSocket proxy that Convex doesn't run.
+ *
+ * Billing: Inworld bills $0.28/hr of transcribed audio. We require sign-in,
+ * gate on the user's managed-usage limit, then meter the actual
+ * `transcribedAudioMs` Inworld returns and log it through `logManagedUsage`
+ * with `costMicroCents` so it counts against the user's plan windows.
  */
 import type { HttpRouter } from "convex/server";
 import { httpAction } from "../_generated/server";
@@ -23,6 +28,11 @@ import {
   registerCorsOptions,
 } from "../http_shared/cors";
 import { rateLimitResponse } from "../http_shared/webhook_controls";
+import {
+  checkManagedUsageLimit,
+  scheduleManagedUsage,
+} from "../lib/managed_billing";
+import { dollarsToMicroCents } from "../lib/billing_money";
 
 const DICTATION_RATE_LIMIT = 30; // per minute
 const DICTATION_RATE_WINDOW_MS = 60_000;
@@ -34,6 +44,10 @@ const INWORLD_DEFAULT_LANGUAGE = "en-US";
 // Convex HTTP actions cap request bodies at ~20MB; base64 inflates by 33%
 // so this keeps a comfortable margin for the JSON envelope.
 const MAX_AUDIO_BASE64_BYTES = 14 * 1024 * 1024;
+
+// Inworld STT pricing as of 2026-05.
+const INWORLD_USD_PER_HOUR = 0.28;
+const INWORLD_USD_PER_MS = INWORLD_USD_PER_HOUR / (60 * 60 * 1000);
 
 type TranscribeRequestBody = {
   audioBase64?: string;
@@ -54,18 +68,24 @@ export const registerDictationRoutes = (http: HttpRouter) => {
     method: "POST",
     handler: httpAction(async (ctx, request) =>
       handleCorsRequest(request, async (origin) => {
-        // Anonymous callers are allowed (no Convex identity required); we
-        // rate-limit by signed-in identity → device id → shared bucket.
+        // Inworld is paid by the second; require sign-in so every
+        // transcription rolls up to a real user's plan window.
         const identity = await ctx.auth.getUserIdentity();
-        const deviceId = request.headers.get("x-device-id")?.trim() || null;
-        const rateLimitKey =
-          identity?.tokenIdentifier ?? deviceId ?? "anonymous";
+        if (!identity) {
+          return errorResponse(401, "Unauthorized", origin);
+        }
+        const ownerId = identity.tokenIdentifier;
+
+        const subscriptionCheck = await checkManagedUsageLimit(ctx, ownerId);
+        if (!subscriptionCheck.allowed) {
+          return errorResponse(429, subscriptionCheck.message, origin);
+        }
 
         const rateLimit = await ctx.runMutation(
           internal.rate_limits.consumeWebhookRateLimit,
           {
             scope: "dictation_transcribe",
-            key: rateLimitKey,
+            key: ownerId,
             limit: DICTATION_RATE_LIMIT,
             windowMs: DICTATION_RATE_WINDOW_MS,
             blockMs: DICTATION_RATE_WINDOW_MS,
@@ -103,15 +123,17 @@ export const registerDictationRoutes = (http: HttpRouter) => {
           );
         }
 
+        const modelId = body.modelId ?? INWORLD_DEFAULT_MODEL;
         const inworldBody = {
           transcribe_config: {
-            model_id: body.modelId ?? INWORLD_DEFAULT_MODEL,
+            model_id: modelId,
             language: body.language ?? INWORLD_DEFAULT_LANGUAGE,
             audio_encoding: body.audioEncoding ?? "AUTO_DETECT",
           },
           audio_data: { content: audioBase64 },
         };
 
+        const startedAt = Date.now();
         try {
           const inworldResponse = await fetch(INWORLD_TRANSCRIBE_URL, {
             method: "POST",
@@ -128,6 +150,13 @@ export const registerDictationRoutes = (http: HttpRouter) => {
               inworldResponse.status,
               text,
             );
+            await scheduleManagedUsage(ctx, {
+              ownerId,
+              agentType: "service:dictation",
+              model: modelId,
+              durationMs: Date.now() - startedAt,
+              success: false,
+            });
             return errorResponse(
               502,
               "Failed to transcribe audio",
@@ -144,12 +173,33 @@ export const registerDictationRoutes = (http: HttpRouter) => {
           try {
             parsed = JSON.parse(text);
           } catch {
+            await scheduleManagedUsage(ctx, {
+              ownerId,
+              agentType: "service:dictation",
+              model: modelId,
+              durationMs: Date.now() - startedAt,
+              success: false,
+            });
             return errorResponse(
               502,
               "Inworld returned a non-JSON transcription response",
               origin,
             );
           }
+
+          const transcribedAudioMs = parsed.usage?.transcribedAudioMs ?? 0;
+          const costMicroCents = dollarsToMicroCents(
+            Math.max(0, transcribedAudioMs) * INWORLD_USD_PER_MS,
+          );
+          await scheduleManagedUsage(ctx, {
+            ownerId,
+            agentType: "service:dictation",
+            model: parsed.usage?.modelId ?? modelId,
+            durationMs: Date.now() - startedAt,
+            success: true,
+            costMicroCents,
+          });
+
           return jsonResponse(
             {
               transcript: parsed.transcription?.transcript ?? "",
@@ -165,6 +215,13 @@ export const registerDictationRoutes = (http: HttpRouter) => {
             "[dictation/transcribe] Failed to contact Inworld:",
             (error as Error).message,
           );
+          await scheduleManagedUsage(ctx, {
+            ownerId,
+            agentType: "service:dictation",
+            model: modelId,
+            durationMs: Date.now() - startedAt,
+            success: false,
+          });
           return errorResponse(502, "Failed to transcribe audio", origin);
         }
       }),
