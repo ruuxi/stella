@@ -6,6 +6,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[cfg(target_os = "macos")]
@@ -111,14 +112,15 @@ pub fn stop_desktop_by_path(install_path: &str) {
 /// suspended while the launcher window is hidden + in macOS Accessory
 /// activation policy, so JS `setInterval` stops firing reliably.
 ///
-/// `reached_running` is shared with the exit-waiter task so the failure
-/// classifier knows whether the bootstrap ever succeeded (= post-startup
-/// crash, surfaced as "Stella crashed") or never reached the running
-/// state (= "Stella couldn't start", typically an agent-broken main file).
+/// `lifecycle` is shared with the exit-waiter task so the failure
+/// classifier knows whether the bootstrap ever succeeded (pid file
+/// appeared) and how long Stella was alive before exit (used to skip
+/// the recovery view for long-lived sessions where any non-zero exit
+/// is almost certainly a user quit, not an agent-broken update).
 fn start_desktop_watcher(
     app: &AppHandle,
     install_path: String,
-    reached_running: Arc<StdMutex<bool>>,
+    lifecycle: Arc<StdMutex<LaunchLifecycle>>,
 ) {
     let Some(state) = app.try_state::<AppState>() else {
         return;
@@ -139,8 +141,10 @@ fn start_desktop_watcher(
             if running {
                 if !saw_running {
                     saw_running = true;
-                    if let Ok(mut flag) = reached_running.lock() {
-                        *flag = true;
+                    if let Ok(mut state) = lifecycle.lock() {
+                        if state.became_alive_at.is_none() {
+                            state.became_alive_at = Some(Instant::now());
+                        }
                     }
                 }
                 continue;
@@ -188,7 +192,7 @@ fn start_desktop_exit_waiter(
     install_path: String,
     log_path: PathBuf,
     mut child: std::process::Child,
-    reached_running: Arc<StdMutex<bool>>,
+    lifecycle: Arc<StdMutex<LaunchLifecycle>>,
 ) {
     let Some(state) = app.try_state::<AppState>() else {
         return;
@@ -230,11 +234,35 @@ fn start_desktop_exit_waiter(
             return;
         }
 
-        let reached = reached_running
+        let (reached, lifetime) = lifecycle
             .lock()
             .ok()
-            .map(|flag| *flag)
-            .unwrap_or(false);
+            .map(|state| (state.became_alive_at.is_some(), state.lifetime()))
+            .unwrap_or((false, None));
+
+        // Bootstrap failures (never reached running) are always shown as
+        // recovery. Post-startup exits get the recovery view only if the
+        // session was very short -- a long-lived session that exited
+        // non-zero is indistinguishable from a user-initiated quit
+        // (SIGTERM from the launcher's Stop, SIGKILL from force-quit,
+        // dev-runner re-exec, etc.) so we surface no recovery and just
+        // re-show the launcher.
+        let is_failure = match lifetime {
+            None => true,
+            Some(uptime) => uptime < STARTUP_GRACE,
+        };
+
+        if !is_failure {
+            if let Some(state) = app_for_task.try_state::<AppState>() {
+                if let Ok(mut guard) = state.desktop_exit_waiter.lock() {
+                    *guard = None;
+                }
+            }
+            // The pid watcher already re-shows the launcher on this
+            // path; nothing else to do.
+            return;
+        }
+
         let log_tail = read_log_tail(&log_path, LAUNCH_LOG_TAIL_LINES);
         let revertable_commit = latest_revertable_commit(&install_path);
         let failure = DesktopFailure {
@@ -291,6 +319,36 @@ fn spawn_detached(info: &LaunchInfo) -> bool {
 const LAUNCH_LOG_NAME: &str = ".stella-launch.log";
 const LAUNCH_LOG_TAIL_LINES: usize = 200;
 const STELLA_CONVERSATION_TRAILER: &str = "Stella-Conversation:";
+
+/// Stella was alive for at least this long before exit -> we treat the
+/// exit as user-initiated (Cmd+Q, force-quit, launcher's Stop button,
+/// etc.) regardless of the exit code, and DO NOT show the recovery view.
+/// `bun run electron:dev` is a dev-server orchestrator, so SIGTERM/
+/// SIGKILL bubble up as non-zero codes even on clean user quits -- we
+/// can't distinguish "agent broke main.ts after running for 20 min"
+/// from "user quit" by exit code alone, so we fall back to "lifetime
+/// since reached-running" as the heuristic. Bootstrap failures
+/// (`reached_running == None`) are always treated as failures.
+const STARTUP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Shared between the pid-file watcher and the child-exit waiter so the
+/// classifier knows whether bootstrap ever succeeded (pid file appeared)
+/// and how long Stella was alive before exiting. Implemented as an
+/// Arc<Mutex<>> rather than a channel because both consumers want
+/// last-writer-wins semantics, not a stream.
+#[derive(Default)]
+struct LaunchLifecycle {
+    /// `Some(_)` after the pid file is observed alive for the first
+    /// time. Stays Some even after the pid is gone -- the exit waiter
+    /// reads it to compute uptime.
+    became_alive_at: Option<Instant>,
+}
+
+impl LaunchLifecycle {
+    fn lifetime(&self) -> Option<std::time::Duration> {
+        self.became_alive_at.map(|t| t.elapsed())
+    }
+}
 
 fn launch_log_path(install_path: &str) -> PathBuf {
     Path::new(install_path).join(LAUNCH_LOG_NAME)
@@ -549,18 +607,19 @@ pub async fn start_install(state: State<'_, AppState>, app: AppHandle) -> Result
             // silently leaving the launcher hidden.
             match spawn_tracked(&info) {
                 Ok((child, log_path)) => {
-                    let reached = Arc::new(StdMutex::new(false));
+                    let lifecycle =
+                        Arc::new(StdMutex::new(LaunchLifecycle::default()));
                     start_desktop_watcher(
                         &app,
                         installer.install_path.clone(),
-                        Arc::clone(&reached),
+                        Arc::clone(&lifecycle),
                     );
                     start_desktop_exit_waiter(
                         &app,
                         installer.install_path.clone(),
                         log_path,
                         child,
-                        reached,
+                        lifecycle,
                     );
                     hide_main_window(&app);
                 }
@@ -570,11 +629,12 @@ pub async fn start_install(state: State<'_, AppState>, app: AppHandle) -> Result
                     // file). Better to launch without a recovery net
                     // than to fail the post-install hand-off entirely.
                     if spawn_detached(&info) {
-                        let reached = Arc::new(StdMutex::new(false));
+                        let lifecycle =
+                            Arc::new(StdMutex::new(LaunchLifecycle::default()));
                         start_desktop_watcher(
                             &app,
                             installer.install_path.clone(),
-                            reached,
+                            lifecycle,
                         );
                         hide_main_window(&app);
                     }
@@ -601,8 +661,15 @@ pub async fn launch_desktop(
     }
 
     if is_desktop_alive(&installer.install_path) {
-        let reached = Arc::new(StdMutex::new(true));
-        start_desktop_watcher(&app, installer.install_path.clone(), reached);
+        // Desktop is already running -- treat it as alive-from-now so
+        // a subsequent quit doesn't trip the startup-grace recovery
+        // heuristic. We don't have the original spawn handle here, so
+        // there's no exit waiter; the pid watcher just re-shows the
+        // launcher when the existing process exits.
+        let lifecycle = Arc::new(StdMutex::new(LaunchLifecycle {
+            became_alive_at: Some(Instant::now()),
+        }));
+        start_desktop_watcher(&app, installer.install_path.clone(), lifecycle);
         hide_main_window(&app);
         return Ok(OkResult { ok: true });
     }
@@ -610,18 +677,19 @@ pub async fn launch_desktop(
     if let Some(info) = setup::get_launch_info(&installer).await {
         match spawn_tracked(&info) {
             Ok((child, log_path)) => {
-                let reached = Arc::new(StdMutex::new(false));
+                let lifecycle =
+                    Arc::new(StdMutex::new(LaunchLifecycle::default()));
                 start_desktop_watcher(
                     &app,
                     installer.install_path.clone(),
-                    Arc::clone(&reached),
+                    Arc::clone(&lifecycle),
                 );
                 start_desktop_exit_waiter(
                     &app,
                     installer.install_path.clone(),
                     log_path,
                     child,
-                    reached,
+                    lifecycle,
                 );
                 hide_main_window(&app);
                 Ok(OkResult { ok: true })
