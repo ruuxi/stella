@@ -21,16 +21,18 @@ DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
+>(({ className, sideOffset = 4, children, ...props }, ref) => (
   <DropdownMenuPrimitive.Portal>
-    <NativeWebsiteOverlayRegistrar />
     <DropdownMenuPrimitive.Content
       ref={ref}
       sideOffset={sideOffset}
       data-component="dropdown-menu-content"
       className={cn(className)}
       {...props}
-    />
+    >
+      <NativeWebsiteOverlayRegistrar />
+      {children}
+    </DropdownMenuPrimitive.Content>
   </DropdownMenuPrimitive.Portal>
 ));
 DropdownMenuContent.displayName = "DropdownMenuContent";
