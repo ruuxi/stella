@@ -1,0 +1,271 @@
+name: Build Native Helpers
+
+# Native helpers (Swift/C/Rust binaries under desktop/native/out/) are built per
+# platform on CI rather than committed to git. The launcher fetches the
+# platform-relevant tarball from R2 at install time so end users never need
+# clang / swiftc / cargo / MSVC on their machine.
+#
+# Triggers:
+#   - push to master that touches native sources
+#   - desktop-v* tag push (so every desktop release has matching helpers)
+#   - manual dispatch
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "desktop-v*"
+    paths:
+      - "desktop/native/src/**"
+      - "desktop/native/wakeword/**"
+      - "desktop/native/build.sh"
+      - "desktop/native/build.ps1"
+      - "desktop/native/build.mjs"
+      - "desktop/scripts/disclaim-spawn.c"
+      - ".github/workflows/build-native-helpers.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional override sha/tag (defaults to commit SHA)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            desktop/native
+            desktop/scripts
+          fetch-depth: 1
+
+      - name: Install Rust + macOS targets
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Build universal native helpers (macOS)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "14.0"
+        working-directory: desktop/native
+        run: bash build.sh
+
+      - name: Split universal binaries into per-arch tarballs
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="desktop/native/out/darwin"
+          if [ ! -d "$OUT" ]; then
+            echo "expected $OUT to exist after build" >&2
+            exit 1
+          fi
+
+          stage_arch() {
+            local arch_label="$1"   # arm64 or x86_64
+            local stage_dir="$2"
+            mkdir -p "$stage_dir"
+            for entry in "$OUT"/*; do
+              local name
+              name="$(basename "$entry")"
+              if [ -d "$entry" ]; then
+                # wakeword_models/ ships as-is to every arch
+                cp -R "$entry" "$stage_dir/$name"
+                continue
+              fi
+              if [ "$name" = "parakeet_transcriber" ]; then
+                # parakeet only ships on arm64 (uses CoreML / ANE)
+                if [ "$arch_label" = "arm64" ]; then
+                  cp "$entry" "$stage_dir/$name"
+                  chmod +x "$stage_dir/$name"
+                fi
+                continue
+              fi
+              # Universal mach-o → thin to the requested arch
+              if file "$entry" | grep -q "Mach-O"; then
+                if lipo -info "$entry" >/dev/null 2>&1; then
+                  if lipo -info "$entry" | grep -q "$arch_label"; then
+                    lipo -thin "$arch_label" "$entry" -output "$stage_dir/$name"
+                    chmod +x "$stage_dir/$name"
+                    continue
+                  fi
+                fi
+              fi
+              cp "$entry" "$stage_dir/$name"
+              chmod +x "$stage_dir/$name" 2>/dev/null || true
+            done
+          }
+
+          stage_arch arm64 stage-darwin-arm64
+          stage_arch x86_64 stage-darwin-x64
+
+          tar --zstd -cf stella-native-darwin-arm64.tar.zst -C stage-darwin-arm64 .
+          tar --zstd -cf stella-native-darwin-x64.tar.zst -C stage-darwin-x64 .
+
+      - name: Upload macOS arm64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-native-darwin-arm64
+          path: stella-native-darwin-arm64.tar.zst
+          retention-days: 7
+
+      - name: Upload macOS x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-native-darwin-x64
+          path: stella-native-darwin-x64.tar.zst
+          retention-days: 7
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            desktop/native
+          fetch-depth: 1
+
+      - name: Install Rust + Windows MSVC target
+        shell: pwsh
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Build native helpers (Windows)
+        shell: pwsh
+        working-directory: desktop/native
+        run: powershell -ExecutionPolicy Bypass -File build.ps1
+
+      - name: Stage and tar Windows artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="desktop/native/out/win32"
+          if [ ! -d "$OUT" ]; then
+            echo "expected $OUT to exist after build" >&2
+            exit 1
+          fi
+          mkdir -p stage-win-x64
+          cp -R "$OUT"/. stage-win-x64/
+          tar --zstd -cf stella-native-win-x64.tar.zst -C stage-win-x64 .
+
+      - name: Upload Windows x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-native-win-x64
+          path: stella-native-win-x64.tar.zst
+          retention-days: 7
+
+  publish:
+    needs:
+      - macos
+      - windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Determine release sha
+        id: sha
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "sha=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "sha=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native-assets
+          pattern: stella-native-*
+          merge-multiple: true
+
+      - name: Build manifest and upload to R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_PUBLIC_BASE_URL: https://pub-a319aaada8144dc9be5a83625033769c.r2.dev
+          NATIVE_HELPERS_SHA: ${{ steps.sha.outputs.sha }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${R2_ACCESS_KEY_ID:-}" ] || [ -z "${R2_SECRET_ACCESS_KEY:-}" ] || [ -z "${R2_BUCKET:-}" ] || [ -z "${R2_ENDPOINT:-}" ]; then
+            echo "R2 secrets are not configured; cannot publish native helpers."
+            exit 1
+          fi
+
+          ls -la native-assets/
+
+          release_dir="native-helpers/${NATIVE_HELPERS_SHA}"
+          manifest_path="$(mktemp)"
+
+          node - "$manifest_path" "$NATIVE_HELPERS_SHA" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" native-assets/stella-native-*.tar.zst <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync, statSync, writeFileSync } = require("node:fs");
+          const { basename } = require("node:path");
+
+          const [manifestPath, sha, commit, publicBaseUrl, ...archivePaths] = process.argv.slice(2);
+          const assets = {};
+          const expected = new Set(["darwin-arm64", "darwin-x64", "win-x64"]);
+
+          for (const archivePath of archivePaths) {
+            const name = basename(archivePath);
+            const match = name.match(/^stella-native-(.+)\.tar\.zst$/);
+            if (!match) continue;
+            const platform = match[1];
+            if (!expected.has(platform)) {
+              throw new Error(`Unexpected native helpers asset: ${name}`);
+            }
+            const bytes = readFileSync(archivePath);
+            assets[platform] = {
+              url: `${publicBaseUrl.replace(/\/$/, "")}/native-helpers/${sha}/${name}`,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: statSync(archivePath).size,
+            };
+          }
+          for (const platform of expected) {
+            if (!assets[platform]) {
+              throw new Error(`Missing native helpers asset for ${platform}`);
+            }
+          }
+          writeFileSync(
+            manifestPath,
+            `${JSON.stringify({
+              schemaVersion: 1,
+              sha,
+              commit,
+              builtAt: new Date().toISOString(),
+              assets,
+            }, null, 2)}\n`,
+          );
+          NODE
+
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION="auto"
+
+          aws s3 cp native-assets/ "s3://${R2_BUCKET}/${release_dir}/" \
+            --recursive \
+            --exclude "*" \
+            --include "stella-native-*.tar.zst" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/${release_dir}/manifest.json" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/native-helpers/current.json" \
+            --content-type "application/json" \
+            --cache-control "no-cache" \
+            --endpoint-url "$R2_ENDPOINT"
+
+          echo "Published native helpers manifest:"
+          cat "$manifest_path"

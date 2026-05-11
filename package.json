@@ -20,6 +20,7 @@
     "reset:all": "cd desktop && node scripts/reset-dev.mjs --with-permissions",
     "reset:sql": "cd desktop && node scripts/reset-sql.mjs",
     "native:build": "cd desktop/native && npm install && npm run build",
+    "native:download": "node desktop/scripts/download-native-helpers.mjs",
     "workspace:create-app": "cd desktop && node scripts/create-workspace-app.mjs",
     "electron:install": "install-electron",
     "electron:dev": "node desktop/scripts/electron-dev-runner.mjs",
