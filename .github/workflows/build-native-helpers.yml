@@ -134,6 +134,23 @@ jobs:
         shell: pwsh
         run: rustup target add x86_64-pc-windows-msvc
 
+      # Several helpers (dictation_bridge.exe, stella-computer-helper.exe)
+      # do legitimate input synthesis / window control. Windows Defender on
+      # GitHub Actions runners aggressively quarantines those silently after
+      # build, so exclude the build tree before anything compiles.
+      - name: Disable Defender scanning of build tree
+        shell: pwsh
+        run: |
+          try {
+            Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+            Add-MpPreference -ExclusionProcess "cl.exe"
+            Add-MpPreference -ExclusionProcess "link.exe"
+            Add-MpPreference -ExclusionProcess "rustc.exe"
+            Write-Host "Defender exclusions added"
+          } catch {
+            Write-Warning "Could not add Defender exclusions: $_"
+          }
+
       - name: Build native helpers (Windows)
         shell: pwsh
         working-directory: desktop/native
@@ -146,6 +163,22 @@ jobs:
           OUT="desktop/native/out/win32"
           if [ ! -d "$OUT" ]; then
             echo "expected $OUT to exist after build" >&2
+            exit 1
+          fi
+          echo "Contents of $OUT after build:"
+          ls -la "$OUT"
+          # Hard-fail if Defender (or anything else) ate a binary the
+          # build script said it produced; surface the regression in CI
+          # rather than shipping a broken Windows tarball.
+          required=("window_info.exe" "window_text.exe" "selected_text.exe" "dictation_bridge.exe" "stella-computer-helper.exe" "wakeword_listener.exe")
+          missing=0
+          for name in "${required[@]}"; do
+            if [ ! -f "$OUT/$name" ]; then
+              echo "::error::Missing required Windows helper: $name" >&2
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
             exit 1
           fi
           mkdir -p stage-win-x64
