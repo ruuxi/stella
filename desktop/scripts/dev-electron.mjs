@@ -247,10 +247,57 @@ const patchDevMicrophoneUsageDescription = () => {
   }
 }
 
+/**
+ * Re-apply an ad-hoc bundle signature after the patch helpers above mutate
+ * `Info.plist`. Electron ships an ad-hoc Mach-O signature whose CodeDirectory
+ * hashes the bundle resources; once we change `CFBundleName` /
+ * `CFBundleIdentifier` / `NSMicrophoneUsageDescription` the recorded hash
+ * stops matching and macOS surfaces a "Stella was modified or has a damaged
+ * signature" notification on launch (and may invalidate TCC permissions).
+ *
+ * `codesign --force --deep --sign -` re-seals the bundle with a fresh ad-hoc
+ * signature consistent with the modified contents. No certificate, keychain,
+ * Apple ID, or Xcode CLT required — `codesign` is a base macOS binary at
+ * `/usr/bin/codesign`. The trust level stays the same (ad-hoc, no developer
+ * id), it's just internally consistent again. Same idiom as the wake-word
+ * helper (`desktop/native/build.sh`).
+ */
+const resignDevAppBundle = () => {
+  if (process.platform !== 'darwin') {
+    return
+  }
+  const appBundle = path.resolve(path.dirname(electronBinary), '..', '..')
+  if (!existsSync(appBundle) || !appBundle.endsWith('.app')) {
+    return
+  }
+  try {
+    execFileSync('codesign', ['--verify', '--no-strict', appBundle], {
+      stdio: 'ignore',
+    })
+    return
+  } catch (verifyError) {
+    if (verifyError?.code === 'ENOENT') {
+      // codesign missing — no-op rather than fail dev startup.
+      return
+    }
+    // Signature broken or missing; fall through to re-sign.
+  }
+  try {
+    execFileSync(
+      'codesign',
+      ['--force', '--deep', '--sign', '-', appBundle],
+      { stdio: 'ignore' },
+    )
+  } catch {
+    // Best-effort; read-only node_modules or unsupported signing flags.
+  }
+}
+
 if (process.platform === 'darwin') {
   patchDevIcon()
   patchDevAppName()
   patchDevMicrophoneUsageDescription()
+  resignDevAppBundle()
 }
 let disclaimBinary = null
 
