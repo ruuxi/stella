@@ -1132,7 +1132,6 @@ export type ElectronLocalChatApi = {
     conversationId: string;
     message: string;
     suggestions?: unknown[];
-    appRecommendations?: unknown[];
   }) => Promise<{ ok: true }>;
   listSyncMessages: (payload: {
     conversationId: string;

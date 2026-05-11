@@ -18,9 +18,6 @@ type PromptTemplateValues = {
   "synthesis.home_suggestions.user": {
     coreMemory: string
   }
-  "synthesis.app_recommendations.user": {
-    coreMemory: string
-  }
 }
 
 export type PromptId = keyof PromptTemplateValues

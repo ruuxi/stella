@@ -105,7 +105,6 @@ export class LocalChatHistoryService {
     conversationId: string;
     message: string;
     suggestions?: unknown[];
-    appRecommendations?: unknown[];
   }): { ok: true } {
     const message = args.message.trim();
     const store = this.getStore();
@@ -128,17 +127,6 @@ export class LocalChatHistoryService {
         conversationId: args.conversationId,
         type: "home_suggestions",
         payload: { suggestions },
-      });
-    }
-
-    const appRecommendations = Array.isArray(args.appRecommendations)
-      ? args.appRecommendations
-      : [];
-    if (appRecommendations.length > 0) {
-      latestEvent = store.appendEvent({
-        conversationId: args.conversationId,
-        type: "app_recommendations",
-        payload: { appRecommendations },
       });
     }
 
