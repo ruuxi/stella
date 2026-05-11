@@ -621,6 +621,15 @@ const showRestartSplash = () => {
       const { app, BrowserWindow } = require('electron')
       const path = require('path')
       const fs = require('fs')
+      // The splash is a separate Electron process spawned outside of our
+      // main bootstrap. Without these switches Chromium initializes its
+      // OSCrypt cookie store on startup, which on macOS reads the
+      // "Electron Safe Storage" Keychain entry -- triggering the macOS
+      // permission prompt every restart. The main app already sets these
+      // in bootstrap.ts; the splash needs the same defense because it
+      // never loads our bootstrap.
+      app.commandLine.appendSwitch('use-mock-keychain')
+      app.commandLine.appendSwitch('password-store', 'basic')
       app.dock?.hide()
       app.whenReady().then(() => {
         const win = new BrowserWindow({
