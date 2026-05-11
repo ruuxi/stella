@@ -31,14 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: |
-            .gitignore
-            package.json
-            bun.lock
-            scripts/install-tsc-shim.mjs
-            desktop
-            runtime
-            state
+          # Need full repo (no sparse-checkout) so `git archive HEAD` below
+          # captures every tracked file. The git object store is also what
+          # the install-update agent's partial fetch later resolves against.
+          fetch-depth: 1
 
       - name: Determine version
         id: version
@@ -54,19 +50,18 @@ jobs:
         shell: bash
         run: |
           rm -rf release-root
-          mkdir -p release-root/state/outputs
+          mkdir release-root
 
-          cp .gitignore package.json bun.lock release-root/
-          mkdir -p release-root/scripts
-          cp scripts/install-tsc-shim.mjs release-root/scripts/
-          cp -R desktop runtime release-root/
-          # Native helpers ship as a separate per-platform R2 bundle (see
-          # build-native-helpers.yml); the launcher fetches them at install
-          # time. Strip any stray locally-built binaries that snuck through.
-          rm -rf release-root/desktop/native/out
-          cp state/DREAM.md state/registry.md release-root/state/
-          cp -R state/skills release-root/state/
-          cp state/outputs/README.md release-root/state/outputs/README.md
+          # Stream every git-tracked file at HEAD into release-root so the
+          # working tree matches upstream's commit byte-for-byte. The
+          # launcher then attaches real upstream history with `git fetch
+          # --filter=blob:none origin <commit>` + `git reset --mixed
+          # <commit>` and gets a clean working state with no synthetic
+          # "deleted" entries. native/out is gitignored so it never lands
+          # in the archive; native helpers come from R2 at install time.
+          git archive HEAD | tar -x -C release-root/
+
+          mkdir -p release-root/state/outputs
 
           node <<'NODE'
           const { createHash } = require("node:crypto");
