@@ -22,24 +22,36 @@ function Build-WithMSVC($vcvars, $srcFile, $outFile, $libs) {
     $cwd = (Get-Location).Path
     $libArgs = ($libs -join " ")
     $cmd = "call `"$vcvars`" && cd /d `"$cwd`" && cl /O2 /EHsc /nologo `"$srcFile`" /link $libArgs /OUT:`"$outFile`""
-    cmd /c $cmd
-    return ($LASTEXITCODE -eq 0 -and (Test-Path $outFile))
+    # Stream cmd's stdout/stderr to the host so they don't bleed into the
+    # function's pipeline output (which would make the returned boolean
+    # array-truthy regardless of actual success).
+    cmd /c $cmd 2>&1 | ForEach-Object { Write-Host $_ }
+    $exit = $LASTEXITCODE
+    $exists = Test-Path $outFile
+    Write-Host "    cl exit=$exit, output exists=$exists, target=$outFile"
+    return ($exit -eq 0 -and $exists)
 }
 
 function Build-WithGpp($srcFile, $outFile, $gccLibs) {
     if (Test-Path $outFile) {
         Remove-Item $outFile -Force
     }
-    & g++ -O2 -static $srcFile -o $outFile @gccLibs
-    return ($LASTEXITCODE -eq 0 -and (Test-Path $outFile))
+    & g++ -O2 -static $srcFile -o $outFile @gccLibs 2>&1 | ForEach-Object { Write-Host $_ }
+    $exit = $LASTEXITCODE
+    $exists = Test-Path $outFile
+    Write-Host "    g++ exit=$exit, output exists=$exists, target=$outFile"
+    return ($exit -eq 0 -and $exists)
 }
 
 function Build-WithClang($srcFile, $outFile, $gccLibs) {
     if (Test-Path $outFile) {
         Remove-Item $outFile -Force
     }
-    & clang++ -O2 $srcFile -o $outFile @gccLibs
-    return ($LASTEXITCODE -eq 0 -and (Test-Path $outFile))
+    & clang++ -O2 $srcFile -o $outFile @gccLibs 2>&1 | ForEach-Object { Write-Host $_ }
+    $exit = $LASTEXITCODE
+    $exists = Test-Path $outFile
+    Write-Host "    clang++ exit=$exit, output exists=$exists, target=$outFile"
+    return ($exit -eq 0 -and $exists)
 }
 
 # Detect compiler
