@@ -7,7 +7,6 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ask } from "@tauri-apps/plugin-dialog";
 import type { InstallerState, SetupStep } from "./types";
 import stellaLogo from "./stella-logo.svg";
 
@@ -24,7 +23,99 @@ const formatBytes = (bytes: number | null): string => {
   return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 };
 
+/* ── In-app confirmation dialog ──────────────────────────────────── */
+
+type ConfirmStep = {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  /** When true, the confirm button is rendered in the destructive (red) style. */
+  danger?: boolean;
+};
+
+type ConfirmDialogProps = {
+  steps: ConfirmStep[];
+  onCancel: () => void;
+  onConfirm: () => void | Promise<void>;
+  busy?: boolean;
+  busyLabel?: string;
+};
+
+const ConfirmDialog = ({
+  steps,
+  onCancel,
+  onConfirm,
+  busy = false,
+  busyLabel,
+}: ConfirmDialogProps) => {
+  const [stepIndex, setStepIndex] = useState(0);
+  const step = steps[stepIndex];
+  if (!step) return null;
+  const isFinalStep = stepIndex === steps.length - 1;
+
+  const handlePrimary = () => {
+    if (busy) return;
+    if (isFinalStep) {
+      void onConfirm();
+    } else {
+      setStepIndex(stepIndex + 1);
+    }
+  };
+
+  const handleSecondary = () => {
+    if (busy) return;
+    if (stepIndex === 0) {
+      onCancel();
+    } else {
+      setStepIndex(stepIndex - 1);
+    }
+  };
+
+  return (
+    <div className="dialog-overlay" role="dialog" aria-modal="true">
+      <div className="dialog-card">
+        <h2 className="dialog-title">{step.title}</h2>
+        <p className="dialog-body">{step.body}</p>
+        {steps.length > 1 && (
+          <p className="dialog-step">
+            Step {stepIndex + 1} of {steps.length}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button
+            type="button"
+            className="dialog-btn dialog-btn--secondary"
+            onClick={handleSecondary}
+            disabled={busy}
+          >
+            {stepIndex === 0 ? "Cancel" : "Back"}
+          </button>
+          <button
+            type="button"
+            className={`dialog-btn dialog-btn--primary${
+              step.danger ? " dialog-btn--danger" : ""
+            }`}
+            onClick={handlePrimary}
+            disabled={busy}
+          >
+            {busy && isFinalStep ? (
+              <>
+                <span className="link-spinner" />
+                {busyLabel ?? "Working..."}
+              </>
+            ) : (
+              step.confirmLabel
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── App ─────────────────────────────────────────────────────────── */
+
+type SettingsAction = "reinstall" | "uninstall" | "full-reset";
 
 function App() {
   const [state, setState] = useState<InstallerState | null>(null);
@@ -32,8 +123,12 @@ function App() {
   const [locationBusy, setLocationBusy] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
   const [reinstalling, setReinstalling] = useState(false);
+  const [erasing, setErasing] = useState(false);
   const [desktopRunning, setDesktopRunning] = useState(false);
-  const [upToDateFlash, setUpToDateFlash] = useState(false);
+  const [view, setView] = useState<"main" | "settings">("main");
+  const [pendingAction, setPendingAction] = useState<SettingsAction | null>(
+    null,
+  );
 
   const applyState = useCallback((nextState: InstallerState) => {
     startTransition(() => setState(nextState));
@@ -130,53 +225,37 @@ function App() {
     } catch {}
   }, []);
 
-  const handleCheckLauncherUpdate = useCallback(async () => {
-    setUpToDateFlash(false);
-    try {
-      const updateAvailable = await invoke<boolean>("check_launcher_update");
-      if (!updateAvailable) {
-        setUpToDateFlash(true);
-        window.setTimeout(() => setUpToDateFlash(false), 4000);
-      }
-    } catch {}
-  }, []);
-
   const handleReinstall = useCallback(async () => {
-    const confirmed = await ask(
-      "This will replace Stella with a fresh copy. Any customizations Stella has made to itself \u2014 mods, skills, and agent-edited code \u2014 will be reset.\n\nYour chats, memories, and settings will be kept.",
-      {
-        title: "Reinstall Stella?",
-        kind: "warning",
-        okLabel: "Reinstall",
-        cancelLabel: "Cancel",
-      },
-    );
-    if (!confirmed) return;
     setReinstalling(true);
     try {
       await invoke("uninstall_stella");
       await invoke("start_install");
     } finally {
       setReinstalling(false);
+      setPendingAction(null);
+      setView("main");
     }
   }, []);
 
   const handleUninstall = useCallback(async () => {
-    const confirmed = await ask(
-      "This will remove the Stella app from your computer. Any customizations Stella has made to itself \u2014 mods, skills, and agent-edited code \u2014 will be lost.\n\nYour chats, memories, and settings will be kept on disk in case you reinstall later.",
-      {
-        title: "Uninstall Stella?",
-        kind: "warning",
-        okLabel: "Uninstall",
-        cancelLabel: "Cancel",
-      },
-    );
-    if (!confirmed) return;
     setUninstalling(true);
     try {
       await invoke("uninstall_stella");
     } finally {
       setUninstalling(false);
+      setPendingAction(null);
+      setView("main");
+    }
+  }, []);
+
+  const handleFullReset = useCallback(async () => {
+    setErasing(true);
+    try {
+      await invoke("full_reset_stella");
+    } finally {
+      setErasing(false);
+      setPendingAction(null);
+      setView("main");
     }
   }, []);
 
@@ -253,8 +332,77 @@ function App() {
     !state.installPathError &&
     state.disk.enoughSpace &&
     !locationBusy;
-  const showLauncherUpdateAction =
-    !state.devMode && !isWorking && state.launcherUpdate.available;
+
+  const updateAvailable = !state.devMode && state.launcherUpdate.available;
+  const showLauncherUpdateBusy =
+    !state.devMode && state.launcherUpdate.installing;
+  const settingsOpen = view === "settings" && !state.devMode;
+  const anyDialogBusy = uninstalling || reinstalling || erasing;
+
+  const dialogStepsForAction = (
+    action: SettingsAction,
+  ): { steps: ConfirmStep[]; busy: boolean; busyLabel: string; onConfirm: () => Promise<void> } => {
+    switch (action) {
+      case "reinstall":
+        return {
+          steps: [
+            {
+              title: "Reinstall Stella?",
+              body: "This replaces Stella with a fresh copy. Mods, skills, and any code Stella wrote for you reset. Your chats, memories, and settings are kept.",
+              confirmLabel: "Continue",
+            },
+            {
+              title: "You'll lose Stella's customizations.",
+              body: "Stella has built itself up over time. Reinstalling resets every feature Stella added or modified. Your data stays.",
+              confirmLabel: "Reinstall",
+            },
+          ],
+          busy: reinstalling,
+          busyLabel: "Reinstalling...",
+          onConfirm: handleReinstall,
+        };
+      case "uninstall":
+        return {
+          steps: [
+            {
+              title: "Uninstall Stella?",
+              body: "This removes the Stella app from your computer. Your chats, memories, and settings stay on disk in case you reinstall later.",
+              confirmLabel: "Continue",
+            },
+            {
+              title: "Stella's customizations will be lost.",
+              body: "If you reinstall later, you'll get a fresh Stella. Your saved conversations and memory will still be there.",
+              confirmLabel: "Uninstall",
+            },
+          ],
+          busy: uninstalling,
+          busyLabel: "Uninstalling...",
+          onConfirm: handleUninstall,
+        };
+      case "full-reset":
+        return {
+          steps: [
+            {
+              title: "Erase everything?",
+              body: "This wipes the entire Stella folder. Your chats, memories, settings, mods, skills — everything Stella has ever saved — will be permanently deleted.",
+              confirmLabel: "Continue",
+              danger: true,
+            },
+            {
+              title: "Last chance.",
+              body: "Once you erase, your conversations and memories are gone for good. Stella can't bring them back. Are you sure?",
+              confirmLabel: "Erase everything",
+              danger: true,
+            },
+          ],
+          busy: erasing,
+          busyLabel: "Erasing...",
+          onConfirm: handleFullReset,
+        };
+    }
+  };
+
+  const activeDialog = pendingAction ? dialogStepsForAction(pendingAction) : null;
 
   /* ── Render ──────────────────────────────────────────────────── */
 
@@ -269,350 +417,421 @@ function App() {
       </div>
 
       {/* Body */}
-      <main className="body" key={state.phase}>
-        {/* ── Ready / Error ───────────────────────────────── */}
-        {isSetup && (
-          <>
-            <p className="status-text">
-              {state.devMode
-                ? "Using local Stella desktop checkout"
-                : "Choose where Stella should live"}
-            </p>
+      {settingsOpen ? (
+        <main className="body settings-view" key="settings">
+          <div className="settings-header">
+            <button
+              type="button"
+              className="link-btn settings-back"
+              onClick={() => {
+                setPendingAction(null);
+                setView("main");
+              }}
+            >
+              ← Back
+            </button>
+            <span className="settings-title">Settings</span>
+          </div>
 
-            <div className="field-group">
-              <label className="field-label">Folder</label>
-              <div className="path-row">
-                <input
-                  className="path-input"
-                  value={installPathDraft}
-                  readOnly={state.installPathLocked}
-                  onChange={(e) => setInstallPathDraft(e.target.value)}
-                  onBlur={() => void commitInstallPath()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void commitInstallPath();
-                    }
-                  }}
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  className="btn-icon"
-                  onClick={() => void handleBrowse()}
-                  disabled={locationBusy || state.installPathLocked}
-                  aria-label="Choose folder"
-                  title="Choose folder"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M2 4.25C2 3.56 2.56 3 3.25 3h3.04c.33 0 .65.13.88.37l1.12 1.13h4.46c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H3.25C2.56 13.5 2 12.94 2 12.25v-8z"
-                      stroke="currentColor"
-                      strokeWidth="1.25"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </div>
+          <div className="settings-list">
+            <SettingsRow
+              title="Reinstall"
+              body="Replace Stella with a fresh copy. Your chats and memories stay; Stella's customizations reset."
+              actionLabel="Reinstall"
+              onAction={() => setPendingAction("reinstall")}
+              busy={reinstalling}
+              busyLabel="Reinstalling..."
+              disabled={anyDialogBusy && !reinstalling}
+            />
+            <SettingsRow
+              title="Uninstall"
+              body="Remove the Stella app from your computer. Your data stays on disk in case you reinstall."
+              actionLabel="Uninstall"
+              onAction={() => setPendingAction("uninstall")}
+              busy={uninstalling}
+              busyLabel="Uninstalling..."
+              disabled={anyDialogBusy && !uninstalling}
+            />
+            <SettingsRow
+              title="Erase everything"
+              body="Wipe the entire Stella folder, including chats, memories, and settings. Can't be undone."
+              actionLabel="Erase everything"
+              onAction={() => setPendingAction("full-reset")}
+              busy={erasing}
+              busyLabel="Erasing..."
+              danger
+              disabled={anyDialogBusy && !erasing}
+            />
+          </div>
+        </main>
+      ) : (
+        <main className="body" key={state.phase}>
+          {/* ── Ready / Error ───────────────────────────────── */}
+          {isSetup && (
+            <>
+              <p className="status-text">
+                {state.devMode
+                  ? "Using local Stella desktop checkout"
+                  : "Choose where Stella should live"}
+              </p>
 
-              <div className="field-meta">
-                {state.installPathError ? (
-                  <span className="field-error">{state.installPathError}</span>
-                ) : (
-                  <span className="field-hint">
-                    {state.devMode
-                      ? "Dev mode is using the path from STELLA_LAUNCHER_DEV or STELLA_LAUNCHER_DEV_PATH."
-                      : `${formatBytes(state.disk.requiredBytes)} needed \u00b7 ${formatBytes(state.disk.availableBytes)} available`}
-                  </span>
-                )}
-                {!state.installPathLocked && (
+              <div className="field-group">
+                <label className="field-label">Folder</label>
+                <div className="path-row">
+                  <input
+                    className="path-input"
+                    value={installPathDraft}
+                    readOnly={state.installPathLocked}
+                    onChange={(e) => setInstallPathDraft(e.target.value)}
+                    onBlur={() => void commitInstallPath()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void commitInstallPath();
+                      }
+                    }}
+                    spellCheck={false}
+                  />
                   <button
                     type="button"
-                    className="link-btn"
-                    onClick={() => void handleUseDefaultLocation()}
-                    disabled={locationBusy}
+                    className="btn-icon"
+                    onClick={() => void handleBrowse()}
+                    disabled={locationBusy || state.installPathLocked}
+                    aria-label="Choose folder"
+                    title="Choose folder"
                   >
-                    Reset
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M2 4.25C2 3.56 2.56 3 3.25 3h3.04c.33 0 .65.13.88.37l1.12 1.13h4.46c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H3.25C2.56 13.5 2 12.94 2 12.25v-8z"
+                        stroke="currentColor"
+                        strokeWidth="1.25"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   </button>
-                )}
-              </div>
-            </div>
+                </div>
 
-            {!state.devMode && !state.disk.enoughSpace && (
-              <div className="banner banner-warn">
-                Not enough disk space at this location.
-              </div>
-            )}
-
-            {state.devMode && !state.canLaunch && (
-              <div className="banner banner-warn">
-                Dev mode is enabled, but this path is not launchable yet. Make
-                sure the Stella folder has its root package file and installed
-                dependencies.
-              </div>
-            )}
-
-            {state.errorMessage && !state.installPathError && (
-              <div className="banner banner-error">{state.errorMessage}</div>
-            )}
-          </>
-        )}
-
-        {/* ── Installing / Checking ───────────────────────── */}
-        {isWorking && (
-          <div className="install-progress">
-            <div className="progress-wrap">
-              <div className="progress-track">
-                <div
-                  className={`progress-fill ${state.phase === "checking" ? "indeterminate" : ""}`}
-                  style={
-                    state.phase !== "checking"
-                      ? { width: `${progress}%` }
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
-
-            <ul className="step-list">
-              {state.steps.map((step) => (
-                <li key={step.id} className={`step-item ${step.status}`}>
-                  <span className="step-icon">
-                    {step.status === "done" ? (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 14 14"
-                        fill="none"
-                      >
-                        <circle
-                          cx="7"
-                          cy="7"
-                          r="6.5"
-                          stroke="var(--green)"
-                          strokeWidth="1"
-                        />
-                        <path
-                          d="M4 7.2L6 9.2L10 5"
-                          stroke="var(--green)"
-                          strokeWidth="1.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : step.status === "skipped" ? (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 14 14"
-                        fill="none"
-                      >
-                        <circle
-                          cx="7"
-                          cy="7"
-                          r="6.5"
-                          stroke="var(--text-faint)"
-                          strokeWidth="1"
-                        />
-                        <path
-                          d="M4.5 7H9.5"
-                          stroke="var(--text-faint)"
-                          strokeWidth="1.2"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    ) : step.status === "installing" ||
-                      step.status === "checking" ? (
-                      <span className="step-spinner" />
-                    ) : step.status === "error" ? (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 14 14"
-                        fill="none"
-                      >
-                        <circle
-                          cx="7"
-                          cy="7"
-                          r="6.5"
-                          stroke="var(--red)"
-                          strokeWidth="1"
-                        />
-                        <path
-                          d="M5 5L9 9M9 5L5 9"
-                          stroke="var(--red)"
-                          strokeWidth="1.2"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    ) : (
-                      <span className="step-dot" />
-                    )}
-                  </span>
-                  <span className="step-label">{step.label}</span>
-                  {step.detail && step.status === "installing" && (
-                    <span className="step-detail">{step.detail}</span>
+                <div className="field-meta">
+                  {state.installPathError ? (
+                    <span className="field-error">{state.installPathError}</span>
+                  ) : (
+                    <span className="field-hint">
+                      {state.devMode
+                        ? "Dev mode is using the path from STELLA_LAUNCHER_DEV or STELLA_LAUNCHER_DEV_PATH."
+                        : `${formatBytes(state.disk.requiredBytes)} needed \u00b7 ${formatBytes(state.disk.availableBytes)} available`}
+                    </span>
                   )}
-                </li>
-              ))}
-            </ul>
-
-            {activeStep?.detail && (
-              <p className="active-detail">{activeStep.detail}</p>
-            )}
-          </div>
-        )}
-
-        {/* ── Launcher update / Complete ──────────────────── */}
-        {(showLauncherUpdateAction ||
-          isComplete ||
-          state.launcherUpdate.error) && (
-          <div className="complete-body">
-            {isComplete && state.warningMessage && (
-              <div className="banner banner-warn" style={{ marginTop: 16 }}>
-                {state.warningMessage}
+                  {!state.installPathLocked && (
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => void handleUseDefaultLocation()}
+                      disabled={locationBusy}
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-            {state.launcherUpdate.available && (
-              <div className="banner banner-warn" style={{ marginTop: 16 }}>
-                {state.launcherUpdate.version
-                  ? `Launcher update ${state.launcherUpdate.version} is available.`
-                  : "A launcher update is available."}
-              </div>
-            )}
-            {state.launcherUpdate.error && (
-              <div className="banner banner-error" style={{ marginTop: 16 }}>
-                {state.launcherUpdate.error}
-              </div>
-            )}
-            {isComplete && state.errorMessage && (
-              <div className="banner banner-error" style={{ marginTop: 16 }}>
-                {state.errorMessage}
-              </div>
-            )}
-          </div>
-        )}
-      </main>
 
-      {/* Footer */}
-      <footer className="footer">
-        {upToDateFlash && !state.launcherUpdate.available && (
-          <div className="banner banner-info">
-            You’re on the latest launcher.
-          </div>
-        )}
-        <div className="footer-primary" key={`primary-${state.phase}`}>
-          {showLauncherUpdateAction ? (
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={state.launcherUpdate.installing || uninstalling}
-              onClick={() => void handleLauncherUpdate()}
-            >
-              {state.launcherUpdate.installing
-                ? "Updating launcher..."
-                : "Update launcher"}
-            </button>
-          ) : isSetup && !state.devMode ? (
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={!canInstall}
-              onClick={() => void handleInstall()}
-            >
-              {state.phase === "error" ? "Retry" : "Install"}
-            </button>
-          ) : null}
+              {!state.devMode && !state.disk.enoughSpace && (
+                <div className="banner banner-warn">
+                  Not enough disk space at this location.
+                </div>
+              )}
 
-          {isWorking && (
-            <button type="button" className="btn-primary" disabled>
-              {state.phase === "checking"
-                ? "Checking..."
-                : state.phase === "updating"
-                  ? "Updating..."
-                  : `Installing · ${progress}%`}
-            </button>
+              {state.devMode && !state.canLaunch && (
+                <div className="banner banner-warn">
+                  Dev mode is enabled, but this path is not launchable yet. Make
+                  sure the Stella folder has its root package file and installed
+                  dependencies.
+                </div>
+              )}
+
+              {state.errorMessage && !state.installPathError && (
+                <div className="banner banner-error">{state.errorMessage}</div>
+              )}
+            </>
           )}
 
-          {isComplete &&
-            !showLauncherUpdateAction &&
-            (state.launcherUpdate.available ? null : (
+          {/* ── Installing / Checking ───────────────────────── */}
+          {isWorking && (
+            <div className="install-progress">
+              <div className="progress-wrap">
+                <div className="progress-track">
+                  <div
+                    className={`progress-fill ${state.phase === "checking" ? "indeterminate" : ""}`}
+                    style={
+                      state.phase !== "checking"
+                        ? { width: `${progress}%` }
+                        : undefined
+                    }
+                  />
+                </div>
+              </div>
+
+              <ul className="step-list">
+                {state.steps.map((step) => (
+                  <li key={step.id} className={`step-item ${step.status}`}>
+                    <span className="step-icon">
+                      {step.status === "done" ? (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 14 14"
+                          fill="none"
+                        >
+                          <circle
+                            cx="7"
+                            cy="7"
+                            r="6.5"
+                            stroke="var(--green)"
+                            strokeWidth="1"
+                          />
+                          <path
+                            d="M4 7.2L6 9.2L10 5"
+                            stroke="var(--green)"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : step.status === "skipped" ? (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 14 14"
+                          fill="none"
+                        >
+                          <circle
+                            cx="7"
+                            cy="7"
+                            r="6.5"
+                            stroke="var(--text-faint)"
+                            strokeWidth="1"
+                          />
+                          <path
+                            d="M4.5 7H9.5"
+                            stroke="var(--text-faint)"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      ) : step.status === "installing" ||
+                        step.status === "checking" ? (
+                        <span className="step-spinner" />
+                      ) : step.status === "error" ? (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 14 14"
+                          fill="none"
+                        >
+                          <circle
+                            cx="7"
+                            cy="7"
+                            r="6.5"
+                            stroke="var(--red)"
+                            strokeWidth="1"
+                          />
+                          <path
+                            d="M5 5L9 9M9 5L5 9"
+                            stroke="var(--red)"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      ) : (
+                        <span className="step-dot" />
+                      )}
+                    </span>
+                    <span className="step-label">{step.label}</span>
+                    {step.detail && step.status === "installing" && (
+                      <span className="step-detail">{step.detail}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+
+              {activeStep?.detail && (
+                <p className="active-detail">{activeStep.detail}</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Complete / warnings ─────────────────────────── */}
+          {(isComplete || state.launcherUpdate.error) && (
+            <div className="complete-body">
+              {isComplete && state.warningMessage && (
+                <div className="banner banner-warn" style={{ marginTop: 16 }}>
+                  {state.warningMessage}
+                </div>
+              )}
+              {state.launcherUpdate.error && (
+                <div className="banner banner-error" style={{ marginTop: 16 }}>
+                  {state.launcherUpdate.error}
+                </div>
+              )}
+              {isComplete && state.errorMessage && (
+                <div className="banner banner-error" style={{ marginTop: 16 }}>
+                  {state.errorMessage}
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      )}
+
+      {/* Footer */}
+      {!settingsOpen && (
+        <footer className="footer">
+          <div className="footer-primary" key={`primary-${state.phase}`}>
+            {isSetup && !state.devMode && (
               <button
                 type="button"
                 className="btn-primary"
-                disabled={!state.canLaunch || desktopRunning || uninstalling}
+                disabled={!canInstall}
+                onClick={() => void handleInstall()}
+              >
+                {state.phase === "error" ? "Retry" : "Install"}
+              </button>
+            )}
+
+            {isWorking && (
+              <button type="button" className="btn-primary" disabled>
+                {state.phase === "checking"
+                  ? "Checking..."
+                  : state.phase === "updating"
+                    ? "Updating..."
+                    : `Installing · ${progress}%`}
+              </button>
+            )}
+
+            {isComplete && (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!state.canLaunch || desktopRunning || anyDialogBusy}
                 onClick={() => void handleLaunch()}
               >
                 {desktopRunning ? "Launching..." : "Launch Stella"}
               </button>
-            ))}
-        </div>
-
-        {!state.devMode && !isWorking && (
-          <div className="footer-links">
-            {isComplete && (
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => void handleOpenFolder()}
-                disabled={uninstalling || reinstalling}
-              >
-                Open folder
-              </button>
             )}
-            {!state.launcherUpdate.available && (
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => void handleCheckLauncherUpdate()}
-                disabled={
-                  state.launcherUpdate.checking ||
-                  state.launcherUpdate.installing ||
-                  uninstalling ||
-                  reinstalling
-                }
-              >
-                {state.launcherUpdate.checking
-                  ? "Checking..."
-                  : state.launcherUpdate.lastCheckedAtMs > 0 &&
-                      !state.launcherUpdate.error
-                    ? "Up to date \u00b7 Update"
-                    : "Update"}
-              </button>
-            )}
-            {isComplete && state.installed && !desktopRunning && (
-                <>
-                  <button
-                    type="button"
-                    className="link-btn link-btn--with-spinner"
-                    onClick={() => void handleReinstall()}
-                    disabled={uninstalling || reinstalling}
-                  >
-                    {reinstalling && <span className="link-spinner" />}
-                    {reinstalling ? "Reinstalling..." : "Reinstall"}
-                  </button>
-                  <button
-                    type="button"
-                    className="link-btn link-danger link-btn--with-spinner"
-                    onClick={() => void handleUninstall()}
-                    disabled={uninstalling || reinstalling}
-                  >
-                    {uninstalling && <span className="link-spinner" />}
-                    {uninstalling ? "Uninstalling..." : "Uninstall"}
-                  </button>
-                </>
-              )}
           </div>
-        )}
-      </footer>
+
+          {/* Optional, non-forced launcher-update affordance below the
+              primary action. Stays visible alongside Launch instead of
+              replacing it, so the user can update at their leisure. */}
+          {!state.devMode && !isWorking && updateAvailable && (
+            <button
+              type="button"
+              className="update-pill"
+              onClick={() => void handleLauncherUpdate()}
+              disabled={showLauncherUpdateBusy || anyDialogBusy}
+            >
+              <span className="update-pill-dot" aria-hidden="true" />
+              <span className="update-pill-text">
+                {showLauncherUpdateBusy
+                  ? "Updating launcher..."
+                  : state.launcherUpdate.version
+                    ? `Launcher ${state.launcherUpdate.version} ready · Update`
+                    : "Launcher update ready · Update"}
+              </span>
+            </button>
+          )}
+
+          {!state.devMode && !isWorking && (
+            <div className="footer-links">
+              {isComplete && (
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => void handleOpenFolder()}
+                  disabled={anyDialogBusy}
+                >
+                  Open folder
+                </button>
+              )}
+              {isComplete && state.installed && !desktopRunning && (
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => setView("settings")}
+                  disabled={anyDialogBusy}
+                >
+                  Settings
+                </button>
+              )}
+            </div>
+          )}
+        </footer>
+      )}
+
+      {activeDialog && pendingAction && (
+        <ConfirmDialog
+          steps={activeDialog.steps}
+          busy={activeDialog.busy}
+          busyLabel={activeDialog.busyLabel}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={activeDialog.onConfirm}
+        />
+      )}
     </div>
   );
 }
+
+/* ── Settings row ────────────────────────────────────────────────── */
+
+type SettingsRowProps = {
+  title: string;
+  body: string;
+  actionLabel: string;
+  onAction: () => void;
+  busy?: boolean;
+  busyLabel?: string;
+  danger?: boolean;
+  disabled?: boolean;
+};
+
+const SettingsRow = ({
+  title,
+  body,
+  actionLabel,
+  onAction,
+  busy = false,
+  busyLabel,
+  danger = false,
+  disabled = false,
+}: SettingsRowProps) => {
+  return (
+    <div className="settings-row">
+      <div className="settings-row-info">
+        <span className="settings-row-title">{title}</span>
+        <span className="settings-row-body">{body}</span>
+      </div>
+      <button
+        type="button"
+        className={`settings-row-btn${danger ? " settings-row-btn--danger" : ""}`}
+        onClick={onAction}
+        disabled={busy || disabled}
+      >
+        {busy ? (
+          <>
+            <span className="link-spinner" />
+            {busyLabel ?? "Working..."}
+          </>
+        ) : (
+          actionLabel
+        )}
+      </button>
+    </div>
+  );
+};
 
 export default App;

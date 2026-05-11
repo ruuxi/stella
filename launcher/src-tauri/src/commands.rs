@@ -472,3 +472,29 @@ pub async fn uninstall_stella(
 
     Ok(OkResult { ok: result.is_ok() })
 }
+
+#[tauri::command]
+pub async fn full_reset_stella(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<OkResult, String> {
+    if state.context.dev_mode {
+        return Ok(OkResult { ok: false });
+    }
+    let mut installer = state.installer.lock().await;
+    let result = setup::full_reset(&mut installer).await;
+
+    if result.is_ok() {
+        setup::check_all(&mut installer, &state.context, &app).await;
+    } else if let Err(err) = &result {
+        installer.phase = InstallerPhase::Error;
+        installer.error_message = Some(err.clone());
+    }
+
+    let _ = app.emit(
+        "installer-state-update",
+        serde_json::json!({ "state": &*installer }),
+    );
+
+    Ok(OkResult { ok: result.is_ok() })
+}

@@ -2296,6 +2296,36 @@ pub async fn uninstall(state: &mut InstallerState) -> Result<(), String> {
     Ok(())
 }
 
+/// Wipe the entire Stella install directory — including `state/` and
+/// everything `uninstall()` deliberately preserves. This is the user-visible
+/// "Erase everything" surface and is intentionally destructive: chats,
+/// memories, settings, mods, agent edits all go.
+pub async fn full_reset(state: &mut InstallerState) -> Result<(), String> {
+    if path_exists_str(&state.install_path).await {
+        if !is_uninstallable_install_path(&state.install_path) {
+            let msg =
+                "Refusing to erase a folder that does not look like a Stella install.".to_string();
+            state.phase = InstallerPhase::Error;
+            state.error_message = Some(msg.clone());
+            return Err(msg);
+        }
+        fs::remove_dir_all(&state.install_path)
+            .await
+            .map_err(|e| format!("Failed to erase Stella folder: {e}"))?;
+    }
+
+    remove_registry().await;
+
+    state.installed = false;
+    state.phase = InstallerPhase::Ready;
+    state.error_message = None;
+    state.steps.clear();
+    state.warning_message = None;
+    sync_step_list(state);
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
