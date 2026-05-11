@@ -22,6 +22,8 @@ import type {
 } from "./types.js";
 import { truncate } from "./utils.js";
 import { isDangerousCommand } from "./command-safety.js";
+import { getInstallUpdateCommandDenialReason } from "./install-update-allowlist.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 import { getStellaComputerSessionId } from "./stella-computer-session.js";
 import { inferShellMentionedPaths } from "./path-inference.js";
@@ -1224,6 +1226,12 @@ export const handleExecCommand = async (
       error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
     };
   }
+  if (context?.agentType === AGENT_IDS.INSTALL_UPDATE) {
+    const denial = getInstallUpdateCommandDenialReason(prepared.command);
+    if (denial) {
+      return { error: `Command blocked: ${denial}` };
+    }
+  }
   if (!prepared.command.trim()) {
     return { error: "cmd is required." };
   }
@@ -1298,10 +1306,19 @@ export const handleExecCommand = async (
 export const handleWriteStdin = async (
   state: ShellState,
   args: Record<string, unknown>,
-  _context?: ToolContext,
+  context?: ToolContext,
   signal?: AbortSignal,
 ): Promise<ToolResult> => {
   const callStartedAt = Date.now();
+  if (context?.agentType === AGENT_IDS.INSTALL_UPDATE) {
+    // The install-update agent runs only one-shot git commands via the
+    // exec_command allowlist; no git invocation it makes needs interactive
+    // stdin. Blocking write_stdin closes a small attack surface where the
+    // agent could try to drive a shell session interactively.
+    return {
+      error: "Command blocked: install_update may not use write_stdin.",
+    };
+  }
   const sessionId = String(args.session_id ?? "").trim();
   if (!sessionId) {
     return { error: "session_id is required." };
@@ -1361,6 +1378,12 @@ export const handleBash = async (
     return {
       error: `Command blocked: this operation is potentially destructive and has been denied for safety. (${dangerReason})`,
     };
+  }
+  if (context?.agentType === AGENT_IDS.INSTALL_UPDATE) {
+    const denial = getInstallUpdateCommandDenialReason(command);
+    if (denial) {
+      return { error: `Command blocked: ${denial}` };
+    }
   }
 
   const timeout = Math.min(Number(args.timeout ?? 120_000), 600_000);
