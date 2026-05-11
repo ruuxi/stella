@@ -11,6 +11,7 @@ import {
 } from '../streaming/message-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import { useLocale } from '@/shared/i18n'
+import { useTierRestrictedModelToast } from './use-tier-restricted-model-toast'
 
 type UseStreamingChatOptions = {
   conversationId: string | null
@@ -81,6 +82,7 @@ export function useStreamingChat({
   const [justSentUserMessageIds, setJustSentUserMessageIds] = useState<string[]>([])
   const justSentTimeoutsRef = useRef(new Map<string, number>())
   const locale = useLocale()
+  const notifyTierRestrictedModel = useTierRestrictedModelToast()
   const {
     isLocalStorage,
     storageMode,
@@ -294,6 +296,13 @@ export function useStreamingChat({
         throw error
       }
 
+      // Fire-and-forget: surface a "model not available on your plan"
+      // toast for restricted tiers (anonymous/free/go) when the user has a
+      // saved non-default override for orchestrator/general. The backend
+      // silently coerces to the tier-default model regardless. Deduped so
+      // it doesn't spam on every send.
+      void notifyTierRestrictedModel()
+
       if (mode === 'follow_up') {
         console.log(
           `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId}`,
@@ -343,6 +352,7 @@ export function useStreamingChat({
       events,
       isLocalStorage,
       isStreaming,
+      notifyTierRestrictedModel,
       pendingUserMessageId,
       queueStream,
       startStream,

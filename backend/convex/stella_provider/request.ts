@@ -1,4 +1,5 @@
 import {
+  canOverrideStellaModel,
   getModeConfig,
   getModelConfig,
   type ManagedModelAudience,
@@ -26,10 +27,18 @@ export function resolveRequestedStellaModel(
   requestBody: StellaRequestBody,
   audience: ManagedModelAudience,
 ): ResolvedStellaModelSelection {
-  const requestedModel =
+  const clientRequestedModel =
     typeof requestBody.model === "string" && requestBody.model.trim().length > 0
       ? requestBody.model.trim()
       : STELLA_DEFAULT_MODEL;
+
+  // Anonymous/free/go (and go's downgraded fallback) cannot pick a custom
+  // model. Silently coerce to the agent default so the desktop client doesn't
+  // surface its model-rejection toast — the request still succeeds, just on
+  // the tier-appropriate backend-chosen model.
+  const requestedModel = canOverrideStellaModel(audience)
+    ? clientRequestedModel
+    : STELLA_DEFAULT_MODEL;
 
   if (!isStellaModel(requestedModel)) {
     throw new Error(`Unsupported Stella model selection: ${requestedModel}`);

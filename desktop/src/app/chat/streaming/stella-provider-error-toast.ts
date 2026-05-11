@@ -13,16 +13,60 @@ const upgradeAction = {
   onClick: openBilling,
 }
 
+const billingMatchers = [
+  'usage limit reached',
+  'managed-model limits reached',
+] as const
+
+const rateLimitMatchers = [
+  'rate limit exceeded',
+  'too many requests',
+] as const
+
+const authMatchers = [
+  'unauthorized',
+  'unauthenticated',
+  'invalid token',
+  'token expired',
+  'expired token',
+] as const
+
+const modelRestrictionMatchers = [
+  'unsupported stella model selection',
+  'invalid stella model selection',
+  'model not available',
+  'model is not available',
+] as const
+
+const serviceUnavailableMatchers = [
+  'upstream gateway is not configured',
+  'stella runtime returned no response body',
+  'stella runtime error: 5',
+  'failed to generate stella completion',
+  'streaming completion failed',
+] as const
+
+const malformedRequestMatchers = [
+  'stella request body must be valid json',
+  'received text_delta for non-text content',
+  'received text_end for non-text content',
+  'received thinking_delta for non-thinking content',
+  'received thinking_end for non-thinking content',
+  'received toolcall_delta for non-toolcall content',
+] as const
+
+const includesAny = (
+  normalized: string,
+  matchers: readonly string[],
+): boolean => matchers.some((matcher) => normalized.includes(matcher))
+
 export const resolveStellaProviderErrorToast = (
   reason: string | null | undefined,
 ): ToastOptions => {
   const message = normalizeErrorText(reason)
   const normalized = message.toLowerCase()
 
-  if (
-    normalized.includes('usage limit reached') ||
-    normalized.includes('managed-model limits reached')
-  ) {
+  if (includesAny(normalized, billingMatchers)) {
     return {
       title: 'Stella needs more room',
       description:
@@ -33,7 +77,7 @@ export const resolveStellaProviderErrorToast = (
     }
   }
 
-  if (normalized.includes('rate limit exceeded')) {
+  if (includesAny(normalized, rateLimitMatchers)) {
     return {
       title: 'Stella is moving too fast',
       description:
@@ -44,9 +88,55 @@ export const resolveStellaProviderErrorToast = (
     }
   }
 
+  if (includesAny(normalized, authMatchers)) {
+    return {
+      title: 'Please sign in again',
+      description:
+        'Stella needs you to reconnect your account before continuing.',
+      variant: 'error',
+      duration: 8000,
+      action: {
+        label: 'Open billing',
+        onClick: openBilling,
+      },
+    }
+  }
+
+  if (includesAny(normalized, modelRestrictionMatchers)) {
+    return {
+      title: 'Model not available on your plan',
+      description:
+        'Stella will use the recommended model for your current plan. Upgrade to switch models.',
+      variant: 'error',
+      duration: 8000,
+      action: upgradeAction,
+    }
+  }
+
+  if (includesAny(normalized, serviceUnavailableMatchers)) {
+    return {
+      title: 'Stella is having trouble connecting',
+      description:
+        'The model service is temporarily unavailable. Please try again in a moment.',
+      variant: 'error',
+      duration: 7000,
+    }
+  }
+
+  if (includesAny(normalized, malformedRequestMatchers)) {
+    return {
+      title: 'Stella could not send that request',
+      description:
+        'Something about the request format was not accepted. Please try again.',
+      variant: 'error',
+      duration: 7000,
+    }
+  }
+
   return {
-    title: 'Something went wrong',
-    description: message || undefined,
+    title: 'Stella hit a snag',
+    description:
+      'Something went wrong while Stella was responding. Please try again.',
     variant: 'error',
   }
 }

@@ -289,8 +289,73 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
   ultra_fallback: {},
 };
 
+// Per-audience swaps of an agent's task→mode mapping. Lets us point
+// orchestrator/general at cheaper modes for free/anonymous tiers and at the
+// standard tier model for paid users without disturbing other agents (store,
+// fashion, install_update, etc.) that share the underlying modes.
+const AUDIENCE_AGENT_MODE_OVERRIDES: Partial<
+  Record<ManagedModelAudience, Partial<Record<string, ModelMode>>>
+> = {
+  anonymous: {
+    [AGENT_IDS.ORCHESTRATOR]: "free",
+    [AGENT_IDS.GENERAL]: "free",
+  },
+  free: {
+    [AGENT_IDS.ORCHESTRATOR]: "free",
+    [AGENT_IDS.GENERAL]: "free",
+  },
+  go: {
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
+  },
+  pro: {
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
+  },
+  plus: {
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
+  },
+  ultra: {
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
+  },
+  go_fallback: {
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
+  },
+  pro_fallback: {
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
+  },
+  plus_fallback: {
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
+  },
+  ultra_fallback: {
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
+  },
+};
+
+// Audiences that may NOT override the per-agent default model from the
+// client. Anonymous/free/go (incl. go's downgraded fallback) are pinned to
+// the backend-chosen model; pro/plus/ultra users keep the model picker.
+const RESTRICTED_MODEL_OVERRIDE_AUDIENCES = new Set<ManagedModelAudience>([
+  "anonymous",
+  "free",
+  "go",
+  "go_fallback",
+]);
+
+export const canOverrideStellaModel = (audience: ManagedModelAudience): boolean =>
+  !RESTRICTED_MODEL_OVERRIDE_AUDIENCES.has(audience);
+
 export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
+  // Per-tier orchestrator/general defaults live in
+  // `AUDIENCE_AGENT_MODE_OVERRIDES` below; this `sota` entry is the
+  // unauthenticated/internal-call fallback when no audience is supplied.
   [AGENT_IDS.ORCHESTRATOR]: "sota",
   [AGENT_IDS.GENERAL]: "sota",
   [AGENT_IDS.INSTALL_UPDATE]: "best",
@@ -371,8 +436,10 @@ const buildAudienceAgentCatalog = (
   modeCatalog: Record<ModelMode, ModelConfig>,
 ): Record<string, ModelConfig> => {
   const taskCatalog: Record<string, ModelConfig> = {};
+  const audienceModeOverrides = AUDIENCE_AGENT_MODE_OVERRIDES[audience] ?? {};
 
-  for (const [agentType, mode] of Object.entries(TASK_MODEL_MODES)) {
+  for (const [agentType, defaultMode] of Object.entries(TASK_MODEL_MODES)) {
+    const mode = audienceModeOverrides[agentType] ?? defaultMode;
     taskCatalog[agentType] = clone(modeCatalog[mode]);
   }
 

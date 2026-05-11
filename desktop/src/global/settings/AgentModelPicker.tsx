@@ -18,6 +18,13 @@ import {
 } from "@/global/settings/lib/model-defaults";
 import type { ProviderGroup } from "@/global/settings/lib/model-catalog";
 import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
+import {
+  getModelRestrictionActionLabel,
+  getModelRestrictionDescription,
+  isRestrictedModelOverrideAudience,
+} from "@/shared/billing/audience";
+import { showToast } from "@/ui/toast";
+import { router } from "@/router";
 import "./AgentModelPicker.css";
 
 type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";
@@ -257,6 +264,7 @@ export function AgentModelPicker({
     groups,
     refresh,
     refreshing,
+    audience,
   } = useModelCatalog();
 
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
@@ -394,6 +402,36 @@ export function AgentModelPicker({
           });
         if (saved) setPreferences(saved);
         setError(null);
+        // Picking a non-default model on a tier that's pinned to the
+        // backend-chosen model is a no-op at request time (the Stella
+        // provider silently coerces). Surface a toast so the user
+        // understands their selection won't be honored on this plan.
+        if (
+          value !== "" &&
+          isRestrictedModelOverrideAudience(audience)
+        ) {
+          const modelLabel = getModelDisplayLabel(value, modelNamesById);
+          showToast({
+            title: "Model not available on your plan",
+            description: audience
+              ? getModelRestrictionDescription({
+                  audience,
+                  modelLabel,
+                  tense: "will",
+                })
+              : `${modelLabel} isn't available on your current plan. Stella will use its recommended model.`,
+            variant: "error",
+            duration: 8000,
+            action: {
+              label: audience
+                ? getModelRestrictionActionLabel(audience)
+                : "Upgrade",
+              onClick: () => {
+                void router.navigate({ to: "/billing" });
+              },
+            },
+          });
+        }
         onSelected?.();
       } catch (caught) {
         setPreferences((current) =>
@@ -408,7 +446,7 @@ export function AgentModelPicker({
         setPendingAgent(null);
       }
     },
-    [activeAgent, onSelected, pendingAgent, preferences],
+    [activeAgent, audience, modelNamesById, onSelected, pendingAgent, preferences],
   );
 
   const handleImageSelect = useCallback(
