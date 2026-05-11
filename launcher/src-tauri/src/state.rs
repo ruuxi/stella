@@ -12,6 +12,7 @@ pub enum SetupStepId {
     Runtime,
     Parakeet,
     Payload,
+    NativeHelpers,
     Deps,
     Env,
     Browser,

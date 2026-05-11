@@ -70,7 +70,10 @@ coverage/
 # Build artifacts
 release/
 workspace/
-# native/out/
+# Native helpers are built per-platform on CI (build-native-helpers.yml) and
+# distributed via R2; the launcher (and dev-time `bun run native:download`)
+# downloads the platform-relevant tarball into native/out/<platform>/.
+native/out/
 native/*.exe
 native/*.obj
 

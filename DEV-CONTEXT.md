@@ -17,7 +17,10 @@ before suggesting "fixes" to the things below — they are intentional.
 - Stella has **one root `package.json` and one root `node_modules`**. There is
   intentionally no `desktop/package.json` or `runtime/package.json`; add
   dependencies from the repo root with `bun add <pkg>`.
-- Native binaries under `desktop/native/out/` are **committed on purpose**.
+- Native binaries under `desktop/native/out/` are **built per-platform on CI**
+  (`build-native-helpers.yml`) and distributed via R2; the launcher downloads
+  the platform-relevant tarball at install time. `desktop/native/out/` is
+  gitignored — do not commit binaries.
 - `~/projects/stella` (here) ≠ `~/stella` (an end-user-style install). Both
   may exist; only this one is the source of truth.
 
@@ -131,47 +134,52 @@ Why not a normal installer (DMG/MSI):
 
 ---
 
-## Why we commit native build outputs (`desktop/native/out/`)
+## Why native helpers are CI-built and not committed (`desktop/native/out/`)
 
-`desktop/native/out/darwin/` and `desktop/native/out/win32/` contain prebuilt
-binaries — `disclaim-spawn`, `wakeword_listener`, `parakeet_transcriber`,
+`desktop/native/out/darwin/` and `desktop/native/out/win32/` hold platform
+helpers — `disclaim-spawn`, `wakeword_listener`, `parakeet_transcriber`,
 `dictation_bridge`, `window_info`, `selected_text`, `screen_permission`,
-`window_ocr`, `desktop_automation`, `home_apps`, `home_capture`, `chronicle`.
+`window_ocr`, `desktop_automation`, `home_apps`, `home_capture`, `chronicle`,
+`stella-computer-helper.exe`, etc.
 
-They are **tracked in git on purpose**. Note the deliberately-commented line
-in `desktop/.gitignore`:
+These are **built per-platform on CI** by `.github/workflows/build-native-helpers.yml`
+and published to R2 as three tarballs:
 
-```
-# native/out/
-```
+- `stella-native-darwin-arm64.tar.zst`
+- `stella-native-darwin-x64.tar.zst`
+- `stella-native-win-x64.tar.zst`
 
-Reasons:
+The launcher's `NativeHelpers` install step resolves
+`https://pub-…r2.dev/native-helpers/current.json`, downloads the tarball that
+matches the host platform, verifies its sha256, and extracts into
+`desktop/native/out/<platform>/`. End users still get a "download → bun install
+→ run" flow with no compile step on their machine.
 
-- The launcher install path is `download tarball → bun install → run`. There
-  is **no native compile step** in install. Requiring users to have `clang`,
-  `swiftc`, `cargo`/`rustup`, or MSVC would break "just install it".
-- Several of these binaries gate core features:
-  - `disclaim-spawn` — TCC permission responsibility on macOS dev launches.
-  - `wakeword_listener` — "Hey Stella" wake-word detection.
-  - `parakeet_transcriber` — on-device dictation (macOS arm64).
-  - `dictation_bridge`, `selected_text`, `window_info`, `desktop_automation` —
-    in-process AX / window control / dictation overlay.
-  - `chronicle`, `home_capture`, `home_apps` — Chronicle live memory and the
-    home active-window/tab capture chips.
-- Missing binaries in a shipped tarball = broken core features at install
-  time, not "graceful degradation". The launcher's "skip if missing" branches
-  are for dev contributors who haven't built that platform's helpers, not for
-  end users.
+Several of these binaries gate core features:
+
+- `disclaim-spawn` — TCC permission responsibility on macOS dev launches.
+- `wakeword_listener` — "Hey Stella" wake-word detection.
+- `parakeet_transcriber` — on-device dictation (macOS arm64 only).
+- `dictation_bridge`, `selected_text`, `window_info`, `desktop_automation` —
+  in-process AX / window control / dictation overlay.
+- `chronicle`, `home_capture`, `home_apps` — Chronicle live memory and the
+  home active-window/tab capture chips.
+
+So the launcher treats the `NativeHelpers` step the same way it treats Bun and
+the desktop tarball: a hard install dependency, not "graceful degradation".
 
 **For agents:**
 
-- Don't add `desktop/native/out/` to `.gitignore`. It's load-bearing.
+- `desktop/native/out/` is gitignored. **Do not commit binaries** — CI owns
+  rebuilds.
 - If you change a source file under `desktop/native/src/` or
-  `desktop/native/wakeword/`, run `desktop/native/build.sh` (macOS) or the
-  matching `build.ps1` / `build.mjs`, then **commit the rebuilt binary
-  alongside the source change** in the same commit.
-- Treat a missing binary under `desktop/native/out/<platform>/` like a missing
-  dependency, not a build artifact to ignore.
+  `desktop/native/wakeword/`, push the change so CI rebuilds, then run
+  `bun run native:download --force` locally to refresh your dev tree (or run
+  `bash desktop/native/build.sh` for a quick local build).
+- The CI workflow re-runs on push to master that touches native sources, on
+  every `desktop-v*` tag, and via `workflow_dispatch`. The desktop release
+  tarball deliberately strips `desktop/native/out/` so a release pulls fresh
+  helpers via the launcher rather than pinning a stale set.
 
 ---
 

@@ -60,6 +60,10 @@ jobs:
           mkdir -p release-root/scripts
           cp scripts/install-tsc-shim.mjs release-root/scripts/
           cp -R desktop runtime release-root/
+          # Native helpers ship as a separate per-platform R2 bundle (see
+          # build-native-helpers.yml); the launcher fetches them at install
+          # time. Strip any stray locally-built binaries that snuck through.
+          rm -rf release-root/desktop/native/out
           cp state/DREAM.md state/registry.md release-root/state/
           cp -R state/skills release-root/state/
           cp state/outputs/README.md release-root/state/outputs/README.md

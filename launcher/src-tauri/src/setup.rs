@@ -26,6 +26,8 @@ VITE_SITE_URL=https://stella.sh\n";
 const GITHUB_REPO: &str = "ruuxi/stella";
 const DEFAULT_DESKTOP_RELEASE_MANIFEST_URL: &str =
     "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/desktop/current.json";
+const DEFAULT_NATIVE_HELPERS_MANIFEST_URL: &str =
+    "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers/current.json";
 const INSTALL_DIR_NAME: &str = "stella";
 const ELECTRON_USER_DATA_DIR_NAME: &str = "electron-user-data";
 
@@ -38,6 +40,16 @@ fn release_tarball_name() -> &'static str {
         "stella-desktop-darwin-x64.tar.zst"
     } else {
         "stella-desktop-linux-x64.tar.zst"
+    }
+}
+
+fn native_helpers_platform_dir() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "win32"
+    } else if cfg!(target_os = "macos") {
+        "darwin"
+    } else {
+        "linux"
     }
 }
 
@@ -467,6 +479,26 @@ struct DesktopDownloadAsset {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct NativeHelpersManifest {
+    schema_version: u32,
+    #[serde(default)]
+    sha: Option<String>,
+    #[serde(default)]
+    commit: Option<String>,
+    assets: HashMap<String, NativeHelpersAsset>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeHelpersAsset {
+    url: String,
+    sha256: String,
+    #[allow(dead_code)]
+    size: u64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DesktopReleaseManifest {
     schema_version: u32,
     tag: String,
@@ -490,6 +522,14 @@ fn desktop_release_manifest_url() -> String {
         .unwrap_or_else(|| DEFAULT_DESKTOP_RELEASE_MANIFEST_URL.to_string())
 }
 
+fn native_helpers_manifest_url() -> String {
+    std::env::var("STELLA_NATIVE_HELPERS_MANIFEST_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_NATIVE_HELPERS_MANIFEST_URL.to_string())
+}
+
 fn desktop_platform_key() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         "win-x64"
@@ -500,6 +540,17 @@ fn desktop_platform_key() -> &'static str {
     } else {
         "linux-x64"
     }
+}
+
+fn native_helpers_platform_key() -> &'static str {
+    desktop_platform_key()
+}
+
+fn native_helpers_dir_of(install_dir: &str) -> PathBuf {
+    desktop_dir_of(install_dir)
+        .join("native")
+        .join("out")
+        .join(native_helpers_platform_dir())
 }
 
 fn normalize_sha256(value: &str) -> Option<String> {
@@ -1257,6 +1308,208 @@ async fn download_and_extract_release(
     Ok(())
 }
 
+async fn download_and_extract_native_helpers(
+    install_dir: &str,
+    state: &mut InstallerState,
+    app: &AppHandle,
+) -> Result<(), String> {
+    let platform = native_helpers_platform_key();
+    let manifest_url = native_helpers_manifest_url();
+    log_install(
+        install_dir,
+        &format!("Resolving native helpers manifest: {manifest_url}"),
+    )
+    .await;
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::NativeHelpers,
+        "Looking up native helpers",
+        Some(0.05),
+    );
+
+    let client = reqwest::Client::new();
+    let manifest_text = fetch_required_text(&client, &manifest_url).await?;
+    let manifest: NativeHelpersManifest = serde_json::from_str(&manifest_text)
+        .map_err(|e| format!("Native helpers manifest was invalid JSON: {e}"))?;
+    if manifest.schema_version != 1 {
+        return Err("Native helpers manifest schema is not supported.".into());
+    }
+
+    let asset = manifest.assets.get(platform).cloned().ok_or_else(|| {
+        format!("Native helpers manifest did not include an asset for {platform}.")
+    })?;
+
+    log_install(
+        install_dir,
+        &format!(
+            "Downloading native helpers ({}{}) from {}",
+            manifest.sha.as_deref().unwrap_or("unknown"),
+            manifest
+                .commit
+                .as_deref()
+                .map(|c| format!(" / {c}"))
+                .unwrap_or_default(),
+            asset.url,
+        ),
+    )
+    .await;
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::NativeHelpers,
+        "Downloading native helpers",
+        Some(0.15),
+    );
+
+    let resp = client
+        .get(&asset.url)
+        .header("User-Agent", "stella-launcher")
+        .send()
+        .await
+        .map_err(|e| format!("Native helpers download failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Native helpers download failed: HTTP {}",
+            resp.status()
+        ));
+    }
+
+    let total_bytes = resp.content_length();
+    let archive_path = Path::new(install_dir).join(".stella-native-helpers-download.tar.zst");
+    if let Some(parent) = archive_path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("mkdir failed: {e}"))?;
+    }
+    let mut archive_file = fs::File::create(&archive_path)
+        .await
+        .map_err(|e| format!("Failed to prepare native helpers download: {e}"))?;
+    let mut downloaded: u64 = 0;
+    let mut digest = Sha256::new();
+    let mut stream = resp.bytes_stream();
+    let mut last_emit = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(1))
+        .unwrap_or_else(std::time::Instant::now);
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(chunk) => chunk,
+            Err(err) => {
+                let _ = fs::remove_file(&archive_path).await;
+                return Err(format!("Native helpers download failed: {err}"));
+            }
+        };
+        downloaded += chunk.len() as u64;
+        digest.update(&chunk);
+        if let Err(err) = archive_file.write_all(&chunk).await {
+            let _ = fs::remove_file(&archive_path).await;
+            return Err(format!("Failed to write native helpers download: {err}"));
+        }
+        if last_emit.elapsed() >= std::time::Duration::from_millis(300) {
+            let detail = if let Some(total) = total_bytes {
+                format!(
+                    "Downloading native helpers {} of {}",
+                    format_bytes_compact(downloaded),
+                    format_bytes_compact(total)
+                )
+            } else {
+                format!("Downloading native helpers {}", format_bytes_compact(downloaded))
+            };
+            let progress = total_bytes
+                .filter(|total| *total > 0)
+                .map(|total| 0.15 + ((downloaded as f64 / total as f64).min(1.0) * 0.55));
+            set_step_progress(state, app, &SetupStepId::NativeHelpers, detail, progress);
+            last_emit = std::time::Instant::now();
+        }
+    }
+    if let Err(err) = archive_file.flush().await {
+        let _ = fs::remove_file(&archive_path).await;
+        return Err(format!("Failed to finish native helpers download: {err}"));
+    }
+    drop(archive_file);
+
+    if let Err(err) = verify_sha256_digest(digest, &asset.sha256) {
+        let _ = fs::remove_file(&archive_path).await;
+        return Err(err);
+    }
+
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::NativeHelpers,
+        "Extracting native helpers",
+        Some(0.78),
+    );
+
+    let helpers_dir = native_helpers_dir_of(install_dir);
+    let helpers_dir_str = helpers_dir.to_string_lossy().to_string();
+    let archive_path_for_extract = archive_path.clone();
+    let extract_result = tokio::task::spawn_blocking(move || {
+        let archive_file = std::fs::File::open(&archive_path_for_extract)
+            .map_err(|e| format!("open native helpers archive failed: {e}"))?;
+        let decoder = zstd::Decoder::new(archive_file)
+            .map_err(|e| format!("native helpers zstd decompress failed: {e}"))?;
+        let mut archive = tar::Archive::new(decoder);
+
+        std::fs::create_dir_all(&helpers_dir_str)
+            .map_err(|e| format!("mkdir native helpers dir failed: {e}"))?;
+        // Wipe stale binaries — old contents may shadow renamed/removed helpers.
+        if let Ok(entries) = std::fs::read_dir(&helpers_dir_str) {
+            for entry in entries.flatten() {
+                let _ = if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    std::fs::remove_dir_all(entry.path())
+                } else {
+                    std::fs::remove_file(entry.path())
+                };
+            }
+        }
+
+        archive
+            .unpack(&helpers_dir_str)
+            .map_err(|e| format!("native helpers tar extract failed: {e}"))?;
+
+        // Belt-and-suspenders: ensure exec bits on Unix. tar should preserve
+        // them, but Rust's tar crate has historically lost them across some zstd
+        // pipelines; explicitly walking the dir is cheap and idempotent.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fn chmod_recursive(path: &std::path::Path) -> std::io::Result<()> {
+                if path.is_dir() {
+                    for entry in std::fs::read_dir(path)? {
+                        let entry = entry?;
+                        chmod_recursive(&entry.path())?;
+                    }
+                } else if path.is_file() {
+                    let mut perms = std::fs::metadata(path)?.permissions();
+                    perms.set_mode(0o755);
+                    std::fs::set_permissions(path, perms)?;
+                }
+                Ok(())
+            }
+            let _ = chmod_recursive(std::path::Path::new(&helpers_dir_str));
+        }
+
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("Native helpers extract task failed: {e}"))
+    .and_then(|result| result);
+    let _ = fs::remove_file(&archive_path).await;
+    extract_result?;
+
+    log_install(install_dir, "Native helpers extracted").await;
+    set_step_progress(
+        state,
+        app,
+        &SetupStepId::NativeHelpers,
+        "Native helpers ready",
+        Some(0.95),
+    );
+    Ok(())
+}
+
 async fn remove_install_files_preserving_state(install_path: &str) -> Result<(), String> {
     let electron_user_data_path = Path::new(install_path)
         .join("state")
@@ -1512,6 +1765,10 @@ fn build_step_defs() -> Vec<StepDef> {
             label: "Downloading Stella",
         },
         StepDef {
+            id: SetupStepId::NativeHelpers,
+            label: "Installing native helpers",
+        },
+        StepDef {
             id: SetupStepId::Parakeet,
             label: "Preparing local dictation",
         },
@@ -1527,6 +1784,7 @@ async fn check_step(id: &SetupStepId, state: &InstallerState) -> bool {
     match id {
         SetupStepId::Runtime => bun_on_path().await,
         SetupStepId::Payload => payload_step_complete(dir).await,
+        SetupStepId::NativeHelpers => native_helpers_step_complete(dir).await,
         SetupStepId::Parakeet => parakeet_step_complete(dir).await,
         SetupStepId::Finalize => {
             if state.dev_mode {
@@ -1560,12 +1818,29 @@ async fn payload_step_complete(dir: &str) -> bool {
     true
 }
 
+async fn native_helpers_step_complete(dir: &str) -> bool {
+    let helpers_dir = native_helpers_dir_of(dir);
+    if !path_exists(&helpers_dir).await {
+        return false;
+    }
+    // Sentinel: pick a binary that ships on every supported platform.
+    let sentinel = if cfg!(target_os = "windows") {
+        helpers_dir.join("window_info.exe")
+    } else {
+        helpers_dir.join("window_info")
+    };
+    path_exists(&sentinel).await
+}
+
 async fn parakeet_step_complete(dir: &str) -> bool {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return true;
     }
     if !path_exists(&parakeet_helper_of(dir)).await {
-        return payload_step_complete(dir).await;
+        // Helper hasn't been delivered yet (payload + native helpers still to
+        // run), so report not-complete to allow the parakeet step to run later.
+        return native_helpers_step_complete(dir).await
+            && payload_step_complete(dir).await;
     }
     path_exists(&parakeet_cache_dir_of(dir).join("FluidAudio")).await
         || path_exists(&parakeet_cache_dir_of(dir).join("fluidaudio")).await
@@ -1601,6 +1876,9 @@ async fn install_step(
             );
             install_payload_dependencies(&dir, state, app).await?;
             Ok(())
+        }
+        SetupStepId::NativeHelpers => {
+            download_and_extract_native_helpers(&dir, state, app).await
         }
         SetupStepId::Parakeet => {
             if let Err(err) = ensure_parakeet_model_downloaded(&dir).await {
@@ -1685,11 +1963,12 @@ async fn refresh_derived(state: &mut InstallerState, ctx: &InstallerContext) {
 
     let has_manifest = path_exists(&manifest_of(&state.install_path)).await;
     let has_payload = payload_step_complete(&state.install_path).await;
+    let has_native_helpers = native_helpers_step_complete(&state.install_path).await;
     state.can_launch = if state.dev_mode {
         looks_like_stella_source_tree(Path::new(&state.install_path))
             && path_exists(&node_modules_of(&state.install_path)).await
     } else {
-        has_manifest && has_payload
+        has_manifest && has_payload && has_native_helpers
     };
     state.warning_message = None;
 }
