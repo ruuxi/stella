@@ -37,6 +37,91 @@ describe("deriveTurnResource", () => {
     ).toBeNull();
   });
 
+  it("surfaces general-agent apply_patch writes to state/outputs/html/* as canvas-html", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 7,
+          payload: {
+            toolName: "apply_patch",
+            agentType: "general",
+            result: "ok",
+            fileChanges: [
+              {
+                path: "/Users/me/projects/stella/state/outputs/html/onboarding-options.html",
+                kind: { type: "add" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "canvas-html",
+      filePath:
+        "/Users/me/projects/stella/state/outputs/html/onboarding-options.html",
+      title: "Onboarding Options",
+      slug: "onboarding-options",
+      createdAt: 7,
+    });
+  });
+
+  it("ignores html files written outside state/outputs/html/", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 5,
+          payload: {
+            toolName: "apply_patch",
+            agentType: "general",
+            result: "ok",
+            fileChanges: [
+              {
+                path: "/Users/me/projects/stella/desktop/index.html",
+                kind: { type: "update" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).not.toMatchObject({ kind: "canvas-html" });
+  });
+
+  it("prefers the orchestrator html tool result over a fileChange fallback", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 3,
+          payload: {
+            toolName: "html",
+            agentType: "orchestrator",
+            result: "Canvas saved",
+            details: {
+              filePath: "/state/outputs/html/plan.html",
+              slug: "plan",
+              title: "Plan",
+              createdAt: 3,
+            },
+            fileChanges: [
+              { path: "/state/outputs/html/plan.html", kind: { type: "add" } },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "canvas-html",
+      filePath: "/state/outputs/html/plan.html",
+      title: "Plan",
+      slug: "plan",
+      createdAt: 3,
+    });
+  });
+
   it("derives a payload from a fileChanges record (Write add)", () => {
     expect(
       deriveTurnResource([
