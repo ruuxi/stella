@@ -44,7 +44,16 @@ type HmrControllerOptions = {
    * repo-relative form the tracker and overlay agree on.
    */
   repoRoot: string;
-  authToken?: string;
+  /**
+   * Resolver for the self-mod HMR auth token. Called per request rather
+   * than captured at controller construction so the detached runtime
+   * worker can refresh the token on every Electron host reattach (the
+   * dev runner generates a fresh token per launch; without this getter
+   * the worker would keep using whatever token its env had at spawn
+   * time, and 403 against the new Vite). May return undefined when the
+   * Stella runtime is not in dev mode.
+   */
+  authToken?: () => string | undefined;
 };
 
 export type HmrStatus = {
@@ -405,6 +414,8 @@ export const createSelfModHmrController = (
     );
   };
 
+  const resolveAuthToken = () => options.authToken?.();
+
   const trackPaths = async (paths: string[]): Promise<void> => {
     if (paths.length === 0 || !options.enabled) return;
     const tracked = await postWithRetry({
@@ -412,7 +423,7 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/track-paths`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
-      authToken: options.authToken,
+      authToken: resolveAuthToken(),
     });
     if (!tracked) {
       throw new Error("Failed to pin self-mod HMR paths before write.");
@@ -426,7 +437,7 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/pause-client-updates`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { runId },
-      authToken: options.authToken,
+      authToken: resolveAuthToken(),
     });
     if (!paused) {
       throw new Error("Failed to pause self-mod HMR client updates.");
@@ -440,7 +451,7 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/release-client-updates`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { runIds },
-      authToken: options.authToken,
+      authToken: resolveAuthToken(),
     });
   };
 
@@ -451,7 +462,7 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/untrack-paths`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
-      authToken: options.authToken,
+      authToken: resolveAuthToken(),
     });
   };
 
@@ -472,7 +483,7 @@ export const createSelfModHmrController = (
         })),
         ...(applyOptions ? { options: applyOptions } : {}),
       },
-      authToken: options.authToken,
+      authToken: resolveAuthToken(),
     });
     return response?.ok ? response : { ok: false };
   };
@@ -494,7 +505,7 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/discard`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
-      authToken: options.authToken,
+      authToken: resolveAuthToken(),
     });
   };
 
@@ -504,7 +515,7 @@ export const createSelfModHmrController = (
       getDevServerUrl: options.getDevServerUrl,
       path,
       maxWaitMs: TRACK_MAX_WAIT_MS,
-      authToken: options.authToken,
+      authToken: resolveAuthToken(),
     });
   };
 
@@ -545,10 +556,17 @@ export const createSelfModHmrController = (
       try {
         await pauseClientUpdates(runId);
       } catch (error) {
-        tracker.cancel(runId);
-        touchedPathsByRun.delete(runId);
-        finalizedSnapshotsByRun.delete(runId);
-        throw error;
+        // Failing to pause Vite's client-update stream is a dev-only HMR
+        // isolation concern -- in the worst case a renderer might briefly
+        // see a mid-run write before the apply batch lands. That degraded
+        // experience is strictly preferable to killing the agent run
+        // entirely. Keep the contention tracker entry so per-path
+        // ownership and final apply still work; log a single warning so
+        // the regression is still visible.
+        console.warn(
+          "[self-mod-hmr] Failed to pause Vite client updates; continuing without isolation:",
+          (error as Error).message,
+        );
       }
     },
 
@@ -661,7 +679,7 @@ export const createSelfModHmrController = (
         getDevServerUrl: options.getDevServerUrl,
         path: `${HMR_ENDPOINT_BASE}/end-shell-mutation`,
         maxWaitMs: TRACK_MAX_WAIT_MS,
-        authToken: options.authToken,
+        authToken: resolveAuthToken(),
       });
       if (!response?.ok) {
         return { ok: false, changedPaths: [] };
@@ -695,7 +713,7 @@ export const createSelfModHmrController = (
         getDevServerUrl: options.getDevServerUrl,
         path: `${HMR_ENDPOINT_BASE}/force-resume`,
         maxWaitMs: APPLY_MAX_WAIT_MS,
-        authToken: options.authToken,
+        authToken: resolveAuthToken(),
       });
     },
 
@@ -711,13 +729,14 @@ export const createSelfModHmrController = (
       }
       const baseUrl = options.getDevServerUrl().replace(/\/+$/, "");
       const target = `${baseUrl}${HMR_ENDPOINT_BASE}/status`;
+      const statusToken = resolveAuthToken();
       try {
         const response = await fetch(target, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            ...(options.authToken
-              ? { "X-Stella-Self-Mod-Hmr-Token": options.authToken }
+            ...(statusToken
+              ? { "X-Stella-Self-Mod-Hmr-Token": statusToken }
               : {}),
           },
           signal: withTimeoutSignal(REQUEST_TIMEOUT_MS),
