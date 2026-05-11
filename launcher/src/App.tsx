@@ -135,6 +135,7 @@ function App() {
   >("idle");
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [showFailureDetails, setShowFailureDetails] = useState(false);
+  const [confirmingRevert, setConfirmingRevert] = useState(false);
 
   const applyState = useCallback((nextState: InstallerState) => {
     startTransition(() => setState(nextState));
@@ -326,6 +327,7 @@ function App() {
       // captures the new state.
       await invoke("clear_desktop_failure");
       setFailure(null);
+      setConfirmingRevert(false);
       await invoke<{ ok: boolean }>("launch_desktop");
     } catch (err) {
       setRecoveryAction("revertFailed");
@@ -337,6 +339,21 @@ function App() {
             : "Couldn't roll back the last update.",
       );
     }
+  }, []);
+
+  const handleRecoveryDismiss = useCallback(async () => {
+    // Lets the user leave the recovery view and see the normal
+    // launcher (install path / launch button / settings). The captured
+    // failure is cleared on the Rust side so a Tauri reload doesn't
+    // bounce them back in.
+    try {
+      await invoke("clear_desktop_failure");
+    } catch {}
+    setFailure(null);
+    setConfirmingRevert(false);
+    setRecoveryAction("idle");
+    setRecoveryError(null);
+    setShowFailureDetails(false);
   }, []);
 
   /* ── Derived ─────────────────────────────────────────────────── */
@@ -498,6 +515,22 @@ function App() {
     const canRevert = !!failure.revertableCommit;
     const revertSubject = failure.revertableCommit?.subject ?? "";
     const revertSha = failure.revertableCommit?.shortSha ?? "";
+    const revertSteps: ConfirmStep[] = [
+      {
+        title: "Undo Stella's last update?",
+        body: revertSubject
+          ? `This rolls back "${revertSubject}". Anything Stella changed in that update will be lost.`
+          : "This rolls back the most recent change Stella made to itself. Anything in that update will be lost.",
+        confirmLabel: "Continue",
+        danger: true,
+      },
+      {
+        title: "Last chance.",
+        body: "Once you undo, Stella can't bring this update back. Your chats, memories, and settings are kept either way.",
+        confirmLabel: "Undo update",
+        danger: true,
+      },
+    ];
     return (
       <div className="shell shell--complete">
         <div className="drag-region" />
@@ -528,7 +561,7 @@ function App() {
               <button
                 type="button"
                 className="recovery-btn"
-                onClick={handleRecoveryRevert}
+                onClick={() => setConfirmingRevert(true)}
                 disabled={busy}
                 title={`Reverts ${revertSha}: ${revertSubject}`}
               >
@@ -573,7 +606,26 @@ function App() {
             )}
             <p className="recovery-log-path">{failure.logPath}</p>
           </div>
+          <div className="recovery-dismiss">
+            <button
+              type="button"
+              className="link-btn"
+              onClick={handleRecoveryDismiss}
+              disabled={busy}
+            >
+              Back to launcher
+            </button>
+          </div>
         </main>
+        {confirmingRevert && canRevert && (
+          <ConfirmDialog
+            steps={revertSteps}
+            onCancel={() => setConfirmingRevert(false)}
+            onConfirm={handleRecoveryRevert}
+            busy={reverting}
+            busyLabel="Undoing..."
+          />
+        )}
       </div>
     );
   }

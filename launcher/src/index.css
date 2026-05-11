@@ -996,3 +996,9 @@ body {
 	user-select: text;
 	word-break: break-all;
 }
+
+.recovery-dismiss {
+	margin-top: 18px;
+	display: flex;
+	justify-content: center;
+}
