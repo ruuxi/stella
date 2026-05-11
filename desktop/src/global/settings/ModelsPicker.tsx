@@ -11,7 +11,6 @@ import {
   type ReactElement,
 } from "react";
 import { preloadModelsPicker } from "@/shared/lib/sidebar-preloads";
-import { useNativeWebsiteBlockingOverlay } from "@/shared/lib/native-website-overlay";
 import {
   Popover,
   PopoverBody,
@@ -66,7 +65,6 @@ export function ModelsPicker({
 }: ModelsPickerProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
-  useNativeWebsiteBlockingOverlay(open);
   const setOpen = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) preloadModelsPicker();

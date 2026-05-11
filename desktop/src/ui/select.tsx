@@ -2,6 +2,7 @@ import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { NativeWebsiteOverlayRegistrar } from "@/shared/lib/native-website-overlay";
 
 export interface SelectOption<T extends string = string> {
   value: T;
@@ -65,6 +66,7 @@ export function Select<T extends string = string>({
           <ChevronDown size={14} data-slot="select-icon" aria-hidden="true" />
         </DropdownMenuPrimitive.Trigger>
         <DropdownMenuPrimitive.Portal>
+          <NativeWebsiteOverlayRegistrar />
           <DropdownMenuPrimitive.Content
             data-component="dropdown-menu-content"
             data-slot="select-content"

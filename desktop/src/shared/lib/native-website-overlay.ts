@@ -38,6 +38,19 @@ export const useRegisterNativeWebsiteBlockingOverlay = () => {
   useLayoutEffect(() => registerNativeWebsiteBlockingOverlay(), []);
 };
 
+/**
+ * Tiny renderless component that registers a native-website blocking
+ * overlay while it is mounted. Drop inside any Radix portal content so
+ * the registration tracks the portal's mount lifecycle (which Radix ties
+ * to the open state). Lets shared UI primitives auto-suspend the
+ * `WebContentsView` for Store/Billing without each call site remembering
+ * to call the hook.
+ */
+export const NativeWebsiteOverlayRegistrar = () => {
+  useRegisterNativeWebsiteBlockingOverlay();
+  return null;
+};
+
 export const useNativeWebsiteBlockingOverlay = (active: boolean) => {
   useLayoutEffect(() => {
     if (!active) return;
