@@ -8,10 +8,29 @@ const openBilling = () => {
   void router.navigate({ to: '/billing' })
 }
 
+const openSignInDialog = () => {
+  void router.navigate({
+    to: '.',
+    search: (prev) => ({
+      ...prev,
+      dialog: 'auth' as const,
+    }),
+  })
+}
+
 const upgradeAction = {
   label: 'Upgrade',
   onClick: openBilling,
 }
+
+const signInAction = {
+  label: 'Sign in',
+  onClick: openSignInDialog,
+}
+
+const signInRequiredMatchers = [
+  'sign in required',
+] as const
 
 const billingMatchers = [
   'usage limit reached',
@@ -65,6 +84,21 @@ export const resolveStellaProviderErrorToast = (
 ): ToastOptions => {
   const message = normalizeErrorText(reason)
   const normalized = message.toLowerCase()
+
+  // Anonymous-cap branch must come before the generic rate-limit branch:
+  // anon users get a "Sign in" CTA instead of "Upgrade" → /billing
+  // (they have no account to upgrade). Backend marker:
+  // `stella_provider/authorization.ts` 429 message.
+  if (includesAny(normalized, signInRequiredMatchers)) {
+    return {
+      title: 'Sign in to keep using Stella',
+      description:
+        "You've used your free Stella previews. Sign in to keep going.",
+      variant: 'error',
+      duration: 8000,
+      action: signInAction,
+    }
+  }
 
   if (includesAny(normalized, billingMatchers)) {
     return {

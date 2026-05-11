@@ -123,16 +123,22 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   },
 
   free: {
-    model: "accounts/fireworks/models/minimax-m2p7",
-    fallbackMode: "standard",
-    managedGatewayProvider: "fireworks",
+    model: "deepseek/deepseek-v4-flash",
+    managedGatewayProvider: "openrouter",
     temperature: 1.0,
     maxOutputTokens: 4096,
     providerOptions: {
       openai: {
         reasoningEffort: "medium",
       },
-      ...gatewayOptions("fireworks"),
+      // OpenRouter routing: pin to OpenRouter and deny third-party data
+      // collection — privacy posture for the free tier (Stella's
+      // marketing copy promises "files stay local, we don't store
+      // anything on our servers").
+      gateway: {
+        order: ["openrouter"],
+        data_collection: "deny",
+      },
     },
   },
 
@@ -171,7 +177,13 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     temperature: 0.7,
     maxOutputTokens: 512,
     providerOptions: {
-      ...gatewayOptions("openrouter"),
+      // Mirror the free-tier privacy posture: deny third-party data
+      // collection on the OpenRouter route. This pass sees user
+      // social-room messages for moderation.
+      gateway: {
+        order: ["openrouter"],
+        data_collection: "deny",
+      },
     },
   },
 
@@ -381,13 +393,13 @@ export const TASK_MODEL_MODES: Record<string, ModelMode> = {
   // tier so it can faithfully merge weeks of context. Chronicle's recursive
   // summarizer ticks every minute, so it must stay cheap.
   dream: "sota",
-  chronicle: "synthesis",
+  chronicle: "free",
 
   // Background "should we update the user's home Ideas list?" pass that
-  // fires every few General-agent finalizes. Cheap reasoning model is the
-  // sweet spot — needs to weigh the current list against fresh activity
-  // and decide whether to replace it without paying the strong-tier cost.
-  home_suggestions: "reasoning",
+  // fires every few General-agent finalizes. Cheap free-tier model is
+  // sufficient — it weighs the current list against fresh activity and
+  // decides whether to replace it without paying the strong-tier cost.
+  home_suggestions: "free",
 };
 
 const buildResolvedModeConfig = (
