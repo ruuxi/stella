@@ -3,6 +3,7 @@ import { loadBundledAgents } from "../agents/agents.js";
 import { loadExtensions } from "../extensions/loader.js";
 import type { ExtensionServices } from "../extensions/services.js";
 import { loadGoogleWorkspaceTools } from "../google-workspace/load-google-workspace-tools.js";
+import { fetchAndRegisterModelsDevDirectProviderModels } from "../../ai/models-dev.js";
 import { registerModel, unregisterModel } from "../../ai/models.js";
 import type { Api, Model } from "../../ai/types.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -200,6 +201,17 @@ export const createRuntimeInitialization = (
     }
   };
 
+  const loadAndRegisterModelsDevCatalog = async (): Promise<void> => {
+    try {
+      const registered = await fetchAndRegisterModelsDevDirectProviderModels();
+      logger.info("models-dev.ready", { registered });
+    } catch (error) {
+      logger.warn("models-dev.load-failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
   const initializeRuntime = () => {
     // Stella's lifecycle hooks (personality, self-mod, …) live in the
     // stella-runtime extension and register through the same loader path
@@ -208,8 +220,12 @@ export const createRuntimeInitialization = (
     // get installed. Stella-runtime is just an extension that ships in
     // the source tree.
     const extensionsLoad = loadAndRegisterExtensions();
+    const modelsDevLoad = loadAndRegisterModelsDevCatalog();
 
-    context.state.initializationPromise = Promise.all([extensionsLoad]).then(() => {
+    context.state.initializationPromise = Promise.all([
+      extensionsLoad,
+      modelsDevLoad,
+    ]).then(() => {
       context.state.isInitialized = true;
     });
 
@@ -291,8 +307,7 @@ export const createRuntimeInitialization = (
       // distinctly from "reloaded" so the watcher's busy-retry loop
       // doesn't masquerade a persistent disk problem as success and so
       // any future UI-driven reload affordance can show the error.
-      const reason =
-        error instanceof Error ? error.message : String(error);
+      const reason = error instanceof Error ? error.message : String(error);
       logger.warn("extensions.reload.load-failed", { error: reason });
       return { status: "load-failed", reason };
     }

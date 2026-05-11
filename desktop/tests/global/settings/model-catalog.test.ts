@@ -4,6 +4,7 @@ import {
   groupCatalogModelsByProvider,
   listLocalCatalogModels,
   mergeCatalogModels,
+  normalizeDirectProviderCatalogModels,
   normalizeManagedGatewayCatalogModels,
   normalizeStellaCatalogModels,
   searchCatalogModels,
@@ -22,9 +23,7 @@ describe("settings model catalog", () => {
       models.some((model) => model.provider === "azure-openai-responses"),
     ).toBe(false);
     expect(models.every((model) => model.source === "local")).toBe(true);
-    expect(models.every((model) => model.id.startsWith("stella/"))).toBe(
-      false,
-    );
+    expect(models.every((model) => model.id.startsWith("stella/"))).toBe(false);
   });
 
   it("normalizes Stella backend rows and keeps Stella-specific models first when merging", () => {
@@ -99,15 +98,18 @@ describe("settings model catalog", () => {
       },
     ];
 
-    expect(groupCatalogModelsByProvider(models).map((group) => group.provider))
-      .toEqual(["stella", "anthropic"]);
+    expect(
+      groupCatalogModelsByProvider(models).map((group) => group.provider),
+    ).toEqual(["stella", "anthropic"]);
     expect(
       groupCatalogModelsByProvider(models)[0].models.map((model) => model.id),
     ).toEqual(["stella/best", "stella/openai/gpt-5.5"]);
-    expect(searchCatalogModels(models, "opus").map((model) => model.id))
-      .toEqual(["anthropic/claude-opus-4.7"]);
-    expect(searchCatalogModels(models, "anthropic").map((model) => model.id))
-      .toEqual(["anthropic/claude-opus-4.7"]);
+    expect(
+      searchCatalogModels(models, "opus").map((model) => model.id),
+    ).toEqual(["anthropic/claude-opus-4.7"]);
+    expect(
+      searchCatalogModels(models, "anthropic").map((model) => model.id),
+    ).toEqual(["anthropic/claude-opus-4.7"]);
   });
 
   it("adds Fireworks, but not OpenRouter, as Stella-routed catalog entries", () => {
@@ -137,5 +139,56 @@ describe("settings model catalog", () => {
     expect(models.map((model) => model.upstreamModel)).toEqual([
       "accounts/fireworks/models/kimi-k2p6",
     ]);
+  });
+
+  it("adds live models.dev direct-provider rows for supported text models", () => {
+    const models = normalizeDirectProviderCatalogModels({
+      openai: {
+        models: {
+          "gpt-5.5": {
+            id: "gpt-5.5",
+            name: "GPT-5.5",
+            reasoning: true,
+            modalities: {
+              input: ["text", "image", "pdf"],
+              output: ["text"],
+            },
+            limit: {
+              context: 1_050_000,
+              output: 128_000,
+            },
+          },
+          "gpt-image-1.5": {
+            id: "gpt-image-1.5",
+            name: "gpt-image-1.5",
+            modalities: {
+              input: ["text"],
+              output: ["image"],
+            },
+          },
+        },
+      },
+      "fireworks-ai": {
+        models: {
+          "accounts/fireworks/models/kimi-k2p6": {
+            id: "accounts/fireworks/models/kimi-k2p6",
+            name: "Kimi K2P6",
+          },
+        },
+      },
+    });
+
+    expect(models).toHaveLength(1);
+    expect(models[0]).toMatchObject({
+      id: "openai/gpt-5.5",
+      modelId: "gpt-5.5",
+      name: "GPT-5.5",
+      provider: "openai",
+      source: "local",
+      reasoning: true,
+      input: ["text", "image"],
+      contextWindow: 1_050_000,
+      maxTokens: 128_000,
+    });
   });
 });

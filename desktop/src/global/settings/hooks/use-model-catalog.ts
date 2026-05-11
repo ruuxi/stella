@@ -8,6 +8,7 @@ import {
   groupCatalogModelsByProvider,
   listLocalCatalogModels,
   mergeCatalogModels,
+  normalizeDirectProviderCatalogModels,
   normalizeManagedGatewayCatalogModels,
   normalizeStellaCatalogModels,
   searchCatalogModels,
@@ -69,10 +70,14 @@ const inFlightCatalogRequests = new Map<string, Promise<CatalogFetchResult>>();
 const catalogCache = new Map<string, CatalogCacheEntry>();
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
 let managedGatewayCatalogCache: {
-  models: CatalogModel[];
+  directModels: CatalogModel[];
+  stellaModels: CatalogModel[];
   fetchedAt: number;
 } | null = null;
-let inFlightManagedGatewayCatalogRequest: Promise<CatalogModel[]> | null = null;
+let inFlightManagedGatewayCatalogRequest: Promise<{
+  directModels: CatalogModel[];
+  stellaModels: CatalogModel[];
+}> | null = null;
 
 const toErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message
@@ -213,7 +218,7 @@ async function fetchCatalogModels(
 
 async function fetchManagedGatewayCatalogModels(
   forceRefresh = false,
-): Promise<CatalogModel[]> {
+): Promise<{ directModels: CatalogModel[]; stellaModels: CatalogModel[] }> {
   if (forceRefresh) {
     managedGatewayCatalogCache = null;
     inFlightManagedGatewayCatalogRequest = null;
@@ -223,7 +228,10 @@ async function fetchManagedGatewayCatalogModels(
     managedGatewayCatalogCache &&
     isCatalogCacheFresh(managedGatewayCatalogCache)
   ) {
-    return managedGatewayCatalogCache.models;
+    return {
+      directModels: managedGatewayCatalogCache.directModels,
+      stellaModels: managedGatewayCatalogCache.stellaModels,
+    };
   }
   if (!inFlightManagedGatewayCatalogRequest) {
     inFlightManagedGatewayCatalogRequest = (async () => {
@@ -233,16 +241,29 @@ async function fetchManagedGatewayCatalogModels(
           throw new Error(`HTTP ${res.status}`);
         }
         const data = (await res.json()) as ModelsDevApi;
-        const models = normalizeManagedGatewayCatalogModels(data);
+        const directModels = normalizeDirectProviderCatalogModels(data);
+        const stellaModels = normalizeManagedGatewayCatalogModels(data);
         if (ENABLE_CATALOG_CACHE) {
           managedGatewayCatalogCache = {
-            models,
+            directModels,
+            stellaModels,
             fetchedAt: Date.now(),
           };
         }
-        return models;
+        return {
+          directModels,
+          stellaModels,
+        };
       } catch {
-        return managedGatewayCatalogCache?.models ?? [];
+        return managedGatewayCatalogCache
+          ? {
+              directModels: managedGatewayCatalogCache.directModels,
+              stellaModels: managedGatewayCatalogCache.stellaModels,
+            }
+          : {
+              directModels: [],
+              stellaModels: [],
+            };
       } finally {
         inFlightManagedGatewayCatalogRequest = null;
       }
@@ -289,7 +310,10 @@ export function useModelCatalog() {
     return `${sessionKey}:audience:${billingAudienceKey}`;
   }, [billingAudienceKey, hasConnectedAccount, sessionData, session.isPending]);
   const [models, setModels] = useState<CatalogModel[]>([]);
-  const [managedGatewayModels, setManagedGatewayModels] = useState<
+  const [managedGatewayStellaModels, setManagedGatewayStellaModels] = useState<
+    CatalogModel[]
+  >([]);
+  const [directProviderModels, setDirectProviderModels] = useState<
     CatalogModel[]
   >([]);
   const [defaults, setDefaults] = useState<CatalogDefaultModel[]>([]);
@@ -298,12 +322,16 @@ export function useModelCatalog() {
   const [refreshing, setRefreshing] = useState(false);
   const localModels = useMemo(() => listLocalCatalogModels(), []);
   const stellaModels = useMemo(
-    () => mergeCatalogModels(models, managedGatewayModels),
-    [managedGatewayModels, models],
+    () => mergeCatalogModels(models, managedGatewayStellaModels),
+    [managedGatewayStellaModels, models],
+  );
+  const directModels = useMemo(
+    () => mergeCatalogModels(localModels, directProviderModels),
+    [directProviderModels, localModels],
   );
   const mergedModels = useMemo(
-    () => mergeCatalogModels(stellaModels, localModels),
-    [localModels, stellaModels],
+    () => mergeCatalogModels(stellaModels, directModels),
+    [directModels, stellaModels],
   );
   const groups = useMemo<ProviderGroup[]>(
     () => groupCatalogModelsByProvider(mergedModels),
@@ -348,7 +376,8 @@ export function useModelCatalog() {
     let canceled = false;
     void fetchManagedGatewayCatalogModels().then((next) => {
       if (!canceled) {
-        setManagedGatewayModels(next);
+        setManagedGatewayStellaModels(next.stellaModels);
+        setDirectProviderModels(next.directModels);
       }
     });
     return () => {
@@ -373,11 +402,15 @@ export function useModelCatalog() {
         }),
         fetchManagedGatewayCatalogModels(true),
       ]);
-      if (catalogResult.models.length > 0 || catalogResult.defaults.length > 0) {
+      if (
+        catalogResult.models.length > 0 ||
+        catalogResult.defaults.length > 0
+      ) {
         setModels(catalogResult.models);
         setDefaults(catalogResult.defaults);
       }
-      setManagedGatewayModels(managedModels);
+      setManagedGatewayStellaModels(managedModels.stellaModels);
+      setDirectProviderModels(managedModels.directModels);
       setError(catalogResult.error);
     } finally {
       setRefreshing(false);
@@ -387,7 +420,7 @@ export function useModelCatalog() {
   return {
     models: stellaModels,
     stellaModels,
-    localModels,
+    localModels: directModels,
     allModels: mergedModels,
     defaults,
     groups,

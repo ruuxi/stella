@@ -46,6 +46,21 @@ export type CatalogApiResponse = {
 type ModelsDevModelEntry = {
   id?: string;
   name?: string;
+  reasoning?: boolean;
+  modalities?: {
+    input?: string[];
+    output?: string[];
+  };
+  cost?: {
+    input?: number;
+    output?: number;
+    cache_read?: number;
+    cache_write?: number;
+  };
+  limit?: {
+    context?: number;
+    output?: number;
+  };
 };
 
 type ModelsDevProviderEntry = {
@@ -185,6 +200,30 @@ const MANAGED_GATEWAY_MODEL_SOURCES = [
   },
 ] as const;
 
+const MODELS_DEV_DIRECT_PROVIDER_KEYS = new Set([
+  "anthropic",
+  "cerebras",
+  "google",
+  "groq",
+  "mistral",
+  "moonshotai",
+  "openai",
+  "openrouter",
+  "vercel-ai-gateway",
+  "xai",
+  "zai",
+]);
+
+function toCatalogInput(
+  input: readonly string[] | undefined,
+): Model<Api>["input"] {
+  const next: Model<Api>["input"] = ["text"];
+  if (input?.includes("image")) {
+    next.push("image");
+  }
+  return next;
+}
+
 export function normalizeManagedGatewayCatalogModels(
   data: ModelsDevApi,
 ): CatalogModel[] {
@@ -202,6 +241,36 @@ export function normalizeManagedGatewayCatalogModels(
         providerName: getProviderDisplayName("stella"),
         source: "stella",
         upstreamModel,
+      });
+    }
+  }
+  return models.sort(compareCatalogModels);
+}
+
+export function normalizeDirectProviderCatalogModels(
+  data: ModelsDevApi,
+): CatalogModel[] {
+  const models: CatalogModel[] = [];
+  for (const [provider, providerEntry] of Object.entries(data)) {
+    if (!MODELS_DEV_DIRECT_PROVIDER_KEYS.has(provider)) continue;
+    const sourceModels = providerEntry.models ?? {};
+    for (const [modelId, entry] of Object.entries(sourceModels)) {
+      const id = (entry.id ?? modelId).trim();
+      if (!id) continue;
+      const input = entry.modalities?.input ?? ["text"];
+      const output = entry.modalities?.output ?? ["text"];
+      if (!input.includes("text") || !output.includes("text")) continue;
+      models.push({
+        id: `${provider}/${id}`,
+        modelId: id,
+        name: entry.name?.trim() || id,
+        provider,
+        providerName: getProviderDisplayName(provider),
+        source: "local",
+        contextWindow: entry.limit?.context,
+        maxTokens: entry.limit?.output,
+        input: toCatalogInput(input),
+        reasoning: entry.reasoning ?? false,
       });
     }
   }
