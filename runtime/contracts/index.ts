@@ -289,7 +289,8 @@ export type StoreReleaseManifest = {
   releaseNumber: number;
   category: StorePackageCategory;
   displayName: string;
-  description: string;
+  /** Optional store description; omitted on packages published without one. */
+  description?: string;
   releaseNotes?: string;
   createdAt: number;
   /** Optional commit hash on the author's tree at publish time. */
@@ -303,7 +304,8 @@ export type StorePackageRecord = {
   category?: StorePackageCategory;
   tags?: string[];
   displayName: string;
-  description: string;
+  /** Optional store description; omitted on packages published without one. */
+  description?: string;
   latestReleaseNumber: number;
   createdAt: number;
   updatedAt: number;

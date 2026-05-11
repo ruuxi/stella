@@ -48,7 +48,7 @@ const storePackageFields = {
   category: v.optional(store_package_category_validator),
   tags: v.optional(v.array(v.string())),
   displayName: v.string(),
-  description: v.string(),
+  description: v.optional(v.string()),
   searchText: v.string(),
   latestReleaseNumber: v.number(),
   latestReleaseId: v.optional(v.id("store_package_releases")),

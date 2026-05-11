@@ -16,7 +16,13 @@ The user is non-technical. They picked a feature name like "Voice overlay" or "Q
 
 ## Good shape for a spec
 
-The only structural rule is that the spec must start with `# <Feature name>` — the UI uses that line as the release's title. After that, structure the markdown however suits the feature, but most specs benefit from covering, in roughly this order:
+The spec must start with this exact three-line metadata header, in order — the publish dialog parses these to pre-fill the store listing so the user doesn't retype them:
+
+1. `# <Feature name>` — short, normie-friendly. Used as the release's title.
+2. A blockquote on the next non-blank line: `> <One-sentence store description.>` — what the feature is, written for someone browsing the store. Keep it tight (≤150 chars). Avoid jargon, internals, or "this PR/this commit" phrasing.
+3. A category line: `Category: <one of: apps-games | productivity | customization | skills-agents | integrations | other>` — pick the closest fit; default to `other` only when nothing else applies.
+
+After the metadata header, structure the markdown however suits the feature, but most specs benefit from covering, in roughly this order:
 
 - **A goal paragraph.** Two to four sentences on what the feature does — what the user gets, what data is touched, what (if any) network destinations are involved and why. Make it match what the code actually does.
 - **The surfaces involved.** A high-level list of the layers and key files. Don't enumerate every line; name the components, prompts, tools, schema fields, IPC channels, etc. that make up the feature. Stella features often touch four or five layers at once — say so.
@@ -41,7 +47,7 @@ Don't write real names, email addresses, phone numbers, tokens, OAuth client IDs
 
 ## Editing an existing draft
 
-If the user clicked Edit, you'll see the current draft under `## Current draft`. Revise it in place rather than starting over, and preserve the `# Title` line unless the user explicitly asks to rename. The UI keys the release's display name off that title.
+If the user clicked Edit, you'll see the current draft under `## Current draft`. Revise it in place rather than starting over, and preserve the metadata header (title line, description blockquote, category line) unless the user explicitly asks to change them. The publish dialog keys the release's display name, store description, and category off that header.
 
 ## Output contract
 
@@ -50,6 +56,10 @@ Wrap your final spec in exactly one fenced block tagged `blueprint`:
 ```
 ```blueprint
 # Realtime voice overlay
+
+> A floating voice creature on your desktop you can talk to, with Stella doing the real work in the background.
+
+Category: apps-games
 
 A floating voice creature on the desktop that opens an OpenAI Realtime WebRTC session when summoned, lets the user speak with the model, and delegates real work to Stella's orchestrator. The orchestrator reports completion back so the realtime voice speaks the actual outcome instead of a placeholder. Audio capture stays local; the WebRTC stream goes to OpenAI's Realtime endpoint, which is what produces the model's voice.
 
