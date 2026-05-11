@@ -41,25 +41,31 @@ export type AnonymousUsageRecord = {
  * runs a managed-LLM completion that Stella pays for, so this stays
  * enforced server-side.
  *
- * Override via `STELLA_ANON_MAX_REQUESTS` (positive integer; defaults to
- * 5 when unset or invalid).
+ * Required env: `STELLA_ANON_MAX_REQUESTS` (positive integer). No
+ * default — Stella is open source and the cap lives in the deployment,
+ * not the repo. Throws on first read if missing or invalid.
  */
-const DEFAULT_MAX_ANON_REQUESTS = 5;
+let cachedMaxAnonRequests: number | null = null;
 
-const parseMaxAnonRequests = (): number => {
+const loadMaxAnonRequests = (): number => {
+  if (cachedMaxAnonRequests !== null) return cachedMaxAnonRequests;
   const raw = process.env.STELLA_ANON_MAX_REQUESTS?.trim();
-  if (!raw) return DEFAULT_MAX_ANON_REQUESTS;
+  if (!raw) {
+    throw new Error(
+      "[stella-provider] Missing required env STELLA_ANON_MAX_REQUESTS. Set it in Convex env before starting.",
+    );
+  }
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
-    console.warn(
-      `[stella-provider] Invalid STELLA_ANON_MAX_REQUESTS=${raw}; falling back to default ${DEFAULT_MAX_ANON_REQUESTS}.`,
+    throw new Error(
+      `[stella-provider] Invalid env STELLA_ANON_MAX_REQUESTS=${raw}; expected a positive integer.`,
     );
-    return DEFAULT_MAX_ANON_REQUESTS;
   }
+  cachedMaxAnonRequests = parsed;
   return parsed;
 };
 
-export const MAX_ANON_REQUESTS = parseMaxAnonRequests();
+export const getMaxAnonRequests = (): number => loadMaxAnonRequests();
 export const DEFAULT_RETRY_AFTER_MS = 60_000;
 export const STELLA_MODELS_RATE_LIMIT = 60;
 export const STELLA_MODELS_RATE_WINDOW_MS = 60_000;
@@ -78,7 +84,7 @@ export async function checkDeviceRateLimit(
         clientAddressKey: clientAddressKey ?? undefined,
       },
     );
-    return (usage?.requestCount ?? 0) < MAX_ANON_REQUESTS;
+    return (usage?.requestCount ?? 0) < getMaxAnonRequests();
   } catch (error) {
     if (!isAnonDeviceHashSaltMissingError(error)) {
       throw error;
@@ -98,7 +104,7 @@ export async function consumeAnonymousRequestAllowance(
       internal.ai_proxy_data.consumeDeviceAllowance,
       {
         deviceId,
-        maxRequests: MAX_ANON_REQUESTS,
+        maxRequests: getMaxAnonRequests(),
         clientAddressKey: clientAddressKey ?? undefined,
       },
     );
