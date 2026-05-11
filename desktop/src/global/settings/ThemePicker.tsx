@@ -7,7 +7,6 @@ import {
   type ReactElement,
 } from "react";
 import { useTheme, useThemeControl } from "@/context/theme-context";
-import { useNativeWebsiteBlockingOverlay } from "@/shared/lib/native-website-overlay";
 import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "@/ui/popover";
 import { Button } from "@/ui/button";
 import { Check } from "lucide-react";
@@ -68,7 +67,6 @@ export function ThemePicker({
   const [internalOpen, setInternalOpen] = useState(false);
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
-  useNativeWebsiteBlockingOverlay(open);
   const setOpen = controlledOnOpenChange || setInternalOpen;
 
   const sortedThemes = useMemo(

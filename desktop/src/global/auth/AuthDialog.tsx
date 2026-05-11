@@ -10,7 +10,6 @@ import {
 } from "@/ui/dialog";
 import { MagicLinkAuthFlow } from "./MagicLinkAuthFlow";
 import { useAuthSessionState } from "./hooks/use-auth-session-state";
-import { useNativeWebsiteBlockingOverlay } from "@/shared/lib/native-website-overlay";
 import "./AuthDialog.css";
 
 interface AuthDialogProps {
@@ -19,7 +18,6 @@ interface AuthDialogProps {
 }
 
 export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
-  useNativeWebsiteBlockingOverlay(open);
   const { hasConnectedAccount } = useAuthSessionState();
 
   useEffect(() => {

@@ -12,7 +12,6 @@ import {
 } from "@/ui/dialog";
 import { TextField } from "@/ui/text-field";
 import { showToast } from "@/ui/toast";
-import { useNativeWebsiteBlockingOverlay } from "@/shared/lib/native-website-overlay";
 
 interface FeedbackDialogProps {
   open: boolean;
@@ -59,7 +58,6 @@ export const FeedbackDialog = ({
   variant = "manual",
   onSubmitted,
 }: FeedbackDialogProps) => {
-  useNativeWebsiteBlockingOverlay(open);
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const submitFeedback = useMutation(api.feedback.submitFeedback);

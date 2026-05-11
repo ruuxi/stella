@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/shared/lib/utils";
+import { NativeWebsiteOverlayRegistrar } from "@/shared/lib/native-website-overlay";
 import { X } from "lucide-react";
 
 const DialogRoot = DialogPrimitive.Root;
@@ -30,6 +31,7 @@ const DialogContent = React.forwardRef<
   DialogContentProps
 >(({ className, size = "md", fit, children, ...props }, ref) => (
   <DialogPortal>
+    <NativeWebsiteOverlayRegistrar />
     <DialogOverlay />
     <div data-component="dialog" data-size={size} data-fit={fit || undefined}>
       <div data-slot="dialog-container">
