@@ -147,7 +147,6 @@ type ApplyPayload = {
 }
 type TrackPayload = { paths?: unknown }
 type PausePayload = { runId?: unknown; runIds?: unknown }
-const SELF_MOD_HMR_AUTH_TOKEN = process.env.STELLA_SELF_MOD_HMR_TOKEN ?? ''
 
 export const resolveSelfModHmrAbsolutePath = (repoRelative: string): string | null => {
   if (typeof repoRelative !== 'string' || repoRelative.length === 0) return null
@@ -272,20 +271,36 @@ const reconcileAppliedOverlayFileToDisk = (file: {
   }
 }
 
+/**
+ * Self-mod HMR endpoints are gated by two coordinated defenses, neither of
+ * which is a shared secret token:
+ *
+ *   1. Vite binds the dev server to localhost only, so remote network
+ *      attackers can never reach `/__stella/self-mod-hmr/*` in the first
+ *      place. We re-verify the socket peer here to defeat any oddball
+ *      reverse-proxy / SSRF scenario.
+ *   2. We require the request to have NO `Origin` header. Browser fetches
+ *      always set Origin (and cross-origin requests with a JSON body
+ *      trigger preflight, which Vite does not authorize). Our worker
+ *      uses Node's `fetch` which omits Origin by default, so legitimate
+ *      worker traffic passes while any browser-side caller -- malicious
+ *      tab, our own renderer, an extension -- is blocked.
+ *
+ * Same-UID malicious processes are out of scope: anything running as the
+ * user can already manipulate Stella's files / signals / IPC, so a shared
+ * token bought us nothing real against that threat.
+ */
 const isAuthorizedSelfModRequest = (
   req: import('node:http').IncomingMessage,
 ): boolean => {
-  if (!SELF_MOD_HMR_AUTH_TOKEN) {
-    const remoteAddress = req.socket.remoteAddress ?? ''
-    const origin = req.headers.origin
-    return (
-      origin == null &&
-      (remoteAddress === '127.0.0.1' ||
-        remoteAddress === '::1' ||
-        remoteAddress === '::ffff:127.0.0.1')
-    )
-  }
-  return req.headers['x-stella-self-mod-hmr-token'] === SELF_MOD_HMR_AUTH_TOKEN
+  const remoteAddress = req.socket.remoteAddress ?? ''
+  const origin = req.headers.origin
+  return (
+    origin == null &&
+    (remoteAddress === '127.0.0.1' ||
+      remoteAddress === '::1' ||
+      remoteAddress === '::ffff:127.0.0.1')
+  )
 }
 
 const DELETED_OVERLAY_MODULE = 'throw new Error("This module was deleted by Stella self-mod.");\n'

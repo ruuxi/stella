@@ -1,5 +1,4 @@
 import { execFileSync, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -130,9 +129,10 @@ async function stopOrphanedDevChildren() {
 await stopOrphanedDevChildren();
 writePidFile();
 
-const selfModHmrToken =
-  process.env.STELLA_SELF_MOD_HMR_TOKEN || randomBytes(32).toString("hex");
-
+// Self-mod HMR endpoints are gated by Vite's localhost binding plus an
+// `Origin == null` check on the request -- not by a shared token. See
+// `isAuthorizedSelfModRequest` in `desktop/vite.config.ts` for the gate
+// and `runtime/kernel/self-mod/hmr.ts` for the worker-side caller.
 const processSpecs = [
   {
     name: "vite",
@@ -142,7 +142,6 @@ const processSpecs = [
     env: {
       ...process.env,
       NODE_ENV: "development",
-      STELLA_SELF_MOD_HMR_TOKEN: selfModHmrToken,
     },
   },
   {
@@ -153,7 +152,6 @@ const processSpecs = [
     env: {
       ...process.env,
       STELLA_ELECTRON_DEV_RUNNER_PID: String(process.pid),
-      STELLA_SELF_MOD_HMR_TOKEN: selfModHmrToken,
     },
   },
   {
@@ -161,10 +159,7 @@ const processSpecs = [
     command: process.execPath,
     args: [resolve(scriptDir, "dev-electron.mjs")],
     cwd: repoRootDir,
-    env: {
-      ...process.env,
-      STELLA_SELF_MOD_HMR_TOKEN: selfModHmrToken,
-    },
+    env: { ...process.env },
   },
 ];
 
