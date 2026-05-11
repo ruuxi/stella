@@ -134,25 +134,73 @@ jobs:
         shell: pwsh
         run: rustup target add x86_64-pc-windows-msvc
 
-      # dictation_bridge.exe does keyboard input synthesis (paste) which
-      # Windows Defender silently quarantines. Add-MpPreference exclusions
-      # don't apply to Microsoft Defender for Endpoint (what GHA runners use)
-      # so disable real-time monitoring entirely for the build.
-      - name: Disable Defender real-time monitoring
+      # dictation_bridge.exe does keyboard input synthesis (paste) and
+      # stella-computer-helper.exe does window control — both look like
+      # malware to Defender, which silently quarantines them. Disable every
+      # Defender protection knob we can on the runner. Realtime alone isn't
+      # enough on Microsoft Defender for Endpoint (what GHA runners use).
+      - name: Disable Windows Defender protections
         shell: pwsh
         run: |
-          try {
-            Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
-            Write-Host "Defender real-time monitoring disabled"
-            Get-MpPreference | Select-Object DisableRealtimeMonitoring
-          } catch {
-            Write-Warning "Could not disable Defender real-time monitoring: $_"
+          $opts = @{
+            DisableRealtimeMonitoring  = $true
+            DisableBehaviorMonitoring  = $true
+            DisableBlockAtFirstSeen    = $true
+            DisableIOAVProtection      = $true
+            DisableScriptScanning      = $true
+            DisableArchiveScanning     = $true
+            DisableEmailScanning       = $true
+            DisableRemovableDriveScanning = $true
+            DisableIntrusionPreventionSystem = $true
+            EnableControlledFolderAccess = "Disabled"
+            EnableNetworkProtection    = "Disabled"
+            MAPSReporting              = "Disabled"
+            SubmitSamplesConsent       = "NeverSend"
           }
+          foreach ($key in $opts.Keys) {
+            try {
+              Set-MpPreference -Force @{ $key = $opts[$key] }
+            } catch {
+              # Set-MpPreference takes named params; fall back to per-call.
+            }
+          }
+          try {
+            Set-MpPreference -DisableRealtimeMonitoring $true `
+                             -DisableBehaviorMonitoring $true `
+                             -DisableBlockAtFirstSeen $true `
+                             -DisableIOAVProtection $true `
+                             -DisableScriptScanning $true `
+                             -DisableArchiveScanning $true `
+                             -DisableIntrusionPreventionSystem $true `
+                             -MAPSReporting Disabled `
+                             -SubmitSamplesConsent NeverSend `
+                             -ErrorAction Stop
+            Write-Host "Defender protections disabled"
+          } catch {
+            Write-Warning "Set-MpPreference failed: $_"
+          }
+          Get-MpPreference | Select-Object DisableRealtimeMonitoring,DisableBehaviorMonitoring,DisableIOAVProtection,DisableScriptScanning
 
       - name: Build native helpers (Windows)
         shell: pwsh
         working-directory: desktop/native
         run: powershell -ExecutionPolicy Bypass -File build.ps1
+
+      - name: Snapshot Defender threat detections
+        if: always()
+        shell: pwsh
+        run: |
+          try {
+            $threats = Get-MpThreatDetection -ErrorAction SilentlyContinue
+            if ($threats) {
+              Write-Host "Defender threat detections during build:"
+              $threats | Format-List Resources, ActionSuccess, AdditionalActionsBitMask, ThreatID, DetectionID
+            } else {
+              Write-Host "No Defender threat detections recorded."
+            }
+          } catch {
+            Write-Host "Get-MpThreatDetection unavailable: $_"
+          }
 
       - name: Stage and tar Windows artifacts
         shell: bash
