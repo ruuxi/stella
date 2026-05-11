@@ -2,7 +2,6 @@ import { ConvexError } from "convex/values";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { resolveManagedModelConfigs } from "../agent/model_resolver";
 import { withModelFailoverAsync } from "../agent/model_failover";
 import { scheduleManagedUsage } from "./managed_billing";
 import {
@@ -17,8 +16,22 @@ import { truncateWithNotice } from "./text_utils";
 import {
   assistantText,
   completeManagedChat,
+  type ManagedModelConfig,
   usageSummaryFromAssistant,
 } from "../runtime_ai/managed";
+
+const STORE_REVIEW_MODEL_CONFIG: ManagedModelConfig = {
+  model: "openai/gpt-5.5",
+  managedGatewayProvider: "openai",
+  temperature: 1.0,
+  maxOutputTokens: 32768,
+  providerOptions: {
+    openai: {
+      reasoningEffort: "low",
+    },
+  },
+  modalitiesInput: ["text", "image"],
+};
 
 const reviewFindingSchema = z.object({
   severity: z.enum(["low", "medium", "high", "critical"]),
@@ -30,7 +43,8 @@ const reviewFindingSchema = z.object({
 const storeReviewVerdictSchema = z.object({
   approved: z.boolean(),
   summary: z.string().min(1).max(1500),
-  blockingReason: z.string().min(1).max(1500).optional(),
+  blockingReason: z.string().min(1).max(1500).nullable().optional()
+    .transform((value) => value ?? undefined),
   findings: z.array(reviewFindingSchema).max(12),
 });
 
@@ -45,7 +59,11 @@ const STORE_REVIEW_RESPONSE_FORMAT = {
       properties: {
         approved: { type: "boolean" },
         summary: { type: "string", minLength: 1, maxLength: 1500 },
-        blockingReason: { type: "string", minLength: 1, maxLength: 1500 },
+        blockingReason: {
+          type: ["string", "null"],
+          minLength: 1,
+          maxLength: 1500,
+        },
         findings: {
           type: "array",
           maxItems: 12,
@@ -69,7 +87,7 @@ const STORE_REVIEW_RESPONSE_FORMAT = {
           },
         },
       },
-      required: ["approved", "summary", "findings"],
+      required: ["approved", "summary", "blockingReason", "findings"],
     },
   },
 } as const;
@@ -261,7 +279,7 @@ const STORE_REVIEW_OUTPUT_INSTRUCTIONS = [
   "{",
   '  "approved": boolean,',
   '  "summary": string,',
-  '  "blockingReason"?: string,',
+  '  "blockingReason": string | null,',
   '  "findings": [',
   "    {",
   '      "severity": "low" | "medium" | "high" | "critical",',
@@ -338,6 +356,7 @@ const completeStoreReviewVerdict = async (
       message = await completeManagedChat({
         config,
         context: args.context,
+        api: "openai-completions",
         request: {
           responseFormat: STORE_REVIEW_RESPONSE_FORMAT,
         },
@@ -562,18 +581,11 @@ const reviewCodeFile = async (
     file: ReviewableCodeFile;
   },
 ) => {
-  const { config: resolvedConfig, fallbackConfig } = await resolveManagedModelConfigs(
-    ctx,
-    "store_security_review",
-    args.ownerId,
-  );
-
   return await completeStoreReviewVerdict(ctx, {
     ownerId: args.ownerId,
     conversationId: args.conversationId,
     agentType: "service:store_security_review",
-    config: resolvedConfig,
-    fallbackConfig,
+    config: STORE_REVIEW_MODEL_CONFIG,
     context: {
       systemPrompt: [
         args.file.kind === "blueprint"
@@ -616,12 +628,6 @@ const reviewImageFile = async (
     file: ReviewableImageFile;
   },
 ) => {
-  const { config: resolvedConfig, fallbackConfig } = await resolveManagedModelConfigs(
-    ctx,
-    "store_image_safety_review",
-    args.ownerId,
-  );
-
   const imageMatch = args.file.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!imageMatch) {
     throw new Error(`Image file "${args.file.path}" is not a valid data URL.`);
@@ -631,8 +637,7 @@ const reviewImageFile = async (
     ownerId: args.ownerId,
     conversationId: args.conversationId,
     agentType: "service:store_image_safety_review",
-    config: resolvedConfig,
-    fallbackConfig,
+    config: STORE_REVIEW_MODEL_CONFIG,
     context: {
       systemPrompt: [
         STORE_IMAGE_SAFETY_REVIEW_SYSTEM_PROMPT,
