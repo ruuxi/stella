@@ -1,3 +1,29 @@
+/**
+ * Plan catalog + Stripe-price wiring.
+ *
+ * Every limit is overrideable from a Convex env var so we can tune
+ * pricing without redeploying. Defaults match current production values
+ * — set the matching `STELLA_*` env to override.
+ *
+ * Env vars (all optional, all positive numbers; invalid values fall back
+ * to the listed default):
+ *
+ * Free plan:
+ *   STELLA_FREE_ROLLING_LIMIT_USD       (default 0.75)
+ *   STELLA_FREE_WEEKLY_LIMIT_USD        (default 0.75)
+ *   STELLA_FREE_MONTHLY_LIMIT_USD       (default 0.75)
+ *   STELLA_FREE_ROLLING_WINDOW_HOURS    (default 5)
+ *
+ * Paid plans (replace `<PLAN>` with `GO`, `PRO`, `PLUS`, `ULTRA`):
+ *   STELLA_<PLAN>_PRICE_CENTS           (default Go 2000 / Pro 6000 / Plus 10000 / Ultra 20000)
+ *   STELLA_<PLAN>_ROLLING_LIMIT_USD     (default derived from price + utilization rate)
+ *   STELLA_<PLAN>_WEEKLY_LIMIT_USD      (default derived)
+ *   STELLA_<PLAN>_MONTHLY_LIMIT_USD     (default derived)
+ *   STELLA_<PLAN>_ROLLING_WINDOW_HOURS  (default 5)
+ *
+ * Cross-plan:
+ *   STELLA_INCLUDED_USAGE_UTILIZATION_RATE  (default 0.7; bounded (0, 1])
+ */
 export const SUBSCRIPTION_PLANS = ["free", "go", "pro", "plus", "ultra"] as const;
 
 export type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[number];
@@ -13,19 +39,28 @@ export type PlanConfig = {
 
 export type PlanCatalog = Record<SubscriptionPlan, PlanConfig>;
 
-const DEFAULT_FREE_PLAN: PlanConfig = {
-  label: "Free",
-  monthlyPriceCents: 0,
-  rollingLimitUsd: 0.75,
-  rollingWindowHours: 5,
-  weeklyLimitUsd: 0.75,
-  monthlyLimitUsd: 0.75,
-};
-
 const DEFAULT_INCLUDED_USAGE_UTILIZATION_RATE = 0.7;
 const DEFAULT_ROLLING_WINDOW_HOURS = 5;
 const DEFAULT_ROLLING_LIMIT_SHARE = 0.2;
 const DEFAULT_WEEKLY_LIMIT_SHARE = 0.5;
+
+const DEFAULT_FREE_ROLLING_LIMIT_USD = 0.75;
+const DEFAULT_FREE_WEEKLY_LIMIT_USD = 0.75;
+const DEFAULT_FREE_MONTHLY_LIMIT_USD = 0.75;
+
+const DEFAULT_PAID_PRICE_CENTS: Record<Exclude<SubscriptionPlan, "free">, number> = {
+  go: 2_000,
+  pro: 6_000,
+  plus: 10_000,
+  ultra: 20_000,
+};
+
+const PAID_PLAN_LABELS: Record<Exclude<SubscriptionPlan, "free">, string> = {
+  go: "Go",
+  pro: "Pro",
+  plus: "Plus",
+  ultra: "Ultra",
+};
 
 const roundUsd = (value: number): number =>
   Math.max(0, Math.round(value * 100) / 100);
@@ -33,101 +68,109 @@ const roundUsd = (value: number): number =>
 const toMonthlyPriceUsd = (monthlyPriceCents: number): number =>
   Math.max(0, monthlyPriceCents) / 100;
 
-const parseUtilizationRate = (value: string | undefined, fallback: number): number => {
-  if (!value) return fallback;
-  const parsed = Number(value);
+const parsePositiveNumberEnv = (
+  envName: string,
+  fallback: number,
+): number => {
+  const raw = process.env[envName]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    console.warn(
+      `[billing] Invalid ${envName}=${raw}; falling back to default ${fallback}.`,
+    );
+    return fallback;
+  }
+  return parsed;
+};
+
+const parseUtilizationRateEnv = (
+  envName: string,
+  fallback: number,
+): number => {
+  const raw = process.env[envName]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+    console.warn(
+      `[billing] Invalid ${envName}=${raw} (must be in (0, 1]); falling back to default ${fallback}.`,
+    );
     return fallback;
   }
   return parsed;
 };
 
 export const getIncludedUsageUtilizationRate = (): number =>
-  parseUtilizationRate(
-    process.env.STELLA_INCLUDED_USAGE_UTILIZATION_RATE?.trim(),
+  parseUtilizationRateEnv(
+    "STELLA_INCLUDED_USAGE_UTILIZATION_RATE",
     DEFAULT_INCLUDED_USAGE_UTILIZATION_RATE,
   );
 
+const buildFreePlanConfig = (): PlanConfig => ({
+  label: "Free",
+  monthlyPriceCents: 0,
+  rollingLimitUsd: parsePositiveNumberEnv(
+    "STELLA_FREE_ROLLING_LIMIT_USD",
+    DEFAULT_FREE_ROLLING_LIMIT_USD,
+  ),
+  rollingWindowHours: parsePositiveNumberEnv(
+    "STELLA_FREE_ROLLING_WINDOW_HOURS",
+    DEFAULT_ROLLING_WINDOW_HOURS,
+  ),
+  weeklyLimitUsd: parsePositiveNumberEnv(
+    "STELLA_FREE_WEEKLY_LIMIT_USD",
+    DEFAULT_FREE_WEEKLY_LIMIT_USD,
+  ),
+  monthlyLimitUsd: parsePositiveNumberEnv(
+    "STELLA_FREE_MONTHLY_LIMIT_USD",
+    DEFAULT_FREE_MONTHLY_LIMIT_USD,
+  ),
+});
+
 export const buildPaidPlanConfig = (
-  label: string,
-  monthlyPriceCents: number,
+  plan: Exclude<SubscriptionPlan, "free">,
   utilizationRate: number,
 ): PlanConfig => {
-  const monthlyLimitUsd = roundUsd(toMonthlyPriceUsd(monthlyPriceCents) / utilizationRate);
+  const envPrefix = `STELLA_${plan.toUpperCase()}`;
+  const monthlyPriceCents = parsePositiveNumberEnv(
+    `${envPrefix}_PRICE_CENTS`,
+    DEFAULT_PAID_PRICE_CENTS[plan],
+  );
+  const derivedMonthlyLimitUsd = roundUsd(
+    toMonthlyPriceUsd(monthlyPriceCents) / utilizationRate,
+  );
+  const monthlyLimitUsd = parsePositiveNumberEnv(
+    `${envPrefix}_MONTHLY_LIMIT_USD`,
+    derivedMonthlyLimitUsd,
+  );
   return {
-    label,
+    label: PAID_PLAN_LABELS[plan],
     monthlyPriceCents,
-    rollingLimitUsd: roundUsd(monthlyLimitUsd * DEFAULT_ROLLING_LIMIT_SHARE),
-    rollingWindowHours: DEFAULT_ROLLING_WINDOW_HOURS,
-    weeklyLimitUsd: roundUsd(monthlyLimitUsd * DEFAULT_WEEKLY_LIMIT_SHARE),
+    rollingLimitUsd: parsePositiveNumberEnv(
+      `${envPrefix}_ROLLING_LIMIT_USD`,
+      roundUsd(derivedMonthlyLimitUsd * DEFAULT_ROLLING_LIMIT_SHARE),
+    ),
+    rollingWindowHours: parsePositiveNumberEnv(
+      `${envPrefix}_ROLLING_WINDOW_HOURS`,
+      DEFAULT_ROLLING_WINDOW_HOURS,
+    ),
+    weeklyLimitUsd: parsePositiveNumberEnv(
+      `${envPrefix}_WEEKLY_LIMIT_USD`,
+      roundUsd(derivedMonthlyLimitUsd * DEFAULT_WEEKLY_LIMIT_SHARE),
+    ),
     monthlyLimitUsd,
   };
 };
 
-const buildDefaultPlanCatalog = (): PlanCatalog => {
+const loadPlanCatalog = (): PlanCatalog => {
   const utilizationRate = getIncludedUsageUtilizationRate();
   return {
-    free: DEFAULT_FREE_PLAN,
-    go: buildPaidPlanConfig("Go", 2_000, utilizationRate),
-    pro: buildPaidPlanConfig("Pro", 6_000, utilizationRate),
-    plus: buildPaidPlanConfig("Plus", 10_000, utilizationRate),
-    ultra: buildPaidPlanConfig("Ultra", 20_000, utilizationRate),
+    free: buildFreePlanConfig(),
+    go: buildPaidPlanConfig("go", utilizationRate),
+    pro: buildPaidPlanConfig("pro", utilizationRate),
+    plus: buildPaidPlanConfig("plus", utilizationRate),
+    ultra: buildPaidPlanConfig("ultra", utilizationRate),
   };
-};
-
-const parsePositiveNumber = (value: unknown, fallback: number): number => {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    return fallback;
-  }
-  return value;
-};
-
-const parseLabel = (value: unknown, fallback: string): string => {
-  if (typeof value !== "string") {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : fallback;
-};
-
-const mergePlanOverride = (
-  fallback: PlanConfig,
-  override: unknown,
-): PlanConfig => {
-  if (!override || typeof override !== "object") {
-    return fallback;
-  }
-  const record = override as Record<string, unknown>;
-  return {
-    label: parseLabel(record.label, fallback.label),
-    monthlyPriceCents: parsePositiveNumber(record.monthlyPriceCents, fallback.monthlyPriceCents),
-    rollingLimitUsd: parsePositiveNumber(record.rollingLimitUsd, fallback.rollingLimitUsd),
-    rollingWindowHours: parsePositiveNumber(record.rollingWindowHours, fallback.rollingWindowHours),
-    weeklyLimitUsd: parsePositiveNumber(record.weeklyLimitUsd, fallback.weeklyLimitUsd),
-    monthlyLimitUsd: parsePositiveNumber(record.monthlyLimitUsd, fallback.monthlyLimitUsd),
-  };
-};
-
-const loadPlanCatalog = (): PlanCatalog => {
-  const defaultPlanCatalog = buildDefaultPlanCatalog();
-  const raw = process.env.STELLA_PLAN_CONFIG_JSON?.trim();
-  if (!raw) {
-    return defaultPlanCatalog;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      free: mergePlanOverride(defaultPlanCatalog.free, parsed.free),
-      go: mergePlanOverride(defaultPlanCatalog.go, parsed.go),
-      pro: mergePlanOverride(defaultPlanCatalog.pro, parsed.pro),
-      plus: mergePlanOverride(defaultPlanCatalog.plus, parsed.plus),
-      ultra: mergePlanOverride(defaultPlanCatalog.ultra, parsed.ultra),
-    };
-  } catch (error) {
-    console.warn("[billing] Invalid STELLA_PLAN_CONFIG_JSON. Falling back to defaults.", error);
-    return defaultPlanCatalog;
-  }
 };
 
 const PLAN_CATALOG = loadPlanCatalog();
