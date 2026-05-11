@@ -39,8 +39,8 @@ export const INTEGRATIONS: Integration[] = [
         <path fill="#5865F2" d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
       </svg>
     ),
-    botLink: "https://discord.com/oauth2/authorize?client_id=1360392517498040320&scope=bot&permissions=2048",
-    instructions: "Add the Stella bot to your server, then DM it with the code below.",
+    botLink: "https://discord.com/oauth2/authorize?client_id=1466921030873518161&integration_type=1&scope=applications.commands",
+    instructions: "Install the Stella app to your Discord account, then DM @Stella with /link <code below>.",
   },
   {
     provider: "slack",
@@ -71,33 +71,5 @@ export const INTEGRATIONS: Integration[] = [
     ),
     botLink: "https://t.me/StellaAIBot",
     instructions: "Open the Stella bot in Telegram, then send it the code below.",
-  },
-  {
-    provider: "google_chat",
-    displayName: "Google Chat",
-    type: "bot",
-    group: "messaging",
-    brandColor: "#00AC47",
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path fill="#00AC47" d="M12 0C5.372 0 0 4.975 0 11.111c0 3.497 1.745 6.616 4.472 8.652V24l4.086-2.242c1.09.301 2.246.464 3.442.464 6.627 0 12-4.974 12-11.111C24 4.975 18.627 0 12 0zm1.193 14.963l-3.056-3.259-5.963 3.259L10.733 8.3l3.13 3.259L19.77 8.3l-6.578 6.663z" />
-      </svg>
-    ),
-    botLink: "https://chat.google.com",
-    instructions: "Add Stella to a Google Chat space, then send it the code below.",
-  },
-  {
-    provider: "teams",
-    displayName: "Microsoft Teams",
-    type: "bot",
-    group: "messaging",
-    brandColor: "#6264A7",
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path fill="#6264A7" d="M20.625 8.073h-5.27V5.007a3.041 3.041 0 0 1 1.46-2.6 3.06 3.06 0 0 1 4.616 2.624v.026a3.017 3.017 0 0 1-.806 2.016zM24 11.32v4.6a3.6 3.6 0 0 1-3.6 3.6h-.075a3.6 3.6 0 0 1-3.6-3.6v-4.6a.679.679 0 0 1 .68-.68H23.32a.679.679 0 0 1 .68.68zM14.57 5.343a3.93 3.93 0 1 1-3.93-3.93 3.93 3.93 0 0 1 3.93 3.93zM17.2 11.2v7.16A5.636 5.636 0 0 1 11.56 24H5.64A5.636 5.636 0 0 1 0 18.36V11.2a1.2 1.2 0 0 1 1.2-1.2h14.8a1.2 1.2 0 0 1 1.2 1.2z" />
-      </svg>
-    ),
-    botLink: "https://teams.microsoft.com",
-    instructions: "Install Stella from the Teams app store, then send it the code below in a chat.",
   },
 ];
