@@ -11,7 +11,6 @@ const PopoverContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
 >(({ className, sideOffset = 4, children, style, ...props }, ref) => (
   <PopoverPrimitive.Portal>
-    <NativeWebsiteOverlayRegistrar />
     <PopoverPrimitive.Content
       ref={ref}
       sideOffset={sideOffset}
@@ -20,6 +19,7 @@ const PopoverContent = React.forwardRef<
       style={{ ...style, zIndex: 9999 }}
       {...props}
     >
+      <NativeWebsiteOverlayRegistrar />
       {children}
     </PopoverPrimitive.Content>
   </PopoverPrimitive.Portal>

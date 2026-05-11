@@ -66,7 +66,6 @@ export function Select<T extends string = string>({
           <ChevronDown size={14} data-slot="select-icon" aria-hidden="true" />
         </DropdownMenuPrimitive.Trigger>
         <DropdownMenuPrimitive.Portal>
-          <NativeWebsiteOverlayRegistrar />
           <DropdownMenuPrimitive.Content
             data-component="dropdown-menu-content"
             data-slot="select-content"
@@ -74,6 +73,7 @@ export function Select<T extends string = string>({
             align="start"
             collisionPadding={8}
           >
+            <NativeWebsiteOverlayRegistrar />
             <DropdownMenuPrimitive.RadioGroup
               value={value}
               onValueChange={(next) => onValueChange?.(next as T)}
