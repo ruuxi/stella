@@ -245,9 +245,89 @@ describe("claude-code-session-runtime", () => {
       expect(records).toHaveLength(2);
       expect(records[0]?.argv).toContain("--input-format");
       expect(records[0]?.argv).toContain("stream-json");
+      expect(records[0]?.argv).not.toContain("--model");
       expect(records[0]?.content).toContain("Please read a.txt.");
       expect(records[1]?.content).toContain("A Stella tool request has completed.");
       expect(records[1]?.content).toContain("file contents");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to a fresh Claude Code session when the stored resume id is missing", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-resume-"));
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "resume.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "const argv = process.argv.slice(2);",
+        "fs.appendFileSync(logPath, JSON.stringify({ argv }) + '\\n');",
+        "if (argv.includes('--resume')) {",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    subtype: 'error_during_execution',",
+        "    is_error: true,",
+        "    errors: ['No conversation found with session ID: stale-session'],",
+        "    session_id: 'fresh-after-failed-resume',",
+        "    usage: { input_tokens: 0, output_tokens: 0 },",
+        "  }) + '\\n');",
+        "  setInterval(() => {}, 1000);",
+        "} else {",
+        "  let buffer = '';",
+        "  process.stdin.on('data', chunk => {",
+        "    buffer += chunk.toString('utf8');",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) return;",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'result',",
+        "      session_id: 'replacement-session',",
+        "      is_error: false,",
+        "      structured_output: { type: 'final', message: 'Recovered.' },",
+        "      usage: { input_tokens: 1, output_tokens: 1 },",
+        "    }) + '\\n');",
+        "  });",
+        "}",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-resume",
+        sessionKey: `test:resume:${Date.now()}`,
+        persistedSessionId: "stale-session",
+        prompt: "Hello.",
+        modelId: "claude-code/default",
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      const records = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { argv: string[] });
+      expect(result.text).toBe("Recovered.");
+      expect(result.sessionId).toBe("replacement-session");
+      expect(records).toHaveLength(2);
+      expect(records[0]?.argv).toContain("--resume");
+      expect(records[1]?.argv).not.toContain("--resume");
     } finally {
       shutdownClaudeCodeRuntime();
       process.env.PATH = previousPath;

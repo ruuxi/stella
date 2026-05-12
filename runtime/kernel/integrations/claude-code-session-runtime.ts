@@ -65,6 +65,7 @@ type ClaudeCodeTurnRequest = {
   sessionKey: string;
   persistedSessionId?: string;
   prompt: string;
+  resumeFallbackPrompt?: string;
   systemPrompt?: string;
   modelId: string;
   cwd?: string;
@@ -136,8 +137,21 @@ const normalizeErrorMessage = (error: unknown): string => {
   return "Unknown error";
 };
 
+const textArrayMessage = (value: unknown): string | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const text = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .join("\n");
+  return text || undefined;
+};
+
 const isSessionAlreadyInUseError = (message: string): boolean =>
   /Session ID .* is already in use\./i.test(message);
+
+const isMissingResumeSessionError = (message: string): boolean =>
+  /No conversation found with session ID:/i.test(message);
 
 const killProcess = (child: ChildProcessWithoutNullStreams) => {
   if (child.killed || child.exitCode !== null) return;
@@ -751,6 +765,18 @@ class ClaudeCodeSessionRuntime {
           true,
         );
       }
+      if (useResume && isMissingResumeSessionError(message)) {
+        this.resetStreamingProcess(request.sessionKey, session);
+        session.sessionId = crypto.randomUUID();
+        session.turnCount = 0;
+        return await this.executeStructuredStepWithMode(
+          session,
+          request,
+          effectiveSystemPrompt,
+          request.resumeFallbackPrompt ?? prompt,
+          false,
+        );
+      }
       throw error;
     }
   }
@@ -1000,6 +1026,8 @@ class ClaudeCodeSessionRuntime {
       const parsedError =
         (typeof parsed.result === "string" && parsed.result.trim()) ||
         (typeof parsed.error === "string" && parsed.error.trim()) ||
+        textArrayMessage(parsed.errors) ||
+        stderrText.trim() ||
         "";
       resultError = parsedError || "Claude Code reported an error.";
     }
