@@ -215,6 +215,10 @@ export const IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS =
   "preferences:getSoundNotifications" as const;
 export const IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS =
   "preferences:setSoundNotifications" as const;
+export const IPC_PREFERENCES_GET_READ_ALOUD =
+  "preferences:getReadAloud" as const;
+export const IPC_PREFERENCES_SET_READ_ALOUD =
+  "preferences:setReadAloud" as const;
 export const IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED =
   "globalShortcuts:setSuspended" as const;
 export const IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED =

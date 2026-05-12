@@ -31,6 +31,7 @@ import { getCurrentRunningTool } from "@/app/chat/lib/event-transforms";
 import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
 import { useFooterTasks } from "@/app/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
+import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
@@ -160,6 +161,7 @@ export function ChatPanelTab(
       liveTasks,
       appSessionStartedAtMs,
     });
+    useReadAloud(events);
     const hasActiveWork =
       footerTasks.length > 0 ||
       Boolean(isStreaming) ||

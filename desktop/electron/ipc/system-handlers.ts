@@ -15,6 +15,8 @@ import {
   getLocalModelPreferences,
   getPersonalityVoiceId,
   getPreventComputerSleep,
+  getReadAloudEnabled,
+  setReadAloudEnabled,
   getSoundNotificationsEnabled,
   getSyncMode,
   loadLocalPreferences,
@@ -97,6 +99,8 @@ import {
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
+  IPC_PREFERENCES_GET_READ_ALOUD,
+  IPC_PREFERENCES_SET_READ_ALOUD,
   IPC_PREFERENCES_GET_PERSONALITY_VOICE,
   IPC_PREFERENCES_SET_PERSONALITY_VOICE,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
@@ -1199,6 +1203,40 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         const prefs = loadLocalPreferences(stellaRoot);
         prefs.soundNotificationsEnabled = nextEnabled;
         saveLocalPreferences(stellaRoot, prefs);
+      }
+      return { enabled: nextEnabled };
+    },
+  );
+
+  ipcMain.handle(IPC_PREFERENCES_GET_READ_ALOUD, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_READ_ALOUD,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:getReadAloud request.");
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return false;
+    return getReadAloudEnabled(stellaRoot);
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_READ_ALOUD,
+    (event, enabled: boolean) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_READ_ALOUD,
+        )
+      ) {
+        throw new Error("Blocked untrusted preferences:setReadAloud request.");
+      }
+      const nextEnabled = enabled === true;
+      const stellaRoot = options.getStellaRoot();
+      if (stellaRoot) {
+        setReadAloudEnabled(stellaRoot, nextEnabled);
       }
       return { enabled: nextEnabled };
     },

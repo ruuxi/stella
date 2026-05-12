@@ -10,9 +10,14 @@
  * both the home full-chat composer and the sidebar composer can reuse it
  * without threading a `onAdd` callback through the chat-column types.
  */
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { ChangeEvent, Dispatch, SetStateAction } from "react";
-import { Camera, Paperclip, Scan } from "lucide-react";
+import { Camera, Paperclip, Scan, Volume2, VolumeX } from "lucide-react";
+import {
+  readAloudPrefStore,
+  setReadAloudEnabled as persistReadAloudEnabled,
+} from "@/features/voice/services/read-aloud/read-aloud-pref";
+import { stopReadAloud } from "@/features/voice/services/read-aloud/read-aloud-player";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -100,6 +105,18 @@ export function ComposerAddMenu({
     }
   }, []);
 
+  const readAloudEnabled = useSyncExternalStore(
+    readAloudPrefStore.subscribe,
+    readAloudPrefStore.getSnapshot,
+    readAloudPrefStore.getServerSnapshot,
+  );
+
+  const handleToggleReadAloud = useCallback(() => {
+    const next = !readAloudEnabled;
+    void persistReadAloudEnabled(next);
+    if (!next) stopReadAloud();
+  }, [readAloudEnabled]);
+
   const handleRecentClick = useCallback(
     (file: ChatContextFile) => {
       applyProcessedAttachments(
@@ -143,6 +160,17 @@ export function ComposerAddMenu({
               <Scan size={14} strokeWidth={1.75} />
             </span>
             Select area
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={handleToggleReadAloud}>
+            <span data-slot="dropdown-menu-item-icon">
+              {readAloudEnabled ? (
+                <Volume2 size={14} strokeWidth={1.75} />
+              ) : (
+                <VolumeX size={14} strokeWidth={1.75} />
+              )}
+            </span>
+            {readAloudEnabled ? "Stop reading aloud" : "Read replies aloud"}
           </DropdownMenuItem>
 
           {recentFiles.length > 0 && (
