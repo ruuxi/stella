@@ -383,13 +383,17 @@ function ProviderPane({
     Boolean(llmEntry) && !isApiKeyOnlyPlaceholder(llmEntry?.placeholder ?? "");
   const supportsOAuth = Boolean(oauthProvider);
   const isOpenRouter = tab.key === "openrouter";
+  let authHeadline: string;
   let authDescription: string;
   if (supportsOAuth && supportsApiKey) {
-    authDescription = `Sign in to ${tab.label} or add an API key. Stella stores credentials on this device only.`;
+    authHeadline = `Connect ${tab.label}`;
+    authDescription = `Sign in or add an API key. Credentials stay on this device.`;
   } else if (supportsOAuth) {
-    authDescription = `Sign in to ${tab.label} to use this provider. Stella stores credentials on this device only.`;
+    authHeadline = `Sign in to ${tab.label}`;
+    authDescription = `Credentials stay on this device.`;
   } else {
-    authDescription = `Add a ${tab.label} API key to use this provider. Stella stores the key on this device only.`;
+    authHeadline = `Add a ${tab.label} API key`;
+    authDescription = `The key stays on this device.`;
   }
 
   const isDefaultSelected = !selectedModelId;
@@ -420,6 +424,7 @@ function ProviderPane({
 
       {requiresAuth ? (
         <div className="model-picker-auth">
+          <h4 className="model-picker-auth-headline">{authHeadline}</h4>
           <p className="model-picker-pane-desc">{authDescription}</p>
           {supportsOAuth ? (
             <div className="model-picker-auth-row">
