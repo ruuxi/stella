@@ -244,7 +244,7 @@ export function ProviderModelPanel({
               disabled={disabled}
             >
               <span
-                className="model-picker-rail-dot"
+                className="model-picker-rail-bar"
                 data-on={connected || undefined}
                 aria-hidden
               />
