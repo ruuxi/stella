@@ -1,7 +1,6 @@
 {
   "files": [],
   "references": [
-    { "path": "./desktop" },
-    { "path": "./launcher" }
+    { "path": "./desktop" }
   ]
 }
