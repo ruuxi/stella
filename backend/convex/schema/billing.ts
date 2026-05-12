@@ -50,6 +50,31 @@ export const billingSchema = {
     updatedAt: v.number(),
   }).index("by_ownerId", ["ownerId"]),
 
+  billing_usage_credits: defineTable({
+    ownerId: v.string(),
+    balanceMicroCents: v.number(),
+    totalPurchasedMicroCents: v.number(),
+    totalConsumedMicroCents: v.number(),
+    currency: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_ownerId", ["ownerId"]),
+
+  billing_usage_credit_purchases: defineTable({
+    ownerId: v.string(),
+    stripeCheckoutSessionId: v.string(),
+    stripePaymentIntentId: v.string(),
+    stripeCustomerId: v.string(),
+    amountMicroCents: v.number(),
+    currency: v.string(),
+    status: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_ownerId_and_createdAt", ["ownerId", "createdAt"])
+    .index("by_stripeCheckoutSessionId", ["stripeCheckoutSessionId"])
+    .index("by_stripePaymentIntentId", ["stripePaymentIntentId"]),
+
   billing_model_prices: defineTable({
     model: v.string(),
     source: v.string(),
