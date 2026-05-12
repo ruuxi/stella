@@ -40,6 +40,9 @@ export function AudioTab() {
   const [enhanceDictation, setEnhanceDictation] = useState(() =>
     isDictationEnhanceEnabled(),
   );
+  const [dictationSoundEffects, setDictationSoundEffects] = useState(true);
+  const [savingDictationSoundEffects, setSavingDictationSoundEffects] =
+    useState(false);
   const [localDictation, setLocalDictation] = useState(() =>
     isLocalDictationEnabled(),
   );
@@ -107,6 +110,19 @@ export function AudioTab() {
     void window.electronAPI?.system?.setWakeWordEnabled?.(checked).catch(() => {
       setWakeWordEnabled(!checked);
     });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI?.dictation
+      ?.getSoundEffectsEnabled?.()
+      .then((enabled) => {
+        if (!cancelled) setDictationSoundEffects(enabled !== false);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -184,6 +200,23 @@ export function AudioTab() {
     setLocalDictation(checked);
     setLocalDictationPreference(checked);
   }, []);
+
+  const handleDictationSoundEffectsToggle = useCallback((checked: boolean) => {
+    const previous = dictationSoundEffects;
+    setDictationSoundEffects(checked);
+    setSavingDictationSoundEffects(true);
+    void window.electronAPI?.dictation
+      ?.setSoundEffectsEnabled?.(checked)
+      .then((result) => {
+        setDictationSoundEffects(result.enabled);
+      })
+      .catch(() => {
+        setDictationSoundEffects(previous);
+      })
+      .finally(() => {
+        setSavingDictationSoundEffects(false);
+      });
+  }, [dictationSoundEffects]);
 
   useEffect(() => {
     if (!localDictationSupported) return;
@@ -370,6 +403,24 @@ export function AudioTab() {
             </div>
           </div>
         ) : null}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Dictation sounds</div>
+            <div className="settings-row-sublabel">
+              Play a sound when dictation starts and stops.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <Switch
+              checked={dictationSoundEffects}
+              disabled={savingDictationSoundEffects}
+              onCheckedChange={(checked) =>
+                handleDictationSoundEffectsToggle(Boolean(checked))
+              }
+              hideLabel
+            />
+          </div>
+        </div>
         {micEnabled ? (
           <div className="settings-row">
             <div className="settings-row-info">

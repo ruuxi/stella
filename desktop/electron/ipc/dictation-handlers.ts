@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import type { WindowManager } from "../windows/window-manager.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import {
+  getDictationSoundEffectsEnabled,
   loadLocalPreferences,
   saveLocalPreferences,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
@@ -39,7 +40,13 @@ const DEFAULT_NON_MAC_DICTATION_SHORTCUT = "Control+M";
 const LEGACY_DEFAULT_DICTATION_SHORTCUT = "Control+M";
 const PUSH_TO_TALK_DICTATION_SHORTCUT = "Alt";
 const PUSH_TO_TALK_MIN_DURATION_MS = 300;
-const DICTATION_SOUND_VOLUME = "0.35";
+const DICTATION_SOUND_VOLUME_BY_SOUND = {
+  startRecording: "0.2",
+  stopRecording: "0.45",
+  pasteTranscript: "0.35",
+  cancel: "0.35",
+} satisfies Record<DictationSound, string>;
+const DICTATION_START_SOUND_MUTE_DELAY_MS = 220;
 const CLIPBOARD_SETTLE_MS = 150;
 const PASTE_SETTLE_MS = 700;
 const IN_APP_START_ACK_TIMEOUT_MS = 150;
@@ -185,7 +192,7 @@ const playDictationSound = (sound: DictationSound) => {
   if (process.platform !== "darwin") return;
   execFile(
     "/usr/bin/afplay",
-    ["-v", DICTATION_SOUND_VOLUME, soundPath(sound)],
+    ["-v", DICTATION_SOUND_VOLUME_BY_SOUND[sound], soundPath(sound)],
     (error) => {
       if (error) {
         console.debug("[dictation] sound failed:", error.message);
@@ -214,8 +221,19 @@ export const registerDictationHandlers = (
   let mutedOutputPreviousMuted: boolean | null = null;
   let outputMutePromise: Promise<void> | null = null;
   let outputMuteActive = false;
+  let outputMuteDelayTimer: ReturnType<typeof setTimeout> | null = null;
   const activeDictationSources = new Set<string>();
   let dictationActive = false;
+
+  const areDictationSoundsEnabled = () => {
+    const stellaRoot = options.getStellaRoot();
+    return stellaRoot ? getDictationSoundEffectsEnabled(stellaRoot) : true;
+  };
+
+  const playEnabledDictationSound = (sound: DictationSound) => {
+    if (!areDictationSoundsEnabled()) return;
+    playDictationSound(sound);
+  };
 
   const setDictationSourceActive = (source: string, active: boolean) => {
     const previous = dictationActive;
@@ -232,6 +250,10 @@ export const registerDictationHandlers = (
 
   const muteOutputForDictation = () => {
     if (!dictationBridgeIsSupported()) return;
+    if (outputMuteDelayTimer) {
+      clearTimeout(outputMuteDelayTimer);
+      outputMuteDelayTimer = null;
+    }
     if (mutedOutputVolume !== null) {
       outputMuteActive = true;
       return;
@@ -267,8 +289,26 @@ export const registerDictationHandlers = (
       });
   };
 
+  const muteOutputForDictationAfterStartCue = () => {
+    if (!dictationBridgeIsSupported()) return;
+    outputMuteActive = true;
+    if (mutedOutputVolume !== null || outputMutePromise) return;
+    if (outputMuteDelayTimer) {
+      clearTimeout(outputMuteDelayTimer);
+    }
+    outputMuteDelayTimer = setTimeout(() => {
+      outputMuteDelayTimer = null;
+      if (!outputMuteActive) return;
+      muteOutputForDictation();
+    }, DICTATION_START_SOUND_MUTE_DELAY_MS);
+  };
+
   const restoreOutputAfterDictation = () => {
     if (!dictationBridgeIsSupported()) return;
+    if (outputMuteDelayTimer) {
+      clearTimeout(outputMuteDelayTimer);
+      outputMuteDelayTimer = null;
+    }
     outputMuteActive = false;
     const previousVolume = mutedOutputVolume;
     const previousMuted = mutedOutputPreviousMuted;
@@ -338,7 +378,10 @@ export const registerDictationHandlers = (
     };
   };
 
-  const startOverlaySession = (route: "paste" | "stella-chat" = "paste") => {
+  const startOverlaySession = (
+    route: "paste" | "stella-chat" = "paste",
+    muteTiming: "immediate" | "afterStartCue" = "immediate",
+  ) => {
     const overlay = options.getOverlayController();
     if (!overlay) return;
 
@@ -354,7 +397,11 @@ export const registerDictationHandlers = (
     const position = getOverlayDictationPosition();
     overlay.showDictation(position.x, position.y);
     overlay.send("dictation:overlayStart", { sessionId });
-    muteOutputForDictation();
+    if (muteTiming === "afterStartCue") {
+      muteOutputForDictationAfterStartCue();
+    } else {
+      muteOutputForDictation();
+    }
     if (route === "stella-chat") broadcastPetDictationActive(true);
   };
 
@@ -366,24 +413,30 @@ export const registerDictationHandlers = (
     overlay.showDictation(position.x, position.y);
   };
 
-  const startOverlayPushToTalk = (): DictationMode | null => {
+  const startOverlayPushToTalk = (
+    muteTiming: "immediate" | "afterStartCue" = "immediate",
+  ): DictationMode | null => {
     const overlay = options.getOverlayController();
     if (!overlay || activeOverlaySessionId) return null;
     const sessionId = randomUUID();
     activeOverlaySessionId = sessionId;
     setDictationSourceActive(`overlay:${sessionId}`, true);
     overlay.send("dictation:overlayStart", { sessionId });
-    muteOutputForDictation();
+    if (muteTiming === "afterStartCue") {
+      muteOutputForDictationAfterStartCue();
+    } else {
+      muteOutputForDictation();
+    }
     return { type: "overlay", sessionId };
   };
 
   const startPushToTalk = () => {
     if (activePushToTalk || activeOverlaySessionId) return;
-    playDictationSound("startRecording");
-    muteOutputForDictation();
+    playEnabledDictationSound("startRecording");
 
     const target = pickFocusedStellaWindow();
     if (target) {
+      muteOutputForDictationAfterStartCue();
       const startId = randomUUID();
       pendingInAppStartId = startId;
       activePushToTalk = { type: "in-app", window: target, startId };
@@ -400,13 +453,13 @@ export const registerDictationHandlers = (
           activePushToTalk.startId === startId
         ) {
           setDictationSourceActive(`in-app:${startId}`, false);
-          activePushToTalk = startOverlayPushToTalk();
+          activePushToTalk = startOverlayPushToTalk("afterStartCue");
         }
       }, IN_APP_START_ACK_TIMEOUT_MS);
       return;
     }
 
-    activePushToTalk = startOverlayPushToTalk();
+    activePushToTalk = startOverlayPushToTalk("afterStartCue");
   };
 
   const revealPushToTalk = () => {
@@ -447,7 +500,7 @@ export const registerDictationHandlers = (
     }
 
     restoreOutputAfterDictation();
-    playDictationSound("stopRecording");
+    playEnabledDictationSound("stopRecording");
     if (active.type === "overlay") {
       options.getOverlayController()?.send("dictation:overlayStop", {
         sessionId: active.sessionId,
@@ -471,7 +524,6 @@ export const registerDictationHandlers = (
     pendingInAppStartId = null;
     if (!active) return;
     restoreOutputAfterDictation();
-    playDictationSound("cancel");
     if (active.type === "overlay") {
       options
         .getOverlayController()
@@ -510,14 +562,21 @@ export const registerDictationHandlers = (
 
   const toggleDictation = () => {
     if (activeOverlaySessionId) {
+      playEnabledDictationSound("stopRecording");
       stopOverlaySession();
       return;
     }
 
     const target = pickFocusedStellaWindow();
     if (target) {
+      const isStopping = activeDictationSources.has(
+        `renderer:${target.webContents.id}`,
+      );
       const startId = randomUUID();
       pendingInAppStartId = startId;
+      playEnabledDictationSound(
+        isStopping ? "stopRecording" : "startRecording",
+      );
       target.webContents.send("dictation:toggle", { startId });
       setTimeout(() => {
         if (pendingInAppStartId !== startId) return;
@@ -527,7 +586,8 @@ export const registerDictationHandlers = (
       return;
     }
 
-    startOverlaySession();
+    playEnabledDictationSound("startRecording");
+    startOverlaySession("paste", "afterStartCue");
   };
 
   const applyDictationShortcutRegistration = (
@@ -615,6 +675,24 @@ export const registerDictationHandlers = (
 
   ipcMain.handle("dictation:getShortcut", () => currentShortcut);
 
+  ipcMain.handle("dictation:getSoundEffectsEnabled", () =>
+    areDictationSoundsEnabled(),
+  );
+
+  ipcMain.handle(
+    "dictation:setSoundEffectsEnabled",
+    (_event, enabled: boolean) => {
+      const nextEnabled = enabled === true;
+      const stellaRoot = options.getStellaRoot();
+      if (stellaRoot) {
+        const prefs = loadLocalPreferences(stellaRoot);
+        prefs.dictationSoundEffectsEnabled = nextEnabled;
+        saveLocalPreferences(stellaRoot, prefs);
+      }
+      return { enabled: nextEnabled };
+    },
+  );
+
   ipcMain.handle("dictation:warmLocal", () => warmLocalParakeet());
 
   ipcMain.handle("dictation:localStatus", () => getLocalParakeetStatus());
@@ -667,6 +745,25 @@ export const registerDictationHandlers = (
   );
 
   ipcMain.on(
+    "dictation:playSound",
+    (
+      _event,
+      payload: {
+        sound?: "startRecording" | "stopRecording" | "cancel";
+      } | null,
+    ) => {
+      if (
+        payload?.sound !== "startRecording" &&
+        payload?.sound !== "stopRecording" &&
+        payload?.sound !== "cancel"
+      ) {
+        return;
+      }
+      playEnabledDictationSound(payload.sound);
+    },
+  );
+
+  ipcMain.on(
     "dictation:overlayCompleted",
     (
       _event,
@@ -681,7 +778,6 @@ export const registerDictationHandlers = (
       hideOverlaySession(payload.sessionId);
       const text = payload.text.trim();
       if (!text) return;
-      playDictationSound("pasteTranscript");
       if (route === "stella-chat") {
         // Pet mic flow: deliver transcript to Stella's chat instead of
         // pasting into the foreground app.

@@ -469,6 +469,12 @@ export type ElectronDictationApi = {
    * disable the shortcut entirely.
    */
   setShortcut: (shortcut: string) => Promise<VoiceShortcutRegistrationResult>;
+  /** Returns whether dictation start/stop sound effects are enabled. */
+  getSoundEffectsEnabled: () => Promise<boolean>;
+  /** Enable or disable dictation start/stop sound effects. */
+  setSoundEffectsEnabled: (
+    enabled: boolean,
+  ) => Promise<{ enabled: boolean }>;
   localStatus: () => Promise<{
     available: boolean;
     model: string;
@@ -501,6 +507,9 @@ export type ElectronDictationApi = {
   overlayFailed: (payload: { sessionId: string; error?: string }) => void;
   inAppStarted: (payload: { startId?: string }) => void;
   activeChanged: (payload: { active: boolean }) => void;
+  playSound: (payload: {
+    sound: "startRecording" | "stopRecording" | "cancel";
+  }) => void;
 };
 
 export type ElectronAgentApi = {

@@ -253,12 +253,14 @@ export const useDictation = ({
     const current = stateRef.current;
     if (current === "listening") {
       sendAfterCommitRef.current = false;
+      window.electronAPI?.dictation?.playSound({ sound: "stopRecording" });
       void stop();
     } else if (current === "transcribing") {
       // Upload in flight — ignore presses until it resolves.
       return;
     } else {
       sendAfterCommitRef.current = false;
+      window.electronAPI?.dictation?.playSound({ sound: "startRecording" });
       void start("button");
     }
   }, [start, stop]);
