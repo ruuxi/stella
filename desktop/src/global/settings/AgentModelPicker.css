@@ -5,6 +5,21 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  /* Reserve a stable height across the Assistant / Image / Voice tabs so
+   * switching between them doesn't make the popover dance. Sized to fit
+   * the Assistant compact list (default row + presets) plus the reasoning
+   * footer, which is the tallest of the three. Extra vertical slack is
+   * absorbed by `.agent-model-picker-body` so it sits below the model list
+   * (not as a dead zone under the reasoning/footer strip). */
+  min-height: 360px;
+}
+
+.agent-model-picker-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 
 .agent-model-picker-header {
@@ -17,40 +32,30 @@
 .agent-model-picker-toggle {
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: nowrap;
   gap: 2px;
   min-width: 0;
   padding: 3px;
   border-radius: 12px;
   background: color-mix(in oklch, var(--text-strong) 6%, transparent);
   border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+}
+
+/* Settings surface: every configurable agent gets its own tab, so the
+ * strip must scroll horizontally rather than try to fit ~12 buttons into
+ * one row. Buttons stay their natural width instead of flex-filling. */
+.agent-model-picker-toggle[data-surface="settings"] {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  --agent-toggle-fade-start: transparent 0, #000 12px;
-  --agent-toggle-fade-end: #000 calc(100% - 12px), transparent 100%;
-  -webkit-mask-image: linear-gradient(
-    to right,
-    var(--agent-toggle-fade-start),
-    var(--agent-toggle-fade-end)
-  );
-  mask-image: linear-gradient(
-    to right,
-    var(--agent-toggle-fade-start),
-    var(--agent-toggle-fade-end)
-  );
 }
 
-.agent-model-picker-toggle[data-at-start] {
-  --agent-toggle-fade-start: #000 0, #000 12px;
-}
-
-.agent-model-picker-toggle[data-at-end] {
-  --agent-toggle-fade-end: #000 calc(100% - 12px), #000 100%;
-}
-
-.agent-model-picker-toggle::-webkit-scrollbar {
+.agent-model-picker-toggle[data-surface="settings"]::-webkit-scrollbar {
   display: none;
+}
+
+.agent-model-picker-toggle[data-surface="settings"]
+  .agent-model-picker-toggle-btn {
+  flex: 0 0 auto;
 }
 
 .agent-model-picker-footer {
@@ -137,7 +142,7 @@
   font-weight: 500;
   color: var(--text-weak);
   cursor: pointer;
-  flex-shrink: 0;
+  flex: 1 1 0;
   white-space: nowrap;
   transition:
     background 120ms ease,
