@@ -21,6 +21,12 @@ import {
   normalizeMiniDoubleTapModifier,
   type MiniDoubleTapModifier,
 } from "../../contracts/mini-double-tap.js";
+import {
+  coerceRealtimeVoiceProvider,
+  type RealtimeVoicePreferences,
+  type RealtimeVoiceSelections,
+  type RealtimeVoiceUnderlyingProvider,
+} from "../../contracts/local-preferences.js";
 
 type AgentEngine = "default" | "claude_code_local";
 export type ReasoningEffort =
@@ -41,12 +47,13 @@ export type ImageGenerationPreferences = {
   model?: string;
 };
 
-export type RealtimeVoiceProvider = "stella" | "openai";
-
-export type RealtimeVoicePreferences = {
-  provider: RealtimeVoiceProvider;
-  model?: string;
-};
+export type {
+  RealtimeVoiceProvider,
+  RealtimeVoiceUnderlyingProvider,
+  RealtimeVoiceSelections,
+  RealtimeVoicePreferences,
+} from "../../contracts/local-preferences.js";
+export { resolveRealtimeUnderlyingProvider } from "../../contracts/local-preferences.js";
 
 export type LocalPreferences = {
   /** Default models keyed by agent type. */
@@ -444,19 +451,94 @@ export const normalizeImageGenerationPreferences = (
     : { provider, ...(model ? { model } : {}) };
 };
 
+const normalizeRealtimeVoiceSelections = (
+  value: unknown,
+): RealtimeVoiceSelections | undefined => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as {
+    openai?: unknown;
+    xai?: unknown;
+    inworld?: unknown;
+  };
+  const out: RealtimeVoiceSelections = {};
+  if (typeof record.openai === "string" && record.openai.trim().length > 0) {
+    out.openai = record.openai.trim();
+  }
+  if (typeof record.xai === "string" && record.xai.trim().length > 0) {
+    out.xai = record.xai.trim();
+  }
+  if (typeof record.inworld === "string" && record.inworld.trim().length > 0) {
+    out.inworld = record.inworld.trim();
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+};
+
+const UNDERLYING_PROVIDERS: readonly RealtimeVoiceUnderlyingProvider[] = [
+  "openai",
+  "xai",
+  "inworld",
+];
+
+const coerceUnderlyingProvider = (
+  value: unknown,
+): RealtimeVoiceUnderlyingProvider | undefined =>
+  typeof value === "string" &&
+  (UNDERLYING_PROVIDERS as readonly string[]).includes(value)
+    ? (value as RealtimeVoiceUnderlyingProvider)
+    : undefined;
+
+const INWORLD_SPEED_MIN = 0.5;
+const INWORLD_SPEED_MAX = 2.0;
+
 export const normalizeRealtimeVoicePreferences = (
   value: unknown,
 ): RealtimeVoicePreferences => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return { provider: "stella" };
   }
-  const record = value as { provider?: unknown; model?: unknown };
-  const provider = record.provider === "openai" ? "openai" : "stella";
+  const record = value as {
+    provider?: unknown;
+    model?: unknown;
+    voices?: unknown;
+    stellaSubProvider?: unknown;
+    inworldSpeed?: unknown;
+  };
+
+  const provider = coerceRealtimeVoiceProvider(
+    typeof record.provider === "string" ? record.provider : "",
+  );
   const model =
     typeof record.model === "string" && record.model.trim().length > 0
       ? record.model.trim()
       : undefined;
-  return provider === "stella"
-    ? { provider }
-    : { provider, ...(model ? { model } : {}) };
+  const voices = normalizeRealtimeVoiceSelections(record.voices);
+  const stellaSubProvider = coerceUnderlyingProvider(record.stellaSubProvider);
+  const inworldSpeed =
+    typeof record.inworldSpeed === "number" &&
+    Number.isFinite(record.inworldSpeed)
+      ? Math.min(INWORLD_SPEED_MAX, Math.max(INWORLD_SPEED_MIN, record.inworldSpeed))
+      : undefined;
+
+  const result: RealtimeVoicePreferences = { provider };
+  if (provider !== "stella" && model) result.model = model;
+  if (voices) result.voices = voices;
+  if (stellaSubProvider) result.stellaSubProvider = stellaSubProvider;
+  if (inworldSpeed !== undefined) result.inworldSpeed = inworldSpeed;
+  return result;
+};
+
+/**
+ * Resolve the voice id that should be used for the active session, given
+ * the user's preferences and the underlying provider that will actually
+ * run the session.
+ */
+export const resolveRealtimeVoiceId = (
+  prefs: RealtimeVoicePreferences,
+  underlyingProvider: RealtimeVoiceUnderlyingProvider,
+  fallback: string,
+): string => {
+  const stored = prefs.voices?.[underlyingProvider]?.trim();
+  return stored && stored.length > 0 ? stored : fallback;
 };

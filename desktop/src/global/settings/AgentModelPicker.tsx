@@ -7,6 +7,12 @@ import {
   ProviderOnlyPicker,
   type ProviderOption,
 } from "@/global/settings/ProviderOnlyPicker";
+import { VoiceCatalogPicker } from "@/global/settings/VoiceCatalogPicker";
+import {
+  coerceRealtimeVoiceProvider,
+  type RealtimeVoicePreferences,
+  type RealtimeVoiceUnderlyingProvider,
+} from "../../../../runtime/contracts/local-preferences";
 import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
@@ -34,12 +40,6 @@ import "./AgentModelPicker.css";
 type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";
 type ImageGenerationPreferences = {
   provider: ImageGenerationProvider;
-  model?: string;
-};
-
-type RealtimeVoiceProvider = "stella" | "openai";
-type RealtimeVoicePreferences = {
-  provider: RealtimeVoiceProvider;
   model?: string;
 };
 
@@ -103,8 +103,14 @@ const IMAGE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
 ];
 
 const VOICE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
-  { key: "stella", label: "Stella", description: "Default. Stella picks the realtime voice model." },
-  { key: "openai", label: "OpenAI", description: "Uses your OpenAI account for realtime voice." },
+  {
+    key: "stella",
+    label: "Stella",
+    description: "Default. All OpenAI, xAI, and Inworld voices included — no API key needed.",
+  },
+  { key: "openai", label: "OpenAI", description: "Use your own OpenAI account." },
+  { key: "xai", label: "xAI", description: "Use your own xAI account with Grok's Voice Agent." },
+  { key: "inworld", label: "Inworld", description: "Use your own Inworld account." },
 ];
 
 function isReasoningEffort(value: string): value is ReasoningEffort {
@@ -451,34 +457,116 @@ export function AgentModelPicker({
     [onSelected, pendingAgent, preferences],
   );
 
+  /**
+   * Optimistic patch of just the `realtimeVoice` slice. Voice catalog
+   * changes (voice id, speed, sub-family) are tiny and idempotent, so we
+   * deliberately skip the pendingAgent gate that would flicker the whole
+   * picker on every click. The caller passes the next slice and an
+   * error label; we apply locally, write through IPC, and revert on
+   * failure.
+   */
+  const patchRealtimeVoice = useCallback(
+    async (
+      next: RealtimeVoicePreferences,
+      errorLabel: string,
+    ): Promise<void> => {
+      if (!preferences) return;
+      const previous = preferences.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      setPreferences({ ...preferences, realtimeVoice: next });
+      try {
+        await window.electronAPI?.system?.setLocalModelPreferences?.({
+          realtimeVoice: next,
+        });
+        setError(null);
+      } catch (caught) {
+        setPreferences((current) =>
+          current ? { ...current, realtimeVoice: previous } : current,
+        );
+        setError(caught instanceof Error ? caught.message : errorLabel);
+      }
+    },
+    [preferences],
+  );
+
+  const handleVoiceSelect = useCallback(
+    (underlyingProvider: RealtimeVoiceUnderlyingProvider, voiceId: string) => {
+      const previous =
+        preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      void patchRealtimeVoice(
+        {
+          ...previous,
+          voices: { ...(previous.voices ?? {}), [underlyingProvider]: voiceId },
+        },
+        "Failed to update voice setting.",
+      );
+    },
+    [patchRealtimeVoice, preferences],
+  );
+
+  const handleInworldSpeedSelect = useCallback(
+    (speed: number) => {
+      const previous =
+        preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      const clamped = Math.min(2.0, Math.max(0.5, speed));
+      if (
+        typeof previous.inworldSpeed === "number" &&
+        Math.abs(previous.inworldSpeed - clamped) < 0.001
+      ) {
+        return;
+      }
+      void patchRealtimeVoice(
+        { ...previous, inworldSpeed: clamped },
+        "Failed to update Inworld speed.",
+      );
+    },
+    [patchRealtimeVoice, preferences],
+  );
+
+  const handleStellaSubProviderSelect = useCallback(
+    (subProvider: RealtimeVoiceUnderlyingProvider) => {
+      const previous =
+        preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      if (previous.stellaSubProvider === subProvider) return;
+      void patchRealtimeVoice(
+        { ...previous, stellaSubProvider: subProvider },
+        "Failed to update voice family.",
+      );
+    },
+    [patchRealtimeVoice, preferences],
+  );
+
   const handleVoiceProviderSelect = useCallback(
     async (providerKey: string) => {
       if (!preferences || pendingAgent) return;
-      const previousRealtimeVoice =
-        preferences.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
-      const nextRealtimeVoice: RealtimeVoicePreferences =
-        providerKey === "openai"
-          ? { provider: "openai" }
-          : { provider: "stella" };
+      const previous = preferences.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      // Preserve catalog choices (voice id, sub-family, speed) when
+      // switching provider mode so a Stella → BYOK round-trip doesn't
+      // wipe the user's selections. `model` is intentionally dropped:
+      // the kernel re-selects the right default for the new provider.
+      const next: RealtimeVoicePreferences = {
+        provider: coerceRealtimeVoiceProvider(providerKey),
+        ...(previous.voices ? { voices: previous.voices } : {}),
+        ...(previous.stellaSubProvider
+          ? { stellaSubProvider: previous.stellaSubProvider }
+          : {}),
+        ...(typeof previous.inworldSpeed === "number"
+          ? { inworldSpeed: previous.inworldSpeed }
+          : {}),
+      };
 
       setPendingAgent(VOICE_TARGET);
-      setPreferences({
-        ...preferences,
-        realtimeVoice: nextRealtimeVoice,
-      });
+      setPreferences({ ...preferences, realtimeVoice: next });
       try {
         const saved =
           await window.electronAPI?.system?.setLocalModelPreferences?.({
-            realtimeVoice: nextRealtimeVoice,
+            realtimeVoice: next,
           });
         if (saved) setPreferences(saved);
         setError(null);
         onSelected?.();
       } catch (caught) {
         setPreferences((current) =>
-          current
-            ? { ...current, realtimeVoice: previousRealtimeVoice }
-            : current,
+          current ? { ...current, realtimeVoice: previous } : current,
         );
         setError(
           caught instanceof Error
@@ -700,13 +788,31 @@ export function AgentModelPicker({
             ariaLabel="Image provider"
           />
         ) : activeVoice ? (
-          <ProviderOnlyPicker
-            providers={VOICE_PROVIDER_OPTIONS}
-            value={current || "stella"}
-            onSelect={(key) => void handleVoiceProviderSelect(key)}
-            disabled={!preferences || pendingAgent !== null}
-            ariaLabel="Voice provider"
-          />
+          <>
+            <ProviderOnlyPicker
+              providers={VOICE_PROVIDER_OPTIONS}
+              value={current || "stella"}
+              onSelect={(key) => void handleVoiceProviderSelect(key)}
+              disabled={!preferences || pendingAgent !== null}
+              ariaLabel="Voice provider"
+            />
+            <VoiceCatalogPicker
+              voiceProvider={voicePreferences.provider}
+              stellaSubProvider={voicePreferences.stellaSubProvider}
+              selectedVoices={voicePreferences.voices}
+              inworldSpeed={voicePreferences.inworldSpeed}
+              onSelectVoice={(underlyingProvider, voiceId) =>
+                void handleVoiceSelect(underlyingProvider, voiceId)
+              }
+              onSelectStellaSubProvider={(sub) =>
+                void handleStellaSubProviderSelect(sub)
+              }
+              onSelectInworldSpeed={(speed) =>
+                void handleInworldSpeedSelect(speed)
+              }
+              disabled={!preferences || pendingAgent !== null}
+            />
+          </>
         ) : showFullPanel ? (
           <>
             <ProviderModelPanel

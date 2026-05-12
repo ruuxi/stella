@@ -11,11 +11,22 @@ import type { VoiceRuntimeSnapshot } from "../../../runtime/contracts/index.js";
 import {
   getRealtimeVoicePreferences,
   loadLocalPreferences,
+  resolveRealtimeVoiceId,
   saveLocalPreferences,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
+import {
+  DEFAULT_INWORLD_REALTIME_MODEL,
+  DEFAULT_INWORLD_REALTIME_VOICE,
+  DEFAULT_OPENAI_REALTIME_VOICE,
+  DEFAULT_XAI_REALTIME_VOICE,
+} from "../../../runtime/contracts/realtime-voice-catalog.js";
 import { getLocalLlmCredential } from "../../../runtime/kernel/storage/llm-credentials.js";
 import { getLocalLlmOAuthApiKey } from "../../../runtime/kernel/storage/llm-oauth-credentials.js";
-import { IPC_VOICE_CREATE_OPENAI_SESSION } from "../../src/shared/contracts/ipc-channels.js";
+import {
+  IPC_VOICE_CREATE_OPENAI_SESSION,
+  IPC_VOICE_CREATE_XAI_SESSION,
+  IPC_VOICE_CREATE_INWORLD_SESSION,
+} from "../../src/shared/contracts/ipc-channels.js";
 
 type VoiceHandlersOptions = {
   uiState: UiState;
@@ -42,7 +53,58 @@ type VoiceHandlersOptions = {
 
 const DEFAULT_VOICE_RTC_SHORTCUT = "CommandOrControl+Shift+D";
 const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime";
-const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
+const DEFAULT_XAI_REALTIME_MODEL = "grok-voice-think-fast-1.0";
+
+// Inworld's STUN/TURN credentials are short-lived but stable enough across
+// rapid voice-session restarts (e.g. wake-word retries) that re-fetching
+// on every connect adds tens-to-hundreds of ms of avoidable latency. Cache
+// per Bearer token for 5 minutes — short enough that credential rotation
+// recovers on its own, long enough to absorb restart bursts.
+type InworldIceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+};
+const INWORLD_ICE_CACHE_TTL_MS = 5 * 60 * 1000;
+const inworldIceCache = new Map<
+  string,
+  { fetchedAt: number; iceServers: InworldIceServer[] }
+>();
+
+const fetchInworldIceServers = async (
+  apiKey: string,
+): Promise<InworldIceServer[]> => {
+  const cached = inworldIceCache.get(apiKey);
+  if (cached && Date.now() - cached.fetchedAt < INWORLD_ICE_CACHE_TTL_MS) {
+    return cached.iceServers;
+  }
+  try {
+    const response = await fetch(
+      "https://api.inworld.ai/v1/realtime/ice-servers",
+      { headers: { Authorization: `Bearer ${apiKey}` } },
+    );
+    if (!response.ok) {
+      console.warn(
+        "[voice] Inworld ice-servers fetch failed:",
+        response.status,
+        await response.text(),
+      );
+      return cached?.iceServers ?? [];
+    }
+    const data = (await response.json()) as {
+      ice_servers?: InworldIceServer[];
+    };
+    const iceServers = Array.isArray(data.ice_servers) ? data.ice_servers : [];
+    inworldIceCache.set(apiKey, { fetchedAt: Date.now(), iceServers });
+    return iceServers;
+  } catch (err) {
+    console.warn(
+      "[voice] Inworld ice-servers fetch error:",
+      (err as Error).message,
+    );
+    return cached?.iceServers ?? [];
+  }
+};
 
 const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
   sessionState: "idle",
@@ -198,6 +260,11 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       const model = preferences.model?.startsWith("openai/")
         ? preferences.model.slice("openai/".length)
         : preferences.model || DEFAULT_OPENAI_REALTIME_MODEL;
+      const voice = resolveRealtimeVoiceId(
+        preferences,
+        "openai",
+        DEFAULT_OPENAI_REALTIME_VOICE,
+      );
       const response = await fetch(
         "https://api.openai.com/v1/realtime/client_secrets",
         {
@@ -216,7 +283,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
                   : undefined,
               audio: {
                 output: {
-                  voice: DEFAULT_OPENAI_REALTIME_VOICE,
+                  voice,
                 },
               },
             },
@@ -250,7 +317,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         clientSecret,
         model:
           typeof data.session?.model === "string" ? data.session.model : model,
-        voice: DEFAULT_OPENAI_REALTIME_VOICE,
+        voice,
         expiresAt:
           typeof data.expires_at === "number"
             ? data.expires_at
@@ -259,6 +326,159 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
               : undefined,
         sessionId:
           typeof data.session?.id === "string" ? data.session.id : undefined,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_VOICE_CREATE_XAI_SESSION,
+    async (
+      _event,
+      payload: {
+        instructions?: string;
+      },
+    ) => {
+      const preferences = getRealtimeVoicePreferences(options.stellaRoot);
+      if (preferences.provider !== "xai") {
+        throw new Error("xAI is not selected for voice.");
+      }
+      const apiKey =
+        getLocalLlmCredential(options.stellaRoot, "xai")?.trim() ||
+        (await getLocalLlmOAuthApiKey(options.stellaRoot, "xai"))?.trim();
+      if (!apiKey) {
+        throw new Error("Connect xAI in Settings to use it for voice.");
+      }
+      const model = preferences.model?.startsWith("xai/")
+        ? preferences.model.slice("xai/".length)
+        : preferences.model || DEFAULT_XAI_REALTIME_MODEL;
+      const voice = resolveRealtimeVoiceId(
+        preferences,
+        "xai",
+        DEFAULT_XAI_REALTIME_VOICE,
+      );
+
+      const instructions =
+        typeof payload?.instructions === "string"
+          ? payload.instructions
+          : undefined;
+
+      // Try minting a true ephemeral token first. xAI's Voice Agent API
+      // is OpenAI-Realtime-compatible, so we target the analogous
+      // /v1/realtime/client_secrets endpoint. If xAI hasn't shipped that
+      // (or returns a 404/405), fall back to using the API key as the
+      // subprotocol token directly — xAI accepts long-lived auth on the
+      // WebSocket too. Either way the renderer treats the response shape
+      // identically.
+      let clientSecret: string | null = null;
+      let expiresAt: number | undefined;
+      try {
+        const response = await fetch(
+          "https://api.x.ai/v1/realtime/client_secrets",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              session: {
+                type: "realtime",
+                model,
+                instructions,
+                voice,
+              },
+            }),
+          },
+        );
+        if (response.ok) {
+          const data = (await response.json()) as {
+            value?: unknown;
+            client_secret?: { value?: unknown; expires_at?: unknown };
+            expires_at?: unknown;
+          };
+          if (typeof data.value === "string") {
+            clientSecret = data.value;
+          } else if (typeof data.client_secret?.value === "string") {
+            clientSecret = data.client_secret.value;
+          }
+          if (typeof data.expires_at === "number") {
+            expiresAt = data.expires_at;
+          } else if (typeof data.client_secret?.expires_at === "number") {
+            expiresAt = data.client_secret.expires_at;
+          }
+        } else if (response.status !== 404 && response.status !== 405) {
+          // Non-fallback HTTP error — surface it so the user can fix.
+          throw new Error(
+            `Failed to create xAI voice session: ${response.status} ${await response.text()}`,
+          );
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("Failed to")) {
+          throw err;
+        }
+        // Network/parse error — fall through to direct-key fallback.
+        console.debug(
+          "[voice] xAI ephemeral token mint failed, falling back to API key:",
+          (err as Error).message,
+        );
+      }
+
+      if (!clientSecret) {
+        clientSecret = apiKey;
+      }
+
+      return {
+        provider: "xai" as const,
+        clientSecret,
+        model,
+        voice,
+        expiresAt,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_VOICE_CREATE_INWORLD_SESSION,
+    async (
+      _event,
+      _payload: {
+        instructions?: string;
+      },
+    ) => {
+      const preferences = getRealtimeVoicePreferences(options.stellaRoot);
+      if (preferences.provider !== "inworld") {
+        throw new Error("Inworld is not selected for voice.");
+      }
+      const apiKey =
+        getLocalLlmCredential(options.stellaRoot, "inworld")?.trim() ||
+        (await getLocalLlmOAuthApiKey(options.stellaRoot, "inworld"))?.trim();
+      if (!apiKey) {
+        throw new Error("Connect Inworld in Settings to use it for voice.");
+      }
+      const model = preferences.model?.startsWith("inworld/")
+        ? preferences.model.slice("inworld/".length)
+        : preferences.model || DEFAULT_INWORLD_REALTIME_MODEL;
+      const voice = resolveRealtimeVoiceId(
+        preferences,
+        "inworld",
+        DEFAULT_INWORLD_REALTIME_VOICE,
+      );
+
+      // Inworld's WebRTC SDP endpoint requires a complete offer with ICE
+      // candidates baked in, so we need their STUN/TURN servers up front.
+      const iceServers = await fetchInworldIceServers(apiKey);
+
+      // Inworld doesn't use ephemeral tokens — the API key is the Bearer
+      // for the SDP exchange. In BYOK mode we hand the user's own key
+      // back to the renderer because it's their key on their machine.
+      // (Stella-managed Inworld goes through a backend SDP proxy so the
+      // org key never reaches the renderer; that's a different path.)
+      return {
+        provider: "inworld" as const,
+        clientSecret: apiKey,
+        model,
+        voice,
+        iceServers,
       };
     },
   );
