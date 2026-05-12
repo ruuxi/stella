@@ -642,24 +642,9 @@ const writeSplashHtml = () => {
     padding: 22px 24px;
     animation: cardIn 220ms cubic-bezier(0.32, 0.72, 0, 1) both;
   }
-  .brand {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-  }
   .logo {
     width: 48px;
     height: 48px;
-  }
-  .name {
-    font-family: "Cormorant Garamond", Georgia, serif;
-    font-size: 26px;
-    font-style: italic;
-    font-weight: 600;
-    color: #1d1d1f;
-    letter-spacing: -0.03em;
-    line-height: 1;
   }
   .status {
     font-size: 11.5px;
@@ -675,10 +660,7 @@ const writeSplashHtml = () => {
 </head>
 <body>
   <div class="card">
-    <div class="brand">
-      <img class="logo" src="${logoUrl}" alt="Stella" />
-      <div class="name">Stella</div>
-    </div>
+    <img class="logo" src="${logoUrl}" alt="Stella" />
     <div class="status">Reloading to apply changes</div>
   </div>
 </body>
