@@ -715,6 +715,10 @@ export type ElectronSystemApi = {
   setSoundNotificationsEnabled: (
     enabled: boolean,
   ) => Promise<{ enabled: boolean }>;
+  getReadAloudEnabled: () => Promise<boolean>;
+  setReadAloudEnabled: (
+    enabled: boolean,
+  ) => Promise<{ enabled: boolean }>;
   setGlobalShortcutsSuspended: (
     suspended: boolean,
   ) => Promise<{ supported: boolean; suspended: boolean }>;

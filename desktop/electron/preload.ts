@@ -65,12 +65,14 @@ import {
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_GET_READ_ALOUD,
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
+  IPC_PREFERENCES_SET_READ_ALOUD,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_GET_WAKE_WORD,
@@ -950,6 +952,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setSoundNotificationsEnabled: (enabled: boolean) =>
       ipcRenderer.invoke(
         IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
+        enabled,
+      ) as Promise<{ enabled: boolean }>,
+    getReadAloudEnabled: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_READ_ALOUD) as Promise<boolean>,
+    setReadAloudEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_READ_ALOUD,
         enabled,
       ) as Promise<{ enabled: boolean }>,
     setGlobalShortcutsSuspended: (suspended: boolean) =>

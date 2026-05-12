@@ -94,6 +94,12 @@ export type LocalPreferences = {
   /** Allows start/stop sound effects for dictation. */
   dictationSoundEffectsEnabled: boolean;
   /**
+   * Reads finalized assistant messages aloud via the realtime voice
+   * provider's TTS. Off by default — the user opts in from a speaker
+   * toggle in the chat UI.
+   */
+  readAloudEnabled: boolean;
+  /**
    * "Hey Stella" wake-word listener — when enabled, a background
    * native helper continuously listens for the wake word and starts
    * the realtime voice agent on detection. Mic buttons / keybinds
@@ -138,6 +144,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   dictationSoundEffectsEnabled: true,
   wakeWordEnabled: false,
   wakeWordThreshold: 0.68,
+  readAloudEnabled: false,
 };
 
 let _cached: LocalPreferences | null = null;
@@ -203,6 +210,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.wakeWordThreshold <= 1
           ? parsed.wakeWordThreshold
           : DEFAULT_PREFERENCES.wakeWordThreshold,
+      readAloudEnabled: parsed.readAloudEnabled === true,
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;
@@ -382,6 +390,18 @@ export const getDictationSoundEffectsEnabled = (
   stellaHome: string,
 ): boolean => {
   return loadLocalPreferences(stellaHome).dictationSoundEffectsEnabled;
+};
+
+export const getReadAloudEnabled = (stellaHome: string): boolean => {
+  return loadLocalPreferences(stellaHome).readAloudEnabled;
+};
+
+export const setReadAloudEnabled = (
+  stellaHome: string,
+  enabled: boolean,
+): void => {
+  const prefs = loadLocalPreferences(stellaHome);
+  saveLocalPreferences(stellaHome, { ...prefs, readAloudEnabled: enabled });
 };
 
 // ── Normalization helpers ─────────────────────────────────────────────────

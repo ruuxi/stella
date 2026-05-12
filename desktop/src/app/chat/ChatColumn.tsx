@@ -32,6 +32,7 @@ import { getCurrentRunningTool } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import { useFooterTasks } from "./hooks/use-footer-tasks";
 import { useFileDrop } from "./hooks/use-file-drop";
+import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import type { ChatColumnProps } from "./chat-column-types";
 import "./full-shell.chat.css";
 
@@ -157,6 +158,7 @@ export const ChatColumn = memo(function ChatColumn({
     liveTasks: conversation.streaming.liveTasks,
     appSessionStartedAtMs,
   });
+  useReadAloud(conversation.events);
   const hasActiveWork =
     footerTasks.length > 0 ||
     Boolean(conversation.streaming.isStreaming) ||
