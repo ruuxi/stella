@@ -254,9 +254,8 @@ const AUDIENCE_MODE_OVERRIDES: Record<ManagedModelAudience, Partial<Record<Model
 };
 
 // Per-audience swaps of an agent's task→mode mapping. Lets us point
-// orchestrator/general at cheaper modes for free/anonymous tiers and at the
-// standard tier model for paid users without disturbing other agents (store,
-// fashion, install_update, etc.) that share the underlying modes.
+// orchestrator/general at alternate modes per plan without disturbing other
+// agents that share the underlying modes.
 const AUDIENCE_AGENT_MODE_OVERRIDES: Partial<
   Record<ManagedModelAudience, Partial<Record<string, ModelMode>>>
 > = {
@@ -339,33 +338,31 @@ export const canClientOverrideModelForAgent = (
 export const TASK_MODEL_SELECTIONS: Record<string, TaskModelSelection> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
   // Per-tier orchestrator/general defaults live in
-  // `AUDIENCE_AGENT_MODE_OVERRIDES` below; this `builder` entry is the
+  // `AUDIENCE_AGENT_MODE_OVERRIDES` below; this `standard` entry is the
   // unauthenticated/internal-call fallback when no audience is supplied.
-  [AGENT_IDS.ORCHESTRATOR]: "builder",
-  [AGENT_IDS.GENERAL]: "builder",
-  [AGENT_IDS.INSTALL_UPDATE]: "designer",
-  [AGENT_IDS.STORE]: "builder",
-  [AGENT_IDS.FASHION]: "builder",
+  [AGENT_IDS.ORCHESTRATOR]: "standard",
+  [AGENT_IDS.GENERAL]: "standard",
+  [AGENT_IDS.INSTALL_UPDATE]: "standard",
+  [AGENT_IDS.STORE]: "standard",
+  [AGENT_IDS.FASHION]: "standard",
 
   schedule: "standard",
   synthesis: "gpt_5_4_mini",
   session_compaction_summary: "compact",
   thread_compaction_summary: "compact",
-  welcome: "builder",
+  welcome: "standard",
   mercury: "mercury",
   music_prompt: "vision",
   search_html: "mercury",
-  store_security_review: "builder",
+  store_security_review: "standard",
   store_image_safety_review: "vision",
   store_asset_metadata: "vision",
   task_summary: "light",
 
-  // Memory pipeline (mirrors split: cheap extract / strong consolidate).
-  // Stage 1 thread "extraction" is implicit today (General's final response is
-  // the rollout summary). Stage 2 = Dream consolidation, run on the strongest
-  // tier so it can faithfully merge weeks of context. Chronicle's recursive
-  // summarizer ticks every minute, so it must stay cheap.
-  dream: "builder",
+  // Memory pipeline: Chronicle stays cheap (minute ticks). Dream consolidates
+  // thread summaries + extensions on the same tier as other standard agent
+  // work; stage-1 extraction remains the General rollout summary.
+  dream: "standard",
   chronicle: "light",
 
   // Background "should we update the user's home Ideas list?" pass that

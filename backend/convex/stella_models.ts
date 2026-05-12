@@ -20,7 +20,7 @@ export const STELLA_DESIGNER_MODEL = `${STELLA_PROVIDER}/designer`;
 export const STELLA_VISION_MODEL = `${STELLA_PROVIDER}/vision`;
 // Bump this whenever Stella alias/default mappings change. Desktop subscribes
 // to it and passes it to runtime as the model-catalog cache key.
-export const STELLA_MODEL_CATALOG_UPDATED_AT = Date.UTC(2026, 4, 12);
+export const STELLA_MODEL_CATALOG_UPDATED_AT = Date.UTC(2026, 4, 11);
 
 export type StellaCatalogModel = {
   id: string;

@@ -1,5 +1,5 @@
 import {
-  canOverrideStellaModel,
+  canClientOverrideModelForAgent,
   getModeConfig,
   getModelConfig,
   type ManagedModelAudience,
@@ -35,8 +35,10 @@ export function resolveRequestedStellaModel(
   // Anonymous/free/go (and go's downgraded fallback) cannot pick a custom
   // model. Silently coerce to the agent default so the desktop client doesn't
   // surface its model-rejection toast — the request still succeeds, just on
-  // the tier-appropriate backend-chosen model.
-  const requestedModel = canOverrideStellaModel(audience)
+  // the tier-appropriate backend-chosen model. Per-agent locks (currently
+  // only `chronicle`, which ticks every minute against captured screen
+  // activity) ignore the client model regardless of audience.
+  const requestedModel = canClientOverrideModelForAgent(agentType, audience)
     ? clientRequestedModel
     : STELLA_DEFAULT_MODEL;
 

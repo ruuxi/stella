@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
+import { getModeConfig } from "../agent/model";
 import { withModelFailoverAsync } from "../agent/model_failover";
 import { scheduleManagedUsage } from "./managed_billing";
 import {
@@ -20,16 +21,14 @@ import {
   usageSummaryFromAssistant,
 } from "../runtime_ai/managed";
 
+const STANDARD_REVIEW = getModeConfig("standard");
+
 const STORE_REVIEW_MODEL_CONFIG: ManagedModelConfig = {
-  model: "openai/gpt-5.5",
-  managedGatewayProvider: "openai",
-  temperature: 1.0,
-  maxOutputTokens: 32768,
-  providerOptions: {
-    openai: {
-      reasoningEffort: "low",
-    },
-  },
+  model: STANDARD_REVIEW.model,
+  managedGatewayProvider: STANDARD_REVIEW.managedGatewayProvider,
+  temperature: STANDARD_REVIEW.temperature,
+  maxOutputTokens: STANDARD_REVIEW.maxOutputTokens,
+  providerOptions: STANDARD_REVIEW.providerOptions as ManagedModelConfig["providerOptions"],
   modalitiesInput: ["text", "image"],
 };
 
