@@ -23,7 +23,7 @@ interface CompactStellaModelListProps {
 /**
  * Collapsed model picker used by both the sidebar popover and the Settings
  * page. Shows just the curated Stella preset modes (Stella Recommended,
- * Stella Best, Stella Smart, …) so the common case is one click — every
+ * Stella Designer, Stella Builder, …) so the common case is one click — every
  * other provider/model lives behind the "More options" expansion.
  */
 export function CompactStellaModelList({

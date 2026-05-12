@@ -328,7 +328,7 @@ const enhanceTranscript = async (transcript: string): Promise<string> => {
         },
       ],
       body: {
-        model: "stella/fast",
+        model: "stella/inception/mercury-2",
         max_tokens: Math.min(4000, Math.max(512, raw.length * 2)),
         temperature: 0.1,
       },

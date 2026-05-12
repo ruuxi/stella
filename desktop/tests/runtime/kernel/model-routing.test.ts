@@ -126,20 +126,20 @@ describe("resolveLlmRoute", () => {
     expect(resolved.model.id).toBe("stella/anthropic/claude-opus-4.6");
   });
 
-  it("routes Stella aliases (stella/best, etc.) through Stella unchanged", async () => {
+  it("routes Stella aliases (stella/designer, etc.) through Stella unchanged", async () => {
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
     );
 
     const resolved = resolveLlmRoute({
       stellaRoot: "/tmp/stella",
-      modelName: "stella/best",
+      modelName: "stella/designer",
       agentType: "general",
       site,
     });
 
     expect(resolved.route).toBe("stella");
-    expect(resolved.model.id).toBe("stella/best");
+    expect(resolved.model.id).toBe("stella/designer");
   });
 
   it("refreshes near-expiry Stella tokens before model calls", async () => {

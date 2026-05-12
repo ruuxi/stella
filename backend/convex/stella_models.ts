@@ -13,15 +13,14 @@ import { v } from "convex/values";
 export const STELLA_PROVIDER = "stella";
 export const STELLA_DEFAULT_MODEL = `${STELLA_PROVIDER}/default`;
 export const STELLA_STANDARD_MODEL = `${STELLA_PROVIDER}/standard`;
-export const STELLA_FREE_MODEL = `${STELLA_PROVIDER}/free`;
-export const STELLA_FAST_MODEL = `${STELLA_PROVIDER}/fast`;
-export const STELLA_SMART_MODEL = `${STELLA_PROVIDER}/smart`;
-export const STELLA_BEST_MODEL = `${STELLA_PROVIDER}/best`;
-export const STELLA_SOTA_MODEL = `${STELLA_PROVIDER}/sota`;
-export const STELLA_MEDIA_MODEL = `${STELLA_PROVIDER}/media`;
+export const STELLA_PRIORITY_MODEL = `${STELLA_PROVIDER}/priority`;
+export const STELLA_LIGHT_MODEL = `${STELLA_PROVIDER}/light`;
+export const STELLA_BUILDER_MODEL = `${STELLA_PROVIDER}/builder`;
+export const STELLA_DESIGNER_MODEL = `${STELLA_PROVIDER}/designer`;
+export const STELLA_VISION_MODEL = `${STELLA_PROVIDER}/vision`;
 // Bump this whenever Stella alias/default mappings change. Desktop subscribes
 // to it and passes it to runtime as the model-catalog cache key.
-export const STELLA_MODEL_CATALOG_UPDATED_AT = Date.UTC(2026, 4, 6);
+export const STELLA_MODEL_CATALOG_UPDATED_AT = Date.UTC(2026, 4, 12);
 
 export type StellaCatalogModel = {
   id: string;
@@ -72,7 +71,21 @@ const deriveDisplayName = (upstreamModel: string): string => {
   return titleCase(rawId);
 };
 
-const STELLA_ALIAS_MODES = [
+type StellaAliasMode = {
+  id: string;
+  name: string;
+  mode: ModelMode;
+  type: "language" | "multimodal";
+  minAudience?: "pro";
+};
+
+const STELLA_ALIAS_MODES: ReadonlyArray<StellaAliasMode> = [
+  {
+    id: STELLA_LIGHT_MODEL,
+    name: "Stella Light",
+    mode: "light",
+    type: "language" as const,
+  },
   {
     id: STELLA_STANDARD_MODEL,
     name: "Stella Standard",
@@ -80,53 +93,47 @@ const STELLA_ALIAS_MODES = [
     type: "language" as const,
   },
   {
-    id: STELLA_FREE_MODEL,
-    name: "Stella Free",
-    mode: "free",
+    id: STELLA_PRIORITY_MODEL,
+    name: "Stella Priority",
+    mode: "priority",
+    type: "language" as const,
+    minAudience: "pro",
+  },
+  {
+    id: STELLA_BUILDER_MODEL,
+    name: "Stella Builder",
+    mode: "builder",
     type: "language" as const,
   },
   {
-    id: STELLA_FAST_MODEL,
-    name: "Stella Fast",
-    mode: "fast",
+    id: STELLA_DESIGNER_MODEL,
+    name: "Stella Designer",
+    mode: "designer",
     type: "language" as const,
   },
   {
-    id: STELLA_SMART_MODEL,
-    name: "Stella Smart",
-    mode: "smart",
-    type: "language" as const,
-  },
-  {
-    id: STELLA_BEST_MODEL,
-    name: "Stella Best",
-    mode: "best",
-    type: "language" as const,
-  },
-  {
-    id: STELLA_SOTA_MODEL,
-    name: "Stella SOTA",
-    mode: "sota",
-    type: "language" as const,
-  },
-  {
-    id: STELLA_MEDIA_MODEL,
-    name: "Stella Media",
-    mode: "media",
+    id: STELLA_VISION_MODEL,
+    name: "Stella Vision",
+    mode: "vision",
     type: "multimodal" as const,
   },
-] as const satisfies ReadonlyArray<{
-  id: string;
-  name: string;
-  mode: ModelMode;
-  type: "language" | "multimodal";
-}>;
+];
+
+const isProOrHigherAudience = (audience: ManagedModelAudience): boolean =>
+  audience === "pro" ||
+  audience === "plus" ||
+  audience === "ultra" ||
+  audience === "pro_fallback" ||
+  audience === "plus_fallback" ||
+  audience === "ultra_fallback";
 
 const getStaticStellaAliases = (audience: ManagedModelAudience = "free") =>
-  STELLA_ALIAS_MODES.map((alias) => ({
-    ...alias,
-    upstreamModel: getModeConfig(alias.mode, audience).model,
-  }));
+  STELLA_ALIAS_MODES
+    .filter((alias) => alias.minAudience !== "pro" || isProOrHigherAudience(audience))
+    .map((alias) => ({
+      ...alias,
+      upstreamModel: getModeConfig(alias.mode, audience).model,
+    }));
 
 const listUpstreamManagedModels = (): string[] => {
   return listManagedModelIds().sort((a, b) => deriveDisplayName(a).localeCompare(deriveDisplayName(b)));
@@ -156,10 +163,8 @@ export const parseStellaModelSelection = (
     return { kind: "default" };
   }
 
-  const modeKey =
-    aliasOrUpstreamModel === "cheap" ? "standard" : aliasOrUpstreamModel;
-  if (isModelMode(modeKey)) {
-    return { kind: "mode", mode: modeKey };
+  if (isModelMode(aliasOrUpstreamModel)) {
+    return { kind: "mode", mode: aliasOrUpstreamModel };
   }
 
   return { kind: "upstream", model: aliasOrUpstreamModel };

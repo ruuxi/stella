@@ -426,7 +426,7 @@ export function AudioTab() {
             <div className="settings-row-info">
               <div className="settings-row-label">Enhance transcription</div>
               <div className="settings-row-sublabel">
-                Clean up local dictation text with Stella Fast before inserting
+                Clean up local dictation text with Mercury before inserting
                 it.
               </div>
             </div>

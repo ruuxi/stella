@@ -48,7 +48,7 @@ export async function classifyTextForModeration(
   if (!text.trim()) return "clean";
   try {
     const result = await completeManagedChat({
-      config: getModeConfig("social_moderation"),
+      config: getModeConfig("light"),
       fallbackConfig: {
         ...getModeConfig("standard"),
         temperature: 0.7,

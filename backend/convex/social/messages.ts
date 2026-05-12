@@ -168,7 +168,7 @@ export const moderateRoomMessageInternal = internalAction({
 
     try {
       const result = await completeManagedChat({
-        config: getModeConfig("social_moderation"),
+        config: getModeConfig("light"),
         fallbackConfig: {
           ...getModeConfig("standard"),
           temperature: 0.7,

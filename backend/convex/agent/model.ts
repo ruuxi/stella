@@ -3,7 +3,7 @@
  *
  * Model selection is split into:
  * - modes: reusable full model configs (model, fallback, routing, tokens, etc.)
- * - task mappings: each agent/task chooses a single mode
+ * - task mappings: each agent/task chooses a mode or direct internal model config
  * - audience overrides: sparse per-plan patches applied to modes
  */
 import { AGENT_IDS } from "../lib/agent_constants";
@@ -53,18 +53,12 @@ export type ManagedModelAudience = (typeof MANAGED_MODEL_AUDIENCES)[number];
 
 export const MODEL_MODES = [
   "standard",
-  "free",
+  "priority",
+  "light",
   "compact",
-  "fast",
-  "social_moderation",
-  "smart",
-  "best",
-  "sota",
-  "fashion",
-  "reasoning",
-  "synthesis",
-  "media",
-  "vision_metadata",
+  "builder",
+  "designer",
+  "vision",
 ] as const;
 
 export type ModelMode = (typeof MODEL_MODES)[number];
@@ -107,10 +101,48 @@ const gatewayOptions = (
   },
 });
 
+const MERCURY_MODEL_CONFIG: ModeConfig = {
+  model: "inception/mercury-2",
+  fallbackMode: "standard",
+  managedGatewayProvider: "openrouter",
+  temperature: 1.0,
+  maxOutputTokens: 8192,
+  providerOptions: {
+    openai: {
+      reasoningEffort: "medium",
+    },
+    ...gatewayOptions("openrouter"),
+  },
+};
+
+const GPT_5_4_MINI_MODEL_CONFIG: ModeConfig = {
+  model: "openai/gpt-5.4-mini",
+  fallbackMode: "light",
+  managedGatewayProvider: "openai",
+  temperature: 1.0,
+  maxOutputTokens: 30000,
+  providerOptions: {
+    openai: {
+      reasoningEffort: "low",
+    },
+  },
+};
+
+const INTERNAL_MODEL_CONFIGS = {
+  mercury: MERCURY_MODEL_CONFIG,
+  gpt_5_4_mini: GPT_5_4_MINI_MODEL_CONFIG,
+} as const satisfies Record<string, ModeConfig>;
+
+type InternalModelConfigKey = keyof typeof INTERNAL_MODEL_CONFIGS;
+type TaskModelSelection = ModelMode | InternalModelConfigKey;
+
+const isInternalModelConfigKey = (value: string): value is InternalModelConfigKey =>
+  Object.prototype.hasOwnProperty.call(INTERNAL_MODEL_CONFIGS, value);
+
 const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
   standard: {
     model: "accounts/fireworks/models/kimi-k2p6",
-    fallbackMode: "fast",
+    fallbackMode: "light",
     managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -122,7 +154,21 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     },
   },
 
-  free: {
+  priority: {
+    model: "accounts/fireworks/routers/kimi-k2p6-turbo",
+    fallbackMode: "standard",
+    managedGatewayProvider: "fireworks",
+    temperature: 1.0,
+    maxOutputTokens: 12096,
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+      },
+      ...gatewayOptions("fireworks"),
+    },
+  },
+
+  light: {
     model: "deepseek/deepseek-v4-flash",
     managedGatewayProvider: "openrouter",
     temperature: 1.0,
@@ -144,7 +190,7 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
 
   compact: {
     model: "accounts/fireworks/routers/kimi-k2p5-turbo",
-    fallbackMode: "fast",
+    fallbackMode: "light",
     managedGatewayProvider: "fireworks",
     temperature: 1.0,
     maxOutputTokens: 12096,
@@ -156,54 +202,22 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     },
   },
 
-  fast: {
-    model: "inception/mercury-2",
-    fallbackMode: "standard",
-    managedGatewayProvider: "openrouter",
+  builder: {
+    model: "openai/gpt-5.5",
+    fallbackMode: "light",
+    managedGatewayProvider: "openai",
     temperature: 1.0,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 32768,
     providerOptions: {
       openai: {
-        reasoningEffort: "medium",
-      },
-      ...gatewayOptions("openrouter"),
-    },
-  },
-
-  social_moderation: {
-    model: "deepseek/deepseek-v4-flash",
-    fallbackMode: "fast",
-    managedGatewayProvider: "openrouter",
-    temperature: 1.0,
-    maxOutputTokens: 512,
-    providerOptions: {
-      // Mirror the free-tier privacy posture: deny third-party data
-      // collection on the OpenRouter route. This pass sees user
-      // social-room messages for moderation.
-      gateway: {
-        order: ["openrouter"],
-        data_collection: "deny",
+        reasoningEffort: "low",
       },
     },
   },
 
-  smart: {
-    model: "accounts/fireworks/routers/kimi-k2p6-turbo",
-    fallbackMode: "fast",
-    managedGatewayProvider: "fireworks",
-    temperature: 1.0,
-    maxOutputTokens: 12096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-      ...gatewayOptions("fireworks"),
-    },
-  },
-
-  best: {
+  designer: {
     model: "anthropic/claude-opus-4.7",
-    fallbackMode: "free",
+    fallbackMode: "light",
     managedGatewayProvider: "anthropic",
     temperature: 1.0,
     maxOutputTokens: 16192,
@@ -214,74 +228,12 @@ const BASE_MODE_CONFIGS: Record<ModelMode, ModeConfig> = {
     },
   },
 
-  sota: {
-    model: "openai/gpt-5.5",
-    fallbackMode: "free",
-    managedGatewayProvider: "openai",
-    temperature: 1.0,
-    maxOutputTokens: 32768,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-    },
-  },
-
-  fashion: {
-    model: "openai/gpt-5.5",
-    fallbackMode: "free",
-    managedGatewayProvider: "openai",
-    temperature: 1.0,
-    maxOutputTokens: 32768,
-    providerOptions: {
-    },
-  },
-
-  reasoning: {
-    model: "openai/gpt-5.4-mini",
-    fallbackMode: "free",
-    managedGatewayProvider: "openai",
-    temperature: 1.0,
-    maxOutputTokens: 16096,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-      },
-    },
-  },
-
-  synthesis: {
-    model: "openai/gpt-5.4-mini",
-    fallbackMode: "free",
-    managedGatewayProvider: "openai",
-    temperature: 1.0,
-    maxOutputTokens: 30000,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-    },
-  },
-
-  media: {
-    model: "anthropic/claude-opus-4.6",
-    fallbackMode: "free",
-    managedGatewayProvider: "anthropic",
-    temperature: 1.0,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "low",
-      },
-    },
-  },
-
-  vision_metadata: {
+  vision: {
     model: "google/gemini-3-flash-preview",
-    fallbackMode: "media",
+    fallbackMode: "designer",
     managedGatewayProvider: "google",
     temperature: 0.4,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 8192,
     providerOptions: {
       ...gatewayOptions("google"),
     },
@@ -309,12 +261,12 @@ const AUDIENCE_AGENT_MODE_OVERRIDES: Partial<
   Record<ManagedModelAudience, Partial<Record<string, ModelMode>>>
 > = {
   anonymous: {
-    [AGENT_IDS.ORCHESTRATOR]: "free",
-    [AGENT_IDS.GENERAL]: "free",
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
   },
   free: {
-    [AGENT_IDS.ORCHESTRATOR]: "free",
-    [AGENT_IDS.GENERAL]: "free",
+    [AGENT_IDS.ORCHESTRATOR]: "standard",
+    [AGENT_IDS.GENERAL]: "standard",
   },
   go: {
     [AGENT_IDS.ORCHESTRATOR]: "standard",
@@ -363,43 +315,64 @@ const RESTRICTED_MODEL_OVERRIDE_AUDIENCES = new Set<ManagedModelAudience>([
 export const canOverrideStellaModel = (audience: ManagedModelAudience): boolean =>
   !RESTRICTED_MODEL_OVERRIDE_AUDIENCES.has(audience);
 
-export const TASK_MODEL_MODES: Record<string, ModelMode> = {
+/**
+ * Agent types whose model selection is locked on the backend regardless of
+ * audience tier. The client can request whatever model it likes; we ignore
+ * it and use whatever the per-tier `TASK_MODEL_SELECTIONS` mapping resolves to.
+ *
+ * Chronicle is locked because it ticks every minute against the user's
+ * captured screen activity — picking the wrong (expensive) model here can
+ * burn through quota with no user-visible benefit. Letting the client
+ * override would also create surprising billing behavior for users who
+ * idly switched their "assistant" model assuming it only affects chat.
+ */
+export const LOCKED_AGENT_TYPES: ReadonlySet<string> = new Set<string>([
+  "chronicle",
+]);
+
+export const canClientOverrideModelForAgent = (
+  agentType: string,
+  audience: ManagedModelAudience,
+): boolean =>
+  !LOCKED_AGENT_TYPES.has(agentType) && canOverrideStellaModel(audience);
+
+export const TASK_MODEL_SELECTIONS: Record<string, TaskModelSelection> = {
   [AGENT_IDS.OFFLINE_RESPONDER]: "standard",
   // Per-tier orchestrator/general defaults live in
-  // `AUDIENCE_AGENT_MODE_OVERRIDES` below; this `sota` entry is the
+  // `AUDIENCE_AGENT_MODE_OVERRIDES` below; this `builder` entry is the
   // unauthenticated/internal-call fallback when no audience is supplied.
-  [AGENT_IDS.ORCHESTRATOR]: "sota",
-  [AGENT_IDS.GENERAL]: "sota",
-  [AGENT_IDS.INSTALL_UPDATE]: "best",
-  [AGENT_IDS.STORE]: "sota",
-  [AGENT_IDS.FASHION]: "fashion",
+  [AGENT_IDS.ORCHESTRATOR]: "builder",
+  [AGENT_IDS.GENERAL]: "builder",
+  [AGENT_IDS.INSTALL_UPDATE]: "designer",
+  [AGENT_IDS.STORE]: "builder",
+  [AGENT_IDS.FASHION]: "builder",
 
   schedule: "standard",
-  synthesis: "synthesis",
+  synthesis: "gpt_5_4_mini",
   session_compaction_summary: "compact",
   thread_compaction_summary: "compact",
-  welcome: "fashion",
-  mercury: "fast",
-  music_prompt: "media",
-  search_html: "fast",
-  store_security_review: "sota",
-  store_image_safety_review: "media",
-  store_asset_metadata: "vision_metadata",
-  task_summary: "social_moderation",
+  welcome: "builder",
+  mercury: "mercury",
+  music_prompt: "vision",
+  search_html: "mercury",
+  store_security_review: "builder",
+  store_image_safety_review: "vision",
+  store_asset_metadata: "vision",
+  task_summary: "light",
 
   // Memory pipeline (mirrors split: cheap extract / strong consolidate).
   // Stage 1 thread "extraction" is implicit today (General's final response is
   // the rollout summary). Stage 2 = Dream consolidation, run on the strongest
   // tier so it can faithfully merge weeks of context. Chronicle's recursive
   // summarizer ticks every minute, so it must stay cheap.
-  dream: "sota",
-  chronicle: "free",
+  dream: "builder",
+  chronicle: "light",
 
   // Background "should we update the user's home Ideas list?" pass that
   // fires every few General-agent finalizes. Cheap free-tier model is
   // sufficient — it weighs the current list against fresh activity and
   // decides whether to replace it without paying the strong-tier cost.
-  home_suggestions: "free",
+  home_suggestions: "light",
 };
 
 const buildResolvedModeConfig = (
@@ -407,6 +380,13 @@ const buildResolvedModeConfig = (
   rawModeCatalog: Record<ModelMode, ModeConfig>,
 ): ModelConfig => {
   const config = rawModeCatalog[mode];
+  return buildResolvedConfig(config, rawModeCatalog);
+};
+
+const buildResolvedConfig = (
+  config: ModeConfig,
+  rawModeCatalog: Record<ModelMode, ModeConfig>,
+): ModelConfig => {
   const fallbackConfig = config.fallbackMode ? rawModeCatalog[config.fallbackMode] : undefined;
 
   return {
@@ -423,9 +403,9 @@ const buildResolvedModeConfig = (
   };
 };
 
-const buildAudienceModeCatalog = (
+const buildAudienceRawModeCatalog = (
   audience: ManagedModelAudience,
-): Record<ModelMode, ModelConfig> => {
+): Record<ModelMode, ModeConfig> => {
   const rawModeCatalog = {} as Record<ModelMode, ModeConfig>;
 
   for (const mode of MODEL_MODES) {
@@ -435,6 +415,13 @@ const buildAudienceModeCatalog = (
     );
   }
 
+  return rawModeCatalog;
+};
+
+const buildAudienceModeCatalog = (
+  audience: ManagedModelAudience,
+): Record<ModelMode, ModelConfig> => {
+  const rawModeCatalog = buildAudienceRawModeCatalog(audience);
   const resolvedModeCatalog = {} as Record<ModelMode, ModelConfig>;
   for (const mode of MODEL_MODES) {
     resolvedModeCatalog[mode] = buildResolvedModeConfig(mode, rawModeCatalog);
@@ -446,13 +433,16 @@ const buildAudienceModeCatalog = (
 const buildAudienceAgentCatalog = (
   audience: ManagedModelAudience,
   modeCatalog: Record<ModelMode, ModelConfig>,
+  rawModeCatalog: Record<ModelMode, ModeConfig>,
 ): Record<string, ModelConfig> => {
   const taskCatalog: Record<string, ModelConfig> = {};
   const audienceModeOverrides = AUDIENCE_AGENT_MODE_OVERRIDES[audience] ?? {};
 
-  for (const [agentType, defaultMode] of Object.entries(TASK_MODEL_MODES)) {
-    const mode = audienceModeOverrides[agentType] ?? defaultMode;
-    taskCatalog[agentType] = clone(modeCatalog[mode]);
+  for (const [agentType, defaultSelection] of Object.entries(TASK_MODEL_SELECTIONS)) {
+    const selection = audienceModeOverrides[agentType] ?? defaultSelection;
+    taskCatalog[agentType] = isInternalModelConfigKey(selection)
+      ? buildResolvedConfig(INTERNAL_MODEL_CONFIGS[selection], rawModeCatalog)
+      : clone(modeCatalog[selection]);
   }
 
   return taskCatalog;
@@ -472,16 +462,16 @@ const AUDIENCE_MODE_CONFIGS: Record<ManagedModelAudience, Record<ModelMode, Mode
 };
 
 export const AUDIENCE_AGENT_MODELS: Record<ManagedModelAudience, Record<string, ModelConfig>> = {
-  anonymous: buildAudienceAgentCatalog("anonymous", AUDIENCE_MODE_CONFIGS.anonymous),
-  free: buildAudienceAgentCatalog("free", AUDIENCE_MODE_CONFIGS.free),
-  go: buildAudienceAgentCatalog("go", AUDIENCE_MODE_CONFIGS.go),
-  pro: buildAudienceAgentCatalog("pro", AUDIENCE_MODE_CONFIGS.pro),
-  plus: buildAudienceAgentCatalog("plus", AUDIENCE_MODE_CONFIGS.plus),
-  ultra: buildAudienceAgentCatalog("ultra", AUDIENCE_MODE_CONFIGS.ultra),
-  go_fallback: buildAudienceAgentCatalog("go_fallback", AUDIENCE_MODE_CONFIGS.go_fallback),
-  pro_fallback: buildAudienceAgentCatalog("pro_fallback", AUDIENCE_MODE_CONFIGS.pro_fallback),
-  plus_fallback: buildAudienceAgentCatalog("plus_fallback", AUDIENCE_MODE_CONFIGS.plus_fallback),
-  ultra_fallback: buildAudienceAgentCatalog("ultra_fallback", AUDIENCE_MODE_CONFIGS.ultra_fallback),
+  anonymous: buildAudienceAgentCatalog("anonymous", AUDIENCE_MODE_CONFIGS.anonymous, buildAudienceRawModeCatalog("anonymous")),
+  free: buildAudienceAgentCatalog("free", AUDIENCE_MODE_CONFIGS.free, buildAudienceRawModeCatalog("free")),
+  go: buildAudienceAgentCatalog("go", AUDIENCE_MODE_CONFIGS.go, buildAudienceRawModeCatalog("go")),
+  pro: buildAudienceAgentCatalog("pro", AUDIENCE_MODE_CONFIGS.pro, buildAudienceRawModeCatalog("pro")),
+  plus: buildAudienceAgentCatalog("plus", AUDIENCE_MODE_CONFIGS.plus, buildAudienceRawModeCatalog("plus")),
+  ultra: buildAudienceAgentCatalog("ultra", AUDIENCE_MODE_CONFIGS.ultra, buildAudienceRawModeCatalog("ultra")),
+  go_fallback: buildAudienceAgentCatalog("go_fallback", AUDIENCE_MODE_CONFIGS.go_fallback, buildAudienceRawModeCatalog("go_fallback")),
+  pro_fallback: buildAudienceAgentCatalog("pro_fallback", AUDIENCE_MODE_CONFIGS.pro_fallback, buildAudienceRawModeCatalog("pro_fallback")),
+  plus_fallback: buildAudienceAgentCatalog("plus_fallback", AUDIENCE_MODE_CONFIGS.plus_fallback, buildAudienceRawModeCatalog("plus_fallback")),
+  ultra_fallback: buildAudienceAgentCatalog("ultra_fallback", AUDIENCE_MODE_CONFIGS.ultra_fallback, buildAudienceRawModeCatalog("ultra_fallback")),
 };
 
 export const AGENT_MODELS = AUDIENCE_AGENT_MODELS.free;

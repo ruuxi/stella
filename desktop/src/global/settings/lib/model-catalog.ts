@@ -318,7 +318,7 @@ export function groupCatalogModelsByProvider(
  * label is just the trailing model slug (e.g. `openai/gpt-5` → `gpt-5`,
  * `accounts/fireworks/models/qwen-coder-32b` → `qwen-coder-32b`). For
  * preset Stella models with no slash in the modelId we keep the
- * pre-formatted display name (e.g. "Stella Best") because that's already
+ * pre-formatted display name (e.g. "Stella Designer") because that's already
  * the friendly form. Only applied to Stella models — every other provider
  * keeps its standard label.
  */
@@ -331,7 +331,7 @@ export function getStellaDisplayName(model: CatalogModel): string {
 }
 
 /**
- * For Stella preset modes ("Stella Best", "Stella Smart", …) returns the
+ * For Stella preset modes ("Stella Designer", "Stella Builder", …) returns the
  * resolved upstream model id with provider prefixes stripped, so users
  * see *both* the friendly preset label and the actual model it currently
  * maps to. Returns null when there's no useful subtitle (e.g. for non-
