@@ -1,4 +1,11 @@
-const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#f8fbff"/><path fill="#1873c8" d="M33.6 12.5c1.2 0 2.2.8 2.6 1.9l2.3 7.2c.3.9 1 1.6 1.9 1.9l7.2 2.3c1.1.4 1.9 1.4 1.9 2.6s-.8 2.2-1.9 2.6l-7.2 2.3c-.9.3-1.6 1-1.9 1.9l-2.3 7.2c-.4 1.1-1.4 1.9-2.6 1.9s-2.2-.8-2.6-1.9l-2.3-7.2c-.3-.9-1-1.6-1.9-1.9l-7.2-2.3c-1.1-.4-1.9-1.4-1.9-2.6s.8-2.2 1.9-2.6l7.2-2.3c.9-.3 1.6-1 1.9-1.9l2.3-7.2c.4-1.1 1.4-1.9 2.6-1.9Z"/><path fill="#54a8e0" d="M20.8 40.7c.7 0 1.3.4 1.5 1.1l.9 2.8c.2.5.5.8 1 1l2.8.9c.7.2 1.1.8 1.1 1.5s-.4 1.3-1.1 1.5l-2.8.9c-.5.2-.8.5-1 1l-.9 2.8c-.2.7-.8 1.1-1.5 1.1s-1.3-.4-1.5-1.1l-.9-2.8c-.2-.5-.5-.8-1-1l-2.8-.9c-.7-.2-1.1-.8-1.1-1.5s.4-1.3 1.1-1.5l2.8-.9c.5-.2.8-.5 1-1l.9-2.8c.2-.7.8-1.1 1.5-1.1Z"/></svg>`;
+/**
+ * HTML rendered on the local-loopback OAuth callback page (e.g. Anthropic
+ * OAuth lands here after the user authorizes Stella). Matches Stella's
+ * splash + recovery aesthetic — white card, Cormorant Garamond italic
+ * wordmark, muted status line. The fonts pull from Google Fonts because
+ * this page runs in the user's regular browser, not the Electron shell,
+ * so we can't use the bundled font files.
+ */
 
 function escapeHtml(value: string): string {
 	return value
@@ -26,84 +33,93 @@ function renderPage(options: {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,400;1,500&family=Manrope:wght@400;500&display=swap"
+  />
   <style>
-    :root {
-      --text: #fafafa;
-      --text-dim: #a1a1aa;
-      --page-bg: #080b10;
-      --surface: rgba(255, 255, 255, 0.06);
-      --surface-border: rgba(255, 255, 255, 0.12);
-      --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      color: #1d1d1f;
     }
-    * { box-sizing: border-box; }
-    html { color-scheme: dark; }
     body {
-      margin: 0;
-      min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 24px;
-      background: var(--page-bg);
-      color: var(--text);
-      font-family: var(--font-sans);
-      text-align: center;
+      background: #0e1014;
     }
-    main {
+    .card {
       width: 100%;
-      max-width: 560px;
+      max-width: 420px;
+      background: #ffffff;
+      border-radius: 18px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.06);
+      padding: 40px 36px 32px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 40px 32px;
-      border: 1px solid var(--surface-border);
-      border-radius: 28px;
-      background: var(--surface);
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      gap: 18px;
+      text-align: center;
+      animation: cardIn 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
     }
-    .logo {
-      width: 72px;
-      height: 72px;
-      display: block;
-      margin-bottom: 24px;
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(6px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
-    .brand {
-      margin: 0 0 18px;
-      color: #d7ecff;
-      font-size: 12px;
-      font-weight: 650;
-      letter-spacing: 0;
-      text-transform: uppercase;
+    .name {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 32px;
+      font-style: italic;
+      font-weight: 500;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      color: #1d1d1f;
     }
     h1 {
-      margin: 0 0 10px;
-      font-size: 28px;
-      line-height: 1.15;
-      font-weight: 650;
-      color: var(--text);
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 22px;
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: #1d1d1f;
+      margin-top: 2px;
     }
     p {
-      margin: 0;
-      line-height: 1.7;
-      color: var(--text-dim);
-      font-size: 15px;
+      font-size: 14px;
+      line-height: 1.55;
+      letter-spacing: -0.005em;
+      color: #6e6e73;
+      max-width: 320px;
     }
     .details {
-      margin-top: 16px;
-      font-family: var(--font-mono);
-      font-size: 13px;
-      color: var(--text-dim);
+      width: 100%;
+      margin-top: 4px;
+      padding: 10px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      color: #6e6e73;
+      background: #f5f5f7;
+      border-radius: 8px;
       white-space: pre-wrap;
       word-break: break-word;
+      text-align: left;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0a0a0a; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <div class="logo">${LOGO_SVG}</div>
-    <div class="brand">Stella</div>
+  <main class="card">
+    <div class="name">Stella</div>
     <h1>${heading}</h1>
     <p>${message}</p>
     ${details ? `<div class="details">${details}</div>` : ""}
@@ -114,16 +130,16 @@ function renderPage(options: {
 
 export function oauthSuccessHtml(message: string): string {
 	return renderPage({
-		title: "Authentication successful",
-		heading: "Authentication successful",
+		title: "Stella — connected",
+		heading: "Connected",
 		message,
 	});
 }
 
 export function oauthErrorHtml(message: string, details?: string): string {
 	return renderPage({
-		title: "Authentication failed",
-		heading: "Authentication failed",
+		title: "Stella — couldn't connect",
+		heading: "Couldn't connect",
 		message,
 		details,
 	});
