@@ -24,6 +24,7 @@ import {
   type SubscriptionPlan,
 } from "./lib/billing_plans";
 import {
+  centsToMicroCents,
   type TokenPriceConfig,
   computeRealtimeUsageCostMicroCents,
   computeUsageCostMicroCents,
@@ -97,6 +98,10 @@ const ACTIVE_SUBSCRIPTION_STATUSES = new Set([
 ]);
 const emptyString = "";
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
+const USAGE_CREDIT_CURRENCY = "usd";
+const USAGE_CREDIT_MIN_PURCHASE_CENTS = 100;
+const USAGE_CREDIT_MAX_PURCHASE_CENTS = 50_000;
+const USAGE_CREDIT_PRESET_AMOUNTS_CENTS = [500, 1_000, 2_500, 5_000] as const;
 
 const isAnonymousIdentity = (identity: unknown) =>
   Boolean(identity && typeof identity === "object" && (identity as Record<string, unknown>).isAnonymous === true);
@@ -147,6 +152,14 @@ const getOwnerUsageRow = async (
   .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
   .unique();
 
+const getOwnerUsageCreditRow = async (
+  ctx: MutationCtx,
+  ownerId: string,
+) => await ctx.db
+  .query("billing_usage_credits")
+  .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+  .unique();
+
 const createDefaultProfile = (ownerId: string, now: number) => ({
   ownerId,
   activePlan: "free" as const,
@@ -182,6 +195,16 @@ const createDefaultUsage = (ownerId: string, now: number) => {
     updatedAt: now,
   };
 };
+
+const createDefaultUsageCredit = (ownerId: string, now: number) => ({
+  ownerId,
+  balanceMicroCents: 0,
+  totalPurchasedMicroCents: 0,
+  totalConsumedMicroCents: 0,
+  currency: USAGE_CREDIT_CURRENCY,
+  createdAt: now,
+  updatedAt: now,
+});
 
 const ensureBillingRecordsForOwner = async (
   ctx: MutationCtx,
@@ -220,6 +243,25 @@ const ensureBillingRecordsForOwner = async (
   return { profile, usage };
 };
 
+const ensureUsageCreditForOwner = async (
+  ctx: MutationCtx,
+  ownerId: string,
+) => {
+  const now = Date.now();
+  let credit = await getOwnerUsageCreditRow(ctx, ownerId);
+  if (!credit) {
+    await ctx.db.insert("billing_usage_credits", createDefaultUsageCredit(ownerId, now));
+    credit = await getOwnerUsageCreditRow(ctx, ownerId);
+  }
+  if (!credit) {
+    throw new ConvexError({
+      code: "INTERNAL_ERROR",
+      message: "Failed to initialize usage credit balance.",
+    });
+  }
+  return credit;
+};
+
 type UsageSnapshot = {
   normalizedUsage: {
     rollingUsageMicroCents: number;
@@ -248,6 +290,54 @@ type UsageSnapshot = {
     exceeded: boolean;
   };
   changed: boolean;
+};
+
+const getUsageCreditBalanceMicroCents = (
+  credit: { balanceMicroCents: number } | null,
+) => Math.max(0, Math.floor(credit?.balanceMicroCents ?? 0));
+
+const getIncludedUsageHeadroomMicroCents = (snapshot: UsageSnapshot) =>
+  Math.max(
+    0,
+    Math.min(
+      Math.max(0, snapshot.rolling.limit - snapshot.rolling.used),
+      Math.max(0, snapshot.weekly.limit - snapshot.weekly.used),
+      Math.max(0, snapshot.monthly.limit - snapshot.monthly.used),
+    ),
+  );
+
+const computeUsageCreditToConsume = (args: {
+  costMicroCents: number;
+  snapshot: UsageSnapshot;
+  unlimited: boolean;
+}) => {
+  if (args.unlimited) return 0;
+  const costMicroCents = Math.max(0, Math.floor(args.costMicroCents));
+  if (costMicroCents <= 0) return 0;
+  return Math.max(
+    0,
+    costMicroCents - getIncludedUsageHeadroomMicroCents(args.snapshot),
+  );
+};
+
+const normalizeUsageCreditPurchaseAmountCents = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: "Enter a valid credit amount.",
+    });
+  }
+  const amountCents = Math.floor(value);
+  if (
+    amountCents < USAGE_CREDIT_MIN_PURCHASE_CENTS ||
+    amountCents > USAGE_CREDIT_MAX_PURCHASE_CENTS
+  ) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `Credit amount must be between $${USAGE_CREDIT_MIN_PURCHASE_CENTS / 100} and $${USAGE_CREDIT_MAX_PURCHASE_CENTS / 100}.`,
+    });
+  }
+  return amountCents;
 };
 
 const buildUsageSnapshot = (args: {
@@ -499,6 +589,7 @@ export const persistManagedUsage = async (
   const { profile, usage } = await ensureBillingRecordsForOwner(ctx, args.ownerId);
   const plan = profile.activePlan as SubscriptionPlan;
   const now = Date.now();
+  const unlimited = hasUnlimitedUsage(profile);
 
   const snapshot = buildUsageSnapshot({
     profile,
@@ -506,6 +597,12 @@ export const persistManagedUsage = async (
     plan,
     now,
   });
+  const creditToConsumeMicroCents = computeUsageCreditToConsume({
+    costMicroCents,
+    snapshot,
+    unlimited,
+  });
+  let creditConsumedMicroCents = 0;
 
   await ctx.db.patch(usage._id, {
     rollingUsageMicroCents: snapshot.normalizedUsage.rollingUsageMicroCents + costMicroCents,
@@ -517,6 +614,25 @@ export const persistManagedUsage = async (
     totalUsageMicroCents: usage.totalUsageMicroCents + costMicroCents,
     updatedAt: now,
   });
+
+  if (creditToConsumeMicroCents > 0) {
+    const credit = await getOwnerUsageCreditRow(ctx, args.ownerId);
+    if (credit) {
+      creditConsumedMicroCents = Math.min(
+        getUsageCreditBalanceMicroCents(credit),
+        creditToConsumeMicroCents,
+      );
+      if (creditConsumedMicroCents > 0) {
+        await ctx.db.patch(credit._id, {
+          balanceMicroCents: getUsageCreditBalanceMicroCents(credit) - creditConsumedMicroCents,
+          totalConsumedMicroCents:
+            Math.max(0, Math.floor(credit.totalConsumedMicroCents)) +
+            creditConsumedMicroCents,
+          updatedAt: now,
+        });
+      }
+    }
+  }
 
   const conversationId = args.conversationId ?? await getDefaultConversationIdForOwner(ctx, args.ownerId);
   if (conversationId) {
@@ -543,6 +659,7 @@ export const persistManagedUsage = async (
 
   return {
     costMicroCents,
+    creditConsumedMicroCents,
     plan,
   };
 };
@@ -1138,6 +1255,93 @@ export const recordInvoicePayment = internalMutation({
   },
 });
 
+export const recordUsageCreditPurchase = internalMutation({
+  args: {
+    ownerId: v.string(),
+    stripeCheckoutSessionId: v.string(),
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeCustomerId: v.string(),
+    amountCents: v.number(),
+    currency: v.string(),
+    status: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = args.ownerId.trim();
+    const checkoutSessionId = args.stripeCheckoutSessionId.trim();
+    if (!ownerId || !checkoutSessionId) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "Usage credit purchase is missing required identifiers.",
+      });
+    }
+
+    await ensureBillingRecordsForOwner(ctx, ownerId);
+    const amountCents = normalizeUsageCreditPurchaseAmountCents(args.amountCents);
+    const amountMicroCents = centsToMicroCents(amountCents);
+    const status = args.status.trim().toLowerCase() || "unknown";
+    const paymentIntentId = toSafeString(args.stripePaymentIntentId);
+    const customerId = toSafeString(args.stripeCustomerId);
+    const currency = args.currency.trim().toLowerCase() || USAGE_CREDIT_CURRENCY;
+    const now = Date.now();
+
+    const existing = await ctx.db
+      .query("billing_usage_credit_purchases")
+      .withIndex("by_stripeCheckoutSessionId", (q) =>
+        q.eq("stripeCheckoutSessionId", checkoutSessionId),
+      )
+      .unique();
+    const shouldCredit = status === "paid" && existing?.status !== "paid";
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        ownerId,
+        stripePaymentIntentId: paymentIntentId || existing.stripePaymentIntentId,
+        stripeCustomerId: customerId || existing.stripeCustomerId,
+        amountMicroCents,
+        currency,
+        status,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("billing_usage_credit_purchases", {
+        ownerId,
+        stripeCheckoutSessionId: checkoutSessionId,
+        stripePaymentIntentId: paymentIntentId,
+        stripeCustomerId: customerId,
+        amountMicroCents,
+        currency,
+        status,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (!shouldCredit) {
+      return {
+        recorded: true,
+        credited: false,
+        amountMicroCents,
+      };
+    }
+
+    const credit = await ensureUsageCreditForOwner(ctx, ownerId);
+    await ctx.db.patch(credit._id, {
+      balanceMicroCents: getUsageCreditBalanceMicroCents(credit) + amountMicroCents,
+      totalPurchasedMicroCents:
+        Math.max(0, Math.floor(credit.totalPurchasedMicroCents)) +
+        amountMicroCents,
+      currency,
+      updatedAt: now,
+    });
+
+    return {
+      recorded: true,
+      credited: true,
+      amountMicroCents,
+    };
+  },
+});
+
 export const resolveManagedModelAccess = internalMutation({
   args: {
     ownerId: v.string(),
@@ -1170,12 +1374,19 @@ export const resolveManagedModelAccess = internalMutation({
           : snapshot.monthly.exceeded
             ? snapshot.monthly
             : null;
+    const credit = firstExceeded
+      ? await getOwnerUsageCreditRow(ctx, args.ownerId)
+      : null;
+    const exceededWindow =
+      firstExceeded && getUsageCreditBalanceMicroCents(credit) > 0
+        ? null
+        : firstExceeded;
 
     return buildManagedModelAccessResult({
       plan,
       isAnonymous: args.isAnonymous,
       unlimited,
-      exceededWindow: firstExceeded,
+      exceededWindow,
       now,
     });
   },
@@ -1233,6 +1444,18 @@ export const enforceManagedUsageLimit = internalMutation({
             : null;
 
     if (firstExceeded) {
+      const credit = await getOwnerUsageCreditRow(ctx, args.ownerId);
+      const availableCreditMicroCents = getUsageCreditBalanceMicroCents(credit);
+      if (availableCreditMicroCents > minimumRemainingMicroCents) {
+        return {
+          allowed: true,
+          plan,
+          retryAfterMs: 0,
+          message: emptyString,
+          unlimited: false,
+        };
+      }
+
       return {
         allowed: false,
         plan,
@@ -1590,6 +1813,163 @@ export const createCheckoutSession = action({
       sessionParams,
     );
 
+    if (!checkoutSession.url) {
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "Stripe did not return a checkout URL.",
+      });
+    }
+
+    return {
+      url: checkoutSession.url,
+      sessionId: checkoutSession.id,
+    };
+  },
+});
+
+export const getUsageCreditPurchaseOptions = query({
+  args: {},
+  returns: v.object({
+    currency: v.string(),
+    minAmountCents: v.number(),
+    maxAmountCents: v.number(),
+    presetAmountCents: v.array(v.number()),
+  }),
+  handler: async () => ({
+    currency: USAGE_CREDIT_CURRENCY,
+    minAmountCents: USAGE_CREDIT_MIN_PURCHASE_CENTS,
+    maxAmountCents: USAGE_CREDIT_MAX_PURCHASE_CENTS,
+    presetAmountCents: [...USAGE_CREDIT_PRESET_AMOUNTS_CENTS],
+  }),
+});
+
+export const getUsageCreditStatus = query({
+  args: {},
+  returns: v.object({
+    authenticated: v.boolean(),
+    currency: v.string(),
+    balanceUsd: v.number(),
+    totalPurchasedUsd: v.number(),
+    totalConsumedUsd: v.number(),
+  }),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || isAnonymousIdentity(identity)) {
+      return {
+        authenticated: false,
+        currency: USAGE_CREDIT_CURRENCY,
+        balanceUsd: 0,
+        totalPurchasedUsd: 0,
+        totalConsumedUsd: 0,
+      };
+    }
+
+    const credit = await ctx.db
+      .query("billing_usage_credits")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", identity.tokenIdentifier))
+      .unique();
+
+    return {
+      authenticated: true,
+      currency: credit?.currency ?? USAGE_CREDIT_CURRENCY,
+      balanceUsd: toCurrencyAmount(getUsageCreditBalanceMicroCents(credit ?? null)),
+      totalPurchasedUsd: toCurrencyAmount(credit?.totalPurchasedMicroCents ?? 0),
+      totalConsumedUsd: toCurrencyAmount(credit?.totalConsumedMicroCents ?? 0),
+    };
+  },
+});
+
+export const createUsageCreditCheckoutSession = action({
+  args: {
+    amountCents: v.number(),
+    returnUrl: v.string(),
+  },
+  returns: v.object({
+    url: v.string(),
+    sessionId: v.string(),
+  }),
+  handler: async (ctx, args): Promise<{ url: string; sessionId: string }> => {
+    const identity = await requireSensitiveUserIdentityAction(ctx);
+    if (isAnonymousIdentity(identity)) {
+      throw new ConvexError({
+        code: "UNAUTHENTICATED",
+        message: "Please sign in with an account before buying usage credit.",
+      });
+    }
+
+    const ownerId = identity.tokenIdentifier;
+    await enforceActionRateLimit(
+      ctx,
+      "billing_create_usage_credit_checkout_session",
+      ownerId,
+      RATE_EXPENSIVE,
+      "Too many checkout requests. Please wait a moment and try again.",
+    );
+
+    const amountCents = normalizeUsageCreditPurchaseAmountCents(args.amountCents);
+    const normalizedReturnUrl = normalizeReturnUrl(args.returnUrl);
+    const successUrl = appendCheckoutStatus(normalizedReturnUrl, "success");
+    const cancelUrl = appendCheckoutStatus(normalizedReturnUrl, "cancel");
+    const stripe = getStripeClient();
+    const billing: {
+      ownerId: string;
+      activePlan: string;
+      subscriptionStatus: string;
+      stripeCustomerId: string;
+      stripeSubscriptionId: string;
+      stripePriceId: string;
+      currentPeriodEnd: number;
+      usageUpdatedAt: number;
+    } = await ctx.runMutation(internal.billing.ensureBillingRecords, {
+      ownerId,
+    });
+
+    let stripeCustomerId = billing.stripeCustomerId;
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        metadata: {
+          ownerId,
+        },
+      });
+      stripeCustomerId = customer.id;
+      await ctx.runMutation(internal.billing.linkStripeCustomerToOwner, {
+        ownerId,
+        stripeCustomerId,
+      });
+    }
+
+    const metadata = {
+      ownerId,
+      purpose: "usage_credit",
+      amountCents: String(amountCents),
+    };
+    const sessionParams = {
+      mode: "payment",
+      ui_mode: "hosted_page",
+      customer: stripeCustomerId,
+      line_items: [
+        {
+          price_data: {
+            currency: USAGE_CREDIT_CURRENCY,
+            unit_amount: amountCents,
+            product_data: {
+              name: "Stella extra usage credit",
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      allow_promotion_codes: false,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      managed_payments: { enabled: true },
+      metadata,
+      payment_intent_data: {
+        metadata,
+      },
+    } as Stripe.Checkout.SessionCreateParams;
+
+    const checkoutSession = await stripe.checkout.sessions.create(sessionParams);
     if (!checkoutSession.url) {
       throw new ConvexError({
         code: "INTERNAL_ERROR",

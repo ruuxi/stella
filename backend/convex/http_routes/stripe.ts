@@ -24,9 +24,19 @@ const toSafeString = (value: string | null | undefined) => value?.trim() ?? "";
 
 const toPaidPlan = (value: string | null | undefined) => {
   const normalized = value?.trim().toLowerCase();
-  return normalized === "go" || normalized === "pro" || normalized === "plus"
+  return normalized === "go" || normalized === "pro" || normalized === "plus" || normalized === "ultra"
     ? normalized
     : undefined;
+};
+
+const toPositiveInteger = (value: string | number | null | undefined) => {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.trim())
+        : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
 };
 
 const getStripeClient = () => {
@@ -185,17 +195,49 @@ export const registerStripeRoutes = (http: HttpRouter) => {
 
       try {
         switch (event.type) {
+          case "checkout.session.async_payment_succeeded":
           case "checkout.session.completed": {
             const session = event.data.object as Stripe.Checkout.Session;
+            const ownerId = toSafeString(session.metadata?.ownerId);
+            const customerId = toSafeString(
+              typeof session.customer === "string" ? session.customer : undefined,
+            );
+            if (session.mode === "payment" && session.metadata?.purpose === "usage_credit") {
+              const paymentIntentId = toSafeString(
+                typeof session.payment_intent === "string"
+                  ? session.payment_intent
+                  : session.payment_intent?.id,
+              );
+              const amountCents =
+                toPositiveInteger(session.metadata?.amountCents) ||
+                toPositiveInteger(session.amount_total);
+
+              if (ownerId && customerId) {
+                await ctx.runMutation(internal.billing.linkStripeCustomerToOwner, {
+                  ownerId,
+                  stripeCustomerId: customerId,
+                });
+              }
+
+              if (ownerId && customerId && amountCents > 0) {
+                await ctx.runMutation(internal.billing.recordUsageCreditPurchase, {
+                  ownerId,
+                  stripeCheckoutSessionId: session.id,
+                  stripePaymentIntentId: paymentIntentId || undefined,
+                  stripeCustomerId: customerId,
+                  amountCents,
+                  currency: session.currency ?? "usd",
+                  status: session.payment_status ?? "unknown",
+                });
+              }
+              break;
+            }
+
             if (session.mode !== "subscription") {
               break;
             }
 
-            const ownerId = toSafeString(session.metadata?.ownerId);
             const requestedPlan = toPaidPlan(session.metadata?.plan);
-            const customerId = toSafeString(
-              typeof session.customer === "string" ? session.customer : undefined,
-            );
             const subscriptionId = toSafeString(
               typeof session.subscription === "string" ? session.subscription : undefined,
             );
