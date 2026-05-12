@@ -546,6 +546,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
         activeShortcut: string;
         error?: string;
       }>,
+    getSoundEffectsEnabled: () =>
+      ipcRenderer.invoke("dictation:getSoundEffectsEnabled") as Promise<boolean>,
+    setSoundEffectsEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke(
+        "dictation:setSoundEffectsEnabled",
+        enabled,
+      ) as Promise<{ enabled: boolean }>,
     localStatus: () =>
       ipcRenderer.invoke("dictation:localStatus") as Promise<{
         available: boolean;
@@ -580,6 +587,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send("dictation:inAppStarted", payload),
     activeChanged: (payload: { active: boolean }) =>
       ipcRenderer.send("dictation:activeChanged", payload),
+    playSound: (payload: {
+      sound: "startRecording" | "stopRecording" | "cancel";
+    }) => ipcRenderer.send("dictation:playSound", payload),
   },
 
   agent: {

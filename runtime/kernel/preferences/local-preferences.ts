@@ -84,6 +84,8 @@ export type LocalPreferences = {
   preventComputerSleep: boolean;
   /** Allows desktop notification sounds for agent completion. */
   soundNotificationsEnabled: boolean;
+  /** Allows start/stop sound effects for dictation. */
+  dictationSoundEffectsEnabled: boolean;
   /**
    * "Hey Stella" wake-word listener — when enabled, a background
    * native helper continuously listens for the wake word and starts
@@ -126,6 +128,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   preventComputerSleep: false,
   soundNotificationsEnabled: true,
+  dictationSoundEffectsEnabled: true,
   wakeWordEnabled: false,
   wakeWordThreshold: 0.68,
 };
@@ -180,6 +183,8 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       ),
       preventComputerSleep: parsed.preventComputerSleep === true,
       soundNotificationsEnabled: parsed.soundNotificationsEnabled !== false,
+      dictationSoundEffectsEnabled:
+        parsed.dictationSoundEffectsEnabled !== false,
       wakeWordEnabled:
         typeof parsed.wakeWordEnabled === "boolean"
           ? parsed.wakeWordEnabled
@@ -364,6 +369,12 @@ export const getPreventComputerSleep = (stellaHome: string): boolean => {
 
 export const getSoundNotificationsEnabled = (stellaHome: string): boolean => {
   return loadLocalPreferences(stellaHome).soundNotificationsEnabled;
+};
+
+export const getDictationSoundEffectsEnabled = (
+  stellaHome: string,
+): boolean => {
+  return loadLocalPreferences(stellaHome).dictationSoundEffectsEnabled;
 };
 
 // ── Normalization helpers ─────────────────────────────────────────────────
