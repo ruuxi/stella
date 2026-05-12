@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldUseClaudeCodeAgentRuntime } from "../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js";
+import {
+  getClaudeCodeAgentModelId,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js";
 
 describe("Claude Code agent runtime selector", () => {
   it("uses Claude Code for any agent when the shared runtime engine is selected", () => {
@@ -28,5 +31,9 @@ describe("Claude Code agent runtime selector", () => {
         modelId: "openai/gpt-5",
       }),
     ).toBe(false);
+  });
+
+  it("uses Claude Code's default model instead of a Stella agent type", () => {
+    expect(getClaudeCodeAgentModelId()).toBe("claude-code/default");
   });
 });

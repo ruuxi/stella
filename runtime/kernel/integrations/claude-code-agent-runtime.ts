@@ -35,6 +35,8 @@ export const shouldUseClaudeCodeAgentRuntime = (args: {
     : false;
 };
 
+export const getClaudeCodeAgentModelId = (): string => "claude-code/default";
+
 type PromptContentPart = TextContent | ImageContent | ThinkingContent | ToolCall;
 
 const contentPartToText = (part: PromptContentPart): string => {
@@ -93,7 +95,7 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
   ) => Promise<ToolResult>;
 }): Promise<string> => {
   const runId = args.runId ?? `claude-code:${args.agentType}:${crypto.randomUUID()}`;
-  const modelId = `claude-code/${args.agentType || "agent"}`;
+  const modelId = getClaudeCodeAgentModelId();
   const result = await runClaudeCodeTurn({
     runId,
     sessionKey: args.sessionKey ?? `${args.agentType}:one-shot:${runId}`,

@@ -13,7 +13,10 @@ import {
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
 } from "../integrations/claude-code-session-runtime.js";
-import { shouldUseClaudeCodeAgentRuntime } from "../integrations/claude-code-agent-runtime.js";
+import {
+  getClaudeCodeAgentModelId,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../integrations/claude-code-agent-runtime.js";
 import {
   buildRuntimeSystemPrompt,
   buildSubagentSystemPrompt,
@@ -36,6 +39,7 @@ import {
 } from "./run-session.js";
 import { now, resolveLocalCliCwd, textFromUnknown } from "./shared.js";
 import {
+  buildHistorySource,
   buildOrchestratorPromptMessages,
   buildSubagentPromptMessages,
   persistAssistantReply,
@@ -211,6 +215,49 @@ const contentToText = (content: AgentMessage["content"]): string => {
     .filter((entry) => entry.trim().length > 0)
     .join("\n\n")
     .trim();
+};
+
+const buildClaudeHistoryPromptMessage = (args: {
+  opts: BaseRunOptions;
+  promptMessages: RuntimePromptMessage[];
+}): RuntimePromptMessage | null => {
+  const history = buildHistorySource(args.opts.agentContext);
+  if (history.length === 0) {
+    return null;
+  }
+  const lastPromptUserText = [...args.promptMessages]
+    .reverse()
+    .find((message) => (message.messageType ?? "user") === "user")
+    ?.text.trim();
+  const trimmedHistory = [...history];
+  const lastHistory = trimmedHistory[trimmedHistory.length - 1];
+  if (
+    lastHistory?.role === "user" &&
+    lastPromptUserText &&
+    contentToText(lastHistory.content) === lastPromptUserText
+  ) {
+    trimmedHistory.pop();
+  }
+  const lines = trimmedHistory
+    .map((message, index) => {
+      const text = contentToText(message.content);
+      if (!text) return "";
+      return `<history_message index="${index + 1}" role="${message.role}">\n${text}\n</history_message>`;
+    })
+    .filter((entry) => entry.trim().length > 0);
+  if (lines.length === 0) {
+    return null;
+  }
+  return {
+    messageType: "message",
+    uiVisibility: "hidden",
+    customType: "runtime.stella_thread_history",
+    text: [
+      '<stella_thread_history source="stella" note="Stella chat/runtime history is the source of truth for recall. Use it to answer questions about prior Stella messages, even when Claude Code session state is unavailable or incomplete.">',
+      ...lines,
+      "</stella_thread_history>",
+    ].join("\n"),
+  };
 };
 
 const formatQueuedClaudeMessage = (
@@ -395,12 +442,25 @@ const runClaudeHostedTurn = async (args: {
     return toolResult;
   };
 
+  const historyPromptMessage = buildClaudeHistoryPromptMessage({
+    opts: args.opts,
+    promptMessages: args.promptMessages,
+  });
+  const promptMessagesWithHistory = historyPromptMessage
+    ? [historyPromptMessage, ...args.promptMessages]
+    : args.promptMessages;
+  const prompt = buildClaudePromptFromMessages(promptMessagesWithHistory);
+  const resumeFallbackPrompt = historyPromptMessage
+    ? buildClaudePromptFromMessages(promptMessagesWithHistory)
+    : undefined;
+
   let finalResult = await runClaudeCodeTurn({
     runId,
     sessionKey,
     persistedSessionId,
-    modelId: args.opts.agentContext.model ?? args.opts.resolvedLlm.model.id,
-    prompt: buildClaudePromptFromMessages(args.promptMessages),
+    modelId: getClaudeCodeAgentModelId(),
+    prompt,
+    ...(resumeFallbackPrompt ? { resumeFallbackPrompt } : {}),
     systemPrompt: args.systemPrompt,
     cwd: localCliCwd,
     attachments: args.opts.attachments,
@@ -429,12 +489,28 @@ const runClaudeHostedTurn = async (args: {
     }
     const queuedPromptMessages = queued.map(formatQueuedClaudeMessage);
     const queuedAttachments = attachmentsFromQueuedMessages(queued);
+    const queuedHistoryPromptMessage = buildClaudeHistoryPromptMessage({
+      opts: args.opts,
+      promptMessages: queuedPromptMessages,
+    });
+    const queuedPromptMessagesWithHistory = queuedHistoryPromptMessage
+      ? [queuedHistoryPromptMessage, ...queuedPromptMessages]
+      : queuedPromptMessages;
+    const queuedPrompt = buildClaudePromptFromMessages(
+      queuedPromptMessagesWithHistory,
+    );
+    const queuedResumeFallbackPrompt = queuedHistoryPromptMessage
+      ? buildClaudePromptFromMessages(queuedPromptMessagesWithHistory)
+      : undefined;
     finalResult = await runClaudeCodeTurn({
       runId,
       sessionKey,
       persistedSessionId: finalResult.sessionId,
-      modelId: args.opts.agentContext.model ?? args.opts.resolvedLlm.model.id,
-      prompt: buildClaudePromptFromMessages(queuedPromptMessages),
+      modelId: getClaudeCodeAgentModelId(),
+      prompt: queuedPrompt,
+      ...(queuedResumeFallbackPrompt
+        ? { resumeFallbackPrompt: queuedResumeFallbackPrompt }
+        : {}),
       systemPrompt: args.systemPrompt,
       cwd: localCliCwd,
       attachments: queuedAttachments,
