@@ -44,6 +44,7 @@ import {
   openChatDisplayTab,
 } from "@/shell/display/default-tabs";
 import { ModelCatalogUpdatedAtProvider } from "@/global/settings/hooks/model-catalog-updated-at";
+import { ProviderConnectedDialog } from "@/global/settings/ProviderConnectedDialog";
 import { useDictationToggleBridge } from "@/shell/root-chrome/use-dictation-toggle-bridge";
 import { useDisplayPayloadRouting } from "@/shell/root-chrome/use-display-payload-routing";
 import { useLastLocationRestore } from "@/shell/root-chrome/use-last-location-restore";
@@ -350,6 +351,8 @@ function RootChrome() {
         onConnect={showConnectDialog}
         onSignIn={showAuthDialog}
       />
+
+      <ProviderConnectedDialog />
     </>
   );
 }
