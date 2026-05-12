@@ -34,26 +34,27 @@ import { openStoreDisplayTab } from "./display/default-tabs";
 import "./full-shell.layout.css";
 import "./mobile.css";
 
-/* Onboarding is loaded as a single dynamic chunk that contains the entire
- * flow: every phase component, the StellaAnimation creature, the legal
- * dialog, the demo canvas, and all onboarding CSS. The chunk is preloaded
- * eagerly the moment we know `!appReady` (see useEffect below) so the
- * flow feels synchronous to the user; once it has resolved, every
- * in-flow transition is a normal sync render — there are NO Suspense
- * boundaries below this point.
+/* Onboarding is loaded as a dynamic chunk that contains the flow:
+ * every phase component, the StellaAnimation creature, the legal dialog,
+ * and all onboarding CSS. The demo canvas (`OnboardingCanvas` + the
+ * StellaAppMock subtree) is a separate sibling chunk preloaded in
+ * parallel so it's ready by the time the user reaches the creation phase;
+ * it also lives under its own Suspense boundary so a cold-load race can't
+ * hide the active phase's Continue button.
  *
- * Returning users (`appReady === true` at first paint) never fetch this
- * chunk. After completion the React subtree unmounts and the lazy import
- * is never re-evaluated, so onboarding code is genuinely gone for the
- * remainder of the session and absent from the next cold start. */
+ * Returning users (`appReady === true` at first paint) never fetch these
+ * chunks. After completion the React subtree unmounts and the lazy
+ * imports are never re-evaluated, so onboarding code is genuinely gone
+ * for the remainder of the session and absent from the next cold start. */
 const onboardingChunkPromise: { current: Promise<unknown> | null } = {
   current: null,
 };
 const loadOnboardingChunk = () => {
   if (!onboardingChunkPromise.current) {
-    onboardingChunkPromise.current = import(
-      "@/global/onboarding/OnboardingOverlay"
-    );
+    onboardingChunkPromise.current = Promise.all([
+      import("@/global/onboarding/OnboardingOverlay"),
+      import("@/global/onboarding/OnboardingCanvas"),
+    ]);
   }
   return onboardingChunkPromise.current;
 };
@@ -251,6 +252,11 @@ function OnboardingExperience({
             discoveryWelcomeExpected={discoveryWelcomeExpected}
             discoveryWelcomeReady={discoveryWelcomeReady}
           />
+        </Suspense>
+        {/* Canvas is its own Suspense boundary so a cold lazy-chunk load
+         * on entering the `creation` phase can't suspend the overlay above
+         * and momentarily hide the Continue button. */}
+        <Suspense fallback={null}>
           <div
             className="onboarding-demo-area"
             data-visible={showOnboardingDemos ? true : undefined}
