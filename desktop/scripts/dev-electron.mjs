@@ -622,14 +622,18 @@ const writeSplashHtml = () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 14px;
+    padding: 0;
   }
   .card {
     width: 100%;
     height: 100%;
     background: #ffffff;
     border-radius: 14px;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+    /* Intentionally no box-shadow: Chromium can't composite a real
+       drop-shadow past a transparent window's bounds, so the shadow
+       renders as a dark square inside the window frame. The 1px
+       border below gives the card a clean edge instead. */
+    border: 1px solid rgba(0, 0, 0, 0.06);
     display: flex;
     flex-direction: column;
     align-items: center;
