@@ -81,9 +81,9 @@ describe("settings model catalog", () => {
         source: "stella" as const,
       },
       {
-        id: "stella/best",
-        modelId: "best",
-        name: "Stella Best",
+        id: "stella/designer",
+        modelId: "designer",
+        name: "Stella Designer",
         provider: "stella",
         providerName: "Stella",
         source: "stella" as const,
@@ -103,7 +103,7 @@ describe("settings model catalog", () => {
     ).toEqual(["stella", "anthropic"]);
     expect(
       groupCatalogModelsByProvider(models)[0].models.map((model) => model.id),
-    ).toEqual(["stella/best", "stella/openai/gpt-5.5"]);
+    ).toEqual(["stella/designer", "stella/openai/gpt-5.5"]);
     expect(
       searchCatalogModels(models, "opus").map((model) => model.id),
     ).toEqual(["anthropic/claude-opus-4.7"]);

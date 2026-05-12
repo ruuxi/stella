@@ -1,30 +1,62 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  getModelConfig,
   getModeConfig,
   listManagedModelIds,
 } from "../../../../backend/convex/agent/model";
+import { AGENT_IDS } from "../../../../backend/convex/lib/agent_constants";
+import { listStellaCatalogModels } from "../../../../backend/convex/stella_models";
 
 describe("managed model config", () => {
-  it("routes MiniMax through Fireworks", () => {
-    const free = getModeConfig("free");
+  it("routes Light through OpenRouter", () => {
+    const light = getModeConfig("light");
 
-    expect(free.model).toBe("accounts/fireworks/models/minimax-m2p7");
-    expect(free.managedGatewayProvider).toBe("fireworks");
-    expect(free.providerOptions?.gateway?.order).toEqual(["fireworks"]);
+    expect(light.model).toBe("deepseek/deepseek-v4-flash");
+    expect(light.managedGatewayProvider).toBe("openrouter");
+    expect(light.providerOptions?.gateway?.order).toEqual(["openrouter"]);
   });
 
-  it("uses Fireworks MiniMax as the fallback for best-tier aliases", () => {
-    const best = getModeConfig("best");
+  it("uses Light as the fallback for Designer", () => {
+    const designer = getModeConfig("designer");
 
-    expect(best.fallback).toBe("accounts/fireworks/models/minimax-m2p7");
-    expect(best.fallbackManagedGatewayProvider).toBe("fireworks");
-    expect(best.fallbackProviderOptions?.gateway?.order).toEqual(["fireworks"]);
+    expect(designer.fallback).toBe("deepseek/deepseek-v4-flash");
+    expect(designer.fallbackManagedGatewayProvider).toBe("openrouter");
+    expect(designer.fallbackProviderOptions?.gateway?.order).toEqual([
+      "openrouter",
+    ]);
   });
 
-  it("keeps the Fireworks MiniMax id in the managed model sync list", () => {
+  it("uses Standard for anonymous, free, and paid chat defaults", () => {
+    expect(getModelConfig(AGENT_IDS.ORCHESTRATOR, "anonymous").model).toBe(
+      "accounts/fireworks/models/kimi-k2p6",
+    );
+    expect(getModelConfig(AGENT_IDS.GENERAL, "free").model).toBe(
+      "accounts/fireworks/models/kimi-k2p6",
+    );
+    expect(getModelConfig(AGENT_IDS.ORCHESTRATOR, "go").model).toBe(
+      "accounts/fireworks/models/kimi-k2p6",
+    );
+    expect(getModelConfig(AGENT_IDS.GENERAL, "pro").model).toBe(
+      "accounts/fireworks/models/kimi-k2p6",
+    );
+  });
+
+  it("exposes Priority only for Pro and higher catalog audiences", () => {
+    const isPriority = (model: { id: string }) =>
+      model.id === "stella/priority";
+
+    expect(listStellaCatalogModels("free").some(isPriority)).toBe(false);
+    expect(listStellaCatalogModels("go").some(isPriority)).toBe(false);
+    expect(listStellaCatalogModels("pro").find(isPriority)).toMatchObject({
+      name: "Stella Priority",
+      upstreamModel: "accounts/fireworks/routers/kimi-k2p6-turbo",
+    });
+  });
+
+  it("keeps the Light model id in the managed model sync list", () => {
     expect(listManagedModelIds()).toContain(
-      "accounts/fireworks/models/minimax-m2p7",
+      "deepseek/deepseek-v4-flash",
     );
   });
 });
