@@ -112,7 +112,7 @@ describe("settings model catalog", () => {
     ).toEqual(["anthropic/claude-opus-4.7"]);
   });
 
-  it("adds Fireworks, but not OpenRouter, as Stella-routed catalog entries", () => {
+  it("adds managed gateway models as Stella-routed catalog entries", () => {
     const models = normalizeManagedGatewayCatalogModels({
       openrouter: {
         models: {
@@ -134,10 +134,12 @@ describe("settings model catalog", () => {
 
     expect(models.map((model) => model.id)).toEqual([
       "stella/accounts/fireworks/models/kimi-k2p6",
+      "stella/meta-llama/llama-3.3-70b-instruct",
     ]);
     expect(models.every((model) => model.provider === "stella")).toBe(true);
     expect(models.map((model) => model.upstreamModel)).toEqual([
       "accounts/fireworks/models/kimi-k2p6",
+      "meta-llama/llama-3.3-70b-instruct",
     ]);
   });
 

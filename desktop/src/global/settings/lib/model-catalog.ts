@@ -196,7 +196,9 @@ export function normalizeStellaCatalogModels(
 const MANAGED_GATEWAY_MODEL_SOURCES = [
   {
     provider: "fireworks-ai",
-    upstreamPrefix: "",
+  },
+  {
+    provider: "openrouter",
   },
 ] as const;
 
