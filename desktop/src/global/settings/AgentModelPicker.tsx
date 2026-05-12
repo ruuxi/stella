@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import { CompactStellaModelList } from "@/global/settings/CompactStellaModelList";
 import { LocalRuntimeOptions } from "@/global/settings/LocalRuntimeOptions";
+import {
+  ProviderOnlyPicker,
+  type ProviderOption,
+} from "@/global/settings/ProviderOnlyPicker";
 import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
@@ -16,7 +20,6 @@ import {
   normalizeModelOverrides,
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
-import type { ProviderGroup } from "@/global/settings/lib/model-catalog";
 import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 import {
   getModelRestrictionActionLabel,
@@ -70,8 +73,17 @@ const REASONING_EFFORT_OPTIONS: Array<{
   { id: "xhigh", label: "Extra" },
 ];
 
+const ASSISTANT_TARGET = "__assistant__";
 const IMAGE_TARGET = "__image__";
 const VOICE_TARGET = "__voice__";
+
+/**
+ * The Assistant tab in the sidebar picker writes to both the orchestrator
+ * and general agent keys, since users overwhelmingly want them to move
+ * together. Splitting them is available in Settings -> Models -> Advanced.
+ */
+const ASSISTANT_AGENT_KEYS: readonly string[] = ["orchestrator", "general"];
+
 const DEFAULT_IMAGE_GENERATION: ImageGenerationPreferences = {
   provider: "stella",
 };
@@ -79,132 +91,20 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
   provider: "stella",
 };
 
-const DEFAULT_IMAGE_MODEL_BY_PROVIDER: Record<
-  Exclude<ImageGenerationProvider, "stella">,
-  string
-> = {
-  openai: "openai/gpt-image-1.5",
-  openrouter: "openrouter/openai/gpt-image-2",
-  fal: "fal/openai/gpt-image-2",
-};
-
-const IMAGE_PROVIDER_GROUPS: ProviderGroup[] = [
+const IMAGE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
+  { key: "stella", label: "Stella", description: "Default. Picks the best image model for you." },
+  { key: "openai", label: "OpenAI", description: "Uses your OpenAI account." },
   {
-    provider: "stella",
-    providerName: "Stella",
-    models: [
-      {
-        id: "stella",
-        name: "Stella",
-        provider: "stella",
-        providerName: "Stella",
-        modelId: "stella",
-        source: "stella",
-      },
-    ],
+    key: "openrouter",
+    label: "OpenRouter",
+    description: "Routes image generation through your OpenRouter account.",
   },
-  {
-    provider: "openai",
-    providerName: "OpenAI",
-    models: [
-      {
-        id: "openai/gpt-image-1.5",
-        name: "GPT Image 1.5",
-        provider: "openai",
-        providerName: "OpenAI",
-        modelId: "gpt-image-1.5",
-        upstreamModel: "gpt-image-1.5",
-        source: "local",
-      },
-      {
-        id: "openai/gpt-image-1",
-        name: "GPT Image 1",
-        provider: "openai",
-        providerName: "OpenAI",
-        modelId: "gpt-image-1",
-        upstreamModel: "gpt-image-1",
-        source: "local",
-      },
-    ],
-  },
-  {
-    provider: "openrouter",
-    providerName: "OpenRouter",
-    models: [
-      {
-        id: "openrouter/openai/gpt-image-2",
-        name: "GPT Image 2",
-        provider: "openrouter",
-        providerName: "OpenRouter",
-        modelId: "openai/gpt-image-2",
-        upstreamModel: "openai/gpt-image-2",
-        source: "local",
-      },
-    ],
-  },
-  {
-    provider: "fal",
-    providerName: "fal",
-    models: [
-      {
-        id: "fal/openai/gpt-image-2",
-        name: "GPT Image 2",
-        provider: "fal",
-        providerName: "fal",
-        modelId: "openai/gpt-image-2",
-        upstreamModel: "openai/gpt-image-2",
-        source: "local",
-      },
-    ],
-  },
+  { key: "fal", label: "fal", description: "Uses your fal account." },
 ];
 
-const DEFAULT_VOICE_MODEL_BY_PROVIDER: Record<
-  Exclude<RealtimeVoiceProvider, "stella">,
-  string
-> = {
-  openai: "openai/gpt-realtime",
-};
-
-const VOICE_PROVIDER_GROUPS: ProviderGroup[] = [
-  {
-    provider: "stella",
-    providerName: "Stella",
-    models: [
-      {
-        id: "stella",
-        name: "Stella",
-        provider: "stella",
-        providerName: "Stella",
-        modelId: "stella",
-        source: "stella",
-      },
-    ],
-  },
-  {
-    provider: "openai",
-    providerName: "OpenAI",
-    models: [
-      {
-        id: "openai/gpt-realtime",
-        name: "GPT Realtime",
-        provider: "openai",
-        providerName: "OpenAI",
-        modelId: "gpt-realtime",
-        upstreamModel: "gpt-realtime",
-        source: "local",
-      },
-      {
-        id: "openai/gpt-4o-realtime-preview",
-        name: "GPT-4o Realtime Preview",
-        provider: "openai",
-        providerName: "OpenAI",
-        modelId: "gpt-4o-realtime-preview",
-        upstreamModel: "gpt-4o-realtime-preview",
-        source: "local",
-      },
-    ],
-  },
+const VOICE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
+  { key: "stella", label: "Stella", description: "Default. Stella picks the realtime voice model." },
+  { key: "openai", label: "OpenAI", description: "Uses your OpenAI account for realtime voice." },
 ];
 
 function isReasoningEffort(value: string): value is ReasoningEffort {
@@ -245,6 +145,16 @@ interface AgentModelPickerProps {
    * curated Stella presets and a "More options" toggle.
    */
   defaultExpanded?: boolean;
+  /**
+   * Surface this picker is mounted on. The sidebar popover shows a lean
+   * `Assistant | Image | Voice` tab strip and dual-writes Assistant to both
+   * the orchestrator and general agent keys. The Settings page shows every
+   * configurable agent as its own tab (orchestrator and general included
+   * but no longer coupled) plus image + voice, and uses the same layout
+   * (compact Stella presets, expandable to the full provider catalog) for
+   * each.
+   */
+  surface?: "sidebar" | "settings";
 }
 
 /**
@@ -257,8 +167,16 @@ export function AgentModelPicker({
   onSelected,
   className,
   defaultExpanded = false,
+  surface = "sidebar",
 }: AgentModelPickerProps) {
-  const [expanded, setExpanded] = useState<boolean>(defaultExpanded);
+  // The Settings page surfaces the full provider catalog inline (no
+  // compact-vs-expanded toggle, no "Connect a provider" affordance to
+  // discover): users land on Models specifically to manage providers, so
+  // we treat the picker as permanently expanded there. The sidebar
+  // popover keeps the compact-by-default behavior.
+  const isSettings = surface === "settings";
+  const [expandedState, setExpanded] = useState<boolean>(defaultExpanded);
+  const expanded = isSettings ? true : expandedState;
   const {
     models: stellaModels,
     defaults: stellaDefaultModels,
@@ -273,26 +191,6 @@ export function AgentModelPicker({
   );
   const [pendingAgent, setPendingAgent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const toggleRef = useRef<HTMLDivElement | null>(null);
-  const updateToggleEdges = useCallback(() => {
-    const el = toggleRef.current;
-    if (!el) return;
-    const overflows = el.scrollWidth - el.clientWidth > 1;
-    const atStart = !overflows || el.scrollLeft <= 1;
-    const atEnd =
-      !overflows || el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
-    el.toggleAttribute("data-at-start", atStart);
-    el.toggleAttribute("data-at-end", atEnd);
-  }, []);
-  useEffect(() => {
-    updateToggleEdges();
-    const el = toggleRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(updateToggleEdges);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [updateToggleEdges]);
 
   useEffect(() => {
     let cancelled = false;
@@ -359,40 +257,67 @@ export function AgentModelPicker({
     [modelDefaults],
   );
 
-  const configurableAgents = useMemo(
-    () => getConfigurableAgents(modelDefaults),
-    [modelDefaults],
-  );
-
   const overrides = useMemo<Record<string, string>>(() => {
     if (!preferences) return {};
     return normalizeModelOverrides(preferences.modelOverrides, defaultModelMap);
   }, [defaultModelMap, preferences]);
 
-  const [activeAgent, setActiveAgent] = useState<string>("orchestrator");
+  /**
+   * Sidebar: only Assistant/Image/Voice tabs render (Assistant dual-writes
+   * orchestrator + general). Settings: every configurable agent gets its
+   * own tab, so users can decouple orchestrator vs general (and tune the
+   * rest) without leaving the same picker layout.
+   */
+  const configurableAgents = useMemo(
+    () => getConfigurableAgents(modelDefaults),
+    [modelDefaults],
+  );
+  const initialActiveAgent =
+    surface === "settings"
+      ? configurableAgents[0]?.key ?? "orchestrator"
+      : ASSISTANT_TARGET;
+  const [activeAgent, setActiveAgent] = useState<string>(initialActiveAgent);
+  // Snap to a known agent key if the catalog loads after first render and
+  // the initially-chosen key isn't in it (Settings surface only).
+  useEffect(() => {
+    if (surface !== "settings") return;
+    if (configurableAgents.length === 0) return;
+    if (
+      activeAgent === IMAGE_TARGET ||
+      activeAgent === VOICE_TARGET ||
+      configurableAgents.some((entry) => entry.key === activeAgent)
+    ) {
+      return;
+    }
+    setActiveAgent(configurableAgents[0].key);
+  }, [activeAgent, configurableAgents, surface]);
+
+  const activeAssistant = activeAgent === ASSISTANT_TARGET;
   const activeImage = activeAgent === IMAGE_TARGET;
   const activeVoice = activeAgent === VOICE_TARGET;
   const activeProviderSetting = activeImage || activeVoice;
 
-  // Snap to the first available configurable agent if `orchestrator` is
-  // somehow missing from the catalog. We don't auto-jump after the user has
-  // picked a tab — only when the active agent isn't actually configurable.
-  useEffect(() => {
-    if (activeProviderSetting) return;
-    if (configurableAgents.length === 0) return;
-    if (configurableAgents.some((agent) => agent.key === activeAgent)) return;
-    setActiveAgent(configurableAgents[0].key);
-  }, [activeAgent, activeProviderSetting, configurableAgents]);
+  /**
+   * The sidebar Assistant tab writes to both orchestrator and general (and
+   * reads from orchestrator with general as a fallback). Settings always
+   * writes to a single agent key — even orchestrator and general are
+   * separate tabs there.
+   */
+  const assistantWriteKeys = ASSISTANT_AGENT_KEYS;
+  const canonicalAgentKey = activeAssistant
+    ? ASSISTANT_AGENT_KEYS[0]
+    : activeAgent;
 
   const handleSelect = useCallback(
     async (value: string) => {
       if (!preferences || pendingAgent) return;
+      const writeKeys = activeAssistant ? assistantWriteKeys : [activeAgent];
       const previousOverrides = { ...preferences.modelOverrides };
       const nextOverrides = { ...previousOverrides };
       if (value === "") {
-        delete nextOverrides[activeAgent];
+        for (const key of writeKeys) delete nextOverrides[key];
       } else {
-        nextOverrides[activeAgent] = value;
+        for (const key of writeKeys) nextOverrides[key] = value;
       }
       setPendingAgent(activeAgent);
       setPreferences({ ...preferences, modelOverrides: nextOverrides });
@@ -412,12 +337,13 @@ export function AgentModelPicker({
         //      via Anthropic/OpenAI/etc. run locally and aren't subject
         //      to Stella tier restrictions), and
         //   2. the pick actually resolves to a different upstream than
-        //      what the audience would already get. Picking "Stella Free"
+        //      what the audience would already get. Picking "Stella Light"
         //      on the Free plan is a no-op, not a restriction.
         const pickedModel = stellaModels.find((model) => model.id === value);
         const isStellaProviderPick = pickedModel?.provider === "stella";
         const pickedUpstream = pickedModel?.upstreamModel ?? "";
-        const audienceUpstream = resolvedDefaultModelMap[activeAgent] ?? "";
+        const audienceUpstream =
+          resolvedDefaultModelMap[canonicalAgentKey] ?? "";
         const resolvesToSameModel =
           pickedUpstream !== "" &&
           audienceUpstream !== "" &&
@@ -467,7 +393,10 @@ export function AgentModelPicker({
     },
     [
       activeAgent,
+      activeAssistant,
+      assistantWriteKeys,
       audience,
+      canonicalAgentKey,
       modelNamesById,
       onSelected,
       pendingAgent,
@@ -477,21 +406,19 @@ export function AgentModelPicker({
     ],
   );
 
-  const handleImageSelect = useCallback(
-    async (value: string) => {
+  const handleImageProviderSelect = useCallback(
+    async (providerKey: string) => {
       if (!preferences || pendingAgent) return;
       const previousImageGeneration =
         preferences.imageGeneration ?? DEFAULT_IMAGE_GENERATION;
       const nextImageGeneration: ImageGenerationPreferences =
-        value === "" || value === "stella"
-          ? { provider: "stella" }
-          : value.startsWith("openai/")
-            ? { provider: "openai", model: value }
-            : value.startsWith("openrouter/")
-              ? { provider: "openrouter", model: value }
-              : value.startsWith("fal/")
-                ? { provider: "fal", model: value }
-                : { provider: "stella" };
+        providerKey === "openai"
+          ? { provider: "openai" }
+          : providerKey === "openrouter"
+            ? { provider: "openrouter" }
+            : providerKey === "fal"
+              ? { provider: "fal" }
+              : { provider: "stella" };
 
       setPendingAgent(IMAGE_TARGET);
       setPreferences({
@@ -524,17 +451,15 @@ export function AgentModelPicker({
     [onSelected, pendingAgent, preferences],
   );
 
-  const handleVoiceSelect = useCallback(
-    async (value: string) => {
+  const handleVoiceProviderSelect = useCallback(
+    async (providerKey: string) => {
       if (!preferences || pendingAgent) return;
       const previousRealtimeVoice =
         preferences.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
       const nextRealtimeVoice: RealtimeVoicePreferences =
-        value === "" || value === "stella"
-          ? { provider: "stella" }
-          : value.startsWith("openai/")
-            ? { provider: "openai", model: value }
-            : { provider: "stella" };
+        providerKey === "openai"
+          ? { provider: "openai" }
+          : { provider: "stella" };
 
       setPendingAgent(VOICE_TARGET);
       setPreferences({
@@ -570,6 +495,7 @@ export function AgentModelPicker({
   const handleReasoningEffortSelect = useCallback(
     async (effort: ReasoningEffort) => {
       if (!preferences || pendingAgent) return;
+      const writeKeys = activeAssistant ? assistantWriteKeys : [activeAgent];
       const previousReasoningEfforts = {
         ...(preferences.reasoningEfforts ?? {}),
       };
@@ -577,9 +503,9 @@ export function AgentModelPicker({
         ...previousReasoningEfforts,
       };
       if (effort === "default") {
-        delete nextReasoningEfforts[activeAgent];
+        for (const key of writeKeys) delete nextReasoningEfforts[key];
       } else {
-        nextReasoningEfforts[activeAgent] = effort;
+        for (const key of writeKeys) nextReasoningEfforts[key] = effort;
       }
       setPendingAgent(activeAgent);
       setPreferences({
@@ -609,7 +535,14 @@ export function AgentModelPicker({
         setPendingAgent(null);
       }
     },
-    [activeAgent, onSelected, pendingAgent, preferences],
+    [
+      activeAgent,
+      activeAssistant,
+      assistantWriteKeys,
+      onSelected,
+      pendingAgent,
+      preferences,
+    ],
   );
 
   const ready =
@@ -618,50 +551,66 @@ export function AgentModelPicker({
   const imagePreferences =
     preferences?.imageGeneration ?? DEFAULT_IMAGE_GENERATION;
   const voicePreferences = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
-  const current = activeImage
-    ? imagePreferences.provider === "stella"
-      ? ""
-      : (imagePreferences.model ??
-        DEFAULT_IMAGE_MODEL_BY_PROVIDER[imagePreferences.provider])
-    : activeVoice
-      ? voicePreferences.provider === "stella"
-        ? ""
-        : (voicePreferences.model ??
-          DEFAULT_VOICE_MODEL_BY_PROVIDER[voicePreferences.provider])
-      : (overrides[activeAgent] ?? "");
+  /**
+   * Selected value for the active tab. For the assistant tab we prefer the
+   * orchestrator key, falling back to general so a "split" Advanced setup
+   * still shows something coherent. For image/voice we surface the provider
+   * key directly (no model id) because those tabs are provider-only.
+   */
+  const current = activeAssistant
+    ? overrides.orchestrator ?? overrides.general ?? ""
+    : activeImage
+      ? imagePreferences.provider
+      : activeVoice
+        ? voicePreferences.provider
+        : overrides[activeAgent] ?? "";
   const defaultLabel =
-    !activeProviderSetting && ready
-      ? getDefaultModelOptionLabel(
-          activeAgent,
-          defaultModelMap,
-          resolvedDefaultModelMap,
-          modelNamesById,
-        )
-      : activeProviderSetting
-        ? "Stella"
+    activeProviderSetting
+      ? "Stella"
+      : ready
+        ? getDefaultModelOptionLabel(
+            canonicalAgentKey,
+            defaultModelMap,
+            resolvedDefaultModelMap,
+            modelNamesById,
+          )
         : "Default";
-  const providerModelNamesById = useMemo(() => {
-    const next = new Map<string, string>();
-    for (const group of [...IMAGE_PROVIDER_GROUPS, ...VOICE_PROVIDER_GROUPS]) {
-      for (const model of group.models) {
-        next.set(model.id, model.name);
-      }
-    }
-    next.set("stella", "Stella");
-    return next;
-  }, []);
   const currentLabel = activeProviderSetting
-    ? current
-      ? getModelPickerDisplayLabel(current, providerModelNamesById)
-      : "Stella"
+    ? IMAGE_PROVIDER_OPTIONS.find((entry) => entry.key === current)?.label ??
+      VOICE_PROVIDER_OPTIONS.find((entry) => entry.key === current)?.label ??
+      "Stella"
     : ready
       ? current
         ? getModelPickerDisplayLabel(current, modelNamesById)
         : defaultLabel
       : "Loading…";
-  const currentReasoningEffort =
-    preferences?.reasoningEfforts?.[activeAgent] ?? "default";
-  const showFullPanel = expanded || activeProviderSetting;
+  const currentReasoningEffort = activeAssistant
+    ? preferences?.reasoningEfforts?.orchestrator ??
+      preferences?.reasoningEfforts?.general ??
+      "default"
+    : preferences?.reasoningEfforts?.[activeAgent] ?? "default";
+  const showFullPanel = expanded && !activeProviderSetting;
+
+  const tabButton = (
+    key: string,
+    label: string,
+    title: string,
+    isActive: boolean,
+  ) => (
+    <button
+      key={key}
+      type="button"
+      role="tab"
+      aria-selected={isActive}
+      className="agent-model-picker-toggle-btn"
+      data-active={isActive || undefined}
+      onClick={() => setActiveAgent(key)}
+      disabled={pendingAgent !== null}
+      title={title}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div
@@ -671,69 +620,52 @@ export function AgentModelPicker({
         <div
           className="agent-model-picker-toggle"
           role="tablist"
-          aria-label="Agent"
-          ref={toggleRef}
-          onScroll={updateToggleEdges}
+          aria-label="Surface"
+          data-surface={surface}
         >
-          {(() => {
-            const priority = ["orchestrator", "general"];
-            const head = priority
-              .map((key) => configurableAgents.find((a) => a.key === key))
-              .filter(
-                (a): a is (typeof configurableAgents)[number] => a !== undefined,
-              );
-            const tail = configurableAgents.filter(
-              (a) => !priority.includes(a.key),
-            );
-            const agentBtn = (agent: (typeof configurableAgents)[number]) => {
-              const isActive = agent.key === activeAgent;
-              return (
-                <button
-                  key={agent.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  className="agent-model-picker-toggle-btn"
-                  data-active={isActive || undefined}
-                  onClick={() => setActiveAgent(agent.key)}
-                  disabled={pendingAgent !== null}
-                  title={agent.desc}
-                >
-                  {agent.label}
-                </button>
-              );
-            };
-            return (
-              <>
-                {head.map(agentBtn)}
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeImage}
-                  className="agent-model-picker-toggle-btn"
-                  data-active={activeImage || undefined}
-                  onClick={() => setActiveAgent(IMAGE_TARGET)}
-                  disabled={pendingAgent !== null}
-                  title="Image generation provider"
-                >
-                  Image
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeVoice}
-                  className="agent-model-picker-toggle-btn"
-                  data-active={activeVoice || undefined}
-                  onClick={() => setActiveAgent(VOICE_TARGET)}
-                  disabled={pendingAgent !== null}
-                  title="Voice provider"
-                >
-                  Voice
-                </button>
-                {tail.map(agentBtn)}
-              </>
-            );
-          })()}
+          {surface === "settings"
+            ? [
+                ...configurableAgents.map((agent) =>
+                  tabButton(
+                    agent.key,
+                    agent.label,
+                    agent.desc,
+                    agent.key === activeAgent,
+                  ),
+                ),
+                tabButton(
+                  IMAGE_TARGET,
+                  "Image",
+                  "Image generation provider",
+                  activeImage,
+                ),
+                tabButton(
+                  VOICE_TARGET,
+                  "Voice",
+                  "Realtime voice provider",
+                  activeVoice,
+                ),
+              ]
+            : [
+                tabButton(
+                  ASSISTANT_TARGET,
+                  "Assistant",
+                  "Stella's main assistant",
+                  activeAssistant,
+                ),
+                tabButton(
+                  IMAGE_TARGET,
+                  "Image",
+                  "Image generation provider",
+                  activeImage,
+                ),
+                tabButton(
+                  VOICE_TARGET,
+                  "Voice",
+                  "Realtime voice provider",
+                  activeVoice,
+                ),
+              ]}
         </div>
         <button
           type="button"
@@ -751,55 +683,55 @@ export function AgentModelPicker({
         </button>
       </div>
 
-      {error ? (
-        <p className="agent-model-picker-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      <div className="agent-model-picker-body">
+      <div className="agent-model-picker-body">
+        {error ? (
+          <p className="agent-model-picker-error" role="alert">
+            {error}
+          </p>
+        ) : null}
 
-      {showFullPanel ? (
-        <>
-          <ProviderModelPanel
+        {activeImage ? (
+          <ProviderOnlyPicker
+            providers={IMAGE_PROVIDER_OPTIONS}
+            value={current || "stella"}
+            onSelect={(key) => void handleImageProviderSelect(key)}
+            disabled={!preferences || pendingAgent !== null}
+            ariaLabel="Image provider"
+          />
+        ) : activeVoice ? (
+          <ProviderOnlyPicker
+            providers={VOICE_PROVIDER_OPTIONS}
+            value={current || "stella"}
+            onSelect={(key) => void handleVoiceProviderSelect(key)}
+            disabled={!preferences || pendingAgent !== null}
+            ariaLabel="Voice provider"
+          />
+        ) : showFullPanel ? (
+          <>
+            <ProviderModelPanel
+              value={current}
+              defaultLabel={defaultLabel}
+              currentLabel={currentLabel}
+              groups={groups}
+              excludeModelId={STELLA_DEFAULT_MODEL}
+              disabled={!ready || pendingAgent !== null}
+              ariaLabel="Assistant model picker"
+              onSelect={handleSelect}
+            />
+            <LocalRuntimeOptions />
+          </>
+        ) : (
+          <CompactStellaModelList
+            stellaModels={stellaModels}
             value={current}
             defaultLabel={defaultLabel}
-            currentLabel={currentLabel}
-            groups={
-              activeImage
-                ? IMAGE_PROVIDER_GROUPS
-                : activeVoice
-                  ? VOICE_PROVIDER_GROUPS
-                  : groups
-            }
-            excludeModelId={
-              activeProviderSetting ? undefined : STELLA_DEFAULT_MODEL
-            }
+            onSelect={handleSelect}
             disabled={!ready || pendingAgent !== null}
-            ariaLabel={
-              activeImage
-                ? "Image provider picker"
-                : activeVoice
-                  ? "Voice provider picker"
-                  : `${activeAgent} model picker`
-            }
-            onSelect={
-              activeImage
-                ? handleImageSelect
-                : activeVoice
-                  ? handleVoiceSelect
-                  : handleSelect
-            }
           />
-          {activeProviderSetting ? null : <LocalRuntimeOptions />}
-        </>
-      ) : (
-        <CompactStellaModelList
-          stellaModels={stellaModels}
-          value={current}
-          defaultLabel={defaultLabel}
-          onSelect={handleSelect}
-          disabled={!ready || pendingAgent !== null}
-        />
-      )}
+        )}
+      </div>
+      </div>
 
       {activeProviderSetting ? null : (
         <div className="agent-model-picker-footer">
@@ -820,19 +752,22 @@ export function AgentModelPicker({
               }))}
             />
           </div>
-          <button
-            type="button"
-            className="agent-model-picker-toggle-more"
-            onClick={() => setExpanded((prev) => !prev)}
-            aria-expanded={expanded}
-          >
-            <span>{expanded ? "Less options" : "More options"}</span>
-            <ChevronDown
-              size={14}
-              strokeWidth={1.75}
-              data-rotated={expanded || undefined}
-            />
-          </button>
+          {isSettings ? null : (
+            <button
+              type="button"
+              className="agent-model-picker-toggle-more"
+              onClick={() => setExpanded((prev) => !prev)}
+              aria-expanded={expanded}
+              title="Bring your own key or sign in to another provider"
+            >
+              <span>{expanded ? "Done" : "Connect a provider (BYOK)"}</span>
+              <ChevronDown
+                size={14}
+                strokeWidth={1.75}
+                data-rotated={expanded || undefined}
+              />
+            </button>
+          )}
         </div>
       )}
     </div>

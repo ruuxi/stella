@@ -401,6 +401,9 @@
   min-height: 0;
   overflow-y: auto;
   padding-right: 2px;
+  /* Keep breathing room under the last row so the flex-tall scroll pane
+   * doesn't read like an empty footer; scrolls with the list. */
+  padding-bottom: 28px;
   scrollbar-width: thin;
 }
 
