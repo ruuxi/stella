@@ -15,6 +15,7 @@ import type {
 } from "../../../../runtime/contracts/local-chat.js";
 import type { TaskLifecycleStatus } from "../../../../runtime/contracts/agent-runtime.js";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
+import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
 import type {
   ChatContext as SharedChatContext,
   ChatContextFile as SharedChatContextFile,
@@ -428,6 +429,20 @@ export type ElectronVoiceApi = {
     expiresAt?: number;
     sessionId?: string;
   }>;
+  createXaiSession: (payload: { instructions?: string }) => Promise<{
+    provider: "xai";
+    clientSecret: string;
+    model: string;
+    voice: string;
+    expiresAt?: number;
+  }>;
+  createInworldSession: (payload: { instructions?: string }) => Promise<{
+    provider: "inworld";
+    clientSecret: string;
+    model: string;
+    voice: string;
+    iceServers?: RTCIceServer[];
+  }>;
   getCoreMemory: () => Promise<string>;
   getRuntimeState: () => Promise<VoiceRuntimeSnapshot>;
   onRuntimeState: (
@@ -733,10 +748,7 @@ export type ElectronSystemApi = {
       provider: "stella" | "openai" | "openrouter" | "fal";
       model?: string;
     };
-    realtimeVoice: {
-      provider: "stella" | "openai";
-      model?: string;
-    };
+    realtimeVoice: RealtimeVoicePreferences;
   } | null>;
   setLocalModelPreferences: (payload: {
     defaultModels?: Record<string, string>;
@@ -751,10 +763,7 @@ export type ElectronSystemApi = {
       provider: "stella" | "openai" | "openrouter" | "fal";
       model?: string;
     };
-    realtimeVoice?: {
-      provider: "stella" | "openai";
-      model?: string;
-    };
+    realtimeVoice?: RealtimeVoicePreferences;
   }) => Promise<{
     defaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
@@ -768,10 +777,7 @@ export type ElectronSystemApi = {
       provider: "stella" | "openai" | "openrouter" | "fal";
       model?: string;
     };
-    realtimeVoice: {
-      provider: "stella" | "openai";
-      model?: string;
-    };
+    realtimeVoice: RealtimeVoicePreferences;
   } | null>;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;
   listLlmOAuthProviders: () => Promise<LocalLlmOAuthProviderSummary[]>;

@@ -13,6 +13,7 @@ import {
   PROVIDER_CONNECTED_EVENT,
   type ProviderConnectedEventDetail,
 } from "@/global/settings/hooks/use-llm-credentials";
+import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
 import "./ProviderConnectedDialog.css";
 
 const ASSISTANT_AGENT_KEYS = ["orchestrator", "general"] as const;
@@ -22,15 +23,10 @@ interface ImageGenPrefs {
   model?: string;
 }
 
-interface RealtimeVoicePrefs {
-  provider: "stella" | "openai";
-  model?: string;
-}
-
 interface LocalPrefsPatch {
   modelOverrides?: Record<string, string>;
   imageGeneration?: ImageGenPrefs;
-  realtimeVoice?: RealtimeVoicePrefs;
+  realtimeVoice?: RealtimeVoicePreferences;
 }
 
 /**
@@ -44,7 +40,7 @@ const PROVIDER_SURFACES: Record<
   {
     assistant: boolean;
     image: "openai" | "openrouter" | "fal" | null;
-    voice: "openai" | null;
+    voice: "openai" | "xai" | "inworld" | null;
   }
 > = {
   openai: { assistant: true, image: "openai", voice: "openai" },
@@ -52,6 +48,8 @@ const PROVIDER_SURFACES: Record<
   google: { assistant: true, image: null, voice: null },
   openrouter: { assistant: true, image: "openrouter", voice: null },
   fal: { assistant: false, image: "fal", voice: null },
+  xai: { assistant: true, image: null, voice: "xai" },
+  inworld: { assistant: false, image: null, voice: "inworld" },
 };
 
 interface Stage {
@@ -158,6 +156,7 @@ export function ProviderConnectedDialog() {
         anthropic: "anthropic/claude-opus-4.7",
         google: "google/gemini-3.1-pro",
         openrouter: "openrouter/anthropic/claude-opus-4.7",
+        xai: "xai/grok-4",
       };
       const model = defaultModelByProvider[detail.provider];
       if (model) {

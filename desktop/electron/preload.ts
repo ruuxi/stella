@@ -9,6 +9,7 @@ import type { LocalChatUpdatedPayload } from "../../runtime/contracts/local-chat
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type { MiniDoubleTapModifier } from "../src/shared/lib/mini-double-tap.js";
 import type { OfficePreviewSnapshot } from "../../runtime/contracts/office-preview.js";
+import type { RealtimeVoicePreferences } from "../../runtime/contracts/local-preferences.js";
 import {
   IPC_BROWSER_FETCH_JSON,
   IPC_BROWSER_FETCH_TEXT,
@@ -85,6 +86,8 @@ import {
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
   IPC_VOICE_CREATE_OPENAI_SESSION,
+  IPC_VOICE_CREATE_XAI_SESSION,
+  IPC_VOICE_CREATE_INWORLD_SESSION,
 } from "../src/shared/contracts/ipc-channels.js";
 import type { RuntimeSocialSessionStatus } from "../../runtime/protocol/index.js";
 
@@ -471,6 +474,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
         voice: string;
         expiresAt?: number;
         sessionId?: string;
+      }>,
+    createXaiSession: (payload: { instructions?: string }) =>
+      ipcRenderer.invoke(IPC_VOICE_CREATE_XAI_SESSION, payload) as Promise<{
+        provider: "xai";
+        clientSecret: string;
+        model: string;
+        voice: string;
+        expiresAt?: number;
+      }>,
+    createInworldSession: (payload: { instructions?: string }) =>
+      ipcRenderer.invoke(IPC_VOICE_CREATE_INWORLD_SESSION, payload) as Promise<{
+        provider: "inworld";
+        clientSecret: string;
+        model: string;
+        voice: string;
+        iceServers?: RTCIceServer[];
       }>,
     getCoreMemory: () =>
       ipcRenderer.invoke("voice:getCoreMemory") as Promise<string>,
@@ -985,10 +1004,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           provider: "stella" | "openai" | "openrouter" | "fal";
           model?: string;
         };
-        realtimeVoice: {
-          provider: "stella" | "openai";
-          model?: string;
-        };
+        realtimeVoice: RealtimeVoicePreferences;
       } | null>,
     setLocalModelPreferences: (payload: {
       defaultModels?: Record<string, string>;
@@ -1003,10 +1019,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         provider: "stella" | "openai" | "openrouter" | "fal";
         model?: string;
       };
-      realtimeVoice?: {
-        provider: "stella" | "openai";
-        model?: string;
-      };
+      realtimeVoice?: RealtimeVoicePreferences;
     }) =>
       ipcRenderer.invoke(IPC_PREFERENCES_SET_MODELS, payload) as Promise<{
         defaultModels: Record<string, string>;
@@ -1021,10 +1034,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           provider: "stella" | "openai" | "openrouter" | "fal";
           model?: string;
         };
-        realtimeVoice: {
-          provider: "stella" | "openai";
-          model?: string;
-        };
+        realtimeVoice: RealtimeVoicePreferences;
       } | null>,
     listLlmCredentials: () =>
       ipcRenderer.invoke("llmCredentials:list") as Promise<
