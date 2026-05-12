@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capabilities for the launcher","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-close","dialog:allow-open","dialog:allow-ask","opener:default"]}}
