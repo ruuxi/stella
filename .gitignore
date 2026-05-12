@@ -40,3 +40,5 @@ state/outputs/*
 !state/outputs/README.md
 state/core-memory.md
 state/raw/
+
+.env.local
