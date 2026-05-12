@@ -1,0 +1,111 @@
+/* ProviderConnectedDialog — "use X for Stella?" follow-up dialog.
+ * Matches the canonical Apple-polish dialog look used by ConnectDialog
+ * (glass background + weak border + display-font title), with generous
+ * inner padding so rows and buttons aren't crammed against the edges. */
+
+[data-slot="dialog-content"].provider-connected-dialog {
+  --provider-connected-pad-x: 24px;
+  max-width: 440px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+}
+
+.provider-connected-dialog [data-slot="dialog-header"] {
+  padding: 20px var(--provider-connected-pad-x) 14px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.provider-connected-dialog [data-slot="dialog-title"] {
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 1.4rem;
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+}
+
+.provider-connected-dialog [data-slot="dialog-description"] {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-base);
+  letter-spacing: -0.01em;
+  margin-top: 6px;
+}
+
+.provider-connected-dialog [data-slot="dialog-body"] {
+  padding: 14px var(--provider-connected-pad-x) 20px;
+}
+
+.provider-connected-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.provider-connected-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-weak);
+  background: color-mix(in srgb, var(--card) 20%, transparent);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.provider-connected-row:hover {
+  background: color-mix(in srgb, var(--card) 32%, transparent);
+  border-color: var(--border-base);
+}
+
+.provider-connected-row input {
+  margin-top: 3px;
+  accent-color: var(--text-strong);
+}
+
+.provider-connected-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.provider-connected-row-label {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+.provider-connected-row-desc {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  color: var(--text-weak);
+}
+
+.provider-connected-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 12px;
+  color: #ff8f8f;
+  background: rgba(255, 143, 143, 0.1);
+}
+
+.provider-connected-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
