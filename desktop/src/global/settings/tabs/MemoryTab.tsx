@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import { api } from "@/convex/api";
+import { router } from "@/router";
 import { getSettingsErrorMessage } from "./shared";
 
 type ChronicleStatus = {
@@ -91,6 +94,20 @@ function formatDreamRunResult(args: {
 function ChronicleSettingsCard() {
   const chronicleApi = window.electronAPI?.chronicle;
   const { hasConnectedAccount } = useAuthSessionState();
+  const [billingNowMs] = useState(() => Date.now());
+  const billingStatus = useConvexOneShot(api.billing.getSubscriptionStatus, {
+    now: billingNowMs,
+  });
+  // Chronicle ticks every minute against the user's captured screen
+  // activity and runs through a Stella-provider model the user can't
+  // override — locking it behind a paid plan keeps that cost on plans
+  // that can absorb it.
+  const requiresUpgrade =
+    hasConnectedAccount &&
+    billingStatus !== undefined &&
+    billingStatus.plan === "free";
+  const billingLoading =
+    hasConnectedAccount && billingStatus === undefined;
   const [available, setAvailable] = useState<boolean>(true);
   const [status, setStatus] = useState<ChronicleStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -136,6 +153,23 @@ function ChronicleSettingsCard() {
         title: "Sign in required",
         description: message,
         variant: "error",
+      });
+      return;
+    }
+    if (next && requiresUpgrade) {
+      const message =
+        "Screen memory is included with any Stella plan. Upgrade to turn it on.";
+      setError(message);
+      showToast({
+        title: "Subscription required",
+        description: message,
+        variant: "error",
+        action: {
+          label: "Upgrade",
+          onClick: () => {
+            void router.navigate({ to: "/billing" });
+          },
+        },
       });
       return;
     }
@@ -254,9 +288,11 @@ function ChronicleSettingsCard() {
         <div className="settings-row-info">
           <div className="settings-row-label">Screen memory</div>
           <div className="settings-row-sublabel">
-            {hasConnectedAccount
-              ? "Lets Stella glance at your screen now and then so it can remember what you were doing."
-              : "Sign in to Stella before turning on screen memory."}
+            {!hasConnectedAccount
+              ? "Sign in to Stella before turning on screen memory."
+              : requiresUpgrade
+                ? "Screen memory is included with any Stella plan. Upgrade to turn it on."
+                : "Lets Stella glance at your screen now and then so it can remember what you were doing."}
           </div>
         </div>
         <div className="settings-row-control">
@@ -264,16 +300,18 @@ function ChronicleSettingsCard() {
             type="button"
             variant="ghost"
             className="settings-btn"
-            disabled={busy !== null || loading}
+            disabled={busy !== null || loading || billingLoading}
             onClick={() => handleToggle(!enabled)}
           >
             {busy === "toggle"
               ? "Working…"
               : enabled
                 ? "Disable"
-                : hasConnectedAccount
-                  ? "Enable"
-                  : "Sign in to enable"}
+                : !hasConnectedAccount
+                  ? "Sign in to enable"
+                  : requiresUpgrade
+                    ? "Upgrade to enable"
+                    : "Enable"}
           </Button>
         </div>
       </div>
