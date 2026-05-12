@@ -257,22 +257,37 @@
   color: var(--text-weak);
 }
 
-/* ----------------------------------------------------------- Auth panel */
+/* ----------------------------------------------------------- Auth panel
+ * Canonical Stella card: glass background, weak border, Cormorant-italic
+ * headline tying the panel to the rest of the dialog/Settings family. */
 
 .model-picker-auth {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--radius-md, 10px);
-  border: 1px dashed color-mix(in oklch, var(--border) 65%, transparent);
-  background: color-mix(in oklch, var(--background) 60%, transparent);
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border-weak);
+  background: color-mix(in srgb, var(--card) 22%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.model-picker-auth-headline {
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 1.15rem;
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+  margin: 0;
 }
 
 .model-picker-auth-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .model-picker-auth-row > svg {
@@ -288,11 +303,37 @@
 .model-picker-auth-row
   [data-component="text-field"]
   [data-slot="input-wrapper"] {
-  border-radius: var(--radius-full);
+  border-radius: 10px;
+  border: 1px solid var(--border-weak);
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.model-picker-auth-row
+  [data-component="text-field"]
+  [data-slot="input-wrapper"]:focus-within {
+  border-color: var(--border-base);
+  background: color-mix(in srgb, var(--background) 80%, transparent);
 }
 
 .model-picker-auth-row [data-component="text-field"] [data-slot="input-input"] {
-  height: 30px;
+  height: 36px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.model-picker-auth-row [data-component="button"] {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
 }
 
 /* ----------------------------------------------------------- Custom model inputs */
