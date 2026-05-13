@@ -45,6 +45,7 @@ import {
 } from "@/shell/display/default-tabs";
 import { ModelCatalogUpdatedAtProvider } from "@/global/settings/hooks/model-catalog-updated-at";
 import { ProviderConnectedDialog } from "@/global/settings/ProviderConnectedDialog";
+import { SubscriptionUpgradeDialog } from "@/global/billing/SubscriptionUpgradeDialog";
 import { useDictationToggleBridge } from "@/shell/root-chrome/use-dictation-toggle-bridge";
 import { useDisplayPayloadRouting } from "@/shell/root-chrome/use-display-payload-routing";
 import { useLastLocationRestore } from "@/shell/root-chrome/use-last-location-restore";
@@ -353,6 +354,8 @@ function RootChrome() {
       />
 
       <ProviderConnectedDialog />
+
+      <SubscriptionUpgradeDialog />
     </>
   );
 }

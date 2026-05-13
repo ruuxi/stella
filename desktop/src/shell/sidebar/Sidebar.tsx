@@ -1,5 +1,6 @@
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
 import {
   ArrowLeft,
   Cpu,
@@ -528,6 +529,19 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
     const handle = scheduleIdle(() => setBillingQueryReady(true));
     return () => cancelIdle(handle);
   }, []);
+  // The one-shot read above only refetches when its `refreshKey` changes,
+  // so a successful upgrade celebrated by `SubscriptionUpgradeDialog`
+  // (Stripe webhook → Convex push) wouldn't otherwise flip the pill from
+  // "Upgrade" to "Pro" until the next Sidebar remount. Listening for the
+  // dispatched event lets the pill update inline without holding an open
+  // Convex watcher for the rest of the session.
+  const [billingRefreshKey, setBillingRefreshKey] = useState(0);
+  useEffect(() => {
+    const handler = () => setBillingRefreshKey((n) => n + 1);
+    window.addEventListener(SUBSCRIPTION_UPGRADED_EVENT, handler);
+    return () =>
+      window.removeEventListener(SUBSCRIPTION_UPGRADED_EVENT, handler);
+  }, []);
   // One-shot, not a subscription: the sidebar is always-on chrome, so
   // a live `useQuery` here held a Convex watcher open for the entire
   // session just to render a static "Pro"/"Plus" pill. Billing changes
@@ -536,6 +550,7 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
   const billingStatus = useConvexOneShot(
     api.billing.getSubscriptionStatus,
     hasConnectedAccount && billingQueryReady ? {} : "skip",
+    billingRefreshKey,
   ) as BillingStatusLite | undefined;
 
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);

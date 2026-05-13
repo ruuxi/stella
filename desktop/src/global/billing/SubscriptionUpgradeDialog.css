@@ -1,0 +1,54 @@
+/* SubscriptionUpgradeDialog — celebratory "you're on Stella X" follow-up
+ * shown after a Stripe webhook updates the user's plan. Matches the
+ * canonical Apple-polish dialog look (glass background + weak border +
+ * display-font title) used by ConnectDialog / ProviderConnectedDialog. */
+
+[data-slot="dialog-content"].subscription-upgrade-dialog {
+  --subscription-upgrade-pad-x: 24px;
+  max-width: 420px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+}
+
+.subscription-upgrade-dialog [data-slot="dialog-header"] {
+  padding: 22px var(--subscription-upgrade-pad-x) 14px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.subscription-upgrade-dialog [data-slot="dialog-title"] {
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 1.5rem;
+  font-weight: 450;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+}
+
+.subscription-upgrade-dialog [data-slot="dialog-description"] {
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-base);
+  letter-spacing: -0.01em;
+  margin-top: 8px;
+}
+
+.subscription-upgrade-dialog [data-slot="dialog-body"] {
+  padding: 16px var(--subscription-upgrade-pad-x) 20px;
+}
+
+.subscription-upgrade-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.subscription-upgrade-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
