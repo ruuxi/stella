@@ -73,6 +73,8 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
     return handlers;
   }, []);
 
+  const phoneComingSoon = true;
+
   const selectedIntegration = allIntegrations.find(
     (integration) => integration.provider === selectedProvider,
   );
@@ -138,11 +140,14 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
                   className="connect-grid-card connect-grid-card--wide"
                   onClick={cardClickHandlers["phone"]}
                   type="button"
-                  disabled={!isSignedIn}
-                  aria-disabled={!isSignedIn || undefined}
+                  disabled={!isSignedIn || phoneComingSoon}
+                  aria-disabled={!isSignedIn || phoneComingSoon || undefined}
                 >
                   <span className="connect-grid-card-icon">{PHONE_ICON}</span>
                   <span className="connect-grid-card-name">Connect to Stella App</span>
+                  {phoneComingSoon && (
+                    <span className="connect-grid-card-soon">Coming soon</span>
+                  )}
                 </button>
                 <p className="connect-section-title">Integrations</p>
                 <div className="connect-grid">
