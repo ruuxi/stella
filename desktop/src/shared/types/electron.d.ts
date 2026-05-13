@@ -837,6 +837,7 @@ export type ElectronUpdatesApi = {
   getInstallManifest: () => Promise<InstallManifestSnapshot | null>;
   recordAppliedCommit: (
     commit: string,
+    tag?: string,
   ) => Promise<InstallManifestSnapshot | null>;
 };
 

@@ -157,17 +157,33 @@ export const applyDesktopUpdate = async (
       return;
     }
     void (async () => {
+      // The agent's "completed" outcome only means the agent thread finished
+      // without crashing — it does NOT prove the merge actually landed.
+      // `recordAppliedCommit` verifies HEAD against the target commit using
+      // git itself; on failure we synthesize an "error" event so the UI
+      // surfaces the real outcome instead of silently bumping the manifest.
+      let effectiveEvent: AgentStreamIpcEvent = event;
       try {
         if (event.outcome === "completed") {
           const manifest = await electronApi.updates.recordAppliedCommit(
             options.publishedCommit,
+            options.publishedTag,
           );
           await options.onAppliedCommit?.(manifest);
         }
       } catch (err) {
-        console.warn("[install-update] Failed to record applied commit:", err);
+        const reason =
+          (err as Error)?.message ??
+          "Stella couldn't verify the update landed in the install tree.";
+        console.warn("[install-update] Verification failed:", err);
+        effectiveEvent = {
+          ...event,
+          outcome: "error",
+          reason,
+          error: reason,
+        };
       } finally {
-        options.onFinished?.(event);
+        options.onFinished?.(effectiveEvent);
         if (activeDesktopUpdate?.conversationId === conversationId) {
           setActiveDesktopUpdate(null);
         }
