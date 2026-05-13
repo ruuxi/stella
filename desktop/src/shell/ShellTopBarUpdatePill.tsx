@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import { Download, LoaderCircle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { showToast } from "@/ui/toast";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { useDesktopUpdate } from "@/global/updates/use-desktop-update";
@@ -131,15 +131,6 @@ export const ShellTopBarUpdatePill = () => {
               : "Update Stella (no update published — visible for testing)"
         }
       >
-        {isActive ? (
-          <LoaderCircle
-            size={12}
-            className="shell-topbar-update-pill__spinner"
-            aria-hidden
-          />
-        ) : (
-          <Download size={12} strokeWidth={2} aria-hidden />
-        )}
         <span className="shell-topbar-update-pill__label">{label}</span>
       </button>
       {isActive ? (
