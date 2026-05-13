@@ -1,11 +1,22 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { SettingsPanel } from "@/global/settings/SettingsPanel";
+import { SettingsSearch } from "@/global/settings/SettingsSearch";
+import { SettingsSearchResults } from "@/global/settings/SettingsSearchResults";
 import {
   SETTINGS_TABS,
   type SettingsTab,
 } from "@/global/settings/settings-tabs";
+import type { ScoredSettingsSearchEntry } from "@/global/settings/lib/settings-search-index";
 import { useT } from "@/shared/i18n";
 import "@/global/settings/settings.css";
 
@@ -84,9 +95,17 @@ export const SettingsScreen = ({
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
     null,
   );
+  const [searchQuery, setSearchQuery] = useState("");
   const t = useT();
 
   const activeTab = activeTabProp ?? selectedTab;
+
+  // Defer the value used for filtering work. Keeps the input
+  // responsive even on slower machines while the results list catches
+  // up. For our small catalog the win is marginal but the primitive
+  // costs nothing.
+  const deferredQuery = useDeferredValue(searchQuery);
+  const isSearching = deferredQuery.trim().length > 0;
 
   const handleTabClick = useCallback(
     (next: SettingsTab) => {
@@ -98,6 +117,33 @@ export const SettingsScreen = ({
     [activeTabProp, onActiveTabChange],
   );
 
+  // After picking a search result we need to (1) switch tabs and (2)
+  // scroll the matching card into view + briefly highlight it. The tab
+  // mount is async (Suspense), so we hand a "pending target" to the
+  // panel and let it resolve once the right cards are in the DOM.
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<{
+    tab: SettingsTab;
+    title: string;
+    nonce: number;
+  } | null>(null);
+
+  const handleResultSelect = useCallback(
+    (result: ScoredSettingsSearchEntry) => {
+      setSearchQuery("");
+      handleTabClick(result.tab);
+      setPendingScrollTarget({
+        tab: result.tab,
+        // Row-level entries carry `cardTitle` for the actual card to
+        // scroll to; card-level entries scroll to their own title.
+        title: result.cardTitle ?? result.title,
+        // Nonce ensures repeat-selecting the same result re-triggers
+        // the scroll/highlight effect even when tab + title are equal.
+        nonce: Date.now(),
+      });
+    },
+    [handleTabClick],
+  );
+
   const tabRailRef = useEdgeFadeRef<HTMLElement>();
 
   return (
@@ -105,7 +151,10 @@ export const SettingsScreen = ({
       {/* The Settings page owns its own left rail rather than borrowing
           the global sidebar's slot — keeps Settings self-contained and
           leaves the shell sidebar untouched while /settings is open. */}
-      <div className="settings-screen">
+      <div
+        className="settings-screen"
+        data-search-active={isSearching ? "true" : "false"}
+      >
         <div className="settings-layout settings-layout--standalone">
           <aside
             ref={tabRailRef}
@@ -114,9 +163,10 @@ export const SettingsScreen = ({
             aria-label={t("settings.title")}
           >
             <div className="settings-tab-rail-title">{t("settings.title")}</div>
+            <SettingsSearch value={searchQuery} onChange={setSearchQuery} />
             <nav className="settings-tab-rail-nav">
               {SETTINGS_TABS.map((tab) => {
-                const isActive = activeTab === tab.key;
+                const isActive = activeTab === tab.key && !isSearching;
                 return (
                   <button
                     key={tab.key}
@@ -124,7 +174,10 @@ export const SettingsScreen = ({
                     role="tab"
                     aria-selected={isActive}
                     className={`settings-tab-rail-item${isActive ? " settings-tab-rail-item--active" : ""}`}
-                    onClick={() => handleTabClick(tab.key)}
+                    onClick={() => {
+                      if (isSearching) setSearchQuery("");
+                      handleTabClick(tab.key);
+                    }}
                     onFocus={() => preloadTab(tab.key)}
                     onMouseEnter={() => preloadTab(tab.key)}
                   >
@@ -135,28 +188,21 @@ export const SettingsScreen = ({
             </nav>
           </aside>
           <SettingsPanel>
-            <Suspense fallback={null}>
-              {activeTab === "basic" ? (
-                <BasicTab />
-              ) : activeTab === "shortcuts" ? (
-                <ShortcutsTab />
-              ) : activeTab === "memory" ? (
-                <MemoryTab />
-              ) : activeTab === "backup" ? (
-                <BackupTab />
-              ) : activeTab === "account" ? (
-                <AccountTab
-                  onSignOut={onSignOut}
-                  onOpenLegal={setActiveLegalDoc}
-                />
-              ) : activeTab === "models" ? (
-                <ModelsTab />
-              ) : activeTab === "audio" ? (
-                <AudioTab />
-              ) : (
-                <BasicTab />
-              )}
-            </Suspense>
+            {isSearching ? (
+              <SettingsSearchResults
+                query={deferredQuery}
+                onSelect={handleResultSelect}
+                onClear={() => setSearchQuery("")}
+              />
+            ) : (
+              <SettingsTabContent
+                activeTab={activeTab}
+                onSignOut={onSignOut}
+                onOpenLegal={setActiveLegalDoc}
+                pendingScrollTarget={pendingScrollTarget}
+                onScrollTargetHandled={() => setPendingScrollTarget(null)}
+              />
+            )}
           </SettingsPanel>
         </div>
       </div>
@@ -171,3 +217,116 @@ export const SettingsScreen = ({
     </>
   );
 };
+
+interface SettingsTabContentProps {
+  activeTab: SettingsTab;
+  onSignOut?: () => void;
+  onOpenLegal: (doc: LegalDocument) => void;
+  pendingScrollTarget: {
+    tab: SettingsTab;
+    title: string;
+    nonce: number;
+  } | null;
+  onScrollTargetHandled: () => void;
+}
+
+function SettingsTabContent({
+  activeTab,
+  onSignOut,
+  onOpenLegal,
+  pendingScrollTarget,
+  onScrollTargetHandled,
+}: SettingsTabContentProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Resolve any pending "scroll to / highlight this card" request from
+  // the search results. Tab content mounts asynchronously through
+  // Suspense, so we use a short-lived MutationObserver to wait for the
+  // matching card to appear, then scroll + flash it.
+  useEffect(() => {
+    if (!pendingScrollTarget) return;
+    if (pendingScrollTarget.tab !== activeTab) return;
+    const container = contentRef.current;
+    if (!container) return;
+
+    let cancelled = false;
+    let observer: MutationObserver | null = null;
+    let timeoutId: number | null = null;
+    let highlightTimeoutId: number | null = null;
+
+    const tryResolve = (): boolean => {
+      const cards = container.querySelectorAll<HTMLElement>(".settings-card");
+      const titleNeedle = pendingScrollTarget.title.toLowerCase().trim();
+      for (const card of cards) {
+        const heading = card.querySelector(".settings-card-title");
+        const headingText = (heading?.textContent ?? "").toLowerCase().trim();
+        if (headingText === titleNeedle) {
+          card.scrollIntoView({ behavior: "smooth", block: "start" });
+          card.setAttribute("data-search-target", "true");
+          highlightTimeoutId = window.setTimeout(() => {
+            card.removeAttribute("data-search-target");
+          }, 1800);
+          onScrollTargetHandled();
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (tryResolve()) {
+      return () => {
+        if (highlightTimeoutId) window.clearTimeout(highlightTimeoutId);
+      };
+    }
+
+    observer = new MutationObserver(() => {
+      if (cancelled) return;
+      if (tryResolve()) {
+        observer?.disconnect();
+        observer = null;
+      }
+    });
+    observer.observe(container, { subtree: true, childList: true });
+
+    // Belt-and-suspenders: stop waiting after a couple seconds so we
+    // don't leak observers if the title text changes or content fails
+    // to mount.
+    timeoutId = window.setTimeout(() => {
+      cancelled = true;
+      observer?.disconnect();
+      observer = null;
+      onScrollTargetHandled();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      if (timeoutId) window.clearTimeout(timeoutId);
+      if (highlightTimeoutId) window.clearTimeout(highlightTimeoutId);
+    };
+  }, [activeTab, pendingScrollTarget, onScrollTargetHandled]);
+
+  return (
+    <div ref={contentRef} className="settings-panel-content">
+      <Suspense fallback={null}>
+        {activeTab === "basic" ? (
+          <BasicTab />
+        ) : activeTab === "shortcuts" ? (
+          <ShortcutsTab />
+        ) : activeTab === "memory" ? (
+          <MemoryTab />
+        ) : activeTab === "backup" ? (
+          <BackupTab />
+        ) : activeTab === "account" ? (
+          <AccountTab onSignOut={onSignOut} onOpenLegal={onOpenLegal} />
+        ) : activeTab === "models" ? (
+          <ModelsTab />
+        ) : activeTab === "audio" ? (
+          <AudioTab />
+        ) : (
+          <BasicTab />
+        )}
+      </Suspense>
+    </div>
+  );
+}
