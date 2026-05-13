@@ -69,9 +69,9 @@
 /* Taller modal footprint; grid + detail share the same body box (overrides data-fit auto height) */
 [data-component="dialog"][data-fit]:has([data-slot="dialog-content"].connect-dialog)
   [data-slot="dialog-container"] {
-  --dialog-width: 560px;
-  height: min(calc(100vh - 16px), 620px);
-  min-height: min(calc(100vh - 16px), 620px);
+  --dialog-width: 500px;
+  height: min(calc(100vh - 16px), 560px);
+  min-height: min(calc(100vh - 16px), 560px);
 }
 
 /* Body fills space below header; main pane stays one size when switching views */
@@ -167,6 +167,21 @@
   white-space: normal;
 }
 
+.connect-grid-card-soon {
+  flex-shrink: 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 11px;
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--text-weak);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-weak);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  text-transform: none;
+}
+
 /* 2-column card grid */
 .connect-grid {
   display: grid;
@@ -197,6 +212,8 @@
   min-height: 48px;
   padding: 10px 14px;
   border-radius: var(--radius-md);
+  justify-content: center;
+  gap: 10px;
 }
 
 .connect-grid-card:not(.connect-grid-card--wide):hover {
@@ -241,13 +258,14 @@
 
 /* Card name */
 .connect-grid-card:not(.connect-grid-card--wide) .connect-grid-card-name {
-  flex: 1;
+  flex: 0 1 auto;
   font-size: inherit;
   font-weight: inherit;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
 }
 
 /* Connected indicator — vertical glow line on right edge */
