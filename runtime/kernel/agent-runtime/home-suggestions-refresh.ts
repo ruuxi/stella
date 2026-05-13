@@ -39,7 +39,7 @@ const logger = createRuntimeLogger("agent-runtime.home-suggestions-refresh");
  * Tuned for a "few completed tasks ⇒ revisit suggestions" cadence; raise
  * if the LLM call cost becomes a concern.
  */
-export const HOME_SUGGESTIONS_REFRESH_THRESHOLD = 4;
+export const HOME_SUGGESTIONS_REFRESH_THRESHOLD = 20;
 
 const MAX_THREAD_SUMMARIES = 20;
 const MAX_THREAD_SUMMARY_CHARS = 2_000;

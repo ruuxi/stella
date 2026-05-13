@@ -1,7 +1,11 @@
 import crypto from "crypto";
 import { resolveLlmRoute } from "../model-routing.js";
 import { withStellaModelCatalogMetadata } from "../stella-model-catalog.js";
-import { getMaxAgentConcurrency } from "../preferences/local-preferences.js";
+import {
+  getDefaultModel,
+  getMaxAgentConcurrency,
+  getModelOverride,
+} from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
 import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { persistThreadCustomMessage } from "../agent-runtime/thread-memory.js";
@@ -730,7 +734,13 @@ export const createAgentOrchestration = (
           resolveSubsidiaryLlmRoute: (subsidiaryAgentType: string) =>
             resolveLlmRoute({
               stellaRoot: context.stellaRoot,
-              modelName: undefined,
+              // Honor any per-agent override the user set for this
+              // subsidiary agent (or our Assistant-tab propagation —
+              // home_suggestions etc. otherwise silently hit Stella even
+              // when the user moved Assistant onto BYOK).
+              modelName:
+                getModelOverride(context.stellaRoot, subsidiaryAgentType) ??
+                getDefaultModel(context.stellaRoot, subsidiaryAgentType),
               agentType: subsidiaryAgentType,
               site: {
                 baseUrl: context.state.convexSiteUrl,
