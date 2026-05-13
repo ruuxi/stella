@@ -528,6 +528,14 @@ export type ElectronDictationApi = {
 };
 
 export type ElectronAgentApi = {
+  oneShotCompletion: (payload: {
+    agentType: string;
+    systemPrompt?: string;
+    userText: string;
+    maxOutputTokens?: number;
+    temperature?: number;
+    fallbackAgentTypes?: string[];
+  }) => Promise<{ text: string }>;
   healthCheck: () => Promise<AgentHealth | null>;
   getActiveRun: () => Promise<{
     runId: string;

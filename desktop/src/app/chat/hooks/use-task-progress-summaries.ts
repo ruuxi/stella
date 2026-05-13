@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { useAction } from "convex/react";
-import { api } from "@/convex/api";
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import {
   extractToolTitle,
@@ -44,6 +42,30 @@ const MAX_SUMMARIES_PER_TASK = 30;
 const TICK_INTERVAL_MS = 15_000;
 const MIN_SIGNAL_DELTA_CHARS = 60;
 const SIGNAL_TAIL_CHARS = 1_800;
+const MAX_SIGNAL_CHARS = 3_000;
+const MAX_SUMMARY_CHARS = 80;
+
+const TASK_PROGRESS_SUMMARY_SYSTEM_PROMPT =
+  `You watch what an AI assistant is currently working on and describe it in 3-6 plain English words a non-technical person would understand.
+
+Rules:
+- Output ONLY the phrase. No quotes, no period, no preamble.
+- 3 to 6 words, present continuous when natural ("Reading the inbox", "Drafting a reply").
+- Describe the current focus, not past steps. Avoid jargon (no tool names, file paths, IDs, code).
+- If the input is empty or unclear, output "Working on it".`;
+
+const cleanSummary = (raw: string): string => {
+  let value = raw.trim();
+  if (!value) return "";
+  value = value.replace(/^(?:sure[,!.]?\s*|here(?:'s| is)\s*[:\-]?\s*)/i, "");
+  value = value.replace(/^["'`*_\s]+|["'`*_\s.!?]+$/g, "");
+  value = value.replace(/\s+/g, " ");
+  if (value.length > MAX_SUMMARY_CHARS) {
+    value = value.slice(0, MAX_SUMMARY_CHARS).trimEnd();
+  }
+  if (/^(i\s+(can(?:'t|not)|am unable))/i.test(value)) return "";
+  return value;
+};
 
 const taskStates = new Map<string, TaskState>();
 const subscribers = new Set<() => void>();
@@ -151,13 +173,40 @@ const buildSignalForTask = (task: TaskItem, events: EventRecord[]): string => {
 
 export type TaskProgressSummaries = ReadonlyMap<string, ReadonlyArray<Summary>>;
 
+const summarizeViaRuntime = async (
+  signal: string,
+): Promise<string | null> => {
+  const electron = window.electronAPI;
+  if (!electron?.agent?.oneShotCompletion) return null;
+  const trimmed = signal.trim();
+  if (!trimmed) return null;
+  const sliced =
+    trimmed.length > MAX_SIGNAL_CHARS
+      ? trimmed.slice(-MAX_SIGNAL_CHARS)
+      : trimmed;
+  try {
+    const result = await electron.agent.oneShotCompletion({
+      agentType: "task_summary",
+      systemPrompt: TASK_PROGRESS_SUMMARY_SYSTEM_PROMPT,
+      userText: sliced,
+      // The user's Assistant-tab BYOK pick lives under `general` — fall
+      // back there so task progress descriptions ride the same provider
+      // as the agent that's producing the work being summarized.
+      fallbackAgentTypes: ["general"],
+      temperature: 0.2,
+      maxOutputTokens: 64,
+    });
+    const summary = cleanSummary(result?.text ?? "");
+    return summary.length > 0 ? summary : null;
+  } catch {
+    return null;
+  }
+};
+
 export function useTaskProgressSummaries(args: {
   liveTasks: TaskItem[];
   events: EventRecord[];
 }): TaskProgressSummaries {
-  const summarize = useAction(api.agent.task_summaries.summarize);
-  const summarizeRef = useRef(summarize);
-  summarizeRef.current = summarize;
 
   const eventsRef = useRef(args.events);
   eventsRef.current = args.events;
@@ -212,13 +261,9 @@ export function useTaskProgressSummaries(args: {
         state.lastSentAt = now;
         state.lastSentSignal = signal;
         const agentId = task.id;
-        void summarizeRef.current({ text: signal })
-          .then((result) => {
-            const summary = result?.summary?.trim();
+        void summarizeViaRuntime(signal)
+          .then((summary) => {
             if (summary) pushSummary(agentId, summary);
-          })
-          .catch(() => {
-            // Cheap signal; quietly skip this tick.
           })
           .finally(() => {
             const current = taskStates.get(agentId);

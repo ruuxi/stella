@@ -826,6 +826,12 @@ export class RuntimeHostAdapter {
     return this.host.voiceWebSearch(payload);
   }
 
+  runOneShotCompletion(
+    payload: import("../../runtime/protocol/index.js").RuntimeOneShotCompletionRequest,
+  ) {
+    return this.host.runOneShotCompletion(payload);
+  }
+
   listStorePackages() {
     return this.host.listStorePackages();
   }

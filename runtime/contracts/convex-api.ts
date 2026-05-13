@@ -34,9 +34,6 @@ export type PublicApiType = {
       "fetchAgentContextForRuntime": FunctionReference<'action', 'public', { threadId?: Id<'threads'> | undefined; platform?: string | undefined; maxHistoryMessages?: number | undefined; timezone?: string | undefined; conversationId: Id<'conversations'>; runId: string; agentType: string; }, any, string | undefined>;
       "fetchLocalAgentContextForRuntime": FunctionReference<'action', 'public', { platform?: string | undefined; timezone?: string | undefined; runId: string; agentType: string; }, any, string | undefined>;
     };
-    "task_summaries": {
-      "summarize": FunctionReference<'action', 'public', { text: string; }, any, string | undefined>;
-    };
   };
   "auth": {
     "getCurrentUser": FunctionReference<'query', 'public', {}, any, string | undefined>;

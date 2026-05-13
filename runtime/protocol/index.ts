@@ -253,6 +253,7 @@ export const METHOD_NAMES = {
     "internal.worker.projects.registerDirectory",
   INTERNAL_WORKER_PROJECTS_START: "internal.worker.projects.start",
   INTERNAL_WORKER_PROJECTS_STOP: "internal.worker.projects.stop",
+  INTERNAL_WORKER_ONE_SHOT_COMPLETION: "internal.worker.oneShotCompletion",
   INTERNAL_WORKER_DREAM_TRIGGER_NOW: "internal.worker.dream.triggerNow",
   INTERNAL_WORKER_CHRONICLE_SUMMARY_TICK:
     "internal.worker.chronicle.summaryTick",
@@ -433,6 +434,32 @@ export type RuntimeActiveRun = {
   runId: string;
   conversationId: string;
   uiVisibility?: "visible" | "hidden";
+};
+
+/**
+ * One-shot text completion request. Lets renderer surfaces (task progress
+ * summaries, the music-prompt shaper, etc.) run a single completion through
+ * the runtime's BYOK-aware route resolver — same path the orchestrator and
+ * subsidiary agents use — instead of unconditionally hitting Stella's
+ * managed chat-completions endpoint.
+ *
+ * `agentType` picks which per-agent model override + provider to honor.
+ * `fallbackAgentTypes` lets the caller fall through to a related agent's
+ * configured model when no explicit override exists for `agentType` (e.g.
+ * `task_summary` falls back to `general` so the user's Assistant-tab BYOK
+ * pick is respected even though `task_summary` is not user-configurable).
+ */
+export type RuntimeOneShotCompletionRequest = {
+  agentType: string;
+  systemPrompt?: string;
+  userText: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  fallbackAgentTypes?: string[];
+};
+
+export type RuntimeOneShotCompletionResult = {
+  text: string;
 };
 
 export type RuntimeAutomationTurnRequest = {

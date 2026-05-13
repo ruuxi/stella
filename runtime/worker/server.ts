@@ -12,6 +12,8 @@ import {
   type RuntimeAttachmentRef,
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
+  type RuntimeOneShotCompletionRequest,
+  type RuntimeOneShotCompletionResult,
   type StorePublishArgs,
   type StoreThreadSendInput,
   type RuntimeLocalAgentRequest,
@@ -38,6 +40,7 @@ import {
   createStellaHostRunner,
   type StellaHostRunnerOptions,
 } from "../kernel/runner.js";
+import { runOneShotCompletion } from "../kernel/agent-runtime/one-shot-completion.js";
 import { buildChatPromptMessages } from "../kernel/chat-prompt-context.js";
 import { getDevServerUrl } from "./dev-url.js";
 import {
@@ -2904,6 +2907,40 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     METHOD_NAMES.INTERNAL_WORKER_GOOGLE_WORKSPACE_DISCONNECT,
     async () => {
       return await ensureRunner().googleWorkspaceDisconnect();
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_ONE_SHOT_COMPLETION,
+    async (params): Promise<RuntimeOneShotCompletionResult> => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const init = state.init;
+      const request = params as RuntimeOneShotCompletionRequest;
+      return await runOneShotCompletion({
+        request,
+        runtime: {
+          stellaRoot: init.stellaRoot,
+          siteBaseUrl: init.convexSiteUrl,
+          getAuthToken: () => init.authToken,
+          requestRuntimeAuthRefresh: async () => {
+            try {
+              return (await peer.request(
+                METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
+                { source: "stella_provider" },
+                { retryOnDisconnect: true },
+              )) as {
+                authenticated: boolean;
+                token: string | null;
+                hasConnectedAccount: boolean;
+              };
+            } catch {
+              return null;
+            }
+          },
+        },
+      });
     },
   );
 

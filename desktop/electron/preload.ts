@@ -614,6 +614,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   agent: {
+    oneShotCompletion: (payload: {
+      agentType: string;
+      systemPrompt?: string;
+      userText: string;
+      maxOutputTokens?: number;
+      temperature?: number;
+      fallbackAgentTypes?: string[];
+    }) =>
+      ipcRenderer.invoke("agent:oneShotCompletion", payload) as Promise<{
+        text: string;
+      }>,
     healthCheck: () =>
       ipcRenderer.invoke("agent:healthCheck") as Promise<{
         ready: true;
