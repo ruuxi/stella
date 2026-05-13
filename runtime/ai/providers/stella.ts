@@ -11,7 +11,29 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
+import {
+  isRetryableConnectionError,
+  retryWithBackoff,
+} from "../utils/retry.js";
 import { stellaRuntimeUrlFromSiteUrl } from "../../contracts/stella-api.js";
+
+/**
+ * Error subclass that preserves the upstream HTTP status (and headers) so
+ * `retryWithBackoff` / `isRetryableConnectionError` can classify the
+ * failure properly — `new Error(message)` alone strips both and degrades
+ * the classifier to message-text matching.
+ */
+class StellaRuntimeHttpError extends Error {
+  readonly status: number;
+  readonly headers: Headers;
+
+  constructor(message: string, status: number, headers: Headers) {
+    super(message);
+    this.name = "StellaRuntimeHttpError";
+    this.status = status;
+    this.headers = headers;
+  }
+}
 
 type StreamingToolCall = ToolCall & { partialJson?: string };
 
@@ -316,23 +338,48 @@ export const streamStella: (
           signal: options?.signal,
         });
 
-      let response = await request(options?.apiKey);
+      // One-shot auth refresh wrapped around the request. Auth failures
+      // are NOT retried via backoff — we refresh the token in-place and
+      // either succeed or surface the underlying error to the retry
+      // classifier, which rejects 401/403 below.
+      const fetchAndValidateResponse = async (): Promise<Response> => {
+        let response = await request(options?.apiKey);
+        if (response.ok) return response;
 
-      if (!response.ok) {
         let errorMessage = await readStellaErrorMessage(response);
         if (isAuthFailure(response, errorMessage) && options?.refreshApiKey) {
           const nextApiKey = (await options.refreshApiKey())?.trim();
           if (nextApiKey && nextApiKey !== options.apiKey?.trim()) {
             response = await request(nextApiKey);
-            if (!response.ok) {
-              errorMessage = await readStellaErrorMessage(response);
-            }
+            if (response.ok) return response;
+            errorMessage = await readStellaErrorMessage(response);
           }
         }
-        if (!response.ok) {
-          throw new Error(errorMessage);
-        }
-      }
+
+        throw new StellaRuntimeHttpError(
+          errorMessage,
+          response.status,
+          response.headers,
+        );
+      };
+
+      // Retry transient connection / 5xx / 429 failures at the adapter
+      // layer per the workspace retry rule: 3 attempts at a 1s fixed
+      // delay, then exponential up to 64s, cap of 10 attempts total.
+      // Without this, a single overloaded response from the upstream
+      // gateway terminates the entire agent run (fatal=true) and forces
+      // the orchestrator to re-spawn from scratch, losing in-flight
+      // context. Auth failures are excluded — they're handled by the
+      // in-function refresh above and won't recover via backoff.
+      const response = await retryWithBackoff(fetchAndValidateResponse, {
+        signal: options?.signal,
+        isRetryable: (error) => {
+          if (error instanceof StellaRuntimeHttpError) {
+            if (error.status === 401 || error.status === 403) return false;
+          }
+          return isRetryableConnectionError(error);
+        },
+      });
 
       if (!response.body) {
         throw new Error("Stella runtime returned no response body");
