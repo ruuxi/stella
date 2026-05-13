@@ -1,8 +1,13 @@
-import {
-  callChatCompletion,
-  extractChatText,
-} from "@/infra/ai/llm"
-import type { ChatCompletionResponse } from "@/shared/stella-api"
+type RuntimeAgentApi = {
+  oneShotCompletion: (payload: {
+    agentType: string
+    systemPrompt?: string
+    userText: string
+    maxOutputTokens?: number
+    temperature?: number
+    fallbackAgentTypes?: string[]
+  }) => Promise<{ text: string }>
+}
 
 export type MusicMood = "Auto" | "Focus" | "Calm" | "Energy" | "Sleep" | "Lo-fi"
 
@@ -81,20 +86,24 @@ export async function generateMusicPrompt(
     userMessage += `\n\nUser's additional direction: "${userHint.trim()}"`
   }
 
+  const agentApi = (window as unknown as { electronAPI?: { agent?: RuntimeAgentApi } })
+    .electronAPI?.agent
+  if (!agentApi?.oneShotCompletion) {
+    return getFallbackPrompt(mood)
+  }
+
   try {
-    const json = await callChatCompletion<ChatCompletionResponse>({
+    const result = await agentApi.oneShotCompletion({
       agentType: "music_prompt",
-      messages: [
-        { role: "system", content: getMusicSystemPrompt() },
-        { role: "user", content: userMessage },
-      ],
-      body: {
-        max_tokens: 16192,
-        temperature: 1,
-        stream: false,
-      },
+      systemPrompt: getMusicSystemPrompt(),
+      userText: userMessage,
+      // Ride the user's Assistant-tab BYOK pick when the user has chosen a
+      // non-Stella provider, instead of pinning to Stella's managed gateway.
+      fallbackAgentTypes: ["general"],
+      temperature: 1,
+      maxOutputTokens: 16192,
     })
-    const responseText = extractChatText(json)
+    const responseText = result?.text ?? ""
     if (!responseText) {
       return getFallbackPrompt(mood)
     }
