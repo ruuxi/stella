@@ -192,9 +192,9 @@
 
 /* --- Per-task progress feed --------------------------------- */
 /* Cheap-model summaries of what the agent is currently doing. The list
-   autoscrolls to the newest entry, hides its scrollbar, and fades the
-   first/last few pixels once it overflows so the cap doesn't read as a
-   hard cut. */
+   is hard-capped at the rendering layer (see TASK_PROGRESS_VISIBLE in
+   ChatHomeOverview.tsx) so older phrases fall off the top deterministically
+   — no scroll container, no max-height race with the parent grid. */
 .chat-home-overview__task-feed {
   list-style: none;
   margin: 0 0 0 2px;
@@ -202,44 +202,10 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  max-height: 96px;
-  overflow-y: auto;
-  scrollbar-width: none;
   border-left: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   font-size: 12px;
   line-height: 1.35;
   color: var(--text-weak);
-  /* Edge fades driven by `useEdgeFade` — collapse on whichever edge
-     the autoscroller has reached. */
-  --task-feed-fade: 14px;
-  --task-feed-fade-start: var(--task-feed-fade);
-  --task-feed-fade-end: var(--task-feed-fade);
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    #000 var(--task-feed-fade-start),
-    #000 calc(100% - var(--task-feed-fade-end)),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    #000 var(--task-feed-fade-start),
-    #000 calc(100% - var(--task-feed-fade-end)),
-    transparent 100%
-  );
-}
-
-.chat-home-overview__task-feed[data-at-start="true"] {
-  --task-feed-fade-start: 0px;
-}
-
-.chat-home-overview__task-feed[data-at-end="true"] {
-  --task-feed-fade-end: 0px;
-}
-
-.chat-home-overview__task-feed::-webkit-scrollbar {
-  display: none;
 }
 
 .chat-home-overview__task-feed--idle {
@@ -252,6 +218,21 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Newer phrases gently fade up into place as they push the oldest one
+     off the top — keeps the "oldest lost, newest kept" rotation readable
+     without animating heights. */
+  animation: chat-home-overview__task-feed-item-in 220ms ease-out both;
+}
+
+@keyframes chat-home-overview__task-feed-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* --- Files --------------------------------------------------- */
