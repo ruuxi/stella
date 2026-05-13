@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import {
+  findApiKey,
+  findOauthCredential,
+  useLlmCredentials,
+} from "@/global/settings/hooks/use-llm-credentials";
 import { api } from "@/convex/api";
 import { router } from "@/router";
 import { getSettingsErrorMessage } from "./shared";
@@ -98,16 +103,77 @@ function ChronicleSettingsCard() {
   const billingStatus = useConvexOneShot(api.billing.getSubscriptionStatus, {
     now: billingNowMs,
   });
+  const credentials = useLlmCredentials();
+  const [chronicleOverride, setChronicleOverride] = useState<string>("");
+  const [chronicleOverrideLoaded, setChronicleOverrideLoaded] =
+    useState<boolean>(false);
+
+  // Pull the current chronicle model override from local preferences so we
+  // can tell whether the user has set up a BYOK route for it. The picker
+  // dispatches `stella:local-model-preferences-changed` whenever it
+  // mutates, so we reload then too.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const prefs =
+          await window.electronAPI?.system?.getLocalModelPreferences?.();
+        if (cancelled) return;
+        setChronicleOverride(prefs?.modelOverrides?.chronicle ?? "");
+        setChronicleOverrideLoaded(true);
+      } catch {
+        if (!cancelled) setChronicleOverrideLoaded(true);
+      }
+    };
+    void load();
+    const onChange = () => {
+      void load();
+    };
+    window.addEventListener(
+      "stella:local-model-preferences-changed",
+      onChange,
+    );
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "stella:local-model-preferences-changed",
+        onChange,
+      );
+    };
+  }, []);
+
   // Chronicle ticks every minute against the user's captured screen
-  // activity and runs through a Stella-provider model the user can't
-  // override — locking it behind a paid plan keeps that cost on plans
-  // that can absorb it.
-  const requiresUpgrade =
+  // activity. On Stella's provider it's locked to a cheap model and
+  // gated to paid plans (the cost is real). On BYOK the user owns the
+  // bill — we let them enable it without a sign-in or subscription as
+  // long as they've actually pointed the chronicle agent at a provider
+  // they have credentials for.
+  const chronicleProvider = useMemo(() => {
+    const slash = chronicleOverride.indexOf("/");
+    return slash > 0 ? chronicleOverride.slice(0, slash) : "";
+  }, [chronicleOverride]);
+  const hasChronicleByokCredential = useMemo(() => {
+    if (!chronicleProvider || chronicleProvider === "stella") return false;
+    return Boolean(
+      findApiKey(credentials.apiKeys, chronicleProvider) ??
+        findOauthCredential(credentials.oauthCredentials, chronicleProvider),
+    );
+  }, [
+    chronicleProvider,
+    credentials.apiKeys,
+    credentials.oauthCredentials,
+  ]);
+  const hasStellaPaidPlan =
     hasConnectedAccount &&
     billingStatus !== undefined &&
-    billingStatus.plan === "free";
+    billingStatus.plan !== "free";
+  const canEnable = hasChronicleByokCredential || hasStellaPaidPlan;
   const billingLoading =
-    hasConnectedAccount && billingStatus === undefined;
+    hasConnectedAccount &&
+    billingStatus === undefined &&
+    !hasChronicleByokCredential;
+  const credentialsLoading =
+    !chronicleOverrideLoaded || credentials.loading;
   const [available, setAvailable] = useState<boolean>(true);
   const [status, setStatus] = useState<ChronicleStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,32 +210,39 @@ function ChronicleSettingsCard() {
     return () => clearInterval(interval);
   }, [refresh]);
 
+  const openChronicleModelPicker = () => {
+    void router.navigate({ to: "/settings", search: { tab: "models" } });
+  };
+
   const handleToggle = async (next: boolean) => {
     if (!chronicleApi?.setEnabled) return;
-    if (next && !hasConnectedAccount) {
-      const message = "Sign in to Stella before turning on screen memory.";
+    if (next && !canEnable) {
+      // Two failure modes; pick the most actionable copy. If they're
+      // anonymous it's "sign in or BYOK"; if they're on Stella free
+      // it's "upgrade or BYOK". Either way the BYOK link goes to
+      // Settings → Models → Chronicle.
+      const message = !hasConnectedAccount
+        ? "Sign in to Stella, or pick a small model for Chronicle in Settings → Models."
+        : "Screen memory is included with any Stella plan. Upgrade — or pick a small model for Chronicle in Settings → Models.";
       setError(message);
       showToast({
-        title: "Sign in required",
-        description: message,
-        variant: "error",
-      });
-      return;
-    }
-    if (next && requiresUpgrade) {
-      const message =
-        "Screen memory is included with any Stella plan. Upgrade to turn it on.";
-      setError(message);
-      showToast({
-        title: "Subscription required",
+        title: !hasConnectedAccount
+          ? "Sign in required"
+          : "Subscription required",
         description: message,
         variant: "error",
         action: {
-          label: "Upgrade",
-          onClick: () => {
-            void router.navigate({ to: "/billing" });
-          },
+          label: "Pick a model",
+          onClick: openChronicleModelPicker,
         },
+        secondaryAction: !hasConnectedAccount
+          ? undefined
+          : {
+              label: "Upgrade",
+              onClick: () => {
+                void router.navigate({ to: "/billing" });
+              },
+            },
       });
       return;
     }
@@ -284,11 +357,11 @@ function ChronicleSettingsCard() {
         <div className="settings-row-info">
           <div className="settings-row-label">Screen memory</div>
           <div className="settings-row-sublabel">
-            {!hasConnectedAccount
-              ? "Sign in to Stella before turning on screen memory."
-              : requiresUpgrade
-                ? "Screen memory is included with any Stella plan. Upgrade to turn it on."
-                : "Lets Stella glance at your screen now and then so it can remember what you were doing."}
+            {canEnable
+              ? "Lets Stella glance at your screen now and then so it can remember what you were doing."
+              : !hasConnectedAccount
+                ? "Sign in to Stella, or pick a small model for Chronicle in Settings → Models."
+                : "Screen memory is included with any Stella plan. Upgrade, or pick a small model for Chronicle in Settings → Models."}
           </div>
         </div>
         <div className="settings-row-control">
@@ -296,18 +369,23 @@ function ChronicleSettingsCard() {
             type="button"
             variant="ghost"
             className="settings-btn"
-            disabled={busy !== null || loading || billingLoading}
+            disabled={
+              busy !== null ||
+              loading ||
+              billingLoading ||
+              credentialsLoading
+            }
             onClick={() => handleToggle(!enabled)}
           >
             {busy === "toggle"
               ? "Working…"
               : enabled
                 ? "Disable"
-                : !hasConnectedAccount
-                  ? "Sign in to enable"
-                  : requiresUpgrade
-                    ? "Upgrade to enable"
-                    : "Enable"}
+                : canEnable
+                  ? "Enable"
+                  : !hasConnectedAccount
+                    ? "Sign in or pick your own"
+                    : "Upgrade or pick your own"}
           </Button>
         </div>
       </div>
