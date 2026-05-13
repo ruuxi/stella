@@ -427,11 +427,11 @@ const userPetToBuiltIn = (pet: UserPetRecord): BuiltInPet => ({
   description: pet.description,
   kind: "custom",
   tags: ["custom"],
-  ownerName: pet.authorDisplayName ?? null,
+  ownerName: pet.authorUsername ? `@${pet.authorUsername}` : null,
   spritesheetUrl: pet.spritesheetUrl,
   ...(pet.previewUrl ? { previewUrl: pet.previewUrl } : {}),
   sourceUrl: "",
-  creator: pet.authorDisplayName ?? "You",
+  creator: pet.authorUsername ? `@${pet.authorUsername}` : "You",
   downloads: pet.installCount ?? 0,
 });
 

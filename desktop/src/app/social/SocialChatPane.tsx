@@ -70,11 +70,11 @@ function getProfileForOwner(
   roomData: SocialRoomSummary,
   extraProfiles: SocialProfile[],
   ownerId: string,
-): { nickname: string; avatarUrl?: string; friendCode?: string } {
+): { username: string; avatarUrl?: string } {
   const member =
     roomData.memberProfiles.find((profile) => profile.ownerId === ownerId) ??
     extraProfiles.find((profile) => profile.ownerId === ownerId);
-  return member ?? { nickname: "Unknown" };
+  return member ?? { username: "unknown" };
 }
 
 export function SocialChatPane({
@@ -271,7 +271,7 @@ export function SocialChatPane({
       const isStella = group.senderOwnerId === STELLA_SENDER_OWNER_ID;
       const isSystem = group.messages[0].kind === "system";
       const profile = isStella
-        ? { nickname: "Stella" }
+        ? { username: "Stella" }
         : getProfileForOwner(roomData, [], group.senderOwnerId);
 
       if (isSystem) {
@@ -299,7 +299,7 @@ export function SocialChatPane({
                 </span>
               ) : (
                 <Avatar
-                  fallback={profile.nickname}
+                  fallback={profile.username}
                   src={profile.avatarUrl}
                   size="small"
                 />
@@ -308,7 +308,7 @@ export function SocialChatPane({
                 className="social-message-sender-name"
                 data-stella={isStella || undefined}
               >
-                {profile.nickname}
+                {isStella ? "Stella" : `@${profile.username}`}
               </span>
               <span className="social-message-sender-time">
                 {formatMessageTime(group.firstTimestamp)}

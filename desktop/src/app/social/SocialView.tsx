@@ -62,7 +62,7 @@ function getRoomAvatar(
     case "dm": {
       const other = room.memberProfiles.find((member) => member.ownerId !== currentOwnerId);
       return {
-        fallback: other?.nickname ?? "?",
+        fallback: other?.username ?? "?",
         src: other?.avatarUrl,
       };
     }
@@ -82,7 +82,7 @@ function hasUnread(room: SocialRoomSummary): boolean {
 }
 
 export function SocialView({ onSignIn }: SocialViewProps) {
-  const { profile, isSignedIn, ensureProfile, updateNickname } =
+  const { profile, isSignedIn, ensureProfile, claimUsername } =
     useSocialProfile();
   const { rooms, openDm, createGroup } = useSocialRooms();
   const { incomingFriendRequestCount } = useSocialBadges();
@@ -90,10 +90,10 @@ export function SocialView({ onSignIn }: SocialViewProps) {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [newChatOpen, setNewChatOpen] = useState(false);
-  const [editingNickname, setEditingNickname] = useState(false);
-  const [nicknameInput, setNicknameInput] = useState("");
-  const [nicknameError, setNicknameError] = useState<string | null>(null);
-  const [savingNickname, setSavingNickname] = useState(false);
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [savingUsername, setSavingUsername] = useState(false);
   const [tagCopied, setTagCopied] = useState(false);
 
   useEffect(() => {
@@ -145,57 +145,64 @@ export function SocialView({ onSignIn }: SocialViewProps) {
   );
 
   const handleCopyTag = useCallback(() => {
-    void navigator.clipboard.writeText(profile!.friendCode);
+    if (!profile) return;
+    void navigator.clipboard.writeText(`@${profile.username}`);
     setTagCopied(true);
     setTimeout(() => setTagCopied(false), 2000);
   }, [profile]);
 
-  const handleSaveNickname = useCallback(async () => {
-    const trimmed = nicknameInput.trim().replace(/\s+/g, " ");
+  const handleSaveUsername = useCallback(async () => {
+    const trimmed = usernameInput.trim().toLowerCase();
     if (!profile) {
-      setEditingNickname(false);
+      setEditingUsername(false);
       return;
     }
     if (!trimmed) {
-      setNicknameError("Name can't be empty.");
+      setUsernameError("Username can't be empty.");
       return;
     }
-    if (trimmed.length > 40) {
-      setNicknameError("Name is too long (40 characters max).");
+    if (trimmed.length < 3 || trimmed.length > 32) {
+      setUsernameError("Username must be 3-32 characters.");
       return;
     }
-    if (trimmed === profile.nickname) {
-      setEditingNickname(false);
-      setNicknameError(null);
+    if (!/^[a-z0-9](?:[a-z0-9_-]{1,30}[a-z0-9])$/.test(trimmed)) {
+      setUsernameError(
+        "Use lowercase letters, numbers, _ or -. Must start and end with a letter or number.",
+      );
       return;
     }
-    setSavingNickname(true);
+    if (trimmed === profile.username) {
+      setEditingUsername(false);
+      setUsernameError(null);
+      return;
+    }
+    setSavingUsername(true);
     try {
-      await updateNickname(trimmed);
-      setEditingNickname(false);
-      setNicknameError(null);
+      await claimUsername(trimmed);
+      setEditingUsername(false);
+      setUsernameError(null);
     } catch (error) {
-      setNicknameError(
+      setUsernameError(
         getSocialActionErrorMessage(
-          "Couldn't update your name. Please try again.",
+          "Couldn't update your username. Please try again.",
           error,
         ),
       );
     } finally {
-      setSavingNickname(false);
+      setSavingUsername(false);
     }
-  }, [nicknameInput, profile, updateNickname]);
+  }, [usernameInput, profile, claimUsername]);
 
-  const handleStartEditNickname = useCallback(() => {
+  const handleStartEditUsername = useCallback(() => {
     if (!profile) return;
-    setNicknameInput(profile.nickname);
-    setNicknameError(null);
-    setEditingNickname(true);
+    setUsernameInput(profile.username);
+    setUsernameError(null);
+    setEditingUsername(true);
   }, [profile]);
 
-  const handleCancelEditNickname = useCallback(() => {
-    setEditingNickname(false);
-    setNicknameError(null);
+  const handleCancelEditUsername = useCallback(() => {
+    setEditingUsername(false);
+    setUsernameError(null);
   }, []);
 
   const handleOpenFriends = useCallback(() => {
@@ -347,39 +354,42 @@ export function SocialView({ onSignIn }: SocialViewProps) {
         {profile && (
           <div className="social-profile-card">
             <Avatar
-              fallback={profile.nickname}
+              fallback={profile.username}
               src={profile.avatarUrl}
               size="normal"
             />
             <div className="social-profile-info">
-              {editingNickname ? (
+              {editingUsername ? (
                 <>
                   <input
                     className="social-profile-name-input"
-                    value={nicknameInput}
-                    maxLength={40}
-                    placeholder="Your name"
+                    value={usernameInput}
+                    maxLength={32}
+                    placeholder="your-username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     onChange={(e) => {
-                      setNicknameInput(e.target.value);
-                      if (nicknameError) setNicknameError(null);
+                      setUsernameInput(e.target.value);
+                      if (usernameError) setUsernameError(null);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        void handleSaveNickname();
+                        void handleSaveUsername();
                       }
-                      if (e.key === "Escape") handleCancelEditNickname();
+                      if (e.key === "Escape") handleCancelEditUsername();
                     }}
-                    disabled={savingNickname}
+                    disabled={savingUsername}
                     autoFocus
                   />
-                  {nicknameError ? (
+                  {usernameError ? (
                     <span className="social-profile-error">
-                      {nicknameError}
+                      {usernameError}
                     </span>
                   ) : (
                     <span className="social-profile-tag">
-                      {profile.friendCode}
+                      @{profile.username}
                     </span>
                   )}
                 </>
@@ -388,10 +398,10 @@ export function SocialView({ onSignIn }: SocialViewProps) {
                   <button
                     type="button"
                     className="social-profile-name social-profile-name-button"
-                    title="Edit your name"
-                    onClick={handleStartEditNickname}
+                    title="Edit your username"
+                    onClick={handleStartEditUsername}
                   >
-                    {profile.nickname}
+                    @{profile.username}
                     <Pencil size={11} aria-hidden />
                   </button>
                   <span
@@ -399,23 +409,23 @@ export function SocialView({ onSignIn }: SocialViewProps) {
                     title={
                       tagCopied
                         ? "Copied!"
-                        : "Click to copy your friend code"
+                        : "Click to copy your username"
                     }
                     onClick={handleCopyTag}
                   >
-                    {tagCopied ? "Copied!" : profile.friendCode}
+                    {tagCopied ? "Copied!" : `@${profile.username}`}
                   </span>
                 </>
               )}
             </div>
-            {editingNickname ? (
+            {editingUsername ? (
               <div className="social-profile-edit-actions">
                 <button
                   type="button"
                   className="social-sidebar-action"
                   title="Cancel"
-                  onClick={handleCancelEditNickname}
-                  disabled={savingNickname}
+                  onClick={handleCancelEditUsername}
+                  disabled={savingUsername}
                 >
                   Cancel
                 </button>
@@ -423,17 +433,17 @@ export function SocialView({ onSignIn }: SocialViewProps) {
                   type="button"
                   className="social-sidebar-action social-sidebar-action--primary"
                   title="Save"
-                  onClick={() => void handleSaveNickname()}
-                  disabled={savingNickname || nicknameInput.trim().length === 0}
+                  onClick={() => void handleSaveUsername()}
+                  disabled={savingUsername || usernameInput.trim().length === 0}
                 >
-                  {savingNickname ? "Saving..." : "Save"}
+                  {savingUsername ? "Saving..." : "Save"}
                 </button>
               </div>
             ) : (
               <button
                 type="button"
                 className="social-sidebar-action"
-                title="Copy friend code"
+                title="Copy username"
                 onClick={handleCopyTag}
                 style={{ width: 28, height: 28 }}
               >

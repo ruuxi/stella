@@ -5,9 +5,8 @@ import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 
 export type SocialProfile = {
   ownerId: string;
-  nickname: string;
+  username: string;
   avatarUrl?: string;
-  friendCode: string;
 };
 
 export function useSocialProfile() {
@@ -19,23 +18,23 @@ export function useSocialProfile() {
   ) as SocialProfile | undefined;
 
   const ensureProfileMutation = useMutation(api.social.profiles.ensureProfile);
-  const updateProfileMutation = useMutation(api.social.profiles.updateMyProfile);
+  const claimUsernameMutation = useMutation(api.social.profiles.claimUsername);
 
   const ensureProfile = useCallback(async () => {
     return await ensureProfileMutation();
   }, [ensureProfileMutation]);
 
-  const updateNickname = useCallback(
-    async (nickname: string) => {
-      return await updateProfileMutation({ nickname });
+  const claimUsername = useCallback(
+    async (username: string) => {
+      return await claimUsernameMutation({ username });
     },
-    [updateProfileMutation],
+    [claimUsernameMutation],
   );
 
   return {
     profile: profile ?? null,
     isSignedIn: hasConnectedAccount,
     ensureProfile,
-    updateNickname,
+    claimUsername,
   };
 }

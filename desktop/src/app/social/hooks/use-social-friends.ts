@@ -78,9 +78,6 @@ export function useSocialFriends() {
   const sendRequestMutation = useMutation(
     api.social.relationships.sendFriendRequest,
   );
-  const sendRequestByOwnerIdMutation = useMutation(
-    api.social.relationships.sendFriendRequestByOwnerId,
-  );
   const respondMutation = useMutation(
     api.social.relationships.respondToFriendRequest,
   );
@@ -92,17 +89,10 @@ export function useSocialFriends() {
   );
 
   const sendFriendRequest = useCallback(
-    async (friendCode: string) => {
-      return await sendRequestMutation({ friendCode });
+    async (username: string) => {
+      return await sendRequestMutation({ username });
     },
     [sendRequestMutation],
-  );
-
-  const sendFriendRequestByOwnerId = useCallback(
-    async (targetOwnerId: string) => {
-      return await sendRequestByOwnerIdMutation({ targetOwnerId });
-    },
-    [sendRequestByOwnerIdMutation],
   );
 
   const acceptRequest = useCallback(
@@ -137,7 +127,6 @@ export function useSocialFriends() {
       outgoing: [],
     },
     sendFriendRequest,
-    sendFriendRequestByOwnerId,
     acceptRequest,
     declineRequest,
     markIncomingFriendRequestsSeen,

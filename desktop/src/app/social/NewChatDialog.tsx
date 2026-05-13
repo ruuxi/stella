@@ -155,12 +155,12 @@ export function NewChatDialog({
                       disabled={isCreatingGroup}
                     >
                       <Avatar
-                        fallback={friend.profile.nickname}
+                        fallback={friend.profile.username}
                         src={friend.profile.avatarUrl}
                         size="normal"
                       />
                       <span className="new-chat-item-name">
-                        {friend.profile.nickname}
+                        @{friend.profile.username}
                       </span>
                       {isSelected ? (
                         <Check
@@ -244,14 +244,14 @@ export function NewChatDialog({
                 onClick={() => void handleSelectFriend(friend.profile.ownerId)}
               >
                 <Avatar
-                  fallback={friend.profile.nickname}
+                  fallback={friend.profile.username}
                   src={friend.profile.avatarUrl}
                   size="normal"
                 />
                 <span className="new-chat-item-name">
                   {pendingFriendId === friend.profile.ownerId
                     ? "Opening..."
-                    : friend.profile.nickname}
+                    : `@${friend.profile.username}`}
                 </span>
               </button>
             ))}

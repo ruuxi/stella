@@ -221,11 +221,11 @@ export function SharePetDialog({
                       >
                         <Avatar
                           src={friend.profile.avatarUrl}
-                          fallback={friend.profile.nickname}
+                          fallback={friend.profile.username}
                           size="small"
                         />
                         <span className="share-addon-friend-name">
-                          {friend.profile.nickname}
+                          @{friend.profile.username}
                         </span>
                         <span className="share-addon-friend-check" aria-hidden>
                           {isSelected ? <Check size={14} /> : null}

@@ -40,7 +40,7 @@ export function FriendsDialog({
     removeFriend,
   } = useSocialFriends();
 
-  const [friendCode, setFriendCode] = useState("");
+  const [usernameInput, setUsernameInput] = useState("");
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [sending, setSending] = useState(false);
   const [pendingChatOwnerId, setPendingChatOwnerId] = useState<string | null>(
@@ -51,14 +51,14 @@ export function FriendsDialog({
   >(null);
 
   const handleAddFriend = useCallback(async () => {
-    const code = friendCode.trim().toUpperCase();
-    if (!code) return;
+    const username = usernameInput.trim().replace(/^@/, "").toLowerCase();
+    if (!username) return;
     setSending(true);
     setStatus(null);
     try {
-      await sendFriendRequest(code);
+      await sendFriendRequest(username);
       setStatus({ type: "success", text: "Friend request sent!" });
-      setFriendCode("");
+      setUsernameInput("");
     } catch (err) {
       setStatus({
         type: "error",
@@ -67,7 +67,7 @@ export function FriendsDialog({
     } finally {
       setSending(false);
     }
-  }, [friendCode, sendFriendRequest]);
+  }, [usernameInput, sendFriendRequest]);
 
   const runOwnerAction = useCallback(
     async (ownerId: string, action: () => Promise<unknown>) => {
@@ -96,8 +96,8 @@ export function FriendsDialog({
 
   const handleCopyCode = useCallback(() => {
     if (!profile) return;
-    void navigator.clipboard.writeText(profile.friendCode);
-    setStatus({ type: "success", text: "Friend code copied!" });
+    void navigator.clipboard.writeText(`@${profile.username}`);
+    setStatus({ type: "success", text: "Username copied!" });
   }, [profile]);
 
   const { incoming, outgoing } = pendingRequests;
@@ -127,7 +127,7 @@ export function FriendsDialog({
           <header className="friends-dialog-header">
             <p className="friends-dialog-title">Friends</p>
             <p className="friends-dialog-sub">
-              Share your code, or enter a friend&rsquo;s to connect.
+              Share your username, or enter a friend&rsquo;s to connect.
             </p>
           </header>
 
@@ -139,9 +139,9 @@ export function FriendsDialog({
               title="Click to copy"
             >
               <div className="friends-code-card-info">
-                <span className="friends-section-label">Your friend code</span>
+                <span className="friends-section-label">Your username</span>
                 <span className="friends-code-card-value">
-                  {profile.friendCode}
+                  @{profile.username}
                 </span>
               </div>
               <span className="pill-btn">Copy</span>
@@ -158,17 +158,17 @@ export function FriendsDialog({
             <TextField
               label="Add a friend"
               hideLabel
-              placeholder="Enter friend code"
-              value={friendCode}
+              placeholder="Enter username"
+              value={usernameInput}
               onChange={(e) => {
-                setFriendCode((e.target as HTMLInputElement).value);
+                setUsernameInput((e.target as HTMLInputElement).value);
                 setStatus(null);
               }}
             />
             <button
               type="submit"
               className="pill-btn pill-btn--primary pill-btn--lg friends-add-button"
-              disabled={!friendCode.trim() || sending}
+              disabled={!usernameInput.trim() || sending}
             >
               {sending ? "Adding..." : "Add"}
             </button>
@@ -192,16 +192,13 @@ export function FriendsDialog({
                   return (
                     <div key={ownerId} className="friends-item">
                       <Avatar
-                        fallback={request.profile.nickname}
+                        fallback={request.profile.username}
                         src={request.profile.avatarUrl}
                         size="normal"
                       />
                       <div className="friends-item-info">
                         <div className="friends-item-name">
-                          {request.profile.nickname}
-                        </div>
-                        <div className="friends-item-tag">
-                          {request.profile.friendCode}
+                          @{request.profile.username}
                         </div>
                       </div>
                       <div className="friends-item-actions">
@@ -247,13 +244,13 @@ export function FriendsDialog({
                     className="friends-item"
                   >
                     <Avatar
-                      fallback={request.profile.nickname}
+                      fallback={request.profile.username}
                       src={request.profile.avatarUrl}
                       size="normal"
                     />
                     <div className="friends-item-info">
                       <div className="friends-item-name">
-                        {request.profile.nickname}
+                        @{request.profile.username}
                       </div>
                       <div className="friends-item-tag">
                         Waiting for response
@@ -271,7 +268,7 @@ export function FriendsDialog({
             </div>
             {friends.length === 0 ? (
               <div className="friends-empty">
-                No friends yet. Share your friend code or enter someone
+                No friends yet. Share your username or enter someone
                 else&rsquo;s above to connect.
               </div>
             ) : (
@@ -283,16 +280,13 @@ export function FriendsDialog({
                   return (
                     <div key={ownerId} className="friends-item">
                       <Avatar
-                        fallback={friend.profile.nickname}
+                        fallback={friend.profile.username}
                         src={friend.profile.avatarUrl}
                         size="normal"
                       />
                       <div className="friends-item-info">
                         <div className="friends-item-name">
-                          {friend.profile.nickname}
-                        </div>
-                        <div className="friends-item-tag">
-                          {friend.profile.friendCode}
+                          @{friend.profile.username}
                         </div>
                       </div>
                       <div className="friends-item-actions">
