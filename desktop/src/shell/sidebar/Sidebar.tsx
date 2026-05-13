@@ -46,6 +46,7 @@ import {
   useDefaultPageSidebarBack,
   usePageSidebarOverride,
 } from "@/context/page-sidebar";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
 import { STELLA_TOGGLE_SIDEBAR_RAIL_EVENT } from "@/shell/ShellTopBar";
@@ -472,6 +473,29 @@ const initialsFromIdentity = (
   return local.slice(0, 2).toUpperCase() || "?";
 };
 
+// Hash an identity string into one of a handful of pleasant avatar
+// background tints so different users get visibly different chips
+// without us picking the colors per user.
+const AVATAR_HUES = [
+  210, 250, 285, 320, 350, 18, 38, 70, 140, 170, 195,
+] as const;
+
+const avatarSwatchFromIdentity = (
+  identity: string | null | undefined,
+): { background: string; color: string; border: string } => {
+  const seed = (identity ?? "").trim().toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  const hue = AVATAR_HUES[hash % AVATAR_HUES.length] ?? AVATAR_HUES[0];
+  return {
+    background: `oklch(0.88 0.06 ${hue})`,
+    color: `oklch(0.32 0.05 ${hue})`,
+    border: `oklch(0.78 0.05 ${hue} / 0.5)`,
+  };
+};
+
 const planLabel = (
   plan: BillingPlanId | undefined,
   status: BillingStatusLite | undefined,
@@ -501,7 +525,17 @@ interface AccountRowProps {
 
 const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) => {
   const t = useT();
-  const { user, hasConnectedAccount } = useCurrentUser();
+  const { user: convexUser, hasConnectedAccount } = useCurrentUser();
+  // Better Auth's session payload already carries email/name for the
+  // signed-in user, so use it as a reliable fallback while the Convex
+  // one-shot identity query is still loading (or if it ever returns
+  // null) — otherwise the avatar shows "?" until the query lands.
+  const { user: sessionUser } = useAuthSessionState();
+  const user = {
+    email: convexUser?.email ?? sessionUser?.email ?? undefined,
+    name: convexUser?.name ?? sessionUser?.name ?? undefined,
+    isAnonymous: convexUser?.isAnonymous ?? sessionUser?.isAnonymous ?? undefined,
+  };
   // Plans + the user's current tier are public-readable via the same backend
   // query the standalone Billing page uses; running it here lets the pill
   // render "Pro" / "Ultra" / etc. inline instead of always reading "Upgrade".
@@ -612,7 +646,8 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
     );
   }
 
-  const initials = initialsFromIdentity(user?.email, user?.name);
+  const initials = initialsFromIdentity(user.email, user.name);
+  const swatch = avatarSwatchFromIdentity(user.email ?? user.name);
   const plan = billingStatus?.plan;
   const isPaidPlan = Boolean(plan) && plan !== "free";
   const pillLabel = isPaidPlan
@@ -626,8 +661,13 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
           <button
             type="button"
             className="sidebar-account-avatar"
-            title={user?.email ?? user?.name ?? t("sidebar.account")}
+            title={user.email ?? user.name ?? t("sidebar.account")}
             aria-label={t("sidebar.account")}
+            style={{
+              background: swatch.background,
+              color: swatch.color,
+              borderColor: swatch.border,
+            }}
           >
             {initials}
           </button>
