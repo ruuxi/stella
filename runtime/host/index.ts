@@ -47,6 +47,8 @@ import {
   type RuntimeSelfModRevertResult,
   type RuntimeLocalAgentRequest,
   type RuntimeLocalAgentSnapshot,
+  type RuntimeOneShotCompletionRequest,
+  type RuntimeOneShotCompletionResult,
   type RuntimeVoiceActionCompletedPayload,
   type RuntimeVoiceAgentEventPayload,
   type RuntimeVoiceChatPayload,
@@ -1192,6 +1194,17 @@ export class StellaRuntimeHost {
     return await this.requestWorker<RuntimeWebSearchResult>(
       METHOD_NAMES.INTERNAL_WORKER_WEB_SEARCH,
       { query, ...options },
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
+  async runOneShotCompletion(payload: RuntimeOneShotCompletionRequest) {
+    return await this.requestWorker<RuntimeOneShotCompletionResult>(
+      METHOD_NAMES.INTERNAL_WORKER_ONE_SHOT_COMPLETION,
+      payload,
       {
         ensureWorker: true,
         recordActivity: true,

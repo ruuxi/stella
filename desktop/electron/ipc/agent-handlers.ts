@@ -18,6 +18,13 @@ import {
   type TaskLifecycleStatus,
 } from "../../../runtime/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
+import {
+  IPC_AGENT_ONE_SHOT_COMPLETION,
+} from "../../src/shared/contracts/ipc-channels.js";
+import type {
+  RuntimeOneShotCompletionRequest,
+  RuntimeOneShotCompletionResult,
+} from "../../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 
@@ -342,6 +349,20 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       receiver.send("agent:selfModHmrState", payload);
     }
   };
+
+  ipcMain.handle(
+    IPC_AGENT_ONE_SHOT_COMPLETION,
+    async (
+      _event,
+      payload: RuntimeOneShotCompletionRequest,
+    ): Promise<RuntimeOneShotCompletionResult> => {
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime is not ready.");
+      }
+      return await stellaHostRunner.runOneShotCompletion(payload);
+    },
+  );
 
   ipcMain.handle("agent:healthCheck", async () => {
     const stellaHostRunner = options.getStellaHostRunner();

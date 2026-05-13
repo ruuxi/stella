@@ -131,6 +131,8 @@ export const IPC_DICTATION_TRIGGER = "dictation:trigger" as const;
 
 // ── Agent ───────────────────────────────────────────────────────────────────
 
+export const IPC_AGENT_ONE_SHOT_COMPLETION =
+  "agent:oneShotCompletion" as const;
 export const IPC_AGENT_HEALTH_CHECK = "agent:healthCheck" as const;
 export const IPC_AGENT_GET_ACTIVE_RUN = "agent:getActiveRun" as const;
 export const IPC_AGENT_GET_SESSION_STARTED_AT =
