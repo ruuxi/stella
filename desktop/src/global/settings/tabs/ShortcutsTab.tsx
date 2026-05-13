@@ -95,9 +95,24 @@ const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
   voice: "Voice agent",
 };
 
+// Curated radial-dial trigger options. The underlying catalog includes
+// every letter/digit/punctuation key — none of which are sane choices
+// for a global "hold to open" trigger (binding to "A" pops the dial
+// every time you type a word starting with A). Show only triggers that
+// don't disrupt normal typing; the saved value is always added in case
+// it's outside the recommended set.
+const RECOMMENDED_RADIAL_TRIGGER_CODES: readonly RadialTriggerCode[] = [
+  "SystemChord",
+  "Backquote",
+];
+
+const RADIAL_TRIGGER_LABEL_OVERRIDES: Partial<Record<RadialTriggerCode, string>> = {
+  Backquote: "Backtick (`)",
+};
+
 export function ShortcutsTab() {
   const platform = window.electronAPI?.platform;
-  const radialOptions = useMemo(
+  const allRadialOptions = useMemo(
     () => getRadialTriggerOptions(platform),
     [platform],
   );
@@ -116,6 +131,27 @@ export function ShortcutsTab() {
   const [capturingShortcut, setCapturingShortcut] =
     useState<ShortcutAction | null>(null);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
+
+  // Build the curated dropdown: recommended options first, then the
+  // currently-saved value if it isn't already in the recommended set.
+  // Apply label overrides so e.g. `Backquote` reads as "Backtick (`)"
+  // instead of just a bare backtick character.
+  const radialOptions = useMemo(() => {
+    const codes: RadialTriggerCode[] = [...RECOMMENDED_RADIAL_TRIGGER_CODES];
+    if (!codes.includes(radialTriggerKey)) {
+      codes.push(radialTriggerKey);
+    }
+    const labelByCode = new Map(
+      allRadialOptions.map((option) => [option.code, option.label] as const),
+    );
+    return codes.map((code) => ({
+      code,
+      label:
+        RADIAL_TRIGGER_LABEL_OVERRIDES[code] ??
+        labelByCode.get(code) ??
+        getRadialTriggerLabel(code, platform),
+    }));
+  }, [allRadialOptions, radialTriggerKey, platform]);
 
   useEffect(() => {
     let cancelled = false;
