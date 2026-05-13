@@ -20,10 +20,9 @@
  * not by closing/reopening the tab — selection and panel state never
  * change just because the user navigates.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
-import { useEdgeFade } from "@/shared/hooks/use-edge-fade";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
@@ -63,6 +62,15 @@ const DONE_DEFAULT_VISIBLE = 5;
 const UP_NEXT_DEFAULT_VISIBLE = 3;
 const FILES_TOTAL_CAP = 24;
 const NEXT_RUN_TICK_MS = 30_000;
+/**
+ * How many cheap-model progress phrases stay on screen per running task.
+ * The hook still keeps a longer rolling buffer in memory (so the count
+ * can grow if we ever want history-on-hover), but the rendered list is
+ * capped here so the feed never visually grows past N rows — older
+ * phrases fall off the top deterministically without depending on
+ * scrollable max-height behaviour inside the display sidebar.
+ */
+const TASK_PROGRESS_VISIBLE = 5;
 
 type FileEntry = {
   path: string;
@@ -104,8 +112,14 @@ type ProgressSummary = { id: string; text: string; createdAt: number };
 /**
  * Sub-list rendered under a running task. Each entry is a 3-6 word phrase
  * the cheap summarizer returned for the agent's most recent activity.
- * Auto-scrolls to the newest entry, hides its scrollbar, and fades the
- * top/bottom edges once the list overflows.
+ *
+ * The list always shows at most `TASK_PROGRESS_VISIBLE` rows in a fixed
+ * column — newer entries push the oldest one off the top. Previously
+ * relied on `max-height` + `overflow-y: auto` + an autoscroll effect,
+ * but inside the display sidebar's grid layout the max-height was not
+ * always respected and the older entries visually piled up behind the
+ * mask, reading as overlapping rows. A hard render-time slice removes
+ * the failure mode entirely.
  */
 function TaskProgressFeed({
   summaries,
@@ -114,22 +128,14 @@ function TaskProgressFeed({
   summaries: ReadonlyArray<ProgressSummary>;
   isRunning: boolean;
 }) {
-  const scrollRef = useRef<HTMLOListElement | null>(null);
-  useEdgeFade(scrollRef, { axis: "vertical" });
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [summaries.length]);
-
+  const visible = summaries.slice(-TASK_PROGRESS_VISIBLE);
   return (
     <ol
-      ref={scrollRef}
       className={`chat-home-overview__task-feed${
         isRunning ? "" : " chat-home-overview__task-feed--idle"
       }`}
     >
-      {summaries.map((summary) => (
+      {visible.map((summary) => (
         <li key={summary.id} className="chat-home-overview__task-feed-item">
           {summary.text}
         </li>
