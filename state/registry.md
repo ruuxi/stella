@@ -17,7 +17,7 @@ Use this file when you need orientation. Do not treat it as a mandatory first re
 - Browser automation: [stella-browser](skills/stella-browser/SKILL.md)
 - Office documents: [stella-office](skills/stella-office/SKILL.md)
 - Desktop app automation: [computer-use](skills/computer-use/SKILL.md) through the `stella-computer` CLI
-- Connected services: [stella-connect](skills/stella-connect/SKILL.md) through the `stella-connect` CLI
+- Connected services: [stella-connect-mcp](skills/stella-connect-mcp/SKILL.md) through the `stella-connect` CLI
 - Electron app control: [electron](skills/electron/SKILL.md)
 - Modify Stella's own desktop app: [stella-desktop](skills/stella-desktop/SKILL.md)
 - User profile and context: [user-profile](skills/user-profile/SKILL.md)
