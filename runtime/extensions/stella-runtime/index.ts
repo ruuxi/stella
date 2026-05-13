@@ -3,6 +3,7 @@ import type {
   ExtensionFactory,
   HookDefinition,
 } from "../../kernel/extensions/types.js";
+import { createChronicleInjectionHook } from "./hooks/chronicle-injection.hook.js";
 import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.hook.js";
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
 import { createHomeSuggestionsRefreshHook } from "./hooks/home-suggestions-refresh.hook.js";
@@ -72,6 +73,17 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
       stellaRoot: services.stellaRoot,
       store: services.store,
       memoryStore: services.memoryStore,
+    }),
+  );
+  // Chronicle injection rides the same `before_user_message` cadence as
+  // the memory bundle but gates on file mtime (not turn count) so fresh
+  // chronicle summaries surface the moment the user returns after an
+  // idle period, without re-injecting when nothing changed.
+  register(
+    createChronicleInjectionHook({
+      stellaHome: services.stellaHome,
+      stellaRoot: services.stellaRoot,
+      store: services.store,
     }),
   );
   register(

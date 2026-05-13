@@ -2073,6 +2073,71 @@ export class SessionStore {
   }
 
   /**
+   * Read the per-conversation chronicle injection watermark. Returns the
+   * largest mtime (in epoch ms) we've already injected for each window;
+   * the caller compares against the file's current mtime to decide
+   * whether the chronicle has rolled forward since the last injection.
+   * Missing row => `{ tenMinMtimeMs: 0, sixHourMtimeMs: 0 }` so a first
+   * injection always fires once the file exists.
+   */
+  getChronicleInjectionWatermark(conversationId: string): {
+    tenMinMtimeMs: number;
+    sixHourMtimeMs: number;
+  } {
+    const row = this.db.prepare(`
+      SELECT last_10m_mtime_ms AS tenMinMtimeMs,
+             last_6h_mtime_ms AS sixHourMtimeMs
+      FROM runtime_chronicle_injection_state
+      WHERE conversation_id = ?
+      LIMIT 1
+    `).get(conversationId) as
+      | { tenMinMtimeMs?: unknown; sixHourMtimeMs?: unknown }
+      | undefined;
+    return {
+      tenMinMtimeMs:
+        typeof row?.tenMinMtimeMs === "number" && row.tenMinMtimeMs > 0
+          ? row.tenMinMtimeMs
+          : 0,
+      sixHourMtimeMs:
+        typeof row?.sixHourMtimeMs === "number" && row.sixHourMtimeMs > 0
+          ? row.sixHourMtimeMs
+          : 0,
+    };
+  }
+
+  /**
+   * Advance the chronicle injection watermark for one or both windows.
+   * Pass only the windows that were actually injected on this turn — the
+   * other window keeps its existing watermark so a single window roll
+   * doesn't silently mark the other as "already injected".
+   */
+  updateChronicleInjectionWatermark(
+    conversationId: string,
+    args: { tenMinMtimeMs?: number; sixHourMtimeMs?: number },
+  ): void {
+    const existing = this.getChronicleInjectionWatermark(conversationId);
+    const nextTenMin =
+      typeof args.tenMinMtimeMs === "number" && args.tenMinMtimeMs > 0
+        ? args.tenMinMtimeMs
+        : existing.tenMinMtimeMs;
+    const nextSixHour =
+      typeof args.sixHourMtimeMs === "number" && args.sixHourMtimeMs > 0
+        ? args.sixHourMtimeMs
+        : existing.sixHourMtimeMs;
+    this.db.prepare(`
+      INSERT INTO runtime_chronicle_injection_state (
+        conversation_id,
+        last_10m_mtime_ms,
+        last_6h_mtime_ms
+      )
+      VALUES (?, ?, ?)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        last_10m_mtime_ms = excluded.last_10m_mtime_ms,
+        last_6h_mtime_ms = excluded.last_6h_mtime_ms
+    `).run(conversationId, nextTenMin, nextSixHour);
+  }
+
+  /**
    * Increment the home-suggestions refresh counter (one tick per successful
    * General-agent finalize for this conversation) and return the new value.
    * The cheap-LLM refresh fires when the counter crosses its threshold; the

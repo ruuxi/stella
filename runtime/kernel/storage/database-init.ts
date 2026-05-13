@@ -247,6 +247,22 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     );
   `);
 
+  // Per-conversation watermarks for chronicle injection. The chronicle
+  // hook gates on file mtime rather than turn count — when the writer
+  // bumps `state/memories_extensions/chronicle/{10m,6h}-current.md`, the
+  // next `before_user_message` for this conversation injects the fresh
+  // summary and advances the watermark. Idle conversations (no user
+  // message) never inject; idle conversations that return after a long
+  // gap inject once on the next message, picking up the current summary
+  // (not a backlog).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_chronicle_injection_state (
+      conversation_id TEXT PRIMARY KEY,
+      last_10m_mtime_ms INTEGER NOT NULL DEFAULT 0,
+      last_6h_mtime_ms INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
   // Counter for the home-suggestions refresh pass. Increments on every
   // successful General-agent finalize; the cheap-LLM refresh fires when it
   // crosses the threshold and the row is reset to zero. One row per
