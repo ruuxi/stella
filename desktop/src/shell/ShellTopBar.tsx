@@ -19,7 +19,7 @@ import {
 } from "@/shell/display/tab-store";
 import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
-import { ShellTopBarStoreControls } from "@/shell/ShellTopBarStoreControls";
+import { ShellTopBarWebControls } from "@/shell/ShellTopBarStoreControls";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
 
 export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
@@ -85,6 +85,13 @@ export const ShellTopBar = () => {
   // default layout (display tab strip on the right).
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isStoreRoute = pathname === "/store" || pathname.startsWith("/store/");
+  const isBillingRoute =
+    pathname === "/billing" || pathname.startsWith("/billing/");
+  const webViewSurfaceLabel = isStoreRoute
+    ? "Store"
+    : isBillingRoute
+      ? "Billing"
+      : null;
   const [miniAlwaysOnTop, setMiniAlwaysOnTopState] = useState(true);
 
   useEffect(() => {
@@ -118,7 +125,9 @@ export const ShellTopBar = () => {
       data-platform={isMac ? "mac" : "other"}
       data-display-open={panelOpen ? "true" : "false"}
       data-display-expanded={panelExpanded ? "true" : "false"}
-      data-route={isStoreRoute ? "store" : undefined}
+      data-route={
+        isStoreRoute ? "store" : isBillingRoute ? "billing" : undefined
+      }
     >
       <div className="shell-topbar-left">
         <button
@@ -147,9 +156,9 @@ export const ShellTopBar = () => {
        * appears/disappears. Today only Store uses it; other routes can
        * mount their own component the same way later.
        */}
-      {isStoreRoute ? (
+      {webViewSurfaceLabel ? (
         <div className="shell-topbar-center">
-          <ShellTopBarStoreControls />
+          <ShellTopBarWebControls surfaceLabel={webViewSurfaceLabel} />
         </div>
       ) : null}
       <div className="shell-topbar-tabs" style={tabsStyle}>
