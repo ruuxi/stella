@@ -1128,9 +1128,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
         desktopReleaseCommit: string | null;
         desktopInstallBaseCommit: string | null;
       } | null>,
-    recordAppliedCommit: (commit: string) =>
+    recordAppliedCommit: (commit: string, tag?: string) =>
       ipcRenderer.invoke(IPC_UPDATES_RECORD_APPLIED_COMMIT, {
         commit,
+        tag,
       }) as Promise<{
         version: string;
         platform: string;
