@@ -62,10 +62,11 @@ html[data-stella-window="pet"] #root {
    * window's left edge. Capping max-width here lets the message
    * truncate cleanly inside the bubble (`text-overflow: ellipsis`
    * below) instead of being cut off by the OS-level window bounds. */
-  /* Pin to the max width so message swaps don't reflow / reposition
-   * the bubble's left edge. Short messages just sit centered inside
-   * the same footprint; long ones ellipsize at the same edge. */
-  width: 244px;
+  /* Right-anchored to the sprite, so the bubble shrinks from the left
+   * to fit short messages and grows leftward (capped at 244px) for
+   * long ones, which then ellipsize. */
+  width: fit-content;
+  max-width: 244px;
   padding: 12px 16px;
   border-radius: 16px;
   background: var(--background);
