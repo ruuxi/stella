@@ -742,6 +742,7 @@ export type ElectronSystemApi = {
   getLocalModelPreferences: () => Promise<{
     defaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
+    assistantPropagatedAgents: string[];
     reasoningEfforts: Record<
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -757,6 +758,7 @@ export type ElectronSystemApi = {
   setLocalModelPreferences: (payload: {
     defaultModels?: Record<string, string>;
     modelOverrides?: Record<string, string>;
+    assistantPropagatedAgents?: string[];
     reasoningEfforts?: Record<
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -771,6 +773,7 @@ export type ElectronSystemApi = {
   }) => Promise<{
     defaultModels: Record<string, string>;
     modelOverrides: Record<string, string>;
+    assistantPropagatedAgents: string[];
     reasoningEfforts: Record<
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"

@@ -170,6 +170,32 @@
   color: var(--danger, #c2410c);
 }
 
+.agent-model-picker-chronicle-notice {
+  margin: 8px 4px 0;
+  font-size: 11.5px;
+  color: var(--text);
+  opacity: 0.78;
+  line-height: 1.45;
+}
+
+.agent-model-picker-chronicle-link {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  color: var(--text-strong);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.agent-model-picker-chronicle-link:hover {
+  opacity: 0.85;
+}
+
 .agent-model-picker .model-picker-shell {
   overflow: hidden;
 }

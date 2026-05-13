@@ -60,6 +60,16 @@ export type LocalPreferences = {
   defaultModels: Record<string, string>;
   /** Model overrides keyed by agent type, e.g. "orchestrator" -> "anthropic/claude-opus-4.6" */
   modelOverrides: Record<string, string>;
+  /**
+   * Agent keys whose current entry in `modelOverrides` was written by
+   * Assistant-tab auto-propagation (not by an explicit per-agent pick).
+   * The Assistant tab in `AgentModelPicker` writes orchestrator + general
+   * directly and broadcasts the same model to every other configurable
+   * agent (except chronicle, which is intentionally explicit-opt-in). We
+   * track which keys were propagation-written so switching Assistant back
+   * to Stella only clears those, never user-intentional per-agent picks.
+   */
+  assistantPropagatedAgents: string[];
   /** Reasoning effort overrides keyed by agent type. */
   reasoningEfforts: Record<string, ReasoningEffort>;
   /** Expression style: "none" | "emoji" | undefined (default) */
@@ -114,6 +124,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   LocalPreferences,
   | "defaultModels"
   | "modelOverrides"
+  | "assistantPropagatedAgents"
   | "reasoningEfforts"
   | "agentRuntimeEngine"
   | "maxAgentConcurrency"
@@ -127,6 +138,7 @@ const MAX_AGENT_CONCURRENCY_CEILING = 48;
 const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
   modelOverrides: {},
+  assistantPropagatedAgents: [],
   reasoningEfforts: {},
   expressionStyle: undefined,
   personalityVoiceId: undefined,
@@ -169,6 +181,9 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       defaultModels: parsed.defaultModels ?? DEFAULT_PREFERENCES.defaultModels,
       modelOverrides:
         parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
+      assistantPropagatedAgents: normalizeAssistantPropagatedAgents(
+        parsed.assistantPropagatedAgents,
+      ),
       reasoningEfforts: normalizeReasoningEfforts(parsed.reasoningEfforts),
       expressionStyle: parsed.expressionStyle,
       personalityVoiceId:
@@ -318,6 +333,7 @@ export const getLocalModelPreferences = (
   return {
     defaultModels: { ...prefs.defaultModels },
     modelOverrides: { ...prefs.modelOverrides },
+    assistantPropagatedAgents: [...prefs.assistantPropagatedAgents],
     reasoningEfforts: { ...prefs.reasoningEfforts },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
@@ -335,6 +351,10 @@ export const updateLocalModelPreferences = (
     ...prefs,
     defaultModels: patch.defaultModels ?? prefs.defaultModels,
     modelOverrides: patch.modelOverrides ?? prefs.modelOverrides,
+    assistantPropagatedAgents:
+      patch.assistantPropagatedAgents === undefined
+        ? prefs.assistantPropagatedAgents
+        : normalizeAssistantPropagatedAgents(patch.assistantPropagatedAgents),
     reasoningEfforts:
       patch.reasoningEfforts === undefined
         ? prefs.reasoningEfforts
@@ -423,6 +443,20 @@ const normalizeReasoningEffort = (value: unknown): ReasoningEffort => {
     return value;
   }
   return "default";
+};
+
+const normalizeAssistantPropagatedAgents = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
 };
 
 const normalizeReasoningEfforts = (

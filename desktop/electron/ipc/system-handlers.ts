@@ -268,6 +268,19 @@ const sanitizeStringRecord = (value: unknown): Record<string, string> => {
   return nextRecord;
 };
 
+const sanitizeStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    const trimmed = asTrimmedString(entry);
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+};
+
 const sanitizeReasoningEfforts = (
   value: unknown,
 ): Record<string, ReasoningEffort> => {
@@ -1395,6 +1408,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
 
       const nextDefaultModels = sanitizeStringRecord(payload?.defaultModels);
       const nextOverrides = sanitizeStringRecord(payload?.modelOverrides);
+      const nextAssistantPropagatedAgents = sanitizeStringList(
+        payload?.assistantPropagatedAgents,
+      );
       const nextReasoningEfforts = sanitizeReasoningEfforts(
         payload?.reasoningEfforts,
       );
@@ -1415,6 +1431,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       if (payload?.modelOverrides !== undefined) {
         patch.modelOverrides = nextOverrides;
+      }
+      if (payload?.assistantPropagatedAgents !== undefined) {
+        patch.assistantPropagatedAgents = nextAssistantPropagatedAgents;
       }
       if (payload?.reasoningEfforts !== undefined) {
         patch.reasoningEfforts = nextReasoningEfforts;

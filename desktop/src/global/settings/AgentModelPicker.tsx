@@ -46,6 +46,7 @@ type ImageGenerationPreferences = {
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
   modelOverrides: Record<string, string>;
+  assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: "default" | "claude_code_local";
   maxAgentConcurrency: number;
@@ -81,8 +82,25 @@ const VOICE_TARGET = "__voice__";
  * The Assistant tab in the sidebar picker writes to both the orchestrator
  * and general agent keys, since users overwhelmingly want them to move
  * together. Splitting them is available in Settings -> Models -> Advanced.
+ *
+ * Picking a non-Stella model on the Assistant tab ALSO auto-propagates
+ * the same model to every other configurable agent — minus chronicle,
+ * which is intentionally explicit-opt-in (it runs minute-cadence over
+ * screen captures, and picking e.g. Claude Opus for "Assistant" should
+ * not silently translate to "burn $20/hr summarizing OCR on Opus").
+ * Propagated writes are tracked in `assistantPropagatedAgents` so
+ * switching Assistant back to Stella cleans up only those writes and
+ * never touches user-intentional per-agent picks.
  */
 const ASSISTANT_AGENT_KEYS: readonly string[] = ["orchestrator", "general"];
+
+/** Agent keys that must never receive Assistant-tab propagation. */
+const ASSISTANT_PROPAGATE_EXCLUDE: ReadonlySet<string> = new Set([
+  "chronicle",
+]);
+
+const isStellaModelId = (modelId: string): boolean =>
+  modelId === "" || modelId.startsWith("stella/");
 
 const DEFAULT_IMAGE_GENERATION: ImageGenerationPreferences = {
   provider: "stella",
@@ -317,22 +335,88 @@ export function AgentModelPicker({
   const handleSelect = useCallback(
     async (value: string) => {
       if (!preferences || pendingAgent) return;
-      const writeKeys = activeAssistant ? assistantWriteKeys : [activeAgent];
       const previousOverrides = { ...preferences.modelOverrides };
+      const previousPropagated = [
+        ...(preferences.assistantPropagatedAgents ?? []),
+      ];
       const nextOverrides = { ...previousOverrides };
-      if (value === "") {
-        for (const key of writeKeys) delete nextOverrides[key];
+      let nextPropagated: string[] = previousPropagated;
+
+      if (activeAssistant) {
+        // Rebuild propagation from scratch on every Assistant pick: first
+        // unwind whatever the last propagation wrote (so switching from
+        // Anthropic -> Stella cleans every previously-broadcasted agent),
+        // then re-apply against the new pick. User-intentional per-agent
+        // overrides are left alone because they were never in
+        // `previousPropagated` to begin with.
+        for (const propagatedKey of previousPropagated) {
+          delete nextOverrides[propagatedKey];
+        }
+
+        for (const key of assistantWriteKeys) {
+          if (value === "") {
+            delete nextOverrides[key];
+          } else {
+            nextOverrides[key] = value;
+          }
+        }
+
+        if (value !== "" && !isStellaModelId(value)) {
+          // Broadcast to every other configurable agent that doesn't have
+          // an explicit user-intentional override. Chronicle is excluded —
+          // see ASSISTANT_PROPAGATE_EXCLUDE.
+          const propagateTargets = configurableAgents
+            .map((agent) => agent.key)
+            .filter(
+              (key) =>
+                !ASSISTANT_PROPAGATE_EXCLUDE.has(key) &&
+                !(assistantWriteKeys as readonly string[]).includes(key),
+            );
+          const written: string[] = [];
+          for (const key of propagateTargets) {
+            const hadManualOverride =
+              previousOverrides[key] !== undefined &&
+              !previousPropagated.includes(key);
+            if (hadManualOverride) continue;
+            nextOverrides[key] = value;
+            written.push(key);
+          }
+          nextPropagated = written;
+        } else {
+          nextPropagated = [];
+        }
       } else {
-        for (const key of writeKeys) nextOverrides[key] = value;
+        // Single-agent path (Settings tabs other than Assistant). The user
+        // is explicitly setting this agent, so remove it from the
+        // propagated set — it's owned by them now.
+        if (value === "") {
+          delete nextOverrides[activeAgent];
+        } else {
+          nextOverrides[activeAgent] = value;
+        }
+        nextPropagated = previousPropagated.filter(
+          (key) => key !== activeAgent,
+        );
       }
+
       setPendingAgent(activeAgent);
-      setPreferences({ ...preferences, modelOverrides: nextOverrides });
+      setPreferences({
+        ...preferences,
+        modelOverrides: nextOverrides,
+        assistantPropagatedAgents: nextPropagated,
+      });
       try {
         const saved =
           await window.electronAPI?.system?.setLocalModelPreferences?.({
             modelOverrides: nextOverrides,
+            assistantPropagatedAgents: nextPropagated,
           });
         if (saved) setPreferences(saved);
+        // Let other listeners (notably the Memory tab's chronicle gate)
+        // pick up the new override without remounting.
+        window.dispatchEvent(
+          new CustomEvent("stella:local-model-preferences-changed"),
+        );
         setError(null);
         // Picking a non-default model on a tier that's pinned to the
         // backend-chosen model is a no-op at request time (the Stella
@@ -386,7 +470,13 @@ export function AgentModelPicker({
         onSelected?.();
       } catch (caught) {
         setPreferences((current) =>
-          current ? { ...current, modelOverrides: previousOverrides } : current,
+          current
+            ? {
+                ...current,
+                modelOverrides: previousOverrides,
+                assistantPropagatedAgents: previousPropagated,
+              }
+            : current,
         );
         setError(
           caught instanceof Error
@@ -403,6 +493,7 @@ export function AgentModelPicker({
       assistantWriteKeys,
       audience,
       canonicalAgentKey,
+      configurableAgents,
       modelNamesById,
       onSelected,
       pendingAgent,
@@ -679,6 +770,18 @@ export function AgentModelPicker({
     : preferences?.reasoningEfforts?.[activeAgent] ?? "default";
   const showFullPanel = expanded && !activeProviderSetting;
 
+  // Surface a one-liner when Assistant is routed through a non-Stella
+  // provider but Chronicle (screen memory) is still pointing at Stella —
+  // those minute-cadence ticks would otherwise silently keep eating the
+  // user's Stella quota without them realizing.
+  const chronicleOverride = overrides.chronicle ?? "";
+  const showChronicleStillOnStellaNotice =
+    activeAssistant &&
+    !activeProviderSetting &&
+    current !== "" &&
+    !isStellaModelId(current) &&
+    (chronicleOverride === "" || isStellaModelId(chronicleOverride));
+
   const tabButton = (
     key: string,
     label: string,
@@ -836,6 +939,26 @@ export function AgentModelPicker({
             disabled={!ready || pendingAgent !== null}
           />
         )}
+
+        {showChronicleStillOnStellaNotice ? (
+          <p className="agent-model-picker-chronicle-notice">
+            Screen memory still uses Stella.{" "}
+            <button
+              type="button"
+              className="agent-model-picker-chronicle-link"
+              onClick={() => {
+                void router.navigate({
+                  to: "/settings",
+                  search: { tab: "models" },
+                });
+                onSelected?.();
+              }}
+            >
+              Pick a small model for Chronicle
+            </button>{" "}
+            to switch.
+          </p>
+        ) : null}
       </div>
       </div>
 

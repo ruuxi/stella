@@ -1003,6 +1003,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_GET_MODELS) as Promise<{
         defaultModels: Record<string, string>;
         modelOverrides: Record<string, string>;
+        assistantPropagatedAgents: string[];
         reasoningEfforts: Record<
           string,
           "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -1018,6 +1019,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setLocalModelPreferences: (payload: {
       defaultModels?: Record<string, string>;
       modelOverrides?: Record<string, string>;
+      assistantPropagatedAgents?: string[];
       reasoningEfforts?: Record<
         string,
         "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -1033,6 +1035,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_SET_MODELS, payload) as Promise<{
         defaultModels: Record<string, string>;
         modelOverrides: Record<string, string>;
+        assistantPropagatedAgents: string[];
         reasoningEfforts: Record<
           string,
           "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
