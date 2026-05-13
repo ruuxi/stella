@@ -19,6 +19,12 @@ import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { openExternalUrl } from "@/platform/electron/open-external";
 import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
+import type { DisplayPayload } from "@/shared/contracts/display-payload";
+import {
+  sourceDiffBatches,
+  useSourceDiffBatches,
+  type SourceDiffBatch,
+} from "./source-diff-batches";
 import { OfficeArtifactPanel } from "./office-artifact-panel";
 
 type WithMediaMeta = {
@@ -459,33 +465,146 @@ const DiffRows = ({ sections }: { sections: DiffSection[] }) => (
   </div>
 );
 
-export const SourceDiffTabContent = ({
-  filePath,
-  title,
-  patch,
-}: {
-  filePath: string;
-  title?: string;
-  patch?: string;
-}) => {
+type SourceDiffPayload = Extract<DisplayPayload, { kind: "source-diff" }>;
+
+/**
+ * Block variant that has a `patch` body — no file IO required.
+ * Splitting the patch / file paths avoids firing N redundant
+ * `useDisplayFileBytes` reads for an N-file `apply_patch` batch where
+ * the patch text already contains every section.
+ */
+const SourceDiffPatchBlock = ({ patch }: { patch: string }) => {
+  const parsedPatchSections = useMemo(() => {
+    const parsed = parseApplyPatchPreview(patch);
+    return parsed.length > 0 ? parsed : null;
+  }, [patch]);
+
+  if (!parsedPatchSections)
+    return (
+      <div className="display-file-preview__empty">No changes found.</div>
+    );
+  return <DiffRows sections={parsedPatchSections} />;
+};
+
+/**
+ * Block variant for tools that emit fileChanges without a unified
+ * diff body (write/edit-style tools). Reads the current bytes and
+ * renders them as added lines — matches the existing "generated file"
+ * preview semantics.
+ */
+const SourceDiffFileBytesBlock = ({ filePath }: { filePath: string }) => {
   const { bytes, error, loading } = useDisplayFileBytes(
     filePath,
     "Code preview requires the Stella desktop app.",
   );
   const fileText = useMemo(() => decodeTextBytes(bytes), [bytes]);
   const sections = useMemo(() => {
-    if (patch?.trim()) {
-      const parsed = parseApplyPatchPreview(patch);
-      if (parsed.length > 0) return parsed;
-    }
     if (!bytes) return [];
     return buildGeneratedFilePreview(filePath, fileText);
-  }, [bytes, filePath, fileText, patch]);
-  const { actionStatus, handleSave, handleCopy } = useFilePreviewActions({
-    sourcePath: filePath,
-    copyText: patch?.trim() || fileText,
-    suggestedName: title ?? filePath.split(/[\\/]/).pop() ?? "changes.diff",
-  });
+  }, [bytes, filePath, fileText]);
+
+  if (error) return <div className="display-file-preview__error">{error}</div>;
+  if (loading)
+    return <div className="display-file-preview__empty">Loading...</div>;
+  if (sections.length === 0)
+    return (
+      <div className="display-file-preview__empty">No changes found.</div>
+    );
+  return <DiffRows sections={sections} />;
+};
+
+const SourceDiffFileBlock = ({ payload }: { payload: SourceDiffPayload }) => {
+  if (payload.patch && payload.patch.trim().length > 0) {
+    return <SourceDiffPatchBlock patch={payload.patch} />;
+  }
+  return <SourceDiffFileBytesBlock filePath={payload.filePath} />;
+};
+
+const formatRelativeTime = (timestamp: number, now: number): string => {
+  const delta = Math.max(0, now - timestamp);
+  if (delta < 45_000) return "just now";
+  const minutes = Math.round(delta / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  return `${days}d`;
+};
+
+const useNowTick = (intervalMs: number): number => {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+};
+
+const SourceDiffBatchFooter = ({
+  batches,
+  activeBatchId,
+  now,
+}: {
+  batches: ReadonlyArray<SourceDiffBatch>;
+  activeBatchId: string | null;
+  now: number;
+}) => {
+  if (batches.length <= 1) return null;
+  return (
+    <footer className="display-diff-batches-footer">
+      {batches.map((batch) => {
+        const isActive = batch.id === activeBatchId;
+        const fileLabel =
+          batch.payloads.length === 1
+            ? "1 file"
+            : `${batch.payloads.length} files`;
+        const label = batch.label ?? fileLabel;
+        return (
+          <button
+            key={batch.id}
+            type="button"
+            className={`display-diff-batches-chip${
+              isActive ? " display-diff-batches-chip--active" : ""
+            }`}
+            onClick={() => sourceDiffBatches.select(batch.id)}
+            title={batch.payloads
+              .filter(
+                (entry): entry is SourceDiffPayload =>
+                  entry.kind === "source-diff",
+              )
+              .map((entry) => entry.filePath)
+              .join("\n")}
+          >
+            <span className="display-diff-batches-chip__label">{label}</span>
+            <span className="display-diff-batches-chip__time">
+              {formatRelativeTime(batch.createdAt, now)}
+            </span>
+          </button>
+        );
+      })}
+    </footer>
+  );
+};
+
+export const SourceDiffTabContent = () => {
+  const { batches, activeBatchId } = useSourceDiffBatches();
+  const now = useNowTick(30_000);
+
+  const activeBatch = useMemo(() => {
+    if (batches.length === 0) return null;
+    const byId = batches.find((entry) => entry.id === activeBatchId);
+    return byId ?? batches[0]!;
+  }, [batches, activeBatchId]);
+
+  const headerLabel = activeBatch
+    ? activeBatch.payloads.length === 1
+      ? activeBatch.payloads[0]!.kind === "source-diff"
+        ? (activeBatch.payloads[0] as SourceDiffPayload).filePath
+            .split(/[\\/]/)
+            .pop() ?? "Changes"
+        : "Changes"
+      : `${activeBatch.payloads.length} files changed`
+    : "Code changes";
 
   return (
     <div className="display-sidebar__rich display-sidebar__rich--diff">
@@ -493,29 +612,38 @@ export const SourceDiffTabContent = ({
         <header className="display-file-preview__header">
           <div className="display-file-preview__title-group">
             <span className="display-file-preview__eyebrow">Changes</span>
-            <div className="display-file-preview__title" title={filePath}>
-              {title ?? filePath.split(/[\\/]/).pop() ?? "Changes"}
+            <div className="display-file-preview__title" title={headerLabel}>
+              {headerLabel}
             </div>
           </div>
-          <div className="display-file-preview__actions">
-            <button type="button" onClick={handleSave}>
-              Save
-            </button>
-            <button type="button" onClick={handleCopy}>
-              Copy
-            </button>
-            {actionStatus && <span>{actionStatus}</span>}
-          </div>
         </header>
-        {error ? (
-          <div className="display-file-preview__error">{error}</div>
-        ) : loading ? (
-          <div className="display-file-preview__empty">Loading...</div>
-        ) : sections.length === 0 ? (
-          <div className="display-file-preview__empty">No changes found.</div>
-        ) : (
-          <DiffRows sections={sections} />
-        )}
+        <div className="display-diff-batches-body">
+          {!activeBatch ? (
+            <div className="display-file-preview__empty">
+              No file changes yet. When an agent edits code, the changes
+              appear here.
+            </div>
+          ) : (
+            <div className="display-diff-batches-body__scroll">
+              {activeBatch.payloads
+                .filter(
+                  (payload): payload is SourceDiffPayload =>
+                    payload.kind === "source-diff",
+                )
+                .map((payload) => (
+                  <SourceDiffFileBlock
+                    key={payload.filePath}
+                    payload={payload}
+                  />
+                ))}
+            </div>
+          )}
+        </div>
+        <SourceDiffBatchFooter
+          batches={batches}
+          activeBatchId={activeBatchId}
+          now={now}
+        />
       </section>
     </div>
   );

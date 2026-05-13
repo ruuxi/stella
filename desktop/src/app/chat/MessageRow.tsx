@@ -24,7 +24,10 @@ import type {
   ChannelEnvelope,
 } from "@/app/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
-import { EndResourceCard } from "@/app/chat/EndResourceCard";
+import {
+  EndResourceCard,
+  SourceDiffEndResource,
+} from "@/app/chat/EndResourceCard";
 import { InlineHtmlArtifactCard } from "@/app/chat/InlineHtmlArtifactCard";
 import { InlineGeneratedImageCard } from "@/app/chat/InlineGeneratedImageCard";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
@@ -76,6 +79,15 @@ export type AssistantRowViewModel = {
   responseTarget?: AgentResponseTarget;
   officePreviewRef?: OfficePreviewRef;
   resourcePayload?: DisplayPayload;
+  /**
+   * Developer-resource source-diff payloads for this turn, in edit
+   * order. Populated only when the developer-file-previews setting
+   * is on AND the turn touched at least one such file. `.length`
+   * doubles as the "N file changes" label; the payloads themselves
+   * are pushed into the singleton "Code changes" tab when the user
+   * clicks the inline link / summary card.
+   */
+  sourceDiffPayloads?: DisplayPayload[];
   selfModApplied?: SelfModApplied;
   /**
    * Inline "Scheduled" receipt chip shown after the orchestrator's
@@ -305,6 +317,11 @@ export const AssistantMessageRow = memo(
             row.resourcePayload.presentation === "inline-image" &&
             row.resourcePayload.asset.kind === "image" ? (
             <InlineGeneratedImageCard payload={row.resourcePayload} />
+          ) : row.sourceDiffPayloads && row.sourceDiffPayloads.length > 0 ? (
+            <SourceDiffEndResource
+              batchId={row.id}
+              payloads={row.sourceDiffPayloads}
+            />
           ) : row.resourcePayload ? (
             <EndResourceCard payload={row.resourcePayload} />
           ) : null}

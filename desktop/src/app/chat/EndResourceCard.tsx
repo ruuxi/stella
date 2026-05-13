@@ -7,7 +7,7 @@
  * the singleton `displayTabs` store.
  */
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type {
   DisplayPayload,
   DisplayTabPayload,
@@ -15,9 +15,11 @@ import type {
 import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
 import { displayTabs } from "@/shell/display/tab-store";
 import {
+  createSourceDiffTabSpec,
   displayTabKindForPayload,
   payloadToTabSpec,
 } from "@/shell/display/payload-to-tab-spec";
+import { pushAndOpenSourceDiffBatch } from "@/shell/display/source-diff-batches";
 import { DisplayTabIcon } from "@/shell/display/icons";
 import { basenameOf } from "@/shell/display/path-to-viewer";
 import "./end-resource-card.css";
@@ -98,6 +100,13 @@ export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => 
     displayTabs.openTab(payloadToTabSpec(payload));
   }, [payload]);
 
+  // Source-diff payloads must always flow through `SourceDiffEndResource`
+  // so the batches store is populated before the singleton tab is opened.
+  // Routing them through `EndResourceCard` would open an empty / stale
+  // "Code changes" tab. Guard placed after hooks so React's hook order
+  // stays stable across renders.
+  if (payload.kind === "source-diff") return null;
+
   return (
     <button
       type="button"
@@ -110,6 +119,101 @@ export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => 
       </span>
       <span className="end-resource-card__text">
         <span className="end-resource-card__label">{label}</span>
+        <span className="end-resource-card__action" aria-hidden>
+          Open in panel
+        </span>
+      </span>
+    </button>
+  );
+};
+
+/**
+ * Inline + card surface for per-turn developer file changes.
+ *
+ * - `batchId` keys the source-diff batch (use the assistant row's
+ *   stable id so re-renders of the same turn replace the batch in
+ *   place instead of stacking duplicates in the footer).
+ * - When `payloads.length === 1`, renders as a quiet underlined
+ *   filename.
+ * - When `payloads.length > 1`, renders as the artifact card
+ *   labeled "N file changes".
+ * Either path pushes the batch into the source-diff store and
+ * opens (or activates) the singleton "Code changes" tab.
+ */
+export const SourceDiffEndResource = ({
+  batchId,
+  payloads,
+}: {
+  batchId: string;
+  payloads: DisplayPayload[];
+}) => {
+  const sourceDiffPayloads = useMemo(
+    () => payloads.filter((entry) => entry.kind === "source-diff"),
+    [payloads],
+  );
+  const isMulti = sourceDiffPayloads.length > 1;
+  const primary = sourceDiffPayloads[0];
+  const createdAt = useMemo(() => {
+    const latest = sourceDiffPayloads.reduce(
+      (max, entry) =>
+        entry.kind === "source-diff" && (entry.createdAt ?? 0) > max
+          ? (entry.createdAt ?? 0)
+          : max,
+      0,
+    );
+    return latest > 0 ? latest : Date.now();
+  }, [sourceDiffPayloads]);
+
+  const handleClick = useCallback(() => {
+    if (sourceDiffPayloads.length === 0) return;
+    pushAndOpenSourceDiffBatch(
+      {
+        id: batchId,
+        createdAt,
+        payloads: sourceDiffPayloads,
+      },
+      createSourceDiffTabSpec(),
+    );
+  }, [batchId, createdAt, sourceDiffPayloads]);
+
+  if (!primary) return null;
+
+  if (!isMulti) {
+    const tooltip =
+      primary.kind === "source-diff" ? primary.filePath : undefined;
+    const label = labelForPayload(primary);
+    return (
+      <button
+        type="button"
+        className="end-resource-link"
+        onClick={handleClick}
+        title={tooltip}
+      >
+        <span className="end-resource-link__label">{label}</span>
+      </button>
+    );
+  }
+
+  const kind = displayTabKindForPayload(primary);
+  return (
+    <button
+      type="button"
+      className="end-resource-card"
+      onClick={handleClick}
+      title={sourceDiffPayloads
+        .map((entry) =>
+          entry.kind === "source-diff" ? entry.filePath : "",
+        )
+        .filter(Boolean)
+        .join("\n")}
+    >
+      <span className="end-resource-card__icon">
+        <DisplayTabIcon kind={kind} size={26} />
+      </span>
+      <span className="end-resource-card__text">
+        <span className="end-resource-card__label">
+          {sourceDiffPayloads.length} file changes
+        </span>
         <span className="end-resource-card__action" aria-hidden>
           Open in panel
         </span>

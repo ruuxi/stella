@@ -529,6 +529,51 @@ const resolveReferencedMarkdownPath = (
  * Derive the primary `DisplayPayload` for a turn, or `null` if no
  * eligible artifact was touched.
  */
+/**
+ * Collect this turn's developer-resource source-diff payloads, in
+ * edit order. Returns an empty array when the setting is off or no
+ * developer files were edited.
+ *
+ * The list size doubles as the "N file changes" label (the chat
+ * surface uses `.length`), and the payloads themselves feed the
+ * singleton "Code changes" tab batch on click.
+ *
+ * Tool-agnostic — any tool that emits `fileChanges` participates
+ * (apply_patch carries the unified-diff text in `patch`; write/edit
+ * tools fall back to the file-bytes preview in `SourceDiffTabContent`).
+ */
+export const collectTurnSourceDiffPayloads = (
+  toolEvents: EventRecord[],
+  options?: { developerResourcesEnabled?: boolean },
+): DisplayPayload[] => {
+  if (options?.developerResourcesEnabled !== true) return [];
+  if (toolEvents.length === 0) return [];
+  const seen = new Set<string>();
+  const payloads: DisplayPayload[] = [];
+  for (const event of toolEvents) {
+    const records = fileChangesForResult(event);
+    for (const record of records) {
+      const resolved = resolveFileChange(record, event.timestamp);
+      if (!resolved) continue;
+      if (!isDeveloperResourceExtension(extensionOf(resolved.path))) continue;
+      if (seen.has(resolved.path)) continue;
+      seen.add(resolved.path);
+      const patch =
+        isToolResult(event) && event.payload.toolName === "apply_patch"
+          ? patchInputForToolCall(toolEvents, requestIdForEvent(event))
+          : undefined;
+      payloads.push({
+        kind: "source-diff",
+        filePath: resolved.path,
+        title: basenameOf(resolved.path),
+        ...(patch ? { patch } : {}),
+        createdAt: resolved.timestamp,
+      });
+    }
+  }
+  return payloads;
+};
+
 export const deriveTurnResource = (
   toolEvents: EventRecord[],
   assistantText: string = "",

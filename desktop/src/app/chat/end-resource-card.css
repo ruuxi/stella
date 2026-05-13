@@ -67,3 +67,37 @@
 .end-resource-card:hover .end-resource-card__action {
   color: var(--text-base);
 }
+
+.end-resource-link {
+  display: inline-flex;
+  align-items: baseline;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-base);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--text-base) 35%, transparent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.end-resource-link + .end-resource-link {
+  margin-left: 10px;
+}
+
+.end-resource-link:hover {
+  color: var(--text-strong);
+  text-decoration-color: var(--text-strong);
+}
+
+.end-resource-link__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}

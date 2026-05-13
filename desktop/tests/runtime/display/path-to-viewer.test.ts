@@ -85,7 +85,8 @@ describe("tabIdForPath", () => {
     expect(tabIdForPath("/x/y/foo.glb")).toBe("media:model3d:/x/y/foo.glb");
     expect(tabIdForPath("/x/y/foo.pdf")).toBe("pdf:/x/y/foo.pdf");
     expect(tabIdForPath("/x/y/notes.md")).toBe("markdown:/x/y/notes.md");
-    expect(tabIdForPath("/x/y/app.ts")).toBe("source-diff:/x/y/app.ts");
+    expect(tabIdForPath("/x/y/app.ts")).toBe("source-diff");
+    expect(tabIdForPath("/x/y/other.py")).toBe("source-diff");
     expect(tabIdForPath("/x/y/foo.docx")).toBe("office:/x/y/foo.docx");
     expect(tabIdForPath("/x/y/foo.csv")).toBe("office:/x/y/foo.csv");
     expect(tabIdForPath("/x/y/README")).toBe("file:/x/y/README");

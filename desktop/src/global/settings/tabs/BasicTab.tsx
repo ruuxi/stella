@@ -13,6 +13,12 @@ import {
   useDeveloperResourcePreviewsEnabled,
 } from "@/shared/lib/developer-resource-previews";
 import { openExternalUrl } from "@/platform/electron/open-external";
+import { SourceDiffEndResource } from "@/app/chat/EndResourceCard";
+import {
+  pushAndOpenSourceDiffBatch,
+} from "@/shell/display/source-diff-batches";
+import { createSourceDiffTabSpec } from "@/shell/display/payload-to-tab-spec";
+import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import {
   DEFAULT_PERSONALITY_VOICE_ID,
   PERSONALITY_VOICES,
@@ -22,6 +28,96 @@ import { getSettingsErrorMessage } from "./shared";
 const SETTINGS_PERMISSION_RESTART_KINDS = ["screen"] as const;
 const STELLA_CHROME_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/kfnchfpocpmdblhfgcnpfaaebaioojnl?utm_source=item-share-cb";
+
+const DEV_PREVIEW_DEMO_PATCH = `*** Update File: src/app/chat/lib/derive-turn-resource.ts
+@@ buildPayloadFromBarePath
+     default:
+       if (
+         options?.developerResourcesEnabled === true &&
+         isDeveloperResourceExtension(extensionOf(filePath))
+       ) {
+         return {
+           kind: "source-diff",
+           filePath,
+           title: basenameOf(filePath),
+-          ...(options.patch ? { patch: options.patch } : {}),
++          ...(options.patch ? { patch: options.patch } : {}),
++          // Surface developer-resource diffs even when the turn
++          // touched several files at once.
+           createdAt,
+         };
+       }
+*** Update File: src/shell/display/tab-content.tsx
+@@ SourceDiffTabContent
+-  const sections = useMemo(() => {
+-    if (patch?.trim()) {
+-      const parsed = parseApplyPatchPreview(patch);
+-      if (parsed.length > 0) return parsed;
+-    }
+-    if (!bytes) return [];
+-    return buildGeneratedFilePreview(filePath, fileText);
+-  }, [bytes, filePath, fileText, patch]);
++  const parsedPatchSections = useMemo(() => {
++    if (!patch?.trim()) return null;
++    const parsed = parseApplyPatchPreview(patch);
++    return parsed.length > 0 ? parsed : null;
++  }, [patch]);
++  const sections = useMemo(() => {
++    if (parsedPatchSections) return parsedPatchSections;
++    if (!bytes) return [];
++    return buildGeneratedFilePreview(filePath, fileText);
++  }, [bytes, filePath, fileText, parsedPatchSections]);
+*** Add File: src/shell/display/demo-source-diff.ts
++export const DEMO_SOURCE_DIFF_FILE_PATH =
++  "src/app/chat/lib/derive-turn-resource.ts";
++
++export const DEMO_SOURCE_DIFF_TITLE = "derive-turn-resource.ts";
+`;
+
+const DEV_PREVIEW_SECONDARY_PATCH = `*** Update File: src/app/chat/EndResourceCard.tsx
+@@ SourceDiffEndResource
+-    return (
+-      <button className="end-resource-card">
+-        …
+-      </button>
+-    );
++    return (
++      <button className="end-resource-card" onClick={handleClick}>
++        {sourceDiffPayloads.length} file changes
++      </button>
++    );
+`;
+
+const DEV_PREVIEW_DEMO_PAYLOAD_PRIMARY: DisplayPayload = {
+  kind: "source-diff",
+  filePath: "src/app/chat/lib/derive-turn-resource.ts",
+  title: "derive-turn-resource.ts",
+  patch: DEV_PREVIEW_DEMO_PATCH,
+  createdAt: Date.now(),
+};
+
+const DEV_PREVIEW_DEMO_PAYLOAD_SECONDARY: DisplayPayload = {
+  kind: "source-diff",
+  filePath: "src/app/chat/EndResourceCard.tsx",
+  title: "EndResourceCard.tsx",
+  patch: DEV_PREVIEW_SECONDARY_PATCH,
+  createdAt: Date.now(),
+};
+
+const DEV_PREVIEW_SINGLE_PAYLOADS: DisplayPayload[] = [
+  DEV_PREVIEW_DEMO_PAYLOAD_PRIMARY,
+];
+
+const DEV_PREVIEW_MULTI_PAYLOADS: DisplayPayload[] = [
+  DEV_PREVIEW_DEMO_PAYLOAD_PRIMARY,
+  DEV_PREVIEW_DEMO_PAYLOAD_SECONDARY,
+  {
+    kind: "source-diff",
+    filePath: "src/shell/display/tab-content.tsx",
+    title: "tab-content.tsx",
+    createdAt: Date.now(),
+  },
+];
 
 export function BasicTab() {
   const platform = window.electronAPI?.platform;
@@ -373,6 +469,65 @@ export function BasicTab() {
               }
             />
           </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <div className="settings-row-label">Preview</div>
+            <div className="settings-row-sublabel">
+              Force-enable the feature, push two sample batches into the
+              singleton "Code changes" tab, and surface the same inline
+              card you'd see at the end of an assistant turn.
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <Button
+              onClick={() => {
+                setDeveloperResourcePreviewsEnabled(true);
+                pushAndOpenSourceDiffBatch(
+                  {
+                    id: "settings-preview:single",
+                    createdAt: Date.now(),
+                    payloads: DEV_PREVIEW_SINGLE_PAYLOADS,
+                  },
+                  createSourceDiffTabSpec(),
+                );
+                pushAndOpenSourceDiffBatch(
+                  {
+                    id: "settings-preview:multi",
+                    createdAt: Date.now(),
+                    payloads: DEV_PREVIEW_MULTI_PAYLOADS,
+                  },
+                  createSourceDiffTabSpec(),
+                );
+              }}
+            >
+              Show sample
+            </Button>
+          </div>
+        </div>
+        <div className="settings-row" style={{ display: "block" }}>
+          <div
+            className="settings-row-label"
+            style={{ marginBottom: 8 }}
+          >
+            Single file (inline link)
+          </div>
+          <SourceDiffEndResource
+            batchId="settings-preview:single"
+            payloads={DEV_PREVIEW_SINGLE_PAYLOADS}
+          />
+        </div>
+        <div className="settings-row" style={{ display: "block" }}>
+          <div
+            className="settings-row-label"
+            style={{ marginBottom: 8 }}
+          >
+            Multiple files (summary card)
+          </div>
+          <SourceDiffEndResource
+            batchId="settings-preview:multi"
+            payloads={DEV_PREVIEW_MULTI_PAYLOADS}
+          />
         </div>
       </div>
       <div className="settings-card">

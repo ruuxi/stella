@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectTurnSourceDiffPayloads,
   deriveTurnResource,
   extractMarkdownLinkPaths,
 } from "../../../src/app/chat/lib/derive-turn-resource";
@@ -692,6 +693,158 @@ describe("deriveTurnResource", () => {
         }),
       ]),
     ).toBeNull();
+  });
+});
+
+describe("collectTurnSourceDiffPayloads", () => {
+  it("returns [] when developer previews are off", () => {
+    expect(
+      collectTurnSourceDiffPayloads([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 1,
+          payload: {
+            toolName: "apply_patch",
+            fileChanges: [{ path: "/x/a.ts", kind: { type: "update" } }],
+          },
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("returns [] for empty tool events", () => {
+    expect(
+      collectTurnSourceDiffPayloads([], {
+        developerResourcesEnabled: true,
+      }),
+    ).toEqual([]);
+  });
+
+  it("only emits payloads for developer-resource extensions", () => {
+    const result = collectTurnSourceDiffPayloads(
+      [
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 1,
+          payload: {
+            toolName: "apply_patch",
+            fileChanges: [
+              { path: "/x/a.ts", kind: { type: "update" } },
+              { path: "/x/b.png", kind: { type: "update" } },
+              { path: "/x/c.py", kind: { type: "add" } },
+            ],
+          },
+        }),
+      ],
+      { developerResourcesEnabled: true },
+    );
+    expect(result.map((p) => p.kind === "source-diff" && p.filePath)).toEqual([
+      "/x/a.ts",
+      "/x/c.py",
+    ]);
+  });
+
+  it("dedupes by absolute path across multiple tool results", () => {
+    const result = collectTurnSourceDiffPayloads(
+      [
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 1,
+          payload: {
+            toolName: "Write",
+            fileChanges: [{ path: "/x/a.ts", kind: { type: "add" } }],
+          },
+        }),
+        event({
+          _id: "r2",
+          type: "tool_result",
+          timestamp: 2,
+          payload: {
+            toolName: "Edit",
+            fileChanges: [{ path: "/x/a.ts", kind: { type: "update" } }],
+          },
+        }),
+      ],
+      { developerResourcesEnabled: true },
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.kind === "source-diff" && result[0]!.filePath).toBe(
+      "/x/a.ts",
+    );
+  });
+
+  it("attaches apply_patch input to the matching payload only", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: a.ts",
+      "@@",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+    const result = collectTurnSourceDiffPayloads(
+      [
+        event({
+          _id: "q1",
+          type: "tool_request",
+          timestamp: 1,
+          requestId: "call-1",
+          payload: { toolName: "apply_patch", args: { input: patch } },
+        }),
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 2,
+          requestId: "call-1",
+          payload: {
+            toolName: "apply_patch",
+            fileChanges: [{ path: "/x/a.ts", kind: { type: "update" } }],
+          },
+        }),
+        event({
+          _id: "r2",
+          type: "tool_result",
+          timestamp: 3,
+          payload: {
+            toolName: "Write",
+            fileChanges: [{ path: "/x/b.ts", kind: { type: "add" } }],
+          },
+        }),
+      ],
+      { developerResourcesEnabled: true },
+    );
+    expect(result).toHaveLength(2);
+    const byPath = new Map(
+      result
+        .filter((p) => p.kind === "source-diff")
+        .map((p) => [
+          p.kind === "source-diff" ? p.filePath : "",
+          p.kind === "source-diff" ? p.patch : undefined,
+        ]),
+    );
+    expect(byPath.get("/x/a.ts")).toBe(patch);
+    expect(byPath.get("/x/b.ts")).toBeUndefined();
+  });
+
+  it("skips deleted files (no post-mutation path)", () => {
+    const result = collectTurnSourceDiffPayloads(
+      [
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 1,
+          payload: {
+            toolName: "apply_patch",
+            fileChanges: [{ path: "/x/a.ts", kind: { type: "delete" } }],
+          },
+        }),
+      ],
+      { developerResourcesEnabled: true },
+    );
+    expect(result).toEqual([]);
   });
 });
 
