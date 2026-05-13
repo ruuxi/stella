@@ -358,9 +358,6 @@ export function BasicTab() {
       <LanguageSettingsRow />
       <div className="settings-card">
         <h3 className="settings-card-title">Chat previews</h3>
-        <p className="settings-card-desc">
-          Choose which work files Stella can show directly in chat.
-        </p>
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Developer file previews</div>
@@ -380,9 +377,6 @@ export function BasicTab() {
       </div>
       <div className="settings-card">
         <h3 className="settings-card-title">Voice</h3>
-        <p className="settings-card-desc">
-          How Stella talks to you. Changes apply on the next message.
-        </p>
         {personalityVoiceError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -419,9 +413,6 @@ export function BasicTab() {
       </div>
       <div className="settings-card">
         <h3 className="settings-card-title">Notifications</h3>
-        <p className="settings-card-desc">
-          Choose how Stella lets you know when background work finishes.
-        </p>
         {soundNotificationsError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -451,9 +442,6 @@ export function BasicTab() {
       </div>
       <div className="settings-card">
         <h3 className="settings-card-title">Power</h3>
-        <p className="settings-card-desc">
-          Keep this computer awake while Stella is running.
-        </p>
         {preventSleepError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -484,11 +472,6 @@ export function BasicTab() {
       </div>
       <div className="settings-card">
         <h3 className="settings-card-title">Browser extension</h3>
-        <p className="settings-card-desc">
-          Add the Stella extension to Chrome so Stella can read the page you're
-          on, follow links, and act on your behalf inside the browser. Works in
-          Chrome and Chromium-based browsers like Arc, Brave, and Edge.
-        </p>
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Stella for Chrome</div>
@@ -512,10 +495,6 @@ export function BasicTab() {
       {platform === "darwin" ? (
         <div className="settings-card">
           <h3 className="settings-card-title">Permissions</h3>
-          <p className="settings-card-desc">
-            Stella will ask for these when you first use a feature. You can also
-            turn them on here.
-          </p>
           {permissionsError ? (
             <p
               className="settings-card-desc settings-card-desc--error"

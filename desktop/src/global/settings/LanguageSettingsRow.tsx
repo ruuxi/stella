@@ -22,7 +22,6 @@ export function LanguageSettingsRow() {
   return (
     <div className="settings-card">
       <h3 className="settings-card-title">{t("settings.language.title")}</h3>
-      <p className="settings-card-desc">{t("settings.language.description")}</p>
       <div className="settings-row">
         <div className="settings-row-info">
           <div className="settings-row-label">{t("common.language")}</div>

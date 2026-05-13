@@ -371,9 +371,6 @@ export function ShortcutsTab() {
     <div className="settings-tab-content">
       <div className="settings-card">
         <h3 className="settings-card-title">Shortcuts</h3>
-        <p className="settings-card-desc">
-          Change how Stella opens, listens, and starts voice.
-        </p>
         {shortcutError ? (
           <p
             className="settings-card-desc settings-card-desc--error"

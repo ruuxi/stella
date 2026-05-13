@@ -285,9 +285,6 @@ export function AudioTab() {
     <div className="settings-tab-content">
       <div className="settings-card">
         <h3 className="settings-card-title">Microphone</h3>
-        <p className="settings-card-desc">
-          Let Stella hear you so you can talk instead of type.
-        </p>
         {permissionError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -462,9 +459,6 @@ export function AudioTab() {
 
       <div className="settings-card">
         <h3 className="settings-card-title">Speaker</h3>
-        <p className="settings-card-desc">
-          Where should Stella's voice come out?
-        </p>
         {audioOutputDevices.length > 0 ? (
           <div className="settings-row">
             <div className="settings-row-info">

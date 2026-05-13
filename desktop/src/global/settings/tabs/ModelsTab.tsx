@@ -17,12 +17,6 @@ function ModelConfigSection() {
   return (
     <div className="settings-card settings-card--models">
       <h3 className="settings-card-title">Models</h3>
-      <p className="settings-card-desc">
-        Pick a model for any agent and choose where image generation and
-        realtime voice run. Bring your own key or sign in to another
-        provider in the panel below — anything you connect lives on this
-        device only.
-      </p>
       <Suspense fallback={null}>
         <AgentModelPicker surface="settings" />
       </Suspense>
@@ -77,10 +71,6 @@ function ConnectedProvidersSection() {
   return (
     <div className="settings-card">
       <h3 className="settings-card-title">Connected providers</h3>
-      <p className="settings-card-desc">
-        Sign in to providers from the model picker. Anything you connect lives
-        on this device only and shows up here so you can disconnect it.
-      </p>
       {credentials.error ? (
         <p
           className="settings-card-desc settings-card-desc--error"
