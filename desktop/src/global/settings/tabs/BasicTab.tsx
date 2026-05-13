@@ -108,15 +108,31 @@ const DEV_PREVIEW_SINGLE_PAYLOADS: DisplayPayload[] = [
   DEV_PREVIEW_DEMO_PAYLOAD_PRIMARY,
 ];
 
+const DEV_PREVIEW_TERTIARY_PATCH = `*** Update File: src/shell/display/tab-content.tsx
+@@ SourceDiffFileBlock
+-const SourceDiffFileBlock = ({ payload }: { payload: SourceDiffPayload }) => {
+-  // (always read file bytes, even when we have a patch)
+-};
++const SourceDiffFileBlock = ({ payload }: { payload: SourceDiffPayload }) => {
++  if (payload.patch && payload.patch.trim().length > 0) {
++    return <SourceDiffPatchBlock patch={payload.patch} />;
++  }
++  return <SourceDiffFileBytesBlock filePath={payload.filePath} />;
++};
+`;
+
+const DEV_PREVIEW_DEMO_PAYLOAD_TERTIARY: DisplayPayload = {
+  kind: "source-diff",
+  filePath: "src/shell/display/tab-content.tsx",
+  title: "tab-content.tsx",
+  patch: DEV_PREVIEW_TERTIARY_PATCH,
+  createdAt: Date.now(),
+};
+
 const DEV_PREVIEW_MULTI_PAYLOADS: DisplayPayload[] = [
   DEV_PREVIEW_DEMO_PAYLOAD_PRIMARY,
   DEV_PREVIEW_DEMO_PAYLOAD_SECONDARY,
-  {
-    kind: "source-diff",
-    filePath: "src/shell/display/tab-content.tsx",
-    title: "tab-content.tsx",
-    createdAt: Date.now(),
-  },
+  DEV_PREVIEW_DEMO_PAYLOAD_TERTIARY,
 ];
 
 export function BasicTab() {
