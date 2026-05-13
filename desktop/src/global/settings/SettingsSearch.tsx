@@ -93,7 +93,7 @@ export const SettingsSearch = forwardRef<HTMLInputElement, SettingsSearchProps>(
         role="search"
       >
         <Search
-          size={13}
+          size={15}
           strokeWidth={1.85}
           className="settings-search-icon"
           aria-hidden

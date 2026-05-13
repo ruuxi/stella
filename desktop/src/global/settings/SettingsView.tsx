@@ -82,6 +82,37 @@ const preloadTab = (tab: SettingsTab) => {
 };
 
 /**
+ * Best-effort idle prefetch of every Settings tab chunk. Runs once
+ * after the user has been on `/settings` for ~1s, so first paint and
+ * the user's first click aren't competing for the network/parser.
+ * `requestIdleCallback` waits for the main thread to actually be idle;
+ * the timeout cap ensures we still fire on tabs that never hit idle.
+ */
+function preloadAllSettingsTabsWhenIdle(): () => void {
+  let cancelled = false;
+  const idleHandle = window.setTimeout(() => {
+    if (cancelled) return;
+    const schedule = (cb: () => void) => {
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(cb, { timeout: 2000 });
+      } else {
+        window.setTimeout(cb, 0);
+      }
+    };
+    for (const tab of Object.keys(TAB_PRELOADERS) as SettingsTab[]) {
+      schedule(() => {
+        if (cancelled) return;
+        preloadTab(tab);
+      });
+    }
+  }, 1000);
+  return () => {
+    cancelled = true;
+    window.clearTimeout(idleHandle);
+  };
+}
+
+/**
  * The settings UI rendered inline (no Dialog wrapper). Mounted by the
  * `/settings` route. Tab state can be controlled (via `?tab=...`) or
  * uncontrolled.
@@ -144,7 +175,14 @@ export const SettingsScreen = ({
     [handleTabClick],
   );
 
-  const tabRailRef = useEdgeFadeRef<HTMLElement>();
+  // Edge fade is on the horizontal tab strip itself — that's where the
+  // scrollable overflow lives now that the rail is laid out as a row.
+  const tabStripRef = useEdgeFadeRef<HTMLElement>();
+
+  // Once the user lands on /settings, prefetch every tab chunk during
+  // browser idle time. Tab switches become instant from then on and
+  // first paint isn't competing with the prefetch.
+  useEffect(() => preloadAllSettingsTabsWhenIdle(), []);
 
   return (
     <>
@@ -156,15 +194,21 @@ export const SettingsScreen = ({
         data-search-active={isSearching ? "true" : "false"}
       >
         <div className="settings-layout settings-layout--standalone">
-          <aside
-            ref={tabRailRef}
+          {/* Header: title row above, then horizontal tab strip. No
+              side rail — keeps the page visually centered and gives
+              the panel content the full width to breathe. */}
+          <header
             className="settings-tab-rail"
             role="tablist"
             aria-label={t("settings.title")}
           >
-            <div className="settings-tab-rail-title">{t("settings.title")}</div>
-            <SettingsSearch value={searchQuery} onChange={setSearchQuery} />
-            <nav className="settings-tab-rail-nav">
+            <div className="settings-tab-rail-header">
+              <div className="settings-tab-rail-title">
+                {t("settings.title")}
+              </div>
+              <SettingsSearch value={searchQuery} onChange={setSearchQuery} />
+            </div>
+            <nav ref={tabStripRef} className="settings-tab-rail-nav">
               {SETTINGS_TABS.map((tab) => {
                 const isActive = activeTab === tab.key && !isSearching;
                 return (
@@ -186,7 +230,7 @@ export const SettingsScreen = ({
                 );
               })}
             </nav>
-          </aside>
+          </header>
           <SettingsPanel>
             {isSearching ? (
               <SettingsSearchResults

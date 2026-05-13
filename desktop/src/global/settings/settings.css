@@ -16,19 +16,21 @@
   min-height: 0;
 }
 
-/* Two-column variant: in-page tab rail on the left, panel on the right.
-   Used by /settings, which now owns its sidebar inline rather than
-   hijacking the shell's nav slot. `.content-area` already reserves
-   the topbar height — this is just the page's own breathing room. */
+/* Single-column variant: title + search + horizontal tab strip stacked
+   above the panel. Left-aligned to a fixed left margin so the title,
+   tabs, and cards all line up at the same x-position no matter which
+   tab you're on. `.content-area` already reserves the topbar height —
+   this is just the page's own breathing room. */
 .settings-layout--standalone {
-  padding-top: 24px;
-  gap: 32px;
-  justify-content: center;
+  padding: 24px 48px 0;
+  gap: 18px;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
+.settings-layout--standalone .settings-tab-rail,
 .settings-layout--standalone .settings-panel-wrap {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   max-width: 760px;
 }
 
@@ -44,21 +46,26 @@
   max-width: 1080px;
 }
 
-/* ---- In-page tab rail (Settings) ---- */
+/* ---- Settings header (title + search + horizontal tab strip) ---- */
 
 .settings-tab-rail {
   flex-shrink: 0;
-  width: 200px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 4px 8px 0 0;
+  gap: 14px;
+  padding: 0;
+}
+
+.settings-tab-rail-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .settings-tab-rail-title {
-  padding: 0 12px;
+  flex-shrink: 0;
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 450;
   font-style: italic;
   letter-spacing: -0.02em;
@@ -66,24 +73,67 @@
   color: var(--text-strong);
 }
 
+/* Push the search bar to the right side of the header row and cap its
+   width so it doesn't stretch absurdly on wide layouts. */
+.settings-tab-rail-header .settings-search {
+  margin-left: auto;
+  max-width: 280px;
+}
+
 .settings-tab-rail-nav {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Feather scrollable overflow at the edges; the start/end fade is
+     dropped by the rules below when there's nothing to scroll past. */
+  --tab-rail-fade: 28px;
+  --tab-rail-fade-start: var(--tab-rail-fade);
+  --tab-rail-fade-end: var(--tab-rail-fade);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--tab-rail-fade-start),
+    #000 calc(100% - var(--tab-rail-fade-end)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--tab-rail-fade-start),
+    #000 calc(100% - var(--tab-rail-fade-end)),
+    transparent 100%
+  );
+}
+
+.settings-tab-rail-nav[data-at-start="true"] {
+  --tab-rail-fade-start: 0px;
+}
+
+.settings-tab-rail-nav[data-at-end="true"] {
+  --tab-rail-fade-end: 0px;
+}
+
+.settings-tab-rail-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .settings-tab-rail-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  padding: 8px 12px;
+  flex-shrink: 0;
+  padding: 7px 14px;
   border: none;
-  border-radius: var(--radius-md, 6px);
+  border-radius: 999px;
   background: transparent;
   color: var(--text-base);
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
   cursor: default;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -94,7 +144,7 @@
 }
 
 .settings-tab-rail-item--active {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 9%, transparent);
   color: var(--text-strong);
 }
 
@@ -105,8 +155,8 @@
   display: flex;
   align-items: center;
   width: 100%;
-  height: 30px;
-  padding: 0 8px 0 28px;
+  height: 34px;
+  padding: 0 8px 0 32px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   border-radius: var(--radius-full, 999px);
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
@@ -128,7 +178,7 @@
 
 .settings-search-icon {
   position: absolute;
-  left: 9px;
+  left: 11px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-weak);
@@ -144,7 +194,7 @@
   background: transparent;
   color: inherit;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 500;
   padding: 0;
 }
@@ -183,64 +233,22 @@
   color: var(--text-strong);
 }
 
-@media (max-width: 720px) {
+/* Narrow viewport: stack the title/search vertically so the search bar
+   doesn't get squeezed to nothing. */
+@media (max-width: 640px) {
   .settings-layout--standalone {
+    padding: 16px 16px 0;
+  }
+
+  .settings-tab-rail-header {
     flex-direction: column;
-    gap: 8px;
-    padding-left: 16px;
-    padding-right: 16px;
+    align-items: stretch;
+    gap: 10px;
   }
 
-  .settings-tab-rail {
-    width: 100%;
-    flex-direction: row;
-    overflow-x: auto;
-    padding: 0;
-    gap: 8px;
-    align-items: center;
-    /* Hide the native horizontal scrollbar — it sat flush under the
-       tabs and read as cramped. The strip is still scrollable via
-       wheel / trackpad / drag, and the edge mask feathers off-screen
-       tabs out instead of letting them hit a hard clip. */
-    scrollbar-width: none;
-    --tab-rail-fade: 36px;
-    --tab-rail-fade-start: var(--tab-rail-fade);
-    --tab-rail-fade-end: var(--tab-rail-fade);
-    -webkit-mask-image: linear-gradient(
-      to right,
-      transparent 0,
-      #000 var(--tab-rail-fade-start),
-      #000 calc(100% - var(--tab-rail-fade-end)),
-      transparent 100%
-    );
-    mask-image: linear-gradient(
-      to right,
-      transparent 0,
-      #000 var(--tab-rail-fade-start),
-      #000 calc(100% - var(--tab-rail-fade-end)),
-      transparent 100%
-    );
-  }
-
-  .settings-tab-rail[data-at-start="true"] {
-    --tab-rail-fade-start: 0px;
-  }
-
-  .settings-tab-rail[data-at-end="true"] {
-    --tab-rail-fade-end: 0px;
-  }
-
-  .settings-tab-rail::-webkit-scrollbar {
-    display: none;
-  }
-
-  .settings-tab-rail-nav {
-    flex-direction: row;
-    flex: 1;
-  }
-
-  .settings-tab-rail-item {
-    white-space: nowrap;
+  .settings-tab-rail-header .settings-search {
+    margin-left: 0;
+    max-width: 100%;
   }
 }
 
@@ -282,7 +290,9 @@
   flex-direction: column;
   gap: 28px;
   max-width: 720px;
-  margin-left: auto;
+  /* Flush-left within the panel — the panel itself is the anchored
+     column, so cards line up at the same x-position across tabs. */
+  margin-left: 0;
   margin-right: auto;
 }
 
@@ -338,11 +348,14 @@
 }
 
 .settings-card-title {
-  font-size: 14px;
+  /* Section heading: bold sans, prominent. The row labels below are
+     the small-caps eyebrows that group each individual setting. */
+  font-size: 17px;
   font-weight: 700;
-  color: var(--text-strong);
   letter-spacing: -0.01em;
-  margin: 0 0 6px;
+  line-height: 1.2;
+  color: var(--text-strong);
+  margin: 0 0 14px;
 }
 
 .settings-card-header .settings-card-title {
@@ -350,9 +363,12 @@
 }
 
 .settings-card-desc {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 1.55;
+  /* Halfway between base and weak — readable without competing with
+     the title above it. The old `--text-weak` made body copy hard to
+     read on lighter themes. */
+  color: color-mix(in oklch, var(--text-base) 65%, var(--text-weak));
   margin: 0 0 16px;
 }
 
@@ -387,16 +403,21 @@
 }
 
 .settings-row-label {
-  font-size: 13px;
+  /* Eyebrow per-setting label — tells the eye what this row is at a
+     glance; the sublabel below carries the full description. */
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-base);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: color-mix(in oklch, var(--text-base) 55%, var(--text-weak));
 }
 
 .settings-row-sublabel {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text-weak);
-  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-base);
+  margin-top: 5px;
 }
 
 .settings-row-control {
@@ -413,18 +434,29 @@
 
 /* ---- Model Controls ---- */
 
-[data-component="select"] {
-  width: 220px;
+/* Selects auto-size to their content with a sensible floor so very
+   short labels ("On" / "Off") still have a tappable trigger, and a
+   ceiling so a long device name doesn't sprawl across the row. The
+   trigger renders the selected label, so the natural width tracks
+   whatever the user actually picked. Scoped to the settings rail
+   (`.settings-row-control`) so it doesn't leak to other Selects in
+   the app. */
+.settings-row-control [data-component="select"] {
+  width: fit-content;
+  min-width: 120px;
+  max-width: 240px;
 }
 
 .settings-model-select,
 .settings-runtime-select {
-  width: 220px;
+  width: fit-content;
+  min-width: 120px;
+  max-width: 240px;
   border-radius: var(--radius-full);
 }
 
 .settings-model-input {
-  width: 220px;
+  width: 200px;
 }
 
 .settings-model-input [data-slot="input-wrapper"] {
@@ -474,13 +506,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 24px;
-  padding: 5px 12px;
+  min-height: 28px;
+  padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   background: transparent;
-  color: var(--text-weak);
-  font-size: 11px;
+  color: var(--text-base);
+  font-size: 12.5px;
   font-weight: 500;
   font-family: inherit;
   cursor: default;
@@ -491,11 +523,11 @@
 }
 
 .settings-btn[data-component="button"] {
-  padding: 5px 12px;
+  padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   background: transparent;
-  color: var(--text-weak);
+  color: var(--text-base);
   letter-spacing: 0;
 }
 
@@ -654,16 +686,16 @@
   flex-direction: column;
   gap: 6px;
   max-width: 720px;
-  margin: 0 auto;
+  margin: 0 auto 0 0;
   padding-bottom: 24px;
 }
 
 .settings-search-results-header {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-weak);
+  color: color-mix(in oklch, var(--text-base) 65%, var(--text-weak));
   padding: 8px 4px 14px;
 }
 
@@ -729,7 +761,7 @@
 }
 
 .settings-search-result-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-strong);
   letter-spacing: -0.005em;
@@ -739,9 +771,9 @@
 }
 
 .settings-search-result-desc {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 1.45;
+  color: color-mix(in oklch, var(--text-base) 65%, var(--text-weak));
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -759,13 +791,13 @@
 .settings-search-result-tab {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 9px;
+  height: 24px;
+  padding: 0 10px;
   border-radius: 999px;
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
   color: var(--text-base);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: -0.005em;
   white-space: nowrap;

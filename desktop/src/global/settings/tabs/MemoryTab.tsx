@@ -280,10 +280,6 @@ function ChronicleSettingsCard() {
   return (
     <div className="settings-card">
       <h3 className="settings-card-title">Memory</h3>
-      <p className="settings-card-desc">
-        Stella can remember what you've been working on so it can be more
-        helpful over time. Everything stays on your computer.
-      </p>
       <div className="settings-row">
         <div className="settings-row-info">
           <div className="settings-row-label">Screen memory</div>

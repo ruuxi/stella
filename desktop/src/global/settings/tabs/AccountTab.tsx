@@ -155,7 +155,6 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
     <div className="settings-tab-content">
       <div className="settings-card">
         <h3 className="settings-card-title">Account</h3>
-        <p className="settings-card-desc">Manage your Stella account.</p>
         <div className="settings-row">
           <div className="settings-row-info">
             <div className="settings-row-label">Sign out</div>

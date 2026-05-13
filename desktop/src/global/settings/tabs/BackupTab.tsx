@@ -218,10 +218,6 @@ export function BackupTab() {
     <div className="settings-tab-content">
       <div className="settings-card">
         <h3 className="settings-card-title">Backups</h3>
-        <p className="settings-card-desc">
-          Your data is encrypted on this device before it's uploaded. Restoring
-          a backup replaces your current Stella data and restarts the app.
-        </p>
         {backupError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
