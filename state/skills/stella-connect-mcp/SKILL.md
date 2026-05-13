@@ -1,9 +1,9 @@
 ---
-name: stella-connect
-description: Add, import, inspect, and call Stella Connect integrations through the stella-connect CLI.
+name: stella-connect-mcp
+description: Import MCP servers into Stella Connect and call integrations through the stella-connect CLI.
 ---
 
-# Stella Connect
+# Stella Connect MCP
 
 Use this skill when adding, changing, importing, or debugging Stella Connect integrations.
 
