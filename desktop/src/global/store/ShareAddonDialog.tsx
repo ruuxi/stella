@@ -70,13 +70,16 @@ export function ShareAddonDialog({ open, onOpenChange, pkg }: ShareAddonDialogPr
   const isPrivate = effectiveVisibility === "private";
 
   // The link only resolves on the receiver's side when the package row
-  // carries an `authorHandle` (which is stamped at publish time from
-  // `social_profiles`). If the publishing user never has a handle the
-  // share link is meaningless — surface a clear inline error rather
-  // than letting them send an unresolvable link.
+  // carries an `authorUsername` (stamped at publish time from
+  // `social_profiles`). Without one the share link is meaningless —
+  // surface a clear inline error rather than letting them send an
+  // unresolvable link.
   const link = useMemo(
-    () => (pkg.authorHandle ? buildShareLink(pkg.authorHandle, pkg.packageId) : null),
-    [pkg.authorHandle, pkg.packageId],
+    () =>
+      pkg.authorUsername
+        ? buildShareLink(pkg.authorUsername, pkg.packageId)
+        : null,
+    [pkg.authorUsername, pkg.packageId],
   );
 
   // Reset transient state when the dialog opens/closes so a re-open
@@ -188,7 +191,7 @@ export function ShareAddonDialog({ open, onOpenChange, pkg }: ShareAddonDialogPr
             </DialogTitle>
             <DialogDescription className="share-addon-dialog-description">
               {!link
-                ? "This add-on doesn't have a public author handle yet, so it can't be shared. Claim a handle in Store settings first."
+                ? "This add-on doesn't have a public author username yet, so it can't be shared. Set a username in Settings first."
                 : isPrivate
                   ? "This add-on is private. Make it unlisted so people you share with can install it."
                   : "Send to friends or copy a link to share anywhere."}
@@ -264,11 +267,11 @@ export function ShareAddonDialog({ open, onOpenChange, pkg }: ShareAddonDialogPr
                       >
                         <Avatar
                           src={friend.profile.avatarUrl}
-                          fallback={friend.profile.nickname}
+                          fallback={friend.profile.username}
                           size="small"
                         />
                         <span className="share-addon-friend-name">
-                          {friend.profile.nickname}
+                          @{friend.profile.username}
                         </span>
                         <span className="share-addon-friend-check" aria-hidden>
                           {isSelected ? <Check size={14} /> : null}

@@ -1,8 +1,8 @@
 /**
  * Creator page. Lists every public add-on a creator has shared.
  *
- * Reachable via `/c/:handle`. Author bylines on add-on cards link
- * here once the creator has a social profile handle.
+ * Reachable via `/c/:username`. Author bylines on add-on cards link
+ * here once the creator has a social profile.
  */
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -13,20 +13,20 @@ import type { StorePackageRecord } from "@/shared/types/electron";
 import { ShareAddonDialog } from "./ShareAddonDialog";
 import "./store.css";
 
-type Props = { handle: string };
+type Props = { username: string };
 
-export function CreatorPage({ handle }: Props) {
+export function CreatorPage({ username }: Props) {
   const navigate = useNavigate();
   const [sharePkg, setSharePkg] = useState<StorePackageRecord | null>(null);
   // One-shot, not a subscription: visiting a creator's page is
   // read-only browsing — neither the profile nor their published
   // package list will move while the user is on the page.
-  const profile = useConvexOneShot(api.social.profiles.getProfileByHandle, {
-    handle,
-  }) as { publicHandle: string; displayName: string } | null | undefined;
+  const profile = useConvexOneShot(api.social.profiles.getProfileByUsername, {
+    username,
+  }) as { username: string } | null | undefined;
   const packages = useConvexOneShot(
-    api.data.store_packages.listPackagesByAuthorHandle,
-    { handle },
+    api.data.store_packages.listPackagesByAuthorUsername,
+    { username },
   ) as StorePackageRecord[] | undefined;
 
   if (profile === undefined || packages === undefined) {
@@ -43,20 +43,17 @@ export function CreatorPage({ handle }: Props) {
         <div className="store-creator-empty">
           <div className="store-creator-empty-title">Creator not found</div>
           <div className="store-creator-empty-body">
-            No one has claimed the handle <code>@{handle}</code> yet.
+            No one has claimed the username <code>@{username}</code> yet.
           </div>
         </div>
       </div>
     );
   }
 
-  const displayName = profile.displayName?.trim() || profile.publicHandle;
-
   return (
     <div className="store-creator-page">
       <header className="store-creator-header">
-        <div className="store-creator-handle">@{profile.publicHandle}</div>
-        <div className="store-creator-display-name">{displayName}</div>
+        <div className="store-creator-handle">@{profile.username}</div>
         <div className="store-creator-count">
           {packages.length === 0
             ? "No add-ons yet"
@@ -69,7 +66,7 @@ export function CreatorPage({ handle }: Props) {
       {packages.length === 0 ? (
         <div className="store-creator-empty">
           <div className="store-creator-empty-body">
-            {displayName} hasn't shared any add-ons yet.
+            @{profile.username} hasn't shared any add-ons yet.
           </div>
         </div>
       ) : (

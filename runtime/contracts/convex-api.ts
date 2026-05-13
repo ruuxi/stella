@@ -139,7 +139,7 @@ export type PublicApiType = {
       "listPublicReleases": FunctionReference<'query', 'public', { packageId: string; }, any, string | undefined>;
       "getPublicRelease": FunctionReference<'query', 'public', { packageId: string; releaseNumber: number; }, any, string | undefined>;
       "searchPublicPackages": FunctionReference<'query', 'public', { category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; query: string; }, any, string | undefined>;
-      "listPackagesByAuthorHandle": FunctionReference<'query', 'public', { handle: string; }, any, string | undefined>;
+      "listPackagesByAuthorUsername": FunctionReference<'query', 'public', { username: string; }, any, string | undefined>;
       "listMyPackages": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "setPackageVisibility": FunctionReference<'mutation', 'public', { packageId: string; visibility: 'public' | 'unlisted' | 'private'; }, any, string | undefined>;
       "deletePackage": FunctionReference<'mutation', 'public', { packageId: string; }, any, string | undefined>;
@@ -147,8 +147,8 @@ export type PublicApiType = {
       "listReleases": FunctionReference<'query', 'public', { packageId: string; }, any, string | undefined>;
       "getRelease": FunctionReference<'query', 'public', { packageId: string; releaseNumber: number; }, any, string | undefined>;
       "recordPackageInstall": FunctionReference<'mutation', 'public', { packageId: string; }, any, string | undefined>;
-      "createFirstRelease": FunctionReference<'action', 'public', { category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; authorDisplayName?: string | undefined; iconUrl?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; description: string; displayName: string; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; authorDisplayName?: string | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
-      "createUpdateRelease": FunctionReference<'action', 'public', { authorDisplayName?: string | undefined; iconUrl?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; authorDisplayName?: string | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
+      "createFirstRelease": FunctionReference<'action', 'public', { category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; description: string; displayName: string; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
+      "createUpdateRelease": FunctionReference<'action', 'public', { iconUrl?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
     };
     "threads": {
       "loadThreadMessagesForRuntime": FunctionReference<'query', 'public', { threadId: Id<'threads'>; }, any, string | undefined>;
@@ -208,19 +208,17 @@ export type PublicApiType = {
     "profiles": {
       "ensureProfile": FunctionReference<'mutation', 'public', {}, any, string | undefined>;
       "getMyProfile": FunctionReference<'query', 'public', {}, any, string | undefined>;
-      "getProfileByHandle": FunctionReference<'query', 'public', { handle: string; }, any, string | undefined>;
-      "claimHandle": FunctionReference<'mutation', 'public', { handle: string; }, any, string | undefined>;
-      "getProfileByFriendCode": FunctionReference<'query', 'public', { friendCode: string; }, any, string | undefined>;
+      "getProfileByUsername": FunctionReference<'query', 'public', { username: string; }, any, string | undefined>;
+      "claimUsername": FunctionReference<'mutation', 'public', { username: string; }, any, string | undefined>;
       "getProfilesByOwnerIds": FunctionReference<'query', 'public', { ownerIds: string[]; }, any, string | undefined>;
-      "updateMyProfile": FunctionReference<'mutation', 'public', { nickname?: string | undefined; avatarUrl?: string | null | undefined; }, any, string | undefined>;
+      "updateMyAvatar": FunctionReference<'mutation', 'public', { avatarUrl: string | null; }, any, string | undefined>;
     };
     "relationships": {
       "listFriends": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "listPendingRequests": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "getUnseenIncomingFriendRequestCount": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "markIncomingFriendRequestsSeen": FunctionReference<'mutation', 'public', {}, any, string | undefined>;
-      "sendFriendRequest": FunctionReference<'mutation', 'public', { friendCode: string; }, any, string | undefined>;
-      "sendFriendRequestByOwnerId": FunctionReference<'mutation', 'public', { targetOwnerId: string; }, any, string | undefined>;
+      "sendFriendRequest": FunctionReference<'mutation', 'public', { username: string; }, any, string | undefined>;
       "respondToFriendRequest": FunctionReference<'mutation', 'public', { action: 'accept' | 'decline' | 'block'; requesterOwnerId: string; }, any, string | undefined>;
       "removeFriend": FunctionReference<'mutation', 'public', { otherOwnerId: string; }, any, string | undefined>;
     };

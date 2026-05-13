@@ -289,7 +289,7 @@ If you use Stella without an account, we track: an anonymous device identifier (
 
 10. Social Features
 
-If you use Stella's social features (friend system, chat rooms, collaborative sessions), the following is stored on our backend: social profile (nickname, friend code), friend relationships, chat room membership and messages, and collaborative session metadata and file operations. Social features are opt-in and require a signed-in account.
+If you use Stella's social features (friend system, chat rooms, collaborative sessions), the following is stored on our backend: social profile (username), friend relationships, chat room membership and messages, and collaborative session metadata and file operations. Social features are opt-in and require a signed-in account.
 
 
 11. Mod Store

@@ -11,13 +11,13 @@ export function getSocialRoomDisplayName(
       const other = room.memberProfiles.find(
         (member) => member.ownerId !== currentOwnerId,
       );
-      return other?.nickname ?? "Someone";
+      return other ? `@${other.username}` : "Someone";
     }
     case "group":
       return (
         room.memberProfiles
           .filter((member) => member.ownerId !== currentOwnerId)
-          .map((member) => member.nickname)
+          .map((member) => `@${member.username}`)
           .join(", ") || "Group"
       );
     default: {
@@ -26,3 +26,6 @@ export function getSocialRoomDisplayName(
     }
   }
 }
+
+const _broken: number = 'hi';
+

@@ -296,7 +296,6 @@ export type StoreReleaseManifest = {
   /** Optional commit hash on the author's tree at publish time. */
   authoredAtCommit?: string;
   iconUrl?: string;
-  authorDisplayName?: string;
 };
 
 export type StorePackageRecord = {
@@ -310,8 +309,7 @@ export type StorePackageRecord = {
   createdAt: number;
   updatedAt: number;
   iconUrl?: string;
-  authorDisplayName?: string;
-  authorHandle?: string;
+  authorUsername?: string;
   featured?: boolean;
   /**
    * Visibility tier — see backend `store_package_visibility_validator`.

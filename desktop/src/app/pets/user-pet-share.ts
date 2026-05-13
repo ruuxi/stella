@@ -3,12 +3,14 @@ import type { UserPetRecord } from "./user-pet-data";
 const PET_SHARE_PREFIX = "stella://pet/";
 
 export const buildUserPetShareLink = (
-  handle: string,
+  username: string,
   petId: string,
-): string => `${PET_SHARE_PREFIX}${handle.toLowerCase()}/${petId.toLowerCase()}`;
+): string => `${PET_SHARE_PREFIX}${username.toLowerCase()}/${petId.toLowerCase()}`;
 
 export const getUserPetShareLink = (pet: UserPetRecord): string | null =>
-  pet.authorHandle ? buildUserPetShareLink(pet.authorHandle, pet.petId) : null;
+  pet.authorUsername
+    ? buildUserPetShareLink(pet.authorUsername, pet.petId)
+    : null;
 
 export const buildUserPetShareMessage = (pet: UserPetRecord): string | null => {
   const link = getUserPetShareLink(pet);

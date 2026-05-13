@@ -20,8 +20,7 @@ export type UserPetRecord = {
   previewUrl?: string;
   visibility: UserPetVisibility;
   searchText: string;
-  authorDisplayName?: string;
-  authorHandle?: string;
+  authorUsername?: string;
   installCount?: number;
   createdAt: number;
   updatedAt: number;

@@ -55,11 +55,8 @@ export const createStoreOperations = (
       ...(typeof record.iconUrl === "string" && record.iconUrl
         ? { iconUrl: record.iconUrl }
         : {}),
-      ...(typeof record.authorDisplayName === "string" && record.authorDisplayName
-        ? { authorDisplayName: record.authorDisplayName }
-        : {}),
-      ...(typeof record.authorHandle === "string" && record.authorHandle
-        ? { authorHandle: record.authorHandle }
+      ...(typeof record.authorUsername === "string" && record.authorUsername
+        ? { authorUsername: record.authorUsername }
         : {}),
       ...(record.featured === true ? { featured: true } : {}),
       ...(record.visibility === "public"
@@ -146,11 +143,6 @@ export const createStoreOperations = (
           : args.packageRecord.iconUrl
             ? { iconUrl: args.packageRecord.iconUrl }
             : {}),
-        ...(typeof manifest.authorDisplayName === "string" && manifest.authorDisplayName
-          ? { authorDisplayName: manifest.authorDisplayName }
-          : args.packageRecord.authorDisplayName
-            ? { authorDisplayName: args.packageRecord.authorDisplayName }
-            : {}),
       },
       blueprintMarkdown: record.blueprintMarkdown,
       ...(parsedCommits.length > 0 ? { commits: parsedCommits } : {}),
@@ -165,9 +157,6 @@ export const createStoreOperations = (
       ? { authoredAtCommit: manifest.authoredAtCommit }
       : {}),
     ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
-    ...(manifest.authorDisplayName
-      ? { authorDisplayName: manifest.authorDisplayName }
-      : {}),
   });
 
   const listStorePackages = async (): Promise<StorePackageRecord[]> => {

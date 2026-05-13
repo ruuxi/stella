@@ -21,7 +21,7 @@ const normalizeUserPet = (pet: unknown): BuiltInPet | null => {
     displayName?: string;
     description?: string;
     spritesheetUrl?: string;
-    authorDisplayName?: string;
+    authorUsername?: string;
     installCount?: number;
   };
   return normalizePet({
@@ -30,7 +30,7 @@ const normalizeUserPet = (pet: unknown): BuiltInPet | null => {
     description: row.description,
     kind: "custom",
     tags: ["custom"],
-    ownerName: row.authorDisplayName ?? null,
+    ownerName: row.authorUsername ? `@${row.authorUsername}` : null,
     spritesheetUrl: row.spritesheetUrl,
     sourceUrl: "",
     downloads: row.installCount,

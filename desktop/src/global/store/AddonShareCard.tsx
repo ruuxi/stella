@@ -104,8 +104,8 @@ export function AddonShareCard({ link, variant = "wide" }: AddonShareCardProps) 
         <div className="addon-share-card-name">{pkg.displayName}</div>
         <div className="addon-share-card-desc">{pkg.description}</div>
         <div className="addon-share-card-meta">
-          {pkg.authorHandle ? (
-            <span className="addon-share-card-handle">@{pkg.authorHandle}</span>
+          {pkg.authorUsername ? (
+            <span className="addon-share-card-handle">@{pkg.authorUsername}</span>
           ) : (
             <span />
           )}
