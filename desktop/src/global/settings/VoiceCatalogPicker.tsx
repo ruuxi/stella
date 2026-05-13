@@ -19,6 +19,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/ui/dropdown-menu";
+import {
   DEFAULT_INWORLD_REALTIME_SPEED,
   getDefaultRealtimeVoice,
   getRealtimeVoiceCatalog,
@@ -141,28 +147,6 @@ export function VoiceCatalogPicker({
     [activeSpeed, onSelectInworldSpeed],
   );
 
-  // ── Stepper dropdown ────────────────────────────────────────────
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const onClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
-        setDropdownOpen(false);
-      }
-    };
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDropdownOpen(false);
-    };
-    document.addEventListener("mousedown", onClickOutside);
-    document.addEventListener("keydown", onEscape);
-    return () => {
-      document.removeEventListener("mousedown", onClickOutside);
-      document.removeEventListener("keydown", onEscape);
-    };
-  }, [dropdownOpen]);
-
   const cycleBy = useCallback(
     (delta: number) => {
       if (disabled || catalog.length === 0) return;
@@ -176,7 +160,6 @@ export function VoiceCatalogPicker({
     (voiceId: string) => {
       if (disabled) return;
       onSelectVoice(underlyingProvider, voiceId);
-      setDropdownOpen(false);
     },
     [disabled, onSelectVoice, underlyingProvider],
   );
@@ -269,7 +252,7 @@ export function VoiceCatalogPicker({
         )}
       </div>
 
-      <div className="voice-catalog-stepper-wrap" ref={dropdownRef}>
+      <div className="voice-catalog-stepper-wrap">
         <div
           className="voice-catalog-stepper"
           role="group"
@@ -284,23 +267,55 @@ export function VoiceCatalogPicker({
           >
             <ChevronLeft size={14} strokeWidth={2} />
           </button>
-          <button
-            type="button"
-            className="voice-catalog-stepper-current"
-            onClick={() => setDropdownOpen((prev) => !prev)}
-            disabled={disabled}
-            aria-haspopup="listbox"
-            aria-expanded={dropdownOpen}
-          >
-            <span className="voice-catalog-stepper-name">
-              {activeEntry?.label ?? "—"}
-            </span>
-            <ChevronDown
-              size={12}
-              strokeWidth={2}
-              data-rotated={dropdownOpen || undefined}
-            />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="voice-catalog-stepper-current"
+                disabled={disabled}
+              >
+                <span className="voice-catalog-stepper-name">
+                  {activeEntry?.label ?? "—"}
+                </span>
+                <ChevronDown size={12} strokeWidth={2} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="center"
+              sideOffset={6}
+              className="voice-catalog-menu"
+              aria-label={`${labelSourceText} voice`}
+            >
+              {catalog.map((voice) => {
+                const selected = voice.id === activeVoiceId;
+                return (
+                  <DropdownMenuItem
+                    key={voice.id}
+                    onSelect={() => handleDropdownPick(voice.id)}
+                    disabled={disabled}
+                    data-selected={selected || undefined}
+                    className="voice-catalog-menu-item"
+                  >
+                    <span className="voice-catalog-menu-item-text">
+                      <span className="voice-catalog-menu-item-name">
+                        {voice.label}
+                      </span>
+                      <span className="voice-catalog-menu-item-desc">
+                        {voice.description}
+                      </span>
+                    </span>
+                    {selected ? (
+                      <Check
+                        size={13}
+                        className="voice-catalog-menu-item-check"
+                      />
+                    ) : null}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button
             type="button"
             className="voice-catalog-stepper-arrow"
@@ -313,41 +328,6 @@ export function VoiceCatalogPicker({
         </div>
         {activeEntry?.description ? (
           <p className="voice-catalog-stepper-desc">{activeEntry.description}</p>
-        ) : null}
-        {dropdownOpen ? (
-          <div
-            className="voice-catalog-dropdown"
-            role="listbox"
-            aria-label={`${labelSourceText} voice`}
-          >
-            {catalog.map((voice) => {
-              const selected = voice.id === activeVoiceId;
-              return (
-                <button
-                  key={voice.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  className="voice-catalog-dropdown-row"
-                  data-selected={selected || undefined}
-                  onClick={() => handleDropdownPick(voice.id)}
-                  disabled={disabled}
-                >
-                  <span className="voice-catalog-dropdown-row-text">
-                    <span className="voice-catalog-dropdown-row-name">
-                      {voice.label}
-                    </span>
-                    <span className="voice-catalog-dropdown-row-desc">
-                      {voice.description}
-                    </span>
-                  </span>
-                  {selected ? (
-                    <Check size={13} className="voice-catalog-dropdown-row-check" />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
         ) : null}
       </div>
 
