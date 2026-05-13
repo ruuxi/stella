@@ -249,7 +249,7 @@ export function HomeContent({
 }: HomeContentProps) {
   const greeting = useGreeting();
   const showViewMessages = Boolean(onDismissHome);
-  const [showSidebarHint] = useState(shouldShowSidebarHint);
+  const [showSidebarHint, setShowSidebarHint] = useState(shouldShowSidebarHint);
 
   useEffect(() => {
     if (!showSidebarHint) return;
@@ -258,6 +258,16 @@ export function HomeContent({
     } catch {
       // Ignore storage failures; the hint is nonessential.
     }
+  }, [showSidebarHint]);
+
+  // Dismiss the hint the moment the user actually right-clicks anywhere —
+  // waiting for the next mount felt broken because the cue lingered after
+  // its instruction was followed.
+  useEffect(() => {
+    if (!showSidebarHint) return;
+    const dismiss = () => setShowSidebarHint(false);
+    window.addEventListener("contextmenu", dismiss, { once: true });
+    return () => window.removeEventListener("contextmenu", dismiss);
   }, [showSidebarHint]);
 
   return (
