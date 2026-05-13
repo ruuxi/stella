@@ -1,0 +1,30 @@
+name: Auto-close pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const number = context.payload.pull_request.number;
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body: "Thanks for the interest! Stella isn't accepting external pull requests right now — feel free to fork and modify your own copy. (Stella is self-modifying by design, so individual installs already diverge.)",
+            });
+            await github.rest.pulls.update({
+              owner,
+              repo,
+              pull_number: number,
+              state: "closed",
+            });
