@@ -123,17 +123,24 @@ describe("payloadToTabSpec", () => {
     expect(spec.tooltip).toBe("http://127.0.0.1:53121/");
   });
 
-  it("maps developer file changes to source diff tabs", () => {
-    const payload: DisplayPayload = {
+  it("maps every developer file change to the singleton source-diff tab", () => {
+    const first = payloadToTabSpec({
       kind: "source-diff",
       filePath: "/tmp/app.ts",
       title: "app.ts",
       patch: "*** Begin Patch\n*** End Patch",
       createdAt: 7,
-    };
-    const spec = payloadToTabSpec(payload);
-    expect(spec.id).toBe("source-diff:/tmp/app.ts:7");
-    expect(spec.kind).toBe("source-diff");
+    });
+    const second = payloadToTabSpec({
+      kind: "source-diff",
+      filePath: "/tmp/other.ts",
+      title: "other.ts",
+      createdAt: 9,
+    });
+    expect(first.id).toBe("source-diff");
+    expect(first.kind).toBe("source-diff");
+    expect(first.title).toBe("Code changes");
+    expect(second.id).toBe("source-diff");
   });
 
   it("merges generated images into one stable gallery tab", () => {

@@ -231,6 +231,27 @@ const resourcePayloadEqual = (
   }
 };
 
+const sourceDiffPayloadsEqual = (
+  a: DisplayPayload[] | undefined,
+  b: DisplayPayload[] | undefined,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return (a?.length ?? 0) === (b?.length ?? 0);
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    const aa = a[index]!;
+    const bb = b[index]!;
+    if (aa.kind !== "source-diff" || bb.kind !== "source-diff") {
+      if (!resourcePayloadEqual(aa, bb)) return false;
+      continue;
+    }
+    if (aa.filePath !== bb.filePath) return false;
+    if ((aa.patch ?? null) !== (bb.patch ?? null)) return false;
+    if ((aa.createdAt ?? null) !== (bb.createdAt ?? null)) return false;
+  }
+  return true;
+};
+
 const userRowEqual = (a: UserRowViewModel, b: UserRowViewModel): boolean =>
   a.id === b.id &&
   a.text === b.text &&
@@ -253,6 +274,7 @@ const assistantRowEqual = (
   (a.officePreviewRef?.sessionId ?? null) ===
     (b.officePreviewRef?.sessionId ?? null) &&
   resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
+  sourceDiffPayloadsEqual(a.sourceDiffPayloads, b.sourceDiffPayloads) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
   askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&

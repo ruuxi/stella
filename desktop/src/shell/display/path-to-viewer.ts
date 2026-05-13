@@ -255,7 +255,11 @@ export const tabIdForPath = (filePath: string): string => {
   if (kind === "pdf") return `pdf:${filePath}`;
   if (kind === "markdown") return `markdown:${filePath}`;
   if (isDeveloperResourceExtension(extensionOf(filePath))) {
-    return `source-diff:${filePath}`;
+    // Developer file changes all share the singleton "Code changes"
+    // tab (`SOURCE_DIFF_TAB_ID`). Keeping this id literal here avoids
+    // pulling the batches-store module into pure path utilities used
+    // by the runtime contract layer.
+    return "source-diff";
   }
   if (
     kind === "office-document" ||

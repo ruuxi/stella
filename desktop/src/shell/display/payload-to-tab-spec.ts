@@ -30,8 +30,24 @@ import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { addCanvasHtmlItem } from "./canvas-tab/canvas-items";
 import type { DisplayTabKind, DisplayTabSpec } from "./types";
 import { kindForPath } from "./path-to-viewer";
+import { SOURCE_DIFF_TAB_ID } from "./source-diff-batches";
 
 export const CANVAS_HTML_TAB_ID = "canvas:html";
+
+/**
+ * Spec for the singleton "Code changes" tab. All source-diff payloads
+ * activate this one tab; the content subscribes to the source-diff
+ * batches store, so the click side effect (pushing the turn's batch
+ * into the store) drives what renders rather than per-payload props.
+ */
+export const createSourceDiffTabSpec = (): DisplayTabSpec => ({
+  id: SOURCE_DIFF_TAB_ID,
+  kind: "source-diff",
+  title: "Code changes",
+  tooltip: "Recent file changes",
+  metadata: { kind: "source-diff" },
+  render: () => createElement(SourceDiffTabContent),
+});
 
 export const GENERATED_MEDIA_TAB_ID = "media:generated";
 export const GENERATED_IMAGE_TAB_ID = GENERATED_MEDIA_TAB_ID;
@@ -213,19 +229,11 @@ export const payloadToTabSpec = (
       };
 
     case "source-diff":
-      return {
-        id: `source-diff:${payload.filePath}:${payload.createdAt ?? 0}`,
-        kind: "source-diff",
-        title,
-        tooltip: payload.filePath,
-        metadata: { kind: "source-diff", filePath: payload.filePath },
-        render: () =>
-          createElement(SourceDiffTabContent, {
-            filePath: payload.filePath,
-            ...(payload.title ? { title: payload.title } : {}),
-            ...(payload.patch ? { patch: payload.patch } : {}),
-          }),
-      };
+      // Singleton tab: every source-diff payload maps to the same
+      // tab id. The tab content reads from the source-diff batches
+      // store, populated by the chat-side click handler before
+      // `openTab` is called.
+      return createSourceDiffTabSpec();
 
     case "office": {
       const sourcePath = payload.previewRef.sourcePath;

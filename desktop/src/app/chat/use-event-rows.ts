@@ -10,7 +10,10 @@ import {
 } from '@/app/chat/lib/event-transforms'
 import { isOfficePreviewRef } from '../../../../runtime/contracts/office-preview.js'
 import type { ScheduleToolAffectedRef } from '../../../../runtime/kernel/shared/scheduling'
-import { deriveTurnResource } from '@/app/chat/lib/derive-turn-resource'
+import {
+  collectTurnSourceDiffPayloads,
+  deriveTurnResource,
+} from '@/app/chat/lib/derive-turn-resource'
 import { filterEventsForUiDisplay } from '@/app/chat/lib/message-display'
 import {
   stabilizeTurnRows,
@@ -458,6 +461,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           getCwd(toolEvents),
           { developerResourcesEnabled: developerResourcePreviewsEnabled },
         )
+        const sourceDiffPayloads = collectTurnSourceDiffPayloads(toolEvents, {
+          developerResourcesEnabled: developerResourcePreviewsEnabled,
+        })
         const askQuestionState = askQuestion.payloadByAssistantId.get(event._id)
         const selfModApplied = selfModMap?.[event._id]
         const row: AssistantRowViewModel = {
@@ -471,6 +477,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             ? { officePreviewRef: getOfficePreviewRef(toolEvents) }
             : {}),
           ...(resourcePayload ? { resourcePayload } : {}),
+          ...(sourceDiffPayloads.length > 0 ? { sourceDiffPayloads } : {}),
           ...(selfModApplied ? { selfModApplied } : {}),
           ...(getScheduleReceipt(toolEvents)
             ? { scheduleReceipt: getScheduleReceipt(toolEvents) }
