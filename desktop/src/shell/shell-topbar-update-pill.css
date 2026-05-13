@@ -1,4 +1,5 @@
 .shell-topbar-update-pill {
+  position: relative;
   display: inline-flex;
   align-items: stretch;
   height: 22px;
@@ -13,6 +14,43 @@
     background 0.12s ease,
     border-color 0.12s ease,
     color 0.12s ease;
+}
+
+@property --shell-topbar-update-pill-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.shell-topbar-update-pill[data-state="active"]::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.75px;
+  background: conic-gradient(
+    from var(--shell-topbar-update-pill-angle),
+    transparent 0deg,
+    oklch(70% 0.26 250 / 0.5) 40deg,
+    oklch(75% 0.3 250 / 0.9) 120deg,
+    oklch(82% 0.32 250) 180deg,
+    oklch(75% 0.3 250 / 0.65) 220deg,
+    transparent 260deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: shell-topbar-update-pill-trace 1.6s linear infinite;
+}
+
+@keyframes shell-topbar-update-pill-trace {
+  to {
+    --shell-topbar-update-pill-angle: 360deg;
+  }
 }
 
 .shell-topbar-update-pill:hover {
@@ -50,10 +88,6 @@
   white-space: nowrap;
 }
 
-.shell-topbar-update-pill__spinner {
-  animation: shell-topbar-update-pill-spin 0.85s linear infinite;
-}
-
 .shell-topbar-update-pill__cancel {
   display: inline-flex;
   align-items: center;
@@ -81,10 +115,4 @@
 .shell-topbar-update-pill__cancel:disabled {
   opacity: 0.4;
   pointer-events: none;
-}
-
-@keyframes shell-topbar-update-pill-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
