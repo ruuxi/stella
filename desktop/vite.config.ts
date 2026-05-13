@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import fs from "fs"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
@@ -8,6 +9,28 @@ import {
   isViteTrackablePath,
   normalizeContentionPath,
 } from "../runtime/kernel/self-mod/path-relevance.js"
+
+/**
+ * Per-request flag that bypasses the self-mod pre-period snapshot for
+ * Node-side callers (no `Origin` header on localhost — see
+ * `isAuthorizedSelfModRequest`). The snapshot exists to keep the
+ * **renderer** stable mid-run; for the worker / the agent itself
+ * curl-verifying its own writes, "truth" is what's on disk right now.
+ * Without this bypass, an agent that writes a renderer file mid-run
+ * and verifies via `curl http://localhost:57314/src/...` keeps seeing
+ * the pre-edit snapshot and concludes Vite is broken.
+ *
+ * `dirtiedModulePaths` collects every tracked path the worker pulled
+ * raw disk for during this request; after the response finishes we
+ * invalidate those module graph entries so the renderer's next read
+ * re-runs `load()` and gets the snapshot back. Without this scrub,
+ * Vite's transform cache would happily serve the worker's disk view
+ * to the next renderer request, defeating mid-run isolation.
+ */
+const selfModRequestContext = new AsyncLocalStorage<{
+  bypassSelfModOverlay: boolean
+  dirtiedModulePaths: Set<string>
+}>()
 
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
@@ -553,6 +576,19 @@ function selfModHmrControl(): Plugin {
     },
     load(id) {
       const key = normalizeIdKey(id)
+      const requestContext = selfModRequestContext.getStore()
+      if (requestContext?.bypassSelfModOverlay) {
+        // Node-side caller (worker, agent curl) — return null so Vite
+        // falls back to disk. The agent must be able to verify its own
+        // writes; only the renderer needs the stable snapshot. We tag
+        // the path so the middleware can invalidate Vite's transform
+        // cache after the response is flushed, preventing the worker's
+        // disk view from poisoning subsequent renderer reads.
+        if (appliedOverlay.has(key) || inFlightPaths.has(key)) {
+          requestContext.dirtiedModulePaths.add(key)
+        }
+        return null
+      }
       const overlay = appliedOverlay.get(key)
       if (overlay) {
         return overlay.content
@@ -565,6 +601,13 @@ function selfModHmrControl(): Plugin {
     transformIndexHtml(html, ctx) {
       const key = normalizeIdKey(ctx.filename ?? path.resolve(__dirname, 'index.html'))
       if (!isViteTrackableAbsolutePath(key)) return html
+      const requestContext = selfModRequestContext.getStore()
+      if (requestContext?.bypassSelfModOverlay) {
+        if (appliedOverlay.has(key) || inFlightPaths.has(key)) {
+          requestContext.dirtiedModulePaths.add(key)
+        }
+        return html
+      }
       const overlay = appliedOverlay.get(key)
       if (overlay) {
         return overlay.content
@@ -575,6 +618,55 @@ function selfModHmrControl(): Plugin {
       return html
     },
     configureServer(server) {
+      // Tag every Node-side request (no Origin, localhost) with an
+      // AsyncLocalStorage context so the `load()` and
+      // `transformIndexHtml` hooks downstream can serve real disk
+      // content instead of the pre-period snapshot. Browser requests
+      // always carry an Origin header and skip this branch, so the
+      // renderer keeps its mid-run snapshot guarantees.
+      //
+      // We invalidate every tracked module graph entry both BEFORE
+      // and AFTER the worker request runs:
+      //   - Before: Vite caches transform results, so without
+      //     pre-invalidation `load()` is never re-entered and the
+      //     bypass branch can't take effect — the worker would get
+      //     back whatever the renderer's last read cached.
+      //   - After: the worker's disk view must not stay in the cache
+      //     and leak to the next renderer request.
+      const invalidateAllTrackedModules = () => {
+        const trackedPaths = new Set<string>([
+          ...inFlightPaths,
+          ...appliedOverlay.keys(),
+        ])
+        for (const absPath of trackedPaths) {
+          const mods = server.moduleGraph.getModulesByFile(absPath)
+          if (!mods) continue
+          for (const mod of mods) {
+            server.moduleGraph.invalidateModule(mod)
+          }
+        }
+      }
+      server.middlewares.use((req, res, next) => {
+        if (!isAuthorizedSelfModRequest(req)) {
+          next()
+          return
+        }
+        invalidateAllTrackedModules()
+        const dirtiedModulePaths = new Set<string>()
+        let scrubbed = false
+        const scrubDirtiedModules = () => {
+          if (scrubbed) return
+          scrubbed = true
+          invalidateAllTrackedModules()
+        }
+        res.once('close', scrubDirtiedModules)
+        res.once('finish', scrubDirtiedModules)
+        selfModRequestContext.run(
+          { bypassSelfModOverlay: true, dirtiedModulePaths },
+          next,
+        )
+      })
+
       const sendClientMessage = server.ws.send.bind(server.ws)
       server.ws.send = ((payload: unknown, ...args: unknown[]) => {
         if (
