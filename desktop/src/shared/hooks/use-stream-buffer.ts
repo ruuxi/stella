@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export type StreamBuffer = {
   text: string;
@@ -13,15 +13,13 @@ export type StreamBuffer = {
  */
 export function useStreamBuffer(active: boolean): StreamBuffer {
   const [text, setText] = useState("");
-  const activeRef = useRef(active);
-  activeRef.current = active;
 
   const reset = useCallback(() => {
     setText("");
   }, []);
 
   const append = useCallback((delta: string) => {
-    if (!delta || !activeRef.current) return;
+    if (!delta) return;
     setText((prev) => prev + delta);
   }, []);
 
