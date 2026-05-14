@@ -133,10 +133,8 @@ export const resolveStellaProviderErrorToast = (
         'Stella needs you to reconnect your account before continuing.',
       variant: 'error',
       duration: 8000,
-      action: {
-        label: 'Open billing',
-        onClick: openBilling,
-      },
+      action: signInAction,
+      secondaryAction: BYOK_TOAST_ACTION,
     }
   }
 
