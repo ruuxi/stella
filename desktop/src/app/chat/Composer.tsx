@@ -95,7 +95,10 @@ export function Composer({
     requireConversationId: true,
   });
   const { placeholder } = composerState;
-  const isExpanded = composerExpanded;
+  const hasText = message.trim().length > 0;
+  const dictationBelow = dictation.isRecordingVisible && hasText;
+  const dictationInline = dictation.isRecordingVisible && !hasText;
+  const isExpanded = composerExpanded || dictationBelow;
 
   useAnimatedComposerShell({
     shellRef,
@@ -110,6 +113,18 @@ export function Composer({
     });
     return () => cancelAnimationFrame(raf);
   }, [dictation.isRecording, focusRequestId]);
+
+  // Keep the pill shape in sync when `message` changes outside of onChange
+  // (e.g. cleared by the parent after send, or set by dictation).
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      updateComposerTextareaExpansion(
+        textareaRef.current,
+        setComposerExpanded,
+      );
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [message]);
 
   const hasAttachedChips = hasAttachedComposerChips(chatContext, selectedText);
 
@@ -151,7 +166,7 @@ export function Composer({
               disabled={isStreaming}
             />
 
-            {dictation.isRecordingVisible ? (
+            {dictationInline ? (
               <DictationRecordingBar
                 levels={dictation.levels}
                 elapsedMs={dictation.elapsedMs}
@@ -222,6 +237,19 @@ export function Composer({
                     />
                   </div>
                 </div>
+
+                {dictationBelow && (
+                  <div className="composer-dictation-row">
+                    <DictationRecordingBar
+                      levels={dictation.levels}
+                      elapsedMs={dictation.elapsedMs}
+                      onCancel={dictation.cancel}
+                      onConfirm={dictation.toggle}
+                      onSend={dictation.commitAndSend}
+                      showControls={dictation.showControls}
+                    />
+                  </div>
+                )}
               </>
             )}
           </form>

@@ -302,6 +302,22 @@ export function ChatPanelTab(
       chatContext,
       selectedText,
     });
+    const hasText = inputText.trim().length > 0;
+    const dictationBelow = dictation.isRecordingVisible && hasText;
+    const dictationInline = dictation.isRecordingVisible && !hasText;
+    const formExpanded = sidebarExpanded || dictationBelow;
+
+    // Keep the pill shape in sync when `inputText` changes outside of
+    // onChange (e.g. cleared by send, or set by dictation).
+    useEffect(() => {
+      const raf = requestAnimationFrame(() => {
+        updateComposerTextareaExpansion(
+          inputRef.current,
+          setSidebarExpanded,
+        );
+      });
+      return () => cancelAnimationFrame(raf);
+    }, [inputText]);
 
     return (
       <div
@@ -353,7 +369,7 @@ export function ChatPanelTab(
                   )}
                   <form
                     ref={formRef}
-                    className={`chat-sidebar-form${sidebarExpanded ? " expanded" : ""}`}
+                    className={`chat-sidebar-form${formExpanded ? " expanded" : ""}`}
                     onSubmit={(event) => {
                       if (dictation.isRecording) {
                         event.preventDefault();
@@ -370,7 +386,7 @@ export function ChatPanelTab(
                       disabled={isStreaming}
                     />
 
-                    {dictation.isRecordingVisible ? (
+                    {dictationInline ? (
                       <DictationRecordingBar
                         levels={dictation.levels}
                         elapsedMs={dictation.elapsedMs}
@@ -441,6 +457,19 @@ export function ChatPanelTab(
                             />
                           </div>
                         </div>
+
+                        {dictationBelow && (
+                          <div className="composer-dictation-row">
+                            <DictationRecordingBar
+                              levels={dictation.levels}
+                              elapsedMs={dictation.elapsedMs}
+                              onCancel={dictation.cancel}
+                              onConfirm={dictation.toggle}
+                              onSend={dictation.commitAndSend}
+                              showControls={dictation.showControls}
+                            />
+                          </div>
+                        )}
                       </>
                     )}
                   </form>
