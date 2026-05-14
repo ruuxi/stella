@@ -26,6 +26,3 @@ export function getSocialRoomDisplayName(
     }
   }
 }
-
-const _broken: number = 'hi';
-
