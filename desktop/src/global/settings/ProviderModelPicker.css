@@ -454,6 +454,17 @@
   color: var(--text-strong);
 }
 
+.model-picker-model[data-restricted] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.model-picker-model[data-restricted]:hover,
+.model-picker-model[data-restricted]:focus-visible {
+  background: transparent;
+  color: var(--text-base);
+}
+
 .model-picker-model-text {
   display: flex;
   flex-direction: column;

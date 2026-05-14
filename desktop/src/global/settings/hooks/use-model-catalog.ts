@@ -78,6 +78,17 @@ let inFlightManagedGatewayCatalogRequest: Promise<{
   directModels: CatalogModel[];
   stellaModels: CatalogModel[];
 }> | null = null;
+/**
+ * Last-known catalog payload, used to seed `useState` synchronously so the
+ * picker re-opens without flashing a loading state. The keyed
+ * `catalogCache` above is the authoritative per-audience store; this
+ * just lets the hook avoid a render where every list is empty while the
+ * async cache hit lands.
+ */
+let lastSeenCatalog: {
+  models: CatalogModel[];
+  defaults: CatalogDefaultModel[];
+} | null = null;
 
 const toErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message
@@ -148,6 +159,10 @@ async function fetchCatalogModels(
     !options.forceRefresh &&
     isCatalogCacheFresh(cachedCatalog)
   ) {
+    lastSeenCatalog = {
+      models: cachedCatalog.models,
+      defaults: cachedCatalog.defaults,
+    };
     return {
       models: cachedCatalog.models,
       defaults: cachedCatalog.defaults,
@@ -181,6 +196,10 @@ async function fetchCatalogModels(
             defaults: result.defaults,
             fetchedAt: Date.now(),
           });
+          lastSeenCatalog = {
+            models: result.models,
+            defaults: result.defaults,
+          };
         }
 
         return {
@@ -309,15 +328,21 @@ export function useModelCatalog() {
     }
     return `${sessionKey}:audience:${billingAudienceKey}`;
   }, [billingAudienceKey, hasConnectedAccount, sessionData, session.isPending]);
-  const [models, setModels] = useState<CatalogModel[]>([]);
+  const [models, setModels] = useState<CatalogModel[]>(
+    () => lastSeenCatalog?.models ?? [],
+  );
   const [managedGatewayStellaModels, setManagedGatewayStellaModels] = useState<
     CatalogModel[]
-  >([]);
+  >(() => managedGatewayCatalogCache?.stellaModels ?? []);
   const [directProviderModels, setDirectProviderModels] = useState<
     CatalogModel[]
-  >([]);
-  const [defaults, setDefaults] = useState<CatalogDefaultModel[]>([]);
-  const [loading, setLoading] = useState(true);
+  >(() => managedGatewayCatalogCache?.directModels ?? []);
+  const [defaults, setDefaults] = useState<CatalogDefaultModel[]>(
+    () => lastSeenCatalog?.defaults ?? [],
+  );
+  const [loading, setLoading] = useState(
+    () => (lastSeenCatalog?.models.length ?? 0) === 0,
+  );
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const localModels = useMemo(() => listLocalCatalogModels(), []);

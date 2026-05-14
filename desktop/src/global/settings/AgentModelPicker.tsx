@@ -28,12 +28,9 @@ import {
 } from "@/global/settings/lib/model-defaults";
 import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 import {
-  getModelRestrictionActionLabel,
-  getModelRestrictionDescription,
+  getPlanLabel,
   isRestrictedModelOverrideAudience,
 } from "@/shared/billing/audience";
-import { BYOK_TOAST_ACTION } from "@/shared/billing/byok-action";
-import { showToast } from "@/ui/toast";
 import { router } from "@/router";
 import "./AgentModelPicker.css";
 
@@ -131,6 +128,13 @@ const VOICE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
   { key: "inworld", label: "Inworld", description: "Use your own Inworld account." },
 ];
 
+/**
+ * Last-known local model preferences, used to seed `useState` so re-opening
+ * the picker doesn't flash a loading state while the IPC roundtrip lands.
+ * Mutated whenever the picker successfully loads or saves preferences.
+ */
+let cachedLocalPreferences: LocalModelPreferences | null = null;
+
 function isReasoningEffort(value: string): value is ReasoningEffort {
   return REASONING_EFFORT_OPTIONS.some((option) => option.id === value);
 }
@@ -210,11 +214,33 @@ export function AgentModelPicker({
     audience,
   } = useModelCatalog();
 
-  const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
-    null,
+  const [preferences, setPreferencesRaw] = useState<LocalModelPreferences | null>(
+    () => cachedLocalPreferences,
   );
   const [pendingAgent, setPendingAgent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Mirror state writes into the module-level cache so re-mounting the
+  // picker (Radix unmounts popover content on close) shows the last
+  // selection immediately instead of flashing "Loading…".
+  const setPreferences = useCallback(
+    (
+      updater:
+        | LocalModelPreferences
+        | null
+        | ((
+            prev: LocalModelPreferences | null,
+          ) => LocalModelPreferences | null),
+    ) => {
+      setPreferencesRaw((current) => {
+        const next =
+          typeof updater === "function" ? updater(current) : updater;
+        if (next) cachedLocalPreferences = next;
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -223,6 +249,7 @@ export function AgentModelPicker({
         const next =
           await window.electronAPI?.system?.getLocalModelPreferences?.();
         if (!cancelled && next) {
+          cachedLocalPreferences = next;
           setPreferences(next);
           setError(null);
         }
@@ -418,55 +445,10 @@ export function AgentModelPicker({
           new CustomEvent("stella:local-model-preferences-changed"),
         );
         setError(null);
-        // Picking a non-default model on a tier that's pinned to the
-        // backend-chosen model is a no-op at request time (the Stella
-        // provider silently coerces). Surface a toast so the user
-        // understands their selection won't be honored on this plan —
-        // BUT only when:
-        //   1. the pick is a Stella-provider model (BYOK / OAuth picks
-        //      via Anthropic/OpenAI/etc. run locally and aren't subject
-        //      to Stella tier restrictions), and
-        //   2. the pick actually resolves to a different upstream than
-        //      what the audience would already get. Picking "Stella Light"
-        //      on the Free plan is a no-op, not a restriction.
-        const pickedModel = stellaModels.find((model) => model.id === value);
-        const isStellaProviderPick = pickedModel?.provider === "stella";
-        const pickedUpstream = pickedModel?.upstreamModel ?? "";
-        const audienceUpstream =
-          resolvedDefaultModelMap[canonicalAgentKey] ?? "";
-        const resolvesToSameModel =
-          pickedUpstream !== "" &&
-          audienceUpstream !== "" &&
-          pickedUpstream === audienceUpstream;
-        if (
-          value !== "" &&
-          isStellaProviderPick &&
-          !resolvesToSameModel &&
-          isRestrictedModelOverrideAudience(audience)
-        ) {
-          const modelLabel = getModelDisplayLabel(value, modelNamesById);
-          showToast({
-            title: "Model not available on your plan",
-            description: audience
-              ? getModelRestrictionDescription({
-                  audience,
-                  modelLabel,
-                  tense: "will",
-                })
-              : `${modelLabel} isn't available on your current plan. Stella will use its recommended model.`,
-            variant: "error",
-            duration: 8000,
-            action: {
-              label: audience
-                ? getModelRestrictionActionLabel(audience)
-                : "Upgrade",
-              onClick: () => {
-                void router.navigate({ to: "/billing" });
-              },
-            },
-            secondaryAction: BYOK_TOAST_ACTION,
-          });
-        }
+        // Restricted-tier picks used to fire a toast here. The picker
+        // now disables Stella-provider models that aren't available on
+        // the user's plan up front, so reaching this path means the
+        // selection is allowed and no toast is needed.
         onSelected?.();
       } catch (caught) {
         setPreferences((current) =>
@@ -491,15 +473,10 @@ export function AgentModelPicker({
       activeAgent,
       activeAssistant,
       assistantWriteKeys,
-      audience,
-      canonicalAgentKey,
       configurableAgents,
-      modelNamesById,
       onSelected,
       pendingAgent,
       preferences,
-      resolvedDefaultModelMap,
-      stellaModels,
     ],
   );
 
@@ -770,6 +747,15 @@ export function AgentModelPicker({
     : preferences?.reasoningEfforts?.[activeAgent] ?? "default";
   const showFullPanel = expanded && !activeProviderSetting;
 
+  /**
+   * On free / anonymous / Go plans the backend silently coerces any
+   * non-default Stella-provider pick back to the recommended model.
+   * Surface that up front by disabling those rows in the picker (the
+   * default row + every BYOK provider stay enabled).
+   */
+  const restrictedStellaPicks = isRestrictedModelOverrideAudience(audience);
+  const restrictedPlanLabel = audience ? getPlanLabel(audience) : null;
+
   // Surface a one-liner when Assistant is routed through a non-Stella
   // provider but Chronicle (screen memory) is still pointing at Stella —
   // those minute-cadence ticks would otherwise silently keep eating the
@@ -925,6 +911,8 @@ export function AgentModelPicker({
               groups={groups}
               excludeModelId={STELLA_DEFAULT_MODEL}
               disabled={!ready || pendingAgent !== null}
+              restrictStellaPicks={restrictedStellaPicks}
+              restrictedPlanLabel={restrictedPlanLabel}
               ariaLabel="Assistant model picker"
               onSelect={handleSelect}
             />
@@ -937,6 +925,12 @@ export function AgentModelPicker({
             defaultLabel={defaultLabel}
             onSelect={handleSelect}
             disabled={!ready || pendingAgent !== null}
+            restricted={restrictedStellaPicks}
+            restrictedPlanLabel={restrictedPlanLabel}
+            onUpgrade={() => {
+              void router.navigate({ to: "/billing" });
+              onSelected?.();
+            }}
           />
         )}
 

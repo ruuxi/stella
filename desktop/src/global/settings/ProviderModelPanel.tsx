@@ -48,6 +48,13 @@ interface ProviderModelPanelProps {
   /** Empty string ⇒ default. Any other value ⇒ that model id. */
   onSelect: (value: string) => void;
   disabled?: boolean;
+  /**
+   * When true, the user's plan can't override the default Stella model
+   * (anonymous / free / Go). Non-default rows on the Stella tab are
+   * disabled; BYOK providers stay fully interactive.
+   */
+  restrictStellaPicks?: boolean;
+  restrictedPlanLabel?: string | null;
   ariaLabel?: string;
 }
 
@@ -90,6 +97,8 @@ export function ProviderModelPanel({
   excludeModelId,
   onSelect,
   disabled = false,
+  restrictStellaPicks = false,
+  restrictedPlanLabel,
   ariaLabel,
 }: ProviderModelPanelProps) {
   const credentials = useLlmCredentials();
@@ -264,6 +273,10 @@ export function ProviderModelPanel({
             filteredModels={filteredModels}
             onPick={handlePick}
             isStella={activeTab.key === STELLA_PROVIDER_KEY}
+            restrictStellaPicks={
+              activeTab.key === STELLA_PROVIDER_KEY && restrictStellaPicks
+            }
+            restrictedPlanLabel={restrictedPlanLabel ?? null}
             currentLabel={currentLabel}
             defaultLabel={defaultLabel}
             apiKey={findApiKey(credentials.apiKeys, activeTab.key)}
@@ -314,6 +327,8 @@ interface ProviderPaneProps {
   filteredModels: CatalogModel[];
   onPick: (modelId: string) => void;
   isStella: boolean;
+  restrictStellaPicks: boolean;
+  restrictedPlanLabel: string | null;
   currentLabel: string;
   defaultLabel: string;
   apiKey: ReturnType<typeof findApiKey>;
@@ -345,6 +360,8 @@ function ProviderPane({
   filteredModels,
   onPick,
   isStella,
+  restrictStellaPicks,
+  restrictedPlanLabel,
   currentLabel,
   defaultLabel,
   apiKey,
@@ -593,6 +610,15 @@ function ProviderPane({
               filteredModels.map((model) => {
                 const selected = model.id === selectedModelId;
                 const isStellaModel = model.provider === "stella";
+                // Backend marks every Stella model row with
+                // `allowedForAudience` for the requesting user; we
+                // just mirror it. BYOK providers never carry the
+                // flag and stay enabled.
+                const rowRestricted =
+                  restrictStellaPicks &&
+                  isStellaModel &&
+                  !selected &&
+                  model.allowedForAudience === false;
                 const displayName = isStellaModel
                   ? getStellaDisplayName(model)
                   : model.name;
@@ -609,10 +635,17 @@ function ProviderPane({
                     type="button"
                     role="option"
                     aria-selected={selected}
+                    aria-disabled={rowRestricted || undefined}
                     className="model-picker-model"
                     data-selected={selected || undefined}
+                    data-restricted={rowRestricted || undefined}
+                    title={
+                      rowRestricted && restrictedPlanLabel
+                        ? `Not available on the ${restrictedPlanLabel} plan`
+                        : undefined
+                    }
                     onClick={() => onPick(model.id)}
-                    disabled={disabled}
+                    disabled={disabled || rowRestricted}
                   >
                     <span className="model-picker-model-text">
                       <span className="model-picker-model-name">

@@ -16,6 +16,14 @@ export type CatalogModel = {
   maxTokens?: number;
   input?: Model<Api>["input"];
   reasoning?: boolean;
+  /**
+   * Whether the backend will honor this model for the current user's
+   * audience. Defaults to true; the Stella `/api/models` endpoint sets
+   * it to false on per-tier-restricted models so the picker disables
+   * them in sync with the backend's request-time coercion. Models from
+   * other providers (BYOK / local) never carry a restriction.
+   */
+  allowedForAudience?: boolean;
 };
 
 export type CatalogDefaultModel = {
@@ -36,6 +44,7 @@ export type CatalogApiModel = {
   provider?: string;
   type?: string;
   upstreamModel?: string;
+  allowedForAudience?: boolean;
 };
 
 export type CatalogApiResponse = {
@@ -188,6 +197,7 @@ export function normalizeStellaCatalogModels(
         provider,
         providerName: getProviderDisplayName(provider),
         upstreamModel: model.upstreamModel,
+        allowedForAudience: model.allowedForAudience,
         source: "stella" as const,
       };
     });

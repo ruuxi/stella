@@ -18,6 +18,15 @@ interface CompactStellaModelListProps {
   /** Selection callback. Empty string ⇒ revert to default. */
   onSelect: (value: string) => void;
   disabled?: boolean;
+  /**
+   * When true the user's plan can't override the default Stella model
+   * (anonymous, free, or Go). Non-default presets render disabled with
+   * a small "{plan} plan" footer + upgrade affordance instead of
+   * surfacing as clickable.
+   */
+  restricted?: boolean;
+  restrictedPlanLabel?: string | null;
+  onUpgrade?: () => void;
 }
 
 /**
@@ -32,6 +41,9 @@ export function CompactStellaModelList({
   defaultLabel,
   onSelect,
   disabled = false,
+  restricted = false,
+  restrictedPlanLabel,
+  onUpgrade,
 }: CompactStellaModelListProps) {
   const presets = useMemo(
     () =>
@@ -75,16 +87,30 @@ export function CompactStellaModelList({
         presets.map((model) => {
           const selected = !isDefaultSelected && model.id === value;
           const subtitle = getStellaSubtitle(model);
+          // `allowedForAudience` is the backend's per-audience
+          // truth (undefined ⇒ allowed; only Stella-provider rows
+          // ever carry the flag). The `restricted` prop is just a
+          // local fast-path so we don't disable anything when the
+          // audience hasn't been resolved yet.
+          const rowRestricted =
+            restricted && !selected && model.allowedForAudience === false;
           return (
             <button
               key={model.id}
               type="button"
               role="option"
               aria-selected={selected}
+              aria-disabled={rowRestricted || undefined}
               className="compact-stella-list-item"
               data-selected={selected || undefined}
+              data-restricted={rowRestricted || undefined}
+              title={
+                rowRestricted && restrictedPlanLabel
+                  ? `Not available on the ${restrictedPlanLabel} plan`
+                  : undefined
+              }
               onClick={() => onSelect(model.id)}
-              disabled={disabled}
+              disabled={disabled || rowRestricted}
             >
               <span className="compact-stella-list-item-text">
                 <span className="compact-stella-list-item-name">
@@ -103,6 +129,24 @@ export function CompactStellaModelList({
           );
         })
       )}
+      {restricted ? (
+        <div className="compact-stella-list-restricted">
+          <span>
+            {restrictedPlanLabel
+              ? `${restrictedPlanLabel} plan uses Stella's recommended model.`
+              : `Your plan uses Stella's recommended model.`}
+          </span>
+          {onUpgrade ? (
+            <button
+              type="button"
+              className="compact-stella-list-restricted-link"
+              onClick={onUpgrade}
+            >
+              Upgrade
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
