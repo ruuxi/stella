@@ -87,3 +87,43 @@
   color: var(--text-weak);
   text-align: center;
 }
+
+.compact-stella-list-item[data-restricted] {
+  opacity: 0.45;
+}
+
+.compact-stella-list-item[data-restricted] .compact-stella-list-item-name,
+.compact-stella-list-item[data-restricted] .compact-stella-list-item-sub {
+  text-decoration: none;
+}
+
+.compact-stella-list-restricted {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  color: var(--text-weak);
+}
+
+.compact-stella-list-restricted-link {
+  appearance: none;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  color: var(--text-strong);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.compact-stella-list-restricted-link:hover,
+.compact-stella-list-restricted-link:focus-visible {
+  opacity: 0.85;
+  outline: none;
+}
