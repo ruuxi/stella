@@ -32,7 +32,6 @@ import {
   getAttachments,
   getChannelEnvelope,
 } from './lib/message-turn-display'
-import type { SelfModAppliedData } from '@/app/chat/streaming/streaming-types'
 import type { AgentResponseTarget } from '@/app/chat/streaming/streaming-types'
 import {
   parseAskQuestionArgs,
@@ -275,7 +274,6 @@ type UseEventRowsOptions = {
    * there is no separate "streaming tail" row to swap in/out at finish.
    */
   streamingText?: string
-  selfModMap?: Record<string, SelfModAppliedData>
 }
 
 type UseEventRowsResult = {
@@ -329,7 +327,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     isStreaming,
     pendingUserMessageId,
     streamingText,
-    selfModMap,
   } = opts
 
   const displayEvents = useMemo(
@@ -465,7 +462,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           developerResourcesEnabled: developerResourcePreviewsEnabled,
         })
         const askQuestionState = askQuestion.payloadByAssistantId.get(event._id)
-        const selfModApplied = selfModMap?.[event._id]
+        const selfModApplied = payload?.selfModApplied
         const row: AssistantRowViewModel = {
           kind: 'assistant',
           id: stableKey,
@@ -544,7 +541,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     pendingUserMessageId,
     responseTargetByAssistantId,
     segmentedToolEvents,
-    selfModMap,
     streamingText,
   ])
 

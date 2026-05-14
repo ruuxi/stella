@@ -138,6 +138,14 @@ export class StoreModService {
     succeeded: boolean;
     /** Conversation that produced these changes; recorded as a commit trailer. */
     conversationId?: string;
+    /**
+     * Engine thread key of the agent that produced the changes
+     * (orchestrator: equals `conversationId`; resumable subagents: the
+     * persisted thread/agent id). Recorded as the `Stella-Thread`
+     * commit trailer so a future revert can route the "user undid"
+     * notice back to the same thread when the orchestrator resumes it.
+     */
+    threadKey?: string;
     commitMessageProvider?: CommitMessageProvider;
     /**
      * Optional rolling-window namer. Called after a successful commit
@@ -173,6 +181,17 @@ export class StoreModService {
     const conversationTrailer = sanitizeConversationTrailer(
       args.conversationId,
     );
+    // Reuses `sanitizeConversationTrailer`'s allowlist. The two
+    // upstream callers pass either (a) `conversationId` (orchestrator
+    // self-mod commits, `orchestrator-launch.ts`) or (b) `agentId`
+    // (resumable subagent commits, `agent-orchestration.ts`). Both
+    // fit the `[A-Za-z0-9._:\-]{1,200}` allowlist today. If a new
+    // caller wires the synthesized `buildRuntimeThreadKey` form
+    // (`${conversationId}::subagent::${agentType}::run:${runId}`) or
+    // anything else outside that allowlist, update the sanitizer in
+    // lockstep or the trailer silently drops and revert-routing falls
+    // back to orchestrator-only.
+    const threadTrailer = sanitizeConversationTrailer(args.threadKey);
     const subject =
       activeRun.applyMode === "author"
         ? await this.deriveCommitSubject({
@@ -186,6 +205,9 @@ export class StoreModService {
     const trailers: Record<string, string> = {};
     if (conversationTrailer) {
       trailers["Stella-Conversation"] = conversationTrailer;
+    }
+    if (threadTrailer) {
+      trailers["Stella-Thread"] = threadTrailer;
     }
     if (activeRun.applyMode !== "author") {
       if (activeRun.packageId) {

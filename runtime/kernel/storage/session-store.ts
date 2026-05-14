@@ -6,6 +6,14 @@ import {
 } from "../runtime-threads.js";
 import type { SqliteDatabase } from "./shared.js";
 import {
+  listPendingOrchestratorReverts as listPendingOrchestratorRevertsImpl,
+  listPendingOriginThreadReverts as listPendingOriginThreadRevertsImpl,
+  markSelfModRevertsOrchestratorConsumed as markOrchestratorConsumedImpl,
+  markSelfModRevertsOriginThreadConsumed as markOriginThreadConsumedImpl,
+  recordSelfModRevert as recordSelfModRevertImpl,
+  type SelfModRevertRecord,
+} from "./self-mod-reverts.js";
+import {
   DEFAULT_CONVERSATION_SETTING_KEY,
   MAX_EVENTS_PER_CONVERSATION,
   type LocalChatAppendEventArgs,
@@ -1011,6 +1019,103 @@ export class SessionStore {
       ...(payload ? { payload } : {}),
       ...(channelEnvelope ? { channelEnvelope } : {}),
     };
+  }
+
+  /**
+   * Shallow-merge a partial payload into an existing local-chat event's
+   * stored payload. Returns the updated record (so callers can fire
+   * `notifyLocalChatUpdated`), or null when the event/payload row is
+   * missing. Used by the worker to attach post-run fields like
+   * `selfModApplied` onto the assistant message after the run finalizes.
+   *
+   * Atomicity: the SELECT, merge, and write all run inside a single
+   * `withTransaction` block so a concurrent writer to the same eventId
+   * can't slip a write between the read and the merge.
+   *
+   * Caveat: the write replaces every `part` row for the message via
+   * `replaceMessageParts`, then re-inserts a single merged payload at
+   * `ord: 0`. Today every chat event only stores its payload at ord 0,
+   * but a future feature adding multi-part chat events would have its
+   * non-ord:0 parts wiped by a subsequent `mergeEventPayload` call.
+   * If that becomes a concern, switch to a part-level merge instead of
+   * full replacement. The transaction below logs a tripwire warning
+   * when it observes more than one existing part row for the target
+   * message so we notice the moment a multi-part event type lands.
+   */
+  mergeEventPayload(args: {
+    conversationId: string;
+    eventId: string;
+    patch: Record<string, unknown>;
+  }): LocalChatEventRecord | null {
+    const conversationId = this.sanitizeConversationId(args.conversationId);
+    const eventId = asTrimmedString(args.eventId);
+    if (!eventId) {
+      return null;
+    }
+    let updatedRecord: LocalChatEventRecord | null = null;
+    this.withTransaction(() => {
+      const existingRow = this.db
+        .prepare(`
+          SELECT
+            message.id AS _id,
+            message.created_at AS timestamp,
+            message.type AS type,
+            message.device_id AS deviceId,
+            message.request_id AS requestId,
+            message.target_device_id AS targetDeviceId,
+            part.data_json AS payloadJson,
+            message.data_json AS channelEnvelopeJson
+          FROM message
+          LEFT JOIN part
+            ON part.message_id = message.id
+           AND part.ord = 0
+          WHERE message.id = ?
+            AND message.session_id = ?
+        `)
+        .get(eventId, conversationId) as LocalChatEventRow | undefined;
+      if (!existingRow) {
+        return;
+      }
+      // Tripwire: see JSDoc caveat. `replaceMessageParts` below is
+      // destructive across all ords for this message id; if we ever
+      // see >1 part row pre-merge it means a multi-part event type
+      // has landed and this method silently dropped sibling parts.
+      const existingPartCount = (
+        this.db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM part WHERE message_id = ?`,
+          )
+          .get(eventId) as { n: number } | undefined
+      )?.n ?? 0;
+      if (existingPartCount > 1) {
+        console.warn(
+          `[session-store] mergeEventPayload destructively replaced ${existingPartCount} parts for event ${eventId} (conversation ${conversationId}); only ord:0 will survive. A multi-part event type now exists — switch this method to a part-level merge.`,
+        );
+      }
+      const existingPayload = parseJsonRecord(existingRow.payloadJson) ?? {};
+      const mergedPayload: Record<string, unknown> = {
+        ...existingPayload,
+        ...args.patch,
+      };
+      const now = Date.now();
+      this.db
+        .prepare(
+          `UPDATE message SET updated_at = ? WHERE id = ? AND session_id = ?`,
+        )
+        .run(now, eventId, conversationId);
+      this.replaceMessageParts(eventId, conversationId, [
+        {
+          type: "payload",
+          data: mergedPayload,
+          createdAt: existingRow.timestamp,
+        },
+      ]);
+      updatedRecord = {
+        ...this.deserializeEventRow(existingRow),
+        payload: mergedPayload,
+      };
+    });
+    return updatedRecord;
   }
 
   getOrCreateDefaultConversationId(): string {
@@ -2070,6 +2175,53 @@ export class SessionStore {
       ON CONFLICT(conversation_id) DO UPDATE SET
         user_turns_since_injection = 1
     `).run(conversationId);
+  }
+
+  /**
+   * Append a row to the self-mod revert ledger. Called from the worker's
+   * `INTERNAL_WORKER_SELF_MOD_REVERT` handler after a successful git
+   * revert; the revert-notice hook drains pending rows on the next
+   * `before_user_message` for the conversation (orchestrator slot) and
+   * for the originating subagent (origin-thread slot) when the
+   * orchestrator resumes it.
+   */
+  recordSelfModRevert(args: {
+    conversationId: string;
+    originThreadKey?: string | null;
+    featureId: string;
+    files: string[];
+    revertedAt?: number;
+  }): SelfModRevertRecord {
+    return recordSelfModRevertImpl(this.db, args);
+  }
+
+  /** Pending reverts for the orchestrator's next user turn, oldest first. */
+  listPendingOrchestratorReverts(
+    conversationId: string,
+  ): SelfModRevertRecord[] {
+    return listPendingOrchestratorRevertsImpl(this.db, conversationId);
+  }
+
+  /**
+   * Pending reverts whose originating thread key matches the given
+   * `threadKey`. Used when a resumable subagent's `before_user_message`
+   * fires — if its threadKey matches, the same subagent that did the
+   * work sees the reminder on resume.
+   */
+  listPendingOriginThreadReverts(
+    originThreadKey: string,
+  ): SelfModRevertRecord[] {
+    return listPendingOriginThreadRevertsImpl(this.db, originThreadKey);
+  }
+
+  /** Mark the orchestrator slot consumed for these revert ids. */
+  markSelfModRevertsOrchestratorConsumed(revertIds: string[]): void {
+    markOrchestratorConsumedImpl(this.db, revertIds);
+  }
+
+  /** Mark the origin-thread slot consumed for these revert ids. */
+  markSelfModRevertsOriginThreadConsumed(revertIds: string[]): void {
+    markOriginThreadConsumedImpl(this.db, revertIds);
   }
 
   /**

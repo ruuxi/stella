@@ -78,6 +78,18 @@ export type StellaHostRunnerOptions = {
       taskDescription: string;
       taskPrompt: string;
       conversationId: string;
+      /**
+       * Engine thread key of the agent that authored this run (for
+       * orchestrator: equals `conversationId`; for resumable subagents:
+       * the persisted `agentId`/`threadId`). Recorded as the
+       * `Stella-Thread` commit trailer so the revert-notice hook can
+       * route the "user undid your change" reminder back to the same
+       * thread when the orchestrator later resumes it via `send_input`.
+       * Optional for backwards compatibility — commits without it can
+       * still be reverted, the notice just routes to the orchestrator
+       * only.
+       */
+      threadKey?: string;
       succeeded: boolean;
       /**
        * Returns a 1-line user-friendly commit subject (≤ 12 words).

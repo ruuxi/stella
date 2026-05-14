@@ -11,10 +11,7 @@ import { useReasoningBatcher } from './use-reasoning-batcher'
 import { useTaskRemovalTimers } from './use-task-removal-timers'
 import { useAgentEventHandler } from './use-agent-event-handler'
 import { useApplyResumeSnapshot } from './use-resume-snapshot'
-import type {
-  AgentResponseTarget,
-  SelfModAppliedData,
-} from './streaming-types'
+import type { AgentResponseTarget } from './streaming-types'
 import type { AttachmentRef } from './chat-types'
 import type { ChatContext } from '@/shared/types/electron'
 import { resolveAgentNotReadyToast } from './agent-stream-errors'
@@ -56,9 +53,6 @@ export function useLocalAgentStream({
   >(null)
   const [streamingResponseTarget, setStreamingResponseTarget] =
     useState<AgentResponseTarget | null>(null)
-  const [selfModMap, setSelfModMap] = useState<
-    Record<string, SelfModAppliedData>
-  >({})
 
   const activeConversationIdRef = useRef<string | null>(activeConversationId)
   const activeRunIdByConversationRef = useRef<Record<string, string | null>>(
@@ -143,7 +137,6 @@ export function useLocalAgentStream({
       resetReasoningText,
       setPendingUserMessageId,
       setStreamingResponseTarget,
-      setSelfModMap,
     },
     timers,
     reasoning,
@@ -301,7 +294,6 @@ export function useLocalAgentStream({
     streamingResponseTarget,
     isStreaming,
     pendingUserMessageId,
-    selfModMap,
     startStream,
     queueStream,
     cancelCurrentStream,

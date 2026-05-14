@@ -1,6 +1,5 @@
 import { cn } from "@/shared/lib/utils";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
-import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
 import { ConversationEvents } from "./ConversationEvents";
@@ -33,7 +32,6 @@ type CompactConversationSurfaceProps = {
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
   optimisticUserMessageIds?: string[];
-  selfModMap?: Record<string, SelfModAppliedData>;
   liveTasks?: TaskItem[];
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
@@ -55,7 +53,6 @@ export function CompactConversationSurface({
   pendingUserMessageId,
   queuedUserMessages,
   optimisticUserMessageIds,
-  selfModMap,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
@@ -85,7 +82,6 @@ export function CompactConversationSurface({
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}
             optimisticUserMessageIds={optimisticUserMessageIds}
-            selfModMap={selfModMap}
             hasOlderEvents={hasOlderEvents}
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}

@@ -14,6 +14,7 @@ import {
   type RuntimeChatPayload,
   type RuntimeOneShotCompletionRequest,
   type RuntimeOneShotCompletionResult,
+  type RuntimeSelfModRevertResult,
   type StorePublishArgs,
   type StoreThreadSendInput,
   type RuntimeLocalAgentRequest,
@@ -49,6 +50,7 @@ import {
   getLastGitFeatureId,
   getGitHead,
   listGitDirtyFiles,
+  listFilesForCommit,
   listRecentGitFeatures,
   revertGitFeature,
 } from "../kernel/self-mod/git.js";
@@ -172,6 +174,21 @@ type WorkerState = {
   runner: RuntimeRunner | null;
   deviceId: string | null;
   selfModHmrController: SelfModHmrController | null;
+  /**
+   * Worker-internal handler that wraps `revertGitFeature` with the
+   * self-mod HMR lifecycle (snapshot pre-revert files, register run,
+   * `dispatchApplyBatch` for the morph cover + reload tiering).
+   * Declared inside `initializeWorker` so it has access to the
+   * closure-scoped `dispatchApplyBatch` + `releaseRuntimeReloadFor`;
+   * stored on `state` so the module-level
+   * `INTERNAL_WORKER_SELF_MOD_REVERT` handler can call it.
+   */
+  revertSelfModWithMorph:
+    | ((args: {
+        featureId?: string;
+        steps?: number;
+      }) => Promise<RuntimeSelfModRevertResult>)
+    | null;
   activeStoreThreadAgentId: string | null;
   activeStoreThreadMessageId: string | null;
   /**
@@ -316,6 +333,7 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.socialSessionService?.stop();
   state.socialSessionService = null;
   state.voiceService = null;
+  state.revertSelfModWithMorph = null;
   // `runner.stop()` now awaits a bounded drain of the background
   // compaction scheduler so SQLite writes complete before we close
   // `state.db`. Without this await, an in-flight `compactThread` could
@@ -351,6 +369,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     runner: null,
     deviceId: null,
     selfModHmrController: null,
+    revertSelfModWithMorph: null,
     activeStoreThreadAgentId: null,
     activeStoreThreadMessageId: null,
     runEventLog: null,
@@ -539,6 +558,30 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }),
     });
     notifyLocalChatUpdated(peer, args.conversationId, event);
+  };
+
+  /**
+   * Patch the persisted assistant message for `userMessageId` with the
+   * self-mod commit metadata produced by the `agent_end` hook. Drives the
+   * inline "Undo changes" button under the assistant row.
+   *
+   * Called from `onEnd` after `persistAssistantMessage` so the merge
+   * targets a row that already exists; if the row hasn't been written yet
+   * (e.g. empty-text completion), the merge silently no-ops.
+   */
+  const attachSelfModToAssistantMessage = (args: {
+    conversationId: string;
+    userMessageId: string;
+    selfModApplied: { featureId: string; files: string[]; batchIndex: number };
+  }): void => {
+    const updated = ensureChatStore().mergeEventPayload({
+      conversationId: args.conversationId,
+      eventId: `assistant-for-${args.userMessageId}`,
+      patch: { selfModApplied: args.selfModApplied },
+    });
+    if (updated) {
+      notifyLocalChatUpdated(peer, args.conversationId, updated);
+    }
   };
 
   const ensureRunner = () => {
@@ -886,6 +929,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           runId,
           succeeded,
           conversationId,
+          threadKey,
           commitMessageProvider,
           featureNamerProvider,
         }) => {
@@ -898,6 +942,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             runId,
             succeeded,
             ...(conversationId ? { conversationId } : {}),
+            ...(threadKey ? { threadKey } : {}),
             ...(commitMessageProvider ? { commitMessageProvider } : {}),
             ...(featureNamerProvider ? { featureNamerProvider } : {}),
           });
@@ -984,6 +1029,164 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       notifyVoiceActionComplete: (payload) => {
         emitVoiceActionCompleted(payload);
       },
+    };
+
+    // Install the morph-cover revert handler. Lives here (inside
+    // initializeWorker) so it captures `dispatchApplyBatch`,
+    // `releaseRuntimeReloadFor`, `selfModRunRootIds`, and
+    // `selfModHmrController` from the surrounding closure; the
+    // module-level `INTERNAL_WORKER_SELF_MOD_REVERT` handler calls it
+    // via `state.revertSelfModWithMorph`.
+    state.revertSelfModWithMorph = async (payload) => {
+      const repoRoot = init.stellaRoot;
+      const syntheticRunId = `self-mod-revert:${crypto.randomUUID()}`;
+      let runRegisteredWithHmr = false;
+      let runtimeReloadPaused = false;
+
+      // Resolve the target commit hash ONCE up front. Both
+      // `listFilesForCommit` (snapshot) and `revertGitFeature` (the
+      // actual revert) fall back to `getLastGitFeatureId` when no
+      // featureId is supplied; resolving here pins both calls to the
+      // same commit in the common case where there IS a last feature
+      // id. Edge case: if `getLastGitFeatureId` returns null (fresh
+      // repo / no Stella commits yet), `resolvedFeatureId` collapses
+      // back to `undefined` and the two callsites resolve independently
+      // — `revertGitFeature` will then throw cleanly with "No commit
+      // found to revert" so we don't risk corruption, but the race
+      // protection only applies once at least one feature commit exists.
+      const resolvedFeatureId =
+        payload.featureId?.trim() ||
+        (await getLastGitFeatureId(repoRoot).catch(() => null)) ||
+        undefined;
+
+      try {
+        selfModRunRootIds.set(syntheticRunId, syntheticRunId);
+        await peer
+          .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, {
+            runId: syntheticRunId,
+          })
+          .then(() => {
+            runtimeReloadPaused = true;
+          })
+          .catch((error) => {
+            console.warn(
+              "[self-mod-revert] Failed to pause host runtime reloads:",
+              (error as Error).message,
+            );
+          });
+        await selfModHmrController.beginRun(syntheticRunId);
+        runRegisteredWithHmr = true;
+
+        // Snapshot pre-revert disk content for every file the revert
+        // will touch. Vite serves the snapshot until apply, then
+        // cross-fades into the reverted (live disk) content under the
+        // morph cover.
+        //
+        // Note: when `steps > 1`, we only snapshot files from the
+        // first reverted commit. Files touched by commits 2..N will
+        // change on disk without a morph cover (Vite's own watcher
+        // picks them up via the no-snapshot path). The current
+        // callsite always passes `steps: 1` so this is dormant; a
+        // future multi-step caller would need to union files across
+        // the whole reverted range.
+        let preRevertFiles: string[] = [];
+        try {
+          preRevertFiles = await listFilesForCommit(
+            repoRoot,
+            resolvedFeatureId ?? null,
+          );
+        } catch {
+          // Best-effort — without it Vite still reacts via its watcher
+          // post-revert, just without a morph cover.
+        }
+        if (preRevertFiles.length > 0) {
+          const absolutePaths = preRevertFiles.map((file) =>
+            path.join(repoRoot, file),
+          );
+          await selfModHmrController.recordWrite(
+            syntheticRunId,
+            absolutePaths,
+          );
+        }
+
+        const result = await revertGitFeature({
+          repoRoot,
+          featureId: resolvedFeatureId,
+          steps: payload.steps,
+        });
+
+        // Ledger the revert so the revert-notice hook can inject on
+        // the next user turn for orchestrator + originating subagent.
+        // Skipped when the commit had no `Stella-Conversation`
+        // trailer — without it, we have no conversation to route to.
+        if (result.conversationId && state.runtimeStore) {
+          try {
+            state.runtimeStore.recordSelfModRevert({
+              conversationId: result.conversationId,
+              originThreadKey: result.originThreadKey ?? null,
+              featureId: result.featureId,
+              files: result.files ?? [],
+            });
+          } catch (error) {
+            console.warn(
+              "[self-mod-revert] failed to record revert notice:",
+              (error as Error).message,
+            );
+          }
+        }
+
+        // Finalize through the shared apply pipeline — same code path
+        // an agent self-mod run takes. Handles HMR vs full reload vs
+        // worker restart based on path-relevance classification of the
+        // files we just snapshotted.
+        const decision = selfModHmrController.finalize(syntheticRunId);
+        runRegisteredWithHmr = false;
+        if (decision.appliedRuns.length === 0) {
+          await selfModHmrController.releaseRuns([syntheticRunId]).catch(
+            (error) => {
+              console.warn(
+                "[self-mod-revert] Failed to release Vite client update pause:",
+                (error as Error).message,
+              );
+            },
+          );
+          if (runtimeReloadPaused) {
+            await releaseRuntimeReloadFor([syntheticRunId]);
+            runtimeReloadPaused = false;
+          }
+          selfModRunRootIds.delete(syntheticRunId);
+        } else {
+          await dispatchApplyBatch(decision);
+          // dispatchApplyBatch owns the apply + runtime-reload release
+          // for `decision.restartRelevantRunIds`. Anything not in that
+          // set still needs its pause released here.
+          if (
+            runtimeReloadPaused &&
+            !decision.restartRelevantRunIds.includes(syntheticRunId)
+          ) {
+            await releaseRuntimeReloadFor([syntheticRunId]);
+            runtimeReloadPaused = false;
+          }
+          if (!decision.restartRelevantRunIds.includes(syntheticRunId)) {
+            selfModRunRootIds.delete(syntheticRunId);
+          }
+        }
+
+        return result;
+      } catch (err) {
+        if (runRegisteredWithHmr) {
+          await selfModHmrController.releaseRuns([syntheticRunId]).catch(
+            () => undefined,
+          );
+        }
+        if (runtimeReloadPaused) {
+          await releaseRuntimeReloadFor([syntheticRunId]).catch(
+            () => undefined,
+          );
+        }
+        selfModRunRootIds.delete(syntheticRunId);
+        throw err;
+      }
     };
 
     const runner = createStellaHostRunner(runnerOptions);
@@ -1538,17 +1741,43 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               typeof ev.finalText === "string" ? ev.finalText : "";
             if (
               (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) ===
-              AGENT_IDS.ORCHESTRATOR &&
-              !persistedAssistantUserMessageIds.has(ev.userMessageId)
+              AGENT_IDS.ORCHESTRATOR
             ) {
-              persistedAssistantUserMessageIds.add(ev.userMessageId);
-              persistAssistantMessage({
-                conversationId: payload.conversationId,
-                text: finalText,
-                userMessageId: ev.userMessageId,
-                timezone: payload.timezone,
-                responseTarget: ev.responseTarget,
-              });
+              if (!persistedAssistantUserMessageIds.has(ev.userMessageId)) {
+                persistedAssistantUserMessageIds.add(ev.userMessageId);
+                persistAssistantMessage({
+                  conversationId: payload.conversationId,
+                  text: finalText,
+                  userMessageId: ev.userMessageId,
+                  timezone: payload.timezone,
+                  responseTarget: ev.responseTarget,
+                });
+              }
+              // When the agent produced a self-mod commit AND a chat
+              // reply, patch `selfModApplied` onto the assistant row
+              // so the inline "Undo changes" affordance appears.
+              // When the agent commits but says nothing, the merge
+              // no-ops (no row to attach to) and the user loses the
+              // inline button for that turn — accepted trade-off
+              // against the alternative of a floating-button-only
+              // empty bubble.
+              //
+              // Asymmetry vs. `persistAssistantMessage` above: that
+              // call is gated by `persistedAssistantUserMessageIds`
+              // (dedupe within a turn), this one is NOT — if `onEnd`
+              // fires multiple times for the same userMessageId
+              // (mid-turn follow-up / hidden orchestrator continuation
+              // that still produces a self-mod), the latest commit
+              // wins and overwrites the earlier `selfModApplied`.
+              // Intentional: the inline Undo button should target the
+              // most recent commit for that turn, not the first one.
+              if (ev.selfModApplied && ev.userMessageId) {
+                attachSelfModToAssistantMessage({
+                  conversationId: payload.conversationId,
+                  userMessageId: ev.userMessageId,
+                  selfModApplied: ev.selfModApplied,
+                });
+              }
             }
             if (isHiddenRun) {
               if (lastVisibleRunId) {
@@ -2797,8 +3026,18 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         throw new Error("Worker has not been initialized.");
       }
       const payload = params as { featureId?: string; steps?: number };
-      return await revertGitFeature({
-        repoRoot: state.init.stellaRoot,
+      if (!state.revertSelfModWithMorph) {
+        // Worker initialized without HMR wiring (test fixtures, e.g.).
+        // Fall back to the raw revert with no morph cover or ledger
+        // — better than refusing the user's undo entirely.
+        const result = await revertGitFeature({
+          repoRoot: state.init.stellaRoot,
+          featureId: payload.featureId,
+          steps: payload.steps,
+        });
+        return result;
+      }
+      return await state.revertSelfModWithMorph({
         featureId: payload.featureId,
         steps: payload.steps,
       });

@@ -39,6 +39,29 @@ export type GitRevertResult = {
   featureId: string;
   revertedCommitHashes: string[];
   message: string;
+  /**
+   * Conversation id parsed from the reverted commit's
+   * `Stella-Conversation` trailer. Used by the worker to insert a
+   * `self_mod_reverts` row so the revert-notice hook can inform the
+   * orchestrator on the next user turn. Null when the commit predates
+   * the trailer or had no conversation attribution.
+   */
+  conversationId?: string | null;
+  /**
+   * Engine thread key of the agent that authored the reverted commit
+   * (`Stella-Thread` trailer). Used by the revert-notice hook to also
+   * inject the reminder if the orchestrator later resumes that same
+   * thread via `send_input`. Null when the commit predates the trailer
+   * — falls back to orchestrator-only routing in that case.
+   *
+   * Note: only the FIRST reverted commit's trailer is sampled when
+   * `steps > 1`. The current renderer callsite always passes `steps: 1`,
+   * so this is fine in practice; future multi-step callers would need
+   * to union per-thread routing across the range.
+   */
+  originThreadKey?: string | null;
+  /** Files touched by the reverted commit(s). Used for the hidden reminder text. */
+  files?: string[];
 };
 
 export type SelfModAppliedPayload = {
@@ -383,6 +406,7 @@ export const getChangedFilesForCommits = async (
 const TRAILER_LINE_REGEX = /^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$/;
 const STELLA_INTERNAL_TRAILERS = new Set([
   "Stella-Conversation",
+  "Stella-Thread",
   "Stella-Package-Id",
   "Stella-Release-Number",
   "Stella-Task",
@@ -393,6 +417,17 @@ const STELLA_INTERNAL_TRAILERS = new Set([
 
 export type StellaCommitTrailers = {
   conversationId?: string;
+  /**
+   * Engine thread key of the agent that authored this commit.
+   * For orchestrator-authored commits this equals `conversationId`;
+   * for subagent-authored commits this is the subagent's persisted
+   * `agentId`/`threadId`. Used by the revert-notice hook to route
+   * the "user undid your change" reminder back to the same thread
+   * when the orchestrator later resumes it via `send_input`.
+   * Optional — commits authored before this trailer existed have
+   * no thread-level routing and fall back to conversation-only.
+   */
+  threadKey?: string;
   packageId?: string;
   featureId?: string;
   featureTitle?: string;
@@ -418,6 +453,8 @@ export const parseStellaCommitTrailers = (
     if (!trimmedValue) continue;
     if (key === "Stella-Conversation") {
       trailers.conversationId = trimmedValue;
+    } else if (key === "Stella-Thread") {
+      trailers.threadKey = trimmedValue;
     } else if (key === "Stella-Package-Id") {
       trailers.packageId = trimmedValue;
     } else if (key === "Stella-Feature-Id") {
@@ -877,6 +914,12 @@ export const getLastGitFeatureId = async (
  * feature-tag scheme gone, `featureId` is now interpreted as a single
  * commit hash and `steps` controls how far back from there to revert
  * (defaults to 1). Passing no `featureId` reverts from HEAD.
+ *
+ * NOTE: `steps > 1` currently throws — the returned
+ * `originThreadKey`/`conversationId` are sampled from the first
+ * reverted commit only and would mis-route the revert-notice hook
+ * across thread boundaries. Lift this guard once a caller wires
+ * per-thread fan-out across the reverted range.
  */
 export const revertGitFeature = async (args: {
   repoRoot: string;
@@ -905,6 +948,19 @@ export const revertGitFeature = async (args: {
   }
 
   const steps = Math.max(1, Math.floor(args.steps ?? 1));
+  // Multi-step reverts collapse cross-thread attribution: the
+  // `originThreadKey`/`conversationId` returned below are sampled from
+  // the FIRST reverted commit only, so the revert-notice hook would
+  // mis-route the hidden reminder when reverted commits span multiple
+  // agent threads. The only live caller (the inline "Undo changes"
+  // affordance) always passes `steps: 1`, so explicitly refuse anything
+  // larger until a multi-step caller lands with its own per-thread
+  // routing strategy. Safer than relying on prose.
+  if (steps > 1) {
+    throw new Error(
+      `revertGitFeature called with steps=${steps}; multi-step reverts collapse Stella-Thread / Stella-Conversation trailer attribution to the first commit and would mis-route the revert-notice reminder. Reduce to steps=1 or extend the caller to fan attribution across the range.`,
+    );
+  }
   let commitHashes: string[] = [];
   try {
     const output = await runGit(repoRoot, [
@@ -928,6 +984,44 @@ export const revertGitFeature = async (args: {
     throw new Error(`No commits found for "${startCommit}".`);
   }
 
+  // Read trailer + touched files BEFORE the revert so we still have a
+  // clean handle on the original commit's metadata. After `git revert`,
+  // a fresh "Revert ..." commit lands at HEAD with its own trailers,
+  // so post-revert lookups would attribute the change to the wrong
+  // conversation.
+  const sourceCommit = commitHashes[0] ?? startCommit;
+  let conversationId: string | null = null;
+  let originThreadKey: string | null = null;
+  let files: string[] = [];
+  try {
+    const body = await runGit(repoRoot, [
+      "show",
+      "-s",
+      "--format=%B",
+      sourceCommit,
+    ]);
+    const parsed = parseStellaCommitTrailers(body);
+    conversationId = parsed.conversationId ?? null;
+    originThreadKey = parsed.threadKey ?? null;
+  } catch {
+    // Trailer parsing must not block the revert itself.
+  }
+  try {
+    const nameOnly = await runGit(repoRoot, [
+      "show",
+      "--name-only",
+      "--no-renames",
+      "--pretty=format:",
+      sourceCommit,
+    ]);
+    files = nameOnly
+      .split("\n")
+      .map((line) => normalizeGitPath(line.trim()))
+      .filter(Boolean);
+  } catch {
+    // File enumeration is best-effort; reminder text just omits the list.
+  }
+
   const reverted = await revertGitCommits({
     repoRoot,
     commitHashes,
@@ -940,7 +1034,40 @@ export const revertGitFeature = async (args: {
       reverted.length === 1
         ? `Reverted 1 commit (${reverted[0]?.slice(0, 7)}).`
         : `Reverted ${reverted.length} commits.`,
+    conversationId,
+    originThreadKey,
+    files,
   };
+};
+
+/**
+ * Repo-relative file paths touched by a specific commit (defaults to
+ * the latest Stella self-mod commit when no hash is given). Used by
+ * the revert handler to snapshot pre-revert disk content into the
+ * self-mod HMR controller so the renderer cross-fades cleanly rather
+ * than reacting to a naked file change.
+ */
+export const listFilesForCommit = async (
+  repoRoot: string,
+  commitHash: string | null,
+): Promise<string[]> => {
+  await assertGitRepository(repoRoot);
+  const target =
+    commitHash?.trim() || (await getLastGitFeatureId(repoRoot)) || "";
+  if (!target) {
+    return [];
+  }
+  const output = await runGit(repoRoot, [
+    "show",
+    "--name-only",
+    "--no-renames",
+    "--pretty=format:",
+    target,
+  ]);
+  return output
+    .split("\n")
+    .map((line) => normalizeGitPath(line.trim()))
+    .filter(Boolean);
 };
 
 export const listGitDirtyFiles = async (repoRoot: string): Promise<string[]> => {

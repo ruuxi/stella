@@ -27,7 +27,6 @@ import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCar
 import { GrowIn } from "@/app/chat/GrowIn";
 import { useEventRows } from "./use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
-import type { SelfModAppliedData } from "@/app/chat/streaming/streaming-types";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 import {
   acknowledgeGoogleWorkspaceAuthRequired,
@@ -45,7 +44,6 @@ type Props = {
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
   optimisticUserMessageIds?: string[];
-  selfModMap?: Record<string, SelfModAppliedData>;
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -96,7 +94,6 @@ export const ConversationEvents = memo(function ConversationEvents({
   pendingUserMessageId,
   queuedUserMessages,
   optimisticUserMessageIds,
-  selfModMap,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
@@ -124,7 +121,6 @@ export const ConversationEvents = memo(function ConversationEvents({
     isStreaming,
     pendingUserMessageId,
     streamingText,
-    selfModMap,
   });
 
   const justSentCandidates = useMemo(() => {

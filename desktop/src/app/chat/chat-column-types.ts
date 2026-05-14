@@ -3,10 +3,7 @@ import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from '@le
 import type { TaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
 import type { QueuedUserMessage } from '@/app/chat/hooks/use-streaming-chat'
 import type { EventRecord, TaskItem } from '@/app/chat/lib/event-transforms'
-import type {
-  AgentResponseTarget,
-  SelfModAppliedData,
-} from '@/app/chat/streaming/streaming-types'
+import type { AgentResponseTarget } from '@/app/chat/streaming/streaming-types'
 import type { ChatContext } from '@/shared/types/electron'
 
 type ChatColumnThumbState = {
@@ -26,7 +23,6 @@ export type ChatColumnConversation = {
     pendingUserMessageId: string | null
     queuedUserMessages: QueuedUserMessage[]
     optimisticUserMessageIds: string[]
-    selfModMap: Record<string, SelfModAppliedData>
     liveTasks?: TaskItem[]
     taskProgressSummaries: TaskProgressSummaries
   }

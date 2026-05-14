@@ -10,6 +10,7 @@ import { createHomeSuggestionsRefreshHook } from "./hooks/home-suggestions-refre
 import { createMemoryInjectionHook } from "./hooks/memory-injection.hook.js";
 import { createMemoryReviewHook } from "./hooks/memory-review.hook.js";
 import { createPersonalityHook } from "./hooks/personality.hook.js";
+import { createRevertNoticeHook } from "./hooks/revert-notice.hook.js";
 import { createSelfModHooks } from "./hooks/self-mod.hook.js";
 import { createStaleUserReminderHook } from "./hooks/stale-user-reminder.hook.js";
 import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record.hook.js";
@@ -65,6 +66,11 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
 
   register(createStaleUserReminderHook());
   register(createDynamicMemoryReminderHook());
+  // Revert-notice: one hidden `<system_reminder>` per pending self-mod
+  // revert, drained on the next user turn for the affected conversation.
+  // Runs alongside the other before_user_message reminders since it
+  // costs nothing when no reverts are pending.
+  register(createRevertNoticeHook({ store: services.store }));
   // Keep memory injection after reminder hooks: reminders prepend near the
   // top, while the memory bundle appends close to the user's message.
   register(
