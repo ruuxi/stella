@@ -129,6 +129,21 @@
   gap: 8px;
 }
 
+/* Dictation row — only used when starting dictation with text already in the
+ * input. The recording bar sits in its own row below the toolbar so the
+ * user's typed message stays visible. */
+.composer-dictation-row {
+  display: none;
+}
+
+.composer-form.expanded .composer-dictation-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 8px;
+  border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+}
+
 .composer-stop {
   width: 30px;
   height: 30px;
