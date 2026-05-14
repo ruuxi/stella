@@ -914,6 +914,7 @@ export const createAgentOrchestration = (
                 taskDescription,
                 taskPrompt,
                 conversationId,
+                ...(agentId ? { threadKey: agentId } : {}),
                 succeeded: true,
                 commitMessageProvider,
                 featureNamerProvider,

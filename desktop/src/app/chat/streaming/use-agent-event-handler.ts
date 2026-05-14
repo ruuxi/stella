@@ -24,7 +24,6 @@ import { resolveStellaProviderErrorToast } from './stella-provider-error-toast'
 import type {
   AgentResponseTarget,
   AgentStreamEvent,
-  SelfModAppliedData,
 } from './streaming-types'
 
 type ReasoningQueueEntry = {
@@ -54,9 +53,6 @@ type UseAgentEventHandlerOptions = {
     setPendingUserMessageId: Dispatch<React.SetStateAction<string | null>>
     setStreamingResponseTarget: Dispatch<
       React.SetStateAction<AgentResponseTarget | null>
-    >
-    setSelfModMap: Dispatch<
-      React.SetStateAction<Record<string, SelfModAppliedData>>
     >
   }
   timers: {
@@ -95,7 +91,6 @@ export function useAgentEventHandler({
     resetReasoningText,
     setPendingUserMessageId,
     setStreamingResponseTarget,
-    setSelfModMap,
   } = streaming
   const { scheduleTaskRemoval, clearScheduledTaskRemoval } = timers
   const {
@@ -168,12 +163,11 @@ export function useAgentEventHandler({
           setPendingUserMessageId(null)
           setStreamingResponseTarget(null)
         }
-        if (event.selfModApplied && event.userMessageId) {
-          setSelfModMap((previous) => ({
-            ...previous,
-            [event.userMessageId!]: event.selfModApplied!,
-          }))
-        }
+        // `selfModApplied` is patched onto the persisted assistant
+        // message payload by the worker (`attachSelfModToAssistantMessage`
+        // in runtime/worker/server.ts → onEnd). The renderer projects it
+        // off the chat row in `use-event-rows.ts`, so we no longer mirror
+        // it in renderer-local state.
       }
 
       switch (event.type) {
@@ -396,7 +390,6 @@ export function useAgentEventHandler({
       resetStreamingText,
       scheduleTaskRemoval,
       setPendingUserMessageId,
-      setSelfModMap,
       setStreamingResponseTarget,
       terminalRunIdsRef,
       terminalTaskKeysRef,

@@ -287,6 +287,59 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     );
   `);
 
+  // Wipe any older shape of this table before recreating it. The first
+  // iteration of the revert ledger used a single `consumed_at` watermark;
+  // the current schema replaced it with separate orchestrator vs
+  // origin-thread consumption slots plus `origin_thread_key`. No
+  // production data exists yet, so a hard-cut drop here is morally
+  // equivalent to redefining the table — per the workspace rule against
+  // migrations, this stays a one-line drop rather than ALTER TABLE.
+  db.exec("DROP TABLE IF EXISTS self_mod_reverts;");
+
+  // Ledger of self-mod reverts the user has triggered from the inline
+  // "Undo changes" affordance. The revert-notice hook
+  // (`runtime/extensions/stella-runtime/hooks/revert-notice.hook.ts`)
+  // reads unconsumed rows on `before_user_message`, injects a short
+  // hidden system reminder, and flips the appropriate `consumed_by_*`
+  // slot so the reminder fires exactly once per agent.
+  //
+  // Two-slot consumption ladder:
+  //   - `consumed_by_orchestrator`: orchestrator's turn slot. Drained
+  //     whenever the orchestrator builds a user-turn prompt for this
+  //     conversation (`payload.agentType === orchestrator`).
+  //   - `consumed_by_origin_thread`: drained when the SPECIFIC agent
+  //     that authored the reverted commit (matched by `Stella-Thread`
+  //     commit trailer == `payload.threadKey`) builds a user-turn
+  //     prompt. Resumable subagents have stable threadKeys
+  //     (`buildRuntimeThreadKey` returns the persisted thread id), so
+  //     the same general agent the orchestrator later resumes via
+  //     `send_input` picks up the notice.
+  //
+  // `origin_thread_key` is optional: commits authored before the
+  // `Stella-Thread` trailer existed (or where threadKey wasn't
+  // available at finalize time) get NULL here and rely on
+  // orchestrator-only routing.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS self_mod_reverts (
+      revert_id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      origin_thread_key TEXT,
+      feature_id TEXT NOT NULL,
+      files_json TEXT NOT NULL,
+      reverted_at INTEGER NOT NULL,
+      consumed_by_orchestrator INTEGER NOT NULL DEFAULT 0,
+      consumed_by_origin_thread INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_mod_reverts_pending_orchestrator
+    ON self_mod_reverts(conversation_id, consumed_by_orchestrator, reverted_at);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_mod_reverts_pending_origin_thread
+    ON self_mod_reverts(origin_thread_key, consumed_by_origin_thread, reverted_at);
+  `);
+
   // One row per installed Store add-on. The blueprint-driven install
   // flow runs a general agent that implements the blueprint; we capture
   // the self-mod commit hashes here so uninstall can revert installs

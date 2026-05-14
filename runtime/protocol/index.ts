@@ -478,6 +478,12 @@ export type RuntimeSelfModRevertResult = {
   featureId: string;
   revertedCommitHashes: string[];
   message: string;
+  /** Conversation id parsed from the reverted commit's `Stella-Conversation` trailer (null when absent). */
+  conversationId?: string | null;
+  /** Originating agent thread key parsed from the reverted commit's `Stella-Thread` trailer (null when absent). Used by the revert-notice hook to fan the hidden reminder to the specific resumable subagent that authored the commit. */
+  originThreadKey?: string | null;
+  /** Files touched by the reverted commit(s); used by the revert-notice hook for the hidden reminder. */
+  files?: string[];
 };
 
 export type RuntimeCrashRecoveryStatus =

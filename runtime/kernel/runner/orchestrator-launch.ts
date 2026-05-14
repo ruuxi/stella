@@ -556,6 +556,11 @@ export const launchPreparedOrchestratorRun = (args: {
             taskDescription: "Install Stella update",
             taskPrompt: prepared.userPrompt,
             conversationId: prepared.conversationId,
+            // Orchestrator's threadKey is the conversationId itself
+            // (`resolveOrchestratorThreadKey`). Recorded as the
+            // `Stella-Thread` trailer so a future revert routes the
+            // notice back to the orchestrator session.
+            threadKey: prepared.conversationId,
             succeeded: true,
           }),
         );
