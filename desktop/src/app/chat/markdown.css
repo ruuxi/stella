@@ -20,19 +20,30 @@
   margin-bottom: 0;
 }
 
-/* Headings: Same size, distinguished by color and spacing */
+/* Headings: a compact scale that still reads as hierarchy against 14px body. */
 .markdown h1,
 .markdown h2,
 .markdown h3,
 .markdown h4,
 .markdown h5,
 .markdown h6 {
-  font-size: 14px;
   color: var(--text-strong, var(--foreground));
-  font-weight: 500;
+  font-weight: 600;
   margin-top: 1.5rem;
   margin-bottom: 0.5rem;
-  line-height: 1.5;
+  line-height: 1.3;
+}
+
+.markdown h1 { font-size: 22px; }
+.markdown h2 { font-size: 19px; }
+.markdown h3 { font-size: 17px; }
+.markdown h4 { font-size: 15px; }
+.markdown h5,
+.markdown h6 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-weak, var(--muted-foreground));
 }
 
 /* Emphasis & Strong */
@@ -209,26 +220,35 @@
   color: var(--success, #22c55e);
 }
 
-/* Tables */
-.markdown table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
+/*
+ * Tables — Streamdown owns the structural styling (row dividers via
+ * `divide-y divide-border`, cell padding `px-4 py-2`, semibold header,
+ * a `bg-sidebar` outer wrapper with `bg-background` inner). We only
+ * undo the double-frame (since `--sidebar` aliases `--background` in
+ * our themes) and let cell content wrap so narrow chat columns don't
+ * force horizontal scroll.
+ */
+.markdown [data-streamdown="table-wrapper"] {
+  /* Outer card collapses to invisible — inner border already frames the table. */
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
+}
+
+.markdown [data-streamdown="table"] {
   font-size: 14px;
 }
 
-.markdown th,
-.markdown td {
-  border-bottom: 1px solid var(--border-weak, var(--border));
-  padding: 0.5rem;
-  text-align: left;
+.markdown [data-streamdown="table-header-cell"],
+.markdown [data-streamdown="table-cell"] {
+  /* `whitespace-nowrap` on <th> in narrow surfaces makes the chat scroll
+   * sideways for any table with multi-word headers — wrap instead. */
+  white-space: normal;
   vertical-align: top;
 }
 
-.markdown th {
+.markdown [data-streamdown="table-header-cell"] {
   color: var(--text-strong, var(--foreground));
-  font-weight: 500;
-  border-bottom: 1px solid var(--border-base, var(--border));
 }
 
 /* Images */

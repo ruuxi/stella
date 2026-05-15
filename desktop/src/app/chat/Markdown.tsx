@@ -1,5 +1,5 @@
 import type { CSSProperties, ImgHTMLAttributes } from "react";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Streamdown } from "streamdown";
 import { cn } from "@/shared/lib/utils";
 import { useActiveEmojiPack } from "./emoji-sprites/active-emoji-pack";
@@ -25,6 +25,32 @@ type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
 
 const REMARK_PLUGINS = [remarkEmojiSprites];
 const EMPTY_REMARK_PLUGINS: [] = [];
+
+/**
+ * GFM tables strictly require each row on its own line, but models
+ * occasionally emit a table inline (header + `|---|---|` separator +
+ * body rows all on one line). Detect that exact shape and re-break it
+ * so Streamdown's GFM parser can render an actual table. Idempotent —
+ * a correctly-line-broken table is untouched because the separator
+ * already sits on its own line and the leading anchor won't match.
+ */
+const INLINE_GFM_TABLE_RE =
+  /(\|[^\n|]+(?:\|[^\n|]+)+\|)[ \t]+(\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|)((?:[ \t]+\|[^\n|]+(?:\|[^\n|]+)+\|)+)/g;
+
+const normalizeInlineGfmTables = (text: string): string => {
+  if (!text.includes("|---") && !text.includes("| ---")) return text;
+  return text.replace(
+    INLINE_GFM_TABLE_RE,
+    (_match, header: string, separator: string, body: string) => {
+      const rows = body
+        .trim()
+        .split(/[ \t]+(?=\|)/g)
+        .map((row) => row.trim())
+        .filter(Boolean);
+      return `\n\n${header}\n${separator}\n${rows.join("\n")}\n`;
+    },
+  );
+};
 
 const areMarkdownPropsEqual = (
   prev: MarkdownProps,
@@ -86,6 +112,7 @@ export const Markdown = memo(function Markdown({
         ]),
       ) as CSSProperties)
     : undefined;
+  const normalizedText = useMemo(() => normalizeInlineGfmTables(text), [text]);
   return (
     <div style={emojiVars}>
       <Streamdown
@@ -96,7 +123,7 @@ export const Markdown = memo(function Markdown({
         }
         components={COMPONENTS}
       >
-        {text}
+        {normalizedText}
       </Streamdown>
     </div>
   );
