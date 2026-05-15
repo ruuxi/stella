@@ -1,6 +1,6 @@
 import type { CSSProperties, ImgHTMLAttributes } from "react";
-import { memo, useMemo } from "react";
-import { Streamdown } from "streamdown";
+import { memo } from "react";
+import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import { cn } from "@/shared/lib/utils";
 import { useActiveEmojiPack } from "./emoji-sprites/active-emoji-pack";
 import { remarkEmojiSprites } from "./emoji-sprites/remark-emoji-sprites";
@@ -23,34 +23,15 @@ type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
   node?: unknown;
 };
 
-const REMARK_PLUGINS = [remarkEmojiSprites];
-const EMPTY_REMARK_PLUGINS: [] = [];
-
-/**
- * GFM tables strictly require each row on its own line, but models
- * occasionally emit a table inline (header + `|---|---|` separator +
- * body rows all on one line). Detect that exact shape and re-break it
- * so Streamdown's GFM parser can render an actual table. Idempotent —
- * a correctly-line-broken table is untouched because the separator
- * already sits on its own line and the leading anchor won't match.
+/*
+ * Streamdown's `remarkPlugins` prop *replaces* its defaults (which
+ * include `remark-gfm` for tables/strikethrough/task lists), so we
+ * have to spread its defaults back in alongside our additions.
+ * `defaultRemarkPlugins` is exported as a `Record<string, Pluggable>`
+ * map; the prop wants an array, so unwrap with `Object.values`.
  */
-const INLINE_GFM_TABLE_RE =
-  /(\|[^\n|]+(?:\|[^\n|]+)+\|)[ \t]+(\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|)((?:[ \t]+\|[^\n|]+(?:\|[^\n|]+)+\|)+)/g;
-
-const normalizeInlineGfmTables = (text: string): string => {
-  if (!text.includes("|---") && !text.includes("| ---")) return text;
-  return text.replace(
-    INLINE_GFM_TABLE_RE,
-    (_match, header: string, separator: string, body: string) => {
-      const rows = body
-        .trim()
-        .split(/[ \t]+(?=\|)/g)
-        .map((row) => row.trim())
-        .filter(Boolean);
-      return `\n\n${header}\n${separator}\n${rows.join("\n")}\n`;
-    },
-  );
-};
+const DEFAULT_REMARK_PLUGINS = Object.values(defaultRemarkPlugins);
+const REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS, remarkEmojiSprites];
 
 const areMarkdownPropsEqual = (
   prev: MarkdownProps,
@@ -112,18 +93,19 @@ export const Markdown = memo(function Markdown({
         ]),
       ) as CSSProperties)
     : undefined;
-  const normalizedText = useMemo(() => normalizeInlineGfmTables(text), [text]);
   return (
     <div style={emojiVars}>
       <Streamdown
         isAnimating={isAnimating}
         className={cn("markdown", className)}
         remarkPlugins={
-          activeEmojiPack && emojiGrid ? REMARK_PLUGINS : EMPTY_REMARK_PLUGINS
+          activeEmojiPack && emojiGrid
+            ? REMARK_PLUGINS
+            : DEFAULT_REMARK_PLUGINS
         }
         components={COMPONENTS}
       >
-        {normalizedText}
+        {text}
       </Streamdown>
     </div>
   );
