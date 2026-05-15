@@ -105,6 +105,21 @@ type TransientReloadState = {
 
 const RELOAD_RETRY_RESET_MS = 5_000
 
+/**
+ * Additional grace period after Electron's `'unresponsive'` event fires
+ * before we give up and force-load the recovery page. Electron's
+ * `'unresponsive'` already has Chromium's hang-monitor delay baked in
+ * (~30s of ignored input event pings), so this timer is *additional*
+ * slack on top of that — total wall-clock freeze before recovery is
+ * roughly hang-monitor + this value. Heavy work in Stella runs in the
+ * runtime worker / backend / WebContentsViews, not the renderer's JS
+ * main thread, so a renderer that's still frozen this far past the
+ * hang-monitor threshold is genuinely stuck (infinite render loop,
+ * runaway sync work, pathological compute) and the user deserves an
+ * escape hatch instead of a beachball.
+ */
+const UNRESPONSIVE_RECOVERY_THRESHOLD_MS = 10_000
+
 export class WindowManager {
   private readonly fullWindowController: FullWindowController
   private readonly miniWindowController: MiniWindowController
@@ -119,6 +134,10 @@ export class WindowManager {
   private readonly transientReloadStateByMode = new Map<
     ShellWindowMode,
     TransientReloadState
+  >()
+  private readonly unresponsiveTimerByMode = new Map<
+    ShellWindowMode,
+    ReturnType<typeof setTimeout>
   >()
 
   constructor(private readonly options: WindowManagerOptions) {
@@ -141,6 +160,7 @@ export class WindowManager {
       },
       onRenderProcessGone: (details) => {
         console.error('Renderer process gone:', details.reason)
+        this.cancelUnresponsiveWatchdog('full')
         this.fullWindowController.loadRecoveryPage()
       },
       onDidFailLoad: (details) => {
@@ -158,8 +178,17 @@ export class WindowManager {
         )
         this.fullWindowController.loadRecoveryPage()
       },
+      onUnresponsive: () => {
+        this.armUnresponsiveWatchdog('full', () => {
+          this.fullWindowController.loadRecoveryPage()
+        })
+      },
+      onResponsive: () => {
+        this.cancelUnresponsiveWatchdog('full')
+      },
       onClosed: () => {
         this.cancelTransientReload('full')
+        this.cancelUnresponsiveWatchdog('full')
         this.syncLastActiveWindowMode()
       },
     })
@@ -176,6 +205,7 @@ export class WindowManager {
       },
       onRenderProcessGone: (details) => {
         console.error('Mini renderer process gone:', details.reason)
+        this.cancelUnresponsiveWatchdog('mini')
         this.miniWindowController.loadRecoveryPage()
       },
       onDidFailLoad: (details) => {
@@ -193,8 +223,17 @@ export class WindowManager {
         )
         this.miniWindowController.loadRecoveryPage()
       },
+      onUnresponsive: () => {
+        this.armUnresponsiveWatchdog('mini', () => {
+          this.miniWindowController.loadRecoveryPage()
+        })
+      },
+      onResponsive: () => {
+        this.cancelUnresponsiveWatchdog('mini')
+      },
       onClosed: () => {
         this.cancelTransientReload('mini')
+        this.cancelUnresponsiveWatchdog('mini')
         this.cancelMiniIdleDestroy()
         this.syncLastActiveWindowMode()
       },
@@ -292,6 +331,38 @@ export class WindowManager {
       clearTimeout(state.scheduledTimer)
     }
     this.transientReloadStateByMode.delete(mode)
+  }
+
+  /**
+   * Starts the unresponsive watchdog for a shell window. If the renderer
+   * doesn't emit `'responsive'` (or get closed) before the threshold
+   * elapses, `forceRecover` runs and the window is force-navigated to
+   * the recovery surface. A second `'unresponsive'` while the timer is
+   * already armed is a no-op so we don't shorten the window.
+   */
+  private armUnresponsiveWatchdog(
+    mode: ShellWindowMode,
+    forceRecover: () => void,
+  ) {
+    if (this.unresponsiveTimerByMode.has(mode)) return
+    console.warn(
+      `[unresponsive] ${mode} renderer stopped responding; recovering in ${UNRESPONSIVE_RECOVERY_THRESHOLD_MS}ms if it doesn't recover`,
+    )
+    const timer = setTimeout(() => {
+      this.unresponsiveTimerByMode.delete(mode)
+      console.error(
+        `[unresponsive] ${mode} renderer still unresponsive after ${UNRESPONSIVE_RECOVERY_THRESHOLD_MS}ms; forcing recovery surface`,
+      )
+      forceRecover()
+    }, UNRESPONSIVE_RECOVERY_THRESHOLD_MS)
+    this.unresponsiveTimerByMode.set(mode, timer)
+  }
+
+  private cancelUnresponsiveWatchdog(mode: ShellWindowMode) {
+    const timer = this.unresponsiveTimerByMode.get(mode)
+    if (!timer) return
+    clearTimeout(timer)
+    this.unresponsiveTimerByMode.delete(mode)
   }
 
   createFullWindow() {

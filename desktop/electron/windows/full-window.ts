@@ -15,6 +15,8 @@ type FullWindowControllerOptions = {
   onDidFinishLoad?: () => void
   onRenderProcessGone?: (details: RenderProcessGoneDetails, window: BrowserWindow) => void
   onDidFailLoad?: (details: ShellWindowDidFailLoadDetails, window: BrowserWindow) => void
+  onUnresponsive?: (window: BrowserWindow) => void
+  onResponsive?: (window: BrowserWindow) => void
   onClosed?: () => void
 }
 

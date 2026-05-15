@@ -26,6 +26,15 @@ type ShellWindowFactoryOptions = {
     details: ShellWindowDidFailLoadDetails,
     window: BrowserWindow,
   ) => void
+  /**
+   * Fires when the renderer stops responding to input events (frozen JS
+   * main thread, infinite render loop, runaway sync work, devtools paused
+   * on a breakpoint). Electron emits this on `BrowserWindow`, not on
+   * `webContents`, and pairs it with `'responsive'` when the renderer
+   * recovers on its own.
+   */
+  onUnresponsive?: (window: BrowserWindow) => void
+  onResponsive?: (window: BrowserWindow) => void
   onClosed?: (window: BrowserWindow) => void
 }
 
@@ -103,6 +112,14 @@ export const createShellWindow = (options: ShellWindowFactoryOptions) => {
       )
     },
   )
+
+  window.on('unresponsive', () => {
+    options.onUnresponsive?.(window)
+  })
+
+  window.on('responsive', () => {
+    options.onResponsive?.(window)
+  })
 
   window.on('closed', () => {
     options.onClosed?.(window)
