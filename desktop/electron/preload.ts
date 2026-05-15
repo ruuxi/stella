@@ -78,6 +78,9 @@ import {
   IPC_PREFERENCES_GET_WAKE_WORD,
   IPC_PREFERENCES_SET_WAKE_WORD,
   IPC_SHELL_SAVE_FILE_AS,
+  IPC_SHELL_LIST_OPENERS,
+  IPC_SHELL_OPEN_WITH,
+  IPC_SHELL_OPEN_PATH,
   IPC_SYSTEM_OPEN_FDA,
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
@@ -923,6 +926,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ok: boolean;
         path?: string;
         canceled?: boolean;
+        error?: string;
+      }>,
+    listExternalOpeners: (filePath: string) =>
+      ipcRenderer.invoke(IPC_SHELL_LIST_OPENERS, { filePath }) as Promise<{
+        openers: Array<{
+          id: string;
+          label: string;
+          kind: "app" | "default" | "reveal";
+        }>;
+      }>,
+    openWithExternal: (filePath: string, openerId: string) =>
+      ipcRenderer.invoke(IPC_SHELL_OPEN_WITH, {
+        filePath,
+        openerId,
+      }) as Promise<{ ok: boolean; error?: string }>,
+    openPath: (filePath: string) =>
+      ipcRenderer.invoke(IPC_SHELL_OPEN_PATH, { filePath }) as Promise<{
+        ok: boolean;
         error?: string;
       }>,
     shellKillByPort: (port: number) =>

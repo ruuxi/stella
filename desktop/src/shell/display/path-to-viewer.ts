@@ -12,6 +12,7 @@ import type {
   DisplayFileArtifactKind,
   DisplayPayload,
 } from "@/shared/contracts/display-payload";
+import { DEVELOPER_EXTS } from "@/shared/contracts/external-openers";
 
 const IMAGE_EXTS = new Set([
   "png",
@@ -39,39 +40,7 @@ const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "m4v"]);
 const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "m4a", "flac"]);
 const MODEL3D_EXTS = new Set(["glb", "gltf", "obj", "stl"]);
 const MARKDOWN_EXTS = new Set(["md", "mdx"]);
-const DEVELOPER_RESOURCE_EXTS = new Set([
-  "c",
-  "cc",
-  "cpp",
-  "cs",
-  "css",
-  "go",
-  "h",
-  "hpp",
-  "html",
-  "java",
-  "js",
-  "jsx",
-  "json",
-  "kt",
-  "mjs",
-  "php",
-  "py",
-  "rb",
-  "rs",
-  "scss",
-  "sh",
-  "sql",
-  "svelte",
-  "swift",
-  "toml",
-  "ts",
-  "tsx",
-  "vue",
-  "xml",
-  "yaml",
-  "yml",
-]);
+const DEVELOPER_RESOURCE_EXTS = new Set(DEVELOPER_EXTS);
 
 /**
  * Extensions whose mere appearance in a turn's edited-paths list should

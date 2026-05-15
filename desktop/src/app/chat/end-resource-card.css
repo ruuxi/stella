@@ -1,9 +1,9 @@
 .end-resource-card {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin-top: 10px;
-  padding: 10px 14px 10px 12px;
+  padding: 6px 8px 6px 12px;
   min-height: 52px;
   font-family: inherit;
   font-size: 13px;
@@ -14,13 +14,11 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   color: var(--text-base);
-  cursor: pointer;
   max-width: 100%;
   text-align: left;
   transition:
     background 140ms ease,
-    border-color 140ms ease,
-    transform 60ms ease;
+    border-color 140ms ease;
 }
 
 .end-resource-card:hover {
@@ -28,7 +26,23 @@
   border-color: color-mix(in srgb, var(--foreground) 18%, transparent);
 }
 
-.end-resource-card:active {
+.end-resource-card__main {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 60ms ease;
+}
+
+.end-resource-card__main:active {
   transform: translateY(0.5px);
 }
 
@@ -66,6 +80,10 @@
 
 .end-resource-card:hover .end-resource-card__action {
   color: var(--text-base);
+}
+
+.end-resource-card > .open-with-menu__trigger {
+  flex-shrink: 0;
 }
 
 .end-resource-link {

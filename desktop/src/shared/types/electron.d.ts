@@ -706,6 +706,18 @@ export type ElectronSystemApi = {
     canceled?: boolean;
     error?: string;
   }>;
+  listExternalOpeners: (filePath: string) => Promise<{
+    openers: Array<{
+      id: string;
+      label: string;
+      kind: "app" | "default" | "reveal";
+    }>;
+  }>;
+  openWithExternal: (
+    filePath: string,
+    openerId: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  openPath: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
   shellKillByPort: (port: number) => Promise<void>;
   getLocalSyncMode: () => Promise<string>;
   setLocalSyncMode: (mode: string) => Promise<void>;

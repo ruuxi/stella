@@ -22,7 +22,40 @@ import {
 import { pushAndOpenSourceDiffBatch } from "@/shell/display/source-diff-batches";
 import { DisplayTabIcon } from "@/shell/display/icons";
 import { basenameOf } from "@/shell/display/path-to-viewer";
+import { OpenWithMenu } from "./OpenWithMenu";
 import "./end-resource-card.css";
+
+/**
+ * Returns the first on-disk file path the payload references, or null
+ * when the payload has no real file (URLs, canvas-html, trash bins,
+ * text-only media). The "Open with…" drop-up only appears when a path
+ * is available — there is nothing external to open otherwise.
+ */
+const localFilePathForPayload = (payload: DisplayPayload): string | null => {
+  switch (payload.kind) {
+    case "office":
+      return payload.previewRef.sourcePath;
+    case "markdown":
+    case "source-diff":
+    case "file-artifact":
+    case "pdf":
+      return payload.filePath;
+    case "media":
+      switch (payload.asset.kind) {
+        case "image":
+          return payload.asset.filePaths[0] ?? null;
+        case "video":
+        case "audio":
+        case "model3d":
+        case "download":
+          return payload.asset.filePath;
+        default:
+          return null;
+      }
+    default:
+      return null;
+  }
+};
 
 const labelForPayload = (payload: DisplayPayload): string => {
   switch (payload.kind) {
@@ -107,23 +140,27 @@ export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => 
   // stays stable across renders.
   if (payload.kind === "source-diff") return null;
 
+  const localFilePath = localFilePathForPayload(payload);
+
   return (
-    <button
-      type="button"
-      className="end-resource-card"
-      onClick={handleClick}
-      title={tooltip}
-    >
-      <span className="end-resource-card__icon">
-        <DisplayTabIcon kind={kind} size={26} />
-      </span>
-      <span className="end-resource-card__text">
-        <span className="end-resource-card__label">{label}</span>
-        <span className="end-resource-card__action" aria-hidden>
-          Open in panel
+    <div className="end-resource-card" title={tooltip}>
+      <button
+        type="button"
+        className="end-resource-card__main"
+        onClick={handleClick}
+      >
+        <span className="end-resource-card__icon">
+          <DisplayTabIcon kind={kind} size={26} />
         </span>
-      </span>
-    </button>
+        <span className="end-resource-card__text">
+          <span className="end-resource-card__label">{label}</span>
+          <span className="end-resource-card__action" aria-hidden>
+            Open in panel
+          </span>
+        </span>
+      </button>
+      {localFilePath && <OpenWithMenu filePath={localFilePath} />}
+    </div>
   );
 };
 
