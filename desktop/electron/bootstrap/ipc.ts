@@ -31,6 +31,7 @@ import { registerFashionHandlers } from "../ipc/fashion-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "../ipc/store-handlers.js";
 import { registerSystemHandlers } from "../ipc/system-handlers.js";
+import { registerExternalOpenerHandlers } from "../ipc/external-opener-handlers.js";
 import { registerUiHandlers } from "../ipc/ui-handlers.js";
 import { registerUpdatesHandlers } from "../ipc/updates-handlers.js";
 import { registerVoiceHandlers } from "../ipc/voice-handlers.js";
@@ -191,6 +192,10 @@ export const registerBootstrapIpcHandlers = (
         };
       }
     },
+  });
+
+  registerExternalOpenerHandlers({
+    externalLinkService: services.externalLinkService,
   });
 
   registerSystemHandlers({
