@@ -132,6 +132,27 @@ function pdfWorkerAsset(): Plugin {
 }
 
 /** Writes the resolved dev server URL to .vite-dev-url so Electron can discover it. */
+/**
+ * Vite injects an inline React Refresh init script into `index.html`
+ * during dev (`<script type="module">injectIntoGlobalHook(window);…</script>`).
+ * Our production CSP doesn't allow `'unsafe-inline'`, so the inline
+ * script gets blocked → React Refresh fails to register and HMR breaks
+ * for component state. Strip the `<meta http-equiv="Content-Security-Policy">`
+ * tag in dev only; prod builds keep the strict CSP intact.
+ */
+function devCspRelax(): Plugin {
+  return {
+    name: 'dev-csp-relax',
+    apply: 'serve',
+    transformIndexHtml(html) {
+      return html.replace(
+        /<meta\s+http-equiv=["']Content-Security-Policy["'][^>]*>\s*/i,
+        '',
+      )
+    },
+  }
+}
+
 function devServerUrl(): Plugin {
   return {
     name: 'dev-server-url',
@@ -1188,6 +1209,7 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
+    devCspRelax(),
     devServerUrl(),
     selfModHmrControl(),
     pdfWorkerAsset(),
