@@ -16,6 +16,8 @@ export type ShellWindowControllerOptions = {
   onDidFinishLoad?: () => void
   onRenderProcessGone?: (details: RenderProcessGoneDetails, window: BrowserWindow) => void
   onDidFailLoad?: (details: ShellWindowDidFailLoadDetails, window: BrowserWindow) => void
+  onUnresponsive?: (window: BrowserWindow) => void
+  onResponsive?: (window: BrowserWindow) => void
   onClosed?: () => void
 }
 
@@ -53,6 +55,8 @@ export class ShellWindowController {
       onDidFinishLoad: this.options.onDidFinishLoad,
       onRenderProcessGone: this.options.onRenderProcessGone,
       onDidFailLoad: this.options.onDidFailLoad,
+      onUnresponsive: this.options.onUnresponsive,
+      onResponsive: this.options.onResponsive,
       onClosed: () => {
         this.window = null
         this.options.onClosed?.()
