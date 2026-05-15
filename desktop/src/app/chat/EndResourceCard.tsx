@@ -21,9 +21,100 @@ import {
 } from "@/shell/display/payload-to-tab-spec";
 import { pushAndOpenSourceDiffBatch } from "@/shell/display/source-diff-batches";
 import { DisplayTabIcon } from "@/shell/display/icons";
-import { basenameOf } from "@/shell/display/path-to-viewer";
+import {
+  basenameOf,
+  extensionOf,
+  isDeveloperResourceExtension,
+} from "@/shell/display/path-to-viewer";
 import { OpenWithMenu } from "./OpenWithMenu";
 import "./end-resource-card.css";
+
+/**
+ * Subtitle for an artifact card formatted as "Category · FORMAT".
+ *
+ * Mirrors the way macOS Finder describes a file (kind + uppercase
+ * extension). The "Category" half comes from the `DisplayPayload`
+ * kind, the "FORMAT" half from the actual file extension.
+ */
+const categoryAndFormatForPayload = (
+  payload: DisplayPayload,
+): { category: string; format: string | null } => {
+  const fmtFromPath = (filePath: string): string | null => {
+    const ext = extensionOf(filePath);
+    return ext ? ext.toUpperCase() : null;
+  };
+  switch (payload.kind) {
+    case "pdf":
+      return { category: "PDF", format: fmtFromPath(payload.filePath) };
+    case "markdown":
+      return { category: "Document", format: fmtFromPath(payload.filePath) };
+    case "source-diff":
+      return { category: "Code", format: fmtFromPath(payload.filePath) };
+    case "office": {
+      const ext = extensionOf(payload.previewRef.sourcePath);
+      const format = ext ? ext.toUpperCase() : null;
+      if (ext === "doc" || ext === "docx") {
+        return { category: "Document", format };
+      }
+      if (ext === "xls" || ext === "xlsx" || ext === "xlsm") {
+        return { category: "Spreadsheet", format };
+      }
+      if (ext === "ppt" || ext === "pptx") {
+        return { category: "Slides", format };
+      }
+      return { category: "Document", format };
+    }
+    case "file-artifact":
+      switch (payload.artifactKind) {
+        case "office-document":
+          return { category: "Document", format: fmtFromPath(payload.filePath) };
+        case "office-spreadsheet":
+          return {
+            category: "Spreadsheet",
+            format: fmtFromPath(payload.filePath),
+          };
+        case "office-slides":
+          return { category: "Slides", format: fmtFromPath(payload.filePath) };
+        case "delimited-table":
+          return { category: "Table", format: fmtFromPath(payload.filePath) };
+      }
+      if (isDeveloperResourceExtension(extensionOf(payload.filePath))) {
+        return { category: "Code", format: fmtFromPath(payload.filePath) };
+      }
+      return { category: "File", format: fmtFromPath(payload.filePath) };
+    case "media": {
+      switch (payload.asset.kind) {
+        case "image": {
+          const first = payload.asset.filePaths[0];
+          return {
+            category: "Image",
+            format: first ? fmtFromPath(first) : null,
+          };
+        }
+        case "video":
+          return { category: "Video", format: fmtFromPath(payload.asset.filePath) };
+        case "audio":
+          return { category: "Audio", format: fmtFromPath(payload.asset.filePath) };
+        case "model3d":
+          return {
+            category: "3D Model",
+            format: fmtFromPath(payload.asset.filePath),
+          };
+        case "download":
+          return { category: "File", format: fmtFromPath(payload.asset.filePath) };
+        case "text":
+          return { category: "Text", format: null };
+      }
+      return { category: "Media", format: null };
+    }
+    case "canvas-html":
+      return { category: "Canvas", format: "HTML" };
+    case "url":
+      return { category: "Link", format: null };
+    case "trash":
+      return { category: "Trash", format: null };
+  }
+};
 
 /**
  * Returns the first on-disk file path the payload references, or null
@@ -141,6 +232,8 @@ export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => 
   if (payload.kind === "source-diff") return null;
 
   const localFilePath = localFilePathForPayload(payload);
+  const { category, format } = categoryAndFormatForPayload(payload);
+  const subtitle = format ? `${category} · ${format}` : category;
 
   return (
     <div className="end-resource-card" title={tooltip}>
@@ -154,8 +247,13 @@ export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => 
         </span>
         <span className="end-resource-card__text">
           <span className="end-resource-card__label">{label}</span>
-          <span className="end-resource-card__action" aria-hidden>
-            Open in panel
+          <span className="end-resource-card__subtitle" aria-hidden>
+            <span className="end-resource-card__subtitle-default">
+              {subtitle}
+            </span>
+            <span className="end-resource-card__subtitle-hover">
+              Open preview
+            </span>
           </span>
         </span>
       </button>
