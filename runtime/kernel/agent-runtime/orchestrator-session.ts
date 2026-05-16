@@ -41,7 +41,10 @@ import {
 } from "./run-completion.js";
 import { executeRuntimeAgentPrompt } from "./run-execution.js";
 import { buildRuntimeSystemPrompt } from "./run-preparation.js";
-import { createRunEventRecorder } from "./run-events.js";
+import {
+  createRunEventRecorder,
+  type RuntimeRunEventRecorder,
+} from "./run-events.js";
 import {
   createOrchestratorResponseTargetTracker,
   type OrchestratorResponseTargetTracker,
@@ -52,7 +55,7 @@ import {
   buildRunThreadKey,
 } from "./thread-memory.js";
 import { createPiTools } from "./tool-adapters.js";
-import type { OrchestratorRunOptions } from "./types.js";
+import type { OrchestratorRunOptions, RuntimeRunCallbacks } from "./types.js";
 
 /**
  * Stable runId fragment fed to {@link buildRunThreadKey} so the
@@ -74,6 +77,17 @@ export class OrchestratorSession extends PiSessionCore {
    */
   private currentResponseTargetTracker: OrchestratorResponseTargetTracker | null =
     null;
+  /**
+   * Per-turn slot read by {@link handleProviderRetry} (installed once at
+   * Agent construction). Set at the top of `runTurn`, cleared in `finally`.
+   * Lets the long-lived Agent's retry closure reach the current turn's
+   * recorder + UI callbacks without re-binding on every turn.
+   */
+  private currentRetryStatusContext: {
+    recorder: RuntimeRunEventRecorder;
+    callbacks?: RuntimeRunCallbacks;
+  } | null = null;
+
   constructor(public readonly conversationId: string) {
     super({
       loggerName: "orchestrator-session",
@@ -84,6 +98,29 @@ export class OrchestratorSession extends PiSessionCore {
       }),
     });
   }
+
+  /**
+   * Surface a transient "trying again in X" status as a STATUS event the
+   * desktop renders as a brief retry toast. Skips the first retry (≤1s
+   * blip) so single-attempt hiccups don't flash the UI.
+   */
+  private handleProviderRetry = (info: {
+    attempt: number;
+    delayMs: number;
+    reason?: string;
+  }): void => {
+    if (info.attempt < 2) return;
+    const ctx = this.currentRetryStatusContext;
+    if (!ctx) return;
+    const seconds = Math.max(1, Math.round(info.delayMs / 1000));
+    const statusText = `Stella is having trouble reaching the server — trying again in ${seconds}s`;
+    try {
+      const event = ctx.recorder.recordStatus(statusText, "provider-retry");
+      ctx.callbacks?.onStatus?.(event);
+    } catch {
+      // Best-effort UI signal; never let a status emit abort the retry.
+    }
+  };
 
   async runTurn(opts: OrchestratorRunOptions): Promise<string> {
     const runId = opts.runId ?? `local:${crypto.randomUUID()}`;
@@ -146,11 +183,17 @@ export class OrchestratorSession extends PiSessionCore {
         );
         return undefined;
       },
+      onProviderRetry: this.handleProviderRetry,
       logContext: {
         conversationId: this.conversationId,
         runId,
       },
     });
+
+    this.currentRetryStatusContext = {
+      recorder: runEvents,
+      ...(opts.callbacks ? { callbacks: opts.callbacks } : {}),
+    };
 
     opts.onExecutionSessionCreated?.({
       runId,
@@ -173,6 +216,7 @@ export class OrchestratorSession extends PiSessionCore {
         threadKey: this.threadKey,
       });
       this.currentResponseTargetTracker = null;
+      this.currentRetryStatusContext = null;
       return runId;
     }
 
@@ -267,12 +311,14 @@ export class OrchestratorSession extends PiSessionCore {
       throw markOrchestratorErrorReported(error);
     } finally {
       this.currentResponseTargetTracker = null;
+      this.currentRetryStatusContext = null;
     }
   }
 
   dispose(): void {
     super.dispose();
     this.currentResponseTargetTracker = null;
+    this.currentRetryStatusContext = null;
   }
 }
 

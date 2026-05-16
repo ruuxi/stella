@@ -389,6 +389,7 @@ export const streamStella: (
           }
           return isRetryableConnectionError(error);
         },
+        onRetry: options?.onProviderRetry,
       });
 
       if (!response.body) {

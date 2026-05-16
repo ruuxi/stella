@@ -121,6 +121,16 @@ export interface StreamOptions {
 	 */
 	onResponse?: (response: ProviderResponse, model: Model<Api>) => void | Promise<void>;
 	/**
+	 * Optional callback fired before each backoff sleep when the provider
+	 * adapter retries a transient failure. Use to surface a transient
+	 * "trying again" status to the UI. Not all providers wire this up.
+	 */
+	onProviderRetry?: (info: {
+		attempt: number;
+		delayMs: number;
+		reason?: string;
+	}) => void;
+	/**
 	 * Optional custom HTTP headers to include in API requests.
 	 * Merged with provider defaults; can override default headers.
 	 * Not supported by all providers (e.g., AWS Bedrock uses SDK auth).

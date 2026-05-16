@@ -378,6 +378,16 @@ export const createRuntimeAgent = (args: {
     | Promise<AfterToolCallResult | undefined>
     | AfterToolCallResult
     | undefined;
+  /**
+   * Surface a transient "trying again in X" status when the provider
+   * adapter retries a recoverable failure. Sessions wire this to a STATUS
+   * event so the desktop can show a brief retry toast.
+   */
+  onProviderRetry?: (info: {
+    attempt: number;
+    delayMs: number;
+    reason?: string;
+  }) => void;
 }): Agent => {
   const resolveLlm = args.resolvedLlmOverride ?? (() => args.resolvedLlm);
   return new Agent({
@@ -409,6 +419,7 @@ export const createRuntimeAgent = (args: {
       args.hookEmitter,
       args.agentType,
     ),
+    onProviderRetry: args.onProviderRetry,
     afterToolCall: args.afterToolCall
       ? async (context, signal) => await args.afterToolCall?.(context, signal)
       : undefined,

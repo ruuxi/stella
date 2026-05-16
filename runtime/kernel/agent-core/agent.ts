@@ -101,6 +101,12 @@ export interface AgentOptions {
 	onPayload?: SimpleStreamOptions["onPayload"];
 
 	/**
+	 * Surface a transient "trying again in X" status when the provider
+	 * adapter retries a recoverable failure (e.g. 429, 5xx, network blip).
+	 */
+	onProviderRetry?: SimpleStreamOptions["onProviderRetry"];
+
+	/**
 	 * Custom token budgets for thinking levels (token-based providers only).
 	 */
 	thinkingBudgets?: ThinkingBudgets;
@@ -160,6 +166,7 @@ export class Agent {
 	public getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	public refreshApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	private _onPayload?: SimpleStreamOptions["onPayload"];
+	private _onProviderRetry?: SimpleStreamOptions["onProviderRetry"];
 	private runningPrompt?: Promise<void>;
 	private resolveRunningPrompt?: () => void;
 	private _thinkingBudgets?: ThinkingBudgets;
@@ -186,6 +193,7 @@ export class Agent {
 		this.getApiKey = opts.getApiKey;
 		this.refreshApiKey = opts.refreshApiKey;
 		this._onPayload = opts.onPayload;
+		this._onProviderRetry = opts.onProviderRetry;
 		this._thinkingBudgets = opts.thinkingBudgets;
 		this._transport = opts.transport ?? "sse";
 		this._maxRetryDelayMs = opts.maxRetryDelayMs;
@@ -556,6 +564,7 @@ export class Agent {
 			reasoning,
 			sessionId: this._sessionId,
 			onPayload: this._onPayload,
+			onProviderRetry: this._onProviderRetry,
 			transport: this._transport,
 			thinkingBudgets: this._thinkingBudgets,
 			maxRetryDelayMs: this._maxRetryDelayMs,

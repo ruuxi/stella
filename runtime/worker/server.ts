@@ -137,7 +137,7 @@ type AgentEventPayload = {
   userMessageId?: string;
   uiVisibility?: "visible" | "hidden";
   chunk?: string;
-  statusState?: "running" | "compacting";
+  statusState?: "running" | "compacting" | "provider-retry";
   toolCallId?: string;
   toolName?: string;
   args?: Record<string, unknown>;
