@@ -84,6 +84,7 @@ interface ChatPanelTabProps {
   hasOlderMessages: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
+  onLoadOlder: () => void;
   onSend: (
     text: string,
     chatContext?: ChatContext | null,
@@ -108,6 +109,7 @@ export function ChatPanelTab(
       hasOlderMessages,
       isLoadingOlder,
       isInitialLoading,
+      onLoadOlder,
       onSend,
       onStop,
     }: ChatPanelTabProps,
@@ -126,6 +128,7 @@ export function ChatPanelTab(
     const sidebarScroll = useChatScrollManagement({
       hasOlderEvents: hasOlderMessages,
       isLoadingOlder,
+      onLoadOlder,
     });
 
     const sidebarScrollApi = useMemo<ChatColumnScroll>(

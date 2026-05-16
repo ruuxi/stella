@@ -66,6 +66,7 @@ function ChatDisplayTab({
       hasOlderMessages={chat.conversation.hasOlderMessages}
       isLoadingOlder={chat.conversation.isLoadingOlder}
       isInitialLoading={chat.conversation.isInitialLoading}
+      onLoadOlder={chat.conversation.loadOlderMessages}
       onSend={chat.conversation.sendMessageWithContext}
       onStop={chat.conversation.cancelCurrentStream}
     />

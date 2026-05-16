@@ -365,6 +365,7 @@ export function useFullShellChat({
       hasOlderMessages,
       isLoadingOlder: isLoadingOlderMessages,
       isInitialLoading: isInitialLoadingMessages,
+      loadOlderMessages,
       streamingText,
       reasoningText,
       streamingResponseTarget,
