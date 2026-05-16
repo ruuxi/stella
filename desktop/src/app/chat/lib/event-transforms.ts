@@ -374,10 +374,46 @@ export function extractTasksFromEvents(
   events: EventRecord[],
   options?: { appSessionStartedAtMs?: number | null },
 ): TaskItem[] {
+  let latestMessageTimestampMs: number | null = null
+  for (const event of events) {
+    if (!isUserMessage(event) && !isAssistantMessage(event)) continue
+    if (
+      latestMessageTimestampMs === null ||
+      event.timestamp > latestMessageTimestampMs
+    ) {
+      latestMessageTimestampMs = event.timestamp
+    }
+  }
+  return extractTasksFromActivities(events, {
+    appSessionStartedAtMs: options?.appSessionStartedAtMs ?? null,
+    latestMessageTimestampMs,
+  })
+}
+
+/**
+ * Reduce a stream of agent-* lifecycle events into `TaskItem`s. Same
+ * folding logic the prior `extractTasksFromEvents` did inline, factored
+ * so the activity stream (`useConversationActivity`) can feed task state
+ * without dragging the full message/event stream along just to compute
+ * the stale-schedule auto-completion.
+ *
+ * Non-activity events in `activities` are ignored, so callers that have
+ * the raw event stream can pass it through unchanged — but the cheap
+ * path is to pass only the lifecycle events plus
+ * `latestMessageTimestampMs` (the latest user/assistant message
+ * timestamp anywhere in the conversation, used to auto-complete tasks
+ * whose agent never emitted a terminal event but a later turn message
+ * proves the work is done).
+ */
+export function extractTasksFromActivities(
+  activities: EventRecord[],
+  options?: {
+    appSessionStartedAtMs?: number | null
+    latestMessageTimestampMs?: number | null
+  },
+): TaskItem[] {
   const appSessionStartedAtMs = options?.appSessionStartedAtMs ?? null
-  const laterTurnMessages = events.filter(
-    (event) => isUserMessage(event) || isAssistantMessage(event),
-  )
+  const latestMessageTimestampMs = options?.latestMessageTimestampMs ?? null
   const tasksById = new Map<string, TaskItem>()
 
   const ensureTask = (
@@ -409,7 +445,7 @@ export function extractTasksFromEvents(
   // the footer.
   const terminalTaskIds = new Set<string>()
 
-  for (const event of events) {
+  for (const event of activities) {
     if (isAgentStartedEvent(event)) {
       const previous = tasksById.get(event.payload.agentId)
       tasksById.set(event.payload.agentId, {
@@ -505,9 +541,8 @@ export function extractTasksFromEvents(
       if (
         nextTask.status === 'running' &&
         nextTask.agentType === 'schedule' &&
-        laterTurnMessages.some(
-          (messageEvent) => messageEvent.timestamp > nextTask.startedAtMs,
-        )
+        latestMessageTimestampMs !== null &&
+        latestMessageTimestampMs > nextTask.startedAtMs
       ) {
         nextTask = {
           ...nextTask,

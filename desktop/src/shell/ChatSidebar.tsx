@@ -73,6 +73,8 @@ interface ChatPanelTabProps {
   openRequest?: ChatPanelOpenRequest | null;
   messages: MessageRecord[];
   events: EventRecord[];
+  activities: EventRecord[];
+  latestMessageTimestampMs: number | null;
   streamingText: string;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
@@ -96,6 +98,8 @@ export function ChatPanelTab(
       openRequest,
       messages,
       events,
+      activities,
+      latestMessageTimestampMs,
       streamingText,
       isStreaming,
       runtimeStatusText,
@@ -157,7 +161,8 @@ export function ChatPanelTab(
       [events],
     );
     const footerTasks = useFooterTasks({
-      events,
+      activities,
+      latestMessageTimestampMs,
       liveTasks,
       appSessionStartedAtMs,
     });

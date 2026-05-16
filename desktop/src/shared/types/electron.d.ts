@@ -1184,6 +1184,15 @@ export type ElectronLocalChatApi = {
     beforeId: string;
     maxVisibleMessages?: number;
   }) => Promise<{ messages: MessageRecord[]; visibleMessageCount: number }>;
+  listActivity: (payload: {
+    conversationId: string;
+    limit?: number;
+    beforeTimestampMs?: number;
+    beforeId?: string;
+  }) => Promise<{
+    activities: EventRecord[];
+    latestMessageTimestampMs: number | null;
+  }>;
   getEventCount: (payload: {
     conversationId: string;
     countBy?: LocalChatEventWindowMode;

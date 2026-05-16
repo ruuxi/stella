@@ -363,6 +363,8 @@ export const IPC_LOCAL_CHAT_LIST_MESSAGES =
   "localChat:listMessages" as const;
 export const IPC_LOCAL_CHAT_LIST_MESSAGES_BEFORE =
   "localChat:listMessagesBefore" as const;
+export const IPC_LOCAL_CHAT_LIST_ACTIVITY =
+  "localChat:listActivity" as const;
 export const IPC_LOCAL_CHAT_GET_EVENT_COUNT =
   "localChat:getEventCount" as const;
 export const IPC_LOCAL_CHAT_PERSIST_WELCOME =

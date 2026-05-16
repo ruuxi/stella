@@ -10,6 +10,7 @@ import type {
   ChatColumnScroll,
 } from '@/app/chat/chat-column-types'
 import { deriveComposerState } from '@/app/chat/composer-context'
+import { useConversationActivity } from '@/app/chat/hooks/use-conversation-activity'
 import { useConversationEventFeed } from '@/app/chat/hooks/use-conversation-events'
 import { useConversationMessages } from '@/app/chat/hooks/use-conversation-messages'
 import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
@@ -31,6 +32,14 @@ import { smoothScrollTo } from '@/shared/lib/smooth-scroll'
 
 const SENT_MESSAGE_SCROLL_NUDGE_MS = 360
 const SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS = 80
+
+const ACTIVITY_EVENT_TYPES = new Set([
+  'agent-started',
+  'agent-progress',
+  'agent-completed',
+  'agent-failed',
+  'agent-canceled',
+])
 
 /**
  * Merge `MessageRecord` lists keyed by `_id` and sort by `(timestamp,
@@ -90,6 +99,14 @@ export function useFullShellChat({
   } = useConversationMessages(activeConversationId ?? undefined)
 
   const {
+    activities,
+    latestMessageTimestampMs,
+    hasOlderActivity,
+    isLoadingOlder: isLoadingOlderActivity,
+    loadOlder: loadOlderActivity,
+  } = useConversationActivity(activeConversationId ?? undefined)
+
+  const {
     liveTasks,
     optimisticEvents,
     justSentUserMessageIds,
@@ -127,6 +144,28 @@ export function useFullShellChat({
   //   `listMessages` equivalent or drop cloud mode altogether.
   const { storageMode } = useChatStore()
   const isLocalMode = storageMode === 'local'
+
+  // Activity inputs for `extractTasksFromActivities`. Local mode reads
+  // the agent-* lifecycle stream directly from SQLite via
+  // `useConversationActivity`; cloud mode falls back to filtering the
+  // merged event stream (no cloud `listActivity` IPC yet) so the
+  // working indicator / Now / Done surfaces keep working there too.
+  const activityInputs = useMemo(() => {
+    if (isLocalMode) {
+      return { activities, latestMessageTimestampMs }
+    }
+    let latest: number | null = null
+    const filtered: EventRecord[] = []
+    for (const event of displayEvents) {
+      if (event.type === 'user_message' || event.type === 'assistant_message') {
+        if (latest === null || event.timestamp > latest) latest = event.timestamp
+        continue
+      }
+      if (ACTIVITY_EVENT_TYPES.has(event.type)) filtered.push(event)
+    }
+    return { activities: filtered, latestMessageTimestampMs: latest }
+  }, [activities, displayEvents, isLocalMode, latestMessageTimestampMs])
+
   const overlayMessagesFromEvents = useMemo(() => {
     if (!isLocalMode) return [] as MessageRecord[]
     // Project just the scheduled + optimistic event overlays — not the
@@ -306,6 +345,13 @@ export function useFullShellChat({
     () => ({
       messages: displayMessages,
       events: displayEvents,
+      activity: {
+        activities: activityInputs.activities,
+        latestMessageTimestampMs: activityInputs.latestMessageTimestampMs,
+        hasOlder: isLocalMode ? hasOlderActivity : false,
+        isLoadingOlder: isLocalMode ? isLoadingOlderActivity : false,
+        loadOlder: isLocalMode ? loadOlderActivity : () => {},
+      },
       streaming: {
         text: streamingText,
         reasoningText,
@@ -325,8 +371,13 @@ export function useFullShellChat({
       },
     }),
     [
+      activityInputs,
       displayMessages,
       displayEvents,
+      hasOlderActivity,
+      isLoadingOlderActivity,
+      isLocalMode,
+      loadOlderActivity,
       streamingText,
       reasoningText,
       streamingResponseTarget,

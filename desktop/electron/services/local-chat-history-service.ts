@@ -6,6 +6,7 @@ import {
 import { prepareStoredLocalChatPayload } from "../../../runtime/kernel/storage/local-chat-payload.js";
 import { SessionStore } from "../../../runtime/kernel/storage/session-store.js";
 import type {
+  LocalChatActivityWindow,
   LocalChatAppendEventArgs,
   LocalChatEventRecord,
   LocalChatMessageWindow,
@@ -118,6 +119,19 @@ export class LocalChatHistoryService {
       beforeTimestampMs: args.beforeTimestampMs,
       beforeId: args.beforeId,
       maxVisibleMessages: args.maxVisibleMessages,
+    });
+  }
+
+  listActivity(args: {
+    conversationId: string;
+    limit?: number;
+    beforeTimestampMs?: number;
+    beforeId?: string;
+  }): LocalChatActivityWindow {
+    return this.getStore().listActivity(args.conversationId, {
+      limit: args.limit,
+      beforeTimestampMs: args.beforeTimestampMs,
+      beforeId: args.beforeId,
     });
   }
 
