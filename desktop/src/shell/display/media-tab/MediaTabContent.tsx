@@ -255,12 +255,7 @@ export const MediaTabContent = ({
               : {})}
           />
         ) : (
-          <div className="media-tab__hero-empty">
-            <div className="media-tab__hero-empty-title">Make something</div>
-            <div className="media-tab__hero-empty-hint">
-              Type what you'd like below.
-            </div>
-          </div>
+          <div className="media-tab__hero-empty" />
         )}
       </div>
 
