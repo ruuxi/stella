@@ -129,6 +129,11 @@ export const buildAgentEventPrompt = (
   ) {
     lines.push(`error: ${truncateAgentEventField(event.error)}`);
   }
+  if (event.type === "agent-completed") {
+    lines.push(
+      "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
+    );
+  }
 
   return formatAgentTerminalStateSystemReminder(lines);
 };
