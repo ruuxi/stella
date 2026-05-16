@@ -162,6 +162,78 @@ describe("local-activity-store", () => {
     }
   });
 
+  it("seeds a larger active window from the smaller loaded snapshot while loading older activity", async () => {
+    let resolveSecond: ((value: ActivityPayload) => void) | null = null;
+    let call = 0;
+    const firstWindow = activityWindow(
+      [makeAgentStarted("ev-1", 1_000, "agent-1")],
+      1_500,
+    );
+    const secondWindow = activityWindow(
+      [
+        makeAgentStarted("ev-0", 990, "agent-0"),
+        makeAgentStarted("ev-1", 1_000, "agent-1"),
+      ],
+      1_500,
+    );
+    const listActivity = vi.fn().mockImplementation(
+      async (payload: { limit?: number }) => {
+        call += 1;
+        if (payload.limit === 500) return firstWindow;
+        return await new Promise<ActivityPayload>((resolve) => {
+          resolveSecond = resolve;
+        });
+      },
+    );
+    const onUpdated = vi.fn().mockImplementation(() => () => undefined);
+    const restore = installFakeElectronApi({
+      localChat: { listActivity, onUpdated },
+    });
+
+    try {
+      const firstSnapshots: LocalActivityWindowSnapshot[] = [];
+      const unsubscribeFirst = subscribeToLocalActivityWindow(
+        { conversationId: "c1", limit: 500 },
+        (snapshot) => firstSnapshots.push(snapshot),
+      );
+
+      await waitFor(() => {
+        expect(firstSnapshots.at(-1)?.hasLoaded).toBe(true);
+        expect(
+          firstSnapshots.at(-1)?.window.activities.map((event) => event._id),
+        ).toEqual(["ev-1"]);
+      });
+
+      // Growing the limit (e.g. ActivityHistoryDialog loadOlder fired)
+      // must NOT visibly empty the list while the larger fetch is in
+      // flight.
+      const largerSnapshots: LocalActivityWindowSnapshot[] = [];
+      const unsubscribeLarger = subscribeToLocalActivityWindow(
+        { conversationId: "c1", limit: 1000 },
+        (snapshot) => largerSnapshots.push(snapshot),
+      );
+
+      expect(largerSnapshots[0]?.hasLoaded).toBe(false);
+      expect(
+        largerSnapshots[0]?.window.activities.map((event) => event._id),
+      ).toEqual(["ev-1"]);
+      expect(largerSnapshots[0]?.window.activities).not.toHaveLength(0);
+
+      resolveSecond?.(secondWindow);
+      await waitFor(() =>
+        expect(
+          largerSnapshots.at(-1)?.window.activities.map((event) => event._id),
+        ).toEqual(["ev-0", "ev-1"]),
+      );
+
+      unsubscribeLarger();
+      unsubscribeFirst();
+      expect(call).toBe(2);
+    } finally {
+      restore();
+    }
+  });
+
   it("queues a follow-up refresh when an update fires during an in-flight read", async () => {
     let updateListener:
       | ((payload: LocalChatUpdatedPayload | null) => void)

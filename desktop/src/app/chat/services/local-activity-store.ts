@@ -160,10 +160,26 @@ const getOrCreateEntry = (
   const key = localActivityWindowKey(options);
   const existing = localActivityWindows.get(key);
   if (existing) return existing;
+  // Seed from the largest already-loaded smaller window for the same
+  // conversation so growing the limit (e.g. ActivityHistoryDialog
+  // 500 → 1000 on `loadOlder`) doesn't briefly empty the visible list
+  // while the larger fetch is in flight. Mirrors `local-message-store`.
+  // `hasLoaded: false` so consumers still know a fresh fetch is in
+  // progress for the new limit.
+  const seed = [...localActivityWindows.values()]
+    .filter(
+      (entry) =>
+        entry.conversationId === options.conversationId &&
+        entry.snapshot.hasLoaded &&
+        entry.limit < options.limit,
+    )
+    .sort((a, b) => b.limit - a.limit)[0];
   const entry: LocalActivityWindowEntry = {
     ...options,
     key,
-    snapshot: EMPTY_SNAPSHOT,
+    snapshot: seed
+      ? { ...cloneSnapshot(seed.snapshot), hasLoaded: false }
+      : EMPTY_SNAPSHOT,
     listeners: new Set(),
     loading: null,
     pendingRefetch: false,
