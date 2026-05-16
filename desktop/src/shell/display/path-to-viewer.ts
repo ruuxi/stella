@@ -223,6 +223,20 @@ export const tabIdForPath = (filePath: string): string => {
   const kind = kindForPath(filePath);
   if (kind === "pdf") return `pdf:${filePath}`;
   if (kind === "markdown") return `markdown:${filePath}`;
+  if (
+    kind === "office-document" ||
+    kind === "office-spreadsheet" ||
+    kind === "office-slides"
+  ) {
+    // Office classification wins over the developer-resource bucket so
+    // spreadsheet extensions that also live in `DEVELOPER_EXTS` (csv, tsv)
+    // open in the office viewer instead of the singleton "Code changes" tab.
+    return `office:${filePath}`;
+  }
+  if (kind === "image") return `media:image:${filePath}`;
+  if (kind === "video") return `media:video:${filePath}`;
+  if (kind === "audio") return `media:audio:${filePath}`;
+  if (kind === "model3d") return `media:model3d:${filePath}`;
   if (isDeveloperResourceExtension(extensionOf(filePath))) {
     // Developer file changes all share the singleton "Code changes"
     // tab (`SOURCE_DIFF_TAB_ID`). Keeping this id literal here avoids
@@ -230,17 +244,6 @@ export const tabIdForPath = (filePath: string): string => {
     // by the runtime contract layer.
     return "source-diff";
   }
-  if (
-    kind === "office-document" ||
-    kind === "office-spreadsheet" ||
-    kind === "office-slides"
-  ) {
-    return `office:${filePath}`;
-  }
-  if (kind === "image") return `media:image:${filePath}`;
-  if (kind === "video") return `media:video:${filePath}`;
-  if (kind === "audio") return `media:audio:${filePath}`;
-  if (kind === "model3d") return `media:model3d:${filePath}`;
   return `file:${filePath}`;
 };
 

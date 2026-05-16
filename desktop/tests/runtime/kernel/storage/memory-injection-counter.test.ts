@@ -9,7 +9,7 @@ import {
 } from "../../../../../runtime/kernel/storage/database-init.js";
 import { SessionStore } from "../../../../../runtime/kernel/storage/session-store.js";
 import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
-import { MEMORY_INJECTION_TURN_THRESHOLD } from "../../../../../runtime/kernel/agent-runtime/thread-memory.js";
+import { MEMORY_INJECTION_TURN_THRESHOLD } from "../../../../../runtime/extensions/stella-runtime/hooks/memory-injection.hook.js";
 
 type TestContext = {
   rootPath: string;
