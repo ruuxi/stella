@@ -68,6 +68,25 @@ export type LocalChatActivityWindow = {
   latestMessageTimestampMs: number | null;
 };
 
+/**
+ * Read shape backing `SessionStore.listFiles` — the `tool_result` and
+ * `agent-completed` events whose payloads actually carry
+ * `fileChanges` / `producedFiles` arrays. The Recent Files surfaces
+ * (Chat tab Recent Files, ActivityHistoryDialog "files" section)
+ * derive their list from this without scanning the full event stream.
+ *
+ * Events are ordered ASC by `(timestamp, _id)`. The renderer reuses
+ * `deriveConversationFiles` to dedup by path; the storage layer's job
+ * is just to surface the candidate events efficiently (the SQL
+ * pre-filter on JSON payloads keeps the window genuinely scoped to
+ * file-carrying events, so a `limit` of 500 buys 500 file events
+ * rather than 500 arbitrary tool results that may or may not touch
+ * disk).
+ */
+export type LocalChatFilesWindow = {
+  files: LocalChatEventRecord[];
+};
+
 /** `(timestamp, id)` cursor used to page chat messages. `null` means
  *  "no cursor" (start at the beginning of the conversation). */
 export type TimelineCursor = { timestamp: number; id: string } | null;

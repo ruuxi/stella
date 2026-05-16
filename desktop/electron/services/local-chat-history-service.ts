@@ -9,6 +9,7 @@ import type {
   LocalChatActivityWindow,
   LocalChatAppendEventArgs,
   LocalChatEventRecord,
+  LocalChatFilesWindow,
   LocalChatMessageWindow,
   LocalChatSyncMessage,
   SqliteDatabase,
@@ -129,6 +130,19 @@ export class LocalChatHistoryService {
     beforeId?: string;
   }): LocalChatActivityWindow {
     return this.getStore().listActivity(args.conversationId, {
+      limit: args.limit,
+      beforeTimestampMs: args.beforeTimestampMs,
+      beforeId: args.beforeId,
+    });
+  }
+
+  listFiles(args: {
+    conversationId: string;
+    limit?: number;
+    beforeTimestampMs?: number;
+    beforeId?: string;
+  }): LocalChatFilesWindow {
+    return this.getStore().listFiles(args.conversationId, {
       limit: args.limit,
       beforeTimestampMs: args.beforeTimestampMs,
       beforeId: args.beforeId,

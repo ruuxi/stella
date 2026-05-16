@@ -321,8 +321,8 @@ export function ChatHomeOverview() {
   const chat = useChatRuntime();
   const { state } = useUiState();
   const liveTasks = chat.conversation.streaming.liveTasks ?? [];
-  const events = chat.conversation.events;
   const activity = chat.conversation.activity;
+  const filesFeed = chat.conversation.files;
   const summariesByAgent = chat.conversation.streaming.taskProgressSummaries;
   const schedules = useConversationSchedules(state.conversationId);
 
@@ -384,13 +384,12 @@ export function ChatHomeOverview() {
     return [scheduleEntryToAffectedRef(openScheduleEntry, state.conversationId)];
   }, [openScheduleEntry, state.conversationId]);
 
-  // Inline view derives from the in-memory event window only — the
-  // See-all dialog re-derives from `events + extras` and pages older
-  // history from SQLite on demand, so the inline count reflects "in
-  // this conversation window" and the dialog reveals the rest.
+  // Inline view derives from the in-memory file-events window only —
+  // the See-all dialog re-derives from the same stream and pages older
+  // history through `filesFeed.loadOlder` on demand.
   const allFiles = useMemo<FileEntry[]>(
-    () => deriveConversationFiles(events),
-    [events],
+    () => deriveConversationFiles(filesFeed.files),
+    [filesFeed.files],
   );
 
   const visibleFiles = allFiles.slice(0, FILES_DEFAULT_VISIBLE);
@@ -569,12 +568,15 @@ export function ChatHomeOverview() {
           if (!next) setHistorySection(null);
         }}
         section={historySection ?? "done"}
-        events={events}
         activities={activity.activities}
         latestMessageTimestampMs={activity.latestMessageTimestampMs}
         onLoadMoreActivity={activity.loadOlder}
         hasMoreActivity={activity.hasOlder}
         isLoadingMoreActivity={activity.isLoadingOlder}
+        fileEvents={filesFeed.files}
+        onLoadMoreFiles={filesFeed.loadOlder}
+        hasMoreFiles={filesFeed.hasOlder}
+        isLoadingMoreFiles={filesFeed.isLoadingOlder}
         schedules={schedules}
         conversationId={state.conversationId}
         nowMs={nowMs}

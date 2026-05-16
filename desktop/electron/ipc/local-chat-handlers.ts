@@ -164,6 +164,34 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
+    "localChat:listFiles",
+    async (
+      event,
+      payload: {
+        conversationId?: string;
+        limit?: number;
+        beforeTimestampMs?: number;
+        beforeId?: string;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:listFiles",
+        (client) =>
+          client.listFiles({
+            conversationId: payload?.conversationId ?? "",
+            limit: payload?.limit,
+            beforeTimestampMs:
+              typeof payload?.beforeTimestampMs === "number"
+                ? payload.beforeTimestampMs
+                : undefined,
+            beforeId: payload?.beforeId,
+          }),
+      ),
+  );
+
+  ipcMain.handle(
     "localChat:getEventCount",
     async (
       event,

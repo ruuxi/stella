@@ -1592,6 +1592,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       beforeTimestampMs?: number;
       beforeId?: string;
     }) => ipcRenderer.invoke("localChat:listActivity", payload),
+    listFiles: (payload: {
+      conversationId: string;
+      limit?: number;
+      beforeTimestampMs?: number;
+      beforeId?: string;
+    }) => ipcRenderer.invoke("localChat:listFiles", payload),
     getEventCount: (payload: {
       conversationId: string;
       countBy?: "events" | "visible_messages";

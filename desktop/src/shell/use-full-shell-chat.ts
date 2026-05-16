@@ -12,6 +12,7 @@ import type {
 import { deriveComposerState } from '@/app/chat/composer-context'
 import { useConversationActivity } from '@/app/chat/hooks/use-conversation-activity'
 import { useConversationEventFeed } from '@/app/chat/hooks/use-conversation-events'
+import { useConversationFiles } from '@/app/chat/hooks/use-conversation-files'
 import { useConversationMessages } from '@/app/chat/hooks/use-conversation-messages'
 import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
 import { useTaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
@@ -40,6 +41,18 @@ const ACTIVITY_EVENT_TYPES = new Set([
   'agent-failed',
   'agent-canceled',
 ])
+
+const FILE_CARRYING_EVENT_TYPES = new Set(['tool_result', 'agent-completed'])
+
+const eventCarriesFileChanges = (event: EventRecord): boolean => {
+  const payload = event.payload as
+    | { fileChanges?: unknown; producedFiles?: unknown }
+    | undefined
+  if (!payload || typeof payload !== 'object') return false
+  if (Array.isArray(payload.fileChanges) && payload.fileChanges.length > 0) return true
+  if (Array.isArray(payload.producedFiles) && payload.producedFiles.length > 0) return true
+  return false
+}
 
 /**
  * Merge `MessageRecord` lists keyed by `_id` and sort by `(timestamp,
@@ -107,6 +120,13 @@ export function useFullShellChat({
   } = useConversationActivity(activeConversationId ?? undefined)
 
   const {
+    files: persistedFiles,
+    hasOlderFiles,
+    isLoadingOlder: isLoadingOlderFiles,
+    loadOlder: loadOlderFiles,
+  } = useConversationFiles(activeConversationId ?? undefined)
+
+  const {
     liveTasks,
     optimisticEvents,
     justSentUserMessageIds,
@@ -165,6 +185,19 @@ export function useFullShellChat({
     }
     return { activities: filtered, latestMessageTimestampMs: latest }
   }, [activities, displayEvents, isLocalMode, latestMessageTimestampMs])
+
+  // File-carrying events feeding the Recent Files surfaces. Local mode
+  // reads from SQLite via `useConversationFiles`; cloud mode falls back
+  // to a `displayEvents` filter so cloud chats still surface recent
+  // files until a cloud `listFiles` equivalent lands.
+  const fileEvents = useMemo<EventRecord[]>(() => {
+    if (isLocalMode) return persistedFiles
+    return displayEvents.filter(
+      (event) =>
+        FILE_CARRYING_EVENT_TYPES.has(event.type) &&
+        eventCarriesFileChanges(event),
+    )
+  }, [displayEvents, isLocalMode, persistedFiles])
 
   const overlayMessagesFromEvents = useMemo(() => {
     if (!isLocalMode) return [] as MessageRecord[]
@@ -352,6 +385,12 @@ export function useFullShellChat({
         isLoadingOlder: isLocalMode ? isLoadingOlderActivity : false,
         loadOlder: isLocalMode ? loadOlderActivity : () => {},
       },
+      files: {
+        files: fileEvents,
+        hasOlder: isLocalMode ? hasOlderFiles : false,
+        isLoadingOlder: isLocalMode ? isLoadingOlderFiles : false,
+        loadOlder: isLocalMode ? loadOlderFiles : () => {},
+      },
       streaming: {
         text: streamingText,
         reasoningText,
@@ -374,10 +413,14 @@ export function useFullShellChat({
       activityInputs,
       displayMessages,
       displayEvents,
+      fileEvents,
       hasOlderActivity,
+      hasOlderFiles,
       isLoadingOlderActivity,
+      isLoadingOlderFiles,
       isLocalMode,
       loadOlderActivity,
+      loadOlderFiles,
       streamingText,
       reasoningText,
       streamingResponseTarget,

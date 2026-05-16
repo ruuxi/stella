@@ -635,6 +635,115 @@ describe("session-store", () => {
     expect(latestMessageTimestampMs).toBe(2_500);
   });
 
+  it("listFiles returns only events whose payload carries fileChanges or producedFiles", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    store.appendEvent({
+      conversationId,
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "Edit something" },
+    });
+    // tool_result without any file changes — should be excluded.
+    store.appendEvent({
+      conversationId,
+      type: "tool_result",
+      timestamp: 1_010,
+      requestId: "tool-1",
+      payload: { toolName: "web", result: "ok" },
+    });
+    // tool_result with fileChanges — should be included.
+    store.appendEvent({
+      conversationId,
+      type: "tool_result",
+      timestamp: 1_020,
+      requestId: "tool-2",
+      payload: {
+        toolName: "apply_patch",
+        fileChanges: [
+          { kind: { type: "create" }, path: "/repo/src/new.ts" },
+        ],
+      },
+    });
+    // tool_result with empty fileChanges array — should be excluded.
+    store.appendEvent({
+      conversationId,
+      type: "tool_result",
+      timestamp: 1_025,
+      requestId: "tool-3",
+      payload: {
+        toolName: "apply_patch",
+        fileChanges: [],
+        producedFiles: [],
+      },
+    });
+    // agent-completed with producedFiles — should be included.
+    store.appendEvent({
+      conversationId,
+      type: "agent-completed",
+      timestamp: 1_030,
+      payload: {
+        agentId: "general-1",
+        producedFiles: [{ path: "/out/report.pdf", mimeType: "application/pdf" }],
+      },
+    });
+    // agent-completed without files — should be excluded.
+    store.appendEvent({
+      conversationId,
+      type: "agent-completed",
+      timestamp: 1_040,
+      payload: { agentId: "general-2", result: "Done" },
+    });
+
+    const { files } = store.listFiles(conversationId);
+    expect(files.map((event) => event._id)).toEqual(
+      files.map((event) => event._id),
+    );
+    expect(files.map((event) => event.type)).toEqual([
+      "tool_result",
+      "agent-completed",
+    ]);
+    expect(files[0]?.timestamp).toBe(1_020);
+    expect(files[1]?.timestamp).toBe(1_030);
+  });
+
+  it("listFiles pages older file events via beforeTimestampMs/beforeId", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    for (let i = 0; i < 6; i += 1) {
+      const ts = 1_000 + i * 10;
+      store.appendEvent({
+        conversationId,
+        type: "tool_result",
+        timestamp: ts,
+        requestId: `tool-${i}`,
+        payload: {
+          toolName: "apply_patch",
+          fileChanges: [
+            { kind: { type: "create" }, path: `/repo/file-${i}.ts` },
+          ],
+        },
+      });
+    }
+
+    const { files: latest } = store.listFiles(conversationId, { limit: 3 });
+    expect(latest.map((event) => event.timestamp)).toEqual([
+      1_030, 1_040, 1_050,
+    ]);
+
+    const oldest = latest[0]!;
+    const { files: older } = store.listFiles(conversationId, {
+      limit: 3,
+      beforeTimestampMs: oldest.timestamp,
+      beforeId: oldest._id,
+    });
+    expect(older.map((event) => event.timestamp)).toEqual([
+      1_000, 1_010, 1_020,
+    ]);
+  });
+
   it("upserts local chat events by explicit event id", () => {
     const { store } = createTestContext();
     const conversationId = store.getOrCreateDefaultConversationId();

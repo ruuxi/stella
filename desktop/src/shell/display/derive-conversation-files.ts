@@ -3,9 +3,9 @@
  * the assistant touched (modified, created, produced), most-recent first.
  *
  * Used by both the inline chat home overview's Recent files list AND the
- * "See all" dialog's paginated full file history (which feeds in extra
- * events from `useConversationHistoryPager`). Keeping the derivation in
- * one place means the dialog's paged view stays byte-identical to the
+ * "See all" dialog's paginated full file history (both fed by
+ * `useConversationFiles` / `conversation.files`). Keeping the derivation
+ * in one place means the dialog's paged view stays byte-identical to the
  * inline view for the same input window.
  */
 
