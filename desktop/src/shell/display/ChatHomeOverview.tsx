@@ -20,10 +20,15 @@
  * not by closing/reopening the tab — selection and panel state never
  * change just because the user navigates.
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Activity, Check, Clock } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
+import { useEdgeFade } from "@/shared/hooks/use-edge-fade";
+import {
+  ActivityHistoryDialog,
+  type ActivityHistorySection,
+} from "./ActivityHistoryDialog";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
@@ -61,7 +66,13 @@ import "./chat-home-overview.css";
 const FILES_DEFAULT_VISIBLE = 5;
 const DONE_DEFAULT_VISIBLE = 4;
 const UP_NEXT_DEFAULT_VISIBLE = 3;
-const FILES_TOTAL_CAP = 24;
+/**
+ * Upper bound on the file list materialised from the conversation. Events
+ * themselves are already capped at ~500 (see `MAX_RENDERED_EVENTS`), so a
+ * generous cap here only matters for the "See all" dialog — inline we
+ * still render at most `FILES_DEFAULT_VISIBLE`.
+ */
+const FILES_TOTAL_CAP = 500;
 const NEXT_RUN_TICK_MS = 30_000;
 /**
  * How many cheap-model progress phrases stay on screen per running task.
@@ -269,11 +280,11 @@ function SubgroupLabel({
   );
 }
 
-function ShowMoreButton({
-  remaining,
+function SeeAllButton({
+  total,
   onClick,
 }: {
-  remaining: number;
+  total: number;
   onClick: () => void;
 }) {
   return (
@@ -283,7 +294,7 @@ function ShowMoreButton({
         className="chat-home-overview__show-more"
         onClick={onClick}
       >
-        Show {remaining} more
+        See all ({total})
       </button>
     </li>
   );
@@ -297,8 +308,17 @@ export function ChatHomeOverview() {
   const summariesByAgent = chat.conversation.streaming.taskProgressSummaries;
   const schedules = useConversationSchedules(state.conversationId);
 
-  const [doneExpanded, setDoneExpanded] = useState(false);
-  const [filesExpanded, setFilesExpanded] = useState(false);
+  // Activity + Recent files each get their own hidden-scrollbar +
+  // edge-fade scroller. `useEdgeFade` toggles `data-at-start` /
+  // `data-at-end` on the element so the mask drops on the edge the
+  // user has scrolled to (see `chat-home-overview.css`).
+  const activityScrollRef = useRef<HTMLDivElement | null>(null);
+  const filesScrollRef = useRef<HTMLDivElement | null>(null);
+  useEdgeFade(activityScrollRef, { axis: "vertical" });
+  useEdgeFade(filesScrollRef, { axis: "vertical" });
+
+  const [historySection, setHistorySection] =
+    useState<ActivityHistorySection | null>(null);
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromEvents(events);
@@ -325,13 +345,16 @@ export function ChatHomeOverview() {
       });
   }, [allTasks]);
 
-  const visibleDone = doneExpanded
-    ? doneTasks
-    : doneTasks.slice(0, DONE_DEFAULT_VISIBLE);
+  const visibleDone = doneTasks.slice(0, DONE_DEFAULT_VISIBLE);
   const hiddenDoneCount = doneTasks.length - visibleDone.length;
 
   const visibleSchedules = schedules.slice(0, UP_NEXT_DEFAULT_VISIBLE);
-  const nowMs = useNextRunTicker(visibleSchedules.length > 0);
+  const hiddenScheduleCount = schedules.length - visibleSchedules.length;
+  // Keep the ticker active whenever the dialog might be showing
+  // schedules so its "in 5 min" badges stay live there too.
+  const nowMs = useNextRunTicker(
+    visibleSchedules.length > 0 || historySection === "upNext",
+  );
 
   const [openScheduleEntry, setOpenScheduleEntry] = useState<ScheduleEntry | null>(
     null,
@@ -379,9 +402,7 @@ export function ChatHomeOverview() {
       .slice(0, FILES_TOTAL_CAP);
   }, [events]);
 
-  const visibleFiles = filesExpanded
-    ? allFiles
-    : allFiles.slice(0, FILES_DEFAULT_VISIBLE);
+  const visibleFiles = allFiles.slice(0, FILES_DEFAULT_VISIBLE);
   const hiddenFilesCount = allFiles.length - visibleFiles.length;
 
   const handleOpenFile = (entry: FileEntry) => {
@@ -397,7 +418,10 @@ export function ChatHomeOverview() {
     <div className="chat-home-overview">
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Activity</h3>
-        <div className="chat-home-overview__section-body">
+        <div
+          ref={activityScrollRef}
+          className="chat-home-overview__section-body"
+        >
           {activityIsEmpty ? (
             <p className="chat-home-overview__empty">Nothing in flight.</p>
           ) : (
@@ -445,9 +469,9 @@ export function ChatHomeOverview() {
                     </ul>
                   </li>
                   {hiddenDoneCount > 0 && (
-                    <ShowMoreButton
-                      remaining={hiddenDoneCount}
-                      onClick={() => setDoneExpanded(true)}
+                    <SeeAllButton
+                      total={doneTasks.length}
+                      onClick={() => setHistorySection("done")}
                     />
                   )}
                 </>
@@ -466,6 +490,12 @@ export function ChatHomeOverview() {
                       onOpen={setOpenScheduleEntry}
                     />
                   ))}
+                  {hiddenScheduleCount > 0 && (
+                    <SeeAllButton
+                      total={schedules.length}
+                      onClick={() => setHistorySection("upNext")}
+                    />
+                  )}
                 </>
               )}
             </ul>
@@ -475,7 +505,10 @@ export function ChatHomeOverview() {
 
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Recent files</h3>
-        <div className="chat-home-overview__section-body">
+        <div
+          ref={filesScrollRef}
+          className="chat-home-overview__section-body"
+        >
           {allFiles.length === 0 ? (
             <p className="chat-home-overview__empty">
               Files Stella changes or creates will show up here.
@@ -501,9 +534,9 @@ export function ChatHomeOverview() {
                 </li>
               ))}
               {hiddenFilesCount > 0 && (
-                <ShowMoreButton
-                  remaining={hiddenFilesCount}
-                  onClick={() => setFilesExpanded(true)}
+                <SeeAllButton
+                  total={allFiles.length}
+                  onClick={() => setHistorySection("files")}
                 />
               )}
             </ul>
@@ -517,6 +550,28 @@ export function ChatHomeOverview() {
           if (!next) setOpenScheduleEntry(null);
         }}
         affected={dialogAffected}
+      />
+
+      <ActivityHistoryDialog
+        open={historySection !== null}
+        onOpenChange={(next) => {
+          if (!next) setHistorySection(null);
+        }}
+        section={historySection ?? "done"}
+        doneTasks={doneTasks}
+        schedules={schedules}
+        files={allFiles}
+        nowMs={nowMs}
+        onOpenSchedule={(entry) => {
+          // Hand the row off to the existing schedule manage dialog so
+          // Run-now / Pause / Delete behave identically whether the
+          // user came in via the inline row or the "See all" list.
+          setOpenScheduleEntry(entry);
+        }}
+        onOpenFile={(entry) => {
+          handleOpenFile(entry);
+          setHistorySection(null);
+        }}
       />
     </div>
   );
