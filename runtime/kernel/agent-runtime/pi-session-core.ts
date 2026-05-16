@@ -75,6 +75,7 @@ export class PiSessionCore {
     hookEmitter?: HookEmitter;
     tools: CreateRuntimeAgentArgs["tools"];
     afterToolCall?: CreateRuntimeAgentArgs["afterToolCall"];
+    onProviderRetry?: CreateRuntimeAgentArgs["onProviderRetry"];
     logContext: SessionLogContext;
   }): Agent {
     if (!this.agent) {
@@ -95,6 +96,9 @@ export class PiSessionCore {
         historySource,
         cacheSessionId: this.threadKey,
         ...(args.afterToolCall ? { afterToolCall: args.afterToolCall } : {}),
+        ...(args.onProviderRetry
+          ? { onProviderRetry: args.onProviderRetry }
+          : {}),
       });
       this.logger.debug("agent-created", {
         threadKey: this.threadKey,

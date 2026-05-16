@@ -29,7 +29,7 @@ export type AgentStreamEvent = {
   uiVisibility?: "visible" | "hidden";
   rootRunId?: string;
   chunk?: string;
-  statusState?: "running" | "compacting";
+  statusState?: "running" | "compacting" | "provider-retry";
   toolCallId?: string;
   toolName?: string;
   args?: Record<string, unknown>;

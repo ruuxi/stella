@@ -99,7 +99,7 @@ export type RuntimeStatusEvent = {
   runId: string;
   agentType: string;
   seq: number;
-  statusState: "running" | "compacting";
+  statusState: "running" | "compacting" | "provider-retry";
   statusText: string;
   uiVisibility?: "visible" | "hidden";
 };

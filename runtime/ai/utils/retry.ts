@@ -14,6 +14,12 @@ export interface RetryOptions {
 	signal?: AbortSignal;
 	/** Return `true` for errors that should be retried. Falls back to `isRetryableConnectionError`. */
 	isRetryable?: (error: unknown) => boolean;
+	/**
+	 * Called right before each backoff sleep, with the upcoming retry's
+	 * 1-based attempt number, the planned delay, and the failure reason.
+	 * Use to surface a "trying again in X" status to the UI.
+	 */
+	onRetry?: (info: { attempt: number; delayMs: number; reason?: string }) => void;
 }
 
 export async function retryWithBackoff<T>(fn: () => Promise<T>, options?: RetryOptions): Promise<T> {
@@ -48,6 +54,17 @@ export async function retryWithBackoff<T>(fn: () => Promise<T>, options?: RetryO
 			if (remainingBudgetMs <= 0) throw error;
 			const delayMs = Math.min(requestedDelayMs, remainingBudgetMs);
 			elapsedDelayMs += delayMs;
+			if (options?.onRetry) {
+				try {
+					options.onRetry({
+						attempt: attempt + 1,
+						delayMs,
+						reason: error instanceof Error ? error.message : undefined,
+					});
+				} catch {
+					// Best-effort UI signal; never let a callback throw abort the retry.
+				}
+			}
 			await retrySleep(delayMs, signal);
 		}
 	}

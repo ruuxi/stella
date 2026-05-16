@@ -232,6 +232,17 @@ export function useAgentEventHandler({
           break
         }
         case AGENT_STREAM_EVENT_TYPES.STATUS: {
+          if (event.statusState === 'provider-retry') {
+            if (conversationId === activeConversationIdRef.current) {
+              showToast({
+                title: 'Reconnecting to Stella',
+                description: event.statusText || 'Trying again in a moment.',
+                variant: 'default',
+                duration: 4000,
+              })
+            }
+            break
+          }
           dispatch({
             type: 'run-status',
             runId: event.runId,
