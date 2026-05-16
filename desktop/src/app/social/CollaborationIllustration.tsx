@@ -1,19 +1,60 @@
+import { useEffect, useRef, useState } from "react";
+
 export function CollaborationIllustration({
   className = "",
 }: {
   className?: string;
 }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [inView, setInView] = useState(false);
+  const [docVisible, setDocVisible] = useState(
+    typeof document === "undefined" ? true : !document.hidden,
+  );
+
+  useEffect(() => {
+    const node = svgRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) setInView(entry.isIntersecting);
+      },
+      { threshold: 0.01 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const onVisibility = () => setDocVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  const running = inView && docVisible;
+
   return (
     <svg
+      ref={svgRef}
       className={className}
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 400 300"
       width="100%"
       height="100%"
+      data-running={running ? "true" : "false"}
     >
       <defs>
         <style>
           {`
+            svg[data-running="false"] .anim-body,
+            svg[data-running="false"] .anim-roof,
+            svg[data-running="false"] .anim-cursor-a,
+            svg[data-running="false"] .anim-cursor-b,
+            svg[data-running="false"] .anim-sparkle,
+            svg[data-running="false"] .anim-float-1,
+            svg[data-running="false"] .anim-float-2 {
+              animation-play-state: paused;
+            }
+
             .anim-body { animation: buildBody 5s ease-in-out infinite; }
             .anim-roof { animation: buildRoof 5s ease-in-out infinite; }
             .anim-cursor-a { animation: moveCursorA 5s ease-in-out infinite; }
@@ -78,9 +119,6 @@ export function CollaborationIllustration({
         <filter id="shadow-sm" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.1" />
         </filter>
-        <filter id="shadow-md" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="2" dy="4" stdDeviation="4" floodOpacity="0.15" />
-        </filter>
       </defs>
 
       <g className="anim-float-1">
@@ -127,7 +165,7 @@ export function CollaborationIllustration({
         />
       </g>
 
-      <g className="anim-cursor-a" filter="url(#shadow-md)">
+      <g className="anim-cursor-a">
         <path
           d="M0,0 L0,24 L6,18 L11,29 L14,27 L9,16 L18,16 Z"
           fill="#4f46e5"
@@ -149,7 +187,7 @@ export function CollaborationIllustration({
         </text>
       </g>
 
-      <g className="anim-cursor-b" filter="url(#shadow-md)">
+      <g className="anim-cursor-b">
         <path
           d="M0,0 L0,24 L6,18 L11,29 L14,27 L9,16 L18,16 Z"
           fill="#e11d48"
