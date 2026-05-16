@@ -111,6 +111,13 @@ class OverlayWindow {
       maximizable: false,
       closable: false,
       skipTaskbar: true,
+      // `fullscreenable` MUST be false on macOS for `visibleOnFullScreen: true`
+      // below to take effect. AppKit ignores the `FullScreenAuxiliary`
+      // collection-behavior bit on any window that is itself fullscreen-able,
+      // which is what caused the radial to jump the user back to the original
+      // Space (blank, because the full shell had just moved to its own
+      // fullscreen Space) instead of drawing over the active fullscreen Space.
+      fullscreenable: false,
       ...(process.platform === 'darwin' ? { hiddenInMissionControl: true } : {}),
       hasShadow: false,
       focusable: false,

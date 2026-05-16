@@ -61,6 +61,17 @@ export type RadialWindowBridge = {
   showWindow: (target: "full" | "mini") => void;
   restoreWindowVisibility: (target: "full" | "mini") => void;
   minimizeWindow: () => void;
+  /**
+   * Mini-only close path for the radial dial's "Close" wedge. The general
+   * `minimizeWindow()` helper targets whichever shell window is currently
+   * focused, which means clicking radial-Close while the mini is pinned
+   * always-on-top but the full window happens to be focused would
+   * accidentally hide the full window. The radial's Close wedge is meant
+   * exclusively for dismissing the mini (it's never offered as an action
+   * against the full window), so it routes here and bypasses focus
+   * resolution entirely.
+   */
+  hideMiniWindow: () => void;
 };
 
 type RadialGestureDeps = {
@@ -201,7 +212,12 @@ export class RadialGestureService {
           (win.isCompactMode() && win.isWindowFocused()) ||
           (win.isMiniShowing() && win.isMiniAlwaysOnTop());
         if (shouldCloseMini) {
-          win.minimizeWindow();
+          // Mini-only: never call `minimizeWindow()` here. That helper
+          // resolves to the focused shell window, which would hide the
+          // full window if the mini was pinned-on-top with the full
+          // window currently focused. The radial's Close wedge exists
+          // for the mini only.
+          win.hideMiniWindow();
         } else {
           win.showWindow("mini");
         }
