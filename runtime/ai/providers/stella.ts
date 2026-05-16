@@ -89,6 +89,13 @@ const isAuthFailure = (response: Response, body: string): boolean => {
   return /\b(token expired|expired token|unauthenticated|unauthorized|invalid token)\b/i.test(body);
 };
 
+// Terminal 429s from the Stella provider: anon cap ("Sign in required"),
+// signed-in plan caps ("usage limit reached" / "managed-model limits
+// reached"). Retrying these just delays the toast by minutes — the
+// budget won't reset within a useful window.
+const isPolicyCapMessage = (message: string): boolean =>
+  /\b(sign in required|usage limit reached|managed-model limits reached)\b/i.test(message);
+
 const readStellaErrorMessage = async (response: Response): Promise<string> => {
   let errorMessage = `Stella runtime error: ${response.status} ${response.statusText}`;
   try {
@@ -376,6 +383,9 @@ export const streamStella: (
         isRetryable: (error) => {
           if (error instanceof StellaRuntimeHttpError) {
             if (error.status === 401 || error.status === 403) return false;
+            if (error.status === 429 && isPolicyCapMessage(error.message)) {
+              return false;
+            }
           }
           return isRetryableConnectionError(error);
         },
