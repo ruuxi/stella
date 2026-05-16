@@ -458,6 +458,17 @@ export const finalizeOrchestratorInterrupted = (args: {
   return args.reason;
 };
 
+/**
+ * Sentinel surfaced to the orchestrator when a sub-agent run finishes
+ * cleanly but the model produced no user-visible text. Without this
+ * the orchestrator's hidden `[Agent completed]` reminder arrives with
+ * no `result:` line and the model treats it as a hung run, wasting
+ * turns asking the sub-agent what happened. Covers the Kimi K2 family
+ * "thinking-only stop" pathology even after the agent-loop retry.
+ */
+export const SUBAGENT_EMPTY_RESULT_SENTINEL =
+  "(Agent completed without a user-visible reply. Re-prompt with send_input if you need the outcome.)";
+
 export const finalizeSubagentSuccess = async (args: {
   opts: SubagentRunOptions;
   runEvents: RuntimeRunEventRecorder;
@@ -472,23 +483,27 @@ export const finalizeSubagentSuccess = async (args: {
   // The kernel just fires the lifecycle event with the per-run services
   // populated; each hook self-skips when its capability gate doesn't
   // match.
+  const trimmedResult = args.result.trim();
+  const resolvedResult = trimmedResult || SUBAGENT_EMPTY_RESULT_SENTINEL;
   const sideEffectsAllowed = !args.opts.suppressCompletionSideEffects;
   emitSubagentAgentEnd(args.opts, {
     runId: args.runId,
     threadKey: args.threadKey,
     outcome: "success",
-    finalText: args.result,
+    finalText: resolvedResult,
     sideEffectsAllowed,
   });
 
   // Finish the parent-visible run before scheduling subagent compaction.
   if (!args.opts.suppressCompletionSideEffects) {
     args.opts.callbacks?.onEnd?.(
-      args.runEvents.recordRunEnd({ finalText: args.result }),
+      args.runEvents.recordRunEnd({ finalText: resolvedResult }),
     );
   }
 
-  if (args.result.trim()) {
+  // Only schedule compaction when the model actually produced output;
+  // sentinel-only finals carry no new history worth compacting.
+  if (trimmedResult) {
     const messageCount = args.agentMessageCount ?? 0;
     void args.opts.compactionScheduler.schedule({
       threadKey: args.threadKey,
@@ -508,7 +523,7 @@ export const finalizeSubagentSuccess = async (args: {
 
   return {
     runId: args.runId,
-    result: args.result,
+    result: resolvedResult,
   };
 };
 
