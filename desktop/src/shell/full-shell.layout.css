@@ -766,6 +766,18 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
  * scrollbar overlay would be off-center). */
 .session-content {
   scrollbar-width: none;
+  /* Disable the browser's automatic scroll-anchor adjustments on the
+     scroll viewport itself. The chat's bottom-pinning is owned by
+     `useChatScrollManagement` (the width-change branch snaps `scrollTop`
+     when the user is following), and Legend List runs MVCP for the
+     load-older case. If the browser is *also* picking an anchor and
+     adjusting scroll on every layout, three actors fight for the same
+     property each frame while the display sidebar slides, which reads
+     as a visible bounce/shake at the bottom of the chat. The per-row
+     rule on `.event-row` (`overflow-anchor: none`) only excludes
+     individual rows from being chosen as anchors; the viewport rule
+     here turns the mechanism off entirely. */
+  overflow-anchor: none;
   /* Top fade always — older history tapers under the title-bar region.
    * Bottom fade is also always present so chat content fades out
    * cleanly beneath the working indicator/chips that overlay the

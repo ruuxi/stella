@@ -222,7 +222,7 @@ export const ChatColumn = memo(function ChatColumn({
       <div className="chat-viewport-region">
         <ConversationEvents
           events={conversation.events}
-          maxItems={2000}
+          maxItems={500}
           streamingText={conversation.streaming.text}
           isStreaming={conversation.streaming.isStreaming}
           pendingUserMessageId={conversation.streaming.pendingUserMessageId}

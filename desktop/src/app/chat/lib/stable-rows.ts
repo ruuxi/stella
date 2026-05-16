@@ -107,14 +107,14 @@ export const stabilizeTurnRows = <T extends { id: string }>(
 
 /**
  * Enforces an upper bound on the materialized event window. Mirrors the
- * t3code `MAX_THREAD_MESSAGES = 2_000` cap: once a chat balloons past
+ * t3code-style bounded window cap: once a chat balloons past
  * that many events the renderer drops the oldest entries to bound DOM
  * growth, in-flight `useMemo` work, and JS heap pressure. Apply this
  * AFTER `stabilizeEventList` so individual event refs stay shared, then
  * pass `previous` so the wrapping array reference is also reused when
  * the window slice is contents-identical to the previous render.
  */
-const MAX_RENDERED_EVENTS = 2000;
+const MAX_RENDERED_EVENTS = 500;
 
 export const capEventWindow = (
   events: EventRecord[],

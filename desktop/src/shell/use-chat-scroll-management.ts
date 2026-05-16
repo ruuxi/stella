@@ -221,6 +221,11 @@ export function useChatScrollManagement({
           cancelTween()
         }
       }
+      const pinToBottom = () => {
+        if (!attached || !followRef.current) return
+        cancelTween()
+        attached.scrollTop = Math.max(0, attached.scrollHeight - attached.clientHeight)
+      }
 
       node.addEventListener('wheel', handleWheel, { passive: true })
       node.addEventListener('touchstart', handleTouchStart, { passive: true })
@@ -244,11 +249,8 @@ export function useChatScrollManagement({
         // position alone.
         if (widthChanged) {
           if (followRef.current) {
-            const target = newHeight - attached.clientHeight
-            if (target > attached.scrollTop + 0.5) {
-              cancelTween()
-              attached.scrollTop = target
-            }
+            pinToBottom()
+            requestAnimationFrame(pinToBottom)
           }
           return
         }

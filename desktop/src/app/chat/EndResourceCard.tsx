@@ -118,9 +118,9 @@ const categoryAndFormatForPayload = (
 
 /**
  * Returns the first on-disk file path the payload references, or null
- * when the payload has no real file (URLs, canvas-html, trash bins,
- * text-only media). The "Open with…" drop-up only appears when a path
- * is available — there is nothing external to open otherwise.
+ * when the payload has no real file (URLs, trash bins, text-only media).
+ * The "Open with…" drop-up only appears when a path is available — there
+ * is nothing external to open otherwise.
  */
 const localFilePathForPayload = (payload: DisplayPayload): string | null => {
   switch (payload.kind) {
@@ -130,6 +130,8 @@ const localFilePathForPayload = (payload: DisplayPayload): string | null => {
     case "source-diff":
     case "file-artifact":
     case "pdf":
+      return payload.filePath;
+    case "canvas-html":
       return payload.filePath;
     case "media":
       switch (payload.asset.kind) {
