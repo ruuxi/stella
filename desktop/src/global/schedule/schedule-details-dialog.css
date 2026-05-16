@@ -1,10 +1,28 @@
 /* ============================================================
-   Schedule details dialog — receipt chip click target.
-
-   Minimal layout: list of rows, each row stacks name + meta line
-   above a row of pill buttons. No card chrome on the list itself
-   beyond what Dialog already provides.
+   Schedule details dialog — opened from the inline "scheduled"
+   receipt chip in chat and from "Up next" rows in the chat home
+   overview. Matches the Connect-dialog aesthetic (the canonical
+   "Apple polish" surface): proper body padding, a close button,
+   quiet card chrome around each row, and a dialog that hugs its
+   content rather than locking to a fixed 480x512 frame.
    ============================================================ */
+
+.schedule-details-dialog[data-slot="dialog-content"] {
+  min-height: 0;
+}
+
+.schedule-details-dialog [data-slot="dialog-header"] {
+  padding: 18px 18px 6px 22px;
+}
+
+.schedule-details-dialog [data-slot="dialog-description"] {
+  padding: 0 22px 4px;
+  margin-top: 0;
+}
+
+.schedule-details-dialog [data-slot="dialog-body"] {
+  padding: 12px 18px 20px;
+}
 
 .schedule-details-dialog__rows {
   list-style: none;
@@ -12,7 +30,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .schedule-details-dialog__empty {
@@ -24,25 +42,21 @@
 .schedule-details-dialog__row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
 }
 
-.schedule-details-dialog__row:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-/* Disabled rows read as quieter so the active commitments dominate. */
 .schedule-details-dialog__row[data-enabled="false"] {
-  opacity: 0.6;
+  opacity: 0.65;
 }
 
 .schedule-details-dialog__row-main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -51,6 +65,13 @@
   font-weight: 500;
   color: var(--text-strong);
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
 }
 
 .schedule-details-dialog__row-meta {
