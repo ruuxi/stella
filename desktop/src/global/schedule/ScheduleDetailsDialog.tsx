@@ -312,13 +312,14 @@ export function ScheduleDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <Dialog.Content size="md">
+      <Dialog.Content size="md" fit className="schedule-details-dialog">
         <Dialog.Header>
           <Dialog.Title>{title}</Dialog.Title>
-          {summary && (
-            <Dialog.Description>{summary}</Dialog.Description>
-          )}
+          <Dialog.CloseButton />
         </Dialog.Header>
+        {summary && (
+          <Dialog.Description>{summary}</Dialog.Description>
+        )}
         <Dialog.Body>
           {rows.length === 0 ? (
             <p className="schedule-details-dialog__empty">
