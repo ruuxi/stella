@@ -99,6 +99,7 @@
   display: flex;
   align-items: baseline;
   gap: 12px;
+  min-width: 0;
 }
 
 .chat-home-overview__task:last-child {
@@ -110,6 +111,10 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
   white-space: nowrap;
   color: var(--text-strong);
 }
@@ -201,11 +206,11 @@
   padding: 4px 0 4px 12px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
   border-left: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   font-size: 12px;
   line-height: 1.35;
-  color: var(--text-weak);
+  color: var(--text-base);
 }
 
 .chat-home-overview__task-feed--idle {
@@ -218,10 +223,42 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Older entries (not the latest) read as quieter so the eye drops to
+     the bottom-most row, which is what's happening right now. */
+  color: var(--text-weak);
   /* Newer phrases gently fade up into place as they push the oldest one
      off the top — keeps the "oldest lost, newest kept" rotation readable
      without animating heights. */
   animation: chat-home-overview__task-feed-item-in 220ms ease-out both;
+}
+
+/* Latest phrase: base color and a subtle left-to-right shimmer running
+   across the text so the active line reads as live. */
+.chat-home-overview__task-feed-item:last-child {
+  color: var(--text-base);
+  background: linear-gradient(
+    90deg,
+    var(--text-base) 0%,
+    var(--text-base) 38%,
+    color-mix(in oklch, var(--text-base) 45%, transparent) 50%,
+    var(--text-base) 62%,
+    var(--text-base) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation:
+    chat-home-overview__task-feed-item-in 220ms ease-out both,
+    chat-home-overview__task-feed-shimmer 2400ms linear infinite;
+}
+
+/* Pause the shimmer once the task stops running so completed feeds don't
+   keep animating in the background. */
+.chat-home-overview__task-feed--idle .chat-home-overview__task-feed-item:last-child {
+  animation: chat-home-overview__task-feed-item-in 220ms ease-out both;
+  background: none;
+  -webkit-text-fill-color: currentColor;
 }
 
 @keyframes chat-home-overview__task-feed-item-in {
@@ -232,6 +269,15 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes chat-home-overview__task-feed-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
   }
 }
 
