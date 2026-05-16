@@ -1,45 +1,58 @@
 /**
  * Full-list "See all" dialog opened from the chat home overview
- * (`ChatHomeOverview.tsx`). Each section in the overview caps how many
- * rows it shows inline; this dialog renders the full list for one
- * section at a time with a search field at the top.
+ * (`ChatHomeOverview.tsx`). Three sections share the same dialog
+ * (Completed / Up next / Recent files) with a search field at the top.
  *
- * Three sections share the same dialog so the surface feels uniform:
- *   - `done`    — every completed/failed/canceled task for the
- *                 current conversation
- *   - `upNext`  — every scheduled cron/heartbeat for the current
- *                 conversation (clicking a row opens the schedule
- *                 manage dialog, same as the inline row)
- *   - `files`   — every file Stella touched in this conversation
+ * Two performance properties matter here, both addressing the user's
+ * "shouldn't load all up front" concern:
  *
- * Search is a plain substring match against the row label. The data
- * sets are bounded (events are capped to ~500 in the renderer) so an
- * in-memory filter is cheap and avoids a round-trip through SQLite.
+ *   1. The list is virtualized with `@legendapp/list/react` so even if
+ *      the derived dataset has hundreds of rows, only the visible window
+ *      is mounted to the DOM.
+ *
+ *   2. The Completed and Recent files sections page strictly older
+ *      events directly from SQLite via `useConversationHistoryPager`
+ *      (IPC `localChat:listEventsBefore`). The dialog re-derives tasks
+ *      and files from `events + extras` so the user can scroll back
+ *      past the renderer's ~500-event window into real history.
+ *
+ * Schedules are always fetched live as a small bounded list and don't
+ * need pagination.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
-import { Dialog } from "@/ui/dialog";
-import { useEdgeFade } from "@/shared/hooks/use-edge-fade";
 import {
+  LegendList,
+  type LegendListRenderItemProps,
+} from "@legendapp/list/react";
+import { Dialog } from "@/ui/dialog";
+import {
+  extractTasksFromEvents,
   getTaskDisplayText,
+  type EventRecord,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
-import type { DisplayTabPayload } from "@/shared/contracts/display-payload";
+import { useConversationHistoryPager } from "@/app/chat/hooks/use-conversation-history-pager";
 import type { ScheduleEntry } from "@/global/schedule/use-conversation-schedules";
 import { formatNextRun } from "@/global/schedule/format-schedule";
 import { DisplayTabIcon } from "./icons";
 import { basenameOf } from "./path-to-viewer";
 import { displayTabKindForPayload } from "./payload-to-tab-spec";
+import {
+  deriveConversationFiles,
+  type ConversationFileEntry,
+} from "./derive-conversation-files";
 import "./activity-history-dialog.css";
 
 export type ActivityHistorySection = "done" | "upNext" | "files";
 
-export type ActivityHistoryFile = {
-  path: string;
-  timestamp: number;
-  payload: DisplayTabPayload;
-};
+/**
+ * Files section row variant. Kept exported so the inline overview can
+ * pass its own pre-derived entries when not paging from SQLite — the
+ * dialog still re-derives from raw events while open.
+ */
+export type ActivityHistoryFile = ConversationFileEntry;
 
 const SECTION_TITLES: Record<ActivityHistorySection, string> = {
   done: "Completed",
@@ -75,13 +88,30 @@ const taskBadge = (task: TaskItem): string => {
 const taskLabel = (task: TaskItem): string =>
   (getTaskDisplayText(task) || task.description || "").trim();
 
+type DoneListItem = { kind: "done"; task: TaskItem };
+type UpNextListItem = { kind: "upNext"; entry: ScheduleEntry };
+type FilesListItem = { kind: "files"; entry: ActivityHistoryFile };
+type LoadingListItem = { kind: "loading"; id: string };
+type ListItem =
+  | DoneListItem
+  | UpNextListItem
+  | FilesListItem
+  | LoadingListItem;
+
 export type ActivityHistoryDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   section: ActivityHistorySection;
-  doneTasks: ReadonlyArray<TaskItem>;
+  /**
+   * Raw events from the renderer's live conversation feed. The dialog
+   * re-derives Done tasks and Recent files from `events + extras` (the
+   * paged-from-SQLite older history) so it can show full history while
+   * the inline overview shows the capped window.
+   */
+  events: ReadonlyArray<EventRecord>;
+  /** Live schedule list — already covers everything for the conversation. */
   schedules: ReadonlyArray<ScheduleEntry>;
-  files: ReadonlyArray<ActivityHistoryFile>;
+  conversationId: string | null;
   nowMs: number;
   onOpenSchedule: (entry: ScheduleEntry) => void;
   onOpenFile: (entry: ActivityHistoryFile) => void;
@@ -91,27 +121,68 @@ export function ActivityHistoryDialog({
   open,
   onOpenChange,
   section,
-  doneTasks,
+  events,
   schedules,
-  files,
+  conversationId,
   nowMs,
   onOpenSchedule,
   onOpenFile,
 }: ActivityHistoryDialogProps) {
   const [query, setQuery] = useState("");
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
-  useEdgeFade(scrollerRef, { axis: "vertical" });
 
-  // Reset search and scroll whenever the dialog opens or the section
-  // changes — a stale query for "files" sticking around after opening
-  // "Completed" reads as a bug.
+  // Anchor for the pager — the oldest event already in the renderer's
+  // window. Stable across renders within the same `events` array so
+  // the pager doesn't reset on every state update.
+  const anchor = useMemo(() => {
+    if (events.length === 0) return null;
+    const oldest = events[0];
+    return {
+      beforeTimestampMs: oldest.timestamp,
+      beforeId: oldest._id,
+    };
+  }, [events]);
+
+  const pagerEnabled =
+    open && (section === "done" || section === "files") && Boolean(conversationId);
+
+  const pager = useConversationHistoryPager({
+    conversationId,
+    anchor,
+    enabled: pagerEnabled,
+  });
+
+  // Reset search whenever the dialog opens or the section changes — a
+  // stale query for "files" sticking around after opening "Completed"
+  // reads as a bug. LegendList resets its own scroll on data change.
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
   }, [open, section]);
 
   const needle = query.trim().toLowerCase();
+
+  // Union live events with the pager's older extras. Pager keeps them
+  // ASC by timestamp so a plain concat preserves order.
+  const unionedEvents = useMemo<EventRecord[]>(() => {
+    if (pager.extras.length === 0) return [...events];
+    return [...pager.extras, ...events];
+  }, [pager.extras, events]);
+
+  const doneTasks = useMemo<TaskItem[]>(() => {
+    if (section !== "done") return [];
+    return extractTasksFromEvents(unionedEvents)
+      .filter((task) => task.status !== "running")
+      .sort((a, b) => {
+        const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
+        const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
+        return bTime - aTime;
+      });
+  }, [section, unionedEvents]);
+
+  const files = useMemo<ActivityHistoryFile[]>(() => {
+    if (section !== "files") return [];
+    return deriveConversationFiles(unionedEvents);
+  }, [section, unionedEvents]);
 
   const filteredDone = useMemo(() => {
     if (!needle) return doneTasks;
@@ -134,6 +205,37 @@ export function ActivityHistoryDialog({
     );
   }, [files, needle]);
 
+  const listItems = useMemo<ListItem[]>(() => {
+    if (section === "done") {
+      const rows: ListItem[] = filteredDone.map((task) => ({
+        kind: "done",
+        task,
+      }));
+      if (pager.hasMore || pager.isLoading) {
+        rows.push({ kind: "loading", id: "pager-loading" });
+      }
+      return rows;
+    }
+    if (section === "upNext") {
+      return filteredSchedules.map((entry) => ({ kind: "upNext", entry }));
+    }
+    const rows: ListItem[] = filteredFiles.map((entry) => ({
+      kind: "files",
+      entry,
+    }));
+    if (pager.hasMore || pager.isLoading) {
+      rows.push({ kind: "loading", id: "pager-loading" });
+    }
+    return rows;
+  }, [
+    section,
+    filteredDone,
+    filteredSchedules,
+    filteredFiles,
+    pager.hasMore,
+    pager.isLoading,
+  ]);
+
   const totalForSection =
     section === "done"
       ? doneTasks.length
@@ -141,14 +243,80 @@ export function ActivityHistoryDialog({
         ? schedules.length
         : files.length;
 
-  const filteredCount =
-    section === "done"
-      ? filteredDone.length
-      : section === "upNext"
-        ? filteredSchedules.length
-        : filteredFiles.length;
+  const empty =
+    listItems.length === 0 ||
+    (listItems.length === 1 && listItems[0].kind === "loading");
 
-  const empty = filteredCount === 0;
+  const renderItem = ({ item }: LegendListRenderItemProps<ListItem>) => {
+    if (item.kind === "done") {
+      const { task } = item;
+      return (
+        <div
+          className="activity-history-dialog__row"
+          data-status={task.status}
+        >
+          <span className="activity-history-dialog__row-text">
+            {taskLabel(task)}
+          </span>
+          <span className="activity-history-dialog__row-meta">
+            {taskBadge(task)}
+          </span>
+        </div>
+      );
+    }
+    if (item.kind === "upNext") {
+      const { entry } = item;
+      return (
+        <div className="activity-history-dialog__row">
+          <button
+            type="button"
+            className="activity-history-dialog__row-button"
+            onClick={() => onOpenSchedule(entry)}
+          >
+            <span className="activity-history-dialog__row-text">
+              {entry.name}
+            </span>
+            <span className="activity-history-dialog__row-meta">
+              {formatNextRun(entry.nextRunAtMs, nowMs)}
+            </span>
+          </button>
+        </div>
+      );
+    }
+    if (item.kind === "files") {
+      const { entry } = item;
+      return (
+        <div className="activity-history-dialog__row">
+          <button
+            type="button"
+            className="activity-history-dialog__row-button activity-history-dialog__row-button--file"
+            onClick={() => onOpenFile(entry)}
+            title={entry.path}
+          >
+            <DisplayTabIcon
+              kind={displayTabKindForPayload(entry.payload)}
+              size={16}
+            />
+            <span className="activity-history-dialog__row-text">
+              {basenameOf(entry.path)}
+            </span>
+            <span className="activity-history-dialog__row-meta activity-history-dialog__row-meta--path">
+              {entry.path}
+            </span>
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div
+        className="activity-history-dialog__loading"
+        role="status"
+        aria-live="polite"
+      >
+        Loading earlier history…
+      </div>
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -180,83 +348,43 @@ export function ActivityHistoryDialog({
           )}
         </div>
         <Dialog.Body>
-          <div ref={scrollerRef} className="activity-history-dialog__scroll">
-            {empty ? (
+          {empty ? (
+            <div className="activity-history-dialog__empty-wrap">
               <p className="activity-history-dialog__empty">
                 {needle
                   ? `No matches in ${totalForSection.toLocaleString()}.`
                   : SECTION_EMPTY[section]}
               </p>
-            ) : section === "done" ? (
-              <ul className="activity-history-dialog__list">
-                {filteredDone.map((task) => (
-                  <li
-                    key={task.id}
-                    className="activity-history-dialog__row"
-                    data-status={task.status}
-                  >
-                    <span className="activity-history-dialog__row-text">
-                      {taskLabel(task)}
-                    </span>
-                    <span className="activity-history-dialog__row-meta">
-                      {taskBadge(task)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : section === "upNext" ? (
-              <ul className="activity-history-dialog__list">
-                {filteredSchedules.map((entry) => (
-                  <li
-                    key={`${entry.kind}:${entry.id}`}
-                    className="activity-history-dialog__row"
-                  >
-                    <button
-                      type="button"
-                      className="activity-history-dialog__row-button"
-                      onClick={() => onOpenSchedule(entry)}
-                    >
-                      <span className="activity-history-dialog__row-text">
-                        {entry.name}
-                      </span>
-                      <span className="activity-history-dialog__row-meta">
-                        {formatNextRun(entry.nextRunAtMs, nowMs)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <ul className="activity-history-dialog__list">
-                {filteredFiles.map((entry) => (
-                  <li
-                    key={entry.path}
-                    className="activity-history-dialog__row"
-                  >
-                    <button
-                      type="button"
-                      className="activity-history-dialog__row-button activity-history-dialog__row-button--file"
-                      onClick={() => onOpenFile(entry)}
-                      title={entry.path}
-                    >
-                      <DisplayTabIcon
-                        kind={displayTabKindForPayload(entry.payload)}
-                        size={16}
-                      />
-                      <span className="activity-history-dialog__row-text">
-                        {basenameOf(entry.path)}
-                      </span>
-                      <span className="activity-history-dialog__row-meta activity-history-dialog__row-meta--path">
-                        {entry.path}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="activity-history-dialog__scroll">
+              <LegendList<ListItem>
+                data={listItems}
+                keyExtractor={keyExtractor}
+                renderItem={renderItem}
+                estimatedItemSize={36}
+                recycleItems
+                onEndReached={pager.loadMore}
+                onEndReachedThreshold={0.6}
+                style={{ height: "100%", width: "100%" }}
+              />
+            </div>
+          )}
         </Dialog.Body>
       </Dialog.Content>
     </Dialog>
   );
 }
+
+const keyExtractor = (item: ListItem): string => {
+  switch (item.kind) {
+    case "done":
+      return `done:${item.task.id}`;
+    case "upNext":
+      return `up:${item.entry.kind}:${item.entry.id}`;
+    case "files":
+      return `file:${item.entry.path}`;
+    case "loading":
+      return item.id;
+  }
+};

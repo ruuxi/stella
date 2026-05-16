@@ -20,8 +20,15 @@
  * not by closing/reopening the tab — selection and panel state never
  * change just because the user navigates.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, Check, Clock } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { Activity, Check, ChevronDown, Clock } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { useEdgeFade } from "@/shared/hooks/use-edge-fade";
@@ -29,23 +36,12 @@ import {
   ActivityHistoryDialog,
   type ActivityHistorySection,
 } from "./ActivityHistoryDialog";
-import {
-  isFileChangeRecordArray,
-  isProducedFileRecordArray,
-  type FileChangeRecord,
-} from "../../../../runtime/contracts/file-changes.js";
-import {
-  isDisplayTabPayload,
-  type DisplayTabPayload,
-} from "@/shared/contracts/display-payload";
 import { displayTabs } from "./tab-store";
 import {
   displayTabKindForPayload,
   payloadToTabSpec,
 } from "./payload-to-tab-spec";
-import {
-  basenameOf,
-} from "./path-to-viewer";
+import { basenameOf } from "./path-to-viewer";
 import { DisplayTabIcon } from "./icons";
 import {
   extractTasksFromEvents,
@@ -53,7 +49,10 @@ import {
   mergeFooterTasks,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
-import { buildPayloadFromBarePath } from "@/app/chat/lib/derive-turn-resource";
+import {
+  deriveConversationFiles,
+  type ConversationFileEntry,
+} from "./derive-conversation-files";
 import {
   useConversationSchedules,
   type ScheduleEntry,
@@ -66,13 +65,6 @@ import "./chat-home-overview.css";
 const FILES_DEFAULT_VISIBLE = 5;
 const DONE_DEFAULT_VISIBLE = 4;
 const UP_NEXT_DEFAULT_VISIBLE = 3;
-/**
- * Upper bound on the file list materialised from the conversation. Events
- * themselves are already capped at ~500 (see `MAX_RENDERED_EVENTS`), so a
- * generous cap here only matters for the "See all" dialog — inline we
- * still render at most `FILES_DEFAULT_VISIBLE`.
- */
-const FILES_TOTAL_CAP = 500;
 const NEXT_RUN_TICK_MS = 30_000;
 /**
  * How many cheap-model progress phrases stay on screen per running task.
@@ -97,21 +89,7 @@ const truncateTitle = (value: string): string => {
   return `${trimmed.slice(0, MAX_TASK_TITLE_CHARS - 1).trimEnd()}…`;
 };
 
-type FileEntry = {
-  path: string;
-  timestamp: number;
-  payload: DisplayTabPayload;
-};
-
-const resolvedPathForChange = (record: FileChangeRecord): string | null => {
-  if (record.kind.type === "delete") return null;
-  const path =
-    record.kind.type === "update" && record.kind.move_path
-      ? record.kind.move_path
-      : record.path;
-  if (!path || !path.startsWith("/")) return null;
-  return path;
-};
+type FileEntry = ConversationFileEntry;
 
 const taskLineFor = (task: TaskItem): string => {
   return truncateTitle(getTaskDisplayText(task) || task.description);
@@ -280,6 +258,44 @@ function SubgroupLabel({
   );
 }
 
+/**
+ * Floating "Show more ⌄" pill that appears just above a section's bottom
+ * fade whenever there's scrolled-off content below the viewport. Pure
+ * sibling-CSS toggling drives visibility (see `chat-home-overview.css`
+ * `[data-at-end="false"] ~ .chat-home-overview__more-indicator`) — this
+ * component only owns the click-to-scroll behaviour.
+ */
+function MoreIndicator({
+  scrollerRef,
+}: {
+  scrollerRef: RefObject<HTMLDivElement | null>;
+}) {
+  const handleClick = () => {
+    const node = scrollerRef.current;
+    if (!node) return;
+    node.scrollBy({
+      top: Math.max(80, node.clientHeight * 0.8),
+      behavior: "smooth",
+    });
+  };
+  return (
+    <button
+      type="button"
+      className="chat-home-overview__more-indicator"
+      onClick={handleClick}
+      aria-label="Show more"
+    >
+      <span>Show more</span>
+      <span
+        className="chat-home-overview__more-indicator-chevron"
+        aria-hidden="true"
+      >
+        <ChevronDown size={12} strokeWidth={2.25} />
+      </span>
+    </button>
+  );
+}
+
 function SeeAllButton({
   total,
   onClick,
@@ -364,43 +380,14 @@ export function ChatHomeOverview() {
     return [scheduleEntryToAffectedRef(openScheduleEntry, state.conversationId)];
   }, [openScheduleEntry, state.conversationId]);
 
-  const allFiles = useMemo<FileEntry[]>(() => {
-    const seen = new Map<string, FileEntry>();
-
-    for (const event of events) {
-      const payload = event.payload as
-        | { fileChanges?: unknown; producedFiles?: unknown }
-        | undefined;
-      if (!payload || typeof payload !== "object") continue;
-
-      const fileChanges = isFileChangeRecordArray(payload.fileChanges)
-        ? payload.fileChanges
-        : [];
-      const produced = isProducedFileRecordArray(payload.producedFiles)
-        ? payload.producedFiles
-        : [];
-
-      for (const record of [...fileChanges, ...produced]) {
-        const path = resolvedPathForChange(record);
-        if (!path) continue;
-        const filePayload = buildPayloadFromBarePath(path, event.timestamp, {
-          produced: true,
-        });
-        if (!filePayload || !isDisplayTabPayload(filePayload)) continue;
-        // Most-recent occurrence wins so the timestamp reflects the
-        // latest activity for that file.
-        seen.set(path, {
-          path,
-          timestamp: event.timestamp,
-          payload: filePayload,
-        });
-      }
-    }
-
-    return Array.from(seen.values())
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, FILES_TOTAL_CAP);
-  }, [events]);
+  // Inline view derives from the in-memory event window only — the
+  // See-all dialog re-derives from `events + extras` and pages older
+  // history from SQLite on demand, so the inline count reflects "in
+  // this conversation window" and the dialog reveals the rest.
+  const allFiles = useMemo<FileEntry[]>(
+    () => deriveConversationFiles(events),
+    [events],
+  );
 
   const visibleFiles = allFiles.slice(0, FILES_DEFAULT_VISIBLE);
   const hiddenFilesCount = allFiles.length - visibleFiles.length;
@@ -418,6 +405,10 @@ export function ChatHomeOverview() {
     <div className="chat-home-overview">
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Activity</h3>
+        {/* The scroller and the floating "Show more" indicator are
+            siblings under the section — the indicator's visibility is
+            driven purely by the scroller's `data-at-end` attribute via
+            a CSS sibling selector, so no React state is needed. */}
         <div
           ref={activityScrollRef}
           className="chat-home-overview__section-body"
@@ -501,6 +492,7 @@ export function ChatHomeOverview() {
             </ul>
           )}
         </div>
+        <MoreIndicator scrollerRef={activityScrollRef} />
       </section>
 
       <section className="chat-home-overview__section">
@@ -542,6 +534,7 @@ export function ChatHomeOverview() {
             </ul>
           )}
         </div>
+        <MoreIndicator scrollerRef={filesScrollRef} />
       </section>
 
       <ScheduleDetailsDialog
@@ -558,9 +551,9 @@ export function ChatHomeOverview() {
           if (!next) setHistorySection(null);
         }}
         section={historySection ?? "done"}
-        doneTasks={doneTasks}
+        events={events}
         schedules={schedules}
-        files={allFiles}
+        conversationId={state.conversationId}
         nowMs={nowMs}
         onOpenSchedule={(entry) => {
           // Hand the row off to the existing schedule manage dialog so

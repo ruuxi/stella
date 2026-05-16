@@ -26,6 +26,10 @@
   flex-direction: column;
   gap: 14px;
   min-height: 0;
+  /* Positioning context for the "Show more ⌄" indicator that floats
+     above the bottom fade when there's still content below the
+     viewport (see `.chat-home-overview__more-indicator`). */
+  position: relative;
 }
 
 /*
@@ -105,14 +109,25 @@
  * quieter history, then read UP NEXT as commitments.
  */
 
-.chat-home-overview__tasks,
-.chat-home-overview__files {
+.chat-home-overview__tasks {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Recent files reads as a dense list, not breathing rows — keep the
+   items tight against each other so the section stays under its
+   100px minimum even with 5 items. */
+.chat-home-overview__files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 /* Group divider: uppercase label paired with a hairline rule extending to
@@ -209,10 +224,13 @@
   left: 0;
   top: 4px;
   bottom: 4px;
-  width: 3px;
-  border-radius: 3px;
-  background: #3b82f6;
-  box-shadow: 0 0 8px 2px rgba(59, 130, 246, 0.4);
+  width: 2px;
+  border-radius: 2px;
+  /* Quieter than the saturated #3b82f6 / rgba(59,130,246,0.4) glow we
+     started with — the bar still reads as "live" but doesn't compete
+     with the row text or the Done group's green bar for attention. */
+  background: color-mix(in oklch, #3b82f6 70%, transparent);
+  box-shadow: 0 0 6px 1px color-mix(in oklch, #3b82f6 22%, transparent);
   pointer-events: none;
 }
 
@@ -256,10 +274,12 @@
   left: 0;
   top: 4px;
   bottom: 4px;
-  width: 3px;
-  border-radius: 3px;
-  background: #22c55e;
-  box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.4);
+  width: 2px;
+  border-radius: 2px;
+  /* Same brightness pass as the Now bar above — keep the green readable
+     as "completed" without burning a saturated stripe into the panel. */
+  background: color-mix(in oklch, #22c55e 65%, transparent);
+  box-shadow: 0 0 6px 1px color-mix(in oklch, #22c55e 20%, transparent);
   pointer-events: none;
 }
 
@@ -462,10 +482,10 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 8px;
+  padding: 4px 8px;
   margin: 0 -8px;
   border: none;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-base);
   font-size: 13px;
@@ -487,6 +507,59 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* --- Bottom "Show more" indicator --------------------------- */
+/* Floats just above the bottom fade mask of a section whenever there
+   is more content scrolled below the viewport. Visibility is driven
+   by the `data-at-end` attribute that `useEdgeFade` sets on the
+   scroller — when the user has scrolled to the bottom the indicator
+   fades out and disables pointer events. Clicking it scrolls the
+   section's scroller down by roughly one viewport. */
+.chat-home-overview__more-indicator {
+  position: absolute;
+  /* Sit clearly above the section body's bottom fade so the pill
+     reads as floating over content rather than crashing into the
+     fade itself. */
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--background) 80%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-base);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    color 120ms ease;
+}
+
+.chat-home-overview__more-indicator:hover {
+  color: var(--text-strong);
+}
+
+.chat-home-overview__section-body[data-at-end="false"]
+  ~ .chat-home-overview__more-indicator {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.chat-home-overview__more-indicator-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Ideas moved out of the sidebar entirely — they live as a footer dropup
