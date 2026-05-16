@@ -31,6 +31,17 @@ const padTime = (h: number, m: number): string => {
   return `${hh}:${mm}`;
 };
 
+/**
+ * 12-hour clock with `AM`/`PM` suffix used by the Up next badges in the
+ * Chat home overview. Always includes minutes (`9:00 AM`, `9:30 AM`).
+ * Hour `0` renders as `12 AM`; hour `12` renders as `12 PM`.
+ */
+const formatClock12 = (h: number, m: number): string => {
+  const period = h >= 12 ? "PM" : "AM";
+  const displayHour = h % 12 === 0 ? 12 : h % 12;
+  return `${displayHour}:${String(m).padStart(2, "0")} ${period}`;
+};
+
 const isSameCalendarDay = (a: Date, b: Date): boolean =>
   a.getFullYear() === b.getFullYear() &&
   a.getMonth() === b.getMonth() &&
@@ -55,15 +66,15 @@ export const formatNextRun = (nextRunAtMs: number, nowMs: number): string => {
   const next = new Date(nextRunAtMs);
   const now = new Date(nowMs);
   if (isSameCalendarDay(next, now)) {
-    return padTime(next.getHours(), next.getMinutes());
+    return formatClock12(next.getHours(), next.getMinutes());
   }
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (isSameCalendarDay(next, tomorrow)) {
-    return `tomorrow ${padTime(next.getHours(), next.getMinutes())}`;
+    return `tomorrow ${formatClock12(next.getHours(), next.getMinutes())}`;
   }
   if (delta < 7 * DAY_MS) {
-    return `${SHORT_WEEKDAYS[next.getDay()]} ${padTime(next.getHours(), next.getMinutes())}`;
+    return `${SHORT_WEEKDAYS[next.getDay()]} ${formatClock12(next.getHours(), next.getMinutes())}`;
   }
   return `${SHORT_MONTHS[next.getMonth()]} ${next.getDate()}`;
 };
