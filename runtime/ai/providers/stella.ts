@@ -105,9 +105,23 @@ const readStellaErrorMessage = async (response: Response): Promise<string> => {
       try {
         const parsed = JSON.parse(trimmed) as unknown;
         if (parsed && typeof parsed === "object") {
-          const record = parsed as { error?: unknown; message?: unknown };
+          const record = parsed as {
+            error?: unknown;
+            message?: unknown;
+          };
           if (typeof record.error === "string" && record.error.trim()) {
             errorMessage = record.error.trim();
+          } else if (
+            record.error &&
+            typeof record.error === "object" &&
+            typeof (record.error as { message?: unknown }).message === "string" &&
+            (record.error as { message: string }).message.trim()
+          ) {
+            // Upstream OpenAI-shaped errors (OpenRouter, OpenAI, Fireworks,
+            // etc.) come back as `{error:{message,code,...}}`. Unwrap the
+            // inner message so the run log shows the human-readable reason
+            // instead of the raw JSON blob.
+            errorMessage = (record.error as { message: string }).message.trim();
           } else if (
             typeof record.message === "string" &&
             record.message.trim()
