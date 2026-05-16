@@ -447,11 +447,29 @@ export class RealtimeVoiceSession {
           return;
         }
         const api = window.electronAPI?.localChat;
-        if (!api?.listEvents) return;
+        if (!api?.listMessages || !api?.listActivity) return;
 
-        const events = await api.listEvents({
-          conversationId: this.conversationId,
-          maxItems: VOICE_CONTEXT_SYNC_EVENT_LIMIT,
+        // Voice context sync merges the user/assistant message stream
+        // with the agent-* activity stream. Pulling each source from
+        // its purpose-built window keeps this off the legacy event
+        // feed and reuses the same SQLite paths the chat surfaces use.
+        const [messagesWindow, activityWindow] = await Promise.all([
+          api.listMessages({
+            conversationId: this.conversationId,
+            maxVisibleMessages: VOICE_CONTEXT_SYNC_EVENT_LIMIT,
+          }),
+          api.listActivity({
+            conversationId: this.conversationId,
+            limit: VOICE_CONTEXT_SYNC_EVENT_LIMIT,
+          }),
+        ]);
+
+        const events: EventRecord[] = [];
+        for (const message of messagesWindow.messages) events.push(message);
+        for (const activity of activityWindow.activities) events.push(activity);
+        events.sort((a, b) => {
+          if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+          return a._id.localeCompare(b._id);
         });
 
         if (options?.markExisting) {

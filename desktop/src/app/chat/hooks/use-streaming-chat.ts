@@ -5,6 +5,7 @@ import { getOrCreateDeviceId } from '@/platform/electron/device'
 import type { SendMessageArgs } from '../streaming/chat-types'
 import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
 import type { EventRecord } from '@/app/chat/lib/event-transforms'
+import type { MessageRecord } from '../../../../../runtime/contracts/local-chat.js'
 import { resolveComposerContextState } from '../composer-context'
 import {
   buildAllLocalAttachments,
@@ -15,7 +16,17 @@ import { useTierRestrictedModelToast } from './use-tier-restricted-model-toast'
 
 type UseStreamingChatOptions = {
   conversationId: string | null
-  events: EventRecord[]
+  /**
+   * SQLite-persisted message stream (no optimistic / scheduled overlay).
+   * Used to detect (a) an assistant reply for the pending user message,
+   * (b) optimistic events that have been persisted (can be dropped),
+   * (c) queued user messages that have been persisted.
+   *
+   * Must be the un-overlaid source — passing in the merged display
+   * stream would loop optimistic events through this hook into
+   * displayMessages.
+   */
+  persistedMessages: MessageRecord[]
 }
 
 export type QueuedUserMessage = {
@@ -72,7 +83,7 @@ const buildOptimisticUserEvent = (args: {
 
 export function useStreamingChat({
   conversationId,
-  events,
+  persistedMessages,
 }: UseStreamingChatOptions) {
   const activeConversationId = conversationId
   const [optimisticEvents, setOptimisticEvents] = useState<EventRecord[]>([])
@@ -108,11 +119,11 @@ export function useStreamingChat({
   useEffect(() => {
     if (!pendingUserMessageId && !streamingResponseTarget) return
 
-    const hasAssistantReply = events.some((event) => {
-      if (event.type !== 'assistant_message') return false
+    const hasAssistantReply = persistedMessages.some((message) => {
+      if (message.type !== 'assistant_message') return false
 
-      if (event.payload && typeof event.payload === 'object') {
-        const payload = event.payload as {
+      if (message.payload && typeof message.payload === 'object') {
+        const payload = message.payload as {
           userMessageId?: string
           metadata?: {
             runtime?: {
@@ -146,30 +157,30 @@ export function useStreamingChat({
       resetStreamingState()
     }
   }, [
-    events,
     isStreaming,
     pendingUserMessageId,
+    persistedMessages,
     resetStreamingState,
     streamingResponseTarget,
   ])
 
   useEffect(() => {
     if (optimisticEvents.length === 0) return
-    const persistedIds = new Set(events.map((event) => event._id))
+    const persistedIds = new Set(persistedMessages.map((message) => message._id))
     setOptimisticEvents((current) => {
       const next = current.filter((event) => !persistedIds.has(event._id))
       return next.length === current.length ? current : next
     })
-  }, [events, optimisticEvents.length])
+  }, [optimisticEvents.length, persistedMessages])
 
   useEffect(() => {
     if (queuedUserMessages.length === 0) return
-    const persistedIds = new Set(events.map((event) => event._id))
+    const persistedIds = new Set(persistedMessages.map((message) => message._id))
     setQueuedUserMessages((current) => {
       const next = current.filter((message) => !persistedIds.has(message.id))
       return next.length === current.length ? current : next
     })
-  }, [events, queuedUserMessages.length])
+  }, [persistedMessages, queuedUserMessages.length])
 
   useEffect(
     () => () => {
@@ -242,11 +253,11 @@ export function useStreamingChat({
       const shouldQueueFollowUp =
         isStreaming &&
         (!pendingUserMessageId ||
-          !events.some((event) => {
-            if (event.type !== 'assistant_message') return false
-            if (!event.payload || typeof event.payload !== 'object') return false
+          !persistedMessages.some((message) => {
+            if (message.type !== 'assistant_message') return false
+            if (!message.payload || typeof message.payload !== 'object') return false
             return (
-              (event.payload as { userMessageId?: string }).userMessageId
+              (message.payload as { userMessageId?: string }).userMessageId
               === pendingUserMessageId
             )
           }))
@@ -348,11 +359,11 @@ export function useStreamingChat({
     },
     [
       activeConversationId,
-      events,
       isLocalStorage,
       isStreaming,
       notifyTierRestrictedModel,
       pendingUserMessageId,
+      persistedMessages,
       queueStream,
       startStream,
       locale,

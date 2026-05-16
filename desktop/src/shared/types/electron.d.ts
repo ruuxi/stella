@@ -15,7 +15,6 @@ import type {
   MessageRecord,
 } from "../../../../runtime/contracts/local-chat.js";
 import type { TaskLifecycleStatus } from "../../../../runtime/contracts/agent-runtime.js";
-import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
 import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
 import type {
   ChatContext as SharedChatContext,
@@ -1163,16 +1162,17 @@ export type ElectronSocialSessionsApi = {
 
 export type ElectronLocalChatApi = {
   getOrCreateDefaultConversationId: () => Promise<string>;
+  /**
+   * Raw event-stream read kept for the few non-timeline consumers that
+   * look for specific auxiliary event types (the welcome dialog reads
+   * `assistant_message`, home categories reads `home_suggestions`), and
+   * for the mobile bridge which proxies the channel to phone clients.
+   * Renderer chat surfaces use `listMessages` / `listActivity` /
+   * `listFiles` instead.
+   */
   listEvents: (payload: {
     conversationId: string;
     maxItems?: number;
-    windowBy?: LocalChatEventWindowMode;
-  }) => Promise<EventRecord[]>;
-  listEventsBefore: (payload: {
-    conversationId: string;
-    beforeTimestampMs: number;
-    beforeId?: string;
-    limit?: number;
   }) => Promise<EventRecord[]>;
   listMessages: (payload: {
     conversationId: string;
@@ -1199,10 +1199,6 @@ export type ElectronLocalChatApi = {
     beforeTimestampMs?: number;
     beforeId?: string;
   }) => Promise<{ files: EventRecord[] }>;
-  getEventCount: (payload: {
-    conversationId: string;
-    countBy?: LocalChatEventWindowMode;
-  }) => Promise<number>;
   persistDiscoveryWelcome: (payload: {
     conversationId: string;
     message: string;

@@ -1,41 +1,40 @@
 /**
- * Watches a chat event stream and, when read-aloud is enabled, plays
+ * Watches the chat message stream and, when read-aloud is enabled, plays
  * each newly-finalized assistant message via the TTS service.
  *
  * Threshold model:
  *   - When the toggle flips off→on we record `enabledAtMs = Date.now()`.
- *   - Only assistant messages whose `event.timestamp > enabledAtMs` are
- *     ever spoken. This is robust against (a) the renderer's initial
- *     load — events arriving after the pref does not retroactively
+ *   - Only assistant messages whose `message.timestamp > enabledAtMs`
+ *     are ever spoken. This is robust against (a) the renderer's initial
+ *     load — messages arriving after the pref does not retroactively
  *     trigger TTS for the whole history — and (b) navigating between
  *     conversations: an existing conversation's history all has older
  *     timestamps than the toggle's enabled-at moment.
  *
- * Spoken event ids are tracked in a module-level set so the same event
- * isn't requested twice when both the full chat and the sidebar render
- * the same conversation in parallel.
+ * Spoken message ids are tracked in a module-level set so the same
+ * message isn't requested twice when both the full chat and the sidebar
+ * render the same conversation in parallel.
  *
  * Voice-sourced assistant messages (`payload.source === "voice"`) are
  * skipped so the realtime voice agent never gets double-spoken.
  */
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
-import { isAssistantMessage } from "@/app/chat/lib/event-transforms";
+import type { MessageRecord } from "../../../../../../runtime/contracts/local-chat.js";
 import { stripMarkdownForTts } from "./markdown-strip";
 import { fetchReadAloudAudio, type ReadAloudVoiceFamily } from "./tts-client";
 import { playReadAloud, stopReadAloud } from "./read-aloud-player";
 import { readAloudPrefStore } from "./read-aloud-pref";
 
-const spokenEventIds = new Set<string>();
+const spokenMessageIds = new Set<string>();
 
-type EventPayload = {
+type MessagePayload = {
   text?: unknown;
   source?: unknown;
 };
 
-const getAssistantText = (event: EventRecord): string | null => {
-  if (!isAssistantMessage(event)) return null;
-  const payload = (event.payload ?? {}) as EventPayload;
+const getAssistantText = (message: MessageRecord): string | null => {
+  if (message.type !== "assistant_message") return null;
+  const payload = (message.payload ?? {}) as MessagePayload;
   if (payload.source === "voice") return null;
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   if (!text) return null;
@@ -82,7 +81,7 @@ const readVoicePrefs = async (): Promise<{
   }
 };
 
-export function useReadAloud(events: readonly EventRecord[]): void {
+export function useReadAloud(messages: readonly MessageRecord[]): void {
   const enabled = useSyncExternalStore(
     readAloudPrefStore.subscribe,
     readAloudPrefStore.getSnapshot,
@@ -104,17 +103,20 @@ export function useReadAloud(events: readonly EventRecord[]): void {
       enabledAtMsRef.current = Date.now();
     }
     const threshold = enabledAtMsRef.current;
-    for (const event of events) {
-      if (spokenEventIds.has(event._id)) continue;
-      if (typeof event.timestamp !== "number" || event.timestamp <= threshold) {
+    for (const message of messages) {
+      if (spokenMessageIds.has(message._id)) continue;
+      if (
+        typeof message.timestamp !== "number" ||
+        message.timestamp <= threshold
+      ) {
         continue;
       }
-      const text = getAssistantText(event);
+      const text = getAssistantText(message);
       if (text === null) {
-        spokenEventIds.add(event._id);
+        spokenMessageIds.add(message._id);
         continue;
       }
-      spokenEventIds.add(event._id);
+      spokenMessageIds.add(message._id);
       const clean = stripMarkdownForTts(text);
       if (!clean) continue;
       void (async () => {
@@ -134,5 +136,5 @@ export function useReadAloud(events: readonly EventRecord[]): void {
         }
       })();
     }
-  }, [enabled, events]);
+  }, [enabled, messages]);
 }

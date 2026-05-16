@@ -34,7 +34,7 @@ export function ChatRuntimeProvider({
   // indicator so the floating pet always mirrors the same agent state
   // the chat surface displays.
   usePetStatusBroadcast({
-    events: runtime.conversation.events,
+    messages: runtime.conversation.messages,
     liveTasks: runtime.conversation.streaming.liveTasks,
     runtimeStatusText: runtime.conversation.streaming.runtimeStatusText ?? '',
     isStreaming: runtime.conversation.isStreaming,

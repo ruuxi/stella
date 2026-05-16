@@ -4,6 +4,8 @@ import type { TaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-s
 import type { QueuedUserMessage } from '@/app/chat/hooks/use-streaming-chat'
 import type { EventRecord, TaskItem } from '@/app/chat/lib/event-transforms'
 import type { MessageRecord } from '../../../../runtime/contracts/local-chat.js'
+
+export type { EventRecord }
 import type { AgentResponseTarget } from '@/app/chat/streaming/streaming-types'
 import type { ChatContext } from '@/shared/types/electron'
 
@@ -21,14 +23,6 @@ export type ChatColumnConversation = {
    * flat event stream.
    */
   messages: MessageRecord[]
-  /**
-   * Full raw event log for the conversation. Used by surfaces that still
-   * need lifecycle/tool visibility (footer tasks, running-tool indicator,
-   * read-aloud, pet status, home activity overview). Phase 2/3 will
-   * migrate those off this stream into purpose-built activity/files
-   * subscriptions and `events` will go away.
-   */
-  events: EventRecord[]
   /**
    * Agent-lifecycle activity for the conversation. Fed by
    * `useConversationActivity` in local mode and a `displayEvents` filter

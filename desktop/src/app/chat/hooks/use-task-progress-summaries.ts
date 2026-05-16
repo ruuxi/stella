@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import {
   extractToolTitle,
-  extractTasksFromEvents,
-  isAssistantMessage,
+  extractTasksFromActivities,
   isToolRequest,
   type EventRecord,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
+import type { MessageRecord } from "../../../../../runtime/contracts/local-chat.js";
 
 /**
  * Per-active-task rolling list of normie-friendly progress phrases.
@@ -129,42 +129,78 @@ const subscribe = (cb: () => void): (() => void) => {
 const getSnapshot = (): Map<string, Summary[]> => cachedSnapshot;
 
 const buildFallbackSignal = (
-  events: EventRecord[],
+  messages: MessageRecord[],
   startedAtMs: number,
 ): string => {
-  // Walk recent events from the general agent (it's the only one we
-  // summarize for). Concatenate the latest assistant text + tool titles
-  // so the summarizer has something to work with even when reasoning is
-  // empty (which happens for non-reasoning models).
+  // Walk recent assistant text + tool_request titles from the general
+  // agent (it's the only one we summarize for). Gives the summarizer
+  // something to work with even when reasoning is empty (which happens
+  // for non-reasoning models).
+  //
+  // Important: a turn's tool events live on the turn anchor, which is
+  // often a `user_message` whose timestamp predates `startedAtMs` (the
+  // user sent before the task started; the task's tools fire during
+  // the turn). We can't break early on `message.timestamp < startedAtMs`
+  // — we must inspect `message.toolEvents` first and only stop once a
+  // turn contributes nothing at all (anchor predates AND all its tool
+  // events predate), at which point every earlier turn is also strictly
+  // older and can't contribute either.
   const collected: string[] = [];
-  for (let i = events.length - 1; i >= 0 && collected.length < 8; i -= 1) {
-    const event = events[i];
-    if (event.timestamp < startedAtMs) break;
-    if (isAssistantMessage(event)) {
-      const payload = event.payload as { text?: string; agentType?: string } | undefined;
-      if (payload?.agentType && payload.agentType !== AGENT_IDS.GENERAL) continue;
-      const text = payload?.text?.trim();
-      if (text) collected.push(text);
-      continue;
+  for (let i = messages.length - 1; i >= 0 && collected.length < 8; i -= 1) {
+    const message = messages[i];
+    if (!message) continue;
+
+    let contributed = false;
+
+    if (
+      message.type === "assistant_message" &&
+      message.timestamp >= startedAtMs
+    ) {
+      const payload = message.payload as
+        | { text?: string; agentType?: string }
+        | undefined;
+      const matchesAgent =
+        !payload?.agentType || payload.agentType === AGENT_IDS.GENERAL;
+      if (matchesAgent) {
+        const text = payload?.text?.trim();
+        if (text) {
+          collected.push(text);
+          contributed = true;
+        }
+      }
     }
-    if (isToolRequest(event)) {
-      const payload = event.payload as { agentType?: string };
+
+    for (let j = message.toolEvents.length - 1; j >= 0; j -= 1) {
+      const toolEvent = message.toolEvents[j];
+      if (!toolEvent) continue;
+      if (toolEvent.timestamp < startedAtMs) continue;
+      if (!isToolRequest(toolEvent)) continue;
+      const payload = toolEvent.payload as { agentType?: string };
       if (payload.agentType && payload.agentType !== AGENT_IDS.GENERAL) continue;
-      const title = extractToolTitle(event);
-      if (title) collected.push(`Tool: ${event.payload.toolName} — ${title}`);
+      const title = extractToolTitle(toolEvent);
+      if (title) {
+        collected.push(`Tool: ${toolEvent.payload.toolName} — ${title}`);
+        contributed = true;
+      }
+      if (collected.length >= 8) break;
     }
+
+    if (!contributed && message.timestamp < startedAtMs) break;
   }
   return collected.reverse().join("\n");
 };
 
-const buildSignalForTask = (task: TaskItem, events: EventRecord[]): string => {
+const buildSignalForTask = (
+  task: TaskItem,
+  messages: MessageRecord[],
+): string => {
   const reasoning = task.reasoningText?.trim() ?? "";
   if (reasoning.length > 0) {
     return reasoning.length > SIGNAL_TAIL_CHARS
       ? reasoning.slice(-SIGNAL_TAIL_CHARS)
       : reasoning;
   }
-  const fallback = buildFallbackSignal(events, task.startedAtMs);
+  const fallback = buildFallbackSignal(messages, task.startedAtMs);
   if (!fallback) return "";
   return fallback.length > SIGNAL_TAIL_CHARS
     ? fallback.slice(-SIGNAL_TAIL_CHARS)
@@ -205,11 +241,13 @@ const summarizeViaRuntime = async (
 
 export function useTaskProgressSummaries(args: {
   liveTasks: TaskItem[];
-  events: EventRecord[];
+  messages: MessageRecord[];
+  activities: EventRecord[];
+  latestMessageTimestampMs: number | null;
 }): TaskProgressSummaries {
 
-  const eventsRef = useRef(args.events);
-  eventsRef.current = args.events;
+  const messagesRef = useRef(args.messages);
+  messagesRef.current = args.messages;
 
   const liveTasksRef = useRef(args.liveTasks);
   liveTasksRef.current = args.liveTasks;
@@ -219,11 +257,14 @@ export function useTaskProgressSummaries(args: {
   // set quickly, but the overview may be opened later and should still show
   // the phrases collected while the task was running.
   const conversationAgentIds = useMemo(
-    () => new Set([
-      ...args.liveTasks.map((t) => t.id),
-      ...extractTasksFromEvents(args.events).map((t) => t.id),
-    ]),
-    [args.events, args.liveTasks],
+    () =>
+      new Set([
+        ...args.liveTasks.map((t) => t.id),
+        ...extractTasksFromActivities(args.activities, {
+          latestMessageTimestampMs: args.latestMessageTimestampMs,
+        }).map((t) => t.id),
+      ]),
+    [args.activities, args.latestMessageTimestampMs, args.liveTasks],
   );
   useEffect(() => {
     for (const agentId of [...taskStates.keys()]) {
@@ -238,7 +279,7 @@ export function useTaskProgressSummaries(args: {
   useEffect(() => {
     const tick = () => {
       const tasks = liveTasksRef.current;
-      const events = eventsRef.current;
+      const messages = messagesRef.current;
       const now = Date.now();
       for (const task of tasks) {
         if (task.status !== "running") continue;
@@ -246,7 +287,7 @@ export function useTaskProgressSummaries(args: {
         const state = getOrCreate(task.id);
         if (state.inFlight) continue;
         if (now - state.lastSentAt < TICK_INTERVAL_MS) continue;
-        const signal = buildSignalForTask(task, events);
+        const signal = buildSignalForTask(task, messages);
         if (!signal) continue;
         // Only spend a request when the underlying activity has actually
         // moved on by a meaningful chunk; otherwise we'd just keep
