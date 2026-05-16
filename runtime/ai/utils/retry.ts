@@ -3,8 +3,14 @@ export interface RetryOptions {
 	maxAttempts?: number;
 	/** Fixed delay for the first retry window. Default: 1000 ms. */
 	baseDelayMs?: number;
-	/** Ceiling for non-header retry delays. Default: 64000 ms. */
+	/** Ceiling for non-header retry delays. Default: 16000 ms. */
 	maxDelayMs?: number;
+	/**
+	 * Total time budget for all retry sleeps combined. Once the accumulated
+	 * sleep time would exceed this, the next failure surfaces immediately
+	 * instead of waiting further. Default: 60000 ms.
+	 */
+	maxTotalDelayMs?: number;
 	signal?: AbortSignal;
 	/** Return `true` for errors that should be retried. Falls back to `isRetryableConnectionError`. */
 	isRetryable?: (error: unknown) => boolean;
@@ -13,11 +19,13 @@ export interface RetryOptions {
 export async function retryWithBackoff<T>(fn: () => Promise<T>, options?: RetryOptions): Promise<T> {
 	const maxAttempts = options?.maxAttempts ?? 10;
 	const baseDelayMs = options?.baseDelayMs ?? 1_000;
-	const maxDelayMs = options?.maxDelayMs ?? 64_000;
+	const maxDelayMs = options?.maxDelayMs ?? 16_000;
+	const maxTotalDelayMs = options?.maxTotalDelayMs ?? 60_000;
 	const signal = options?.signal;
 	const isRetryable = options?.isRetryable ?? isRetryableConnectionError;
 
 	let lastError: unknown;
+	let elapsedDelayMs = 0;
 
 	for (let attempt = 0; attempt < maxAttempts; attempt++) {
 		if (signal?.aborted) {
@@ -34,7 +42,12 @@ export async function retryWithBackoff<T>(fn: () => Promise<T>, options?: RetryO
 			const isLast = attempt >= maxAttempts - 1;
 			if (isLast || !isRetryable(error)) throw error;
 
-			const delayMs = readRetryAfterMs(error) ?? retryDelay(attempt, baseDelayMs, maxDelayMs);
+			const requestedDelayMs =
+				readRetryAfterMs(error) ?? retryDelay(attempt, baseDelayMs, maxDelayMs);
+			const remainingBudgetMs = Math.max(0, maxTotalDelayMs - elapsedDelayMs);
+			if (remainingBudgetMs <= 0) throw error;
+			const delayMs = Math.min(requestedDelayMs, remainingBudgetMs);
+			elapsedDelayMs += delayMs;
 			await retrySleep(delayMs, signal);
 		}
 	}
