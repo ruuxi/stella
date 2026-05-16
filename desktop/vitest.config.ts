@@ -14,7 +14,10 @@ export default defineConfig({
         test: {
           name: 'runtime',
           environment: 'node',
-          include: ['tests/runtime/**/*.{test,spec}.{ts,tsx}'],
+          include: [
+            'tests/runtime/**/*.{test,spec}.{ts,tsx}',
+            'tests/app/**/*.{test,spec}.{ts,tsx}',
+          ],
         },
         resolve: {
           alias: [

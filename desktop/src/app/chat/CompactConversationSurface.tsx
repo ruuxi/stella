@@ -1,5 +1,6 @@
 import { cn } from "@/shared/lib/utils";
-import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
+import type { TaskItem } from "@/app/chat/lib/event-transforms";
+import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
 import { ConversationEvents } from "./ConversationEvents";
@@ -24,7 +25,7 @@ type CompactConversationSurfaceProps = {
    * so the indicator + thumb behavior stay identical across surfaces.
    */
   scroll: ChatColumnScroll;
-  events: EventRecord[];
+  messages: MessageRecord[];
   maxItems?: number;
   streamingText: string;
   isStreaming: boolean;
@@ -33,7 +34,7 @@ type CompactConversationSurfaceProps = {
   queuedUserMessages?: QueuedUserMessage[];
   optimisticUserMessageIds?: string[];
   liveTasks?: TaskItem[];
-  hasOlderEvents?: boolean;
+  hasOlderMessages?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
   showConversation?: boolean;
@@ -46,14 +47,14 @@ export function CompactConversationSurface({
   contentContainerStyle,
   variant,
   scroll,
-  events,
+  messages,
   maxItems,
   streamingText,
   isStreaming,
   pendingUserMessageId,
   queuedUserMessages,
   optimisticUserMessageIds,
-  hasOlderEvents,
+  hasOlderMessages,
   isLoadingOlder,
   isLoadingHistory,
   showConversation = true,
@@ -75,14 +76,14 @@ export function CompactConversationSurface({
           )}
         >
           <ConversationEvents
-            events={events}
+            messages={messages}
             maxItems={maxItems}
             streamingText={streamingText}
             isStreaming={isStreaming}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}
             optimisticUserMessageIds={optimisticUserMessageIds}
-            hasOlderEvents={hasOlderEvents}
+            hasOlderMessages={hasOlderMessages}
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}
             listRef={scroll.listRef}

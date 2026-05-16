@@ -87,6 +87,55 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
+    "localChat:listMessages",
+    async (
+      event,
+      payload: {
+        conversationId?: string;
+        maxVisibleMessages?: number;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:listMessages",
+        (client) =>
+          client.listMessages({
+            conversationId: payload?.conversationId ?? "",
+            maxVisibleMessages: payload?.maxVisibleMessages,
+          }),
+      ),
+  );
+
+  ipcMain.handle(
+    "localChat:listMessagesBefore",
+    async (
+      event,
+      payload: {
+        conversationId?: string;
+        beforeTimestampMs?: number;
+        beforeId?: string;
+        maxVisibleMessages?: number;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:listMessagesBefore",
+        (client) =>
+          client.listMessagesBefore({
+            conversationId: payload?.conversationId ?? "",
+            beforeTimestampMs:
+              typeof payload?.beforeTimestampMs === "number"
+                ? payload.beforeTimestampMs
+                : Number.MAX_SAFE_INTEGER,
+            beforeId: payload?.beforeId ?? "",
+            maxVisibleMessages: payload?.maxVisibleMessages,
+          }),
+      ),
+  );
+
+  ipcMain.handle(
     "localChat:getEventCount",
     async (
       event,

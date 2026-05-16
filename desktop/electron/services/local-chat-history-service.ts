@@ -8,6 +8,7 @@ import { SessionStore } from "../../../runtime/kernel/storage/session-store.js";
 import type {
   LocalChatAppendEventArgs,
   LocalChatEventRecord,
+  LocalChatMessageWindow,
   LocalChatSyncMessage,
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
@@ -95,6 +96,28 @@ export class LocalChatHistoryService {
       beforeTimestampMs: args.beforeTimestampMs,
       beforeId: args.beforeId,
       limit: args.limit,
+    });
+  }
+
+  listMessages(args: {
+    conversationId: string;
+    maxVisibleMessages?: number;
+  }): LocalChatMessageWindow {
+    return this.getStore().listMessages(args.conversationId, {
+      maxVisibleMessages: args.maxVisibleMessages,
+    });
+  }
+
+  listMessagesBefore(args: {
+    conversationId: string;
+    beforeTimestampMs: number;
+    beforeId: string;
+    maxVisibleMessages?: number;
+  }): LocalChatMessageWindow {
+    return this.getStore().listMessagesBefore(args.conversationId, {
+      beforeTimestampMs: args.beforeTimestampMs,
+      beforeId: args.beforeId,
+      maxVisibleMessages: args.maxVisibleMessages,
     });
   }
 

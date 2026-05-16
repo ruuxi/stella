@@ -221,14 +221,13 @@ export const ChatColumn = memo(function ChatColumn({
       {/* Viewport region: list + overlays (custom scrollbar, scroll-to-bottom). */}
       <div className="chat-viewport-region">
         <ConversationEvents
-          events={conversation.events}
-          maxItems={500}
+          messages={conversation.messages}
           streamingText={conversation.streaming.text}
           isStreaming={conversation.streaming.isStreaming}
           pendingUserMessageId={conversation.streaming.pendingUserMessageId}
           queuedUserMessages={conversation.streaming.queuedUserMessages}
           optimisticUserMessageIds={conversation.streaming.optimisticUserMessageIds}
-          hasOlderEvents={conversation.history.hasOlderEvents}
+          hasOlderMessages={conversation.history.hasOlderMessages}
           isLoadingOlder={conversation.history.isLoadingOlder}
           isLoadingHistory={conversation.history.isInitialLoading}
           listRef={listRef}

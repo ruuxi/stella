@@ -11,10 +11,17 @@ import type {
 } from '@/app/chat/chat-column-types'
 import { deriveComposerState } from '@/app/chat/composer-context'
 import { useConversationEventFeed } from '@/app/chat/hooks/use-conversation-events'
+import { useConversationMessages } from '@/app/chat/hooks/use-conversation-messages'
 import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
 import { useTaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
 import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
-import { mergeEventSources } from '@/app/chat/lib/event-transforms'
+import {
+  mergeEventSources,
+  type EventRecord,
+} from '@/app/chat/lib/event-transforms'
+import { groupEventsIntoMessages } from '@/app/chat/lib/group-events-into-messages'
+import { useChatStore } from '@/context/chat-store'
+import type { MessageRecord } from '../../../runtime/contracts/local-chat.js'
 import { useCapturedChatContext } from './use-captured-chat-context'
 import { useChatScrollManagement } from './use-chat-scroll-management'
 import { useChatHomeSurface } from './use-chat-home-surface'
@@ -24,6 +31,30 @@ import { smoothScrollTo } from '@/shared/lib/smooth-scroll'
 
 const SENT_MESSAGE_SCROLL_NUDGE_MS = 360
 const SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS = 80
+
+/**
+ * Merge `MessageRecord` lists keyed by `_id` and sort by `(timestamp,
+ * _id)`. First occurrence wins on duplicate ids — pass the authoritative
+ * source first (e.g. SQLite-backed `persistedMessages`) so synthetic
+ * overlay messages (scheduled / optimistic) defer to it once the runtime
+ * persists them.
+ */
+const mergeMessageSources = (
+  ...sources: MessageRecord[][]
+): MessageRecord[] => {
+  const seen = new Map<string, MessageRecord>()
+  for (const source of sources) {
+    for (const message of source) {
+      if (!seen.has(message._id)) {
+        seen.set(message._id, message)
+      }
+    }
+  }
+  return [...seen.values()].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
+    return a._id.localeCompare(b._id)
+  })
+}
 
 type UseFullShellChatOptions = {
   activeConversationId: string | null
@@ -45,10 +76,18 @@ export function useFullShellChat({
   const {
     events,
     hasOlderEvents,
-    isLoadingOlder,
-    isInitialLoading,
-    loadOlder,
+    isLoadingOlder: isLoadingOlderEvents,
+    isInitialLoading: isInitialLoadingEvents,
+    loadOlder: loadOlderEvents,
   } = useConversationEventFeed(activeConversationId ?? undefined)
+
+  const {
+    messages: persistedMessages,
+    hasOlderMessages,
+    isLoadingOlder: isLoadingOlderMessages,
+    isInitialLoading: isInitialLoadingMessages,
+    loadOlder: loadOlderMessages,
+  } = useConversationMessages(activeConversationId ?? undefined)
 
   const {
     liveTasks,
@@ -71,6 +110,68 @@ export function useFullShellChat({
     () => mergeEventSources(events, optimisticEvents),
     [events, optimisticEvents],
   )
+
+  // Visible chat timeline source.
+  //
+  // - Local mode: start from the SQLite-backed `persistedMessages` (which
+  //   already carry per-turn tool events), then overlay scheduled events
+  //   (cron/heartbeat user messages projected to MessageRecord) and the
+  //   optimistic just-sent overlay so the chat surface is up-to-date
+  //   before the runtime persists.
+  //
+  // - Cloud mode: there is no `listMessages` IPC against Convex yet;
+  //   project the full event stream (cloud events + optimistic + any
+  //   scheduled overlay already merged in by `useConversationEventFeed`)
+  //   into messages via the renderer-side grouper so the timeline still
+  //   renders. Phase 2/3 decides whether to add a cloud-side
+  //   `listMessages` equivalent or drop cloud mode altogether.
+  const { storageMode } = useChatStore()
+  const isLocalMode = storageMode === 'local'
+  const overlayMessagesFromEvents = useMemo(() => {
+    if (!isLocalMode) return [] as MessageRecord[]
+    // Project just the scheduled + optimistic event overlays — not the
+    // SQLite-backed `events`, since `persistedMessages` already covers
+    // those (and does so with the correct visible-message-count window).
+    // `events` minus `displayEvents` would be brittle; instead derive
+    // the overlay set directly from the only two synthetic sources we
+    // care about here.
+    const overlayEvents: EventRecord[] = []
+    for (const event of optimisticEvents) overlayEvents.push(event)
+    // Scheduled events ride through `useConversationEventFeed`'s local
+    // stream as well, but those that haven't been persisted yet (still
+    // pending in the scheduler) only exist there — the `events` array
+    // therefore is the lower-cost place to look them up.
+    for (const event of events) {
+      if (event.type !== 'user_message' && event.type !== 'assistant_message')
+        continue
+      // Skip events already in persistedMessages — that's the canonical
+      // copy with toolEvents attached.
+      if (overlayEvents.some((other) => other._id === event._id)) continue
+      overlayEvents.push(event)
+    }
+    return groupEventsIntoMessages(overlayEvents)
+  }, [events, isLocalMode, optimisticEvents])
+
+  const displayMessages = useMemo(() => {
+    if (isLocalMode) {
+      if (overlayMessagesFromEvents.length === 0) return persistedMessages
+      return mergeMessageSources(persistedMessages, overlayMessagesFromEvents)
+    }
+    return groupEventsIntoMessages(displayEvents)
+  }, [
+    displayEvents,
+    isLocalMode,
+    overlayMessagesFromEvents,
+    persistedMessages,
+  ])
+  const timelineHasOlderMessages = isLocalMode ? hasOlderMessages : hasOlderEvents
+  const timelineIsLoadingOlder = isLocalMode
+    ? isLoadingOlderMessages
+    : isLoadingOlderEvents
+  const timelineIsInitialLoading = isLocalMode
+    ? isInitialLoadingMessages
+    : isInitialLoadingEvents
+  const timelineLoadOlder = isLocalMode ? loadOlderMessages : loadOlderEvents
   const taskProgressSummaries = useTaskProgressSummaries({ liveTasks, events })
 
   useTraceIpcListener(isDev)
@@ -122,9 +223,9 @@ export function useFullShellChat({
     scrollToBottom,
     thumbState,
   } = useChatScrollManagement({
-    hasOlderEvents,
-    isLoadingOlder,
-    onLoadOlder: loadOlder,
+    hasOlderEvents: timelineHasOlderMessages,
+    isLoadingOlder: timelineIsLoadingOlder,
+    onLoadOlder: timelineLoadOlder,
   })
 
   // On conversation change, snap to the latest content. `initialScrollAtEnd`
@@ -203,6 +304,7 @@ export function useFullShellChat({
 
   const chatColumnConversation = useMemo<ChatColumnConversation>(
     () => ({
+      messages: displayMessages,
       events: displayEvents,
       streaming: {
         text: streamingText,
@@ -217,12 +319,13 @@ export function useFullShellChat({
         taskProgressSummaries,
       },
       history: {
-        hasOlderEvents,
-        isLoadingOlder,
-        isInitialLoading,
+        hasOlderMessages: timelineHasOlderMessages,
+        isLoadingOlder: timelineIsLoadingOlder,
+        isInitialLoading: timelineIsInitialLoading,
       },
     }),
     [
+      displayMessages,
       displayEvents,
       streamingText,
       reasoningText,
@@ -234,9 +337,9 @@ export function useFullShellChat({
       justSentUserMessageIds,
       liveTasks,
       taskProgressSummaries,
-      hasOlderEvents,
-      isLoadingOlder,
-      isInitialLoading,
+      timelineHasOlderMessages,
+      timelineIsLoadingOlder,
+      timelineIsInitialLoading,
     ],
   )
 
@@ -295,9 +398,13 @@ export function useFullShellChat({
   return {
     conversation: {
       ...chatColumnConversation,
+      hasOlderMessages: timelineHasOlderMessages,
       hasOlderEvents,
-      isLoadingOlder,
-      isInitialLoading,
+      isLoadingOlder: timelineIsLoadingOlder,
+      isLoadingOlderEvents,
+      isInitialLoading: timelineIsInitialLoading,
+      isInitialLoadingEvents,
+      loadOlderEvents,
       streamingText,
       reasoningText,
       streamingResponseTarget,

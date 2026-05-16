@@ -49,6 +49,7 @@ function ChatDisplayTab({
   return (
     <ChatPanelTab
       openRequest={openRequest}
+      messages={chat.conversation.messages}
       events={chat.conversation.events}
       streamingText={chat.conversation.streamingText}
       isStreaming={chat.conversation.isStreaming}
@@ -59,7 +60,7 @@ function ChatDisplayTab({
         chat.conversation.streaming.optimisticUserMessageIds
       }
       liveTasks={chat.conversation.streaming.liveTasks}
-      hasOlderEvents={chat.conversation.hasOlderEvents}
+      hasOlderMessages={chat.conversation.hasOlderMessages}
       isLoadingOlder={chat.conversation.isLoadingOlder}
       isInitialLoading={chat.conversation.isInitialLoading}
       onSend={chat.conversation.sendMessageWithContext}

@@ -12,6 +12,7 @@ import type { AgentStreamEvent } from "../../../../runtime/contracts/agent-strea
 import type {
   EventRecord,
   LocalChatUpdatedPayload,
+  MessageRecord,
 } from "../../../../runtime/contracts/local-chat.js";
 import type { TaskLifecycleStatus } from "../../../../runtime/contracts/agent-runtime.js";
 import type { LocalChatEventWindowMode } from "../../../../runtime/chat-event-visibility";
@@ -1173,6 +1174,16 @@ export type ElectronLocalChatApi = {
     beforeId?: string;
     limit?: number;
   }) => Promise<EventRecord[]>;
+  listMessages: (payload: {
+    conversationId: string;
+    maxVisibleMessages?: number;
+  }) => Promise<{ messages: MessageRecord[]; visibleMessageCount: number }>;
+  listMessagesBefore: (payload: {
+    conversationId: string;
+    beforeTimestampMs: number;
+    beforeId: string;
+    maxVisibleMessages?: number;
+  }) => Promise<{ messages: MessageRecord[]; visibleMessageCount: number }>;
   getEventCount: (payload: {
     conversationId: string;
     countBy?: LocalChatEventWindowMode;

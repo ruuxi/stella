@@ -113,3 +113,41 @@ export type MessageMetadata = {
     targetAgentId?: string;
   };
 };
+
+/**
+ * Chat-timeline view over the underlying append-only event log.
+ *
+ * `listMessages` projects `user_message` / `assistant_message` rows into
+ * `MessageRecord` and attaches each turn's tool/`agent-completed` events
+ * to the turn's anchor — first assistant when one exists, otherwise the
+ * user_message of the turn. Turn-scoped decoration data (inline
+ * artifacts, askQuestion bubbles, schedule receipts, file-change
+ * previews) lives on the anchor's `toolEvents` rather than being
+ * recovered from a flat event stream at render time.
+ *
+ * The full event log remains accessible via `listEvents` / `listEventsBefore`
+ * for activity/files/debug surfaces.
+ */
+export type MessageRecord = {
+  _id: string;
+  timestamp: number;
+  /**
+   * Underlying event type — currently `"user_message"` or
+   * `"assistant_message"`. Kept as the raw string (rather than narrowed)
+   * so future visible-message kinds don't need a contract bump.
+   */
+  type: string;
+  deviceId?: string;
+  requestId?: string;
+  targetDeviceId?: string;
+  payload?: Record<string, unknown>;
+  channelEnvelope?: ChannelEnvelope;
+  /**
+   * Tool/agent-completed events that fired during this message's turn,
+   * attached when this message is the turn anchor (first assistant of
+   * the turn, or — when no assistant fires — the user_message of the
+   * turn). Empty for secondary assistants, hidden messages, and any
+   * message that is not the anchor of its turn.
+   */
+  toolEvents: EventRecord[];
+};

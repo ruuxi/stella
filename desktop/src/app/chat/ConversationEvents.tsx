@@ -19,10 +19,8 @@ import {
   type RefObject,
 } from "react";
 import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from "@legendapp/list/react";
-import type {
-  Attachment,
-  EventRecord,
-} from "@/app/chat/lib/event-transforms";
+import type { Attachment } from "@/app/chat/lib/event-transforms";
+import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCard";
 import { GrowIn } from "@/app/chat/GrowIn";
 import { useEventRows } from "./use-event-rows";
@@ -37,14 +35,14 @@ import {
 const USER_MESSAGE_ENTER_MS = 360;
 
 type Props = {
-  events: EventRecord[];
+  messages: MessageRecord[];
   maxItems?: number;
   streamingText?: string;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
   optimisticUserMessageIds?: string[];
-  hasOlderEvents?: boolean;
+  hasOlderMessages?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
   onOpenAttachment?: (attachment: Attachment) => void;
@@ -87,14 +85,14 @@ function useOneShotIds(ids: readonly string[], durationMs: number): Set<string> 
 }
 
 export const ConversationEvents = memo(function ConversationEvents({
-  events,
+  messages,
   maxItems,
   streamingText,
   isStreaming,
   pendingUserMessageId,
   queuedUserMessages,
   optimisticUserMessageIds,
-  hasOlderEvents,
+  hasOlderMessages,
   isLoadingOlder,
   isLoadingHistory,
   onOpenAttachment,
@@ -116,7 +114,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   }, []);
 
   const { rows: projectedRows, lastUserRowIndex, pendingAskQuestion } = useEventRows({
-    events,
+    messages,
     maxItems,
     isStreaming,
     pendingUserMessageId,
@@ -148,7 +146,7 @@ export const ConversationEvents = memo(function ConversationEvents({
       rows={rows}
       lastUserRowIndex={lastUserRowIndex}
       pendingAskQuestion={pendingAskQuestion}
-      hasOlderEvents={hasOlderEvents}
+      hasOlderEvents={hasOlderMessages}
       isLoadingOlder={isLoadingOlder}
       isLoadingHistory={isLoadingHistory}
       onOpenAttachment={onOpenAttachment}
