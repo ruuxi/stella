@@ -112,8 +112,12 @@
   display: flex;
   border-radius: 14px;
   overflow: hidden;
-  background: var(--card, color-mix(in oklch, var(--foreground) 4%, transparent));
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  /*
+   * Intentionally no painted background — the canvas iframe handles its
+   * own styling, and a flat card behind it just adds a bright slab in
+   * light themes that fights the global gradient.
+   */
+  background: transparent;
 }
 
 .canvas-tab__iframe {
@@ -132,21 +136,6 @@
   color: color-mix(in oklch, var(--foreground) 60%, transparent);
 }
 
-.canvas-tab__frame-state--tile {
-  font-size: 9px;
-  /* Tile placeholder painted while we wait for the IO observer to flag
-     the tile as visible (and as the permanent state for the active tile,
-     whose hero already shows the live canvas). Solid soft fill so the
-     rail still reads as a strip of canvas thumbnails even before any
-     iframes have spun up. */
-  position: absolute;
-  inset: 0;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-}
-
-.canvas-tab__frame-state--active {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-}
 
 .canvas-tab__hero-empty {
   flex: 1;
@@ -223,30 +212,26 @@
 
 .canvas-tab__tile-frame {
   position: relative;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   aspect-ratio: 4 / 3;
   border-radius: 7px;
   overflow: hidden;
-  background: var(--card, color-mix(in oklch, var(--foreground) 5%, transparent));
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  color: color-mix(in oklch, var(--foreground) 55%, transparent);
 }
 
-.canvas-tab__tile-iframe {
-  position: absolute;
-  inset: 0;
-  /*
-   * Render the iframe at 4× resolution and scale it back down so the
-   * thumbnail looks like a real shrunk-down page (legible text, sharp
-   * lines) instead of a crushed font-rendering disaster. Pointer events
-   * are disabled so the tile button receives clicks/double-clicks.
-   */
-  width: 400%;
-  height: 400%;
-  border: 0;
-  pointer-events: none;
-  transform: scale(0.25);
-  transform-origin: top left;
-  background: transparent;
+.canvas-tab__tile-frame--active {
+  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+  color: color-mix(in oklch, var(--foreground) 75%, transparent);
+}
+
+.canvas-tab__tile-glyph {
+  width: 48%;
+  height: auto;
+  display: block;
 }
 
 .canvas-tab__tile-label {

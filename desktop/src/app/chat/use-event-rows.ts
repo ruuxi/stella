@@ -287,13 +287,51 @@ type UseEventRowsResult = {
 const assistantKeyFor = (userMessageId: string) =>
   `assistant-for-${userMessageId}`
 
+/**
+ * Group tool/agent-completion events into the assistant_message of the
+ * same user turn (boundary = `user_message`).
+ *
+ * Turn-aware on purpose: an `html`/`image_gen`/etc. tool can finalize
+ * AFTER the orchestrator's assistant_message lands (the model often
+ * streams its reply text first and only then calls the tool that produces
+ * the artifact, so onToolEnd's chat append can land after
+ * persistAssistantMessage's). Walking strictly forward and dumping the
+ * buffer on each `assistant_message` would leave those late tool events
+ * stuck in `trailing` and the inline canvas/image card wouldn't surface
+ * until a NEW user message rebuilt the segmentation. Instead, attach
+ * every tool event in a turn to the FIRST assistant_message of that turn,
+ * and only fall back to `trailing` when the open turn has no assistant
+ * yet (e.g. a fire-and-forget image submission with no reply text).
+ */
 export const segmentToolEventsByAssistant = (events: EventRecord[]) => {
   const byAssistantId = new Map<string, EventRecord[]>()
-  let buffer: EventRecord[] = []
+  let firstAssistantInTurn: string | null = null
+  let toolsInTurn: EventRecord[] = []
+
+  const commitTurn = () => {
+    if (firstAssistantInTurn) {
+      byAssistantId.set(firstAssistantInTurn, toolsInTurn)
+    }
+    firstAssistantInTurn = null
+    toolsInTurn = []
+  }
+
   for (const event of events) {
+    if (isUserMessage(event)) {
+      commitTurn()
+      continue
+    }
     if (isAssistantMessage(event)) {
-      byAssistantId.set(event._id, buffer)
-      buffer = []
+      if (firstAssistantInTurn === null) {
+        firstAssistantInTurn = event._id
+      } else {
+        // Secondary assistants in the same turn (agent terminal notices,
+        // follow-up replies) get their own — empty — segment so the row
+        // pipeline still finds them in `byAssistantId.get(id)`.
+        if (!byAssistantId.has(event._id)) {
+          byAssistantId.set(event._id, [])
+        }
+      }
       continue
     }
     if (
@@ -301,10 +339,20 @@ export const segmentToolEventsByAssistant = (events: EventRecord[]) => {
       isToolResult(event) ||
       isAgentCompletedEvent(event)
     ) {
-      buffer.push(event)
+      toolsInTurn.push(event)
     }
   }
-  return { byAssistantId, trailing: buffer }
+
+  // Open turn at the tail: tools without a matching assistant fall through
+  // to `trailing` (preserves the existing fire-and-forget image submission
+  // behavior). Tools WITH an assistant in the open turn already got the
+  // attach above-loop via the assistant branch — flush now so the segment
+  // includes any tool that landed AFTER the assistant in this final turn.
+  const trailing: EventRecord[] = firstAssistantInTurn ? [] : toolsInTurn
+  if (firstAssistantInTurn) {
+    byAssistantId.set(firstAssistantInTurn, toolsInTurn)
+  }
+  return { byAssistantId, trailing }
 }
 
 const stableToolSegmentKey = (events: EventRecord[]): string => {

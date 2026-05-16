@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPayloadFromBarePath,
   collectTurnSourceDiffPayloads,
   deriveTurnResource,
   extractMarkdownLinkPaths,
@@ -885,5 +886,29 @@ describe("extractMarkdownLinkPaths", () => {
         ].join(" "),
       ),
     ).toEqual(["/local.pdf"]);
+  });
+});
+
+describe("buildPayloadFromBarePath", () => {
+  it("recognizes state/outputs/html/<slug>.html as a canvas-html payload", () => {
+    expect(
+      buildPayloadFromBarePath(
+        "/Users/me/projects/stella/state/outputs/html/plan-options.html",
+        42,
+      ),
+    ).toEqual({
+      kind: "canvas-html",
+      filePath:
+        "/Users/me/projects/stella/state/outputs/html/plan-options.html",
+      title: "Plan Options",
+      slug: "plan-options",
+      createdAt: 42,
+    });
+  });
+
+  it("does not turn unrelated .html files into canvas payloads", () => {
+    expect(
+      buildPayloadFromBarePath("/Users/me/projects/stella/desktop/index.html", 1),
+    ).toBeNull();
   });
 });

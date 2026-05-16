@@ -29,16 +29,12 @@
   aspect-ratio: 16 / 9;
   border-radius: 12px;
   overflow: hidden;
-  background: var(
-    --card,
-    color-mix(in oklch, var(--foreground) 5%, transparent)
-  );
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  transition: border-color 0.15s ease;
-}
-
-.inline-html-artifact-card:hover .inline-html-artifact-card__frame {
-  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  /*
+   * No painted background behind the iframe — a light card slab read as
+   * an unwanted bright box in light themes. The iframe paints its own
+   * surface; this frame just clips and rounds the corners.
+   */
+  background: transparent;
 }
 
 .inline-html-artifact-card__iframe {

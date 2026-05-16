@@ -382,6 +382,22 @@ export const buildPayloadFromBarePath = (
     patch?: string;
   },
 ): DisplayPayload | null => {
+  // Canvas HTML artifacts live under `state/outputs/html/<slug>.html` and
+  // need to surface as a `canvas-html` payload (not a generic .html source
+  // diff) so the home overview's Recent files list, the inline chat card,
+  // and the workspace Canvas tab all open the same viewer.
+  const htmlMatch = HTML_OUTPUT_PATH_RE.exec(filePath);
+  if (htmlMatch) {
+    const slug = htmlMatch[1]!;
+    return {
+      kind: "canvas-html",
+      filePath,
+      title: titleFromHtmlSlug(slug),
+      slug,
+      createdAt,
+    };
+  }
+
   switch (kindForPath(filePath)) {
     case "markdown":
       return {
