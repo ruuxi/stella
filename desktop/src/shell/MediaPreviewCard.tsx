@@ -133,7 +133,7 @@ const ImageGallery = ({
   inDialog?: boolean;
   initialIndex?: number;
 }) => {
-  const { files, error } = useDisplayFileBlobs(
+  const { files, error, missing } = useDisplayFileBlobs(
     filePaths,
     "Media preview requires the Electron host runtime.",
   );
@@ -178,6 +178,11 @@ const ImageGallery = ({
             className="display-media__primary-img"
           />
         </button>
+      ) : missing[safeIndex] ? (
+        <div className="display-media__missing">
+          File no longer available — {filenameOf(filePaths[safeIndex])} was
+          moved or deleted.
+        </div>
       ) : (
         !error && <div className="display-media__loading">Loading…</div>
       )}
@@ -219,11 +224,12 @@ const VideoCard = ({
   capability?: string;
   inDialog?: boolean;
 }) => {
-  const { files, error } = useDisplayFileBlobs(
+  const { files, error, missing } = useDisplayFileBlobs(
     [filePath],
     "Media preview requires the Electron host runtime.",
   );
   const file = files[0];
+  const isMissing = missing[0] ?? false;
   return (
     <div className="display-media display-media--video">
       <PromptHeader prompt={prompt} capability={capability} />
@@ -238,6 +244,11 @@ const VideoCard = ({
           playsInline
           className="display-media__video"
         />
+      ) : isMissing ? (
+        <div className="display-media__missing">
+          File no longer available — {filenameOf(filePath)} was moved or
+          deleted.
+        </div>
       ) : (
         !error && <div className="display-media__loading">Loading…</div>
       )}
@@ -272,11 +283,12 @@ const AudioCard = ({
   capability?: string;
   inDialog?: boolean;
 }) => {
-  const { files, error } = useDisplayFileBlobs(
+  const { files, error, missing } = useDisplayFileBlobs(
     [filePath],
     "Media preview requires the Electron host runtime.",
   );
   const file = files[0];
+  const isMissing = missing[0] ?? false;
   return (
     <div className="display-media display-media--audio">
       <PromptHeader prompt={prompt} capability={capability} />
@@ -294,6 +306,10 @@ const AudioCard = ({
               autoPlay
               className="display-media__audio"
             />
+          ) : isMissing ? (
+            <div className="display-media__missing">
+              File no longer available.
+            </div>
           ) : (
             !error && <div className="display-media__loading">Loading…</div>
           )}

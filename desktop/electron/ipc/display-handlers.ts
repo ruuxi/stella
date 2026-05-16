@@ -118,8 +118,28 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
           `display:readFile only supports: ${Array.from(ALLOWED_EXTENSIONS).join(", ")}`,
         );
       }
+      const mimeType =
+        MIME_BY_EXTENSION[extension] ?? "application/octet-stream";
 
-      const stats = await fs.stat(resolved);
+      // Paths can outlive the file they point at — e.g. an `image_gen` /
+      // tool-result registered a path in `generatedMediaItems`, and the
+      // underlying file was later moved or deleted (especially for paths
+      // outside `state/`). Treat ENOENT as a soft "missing" result so the
+      // renderer can render a placeholder instead of surfacing the raw
+      // IPC error to the console / UI.
+      let stats: Awaited<ReturnType<typeof fs.stat>>;
+      try {
+        stats = await fs.stat(resolved);
+      } catch (caught) {
+        if (
+          caught &&
+          typeof caught === "object" &&
+          (caught as NodeJS.ErrnoException).code === "ENOENT"
+        ) {
+          return { missing: true as const, mimeType, path: resolved };
+        }
+        throw caught;
+      }
       if (!stats.isFile()) {
         throw new Error(`display:readFile target is not a file: ${resolved}`);
       }
@@ -141,7 +161,8 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
       return {
         bytes,
         sizeBytes: stats.size,
-        mimeType: MIME_BY_EXTENSION[extension] ?? "application/octet-stream",
+        mimeType,
+        missing: false as const,
       };
     },
   );

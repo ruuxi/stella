@@ -1338,7 +1338,15 @@ export type ElectronDisplayApi = {
    */
   readFile: (
     filePath: string,
-  ) => Promise<{ bytes: Uint8Array; sizeBytes: number; mimeType: string }>;
+  ) => Promise<
+    | {
+        bytes: Uint8Array;
+        sizeBytes: number;
+        mimeType: string;
+        missing: false;
+      }
+    | { missing: true; mimeType: string; path: string }
+  >;
   listTrash: () => Promise<{
     items: Array<{
       id: string;

@@ -250,6 +250,14 @@
   transform: translateY(-1px);
 }
 
+.media-tab__tile--missing {
+  opacity: 0.45;
+}
+
+.media-tab__tile--missing .media-tab__tile-glyph {
+  filter: grayscale(1);
+}
+
 .media-tab__tile--pending {
   background: repeating-linear-gradient(
     -45deg,

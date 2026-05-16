@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 
-type DisplayFileReadResult = {
-  bytes: Uint8Array;
-  sizeBytes: number;
-  mimeType: string;
-};
+type DisplayFileReadResult =
+  | {
+      bytes: Uint8Array;
+      sizeBytes: number;
+      mimeType: string;
+      missing: false;
+    }
+  | { missing: true; mimeType: string; path: string };
 
 export type DisplayFileBlob = {
   url: string;
@@ -60,12 +63,10 @@ type CacheEntry = {
 const cache = new Map<string, CacheEntry>();
 const CACHE_GRACE_MS = 750;
 
-const blobFromBytes = (entry: CacheEntry): Blob => {
+const blobFromBytes = (entry: CacheEntry): Blob | null => {
   if (entry.blob) return entry.blob;
   const resolved = entry.resolved;
-  if (!resolved) {
-    throw new Error("Cache entry has no resolved bytes yet.");
-  }
+  if (!resolved || resolved.missing) return null;
   // Allocate a fresh `ArrayBuffer` for the Blob so it owns memory
   // independent of any other view derived from `resolved.bytes`.
   const buffer = new ArrayBuffer(resolved.bytes.byteLength);
@@ -77,9 +78,11 @@ const blobFromBytes = (entry: CacheEntry): Blob => {
   return blob;
 };
 
-const objectUrlFor = (entry: CacheEntry): string => {
+const objectUrlFor = (entry: CacheEntry): string | null => {
   if (entry.url) return entry.url;
-  entry.url = URL.createObjectURL(blobFromBytes(entry));
+  const blob = blobFromBytes(entry);
+  if (!blob) return null;
+  entry.url = URL.createObjectURL(blob);
   return entry.url;
 };
 
@@ -150,18 +153,24 @@ export function useDisplayFileBytes(
 ) {
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setMissing(false);
     setBytes(null);
 
     const entry = acquire(filePath, unavailableMessage);
     void entry.promise
       .then((result) => {
         if (cancelled) return;
+        if (result.missing) {
+          setMissing(true);
+          return;
+        }
         setBytes(result.bytes);
       })
       .catch((caught) => {
@@ -178,7 +187,7 @@ export function useDisplayFileBytes(
     };
   }, [filePath, unavailableMessage]);
 
-  return { bytes, error, loading };
+  return { bytes, error, loading, missing };
 }
 
 export function useDisplayFileBlobs(
@@ -187,6 +196,9 @@ export function useDisplayFileBlobs(
 ) {
   const [files, setFiles] = useState<(DisplayFileBlob | null)[]>(() =>
     filePaths.map(() => null),
+  );
+  const [missing, setMissing] = useState<boolean[]>(() =>
+    filePaths.map(() => false),
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -197,6 +209,7 @@ export function useDisplayFileBlobs(
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setMissing(filePaths.map(() => false));
     setFiles(filePaths.map(() => null));
 
     const acquired: { filePath: string; entry: CacheEntry }[] = filePaths.map(
@@ -214,19 +227,27 @@ export function useDisplayFileBlobs(
           if (!cancelled) {
             setError(caught instanceof Error ? caught.message : String(caught));
           }
-          return null;
+          return { blob: null as DisplayFileBlob | null, missing: false };
+        }
+        if (entry.resolved?.missing) {
+          return { blob: null, missing: true };
         }
         const url = objectUrlFor(entry);
-        const blob = entry.blob!;
+        const blob = entry.blob;
+        if (!url || !blob) return { blob: null, missing: true };
         return {
-          url,
-          mimeType: entry.resolved?.mimeType ?? "application/octet-stream",
-          blob,
-        } satisfies DisplayFileBlob;
+          blob: {
+            url,
+            mimeType: entry.resolved?.mimeType ?? "application/octet-stream",
+            blob,
+          },
+          missing: false,
+        };
       }),
     ).then((results) => {
       if (cancelled) return;
-      setFiles(results);
+      setFiles(results.map((r) => r.blob));
+      setMissing(results.map((r) => r.missing));
       setLoading(false);
     });
 
@@ -241,5 +262,5 @@ export function useDisplayFileBlobs(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, unavailableMessage]);
 
-  return { files, error, loading };
+  return { files, error, loading, missing };
 }

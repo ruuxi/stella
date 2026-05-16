@@ -184,11 +184,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   display: {
     onUpdate: onIpc<string | unknown>("display:update"),
     readFile: (filePath: string) =>
-      ipcRenderer.invoke("display:readFile", { filePath }) as Promise<{
-        bytes: Uint8Array;
-        sizeBytes: number;
-        mimeType: string;
-      }>,
+      ipcRenderer.invoke("display:readFile", { filePath }) as Promise<
+        | {
+            bytes: Uint8Array;
+            sizeBytes: number;
+            mimeType: string;
+            missing: false;
+          }
+        | { missing: true; mimeType: string; path: string }
+      >,
     listTrash: () => ipcRenderer.invoke(IPC_DISPLAY_TRASH_LIST),
     forceDeleteTrash: (payload: { id?: string; all?: boolean }) =>
       ipcRenderer.invoke(IPC_DISPLAY_TRASH_FORCE_DELETE, payload),
