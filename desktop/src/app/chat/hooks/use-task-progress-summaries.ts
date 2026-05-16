@@ -39,7 +39,7 @@ type TaskState = {
 };
 
 const MAX_SUMMARIES_PER_TASK = 30;
-const TICK_INTERVAL_MS = 15_000;
+const TICK_INTERVAL_MS = 30_000;
 const MIN_SIGNAL_DELTA_CHARS = 60;
 const SIGNAL_TAIL_CHARS = 1_800;
 const MAX_SIGNAL_CHARS = 3_000;
@@ -273,9 +273,10 @@ export function useTaskProgressSummaries(args: {
     };
 
     const intervalId = window.setInterval(tick, TICK_INTERVAL_MS);
-    // Kick once shortly after mount so the user doesn't wait a full
-    // interval for the first phrase to appear.
-    const kickoffId = window.setTimeout(tick, 800);
+    // Give the agent ~10s of headroom before the first summary fires —
+    // most short tool calls finish well within that window and don't
+    // need a "phrase" rendered at all.
+    const kickoffId = window.setTimeout(tick, 10_000);
     return () => {
       window.clearInterval(intervalId);
       window.clearTimeout(kickoffId);
