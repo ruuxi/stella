@@ -22,6 +22,41 @@ import type {
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
 /**
+ * True when an assistant message looks like an upstream pathology:
+ * the model terminated but produced neither user-visible text nor a
+ * tool call. Covers two flavors:
+ *  - `stopReason: "stop"` with only thinking content — Kimi K2 family
+ *    pathology where the model self-terminates after burning its
+ *    reasoning trace.
+ *  - `stopReason: "length"` with no usable output — provider-side
+ *    truncation that hit a cap before any visible text was emitted
+ *    (e.g. a reasoning model that exhausted the combined cap during
+ *    thinking).
+ * Reasoning-only `thinking` blocks do not count as a usable result.
+ */
+const isDegenerateAssistantMessage = (
+	message: AssistantMessage | null,
+): boolean => {
+	if (!message) return false;
+	if (message.stopReason !== "stop" && message.stopReason !== "length") {
+		return false;
+	}
+	let hasText = false;
+	let hasToolCall = false;
+	for (const part of message.content) {
+		if (part.type === "text" && part.text.trim().length > 0) {
+			hasText = true;
+			break;
+		}
+		if (part.type === "toolCall") {
+			hasToolCall = true;
+			break;
+		}
+	}
+	return !hasText && !hasToolCall;
+};
+
+/**
  * Start an agent loop with new prompt messages and expose emitted events as a stream.
  */
 export function agentLoop(
@@ -249,7 +284,14 @@ async function streamAssistantResponse(
 	const resolvedApiKey =
 		(config.getApiKey ? await config.getApiKey(config.model.provider) : undefined) || config.apiKey;
 
-	const response = await streamFunction(config.model, llmContext, {
+	// Intentionally do NOT inject a `maxTokens` cap here. Setting a
+	// hard cap truncates mid-sentence / mid-tool-call when hit, and
+	// for reasoning models can leave zero budget for the visible
+	// answer (cap exhausted by thinking). Trust the model to
+	// self-terminate; the degenerate-response retry below handles
+	// pathological terminations, and `Model.maxTokens` is reserved
+	// for explicit per-call overrides via `config.maxTokens`.
+	const streamOptions = {
 		...config,
 		apiKey: resolvedApiKey,
 		refreshApiKey: config.refreshApiKey
@@ -262,7 +304,7 @@ async function streamAssistantResponse(
 				}
 			: undefined,
 		signal,
-	});
+	};
 
 	const normalizeFinalMessage = (message: AssistantMessage): AssistantMessage => {
 		if (!isContextOverflow(message, config.model.contextWindow)) {
@@ -277,61 +319,80 @@ async function streamAssistantResponse(
 		};
 	};
 
-	let partialMessage: AssistantMessage | null = null;
-	let addedPartial = false;
+	const runOnce = async (): Promise<AssistantMessage> => {
+		const response = await streamFunction(config.model, llmContext, streamOptions);
+		let partialMessage: AssistantMessage | null = null;
+		let addedPartial = false;
+		let finalMessage: AssistantMessage | null = null;
 
-	for await (const event of response) {
-		switch (event.type) {
-			case "start":
-				partialMessage = event.partial;
-				context.messages.push(partialMessage);
-				addedPartial = true;
-				await emit({ type: "message_start", message: { ...partialMessage } });
-				break;
+		const finalize = async (): Promise<AssistantMessage> => {
+			if (finalMessage) return finalMessage;
+			const next = normalizeFinalMessage(await response.result());
+			if (addedPartial) {
+				context.messages[context.messages.length - 1] = next;
+			} else {
+				context.messages.push(next);
+				await emit({ type: "message_start", message: { ...next } });
+			}
+			await emit({ type: "message_end", message: next });
+			finalMessage = next;
+			return next;
+		};
 
-			case "text_start":
-			case "text_delta":
-			case "text_end":
-			case "thinking_start":
-			case "thinking_delta":
-			case "thinking_end":
-			case "toolcall_start":
-			case "toolcall_delta":
-			case "toolcall_end":
-				if (partialMessage) {
+		for await (const event of response) {
+			switch (event.type) {
+				case "start":
 					partialMessage = event.partial;
-					context.messages[context.messages.length - 1] = partialMessage;
-					await emit({
-						type: "message_update",
-						assistantMessageEvent: event,
-						message: { ...partialMessage },
-					});
-				}
-				break;
+					context.messages.push(partialMessage);
+					addedPartial = true;
+					await emit({ type: "message_start", message: { ...partialMessage } });
+					break;
 
-			case "done":
-			case "error": {
-				const finalMessage = normalizeFinalMessage(await response.result());
-				if (addedPartial) {
-					context.messages[context.messages.length - 1] = finalMessage;
-				} else {
-					context.messages.push(finalMessage);
-					await emit({ type: "message_start", message: { ...finalMessage } });
-				}
-				await emit({ type: "message_end", message: finalMessage });
-				return finalMessage;
+				case "text_start":
+				case "text_delta":
+				case "text_end":
+				case "thinking_start":
+				case "thinking_delta":
+				case "thinking_end":
+				case "toolcall_start":
+				case "toolcall_delta":
+				case "toolcall_end":
+					if (partialMessage) {
+						partialMessage = event.partial;
+						context.messages[context.messages.length - 1] = partialMessage;
+						await emit({
+							type: "message_update",
+							assistantMessageEvent: event,
+							message: { ...partialMessage },
+						});
+					}
+					break;
+
+				case "done":
+				case "error":
+					return await finalize();
 			}
 		}
+
+		return await finalize();
+	};
+
+	let finalMessage = await runOnce();
+
+	// Defensive degenerate-response retry: when the upstream returns
+	// a clean `stop` with neither text nor tool calls (e.g. Kimi K2
+	// burning its reasoning budget without producing output), pop the
+	// dud from history and try once more with the same context. Cap
+	// at one retry — if the model is genuinely stuck, the sentinel
+	// downstream (finalizeSubagentSuccess) will surface a clear
+	// message to the orchestrator instead of an empty result.
+	if (isDegenerateAssistantMessage(finalMessage)) {
+		if (context.messages[context.messages.length - 1] === finalMessage) {
+			context.messages.pop();
+		}
+		finalMessage = await runOnce();
 	}
 
-	const finalMessage = normalizeFinalMessage(await response.result());
-	if (addedPartial) {
-		context.messages[context.messages.length - 1] = finalMessage;
-	} else {
-		context.messages.push(finalMessage);
-		await emit({ type: "message_start", message: { ...finalMessage } });
-	}
-	await emit({ type: "message_end", message: finalMessage });
 	return finalMessage;
 }
 

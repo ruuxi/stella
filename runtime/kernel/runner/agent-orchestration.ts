@@ -279,9 +279,14 @@ const buildLifecycleEventPayload = (
         ...(event.statusText ? { statusText: event.statusText } : {}),
       };
     case "agent-completed":
+      // `result` is always persisted (even if empty) so the
+      // orchestrator's hidden `[Agent completed]` reminder always
+      // carries a `result:` line. `finalizeSubagentSuccess`
+      // substitutes a sentinel for empty/whitespace outputs upstream;
+      // this guard catches any other emitter that forgets.
       return {
         agentId: event.agentId,
-        ...(event.result ? { result: event.result } : {}),
+        result: event.result ?? "",
         ...(event.fileChanges?.length
           ? { fileChanges: event.fileChanges }
           : {}),
