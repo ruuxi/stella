@@ -68,45 +68,61 @@
   color: var(--text-strong);
 }
 
-/* Scroller. Same hidden-scrollbar + edge-fade pattern used by the
-   chat home overview body itself (see `chat-home-overview.css`). */
+/* Scroller wrapper. Hosts a virtualized LegendList (which manages its
+   own internal scrolling); we keep the wrapper as the mask/fade surface
+   so the top/bottom feathering is stable regardless of which DOM node
+   Legend renders. Hidden overflow on the wrapper means everything
+   scrolls inside Legend, but the mask still feathers the visible edges
+   so partially-revealed rows look intentional. */
 .activity-history-dialog__scroll {
   flex: 1;
   min-height: 0;
+  height: 60vh;
   max-height: 60vh;
-  overflow-y: auto;
-  padding: 4px 8px;
-  scrollbar-width: none;
-  --activity-history-fade: 16px;
-  --activity-history-fade-start: var(--activity-history-fade);
-  --activity-history-fade-end: var(--activity-history-fade);
+  overflow: hidden;
+  padding: 4px 4px;
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    black var(--activity-history-fade-start),
-    black calc(100% - var(--activity-history-fade-end)),
+    black 16px,
+    black calc(100% - 16px),
     transparent 100%
   );
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    black var(--activity-history-fade-start),
-    black calc(100% - var(--activity-history-fade-end)),
+    black 16px,
+    black calc(100% - 16px),
     transparent 100%
   );
-  transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
 }
 
-.activity-history-dialog__scroll::-webkit-scrollbar {
+/* Suppress the visible scrollbar Legend draws on its own scroll node.
+   We keep scroll behaviour, just hide the chrome — same convention as
+   the home overview section bodies. */
+.activity-history-dialog__scroll
+  [data-legend-list-root] {
+  scrollbar-width: none;
+}
+
+.activity-history-dialog__scroll
+  [data-legend-list-root]::-webkit-scrollbar {
   display: none;
 }
 
-.activity-history-dialog__scroll[data-at-start="true"] {
-  --activity-history-fade-start: 0px;
+.activity-history-dialog__loading {
+  padding: 16px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-weak);
 }
 
-.activity-history-dialog__scroll[data-at-end="true"] {
-  --activity-history-fade-end: 0px;
+.activity-history-dialog__empty-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 120px;
 }
 
 .activity-history-dialog__empty {

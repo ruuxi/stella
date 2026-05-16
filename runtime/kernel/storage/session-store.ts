@@ -1175,6 +1175,66 @@ export class SessionStore {
     return rows.map((row) => this.deserializeEventRow(row));
   }
 
+  /**
+   * Page strictly older events than a `(beforeTimestampMs, beforeId)` cursor.
+   * Used by the chat home overview's "See all" dialog to walk SQLite for
+   * additional history beyond the renderer's in-memory event window —
+   * without that, the dialog can only ever show what's already loaded for
+   * the live chat (capped at ~500 events).
+   *
+   * Mirrors `listEvents`'s exclusion of internal types (`thread_message`,
+   * `run_event`, `memory`) so the rows roundtrip through the same
+   * `EventRecord` shape downstream consumers already use.
+   */
+  listEventsBefore(
+    conversationIdInput: string,
+    opts: {
+      beforeTimestampMs: number;
+      beforeId?: string;
+      limit?: number;
+    },
+  ): LocalChatEventRecord[] {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const beforeTimestamp = Math.floor(opts.beforeTimestampMs);
+    const beforeId = opts.beforeId ?? "";
+    const normalizedLimit = Math.max(1, Math.floor(opts.limit ?? 50));
+    const rows = this.db.prepare(`
+      SELECT
+        recent.id AS _id,
+        recent.created_at AS timestamp,
+        recent.type AS type,
+        recent.device_id AS deviceId,
+        recent.request_id AS requestId,
+        recent.target_device_id AS targetDeviceId,
+        part.data_json AS payloadJson,
+        recent.data_json AS channelEnvelopeJson
+      FROM (
+        SELECT *
+        FROM message
+        WHERE session_id = ?
+          AND type NOT IN ('thread_message', 'run_event', 'memory')
+          AND (
+            created_at < ?
+            OR (created_at = ? AND id < ?)
+          )
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      ) recent
+      LEFT JOIN part
+        ON part.message_id = recent.id
+       AND part.ord = 0
+      ORDER BY recent.created_at ASC, recent.id ASC
+    `).all(
+      conversationId,
+      beforeTimestamp,
+      beforeTimestamp,
+      beforeId,
+      normalizedLimit,
+    ) as LocalChatEventRow[];
+
+    return rows.map((row) => this.deserializeEventRow(row));
+  }
+
   getEventCount(
     conversationIdInput: string,
     windowMode: LocalChatEventWindowMode = "events",
