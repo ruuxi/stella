@@ -79,7 +79,7 @@ export const readSourceAsDataUri = async (
   filePath: string,
 ): Promise<string | null> => {
   const result = await window.electronAPI?.display?.readFile?.(filePath);
-  if (!result) return null;
+  if (!result || result.missing) return null;
   return `data:${result.mimeType};base64,${bytesToBase64(result.bytes)}`;
 };
 

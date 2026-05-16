@@ -323,7 +323,7 @@
 
 .chat-home-overview__task[data-status="scheduled"]
   .chat-home-overview__task-text {
-  color: var(--text-strong);
+  color: var(--text-base);
   font-weight: 500;
 }
 

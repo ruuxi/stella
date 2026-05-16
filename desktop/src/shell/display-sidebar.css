@@ -888,6 +888,19 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   opacity: 0.55;
 }
 
+.display-media__missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 160px;
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-weak, currentColor);
+  opacity: 0.7;
+}
+
 .display-media__filename {
   font-size: 11px;
   opacity: 0.55;

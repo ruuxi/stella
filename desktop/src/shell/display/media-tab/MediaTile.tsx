@@ -21,10 +21,11 @@ export const MediaTile = ({
     () => (item.asset.kind === "image" ? item.asset.filePaths.slice(0, 1) : []),
     [item],
   );
-  const { files } = useDisplayFileBlobs(filePaths);
+  const { files, missing } = useDisplayFileBlobs(filePaths);
   const thumbUrl = files[0]?.url ?? null;
   const isPending =
     item.asset.kind === "image" && item.asset.filePaths.length === 0;
+  const isMissing = (missing[0] ?? false) && !isPending;
   const { glyph, badge } = glyphForMediaItem(item);
 
   return (
@@ -35,9 +36,11 @@ export const MediaTile = ({
         "media-tab__tile",
         active ? "media-tab__tile--active" : null,
         isPending ? "media-tab__tile--pending" : null,
+        isMissing ? "media-tab__tile--missing" : null,
       ]
         .filter(Boolean)
         .join(" ")}
+      title={isMissing ? "File moved or deleted" : undefined}
       onClick={onSelect}
       onDoubleClick={onOpen}
       onKeyDown={(event) => {
