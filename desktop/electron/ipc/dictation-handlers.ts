@@ -6,6 +6,7 @@
  * toggle-style globalShortcut path.
  */
 import {
+  app,
   BrowserWindow,
   clipboard,
   ipcMain,
@@ -331,6 +332,13 @@ export const registerDictationHandlers = (
   };
 
   const pickFocusedStellaWindow = (): BrowserWindow | null => {
+    // The mini window is an NSPanel with screen-saver `alwaysOnTop`; on macOS
+    // panels can retain key status even after another app becomes the
+    // frontmost app, so `BrowserWindow.getFocusedWindow()` alone keeps
+    // pointing at the mini composer after the user has switched away. Gate
+    // on Stella itself being the active app so dictation while another app
+    // is in the foreground routes through the OS-wide overlay instead.
+    if (process.platform === "darwin" && !app.isActive()) return null;
     const focused = BrowserWindow.getFocusedWindow();
     if (!isUsableWindow(focused)) return null;
     if (focused === windowManager.getMiniWindow()) return focused;
