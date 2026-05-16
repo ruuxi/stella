@@ -29,6 +29,25 @@ export type ChatColumnConversation = {
    * subscriptions and `events` will go away.
    */
   events: EventRecord[]
+  /**
+   * Agent-lifecycle activity for the conversation. Fed by
+   * `useConversationActivity` in local mode and a `displayEvents` filter
+   * in cloud mode. Footer working indicator, ChatHomeOverview
+   * Now/Done/UpNext, and ActivityHistoryDialog all read from this rather
+   * than scanning `events`.
+   *
+   * `latestMessageTimestampMs` is the latest user/assistant timestamp
+   * anywhere in the conversation — passed alongside `activities` so
+   * `extractTasksFromActivities` can apply the stale-schedule auto-
+   * completion rule without the message stream.
+   */
+  activity: {
+    activities: EventRecord[]
+    latestMessageTimestampMs: number | null
+    hasOlder: boolean
+    isLoadingOlder: boolean
+    loadOlder: () => void
+  }
   streaming: {
     text: string
     reasoningText: string

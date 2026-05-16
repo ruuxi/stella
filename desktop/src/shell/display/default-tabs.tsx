@@ -51,6 +51,10 @@ function ChatDisplayTab({
       openRequest={openRequest}
       messages={chat.conversation.messages}
       events={chat.conversation.events}
+      activities={chat.conversation.activity.activities}
+      latestMessageTimestampMs={
+        chat.conversation.activity.latestMessageTimestampMs
+      }
       streamingText={chat.conversation.streamingText}
       isStreaming={chat.conversation.isStreaming}
       runtimeStatusText={chat.conversation.streaming.runtimeStatusText}

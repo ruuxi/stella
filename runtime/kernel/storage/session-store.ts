@@ -16,6 +16,7 @@ import {
 import {
   DEFAULT_CONVERSATION_SETTING_KEY,
   MAX_EVENTS_PER_CONVERSATION,
+  type LocalChatActivityWindow,
   type LocalChatAppendEventArgs,
   type LocalChatEventRecord,
   type LocalChatEventRow,
@@ -1582,6 +1583,96 @@ export class SessionStore {
     commitTurn();
 
     return { messages, visibleMessageCount };
+  }
+
+  /**
+   * Agent lifecycle events (`agent-started` / `agent-progress` /
+   * `agent-completed` / `agent-failed` / `agent-canceled`) for the
+   * conversation, ordered ASC by `(timestamp, _id)`.
+   *
+   * Used by the activity surfaces (footer working indicator,
+   * `ChatHomeOverview` Now/Done/UpNext, `ActivityHistoryDialog`) so they
+   * no longer have to scan the full event stream looking for the handful
+   * of rows that actually drive task state.
+   *
+   * `latestMessageTimestampMs` is the timestamp of the most recent
+   * user/assistant message anywhere in the conversation (independent of
+   * the activity cap). The stale-schedule auto-completion path needs to
+   * know whether ANY user/assistant message arrived after a given task's
+   * `startedAtMs`; surfacing one number here keeps that check intact
+   * without dragging the message stream along.
+   *
+   * Optional `beforeTimestampMs` / `beforeId` cursor returns strictly-
+   * older activity (used by `ActivityHistoryDialog` to page back through
+   * Completed history). `latestMessageTimestampMs` stays global to the
+   * conversation either way.
+   */
+  listActivity(
+    conversationIdInput: string,
+    args: {
+      limit?: number;
+      beforeTimestampMs?: number;
+      beforeId?: string;
+    } = {},
+  ): LocalChatActivityWindow {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const normalizedLimit = Math.max(1, Math.floor(args.limit ?? 500));
+    const before =
+      typeof args.beforeTimestampMs === "number"
+        ? {
+            timestamp: Math.floor(args.beforeTimestampMs),
+            id: args.beforeId ?? "",
+          }
+        : null;
+
+    const clauses = [
+      "session_id = ?",
+      "type IN ('agent-started', 'agent-progress', 'agent-completed', 'agent-failed', 'agent-canceled')",
+    ];
+    const params: Array<string | number> = [conversationId];
+    if (before) {
+      clauses.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      params.push(before.timestamp, before.timestamp, before.id);
+    }
+    params.push(normalizedLimit);
+
+    const rows = this.db.prepare(`
+      SELECT
+        recent.id AS _id,
+        recent.created_at AS timestamp,
+        recent.type AS type,
+        recent.device_id AS deviceId,
+        recent.request_id AS requestId,
+        recent.target_device_id AS targetDeviceId,
+        part.data_json AS payloadJson,
+        recent.data_json AS channelEnvelopeJson
+      FROM (
+        SELECT *
+        FROM message
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      ) recent
+      LEFT JOIN part
+        ON part.message_id = recent.id
+       AND part.ord = 0
+      ORDER BY recent.created_at ASC, recent.id ASC
+    `).all(...params) as LocalChatEventRow[];
+
+    const activities = rows.map((row) => this.deserializeEventRow(row));
+
+    const latestRow = this.db.prepare(`
+      SELECT created_at AS timestamp
+      FROM message
+      WHERE session_id = ?
+        AND type IN ('user_message', 'assistant_message')
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `).get(conversationId) as { timestamp?: unknown } | undefined;
+    const latestMessageTimestampMs =
+      typeof latestRow?.timestamp === "number" ? latestRow.timestamp : null;
+
+    return { activities, latestMessageTimestampMs };
   }
 
   getEventCount(

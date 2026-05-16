@@ -44,7 +44,7 @@ import {
 import { basenameOf } from "./path-to-viewer";
 import { DisplayTabIcon } from "./icons";
 import {
-  extractTasksFromEvents,
+  extractTasksFromActivities,
   getTaskDisplayText,
   mergeFooterTasks,
   type TaskItem,
@@ -322,6 +322,7 @@ export function ChatHomeOverview() {
   const { state } = useUiState();
   const liveTasks = chat.conversation.streaming.liveTasks ?? [];
   const events = chat.conversation.events;
+  const activity = chat.conversation.activity;
   const summariesByAgent = chat.conversation.streaming.taskProgressSummaries;
   const schedules = useConversationSchedules(state.conversationId);
 
@@ -338,9 +339,11 @@ export function ChatHomeOverview() {
     useState<ActivityHistorySection | null>(null);
 
   const allTasks = useMemo(() => {
-    const persisted = extractTasksFromEvents(events);
+    const persisted = extractTasksFromActivities(activity.activities, {
+      latestMessageTimestampMs: activity.latestMessageTimestampMs,
+    });
     return mergeFooterTasks(persisted, liveTasks);
-  }, [events, liveTasks]);
+  }, [activity.activities, activity.latestMessageTimestampMs, liveTasks]);
 
   const runningTasks = useMemo(() => {
     return [...allTasks]
@@ -567,6 +570,11 @@ export function ChatHomeOverview() {
         }}
         section={historySection ?? "done"}
         events={events}
+        activities={activity.activities}
+        latestMessageTimestampMs={activity.latestMessageTimestampMs}
+        onLoadMoreActivity={activity.loadOlder}
+        hasMoreActivity={activity.hasOlder}
+        isLoadingMoreActivity={activity.isLoadingOlder}
         schedules={schedules}
         conversationId={state.conversationId}
         nowMs={nowMs}

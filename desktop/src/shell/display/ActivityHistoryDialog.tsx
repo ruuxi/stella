@@ -28,7 +28,7 @@ import {
 } from "@legendapp/list/react";
 import { Dialog } from "@/ui/dialog";
 import {
-  extractTasksFromEvents,
+  extractTasksFromActivities,
   getTaskDisplayText,
   type EventRecord,
   type TaskItem,
@@ -103,12 +103,23 @@ export type ActivityHistoryDialogProps = {
   onOpenChange: (open: boolean) => void;
   section: ActivityHistorySection;
   /**
-   * Raw events from the renderer's live conversation feed. The dialog
-   * re-derives Done tasks and Recent files from `events + extras` (the
-   * paged-from-SQLite older history) so it can show full history while
-   * the inline overview shows the capped window.
+   * Raw events from the renderer's live conversation feed. Used today
+   * only for the "files" section, which still derives from the event
+   * stream until Phase 3 splits files onto their own purpose-built feed.
    */
   events: ReadonlyArray<EventRecord>;
+  /**
+   * Agent-lifecycle activity events (from `useConversationActivity`).
+   * The "done" section reads from these so the dialog can scroll back
+   * through completed task history without pulling the full event log.
+   */
+  activities: ReadonlyArray<EventRecord>;
+  latestMessageTimestampMs: number | null;
+  /** Grow the activity window — called when the dialog hits the end of
+   *  the currently loaded Done list. */
+  onLoadMoreActivity: () => void;
+  hasMoreActivity: boolean;
+  isLoadingMoreActivity: boolean;
   /** Live schedule list — already covers everything for the conversation. */
   schedules: ReadonlyArray<ScheduleEntry>;
   conversationId: string | null;
@@ -122,6 +133,11 @@ export function ActivityHistoryDialog({
   onOpenChange,
   section,
   events,
+  activities,
+  latestMessageTimestampMs,
+  onLoadMoreActivity,
+  hasMoreActivity,
+  isLoadingMoreActivity,
   schedules,
   conversationId,
   nowMs,
@@ -130,10 +146,10 @@ export function ActivityHistoryDialog({
 }: ActivityHistoryDialogProps) {
   const [query, setQuery] = useState("");
 
-  // Anchor for the pager — the oldest event already in the renderer's
-  // window. Stable across renders within the same `events` array so
-  // the pager doesn't reset on every state update.
-  const anchor = useMemo(() => {
+  // Files pager — still walks the raw event stream until Phase 3 splits
+  // files onto their own purpose-built feed. Anchored at the oldest
+  // event already in the renderer's window.
+  const filesAnchor = useMemo(() => {
     if (events.length === 0) return null;
     const oldest = events[0];
     return {
@@ -142,13 +158,13 @@ export function ActivityHistoryDialog({
     };
   }, [events]);
 
-  const pagerEnabled =
-    open && (section === "done" || section === "files") && Boolean(conversationId);
+  const filesPagerEnabled =
+    open && section === "files" && Boolean(conversationId);
 
-  const pager = useConversationHistoryPager({
+  const filesPager = useConversationHistoryPager({
     conversationId,
-    anchor,
-    enabled: pagerEnabled,
+    anchor: filesAnchor,
+    enabled: filesPagerEnabled,
   });
 
   // Reset search whenever the dialog opens or the section changes — a
@@ -161,28 +177,31 @@ export function ActivityHistoryDialog({
 
   const needle = query.trim().toLowerCase();
 
-  // Union live events with the pager's older extras. Pager keeps them
-  // ASC by timestamp so a plain concat preserves order.
-  const unionedEvents = useMemo<EventRecord[]>(() => {
-    if (pager.extras.length === 0) return [...events];
-    return [...pager.extras, ...events];
-  }, [pager.extras, events]);
-
   const doneTasks = useMemo<TaskItem[]>(() => {
     if (section !== "done") return [];
-    return extractTasksFromEvents(unionedEvents)
+    return extractTasksFromActivities([...activities], {
+      latestMessageTimestampMs,
+    })
       .filter((task) => task.status !== "running")
       .sort((a, b) => {
         const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
         const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
         return bTime - aTime;
       });
-  }, [section, unionedEvents]);
+  }, [activities, latestMessageTimestampMs, section]);
+
+  // Files section unions live events with the files pager's older extras
+  // so the user can scroll back past the renderer's window.
+  const filesEvents = useMemo<EventRecord[]>(() => {
+    if (section !== "files") return [];
+    if (filesPager.extras.length === 0) return [...events];
+    return [...filesPager.extras, ...events];
+  }, [filesPager.extras, events, section]);
 
   const files = useMemo<ActivityHistoryFile[]>(() => {
     if (section !== "files") return [];
-    return deriveConversationFiles(unionedEvents);
-  }, [section, unionedEvents]);
+    return deriveConversationFiles(filesEvents);
+  }, [filesEvents, section]);
 
   const filteredDone = useMemo(() => {
     if (!needle) return doneTasks;
@@ -211,7 +230,7 @@ export function ActivityHistoryDialog({
         kind: "done",
         task,
       }));
-      if (pager.hasMore || pager.isLoading) {
+      if (hasMoreActivity || isLoadingMoreActivity) {
         rows.push({ kind: "loading", id: "pager-loading" });
       }
       return rows;
@@ -223,17 +242,19 @@ export function ActivityHistoryDialog({
       kind: "files",
       entry,
     }));
-    if (pager.hasMore || pager.isLoading) {
+    if (filesPager.hasMore || filesPager.isLoading) {
       rows.push({ kind: "loading", id: "pager-loading" });
     }
     return rows;
   }, [
-    section,
+    filesPager.hasMore,
+    filesPager.isLoading,
     filteredDone,
-    filteredSchedules,
     filteredFiles,
-    pager.hasMore,
-    pager.isLoading,
+    filteredSchedules,
+    hasMoreActivity,
+    isLoadingMoreActivity,
+    section,
   ]);
 
   const totalForSection =
@@ -364,7 +385,13 @@ export function ActivityHistoryDialog({
                 renderItem={renderItem}
                 estimatedItemSize={36}
                 recycleItems
-                onEndReached={pager.loadMore}
+                onEndReached={
+                  section === "done"
+                    ? onLoadMoreActivity
+                    : section === "files"
+                      ? filesPager.loadMore
+                      : undefined
+                }
                 onEndReachedThreshold={0.6}
                 style={{ height: "100%", width: "100%" }}
               />

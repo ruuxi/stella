@@ -503,6 +503,138 @@ describe("session-store", () => {
     expect(messages.at(-1)?.payload?.text).toBe("user 4049");
   });
 
+  it("listActivity returns lifecycle events with the latest user/assistant timestamp", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    store.appendEvent({
+      conversationId,
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "Plan a trip" },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "agent-started",
+      timestamp: 1_010,
+      payload: {
+        agentId: "general-1",
+        description: "Researching destinations",
+        agentType: "general",
+      },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "agent-progress",
+      timestamp: 1_020,
+      payload: { agentId: "general-1", statusText: "Reading guides" },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "tool_request",
+      timestamp: 1_021,
+      requestId: "tool-1",
+      payload: { toolName: "web", args: { query: "weather" } },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "assistant_message",
+      timestamp: 1_030,
+      payload: { text: "Here you go." },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "agent-completed",
+      timestamp: 1_040,
+      payload: { agentId: "general-1", result: "Done" },
+    });
+
+    const { activities, latestMessageTimestampMs } =
+      store.listActivity(conversationId);
+
+    expect(activities.map((event) => event.type)).toEqual([
+      "agent-started",
+      "agent-progress",
+      "agent-completed",
+    ]);
+    expect(latestMessageTimestampMs).toBe(1_030);
+  });
+
+  it("listActivity pages older activity via beforeTimestampMs/beforeId", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    for (let i = 0; i < 6; i += 1) {
+      const ts = 1_000 + i * 10;
+      store.appendEvent({
+        conversationId,
+        type: "agent-started",
+        timestamp: ts,
+        payload: {
+          agentId: `agent-${i}`,
+          description: `task ${i}`,
+          agentType: "general",
+        },
+      });
+    }
+
+    const { activities: latest } = store.listActivity(conversationId, {
+      limit: 3,
+    });
+    expect(latest.map((event) => (event.payload as { agentId: string })?.agentId)).toEqual([
+      "agent-3",
+      "agent-4",
+      "agent-5",
+    ]);
+
+    const oldest = latest[0]!;
+    const { activities: older } = store.listActivity(conversationId, {
+      limit: 3,
+      beforeTimestampMs: oldest.timestamp,
+      beforeId: oldest._id,
+    });
+    expect(older.map((event) => (event.payload as { agentId: string })?.agentId)).toEqual([
+      "agent-0",
+      "agent-1",
+      "agent-2",
+    ]);
+  });
+
+  it("listActivity returns latestMessageTimestampMs across the whole conversation, not just the activity window", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    store.appendEvent({
+      conversationId,
+      type: "agent-started",
+      timestamp: 1_000,
+      payload: {
+        agentId: "agent-1",
+        description: "early task",
+        agentType: "general",
+      },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "user_message",
+      timestamp: 2_000,
+      payload: { text: "Newer turn" },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "assistant_message",
+      timestamp: 2_500,
+      payload: { text: "Reply" },
+    });
+
+    const { activities, latestMessageTimestampMs } = store.listActivity(
+      conversationId,
+      { limit: 1 },
+    );
+    expect(activities).toHaveLength(1);
+    expect(latestMessageTimestampMs).toBe(2_500);
+  });
+
   it("upserts local chat events by explicit event id", () => {
     const { store } = createTestContext();
     const conversationId = store.getOrCreateDefaultConversationId();

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  extractTasksFromEvents,
+  extractTasksFromActivities,
   getFooterTasksFromTasks,
   mergeFooterTasks,
   TASK_COMPLETION_INDICATOR_MS,
@@ -9,26 +9,32 @@ import {
 } from '@/app/chat/lib/event-transforms'
 
 type UseFooterTasksArgs = {
-  events: EventRecord[]
+  activities: EventRecord[]
+  latestMessageTimestampMs: number | null
   liveTasks?: TaskItem[]
   appSessionStartedAtMs?: number | null
 }
 
 export function useFooterTasks({
-  events,
+  activities,
+  latestMessageTimestampMs,
   liveTasks,
   appSessionStartedAtMs,
 }: UseFooterTasksArgs): TaskItem[] {
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const latestEventTimestamp = events.at(-1)?.timestamp ?? 0
+  const latestActivityTimestamp = activities.at(-1)?.timestamp ?? 0
 
   useEffect(() => {
     setNowMs(Date.now())
-  }, [appSessionStartedAtMs, latestEventTimestamp])
+  }, [appSessionStartedAtMs, latestActivityTimestamp, latestMessageTimestampMs])
 
   const extractedTasks = useMemo(
-    () => extractTasksFromEvents(events, { appSessionStartedAtMs }),
-    [appSessionStartedAtMs, events],
+    () =>
+      extractTasksFromActivities(activities, {
+        appSessionStartedAtMs,
+        latestMessageTimestampMs,
+      }),
+    [activities, appSessionStartedAtMs, latestMessageTimestampMs],
   )
 
   useEffect(() => {

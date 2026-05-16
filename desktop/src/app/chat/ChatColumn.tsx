@@ -154,7 +154,9 @@ export const ChatColumn = memo(function ChatColumn({
     [conversation.events],
   );
   const footerTasks = useFooterTasks({
-    events: conversation.events,
+    activities: conversation.activity.activities,
+    latestMessageTimestampMs:
+      conversation.activity.latestMessageTimestampMs,
     liveTasks: conversation.streaming.liveTasks,
     appSessionStartedAtMs,
   });
