@@ -28,7 +28,6 @@ import {
   EndResourceCard,
   SourceDiffEndResource,
 } from "@/app/chat/EndResourceCard";
-import { InlineHtmlArtifactCard } from "@/app/chat/InlineHtmlArtifactCard";
 import { InlineGeneratedImageCard } from "@/app/chat/InlineGeneratedImageCard";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
@@ -311,9 +310,7 @@ export const AssistantMessageRow = memo(
           {row.officePreviewRef && (
             <OfficePreviewCard previewRef={row.officePreviewRef} />
           )}
-          {row.resourcePayload?.kind === "canvas-html" ? (
-            <InlineHtmlArtifactCard payload={row.resourcePayload} />
-          ) : row.resourcePayload?.kind === "media" &&
+          {row.resourcePayload?.kind === "media" &&
             row.resourcePayload.presentation === "inline-image" &&
             row.resourcePayload.asset.kind === "image" ? (
             <InlineGeneratedImageCard payload={row.resourcePayload} />

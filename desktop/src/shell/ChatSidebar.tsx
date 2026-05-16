@@ -332,7 +332,7 @@ export function ChatPanelTab(
               variant="sidebar"
               scroll={sidebarScrollApi}
               events={events}
-              maxItems={2000}
+              maxItems={500}
               streamingText={streamingText}
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
