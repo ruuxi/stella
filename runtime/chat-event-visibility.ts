@@ -1,5 +1,3 @@
-export type LocalChatEventWindowMode = "events" | "visible_messages";
-
 type ChatEventLike = {
   type: string;
   payload?: Record<string, unknown>;
@@ -60,36 +58,4 @@ export const isUiDisplayableChatEvent = (
     return true;
   }
   return !isUiHiddenChatMessagePayload(getMessagePayload(event));
-};
-
-export const isVisibleChatMessageEvent = (
-  event: ChatEventLike,
-): boolean => isMessageEvent(event) && isUiDisplayableChatEvent(event);
-
-export const countVisibleChatMessageEvents = (
-  events: ChatEventLike[],
-): number =>
-  events.reduce(
-    (count, event) => count + (isVisibleChatMessageEvent(event) ? 1 : 0),
-    0,
-  );
-
-export const sliceEventsByVisibleMessageWindow = <T extends ChatEventLike>(
-  events: T[],
-  maxVisibleMessages = 200,
-): T[] => {
-  const normalizedLimit = Math.max(1, Math.floor(maxVisibleMessages));
-  let remainingVisibleMessages = normalizedLimit;
-
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    if (!isVisibleChatMessageEvent(events[index]!)) {
-      continue;
-    }
-    remainingVisibleMessages -= 1;
-    if (remainingVisibleMessages === 0) {
-      return events.slice(index);
-    }
-  }
-
-  return events;
 };

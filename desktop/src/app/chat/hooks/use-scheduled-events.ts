@@ -10,31 +10,25 @@ type UseScheduledEventsOptions = {
   maxItems: number;
 };
 
-type UseScheduledEventsResult = {
-  events: EventRecord[];
-  /** Total scheduled events available for this conversation, regardless
-   *  of the current window cap. */
-  count: number;
-};
-
 /**
- * Pulls the per-conversation scheduled events overlay from the local
- * scheduler, refreshing whenever the scheduler service signals an
- * update. Driven by an external `maxItems` so the parent feed can
- * keep scheduled + local windows in lockstep.
+ * Pulls the per-conversation scheduler-pending events for use as a
+ * synthetic overlay on top of the SQLite-backed message stream.
+ * Refreshes whenever the scheduler service signals an update.
+ *
+ * Scheduled events are rare (a handful per active cron / heartbeat) so
+ * the renderer takes them in bulk up to `maxItems`; there's no
+ * pagination and no separate total-count read.
  */
 export function useScheduledEvents({
   conversationId,
   enabled,
   maxItems,
-}: UseScheduledEventsOptions): UseScheduledEventsResult {
+}: UseScheduledEventsOptions): EventRecord[] {
   const [events, setEvents] = useState<EventRecord[]>(EMPTY_EVENTS);
-  const [count, setCount] = useState(0);
 
   useEffect(() => {
     if (!enabled || !conversationId || !window.electronAPI?.schedule) {
       setEvents(EMPTY_EVENTS);
-      setCount(0);
       return;
     }
 
@@ -43,24 +37,19 @@ export function useScheduledEvents({
 
     const load = async () => {
       try {
-        const [nextEvents, nextCount] = await Promise.all([
-          scheduleApi.listConversationEvents({
-            conversationId,
-            maxItems,
-          }),
-          scheduleApi.getConversationEventCount({ conversationId }),
-        ]);
+        const nextEvents = await scheduleApi.listConversationEvents({
+          conversationId,
+          maxItems,
+        });
         if (cancelled) {
           return;
         }
         setEvents(nextEvents as EventRecord[]);
-        setCount(nextCount);
       } catch {
         if (cancelled) {
           return;
         }
         setEvents(EMPTY_EVENTS);
-        setCount(0);
       }
     };
 
@@ -75,5 +64,5 @@ export function useScheduledEvents({
     };
   }, [conversationId, enabled, maxItems]);
 
-  return { events, count };
+  return events;
 }

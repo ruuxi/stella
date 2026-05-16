@@ -2785,12 +2785,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const payload = params as {
         conversationId?: string;
         maxItems?: number;
-        windowBy?: "events" | "visible_messages";
       };
       return ensureChatStore().listEvents(
         payload.conversationId ?? "",
         payload.maxItems,
-        payload.windowBy,
       );
     },
   );
@@ -2798,14 +2796,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT,
     async (params) => {
-      const payload = params as {
-        conversationId?: string;
-        countBy?: "events" | "visible_messages";
-      };
-      return ensureChatStore().getEventCount(
-        payload.conversationId ?? "",
-        payload.countBy,
-      );
+      const payload = params as { conversationId?: string };
+      return ensureChatStore().getEventCount(payload.conversationId ?? "");
     },
   );
 

@@ -42,7 +42,6 @@ export const registerLocalChatHandlers = (
       payload: {
         conversationId?: string;
         maxItems?: number;
-        windowBy?: "events" | "visible_messages";
       },
     ) =>
       await withLocalChatClient(
@@ -53,7 +52,6 @@ export const registerLocalChatHandlers = (
           client.listEvents({
             conversationId: payload?.conversationId ?? "",
             maxItems: payload?.maxItems,
-            windowBy: payload?.windowBy,
           }),
       ),
   );
@@ -169,7 +167,6 @@ export const registerLocalChatHandlers = (
       event,
       payload: {
         conversationId?: string;
-        countBy?: "events" | "visible_messages";
       },
     ) =>
       await withLocalChatClient(
@@ -179,7 +176,6 @@ export const registerLocalChatHandlers = (
         (client) =>
           client.getEventCount({
             conversationId: payload?.conversationId ?? "",
-            countBy: payload?.countBy,
           }),
       ),
   );

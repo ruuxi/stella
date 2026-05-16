@@ -1256,7 +1256,6 @@ export class StellaRuntimeHost {
   async listLocalChatEvents(payload: {
     conversationId: string;
     maxItems?: number;
-    windowBy?: "events" | "visible_messages";
   }) {
     return await this.requestWorker(
       METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_LIST_EVENTS,
@@ -1265,10 +1264,7 @@ export class StellaRuntimeHost {
     );
   }
 
-  async getLocalChatEventCount(payload: {
-    conversationId: string;
-    countBy?: "events" | "visible_messages";
-  }) {
+  async getLocalChatEventCount(payload: { conversationId: string }) {
     return await this.requestWorker<number>(
       METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_GET_EVENT_COUNT,
       payload,
