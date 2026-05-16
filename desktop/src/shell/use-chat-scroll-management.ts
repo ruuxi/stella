@@ -195,6 +195,11 @@ export function useChatScrollManagement({
       attached = node
       let lastScrollHeight = node.scrollHeight
       let lastClientWidth = node.clientWidth
+      // Becomes true on the first width-change tick of a resize burst so
+      // we only nudge the user away from the absolute bottom once per
+      // burst, not on every observer tick of the slide.
+      let resizeBurstActive = false
+      let resizeBurstResetId: ReturnType<typeof setTimeout> | null = null
 
       const cancelTween = () => {
         if (attached) cancelSmoothScroll(attached)
@@ -221,12 +226,6 @@ export function useChatScrollManagement({
           cancelTween()
         }
       }
-      const pinToBottom = () => {
-        if (!attached || !followRef.current) return
-        cancelTween()
-        attached.scrollTop = Math.max(0, attached.scrollHeight - attached.clientHeight)
-      }
-
       node.addEventListener('wheel', handleWheel, { passive: true })
       node.addEventListener('touchstart', handleTouchStart, { passive: true })
       node.addEventListener('keydown', handleKeyDown)
@@ -240,18 +239,37 @@ export function useChatScrollManagement({
         const grew = newHeight > lastScrollHeight
         lastScrollHeight = newHeight
         lastClientWidth = newWidth
-        // Width changes (e.g. the display sidebar sliding open) reflow the
-        // chat narrower, which makes `scrollHeight` grow on every observer
-        // tick of the 460ms transition. That is not new content — running
-        // the smooth follow tween for it produces a "scroll for no reason"
-        // during the slide. If the user was pinned to the bottom we snap
-        // instantly to keep them there; otherwise we leave their scroll
-        // position alone.
+        // Width changes (display sidebar sliding open, drag handle,
+        // window resize) reflow the chat narrower/wider, which grows or
+        // shrinks `scrollHeight` on every observer tick of the ~460ms
+        // transition. Trying to keep the user glued to the absolute
+        // bottom through that reflow produces the visible bounce: the
+        // browser repaints the new layout one frame before our pin
+        // catches up, so the content visibly jumps.
+        //
+        // The simpler fix is to step the user off the absolute bottom
+        // at the start of the resize burst — once they're a few pixels
+        // up, no per-frame pin is needed and the reflow is invisible.
+        // `followRef` stays armed, so streaming-text growth + reaching
+        // the bottom themselves still re-engages auto-follow normally.
         if (widthChanged) {
-          if (followRef.current) {
-            pinToBottom()
-            requestAnimationFrame(pinToBottom)
+          if (!resizeBurstActive && followRef.current) {
+            resizeBurstActive = true
+            const distFromEnd = Math.max(
+              0,
+              attached.scrollHeight -
+                attached.clientHeight -
+                attached.scrollTop,
+            )
+            if (distFromEnd < 12) {
+              attached.scrollTop = Math.max(0, attached.scrollTop - (12 - distFromEnd))
+            }
           }
+          if (resizeBurstResetId) clearTimeout(resizeBurstResetId)
+          resizeBurstResetId = setTimeout(() => {
+            resizeBurstActive = false
+            resizeBurstResetId = null
+          }, 160)
           return
         }
         if (!grew || !followRef.current) return
@@ -293,6 +311,11 @@ export function useChatScrollManagement({
         attached.removeEventListener('keydown', handleKeyDown)
         resizeObserver?.disconnect()
         resizeObserver = null
+        if (resizeBurstResetId) {
+          clearTimeout(resizeBurstResetId)
+          resizeBurstResetId = null
+        }
+        resizeBurstActive = false
         attached = null
       }
       return true
