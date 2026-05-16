@@ -21,6 +21,7 @@ import {
   removeCanvasHtmlItem,
   subscribeCanvasHtmlItems,
 } from "./canvas-items";
+import { CanvasIllustration } from "../illustrations/CanvasIllustration";
 import "./canvas-tab.css";
 
 const decoder = new TextDecoder("utf-8");
@@ -237,8 +238,11 @@ export const CanvasTabContent = ({
           <CanvasHeroFrame item={selectedItem} />
         ) : (
           <div className="canvas-tab__hero-empty">
+            <div style={{ width: 160, height: 120, margin: "0 auto 16px", opacity: 0.9 }}>
+              <CanvasIllustration />
+            </div>
             <div className="canvas-tab__hero-empty-title">No canvases yet</div>
-            <div className="canvas-tab__hero-empty-hint">
+            <div className="canvas-tab__hero-empty-hint" style={{ fontSize: 15 }}>
               Ask Stella to plan, compare, sketch, or chart something — answers
               that don't fit in plain text show up here.
             </div>

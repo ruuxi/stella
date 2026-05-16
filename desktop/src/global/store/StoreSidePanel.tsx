@@ -42,6 +42,7 @@ import { PublishDialog } from "./store-side-panel/PublishDialog";
 import { RecentChangesList } from "./store-side-panel/RecentChangesList";
 import { StoreComposer } from "./store-side-panel/StoreComposer";
 import { StoreThread } from "./store-side-panel/StoreThread";
+import { StoreIllustration } from "@/shell/display/illustrations/StoreIllustration";
 import { useBlueprintNotifications } from "./store-side-panel/use-blueprint-notifications";
 import { useBlueprintReview } from "./store-side-panel/use-blueprint-review";
 import { useStoreThread } from "./store-side-panel/use-store-thread";
@@ -151,6 +152,18 @@ export function StoreSidePanel() {
         onReviewBlueprint={(message) => setReviewingMessage(message)}
         hideEmptyPrompt={(state.snapshot?.items ?? []).length === 0}
       />
+
+      {messages.length === 0 && (state.snapshot?.items ?? []).length === 0 && !state.snapshotLoading && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center", gap: 12 }}>
+          <div style={{ width: 180, height: 135, opacity: 0.9 }}>
+            <StoreIllustration />
+          </div>
+          <div className="store-side-panel-empty" style={{ maxWidth: 240, fontSize: 15 }}>
+            After Stella makes a change for you, publish it to the store from
+            here.
+          </div>
+        </div>
+      )}
 
       <StoreComposer
         composer={composer}
