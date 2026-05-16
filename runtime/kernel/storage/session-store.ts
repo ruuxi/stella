@@ -44,12 +44,7 @@ import {
   toJsonString,
   toJsonValueString,
 } from "./shared.js";
-import {
-  countVisibleChatMessageEvents,
-  isUiHiddenChatMessagePayload,
-  sliceEventsByVisibleMessageWindow,
-  type LocalChatEventWindowMode,
-} from "../../chat-event-visibility.js";
+import { isUiHiddenChatMessagePayload } from "../../chat-event-visibility.js";
 import { MemoryStore } from "../memory/memory-store.js";
 import { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
 
@@ -1008,28 +1003,6 @@ export class SessionStore {
     };
   }
 
-  private listAllEventsForConversation(conversationId: string): LocalChatEventRecord[] {
-    const rows = this.db.prepare(`
-      SELECT
-        message.id AS _id,
-        message.created_at AS timestamp,
-        message.type AS type,
-        message.device_id AS deviceId,
-        message.request_id AS requestId,
-        message.target_device_id AS targetDeviceId,
-        part.data_json AS payloadJson,
-        message.data_json AS channelEnvelopeJson
-      FROM message
-      LEFT JOIN part
-        ON part.message_id = message.id
-       AND part.ord = 0
-      WHERE message.session_id = ?
-        AND message.type NOT IN ('thread_message', 'run_event', 'memory')
-      ORDER BY message.created_at ASC, message.id ASC
-    `).all(conversationId) as LocalChatEventRow[];
-    return rows.map((row) => this.deserializeEventRow(row));
-  }
-
   appendEvent(args: LocalChatAppendEventArgs): LocalChatEventRecord {
     const conversationId = this.sanitizeConversationId(args.conversationId);
     const type = asTrimmedString(args.type);
@@ -1187,16 +1160,8 @@ export class SessionStore {
   listEvents(
     conversationIdInput: string,
     maxItems = 200,
-    windowMode: LocalChatEventWindowMode = "events",
   ): LocalChatEventRecord[] {
     const conversationId = this.sanitizeConversationId(conversationIdInput);
-    if (windowMode === "visible_messages") {
-      return sliceEventsByVisibleMessageWindow(
-        this.listAllEventsForConversation(conversationId),
-        maxItems,
-      );
-    }
-
     const normalizedLimit = Math.max(1, Math.floor(maxItems));
     const rows = this.db.prepare(`
       SELECT
@@ -1755,16 +1720,8 @@ export class SessionStore {
     return { files: rows.map((row) => this.deserializeEventRow(row)) };
   }
 
-  getEventCount(
-    conversationIdInput: string,
-    windowMode: LocalChatEventWindowMode = "events",
-  ): number {
+  getEventCount(conversationIdInput: string): number {
     const conversationId = this.sanitizeConversationId(conversationIdInput);
-    if (windowMode === "visible_messages") {
-      return countVisibleChatMessageEvents(
-        this.listAllEventsForConversation(conversationId),
-      );
-    }
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count
       FROM message

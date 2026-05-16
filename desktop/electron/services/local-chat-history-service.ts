@@ -15,7 +15,6 @@ import type {
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
 import type { LocalChatUpdatedPayload } from "../../../runtime/contracts/local-chat.js";
-import type { LocalChatEventWindowMode } from "../../../runtime/chat-event-visibility.js";
 
 type LocalChatHistoryServiceOptions = {
   stellaRoot: string;
@@ -83,9 +82,8 @@ export class LocalChatHistoryService {
   listEvents(args: {
     conversationId: string;
     maxItems?: number;
-    windowBy?: LocalChatEventWindowMode;
   }): LocalChatEventRecord[] {
-    return this.getStore().listEvents(args.conversationId, args.maxItems, args.windowBy);
+    return this.getStore().listEvents(args.conversationId, args.maxItems);
   }
 
   listMessages(args: {
@@ -136,11 +134,8 @@ export class LocalChatHistoryService {
     });
   }
 
-  getEventCount(args: {
-    conversationId: string;
-    countBy?: LocalChatEventWindowMode;
-  }): number {
-    return this.getStore().getEventCount(args.conversationId, args.countBy);
+  getEventCount(args: { conversationId: string }): number {
+    return this.getStore().getEventCount(args.conversationId);
   }
 
   appendEvent(args: LocalChatAppendEventArgs): LocalChatEventRecord {
