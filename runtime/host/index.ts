@@ -260,6 +260,20 @@ export class StellaRuntimeHost {
   private hostRemoteTurnAuthRecoveryPromise: Promise<boolean> | null = null;
   private pendingRunEventAcks = new Map<string, number>();
   private runEventAckTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Per-conversation routing for follow-up assistant messages. Set when a
+   * connector-sourced user message kicks off an orchestrator turn; cleared
+   * when the user sends a non-connector message in that conversation
+   * (i.e. they came back to the desktop). While a target is armed, every
+   * assistant message persisted for that local conversation gets shipped
+   * back to the same channel via `sendConnectorFollowup` so multi-turn
+   * work (spawned-agent completion notices, "and here's the result" follow
+   * ups, etc.) reaches the phone instead of dead-ending on the desktop.
+   */
+  private connectorTargetsByLocalConversation = new Map<
+    string,
+    { requestId: string; backendConversationId: string }
+  >();
 
   constructor(private readonly options: StellaRuntimeHostOptions) {
     const stellaRoot = this.options.initializeParams.stellaRoot;
@@ -813,11 +827,20 @@ export class StellaRuntimeHost {
           subscription.unsubscribe();
         };
       },
-      runLocalTurn: async ({ conversationId, userPrompt, agentType }) => {
+      runLocalTurn: async ({ requestId, conversationId, userPrompt, agentType }) => {
         const localConversationId =
           this.configCache.cloudSyncEnabled
             ? conversationId || await this.getOrCreateDefaultConversationId()
             : await this.getActiveLocalConversationId();
+        // Arm follow-up routing before the orchestrator turn runs so any
+        // assistant message the worker persists during this run already
+        // routes back to the connector. The map entry is cleared by the
+        // local-chat listener as soon as the user sends a non-connector
+        // message in this conversation.
+        this.connectorTargetsByLocalConversation.set(localConversationId, {
+          requestId,
+          backendConversationId: conversationId,
+        });
         await this.appendLocalChatEvent({
           conversationId: localConversationId,
           type: "user_message",
@@ -881,6 +904,78 @@ export class StellaRuntimeHost {
         }
         logger(message, error);
       },
+    });
+  }
+
+  private async sendConnectorFollowup(args: {
+    requestId: string;
+    backendConversationId: string;
+    text: string;
+  }): Promise<void> {
+    const client = this.ensureHostConvexClient();
+    if (!client) {
+      return;
+    }
+    try {
+      await (client as any).mutation(
+        (
+          anyApi as unknown as {
+            channels: { connector_delivery: { sendConnectorFollowup: unknown } };
+          }
+        ).channels.connector_delivery.sendConnectorFollowup,
+        {
+          requestId: args.requestId,
+          conversationId: args.backendConversationId,
+          text: args.text,
+        },
+      );
+    } catch (error) {
+      console.warn(
+        "[runtime-host] sendConnectorFollowup failed:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  private handleLocalChatUpdateForConnectorFollowup(
+    payload: LocalChatUpdatedPayload | null,
+  ): void {
+    if (!payload) return;
+    const conversationId = payload.conversationId;
+    const event = payload.event;
+    if (!conversationId || !event) return;
+
+    const target = this.connectorTargetsByLocalConversation.get(conversationId);
+    if (!target) return;
+
+    const eventPayload = event.payload as Record<string, unknown> | undefined;
+    const source =
+      typeof eventPayload?.source === "string" ? eventPayload.source : "";
+
+    if (event.type === "user_message") {
+      // The desktop user typed in this conversation — switch routing back
+      // to the desktop. Connector-sourced user messages (the ones armed
+      // by `runLocalTurn` above) keep the target alive.
+      if (source !== "connector") {
+        this.connectorTargetsByLocalConversation.delete(conversationId);
+      }
+      return;
+    }
+
+    if (event.type !== "assistant_message") return;
+    // The first orchestrator reply already shipped through
+    // `completeRemoteTurn`; the host marked that one with
+    // `source: "connector"`. Everything else is a real follow-up.
+    if (source === "connector") return;
+
+    const text =
+      typeof eventPayload?.text === "string" ? eventPayload.text.trim() : "";
+    if (!text) return;
+
+    void this.sendConnectorFollowup({
+      requestId: target.requestId,
+      backendConversationId: target.backendConversationId,
+      text,
     });
   }
 
@@ -2205,7 +2300,9 @@ export class StellaRuntimeHost {
       },
     );
     peer.registerNotificationHandler(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, (params) => {
-      this.events.emit("local-chat-updated", params as LocalChatUpdatedPayload | null);
+      const payload = params as LocalChatUpdatedPayload | null;
+      this.handleLocalChatUpdateForConnectorFollowup(payload);
+      this.events.emit("local-chat-updated", payload);
     });
     peer.registerNotificationHandler(
       NOTIFICATION_NAMES.STORE_THREAD_UPDATED,
