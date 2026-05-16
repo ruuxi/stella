@@ -68,18 +68,30 @@ export function BlueprintPill({
 type StoreThreadProps = {
   messages: StoreThreadMessage[];
   onReviewBlueprint: (message: StoreThreadMessage) => void;
+  /**
+   * When true, suppress the "Pick changes above or just type…" empty
+   * prompt. The parent passes this when the recent-changes list above
+   * is itself empty — that list already shows a clear "no changes yet"
+   * message and stacking another empty-state block under it reads as
+   * noise.
+   */
+  hideEmptyPrompt?: boolean;
 };
 
 export function StoreThread({
   messages,
   onReviewBlueprint,
+  hideEmptyPrompt = false,
 }: StoreThreadProps) {
   if (messages.length === 0) {
+    if (hideEmptyPrompt) {
+      return <div className="store-side-panel-thread" />;
+    }
     return (
       <div className="store-side-panel-thread">
         <div className="store-side-panel-thread-empty">
-          Pick changes above or just type — the Store agent will help draft a
-          blueprint to publish.
+          Pick changes above or just type — Stella will help draft a blueprint
+          to publish.
         </div>
       </div>
     );

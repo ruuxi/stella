@@ -149,6 +149,7 @@ export function StoreSidePanel() {
       <StoreThread
         messages={messages}
         onReviewBlueprint={(message) => setReviewingMessage(message)}
+        hideEmptyPrompt={(state.snapshot?.items ?? []).length === 0}
       />
 
       <StoreComposer
