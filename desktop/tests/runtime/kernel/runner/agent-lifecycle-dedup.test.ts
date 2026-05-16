@@ -49,6 +49,9 @@ describe("task lifecycle deduping", () => {
     expect(completedPrompt).toContain("[Agent completed]");
     expect(completedPrompt).toContain("description: Open Spotify and play jazz");
     expect(completedPrompt).toContain("result: Spotify is now open");
+    expect(completedPrompt).toContain(
+      "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
+    );
     expect(failedPrompt).toContain("[Task failed]");
     expect(failedPrompt).toContain("error: Spotify failed to open");
     expect(canceledPrompt).toContain("[Task canceled]");
