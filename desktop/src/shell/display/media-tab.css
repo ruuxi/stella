@@ -343,9 +343,9 @@
   background: transparent;
   border: none;
   font: inherit;
-  font-size: 14px;
+  font-size: 12px;
   letter-spacing: 0.01em;
-  padding: 5px 11px;
+  padding: 4px 10px;
   border-radius: 999px;
   color: color-mix(in oklch, var(--foreground) 55%, transparent);
   cursor: pointer;
@@ -467,8 +467,8 @@
 .media-tab__prompt-submit {
   appearance: none;
   border: none;
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--primary);
   color: var(--primary-foreground, var(--background));
@@ -490,8 +490,8 @@
 }
 
 .media-tab__prompt-submit svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   stroke: currentColor;
   fill: none;
   stroke-width: 2.4;

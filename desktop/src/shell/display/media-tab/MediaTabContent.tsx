@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Folder } from "lucide-react";
+import { ArrowUp, Folder } from "lucide-react";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { displayTabs } from "../tab-store";
@@ -352,7 +352,7 @@ export const MediaTabContent = ({
             disabled={!canSubmit}
             aria-label={submitting ? "Starting" : "Make"}
           >
-            <ArrowRight size={16} strokeWidth={2.4} />
+            <ArrowUp size={14} strokeWidth={2.4} />
           </button>
         </div>
       </form>
