@@ -72,4 +72,81 @@ describe('segmentToolEventsByAssistant', () => {
     ).toEqual(['tool-end-1'])
     expect(segmented.trailing).toEqual([])
   })
+
+  it('attaches tool events that land AFTER the assistant to that same turn', () => {
+    // Repros the inline canvas bug: orchestrator streams its reply text,
+    // assistant_message persists, THEN the `html` tool finalizes and
+    // appends its tool_result. Without turn-aware grouping the tool would
+    // be stuck in `trailing` until a new user_message rebuilt segmentation.
+    const segmented = segmentToolEventsByAssistant([
+      event({
+        _id: 'user-1',
+        type: 'user_message',
+        payload: { text: 'plan something' },
+      }),
+      event({
+        _id: 'assistant-1',
+        type: 'assistant_message',
+        payload: { text: 'Here is the plan.' },
+      }),
+      event({
+        _id: 'tool-req-1',
+        type: 'tool_request',
+        requestId: 'call-1',
+        payload: { toolName: 'html', agentType: 'orchestrator' },
+      }),
+      event({
+        _id: 'tool-end-1',
+        type: 'tool_result',
+        requestId: 'call-1',
+        payload: {
+          toolName: 'html',
+          agentType: 'orchestrator',
+          details: {
+            filePath: '/state/outputs/html/plan.html',
+            slug: 'plan',
+            title: 'Plan',
+            createdAt: 1,
+          },
+        },
+      }),
+    ])
+
+    expect(
+      segmented.byAssistantId.get('assistant-1')?.map((entry) => entry._id),
+    ).toEqual(['tool-req-1', 'tool-end-1'])
+    expect(segmented.trailing).toEqual([])
+  })
+
+  it('keeps secondary assistants in the same turn (agent terminal notices) addressable', () => {
+    const segmented = segmentToolEventsByAssistant([
+      event({
+        _id: 'user-1',
+        type: 'user_message',
+        payload: { text: 'run agent' },
+      }),
+      event({
+        _id: 'assistant-1',
+        type: 'assistant_message',
+        payload: { text: 'Working on it.' },
+      }),
+      event({
+        _id: 'tool-end-1',
+        type: 'tool_result',
+        requestId: 'call-1',
+        payload: { toolName: 'spawn_agent', agentType: 'orchestrator' },
+      }),
+      event({
+        _id: 'assistant-2',
+        type: 'assistant_message',
+        payload: { text: 'Agent completed.' },
+      }),
+    ])
+
+    expect(
+      segmented.byAssistantId.get('assistant-1')?.map((entry) => entry._id),
+    ).toEqual(['tool-end-1'])
+    expect(segmented.byAssistantId.get('assistant-2')).toEqual([])
+    expect(segmented.trailing).toEqual([])
+  })
 })

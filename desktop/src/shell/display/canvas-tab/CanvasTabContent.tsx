@@ -6,23 +6,15 @@
  * middle, and a horizontal rail of sibling thumbnails along the bottom.
  * The hero is a sandboxed iframe rendering the file as `srcdoc` so the
  * canvas can run its own scripts without leaking globals into the
- * renderer; tile thumbnails reuse the same iframe approach but only
- * mount the live frame when the tile is actually visible (so a session
- * with N canvases doesn't keep N JS realms alive in the rail).
+ * renderer; tile thumbnails are static glyph + title placeholders (no
+ * iframe, no script execution) so a session with N canvases doesn't keep
+ * N JS realms alive in the rail.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowUpRight, Sparkles, Trash2 } from "lucide-react";
 import { displayTabs } from "../tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
-import { useHasBeenVisible } from "@/shared/hooks/use-has-been-visible";
 import {
   type CanvasHtmlItem,
   getCanvasHtmlItems,
@@ -80,68 +72,64 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
 };
 
 /**
- * Tile variant. Until the tile scrolls into view we paint a lightweight
- * placeholder — no IPC read, no Blob, no iframe — so a session with
- * dozens of canvases doesn't keep dozens of live JS realms alive in
- * the rail. The active item never paints a tile iframe at all because
- * the hero already shows the live canvas.
+ * Tile variant — static glyph + title pattern. Live iframe rendering at
+ * thumbnail size was running every canvas's scripts (and re-running them
+ * any time the rail re-mounted), so a session with several artifacts kept
+ * just as many JS realms alive in the background. The rail is a navigator,
+ * not a preview surface — the hero already shows the live canvas — so we
+ * paint a lightweight tile decorated with the same canvas glyph used in
+ * the display tab strip and call it done. Cheap enough to render dozens
+ * of tiles without measurable cost.
  */
-const CanvasTileFrame = ({
-  item,
-  isActive,
-}: {
-  item: CanvasHtmlItem;
-  isActive: boolean;
-}) => {
-  const slotRef = useRef<HTMLSpanElement | null>(null);
-  // The active tile mirrors the hero, so there's no point booting up a
-  // second iframe for the same file. Show a static "active" indicator.
-  // Non-active tiles wait until they scroll into view.
-  const visible = useHasBeenVisible(slotRef);
-  const shouldMountFrame = !isActive && visible;
-
-  return (
-    <span ref={slotRef} className="canvas-tab__tile-frame" aria-hidden>
-      {shouldMountFrame ? (
-        <CanvasTileIframe item={item} />
-      ) : (
-        <CanvasTilePlaceholder active={isActive} />
-      )}
-    </span>
-  );
-};
-
-const CanvasTilePlaceholder = ({ active }: { active: boolean }) => (
+const CanvasTileFrame = ({ isActive }: { isActive: boolean }) => (
   <span
     className={
-      active
-        ? "canvas-tab__frame-state canvas-tab__frame-state--tile canvas-tab__frame-state--active"
-        : "canvas-tab__frame-state canvas-tab__frame-state--tile"
+      isActive
+        ? "canvas-tab__tile-frame canvas-tab__tile-frame--active"
+        : "canvas-tab__tile-frame"
     }
-  />
+    aria-hidden
+  >
+    <CanvasTileGlyph />
+  </span>
 );
 
-const CanvasTileIframe = ({ item }: { item: CanvasHtmlItem }) => {
-  const { bytes, error, loading } = useDisplayFileBytes(
-    item.filePath,
-    "Canvas preview requires the Stella desktop app.",
-  );
-  const html = useMemo(() => (bytes ? decoder.decode(bytes) : ""), [bytes]);
-  if (error || loading || !html) {
-    return <CanvasTilePlaceholder active={false} />;
-  }
-  return (
-    <iframe
-      key={`${item.id}:${item.createdAt}`}
-      title={item.title}
-      className="canvas-tab__tile-iframe"
-      srcDoc={html}
-      sandbox="allow-scripts allow-popups allow-modals allow-forms"
-      referrerPolicy="no-referrer"
-      loading="lazy"
+const CanvasTileGlyph = () => (
+  <svg
+    className="canvas-tab__tile-glyph"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden
+  >
+    <rect
+      x="4"
+      y="5"
+      width="16"
+      height="14"
+      rx="2.2"
+      stroke="currentColor"
+      strokeOpacity="0.55"
+      strokeWidth="1.4"
+      fill="currentColor"
+      fillOpacity="0.06"
     />
-  );
-};
+    <path
+      d="M4 9h16"
+      stroke="currentColor"
+      strokeOpacity="0.45"
+      strokeWidth="1.2"
+    />
+    <circle cx="6.5" cy="7" r="0.7" fill="currentColor" fillOpacity="0.5" />
+    <circle cx="9" cy="7" r="0.7" fill="currentColor" fillOpacity="0.35" />
+    <path
+      d="M7 13h10M7 16h7"
+      stroke="currentColor"
+      strokeOpacity="0.35"
+      strokeWidth="1.1"
+      strokeLinecap="round"
+    />
+  </svg>
+);
 
 const useCanvasItems = (
   initial: ReadonlyArray<CanvasHtmlItem>,
@@ -276,7 +264,7 @@ export const CanvasTabContent = ({
                 title={item.title}
                 aria-label={item.title}
               >
-                <CanvasTileFrame item={item} isActive={isActive} />
+                <CanvasTileFrame isActive={isActive} />
                 <span className="canvas-tab__tile-label">{item.title}</span>
               </button>
             );
