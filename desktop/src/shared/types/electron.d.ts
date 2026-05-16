@@ -1193,6 +1193,12 @@ export type ElectronLocalChatApi = {
     activities: EventRecord[];
     latestMessageTimestampMs: number | null;
   }>;
+  listFiles: (payload: {
+    conversationId: string;
+    limit?: number;
+    beforeTimestampMs?: number;
+    beforeId?: string;
+  }) => Promise<{ files: EventRecord[] }>;
   getEventCount: (payload: {
     conversationId: string;
     countBy?: LocalChatEventWindowMode;

@@ -10,11 +10,12 @@
  *      the derived dataset has hundreds of rows, only the visible window
  *      is mounted to the DOM.
  *
- *   2. The Completed and Recent files sections page strictly older
- *      events directly from SQLite via `useConversationHistoryPager`
- *      (IPC `localChat:listEventsBefore`). The dialog re-derives tasks
- *      and files from `events + extras` so the user can scroll back
- *      past the renderer's ~500-event window into real history.
+ *   2. The Completed section grows the activity window
+ *      (`useConversationActivity` → `localChat:listActivity`) and the
+ *      Recent files section grows the files window
+ *      (`useConversationFiles` → `localChat:listFiles`) when the user
+ *      reaches the end of the currently loaded list, so neither has to
+ *      load every conversation event up front to surface its rows.
  *
  * Schedules are always fetched live as a small bounded list and don't
  * need pagination.
@@ -33,7 +34,6 @@ import {
   type EventRecord,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
-import { useConversationHistoryPager } from "@/app/chat/hooks/use-conversation-history-pager";
 import type { ScheduleEntry } from "@/global/schedule/use-conversation-schedules";
 import { formatNextRun } from "@/global/schedule/format-schedule";
 import { DisplayTabIcon } from "./icons";
@@ -103,12 +103,6 @@ export type ActivityHistoryDialogProps = {
   onOpenChange: (open: boolean) => void;
   section: ActivityHistorySection;
   /**
-   * Raw events from the renderer's live conversation feed. Used today
-   * only for the "files" section, which still derives from the event
-   * stream until Phase 3 splits files onto their own purpose-built feed.
-   */
-  events: ReadonlyArray<EventRecord>;
-  /**
    * Agent-lifecycle activity events (from `useConversationActivity`).
    * The "done" section reads from these so the dialog can scroll back
    * through completed task history without pulling the full event log.
@@ -120,6 +114,15 @@ export type ActivityHistoryDialogProps = {
   onLoadMoreActivity: () => void;
   hasMoreActivity: boolean;
   isLoadingMoreActivity: boolean;
+  /**
+   * File-carrying events (from `useConversationFiles`). The "files"
+   * section dedupes these via `deriveConversationFiles`; `loadOlder`
+   * grows the files window when the user scrolls past it.
+   */
+  fileEvents: ReadonlyArray<EventRecord>;
+  onLoadMoreFiles: () => void;
+  hasMoreFiles: boolean;
+  isLoadingMoreFiles: boolean;
   /** Live schedule list — already covers everything for the conversation. */
   schedules: ReadonlyArray<ScheduleEntry>;
   conversationId: string | null;
@@ -132,40 +135,21 @@ export function ActivityHistoryDialog({
   open,
   onOpenChange,
   section,
-  events,
   activities,
   latestMessageTimestampMs,
   onLoadMoreActivity,
   hasMoreActivity,
   isLoadingMoreActivity,
+  fileEvents,
+  onLoadMoreFiles,
+  hasMoreFiles,
+  isLoadingMoreFiles,
   schedules,
-  conversationId,
   nowMs,
   onOpenSchedule,
   onOpenFile,
 }: ActivityHistoryDialogProps) {
   const [query, setQuery] = useState("");
-
-  // Files pager — still walks the raw event stream until Phase 3 splits
-  // files onto their own purpose-built feed. Anchored at the oldest
-  // event already in the renderer's window.
-  const filesAnchor = useMemo(() => {
-    if (events.length === 0) return null;
-    const oldest = events[0];
-    return {
-      beforeTimestampMs: oldest.timestamp,
-      beforeId: oldest._id,
-    };
-  }, [events]);
-
-  const filesPagerEnabled =
-    open && section === "files" && Boolean(conversationId);
-
-  const filesPager = useConversationHistoryPager({
-    conversationId,
-    anchor: filesAnchor,
-    enabled: filesPagerEnabled,
-  });
 
   // Reset search whenever the dialog opens or the section changes — a
   // stale query for "files" sticking around after opening "Completed"
@@ -190,18 +174,10 @@ export function ActivityHistoryDialog({
       });
   }, [activities, latestMessageTimestampMs, section]);
 
-  // Files section unions live events with the files pager's older extras
-  // so the user can scroll back past the renderer's window.
-  const filesEvents = useMemo<EventRecord[]>(() => {
-    if (section !== "files") return [];
-    if (filesPager.extras.length === 0) return [...events];
-    return [...filesPager.extras, ...events];
-  }, [filesPager.extras, events, section]);
-
   const files = useMemo<ActivityHistoryFile[]>(() => {
     if (section !== "files") return [];
-    return deriveConversationFiles(filesEvents);
-  }, [filesEvents, section]);
+    return deriveConversationFiles(fileEvents);
+  }, [fileEvents, section]);
 
   const filteredDone = useMemo(() => {
     if (!needle) return doneTasks;
@@ -242,18 +218,18 @@ export function ActivityHistoryDialog({
       kind: "files",
       entry,
     }));
-    if (filesPager.hasMore || filesPager.isLoading) {
+    if (hasMoreFiles || isLoadingMoreFiles) {
       rows.push({ kind: "loading", id: "pager-loading" });
     }
     return rows;
   }, [
-    filesPager.hasMore,
-    filesPager.isLoading,
     filteredDone,
     filteredFiles,
     filteredSchedules,
     hasMoreActivity,
+    hasMoreFiles,
     isLoadingMoreActivity,
+    isLoadingMoreFiles,
     section,
   ]);
 
@@ -389,7 +365,7 @@ export function ActivityHistoryDialog({
                   section === "done"
                     ? onLoadMoreActivity
                     : section === "files"
-                      ? filesPager.loadMore
+                      ? onLoadMoreFiles
                       : undefined
                 }
                 onEndReachedThreshold={0.6}

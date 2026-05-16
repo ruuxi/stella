@@ -20,6 +20,7 @@ import {
   type LocalChatAppendEventArgs,
   type LocalChatEventRecord,
   type LocalChatEventRow,
+  type LocalChatFilesWindow,
   type LocalChatMessageRecord,
   type LocalChatMessageWindow,
   type LocalChatSyncMessage,
@@ -1673,6 +1674,85 @@ export class SessionStore {
       typeof latestRow?.timestamp === "number" ? latestRow.timestamp : null;
 
     return { activities, latestMessageTimestampMs };
+  }
+
+  /**
+   * File-carrying events (`tool_result` / `agent-completed` whose
+   * payload has a non-empty `fileChanges` or `producedFiles` array)
+   * for the conversation, ordered ASC by `(timestamp, _id)`.
+   *
+   * The Recent Files surfaces use this instead of scanning the full
+   * event stream. The SQL pre-filter via `json_extract` +
+   * `json_array_length` keeps the window genuinely scoped to events
+   * that touch disk, so a `limit` of 500 buys 500 file events rather
+   * than 500 arbitrary tool results that may or may not have produced
+   * a file.
+   *
+   * Optional `beforeTimestampMs` / `beforeId` cursor pages strictly-
+   * older file events for the ActivityHistoryDialog "files" section.
+   */
+  listFiles(
+    conversationIdInput: string,
+    args: {
+      limit?: number;
+      beforeTimestampMs?: number;
+      beforeId?: string;
+    } = {},
+  ): LocalChatFilesWindow {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const normalizedLimit = Math.max(1, Math.floor(args.limit ?? 500));
+    const before =
+      typeof args.beforeTimestampMs === "number"
+        ? {
+            timestamp: Math.floor(args.beforeTimestampMs),
+            id: args.beforeId ?? "",
+          }
+        : null;
+
+    const clauses = [
+      "m.session_id = ?",
+      "m.type IN ('tool_result', 'agent-completed')",
+      "p.data_json IS NOT NULL",
+      // `json_array_length` on a missing/non-array path returns NULL in
+      // SQLite, and `NULL > 0` is `NULL` (falsy), so this naturally
+      // excludes events without file changes without needing explicit
+      // null guards.
+      "(json_array_length(json_extract(p.data_json, '$.fileChanges')) > 0 OR json_array_length(json_extract(p.data_json, '$.producedFiles')) > 0)",
+    ];
+    const params: Array<string | number> = [conversationId];
+    if (before) {
+      clauses.push("(m.created_at < ? OR (m.created_at = ? AND m.id < ?))");
+      params.push(before.timestamp, before.timestamp, before.id);
+    }
+    params.push(normalizedLimit);
+
+    const rows = this.db.prepare(`
+      SELECT
+        recent.id AS _id,
+        recent.created_at AS timestamp,
+        recent.type AS type,
+        recent.device_id AS deviceId,
+        recent.request_id AS requestId,
+        recent.target_device_id AS targetDeviceId,
+        part.data_json AS payloadJson,
+        recent.data_json AS channelEnvelopeJson
+      FROM (
+        SELECT m.*
+        FROM message m
+        LEFT JOIN part p
+          ON p.message_id = m.id
+         AND p.ord = 0
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY m.created_at DESC, m.id DESC
+        LIMIT ?
+      ) recent
+      LEFT JOIN part
+        ON part.message_id = recent.id
+       AND part.ord = 0
+      ORDER BY recent.created_at ASC, recent.id ASC
+    `).all(...params) as LocalChatEventRow[];
+
+    return { files: rows.map((row) => this.deserializeEventRow(row)) };
   }
 
   getEventCount(

@@ -48,6 +48,20 @@ export type ChatColumnConversation = {
     isLoadingOlder: boolean
     loadOlder: () => void
   }
+  /**
+   * File-carrying events (`tool_result` / `agent-completed` whose
+   * payload has a non-empty `fileChanges` or `producedFiles` array)
+   * for the conversation. Fed by `useConversationFiles` in local mode
+   * and a `displayEvents` filter in cloud mode. The Recent Files
+   * surfaces (Chat tab Recent Files, ActivityHistoryDialog "files")
+   * read from this rather than scanning `events`.
+   */
+  files: {
+    files: EventRecord[]
+    hasOlder: boolean
+    isLoadingOlder: boolean
+    loadOlder: () => void
+  }
   streaming: {
     text: string
     reasoningText: string
