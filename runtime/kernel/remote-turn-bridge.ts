@@ -36,6 +36,7 @@ type RemoteTurnBridgeDeps = {
     onError?: (error: Error) => void;
   }) => () => void;
   runLocalTurn: (args: {
+    requestId: string;
     conversationId: string;
     userPrompt: string;
     agentType?: string;
@@ -203,6 +204,7 @@ export const createRemoteTurnBridge = (
         });
 
         const result = await deps.runLocalTurn({
+          requestId,
           conversationId,
           userPrompt,
           agentType,
