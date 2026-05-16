@@ -2,7 +2,9 @@
   position: fixed;
   inset: 0;
   z-index: 50;
-  background-color: rgba(0, 0, 0, 0.2);
+  /* Softer scrim than the previous flat 20% black — pairs better with
+     the glass dialog surface below. */
+  background-color: color-mix(in oklch, var(--background) 30%, rgba(0, 0, 0, 0.35));
 }
 
 [data-component="dialog"] {
@@ -44,9 +46,20 @@
   width: 100%;
   max-height: 100%;
   min-height: 280px;
-  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  /*
+   * Canonical "Apple-polish" dialog surface — same glass treatment as
+   * the Connect dialog (see `ConnectDialog.css`). The Connect dialog
+   * is the reference for ALL dialogs/popovers/menus in the app per
+   * product direction, so we apply this background/border/blur as the
+   * DEFAULT here instead of forcing each dialog to opt in. Per-dialog
+   * CSS should only override layout (padding, sizing, scroll behavior)
+   * — not the background/border/shadow — so the surface stays uniform.
+   */
+  border: 1px solid var(--border-weak);
   border-radius: var(--radius-xl, 10px);
-  background: var(--popover);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   background-clip: padding-box;
   box-shadow: var(--shadow-lg);
 }
