@@ -60,6 +60,7 @@ import {
 import { formatNextRun } from "@/global/schedule/format-schedule";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
+import { ChatIllustration } from "./illustrations/ChatIllustration";
 import "./chat-home-overview.css";
 
 const FILES_DEFAULT_VISIBLE = 5;
@@ -400,6 +401,20 @@ export function ChatHomeOverview() {
     runningTasks.length === 0 &&
     doneTasks.length === 0 &&
     visibleSchedules.length === 0;
+  const overviewIsEmpty = activityIsEmpty && allFiles.length === 0;
+
+  if (overviewIsEmpty) {
+    return (
+      <div className="chat-home-overview chat-home-overview--empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", padding: 40, textAlign: "center", gap: 12 }}>
+        <div style={{ width: 200, height: 150, opacity: 0.85 }}>
+          <ChatIllustration />
+        </div>
+        <p className="chat-home-overview__empty" style={{ maxWidth: 260, fontSize: 15 }}>
+          Activity and files from this conversation will show up here.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="chat-home-overview">

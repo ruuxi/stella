@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { TrashIllustration } from "./illustrations/TrashIllustration";
 import "./trash-tab.css";
 
 type TrashRecord = {
@@ -126,6 +127,25 @@ export const TrashTabContent = () => {
         : "Nothing here right now."
       : `${sorted.length} item${sorted.length === 1 ? "" : "s"} — auto-deleted in 24 hours.`;
 
+  if (sorted.length === 0 && !loading) {
+    return (
+      <div className="trash-tab" data-display-tab="trash" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", padding: 40, textAlign: "center", gap: 12 }}>
+        <div style={{ width: 200, height: 150, opacity: 0.9 }}>
+          <TrashIllustration />
+        </div>
+        <h3 className="trash-tab__title" style={{ margin: 0 }}>Trash</h3>
+        <p className="trash-tab__subtitle" style={{ margin: 0, fontSize: 15 }}>Nothing here right now.</p>
+        {errors.length > 0 && (
+          <div className="trash-tab__errors">
+            {errors.map((line, index) => (
+              <div key={index}>{line}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="trash-tab" data-display-tab="trash">
       <header className="trash-tab__header">
@@ -158,6 +178,14 @@ export const TrashTabContent = () => {
           {errors.map((line, index) => (
             <div key={index}>{line}</div>
           ))}
+        </div>
+      )}
+
+      {sorted.length === 0 && !loading && (
+        <div className="trash-tab__empty-state" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 40, opacity: 0.8 }}>
+          <div style={{ width: 160, height: 120, marginBottom: 16 }}>
+            <TrashIllustration />
+          </div>
         </div>
       )}
 

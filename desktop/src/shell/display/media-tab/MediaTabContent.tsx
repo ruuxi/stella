@@ -21,6 +21,7 @@ import { useMediaGeneration } from "./use-media-generation";
 import { MediaTile } from "./MediaTile";
 import { AttachedChip } from "./AttachedChip";
 import { MediaActionBar } from "./MediaActionBar";
+import { MediaIllustration } from "../illustrations/MediaIllustration";
 import "../media-tab.css";
 
 export const MediaTabContent = ({
@@ -255,7 +256,18 @@ export const MediaTabContent = ({
               : {})}
           />
         ) : (
-          <div className="media-tab__hero-empty" />
+          <div className="media-tab__hero-empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, textAlign: "center", padding: 24 }}>
+            <div style={{ width: 180, height: 135, opacity: 0.9 }}>
+              <MediaIllustration />
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text-strong)" }}>
+              No media yet
+            </div>
+            <div style={{ fontSize: 15, color: "var(--text-weak)", maxWidth: 260, lineHeight: 1.45 }}>
+              Generate an image, video, or audio from the composer below — or
+              drop a file in to edit it.
+            </div>
+          </div>
         )}
       </div>
 
