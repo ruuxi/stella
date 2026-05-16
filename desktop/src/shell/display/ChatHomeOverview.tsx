@@ -20,7 +20,8 @@
  * not by closing/reopening the tab — selection and panel state never
  * change just because the user navigates.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Activity, Check, Clock } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import {
@@ -57,8 +58,8 @@ import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import "./chat-home-overview.css";
 
-const FILES_DEFAULT_VISIBLE = 6;
-const DONE_DEFAULT_VISIBLE = 5;
+const FILES_DEFAULT_VISIBLE = 5;
+const DONE_DEFAULT_VISIBLE = 4;
 const UP_NEXT_DEFAULT_VISIBLE = 3;
 const FILES_TOTAL_CAP = 24;
 const NEXT_RUN_TICK_MS = 30_000;
@@ -70,7 +71,20 @@ const NEXT_RUN_TICK_MS = 30_000;
  * phrases fall off the top deterministically without depending on
  * scrollable max-height behaviour inside the display sidebar.
  */
-const TASK_PROGRESS_VISIBLE = 5;
+const TASK_PROGRESS_VISIBLE = 4;
+/**
+ * Hard character cap for activity row descriptions (Now / Done / Up next).
+ * The width-based CSS ellipsis still applies on top as a safety net for
+ * very narrow panels, but the character cap keeps the visual rhythm of
+ * the list consistent regardless of how wide the display sidebar is.
+ */
+const MAX_TASK_TITLE_CHARS = 45;
+
+const truncateTitle = (value: string): string => {
+  const trimmed = value.trim();
+  if (trimmed.length <= MAX_TASK_TITLE_CHARS) return trimmed;
+  return `${trimmed.slice(0, MAX_TASK_TITLE_CHARS - 1).trimEnd()}…`;
+};
 
 type FileEntry = {
   path: string;
@@ -89,7 +103,7 @@ const resolvedPathForChange = (record: FileChangeRecord): string | null => {
 };
 
 const taskLineFor = (task: TaskItem): string => {
-  return getTaskDisplayText(task) || task.description;
+  return truncateTitle(getTaskDisplayText(task) || task.description);
 };
 
 const taskBadgeFor = (task: TaskItem): string => {
@@ -179,11 +193,12 @@ function TaskRow({
           {taskBadgeFor(task)}
         </span>
       </div>
-      {summaries.length > 0 && (
-        <TaskProgressFeed
-          summaries={summaries}
-          isRunning={task.status === "running"}
-        />
+      {/* Per-task progress feed is only meaningful while the task is
+          actively running. Once it's Done/Failed/Stopped, the description
+          and status badge tell the whole story — the older progress
+          phrases just add noise to the history. */}
+      {task.status === "running" && summaries.length > 0 && (
+        <TaskProgressFeed summaries={summaries} isRunning />
       )}
     </li>
   );
@@ -205,7 +220,9 @@ function ScheduleRow({
         className="chat-home-overview__task-row chat-home-overview__schedule-trigger"
         onClick={() => onOpen(entry)}
       >
-        <span className="chat-home-overview__task-text">{entry.name}</span>
+        <span className="chat-home-overview__task-text">
+          {truncateTitle(entry.name)}
+        </span>
         <span className="chat-home-overview__task-status">
           {formatNextRun(entry.nextRunAtMs, nowMs)}
         </span>
@@ -226,14 +243,28 @@ const scheduleEntryToAffectedRef = (
   nextRunAtMs: entry.nextRunAtMs,
 });
 
-function SubgroupLabel({ children }: { children: string }) {
+function SubgroupLabel({
+  children,
+  icon,
+}: {
+  children: string;
+  icon: ReactNode;
+}) {
   return (
     <li
       className="chat-home-overview__subgroup-label"
       role="presentation"
       aria-hidden="true"
     >
-      {children}
+      <span
+        className="chat-home-overview__subgroup-label-icon"
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
+      <span className="chat-home-overview__subgroup-label-text">
+        {children}
+      </span>
     </li>
   );
 }
@@ -373,7 +404,9 @@ export function ChatHomeOverview() {
             <ul className="chat-home-overview__tasks">
               {runningTasks.length > 0 && (
                 <>
-                  <SubgroupLabel>Now</SubgroupLabel>
+                  <SubgroupLabel icon={<Activity size={12} strokeWidth={2.25} />}>
+                    Now
+                  </SubgroupLabel>
                   {runningTasks.map((task) => (
                     <TaskRow
                       key={task.id}
@@ -386,14 +419,31 @@ export function ChatHomeOverview() {
 
               {doneTasks.length > 0 && (
                 <>
-                  <SubgroupLabel>Done</SubgroupLabel>
-                  {visibleDone.map((task) => (
-                    <TaskRow
-                      key={task.id}
-                      task={task}
-                      summaries={summariesByAgent.get(task.id) ?? []}
-                    />
-                  ))}
+                  <SubgroupLabel icon={<Check size={12} strokeWidth={2.5} />}>
+                    Done
+                  </SubgroupLabel>
+                  {/*
+                   * Group container owns the soft glowing left bar
+                   * (see `.chat-home-overview__group--done` in
+                   * chat-home-overview.css). The bar is a single
+                   * `::before` pseudo-element spanning the group's
+                   * height, so it naturally grows as more Done rows
+                   * stack inside it.
+                   */}
+                  <li
+                    className="chat-home-overview__group chat-home-overview__group--done"
+                    role="presentation"
+                  >
+                    <ul className="chat-home-overview__group-inner">
+                      {visibleDone.map((task) => (
+                        <TaskRow
+                          key={task.id}
+                          task={task}
+                          summaries={summariesByAgent.get(task.id) ?? []}
+                        />
+                      ))}
+                    </ul>
+                  </li>
                   {hiddenDoneCount > 0 && (
                     <ShowMoreButton
                       remaining={hiddenDoneCount}
@@ -405,7 +455,9 @@ export function ChatHomeOverview() {
 
               {visibleSchedules.length > 0 && (
                 <>
-                  <SubgroupLabel>Up next</SubgroupLabel>
+                  <SubgroupLabel icon={<Clock size={12} strokeWidth={2.25} />}>
+                    Up next
+                  </SubgroupLabel>
                   {visibleSchedules.map((entry) => (
                     <ScheduleRow
                       key={`${entry.kind}:${entry.id}`}
