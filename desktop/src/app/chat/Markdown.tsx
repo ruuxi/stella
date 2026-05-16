@@ -33,6 +33,33 @@ type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
 const DEFAULT_REMARK_PLUGINS = Object.values(defaultRemarkPlugins);
 const REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS, remarkEmojiSprites];
 
+/*
+ * Disable Streamdown's built-in "Open external link?" confirmation modal.
+ *
+ * We don't need it because the Electron main process already gates every
+ * external open through `ExternalLinkService.setupExternalLinkHandlers`
+ * (`setWindowOpenHandler` + `will-navigate` → `shell.openExternal`), so
+ * a chat link click is already routed safely to the OS browser without
+ * any in-renderer confirmation.
+ *
+ * Leaving it enabled caused three regressions in the chat surface:
+ *   1. Streamdown rendered each link as a `<button>` and called
+ *      `preventDefault()`, which made the surrounding message bubble pick
+ *      up button focus / active styling on click ("the message gets
+ *      highlighted").
+ *   2. Streamdown's modal uses `position: fixed`, but our chat list is
+ *      virtualized by `@legendapp/list` which applies `transform` to row
+ *      containers — a transformed ancestor traps `position: fixed`, so
+ *      the modal would render centered on the clicked *message* instead
+ *      of the viewport.
+ *   3. The modal carried Streamdown's own card chrome, not the
+ *      Connect-dialog aesthetic the rest of the app uses.
+ *
+ * With `enabled: false`, links render as plain `<a target="_blank">` and
+ * Electron's main-process handlers take over.
+ */
+const LINK_SAFETY = { enabled: false } as const;
+
 const areMarkdownPropsEqual = (
   prev: MarkdownProps,
   next: MarkdownProps,
@@ -104,6 +131,7 @@ export const Markdown = memo(function Markdown({
             : DEFAULT_REMARK_PLUGINS
         }
         components={COMPONENTS}
+        linkSafety={LINK_SAFETY}
       >
         {text}
       </Streamdown>
