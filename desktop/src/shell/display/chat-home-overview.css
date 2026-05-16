@@ -28,20 +28,49 @@
   min-height: 0;
 }
 
+/*
+ * Section body scroller. The scrollbar itself is intentionally hidden — a
+ * visible scrollbar on a short list feels noisy. Overflow signal is carried
+ * instead by a top/bottom fade mask that drops off the corresponding edge
+ * once the scroller is at start / end (see `data-at-start` / `data-at-end`
+ * toggled by `useEdgeFade`). Same pattern as the legal dialog body and the
+ * topbar tablist — see `legal-dialog.css` and `full-shell.layout.css`.
+ */
 .chat-home-overview__section-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  --chat-home-overview-fade: 16px;
+  --chat-home-overview-fade-start: var(--chat-home-overview-fade);
+  --chat-home-overview-fade-end: var(--chat-home-overview-fade);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black var(--chat-home-overview-fade-start),
+    black calc(100% - var(--chat-home-overview-fade-end)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black var(--chat-home-overview-fade-start),
+    black calc(100% - var(--chat-home-overview-fade-end)),
+    transparent 100%
+  );
+  transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
 }
 
 .chat-home-overview__section-body::-webkit-scrollbar {
-  width: 6px;
+  display: none;
 }
 
-.chat-home-overview__section-body::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-  border-radius: 3px;
+.chat-home-overview__section-body[data-at-start="true"] {
+  --chat-home-overview-fade-start: 0px;
+}
+
+.chat-home-overview__section-body[data-at-end="true"] {
+  --chat-home-overview-fade-end: 0px;
 }
 
 .chat-home-overview__heading {
@@ -304,7 +333,9 @@
   text-underline-offset: 3px;
 }
 
-/* "Show N more" reveal — text-only, no card; matches the section's tone. */
+/* "See all (N)" reveal — text-only, no card; matches the section's tone.
+   Opens the per-section history dialog (see `ActivityHistoryDialog.tsx`)
+   where the user can search and scroll the full list. */
 .chat-home-overview__show-more-row {
   list-style: none;
   padding: 6px 4px 2px;
