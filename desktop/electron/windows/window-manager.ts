@@ -775,12 +775,50 @@ export class WindowManager {
   private focusAndRaise(window: BrowserWindow, mode: ShellWindowMode) {
     if (mode === 'mini') {
       if (process.platform === 'darwin') {
+        // When the full shell is sitting in its own macOS fullscreen Space,
+        // any app-level activation (`app.dock.show()`, `app.focus({ steal })`,
+        // or making the panel key via `window.focus()`) makes AppKit
+        // re-resolve "the app's frontmost window" against that fullscreen
+        // window and either switches Spaces to it or — worse — pulls it
+        // out of fullscreen back to the home Space. The mini is an NSPanel
+        // at `screen-saver` level with `visibleOnFullScreen: true`, so it
+        // can render over the active Space (fullscreen included) without
+        // any app activation at all. Take a quiet show-inactive path in
+        // that case and skip every activation call.
+        const fullIsMacFullscreen = this.isFullWindowMacFullscreen()
+        if (fullIsMacFullscreen) {
+          window.setVisibleOnAllWorkspaces(true, {
+            visibleOnFullScreen: true,
+            skipTransformProcessType: true,
+          })
+          if (this.miniAlwaysOnTop) {
+            window.setAlwaysOnTop(true, 'screen-saver')
+          } else {
+            window.setAlwaysOnTop(false)
+          }
+          if (!window.isVisible()) {
+            window.showInactive()
+          }
+          window.moveTop()
+          window.setVisibleOnAllWorkspaces(true, {
+            visibleOnFullScreen: true,
+            skipTransformProcessType: true,
+          })
+          if (this.miniAlwaysOnTop) {
+            window.setAlwaysOnTop(true, 'screen-saver')
+          }
+          return
+        }
+
         app.dock?.show()
         // Do not call `app.show()` here. On macOS it unhides every owned
         // BrowserWindow, which can briefly surface the full shell when the
         // user is only restoring the mini (notably after radial capture).
         app.focus({ steal: true })
-        window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        window.setVisibleOnAllWorkspaces(true, {
+          visibleOnFullScreen: true,
+          skipTransformProcessType: true,
+        })
         if (this.miniAlwaysOnTop) {
           window.setAlwaysOnTop(true, 'screen-saver')
         } else {
@@ -792,7 +830,10 @@ export class WindowManager {
           window.show()
         }
         window.moveTop()
-        window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        window.setVisibleOnAllWorkspaces(true, {
+          visibleOnFullScreen: true,
+          skipTransformProcessType: true,
+        })
         if (this.miniAlwaysOnTop) {
           window.setAlwaysOnTop(true, 'screen-saver')
         }

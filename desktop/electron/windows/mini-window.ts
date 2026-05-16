@@ -80,7 +80,20 @@ export class MiniWindowController {
       },
       afterCreate: (window) => {
         if (process.platform !== 'darwin') return
-        window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        // `skipTransformProcessType: true` is critical here. Without it,
+        // Electron calls `TransformProcessType` on NSApplication to normalize
+        // the app's process type before applying the all-Spaces collection
+        // behavior — and `TransformProcessType` is the macOS API that yanks
+        // a fullscreen window out of its own Space back to the home Space.
+        // On the very first lazy construction of the mini panel that surfaced
+        // as: user is in their fullscreen full shell, opens the mini, and
+        // macOS rips the full shell out of fullscreen. The overlay panel
+        // already passes this flag for the same reason; the mini was the
+        // only screen-saver-level panel still on the slow path.
+        window.setVisibleOnAllWorkspaces(true, {
+          visibleOnFullScreen: true,
+          skipTransformProcessType: true,
+        })
         window.setAlwaysOnTop(true, 'screen-saver')
       },
     })

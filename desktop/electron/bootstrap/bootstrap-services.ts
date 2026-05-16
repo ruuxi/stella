@@ -212,6 +212,7 @@ export const createBootstrapServices = (options: {
       restoreWindowVisibility: (target) =>
         state.windowManager?.restoreWindowVisibility(target),
       minimizeWindow: () => state.windowManager?.minimizeWindow(),
+      hideMiniWindow: () => state.windowManager?.hideMiniWindow(false),
     },
     togglePetVoice: () => {
       // Resolve lazily — the pet controller is constructed in
