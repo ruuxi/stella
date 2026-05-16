@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { shouldRetainResumedStreamingState } from "../../src/app/chat/hooks/use-resume-agent-run";
-import { reconcileTerminalTaskKeysFromResumeTasks } from "../../src/app/chat/streaming/use-local-agent-stream";
+import { reconcileTerminalTaskKeysFromResumeTasks } from "../../src/app/chat/streaming/store";
 
 describe("shouldRetainResumedStreamingState", () => {
   it("drops stale resumed state when replay is exhausted and the run is gone", () => {

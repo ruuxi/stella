@@ -5,7 +5,7 @@ import type { ExtensionServices } from "../../../kernel/extensions/services.js";
 import type { HookDefinition } from "../../../kernel/extensions/types.js";
 import { readOptionalTextFile } from "../../../kernel/shared/read-optional-text-file.js";
 
-const MEMORY_INJECTION_TURN_THRESHOLD = 40;
+export const MEMORY_INJECTION_TURN_THRESHOLD = 40;
 const DREAM_MEMORY_DISPLAY_PATH = "state/memories/MEMORY.md";
 const DREAM_MEMORY_SUMMARY_DISPLAY_PATH = "state/memories/memory_summary.md";
 

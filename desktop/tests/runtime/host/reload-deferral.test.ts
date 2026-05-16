@@ -43,8 +43,8 @@ describe("runtime reload deferral", () => {
     expect(restartWorker).not.toHaveBeenCalled();
 
     await anyHost.resumeRuntimeReloads("run-1");
-    vi.runAllTimers();
-    await Promise.resolve();
+    await vi.runAllTimersAsync();
+    await anyHost.reloadQueue;
 
     expect(restartWorker).toHaveBeenCalledTimes(1);
   });
@@ -62,8 +62,8 @@ describe("runtime reload deferral", () => {
     await anyHost.scheduleRuntimeReload("worker");
 
     await anyHost.resumeRuntimeReloads("run-2");
-    vi.runAllTimers();
-    await Promise.resolve();
+    await vi.runAllTimersAsync();
+    await anyHost.reloadQueue;
 
     expect(restartWorker).toHaveBeenCalledTimes(1);
   });
@@ -81,8 +81,8 @@ describe("runtime reload deferral", () => {
     expect(restartWorker).not.toHaveBeenCalled();
 
     await anyHost.resetRuntimeReloadPauses();
-    vi.runAllTimers();
-    await Promise.resolve();
+    await vi.runAllTimersAsync();
+    await anyHost.reloadQueue;
 
     expect(anyHost.pausedRuntimeReloadRuns.size).toBe(0);
     expect(restartWorker).toHaveBeenCalledTimes(1);
