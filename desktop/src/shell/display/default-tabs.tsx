@@ -50,7 +50,6 @@ function ChatDisplayTab({
     <ChatPanelTab
       openRequest={openRequest}
       messages={chat.conversation.messages}
-      events={chat.conversation.events}
       activities={chat.conversation.activity.activities}
       latestMessageTimestampMs={
         chat.conversation.activity.latestMessageTimestampMs

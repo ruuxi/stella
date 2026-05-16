@@ -59,34 +59,6 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
-    "localChat:listEventsBefore",
-    async (
-      event,
-      payload: {
-        conversationId?: string;
-        beforeTimestampMs?: number;
-        beforeId?: string;
-        limit?: number;
-      },
-    ) =>
-      await withLocalChatClient(
-        options,
-        event,
-        "localChat:listEventsBefore",
-        (client) =>
-          client.listEventsBefore({
-            conversationId: payload?.conversationId ?? "",
-            beforeTimestampMs:
-              typeof payload?.beforeTimestampMs === "number"
-                ? payload.beforeTimestampMs
-                : Number.MAX_SAFE_INTEGER,
-            beforeId: payload?.beforeId,
-            limit: payload?.limit,
-          }),
-      ),
-  );
-
-  ipcMain.handle(
     "localChat:listMessages",
     async (
       event,

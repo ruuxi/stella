@@ -357,8 +357,6 @@ export const IPC_FASHION_GET_LOCAL_IMAGE_DATA_URL =
 export const IPC_LOCAL_CHAT_GET_OR_CREATE_ID =
   "localChat:getOrCreateDefaultConversationId" as const;
 export const IPC_LOCAL_CHAT_LIST_EVENTS = "localChat:listEvents" as const;
-export const IPC_LOCAL_CHAT_LIST_EVENTS_BEFORE =
-  "localChat:listEventsBefore" as const;
 export const IPC_LOCAL_CHAT_LIST_MESSAGES =
   "localChat:listMessages" as const;
 export const IPC_LOCAL_CHAT_LIST_MESSAGES_BEFORE =

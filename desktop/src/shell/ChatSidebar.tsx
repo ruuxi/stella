@@ -72,7 +72,6 @@ export type ChatPanelOpenRequest = ChatSidebarOpenOptions & {
 interface ChatPanelTabProps {
   openRequest?: ChatPanelOpenRequest | null;
   messages: MessageRecord[];
-  events: EventRecord[];
   activities: EventRecord[];
   latestMessageTimestampMs: number | null;
   streamingText: string;
@@ -97,7 +96,6 @@ export function ChatPanelTab(
     {
       openRequest,
       messages,
-      events,
       activities,
       latestMessageTimestampMs,
       streamingText,
@@ -157,8 +155,8 @@ export function ChatPanelTab(
 
     const appSessionStartedAtMs = useAgentSessionStartedAt();
     const runningTool = useMemo(
-      () => getCurrentRunningTool(events),
-      [events],
+      () => getCurrentRunningTool(messages),
+      [messages],
     );
     const footerTasks = useFooterTasks({
       activities,
@@ -166,7 +164,7 @@ export function ChatPanelTab(
       liveTasks,
       appSessionStartedAtMs,
     });
-    useReadAloud(events);
+    useReadAloud(messages);
     const hasActiveWork =
       footerTasks.length > 0 ||
       Boolean(isStreaming) ||

@@ -1568,14 +1568,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     listEvents: (payload: {
       conversationId: string;
       maxItems?: number;
-      windowBy?: "events" | "visible_messages";
     }) => ipcRenderer.invoke("localChat:listEvents", payload),
-    listEventsBefore: (payload: {
-      conversationId: string;
-      beforeTimestampMs: number;
-      beforeId?: string;
-      limit?: number;
-    }) => ipcRenderer.invoke("localChat:listEventsBefore", payload),
     listMessages: (payload: {
       conversationId: string;
       maxVisibleMessages?: number;
@@ -1598,10 +1591,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       beforeTimestampMs?: number;
       beforeId?: string;
     }) => ipcRenderer.invoke("localChat:listFiles", payload),
-    getEventCount: (payload: {
-      conversationId: string;
-      countBy?: "events" | "visible_messages";
-    }) => ipcRenderer.invoke("localChat:getEventCount", payload),
     persistDiscoveryWelcome: (payload: {
       conversationId: string;
       message: string;

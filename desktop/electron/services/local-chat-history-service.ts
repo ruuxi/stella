@@ -88,19 +88,6 @@ export class LocalChatHistoryService {
     return this.getStore().listEvents(args.conversationId, args.maxItems, args.windowBy);
   }
 
-  listEventsBefore(args: {
-    conversationId: string;
-    beforeTimestampMs: number;
-    beforeId?: string;
-    limit?: number;
-  }): LocalChatEventRecord[] {
-    return this.getStore().listEventsBefore(args.conversationId, {
-      beforeTimestampMs: args.beforeTimestampMs,
-      beforeId: args.beforeId,
-      limit: args.limit,
-    });
-  }
-
   listMessages(args: {
     conversationId: string;
     maxVisibleMessages?: number;

@@ -150,8 +150,8 @@ export const ChatColumn = memo(function ChatColumn({
 
   const appSessionStartedAtMs = useAgentSessionStartedAt();
   const runningTool = useMemo(
-    () => getCurrentRunningTool(conversation.events),
-    [conversation.events],
+    () => getCurrentRunningTool(conversation.messages),
+    [conversation.messages],
   );
   const footerTasks = useFooterTasks({
     activities: conversation.activity.activities,
@@ -160,7 +160,7 @@ export const ChatColumn = memo(function ChatColumn({
     liveTasks: conversation.streaming.liveTasks,
     appSessionStartedAtMs,
   });
-  useReadAloud(conversation.events);
+  useReadAloud(conversation.messages);
   const hasActiveWork =
     footerTasks.length > 0 ||
     Boolean(conversation.streaming.isStreaming) ||

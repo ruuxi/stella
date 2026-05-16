@@ -5,11 +5,10 @@ import type {
 } from "@/shared/contracts/pet";
 import {
   getEventText,
-  isAssistantMessage,
-  type EventRecord,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
-import { filterEventsForUiDisplay } from "@/app/chat/lib/message-display";
+import { filterMessagesForUiDisplay } from "@/app/chat/lib/message-display";
+import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import { getWorkingIndicatorDisplayStatus } from "@/app/chat/working-indicator-state";
 import {
   readLastSeenPetAssistantMessageId,
@@ -102,14 +101,14 @@ type LatestAssistantMessage = {
 };
 
 const latestAssistantMessage = (
-  events: EventRecord[] | null | undefined,
+  messages: MessageRecord[] | null | undefined,
 ): LatestAssistantMessage | null => {
-  const displayEvents = filterEventsForUiDisplay(events ?? []);
-  for (let index = displayEvents.length - 1; index >= 0; index -= 1) {
-    const event = displayEvents[index];
-    if (!event || !isAssistantMessage(event)) continue;
-    const text = getEventText(event).replace(/\s+/g, " ").trim();
-    if (text.length > 0) return { id: event._id, text };
+  const displayMessages = filterMessagesForUiDisplay(messages ?? []);
+  for (let index = displayMessages.length - 1; index >= 0; index -= 1) {
+    const message = displayMessages[index];
+    if (!message || message.type !== "assistant_message") continue;
+    const text = getEventText(message).replace(/\s+/g, " ").trim();
+    if (text.length > 0) return { id: message._id, text };
   }
   return null;
 };
@@ -123,7 +122,7 @@ const getWorkingPhrase = (seed: string): string => {
 };
 
 type UsePetStatusBroadcastInput = {
-  events: EventRecord[] | null | undefined;
+  messages: MessageRecord[] | null | undefined;
   liveTasks: TaskItem[] | null | undefined;
   runtimeStatusText: string;
   isStreaming: boolean;
@@ -140,7 +139,7 @@ type UsePetStatusBroadcastInput = {
  * fields the pet cares about, debounce-by-equality, and fan out.
  */
 export const usePetStatusBroadcast = ({
-  events,
+  messages,
   liveTasks,
   runtimeStatusText,
   isStreaming,
@@ -151,8 +150,8 @@ export const usePetStatusBroadcast = ({
   );
 
   const latestAssistant = useMemo(
-    () => (isStreaming ? null : latestAssistantMessage(events)),
-    [events, isStreaming],
+    () => (isStreaming ? null : latestAssistantMessage(messages)),
+    [isStreaming, messages],
   );
 
   const status: PetOverlayStatus = useMemo(() => {
