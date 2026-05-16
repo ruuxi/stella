@@ -36,6 +36,7 @@ import { DropOverlay } from "@/app/chat/DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
+import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import { useCapturedChatContext } from "./use-captured-chat-context";
 import {
@@ -70,6 +71,7 @@ export type ChatPanelOpenRequest = ChatSidebarOpenOptions & {
 
 interface ChatPanelTabProps {
   openRequest?: ChatPanelOpenRequest | null;
+  messages: MessageRecord[];
   events: EventRecord[];
   streamingText: string;
   isStreaming: boolean;
@@ -78,7 +80,7 @@ interface ChatPanelTabProps {
   queuedUserMessages?: QueuedUserMessage[];
   optimisticUserMessageIds: string[];
   liveTasks?: TaskItem[];
-  hasOlderEvents: boolean;
+  hasOlderMessages: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
   onSend: (
@@ -92,6 +94,7 @@ interface ChatPanelTabProps {
 export function ChatPanelTab(
     {
       openRequest,
+      messages,
       events,
       streamingText,
       isStreaming,
@@ -100,7 +103,7 @@ export function ChatPanelTab(
       queuedUserMessages,
       optimisticUserMessageIds,
       liveTasks,
-      hasOlderEvents,
+      hasOlderMessages,
       isLoadingOlder,
       isInitialLoading,
       onSend,
@@ -119,7 +122,7 @@ export function ChatPanelTab(
      * thumb behavior as the home full chat.
      */
     const sidebarScroll = useChatScrollManagement({
-      hasOlderEvents,
+      hasOlderEvents: hasOlderMessages,
       isLoadingOlder,
     });
 
@@ -331,8 +334,7 @@ export function ChatPanelTab(
               className="chat-sidebar-messages"
               variant="sidebar"
               scroll={sidebarScrollApi}
-              events={events}
-              maxItems={500}
+              messages={messages}
               streamingText={streamingText}
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
@@ -340,7 +342,7 @@ export function ChatPanelTab(
               queuedUserMessages={queuedUserMessages}
               optimisticUserMessageIds={optimisticUserMessageIds}
               liveTasks={liveTasks}
-              hasOlderEvents={hasOlderEvents}
+              hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlder}
               isLoadingHistory={isInitialLoading}
               contentContainerStyle={SIDEBAR_CONTENT_STYLE}

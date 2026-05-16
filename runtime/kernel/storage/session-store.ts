@@ -19,7 +19,10 @@ import {
   type LocalChatAppendEventArgs,
   type LocalChatEventRecord,
   type LocalChatEventRow,
+  type LocalChatMessageRecord,
+  type LocalChatMessageWindow,
   type LocalChatSyncMessage,
+  type TimelineCursor,
   type PersistedRuntimeThreadPayload,
   type RuntimeRunEvent,
   RUNTIME_THREAD_SESSION_VERSION,
@@ -41,11 +44,56 @@ import {
 } from "./shared.js";
 import {
   countVisibleChatMessageEvents,
+  isUiHiddenChatMessagePayload,
   sliceEventsByVisibleMessageWindow,
   type LocalChatEventWindowMode,
 } from "../../chat-event-visibility.js";
 import { MemoryStore } from "../memory/memory-store.js";
 import { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
+
+/**
+ * Upper bound on the user/assistant rows scanned per `listMessages` /
+ * `listMessagesBefore` call to compute the visible-message cutoff. Lets
+ * the scan absorb hundreds of hidden system reminders / workspace
+ * requests near the tail without scanning every row in chats with
+ * millions of historical events.
+ */
+const CUTOFF_SCAN_CEILING = 4000;
+
+type VisibleScanRow = {
+  timestamp: number | null;
+  id: string | null;
+  payloadJson: string | null;
+};
+
+const compareTimelineCursor = (
+  a: { timestamp: number; id: string },
+  b: { timestamp: number; id: string },
+): number => {
+  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+  return a.id.localeCompare(b.id);
+};
+
+const cursorFromVisibleScan = (
+  rows: VisibleScanRow[],
+  maxVisibleMessages: number,
+): TimelineCursor => {
+  let visible = 0;
+  let oldestScanned: TimelineCursor = null;
+  for (const row of rows) {
+    if (typeof row.timestamp !== "number" || typeof row.id !== "string") {
+      continue;
+    }
+    oldestScanned = { timestamp: row.timestamp, id: row.id };
+    const payload = parseJsonRecord(row.payloadJson) ?? null;
+    if (isUiHiddenChatMessagePayload(payload)) continue;
+    visible += 1;
+    if (visible === maxVisibleMessages) {
+      return { timestamp: row.timestamp, id: row.id };
+    }
+  }
+  return rows.length >= CUTOFF_SCAN_CEILING ? oldestScanned : null;
+};
 
 type SessionRow = {
   id: string;
@@ -1233,6 +1281,307 @@ export class SessionStore {
     ) as LocalChatEventRow[];
 
     return rows.map((row) => this.deserializeEventRow(row));
+  }
+
+  /**
+   * Window of visible chat messages with each assistant message's turn-
+   * scoped tool/`agent-completed` events attached as `toolEvents`. This is
+   * the read shape the chat UI consumes — pure event-log readers should
+   * keep using `listEvents` / `listEventsBefore`.
+   *
+   * Two-step query: first locate the (timestamp, id) cutoff of the
+   * `maxVisibleMessages`-th most-recent user/assistant row, then fetch all
+   * tool/agent-completed events from the cutoff forward and group them by
+   * turn (boundary = `user_message`). Mirrors the renderer's prior
+   * `segmentToolEventsByAssistant` so the inline-artifact / askQuestion /
+   * schedule-receipt projections that hung off the flat event stream keep
+   * working without a flat event stream.
+   *
+   * `messages` is the ordered visible chat (oldest → newest). Trailing
+   * tool/agent-completed events that landed after the last visible
+   * `user_message` with no following assistant yet (typical for
+   * fire-and-forget image submissions in-flight at fetch time) stay on
+   * that user message's `toolEvents`, so the renderer can synthesize the
+   * standalone artifact row it always has.
+   */
+  listMessages(
+    conversationIdInput: string,
+    args: {
+      maxVisibleMessages?: number;
+    } = {},
+  ): LocalChatMessageWindow {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const maxVisibleMessages = Math.max(
+      1,
+      Math.floor(args.maxVisibleMessages ?? 200),
+    );
+    const cutoff = this.findVisibleMessageCutoff(
+      conversationId,
+      maxVisibleMessages,
+    );
+    const fetchCutoff = this.findTurnFetchCutoff(conversationId, cutoff);
+    const rows = this.fetchTimelineRows(conversationId, fetchCutoff, null);
+    return this.trimMessageWindow(this.assembleMessageWindow(rows), cutoff);
+  }
+
+  /**
+   * Same projection as `listMessages` but returns strictly-older messages
+   * than `(beforeTimestampMs, beforeId)`. Drives the chat's "load older"
+   * pagination — the cursor is the oldest message in the currently-loaded
+   * window so successive calls walk the conversation backwards a page at
+   * a time.
+   */
+  listMessagesBefore(
+    conversationIdInput: string,
+    args: {
+      beforeTimestampMs: number;
+      beforeId: string;
+      maxVisibleMessages?: number;
+    },
+  ): LocalChatMessageWindow {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const maxVisibleMessages = Math.max(
+      1,
+      Math.floor(args.maxVisibleMessages ?? 200),
+    );
+    const beforeTimestamp = Math.floor(args.beforeTimestampMs);
+    const beforeId = args.beforeId;
+    const before = { timestamp: beforeTimestamp, id: beforeId };
+    const cutoff = this.findVisibleMessageCutoffBefore(
+      conversationId,
+      maxVisibleMessages,
+      before,
+    );
+    const fetchCutoff = this.findTurnFetchCutoff(conversationId, cutoff);
+    const rows = this.fetchTimelineRows(conversationId, fetchCutoff, before);
+    return this.trimMessageWindow(this.assembleMessageWindow(rows), cutoff);
+  }
+
+  /**
+   * Walks user/assistant rows DESC pulling the payload JSON so we can
+   * skip UI-hidden messages (system reminders, workspace-creation
+   * requests — see `isUiHiddenChatMessagePayload`). Without this, hidden
+   * rows near the tail eat the `maxVisibleMessages` budget and the chat
+   * surface comes back missing real messages.
+   *
+   * Bounded by `CUTOFF_SCAN_CEILING` — large enough to absorb the
+   * worst-case hidden-row density observed in real chats but capped so
+   * conversations with millions of events don't fetch them all to
+   * compute a window cutoff. If the ceiling is hit before we find
+   * `maxVisibleMessages` visible rows, the oldest scanned message becomes
+   * the cutoff so the timeline read remains bounded.
+   */
+  private findVisibleMessageCutoff(
+    conversationId: string,
+    maxVisibleMessages: number,
+  ): TimelineCursor {
+    const rows = this.db.prepare(`
+      SELECT message.created_at AS timestamp, message.id AS id, part.data_json AS payloadJson
+      FROM message
+      LEFT JOIN part
+        ON part.message_id = message.id
+       AND part.ord = 0
+      WHERE message.session_id = ?
+        AND message.type IN ('user_message', 'assistant_message')
+      ORDER BY message.created_at DESC, message.id DESC
+      LIMIT ?
+    `).all(conversationId, CUTOFF_SCAN_CEILING) as VisibleScanRow[];
+    return cursorFromVisibleScan(rows, maxVisibleMessages);
+  }
+
+  private findVisibleMessageCutoffBefore(
+    conversationId: string,
+    maxVisibleMessages: number,
+    before: TimelineCursor & {},
+  ): TimelineCursor {
+    const rows = this.db.prepare(`
+      SELECT message.created_at AS timestamp, message.id AS id, part.data_json AS payloadJson
+      FROM message
+      LEFT JOIN part
+        ON part.message_id = message.id
+       AND part.ord = 0
+      WHERE message.session_id = ?
+        AND message.type IN ('user_message', 'assistant_message')
+        AND (
+          message.created_at < ?
+          OR (message.created_at = ? AND message.id < ?)
+        )
+      ORDER BY message.created_at DESC, message.id DESC
+      LIMIT ?
+    `).all(
+      conversationId,
+      before.timestamp,
+      before.timestamp,
+      before.id,
+      CUTOFF_SCAN_CEILING,
+    ) as VisibleScanRow[];
+    return cursorFromVisibleScan(rows, maxVisibleMessages);
+  }
+
+  private fetchTimelineRows(
+    conversationId: string,
+    cutoff: TimelineCursor,
+    before: TimelineCursor,
+  ): LocalChatEventRecord[] {
+    const clauses: string[] = [
+      "message.session_id = ?",
+      "message.type IN ('user_message', 'assistant_message', 'tool_request', 'tool_result', 'agent-completed')",
+    ];
+    const params: Array<string | number> = [conversationId];
+    if (cutoff) {
+      clauses.push("(message.created_at > ? OR (message.created_at = ? AND message.id >= ?))");
+      params.push(cutoff.timestamp, cutoff.timestamp, cutoff.id);
+    }
+    if (before) {
+      clauses.push("(message.created_at < ? OR (message.created_at = ? AND message.id < ?))");
+      params.push(before.timestamp, before.timestamp, before.id);
+    }
+    const sql = `
+      SELECT
+        message.id AS _id,
+        message.created_at AS timestamp,
+        message.type AS type,
+        message.device_id AS deviceId,
+        message.request_id AS requestId,
+        message.target_device_id AS targetDeviceId,
+        part.data_json AS payloadJson,
+        message.data_json AS channelEnvelopeJson
+      FROM message
+      LEFT JOIN part
+        ON part.message_id = message.id
+       AND part.ord = 0
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY message.created_at ASC, message.id ASC
+    `;
+    const rows = this.db.prepare(sql).all(...params) as LocalChatEventRow[];
+    return rows.map((row) => this.deserializeEventRow(row));
+  }
+
+  private findTurnFetchCutoff(
+    conversationId: string,
+    cutoff: TimelineCursor,
+  ): TimelineCursor {
+    if (!cutoff) return null;
+    const row = this.db.prepare(`
+      SELECT message.created_at AS timestamp, message.id AS id
+      FROM message
+      WHERE message.session_id = ?
+        AND message.type = 'user_message'
+        AND (
+          message.created_at < ?
+          OR (message.created_at = ? AND message.id <= ?)
+        )
+      ORDER BY message.created_at DESC, message.id DESC
+      LIMIT 1
+    `).get(
+      conversationId,
+      cutoff.timestamp,
+      cutoff.timestamp,
+      cutoff.id,
+    ) as { timestamp?: unknown; id?: unknown } | undefined;
+    if (typeof row?.timestamp !== "number" || typeof row.id !== "string") {
+      return cutoff;
+    }
+    return { timestamp: row.timestamp, id: row.id };
+  }
+
+  private trimMessageWindow(
+    window: LocalChatMessageWindow,
+    cutoff: TimelineCursor,
+  ): LocalChatMessageWindow {
+    if (!cutoff) return window;
+    let visibleMessageCount = 0;
+    const messages = window.messages.filter((message) => {
+      const keep =
+        compareTimelineCursor(
+          { timestamp: message.timestamp, id: message._id },
+          cutoff,
+        ) >= 0;
+      if (keep && !isUiHiddenChatMessagePayload(message.payload ?? null)) {
+        visibleMessageCount += 1;
+      }
+      return keep;
+    });
+    return { messages, visibleMessageCount };
+  }
+
+  /**
+   * Walk fetched rows forward, group them into turns (boundary =
+   * `user_message`), and attach every tool/`agent-completed` event in
+   * a turn to its turn anchor:
+   *
+   *   - **first assistant** of the turn when one exists — preserves the
+   *     prior `segmentToolEventsByAssistant` behavior so inline image,
+   *     schedule receipt, office preview, and source-diff artifacts
+   *     keep rendering against the assistant row even when the
+   *     orchestrator calls the tool BEFORE its reply text (common for
+   *     `image_gen` / `html` / `Schedule`);
+   *
+   *   - **user_message** of the turn when no assistant fires — fixes the
+   *     prior port's silent drop of tools in turns where the agent's
+   *     first action is `askQuestion`. The renderer's standalone-
+   *     askQuestion bubble and trailing-image artifact paths already
+   *     read from `user_message.toolEvents`, so they surface correctly.
+   *
+   * Secondary assistants in the same turn (agent terminal notices,
+   * follow-up replies) come back with `toolEvents: []` — the row
+   * pipeline still finds them in `messages` for streaming-text overlay
+   * purposes, they just don't own the turn's artifacts.
+   *
+   * `visibleMessageCount` is the count of user/assistant rows whose
+   * payload doesn't satisfy `isUiHiddenChatMessagePayload`. The chat
+   * hook bases `hasOlderMessages` / `isLoadingOlder` on this rather
+   * than raw `messages.length` so UI-hidden system reminders or
+   * workspace-creation requests in the window don't make pagination
+   * state latch against the wrong threshold.
+   */
+  private assembleMessageWindow(
+    rows: LocalChatEventRecord[],
+  ): LocalChatMessageWindow {
+    const messages: LocalChatMessageRecord[] = [];
+    let turnUserMessage: LocalChatMessageRecord | null = null;
+    let firstAssistantInTurn: LocalChatMessageRecord | null = null;
+    let toolsInTurn: LocalChatEventRecord[] = [];
+    let visibleMessageCount = 0;
+
+    const commitTurn = () => {
+      const anchor = firstAssistantInTurn ?? turnUserMessage;
+      if (anchor && toolsInTurn.length > 0) {
+        anchor.toolEvents = toolsInTurn;
+      }
+      turnUserMessage = null;
+      firstAssistantInTurn = null;
+      toolsInTurn = [];
+    };
+
+    for (const row of rows) {
+      if (row.type === "user_message") {
+        commitTurn();
+        const message: LocalChatMessageRecord = { ...row, toolEvents: [] };
+        messages.push(message);
+        turnUserMessage = message;
+        if (!isUiHiddenChatMessagePayload(row.payload ?? null)) {
+          visibleMessageCount += 1;
+        }
+        continue;
+      }
+      if (row.type === "assistant_message") {
+        const message: LocalChatMessageRecord = { ...row, toolEvents: [] };
+        messages.push(message);
+        if (firstAssistantInTurn === null) {
+          firstAssistantInTurn = message;
+        }
+        if (!isUiHiddenChatMessagePayload(row.payload ?? null)) {
+          visibleMessageCount += 1;
+        }
+        continue;
+      }
+      toolsInTurn.push(row);
+    }
+
+    commitTurn();
+
+    return { messages, visibleMessageCount };
   }
 
   getEventCount(

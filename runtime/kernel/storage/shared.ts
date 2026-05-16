@@ -21,6 +21,34 @@ export type LocalChatEventRecord = {
   channelEnvelope?: Record<string, unknown>;
 };
 
+/**
+ * Read shape backing `SessionStore.listMessages` — the same fields as
+ * `LocalChatEventRecord` plus the turn-scoped `toolEvents` projection.
+ * Renderer-facing contract lives at `runtime/contracts/local-chat.ts`
+ * (`MessageRecord`); this is the storage-side mirror so callers in the
+ * worker can construct one without depending on the contracts module.
+ */
+export type LocalChatMessageRecord = LocalChatEventRecord & {
+  toolEvents: LocalChatEventRecord[];
+};
+
+export type LocalChatMessageWindow = {
+  messages: LocalChatMessageRecord[];
+  /**
+   * Count of user/assistant entries in `messages` whose payload is not
+   * UI-hidden (see `isUiHiddenChatMessagePayload`). The chat hook bases
+   * pagination state on this rather than raw `messages.length` so hidden
+   * system reminders / workspace-creation requests don't keep
+   * `hasOlderMessages` / `isLoadingOlder` stuck against the wrong
+   * threshold.
+   */
+  visibleMessageCount: number;
+};
+
+/** `(timestamp, id)` cursor used to page chat messages. `null` means
+ *  "no cursor" (start at the beginning of the conversation). */
+export type TimelineCursor = { timestamp: number; id: string } | null;
+
 export type LocalChatAppendEventArgs = {
   conversationId: string;
   type: string;

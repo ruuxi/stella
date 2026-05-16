@@ -3,6 +3,7 @@ import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from '@le
 import type { TaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
 import type { QueuedUserMessage } from '@/app/chat/hooks/use-streaming-chat'
 import type { EventRecord, TaskItem } from '@/app/chat/lib/event-transforms'
+import type { MessageRecord } from '../../../../runtime/contracts/local-chat.js'
 import type { AgentResponseTarget } from '@/app/chat/streaming/streaming-types'
 import type { ChatContext } from '@/shared/types/electron'
 
@@ -13,6 +14,20 @@ type ChatColumnThumbState = {
 }
 
 export type ChatColumnConversation = {
+  /**
+   * Visible chat timeline source. Each `MessageRecord` carries the
+   * tool/`agent-completed` events that landed between it and the next
+   * message on `toolEvents`, so the timeline renderer doesn't walk a
+   * flat event stream.
+   */
+  messages: MessageRecord[]
+  /**
+   * Full raw event log for the conversation. Used by surfaces that still
+   * need lifecycle/tool visibility (footer tasks, running-tool indicator,
+   * read-aloud, pet status, home activity overview). Phase 2/3 will
+   * migrate those off this stream into purpose-built activity/files
+   * subscriptions and `events` will go away.
+   */
   events: EventRecord[]
   streaming: {
     text: string
@@ -27,7 +42,7 @@ export type ChatColumnConversation = {
     taskProgressSummaries: TaskProgressSummaries
   }
   history: {
-    hasOlderEvents: boolean
+    hasOlderMessages: boolean
     isLoadingOlder: boolean
     isInitialLoading: boolean
   }

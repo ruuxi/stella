@@ -18,7 +18,10 @@
  * short-circuits on the `prev.row === next.row` reference check rather
  * than running a deep compare per row.
  */
-import type { EventRecord } from "../../../../../runtime/contracts/local-chat.js";
+import type {
+  EventRecord,
+  MessageRecord,
+} from "../../../../../runtime/contracts/local-chat.js";
 
 export type StableEventListState = {
   byId: Map<string, EventRecord>;
@@ -92,6 +95,65 @@ export const stabilizeTurnRows = <T extends { id: string }>(
     const prior = previous?.byId.get(incoming.id);
     const stable = prior && isEqual(prior, incoming) ? prior : incoming;
     nextById.set(incoming.id, stable);
+    nextResult[i] = stable;
+    if (!anyChanged && previous && previous.result[i] !== stable) {
+      anyChanged = true;
+    }
+  }
+
+  if (!anyChanged && previous) {
+    return previous;
+  }
+
+  return { byId: nextById, result: nextResult };
+};
+
+export type StableMessageListState = {
+  byId: Map<string, MessageRecord>;
+  result: MessageRecord[];
+};
+
+const sameToolEventIds = (
+  a: EventRecord[] | undefined,
+  b: EventRecord[] | undefined,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return (a?.length ?? 0) === (b?.length ?? 0);
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]!._id !== b[i]!._id) return false;
+  }
+  return true;
+};
+
+/**
+ * Structural-sharing for `MessageRecord[]` (the messages-stream shape).
+ * Reuses prior message refs when `_id`, `timestamp`, `payload` ref, and
+ * `toolEvents` id sequence all match. The IPC layer returns fresh objects
+ * on every refresh, so without this every `useMemo` downstream would
+ * invalidate per stream tick — same problem `stabilizeEventList` solves
+ * for the legacy raw-event stream.
+ */
+export const stabilizeMessageList = (
+  current: MessageRecord[],
+  previous: StableMessageListState | null,
+): StableMessageListState => {
+  const nextById = new Map<string, MessageRecord>();
+  const nextResult: MessageRecord[] = new Array(current.length);
+  let anyChanged =
+    previous === null || current.length !== previous.result.length;
+
+  for (let i = 0; i < current.length; i += 1) {
+    const incoming = current[i]!;
+    const prior = previous?.byId.get(incoming._id);
+    const sameShape =
+      prior !== undefined &&
+      prior.timestamp === incoming.timestamp &&
+      prior.type === incoming.type &&
+      prior.payload === incoming.payload &&
+      sameToolEventIds(prior.toolEvents, incoming.toolEvents);
+    const stable = sameShape ? prior! : incoming;
+    nextById.set(incoming._id, stable);
     nextResult[i] = stable;
     if (!anyChanged && previous && previous.result[i] !== stable) {
       anyChanged = true;

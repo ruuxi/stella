@@ -4,17 +4,15 @@ import type { MessagePayload } from '@/app/chat/lib/event-transforms'
 import {
   isAssistantMessage,
   isUserMessage,
-  isToolRequest,
-  isToolResult,
-  isAgentCompletedEvent,
 } from '@/app/chat/lib/event-transforms'
+import type { MessageRecord } from '../../../../runtime/contracts/local-chat.js'
 import { isOfficePreviewRef } from '../../../../runtime/contracts/office-preview.js'
 import type { ScheduleToolAffectedRef } from '../../../../runtime/kernel/shared/scheduling'
 import {
   collectTurnSourceDiffPayloads,
   deriveTurnResource,
 } from '@/app/chat/lib/derive-turn-resource'
-import { filterEventsForUiDisplay } from '@/app/chat/lib/message-display'
+import { filterMessagesForUiDisplay } from '@/app/chat/lib/message-display'
 import {
   stabilizeTurnRows,
   type StableTurnRowsState,
@@ -42,12 +40,14 @@ import { isUiHiddenMessagePayload } from '@/app/chat/lib/message-display'
 
 type Selection = NonNullable<AskQuestionState["selections"]>[number]
 
-const getMessagePayload = (event?: EventRecord): MessagePayload | null => {
+const getMessagePayload = (
+  event?: EventRecord | MessageRecord,
+): MessagePayload | null => {
   if (!event?.payload || typeof event.payload !== 'object') return null
   return event.payload as MessagePayload
 }
 
-const getOfficePreviewRef = (events: EventRecord[]) => {
+const getOfficePreviewRef = (events: readonly EventRecord[]) => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
     if (event.type !== 'tool_result') continue
@@ -65,7 +65,7 @@ const getOfficePreviewRef = (events: EventRecord[]) => {
  * Schedule turns whose subagent reported "no_change".
  */
 const getScheduleReceipt = (
-  events: EventRecord[],
+  events: readonly EventRecord[],
 ):
   | { affected: ScheduleToolAffectedRef[]; summary?: string }
   | undefined => {
@@ -104,7 +104,7 @@ const getScheduleReceipt = (
 const asNonEmptyString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 
-const getCwd = (events: EventRecord[]): string | undefined => {
+const getCwd = (events: readonly EventRecord[]): string | undefined => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
     if (event.type !== 'tool_request') continue
@@ -151,9 +151,9 @@ type AskQuestionDerivation = {
   pendingWithoutAnchor: AskQuestionState | null
 }
 
-const isAskQuestionResponseMessage = (event: EventRecord): boolean => {
-  if (event.type !== 'user_message') return false
-  const payload = getMessagePayload(event)
+const isAskQuestionResponseMessage = (message: MessageRecord): boolean => {
+  if (message.type !== 'user_message') return false
+  const payload = getMessagePayload(message)
   return (
     payload?.metadata?.trigger?.kind === 'ask_question_response' &&
     payload.metadata.trigger.source === 'ask-question-bubble'
@@ -164,24 +164,39 @@ const isTerminalNoticeAssistant = (
   responseTarget: AgentResponseTarget | undefined,
 ): boolean => responseTarget?.type === 'agent_terminal_notice'
 
+/**
+ * Walk messages (with their owned `toolEvents` inlined chronologically)
+ * and route every `askQuestion` tool_request to its render anchor:
+ *  - the most recent non-terminal-notice assistant in the same turn, or
+ *  - the visible user message above it when no assistant has fired yet
+ *    in this turn, or
+ *  - the standalone "pending without anchor" tail-row fallback.
+ *
+ * A `user_message` flagged as `ask_question_response` finalizes the
+ * pending question with the selected answers; ordinary visible user
+ * messages start a new turn (which discards the prior turn's pending
+ * assistant anchor so a fresh question attaches to the new turn).
+ */
 const deriveAskQuestions = (
-  events: EventRecord[],
+  messages: MessageRecord[],
   responseTargetByAssistantId: Map<string, AgentResponseTarget | undefined>,
 ): AskQuestionDerivation => {
   const payloadByAssistantId = new Map<string, AskQuestionState>()
   const standaloneByUserId = new Map<string, AskQuestionState>()
   let pendingWithoutAnchor: AskQuestionState | null = null
 
-  /** Originating assistant for the most recent unanswered question, if any. */
+  type Pending = {
+    assistantId: string | null
+    userId: string | null
+    payload: AskQuestionState
+  }
   let lastNonNoticeAssistantId: string | null = null
   let lastVisibleUserId: string | null = null
-  let pending:
-    | {
-        assistantId: string | null
-        userId: string | null
-        payload: AskQuestionState
-      }
-    | null = null
+  // `pending` carries the most recent unanswered askQuestion across the
+  // message walk. Explicit `Pending | null` annotation (instead of
+  // inferred) keeps TS from collapsing the type back to `null` between
+  // mutations.
+  let pending: Pending | null = null
 
   const finalize = (
     assistantId: string | null,
@@ -202,69 +217,71 @@ const deriveAskQuestions = (
     }
   }
 
-  for (const event of events) {
-    if (isAssistantMessage(event)) {
-      const responseTarget = responseTargetByAssistantId.get(event._id)
+  for (const message of messages) {
+    if (isAssistantMessage(message)) {
+      const responseTarget = responseTargetByAssistantId.get(message._id)
       if (!isTerminalNoticeAssistant(responseTarget)) {
-        lastNonNoticeAssistantId = event._id
+        lastNonNoticeAssistantId = message._id
       }
-      continue
-    }
-
-    if (event.type === 'user_message') {
-      if (isAskQuestionResponseMessage(event) && pending) {
+    } else if (message.type === 'user_message') {
+      const currentPending = pending
+      if (isAskQuestionResponseMessage(message) && currentPending) {
         const text =
-          typeof event.payload?.text === 'string' ? event.payload.text : ''
-        const selections = parseAskQuestionAnswersMessage(pending.payload, text)
+          typeof (message.payload as { text?: unknown })?.text === 'string'
+            ? ((message.payload as { text: string }).text)
+            : ''
+        const selections = parseAskQuestionAnswersMessage(
+          currentPending.payload,
+          text,
+        )
         finalize(
-          pending.assistantId,
-          pending.userId,
-          pending.payload,
+          currentPending.assistantId,
+          currentPending.userId,
+          currentPending.payload,
           selections,
         )
         pending = null
-        continue
-      }
-      // A visible user message marks a real turn boundary. A subsequent
-      // askQuestion belongs to *this* turn, not the previous turn's
-      // assistant message — drop the stale candidate so the bubble
-      // either attaches to a fresh assistant emitted later in this turn
-      // or, if the agent's first action is the question, falls through
-      // to the standalone PendingAskQuestionRow at the tail.
-      // Hidden user messages (system reminders, workspace creation
-      // requests, etc.) don't visually break the turn so they shouldn't
-      // discard the candidate.
-      if (!isUiHiddenMessagePayload(getMessagePayload(event))) {
+      } else if (!isUiHiddenMessagePayload(getMessagePayload(message))) {
+        // A visible user message marks a real turn boundary. A
+        // subsequent askQuestion belongs to *this* turn, not the prior
+        // assistant — drop the stale anchor so the next askQuestion
+        // attaches to either a fresh assistant in this turn or, if the
+        // agent's first action is the question, the standalone
+        // `PendingAskQuestionRow` tail. Hidden user messages (system
+        // reminders, workspace creation requests, etc.) don't visually
+        // break the turn, so they don't discard the anchor.
         lastNonNoticeAssistantId = null
-        lastVisibleUserId = event._id
+        lastVisibleUserId = message._id
       }
-      continue
     }
 
-    if (event.type !== 'tool_request') continue
-    const payload = event.payload as
-      | { toolName?: string; args?: unknown }
-      | undefined
-    if (payload?.toolName !== 'askQuestion') continue
-    const parsed = parseAskQuestionArgs(payload.args)
-    if (!parsed) continue
-    const assistantId = lastNonNoticeAssistantId
-    pending = {
-      assistantId,
-      userId: assistantId ? null : lastVisibleUserId,
-      payload: parsed,
+    for (const toolEvent of message.toolEvents) {
+      if (toolEvent.type !== 'tool_request') continue
+      const payload = toolEvent.payload as
+        | { toolName?: string; args?: unknown }
+        | undefined
+      if (payload?.toolName !== 'askQuestion') continue
+      const parsed = parseAskQuestionArgs(payload.args)
+      if (!parsed) continue
+      const assistantId = lastNonNoticeAssistantId
+      pending = {
+        assistantId,
+        userId: assistantId ? null : lastVisibleUserId,
+        payload: parsed,
+      }
     }
   }
 
-  if (pending) {
-    finalize(pending.assistantId, pending.userId, pending.payload, null)
+  const tail = pending
+  if (tail) {
+    finalize(tail.assistantId, tail.userId, tail.payload, null)
   }
 
   return { payloadByAssistantId, standaloneByUserId, pendingWithoutAnchor }
 }
 
 type UseEventRowsOptions = {
-  events: EventRecord[]
+  messages: MessageRecord[]
   maxItems?: number
   isStreaming?: boolean
   pendingUserMessageId?: string | null
@@ -288,74 +305,12 @@ const assistantKeyFor = (userMessageId: string) =>
   `assistant-for-${userMessageId}`
 
 /**
- * Group tool/agent-completion events into the assistant_message of the
- * same user turn (boundary = `user_message`).
- *
- * Turn-aware on purpose: an `html`/`image_gen`/etc. tool can finalize
- * AFTER the orchestrator's assistant_message lands (the model often
- * streams its reply text first and only then calls the tool that produces
- * the artifact, so onToolEnd's chat append can land after
- * persistAssistantMessage's). Walking strictly forward and dumping the
- * buffer on each `assistant_message` would leave those late tool events
- * stuck in `trailing` and the inline canvas/image card wouldn't surface
- * until a NEW user message rebuilt the segmentation. Instead, attach
- * every tool event in a turn to the FIRST assistant_message of that turn,
- * and only fall back to `trailing` when the open turn has no assistant
- * yet (e.g. a fire-and-forget image submission with no reply text).
+ * Stable cache key for a synthetic trailing artifact row (fire-and-
+ * forget image emitted before any assistant text). Prefers the latest
+ * `requestId` in the segment so a follow-up tool result for the same
+ * request reuses the cached row.
  */
-export const segmentToolEventsByAssistant = (events: EventRecord[]) => {
-  const byAssistantId = new Map<string, EventRecord[]>()
-  let firstAssistantInTurn: string | null = null
-  let toolsInTurn: EventRecord[] = []
-
-  const commitTurn = () => {
-    if (firstAssistantInTurn) {
-      byAssistantId.set(firstAssistantInTurn, toolsInTurn)
-    }
-    firstAssistantInTurn = null
-    toolsInTurn = []
-  }
-
-  for (const event of events) {
-    if (isUserMessage(event)) {
-      commitTurn()
-      continue
-    }
-    if (isAssistantMessage(event)) {
-      if (firstAssistantInTurn === null) {
-        firstAssistantInTurn = event._id
-      } else {
-        // Secondary assistants in the same turn (agent terminal notices,
-        // follow-up replies) get their own — empty — segment so the row
-        // pipeline still finds them in `byAssistantId.get(id)`.
-        if (!byAssistantId.has(event._id)) {
-          byAssistantId.set(event._id, [])
-        }
-      }
-      continue
-    }
-    if (
-      isToolRequest(event) ||
-      isToolResult(event) ||
-      isAgentCompletedEvent(event)
-    ) {
-      toolsInTurn.push(event)
-    }
-  }
-
-  // Open turn at the tail: tools without a matching assistant fall through
-  // to `trailing` (preserves the existing fire-and-forget image submission
-  // behavior). Tools WITH an assistant in the open turn already got the
-  // attach above-loop via the assistant branch — flush now so the segment
-  // includes any tool that landed AFTER the assistant in this final turn.
-  const trailing: EventRecord[] = firstAssistantInTurn ? [] : toolsInTurn
-  if (firstAssistantInTurn) {
-    byAssistantId.set(firstAssistantInTurn, toolsInTurn)
-  }
-  return { byAssistantId, trailing }
-}
-
-const stableToolSegmentKey = (events: EventRecord[]): string => {
+const stableToolSegmentKey = (events: readonly EventRecord[]): string => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]!
     if (typeof event.requestId === 'string' && event.requestId.trim()) {
@@ -370,45 +325,35 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   const developerResourcePreviewsEnabled =
     useDeveloperResourcePreviewsEnabled()
   const {
-    events,
+    messages,
     maxItems,
     isStreaming,
     pendingUserMessageId,
     streamingText,
   } = opts
 
-  const displayEvents = useMemo(
-    () => filterEventsForUiDisplay(events),
-    [events],
+  const displayMessages = useMemo(
+    () => filterMessagesForUiDisplay(messages),
+    [messages],
   )
-
-  /**
-   * Walk the full (non-display-filtered) event stream so tool events that
-   * landed between visible messages are still grouped by which assistant
-   * row they belong to (the assistant that closed the segment they were
-   * collected during).
-   */
-  const segmentedToolEvents = useMemo(() => {
-    return segmentToolEventsByAssistant(events)
-  }, [events])
 
   const responseTargetByAssistantId = useMemo(() => {
     const map = new Map<string, AgentResponseTarget | undefined>()
-    for (const event of events) {
-      if (!isAssistantMessage(event)) continue
+    for (const message of messages) {
+      if (!isAssistantMessage(message)) continue
       const metadata = (
-        getMessagePayload(event)?.metadata as
+        getMessagePayload(message)?.metadata as
           | { runtime?: { responseTarget?: AgentResponseTarget } }
           | undefined
       )?.runtime
-      map.set(event._id, metadata?.responseTarget)
+      map.set(message._id, metadata?.responseTarget)
     }
     return map
-  }, [events])
+  }, [messages])
 
   const askQuestion = useMemo(
-    () => deriveAskQuestions(events, responseTargetByAssistantId),
-    [events, responseTargetByAssistantId],
+    () => deriveAskQuestions(messages, responseTargetByAssistantId),
+    [messages, responseTargetByAssistantId],
   )
 
   const allRows = useMemo<EventRowViewModel[]>(() => {
@@ -422,9 +367,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     const primaryAssistantByUserMessageId = new Set<string>()
     let pendingAssistantWasProjected = false
 
-    for (const event of displayEvents) {
-      if (isUserMessage(event)) {
-        const contextMetadata = getMessagePayload(event)?.metadata?.context
+    for (const message of displayMessages) {
+      if (isUserMessage(message)) {
+        const contextMetadata = getMessagePayload(message)?.metadata?.context
         const windowLabel =
           typeof contextMetadata?.windowLabel === 'string' &&
           contextMetadata.windowLabel.trim()
@@ -442,20 +387,20 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             : undefined
         const row: UserRowViewModel = {
           kind: 'user',
-          id: event._id,
-          text: getDisplayUserText(event),
+          id: message._id,
+          text: getDisplayUserText(message),
           ...(windowLabel ? { windowLabel } : {}),
           ...(windowPreviewImageUrl ? { windowPreviewImageUrl } : {}),
           ...(appSelectionLabel ? { appSelectionLabel } : {}),
-          attachments: getAttachments(event),
-          ...(getChannelEnvelope(event)
-            ? { channelEnvelope: getChannelEnvelope(event) }
+          attachments: getAttachments(message),
+          ...(getChannelEnvelope(message)
+            ? { channelEnvelope: getChannelEnvelope(message) }
             : {}),
         }
         computed.push(row)
-        const standaloneAskQuestion = askQuestion.standaloneByUserId.get(event._id)
+        const standaloneAskQuestion = askQuestion.standaloneByUserId.get(message._id)
         if (standaloneAskQuestion) {
-          const stableKey = `ask-question-for-${event._id}`
+          const stableKey = `ask-question-for-${message._id}`
           computed.push({
             kind: 'assistant',
             id: stableKey,
@@ -467,9 +412,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         continue
       }
 
-      if (isAssistantMessage(event)) {
-        const persistedText = getDisplayMessageText(event)
-        const payload = getMessagePayload(event)
+      if (isAssistantMessage(message)) {
+        const persistedText = getDisplayMessageText(message)
+        const payload = getMessagePayload(message)
         const replyToUserMessageId =
           typeof payload?.userMessageId === 'string' &&
           payload.userMessageId.length > 0
@@ -496,10 +441,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const stableKey =
           isPrimaryReply && replyToUserMessageId
             ? assistantKeyFor(replyToUserMessageId)
-            : event._id
-        const toolEvents =
-          segmentedToolEvents.byAssistantId.get(event._id) ?? []
-        const responseTarget = responseTargetByAssistantId.get(event._id)
+            : message._id
+        const toolEvents = message.toolEvents
+        const responseTarget = responseTargetByAssistantId.get(message._id)
         const resourcePayload = deriveTurnResource(
           toolEvents,
           text,
@@ -509,7 +453,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const sourceDiffPayloads = collectTurnSourceDiffPayloads(toolEvents, {
           developerResourcesEnabled: developerResourcePreviewsEnabled,
         })
-        const askQuestionState = askQuestion.payloadByAssistantId.get(event._id)
+        const askQuestionState = askQuestion.payloadByAssistantId.get(message._id)
         const selfModApplied = payload?.selfModApplied
         const row: AssistantRowViewModel = {
           kind: 'assistant',
@@ -533,27 +477,37 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
     }
 
-    const trailingResourcePayload = deriveTurnResource(
-      segmentedToolEvents.trailing,
-      '',
-      getCwd(segmentedToolEvents.trailing),
-      { developerResourcesEnabled: developerResourcePreviewsEnabled },
-    )
-    if (
-      trailingResourcePayload?.kind === 'media' &&
-      trailingResourcePayload.presentation === 'inline-image' &&
-      trailingResourcePayload.asset.kind === 'image'
-    ) {
-      const stableKey = `assistant-tool-resource-${stableToolSegmentKey(
-        segmentedToolEvents.trailing,
-      )}`
-      computed.push({
-        kind: 'assistant',
-        id: stableKey,
-        text: '',
-        cacheKey: stableKey,
-        resourcePayload: trailingResourcePayload,
-      })
+    // Trailing artifact card: if the latest message in the loaded window
+    // is a `user_message` carrying inline-image tool events (fire-and-
+    // forget image submission with no assistant reply yet), surface them
+    // as a synthetic assistant row right under the user message. Matches
+    // the prior `segmentToolEventsByAssistant`-`trailing` behavior under
+    // the new "each message owns the tools that follow it" shape.
+    const lastDisplayMessage = displayMessages[displayMessages.length - 1]
+    if (lastDisplayMessage && isUserMessage(lastDisplayMessage)) {
+      const trailingTools = lastDisplayMessage.toolEvents
+      const trailingResourcePayload = deriveTurnResource(
+        trailingTools,
+        '',
+        getCwd(trailingTools),
+        { developerResourcesEnabled: developerResourcePreviewsEnabled },
+      )
+      if (
+        trailingResourcePayload?.kind === 'media' &&
+        trailingResourcePayload.presentation === 'inline-image' &&
+        trailingResourcePayload.asset.kind === 'image'
+      ) {
+        const stableKey = `assistant-tool-resource-${stableToolSegmentKey(
+          trailingTools,
+        )}`
+        computed.push({
+          kind: 'assistant',
+          id: stableKey,
+          text: '',
+          cacheKey: stableKey,
+          resourcePayload: trailingResourcePayload,
+        })
+      }
     }
 
     /**
@@ -584,11 +538,10 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   }, [
     askQuestion,
     developerResourcePreviewsEnabled,
-    displayEvents,
+    displayMessages,
     isStreaming,
     pendingUserMessageId,
     responseTargetByAssistantId,
-    segmentedToolEvents,
     streamingText,
   ])
 
