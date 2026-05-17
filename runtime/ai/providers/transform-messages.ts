@@ -150,8 +150,18 @@ export function transformMessages<TApi extends Api>(
 		return msg;
 	});
 
-	// Second pass: insert synthetic empty tool results for orphaned tool calls
-	// This preserves thinking signatures and satisfies API requirements
+	const validToolCallIds = new Set<string>();
+	for (const message of transformed) {
+		if (message.role !== "assistant") continue;
+		for (const block of (message as AssistantMessage).content) {
+			if (block.type === "toolCall") {
+				validToolCallIds.add(block.id);
+			}
+		}
+	}
+
+	// Second pass: drop orphaned tool results and insert synthetic empty
+	// tool results for assistant tool calls that are missing their result.
 	const result: Message[] = [];
 	let pendingToolCalls: ToolCall[] = [];
 	let existingToolResultIds = new Set<string>();
@@ -200,6 +210,9 @@ export function transformMessages<TApi extends Api>(
 
 			result.push(msg);
 		} else if (msg.role === "toolResult") {
+			if (!validToolCallIds.has(msg.toolCallId)) {
+				continue;
+			}
 			existingToolResultIds.add(msg.toolCallId);
 			result.push(msg);
 		} else if (msg.role === "user") {

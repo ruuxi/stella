@@ -7,7 +7,11 @@ import {
   normalizeStellaSiteUrl,
 } from "../contracts/stella-api.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
-import { STELLA_PROVIDER, type StellaSiteConfig } from "./model-routing-stella.js";
+import {
+  STELLA_PROVIDER,
+  createStellaRoute,
+  type StellaSiteConfig,
+} from "./model-routing-stella.js";
 
 type CatalogModel = {
   id: string;
@@ -244,8 +248,15 @@ export const withStellaModelCatalogMetadata = async (args: {
     return args.route;
   }
 
+  const resolvedRoute = createStellaRoute({
+    site: args.site,
+    agentType: args.agentType,
+    modelId: args.route.model.id,
+    resolvedModelId,
+  });
+
   return {
-    ...args.route,
+    ...(resolvedRoute ?? args.route),
     toolPolicyModel: modelIdentityFromId(resolvedModelId),
   };
 };

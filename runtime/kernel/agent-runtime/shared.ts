@@ -442,5 +442,5 @@ export const resolveAgentThinkingLevel = (args: {
   ) {
     return args.agentContextReasoningEffort;
   }
-  return args.resolvedLlm.route === "direct-provider" ? "medium" : "off";
+  return args.resolvedLlm.model.reasoning ? "medium" : "off";
 };
