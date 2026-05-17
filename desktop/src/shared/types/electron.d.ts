@@ -112,6 +112,14 @@ export type LocalLlmOAuthProviderSummary = {
   provider: string;
   label: string;
 };
+export type ComposioConnectorSummary = {
+  slug: string;
+  name: string;
+  id: string;
+  enabled: boolean;
+  authStatus: "connected" | "not_logged_in";
+  description: string;
+};
 export type LocalCronSchedule = SharedLocalCronSchedule;
 export type LocalCronPayload = SharedLocalCronPayload;
 export type LocalHeartbeatActiveHours = SharedLocalHeartbeatActiveHours;
@@ -862,6 +870,11 @@ export type ElectronSystemApi = {
   cancelConnectorCredential: (payload: {
     requestId: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  listComposioConnectors: () => Promise<ComposioConnectorSummary[]>;
+  enableComposioConnector: (toolkit: string) => Promise<{ ok: boolean }>;
+  disableComposioConnector: (
+    toolkit: string,
+  ) => Promise<{ id: string; removed: boolean }>;
 };
 
 export type InstallManifestSnapshot = {

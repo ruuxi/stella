@@ -81,7 +81,8 @@ function ConnectedView({ integration }: { integration: Integration }) {
     <div className="connect-pair-centered">
       <span className="connect-status">Connected</span>
       <p className="connect-pair-sub">
-        Stella is listening on {integration.displayName}. Message her there anytime.
+        Stella is listening on {integration.displayName}. Message her there
+        anytime.
       </p>
       <Button
         variant="ghost"
@@ -167,44 +168,55 @@ function LinqSetupView({ integration }: { integration: Integration }) {
 
   const fullPhone = composeE164(dialCode, phone);
 
-  const handleSendSms = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    if (!phone.trim() || sending) return;
-    setError(null);
-    setSending(true);
-    try {
-      await sendSms({ phoneNumber: fullPhone });
-      setStep("code");
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to send code. Check the number and try again."));
-    } finally {
-      setSending(false);
-    }
-  }, [phone, sending, sendSms, fullPhone]);
-
-  const handleVerify = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    if (!code.trim() || verifying) return;
-    setError(null);
-    setVerifying(true);
-    try {
-      const { result } = await verifyCode({
-        code: code.trim(),
-        phoneNumber: fullPhone,
-      });
-      if (result === "linked") {
-        showToast("Connected! You can now text Stella.");
-      } else if (result === "invalid_code") {
-        setError("Invalid or expired code. Try sending a new one.");
-      } else {
-        setError("Something went wrong. Please try again.");
+  const handleSendSms = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!phone.trim() || sending) return;
+      setError(null);
+      setSending(true);
+      try {
+        await sendSms({ phoneNumber: fullPhone });
+        setStep("code");
+      } catch (err) {
+        setError(
+          getErrorMessage(
+            err,
+            "Failed to send code. Check the number and try again.",
+          ),
+        );
+      } finally {
+        setSending(false);
       }
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to verify code."));
-    } finally {
-      setVerifying(false);
-    }
-  }, [code, verifying, verifyCode, fullPhone]);
+    },
+    [phone, sending, sendSms, fullPhone],
+  );
+
+  const handleVerify = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!code.trim() || verifying) return;
+      setError(null);
+      setVerifying(true);
+      try {
+        const { result } = await verifyCode({
+          code: code.trim(),
+          phoneNumber: fullPhone,
+        });
+        if (result === "linked") {
+          showToast("Connected! You can now text Stella.");
+        } else if (result === "invalid_code") {
+          setError("Invalid or expired code. Try sending a new one.");
+        } else {
+          setError("Something went wrong. Please try again.");
+        }
+      } catch (err) {
+        setError(getErrorMessage(err, "Failed to verify code."));
+      } finally {
+        setVerifying(false);
+      }
+    },
+    [code, verifying, verifyCode, fullPhone],
+  );
 
   return (
     <div className="connect-pair-centered">
@@ -272,7 +284,11 @@ function LinqSetupView({ integration }: { integration: Integration }) {
           <button
             type="button"
             className="connect-bot-link"
-            onClick={() => { setStep("phone"); setCode(""); setError(null); }}
+            onClick={() => {
+              setStep("phone");
+              setCode("");
+              setError(null);
+            }}
           >
             Use a different number
           </button>
@@ -290,7 +306,9 @@ function BotSetupView({
   isExpanded: boolean;
 }) {
   const generateCode = useMutation(api.channels.link_codes.generateLinkCode);
-  const createSlackInstallUrl = useMutation(api.data.integrations.createSlackInstallUrl);
+  const createSlackInstallUrl = useMutation(
+    api.data.integrations.createSlackInstallUrl,
+  );
   const [state, setState] = useState<BotSetupState>(() => ({
     status: "loading",
     botLink: sanitizeExternalLinkUrl(integration.botLink),
@@ -420,6 +438,34 @@ function BotSetupView({
   );
 }
 
+function ComposioSetupView({ integration }: { integration: Integration }) {
+  const toolkit =
+    integration.toolkitSlug ?? integration.provider.replace(/^composio:/, "");
+  const command = `stella-connect import-composio --toolkit ${toolkit} --connect`;
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(command);
+    showToast("Command copied");
+  }, [command]);
+
+  return (
+    <SetupContent
+      headline={`Connect ${integration.displayName}`}
+      instructions={integration.instructions}
+      error={null}
+    >
+      <div className="connect-cli-command">
+        <code>{command}</code>
+        <Button variant="ghost" size="small" onClick={handleCopy}>
+          Copy
+        </Button>
+      </div>
+      <p className="connect-pair-meta">
+        Stella installs this through Stella Connect, then opens the OAuth page.
+      </p>
+    </SetupContent>
+  );
+}
+
 type IntegrationGridCardProps = {
   integration: Integration;
   isSelected: boolean;
@@ -478,8 +524,12 @@ export function IntegrationDetailArea({
     detailContent = <ConnectedView integration={integration} />;
   } else if (integration.provider === "linq") {
     detailContent = <LinqSetupView integration={integration} />;
+  } else if (integration.type === "composio") {
+    detailContent = <ComposioSetupView integration={integration} />;
   } else {
-    detailContent = <BotSetupView integration={integration} isExpanded={true} />;
+    detailContent = (
+      <BotSetupView integration={integration} isExpanded={true} />
+    );
   }
 
   return (

@@ -55,6 +55,9 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_CONNECTORS_DISABLE_COMPOSIO,
+  IPC_CONNECTORS_ENABLE_COMPOSIO,
+  IPC_CONNECTORS_LIST_COMPOSIO,
   IPC_DIAGNOSTICS_RECORD_HEAP_TRACE,
   IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED,
   IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
@@ -1166,6 +1169,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("connector-credential:submit", payload),
     cancelConnectorCredential: (payload: { requestId: string }) =>
       ipcRenderer.invoke("connector-credential:cancel", payload),
+    listComposioConnectors: () =>
+      ipcRenderer.invoke(IPC_CONNECTORS_LIST_COMPOSIO) as Promise<
+        Array<{
+          slug: string;
+          name: string;
+          id: string;
+          enabled: boolean;
+          authStatus: "connected" | "not_logged_in";
+          description: string;
+        }>
+      >,
+    enableComposioConnector: (toolkit: string) =>
+      ipcRenderer.invoke(IPC_CONNECTORS_ENABLE_COMPOSIO, {
+        toolkit,
+      }) as Promise<{ ok: boolean }>,
+    disableComposioConnector: (toolkit: string) =>
+      ipcRenderer.invoke(IPC_CONNECTORS_DISABLE_COMPOSIO, {
+        toolkit,
+      }) as Promise<{ id: string; removed: boolean }>,
   },
 
   updates: {
