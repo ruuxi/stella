@@ -160,7 +160,7 @@ const createRelayModel = (args: {
     ]),
   );
 
-  return {
+  const model = {
     ...(registryModel ?? {
       id: nativeId,
       name: nativeId,
@@ -189,6 +189,14 @@ const createRelayModel = (args: {
       "X-Stella-Agent-Type": args.agentType,
     },
   } as Model<Api>;
+
+  // Stash the resolved upstream model id so provider adapters can make
+  // model-capability decisions (e.g. Anthropic adaptive vs budget-based
+  // thinking, which Opus 4.7 rejects in budget form) when `model.id`
+  // carries a user-facing Stella alias like `stella/designer` that doesn't
+  // include the underlying model slug.
+  (model as Model<Api> & { upstreamModelId?: string }).upstreamModelId = nativeId;
+  return model;
 };
 
 export const normalizeStellaBase = readConfiguredStellaSiteUrl;
