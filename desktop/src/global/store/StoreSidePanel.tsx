@@ -38,7 +38,6 @@ import "@/app/chat/composer-primitives.css";
 import "@/shell/chat-sidebar.css";
 import "./store.css";
 import { BlueprintDialog } from "./store-side-panel/BlueprintDialog";
-import { ComposioIntegrationsList } from "./store-side-panel/ComposioIntegrationsList";
 import { PublishDialog } from "./store-side-panel/PublishDialog";
 import { RecentChangesList } from "./store-side-panel/RecentChangesList";
 import { StoreComposer } from "./store-side-panel/StoreComposer";
@@ -147,8 +146,6 @@ export function StoreSidePanel() {
         selectedFeatureNames={state.selectedFeatureNames}
         onPublish={(name) => void handlePublishRow(name)}
       />
-
-      <ComposioIntegrationsList />
 
       <StoreThread
         messages={messages}
