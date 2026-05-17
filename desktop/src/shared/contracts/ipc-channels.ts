@@ -40,6 +40,7 @@ export const IPC_UI_SET_STATE = "ui:setState" as const;
 export const IPC_UI_STATE = "ui:state" as const;
 export const IPC_APP_SET_READY = "app:setReady" as const;
 export const IPC_APP_RELOAD = "app:reload" as const;
+export const IPC_APP_RELAUNCH = "app:relaunch" as const;
 export const IPC_APP_HARD_RESET = "app:hardResetLocalState" as const;
 export const IPC_MORPH_START = "morph:start" as const;
 export const IPC_MORPH_COMPLETE = "morph:complete" as const;

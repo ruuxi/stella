@@ -161,6 +161,7 @@ export type ElectronUiApi = {
   onOpenChatSidebar: (callback: () => void) => () => void;
   setAppReady: (ready: boolean) => void;
   reload: () => void;
+  relaunch: () => void;
   hardReset: () => Promise<{ ok: boolean }>;
   morphStart: (payload?: {
     rect?: { x: number; y: number; width: number; height: number };

@@ -220,6 +220,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onOpenChatSidebar: onIpcSignal("chat:openSidebar"),
     setAppReady: (ready: boolean) => ipcRenderer.send("app:setReady", ready),
     reload: () => ipcRenderer.send("app:reload"),
+    relaunch: () => ipcRenderer.send("app:relaunch"),
     hardReset: () =>
       ipcRenderer.invoke("app:hardResetLocalState") as Promise<{ ok: boolean }>,
     morphStart: (payload?: {
