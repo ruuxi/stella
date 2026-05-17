@@ -691,6 +691,22 @@ function supportsAdaptiveThinking(modelId: string): boolean {
 }
 
 /**
+ * Resolve the upstream model id to use for capability checks.
+ *
+ * The Stella relay sets `model.id` to the user-facing model alias
+ * (e.g. `stella/designer`) so persisted records / UI keep the alias
+ * shape; the actual upstream model slug is stashed on
+ * `model.upstreamModelId`. Using only `model.id` here would route the
+ * `designer` alias (which resolves to Opus 4.7) through the budget-based
+ * thinking branch, and Opus 4.7 rejects `thinking.type=enabled`.
+ */
+function resolveModelIdForCapabilities(model: Model<"anthropic-messages">): string {
+	const upstream = (model as Model<"anthropic-messages"> & { upstreamModelId?: string })
+		.upstreamModelId;
+	return typeof upstream === "string" && upstream.length > 0 ? upstream : model.id;
+}
+
+/**
  * Map ThinkingLevel to Anthropic effort levels for adaptive thinking.
  * Note: effort "max" is only valid on Opus 4.6, while Opus 4.7 supports "xhigh".
  */
@@ -731,7 +747,7 @@ export const streamSimpleAnthropic: StreamFunction<"anthropic-messages", SimpleS
 
 	// For Opus 4.6 and Sonnet 4.6: use adaptive thinking with effort level
 	// For older models: use budget-based thinking
-	if (supportsAdaptiveThinking(model.id)) {
+	if (supportsAdaptiveThinking(resolveModelIdForCapabilities(model))) {
 		const effort = mapThinkingLevelToEffort(model, options.reasoning);
 		return streamAnthropic(model, context, {
 			...base,
@@ -769,7 +785,8 @@ function createClient(
 ): { client: Anthropic; isOAuthToken: boolean } {
 	// Adaptive thinking models (Opus 4.6, Sonnet 4.6) have interleaved thinking built-in.
 	// The beta header is deprecated on Opus 4.6 and redundant on Sonnet 4.6, so skip it.
-	const needsInterleavedBeta = interleavedThinking && !supportsAdaptiveThinking(model.id);
+	const needsInterleavedBeta =
+		interleavedThinking && !supportsAdaptiveThinking(resolveModelIdForCapabilities(model));
 	const betaFeatures: string[] = [];
 	if (useFineGrainedToolStreamingBeta) {
 		betaFeatures.push(FINE_GRAINED_TOOL_STREAMING_BETA);
@@ -955,7 +972,7 @@ function buildParams(
 			// Default to "summarized" so Opus 4.7 and Mythos Preview behave like
 			// older Claude 4 models (whose API default is also "summarized").
 			const display: AnthropicThinkingDisplay = options.thinkingDisplay ?? "summarized";
-			if (supportsAdaptiveThinking(model.id)) {
+			if (supportsAdaptiveThinking(resolveModelIdForCapabilities(model))) {
 				// Adaptive thinking: Claude decides when and how much to think.
 				params.thinking = { type: "adaptive", display };
 				if (options.effort) {
