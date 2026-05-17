@@ -846,7 +846,35 @@ function createClient(
 		return { client, isOAuthToken: true };
 	}
 
-	// API key auth
+	// Stella-relay auth: send the Stella JWT as `Authorization: Bearer ...`
+	// (what the Convex relay reads), not Anthropic's native `x-api-key`.
+	// Use the SDK's `authToken` constructor option so the SDK doesn't ALSO
+	// emit `x-api-key` carrying the Stella token — same pattern as the
+	// OAuth branch above. Detect the relay by baseUrl rather than a
+	// sentinel header so a missing/renamed header never silently falls
+	// back to anthropic-native auth against the relay (which would 401).
+	const isStellaRelay = typeof model.baseUrl === "string"
+		&& /\/api\/stella(?:\/|$)/i.test(model.baseUrl);
+	if (isStellaRelay) {
+		const client = new Anthropic({
+			apiKey: null,
+			authToken: apiKey,
+			baseURL: model.baseUrl,
+			dangerouslyAllowBrowser: true,
+			defaultHeaders: mergeHeaders(
+				{
+					accept: "application/json",
+					"anthropic-dangerous-direct-browser-access": "true",
+					...(betaFeatures.length > 0 ? { "anthropic-beta": betaFeatures.join(",") } : {}),
+				},
+				model.headers,
+				optionsHeaders,
+			),
+		});
+		return { client, isOAuthToken: false };
+	}
+
+	// API key auth (native Anthropic / compatible direct-provider)
 	const client = new Anthropic({
 		apiKey,
 		baseURL: model.baseUrl,

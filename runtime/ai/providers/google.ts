@@ -328,6 +328,18 @@ function createClient(
 	if (model.headers || optionsHeaders) {
 		httpOptions.headers = { ...model.headers, ...optionsHeaders };
 	}
+	// Stella relay calls auth via `Authorization: Bearer <stella-token>`
+	// instead of `x-goog-api-key`. Detect by baseUrl rather than a sentinel
+	// header so a missing/renamed header never falls back to native Google
+	// auth against the relay (which would 401).
+	const isStellaRelay = typeof model.baseUrl === "string"
+		&& /\/api\/stella(?:\/|$)/i.test(model.baseUrl);
+	if (isStellaRelay && apiKey) {
+		httpOptions.headers = {
+			...httpOptions.headers,
+			Authorization: `Bearer ${apiKey}`,
+		};
+	}
 
 	return new GoogleGenAI({
 		apiKey,

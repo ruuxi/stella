@@ -1,6 +1,6 @@
 import { postServiceJson } from "@/infra/http/service-request";
 import {
-  STELLA_CHAT_COMPLETIONS_PATH,
+  STELLA_OPENROUTER_CHAT_COMPLETIONS_PATH,
   extractChatText,
   type ChatCompletionResponse,
   type ChatMessage,
@@ -23,7 +23,7 @@ export async function callChatCompletion<TResponse = ChatCompletionResponse>(
   options: ChatJsonRequest,
 ): Promise<TResponse> {
   return await postServiceJson<TResponse>(
-    options.path ?? STELLA_CHAT_COMPLETIONS_PATH,
+    options.path ?? STELLA_OPENROUTER_CHAT_COMPLETIONS_PATH,
     {
       ...options.body,
       messages: options.messages,

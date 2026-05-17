@@ -88,8 +88,14 @@ describe("resolveLlmRoute", () => {
     });
 
     expect(resolved.route).toBe("stella");
-    expect(resolved.model.provider).toBe("stella");
+    // Relay model carries the upstream provider so pi-mono adapters dispatch
+    // correctly, but the id stays the original `stella/...` selection so
+    // history replay and prompt-cache keys stay stable.
+    expect(resolved.model.provider).toBe("openai");
     expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
+    expect(resolved.model.baseUrl).toBe(
+      "https://stella.example.test/api/stella/openai/v1",
+    );
   });
 
   it("uses Stella's recommended default when no model is specified", async () => {
@@ -122,8 +128,11 @@ describe("resolveLlmRoute", () => {
     });
 
     expect(resolved.route).toBe("stella");
-    expect(resolved.model.provider).toBe("stella");
+    expect(resolved.model.provider).toBe("anthropic");
     expect(resolved.model.id).toBe("stella/anthropic/claude-opus-4.6");
+    expect(resolved.model.baseUrl).toBe(
+      "https://stella.example.test/api/stella/anthropic",
+    );
   });
 
   it("routes Stella aliases (stella/designer, etc.) through Stella unchanged", async () => {
@@ -285,8 +294,11 @@ describe("resolveLlmRoute", () => {
     });
 
     expect(resolved.route).toBe("stella");
-    expect(resolved.model.provider).toBe("stella");
+    expect(resolved.model.provider).toBe("openai");
     expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
+    expect(resolved.model.baseUrl).toBe(
+      "https://stella.example.test/api/stella/openai/v1",
+    );
   });
 
   it("uses OAuth credentials when no API key is set for the requested provider", async () => {
