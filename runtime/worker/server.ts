@@ -1481,6 +1481,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         appendUserMessageEvent();
       }
 
+      const createSyntheticSeq = () => {
+        let seq = Date.now();
+        return () => {
+          seq += 1;
+          return seq;
+        };
+      };
       const materializedImageAttachments = await materializeImageAttachments(
         payload.attachments,
       );
@@ -1488,7 +1495,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         ({ attachment }) => attachment,
       );
       let activeRunId = "";
-      let syntheticSeq = 1;
+      const nextSyntheticSeq = createSyntheticSeq();
       const hiddenSystemRunIds = new Set<string>();
       const persistedAssistantUserMessageIds = new Set<string>();
       let lastVisibleRunId = "";
@@ -1555,6 +1562,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 emitRunEvent({
                   ...ev,
                   runId: lastVisibleRunId,
+                  seq: nextSyntheticSeq(),
                   type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
                   conversationId: payload.conversationId,
                   uiVisibility: "visible",
@@ -1605,6 +1613,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 emitRunEvent({
                   ...ev,
                   runId: lastVisibleRunId,
+                  seq: nextSyntheticSeq(),
                   type: AGENT_STREAM_EVENT_TYPES.STREAM,
                   conversationId: payload.conversationId,
                   ...(lastVisibleRequestId
@@ -1627,6 +1636,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 emitRunEvent({
                   ...ev,
                   runId: lastVisibleRunId,
+                  seq: nextSyntheticSeq(),
                   type: AGENT_STREAM_EVENT_TYPES.STATUS,
                   conversationId: payload.conversationId,
                   ...(lastVisibleRequestId
@@ -1707,6 +1717,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 emitRunEvent({
                   ...ev,
                   runId: lastVisibleRunId,
+                  seq: nextSyntheticSeq(),
                   type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
                   outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
                   reason: ev.error,
@@ -1762,7 +1773,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             emitRunEvent({
               type: ev.type,
               runId: ev.rootRunId,
-              seq: syntheticSeq++,
+              seq: nextSyntheticSeq(),
               conversationId: payload.conversationId,
               ...(requestId ? { requestId } : {}),
               userMessageId,
@@ -1784,7 +1795,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             emitRunEvent({
               type: AGENT_STREAM_EVENT_TYPES.AGENT_REASONING,
               runId,
-              seq: syntheticSeq++,
+              seq: nextSyntheticSeq(),
               conversationId: payload.conversationId,
               ...(requestId ? { requestId } : {}),
               userMessageId,
@@ -1844,6 +1855,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 emitRunEvent({
                   ...ev,
                   runId: lastVisibleRunId,
+                  seq: nextSyntheticSeq(),
                   type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
                   outcome: AGENT_RUN_FINISH_OUTCOMES.COMPLETED,
                   conversationId: payload.conversationId,

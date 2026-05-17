@@ -285,6 +285,7 @@ type UseEventRowsOptions = {
   maxItems?: number
   isStreaming?: boolean
   pendingUserMessageId?: string | null
+  streamingResponseTarget?: AgentResponseTarget | null
   /**
    * Live streaming buffer for the in-flight assistant reply. Overlaid
    * onto the assistant row that responds to `pendingUserMessageId` so
@@ -303,6 +304,20 @@ type UseEventRowsResult = {
 
 const assistantKeyFor = (userMessageId: string) =>
   `assistant-for-${userMessageId}`
+
+const responseTargetKeyFor = (
+  responseTarget: AgentResponseTarget | null | undefined,
+): string | null => {
+  if (!responseTarget || responseTarget.type === 'user_turn') return null
+  if (responseTarget.type === 'agent_terminal_notice') {
+    return `agent-terminal-notice:${responseTarget.agentId}:${responseTarget.terminalState}`
+  }
+  return `agent-turn:${responseTarget.agentId}`
+}
+
+const assistantKeyForResponseTarget = (
+  responseTarget: AgentResponseTarget,
+): string => `assistant-for-${responseTargetKeyFor(responseTarget) ?? 'target'}`
 
 /**
  * Stable cache key for a synthetic trailing artifact row (fire-and-
@@ -329,8 +344,10 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     maxItems,
     isStreaming,
     pendingUserMessageId,
+    streamingResponseTarget,
     streamingText,
   } = opts
+  const streamingResponseTargetKey = responseTargetKeyFor(streamingResponseTarget)
 
   const displayMessages = useMemo(
     () => filterMessagesForUiDisplay(messages),
@@ -366,6 +383,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
      */
     const primaryAssistantByUserMessageId = new Set<string>()
     let pendingAssistantWasProjected = false
+    let streamingTargetWasProjected = false
 
     for (const message of displayMessages) {
       if (isUserMessage(message)) {
@@ -433,17 +451,25 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         if (isPendingReply) {
           pendingAssistantWasProjected = true
         }
+        const responseTarget = responseTargetByAssistantId.get(message._id)
+        const isStreamingTargetReply =
+          streamingResponseTargetKey !== null &&
+          responseTargetKeyFor(responseTarget) === streamingResponseTargetKey
+        if (isStreamingTargetReply) {
+          streamingTargetWasProjected = true
+        }
         const text =
-          isPendingReply && isStreaming
+          (isPendingReply || isStreamingTargetReply) && isStreaming
             ? (streamingText ?? '')
             : persistedText
-        const isAnimating = Boolean(isPendingReply && isStreaming)
+        const isAnimating = Boolean(
+          (isPendingReply || isStreamingTargetReply) && isStreaming,
+        )
         const stableKey =
           isPrimaryReply && replyToUserMessageId
             ? assistantKeyFor(replyToUserMessageId)
             : message._id
         const toolEvents = message.toolEvents
-        const responseTarget = responseTargetByAssistantId.get(message._id)
         const resourcePayload = deriveTurnResource(
           toolEvents,
           text,
@@ -534,6 +560,25 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       computed.push(placeholder)
     }
 
+    if (
+      streamingResponseTarget &&
+      streamingResponseTargetKey &&
+      !streamingTargetWasProjected &&
+      (Boolean(isStreaming) ||
+        Boolean(streamingText && streamingText.length > 0))
+    ) {
+      const stableKey = assistantKeyForResponseTarget(streamingResponseTarget)
+      const placeholder: AssistantRowViewModel = {
+        kind: 'assistant',
+        id: stableKey,
+        text: streamingText ?? '',
+        cacheKey: stableKey,
+        responseTarget: streamingResponseTarget,
+        ...(isStreaming ? { isAnimating: true } : {}),
+      }
+      computed.push(placeholder)
+    }
+
     return computed
   }, [
     askQuestion,
@@ -542,6 +587,8 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     isStreaming,
     pendingUserMessageId,
     responseTargetByAssistantId,
+    streamingResponseTarget,
+    streamingResponseTargetKey,
     streamingText,
   ])
 

@@ -26,6 +26,7 @@ import { GrowIn } from "@/app/chat/GrowIn";
 import { useEventRows } from "./use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
+import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
 import {
   acknowledgeGoogleWorkspaceAuthRequired,
   getGoogleWorkspaceAuthRequired,
@@ -38,6 +39,7 @@ type Props = {
   messages: MessageRecord[];
   maxItems?: number;
   streamingText?: string;
+  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
@@ -88,6 +90,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   messages,
   maxItems,
   streamingText,
+  streamingResponseTarget,
   isStreaming,
   pendingUserMessageId,
   queuedUserMessages,
@@ -118,6 +121,7 @@ export const ConversationEvents = memo(function ConversationEvents({
     maxItems,
     isStreaming,
     pendingUserMessageId,
+    streamingResponseTarget,
     streamingText,
   });
 

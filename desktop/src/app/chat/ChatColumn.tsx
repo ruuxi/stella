@@ -225,6 +225,7 @@ export const ChatColumn = memo(function ChatColumn({
         <ConversationEvents
           messages={conversation.messages}
           streamingText={conversation.streaming.text}
+          streamingResponseTarget={conversation.streaming.responseTarget}
           isStreaming={conversation.streaming.isStreaming}
           pendingUserMessageId={conversation.streaming.pendingUserMessageId}
           queuedUserMessages={conversation.streaming.queuedUserMessages}
