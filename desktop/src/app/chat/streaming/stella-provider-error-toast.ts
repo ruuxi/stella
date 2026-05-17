@@ -12,7 +12,7 @@ const openBilling = () => {
 const openSignInDialog = () => {
   void router.navigate({
     to: '.',
-    search: (prev) => ({
+    search: (prev: { dialog?: 'auth' | 'connect' }) => ({
       ...prev,
       dialog: 'auth' as const,
     }),
