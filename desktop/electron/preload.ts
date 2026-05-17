@@ -1446,17 +1446,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("store:publishBlueprint", payload),
     uninstallPackage: (packageId: string) =>
       ipcRenderer.invoke("store:uninstallMod", { packageId }),
-    listConnectors: () => ipcRenderer.invoke("store:listConnectors"),
-    installConnector: (
-      marketplaceKey: string,
-      credential?: string,
-      config?: Record<string, string>,
-    ) =>
-      ipcRenderer.invoke("store:installConnector", {
-        marketplaceKey,
-        credential,
-        config,
-      }),
     showBlueprintNotification: (payload: { messageId: string; name: string }) =>
       ipcRenderer.invoke(IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION, payload),
     onBlueprintNotificationActivated: (

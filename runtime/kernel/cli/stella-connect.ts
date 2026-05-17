@@ -5,14 +5,13 @@ import path from "node:path";
 import { callApiConnector } from "../connectors/api-client.js";
 import {
   callConnectorBridgeTool,
+  ConnectorAuthError,
   listConnectorBridgeTools,
 } from "../connectors/connector-bridge.js";
 import {
-  installOfficialConnector,
   listConfiguredApiConnectors,
   listConfiguredConnectorCommands,
-  listOfficialConnectorDefinitions,
-  listStellaConnectors,
+  removeConfiguredConnector,
   saveConfiguredConnectorCommands,
 } from "../connectors/state.js";
 import type { ConnectorCommandConfig, ConnectorToolInfo } from "../connectors/types.js";
@@ -96,6 +95,7 @@ const findApi = async (id: string) => {
 const writeGeneratedSkill = async (
   command: ConnectorCommandConfig,
   tools: ConnectorToolInfo[],
+  { probeDeferred }: { probeDeferred: boolean } = { probeDeferred: false },
 ) => {
   const skillDir = path.join(stateRoot, "skills", command.id);
   await fs.mkdir(skillDir, { recursive: true });
@@ -106,7 +106,9 @@ const writeGeneratedSkill = async (
           return `- \`${tool.name}\`${description}`;
         })
         .join("\n")
-    : "- Run `stella-connect tools <connector>` to inspect available actions.";
+    : probeDeferred
+      ? `- _Actions list deferred until credentials are configured. Bind the token for \`${command.auth?.tokenKey ?? command.id}\`, then run \`stella-connect refresh-skill ${command.id}\`._`
+      : "- Run `stella-connect tools <connector>` to inspect available actions.";
   const description = command.description ?? `Use the ${command.displayName} connector from Stella.`;
   const body = `---
 name: ${command.id}
@@ -147,6 +149,19 @@ const importMcp = async (argv: string[]) => {
   const args = parseJson<string[]>(optionString(options, "args-json"), []);
   const env = parseJson<Record<string, string>>(optionString(options, "env-json"), {});
   const cwd = optionString(options, "cwd");
+  const authType = optionString(options, "auth-type") as
+    | "none"
+    | "api_key"
+    | "oauth"
+    | undefined;
+  const authTokenKey = optionString(options, "auth-token-key");
+  const authHeaderName = optionString(options, "auth-header-name");
+  const authScheme = optionString(options, "auth-scheme") as
+    | "bearer"
+    | "basic"
+    | "raw"
+    | undefined;
+  const authEnvVar = optionString(options, "auth-env-var");
 
   if (!url && !commandName) {
     fail("Provide either --url or --command.");
@@ -155,6 +170,16 @@ const importMcp = async (argv: string[]) => {
     fail("Provide only one of --url or --command.");
   }
 
+  const auth: ConnectorCommandConfig["auth"] = authType && authType !== "none"
+    ? {
+        type: authType,
+        ...(authTokenKey ? { tokenKey: authTokenKey } : {}),
+        ...(authHeaderName ? { headerName: authHeaderName } : {}),
+        ...(authScheme ? { scheme: authScheme } : {}),
+        ...(authEnvVar ? { envVar: authEnvVar } : {}),
+      }
+    : { type: "none" };
+
   const command: ConnectorCommandConfig = url
     ? {
         id,
@@ -162,8 +187,7 @@ const importMcp = async (argv: string[]) => {
         description,
         transport: "streamable_http",
         url,
-        auth: { type: "none" },
-        source: { marketplaceKey: id },
+        auth,
       }
     : {
         id,
@@ -174,11 +198,30 @@ const importMcp = async (argv: string[]) => {
         args,
         ...(cwd ? { cwd } : {}),
         ...(Object.keys(env).length ? { env } : {}),
-        auth: { type: "none" },
-        source: { marketplaceKey: id },
+        auth,
       };
 
-  const tools = await listConnectorBridgeTools(stellaRoot, command);
+  // Probe first so we either capture the action list now or know we need
+  // to defer until credentials are bound. Authenticated hosted MCPs can't
+  // be probed at import time (no token has been saved for the new
+  // tokenKey yet), so swallow `ConnectorAuthError` specifically and write
+  // a stub skill. Real probe failures (network, malformed server,
+  // unauthenticated 500s) still surface so the user doesn't silently
+  // import a broken connector.
+  let tools: ConnectorToolInfo[] = [];
+  let probeDeferred = false;
+  let probeDeferredReason: string | undefined;
+  try {
+    tools = await listConnectorBridgeTools(stellaRoot, command);
+  } catch (error) {
+    if (error instanceof ConnectorAuthError && auth.type !== "none") {
+      probeDeferred = true;
+      probeDeferredReason = error.message;
+    } else {
+      throw error;
+    }
+  }
+
   const existing = await listConfiguredConnectorCommands(stellaRoot);
   const next = new Map(existing.map((entry) => [entry.id, entry]));
   next.set(id, command);
@@ -188,35 +231,63 @@ const importMcp = async (argv: string[]) => {
       left.displayName.localeCompare(right.displayName),
     ),
   );
-  const skillPath = await writeGeneratedSkill(command, tools);
-  printJson({ imported: command, tools, skillPath });
+  const skillPath = await writeGeneratedSkill(command, tools, {
+    probeDeferred,
+  });
+  printJson({
+    imported: command,
+    tools,
+    skillPath,
+    ...(probeDeferred
+      ? {
+          probeDeferred: true,
+          probeDeferredReason,
+          hint: auth.tokenKey
+            ? `Bind the credential under tokenKey "${auth.tokenKey}" (state/connectors/.credentials.json), then run \`stella-connect refresh-skill ${id}\` to populate the action list.`
+            : `Configure auth, then run \`stella-connect refresh-skill ${id}\` to populate the action list.`,
+        }
+      : {}),
+  });
 };
+
+const refreshSkill = async (id: string) => {
+  const command = await findCommand(id);
+  if (!command) fail(`Connector command is not installed: ${id}`);
+  if (!command) return;
+  const tools = await listConnectorBridgeTools(stellaRoot, command);
+  const skillPath = await writeGeneratedSkill(command, tools, {
+    probeDeferred: false,
+  });
+  printJson({ refreshed: command.id, tools, skillPath });
+};
+
+const HELP_TEXT = [
+  "Usage: stella-connect <command>",
+  "Commands:",
+  "  installed                         List configured CLI/API connectors.",
+  "  import-mcp --id <id> (--url <u> | --command <cmd> [--args-json '[]'])",
+  "                                    Probe an MCP, persist it as a CLI connector, and",
+  "                                    generate a matching skill under state/skills/<id>/.",
+  "                                    For authenticated hosted MCPs, declare auth with",
+  "                                    --auth-type/--auth-token-key/--auth-header-name/",
+  "                                    --auth-scheme/--auth-env-var; the probe is deferred",
+  "                                    until credentials land. Run `refresh-skill` after.",
+  "  refresh-skill <id>                Re-probe a configured connector and rewrite its skill.",
+  "  tools <id>                        List actions for a configured connector.",
+  "  call <id> <action-or-path> [--json '{}'] [--method GET] [--query-json '{}']",
+  "                                    Invoke a connector action or REST path.",
+  "  remove <id>                       Remove a configured connector (state only).",
+].join("\n");
 
 const main = async () => {
   const [commandName, ...rest] = process.argv.slice(2);
   switch (commandName) {
-    case "catalog": {
-      printJson(await listStellaConnectors(stellaRoot));
-      return;
-    }
-    case "official": {
-      printJson(listOfficialConnectorDefinitions());
-      return;
-    }
     case "installed": {
       const [commands, apis] = await Promise.all([
         listConfiguredConnectorCommands(stellaRoot),
         listConfiguredApiConnectors(stellaRoot),
       ]);
       printJson({ commands, apis });
-      return;
-    }
-    case "install": {
-      const { positionals, options } = parseOptions(rest);
-      const marketplaceKey = positionals[0];
-      if (!marketplaceKey) fail("Usage: stella-connect install <marketplace-key> [--config-json '{}']");
-      const config = parseJson<Record<string, string>>(optionString(options, "config-json"), {});
-      printJson(await installOfficialConnector(stellaRoot, marketplaceKey, config));
       return;
     }
     case "tools": {
@@ -263,14 +334,48 @@ const main = async () => {
       await importMcp(rest);
       return;
     }
+    case "refresh-skill": {
+      const id = rest[0];
+      if (!id) fail("Usage: stella-connect refresh-skill <connector-id>");
+      await refreshSkill(id);
+      return;
+    }
+    case "remove": {
+      const id = rest[0];
+      if (!id) fail("Usage: stella-connect remove <connector-id>");
+      printJson(await removeConfiguredConnector(stellaRoot, id));
+      return;
+    }
+    case "help":
+    case "--help":
+    case "-h":
+      process.stdout.write(`${HELP_TEXT}\n`);
+      return;
     default:
-      fail(
-        [
-          "Usage: stella-connect <command>",
-          "Commands: catalog, official, installed, install, tools, call, import-mcp",
-        ].join("\n"),
-      );
+      fail(HELP_TEXT);
   }
 };
 
-main().catch((error) => fail((error as Error).message));
+main().catch((error) => {
+  if (error instanceof ConnectorAuthError) {
+    // Structured payload so callers (including the agent) can detect
+    // auth failures without parsing the human-readable message. Exit 2
+    // distinguishes auth failures from generic errors (exit 1).
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: false,
+          error: "auth_required",
+          status: error.status,
+          tokenKey: error.tokenKey,
+          displayName: error.serverDisplayName,
+          message: error.message,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    process.exit(2);
+  }
+  fail((error as Error).message);
+});

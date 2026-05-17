@@ -18,10 +18,6 @@ export type ConnectorCommandConfig = {
     scheme?: "bearer" | "basic" | "raw";
     envVar?: string;
   };
-  source?: {
-    marketplaceKey?: string;
-    officialUrl?: string;
-  };
 };
 
 export type ApiConnectorConfig = {
@@ -35,32 +31,6 @@ export type ApiConnectorConfig = {
     headerName?: string;
     scheme?: "bearer" | "basic" | "raw";
   };
-  source?: {
-    marketplaceKey?: string;
-    officialUrl?: string;
-  };
-};
-
-export type StellaConnectorRecord = {
-  id: string;
-  displayName: string;
-  description?: string;
-  marketplaceKey: string;
-  category?: string;
-  appIds: string[];
-  commandConnectors: string[];
-  officialSource?: string;
-  integrationPath?: string;
-  auth?: string;
-  requiresCredential?: boolean;
-  executable?: boolean;
-  configFields?: ConnectorConfigField[];
-  status:
-    | "local"
-    | "official-cli"
-    | "official-api"
-    | "implemented";
-  installed: boolean;
 };
 
 export type ConnectorToolInfo = {
@@ -76,11 +46,4 @@ export type ConnectorToolCallResult = {
   structuredContent?: unknown;
   isError?: boolean;
   _meta?: Record<string, unknown>;
-};
-
-export type ConnectorConfigField = {
-  key: string;
-  label: string;
-  secret?: boolean;
-  placeholder?: string;
 };

@@ -5,6 +5,26 @@ import readline from "node:readline";
 import { loadConnectorAccessToken } from "./oauth.js";
 import type { ConnectorToolCallResult, ConnectorCommandConfig, ConnectorToolInfo } from "./types.js";
 
+/** Thrown when a connector request comes back with an HTTP auth status
+ *  (401/403/407). Lets callers (e.g. `stella-connect import-mcp`) branch
+ *  on auth failure vs. real probe errors without parsing message strings. */
+export class ConnectorAuthError extends Error {
+  readonly kind = "auth_required" as const;
+  constructor(
+    readonly status: number,
+    readonly serverDisplayName: string,
+    readonly tokenKey: string | undefined,
+    bodyPreview: string,
+  ) {
+    super(
+      `${serverDisplayName} connector request failed (${status}): ${bodyPreview.slice(0, 500)}`,
+    );
+    this.name = "ConnectorAuthError";
+  }
+}
+
+const AUTH_STATUSES = new Set([401, 403, 407]);
+
 type RpcMessage = {
   jsonrpc?: "2.0";
   id?: string | number;
@@ -113,6 +133,14 @@ class HttpConnectorBridgeSession {
     if (responseSessionId) this.sessionId = responseSessionId;
     const text = await response.text();
     if (!response.ok) {
+      if (AUTH_STATUSES.has(response.status)) {
+        throw new ConnectorAuthError(
+          response.status,
+          this.server.displayName,
+          this.server.auth?.tokenKey,
+          text,
+        );
+      }
       throw new Error(`${this.server.displayName} connector request failed (${response.status}): ${text.slice(0, 500)}`);
     }
     const contentType = response.headers.get("content-type") ?? "";
