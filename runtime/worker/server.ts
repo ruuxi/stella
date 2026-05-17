@@ -1917,7 +1917,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         conversationId?: string;
         threadId?: string;
         message?: string;
-        interrupt?: boolean;
         metadata?: Record<string, unknown>;
       };
       const conversationId = asTrimmedString(payload.conversationId);
@@ -1938,7 +1937,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         {
           thread_id: threadId,
           message,
-          interrupt: payload.interrupt !== false,
         },
         {
           conversationId,

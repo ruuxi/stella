@@ -452,7 +452,7 @@ export const createRunnerContext = ({
           reason,
         );
       },
-      sendAgentMessage: async (agentId, message, from, options) => {
+      sendAgentMessage: async (agentId, message, from) => {
         if (
           !context.state.localAgentManager ||
           typeof context.state.localAgentManager.sendAgentMessage !== "function"
@@ -463,7 +463,6 @@ export const createRunnerContext = ({
           agentId,
           message,
           from,
-          options,
         );
       },
       drainAgentMessages: async (agentId, recipient) => {

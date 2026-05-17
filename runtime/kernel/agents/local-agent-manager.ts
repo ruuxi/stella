@@ -23,11 +23,9 @@
  * The reason we have to exit and re-enter `executeTask` at all is that
  * `runSubagent` owns the agent loop for the duration of one user turn;
  * there is no way to splice an extra user message into the middle of an
- * in-flight assistant turn. So `send_input` with `interrupt: true` aborts
- * the current `runSubagent` (ending the in-flight assistant turn early)
- * and re-enters with the follow-up as the next user message;
- * `interrupt: false` just waits for `runSubagent` to return naturally
- * and then re-enters. Both paths funnel through
+ * in-flight assistant turn. So `send_input` aborts the current
+ * `runSubagent` (ending the in-flight assistant turn early) and re-enters
+ * with the follow-up as the next user message. The path funnels through
  * `deliverFollowUpAsNextTurn` → `tryStartNext` → `executeTask` →
  * `runSubagent`.
  */
@@ -144,12 +142,12 @@ type RuntimeAgentRecord = {
    */
   turnCount: number;
   /**
-   * Set by `send_input` with `interrupt: true` when the current
-   * `runSubagent` call has been aborted so we can deliver the queued
-   * follow-up as the next user turn on the same session. The post-run
-   * branch in `executeTask` checks this to decide whether to fall
-   * through into `deliverFollowUpAsNextTurn` (treat as continuation)
-   * vs. treating the abort as a real cancellation.
+   * Set by `send_input` when the current `runSubagent` call has been
+   * aborted so we can deliver the queued follow-up as the next user turn
+   * on the same session. The post-run branch in `executeTask` checks
+   * this to decide whether to fall through into
+   * `deliverFollowUpAsNextTurn` (treat as continuation) vs. treating the
+   * abort as a real cancellation.
    *
    * Not "restart" — the long-lived `subagentSession` is reused; only
    * the outer `executeTask` invocation re-enters.
@@ -609,13 +607,9 @@ export class LocalAgentManager implements AgentToolApi {
    * and the synthesized "Task update from orchestrator: …" string is
    * just the next user message that gets appended on top.
    *
-   * Reached from two paths in `executeTask`:
-   *   - `interrupt: true` send_input aborted the in-flight `runSubagent`
-   *     and we want to deliver the follow-up immediately
-   *     (`shouldDeliverFollowUp` true).
-   *   - `interrupt: false` send_input queued during a run that then
-   *     completed naturally; we owe the agent one more turn to apply
-   *     the queued instruction.
+   * Reached when `send_input` aborted the in-flight `runSubagent` and
+   * we want to deliver the follow-up immediately (`shouldDeliverFollowUp`
+   * true).
    */
   private deliverFollowUpAsNextTurn(task: RuntimeAgentRecord): void {
     const prompt = this.buildTaskPrompt(task);
@@ -841,12 +835,11 @@ export class LocalAgentManager implements AgentToolApi {
 
       task.completedAt = Date.now();
       if (this.shouldDeliverFollowUp(task)) {
-        // `send_input` with `interrupt: true` aborted the current
-        // `runSubagent` on purpose so we can deliver the queued
-        // follow-up as the next user turn on the same session. The
-        // dispatch at the end of this method calls
-        // `deliverFollowUpAsNextTurn`; status stays in its current
-        // state so the dispatch can read `interruptedForFollowUp`.
+        // `send_input` aborted the current `runSubagent` on purpose so
+        // we can deliver the queued follow-up as the next user turn on
+        // the same session. The dispatch at the end of this method calls
+        // `deliverFollowUpAsNextTurn`; status stays in its current state
+        // so the dispatch can read `interruptedForFollowUp`.
       } else if (task.controller.signal.aborted || task.status === "canceled") {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
@@ -862,8 +855,8 @@ export class LocalAgentManager implements AgentToolApi {
     } catch (error) {
       task.completedAt = Date.now();
       if (this.shouldDeliverFollowUp(task)) {
-        // `send_input` with `interrupt: true` aborted the current
-        // `runSubagent` on purpose; see comment above.
+        // `send_input` aborted the current `runSubagent` on purpose; see
+        // comment above.
       } else if (task.controller.signal.aborted) {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
@@ -1183,15 +1176,9 @@ export class LocalAgentManager implements AgentToolApi {
     agentId: string,
     message: string,
     from: "orchestrator" | "subagent",
-    options?: { interrupt?: boolean },
   ): Promise<{ delivered: boolean }> {
     const text = message.trim();
     if (!text) return { delivered: false };
-    // `interrupt` only applies when the orchestrator addresses a still-running
-    // agent; in every other path (subagent->orchestrator, paused/completed
-    // re-hydration, hydrating from persisted record) the message is the only
-    // thing in flight, so there is nothing to abort.
-    const interrupt = options?.interrupt !== false;
     const task = this.tasks.get(agentId);
     if (!task) {
       if (from !== "orchestrator") {
@@ -1281,12 +1268,7 @@ export class LocalAgentManager implements AgentToolApi {
 
     if (from === "orchestrator") {
       const previousActivity = task.recentActivity[0] ?? task.description;
-      const statusText = interrupt ? "Updating" : "Queued";
-      task.recentActivity = [
-        interrupt
-          ? `Update received: ${truncate(text, 200)}`
-          : `Queued update: ${truncate(text, 200)}`,
-      ];
+      task.recentActivity = [`Update received: ${truncate(text, 200)}`];
       this.opts.onAgentEvent?.({
         type: "agent-progress",
         conversationId: task.conversationId,
@@ -1295,24 +1277,22 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         description: task.description,
         parentAgentId: task.parentAgentId,
-        statusText,
+        statusText: "Updating",
       });
 
       if (
-        interrupt &&
         task.status === "running" &&
         !task.controller.signal.aborted
       ) {
-        // The follow-up is already in `toSubagentQueue` above. Aborting
-        // the in-flight `runSubagent` ends the current assistant turn
-        // early so `executeTask`'s post-run dispatch can re-enter via
-        // `deliverFollowUpAsNextTurn`, which builds the next user
-        // message from the queue. We deliberately do NOT touch
-        // `task.prompt` here — it stores the original user goal that
-        // gets persisted and is read back on cold rehydration. The
-        // long-lived `subagentSession` keeps the actual conversation
-        // history, so the LLM's cached prefix is preserved across the
-        // re-entry.
+        // The follow-up is already in `toSubagentQueue` above. Aborting the
+        // in-flight `runSubagent` ends the current assistant turn early so
+        // `executeTask`'s post-run dispatch can re-enter via
+        // `deliverFollowUpAsNextTurn`, which builds the next user message
+        // from the queue. We deliberately do NOT touch `task.prompt` here:
+        // it stores the original user goal that gets persisted and is read
+        // back on cold rehydration. The long-lived `subagentSession` keeps
+        // the actual conversation history, so the LLM's cached prefix is
+        // preserved across the re-entry.
         task.interruptedForFollowUp = true;
         task.controller.abort(new Error(AGENT_INPUT_INTERRUPT_ERROR));
       }

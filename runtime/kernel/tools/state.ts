@@ -116,10 +116,7 @@ export const handleSendInput = async (
   if (!message) {
     return { error: "message is required" };
   }
-  const interrupt = typeof args.interrupt === "boolean" ? args.interrupt : true;
-  const delivered = await ctx.agentApi.sendAgentMessage(threadId, message, sender, {
-    interrupt,
-  });
+  const delivered = await ctx.agentApi.sendAgentMessage(threadId, message, sender);
   if (!delivered.delivered) {
     return { error: `Thread not found: ${threadId}` };
   }
@@ -128,7 +125,6 @@ export const handleSendInput = async (
       thread_id: threadId,
       status: "updated",
       delivered: true,
-      interrupt,
     },
   };
 };
@@ -279,4 +275,3 @@ export const handleSpawnAgent = async (
     },
   };
 };
-
