@@ -126,7 +126,7 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     expect(progressCount).toBe(2);
   });
 
-  it("emits the source lifecycle status text for queued and interrupting input", async () => {
+  it("emits the source lifecycle status text when send_input interrupts a running agent", async () => {
     const lifecycleEvents: AgentLifecycleEvent[] = [];
     let started: (() => void) | null = null;
     let finishRun: (() => void) | null = null;
@@ -175,19 +175,8 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     });
 
     await startedPromise;
-    await manager.sendAgentMessage(created.threadId, "later", "orchestrator", {
-      interrupt: false,
-    });
-    await manager.sendAgentMessage(created.threadId, "now", "orchestrator", {
-      interrupt: true,
-    });
+    await manager.sendAgentMessage(created.threadId, "now", "orchestrator");
 
-    expect(
-      lifecycleEvents.some(
-        (event) =>
-          event.type === "agent-progress" && event.statusText === "Queued",
-      ),
-    ).toBe(true);
     expect(
       lifecycleEvents.some(
         (event) =>
@@ -197,21 +186,17 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     const progressTexts = lifecycleEvents
       .filter((event) => event.type === "agent-progress")
       .map((event) => event.statusText);
-    expect(progressTexts).toEqual(["Queued", "demo", "Updating", "demo"]);
+    expect(progressTexts).toEqual(["Updating", "demo"]);
 
     finishRun?.();
     await waitForAgentSettled(manager, created.threadId);
   });
 
-  it("continues with queued send_input after the current run completes", async () => {
+  it("continues with send_input as the next user turn after interrupting", async () => {
     const prompts: string[] = [];
     let startedFirst: (() => void) | null = null;
-    let finishFirst: (() => void) | null = null;
     const startedFirstPromise = new Promise<void>((resolve) => {
       startedFirst = resolve;
-    });
-    const finishFirstPromise = new Promise<void>((resolve) => {
-      finishFirst = resolve;
     });
 
     const manager = new LocalAgentManager({
@@ -225,7 +210,11 @@ describe("LocalAgentManager pause_agent cancellation", () => {
         prompts.push(args.taskPrompt);
         if (prompts.length === 1) {
           startedFirst?.();
-          await finishFirstPromise;
+          await new Promise<void>((resolve) => {
+            args.abortSignal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          });
         }
         return { runId: args.runId, result: `done-${prompts.length}` };
       },
@@ -245,20 +234,17 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     });
 
     await startedFirstPromise;
-    await manager.sendAgentMessage(created.threadId, "queued follow-up", "orchestrator", {
-      interrupt: false,
-    });
-    finishFirst?.();
+    await manager.sendAgentMessage(created.threadId, "follow-up", "orchestrator");
 
     await waitFor(
       () => prompts.length === 2,
-      "Queued send_input did not start a follow-up run.",
+      "send_input did not start a follow-up run.",
     );
     await waitForAgentSettled(manager, created.threadId);
 
     expect(prompts[0]).toBe("initial prompt");
     expect(prompts[1]).toContain("Task update from orchestrator:");
-    expect(prompts[1]).toContain("queued follow-up");
+    expect(prompts[1]).toContain("follow-up");
     expect(prompts[1]).toContain(
       "if it asks a question, requests status, or asks for a report, answer that request and then stop",
     );

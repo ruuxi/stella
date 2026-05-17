@@ -49,7 +49,7 @@ export const createAgentTools = (
     name: "send_input",
     agentTypes: ORCHESTRATOR_ONLY,
     description:
-      "Send a follow-up message to an existing sub-agent. By default (interrupt=true), pause the agent's current turn, apply this message, then let it continue with the update. With interrupt=false, queue the message so the agent sees it after its current turn completes. If the agent is paused or already completed, it resumes with this message.",
+      "Send a follow-up message to an existing sub-agent. The agent sees it right away. If you want the message to land after the agent has finished its current work, wait for the [Agent completed] event on that thread first.",
     parameters: {
       type: "object",
       properties: {
@@ -60,11 +60,6 @@ export const createAgentTools = (
         message: {
           type: "string",
           description: "Follow-up instruction to deliver to the agent.",
-        },
-        interrupt: {
-          type: "boolean",
-          description:
-            "When true (default), pause the current turn and apply this message immediately. When false, queue the message; the agent will see it after its current turn completes.",
         },
       },
       required: ["thread_id", "message"],

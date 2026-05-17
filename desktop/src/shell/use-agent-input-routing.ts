@@ -76,7 +76,6 @@ export function useAgentInputRouting({
           conversationId: activeConversationId,
           threadId,
           message: detail.text,
-          interrupt: true,
           ...(metadata ? { metadata } : {}),
         })
         .catch((error) => {

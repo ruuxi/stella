@@ -260,33 +260,6 @@ describe("scripted agent/orchestrator footer scenarios", () => {
     ).toBeNull();
   });
 
-  it("shows queued agent input without interrupting the running agent", () => {
-    const footerTasks = getFooterTasksFromEvents(
-      [
-        event("1", 100, "agent-started", {
-          agentId: "agent-1",
-          description: "Inspect settings",
-          agentType: "general",
-        }),
-        event("2", 150, "agent-progress", {
-          agentId: "agent-1",
-          statusText: "Queued",
-        }),
-      ],
-      { nowMs: 200 },
-    );
-
-    expect(
-      getStickyThinkingFooterDisplayText({
-        state: getStickyThinkingFooterState({
-          tasks: footerTasks,
-          activeIndex: 0,
-          isStreaming: false,
-        }),
-      }),
-    ).toBe("Queued · Inspect settings");
-  });
-
   it("shows updating text when send_input interrupts or resumes an agent", () => {
     const footerTasks = getFooterTasksFromEvents(
       [

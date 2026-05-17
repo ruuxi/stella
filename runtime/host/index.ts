@@ -1195,7 +1195,6 @@ export class StellaRuntimeHost {
     conversationId: string;
     threadId: string;
     message: string;
-    interrupt?: boolean;
     metadata?: Record<string, unknown>;
   }) {
     return await this.requestWorker<{ delivered: boolean }>(

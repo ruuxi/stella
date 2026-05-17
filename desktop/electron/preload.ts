@@ -671,7 +671,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       conversationId: string;
       threadId: string;
       message: string;
-      interrupt?: boolean;
       metadata?: Record<string, unknown>;
     }) =>
       ipcRenderer.invoke("agent:sendInput", payload) as Promise<{

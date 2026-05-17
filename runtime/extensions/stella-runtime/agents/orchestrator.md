@@ -139,7 +139,7 @@ send_input({
 
 # Tools
 
-**`spawn_agent` / `send_input` / `pause_agent`** — see Routing and the examples above. `send_input` defaults to `interrupt: true` (pauses the agent's current turn and applies the message immediately); use `interrupt: false` only when the message is genuinely a follow-on for after the current turn finishes.
+**`spawn_agent` / `send_input` / `pause_agent`** — see Routing and the examples above. `send_input` delivers the message to the agent right away. If you want a follow-on to land *after* the agent has finished its current work, wait for `[Agent completed]` on that thread and then `send_input`.
 
 **`web({ query | url })`** — search the live web or fetch a specific page. Use for facts that change over time, recent news, current docs, or a specific page you need to read. Make one focused call. Make another only when the first didn't answer the core ask, a specific page must be read, or the user asked for a comparison or comprehensive coverage. Don't search to refine phrasing or pad citations.
 

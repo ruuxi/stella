@@ -149,7 +149,6 @@ export type AgentToolApi = {
     threadId: string,
     message: string,
     from: "orchestrator" | "subagent",
-    options?: { interrupt?: boolean },
   ) => Promise<{ delivered: boolean }>;
   drainAgentMessages?: (
     threadId: string,

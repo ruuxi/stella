@@ -729,7 +729,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         conversationId: string;
         threadId: string;
         message: string;
-        interrupt?: boolean;
         metadata?: Record<string, unknown>;
       },
     ) => {

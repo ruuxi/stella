@@ -567,7 +567,6 @@ export type ElectronAgentApi = {
     conversationId: string;
     threadId: string;
     message: string;
-    interrupt?: boolean;
     metadata?: Record<string, unknown>;
   }) => Promise<{ delivered: boolean }>;
   cancelChat: (runId: string) => void;
