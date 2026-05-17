@@ -186,25 +186,41 @@ export function convertResponsesMessages<TApi extends Api>(
 						const reasoningItem = JSON.parse(block.thinkingSignature) as ResponseReasoningItem;
 						output.push(reasoningItem);
 					}
-				} else if (block.type === "text") {
-					const textBlock = block as TextContent;
-					const parsedSignature = parseTextSignature(textBlock.textSignature);
-					// OpenAI requires id to be max 64 characters
-					let msgId = parsedSignature?.id;
-					if (!msgId) {
-						msgId = `msg_${msgIndex}`;
-					} else if (msgId.length > 64) {
-						msgId = `msg_${shortHash(msgId)}`;
-					}
-					output.push({
-						type: "message",
+			} else if (block.type === "text") {
+				const textBlock = block as TextContent;
+				// Fireworks routers (kimi-k2p6, kimi-k2p5, including their
+				// `-turbo` variants) do NOT understand the Responses
+				// `{type: "message", content: [{type: "output_text", ...}]}`
+				// replay shape for prior assistant turns — they echo the
+				// entire content array back to the user as literal Python-
+				// repr text (e.g. `[{'type': 'output_text', 'text': '…'}]`).
+				// Send the prior assistant text as a chat-completions-style
+				// `{role: "assistant", content: [{type: "input_text", …}]}`
+				// instead, mirroring the backend's `openai_responses_shared`.
+				if (model.provider === "fireworks") {
+					messages.push({
 						role: "assistant",
-						content: [{ type: "output_text", text: sanitizeSurrogates(textBlock.text), annotations: [] }],
-						status: "completed",
-						id: msgId,
-						phase: parsedSignature?.phase,
-					} satisfies ResponseOutputMessage);
-				} else if (block.type === "toolCall") {
+						content: [{ type: "input_text", text: sanitizeSurrogates(textBlock.text) }],
+					} as ResponseInput[number]);
+					continue;
+				}
+				const parsedSignature = parseTextSignature(textBlock.textSignature);
+				// OpenAI requires id to be max 64 characters
+				let msgId = parsedSignature?.id;
+				if (!msgId) {
+					msgId = `msg_${msgIndex}`;
+				} else if (msgId.length > 64) {
+					msgId = `msg_${shortHash(msgId)}`;
+				}
+				output.push({
+					type: "message",
+					role: "assistant",
+					content: [{ type: "output_text", text: sanitizeSurrogates(textBlock.text), annotations: [] }],
+					status: "completed",
+					id: msgId,
+					phase: parsedSignature?.phase,
+				} satisfies ResponseOutputMessage);
+			} else if (block.type === "toolCall") {
 					const toolCall = block as ToolCall;
 					const [callId, itemIdRaw] = toolCall.id.split("|");
 					let itemId: string | undefined = itemIdRaw;
