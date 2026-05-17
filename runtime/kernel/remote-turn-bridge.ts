@@ -40,6 +40,7 @@ type RemoteTurnBridgeDeps = {
     conversationId: string;
     userPrompt: string;
     agentType?: string;
+    provider?: string;
   }) => Promise<RemoteTurnRunResult>;
   claimRemoteTurn?: (args: {
     requestId: string;
@@ -182,6 +183,7 @@ export const createRemoteTurnBridge = (
         const conversationId = getTrimmedString(payload?.conversationId);
         const userPrompt = getTrimmedString(payload?.text);
         const agentType = getTrimmedString(payload?.agentType) || undefined;
+        const provider = getTrimmedString(payload?.provider) || undefined;
 
         if (!conversationId || !userPrompt) {
           pending.delete(requestId);
@@ -208,6 +210,7 @@ export const createRemoteTurnBridge = (
           conversationId,
           userPrompt,
           agentType,
+          provider,
         });
 
         if (result.status === "busy") {

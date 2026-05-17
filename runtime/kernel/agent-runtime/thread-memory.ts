@@ -471,6 +471,7 @@ const fanOutBeforeUserMessage = async (args: {
   userPrompt: string;
   staleUserReminderText?: string;
   orchestratorReminderText?: string;
+  connectorTransitionReminderText?: string;
   shouldInjectDynamicReminder?: boolean;
 }): Promise<{
   prepend: RuntimePromptMessage[];
@@ -489,6 +490,12 @@ const fanOutBeforeUserMessage = async (args: {
         : {}),
       ...(args.orchestratorReminderText !== undefined
         ? { orchestratorReminderText: args.orchestratorReminderText }
+        : {}),
+      ...(args.connectorTransitionReminderText !== undefined
+        ? {
+            connectorTransitionReminderText:
+              args.connectorTransitionReminderText,
+          }
         : {}),
       ...(args.shouldInjectDynamicReminder !== undefined
         ? { shouldInjectDynamicReminder: args.shouldInjectDynamicReminder }
@@ -599,6 +606,12 @@ export const buildOrchestratorPromptMessages = async (args: {
         : {}),
       ...(args.context.orchestratorReminderText !== undefined
         ? { orchestratorReminderText: args.context.orchestratorReminderText }
+        : {}),
+      ...(args.context.connectorTransitionReminderText !== undefined
+        ? {
+            connectorTransitionReminderText:
+              args.context.connectorTransitionReminderText,
+          }
         : {}),
       ...(args.context.shouldInjectDynamicReminder !== undefined
         ? {

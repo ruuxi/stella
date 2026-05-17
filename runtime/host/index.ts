@@ -874,6 +874,7 @@ export class StellaRuntimeHost {
         conversationId,
         userPrompt,
         agentType,
+        provider,
       }) => {
         const localConversationId = this.configCache.cloudSyncEnabled
           ? conversationId || (await this.getOrCreateDefaultConversationId())
@@ -890,7 +891,11 @@ export class StellaRuntimeHost {
         await this.appendLocalChatEvent({
           conversationId: localConversationId,
           type: "user_message",
-          payload: { text: userPrompt, source: "connector" },
+          payload: {
+            text: userPrompt,
+            source: "connector",
+            ...(provider ? { provider } : {}),
+          },
         });
         const result = await this.requestWorker<RuntimeAutomationTurnResult>(
           METHOD_NAMES.INTERNAL_WORKER_RUN_AUTOMATION,
