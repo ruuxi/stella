@@ -202,6 +202,14 @@
 
 .chat-home-overview__task-status {
   flex-shrink: 0;
+  /* Pin to a single line so the right-side label (Done / Working /
+     "Tomorrow 8:30 AM" / etc.) stays fully visible at any sidebar
+     width and the left-side description truncates first via the
+     ellipsis on `__task-text`. Without nowrap the browser sizes
+     this flex item by its longest word and wraps the rest, so the
+     trailing portion of multi-word labels visually gets clipped
+     against the right edge in narrow panels. */
+  white-space: nowrap;
   font-size: 11.5px;
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
