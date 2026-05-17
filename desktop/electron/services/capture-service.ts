@@ -121,23 +121,33 @@ export class CaptureService {
 
     const ctx = this.getChatContextSnapshot() ?? this.emptyContext()
     const isWindowClick = Boolean(result.window && result.screenshot)
+    const isRegionSelection = Boolean(result.screenshot && !result.window)
     const existing = ctx.regionScreenshots ?? []
-    const nextScreenshots =
-      result.screenshot && !isWindowClick
-        ? [...existing, result.screenshot]
-        : existing
-    const nextWindow = result.window ?? ctx.window
+
+    // Always append: when a new window screenshot arrives (window-click) and
+    // an existing window screenshot is already attached, push the old one
+    // onto regionScreenshots so it survives as a stacked chip rather than
+    // being replaced silently. Plain region selections also append and must
+    // NOT clear the existing window context.
+    const carriedPreviousWindowShot =
+      isWindowClick && ctx.windowScreenshot ? [ctx.windowScreenshot] : []
+    const nextScreenshots = result.screenshot
+      ? isWindowClick
+        ? [...existing, ...carriedPreviousWindowShot]
+        : [...existing, result.screenshot]
+      : existing
+
+    const nextWindow = isWindowClick ? result.window : ctx.window
     const nextWindowScreenshot = isWindowClick
       ? result.screenshot
       : (ctx.windowScreenshot ?? null)
-    const isRegionSelection = Boolean(result.screenshot && !result.window)
 
     this.setPendingChatContext({
       ...ctx,
-      window: isRegionSelection ? null : nextWindow,
-      windowScreenshot: isRegionSelection ? null : nextWindowScreenshot,
+      window: nextWindow,
+      windowScreenshot: nextWindowScreenshot,
       windowContextEnabled: isRegionSelection
-        ? undefined
+        ? ctx.windowContextEnabled
         : result.window
           ? undefined
           : ctx.windowContextEnabled,
@@ -190,10 +200,17 @@ export class CaptureService {
       return
     }
 
-    const screenshots =
+    const baseScreenshots =
       this.pendingChatContext?.regionScreenshots ??
       radialContextBeforeGesture?.regionScreenshots ??
       []
+    // Stack the previous window's screenshot onto regionScreenshots so a
+    // fresh radial Add/Capture stacks alongside earlier attachments
+    // instead of silently replacing the prior window chip.
+    const previousWindowShot = this.pendingChatContext?.windowScreenshot ?? null
+    const screenshots = previousWindowShot
+      ? [...baseScreenshots, previousWindowShot]
+      : baseScreenshots
 
     this.setPendingChatContext({
       ...this.stagedRadialChatContext,
