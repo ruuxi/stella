@@ -502,6 +502,35 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     });
   });
 
+  ipcMain.handle("storeWeb:listComposioConnectors", async (event) => {
+    assertStoreWebRequest(event, "storeWeb:listComposioConnectors");
+    return await handleStoreWebLocalAction({
+      type: "listComposioConnectors",
+    });
+  });
+
+  ipcMain.handle(
+    "storeWeb:enableComposioConnector",
+    async (event, payload: unknown) => {
+      assertStoreWebRequest(event, "storeWeb:enableComposioConnector");
+      return await handleStoreWebLocalAction({
+        type: "enableComposioConnector",
+        payload,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "storeWeb:disableComposioConnector",
+    async (event, payload: unknown) => {
+      assertStoreWebRequest(event, "storeWeb:disableComposioConnector");
+      return await handleStoreWebLocalAction({
+        type: "disableComposioConnector",
+        payload,
+      });
+    },
+  );
+
   ipcMain.handle(
     "storeWeb:fashionLocalAction",
     async (event, payload: unknown) => {
