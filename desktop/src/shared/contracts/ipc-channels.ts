@@ -252,6 +252,12 @@ export const IPC_APP_RESET_MESSAGES = "app:resetLocalMessages" as const;
 export const IPC_CREDENTIAL_REQUEST = "credential:request" as const;
 export const IPC_CREDENTIAL_SUBMIT = "credential:submit" as const;
 export const IPC_CREDENTIAL_CANCEL = "credential:cancel" as const;
+export const IPC_CONNECTORS_LIST_COMPOSIO =
+  "connectors:listComposio" as const;
+export const IPC_CONNECTORS_ENABLE_COMPOSIO =
+  "connectors:enableComposio" as const;
+export const IPC_CONNECTORS_DISABLE_COMPOSIO =
+  "connectors:disableComposio" as const;
 export const IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION =
   "store:showBlueprintNotification" as const;
 export const IPC_STORE_BLUEPRINT_NOTIFICATION_ACTIVATED =

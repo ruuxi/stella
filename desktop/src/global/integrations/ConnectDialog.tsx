@@ -9,7 +9,7 @@ import {
   DialogBody,
   DialogCloseButton,
 } from "@/ui/dialog";
-import { INTEGRATIONS } from "./integration-configs";
+import { ALL_CONNECT_INTEGRATIONS } from "./integration-configs";
 import { IntegrationGridCard, IntegrationDetailArea } from "./IntegrationCard";
 import { PhoneAccessConnectCard } from "@/global/settings/PhoneAccessCard";
 import { ConnectHeroAnimation } from "./ConnectHeroAnimation";
@@ -30,7 +30,7 @@ const PHONE_ICON = (
   </svg>
 );
 
-const allIntegrations = INTEGRATIONS;
+const allIntegrations = ALL_CONNECT_INTEGRATIONS;
 
 export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
   const [selectedProvider, setSelectedProvider] = useState<string | undefined>(
@@ -68,7 +68,8 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
     const handlers: Record<string, () => void> = {};
     handlers["phone"] = () => setSelectedProvider("phone");
     for (const integration of allIntegrations) {
-      handlers[integration.provider] = () => setSelectedProvider(integration.provider);
+      handlers[integration.provider] = () =>
+        setSelectedProvider(integration.provider);
     }
     return handlers;
   }, []);
@@ -111,8 +112,8 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
           {!hasSelection && (
             <div className="connect-hero-section">
               <p className="connect-hero-tagline">
-                Message Stella from any platform you like — chat naturally, or ask
-                it to get things done right on your computer.
+                Message Stella from any platform you like — chat naturally, or
+                ask it to get things done right on your computer.
               </p>
               <ConnectHeroAnimation />
               {!isSignedIn && (
@@ -144,7 +145,9 @@ export const ConnectDialog = ({ open, onOpenChange }: ConnectDialogProps) => {
                   aria-disabled={!isSignedIn || phoneComingSoon || undefined}
                 >
                   <span className="connect-grid-card-icon">{PHONE_ICON}</span>
-                  <span className="connect-grid-card-name">Connect to Stella App</span>
+                  <span className="connect-grid-card-name">
+                    Connect to Stella App
+                  </span>
                   {phoneComingSoon && (
                     <span className="connect-grid-card-soon">Coming soon</span>
                   )}

@@ -67,7 +67,9 @@
 }
 
 /* Taller modal footprint; grid + detail share the same body box (overrides data-fit auto height) */
-[data-component="dialog"][data-fit]:has([data-slot="dialog-content"].connect-dialog)
+[data-component="dialog"][data-fit]:has(
+    [data-slot="dialog-content"].connect-dialog
+  )
   [data-slot="dialog-container"] {
   --dialog-width: 500px;
   height: min(calc(100vh - 16px), 560px);
@@ -95,7 +97,8 @@
 
 .connect-dialog:not([data-has-selection]) [data-slot="dialog-body"],
 .connect-dialog:not([data-has-selection]) .connect-dialog-main {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Section title — matches .sidebar-nav-section-label */
@@ -127,7 +130,9 @@
   border: 1px solid var(--border-weak);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .connect-grid-card--wide:hover {
@@ -205,7 +210,9 @@
   font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.45;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .connect-grid-card:not(.connect-grid-card--wide) {
@@ -256,6 +263,13 @@
   height: 20px;
 }
 
+.connect-composio-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 5px;
+}
+
 /* Card name */
 .connect-grid-card:not(.connect-grid-card--wide) .connect-grid-card-name {
   flex: 0 1 auto;
@@ -299,7 +313,9 @@
   color: var(--text-weak);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .connect-back-button:hover {
@@ -346,8 +362,12 @@
 }
 
 @keyframes connect-view-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .connect-detail-header {
@@ -420,8 +440,12 @@
 }
 
 @keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .connect-skeleton-code {
@@ -454,7 +478,9 @@
   gap: 8px;
 }
 
-[data-component="select"]:has(> [data-slot="select-trigger"].connect-phone-dial) {
+[data-component="select"]:has(
+  > [data-slot="select-trigger"].connect-phone-dial
+) {
   width: auto;
 }
 
@@ -493,7 +519,9 @@
   border: 1px solid var(--border-weak);
   border-radius: var(--radius-md, 10px);
   outline: none;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .connect-phone-input::placeholder,
@@ -569,6 +597,27 @@
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.connect-cli-command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+}
+
+.connect-cli-command code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
+  font-size: 12px;
+  color: var(--text-base);
 }
 
 .connect-pair-code {

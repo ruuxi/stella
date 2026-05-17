@@ -277,11 +277,33 @@ class StdioConnectorBridgeSession {
     if (!this.server.command) {
       throw new Error(`${this.server.displayName} does not have a command.`);
     }
+    const authToken = await loadConnectorAccessToken(
+      this.stellaRoot,
+      this.server.auth?.tokenKey,
+    );
+    if (
+      this.server.auth?.type &&
+      this.server.auth.type !== "none" &&
+      !authToken
+    ) {
+      throw new ConnectorAuthError(
+        0,
+        this.server.displayName,
+        this.server.auth.tokenKey,
+        `${this.server.displayName} has no stored credential for tokenKey "${this.server.auth.tokenKey}".`,
+      );
+    }
     this.child = spawn(this.server.command, this.server.args ?? [], {
       cwd: this.server.cwd,
       env: {
         ...process.env,
         ...(await resolveSecretPlaceholders(this.stellaRoot, this.server.env)),
+        // STELLA-GUARD: connector-stdio-secret-env
+        // Inject connector credentials only into the child process env. Do not
+        // echo this value, surface it to the model, or include it in errors.
+        ...(authToken && this.server.auth?.envVar
+          ? { [this.server.auth.envVar]: authToken }
+          : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

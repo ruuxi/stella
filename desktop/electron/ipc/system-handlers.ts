@@ -40,6 +40,11 @@ import {
   saveLocalLlmCredential,
 } from "../../../runtime/kernel/storage/llm-credentials.js";
 import {
+  disableComposioConnector,
+  installComposioConnector,
+  listComposioConnectorSummaries,
+} from "../../../runtime/kernel/connectors/composio-install.js";
+import {
   deleteLocalLlmOAuthCredential,
   listLocalLlmOAuthCredentials,
   saveLocalLlmOAuthCredential,
@@ -74,6 +79,9 @@ import {
   IPC_BACKUP_LIST,
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
+  IPC_CONNECTORS_DISABLE_COMPOSIO,
+  IPC_CONNECTORS_ENABLE_COMPOSIO,
+  IPC_CONNECTORS_LIST_COMPOSIO,
   IPC_DIAGNOSTICS_RECORD_HEAP_TRACE,
   IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED,
   IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
@@ -854,6 +862,70 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         throw new Error("Blocked untrusted connector credential cancellation.");
       }
       return options.cancelConnectorCredential(payload);
+    },
+  );
+
+  ipcMain.handle(IPC_CONNECTORS_LIST_COMPOSIO, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_CONNECTORS_LIST_COMPOSIO,
+      )
+    ) {
+      throw new Error("Blocked untrusted Composio connector list request.");
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) {
+      return [];
+    }
+    return await listComposioConnectorSummaries(stellaRoot);
+  });
+
+  ipcMain.handle(
+    IPC_CONNECTORS_ENABLE_COMPOSIO,
+    async (event, payload: { toolkit?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_CONNECTORS_ENABLE_COMPOSIO,
+        )
+      ) {
+        throw new Error("Blocked untrusted Composio connector enable request.");
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Local Stella root is unavailable.");
+      }
+      const toolkit = asTrimmedString(payload?.toolkit);
+      await installComposioConnector(stellaRoot, {
+        toolkit,
+        probeDeferred: true,
+      });
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CONNECTORS_DISABLE_COMPOSIO,
+    async (event, payload: { toolkit?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_CONNECTORS_DISABLE_COMPOSIO,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted Composio connector disable request.",
+        );
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Local Stella root is unavailable.");
+      }
+      return await disableComposioConnector(
+        stellaRoot,
+        asTrimmedString(payload?.toolkit),
+      );
     },
   );
 

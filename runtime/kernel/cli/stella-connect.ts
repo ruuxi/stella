@@ -1,8 +1,16 @@
 #!/usr/bin/env node
-import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { callApiConnector } from "../connectors/api-client.js";
+import {
+  COMPOSIO_MANAGED_TOOLKITS,
+} from "../connectors/composio-catalog.js";
+import {
+  COMPOSIO_TOKEN_KEY,
+  buildComposioConnectorCommand,
+  installComposioConnector,
+  writeConnectorSkill,
+} from "../connectors/composio-install.js";
 import {
   requestConnectorCredentialFromBridge,
   type ConnectorCredentialResult,
@@ -24,6 +32,7 @@ import {
 } from "../connectors/oauth.js";
 import type {
   ConnectorCommandConfig,
+  ConnectorToolCallResult,
   ConnectorToolInfo,
 } from "../connectors/types.js";
 import { resolveStatePath } from "./shared.js";
@@ -145,6 +154,8 @@ type ConnectorAuthHints = {
   oauthClientId?: string;
   oauthResource?: string;
   scopes?: string[];
+  description?: string;
+  placeholder?: string;
 };
 
 const resolveConnectorAuthHints = async (
@@ -208,6 +219,8 @@ const withAuthRetry = async <T>(
         oauthClientId: hints.oauthClientId,
         oauthResource: hints.oauthResource,
         scopes: hints.scopes,
+        description: hints.description,
+        placeholder: hints.placeholder,
       });
     } catch (bridgeError) {
       // The bridge was advertised but isn't reachable — fall through to
@@ -240,55 +253,6 @@ const connectorAuthStatus = async (auth: ConnectorCommandConfig["auth"]) => {
   return (await loadConnectorAccessToken(stellaRoot, auth.tokenKey))
     ? "connected"
     : "not_logged_in";
-};
-
-const writeGeneratedSkill = async (
-  command: ConnectorCommandConfig,
-  tools: ConnectorToolInfo[],
-  { probeDeferred }: { probeDeferred: boolean } = { probeDeferred: false },
-) => {
-  const skillDir = path.join(stateRoot, "skills", command.id);
-  await fs.mkdir(skillDir, { recursive: true });
-  const toolLines = tools.length
-    ? tools
-        .map((tool) => {
-          const description = tool.description ? ` - ${tool.description}` : "";
-          return `- \`${tool.name}\`${description}`;
-        })
-        .join("\n")
-    : probeDeferred
-      ? `- _Actions list deferred until credentials are configured. Bind the token for \`${command.auth?.tokenKey ?? command.id}\`, then run \`stella-connect refresh-skill ${command.id}\`._`
-      : "- Run `stella-connect tools <connector>` to inspect available actions.";
-  const description =
-    command.description ??
-    `Use the ${command.displayName} connector from Stella.`;
-  const body = `---
-name: ${command.id}
-description: ${description.replace(/\n+/g, " ")}
----
-
-# ${command.displayName}
-
-Use this skill for work that needs ${command.displayName}.
-
-Inspect available actions:
-
-\`\`\`bash
-stella-connect tools ${command.id}
-\`\`\`
-
-Call an action:
-
-\`\`\`bash
-stella-connect call ${command.id} <action-name> --json '{"key":"value"}'
-\`\`\`
-
-## Actions
-
-${toolLines}
-`;
-  await fs.writeFile(path.join(skillDir, "SKILL.md"), body, "utf-8");
-  return path.join(skillDir, "SKILL.md");
 };
 
 const importMcp = async (argv: string[]) => {
@@ -413,7 +377,7 @@ const importMcp = async (argv: string[]) => {
       left.displayName.localeCompare(right.displayName),
     ),
   );
-  const skillPath = await writeGeneratedSkill(command, tools, {
+  const skillPath = await writeConnectorSkill(stellaRoot, command, tools, {
     probeDeferred,
   });
   printJson({
@@ -432,6 +396,90 @@ const importMcp = async (argv: string[]) => {
   });
 };
 
+const importComposio = async (argv: string[]) => {
+  const { options } = parseOptions(argv);
+  const toolkit = safeId(optionString(options, "toolkit") ?? "");
+  const id = safeId(optionString(options, "id") ?? `composio-${toolkit}`);
+  const displayName =
+    optionString(options, "name") ??
+    COMPOSIO_MANAGED_TOOLKITS.find((entry) => entry.slug === toolkit)?.name ??
+    toolkit.replace(/[-_]/g, " ");
+  const description = optionString(options, "description");
+  const tokenKey =
+    optionString(options, "auth-token-key") ?? COMPOSIO_TOKEN_KEY;
+  const entityId = optionString(options, "entity-id");
+  const shouldConnect = options.connect === true;
+
+  const command = buildComposioConnectorCommand({
+    id,
+    toolkit,
+    displayName,
+    description,
+    tokenKey,
+    entityId,
+  });
+
+  const authHints: ConnectorAuthHints = {
+    authType: "api_key",
+    description:
+      "Paste your Composio API key. Stella uses it locally to open OAuth connection pages and call connected app actions.",
+    placeholder: "Paste your Composio API key",
+  };
+
+  let tools: ConnectorToolInfo[] = [];
+  let probeDeferred = false;
+  let probeDeferredReason: string | undefined;
+  try {
+    tools = await withAuthRetry(
+      () => listConnectorBridgeTools(stellaRoot, command),
+      authHints,
+    );
+  } catch (error) {
+    if (error instanceof ConnectorAuthError) {
+      probeDeferred = true;
+      probeDeferredReason = error.message;
+    } else {
+      throw error;
+    }
+  }
+
+  const { skillPath } = await installComposioConnector(stellaRoot, {
+    toolkit,
+    id,
+    displayName,
+    description,
+    tokenKey,
+    entityId,
+    tools,
+    probeDeferred,
+  });
+
+  let connectResult: ConnectorToolCallResult | undefined;
+  if (shouldConnect && !probeDeferred) {
+    connectResult = await withAuthRetry(
+      () =>
+        callConnectorBridgeTool(stellaRoot, command, "connect", {
+          open: true,
+        }),
+      authHints,
+    );
+  }
+
+  printJson({
+    imported: command,
+    tools,
+    skillPath,
+    ...(connectResult ? { connectResult } : {}),
+    ...(probeDeferred
+      ? {
+          probeDeferred: true,
+          probeDeferredReason,
+          hint: `Save your Composio API key under tokenKey "${tokenKey}", then run \`stella-connect refresh-skill ${id}\`.`,
+        }
+      : {}),
+  });
+};
+
 const refreshSkill = async (id: string) => {
   const command = await findCommand(id);
   if (!command) fail(`Connector command is not installed: ${id}`);
@@ -439,7 +487,7 @@ const refreshSkill = async (id: string) => {
   const tools = await withAuthRetry(() =>
     listConnectorBridgeTools(stellaRoot, command),
   );
-  const skillPath = await writeGeneratedSkill(command, tools, {
+  const skillPath = await writeConnectorSkill(stellaRoot, command, tools, {
     probeDeferred: false,
   });
   printJson({ refreshed: command.id, tools, skillPath });
@@ -458,6 +506,10 @@ const HELP_TEXT = [
   "                                    --oauth-client-id/--oauth-resource/--oauth-scopes.",
   "                                    The probe is deferred",
   "                                    until credentials land. Run `refresh-skill` after.",
+  "  import-composio --toolkit <slug>   Install a Composio OAuth integration as a",
+  "                                    stella-connect CLI connector. Add --connect",
+  "                                    to open the hosted OAuth page after install.",
+  "  composio-catalog                  List bundled Composio managed-auth toolkits.",
   "  refresh-skill <id>                Re-probe a configured connector and rewrite its skill.",
   "  tools <id>                        List actions for a configured connector.",
   "  call <id> <action-or-path> [--json '{}'] [--method GET] [--query-json '{}']",
@@ -546,6 +598,14 @@ const main = async () => {
     }
     case "import-mcp": {
       await importMcp(rest);
+      return;
+    }
+    case "import-composio": {
+      await importComposio(rest);
+      return;
+    }
+    case "composio-catalog": {
+      printJson({ toolkits: COMPOSIO_MANAGED_TOOLKITS });
       return;
     }
     case "refresh-skill": {
