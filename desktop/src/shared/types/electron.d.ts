@@ -995,27 +995,6 @@ export type ElectronStoreApi = {
     packageId: string;
     revertedCommits: string[];
   }>;
-  listConnectors: () => Promise<StellaConnectorSummary[]>;
-  installConnector: (
-    marketplaceKey: string,
-    credential?: string,
-    config?: Record<string, string>,
-  ) => Promise<{
-    installedCommands: Array<{
-      id: string;
-      displayName: string;
-      transport: string;
-      url?: string;
-      auth?: string;
-    }>;
-    installedApis: Array<{
-      id: string;
-      displayName: string;
-      baseUrl: string;
-      auth?: string;
-    }>;
-    oauth?: Array<{ tokenKey: string }>;
-  }>;
   showBlueprintNotification: (payload: {
     messageId: string;
     name: string;
@@ -1077,29 +1056,6 @@ export type ElectronStoreWebLocalApi = {
     result?: unknown;
     error?: string;
   }) => void;
-};
-
-export type StellaConnectorSummary = {
-  id: string;
-  displayName: string;
-  description?: string;
-  marketplaceKey: string;
-  category?: string;
-  appIds: string[];
-  commandConnectors: string[];
-  officialSource?: string;
-  integrationPath?: string;
-  auth?: string;
-  requiresCredential?: boolean;
-  executable?: boolean;
-  configFields?: Array<{
-    key: string;
-    label: string;
-    secret?: boolean;
-    placeholder?: string;
-  }>;
-  status: "local" | "official-cli" | "official-api" | "implemented";
-  installed: boolean;
 };
 
 export type FashionBodyPhotoInfo = {

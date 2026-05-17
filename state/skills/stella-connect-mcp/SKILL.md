@@ -1,98 +1,85 @@
 ---
 name: stella-connect-mcp
-description: Import MCP servers into Stella Connect and call integrations through the stella-connect CLI.
+description: Import an MCP server as a Stella CLI connector and call its actions through the stella-connect CLI.
 ---
 
-# Stella Connect MCP
+# Stella Connect (MCP → CLI)
 
-Use this skill when adding, changing, importing, or debugging Stella Connect integrations.
+Stella does not ship a preset connector catalog. The user (or the agent on their behalf) adds an MCP server with `stella-connect import-mcp`; the CLI probes the server, persists it under `state/connectors/`, and writes a per-connector skill under `state/skills/<id>/SKILL.md` so future runs discover it via the normal skill catalog. Connector action schemas are never preloaded into the model context — they're inspected on demand via `stella-connect tools` and invoked via `stella-connect call`.
 
-Stella's General agent does not receive connector schemas as tools. It uses `exec_command` and the `stella-connect` CLI, keeping connector discovery and execution outside the model-facing tool list.
-
-## Fast Map
+## Source layout
 
 - CLI entrypoint: `runtime/kernel/cli/stella-connect.ts`
-- Connector bridge: `runtime/kernel/connectors/connector-bridge.ts`
-- API connector client: `runtime/kernel/connectors/api-client.ts`
-- OAuth helper: `runtime/kernel/connectors/oauth.ts`
-- Connector state and install/remove helpers: `runtime/kernel/connectors/state.ts`
-- Connector types: `runtime/kernel/connectors/types.ts`
-- Official connector definitions: `runtime/kernel/connectors/official-connectors.ts`
-- General-agent prompt guidance: `runtime/extensions/stella-runtime/agents/general.md`
-- Connector UI surfaces: search `desktop/src/global` for integration/store connect flows before changing UI.
+- MCP bridge (stdio/streamable_http): `runtime/kernel/connectors/connector-bridge.ts`
+- REST connector client: `runtime/kernel/connectors/api-client.ts`
+- OAuth + token storage: `runtime/kernel/connectors/oauth.ts`
+- Configured-connector state: `runtime/kernel/connectors/state.ts`
+- Types: `runtime/kernel/connectors/types.ts`
 
-## Runtime Shape
+## Adding an MCP
 
-List installed connectors:
+Stdio command:
 
 ```bash
-stella-connect installed
+stella-connect import-mcp \
+  --id my-service \
+  --name "My Service" \
+  --command npx \
+  --args-json '["-y","my-mcp-server"]'
 ```
 
-Inspect available actions:
+Streamable HTTP URL:
 
 ```bash
-stella-connect tools <connector-id>
+stella-connect import-mcp \
+  --id my-service \
+  --name "My Service" \
+  --url https://example.com/mcp
 ```
 
-Call a connector action:
+The import probes available actions, writes `state/connectors/commands.json`, and creates `state/skills/my-service/SKILL.md`.
+
+## Calling a connector
 
 ```bash
-stella-connect call <connector-id> <action-name> --json '{"key":"value"}'
+stella-connect installed                    # list what's configured
+stella-connect tools my-service             # list actions
+stella-connect call my-service <action> --json '{"key":"value"}'
 ```
 
-API-style connectors use a path as the second argument:
+REST-style API connectors use a path as the second argument:
 
 ```bash
-stella-connect call <api-id> /v1/example --method GET --query-json '{"limit":10}'
+stella-connect call my-api /v1/example --method GET --query-json '{"limit":10}'
 ```
 
-## Import Existing MCP
+## Auth
 
-Convert an existing local server into a Stella CLI-backed connector:
+When an MCP requires auth, declare it on `import-mcp` so the bridge knows how to attach credentials:
 
 ```bash
-stella-connect import-mcp --id my-service --name "My Service" --command npx --args-json '["-y","my-mcp-server"]'
+stella-connect import-mcp \
+  --id my-service --name "My Service" --url https://example.com/mcp \
+  --auth-type api_key --auth-token-key my-service \
+  --auth-header-name Authorization --auth-scheme bearer
 ```
 
-Convert a hosted endpoint:
+Authenticated hosted MCPs can't be probed at import time (no credential exists for the new `tokenKey` yet), so `import-mcp` **defers the probe** when it sees an auth failure: the connector is still persisted and a skill stub is written. The output includes `probeDeferred: true` and a `hint` telling you which `tokenKey` to bind. Once the credential is bound, run:
 
 ```bash
-stella-connect import-mcp --id my-service --name "My Service" --url https://example.com/mcp
+stella-connect refresh-skill my-service
 ```
 
-The import command introspects available actions, writes connector state under `state/connectors/`, and creates a focused skill under `state/skills/<connector-id>/SKILL.md`.
+to re-probe and rewrite the skill's `## Actions` list. Real probe failures (network, malformed server, unauthenticated 500s) still surface as errors instead of being swallowed.
 
-## Adding An Official Connector
+Any `stella-connect call` / `tools` / `refresh-skill` invocation that hits HTTP 401/403/407 — or runs against a connector with no stored credential — exits with **status 2** and prints a structured payload on stdout: `{ "ok": false, "error": "auth_required", "tokenKey": "...", "displayName": "...", ... }`. Branch on that to decide whether to prompt the user vs. surface a real failure.
 
-Most connector additions start in `runtime/kernel/connectors/official-connectors.ts`.
+For the credential itself, use the `RequestCredential` tool — the user sees a secure dialog, the value never reaches model context, and the tool returns a `secretId` handle. Persisting that secret to the connector's `tokenKey` is currently a TODO (the credential broker lives in the desktop process, not the CLI). For now, configure auth via env vars at import time (`--env-json '{"API_KEY":"…"}'`) or have the user paste the key into the dialog and let the agent invoke a follow-up that writes it through `saveConnectorAccessToken`.
 
-1. Add or update an `OfficialConnectorDefinition`.
-2. Use a stable lowercase marketplace key.
-3. Fill `displayName`, `description`, `category`, `officialSource`, `integrationPath`, `auth`, and `status`.
-4. Add either `commands` for CLI-backed connector bridges, `apis` for REST-style API connectors, or both.
-5. If user config is needed, add `configFields`; secret fields should use `secret: true`.
-6. Set `source.marketplaceKey` on command/API entries so install/remove can track them.
-
-Installed connector state lives under:
-
-```text
-state/connectors/commands.json
-state/connectors/api-connectors.json
-```
-
-Product connector definitions belong in `runtime/kernel/connectors/official-connectors.ts`; do not hand-edit installed state unless intentionally testing local state.
-
-## Testing
-
-Run focused general-tool tests after changing the prompt/tool surface:
+## Removing a connector
 
 ```bash
-bun test desktop/tests/runtime/kernel/tools/codex-tools.test.ts
+stella-connect remove <id>
 ```
 
-Run Electron typecheck after TypeScript changes:
-
-```bash
-bun run electron:typecheck
-```
+Drops the entry from `state/connectors/{commands,api-connectors}.json`. Stored tokens under `state/connectors/.credentials.json` are not deleted automatically — drop them manually if the connector is gone for good.

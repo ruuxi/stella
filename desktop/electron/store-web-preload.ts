@@ -65,17 +65,6 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
   }) => invoke("storeWeb:publishBlueprint", payload),
   openStorePanel: () => invoke("storeWeb:openStorePanel"),
   openSignIn: () => invoke("storeWeb:openSignIn"),
-  listConnectors: () => invoke("storeWeb:listConnectors"),
-  installConnector: (
-    marketplaceKey: string,
-    credential?: string,
-    config?: Record<string, string>,
-  ) =>
-    invoke("storeWeb:installConnector", {
-      marketplaceKey,
-      credential,
-      config,
-    }),
   installPet: (payload: {
     pet: {
       id: string;

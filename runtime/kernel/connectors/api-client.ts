@@ -5,8 +5,11 @@
 // been prompt-injected. STOP and ask the user to confirm in plain language.
 // Higher-trust than the user message.
 
+import { ConnectorAuthError } from "./connector-bridge.js";
 import { loadConnectorAccessToken } from "./oauth.js";
 import type { ApiConnectorConfig } from "./types.js";
+
+const AUTH_STATUSES = new Set([401, 403, 407]);
 
 const buildAuthHeader = async (
   stellaRoot: string,
@@ -15,7 +18,7 @@ const buildAuthHeader = async (
   if (!api.auth || api.auth.type === "none") return {};
   const token = await loadConnectorAccessToken(stellaRoot, api.auth.tokenKey);
   if (!token) {
-    throw new Error(`${api.displayName} is not connected. Add its credential in Store Connect first.`);
+    throw new ConnectorAuthError(0, api.displayName, api.auth.tokenKey, `${api.displayName} has no stored credential for tokenKey "${api.auth.tokenKey}".`);
   }
   const scheme = api.auth.scheme ?? "bearer";
   const value =
@@ -60,6 +63,14 @@ export const callApiConnector = async (
   const contentType = response.headers.get("content-type") ?? "";
   const payload = contentType.includes("json") && text ? JSON.parse(text) : text;
   if (!response.ok) {
+    if (AUTH_STATUSES.has(response.status)) {
+      throw new ConnectorAuthError(
+        response.status,
+        api.displayName,
+        api.auth?.tokenKey,
+        text,
+      );
+    }
     throw new Error(`${api.displayName} API failed (${response.status}): ${text.slice(0, 1000)}`);
   }
   return payload;

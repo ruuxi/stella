@@ -29,7 +29,6 @@ import {
 import { anyApi } from "convex/server";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { renderSkillCatalogBlock } from "../shared/skill-catalog.js";
-import { listStellaConnectors } from "../connectors/state.js";
 import type {
   RunnerContext,
   ParsedAgentLike,
@@ -696,25 +695,6 @@ export const buildAgentContext = async (
     dynamicContextSections.push(
       await renderSkillCatalogBlock(context.stellaRoot),
     );
-  }
-  if (agentHasCapability(args.agentType, "injectsConnectorList")) {
-    const connectors = await listStellaConnectors(context.stellaRoot);
-    const installed = connectors.filter((connector) => connector.installed);
-    const available = connectors.filter(
-      (connector) =>
-        !connector.installed && connector.status === "official-cli",
-    );
-    const lines = [
-      "## Stella Connect",
-      "Connected-service actions are discovered and called on demand through the `stella-connect` CLI; full schemas are not preloaded.",
-      installed.length > 0
-        ? `Installed: ${installed.map((entry) => entry.displayName).join(", ")}.`
-        : "Installed: none.",
-      available.length > 0
-        ? `Ready to add: ${available.map((entry) => entry.displayName).join(", ")}.`
-        : "",
-    ].filter(Boolean);
-    dynamicContextSections.push(lines.join("\n"));
   }
   if (agentHasCapability(args.agentType, "injectsSubagentRoster")) {
     dynamicContextSections.push(

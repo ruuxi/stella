@@ -328,9 +328,6 @@ export const IPC_STORE_LIST_INSTALLED = "store:listInstalledMods" as const;
 export const IPC_STORE_INSTALL_FROM_BLUEPRINT =
   "store:installFromBlueprint" as const;
 export const IPC_STORE_UNINSTALL = "store:uninstallMod" as const;
-export const IPC_STORE_LIST_CONNECTORS = "store:listConnectors" as const;
-export const IPC_STORE_INSTALL_CONNECTOR = "store:installConnector" as const;
-
 // ── Fashion ─────────────────────────────────────────────────────────────────
 //
 // The body photo intentionally does NOT round-trip through Convex storage —
