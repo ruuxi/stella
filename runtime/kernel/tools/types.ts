@@ -163,6 +163,7 @@ export type ToolHostOptions = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  cliBridgeSocketPath?: string;
   agentApi?: AgentToolApi;
   getSubagentTypes?: () => readonly string[];
   scheduleApi?: ScheduleToolApi;

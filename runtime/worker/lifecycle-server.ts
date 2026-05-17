@@ -262,6 +262,7 @@ export const removeStaleRuntimeArtifacts = async (
     paths.pidFile,
     paths.lockFile,
     paths.socketPath,
+    paths.cliBridgeSocketPath,
     paths.hostExecutableFile,
   ]) {
     await fsPromises.unlink(filePath).catch(() => undefined);

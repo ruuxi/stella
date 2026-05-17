@@ -841,6 +841,27 @@ export type ElectronSystemApi = {
   cancelCredential: (payload: {
     requestId: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  onConnectorCredentialRequest: (
+    callback: (
+      event: unknown,
+      data: {
+        requestId: string;
+        tokenKey: string;
+        displayName: string;
+        mode: "api_key" | "oauth";
+        description?: string;
+        placeholder?: string;
+      },
+    ) => void,
+  ) => () => void;
+  submitConnectorCredential: (payload: {
+    requestId: string;
+    value: string;
+    label?: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  cancelConnectorCredential: (payload: {
+    requestId: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
 };
 
 export type InstallManifestSnapshot = {

@@ -55,7 +55,17 @@ stella-connect call my-api /v1/example --method GET --query-json '{"limit":10}'
 
 ## Auth
 
-When an MCP requires auth, declare it on `import-mcp` so the bridge knows how to attach credentials:
+Two auth types are supported. Declare one on `import-mcp` so the bridge knows what to do when the MCP returns 401/403.
+
+**OAuth — prefer this** when the MCP supports it (Linear, Atlassian Rovo, Notion, Asana, and most modern hosted MCPs). Stella opens the user's default browser, runs PKCE Authorization Code with dynamic client registration, and persists the resulting access token. No token to paste. While the browser tab is open, the user sees a "Connecting <X>…" indicator with Cancel:
+
+```bash
+stella-connect import-mcp \
+  --id linear --name "Linear" --url https://mcp.linear.app/sse \
+  --auth-type oauth --auth-token-key linear
+```
+
+**API key** for MCPs that hand the user a bearer token in their dev dashboard:
 
 ```bash
 stella-connect import-mcp \
@@ -64,17 +74,15 @@ stella-connect import-mcp \
   --auth-header-name Authorization --auth-scheme bearer
 ```
 
-Authenticated hosted MCPs can't be probed at import time (no credential exists for the new `tokenKey` yet), so `import-mcp` **defers the probe** when it sees an auth failure: the connector is still persisted and a skill stub is written. The output includes `probeDeferred: true` and a `hint` telling you which `tokenKey` to bind. Once the credential is bound, run:
+When the CLI hits a 401/403 (during `import-mcp` probe, `tools`, `call`, or `refresh-skill`) AND the connector has an `auth-token-key` AND the worker exposed its CLI bridge socket (env `STELLA_CLI_BRIDGE_SOCK`, normally always set under Stella), the CLI **pauses and pops the matching dialog** inline. For OAuth: browser opens, user authorizes, token saves. For api_key: paste-key modal, user pastes, token saves. Either way the desktop writes to `state/connectors/.credentials.json` and the CLI retries the original call once — you just see the successful result in your tool output, no extra steps needed.
 
-```bash
-stella-connect refresh-skill my-service
-```
+For `tools`, `call`, and `refresh-skill`: if the user dismisses the dialog, the bridge is unreachable, or the second attempt also fails (bad key), the CLI exits with **status 2** and prints `{ "ok": false, "error": "auth_required", "tokenKey": "...", "displayName": "...", ... }` on stdout. Treat that as "user declined / key is bad" and either ask the user what went wrong or move on; don't immediately retry the same command without a different plan.
 
-to re-probe and rewrite the skill's `## Actions` list. Real probe failures (network, malformed server, unauthenticated 500s) still surface as errors instead of being swallowed.
+For `import-mcp` specifically, an auth failure (user cancel, bad key, or bridge unreachable) is **non-fatal** — the connector is still persisted and the output carries `probeDeferred: true` plus a `hint`. Action list is left as a stub. Once the credential is bound (e.g. on a later retry or out of band), run `stella-connect refresh-skill <id>` to populate `## Actions`. This is intentional: the user explicitly declared the connector's auth shape on the import command, so throwing away the persisted entry on a probe miss would just force them to retype the whole `--auth-*` flag set.
 
-Any `stella-connect call` / `tools` / `refresh-skill` invocation that hits HTTP 401/403/407 — or runs against a connector with no stored credential — exits with **status 2** and prints a structured payload on stdout: `{ "ok": false, "error": "auth_required", "tokenKey": "...", "displayName": "...", ... }`. Branch on that to decide whether to prompt the user vs. surface a real failure.
+Non-auth probe failures (network, malformed server, unauthenticated 500s) still surface as plain errors so a broken connector doesn't get silently imported.
 
-For the credential itself, use the `RequestCredential` tool — the user sees a secure dialog, the value never reaches model context, and the tool returns a `secretId` handle. Persisting that secret to the connector's `tokenKey` is currently a TODO (the credential broker lives in the desktop process, not the CLI). For now, configure auth via env vars at import time (`--env-json '{"API_KEY":"…"}'`) or have the user paste the key into the dialog and let the agent invoke a follow-up that writes it through `saveConnectorAccessToken`.
+The `RequestCredential` agent tool still exists for non-connector secrets — use it for things like provider API keys that flow through `secretId`. Connector tokens specifically should let the auto-popup handle them; no manual `RequestCredential` orchestration needed.
 
 ## Removing a connector
 

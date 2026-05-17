@@ -56,6 +56,7 @@ export const createBootstrapResetFlows = (
     const hadRunner = Boolean(state.stellaHostRunner);
 
     services.credentialService.cancelAll();
+    services.connectorCredentialService.cancelAll();
     await shutdownBootstrapRuntime(context, { stopScheduler: true });
     services.localChatHistoryService.closeForReset();
 

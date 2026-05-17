@@ -29,6 +29,16 @@ export type RuntimePaths = {
   pidFile: string;
   lockFile: string;
   socketPath: string;
+  /**
+   * Companion UDS the worker listens on for sidecar CLI tools (e.g.
+   * `stella-connect`) that need to call back into the host — currently
+   * just to pop a credential dialog when an MCP call returns 401/403.
+   * CLIs discover the path via the `STELLA_CLI_BRIDGE_SOCK` env var
+   * injected by `runtime/kernel/tools/shell.ts`. Kept under the same
+   * per-root dir so multi-install machines don't collide; both sockets
+   * stay well under the 104-char BSD UDS path cap.
+   */
+  cliBridgeSocketPath: string;
   logFile: string;
   hostExecutableFile: string;
   rootMarkerFile: string;
@@ -55,6 +65,7 @@ export const resolveRuntimePaths = (stellaRoot: string): RuntimePaths => {
     // macOS caps Unix domain socket paths at 104 chars (BSD), Linux at 108.
     // The hash + base dir keep us well under that.
     socketPath: path.join(rootDir, "runtime.sock"),
+    cliBridgeSocketPath: path.join(rootDir, "cli-bridge.sock"),
     logFile: path.join(rootDir, "runtime.log"),
     hostExecutableFile: path.join(rootDir, "host-executable.txt"),
     rootMarkerFile: path.join(rootDir, "root.txt"),

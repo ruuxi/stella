@@ -290,6 +290,7 @@ export const createRunnerContext = ({
   stellaOfficeBinPath,
   stellaComputerCliPath,
   stellaConnectCliPath,
+  cliBridgeSocketPath,
   selfModMonitor,
   selfModLifecycle,
   selfModHmrController,
@@ -362,6 +363,7 @@ export const createRunnerContext = ({
     stellaOfficeBinPath,
     stellaComputerCliPath,
     stellaConnectCliPath,
+    cliBridgeSocketPath,
     requestCredential,
     notifyVoiceActionComplete,
     getSubagentTypes: () =>

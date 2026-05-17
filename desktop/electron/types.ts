@@ -63,6 +63,40 @@ export type CredentialResponsePayload = {
   label: string
 }
 
+/**
+ * Connector credential dialog (Stella Connect / MCP). Distinct from
+ * `CredentialRequestPayload` because the value is written directly to
+ * `state/connectors/.credentials.json` via `saveConnectorAccessToken` on
+ * the host — it never travels back over IPC, never reaches the model
+ * context, and never enters Convex's `secrets` table. The CLI bridge
+ * spawns these when `stella-connect call` returns 401/403.
+ *
+ * `mode: "oauth"` switches the renderer to a no-input indicator dialog
+ * ("Connecting <X>... Authorize in the browser tab Stella opened.") with
+ * only a Cancel affordance. The host opens the user's external browser
+ * via `shell.openExternal`, runs a local 127.0.0.1 callback listener,
+ * and persists the resulting access_token directly — `submit` never
+ * fires from the renderer in this mode.
+ *
+ * `mode: "api_key"` (default) keeps the paste-key modal.
+ */
+export type ConnectorCredentialRequestMode = "api_key" | "oauth"
+
+export type ConnectorCredentialRequestPayload = {
+  requestId: string
+  tokenKey: string
+  displayName: string
+  mode: ConnectorCredentialRequestMode
+  description?: string
+  placeholder?: string
+}
+
+export type ConnectorCredentialSubmitPayload = {
+  requestId: string
+  value: string
+  label?: string
+}
+
 export const toChatContextWindow = (
   windowInfo: WindowInfo | null | undefined,
 ): ChatContext['window'] => {

@@ -94,6 +94,7 @@ export const createToolHost = ({
   stellaOfficeBinPath: _stellaOfficeBinPath,
   stellaComputerCliPath,
   stellaConnectCliPath,
+  cliBridgeSocketPath,
   requestCredential,
   agentApi,
   getSubagentTypes,
@@ -117,6 +118,7 @@ export const createToolHost = ({
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaComputerCliPath,
     stellaConnectCliPath,
+    cliBridgeSocketPath,
   });
   const stateContext: StateContext = createStateContext(
     stateRoot,

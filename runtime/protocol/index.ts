@@ -153,6 +153,7 @@ export const METHOD_NAMES = {
   HOST_DEVICE_IDENTITY_GET: "host.deviceIdentity.get",
   HOST_DEVICE_HEARTBEAT_SIGN: "host.deviceHeartbeat.sign",
   HOST_CREDENTIALS_REQUEST: "host.credentials.request",
+  HOST_CONNECTOR_CREDENTIAL_REQUEST: "host.connectorCredential.request",
   HOST_DISPLAY_UPDATE: "host.display.update",
   HOST_NOTIFICATION_SHOW: "host.notification.show",
   HOST_SYSTEM_OPEN_EXTERNAL: "host.system.openExternal",

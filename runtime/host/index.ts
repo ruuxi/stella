@@ -17,9 +17,7 @@ import type {
   LocalCronJobUpdatePatch,
   LocalHeartbeatUpsertInput,
 } from "../kernel/shared/scheduling.js";
-import type {
-  DiscoveryKnowledgeSeedPayload,
-} from "../contracts/discovery.js";
+import type { DiscoveryKnowledgeSeedPayload } from "../contracts/discovery.js";
 import type { LocalChatUpdatedPayload } from "../contracts/local-chat.js";
 import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import { AGENT_STREAM_EVENT_TYPES } from "../contracts/agent-runtime.js";
@@ -116,6 +114,33 @@ export type RuntimeHostHandlers = {
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   /**
+   * Pop a credential dialog for a connector token (Stella Connect MCP /
+   * REST integrations). Unlike `requestCredential` the value is written
+   * directly to `state/connectors/.credentials.json` via
+   * `saveConnectorAccessToken` on the host — the secret never travels
+   * back over IPC and is never inserted into Convex's `secrets` table.
+   * Called from the worker's CLI bridge when `stella-connect call` /
+   * `import-mcp` hits a 401/403. Returns `{ ok: true }` once persisted,
+   * `{ ok: false, reason }` when the user dismisses the dialog or it
+   * times out — the CLI propagates that as exit-2 `auth_required`.
+   */
+  requestConnectorCredential?: (payload: {
+    tokenKey: string;
+    displayName: string;
+    /** `"oauth"` switches the host to the browser OAuth flow and requires `resourceUrl`. */
+    authType?: "api_key" | "oauth";
+    /** MCP server URL used for OAuth protected-resource metadata discovery. */
+    resourceUrl?: string;
+    oauthClientId?: string;
+    oauthResource?: string;
+    scopes?: string[];
+    description?: string;
+    placeholder?: string;
+  }) => Promise<
+    | { ok: true }
+    | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
+  >;
+  /**
    * Push a display update to the renderer. The payload is either a raw
    * HTML string or a structured payload object that the renderer hands
    * to its workspace panel tab manager. The host handler is responsible for forwarding
@@ -149,12 +174,10 @@ export type RuntimeHostHandlers = {
      * to the Vite plugin). Called by the host once the morph cover is on
      * screen so the renderer never visibly crosses the swap.
      */
-    applyBatch: (
-      options?: {
-        suppressClientFullReload?: boolean;
-        forceClientFullReload?: boolean;
-      },
-    ) => Promise<{ requiresClientFullReload?: boolean } | void>;
+    applyBatch: (options?: {
+      suppressClientFullReload?: boolean;
+      forceClientFullReload?: boolean;
+    }) => Promise<{ requiresClientFullReload?: boolean } | void>;
     reportState?: (state: SelfModHmrState) => Promise<void> | void;
   }) => Promise<void> | void;
 };
@@ -185,9 +208,7 @@ const DEVICE_HEARTBEAT_INTERVAL_MS = 30_000;
 
 type RemoteTurnAuthSource = HostRuntimeAuthRefreshParams["source"];
 
-const parseDisplayUpdateParams = (
-  params: unknown,
-): Record<string, unknown> => {
+const parseDisplayUpdateParams = (params: unknown): Record<string, unknown> => {
   if (params && typeof params === "object") {
     const record = params as Record<string, unknown>;
     if (record.payload && typeof record.payload === "object") {
@@ -201,7 +222,10 @@ const parseDisplayUpdateParams = (
 };
 
 const pruneAgentEventBuffers = (
-  buffers: Map<string, { events: RuntimeAgentEventPayload[]; updatedAt: number }>,
+  buffers: Map<
+    string,
+    { events: RuntimeAgentEventPayload[]; updatedAt: number }
+  >,
 ) => {
   const now = Date.now();
   for (const [runId, buffer] of buffers.entries()) {
@@ -212,14 +236,20 @@ const pruneAgentEventBuffers = (
 };
 
 const bufferAgentEvent = (
-  buffers: Map<string, { events: RuntimeAgentEventPayload[]; updatedAt: number }>,
+  buffers: Map<
+    string,
+    { events: RuntimeAgentEventPayload[]; updatedAt: number }
+  >,
   event: RuntimeAgentEventPayload,
 ) => {
   const existing = buffers.get(event.runId);
   if (existing) {
     existing.events.push(event);
     if (existing.events.length > AGENT_EVENT_BUFFER_LIMIT) {
-      existing.events.splice(0, existing.events.length - AGENT_EVENT_BUFFER_LIMIT);
+      existing.events.splice(
+        0,
+        existing.events.length - AGENT_EVENT_BUFFER_LIMIT,
+      );
     }
     existing.updatedAt = Date.now();
     return;
@@ -251,7 +281,9 @@ export class StellaRuntimeHost {
   private hostConvexClient: ConvexClient | null = null;
   private hostConvexClientUrl: string | null = null;
   private hostConvexClientAuthToken: string | null = null;
-  private hostRemoteTurnBridge: ReturnType<typeof createRemoteTurnBridge> | null = null;
+  private hostRemoteTurnBridge: ReturnType<
+    typeof createRemoteTurnBridge
+  > | null = null;
   private hostDeviceRegistered = false;
   private hostDeviceRegistering = false;
   private hostHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -306,8 +338,7 @@ export class StellaRuntimeHost {
             this.buildWorkerInitializationState(),
           );
         if (
-          initializeResult.protocolVersion !==
-          STELLA_RUNTIME_PROTOCOL_VERSION
+          initializeResult.protocolVersion !== STELLA_RUNTIME_PROTOCOL_VERSION
         ) {
           throw new Error(
             `Runtime worker protocol mismatch: host=${STELLA_RUNTIME_PROTOCOL_VERSION} worker=${initializeResult.protocolVersion ?? "unknown"}.`,
@@ -473,8 +504,11 @@ export class StellaRuntimeHost {
 
   private async getActiveLocalConversationId() {
     const activeConversationId =
-      (await this.options.hostHandlers.getActiveConversationId?.())?.trim() ?? "";
-    return activeConversationId || await this.getOrCreateDefaultConversationId();
+      (await this.options.hostHandlers.getActiveConversationId?.())?.trim() ??
+      "";
+    return (
+      activeConversationId || (await this.getOrCreateDefaultConversationId())
+    );
   }
 
   private stopHostHeartbeatLoop() {
@@ -587,7 +621,9 @@ export class StellaRuntimeHost {
 
         if (result?.authenticated && nextToken && nextHasConnectedAccount) {
           this.noteHostRemoteTurnAuthHealthy();
-          console.info(`[remote-turn] Recovered host auth after ${source} failure.`);
+          console.info(
+            `[remote-turn] Recovered host auth after ${source} failure.`,
+          );
           return true;
         }
 
@@ -711,7 +747,10 @@ export class StellaRuntimeHost {
       this.hostDeviceRegistered = true;
       this.noteHostRemoteTurnAuthHealthy();
     } catch (error) {
-      const authFailure = this.handleHostRemoteTurnAuthFailure("register", error);
+      const authFailure = this.handleHostRemoteTurnAuthFailure(
+        "register",
+        error,
+      );
       if (authFailure.stopped) {
         void this.recoverHostRemoteTurnAuth("register");
         this.hostDeviceRegistering = false;
@@ -735,7 +774,10 @@ export class StellaRuntimeHost {
     if (!this.hostDeviceRegistered) {
       return;
     }
-    if (!this.getConfiguredHostAuthToken() || !this.getConfiguredHostConvexUrl()) {
+    if (
+      !this.getConfiguredHostAuthToken() ||
+      !this.getConfiguredHostConvexUrl()
+    ) {
       this.hostDeviceRegistered = false;
       return;
     }
@@ -827,11 +869,15 @@ export class StellaRuntimeHost {
           subscription.unsubscribe();
         };
       },
-      runLocalTurn: async ({ requestId, conversationId, userPrompt, agentType }) => {
-        const localConversationId =
-          this.configCache.cloudSyncEnabled
-            ? conversationId || await this.getOrCreateDefaultConversationId()
-            : await this.getActiveLocalConversationId();
+      runLocalTurn: async ({
+        requestId,
+        conversationId,
+        userPrompt,
+        agentType,
+      }) => {
+        const localConversationId = this.configCache.cloudSyncEnabled
+          ? conversationId || (await this.getOrCreateDefaultConversationId())
+          : await this.getActiveLocalConversationId();
         // Arm follow-up routing before the orchestrator turn runs so any
         // assistant message the worker persists during this run already
         // routes back to the connector. The map entry is cleared by the
@@ -920,7 +966,9 @@ export class StellaRuntimeHost {
       await (client as any).mutation(
         (
           anyApi as unknown as {
-            channels: { connector_delivery: { sendConnectorFollowup: unknown } };
+            channels: {
+              connector_delivery: { sendConnectorFollowup: unknown };
+            };
           }
         ).channels.connector_delivery.sendConnectorFollowup,
         {
@@ -1027,7 +1075,10 @@ export class StellaRuntimeHost {
   ): () => void {
     this.events.on(eventName, listener as (...args: unknown[]) => void);
     return () => {
-      this.events.removeListener(eventName, listener as (...args: unknown[]) => void);
+      this.events.removeListener(
+        eventName,
+        listener as (...args: unknown[]) => void,
+      );
     };
   }
 
@@ -1059,7 +1110,9 @@ export class StellaRuntimeHost {
     this.watcher?.close();
     this.watcher = null;
     await this.persistRuntimeReloadPauseState().catch(() => undefined);
-    await this.workerController.stop(options?.killWorker ? "restart" : "stopped");
+    await this.workerController.stop(
+      options?.killWorker ? "restart" : "stopped",
+    );
     await this.stopHostServices();
     this.deviceIdentity = null;
     this.configCache = {};
@@ -1073,7 +1126,10 @@ export class StellaRuntimeHost {
     if (!connection?.peer) {
       return { ok: true };
     }
-    return await connection.peer.request(METHOD_NAMES.INTERNAL_WORKER_CONFIGURE, params);
+    return await connection.peer.request(
+      METHOD_NAMES.INTERNAL_WORKER_CONFIGURE,
+      params,
+    );
   }
 
   async health(): Promise<RuntimeHealthSnapshot> {
@@ -1175,8 +1231,7 @@ export class StellaRuntimeHost {
       const events = buffer.events.filter(
         (event) => event.seq > payload.lastSeq,
       );
-      const exhausted =
-        oldestSeq !== null && payload.lastSeq < oldestSeq - 1;
+      const exhausted = oldestSeq !== null && payload.lastSeq < oldestSeq - 1;
       if (events.length > 0 || !exhausted) {
         return { events, exhausted };
       }
@@ -1491,7 +1546,10 @@ export class StellaRuntimeHost {
   }
 
   async uninstallStoreMod(packageId: string) {
-    return await this.requestWorker<{ packageId: string; revertedCommits: string[] }>(
+    return await this.requestWorker<{
+      packageId: string;
+      revertedCommits: string[];
+    }>(
       METHOD_NAMES.INTERNAL_WORKER_UNINSTALL_STORE_MOD,
       { packageId },
       {
@@ -1630,7 +1688,9 @@ export class StellaRuntimeHost {
   }
 
   async getConversationEventCount(payload: { conversationId: string }) {
-    return this.ensureScheduler().getConversationEventCount(payload.conversationId);
+    return this.ensureScheduler().getConversationEventCount(
+      payload.conversationId,
+    );
   }
 
   async createSocialSession(payload: {
@@ -1653,11 +1713,10 @@ export class StellaRuntimeHost {
     return await this.requestWorker<{
       sessionId: string;
       status: RuntimeSocialSessionStatus;
-    }>(
-      METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_UPDATE_STATUS,
-      payload,
-      { ensureWorker: true, recordActivity: true },
-    );
+    }>(METHOD_NAMES.INTERNAL_WORKER_SOCIAL_SESSIONS_UPDATE_STATUS, payload, {
+      ensureWorker: true,
+      recordActivity: true,
+    });
   }
 
   async queueSocialSessionTurn(payload: {
@@ -1770,7 +1829,9 @@ export class StellaRuntimeHost {
     const { discoveryKnowledgeExists } = await import(
       "../discovery/life-knowledge.js"
     );
-    return await discoveryKnowledgeExists(this.options.initializeParams.stellaRoot);
+    return await discoveryKnowledgeExists(
+      this.options.initializeParams.stellaRoot,
+    );
   }
 
   async writeCoreMemory(
@@ -1789,7 +1850,10 @@ export class StellaRuntimeHost {
     const { writeDiscoveryKnowledge } = await import(
       "../discovery/life-knowledge.js"
     );
-    await writeDiscoveryKnowledge(this.options.initializeParams.stellaRoot, payload);
+    await writeDiscoveryKnowledge(
+      this.options.initializeParams.stellaRoot,
+      payload,
+    );
   }
 
   async detectPreferredBrowserProfile() {
@@ -2023,14 +2087,11 @@ export class StellaRuntimeHost {
       retryOnceOnDisconnect?: boolean;
     },
   ): Promise<TResult> {
-    return await this.workerController.request(
-      async (peer) => {
-        const result = await peer.request<TResult>(method, params);
-        this.workerHealthCache = null;
-        return result;
-      },
-      options,
-    );
+    return await this.workerController.request(async (peer) => {
+      const result = await peer.request<TResult>(method, params);
+      this.workerHealthCache = null;
+      return result;
+    }, options);
   }
 
   private async getWorkerHealth(args: { ensureWorker: boolean }) {
@@ -2038,9 +2099,9 @@ export class StellaRuntimeHost {
   }
 
   private async buildHealthSnapshot(): Promise<RuntimeHealthSnapshot> {
-    const workerHealth = await this.getWorkerHealth({ ensureWorker: false }).catch(
-      () => null,
-    );
+    const workerHealth = await this.getWorkerHealth({
+      ensureWorker: false,
+    }).catch(() => null);
     return {
       ready: this.hostReady,
       hostPid: process.pid,
@@ -2056,149 +2117,215 @@ export class StellaRuntimeHost {
   }
 
   private registerHostHandlers(peer: JsonRpcPeer) {
-    peer.registerRequestHandler(METHOD_NAMES.HOST_DEVICE_IDENTITY_GET, async () => {
-      if (!this.deviceIdentity) {
-        this.deviceIdentity = await this.options.hostHandlers.getDeviceIdentity();
-      }
-      return this.deviceIdentity;
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_DEVICE_HEARTBEAT_SIGN, async (params) => {
-      const signedAtMs =
-        params && typeof params === "object" && "signedAtMs" in params
-          ? Number((params as { signedAtMs?: unknown }).signedAtMs)
-          : Number.NaN;
-      if (!Number.isFinite(signedAtMs)) {
-        throw new Error("Invalid host heartbeat signing payload.");
-      }
-      return await this.options.hostHandlers.signHeartbeatPayload(signedAtMs);
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, async (params) => {
-      return await this.options.hostHandlers.requestRuntimeAuthRefresh?.(
-        params as HostRuntimeAuthRefreshParams,
-      ) ?? {
-        authenticated: false,
-        token: null,
-        hasConnectedAccount: false,
-      };
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, async (params) => {
-      return await this.options.hostHandlers.requestCredential(
-        params as {
-          provider: string;
-          label?: string;
-          description?: string;
-          placeholder?: string;
-        },
-      );
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_DISPLAY_UPDATE, async (params) => {
-      await this.options.hostHandlers.displayUpdate(parseDisplayUpdateParams(params));
-      return { ok: true };
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_NOTIFICATION_SHOW, async (params) => {
-      await this.options.hostHandlers.showNotification?.(
-        params as { title: string; body: string; sound?: string },
-      );
-      return { ok: true };
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_SYSTEM_OPEN_EXTERNAL, async (params) => {
-      await this.options.hostHandlers.openExternal?.(String(params ?? ""));
-      return { ok: true };
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_WINDOW_SHOW, async (params) => {
-      await this.options.hostHandlers.showWindow?.(params as HostWindowTarget);
-      return { ok: true };
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_WINDOW_FOCUS, async (params) => {
-      await this.options.hostHandlers.focusWindow?.(params as HostWindowTarget);
-      return { ok: true };
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, async (params) => {
-      const payload = params as { runId?: string };
-      if (!payload.runId) {
-        throw new Error("HOST_RUNTIME_RELOAD_PAUSE requires a runId.");
-      }
-      await this.pauseRuntimeReloads(payload.runId);
-      return { ok: true };
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME, async (params) => {
-      const payload = params as {
-        runId?: string;
-        allowDeferredReload?: boolean;
-      };
-      if (!payload.runId) {
-        throw new Error("HOST_RUNTIME_RELOAD_RESUME requires a runId.");
-      }
-      await this.resumeRuntimeReloads(payload.runId, {
-        allowDeferredReload: payload.allowDeferredReload !== false,
-      });
-      return { ok: true };
-    });
-    peer.registerRequestHandler(METHOD_NAMES.HOST_HMR_RUN_TRANSITION, async (params) => {
-      const payload = params as {
-        transitionId?: string;
-        runIds?: string[];
-        stateRunIds?: string[];
-        requiresFullReload?: boolean;
-      };
-      if (!payload.transitionId) {
-        throw new Error("HOST_HMR_RUN_TRANSITION requires a transitionId.");
-      }
-      const runIds = Array.isArray(payload.runIds) ? payload.runIds : [];
-      if (runIds.length === 0) {
-        throw new Error(
-          "HOST_HMR_RUN_TRANSITION requires a non-empty runIds array.",
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_DEVICE_IDENTITY_GET,
+      async () => {
+        if (!this.deviceIdentity) {
+          this.deviceIdentity =
+            await this.options.hostHandlers.getDeviceIdentity();
+        }
+        return this.deviceIdentity;
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_DEVICE_HEARTBEAT_SIGN,
+      async (params) => {
+        const signedAtMs =
+          params && typeof params === "object" && "signedAtMs" in params
+            ? Number((params as { signedAtMs?: unknown }).signedAtMs)
+            : Number.NaN;
+        if (!Number.isFinite(signedAtMs)) {
+          throw new Error("Invalid host heartbeat signing payload.");
+        }
+        return await this.options.hostHandlers.signHeartbeatPayload(signedAtMs);
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
+      async (params) => {
+        return (
+          (await this.options.hostHandlers.requestRuntimeAuthRefresh?.(
+            params as HostRuntimeAuthRefreshParams,
+          )) ?? {
+            authenticated: false,
+            token: null,
+            hasConnectedAccount: false,
+          }
         );
-      }
-      const runHmrTransition = this.options.hostHandlers.runHmrTransition;
-      if (!runHmrTransition) {
-        throw new Error("HOST_HMR_RUN_TRANSITION handler is not registered.");
-      }
-      await runHmrTransition({
-        runIds,
-        stateRunIds: Array.isArray(payload.stateRunIds)
-          ? payload.stateRunIds.filter((runId) => typeof runId === "string")
-          : runIds,
-        requiresFullReload: Boolean(payload.requiresFullReload),
-        applyBatch: async (options) => {
-          const result = await this.requestWorker<{
-            ok?: boolean;
-            reason?: string;
-            requiresClientFullReload?: boolean;
-          }>(
-            METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
-            {
-              transitionId: payload.transitionId,
-              runIds,
-              ...(options ? { options } : {}),
-            },
-            { ensureWorker: false, recordActivity: true },
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_CREDENTIALS_REQUEST,
+      async (params) => {
+        return await this.options.hostHandlers.requestCredential(
+          params as {
+            provider: string;
+            label?: string;
+            description?: string;
+            placeholder?: string;
+          },
+        );
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_CONNECTOR_CREDENTIAL_REQUEST,
+      async (params) => {
+        if (!this.options.hostHandlers.requestConnectorCredential) {
+          return { ok: false, reason: "unsupported" };
+        }
+        return await this.options.hostHandlers.requestConnectorCredential(
+          params as {
+            tokenKey: string;
+            displayName: string;
+            authType?: "api_key" | "oauth";
+            resourceUrl?: string;
+            oauthClientId?: string;
+            oauthResource?: string;
+            scopes?: string[];
+            description?: string;
+            placeholder?: string;
+          },
+        );
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_DISPLAY_UPDATE,
+      async (params) => {
+        await this.options.hostHandlers.displayUpdate(
+          parseDisplayUpdateParams(params),
+        );
+        return { ok: true };
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_NOTIFICATION_SHOW,
+      async (params) => {
+        await this.options.hostHandlers.showNotification?.(
+          params as { title: string; body: string; sound?: string },
+        );
+        return { ok: true };
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_SYSTEM_OPEN_EXTERNAL,
+      async (params) => {
+        await this.options.hostHandlers.openExternal?.(String(params ?? ""));
+        return { ok: true };
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_WINDOW_SHOW,
+      async (params) => {
+        await this.options.hostHandlers.showWindow?.(
+          params as HostWindowTarget,
+        );
+        return { ok: true };
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_WINDOW_FOCUS,
+      async (params) => {
+        await this.options.hostHandlers.focusWindow?.(
+          params as HostWindowTarget,
+        );
+        return { ok: true };
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE,
+      async (params) => {
+        const payload = params as { runId?: string };
+        if (!payload.runId) {
+          throw new Error("HOST_RUNTIME_RELOAD_PAUSE requires a runId.");
+        }
+        await this.pauseRuntimeReloads(payload.runId);
+        return { ok: true };
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME,
+      async (params) => {
+        const payload = params as {
+          runId?: string;
+          allowDeferredReload?: boolean;
+        };
+        if (!payload.runId) {
+          throw new Error("HOST_RUNTIME_RELOAD_RESUME requires a runId.");
+        }
+        await this.resumeRuntimeReloads(payload.runId, {
+          allowDeferredReload: payload.allowDeferredReload !== false,
+        });
+        return { ok: true };
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
+      async (params) => {
+        const payload = params as {
+          transitionId?: string;
+          runIds?: string[];
+          stateRunIds?: string[];
+          requiresFullReload?: boolean;
+        };
+        if (!payload.transitionId) {
+          throw new Error("HOST_HMR_RUN_TRANSITION requires a transitionId.");
+        }
+        const runIds = Array.isArray(payload.runIds) ? payload.runIds : [];
+        if (runIds.length === 0) {
+          throw new Error(
+            "HOST_HMR_RUN_TRANSITION requires a non-empty runIds array.",
           );
-          if (result?.ok === false) {
-            throw new Error(
-              `Self-mod HMR apply failed${result.reason ? `: ${result.reason}` : ""}`,
-            );
-          }
-          return {
-            requiresClientFullReload:
-              result?.requiresClientFullReload === true,
-          };
-        },
-        reportState: async (state) => {
-          const stateRunIds = Array.isArray(payload.stateRunIds)
+        }
+        const runHmrTransition = this.options.hostHandlers.runHmrTransition;
+        if (!runHmrTransition) {
+          throw new Error("HOST_HMR_RUN_TRANSITION handler is not registered.");
+        }
+        await runHmrTransition({
+          runIds,
+          stateRunIds: Array.isArray(payload.stateRunIds)
             ? payload.stateRunIds.filter((runId) => typeof runId === "string")
-            : runIds;
-          const emitRunIds = stateRunIds.length > 0 ? stateRunIds : runIds;
-          for (const runId of new Set(emitRunIds)) {
-            this.events.emit("run-self-mod-hmr-state", {
-              runId,
-              state,
-            });
-          }
-        },
-      });
-      return { ok: true };
-    });
+            : runIds,
+          requiresFullReload: Boolean(payload.requiresFullReload),
+          applyBatch: async (options) => {
+            const result = await this.requestWorker<{
+              ok?: boolean;
+              reason?: string;
+              requiresClientFullReload?: boolean;
+            }>(
+              METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
+              {
+                transitionId: payload.transitionId,
+                runIds,
+                ...(options ? { options } : {}),
+              },
+              { ensureWorker: false, recordActivity: true },
+            );
+            if (result?.ok === false) {
+              throw new Error(
+                `Self-mod HMR apply failed${result.reason ? `: ${result.reason}` : ""}`,
+              );
+            }
+            return {
+              requiresClientFullReload:
+                result?.requiresClientFullReload === true,
+            };
+          },
+          reportState: async (state) => {
+            const stateRunIds = Array.isArray(payload.stateRunIds)
+              ? payload.stateRunIds.filter((runId) => typeof runId === "string")
+              : runIds;
+            const emitRunIds = stateRunIds.length > 0 ? stateRunIds : runIds;
+            for (const runId of new Set(emitRunIds)) {
+              this.events.emit("run-self-mod-hmr-state", {
+                runId,
+                state,
+              });
+            }
+          },
+        });
+        return { ok: true };
+      },
+    );
 
     peer.registerRequestHandler(
       METHOD_NAMES.INTERNAL_SCHEDULE_LIST_CRON_JOBS,
@@ -2206,24 +2333,37 @@ export class StellaRuntimeHost {
     );
     peer.registerRequestHandler(
       METHOD_NAMES.INTERNAL_SCHEDULE_ADD_CRON_JOB,
-      async (params) => await this.ensureScheduler().addCronJob(params as LocalCronJobCreateInput),
+      async (params) =>
+        await this.ensureScheduler().addCronJob(
+          params as LocalCronJobCreateInput,
+        ),
     );
     peer.registerRequestHandler(
       METHOD_NAMES.INTERNAL_SCHEDULE_UPDATE_CRON_JOB,
       async (params) => {
-        const payload = params as { jobId: string; patch: LocalCronJobUpdatePatch };
-        return await this.ensureScheduler().updateCronJob(payload.jobId, payload.patch);
+        const payload = params as {
+          jobId: string;
+          patch: LocalCronJobUpdatePatch;
+        };
+        return await this.ensureScheduler().updateCronJob(
+          payload.jobId,
+          payload.patch,
+        );
       },
     );
     peer.registerRequestHandler(
       METHOD_NAMES.INTERNAL_SCHEDULE_REMOVE_CRON_JOB,
       async (params) =>
-        await this.ensureScheduler().removeCronJob((params as { jobId: string }).jobId),
+        await this.ensureScheduler().removeCronJob(
+          (params as { jobId: string }).jobId,
+        ),
     );
     peer.registerRequestHandler(
       METHOD_NAMES.INTERNAL_SCHEDULE_RUN_CRON_JOB,
       async (params) =>
-        await this.ensureScheduler().runCronJob((params as { jobId: string }).jobId),
+        await this.ensureScheduler().runCronJob(
+          (params as { jobId: string }).jobId,
+        ),
     );
     peer.registerRequestHandler(
       METHOD_NAMES.INTERNAL_SCHEDULE_GET_HEARTBEAT_CONFIG,
@@ -2235,7 +2375,9 @@ export class StellaRuntimeHost {
     peer.registerRequestHandler(
       METHOD_NAMES.INTERNAL_SCHEDULE_UPSERT_HEARTBEAT,
       async (params) =>
-        await this.ensureScheduler().upsertHeartbeat(params as LocalHeartbeatUpsertInput),
+        await this.ensureScheduler().upsertHeartbeat(
+          params as LocalHeartbeatUpsertInput,
+        ),
     );
     peer.registerRequestHandler(
       METHOD_NAMES.INTERNAL_SCHEDULE_RUN_HEARTBEAT,
@@ -2247,15 +2389,24 @@ export class StellaRuntimeHost {
   }
 
   private registerNotifications(peer: JsonRpcPeer) {
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.RUNTIME_READY, (params) => {
-      this.events.emit("runtime-ready", params as RuntimeHealthSnapshot);
-    });
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.RUNTIME_RELOADING, (params) => {
-      this.events.emit("runtime-reloading", params as { reason: string });
-    });
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.RUNTIME_LAGGED, (params) => {
-      this.events.emit("runtime-lagged", params as { droppedCount: number });
-    });
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.RUNTIME_READY,
+      (params) => {
+        this.events.emit("runtime-ready", params as RuntimeHealthSnapshot);
+      },
+    );
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.RUNTIME_RELOADING,
+      (params) => {
+        this.events.emit("runtime-reloading", params as { reason: string });
+      },
+    );
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.RUNTIME_LAGGED,
+      (params) => {
+        this.events.emit("runtime-lagged", params as { droppedCount: number });
+      },
+    );
     peer.registerNotificationHandler(NOTIFICATION_NAMES.RUN_EVENT, (params) => {
       const payload = params as RuntimeAgentEventPayload;
       bufferAgentEvent(this.agentEventBuffers, payload);
@@ -2272,15 +2423,24 @@ export class StellaRuntimeHost {
         }
       }
     });
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.RUN_SELF_MOD_HMR_STATE, (params) => {
-      this.events.emit(
-        "run-self-mod-hmr-state",
-        params as { runId?: string; state: SelfModHmrState },
-      );
-    });
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.VOICE_AGENT_EVENT, (params) => {
-      this.events.emit("voice-agent-event", params as RuntimeVoiceAgentEventPayload);
-    });
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.RUN_SELF_MOD_HMR_STATE,
+      (params) => {
+        this.events.emit(
+          "run-self-mod-hmr-state",
+          params as { runId?: string; state: SelfModHmrState },
+        );
+      },
+    );
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.VOICE_AGENT_EVENT,
+      (params) => {
+        this.events.emit(
+          "voice-agent-event",
+          params as RuntimeVoiceAgentEventPayload,
+        );
+      },
+    );
     peer.registerNotificationHandler(
       NOTIFICATION_NAMES.VOICE_ACTION_COMPLETED,
       (params) => {
@@ -2299,26 +2459,32 @@ export class StellaRuntimeHost {
         );
       },
     );
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED, (params) => {
-      const payload = params as LocalChatUpdatedPayload | null;
-      this.handleLocalChatUpdateForConnectorFollowup(payload);
-      this.events.emit("local-chat-updated", payload);
-    });
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.LOCAL_CHAT_UPDATED,
+      (params) => {
+        const payload = params as LocalChatUpdatedPayload | null;
+        this.handleLocalChatUpdateForConnectorFollowup(payload);
+        this.events.emit("local-chat-updated", payload);
+      },
+    );
     peer.registerNotificationHandler(
       NOTIFICATION_NAMES.STORE_THREAD_UPDATED,
       (params) => {
-        this.events.emit(
-          "store-thread-updated",
-          params as StoreThreadSnapshot,
-        );
+        this.events.emit("store-thread-updated", params as StoreThreadSnapshot);
       },
     );
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.SCHEDULE_UPDATED, () => {
-      this.events.emit("schedule-updated", undefined);
-    });
-    peer.registerNotificationHandler(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, () => {
-      this.events.emit("google-workspace-auth-required");
-    });
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.SCHEDULE_UPDATED,
+      () => {
+        this.events.emit("schedule-updated", undefined);
+      },
+    );
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED,
+      () => {
+        this.events.emit("google-workspace-auth-required");
+      },
+    );
   }
 
   private startDevWatcher(workerEntryPath: string) {
@@ -2329,11 +2495,15 @@ export class StellaRuntimeHost {
       "..",
       "..",
     );
-    this.watcher = watch(distElectronRoot, { recursive: true }, (_eventType, filename) => {
-      if (typeof filename !== "string" || !filename.endsWith(".js")) return;
-      if (!shouldReloadRuntime(filename.replace(/\\/g, "/"))) return;
-      void this.scheduleRuntimeReload();
-    });
+    this.watcher = watch(
+      distElectronRoot,
+      { recursive: true },
+      (_eventType, filename) => {
+        if (typeof filename !== "string" || !filename.endsWith(".js")) return;
+        if (!shouldReloadRuntime(filename.replace(/\\/g, "/"))) return;
+        void this.scheduleRuntimeReload();
+      },
+    );
   }
 }
 

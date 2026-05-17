@@ -44,6 +44,8 @@ import {
 import { runOneShotCompletion } from "../kernel/agent-runtime/one-shot-completion.js";
 import { buildChatPromptMessages } from "../kernel/chat-prompt-context.js";
 import { getDevServerUrl } from "./dev-url.js";
+import { startCliBridgeServer, type CliBridgeServer } from "./cli-bridge-server.js";
+import { resolveRuntimePaths } from "./runtime-paths.js";
 import {
   discardGitDirtyFiles,
   detectSelfModAppliedSince,
@@ -199,6 +201,14 @@ type WorkerState = {
    * See runtime/kernel/storage/run-event-log.ts.
    */
   runEventLog: RunEventLog | null;
+  /**
+   * UDS bridge the worker exposes for sidecar CLIs (`stella-connect`)
+   * that need to call back into the host without speaking the full
+   * runtime JSON-RPC protocol. Started on first init, restarted if
+   * the worker re-inits with a new stellaRoot, stopped on shutdown.
+   * See `cli-bridge-server.ts`.
+   */
+  cliBridgeServer: CliBridgeServer | null;
 };
 
 /**
@@ -350,6 +360,8 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.activeStoreThreadMessageId = null;
   state.runEventLog?.stop();
   state.runEventLog = null;
+  await state.cliBridgeServer?.stop().catch(() => undefined);
+  state.cliBridgeServer = null;
   state.db?.close();
   state.db = null;
 };
@@ -373,6 +385,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     activeStoreThreadAgentId: null,
     activeStoreThreadMessageId: null,
     runEventLog: null,
+    cliBridgeServer: null,
   };
   const pendingApplyBatches = new Map<string, PendingApplyBatch>();
   const selfModRunRootIds = new Map<string, string>();
@@ -716,6 +729,49 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     state.socialSessionStore = socialSessionStore;
     state.runEventLog = runEventLog;
 
+    // Spin up the CLI bridge socket so sidecar CLIs invoked from
+    // `exec_command` (today just `stella-connect`) can call back into
+    // the host for credential dialogs. The socket path is injected into
+    // PTY shells as `STELLA_CLI_BRIDGE_SOCK` (see runtime/kernel/tools/
+    // shell.ts). If startup fails we log + continue — the CLI gracefully
+    // falls back to exit-2 `auth_required` when the socket isn't there.
+    const bridgePaths = resolveRuntimePaths(init.stellaRoot);
+    try {
+      state.cliBridgeServer = await startCliBridgeServer({
+        socketPath: bridgePaths.cliBridgeSocketPath,
+        log: (message, error) => {
+          if (error) {
+            console.warn(`[cli-bridge] ${message}:`, error);
+          } else {
+            console.warn(`[cli-bridge] ${message}`);
+          }
+        },
+        handlers: {
+          requestConnectorCredential: async (params) => {
+            try {
+              return await peer.request<
+                | { ok: true }
+                | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
+              >(METHOD_NAMES.HOST_CONNECTOR_CREDENTIAL_REQUEST, params, {
+                retryOnDisconnect: true,
+              });
+            } catch (error) {
+              return {
+                ok: false,
+                reason: (error as Error).message || "host_unreachable",
+              };
+            }
+          },
+        },
+      });
+    } catch (error) {
+      console.warn(
+        "[cli-bridge] Failed to start CLI bridge server:",
+        (error as Error).message,
+      );
+      state.cliBridgeServer = null;
+    }
+
     // Push a fresh snapshot to subscribers whenever the Store thread mutates
     // (matches the localChat updated-channel pattern). The renderer
     // subscribes via `electronAPI.store.onThreadUpdated` so the side panel
@@ -1023,6 +1079,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       ),
       stellaComputerCliPath: resolveRuntimeCliPath("stella-computer.js"),
       stellaConnectCliPath: resolveRuntimeCliPath("stella-connect.js"),
+      // Only advertise the bridge socket once it's listening. If startup
+      // failed (state.cliBridgeServer === null) the CLI gracefully falls
+      // back to exit-2 `auth_required` instead of dialing a dead socket.
+      cliBridgeSocketPath: state.cliBridgeServer?.socketPath,
       onGoogleWorkspaceAuthRequired: () => {
         peer.notify(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, null);
       },

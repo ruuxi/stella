@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 
 import { loadConnectorAccessToken } from "./oauth.js";
-import type { ConnectorToolCallResult, ConnectorCommandConfig, ConnectorToolInfo } from "./types.js";
+import type {
+  ConnectorToolCallResult,
+  ConnectorCommandConfig,
+  ConnectorToolInfo,
+} from "./types.js";
 
 /** Thrown when a connector request comes back with an HTTP auth status
  *  (401/403/407). Lets callers (e.g. `stella-connect import-mcp`) branch
@@ -68,7 +72,9 @@ const replaceSecretPlaceholders = async (stellaRoot: string, value: string) => {
   let cursor = 0;
   for (const match of value.matchAll(/\$\{([a-zA-Z0-9_.-]+)\}/gu)) {
     parts.push(value.slice(cursor, match.index));
-    parts.push((await loadConnectorAccessToken(stellaRoot, match[1])) ?? match[0]);
+    parts.push(
+      (await loadConnectorAccessToken(stellaRoot, match[1])) ?? match[0],
+    );
     cursor = match.index + match[0].length;
   }
   parts.push(value.slice(cursor));
@@ -90,12 +96,26 @@ class HttpConnectorBridgeSession {
       "content-type": "application/json",
       ...(this.server.headers ?? {}),
     };
-    const token = await loadConnectorAccessToken(this.stellaRoot, this.server.auth?.tokenKey);
+    const token = await loadConnectorAccessToken(
+      this.stellaRoot,
+      this.server.auth?.tokenKey,
+    );
     if (token) {
       const scheme = this.server.auth?.scheme ?? "bearer";
       const value =
-        scheme === "raw" ? token : scheme === "basic" ? `Basic ${token}` : `Bearer ${token}`;
+        scheme === "raw"
+          ? token
+          : scheme === "basic"
+            ? `Basic ${token}`
+            : `Bearer ${token}`;
       headers[this.server.auth?.headerName ?? "authorization"] = value;
+    } else if (this.server.auth?.type && this.server.auth.type !== "none") {
+      throw new ConnectorAuthError(
+        0,
+        this.server.displayName,
+        this.server.auth.tokenKey,
+        `${this.server.displayName} has no stored credential for tokenKey "${this.server.auth.tokenKey}".`,
+      );
     }
     if (this.sessionId) {
       headers["mcp-session-id"] = this.sessionId;
@@ -103,8 +123,13 @@ class HttpConnectorBridgeSession {
     return headers;
   }
 
-  private async request(method: string, params?: unknown): Promise<unknown> {
-    if (!this.server.url) throw new Error(`${this.server.displayName} does not have a URL.`);
+  private async request(
+    method: string,
+    params?: unknown,
+    recoverSession = true,
+  ): Promise<unknown> {
+    if (!this.server.url)
+      throw new Error(`${this.server.displayName} does not have a URL.`);
     const id = randomUUID();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60_000);
@@ -123,7 +148,9 @@ class HttpConnectorBridgeSession {
       });
     } catch (error) {
       if (controller.signal.aborted) {
-        throw new Error(`${this.server.displayName} timed out waiting for ${method}.`);
+        throw new Error(
+          `${this.server.displayName} timed out waiting for ${method}.`,
+        );
       }
       throw error;
     } finally {
@@ -133,6 +160,17 @@ class HttpConnectorBridgeSession {
     if (responseSessionId) this.sessionId = responseSessionId;
     const text = await response.text();
     if (!response.ok) {
+      if (
+        response.status === 404 &&
+        recoverSession &&
+        this.sessionId &&
+        method !== "initialize"
+      ) {
+        this.sessionId = null;
+        this.initialized = false;
+        await this.initialize();
+        return await this.request(method, params, false);
+      }
       if (AUTH_STATUSES.has(response.status)) {
         throw new ConnectorAuthError(
           response.status,
@@ -141,7 +179,9 @@ class HttpConnectorBridgeSession {
           text,
         );
       }
-      throw new Error(`${this.server.displayName} connector request failed (${response.status}): ${text.slice(0, 500)}`);
+      throw new Error(
+        `${this.server.displayName} connector request failed (${response.status}): ${text.slice(0, 500)}`,
+      );
     }
     const contentType = response.headers.get("content-type") ?? "";
     const messages = contentType.includes("text/event-stream")
@@ -149,7 +189,9 @@ class HttpConnectorBridgeSession {
       : [JSON.parse(text) as RpcMessage];
     const message = messages.find((entry) => String(entry.id) === id);
     if (!message) {
-      throw new Error(`${this.server.displayName} did not return a response for ${method}.`);
+      throw new Error(
+        `${this.server.displayName} did not return a response for ${method}.`,
+      );
     }
     if (message.error) {
       throw new Error(message.error.message ?? `${method} failed.`);
@@ -195,7 +237,10 @@ class HttpConnectorBridgeSession {
     return Array.isArray(tools) ? (tools as ConnectorToolInfo[]) : [];
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<ConnectorToolCallResult> {
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<ConnectorToolCallResult> {
     await this.initialize();
     const result = await this.request("tools/call", {
       name,
@@ -213,10 +258,13 @@ class HttpConnectorBridgeSession {
 class StdioConnectorBridgeSession {
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
-  private pending = new Map<string, {
-    resolve: (value: unknown) => void;
-    reject: (error: Error) => void;
-  }>();
+  private pending = new Map<
+    string,
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+    }
+  >();
   private initialized = false;
 
   constructor(
@@ -269,7 +317,9 @@ class StdioConnectorBridgeSession {
       if (!pending) return;
       this.pending.delete(String(message.id));
       if (message.error) {
-        pending.reject(new Error(message.error.message ?? "connector request failed."));
+        pending.reject(
+          new Error(message.error.message ?? "connector request failed."),
+        );
       } else {
         pending.resolve(message.result);
       }
@@ -281,17 +331,23 @@ class StdioConnectorBridgeSession {
     const child = this.child;
     if (!child) throw new Error(`${this.server.displayName} is not running.`);
     const id = String(this.nextId++);
-    child.stdin.write(`${JSON.stringify({
-      jsonrpc: "2.0",
-      id,
-      method,
-      ...(params === undefined ? {} : { params }),
-    })}\n`);
+    child.stdin.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method,
+        ...(params === undefined ? {} : { params }),
+      })}\n`,
+    );
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       setTimeout(() => {
         if (this.pending.delete(id)) {
-          reject(new Error(`${this.server.displayName} timed out waiting for ${method}.`));
+          reject(
+            new Error(
+              `${this.server.displayName} timed out waiting for ${method}.`,
+            ),
+          );
         }
       }, 60_000);
     });
@@ -299,11 +355,13 @@ class StdioConnectorBridgeSession {
 
   private async notify(method: string, params?: unknown) {
     await this.start();
-    this.child?.stdin.write(`${JSON.stringify({
-      jsonrpc: "2.0",
-      method,
-      ...(params === undefined ? {} : { params }),
-    })}\n`);
+    this.child?.stdin.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        method,
+        ...(params === undefined ? {} : { params }),
+      })}\n`,
+    );
   }
 
   async initialize() {
@@ -324,7 +382,10 @@ class StdioConnectorBridgeSession {
     return Array.isArray(tools) ? (tools as ConnectorToolInfo[]) : [];
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<ConnectorToolCallResult> {
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<ConnectorToolCallResult> {
     await this.initialize();
     const result = await this.request("tools/call", {
       name,
@@ -344,7 +405,10 @@ class StdioConnectorBridgeSession {
   }
 }
 
-const sessions = new Map<string, HttpConnectorBridgeSession | StdioConnectorBridgeSession>();
+const sessions = new Map<
+  string,
+  HttpConnectorBridgeSession | StdioConnectorBridgeSession
+>();
 
 const getSession = (stellaRoot: string, server: ConnectorCommandConfig) => {
   const key = `${stellaRoot}:${server.id}`;
