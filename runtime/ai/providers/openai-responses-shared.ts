@@ -327,6 +327,36 @@ export async function processResponsesStream<TApi extends Api>(
 	const blocks = output.content;
 	const blockIndex = () => blocks.length - 1;
 
+	// Fireworks's Responses API for kimi-k2p6 (and kimi-k2p5, including the
+	// `-turbo` variants) sometimes emits `response.output_text.delta`
+	// BEFORE the matching `response.output_item.added` for the message
+	// they belong to. Without this helper, those early deltas would be
+	// silently dropped — the assistant reply still ends up correct
+	// (because `response.output_item.done` writes the full text from
+	// `item.content` at the end), but no `text_delta` events are emitted
+	// during streaming and the reply pops in all at once instead of
+	// typewriter-ing. `ensureTextBlock` lazy-creates the text block + a
+	// matching `output_text` part on the first delta. The
+	// `response.output_item.added` handler below then ADOPTS this
+	// already-existing block instead of allocating a second one, which
+	// would otherwise render the reply twice in the UI.
+	const ensureTextBlock = (): TextContent => {
+		if (currentItem?.type === "message" && currentBlock?.type === "text") {
+			return currentBlock;
+		}
+		currentItem = {
+			type: "message",
+			id: `msg_${output.content.length}`,
+			role: "assistant",
+			content: [{ type: "output_text", text: "", annotations: [] }],
+			status: "in_progress",
+		} as ResponseOutputMessage;
+		currentBlock = { type: "text", text: "" };
+		output.content.push(currentBlock);
+		stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
+		return currentBlock;
+	};
+
 	for await (const event of openaiStream) {
 		if (event.type === "response.created") {
 			output.responseId = event.response.id;
@@ -338,10 +368,21 @@ export async function processResponsesStream<TApi extends Api>(
 				output.content.push(currentBlock);
 				stream.push({ type: "thinking_start", contentIndex: blockIndex(), partial: output });
 			} else if (item.type === "message") {
-				currentItem = item;
-				currentBlock = { type: "text", text: "" };
-				output.content.push(currentBlock);
-				stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
+				// If the delta handler already lazy-created a text block
+				// for this message (Fireworks kimi-k2p6 ordering quirk —
+				// see `ensureTextBlock`), adopt it instead of pushing a
+				// duplicate. Without this guard we'd end up with two
+				// text blocks: the lazy one accumulating deltas and a
+				// fresh one that `output_item.done` would write the full
+				// text into, rendering the assistant reply twice.
+				if (currentBlock?.type === "text") {
+					currentItem = item;
+				} else {
+					currentItem = item;
+					currentBlock = { type: "text", text: "" };
+					output.content.push(currentBlock);
+					stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
+				}
 			} else if (item.type === "function_call") {
 				currentItem = item;
 				currentBlock = {
@@ -408,39 +449,53 @@ export async function processResponsesStream<TApi extends Api>(
 				}
 			}
 		} else if (event.type === "response.output_text.delta") {
-			if (currentItem?.type === "message" && currentBlock?.type === "text") {
-				if (!currentItem.content || currentItem.content.length === 0) {
-					continue;
-				}
+			// Lazy-create the text block if the delta arrived before
+			// `output_item.added` (Fireworks kimi-k2p6 ordering). Mirror
+			// the delta into `currentItem.content` so the existing
+			// `content_part.added` invariants stay intact for the OpenAI
+			// path.
+			const textBlock = ensureTextBlock();
+			textBlock.text += event.delta;
+			if (currentItem?.type === "message") {
+				currentItem.content = currentItem.content || [];
 				const lastPart = currentItem.content[currentItem.content.length - 1];
 				if (lastPart?.type === "output_text") {
-					currentBlock.text += event.delta;
 					lastPart.text += event.delta;
-					stream.push({
-						type: "text_delta",
-						contentIndex: blockIndex(),
-						delta: event.delta,
-						partial: output,
+				} else {
+					currentItem.content.push({
+						type: "output_text",
+						text: event.delta,
+						annotations: [],
 					});
 				}
 			}
+			stream.push({
+				type: "text_delta",
+				contentIndex: blockIndex(),
+				delta: event.delta,
+				partial: output,
+			});
 		} else if (event.type === "response.refusal.delta") {
-			if (currentItem?.type === "message" && currentBlock?.type === "text") {
-				if (!currentItem.content || currentItem.content.length === 0) {
-					continue;
-				}
+			const textBlock = ensureTextBlock();
+			textBlock.text += event.delta;
+			if (currentItem?.type === "message") {
+				currentItem.content = currentItem.content || [];
 				const lastPart = currentItem.content[currentItem.content.length - 1];
 				if (lastPart?.type === "refusal") {
-					currentBlock.text += event.delta;
 					lastPart.refusal += event.delta;
-					stream.push({
-						type: "text_delta",
-						contentIndex: blockIndex(),
-						delta: event.delta,
-						partial: output,
+				} else {
+					currentItem.content.push({
+						type: "refusal",
+						refusal: event.delta,
 					});
 				}
 			}
+			stream.push({
+				type: "text_delta",
+				contentIndex: blockIndex(),
+				delta: event.delta,
+				partial: output,
+			});
 		} else if (event.type === "response.function_call_arguments.delta") {
 			if (currentItem?.type === "function_call" && currentBlock?.type === "toolCall") {
 				currentBlock.partialJson += event.delta;
