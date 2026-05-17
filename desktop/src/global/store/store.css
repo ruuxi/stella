@@ -1304,6 +1304,65 @@
   border-radius: 3px;
 }
 
+.store-side-panel-integrations {
+  flex: 0 0 auto;
+  min-height: 0;
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.store-side-panel-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 12px 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  color: var(--text-secondary);
+}
+
+.store-side-panel-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-base);
+  font: inherit;
+  font-size: 13px;
+}
+
+.store-side-panel-search input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.store-side-panel-list--integrations {
+  flex: 0 1 auto;
+  max-height: min(34vh, 310px);
+  padding-bottom: 10px;
+}
+
+.store-side-panel-error {
+  margin: 0 12px 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: var(--destructive, oklch(0.6 0.2 25));
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 8%,
+    transparent
+  );
+  border: 1px solid
+    color-mix(
+      in oklch,
+      var(--destructive, oklch(0.6 0.2 25)) 18%,
+      transparent
+    );
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 /*
  * Recent-changes row. The label sits on the left; explicit `Add` and
  * `Publish` action pills sit on the right. The whole row is a div, not
@@ -1333,6 +1392,33 @@
     var(--interactive, var(--primary, oklch(0.62 0.18 250))) 28%,
     transparent
   );
+}
+
+.store-side-panel-row--connector {
+  padding: 7px 8px;
+}
+
+.store-side-panel-connector-icon {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.store-side-panel-connector-icon img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .store-side-panel-row-text {
