@@ -6,6 +6,7 @@ import { CaptureService } from "../services/capture-service.js";
 import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { togglePetVoice } from "../services/pet-voice-control.js";
 import { CredentialService } from "../services/credential-service.js";
+import { ConnectorCredentialService } from "../services/connector-credential-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
 import { LocalChatHistoryService } from "../services/local-chat-history-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
@@ -63,6 +64,11 @@ export const createBootstrapServices = (options: {
   const credentialService = new CredentialService({
     windowManagerTarget: lifecycle,
     getBroadcastToMobile: () => options.getMobileBroadcast(),
+  });
+
+  const connectorCredentialService = new ConnectorCredentialService({
+    windowManagerTarget: lifecycle,
+    getStellaRoot: () => lifecycle.getStellaRoot(),
   });
 
   const captureService = new CaptureService({
@@ -241,6 +247,7 @@ export const createBootstrapServices = (options: {
     captureService,
     radialGestureService,
     credentialService,
+    connectorCredentialService,
     externalLinkService,
     localChatHistoryService,
     securityPolicyService,

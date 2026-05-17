@@ -234,6 +234,21 @@ type SystemHandlersOptions = {
     ok: boolean;
     error?: string;
   };
+  /**
+   * Connector credential brokers (`stella-connect` auth dialog). Distinct
+   * pair from `submitCredential`/`cancelCredential` because the value is
+   * persisted directly to `state/connectors/.credentials.json` instead of
+   * being routed through Convex secrets.
+   */
+  submitConnectorCredential: (payload: {
+    requestId: string;
+    value: string;
+    label?: string;
+  }) => Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string };
+  cancelConnectorCredential: (payload: { requestId: string }) => {
+    ok: boolean;
+    error?: string;
+  };
   getBroadcastToMobile?: () =>
     | ((channel: string, data: unknown) => void)
     | null;
@@ -806,6 +821,39 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         throw new Error("Blocked untrusted credential cancellation.");
       }
       return options.cancelCredential(payload);
+    },
+  );
+
+  ipcMain.handle(
+    "connector-credential:submit",
+    async (
+      event,
+      payload: { requestId: string; value: string; label?: string },
+    ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "connector-credential:submit",
+        )
+      ) {
+        throw new Error("Blocked untrusted connector credential submission.");
+      }
+      return await options.submitConnectorCredential(payload);
+    },
+  );
+
+  ipcMain.handle(
+    "connector-credential:cancel",
+    (event, payload: { requestId: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "connector-credential:cancel",
+        )
+      ) {
+        throw new Error("Blocked untrusted connector credential cancellation.");
+      }
+      return options.cancelConnectorCredential(payload);
     },
   );
 

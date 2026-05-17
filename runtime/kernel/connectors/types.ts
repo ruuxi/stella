@@ -17,6 +17,9 @@ export type ConnectorCommandConfig = {
     headerName?: string;
     scheme?: "bearer" | "basic" | "raw";
     envVar?: string;
+    clientId?: string;
+    resource?: string;
+    scopes?: string[];
   };
 };
 
@@ -30,6 +33,9 @@ export type ApiConnectorConfig = {
     tokenKey?: string;
     headerName?: string;
     scheme?: "bearer" | "basic" | "raw";
+    clientId?: string;
+    resource?: string;
+    scopes?: string[];
   };
 };
 

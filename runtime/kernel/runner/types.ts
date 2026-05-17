@@ -60,6 +60,9 @@ export type StellaHostRunnerOptions = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  /** UDS path for the worker-side CLI bridge (see runtime/worker/cli-bridge-server.ts).
+   *  Forwarded into PTY env as `STELLA_CLI_BRIDGE_SOCK`. */
+  cliBridgeSocketPath?: string;
   selfModMonitor?: SelfModMonitor | null;
   selfModLifecycle?: {
     beginRun: (args: {
@@ -311,6 +314,7 @@ export type RunnerContext = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  cliBridgeSocketPath?: string;
   selfModMonitor?: SelfModMonitor | null;
   selfModLifecycle?: StellaHostRunnerOptions["selfModLifecycle"];
   selfModHmrController?: StellaHostRunnerOptions["selfModHmrController"];

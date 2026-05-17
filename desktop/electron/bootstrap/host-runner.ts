@@ -65,6 +65,8 @@ export const createHostRunnerHandlers = (
     ),
   requestCredential: (payload) =>
     context.services.credentialService.requestCredential(payload),
+  requestConnectorCredential: (payload) =>
+    context.services.connectorCredentialService.requestCredential(payload),
   displayUpdate: (payload) => {
     // Forward structured DisplayPayload objects to all windows. The renderer
     // validates them before routing to the workspace panel.

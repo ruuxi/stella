@@ -41,6 +41,13 @@ export type ShellState = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  /**
+   * Per-root CLI bridge UDS path (worker-side). Forwarded into the PTY
+   * env as `STELLA_CLI_BRIDGE_SOCK` so sidecar CLIs (`stella-connect`)
+   * can call back into the host for credential dialogs. The CLI gates
+   * on the env var existing; absent ⇒ legacy exit-2 `auth_required`.
+   */
+  cliBridgeSocketPath?: string;
   lastDeferredDeleteSweepAt: number;
 };
 
@@ -49,6 +56,7 @@ type ShellStateOptions = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  cliBridgeSocketPath?: string;
 };
 
 type ManagedShellRecord = ShellRecord & {
@@ -454,6 +462,7 @@ export function createShellState(
     stellaOfficeBinPath: options?.stellaOfficeBinPath,
     stellaComputerCliPath: options?.stellaComputerCliPath,
     stellaConnectCliPath: options?.stellaConnectCliPath,
+    cliBridgeSocketPath: options?.cliBridgeSocketPath,
     lastDeferredDeleteSweepAt: 0,
   };
 }
@@ -680,6 +689,7 @@ const buildShellEnv = (
     stellaOfficeBinPath?: string;
     stellaComputerCliPath?: string;
     stellaConnectCliPath?: string;
+    cliBridgeSocketPath?: string;
   },
 ) => {
   const mergedEnv = {
@@ -700,6 +710,9 @@ const buildShellEnv = (
       : {}),
     ...(options?.stellaConnectCliPath
       ? { STELLA_CONNECT_CLI: options.stellaConnectCliPath }
+      : {}),
+    ...(options?.cliBridgeSocketPath
+      ? { STELLA_CLI_BRIDGE_SOCK: options.cliBridgeSocketPath }
       : {}),
   };
 

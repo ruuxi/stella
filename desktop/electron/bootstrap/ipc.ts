@@ -221,6 +221,10 @@ export const registerBootstrapIpcHandlers = (
       services.credentialService.submitCredential(payload),
     cancelCredential: (payload) =>
       services.credentialService.cancelCredential(payload),
+    submitConnectorCredential: (payload) =>
+      services.connectorCredentialService.submitCredential(payload),
+    cancelConnectorCredential: (payload) =>
+      services.connectorCredentialService.cancelCredential(payload),
     getBroadcastToMobile: lazyMobileBroadcast,
     startPhoneAccessSession: () => {
       startMobileBridge(context);

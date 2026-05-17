@@ -20,6 +20,13 @@ type CredentialModalProps = {
   label?: string;
   description?: string;
   placeholder?: string;
+  /**
+   * Show the "Label" field. Connector credentials don't need it (the
+   * tokenKey is the identifier and there's only one credential per
+   * connector); the legacy `RequestCredential` flow does because users
+   * may have multiple keys for the same provider.
+   */
+  showLabel?: boolean;
   onSubmit: (payload: { label: string; secret: string }) => Promise<void>;
   onCancel: () => void;
 };
@@ -31,6 +38,7 @@ const CredentialModalContent = ({
   label,
   description,
   placeholder,
+  showLabel = true,
   onSubmit,
   onCancel,
 }: CredentialModalContentProps) => {
@@ -66,7 +74,7 @@ const CredentialModalContent = ({
       <VisuallyHidden asChild>
         <DialogDescription>
           {description ??
-            "Enter your API key. It is stored securely and never shown to the AI."}
+            `Stella needs your ${providerTitle} API key to connect. Paste it below. It stays on your computer.`}
         </DialogDescription>
       </VisuallyHidden>
       <DialogCloseButton className="credential-modal-close" />
@@ -78,7 +86,7 @@ const CredentialModalContent = ({
           <p className="credential-modal-headline">Connect {providerTitle}</p>
           <p className="credential-modal-sub">
             {description ??
-              "Paste your API key. It's stored securely on your device and never shown to the AI."}
+              `Stella needs your ${providerTitle} API key to connect. Paste it below. It stays on your computer.`}
           </p>
         </div>
 
@@ -91,13 +99,15 @@ const CredentialModalContent = ({
             placeholder={placeholder ?? "Paste your key"}
             autoFocus
           />
-          <TextField
-            label="Label"
-            description="A friendly name to recognize this key later."
-            value={labelValue}
-            onChange={(event) => setLabelValue(event.target.value)}
-            placeholder={`${providerTitle} key`}
-          />
+          {showLabel ? (
+            <TextField
+              label="Label"
+              description="A friendly name to recognize this key later."
+              value={labelValue}
+              onChange={(event) => setLabelValue(event.target.value)}
+              placeholder={`${providerTitle} key`}
+            />
+          ) : null}
           {error ? <div className="credential-modal-error">{error}</div> : null}
 
           <div className="credential-modal-actions">
@@ -131,6 +141,7 @@ export const CredentialModal = ({
   label,
   description,
   placeholder,
+  showLabel,
   onSubmit,
   onCancel,
 }: CredentialModalProps) => {
@@ -147,6 +158,7 @@ export const CredentialModal = ({
             label={label}
             description={description}
             placeholder={placeholder}
+            showLabel={showLabel}
             onSubmit={onSubmit}
             onCancel={onCancel}
           />
