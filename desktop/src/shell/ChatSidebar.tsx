@@ -36,6 +36,7 @@ import { DropOverlay } from "@/app/chat/DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
+import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import { useCapturedChatContext } from "./use-captured-chat-context";
@@ -75,6 +76,7 @@ interface ChatPanelTabProps {
   activities: EventRecord[];
   latestMessageTimestampMs: number | null;
   streamingText: string;
+  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
@@ -100,6 +102,7 @@ export function ChatPanelTab(
       activities,
       latestMessageTimestampMs,
       streamingText,
+      streamingResponseTarget,
       isStreaming,
       runtimeStatusText,
       pendingUserMessageId,
@@ -342,6 +345,7 @@ export function ChatPanelTab(
               scroll={sidebarScrollApi}
               messages={messages}
               streamingText={streamingText}
+              streamingResponseTarget={streamingResponseTarget}
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}

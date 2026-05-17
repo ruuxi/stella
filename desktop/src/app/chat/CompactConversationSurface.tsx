@@ -3,6 +3,7 @@ import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
+import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
 import { ConversationEvents } from "./ConversationEvents";
 import "./full-shell.chat.css";
 import "./compact-conversation.css";
@@ -28,6 +29,7 @@ type CompactConversationSurfaceProps = {
   messages: MessageRecord[];
   maxItems?: number;
   streamingText: string;
+  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
@@ -50,6 +52,7 @@ export function CompactConversationSurface({
   messages,
   maxItems,
   streamingText,
+  streamingResponseTarget,
   isStreaming,
   pendingUserMessageId,
   queuedUserMessages,
@@ -79,6 +82,7 @@ export function CompactConversationSurface({
             messages={messages}
             maxItems={maxItems}
             streamingText={streamingText}
+            streamingResponseTarget={streamingResponseTarget}
             isStreaming={isStreaming}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}
