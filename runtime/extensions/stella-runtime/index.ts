@@ -4,6 +4,7 @@ import type {
   HookDefinition,
 } from "../../kernel/extensions/types.js";
 import { createChronicleInjectionHook } from "./hooks/chronicle-injection.hook.js";
+import { createConnectorFormatReminderHook } from "./hooks/connector-format-reminder.hook.js";
 import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.hook.js";
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
 import { createHomeSuggestionsRefreshHook } from "./hooks/home-suggestions-refresh.hook.js";
@@ -66,6 +67,11 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
 
   register(createStaleUserReminderHook());
   register(createDynamicMemoryReminderHook());
+  // Connector-format reminder: one hidden `<system_reminder>` on the
+  // single turn where the user's routing surface changes (desktop ⇄
+  // connector / connector ⇄ different connector). Cheap — the
+  // transition decision is precomputed in `prepareOrchestratorRun`.
+  register(createConnectorFormatReminderHook());
   // Revert-notice: one hidden `<system_reminder>` per pending self-mod
   // revert, drained on the next user turn for the affected conversation.
   // Runs alongside the other before_user_message reminders since it

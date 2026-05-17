@@ -149,6 +149,83 @@ const findLatestLocale = (events: LocalContextEvent[]): string | undefined => {
   return undefined;
 };
 
+/**
+ * Detects a "routing surface changed" transition between the latest and
+ * the previous user message in a conversation and returns the hidden
+ * system-reminder text the orchestrator should see (or `undefined` when
+ * nothing changed).
+ *
+ * "Routing surface" here means whether the user is talking through a
+ * connector (Linq SMS, Slack, Discord, etc.) or directly from the
+ * desktop, and which connector if so. Each `user_message` event carries
+ * `payload.source` (either `"connector"` or absent) and, when sourced
+ * from a connector, `payload.provider` identifying the channel.
+ *
+ * The reminder is only injected on the transition turn — once the model
+ * has acknowledged the new surface, subsequent same-surface user
+ * messages skip the reminder so we don't burn cache or nag the model.
+ *
+ * - desktop → connector: tell the orchestrator the user is on
+ *   `<provider>`, ask it to reply in plain text and skip the
+ *   `askQuestion` / `html` tools (they're desktop-renderer UI).
+ * - connector → desktop: tell the orchestrator the user is back at
+ *   their desktop so it stops constraining its format.
+ * - connector → different connector: same as desktop → connector with
+ *   the new provider name.
+ * - same surface: returns `undefined`.
+ */
+const buildConnectorTransitionReminder = (
+  events: LocalContextEvent[],
+): string | undefined => {
+  const userEvents = events.filter((event) => event.type === "user_message");
+  if (userEvents.length === 0) return undefined;
+
+  const latest = userEvents[userEvents.length - 1];
+  const previous = userEvents[userEvents.length - 2];
+
+  const sourceOf = (
+    event: LocalContextEvent | undefined,
+  ): { isConnector: boolean; provider: string | null } => {
+    if (!event?.payload || typeof event.payload !== "object") {
+      return { isConnector: false, provider: null };
+    }
+    const payload = event.payload as Record<string, unknown>;
+    if (payload.source !== "connector") {
+      return { isConnector: false, provider: null };
+    }
+    const provider =
+      typeof payload.provider === "string" && payload.provider.trim()
+        ? payload.provider.trim()
+        : null;
+    return { isConnector: true, provider };
+  };
+
+  const currentSurface = sourceOf(latest);
+  const previousSurface = sourceOf(previous);
+
+  // No transition: same surface (and same provider when on a connector).
+  if (
+    currentSurface.isConnector === previousSurface.isConnector &&
+    currentSurface.provider === previousSurface.provider
+  ) {
+    return undefined;
+  }
+
+  if (currentSurface.isConnector) {
+    const providerLabel = currentSurface.provider ?? "an external chat channel";
+    return [
+      `The user just switched to messaging you from ${providerLabel} (not the desktop app).`,
+      "Reply in plain text only — no markdown, no headers, no bullet lists, no code blocks. Write like a normal text message.",
+      "Do not call the `askQuestion` tool (the chip UI does not render on the user's phone — ask any question inline in chat instead).",
+      "Do not call the `html` tool (HTML/canvas artifacts only render in the desktop sidebar — type the answer in chat instead).",
+      "Keep replies short and conversational.",
+    ].join(" ");
+  }
+
+  // connector → desktop
+  return "The user is back at their desktop. You can respond normally again — markdown, the `askQuestion` tool, the `html` tool, and other desktop-only surfaces are all fine.";
+};
+
 const buildStaleUserReminder = (
   events: LocalContextEvent[],
 ): string | undefined => {
@@ -601,6 +678,7 @@ export const buildAgentContext = async (
 
   let threadHistory: ThreadHistoryEntry[] | undefined;
   let staleUserReminderText: string | undefined;
+  let connectorTransitionReminderText: string | undefined;
   // Locale is plumbed onto user-message payloads alongside `timezone`, so
   // we read whatever was most recently sent. The orchestrator path
   // already loads recent local events to build history; subagent paths
@@ -621,6 +699,8 @@ export const buildAgentContext = async (
       .listLocalChatEvents(args.conversationId, 800)
       .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
     staleUserReminderText = buildStaleUserReminder(localEvents);
+    connectorTransitionReminderText =
+      buildConnectorTransitionReminder(localEvents);
     userLocale = findLatestLocale(localEvents);
     threadHistory = buildOrchestratorThreadHistory({
       storedThreadMessages,
@@ -712,6 +792,7 @@ export const buildAgentContext = async (
     orchestratorReminderText: activeThreadsPrompt || undefined,
     shouldInjectDynamicReminder: reminderState.shouldInjectDynamicReminder,
     staleUserReminderText,
+    connectorTransitionReminderText,
     toolsAllowlist,
     model,
     reasoningEffort: getReasoningEffort(context.stellaRoot, args.agentType),

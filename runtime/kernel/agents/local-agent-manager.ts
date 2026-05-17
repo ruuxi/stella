@@ -65,6 +65,7 @@ export type LocalAgentContext = {
   dynamicContext: string;
   orchestratorReminderText?: string;
   staleUserReminderText?: string;
+  connectorTransitionReminderText?: string;
   shouldInjectDynamicReminder?: boolean;
   toolsAllowlist?: string[];
   model?: string;

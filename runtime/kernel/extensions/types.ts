@@ -113,6 +113,15 @@ export type BeforeUserMessagePayload = HookRuntimeContext & {
   userPrompt: string;
   staleUserReminderText?: string;
   orchestratorReminderText?: string;
+  /**
+   * Pre-rendered hidden reminder text describing a change in the user's
+   * routing surface (desktop ⇄ connector / connector ⇄ different
+   * connector). Computed in `prepareOrchestratorRun`; undefined when
+   * the surface didn't change since the previous user message. Hooks
+   * inject it as a hidden system reminder so the orchestrator only sees
+   * the format guidance on the transition turn.
+   */
+  connectorTransitionReminderText?: string;
   shouldInjectDynamicReminder?: boolean;
 };
 
