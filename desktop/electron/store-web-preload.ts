@@ -88,6 +88,11 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
   clearEmojiPack: (payload?: { packId?: string }) =>
     invoke("storeWeb:clearEmojiPack", payload),
   getEmojiPackState: () => invoke("storeWeb:getEmojiPackState"),
+  listComposioConnectors: () => invoke("storeWeb:listComposioConnectors"),
+  enableComposioConnector: (payload: { toolkit: string }) =>
+    invoke("storeWeb:enableComposioConnector", payload),
+  disableComposioConnector: (payload: { toolkit: string }) =>
+    invoke("storeWeb:disableComposioConnector", payload),
   fashion: {
     pickAndSaveBodyPhoto: () =>
       invoke("storeWeb:fashionLocalAction", {

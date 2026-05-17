@@ -165,6 +165,22 @@ const handleStoreWebLocalAction = async (
     }
     case "getEmojiPackState":
       return getEmojiPackState();
+    case "listComposioConnectors":
+      return await window.electronAPI?.system?.listComposioConnectors?.();
+    case "enableComposioConnector": {
+      const toolkit = typeof payload.toolkit === "string" ? payload.toolkit : "";
+      if (!toolkit) throw new Error("Missing integration id.");
+      return await window.electronAPI?.system?.enableComposioConnector?.(
+        toolkit,
+      );
+    }
+    case "disableComposioConnector": {
+      const toolkit = typeof payload.toolkit === "string" ? payload.toolkit : "";
+      if (!toolkit) throw new Error("Missing integration id.");
+      return await window.electronAPI?.system?.disableComposioConnector?.(
+        toolkit,
+      );
+    }
     case "fashion": {
       const innerAction = payload.action;
       const innerPayload = normalizeActionRecord(payload.payload);
