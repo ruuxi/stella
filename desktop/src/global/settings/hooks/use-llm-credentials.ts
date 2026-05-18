@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import type {
   LocalLlmCredentialSummary,
   LocalLlmOAuthProviderSummary,
 } from "@/shared/types/electron";
+import {
+  createResourceStore,
+  useResourceStore,
+} from "@/shared/lib/resource-cache";
 
 /**
  * Fired the first time a non-Stella LLM provider transitions from "not
@@ -24,10 +28,13 @@ declare global {
   }
 }
 
-export type LlmCredentialState = {
+type CredentialSnapshot = {
   apiKeys: LocalLlmCredentialSummary[];
   oauthProviders: LocalLlmOAuthProviderSummary[];
   oauthCredentials: LocalLlmCredentialSummary[];
+};
+
+export type LlmCredentialState = CredentialSnapshot & {
   loading: boolean;
   error: string | null;
 };
@@ -46,26 +53,78 @@ export type LlmCredentialActions = {
 
 export type LlmCredentials = LlmCredentialState & LlmCredentialActions;
 
-const errorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
-
-/**
- * Module-level cache so that re-mounts (e.g. switching between the Image
- * and Voice tabs, which each mount their own `ProviderOnlyPicker`) start
- * with the last-known credential state instead of empty arrays. Without
- * this the rows flash "Connect" -> "Connected" on every tab switch while
- * the background `listLlmCredentials` IPC resolves.
- */
-const credentialsCache: {
-  apiKeys: LocalLlmCredentialSummary[];
-  oauthProviders: LocalLlmOAuthProviderSummary[];
-  oauthCredentials: LocalLlmCredentialSummary[];
-  hydrated: boolean;
-} = {
+const EMPTY_SNAPSHOT: CredentialSnapshot = {
   apiKeys: [],
   oauthProviders: [],
   oauthCredentials: [],
-  hydrated: false,
+};
+
+const SINGLETON_KEY = "default" as const;
+
+const credentialStore = createResourceStore<typeof SINGLETON_KEY, CredentialSnapshot>({
+  fetcher: async () => {
+    const systemApi = window.electronAPI?.system;
+    if (!systemApi?.listLlmCredentials) {
+      return EMPTY_SNAPSHOT;
+    }
+    const [apiKeys, oauthProviders, oauthCredentials] = await Promise.all([
+      systemApi.listLlmCredentials(),
+      systemApi.listLlmOAuthProviders?.() ?? Promise.resolve([]),
+      systemApi.listLlmOAuthCredentials?.() ?? Promise.resolve([]),
+    ]);
+    return { apiKeys, oauthProviders, oauthCredentials };
+  },
+});
+
+/**
+ * Tracks providers we've already seen as "active" so a re-mount against an
+ * already-connected provider doesn't false-fire the connect event. Lives at
+ * module scope alongside the credential cache so every consumer of the hook
+ * shares the same view.
+ */
+const knownConnected = new Set<string>();
+let knownConnectedSeeded = false;
+
+const seedKnownConnected = (snapshot: CredentialSnapshot) => {
+  knownConnected.clear();
+  for (const entry of snapshot.apiKeys) {
+    if (entry.status === "active") knownConnected.add(entry.provider);
+  }
+  for (const entry of snapshot.oauthCredentials) {
+    if (entry.status === "active") knownConnected.add(entry.provider);
+  }
+  knownConnectedSeeded = true;
+};
+
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+const upsertCredential = (
+  list: LocalLlmCredentialSummary[],
+  next: LocalLlmCredentialSummary,
+): LocalLlmCredentialSummary[] => {
+  const filtered = list.filter((entry) => entry.provider !== next.provider);
+  filtered.push(next);
+  filtered.sort((a, b) => a.label.localeCompare(b.label));
+  return filtered;
+};
+
+const removeProvider = <T extends { provider: string }>(
+  list: T[],
+  provider: string,
+): T[] => list.filter((entry) => entry.provider !== provider);
+
+const dispatchConnected = (
+  provider: string,
+  kind: ProviderConnectedEventDetail["kind"],
+) => {
+  if (knownConnected.has(provider)) return;
+  knownConnected.add(provider);
+  window.dispatchEvent(
+    new CustomEvent<ProviderConnectedEventDetail>(PROVIDER_CONNECTED_EVENT, {
+      detail: { provider, kind },
+    }),
+  );
 };
 
 /**
@@ -75,93 +134,35 @@ const credentialsCache: {
  * `listLlmOAuthCredentials` plumbing in three places.
  */
 export function useLlmCredentials(): LlmCredentials {
-  const [apiKeys, setApiKeys] = useState<LocalLlmCredentialSummary[]>(
-    credentialsCache.apiKeys,
+  const { data, error, isLoading, refresh } = useResourceStore(
+    credentialStore,
+    SINGLETON_KEY,
   );
-  const [oauthProviders, setOauthProviders] = useState<
-    LocalLlmOAuthProviderSummary[]
-  >(credentialsCache.oauthProviders);
-  const [oauthCredentials, setOauthCredentials] = useState<
-    LocalLlmCredentialSummary[]
-  >(credentialsCache.oauthCredentials);
-  const [loading, setLoading] = useState(!credentialsCache.hydrated);
-  const [error, setError] = useState<string | null>(null);
-  const knownConnectedRef = useRef<Set<string>>(new Set());
+  const snapshot = data ?? EMPTY_SNAPSHOT;
+  if (data && !knownConnectedSeeded) seedKnownConnected(data);
 
   const reload = useCallback(async () => {
-    const systemApi = window.electronAPI?.system;
-    if (!systemApi?.listLlmCredentials) {
-      setApiKeys([]);
-      setOauthProviders([]);
-      setOauthCredentials([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const [keys, providers, oauth] = await Promise.all([
-        systemApi.listLlmCredentials(),
-        systemApi.listLlmOAuthProviders?.() ?? Promise.resolve([]),
-        systemApi.listLlmOAuthCredentials?.() ?? Promise.resolve([]),
-      ]);
-      setApiKeys(keys);
-      setOauthProviders(providers);
-      setOauthCredentials(oauth);
-      credentialsCache.apiKeys = keys;
-      credentialsCache.oauthProviders = providers;
-      credentialsCache.oauthCredentials = oauth;
-      credentialsCache.hydrated = true;
-      // Seed the "known connected" set so subsequent save/login transitions
-      // only fire when a provider goes from absent -> present in this
-      // session. Without this we'd false-positive every time the hook
-      // re-mounts against an already-authenticated provider.
-      const seeded = new Set<string>();
-      for (const entry of keys) {
-        if (entry.status === "active") seeded.add(entry.provider);
-      }
-      for (const entry of oauth) {
-        if (entry.status === "active") seeded.add(entry.provider);
-      }
-      knownConnectedRef.current = seeded;
-      setError(null);
-    } catch (caught) {
-      setError(errorMessage(caught, "Failed to load local API keys."));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+    const next = await refresh();
+    if (next) seedKnownConnected(next);
+  }, [refresh]);
 
   const saveApiKey = useCallback(
     async (provider: string, label: string, plaintext: string) => {
       if (!window.electronAPI?.system?.saveLlmCredential) {
         throw new Error("Local API key storage is unavailable in this window.");
       }
-      const wasConnected = knownConnectedRef.current.has(provider);
+      const wasConnected = knownConnected.has(provider);
       const saved = await window.electronAPI.system.saveLlmCredential({
         provider,
         label,
         plaintext,
       });
-      setApiKeys((prev) => {
-        const next = prev.filter((entry) => entry.provider !== saved.provider);
-        next.push(saved);
-        next.sort((a, b) => a.label.localeCompare(b.label));
-        credentialsCache.apiKeys = next;
-        return next;
+      const current = credentialStore.get(SINGLETON_KEY).data ?? EMPTY_SNAPSHOT;
+      credentialStore.set(SINGLETON_KEY, {
+        ...current,
+        apiKeys: upsertCredential(current.apiKeys, saved),
       });
-      knownConnectedRef.current.add(provider);
-      if (!wasConnected) {
-        window.dispatchEvent(
-          new CustomEvent<ProviderConnectedEventDetail>(
-            PROVIDER_CONNECTED_EVENT,
-            { detail: { provider, kind: "api-key" } },
-          ),
-        );
-      }
+      if (!wasConnected) dispatchConnected(provider, "api-key");
     },
     [],
   );
@@ -171,37 +172,27 @@ export function useLlmCredentials(): LlmCredentials {
       throw new Error("Local API key storage is unavailable in this window.");
     }
     await window.electronAPI.system.deleteLlmCredential(provider);
-    setApiKeys((prev) => {
-      const next = prev.filter((entry) => entry.provider !== provider);
-      credentialsCache.apiKeys = next;
-      return next;
+    const current = credentialStore.get(SINGLETON_KEY).data ?? EMPTY_SNAPSHOT;
+    credentialStore.set(SINGLETON_KEY, {
+      ...current,
+      apiKeys: removeProvider(current.apiKeys, provider),
     });
-    knownConnectedRef.current.delete(provider);
+    knownConnected.delete(provider);
   }, []);
 
   const loginOAuth = useCallback(async (provider: string) => {
     if (!window.electronAPI?.system?.loginLlmOAuthCredential) {
       throw new Error("OAuth login is unavailable in this window.");
     }
-    const wasConnected = knownConnectedRef.current.has(provider);
+    const wasConnected = knownConnected.has(provider);
     const saved =
       await window.electronAPI.system.loginLlmOAuthCredential(provider);
-    setOauthCredentials((prev) => {
-      const next = prev.filter((entry) => entry.provider !== saved.provider);
-      next.push(saved);
-      next.sort((a, b) => a.label.localeCompare(b.label));
-      credentialsCache.oauthCredentials = next;
-      return next;
+    const current = credentialStore.get(SINGLETON_KEY).data ?? EMPTY_SNAPSHOT;
+    credentialStore.set(SINGLETON_KEY, {
+      ...current,
+      oauthCredentials: upsertCredential(current.oauthCredentials, saved),
     });
-    knownConnectedRef.current.add(provider);
-    if (!wasConnected) {
-      window.dispatchEvent(
-        new CustomEvent<ProviderConnectedEventDetail>(
-          PROVIDER_CONNECTED_EVENT,
-          { detail: { provider, kind: "oauth" } },
-        ),
-      );
-    }
+    if (!wasConnected) dispatchConnected(provider, "oauth");
   }, []);
 
   const logoutOAuth = useCallback(async (provider: string) => {
@@ -209,20 +200,20 @@ export function useLlmCredentials(): LlmCredentials {
       throw new Error("OAuth login is unavailable in this window.");
     }
     await window.electronAPI.system.deleteLlmOAuthCredential(provider);
-    setOauthCredentials((prev) => {
-      const next = prev.filter((entry) => entry.provider !== provider);
-      credentialsCache.oauthCredentials = next;
-      return next;
+    const current = credentialStore.get(SINGLETON_KEY).data ?? EMPTY_SNAPSHOT;
+    credentialStore.set(SINGLETON_KEY, {
+      ...current,
+      oauthCredentials: removeProvider(current.oauthCredentials, provider),
     });
-    knownConnectedRef.current.delete(provider);
+    knownConnected.delete(provider);
   }, []);
 
   return {
-    apiKeys,
-    oauthProviders,
-    oauthCredentials,
-    loading,
-    error,
+    apiKeys: snapshot.apiKeys,
+    oauthProviders: snapshot.oauthProviders,
+    oauthCredentials: snapshot.oauthCredentials,
+    loading: isLoading,
+    error: error ? errorMessage(error, "Failed to load local API keys.") : null,
     reload,
     saveApiKey,
     removeApiKey,
