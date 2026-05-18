@@ -304,7 +304,6 @@ export const AssistantMessageRow = memo(
             <Markdown
               text={text}
               cacheKey={row.cacheKey}
-              isAnimating={row.isAnimating}
             />
           )}
           {row.officePreviewRef && (

@@ -222,25 +222,17 @@
   }
 }
 
-/* Streaming assistant message entrance */
-.event-item.assistant.streaming {
-  animation: stream-fade-in 0.45s cubic-bezier(0.34, 1.08, 0.64, 1) both;
-}
-
-/* Each child within a streaming assistant fades in staggered */
-.event-item.assistant.streaming > * {
-  animation: stream-fade-in 0.35s ease-out both;
-}
-
-.event-item.assistant.streaming > *:nth-child(1) { animation-delay: 0ms; }
-.event-item.assistant.streaming > *:nth-child(2) { animation-delay: 80ms; }
-.event-item.assistant.streaming > *:nth-child(3) { animation-delay: 160ms; }
-.event-item.assistant.streaming > *:nth-child(4) { animation-delay: 240ms; }
+/* Streaming assistant messages render without entrance animations:
+ * the prior fade-in + per-child stagger (paragraph 1 at 0ms, paragraph 2
+ * at 80ms, etc.) made multi-block streams feel jumpy because each new
+ * block element Streamdown emitted on a fresh chunk re-fired its
+ * staggered animation. Keep the `.event-item.assistant.streaming` and
+ * `.event-row--streaming` classes in place for any non-animation hooks
+ * that might still want to target streaming rows; they no longer carry
+ * visual effects. */
 
 /* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  .event-item.assistant.streaming,
-  .event-item.assistant.streaming > *,
   .working-indicator {
     animation: none;
     opacity: 1;

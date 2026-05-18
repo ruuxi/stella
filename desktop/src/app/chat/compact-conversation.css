@@ -84,7 +84,7 @@
   --compact-chat-assistant-radius: 14px;
   --compact-chat-assistant-tail-radius: 4px;
   --compact-chat-assistant-max-width: 100%;
-  --compact-chat-assistant-streaming-opacity: 0.92;
+  --compact-chat-assistant-streaming-opacity: 1;
 }
 
 .chat-conversation-surface .event-list {
