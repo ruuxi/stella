@@ -71,12 +71,10 @@ export type CredentialResponsePayload = {
  * context, and never enters Convex's `secrets` table. The CLI bridge
  * spawns these when `stella-connect call` returns 401/403.
  *
- * `mode: "oauth"` switches the renderer to a no-input indicator dialog
- * ("Connecting <X>... Authorize in the browser tab Stella opened.") with
- * only a Cancel affordance. The host opens the user's external browser
- * via `shell.openExternal`, runs a local 127.0.0.1 callback listener,
- * and persists the resulting access_token directly — `submit` never
- * fires from the renderer in this mode.
+ * `mode: "oauth"` switches the renderer to the same connect dialog shell
+ * with an explicit "Open browser" approval. The host opens the user's
+ * external browser only after submit. For bridge-owned OAuth requests it
+ * then runs a local 127.0.0.1 callback listener and persists the token.
  *
  * `mode: "api_key"` (default) keeps the paste-key modal.
  */
@@ -87,6 +85,7 @@ export type ConnectorCredentialRequestPayload = {
   tokenKey: string
   displayName: string
   mode: ConnectorCredentialRequestMode
+  completionMode?: "approve" | "wait"
   description?: string
   placeholder?: string
 }

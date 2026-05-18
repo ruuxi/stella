@@ -110,6 +110,18 @@ const handleStoreWebLocalAction = async (
       handlers.openSignIn();
       return { ok: true };
     }
+    case "listNativeIntegrations":
+      return await window.electronAPI?.nativeIntegrations?.list?.();
+    case "connectNativeIntegration": {
+      const id = typeof payload.id === "string" ? payload.id : "";
+      if (!id) throw new Error("Missing integration id.");
+      return await window.electronAPI?.nativeIntegrations?.enable?.({ id });
+    }
+    case "disconnectNativeIntegration": {
+      const id = typeof payload.id === "string" ? payload.id : "";
+      if (!id) throw new Error("Missing integration id.");
+      return await window.electronAPI?.nativeIntegrations?.disable?.({ id });
+    }
     case "installPet": {
       const pet = normalizePet(
         normalizeActionRecord(payload.pet) as Parameters<typeof normalizePet>[0],

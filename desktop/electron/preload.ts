@@ -1156,9 +1156,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       tokenKey: string;
       displayName: string;
       mode: "api_key" | "oauth";
+      completionMode?: "approve" | "wait";
       description?: string;
       placeholder?: string;
     }>("connector-credential:request"),
+    onConnectorCredentialComplete: onIpcWithEvent<{
+      requestId: string;
+      ok: boolean;
+      reason?: string;
+    }>("connector-credential:complete"),
     submitConnectorCredential: (payload: {
       requestId: string;
       value: string;
@@ -1678,25 +1684,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onSendMessage: onIpc<string>("pet:sendMessage"),
   },
 
-  googleWorkspace: {
-    getAuthStatus: () =>
-      ipcRenderer.invoke("googleWorkspace:authStatus") as Promise<{
-        connected: boolean;
-        unavailable?: boolean;
-        email?: string;
-        name?: string;
-      }>,
-    connect: () =>
-      ipcRenderer.invoke("googleWorkspace:connect") as Promise<{
-        connected: boolean;
-        unavailable?: boolean;
-        email?: string;
-        name?: string;
-      }>,
-    disconnect: () =>
-      ipcRenderer.invoke("googleWorkspace:disconnect") as Promise<{
-        ok: boolean;
-      }>,
-    onAuthRequired: onIpcSignal("googleWorkspace:authRequired"),
+  nativeIntegrations: {
+    list: () => ipcRenderer.invoke("nativeIntegrations:list"),
+    enable: (payload: { id: string }) =>
+      ipcRenderer.invoke("nativeIntegrations:enable", payload),
+    disable: (payload: { id: string }) =>
+      ipcRenderer.invoke("nativeIntegrations:disable", payload),
   },
 });

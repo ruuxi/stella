@@ -4,42 +4,43 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { google, Auth } from 'googleapis';
-import crypto from 'node:crypto';
-import * as http from 'node:http';
-import * as net from 'node:net';
-import * as url from 'node:url';
-import { logToFile } from './logger.js';
-import open from './open-wrapper.js';
-import { shouldLaunchBrowser } from './secure-browser-launcher.js';
-import * as StellaCredentialStorage from './stella-credential-storage.js';
-import { loadConfig } from './config.js';
+import { google, Auth } from "googleapis";
+import {
+  deleteConnectorAccessTokens,
+  loadConnectorTokenPayload,
+  saveConnectorTokenPayload,
+} from "../connectors/oauth.js";
+import { getProjectRoot } from "./paths.js";
+import { loadConfig } from "./config.js";
+import { logToFile } from "./logger.js";
 
-const config = loadConfig();
-const CLIENT_ID = config.clientId;
-const CLOUD_FUNCTION_URL = config.cloudFunctionUrl;
-const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
+const TOKEN_KEY = "google-workspace";
+const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
+
+const stellaRootFromProjectRoot = () => {
+  const projectRoot = getProjectRoot();
+  const suffix = "/state/google-workspace";
+  if (!projectRoot.endsWith(suffix)) {
+    throw new Error("Google Workspace project root is not under Stella state.");
+  }
+  return projectRoot.slice(0, -suffix.length);
+};
 
 /**
- * An Authentication URL for updating the credentials of a Oauth2Client
- * as well as a promise that will resolve when the credentials have
- * been refreshed (or which throws error when refreshing credentials failed).
+ * Small auth adapter for the existing Google Workspace service classes.
+ *
+ * The old implementation had its own plaintext token file, cloud-function
+ * exchange, and browser launcher. Store-native integrations now own OAuth:
+ * tokens live in connector protected storage and browser launch is brokered
+ * by the shared connector dialog before this class is ever asked for a client.
  */
-interface OauthWebLogin {
-  authUrl: string;
-  loginCompletePromise: Promise<void>;
-}
-
 export class AuthManager {
   private client: Auth.OAuth2Client | null = null;
-  private scopes: string[];
+  private readonly clientId = loadConfig().clientId;
   private onStatusUpdate: ((message: string) => void) | null = null;
-  private pendingAuthServer: http.Server | null = null;
-  private pendingAuthReject: ((error: Error) => void) | null = null;
 
-  constructor(scopes: string[]) {
-    this.scopes = scopes;
-  }
+  constructor(private scopes: string[]) {}
 
   public setOnStatusUpdate(callback: (message: string) => void) {
     this.onStatusUpdate = callback;
@@ -48,428 +49,72 @@ export class AuthManager {
   public dispose(): void {
     this.onStatusUpdate = null;
     this.client = null;
-    const rejectPendingAuth = this.pendingAuthReject;
-    this.pendingAuthReject = null;
-    const server = this.pendingAuthServer;
-    this.pendingAuthServer = null;
-    try {
-      server?.close();
-    } catch {
-      // Best-effort cleanup for teardown.
-    }
-    rejectPendingAuth?.(
-      new Error('Google Workspace authentication was canceled.'),
-    );
-  }
-
-  private isTokenExpiringSoon(credentials: Auth.Credentials): boolean {
-    return !!(
-      credentials.expiry_date &&
-      credentials.expiry_date < Date.now() + TOKEN_EXPIRY_BUFFER_MS
-    );
-  }
-
-  private async loadCachedCredentials(
-    client: Auth.OAuth2Client,
-  ): Promise<boolean> {
-    const credentials = await StellaCredentialStorage.loadCredentials();
-
-    if (credentials) {
-      // Check if saved token has required scopes
-      const savedScopes = new Set(credentials.scope?.split(' ') ?? []);
-      logToFile(`Cached token has scopes: ${[...savedScopes].join(', ')}`);
-      logToFile(`Required scopes: ${this.scopes.join(', ')}`);
-
-      const missingScopes = this.scopes.filter(
-        (scope) => !savedScopes.has(scope),
-      );
-
-      if (missingScopes.length > 0) {
-        logToFile(
-          `Token cache missing required scopes: ${missingScopes.join(', ')}`,
-        );
-        logToFile('Removing cached token to force re-authentication...');
-        await StellaCredentialStorage.clearCredentials();
-        return false;
-      } else {
-        client.setCredentials(credentials);
-        return true;
-      }
-    }
-
-    return false;
   }
 
   public async getAuthenticatedClient(): Promise<Auth.OAuth2Client> {
-    logToFile('getAuthenticatedClient called');
+    const stellaRoot = stellaRootFromProjectRoot();
+    const payload = await loadConnectorTokenPayload(stellaRoot, TOKEN_KEY);
+    if (!payload?.accessToken) {
+      throw new Error("Google Workspace is not connected.");
+    }
 
-    // Check if we have a cached client with valid credentials
-    if (
-      this.client &&
-      this.client.credentials &&
-      this.client.credentials.refresh_token
-    ) {
-      logToFile('Returning existing cached client with valid credentials');
+    const savedScopes = new Set(payload.scopes ?? []);
+    const missingScopes = this.scopes.filter((scope) => !savedScopes.has(scope));
+    if (missingScopes.length > 0) {
       logToFile(
-        `Access token exists: ${!!this.client.credentials.access_token}`,
+        `Connector token missing Google Workspace scopes: ${missingScopes.join(", ")}`,
       );
-      logToFile(`Expiry date: ${this.client.credentials.expiry_date}`);
-      logToFile(`Current time: ${Date.now()}`);
-
-      const isExpired = this.isTokenExpiringSoon(this.client.credentials);
-      logToFile(`Token expired: ${isExpired}`);
-
-      // Proactively refresh if expired
-      if (isExpired) {
-        logToFile('Token is expired, refreshing proactively...');
-        try {
-          await this.refreshToken();
-          logToFile('Token refreshed successfully');
-        } catch (error) {
-          logToFile(`Failed to refresh token: ${error}`);
-          // Clear the client and fall through to re-authenticate
-          this.client = null;
-          await StellaCredentialStorage.clearCredentials();
-        }
-      }
-
-      // Return the client (either still valid or just refreshed)
-      if (this.client) {
-        return this.client;
-      }
+      throw new Error("Google Workspace needs to be reconnected.");
     }
 
-    // Note: No clientSecret is provided here. The secret is only known by the cloud function.
-    const options: Auth.OAuth2ClientOptions = {
-      clientId: CLIENT_ID,
-    };
-    const oAuth2Client = new google.auth.OAuth2(options);
-
-    oAuth2Client.on('tokens', async (tokens) => {
-      logToFile('Tokens refreshed event received');
-      if (tokens.refresh_token) {
-        logToFile('New refresh token received in event');
-      }
-
-      try {
-        // Create a copy to preserve refresh_token from storage
-        const current = (await StellaCredentialStorage.loadCredentials()) || {};
-        const merged = {
-          ...tokens,
-          refresh_token: tokens.refresh_token || current.refresh_token,
-        };
-        await StellaCredentialStorage.saveCredentials(merged);
-        logToFile('Credentials saved after refresh');
-      } catch (e) {
-        logToFile(`Error saving refreshed credentials: ${e}`);
-      }
+    const client = new google.auth.OAuth2({ clientId: this.clientId });
+    client.setCredentials({
+      access_token: payload.accessToken,
+      refresh_token: payload.refreshToken,
+      expiry_date: payload.expiresAt,
+      scope: payload.scopes?.join(" "),
+      token_type: "Bearer",
     });
-
-    logToFile('No valid cached client, checking for saved credentials...');
-    if (await this.loadCachedCredentials(oAuth2Client)) {
-      logToFile('Loaded saved credentials, caching and returning client');
-      this.client = oAuth2Client;
-
-      // Check if the loaded token is expired and refresh proactively
-      const isExpired = this.isTokenExpiringSoon(this.client.credentials);
-      logToFile(`Token expired: ${isExpired}`);
-
-      if (isExpired) {
-        logToFile('Loaded token is expired, refreshing proactively...');
-        try {
-          await this.refreshToken();
-          logToFile('Token refreshed successfully after loading from storage');
-        } catch (error) {
-          logToFile(`Failed to refresh loaded token: ${error}`);
-          // Clear the client and fall through to re-authenticate
-          this.client = null;
-          await StellaCredentialStorage.clearCredentials();
-        }
-      }
-
-      // Return the client if refresh succeeded or token was still valid
-      if (this.client) {
-        return this.client;
-      }
-    }
-
-    // Fail fast in headless environments instead of hanging for 5 minutes
-    if (!shouldLaunchBrowser()) {
-      throw new Error(
-        'No browser available for authentication. ' +
-          'Please run: node dist/headless-login.js\n' +
-          '(from the workspace-server directory)\n' +
-          'After authenticating, retry your request.',
-      );
-    }
-
-    const webLogin = await this.authWithWeb(oAuth2Client);
-    await open(webLogin.authUrl);
-    const msg = 'Waiting for authentication... Check your browser.';
-    logToFile(msg);
-    if (this.onStatusUpdate) {
-      this.onStatusUpdate(msg);
-    }
-
-    // Add timeout to prevent infinite waiting when browser tab gets stuck
-    const authTimeout = 5 * 60 * 1000; // 5 minutes timeout
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(
-          new Error(
-            'User is not authenticated. Authentication timed out after 5 minutes. The user did not complete the login process in the browser. ' +
-              'Please ask the user to check their browser and try again.',
-          ),
-        );
-      }, authTimeout);
+    client.on("tokens", async (tokens) => {
+      const current = await loadConnectorTokenPayload(stellaRoot, TOKEN_KEY);
+      await saveConnectorTokenPayload(stellaRoot, TOKEN_KEY, {
+        accessToken: tokens.access_token ?? current?.accessToken ?? payload.accessToken,
+        refreshToken:
+          tokens.refresh_token ?? current?.refreshToken ?? payload.refreshToken ?? undefined,
+        expiresAt:
+          tokens.expiry_date ??
+          current?.expiresAt,
+        clientId: this.clientId,
+        tokenEndpoint: TOKEN_ENDPOINT,
+        scopes: tokens.scope
+          ? tokens.scope.split(/\s+/u).filter(Boolean)
+          : current?.scopes ?? payload.scopes,
+      });
     });
-    await Promise.race([webLogin.loginCompletePromise, timeoutPromise]);
-
-    await StellaCredentialStorage.saveCredentials(oAuth2Client.credentials);
-    this.client = oAuth2Client;
-    return this.client;
+    this.client = client;
+    return client;
   }
 
   public async clearAuth(): Promise<void> {
-    logToFile('Clearing authentication...');
     this.client = null;
-    await StellaCredentialStorage.clearCredentials();
-    logToFile('Authentication cleared.');
+    await deleteConnectorAccessTokens(stellaRootFromProjectRoot(), [TOKEN_KEY]);
   }
 
   public async refreshToken(): Promise<void> {
-    logToFile('Manual token refresh triggered');
-    if (!this.client) {
-      logToFile('No client available to refresh, getting new client');
-      this.client = await this.getAuthenticatedClient();
-    }
-    try {
-      const currentCredentials = { ...this.client.credentials };
-
-      if (!currentCredentials.refresh_token) {
-        throw new Error('No refresh token available');
-      }
-
-      logToFile('Calling cloud function to refresh token...');
-
-      // Call the cloud function refresh endpoint
-      // The cloud function has the client secret needed for token refresh
-      const response = await fetch(`${CLOUD_FUNCTION_URL}/refreshToken`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          refresh_token: currentCredentials.refresh_token,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Token refresh failed: ${response.status} ${errorText}`,
-        );
-      }
-
-      const newTokens = await response.json();
-      if (!newTokens || typeof newTokens !== 'object') {
-        throw new Error('Token refresh returned an invalid payload');
-      }
-
-      // Merge new tokens with existing credentials, preserving refresh_token
-      // Note: Google does NOT return a new refresh_token on refresh
-      const mergedCredentials: Auth.Credentials = {
-        ...(newTokens as Auth.Credentials),
-        refresh_token: currentCredentials.refresh_token, // Always preserve original
-      };
-
-      this.client.setCredentials(mergedCredentials);
-      await StellaCredentialStorage.saveCredentials(mergedCredentials);
-      logToFile('Token refreshed and saved successfully via cloud function');
-    } catch (error) {
-      logToFile(`Error during token refresh: ${error}`);
-      throw error;
-    }
-  }
-
-  private async getAvailablePort(): Promise<number> {
-    return new Promise((resolve, reject) => {
-      let port = 0;
-      try {
-        const portStr = process.env['OAUTH_CALLBACK_PORT'];
-        if (portStr) {
-          port = parseInt(portStr, 10);
-          if (isNaN(port) || port <= 0 || port > 65535) {
-            return reject(
-              new Error(`Invalid value for OAUTH_CALLBACK_PORT: "${portStr}"`),
-            );
-          }
-          return resolve(port);
-        }
-        const server = net.createServer();
-        server.listen(0, () => {
-          const address = server.address()! as net.AddressInfo;
-          port = address.port;
-        });
-        server.on('listening', () => {
-          server.close();
-          server.unref();
-        });
-        server.on('error', (e) => reject(e));
-        server.on('close', () => resolve(port));
-      } catch (e) {
-        reject(e);
-      }
+    this.onStatusUpdate?.("Refreshing Google Workspace connection...");
+    const client = await this.getAuthenticatedClient();
+    const response = await client.refreshAccessToken();
+    await saveConnectorTokenPayload(stellaRootFromProjectRoot(), TOKEN_KEY, {
+      accessToken: response.credentials.access_token ?? "",
+      refreshToken:
+        response.credentials.refresh_token ??
+        client.credentials.refresh_token ??
+        undefined,
+      expiresAt: response.credentials.expiry_date ?? undefined,
+      clientId: this.clientId,
+      tokenEndpoint: TOKEN_ENDPOINT,
+      scopes:
+        response.credentials.scope?.split(/\s+/u).filter(Boolean) ?? this.scopes,
     });
-  }
-
-  private async authWithWeb(client: Auth.OAuth2Client): Promise<OauthWebLogin> {
-    logToFile(
-      `Requesting authentication with scopes: ${this.scopes.join(', ')}`,
-    );
-
-    const port = await this.getAvailablePort();
-    const host = process.env['OAUTH_CALLBACK_HOST'] || 'localhost';
-
-    const localRedirectUri = `http://${host}:${port}/oauth2callback`;
-
-    const isGuiAvailable = shouldLaunchBrowser();
-
-    // SECURITY: Generate a random token for CSRF protection.
-    const csrfToken = crypto.randomBytes(32).toString('hex');
-
-    // The state now contains a JSON payload indicating the flow mode and CSRF token.
-    const statePayload = {
-      uri: isGuiAvailable ? localRedirectUri : undefined,
-      manual: !isGuiAvailable,
-      csrf: csrfToken,
-    };
-    const state = Buffer.from(JSON.stringify(statePayload)).toString('base64');
-
-    // The redirect URI for Google's auth server is the cloud function
-    const cloudFunctionRedirectUri = CLOUD_FUNCTION_URL;
-
-    const authUrl = client.generateAuthUrl({
-      redirect_uri: cloudFunctionRedirectUri, // Tell Google to go to the cloud function
-      access_type: 'offline',
-      scope: this.scopes,
-      state: state, // Pass our JSON payload in the state
-      prompt: 'consent', // Make sure we get a refresh token
-    });
-
-    const loginCompletePromise = new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const settle = (callback: () => void) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        if (this.pendingAuthServer === server) {
-          this.pendingAuthServer = null;
-        }
-        if (this.pendingAuthReject === rejectPendingAuth) {
-          this.pendingAuthReject = null;
-        }
-        callback();
-      };
-      const rejectPendingAuth = (error: Error) => {
-        settle(() => reject(error));
-      };
-      const resolveLogin = () => {
-        settle(() => resolve());
-      };
-      const server = http.createServer(async (req, res) => {
-        try {
-          // Use startsWith for more robust path checking.
-          if (!req.url || !req.url.startsWith('/oauth2callback')) {
-            res.end();
-            rejectPendingAuth(
-              new Error(
-                'OAuth callback not received. Unexpected request: ' + req.url,
-              ),
-            );
-            return;
-          }
-
-          const qs = new url.URL(req.url, `http://${host}:${port}`)
-            .searchParams;
-
-          // SECURITY: Validate the state parameter to prevent CSRF attacks.
-          const returnedState = qs.get('state');
-          if (returnedState !== csrfToken) {
-            res.end('State mismatch. Possible CSRF attack.');
-            rejectPendingAuth(new Error('OAuth state mismatch. Possible CSRF attack.'));
-            return;
-          }
-
-          if (qs.get('error')) {
-            const errorCode = qs.get('error');
-            const errorDescription =
-              qs.get('error_description') || 'No additional details provided';
-            res.end();
-            rejectPendingAuth(
-              new Error(
-                `Google OAuth error: ${errorCode}. ${errorDescription}`,
-              ),
-            );
-            return;
-          }
-
-          const access_token = qs.get('access_token');
-          const refresh_token = qs.get('refresh_token');
-          const scope = qs.get('scope');
-          const token_type = qs.get('token_type');
-          const expiry_date_str = qs.get('expiry_date');
-
-          if (access_token && expiry_date_str) {
-            const tokens: Auth.Credentials = {
-              access_token: access_token,
-              refresh_token: refresh_token || null,
-              scope: scope || undefined,
-              token_type: (token_type as 'Bearer') || undefined,
-              expiry_date: parseInt(expiry_date_str, 10),
-            };
-            client.setCredentials(tokens);
-            res.end('Authentication successful! Please return to the console.');
-            resolveLogin();
-          } else {
-            rejectPendingAuth(
-              new Error(
-                'Authentication failed: Did not receive tokens from callback.',
-              ),
-            );
-          }
-        } catch (e) {
-          rejectPendingAuth(
-            e instanceof Error ? e : new Error(String(e)),
-          );
-        } finally {
-          server.close();
-        }
-      });
-      this.pendingAuthServer = server;
-      this.pendingAuthReject = rejectPendingAuth;
-
-      server.listen(port, host, () => {
-        // Server started successfully
-      });
-
-      server.on('error', (err) => {
-        rejectPendingAuth(new Error(`OAuth callback server error: ${err}`));
-      });
-      server.on('close', () => {
-        if (this.pendingAuthServer === server) {
-          this.pendingAuthServer = null;
-        }
-        if (this.pendingAuthReject === rejectPendingAuth) {
-          this.pendingAuthReject = null;
-        }
-      });
-    });
-
-    return {
-      authUrl,
-      loginCompletePromise,
-    };
   }
 }

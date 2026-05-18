@@ -1,20 +1,37 @@
 ---
-name: stella-connect-mcp
-description: Import an MCP server as a Stella CLI connector and call its actions through the stella-connect CLI.
+name: stella-connect
+description: Use Store integrations and imported MCP/API connectors through the stella-connect CLI.
 ---
 
-# Stella Connect (MCP → CLI)
+# Stella Connect
 
-Stella does not ship a preset connector catalog. The user (or the agent on their behalf) adds an MCP server with `stella-connect import-mcp`; the CLI probes the server, persists it under `state/connectors/`, and writes a per-connector skill under `state/skills/<id>/SKILL.md` so future runs discover it via the normal skill catalog. Connector action schemas are never preloaded into the model context — they're inspected on demand via `stella-connect tools` and invoked via `stella-connect call`.
+Stella Connect has two paths:
+
+- Store integrations: the user enables them in Store, Stella writes a small skill under `state/skills/<id>/SKILL.md`, and future runs call them with `stella-connect`.
+- Imported MCP/API connectors: the user or agent adds them with `stella-connect import-mcp`; the CLI probes the server, persists it under `state/connectors/`, and writes the same kind of per-connector skill.
+
+Connector action schemas are never preloaded into the model context. Inspect them on demand with `stella-connect tools` and invoke them with `stella-connect call`.
 
 ## Source layout
 
 - CLI entrypoint: `runtime/kernel/cli/stella-connect.ts`
 - MCP bridge (stdio/streamable_http): `runtime/kernel/connectors/connector-bridge.ts`
 - REST connector client: `runtime/kernel/connectors/api-client.ts`
+- Native Store integration catalog/state: `runtime/kernel/connectors/native-integrations.ts`
 - OAuth + token storage: `runtime/kernel/connectors/oauth.ts`
 - Configured-connector state: `runtime/kernel/connectors/state.ts`
 - Types: `runtime/kernel/connectors/types.ts`
+
+## Store integrations
+
+```bash
+stella-connect apps
+stella-connect installed
+stella-connect tools gmail
+stella-connect call gmail gmail.search --json '{"query":"from:someone@example.com"}'
+```
+
+The Store is the normal enable/disable surface. The CLI also has `enable-native <id>` and `disable-native <id>` for diagnostics and local repair. Disabled integrations cannot be called even if an old skill file remains.
 
 ## Adding an MCP
 

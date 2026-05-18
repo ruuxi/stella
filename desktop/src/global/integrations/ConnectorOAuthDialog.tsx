@@ -1,4 +1,5 @@
-import { Globe } from "lucide-react";
+import { useState } from "react";
+import { ExternalLink, Globe } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,
@@ -16,15 +17,16 @@ type ConnectorOAuthDialogProps = {
   displayName: string;
   /** Optional sub copy override; defaults to the canonical normie line. */
   description?: string;
+  waitForCompletion?: boolean;
+  onOpenExternal: () => Promise<void>;
   onCancel: () => void;
 };
 
 /**
- * The OAuth twin of `CredentialModal`. No input field — the browser is
- * the auth surface — just a "Connecting <X>…" indicator and Cancel.
- * Visually mirrors `CredentialModal` (same CSS module, same glass
- * shell) so the api_key and oauth flows look like the same surface
- * from the user's perspective.
+ * The OAuth twin of `CredentialModal`. It uses the same glass shell and
+ * action language, but asks before opening the provider in the user's
+ * browser. Some callers keep the dialog open while Stella waits for the
+ * OAuth callback; approval-only callers close it after the browser launch.
  *
  * Reused for any `connector-credential:request` with `mode: "oauth"`.
  * Cancel propagates through `ConnectorCredentialService.cancelCredential`
@@ -34,11 +36,36 @@ export const ConnectorOAuthDialog = ({
   open,
   displayName,
   description,
+  waitForCompletion = true,
+  onOpenExternal,
   onCancel,
 }: ConnectorOAuthDialogProps) => {
-  const sub =
+  const [opening, setOpening] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const introSub =
     description ??
-    `Stella opened ${displayName} in your browser. Sign in there to connect. The browser tab will close once it's done.`;
+    `Stella needs to open ${displayName} in your browser so you can sign in and approve the connection.`;
+  const waitingSub = `Finish signing in to ${displayName} in your browser. Stella will continue once the connection is approved.`;
+
+  const handleOpenExternal = async () => {
+    setError(null);
+    setOpening(true);
+    try {
+      await onOpenExternal();
+      if (waitForCompletion) {
+        setWaiting(true);
+      }
+    } catch (err) {
+      setError((err as Error).message || "Could not open the browser.");
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  const headline = waiting ? `Waiting for ${displayName}` : `Connect ${displayName}`;
+  const sub = waiting ? waitingSub : introSub;
 
   return (
     <Dialog
@@ -47,7 +74,7 @@ export const ConnectorOAuthDialog = ({
     >
       <DialogContent fit className="credential-modal-content">
         <VisuallyHidden asChild>
-          <DialogTitle>Connecting {displayName}</DialogTitle>
+          <DialogTitle>{headline}</DialogTitle>
         </VisuallyHidden>
         <VisuallyHidden asChild>
           <DialogDescription>{sub}</DialogDescription>
@@ -56,21 +83,34 @@ export const ConnectorOAuthDialog = ({
         <DialogBody className="credential-modal-body">
           <div className="credential-modal-hero">
             <div className="credential-modal-icon">
-              <Globe size={20} />
+              {waiting ? <Globe size={20} /> : <ExternalLink size={20} />}
             </div>
-            <p className="credential-modal-headline">Connecting {displayName}</p>
+            <p className="credential-modal-headline">{headline}</p>
             <p className="credential-modal-sub">{sub}</p>
           </div>
+          {error ? <div className="credential-modal-error">{error}</div> : null}
 
           <div className="credential-modal-actions">
             <Button
               type="button"
               variant="ghost"
               onClick={onCancel}
+              disabled={opening}
               className="pill-btn pill-btn--lg credential-modal-cancel"
             >
               Cancel
             </Button>
+            {!waiting ? (
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleOpenExternal}
+                disabled={opening}
+                className="pill-btn pill-btn--primary pill-btn--lg credential-modal-submit"
+              >
+                {opening ? "Opening..." : "Open browser"}
+              </Button>
+            ) : null}
           </div>
         </DialogBody>
       </DialogContent>

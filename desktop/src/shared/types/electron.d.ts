@@ -849,8 +849,19 @@ export type ElectronSystemApi = {
         tokenKey: string;
         displayName: string;
         mode: "api_key" | "oauth";
+        completionMode?: "approve" | "wait";
         description?: string;
         placeholder?: string;
+      },
+    ) => void,
+  ) => () => void;
+  onConnectorCredentialComplete: (
+    callback: (
+      event: unknown,
+      data: {
+        requestId: string;
+        ok: boolean;
+        reason?: string;
       },
     ) => void,
   ) => () => void;
@@ -1206,24 +1217,26 @@ export type ElectronLocalChatApi = {
 };
 
 // ---------------------------------------------------------------------------
-// Google Workspace
-// ---------------------------------------------------------------------------
+export type ElectronNativeIntegration = {
+  id: string;
+  name: string;
+  category: string;
+  auth: string[];
+  catalogToolCount: number;
+  availability: "ready" | "planned";
+  provider?: "google-workspace";
+  toolPrefix?: string;
+  description: string;
+  enabled: boolean;
+  enabledAt?: number;
+  skillPath?: string;
+  toolCount: number;
+};
 
-export type ElectronGoogleWorkspaceApi = {
-  getAuthStatus: () => Promise<{
-    connected: boolean;
-    unavailable?: boolean;
-    email?: string;
-    name?: string;
-  }>;
-  connect: () => Promise<{
-    connected: boolean;
-    unavailable?: boolean;
-    email?: string;
-    name?: string;
-  }>;
-  disconnect: () => Promise<{ ok: boolean }>;
-  onAuthRequired: (callback: () => void) => () => void;
+export type ElectronNativeIntegrationsApi = {
+  list: () => Promise<ElectronNativeIntegration[]>;
+  enable: (payload: { id: string }) => Promise<ElectronNativeIntegration>;
+  disable: (payload: { id: string }) => Promise<ElectronNativeIntegration>;
 };
 
 // ---------------------------------------------------------------------------
@@ -1445,7 +1458,7 @@ export type ElectronApi = {
   fashion: ElectronFashionApi;
   socialSessions: ElectronSocialSessionsApi;
   localChat: ElectronLocalChatApi;
-  googleWorkspace: ElectronGoogleWorkspaceApi;
+  nativeIntegrations: ElectronNativeIntegrationsApi;
   home: ElectronHomeApi;
   pet: ElectronPetApi;
 };

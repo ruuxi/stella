@@ -424,13 +424,3 @@ export const IPC_PET_SET_INTERACTIVE = "pet:setInteractive" as const;
 export const IPC_PET_STATUS = "pet:status" as const;
 export const IPC_PET_OPEN_CHAT = "pet:openChat" as const;
 export const IPC_PET_SEND_MESSAGE = "pet:sendMessage" as const;
-
-// ── Google Workspace ────────────────────────────────────────────────────────
-
-export const IPC_GOOGLE_WORKSPACE_AUTH_STATUS =
-  "googleWorkspace:authStatus" as const;
-export const IPC_GOOGLE_WORKSPACE_CONNECT = "googleWorkspace:connect" as const;
-export const IPC_GOOGLE_WORKSPACE_DISCONNECT =
-  "googleWorkspace:disconnect" as const;
-export const IPC_GOOGLE_WORKSPACE_AUTH_REQUIRED =
-  "googleWorkspace:authRequired" as const;

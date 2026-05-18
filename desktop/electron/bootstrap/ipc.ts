@@ -2,7 +2,6 @@ import { registerAgentHandlers } from "../ipc/agent-handlers.js";
 import { registerRuntimeAvailabilityBridge } from "../ipc/runtime-availability-bridge.js";
 import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
 import { registerDiscoveryHandlers } from "../ipc/discovery-handlers.js";
-import { registerGoogleWorkspaceHandlers } from "../ipc/google-workspace-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
 import { registerChronicleHandlers } from "../ipc/chronicle-handlers.js";
 import { registerDisplayHandlers } from "../ipc/display-handlers.js";
@@ -10,6 +9,7 @@ import { registerHomeHandlers } from "../ipc/home-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
+import { registerNativeIntegrationHandlers } from "../ipc/native-integration-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerPetHandlers } from "../ipc/pet-handlers.js";
 import { ipcMain } from "electron";
@@ -374,9 +374,15 @@ export const registerBootstrapIpcHandlers = (
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
-  registerGoogleWorkspaceHandlers({
-    getStellaHostRunner: lifecycle.getRunner,
-    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
+  registerNativeIntegrationHandlers({
+    getStellaRoot: lifecycle.getStellaRoot,
+    requestConnectorCredential: (payload) =>
+      services.connectorCredentialService.requestCredential(payload),
+    disconnectGoogleWorkspace: async () => {
+      const runner = lifecycle.getRunner();
+      if (!runner) return { ok: false };
+      return await runner.googleWorkspaceDisconnect();
+    },
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

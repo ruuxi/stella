@@ -112,7 +112,7 @@ const decodeTokenPayload = (
   return null;
 };
 
-const saveConnectorTokenPayload = async (
+export const saveConnectorTokenPayload = async (
   stellaRoot: string,
   tokenKey: string,
   payload: ConnectorTokenPayload,
@@ -135,6 +135,20 @@ const saveConnectorTokenPayload = async (
   if (existing?.valueProtected && existing.valueProtected !== valueProtected) {
     deleteProtectedValue(credentialScope(tokenKey), existing.valueProtected);
   }
+};
+
+export const loadConnectorTokenPayload = async (
+  stellaRoot: string,
+  tokenKey?: string,
+): Promise<ConnectorTokenPayload | null> => {
+  if (!tokenKey) return null;
+  const store = await readTokenStore(stellaRoot);
+  const payload = decodeTokenPayload(tokenKey, store.tokens[tokenKey]);
+  if (!payload?.accessToken) return null;
+  if (!payload.expiresAt || payload.expiresAt > Date.now() + 30_000) {
+    return payload;
+  }
+  return await refreshConnectorAccessToken(stellaRoot, tokenKey, payload);
 };
 
 const normalizeScopes = (scopes?: string[]) => {
@@ -358,19 +372,7 @@ export const loadConnectorAccessToken = async (
   stellaRoot: string,
   tokenKey?: string,
 ): Promise<string | null> => {
-  if (!tokenKey) return null;
-  const store = await readTokenStore(stellaRoot);
-  const payload = decodeTokenPayload(tokenKey, store.tokens[tokenKey]);
-  if (!payload?.accessToken) return null;
-  if (!payload.expiresAt || payload.expiresAt > Date.now() + 30_000) {
-    return payload.accessToken;
-  }
-  const refreshed = await refreshConnectorAccessToken(
-    stellaRoot,
-    tokenKey,
-    payload,
-  );
-  return refreshed?.accessToken ?? null;
+  return (await loadConnectorTokenPayload(stellaRoot, tokenKey))?.accessToken ?? null;
 };
 
 export const saveConnectorAccessToken = async (
@@ -673,4 +675,83 @@ export const connectConnectorOAuth = async (
     }
     throw error;
   }
+};
+
+export const connectPreregisteredConnectorOAuth = async (
+  stellaRoot: string,
+  args: {
+    tokenKey: string;
+    clientId: string;
+    authorizationEndpoint: string;
+    tokenEndpoint: string;
+    openUrl: (url: string) => Promise<void> | void;
+    scopes?: string[];
+    resourceUrl?: string;
+    callbackPort?: number;
+    callbackUrl?: string;
+    signal?: AbortSignal;
+  },
+) => {
+  const scopes = normalizeScopes(args.scopes);
+  const state = randomUUID();
+  const verifier = base64Url(randomBytes(32));
+  const callback = await createOAuthCallbackListener(state, {
+    resourceUrl: args.resourceUrl ?? args.authorizationEndpoint,
+    signal: args.signal,
+    callbackPort: args.callbackPort,
+    callbackUrl: args.callbackUrl,
+  });
+
+  const authorizationUrl = new URL(args.authorizationEndpoint);
+  authorizationUrl.searchParams.set("response_type", "code");
+  authorizationUrl.searchParams.set("client_id", args.clientId);
+  authorizationUrl.searchParams.set("redirect_uri", callback.redirectUri);
+  authorizationUrl.searchParams.set("state", state);
+  authorizationUrl.searchParams.set("code_challenge", sha256(verifier));
+  authorizationUrl.searchParams.set("code_challenge_method", "S256");
+  authorizationUrl.searchParams.set("access_type", "offline");
+  authorizationUrl.searchParams.set("prompt", "consent");
+  if (args.resourceUrl) authorizationUrl.searchParams.set("resource", args.resourceUrl);
+  if (scopes.length > 0) authorizationUrl.searchParams.set("scope", scopes.join(" "));
+
+  const codePromise = callback.waitForCode;
+  codePromise.catch(() => undefined);
+  await args.openUrl(authorizationUrl.toString());
+
+  const code = await codePromise;
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: args.clientId,
+    code,
+    redirect_uri: callback.redirectUri,
+    code_verifier: verifier,
+  });
+  if (args.resourceUrl) body.set("resource", args.resourceUrl);
+  const token = await fetchJson<{
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+  }>(
+    args.tokenEndpoint,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body,
+      signal: args.signal,
+    },
+    60_000,
+  );
+  await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token,
+    expiresAt: token.expires_in
+      ? Date.now() + token.expires_in * 1000
+      : undefined,
+    clientId: args.clientId,
+    tokenEndpoint: args.tokenEndpoint,
+    resourceUrl: args.resourceUrl,
+    scopes: token.scope ? normalizeScopes(token.scope.split(/\s+/u)) : scopes,
+  });
+  return { tokenKey: args.tokenKey };
 };

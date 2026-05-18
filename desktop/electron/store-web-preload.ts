@@ -65,6 +65,11 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
   }) => invoke("storeWeb:publishBlueprint", payload),
   openStorePanel: () => invoke("storeWeb:openStorePanel"),
   openSignIn: () => invoke("storeWeb:openSignIn"),
+  listNativeIntegrations: () => invoke("storeWeb:listNativeIntegrations"),
+  connectNativeIntegration: (payload: { id: string }) =>
+    invoke("storeWeb:connectNativeIntegration", payload),
+  disconnectNativeIntegration: (payload: { id: string }) =>
+    invoke("storeWeb:disconnectNativeIntegration", payload),
   installPet: (payload: {
     pet: {
       id: string;
