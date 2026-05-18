@@ -348,7 +348,16 @@ export const enableNativeConnector = async (
     skillPath,
   };
   await writeState(stellaRoot, state);
-  return { ...entry, enabled: true, skillPath };
+  // `toolCount` mirrors what `listNativeConnectors` returns so the
+  // website can drop the updated entry straight into its local state
+  // without re-listing. Omitting it would briefly render "undefined
+  // actions" on the just-enabled card until the next list refresh.
+  return {
+    ...entry,
+    enabled: true,
+    skillPath,
+    toolCount: getNativeConnectorTools(entry).length,
+  };
 };
 
 export const disableNativeConnector = async (
@@ -366,5 +375,9 @@ export const disableNativeConnector = async (
   };
   await writeState(stellaRoot, state);
   await removeGeneratedSkill(stellaRoot, id);
-  return { ...entry, enabled: false };
+  return {
+    ...entry,
+    enabled: false,
+    toolCount: getNativeConnectorTools(entry).length,
+  };
 };
