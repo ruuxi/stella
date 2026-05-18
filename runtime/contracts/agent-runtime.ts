@@ -30,6 +30,8 @@ type AgentModelSettings = {
 export type AgentCapabilities = {
   /** Steering queue mode for this agent's runs. Defaults to "one-at-a-time". */
   steeringMode?: "all" | "one-at-a-time";
+  /** Follow-up queue mode for this agent's runs. Defaults to "one-at-a-time". */
+  followUpMode?: "all" | "one-at-a-time";
   /** Inject the user's personality voice into the system prompt at run start. */
   injectsPersonality?: boolean;
   /** Inject the dynamic memory bundle on the every-Nth-turn cadence. */
@@ -91,6 +93,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     },
     capabilities: {
       steeringMode: "all",
+      followUpMode: "all",
       injectsPersonality: true,
       injectsDynamicMemory: true,
       injectsRuntimeReminders: true,
@@ -383,6 +386,11 @@ export const getAgentSteeringMode = (
 ): "all" | "one-at-a-time" =>
   getAgentCapabilities(agentType).steeringMode ?? "one-at-a-time";
 
+export const getAgentFollowUpMode = (
+  agentType: string,
+): "all" | "one-at-a-time" =>
+  getAgentCapabilities(agentType).followUpMode ?? "one-at-a-time";
+
 // All IPC stream event types. RUN_FINISHED is the single terminal event for
 // a run; per-agent lifecycle is the AGENT_* family below.
 export const AGENT_STREAM_EVENT_TYPES = {
@@ -398,6 +406,14 @@ export const AGENT_STREAM_EVENT_TYPES = {
   AGENT_COMPLETED: "agent-completed",
   AGENT_FAILED: "agent-failed",
   AGENT_CANCELED: "agent-canceled",
+  /**
+   * Boundary between two consecutive assistant messages within a single
+   * orchestrator run (e.g. preamble → post-tool answer). Carries the
+   * persisted eventId of the message that just finalized so the renderer
+   * can reset its in-flight streaming buffer before chunks for the next
+   * message arrive on the same channel.
+   */
+  ASSISTANT_MESSAGE: "assistant-message",
 } as const;
 
 export type AgentStreamEventType =

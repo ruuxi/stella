@@ -333,7 +333,22 @@ export const createOrchestratorController = (
           payload: message,
         });
       }
-      args.session.queueMessage(message, "steer");
+      // UI-queued chat messages (`role: "user"`) wait for the entire
+      // current orchestrator run to complete — including the post-tool
+      // answer — before being injected. Using `"steer"` here would
+      // dequeue the message at the next turn boundary (after the
+      // preamble's tools), so the queued user_message would land
+      // BETWEEN the preamble and the post-tool assistant row instead
+      // of below it. `"followUp"` defers until `agent_end`, which
+      // matches the user-facing "queued messages flush after the
+      // current task finishes" expectation.
+      //
+      // Hidden runtime-internal injections (system reminders,
+      // workspace-creation requests, etc.) keep `"steer"` so they
+      // still interrupt the live turn at the next safe boundary.
+      const delivery: "steer" | "followUp" =
+        message.role === "user" ? "followUp" : "steer";
+      args.session.queueMessage(message, delivery);
     }
   };
 

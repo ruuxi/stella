@@ -14,6 +14,7 @@ import { selectRecentByTokenBudget } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { estimateRuntimeTokens } from "../runtime-threads.js";
 import {
+  getAgentFollowUpMode,
   getAgentSteeringMode,
   getLocalCliWorkingDirectory,
 } from "../../contracts/agent-runtime.js";
@@ -405,9 +406,13 @@ export const createRuntimeAgent = (args: {
     // Recompute the context budget against the current model route.
     transformContext: async (messages, signal) =>
       buildDefaultTransformContext(resolveLlm())(messages, signal),
-    // Only pass steering mode when the agent opts out of the Pi default.
+    // Only pass steering / follow-up modes when the agent opts out of
+    // the Pi default ("one-at-a-time").
     ...(getAgentSteeringMode(args.agentType) === "all"
       ? { steeringMode: "all" as const }
+      : {}),
+    ...(getAgentFollowUpMode(args.agentType) === "all"
+      ? { followUpMode: "all" as const }
       : {}),
     getApiKey: () => resolveLlm().getApiKey(),
     // Always defined when an override is in play, since the *current*
