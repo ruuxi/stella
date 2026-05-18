@@ -12,7 +12,7 @@ export interface WorkspaceConfig {
 
 const DEFAULT_CONFIG: WorkspaceConfig = {
   clientId:
-    '338689075775-o75k922vn5fdl18qergr96rp8g63e4d7.apps.googleusercontent.com',
+    '398468929332-q768etk5go3lbjbdh9nth3d505pc7aqk.apps.googleusercontent.com',
 };
 
 /**
