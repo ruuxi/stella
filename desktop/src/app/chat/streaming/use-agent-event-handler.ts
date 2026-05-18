@@ -157,7 +157,12 @@ export function useAgentEventHandler({
         ) {
           showToast(resolveStellaProviderErrorToast(args.reason || event.error))
         }
-        if (args.outcome !== AGENT_RUN_FINISH_OUTCOMES.COMPLETED) {
+        if (
+          conversationId === activeConversationIdRef.current &&
+          (args.outcome === AGENT_RUN_FINISH_OUTCOMES.COMPLETED ||
+            args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR ||
+            args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED)
+        ) {
           resetStreamingText()
           resetReasoningText()
           setPendingUserMessageId(null)

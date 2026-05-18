@@ -775,6 +775,42 @@ describe("session-store", () => {
     });
   });
 
+  it("replaces preamble assistant text when the post-tool answer lands", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+    const userMessageId = "user-web-turn";
+
+    store.appendEvent({
+      conversationId,
+      eventId: `assistant-for-${userMessageId}`,
+      type: "assistant_message",
+      timestamp: 1_000,
+      requestId: userMessageId,
+      payload: {
+        text: "Let me look that up.",
+        userMessageId,
+      },
+    });
+    store.appendEvent({
+      conversationId,
+      eventId: `assistant-for-${userMessageId}`,
+      type: "assistant_message",
+      timestamp: 1_001,
+      requestId: userMessageId,
+      payload: {
+        text: "Here is what I found from the web.",
+        userMessageId,
+      },
+    });
+
+    const events = store.listEvents(conversationId, 10);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload).toMatchObject({
+      text: "Here is what I found from the web.",
+      userMessageId,
+    });
+  });
+
   it("loads runtime thread history from shared message parts", () => {
     const { db, store } = createTestContext();
     const conversationId = "conv-thread";

@@ -153,7 +153,11 @@ export function useStreamingChat({
       return false
     })
 
-    if (hasAssistantReply) {
+    // Preamble assistant_message rows land mid-run (before tools finish).
+    // Clearing streaming state here drops `pendingUserMessageId` and
+    // leaves the live post-tool answer with nowhere to render until the
+    // run ends — the stream appears above the preamble, then jumps.
+    if (hasAssistantReply && !isStreaming) {
       resetStreamingState()
     }
   }, [

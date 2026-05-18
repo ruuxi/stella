@@ -1,5 +1,8 @@
 import { useEffect, type MutableRefObject } from "react";
-import type { TaskLifecycleStatus } from "../../../../../runtime/contracts/agent-runtime.js";
+import {
+  AGENT_STREAM_EVENT_TYPES,
+  type TaskLifecycleStatus,
+} from "../../../../../runtime/contracts/agent-runtime.js";
 import type { AgentStreamEvent } from "../streaming/streaming-types";
 
 type ActiveRunSnapshot = {
@@ -58,6 +61,8 @@ interface ResumeActions {
     tasks: TaskSnapshot[];
   }) => void;
   handleAgentEvent: (event: AgentStreamEvent) => void;
+  /** Drop replay-hydrated stream buffers for turns that already finished. */
+  clearReplayedStreamingState?: () => void;
 }
 
 interface UseResumeAgentRunOptions {
@@ -85,6 +90,7 @@ export function useResumeAgentRun({
     ensureAgentStreamSubscription,
     applyResumeSnapshot,
     handleAgentEvent,
+    clearReplayedStreamingState,
   } = actions;
 
   useEffect(() => {
@@ -131,6 +137,18 @@ export function useResumeAgentRun({
           if (cancelled) return;
           handleAgentEvent(replayEvent);
         }
+
+        const resumedRunId = replay.activeRun?.runId ?? null;
+        const runFinishedInReplay =
+          resumedRunId != null &&
+          replay.events.some(
+            (event) =>
+              event.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED &&
+              event.runId === resumedRunId,
+          );
+        if (!replay.activeRun || runFinishedInReplay) {
+          clearReplayedStreamingState?.();
+        }
       } catch (error) {
         if (cancelled) return;
         console.error("Failed to resume conversation execution:", error);
@@ -163,6 +181,7 @@ export function useResumeAgentRun({
   }, [
     activeConversationId,
     applyResumeSnapshot,
+    clearReplayedStreamingState,
     ensureAgentStreamSubscription,
     handleAgentEvent,
     lastSeqByConversationRef,

@@ -534,7 +534,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     );
   };
 
-  const persistAssistantMessage = (args: {
+  /**
+   * Upsert the single assistant row for a user turn (`assistant-for-<uid>`).
+   * A Pi orchestrator run may emit several assistant messages (preamble,
+   * post-tool answer, …); each call replaces the prior text for that turn.
+   */
+  const upsertAssistantMessageForTurn = (args: {
     conversationId: string;
     text: string;
     userMessageId: string;
@@ -578,7 +583,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
    * self-mod commit metadata produced by the `agent_end` hook. Drives the
    * inline "Undo changes" button under the assistant row.
    *
-   * Called from `onEnd` after `persistAssistantMessage` so the merge
+   * Called from `onEnd` after `upsertAssistantMessageForTurn` so the merge
    * targets a row that already exists; if the row hasn't been written yet
    * (e.g. empty-text completion), the merge silently no-ops.
    */
@@ -1494,7 +1499,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       let activeRunId = "";
       const nextSyntheticSeq = createSyntheticSeq();
       const hiddenSystemRunIds = new Set<string>();
-      const persistedAssistantUserMessageIds = new Set<string>();
       let lastVisibleRunId = "";
       let lastVisibleRequestId = requestId;
       const mergedAttachments = [
@@ -1535,11 +1539,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             ) {
               return;
             }
-            if (persistedAssistantUserMessageIds.has(ev.userMessageId)) {
-              return;
-            }
-            persistedAssistantUserMessageIds.add(ev.userMessageId);
-            persistAssistantMessage({
+            upsertAssistantMessageForTurn({
               conversationId: payload.conversationId,
               text: ev.text,
               userMessageId: ev.userMessageId,
@@ -1811,16 +1811,15 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) ===
               AGENT_IDS.ORCHESTRATOR
             ) {
-              if (!persistedAssistantUserMessageIds.has(ev.userMessageId)) {
-                persistedAssistantUserMessageIds.add(ev.userMessageId);
-                persistAssistantMessage({
-                  conversationId: payload.conversationId,
-                  text: finalText,
-                  userMessageId: ev.userMessageId,
-                  timezone: payload.timezone,
-                  responseTarget: ev.responseTarget,
-                });
-              }
+              // Authoritative end-of-run text from the latest assistant
+              // message (covers post-tool answers after a preamble).
+              upsertAssistantMessageForTurn({
+                conversationId: payload.conversationId,
+                text: finalText,
+                userMessageId: ev.userMessageId,
+                timezone: payload.timezone,
+                responseTarget: ev.responseTarget,
+              });
               // When the agent produced a self-mod commit AND a chat
               // reply, patch `selfModApplied` onto the assistant row
               // so the inline "Undo changes" affordance appears.
@@ -1829,16 +1828,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               // inline button for that turn — accepted trade-off
               // against the alternative of a floating-button-only
               // empty bubble.
-              //
-              // Asymmetry vs. `persistAssistantMessage` above: that
-              // call is gated by `persistedAssistantUserMessageIds`
-              // (dedupe within a turn), this one is NOT — if `onEnd`
-              // fires multiple times for the same userMessageId
-              // (mid-turn follow-up / hidden orchestrator continuation
-              // that still produces a self-mod), the latest commit
-              // wins and overwrites the earlier `selfModApplied`.
-              // Intentional: the inline Undo button should target the
-              // most recent commit for that turn, not the first one.
               if (ev.selfModApplied && ev.userMessageId) {
                 attachSelfModToAssistantMessage({
                   conversationId: payload.conversationId,
