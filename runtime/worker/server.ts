@@ -2087,12 +2087,30 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_RUN_AUTOMATION,
     async (params) => {
-      return await ensureRunner().runAutomationTurn(
-        params as {
+      const payload = params as {
+        conversationId: string;
+        userPrompt: string;
+        agentType?: string;
+        toolWorkspaceRoot?: string;
+        attachments?: RuntimeAttachmentRef[];
+        connectorDeliveryTarget?: {
+          requestId: string;
           conversationId: string;
-          userPrompt: string;
-          agentType?: string;
-          toolWorkspaceRoot?: string;
+        };
+      };
+      const materializedImageAttachments = await materializeImageAttachments(
+        payload.attachments,
+      );
+      return await ensureRunner().runAutomationTurn(
+        {
+          ...payload,
+          ...(materializedImageAttachments.length > 0
+            ? {
+                attachments: materializedImageAttachments.map(
+                  ({ attachment }) => attachment,
+                ),
+              }
+            : {}),
         },
       );
     },

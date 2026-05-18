@@ -22,6 +22,10 @@ export type NormalizedOrchestratorRunInput = {
   attachments: RuntimeAttachmentRef[];
   agentType: string;
   toolWorkspaceRoot?: string;
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
 };
 
 const normalizeAttachments = (
@@ -107,12 +111,26 @@ export const normalizeAutomationRunInput = (payload: {
   userPrompt: string;
   agentType?: string;
   toolWorkspaceRoot?: string;
+  attachments?: RuntimeAttachmentRef[];
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
 }): NormalizedOrchestratorRunInput => ({
   conversationId: payload.conversationId.trim(),
   userPrompt: payload.userPrompt.trim(),
-  attachments: [],
+  attachments: normalizeAttachments(payload.attachments),
   agentType: payload.agentType ?? AGENT_IDS.ORCHESTRATOR,
   ...(payload.toolWorkspaceRoot?.trim()
     ? { toolWorkspaceRoot: payload.toolWorkspaceRoot.trim() }
+    : {}),
+  ...(payload.connectorDeliveryTarget?.requestId?.trim() &&
+  payload.connectorDeliveryTarget?.conversationId?.trim()
+    ? {
+        connectorDeliveryTarget: {
+          requestId: payload.connectorDeliveryTarget.requestId.trim(),
+          conversationId: payload.connectorDeliveryTarget.conversationId.trim(),
+        },
+      }
     : {}),
 });

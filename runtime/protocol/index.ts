@@ -376,6 +376,17 @@ export type RuntimeHealthSnapshot = {
 export type RuntimeAttachmentRef = {
   url: string;
   mimeType?: string;
+  /**
+   * Optional metadata preserved across the host/worker boundary so future
+   * non-image attachment paths (voice notes, documents, video) can branch
+   * on it. Today the image materializer only reads `url`/`mimeType` and
+   * silently drops everything that isn't an image — these fields exist so
+   * that adding non-image support later is a worker-only change rather
+   * than another round of contract plumbing.
+   */
+  kind?: string;
+  name?: string;
+  size?: number;
 };
 
 export type RuntimePromptMessage = {
@@ -467,6 +478,11 @@ export type RuntimeAutomationTurnRequest = {
   userPrompt: string;
   agentType?: string;
   toolWorkspaceRoot?: string;
+  attachments?: RuntimeAttachmentRef[];
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
 };
 
 export type RuntimeAutomationTurnResult =

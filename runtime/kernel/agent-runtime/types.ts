@@ -183,6 +183,10 @@ export type BaseRunOptions = {
   userPrompt: string;
   promptMessages?: RuntimePromptMessage[];
   attachments?: RuntimeAttachmentRef[];
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   agentContext: LocalAgentContext;
   toolCatalog?: ToolMetadata[];

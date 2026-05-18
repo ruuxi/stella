@@ -412,6 +412,7 @@ const runClaudeHostedTurn = async (args: {
       toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
       agentDepth: args.opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: args.opts.agentContext.maxAgentDepth,
+      connectorDeliveryTarget: args.opts.connectorDeliveryTarget,
       allowedToolNames: args.opts.agentContext.toolsAllowlist,
       store: args.opts.store,
       toolExecutor: args.opts.toolExecutor,
