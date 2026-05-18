@@ -66,6 +66,12 @@ export class SubagentSession extends PiSessionCore {
       toolWorkspaceRoot: opts.toolWorkspaceRoot,
       agentDepth: opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: opts.agentContext.maxAgentDepth,
+      // Inherited from the spawning orchestrator's run so subagent-side
+      // tools that opt in (none today — `image_gen` is orchestrator-only)
+      // can route their outputs back to the same connector. Subagents
+      // don't *need* this for the current toolset; carry it so future
+      // connector-aware tools work without another round of plumbing.
+      connectorDeliveryTarget: opts.connectorDeliveryTarget,
       toolsAllowlist: opts.agentContext.toolsAllowlist,
       toolCatalog: opts.toolCatalog,
       store: opts.store,

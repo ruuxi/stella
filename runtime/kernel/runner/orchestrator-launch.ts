@@ -184,6 +184,10 @@ export type PreparedOrchestratorRun = {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
   toolWorkspaceRoot?: string;
   agentContext: LocalAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
@@ -207,6 +211,10 @@ export const prepareOrchestratorRun = async (args: {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
   toolWorkspaceRoot?: string;
 }): Promise<PreparedOrchestratorRun> => {
   const isUserTurn = args.uiVisibility !== "hidden";
@@ -260,6 +268,9 @@ export const prepareOrchestratorRun = async (args: {
     promptMessages: args.promptMessages,
     ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
     attachments: args.attachments,
+    ...(args.connectorDeliveryTarget
+      ? { connectorDeliveryTarget: args.connectorDeliveryTarget }
+      : {}),
     ...(args.toolWorkspaceRoot
       ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
       : {}),
@@ -525,6 +536,9 @@ export const launchPreparedOrchestratorRun = (args: {
         ? { responseTarget: prepared.responseTarget }
         : {}),
       attachments: prepared.attachments,
+      ...(prepared.connectorDeliveryTarget
+        ? { connectorDeliveryTarget: prepared.connectorDeliveryTarget }
+        : {}),
       agentContext: prepared.agentContext,
       callbacks: args.runtimeCallbacks,
       toolCatalog: context.toolHost.getToolCatalog(prepared.agentType, {
@@ -605,6 +619,10 @@ export const startPreparedOrchestratorRun = async (args: {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
   userMessageId: string;
   cleanupRun: (runId: string, onCleanup?: () => void) => void;
   onFatalError: (error: unknown) => void;
@@ -624,6 +642,9 @@ export const startPreparedOrchestratorRun = async (args: {
     promptMessages: args.promptMessages,
     ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
     attachments: args.attachments,
+    ...(args.connectorDeliveryTarget
+      ? { connectorDeliveryTarget: args.connectorDeliveryTarget }
+      : {}),
   });
 
   args.onPrepared?.(prepared);

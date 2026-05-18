@@ -585,6 +585,8 @@ export const createOrchestratorController = (
       userPrompt: string;
       agentType?: string;
       toolWorkspaceRoot?: string;
+      attachments?: StartPreparedRunArgs["attachments"];
+      connectorDeliveryTarget?: StartPreparedRunArgs["connectorDeliveryTarget"];
     },
     resolveResult: (value: AutomationTurnResult) => void,
   ): Promise<{ runId: string }> => {
@@ -592,7 +594,14 @@ export const createOrchestratorController = (
       throw new Error("The orchestrator is already running.");
     }
 
-    const { conversationId, userPrompt, agentType, toolWorkspaceRoot } =
+    const {
+      conversationId,
+      userPrompt,
+      agentType,
+      toolWorkspaceRoot,
+      attachments,
+      connectorDeliveryTarget,
+    } =
       normalizeAutomationRunInput(payload);
     if (!conversationId) {
       resolveResult(createAutomationErrorResult("Missing conversationId"));
@@ -613,7 +622,8 @@ export const createOrchestratorController = (
       userPrompt,
       ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
       uiVisibility: "hidden",
-      attachments: [],
+      attachments,
+      ...(connectorDeliveryTarget ? { connectorDeliveryTarget } : {}),
       userMessageId: `automation:${crypto.randomUUID()}`,
       createRuntimeCallbacks: ({ runId }) =>
         createRuntimeCallbacks(
@@ -632,6 +642,8 @@ export const createOrchestratorController = (
     userPrompt: string;
     agentType?: string;
     toolWorkspaceRoot?: string;
+    attachments?: StartPreparedRunArgs["attachments"];
+    connectorDeliveryTarget?: StartPreparedRunArgs["connectorDeliveryTarget"];
   }): Promise<AutomationTurnResult> => {
     const health = agentHealthCheck();
     if (!health.ready) {

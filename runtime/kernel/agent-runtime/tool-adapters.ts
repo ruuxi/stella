@@ -202,6 +202,10 @@ type RuntimeToolContextArgs = {
   agentDepth?: number;
   maxAgentDepth?: number;
   allowedToolNames?: string[];
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
 };
 
 export const buildRuntimeToolContext = (
@@ -227,6 +231,9 @@ export const buildRuntimeToolContext = (
     : {}),
   ...(Array.isArray(args.allowedToolNames) && args.allowedToolNames.length > 0
     ? { allowedToolNames: args.allowedToolNames }
+    : {}),
+  ...(args.connectorDeliveryTarget
+    ? { connectorDeliveryTarget: args.connectorDeliveryTarget }
     : {}),
 });
 
@@ -319,6 +326,10 @@ export const createPiTools = (opts: {
   toolWorkspaceRoot?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
   toolsAllowlist?: string[];
   toolCatalog?: ToolMetadata[];
   store: RuntimeStore;
@@ -366,6 +377,7 @@ export const createPiTools = (opts: {
           toolWorkspaceRoot: opts.toolWorkspaceRoot,
           agentDepth: opts.agentDepth,
           maxAgentDepth: opts.maxAgentDepth,
+          connectorDeliveryTarget: opts.connectorDeliveryTarget,
           allowedToolNames: requested,
           store: opts.store,
           toolExecutor: opts.toolExecutor,

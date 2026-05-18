@@ -874,6 +874,7 @@ export class StellaRuntimeHost {
         userPrompt,
         agentType,
         provider,
+        attachments,
       }) => {
         const localConversationId = this.configCache.cloudSyncEnabled
           ? conversationId || (await this.getOrCreateDefaultConversationId())
@@ -894,6 +895,7 @@ export class StellaRuntimeHost {
             text: userPrompt,
             source: "connector",
             ...(provider ? { provider } : {}),
+            ...(attachments?.length ? { attachments } : {}),
           },
         });
         const result = await this.requestWorker<RuntimeAutomationTurnResult>(
@@ -902,6 +904,11 @@ export class StellaRuntimeHost {
             conversationId: localConversationId,
             userPrompt,
             ...(agentType ? { agentType } : {}),
+            ...(attachments?.length ? { attachments } : {}),
+            connectorDeliveryTarget: {
+              requestId,
+              conversationId,
+            },
           },
           {
             ensureWorker: true,

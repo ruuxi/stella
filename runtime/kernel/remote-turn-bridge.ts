@@ -41,6 +41,13 @@ type RemoteTurnBridgeDeps = {
     userPrompt: string;
     agentType?: string;
     provider?: string;
+    attachments?: Array<{
+      url: string;
+      mimeType?: string;
+      kind?: string;
+      name?: string;
+      size?: number;
+    }>;
   }) => Promise<RemoteTurnRunResult>;
   claimRemoteTurn?: (args: {
     requestId: string;
@@ -66,6 +73,47 @@ const getTrimmedString = (value: unknown): string => {
     return "";
   }
   return value.trim();
+};
+
+type RuntimeAttachment = {
+  url: string;
+  mimeType?: string;
+  kind?: string;
+  name?: string;
+  size?: number;
+};
+
+/**
+ * Parse a payload's `mediaRefs` (set by the backend after relaying inbound
+ * attachments through R2) into the shape the runtime expects. We preserve
+ * `kind`/`name`/`size` even though the worker's image materializer only
+ * acts on images today — those fields are needed for future non-image
+ * support (voice notes, documents) without another round of plumbing.
+ */
+const getRuntimeAttachments = (value: unknown): RuntimeAttachment[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry): RuntimeAttachment | null => {
+      const record = asRecord(entry);
+      const url = getTrimmedString(record?.url);
+      if (!url) return null;
+      const mimeType = getTrimmedString(record?.mimeType) || undefined;
+      const kind = getTrimmedString(record?.kind) || undefined;
+      const name = getTrimmedString(record?.name) || undefined;
+      const sizeRaw = record?.size;
+      const size =
+        typeof sizeRaw === "number" && Number.isFinite(sizeRaw) && sizeRaw >= 0
+          ? sizeRaw
+          : undefined;
+      return {
+        url,
+        ...(mimeType ? { mimeType } : {}),
+        ...(kind ? { kind } : {}),
+        ...(name ? { name } : {}),
+        ...(size !== undefined ? { size } : {}),
+      };
+    })
+    .filter((entry): entry is RuntimeAttachment => Boolean(entry));
 };
 
 const isConnectorRequest = (payload: Record<string, unknown> | null): boolean => {
@@ -184,8 +232,9 @@ export const createRemoteTurnBridge = (
         const userPrompt = getTrimmedString(payload?.text);
         const agentType = getTrimmedString(payload?.agentType) || undefined;
         const provider = getTrimmedString(payload?.provider) || undefined;
+        const attachments = getRuntimeAttachments(payload?.mediaRefs);
 
-        if (!conversationId || !userPrompt) {
+        if (!conversationId || (!userPrompt && attachments.length === 0)) {
           pending.delete(requestId);
           deps.log?.(
             "warn",
@@ -208,9 +257,10 @@ export const createRemoteTurnBridge = (
         const result = await deps.runLocalTurn({
           requestId,
           conversationId,
-          userPrompt,
+          userPrompt: userPrompt || "The user sent an attachment.",
           agentType,
           provider,
+          attachments,
         });
 
         if (result.status === "busy") {

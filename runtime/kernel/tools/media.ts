@@ -217,6 +217,12 @@ const createImageGenHandler =
             ...(profile ? { profile } : {}),
             ...(aspectRatio ? { aspectRatio } : {}),
             ...(Object.keys(input).length > 0 ? { input } : {}),
+            ...(context.connectorDeliveryTarget
+              ? {
+                  connectorRequestId:
+                    context.connectorDeliveryTarget.requestId,
+                }
+              : {}),
           }),
           signal: extras?.signal,
         },

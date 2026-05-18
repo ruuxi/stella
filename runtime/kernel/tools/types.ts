@@ -31,6 +31,10 @@ export type ToolContext = {
   agentDepth?: number;
   maxAgentDepth?: number;
   allowedToolNames?: string[];
+  connectorDeliveryTarget?: {
+    requestId: string;
+    conversationId: string;
+  };
 };
 
 export type ToolResult = {

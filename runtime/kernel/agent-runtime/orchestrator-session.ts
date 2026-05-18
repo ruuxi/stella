@@ -151,6 +151,7 @@ export class OrchestratorSession extends PiSessionCore {
       toolWorkspaceRoot: opts.toolWorkspaceRoot,
       agentDepth: opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: opts.agentContext.maxAgentDepth,
+      connectorDeliveryTarget: opts.connectorDeliveryTarget,
       toolsAllowlist: opts.agentContext.toolsAllowlist,
       toolCatalog: opts.toolCatalog,
       store: opts.store,

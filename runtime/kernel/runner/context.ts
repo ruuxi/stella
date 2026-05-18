@@ -218,12 +218,13 @@ const buildConnectorTransitionReminder = (
       "Reply in plain text only — no markdown, no headers, no bullet lists, no code blocks. Write like a normal text message.",
       "Do not call the `askQuestion` tool (the chip UI does not render on the user's phone — ask any question inline in chat instead).",
       "Do not call the `html` tool (HTML/canvas artifacts only render in the desktop sidebar — type the answer in chat instead).",
+      "After calling `image_gen`, do not narrate or describe the image you just made — the generated file is delivered to the user's chat directly when it finishes, separately from your text reply. Saying \"here's the image\" reads as broken because the image arrives later as its own message.",
       "Keep replies short and conversational.",
     ].join(" ");
   }
 
   // connector → desktop
-  return "The user is back at their desktop. You can respond normally again — markdown, the `askQuestion` tool, the `html` tool, and other desktop-only surfaces are all fine.";
+  return "The user is back at their desktop. You can respond normally again — markdown, the `askQuestion` tool, the `html` tool, image-gen narration, and other desktop-only surfaces are all fine.";
 };
 
 const buildStaleUserReminder = (
