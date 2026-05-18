@@ -175,6 +175,7 @@ export function useLocalAgentStream({
       ensureAgentStreamSubscription,
       applyResumeSnapshot,
       handleAgentEvent,
+      clearReplayedStreamingState: resetStreamingState,
     },
   })
 

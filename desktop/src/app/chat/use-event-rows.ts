@@ -305,6 +305,10 @@ type UseEventRowsResult = {
 const assistantKeyFor = (userMessageId: string) =>
   `assistant-for-${userMessageId}`
 
+/** Live stream row after a persisted preamble for the same user turn. */
+const assistantStreamKeyFor = (userMessageId: string) =>
+  `assistant-stream-for-${userMessageId}`
+
 const responseTargetKeyFor = (
   responseTarget: AgentResponseTarget | null | undefined,
 ): string | null => {
@@ -383,6 +387,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
      */
     const primaryAssistantByUserMessageId = new Set<string>()
     let pendingAssistantWasProjected = false
+    let pendingAssistantHasPersistedText = false
     let streamingTargetWasProjected = false
 
     for (const message of displayMessages) {
@@ -450,6 +455,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           replyToUserMessageId === pendingUserMessageId
         if (isPendingReply) {
           pendingAssistantWasProjected = true
+          if (persistedText.trim()) {
+            pendingAssistantHasPersistedText = true
+          }
         }
         const responseTarget = responseTargetByAssistantId.get(message._id)
         const isStreamingTargetReply =
@@ -458,13 +466,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         if (isStreamingTargetReply) {
           streamingTargetWasProjected = true
         }
-        const text =
-          (isPendingReply || isStreamingTargetReply) && isStreaming
-            ? (streamingText ?? '')
-            : persistedText
-        const isAnimating = Boolean(
-          (isPendingReply || isStreamingTargetReply) && isStreaming,
-        )
+        const canOverlayStreaming =
+          (isPendingReply || isStreamingTargetReply) &&
+          isStreaming &&
+          !persistedText.trim()
+        const text = canOverlayStreaming ? (streamingText ?? '') : persistedText
+        const isAnimating = canOverlayStreaming
         const stableKey =
           isPrimaryReply && replyToUserMessageId
             ? assistantKeyFor(replyToUserMessageId)
@@ -537,19 +544,31 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     }
 
     /**
-     * No persisted assistant_message has landed yet for the in-flight
-     * user turn. Synthesize a placeholder row, keyed identically to the
-     * persisted row that will eventually replace it, so React reuses
-     * the same component instance (and Streamdown the same parse cache)
-     * across the swap — no flash, no remount.
+     * Synthesize a live stream row for the in-flight user turn.
+     * - Before any persisted assistant text: reuse `assistant-for-<uid>`
+     *   so the eventual SQLite row swaps in without remounting.
+     * - After a preamble is persisted: append `assistant-stream-for-<uid>`
+     *   below the preamble instead of replacing it in place.
      */
-    if (
-      pendingUserMessageId &&
-      !pendingAssistantWasProjected &&
-      (Boolean(isStreaming) ||
-        Boolean(streamingText && streamingText.length > 0))
-    ) {
-      const stableKey = assistantKeyFor(pendingUserMessageId)
+    const shouldShowStreamingPlaceholder = (() => {
+      if (!pendingUserMessageId) return false
+      if (!pendingAssistantWasProjected) {
+        return (
+          Boolean(isStreaming) ||
+          Boolean(streamingText && streamingText.length > 0)
+        )
+      }
+      if (!pendingAssistantHasPersistedText) return false
+      // Preamble already on screen — only mount a live stream row while the
+      // run is active. Stale replayed `streamingText` after reload must not
+      // duplicate the persisted preamble.
+      return Boolean(isStreaming)
+    })()
+
+    if (shouldShowStreamingPlaceholder && pendingUserMessageId) {
+      const stableKey = pendingAssistantWasProjected
+        ? assistantStreamKeyFor(pendingUserMessageId)
+        : assistantKeyFor(pendingUserMessageId)
       const placeholder: AssistantRowViewModel = {
         kind: 'assistant',
         id: stableKey,
