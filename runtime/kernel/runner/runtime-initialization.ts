@@ -2,7 +2,6 @@ import { watch as fsWatch, type FSWatcher } from "node:fs";
 import { loadBundledAgents } from "../agents/agents.js";
 import { loadExtensions } from "../extensions/loader.js";
 import type { ExtensionServices } from "../extensions/services.js";
-import { loadGoogleWorkspaceTools } from "../google-workspace/load-google-workspace-tools.js";
 import { fetchAndRegisterModelsDevDirectProviderModels } from "../../ai/models-dev.js";
 import { registerModel, unregisterModel } from "../../ai/models.js";
 import type { Api, Model } from "../../ai/types.js";
@@ -16,73 +15,8 @@ export const createRuntimeInitialization = (
   deps: {
     disposeConvexClient: () => void;
     shutdownTasks: () => void;
-    onGoogleWorkspaceAuthRequired?: () => void;
   },
 ) => {
-  let googleWorkspaceToolsLoadPromise: Promise<void> | null = null;
-  let googleWorkspaceToolsLoadGeneration = 0;
-
-  const ensureGoogleWorkspaceToolsLoaded = async () => {
-    if (
-      context.state.googleWorkspaceCallTool ||
-      context.state.googleWorkspaceToolsLoaded
-    ) {
-      return;
-    }
-    if (googleWorkspaceToolsLoadPromise) {
-      await googleWorkspaceToolsLoadPromise;
-      return;
-    }
-
-    const loadGeneration = googleWorkspaceToolsLoadGeneration;
-    const loadPromise = loadGoogleWorkspaceTools({
-      stellaRoot: context.stellaRoot,
-      onAuthRequired: deps.onGoogleWorkspaceAuthRequired,
-      onAuthStateChanged: (authenticated) => {
-        context.state.googleWorkspaceAuthenticated = authenticated;
-      },
-    })
-      .then(async ({ disconnect, callTool, hasStoredCredentials }) => {
-        if (
-          loadGeneration !== googleWorkspaceToolsLoadGeneration ||
-          !context.state.isRunning
-        ) {
-          await disconnect().catch(() => undefined);
-          return;
-        }
-
-        context.state.googleWorkspaceDisconnect = disconnect;
-        context.state.googleWorkspaceCallTool = callTool;
-        context.state.googleWorkspaceToolsLoaded = true;
-
-        // Google Workspace tools are not registered on the agent tool host.
-        // IPC (Settings connect card) still uses callTool above.
-
-        // Seed auth state from stored credentials so the UI can show
-        // "Connected" without probing an auth-dependent tool call.
-        if (hasStoredCredentials) {
-          context.state.googleWorkspaceAuthenticated = true;
-        }
-      })
-      .catch((error) => {
-        console.error(
-          "[stella:google-workspace] Failed to load:",
-          (error as Error).message,
-        );
-        if (loadGeneration === googleWorkspaceToolsLoadGeneration) {
-          context.state.googleWorkspaceToolsLoaded = true;
-        }
-      })
-      .finally(() => {
-        if (googleWorkspaceToolsLoadPromise === loadPromise) {
-          googleWorkspaceToolsLoadPromise = null;
-        }
-      });
-
-    googleWorkspaceToolsLoadPromise = loadPromise;
-    await loadPromise;
-  };
-
   /**
    * Tracks which (provider, modelId) pairs were registered by the most
    * recent extension load. The F1 reload path sweeps this list via
@@ -472,8 +406,6 @@ export const createRuntimeInitialization = (
       runCallbacksByRunId: context.state.runCallbacksByRunId.size,
     });
     stopExtensionWatcher();
-    googleWorkspaceToolsLoadGeneration += 1;
-    googleWorkspaceToolsLoadPromise = null;
     context.state.isRunning = false;
     context.state.isInitialized = false;
     context.state.initializationPromise = null;
@@ -506,14 +438,6 @@ export const createRuntimeInitialization = (
     context.state.runCallbacksByRunId.clear();
     void context.selfModHmrController?.forceResumeAll();
     context.toolHost.killAllShells();
-    const disconnectGoogleWorkspace = context.state.googleWorkspaceDisconnect;
-    context.state.googleWorkspaceDisconnect = null;
-    context.state.googleWorkspaceCallTool = null;
-    context.state.googleWorkspaceToolsLoaded = false;
-    context.state.googleWorkspaceAuthenticated = null;
-    if (disconnectGoogleWorkspace) {
-      void disconnectGoogleWorkspace().catch(() => undefined);
-    }
     // Drain any in-flight background compactions so SQLite writes
     // complete before the worker tears down its store handle. Bounded
     // timeout ensures shutdown doesn't pin on a stalled LLM call.
@@ -521,7 +445,6 @@ export const createRuntimeInitialization = (
   };
 
   return {
-    ensureGoogleWorkspaceToolsLoaded,
     initializeRuntime,
     reloadUserExtensions,
     start,

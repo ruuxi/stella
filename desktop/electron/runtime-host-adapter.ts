@@ -969,10 +969,6 @@ export class RuntimeHostAdapter {
     return this.host.on("store-thread-updated", listener);
   }
 
-  onGoogleWorkspaceAuthRequired(listener: () => void) {
-    return this.host.on("google-workspace-auth-required", listener);
-  }
-
   onVoiceActionCompleted(
     listener: (payload: RuntimeVoiceActionCompletedPayload) => void,
   ) {

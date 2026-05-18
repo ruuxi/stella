@@ -5,7 +5,6 @@ import { AppBootstrap } from "./systems/boot/AppBootstrap";
 import { ChatStoreProvider } from "@/context/chat-store";
 import { CredentialRequestLayer } from "./global/auth/CredentialRequestLayer";
 import { ConnectorCredentialRequestLayer } from "./global/auth/ConnectorCredentialRequestLayer";
-import { GoogleWorkspaceAuthListener } from "./global/integrations/GoogleWorkspaceAuthListener";
 import { FullShell } from "./shell/FullShell";
 import {
   readPetOpenPreference,
@@ -21,8 +20,6 @@ const AUTO_REPAIR_SIGNATURE_KEY = "stella:auto-repair:last-signature";
 //     timeout, see `desktop/electron/services/credential-service.ts`)
 //   * ConnectorCredentialRequestLayer → `connector-credential:request`
 //     (stella-connect CLI hangs on the bridge until the user submits)
-//   * GoogleWorkspaceAuthListener → `googleWorkspace:authRequired` (connect
-//     card never surfaces, agent's google-workspace tool quietly fails)
 // Bundle savings from lazy-loading these were negligible (every dep is in the
 // eager chunk anyway), and the cost of missing the event is high.
 function App() {
@@ -52,7 +49,6 @@ function App() {
           <PhoneAccessBridge />
           <CredentialRequestLayer />
           <ConnectorCredentialRequestLayer />
-          <GoogleWorkspaceAuthListener />
           <FullShell />
         </ChatStoreProvider>
       </div>

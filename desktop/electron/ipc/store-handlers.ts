@@ -437,6 +437,38 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     });
   });
 
+  ipcMain.handle("storeWeb:listNativeIntegrations", async (event) => {
+    assertStoreWebRequest(event, "storeWeb:listNativeIntegrations");
+    return await handleStoreWebLocalAction({
+      type: "listNativeIntegrations",
+    });
+  });
+
+  ipcMain.handle(
+    "storeWeb:connectNativeIntegration",
+    async (event, payload: unknown) => {
+      assertStoreWebRequest(event, "storeWeb:connectNativeIntegration");
+      return await handleStoreWebLocalAction(
+        {
+          type: "connectNativeIntegration",
+          payload,
+        },
+        { timeoutMs: 5 * 60 * 1000 },
+      );
+    },
+  );
+
+  ipcMain.handle(
+    "storeWeb:disconnectNativeIntegration",
+    async (event, payload: unknown) => {
+      assertStoreWebRequest(event, "storeWeb:disconnectNativeIntegration");
+      return await handleStoreWebLocalAction({
+        type: "disconnectNativeIntegration",
+        payload,
+      });
+    },
+  );
+
   ipcMain.handle("storeWeb:installPet", async (event, payload: unknown) => {
     assertStoreWebRequest(event, "storeWeb:installPet");
     return await handleStoreWebLocalAction({

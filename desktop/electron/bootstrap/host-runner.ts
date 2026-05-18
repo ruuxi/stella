@@ -12,7 +12,6 @@ import {
 } from "../stella-host-runner.js";
 import {
   type BootstrapContext,
-  broadcastGoogleWorkspaceAuthRequired,
   broadcastLocalChatUpdated,
   broadcastScheduleUpdated,
   broadcastStoreThreadUpdated,
@@ -151,8 +150,6 @@ const clearHostRunnerSubscriptions = (context: BootstrapContext) => {
   state.storeThreadUpdateUnsubscribe = null;
   state.scheduleUpdateUnsubscribe?.();
   state.scheduleUpdateUnsubscribe = null;
-  state.googleWorkspaceAuthRequiredUnsubscribe?.();
-  state.googleWorkspaceAuthRequiredUnsubscribe = null;
 };
 
 const connectHostRunner = async (context: BootstrapContext) => {
@@ -184,10 +181,6 @@ const connectHostRunner = async (context: BootstrapContext) => {
   state.scheduleUpdateUnsubscribe = runner.onScheduleUpdated(() => {
     broadcastScheduleUpdated(context);
   });
-  state.googleWorkspaceAuthRequiredUnsubscribe =
-    runner.onGoogleWorkspaceAuthRequired(() => {
-      broadcastGoogleWorkspaceAuthRequired(context);
-    });
 
   await runner.start();
   if (BrowserWindow.getFocusedWindow()) {

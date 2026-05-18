@@ -15,6 +15,7 @@ import { randomUUID } from "crypto";
 import { BrowserWindow, shell } from "electron";
 import {
   connectConnectorOAuth,
+  connectPreregisteredConnectorOAuth,
   saveConnectorAccessToken,
 } from "../../../runtime/kernel/connectors/oauth.js";
 import type { WindowManagerTarget } from "../../../runtime/kernel/lifecycle-targets.js";
@@ -32,7 +33,23 @@ type ConnectorCredentialOutcome =
 type PendingMeta = {
   tokenKey: string;
   mode: ConnectorCredentialRequestMode;
+  kind: "credential" | "external_approval";
   oauthAbort?: AbortController;
+  oauthStarted?: boolean;
+  oauthFlow?: {
+    type: "mcp" | "preregistered";
+    stellaRoot: string;
+    tokenKey: string;
+    resourceUrl?: string;
+    clientId?: string;
+    authorizationEndpoint?: string;
+    tokenEndpoint?: string;
+    oauthClientId?: string;
+    oauthResource?: string;
+    scopes?: string[];
+    signal: AbortSignal;
+  };
+  windows: BrowserWindow[];
 };
 
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
@@ -59,6 +76,72 @@ export class ConnectorCredentialService {
     scopes?: string[];
     description?: string;
     placeholder?: string;
+  }): Promise<ConnectorCredentialOutcome> {
+    return await this.enqueueRequest({
+      ...payload,
+      kind: "credential",
+    });
+  }
+
+  async requestExternalOAuthApproval(payload: {
+    tokenKey: string;
+    displayName: string;
+    description?: string;
+  }): Promise<ConnectorCredentialOutcome> {
+    return await this.enqueueRequest({
+      tokenKey: payload.tokenKey,
+      displayName: payload.displayName,
+      authType: "oauth",
+      description: payload.description,
+      kind: "external_approval",
+    });
+  }
+
+  async requestPreregisteredOAuth(payload: {
+    tokenKey: string;
+    displayName: string;
+    clientId: string;
+    authorizationEndpoint: string;
+    tokenEndpoint: string;
+    scopes?: string[];
+    resourceUrl?: string;
+    description?: string;
+  }): Promise<ConnectorCredentialOutcome> {
+    return await this.enqueueRequest({
+      tokenKey: payload.tokenKey,
+      displayName: payload.displayName,
+      authType: "oauth",
+      resourceUrl: payload.resourceUrl ?? payload.authorizationEndpoint,
+      oauthClientId: payload.clientId,
+      scopes: payload.scopes,
+      description: payload.description,
+      kind: "credential",
+      preregisteredOAuth: {
+        clientId: payload.clientId,
+        authorizationEndpoint: payload.authorizationEndpoint,
+        tokenEndpoint: payload.tokenEndpoint,
+        resourceUrl: payload.resourceUrl,
+      },
+    });
+  }
+
+  private async enqueueRequest(payload: {
+    tokenKey: string;
+    displayName: string;
+    authType?: ConnectorCredentialRequestMode;
+    resourceUrl?: string;
+    oauthClientId?: string;
+    oauthResource?: string;
+    scopes?: string[];
+    description?: string;
+    placeholder?: string;
+    kind: "credential" | "external_approval";
+    preregisteredOAuth?: {
+      clientId: string;
+      authorizationEndpoint: string;
+      tokenEndpoint: string;
+      resourceUrl?: string;
+    };
   }): Promise<ConnectorCredentialOutcome> {
     const stellaRoot = this.options.getStellaRoot();
     if (!stellaRoot) {
@@ -89,6 +172,7 @@ export class ConnectorCredentialService {
       tokenKey: payload.tokenKey,
       displayName: payload.displayName,
       mode,
+      completionMode: payload.kind === "external_approval" ? "approve" : "wait",
       description: payload.description,
       placeholder: payload.placeholder,
     };
@@ -97,7 +181,38 @@ export class ConnectorCredentialService {
     this.meta.set(requestId, {
       tokenKey: payload.tokenKey,
       mode,
+      kind: payload.kind,
       oauthAbort,
+      oauthStarted: false,
+      oauthFlow:
+        mode === "oauth" &&
+        payload.kind === "credential" &&
+        payload.preregisteredOAuth
+          ? {
+              type: "preregistered",
+              stellaRoot,
+              tokenKey: payload.tokenKey,
+              clientId: payload.preregisteredOAuth.clientId,
+              authorizationEndpoint:
+                payload.preregisteredOAuth.authorizationEndpoint,
+              tokenEndpoint: payload.preregisteredOAuth.tokenEndpoint,
+              resourceUrl: payload.preregisteredOAuth.resourceUrl,
+              scopes: payload.scopes,
+              signal: oauthAbort!.signal,
+            }
+          : mode === "oauth" && payload.kind === "credential" && payload.resourceUrl
+          ? {
+              type: "mcp",
+              stellaRoot,
+              tokenKey: payload.tokenKey,
+              resourceUrl: payload.resourceUrl,
+              oauthClientId: payload.oauthClientId,
+              oauthResource: payload.oauthResource,
+              scopes: payload.scopes,
+              signal: oauthAbort!.signal,
+            }
+          : undefined,
+      windows: targetWindows,
     });
 
     for (const window of targetWindows) {
@@ -119,34 +234,33 @@ export class ConnectorCredentialService {
       });
     });
 
-    if (mode === "oauth" && payload.resourceUrl && oauthAbort) {
-      // Fire-and-forget: the OAuth flow runs in parallel with the
-      // dialog. On success it resolves `settled` with `{ok: true}` via
-      // the in-place token write + manual resolve below. On failure
-      // (user cancel via dialog → abort, browser dismissed, callback
-      // server error) it resolves with `{ok: false}`. Either way the
-      // bridge promise is the single source of truth that the CLI is
-      // waiting on, so we never resolve it twice.
-      void this.runOauthFlow({
+    return settled;
+  }
+
+  private notifyComplete(
+    requestId: string,
+    outcome: ConnectorCredentialOutcome,
+  ) {
+    const windows = this.meta.get(requestId)?.windows ?? BrowserWindow.getAllWindows();
+    for (const window of windows) {
+      if (window.isDestroyed()) continue;
+      window.webContents.send("connector-credential:complete", {
         requestId,
-        stellaRoot,
-        tokenKey: payload.tokenKey,
-        resourceUrl: payload.resourceUrl,
-        oauthClientId: payload.oauthClientId,
-        oauthResource: payload.oauthResource,
-        scopes: payload.scopes,
-        signal: oauthAbort.signal,
+        ok: outcome.ok,
+        reason: outcome.ok ? undefined : outcome.reason,
       });
     }
-
-    return settled;
   }
 
   private async runOauthFlow(args: {
     requestId: string;
+    type: "mcp" | "preregistered";
     stellaRoot: string;
     tokenKey: string;
-    resourceUrl: string;
+    resourceUrl?: string;
+    clientId?: string;
+    authorizationEndpoint?: string;
+    tokenEndpoint?: string;
     oauthClientId?: string;
     oauthResource?: string;
     scopes?: string[];
@@ -156,17 +270,32 @@ export class ConnectorCredentialService {
       // `connectConnectorOAuth` handles the full PKCE Authorization
       // Code flow + token persistence. It calls `saveConnectorAccessToken`
       // itself on success, so we just need to resolve the bridge promise.
-      await connectConnectorOAuth(args.stellaRoot, {
-        tokenKey: args.tokenKey,
-        resourceUrl: args.resourceUrl,
-        oauthClientId: args.oauthClientId,
-        oauthResource: args.oauthResource,
-        scopes: args.scopes,
-        openUrl: (url) => shell.openExternal(url),
-        signal: args.signal,
-      });
+      if (args.type === "preregistered") {
+        await connectPreregisteredConnectorOAuth(args.stellaRoot, {
+          tokenKey: args.tokenKey,
+          clientId: args.clientId!,
+          authorizationEndpoint: args.authorizationEndpoint!,
+          tokenEndpoint: args.tokenEndpoint!,
+          resourceUrl: args.resourceUrl,
+          scopes: args.scopes,
+          openUrl: (url) => shell.openExternal(url),
+          signal: args.signal,
+        });
+      } else {
+        await connectConnectorOAuth(args.stellaRoot, {
+          tokenKey: args.tokenKey,
+          resourceUrl: args.resourceUrl!,
+          oauthClientId: args.oauthClientId,
+          oauthResource: args.oauthResource,
+          scopes: args.scopes,
+          openUrl: (url) => shell.openExternal(url),
+          signal: args.signal,
+        });
+      }
       if (this.pending.has(args.requestId)) {
-        this.pending.resolve(args.requestId, { ok: true });
+        const outcome = { ok: true } as const;
+        this.notifyComplete(args.requestId, outcome);
+        this.pending.resolve(args.requestId, outcome);
         this.meta.delete(args.requestId);
       }
     } catch (error) {
@@ -174,7 +303,9 @@ export class ConnectorCredentialService {
       const message =
         error instanceof Error ? error.message : "OAuth connection failed.";
       const reason = args.signal.aborted ? "cancelled" : message;
-      this.pending.resolve(args.requestId, { ok: false, reason });
+      const outcome = { ok: false, reason } as const;
+      this.notifyComplete(args.requestId, outcome);
+      this.pending.resolve(args.requestId, outcome);
       this.meta.delete(args.requestId);
     }
   }
@@ -187,14 +318,27 @@ export class ConnectorCredentialService {
         error: "Connector credential request not found.",
       };
     }
-    if (meta.mode !== "api_key") {
-      // The renderer should never invoke `submit` for an oauth-mode
-      // request — the dialog has no input field in that mode. Defend
-      // against a buggy renderer state by rejecting cleanly.
-      return {
-        ok: false as const,
-        error: "OAuth flow does not accept manual submit.",
-      };
+    if (meta.mode === "oauth") {
+      if (meta.kind === "external_approval") {
+        const outcome = { ok: true } as const;
+        this.pending.resolve(payload.requestId, outcome);
+        this.meta.delete(payload.requestId);
+        return { ok: true as const };
+      }
+      if (!meta.oauthFlow) {
+        return {
+          ok: false as const,
+          error: "OAuth flow is missing connection details.",
+        };
+      }
+      if (!meta.oauthStarted) {
+        meta.oauthStarted = true;
+        void this.runOauthFlow({
+          requestId: payload.requestId,
+          ...meta.oauthFlow,
+        });
+      }
+      return { ok: true as const };
     }
     const value = (payload.value ?? "").trim();
     if (!value) {
@@ -222,7 +366,9 @@ export class ConnectorCredentialService {
           : "Failed to persist connector credential.";
       return { ok: false as const, error: message };
     }
-    this.pending.resolve(payload.requestId, { ok: true });
+    const outcome = { ok: true } as const;
+    this.notifyComplete(payload.requestId, outcome);
+    this.pending.resolve(payload.requestId, outcome);
     this.meta.delete(payload.requestId);
     return { ok: true as const };
   }
@@ -243,14 +389,18 @@ export class ConnectorCredentialService {
       // Resolve eagerly in case the OAuth flow was waiting on metadata
       // discovery (not yet in `waitForCode`) — the catch in
       // `runOauthFlow` will no-op via `pending.has` guard.
-      this.pending.resolve(payload.requestId, {
+      const outcome = {
         ok: false,
         reason: "cancelled",
-      });
+      } as const;
+      this.notifyComplete(payload.requestId, outcome);
+      this.pending.resolve(payload.requestId, outcome);
       this.meta.delete(payload.requestId);
       return { ok: true as const };
     }
-    this.pending.resolve(payload.requestId, { ok: false, reason: "cancelled" });
+    const outcome = { ok: false, reason: "cancelled" } as const;
+    this.notifyComplete(payload.requestId, outcome);
+    this.pending.resolve(payload.requestId, outcome);
     this.meta.delete(payload.requestId);
     return { ok: true as const };
   }
@@ -258,7 +408,9 @@ export class ConnectorCredentialService {
   cancelAll() {
     for (const [requestId, meta] of this.meta) {
       meta.oauthAbort?.abort(new Error("Connector authorization cancelled."));
-      this.pending.resolve(requestId, { ok: false, reason: "cancelled" });
+      const outcome = { ok: false, reason: "cancelled" } as const;
+      this.notifyComplete(requestId, outcome);
+      this.pending.resolve(requestId, outcome);
     }
     this.meta.clear();
   }

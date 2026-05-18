@@ -97,7 +97,6 @@ type RuntimeHostEvents = {
   "local-chat-updated": LocalChatUpdatedPayload | null;
   "store-thread-updated": StoreThreadSnapshot;
   "schedule-updated": void;
-  "google-workspace-auth-required": void;
 };
 
 export type RuntimeHostHandlers = {
@@ -2481,12 +2480,6 @@ export class StellaRuntimeHost {
       NOTIFICATION_NAMES.SCHEDULE_UPDATED,
       () => {
         this.events.emit("schedule-updated", undefined);
-      },
-    );
-    peer.registerNotificationHandler(
-      NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED,
-      () => {
-        this.events.emit("google-workspace-auth-required");
       },
     );
   }

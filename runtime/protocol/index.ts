@@ -318,7 +318,6 @@ export const NOTIFICATION_NAMES = {
   STORE_THREAD_UPDATED: "store.threadUpdated",
   SCHEDULE_UPDATED: "schedule.updated",
   APPROVAL_REQUESTED: "approval.requested",
-  GOOGLE_WORKSPACE_AUTH_REQUIRED: "googleWorkspace.authRequired",
 } as const;
 
 export type RuntimeInitializeParams = {

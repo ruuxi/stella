@@ -22,10 +22,23 @@ import {
   deleteConnectorAccessTokens,
   loadConnectorAccessToken,
 } from "../connectors/oauth.js";
+import {
+  disableNativeConnector,
+  enableNativeConnector,
+  getNativeConnectorCatalogEntry,
+  getNativeConnectorTools,
+  isNativeConnectorEnabled,
+  listNativeConnectors,
+} from "../connectors/native-integrations.js";
+import {
+  callNativeProviderAction,
+  getNativeProviderManifest,
+} from "../connectors/native-provider-actions.js";
 import type {
   ConnectorCommandConfig,
   ConnectorToolInfo,
 } from "../connectors/types.js";
+import { loadGoogleWorkspaceTools } from "../google-workspace/load-google-workspace-tools.js";
 import { resolveStatePath } from "./shared.js";
 
 const stateRoot = path.resolve(resolveStatePath());
@@ -234,12 +247,58 @@ const findApi = async (id: string) => {
   return apis.find((entry) => entry.id === id);
 };
 
+const findNative = (id: string) => getNativeConnectorCatalogEntry(id);
+
 const connectorAuthStatus = async (auth: ConnectorCommandConfig["auth"]) => {
   if (!auth || auth.type === "none") return "unsupported" as const;
   if (!auth.tokenKey) return "not_logged_in" as const;
   return (await loadConnectorAccessToken(stellaRoot, auth.tokenKey))
     ? "connected"
     : "not_logged_in";
+};
+
+const ensureNativeEnabled = async (id: string) => {
+  const entry = findNative(id);
+  if (!entry) return null;
+  if (!(await isNativeConnectorEnabled(stellaRoot, id))) {
+    fail(
+      `${entry.name} is disabled. Enable it in the Store or run: stella-connect enable-native ${id}`,
+    );
+  }
+  return entry;
+};
+
+const callNativeConnector = async (
+  id: string,
+  action: string,
+  args: Record<string, unknown>,
+) => {
+  const entry = await ensureNativeEnabled(id);
+  if (!entry) return null;
+  const allowedTools = new Set(
+    getNativeConnectorTools(entry).map((tool) => tool.name),
+  );
+  if (!allowedTools.has(action)) {
+    fail(
+      `${entry.name} does not expose ${action}. Run: stella-connect tools ${id}`,
+    );
+  }
+  if (entry.provider === "native") {
+    return await callNativeProviderAction(stellaRoot, id, entry.name, action, args);
+  }
+  if (entry.provider !== "google-workspace") {
+    fail(`${entry.name} does not have a native CLI dispatcher yet.`);
+  }
+  const { callTool, disconnect } = await loadGoogleWorkspaceTools({
+    stellaRoot,
+  });
+  try {
+    const googleCallTool = callTool;
+    if (googleCallTool) return await googleCallTool(action, args);
+    fail("Google Workspace tools are unavailable.");
+  } finally {
+    await disconnect().catch(() => undefined);
+  }
 };
 
 const writeGeneratedSkill = async (
@@ -448,7 +507,10 @@ const refreshSkill = async (id: string) => {
 const HELP_TEXT = [
   "Usage: stella-connect <command>",
   "Commands:",
-  "  installed                         List configured CLI/API connectors.",
+  "  installed                         List configured CLI/API/native connectors.",
+  "  apps                              List native Store integrations and enabled state.",
+  "  enable-native <id>                Enable a native Store integration and write its skill.",
+  "  disable-native <id>               Disable a native Store integration and remove its generated skill.",
   "  import-mcp --id <id> (--url <u> | --command <cmd> [--args-json '[]'])",
   "                                    Probe an MCP, persist it as a CLI connector, and",
   "                                    generate a matching skill under state/skills/<id>/.",
@@ -469,9 +531,10 @@ const main = async () => {
   const [commandName, ...rest] = process.argv.slice(2);
   switch (commandName) {
     case "installed": {
-      const [commands, apis] = await Promise.all([
+      const [commands, apis, native] = await Promise.all([
         listConfiguredConnectorCommands(stellaRoot),
         listConfiguredApiConnectors(stellaRoot),
+        listNativeConnectors(stellaRoot),
       ]);
       printJson({
         commands: await Promise.all(
@@ -486,12 +549,35 @@ const main = async () => {
             authStatus: await connectorAuthStatus(api.auth),
           })),
         ),
+        native: native.filter((entry) => entry.enabled),
       });
+      return;
+    }
+    case "apps": {
+      printJson(await listNativeConnectors(stellaRoot));
+      return;
+    }
+    case "enable-native": {
+      const id = rest[0];
+      if (!id) fail("Usage: stella-connect enable-native <integration-id>");
+      printJson(await enableNativeConnector(stellaRoot, id, "cli"));
+      return;
+    }
+    case "disable-native": {
+      const id = rest[0];
+      if (!id) fail("Usage: stella-connect disable-native <integration-id>");
+      printJson(await disableNativeConnector(stellaRoot, id));
       return;
     }
     case "tools": {
       const id = rest[0];
       if (!id) fail("Usage: stella-connect tools <connector-id>");
+      const native = findNative(id);
+      if (native) {
+        await ensureNativeEnabled(id);
+        printJson(getNativeConnectorTools(native));
+        return;
+      }
       const command = await findCommand(id);
       if (!command) fail(`Connector command is not installed: ${id}`);
       if (!command) return;
@@ -515,6 +601,16 @@ const main = async () => {
         optionString(options, "json"),
         {},
       );
+      if (findNative(id)) {
+        const manifest = getNativeProviderManifest(id);
+        printJson(
+          await withAuthRetry(() => callNativeConnector(id, target, body), {
+            authType: manifest?.auth.type,
+            scopes: [],
+          }),
+        );
+        return;
+      }
       if (target.startsWith("/")) {
         const api = await findApi(id);
         if (!api) fail(`API connector is not installed: ${id}`);
@@ -557,6 +653,10 @@ const main = async () => {
     case "remove": {
       const id = rest[0];
       if (!id) fail("Usage: stella-connect remove <connector-id>");
+      if (findNative(id)) {
+        printJson(await disableNativeConnector(stellaRoot, id));
+        return;
+      }
       const removed = await removeConfiguredConnector(stellaRoot, id);
       await deleteConnectorAccessTokens(stellaRoot, [
         ...removed.removedCommands.map((command) => command.auth?.tokenKey),

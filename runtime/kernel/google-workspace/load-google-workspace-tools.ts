@@ -24,16 +24,14 @@ import { CalendarService } from "./CalendarService.js";
 import { GmailService } from "./GmailService.js";
 import { PeopleService } from "./PeopleService.js";
 import { TimeService } from "./TimeService.js";
-import { hasStoredCredentialsFile } from "./stella-credential-storage.js";
 import { formatGoogleWorkspaceCallToolResult } from "./format-google-workspace-result.js";
 import { GOOGLE_WORKSPACE_TOOL_METADATA } from "./google-workspace-tool-metadata.js";
+import { loadConnectorAccessToken } from "../connectors/oauth.js";
 
 const logger = createRuntimeLogger("google-workspace");
 
 const AUTH_ERROR_PATTERN =
   /\bauth\b|oauth|sign[._-]?in|login|consent|credential|unauthorized|unauthenticated|\b403\b|\b401\b/i;
-
-const AUTH_REQUIRED_DEBOUNCE_MS = 10_000;
 
 export type GoogleWorkspaceCallToolFn = (
   name: string,
@@ -178,7 +176,6 @@ function buildHandlers(
 
 export const loadGoogleWorkspaceTools = async (options: {
   stellaRoot: string;
-  onAuthRequired?: () => void;
   onAuthStateChanged?: (authenticated: boolean) => void;
 }): Promise<{
   tools: ToolDefinition[];
@@ -207,14 +204,6 @@ export const loadGoogleWorkspaceTools = async (options: {
     time,
   );
 
-  let lastAuthRequiredAt = 0;
-  const notifyAuthRequired = () => {
-    const now = Date.now();
-    if (now - lastAuthRequiredAt < AUTH_REQUIRED_DEBOUNCE_MS) return;
-    lastAuthRequiredAt = now;
-    options.onAuthRequired?.();
-  };
-
   const NON_AUTH_TOOLS = new Set(["time.getCurrentDate", "time.getCurrentTime", "time.getTimeZone"]);
 
   const callGoogleWorkspaceTool = async (
@@ -222,16 +211,17 @@ export const loadGoogleWorkspaceTools = async (options: {
     args: Record<string, unknown>,
   ): Promise<ToolResult> => {
     // Fail fast when no credentials are stored instead of silently opening a
-    // browser and blocking the tool call for up to 5 minutes.  Fire the
-    // auth-required notification so the inline connect card appears immediately.
-    if (!NON_AUTH_TOOLS.has(name) && !hasStoredCredentialsFile()) {
-      notifyAuthRequired();
+    // browser and blocking the tool call. Connect flow lives in the Store
+    // (`nativeIntegrations:enable("gmail" | "googlecalendar" | …)`), which
+    // brokers the dialog + OAuth before any tool call lands here.
+    if (
+      !NON_AUTH_TOOLS.has(name) &&
+      !(await loadConnectorAccessToken(options.stellaRoot, "google-workspace"))
+    ) {
       options.onAuthStateChanged?.(false);
       return {
         error:
-          "Google Workspace is not connected. The user has been prompted to " +
-          "connect their Google account. Wait for them to complete sign-in, " +
-          "then retry.",
+          "Google Workspace is not connected. Enable Gmail / Calendar / Docs / Drive in the Store first.",
       };
     }
 
@@ -246,7 +236,6 @@ export const loadGoogleWorkspaceTools = async (options: {
         "error" in formatted &&
         AUTH_ERROR_PATTERN.test(formatted.error ?? "")
       ) {
-        notifyAuthRequired();
         options.onAuthStateChanged?.(false);
       } else if (!("error" in formatted)) {
         options.onAuthStateChanged?.(true);
@@ -255,7 +244,6 @@ export const loadGoogleWorkspaceTools = async (options: {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (AUTH_ERROR_PATTERN.test(message)) {
-        notifyAuthRequired();
         options.onAuthStateChanged?.(false);
       }
       return { error: `Google Workspace tool failed: ${message}` };
@@ -299,7 +287,9 @@ export const loadGoogleWorkspaceTools = async (options: {
     authManager.dispose();
   };
 
-  const hasStoredCredentials = hasStoredCredentialsFile();
+  const hasStoredCredentials = Boolean(
+    await loadConnectorAccessToken(options.stellaRoot, "google-workspace"),
+  );
 
   return {
     tools: toolsOut,

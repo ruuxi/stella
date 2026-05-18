@@ -9,6 +9,11 @@ import { createOrchestratorController } from "./runner/orchestrator.js";
 import { createRuntimeInitialization } from "./runner/runtime-initialization.js";
 import { createStoreOperations } from "./runner/store-operations.js";
 import { createAgentOrchestration } from "./runner/agent-orchestration.js";
+import { loadGoogleWorkspaceTools } from "./google-workspace/load-google-workspace-tools.js";
+import {
+  deleteConnectorAccessTokens,
+  loadConnectorAccessToken,
+} from "./connectors/oauth.js";
 import type {
   RunnerPublicApi,
   StellaHostRunnerOptions,
@@ -81,9 +86,6 @@ export const parseGoogleWorkspaceProfile = (
   };
 };
 
-const AUTH_PENDING_PATTERN =
-  /\bauth\b|oauth|sign[._-]?in|login|consent|credential|unauthorized|unauthenticated|\b403\b|\b401\b/i;
-
 const parseGoogleProfileResult = (
   result: ToolResult,
 ): GoogleWorkspaceAuthResult => {
@@ -108,10 +110,6 @@ const parseGoogleProfileResult = (
     ...parseGoogleWorkspaceProfile(response),
   };
 };
-
-/** True when a tool error looks like a missing/expired credential (polling should continue). */
-const isAuthPendingError = (result: ToolResult): boolean =>
-  "error" in result && AUTH_PENDING_PATTERN.test(result.error ?? "");
 
 export const createStellaHostRunner = (
   options: StellaHostRunnerOptions,
@@ -155,10 +153,7 @@ export const createStellaHostRunner = (
   const runtimeInitialization = createRuntimeInitialization(context, {
     disposeConvexClient: convexSession.disposeConvexClient,
     shutdownTasks: taskOrchestration.shutdown,
-    onGoogleWorkspaceAuthRequired: options.onGoogleWorkspaceAuthRequired,
   });
-  context.ensureGoogleWorkspaceToolsLoaded =
-    runtimeInitialization.ensureGoogleWorkspaceToolsLoaded;
 
   return {
     deviceId: context.deviceId,
@@ -234,47 +229,28 @@ export const createStellaHostRunner = (
     },
 
     googleWorkspaceGetAuthStatus: async () => {
-      await context.ensureGoogleWorkspaceToolsLoaded();
-      const callTool = context.state.googleWorkspaceCallTool;
-      if (!callTool) return { connected: false, unavailable: true };
-      // Return cached auth state. Calling any auth-dependent tool would trigger the
-      // upstream OAuth browser flow when not authenticated, so we never probe
-      // here — state is updated passively by callGoogleWorkspaceTool.
-      return { connected: context.state.googleWorkspaceAuthenticated === true };
+      return {
+        connected: Boolean(
+          await loadConnectorAccessToken(context.stellaRoot, "google-workspace"),
+        ),
+      };
     },
 
     googleWorkspaceConnect: async () => {
-      await context.ensureGoogleWorkspaceToolsLoaded();
-      const callTool = context.state.googleWorkspaceCallTool;
-      if (!callTool) return { connected: false, unavailable: true };
-      // Trigger the upstream OAuth browser flow.
-      const initial = await callTool("people.getMe", {});
-      const initialParsed = parseGoogleProfileResult(initial);
-      if (initialParsed.connected) return initialParsed;
-      // Only poll if the error looks auth-related (consent pending). Fail fast on
-      // hard errors like network failures or adapter crashes.
-      if (!isAuthPendingError(initial)) return { connected: false };
-      const maxAttempts = 60;
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const result = await callTool("people.getMe", {});
-        const status = parseGoogleProfileResult(result);
-        if (status.connected) return status;
-        if (!isAuthPendingError(result)) return { connected: false };
+      const { callTool, disconnect } = await loadGoogleWorkspaceTools({
+        stellaRoot: context.stellaRoot,
+      });
+      try {
+        if (!callTool) return { connected: false, unavailable: true };
+        return parseGoogleProfileResult(await callTool("people.getMe", {}));
+      } finally {
+        await disconnect().catch(() => undefined);
       }
-      return { connected: false };
     },
 
     googleWorkspaceDisconnect: async () => {
-      await context.ensureGoogleWorkspaceToolsLoaded();
-      const callTool = context.state.googleWorkspaceCallTool;
-      if (!callTool) return { ok: false };
-      const result = await callTool("auth.clear", {});
-      const ok = !("error" in result);
-      if (ok) {
-        context.state.googleWorkspaceAuthenticated = false;
-      }
-      return { ok };
+      await deleteConnectorAccessTokens(context.stellaRoot, ["google-workspace"]);
+      return { ok: true };
     },
 
     triggerDreamNow: async (trigger = "manual") => {

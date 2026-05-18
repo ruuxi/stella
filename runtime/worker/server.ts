@@ -1083,9 +1083,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       // failed (state.cliBridgeServer === null) the CLI gracefully falls
       // back to exit-2 `auth_required` instead of dialing a dead socket.
       cliBridgeSocketPath: state.cliBridgeServer?.socketPath,
-      onGoogleWorkspaceAuthRequired: () => {
-        peer.notify(NOTIFICATION_NAMES.GOOGLE_WORKSPACE_AUTH_REQUIRED, null);
-      },
       notifyVoiceActionComplete: (payload) => {
         emitVoiceActionCompleted(payload);
       },

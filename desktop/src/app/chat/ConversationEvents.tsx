@@ -2,36 +2,24 @@
  * Home full-chat surface.
  *
  * Projects local `EventRecord[]` into row view models via `useEventRows`
- * and mounts the shared `<ChatTimeline>`. Renders the Google Workspace
- * connect card outside the timeline data — it's a local-chat-only
- * affordance — but threads it into `extraTail` so it lives inside the
- * same Legend List footer as the conversation content.
+ * and mounts the shared `<ChatTimeline>`.
  */
 import {
   memo,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type CSSProperties,
   type RefObject,
 } from "react";
 import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from "@legendapp/list/react";
 import type { Attachment } from "@/app/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
-import { GoogleWorkspaceConnectCard } from "@/app/chat/GoogleWorkspaceConnectCard";
-import { GrowIn } from "@/app/chat/GrowIn";
 import { useEventRows } from "./use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
-import {
-  acknowledgeGoogleWorkspaceAuthRequired,
-  getGoogleWorkspaceAuthRequired,
-  subscribeGoogleWorkspaceAuthRequired,
-} from "@/global/integrations/google-workspace-auth-state";
 
 const USER_MESSAGE_ENTER_MS = 360;
 
@@ -106,16 +94,6 @@ export const ConversationEvents = memo(function ConversationEvents({
   contentContainerStyle,
   estimatedItemSize,
 }: Props) {
-  const showGwsConnect = useSyncExternalStore(
-    subscribeGoogleWorkspaceAuthRequired,
-    getGoogleWorkspaceAuthRequired,
-    getGoogleWorkspaceAuthRequired,
-  );
-
-  const handleGwsConnected = useCallback(() => {
-    acknowledgeGoogleWorkspaceAuthRequired();
-  }, []);
-
   const { rows: projectedRows, lastUserRowIndex, pendingAskQuestion } = useEventRows({
     messages,
     maxItems,
@@ -161,11 +139,6 @@ export const ConversationEvents = memo(function ConversationEvents({
       className={className}
       contentContainerStyle={contentContainerStyle}
       estimatedItemSize={estimatedItemSize}
-      extraTail={
-        <GrowIn animate={true} show={showGwsConnect}>
-          <GoogleWorkspaceConnectCard onConnected={handleGwsConnected} />
-        </GrowIn>
-      }
     />
   );
 });

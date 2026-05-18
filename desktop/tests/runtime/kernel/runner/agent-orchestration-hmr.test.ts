@@ -298,7 +298,6 @@ const createTestContext = (root: string, hmrController: unknown) => {
     },
     hookEmitter: { emit: vi.fn() },
     paths: {},
-    ensureGoogleWorkspaceToolsLoaded: vi.fn(),
   } as any;
 };
 

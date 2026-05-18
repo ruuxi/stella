@@ -155,7 +155,6 @@ export type StellaHostRunnerOptions = {
   ) => LocalContextEvent[];
   appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
   getDefaultConversationId?: () => string;
-  onGoogleWorkspaceAuthRequired?: () => void;
 };
 
 export type ChatPayload = {
@@ -282,13 +281,6 @@ export type RunnerState = {
   conversationCallbacks: Map<string, AgentCallbacks>;
   runCallbacksByRunId: Map<string, AgentCallbacks>;
   loadedAgents: ParsedAgentLike[];
-  googleWorkspaceToolsLoaded: boolean;
-  googleWorkspaceDisconnect: (() => Promise<void>) | null;
-  googleWorkspaceCallTool:
-    | ((name: string, args: Record<string, unknown>) => Promise<ToolResult>)
-    | null;
-  /** Cached Google Workspace auth state. null = unknown, true/false = last observed state. */
-  googleWorkspaceAuthenticated: boolean | null;
   /**
    * Late-bound web search handler. Wired by `createStellaHostRunner` after the
    * Convex session is created so the toolHost (built earlier in startup) can
@@ -328,7 +320,6 @@ export type RunnerContext = {
   getDefaultConversationId?: StellaHostRunnerOptions["getDefaultConversationId"];
   paths: RunnerPaths;
   state: RunnerState;
-  ensureGoogleWorkspaceToolsLoaded: () => Promise<void>;
   hookEmitter: HookEmitter;
   toolHost: {
     getToolCatalog: (

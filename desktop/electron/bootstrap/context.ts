@@ -58,7 +58,6 @@ export type BootstrapState = {
   chronicleController: ChronicleController | null;
   processRuntime: ProcessRuntime;
   scheduleUpdateUnsubscribe: (() => void) | null;
-  googleWorkspaceAuthRequiredUnsubscribe: (() => void) | null;
   globalInputHooksStarted: boolean;
   globalInputHooksStartScheduled: boolean;
   stellaRoot: string | null;
@@ -168,12 +167,6 @@ export const broadcastScheduleUpdated = (context: BootstrapContext) => {
   broadcastToWindowsAndMobile(context, "schedule:updated");
 };
 
-export const broadcastGoogleWorkspaceAuthRequired = (
-  context: BootstrapContext,
-) => {
-  broadcastToWindows(context, "googleWorkspace:authRequired");
-};
-
 export const broadcastStellaBrowserBridgeStatus = (
   context: BootstrapContext,
   status: StellaBrowserBridgeStatus,
@@ -200,7 +193,6 @@ export const createBootstrapContext = (
     chronicleController: null,
     processRuntime,
     scheduleUpdateUnsubscribe: null,
-    googleWorkspaceAuthRequiredUnsubscribe: null,
     globalInputHooksStarted: false,
     globalInputHooksStartScheduled: false,
     stellaRoot: null,

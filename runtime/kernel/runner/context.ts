@@ -605,13 +605,8 @@ export const createRunnerContext = ({
       conversationCallbacks: new Map(),
       runCallbacksByRunId: new Map(),
       loadedAgents: [],
-      googleWorkspaceToolsLoaded: false,
-      googleWorkspaceDisconnect: null,
-      googleWorkspaceCallTool: null,
-      googleWorkspaceAuthenticated: null,
       webSearch: null,
     },
-    ensureGoogleWorkspaceToolsLoaded: async () => undefined,
     hookEmitter,
     toolHost,
   });

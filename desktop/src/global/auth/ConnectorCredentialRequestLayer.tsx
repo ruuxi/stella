@@ -20,6 +20,7 @@ type PendingConnectorCredentialRequest = {
   tokenKey: string;
   displayName: string;
   mode: "api_key" | "oauth";
+  completionMode?: "approve" | "wait";
   description?: string;
   placeholder?: string;
 };
@@ -36,6 +37,12 @@ export const ConnectorCredentialRequestLayer = () => {
   const pending = queue[0] ?? null;
 
   const apiHandle = getElectronApi();
+
+  const dropHead = useCallback((requestId: string) => {
+    setQueue((current) =>
+      current[0]?.requestId === requestId ? current.slice(1) : current,
+    );
+  }, []);
 
   useEffect(() => {
     const systemApi = apiHandle?.system;
@@ -56,11 +63,20 @@ export const ConnectorCredentialRequestLayer = () => {
     return () => unsubscribe();
   }, [apiHandle]);
 
-  const dropHead = useCallback((requestId: string) => {
-    setQueue((current) =>
-      current[0]?.requestId === requestId ? current.slice(1) : current,
+  useEffect(() => {
+    const systemApi = apiHandle?.system;
+    if (!systemApi?.onConnectorCredentialComplete) {
+      return;
+    }
+    const unsubscribe = systemApi.onConnectorCredentialComplete(
+      (_event, data) => {
+        if (data.ok) {
+          dropHead(data.requestId);
+        }
+      },
     );
-  }, []);
+    return () => unsubscribe();
+  }, [apiHandle, dropHead]);
 
   const handleSubmit = async ({
     label,
@@ -92,6 +108,21 @@ export const ConnectorCredentialRequestLayer = () => {
     dropHead(pending.requestId);
   };
 
+  const handleOpenOAuth = async () => {
+    if (!pending) return;
+    const result = await apiHandle?.system.submitConnectorCredential?.({
+      requestId: pending.requestId,
+      value: "open",
+      label: pending.displayName,
+    });
+    if (result && result.ok === false) {
+      throw new Error(result.error ?? "Could not start the connection.");
+    }
+    if (pending.completionMode === "approve") {
+      dropHead(pending.requestId);
+    }
+  };
+
   if (!pending) return null;
 
   // OAuth and api_key share the queue, IPC, and cancel/submit wiring;
@@ -105,6 +136,8 @@ export const ConnectorCredentialRequestLayer = () => {
         open={true}
         displayName={pending.displayName}
         description={pending.description}
+        waitForCompletion={pending.completionMode !== "approve"}
+        onOpenExternal={handleOpenOAuth}
         onCancel={handleCancel}
       />
     );
