@@ -378,6 +378,8 @@ export const registerBootstrapIpcHandlers = (
     getStellaRoot: lifecycle.getStellaRoot,
     requestConnectorCredential: (payload) =>
       services.connectorCredentialService.requestCredential(payload),
+    requestPreregisteredOAuth: (payload) =>
+      services.connectorCredentialService.requestPreregisteredOAuth(payload),
     disconnectGoogleWorkspace: async () => {
       const runner = lifecycle.getRunner();
       if (!runner) return { ok: false };
