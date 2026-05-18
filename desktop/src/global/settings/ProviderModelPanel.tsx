@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Check, KeyRound, LogIn, Search } from "lucide-react";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
@@ -125,9 +125,14 @@ export function ProviderModelPanel({
   const [localModelId, setLocalModelId] = useState("");
 
   // Whenever the externally-driven `value` switches to a different provider
-  // (e.g. the user toggles agents in the parent), re-anchor the rail to that
-  // model's provider so the right pane reflects the active selection.
-  useEffect(() => {
+  // (e.g. the user toggles agents in the parent), re-anchor the rail to
+  // that model's provider so the right pane reflects the active selection.
+  // Done by comparing previous vs current `initialTab` during render rather
+  // than via a `setState`-in-`useEffect`, which would cause an extra render
+  // and could lag a frame behind the prop change.
+  const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
+  if (prevInitialTab !== initialTab) {
+    setPrevInitialTab(initialTab);
     setActiveProvider(initialTab);
     setQuery("");
     setDraftKey("");
@@ -135,7 +140,7 @@ export function ProviderModelPanel({
     setOpenRouterCustomId("");
     setLocalBaseUrl(DEFAULT_LOCAL_BASE_URL);
     setLocalModelId("");
-  }, [initialTab]);
+  }
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.key === activeProvider) ?? tabs[0],
