@@ -26,6 +26,11 @@
   overflow-anchor: none;
 }
 
+/* In-flight assistant row before the first token — gives scroll-follow a target. */
+.event-item--streaming-placeholder {
+  min-height: 1px;
+}
+
 /*
  * Trailing region: renders as the LegendList footer underneath every
  * virtualized row. Hosts the pending askQuestion bubble, the queued

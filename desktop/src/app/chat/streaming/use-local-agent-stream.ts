@@ -22,7 +22,7 @@ import {
 import {
   beginAssistantScrollFollow,
   clearAssistantScrollFollow,
-  endAssistantScrollFollow,
+  notifyAssistantScrollFollowLayoutChange,
 } from '@/shell/chat-scroll-follow'
 import type { AttachmentRef } from './chat-types'
 import type { ChatContext } from '@/shared/types/electron'
@@ -149,6 +149,9 @@ export function useLocalAgentStream({
       next[next.length - 1] = { ...last, text: smoothingText }
       return next
     })
+    if (smoothingText) {
+      notifyAssistantScrollFollowLayoutChange()
+    }
   }, [smoothingText])
 
   /**
@@ -241,9 +244,10 @@ export function useLocalAgentStream({
       if (args.userMessageId) {
         const current =
           nextSlotIndexByUserMessageIdRef.current.get(args.userMessageId) ?? 1
-        endAssistantScrollFollow(
-          assistantScrollFollowKey(args.userMessageId, current),
-        )
+        // Keep the active follow key until the next slot's first chunk
+        // calls `beginAssistantScrollFollow` — clearing here dropped
+        // auto-follow for late layout (image cards, undo) after the
+        // final assistant message in a run.
         nextSlotIndexByUserMessageIdRef.current.set(
           args.userMessageId,
           current + 1,
