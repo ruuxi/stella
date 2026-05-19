@@ -28,6 +28,7 @@ import {
   type HostDeviceIdentity,
   type HostRuntimeAuthRefreshParams,
   type HostRuntimeAuthRefreshResult,
+  type HostAppBrowserContextSnapshot,
   type HostDisplayUpdateParams,
   type HostHeartbeatSignature,
   type HostWindowTarget,
@@ -106,6 +107,9 @@ export type RuntimeHostHandlers = {
   requestRuntimeAuthRefresh?: (
     params: HostRuntimeAuthRefreshParams,
   ) => Promise<HostRuntimeAuthRefreshResult>;
+  getAppBrowserContext?: () =>
+    | Promise<HostAppBrowserContextSnapshot>
+    | HostAppBrowserContextSnapshot;
   requestCredential: (payload: {
     provider: string;
     label?: string;
@@ -2183,6 +2187,17 @@ export class StellaRuntimeHost {
             authenticated: false,
             token: null,
             hasConnectedAccount: false,
+          }
+        );
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_APP_BROWSER_CONTEXT_GET,
+      async () => {
+        return (
+          (await this.options.hostHandlers.getAppBrowserContext?.()) ?? {
+            apps: [],
+            activeBrowserTab: null,
           }
         );
       },

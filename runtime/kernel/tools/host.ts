@@ -20,10 +20,7 @@ import {
   getAgentDefinition,
 } from "../../contracts/agent-runtime.js";
 
-import type {
-  Api,
-  Model,
-} from "../../ai/types.js";
+import type { Api, Model } from "../../ai/types.js";
 import {
   APPLY_PATCH_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -63,12 +60,12 @@ export type { ToolContext, ToolHandlerExtras, ToolResult };
 export type ToolHost = ReturnType<typeof createToolHost>;
 
 const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
+  "Context",
   "Schedule",
   "Store",
   "spawn_agent",
   "send_input",
   "pause_agent",
-  "Memory",
   "askQuestion",
   "html",
 ]);
@@ -105,7 +102,7 @@ export const createToolHost = ({
   webSearch,
   getStellaSiteAuth,
   queryConvex,
-  memoryStore,
+  contextProvider,
   notifyVoiceActionComplete,
 }: ToolHostOptions) => {
   const stateRoot = path.join(stellaRoot, "state");
@@ -169,7 +166,7 @@ export const createToolHost = ({
     webSearch,
     getStellaSiteAuth,
     queryConvex,
-    memoryStore,
+    contextProvider,
     notifyVoiceActionComplete,
     shellState,
     stateContext,
@@ -365,51 +362,55 @@ export const createToolHost = ({
       model: options?.model,
       agentEngine: options?.agentEngine,
     });
-    return Array.from(toolCatalog.values()).filter((tool) => {
-      // Declarative `agentTypes` is consulted first so a tool with an
-      // explicit gate cannot leak through the legacy name-set checks below.
-      if (!isAgentAllowedForTool(tool, agentType)) return false;
-      return fileEditToolFamily === "write_edit" &&
-        tool.name === APPLY_PATCH_TOOL_NAME
-        ? false
-        : fileEditToolFamily === "apply_patch" &&
-            (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME)
+    return Array.from(toolCatalog.values())
+      .filter((tool) => {
+        // Declarative `agentTypes` is consulted first so a tool with an
+        // explicit gate cannot leak through the legacy name-set checks below.
+        if (!isAgentAllowedForTool(tool, agentType)) return false;
+        return fileEditToolFamily === "write_edit" &&
+          tool.name === APPLY_PATCH_TOOL_NAME
           ? false
-          : agentType === AGENT_IDS.GENERAL &&
-              GENERAL_EXCLUDED_TOOL_NAMES.has(tool.name)
+          : fileEditToolFamily === "apply_patch" &&
+              (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME)
             ? false
-            : WORKER_ONLY_TOOL_NAMES.has(tool.name) &&
-                agentType !== AGENT_IDS.GENERAL
+            : agentType === AGENT_IDS.GENERAL &&
+                GENERAL_EXCLUDED_TOOL_NAMES.has(tool.name)
               ? false
-              : agentType === AGENT_IDS.SOCIAL_SESSION
-                ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
-                : agentType === AGENT_IDS.ORCHESTRATOR ||
-                  (subagentExtras !== undefined &&
-                    subagentExtras.has(tool.name)) ||
-                  !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name);
-    }).map((tool) => {
-      if (tool.name !== "spawn_agent") {
-        return tool;
-      }
-      const subagentTypes = getAvailableSubagentTypes(
-        stateContext.getSubagentTypes,
-      );
-      return {
-        ...tool,
-        parameters: {
-          ...tool.parameters,
-          properties: {
-            ...(tool.parameters.properties as Record<string, unknown> | undefined),
-            agent_type: {
-              type: "string",
-              enum: subagentTypes,
-              description:
-                "Optional agent type to spawn. Defaults to `general`. Use one of the available values in this schema.",
+              : WORKER_ONLY_TOOL_NAMES.has(tool.name) &&
+                  agentType !== AGENT_IDS.GENERAL
+                ? false
+                : agentType === AGENT_IDS.SOCIAL_SESSION
+                  ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
+                  : agentType === AGENT_IDS.ORCHESTRATOR ||
+                    (subagentExtras !== undefined &&
+                      subagentExtras.has(tool.name)) ||
+                    !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name);
+      })
+      .map((tool) => {
+        if (tool.name !== "spawn_agent") {
+          return tool;
+        }
+        const subagentTypes = getAvailableSubagentTypes(
+          stateContext.getSubagentTypes,
+        );
+        return {
+          ...tool,
+          parameters: {
+            ...tool.parameters,
+            properties: {
+              ...(tool.parameters.properties as
+                | Record<string, unknown>
+                | undefined),
+              agent_type: {
+                type: "string",
+                enum: subagentTypes,
+                description:
+                  "Optional agent type to spawn. Defaults to `general`. Use one of the available values in this schema.",
+              },
             },
           },
-        },
-      };
-    });
+        };
+      });
   };
 
   // Track tool names that came from user-installable extensions so a

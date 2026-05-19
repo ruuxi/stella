@@ -20,6 +20,8 @@ import {
 import { startOfficePreviewBridge } from "./office-preview-bridge.js";
 import { IPC_AUTH_RUNTIME_REFRESH_REQUESTED } from "../../src/shared/contracts/ipc-channels.js";
 import { showStellaNotification } from "../services/notification-service.js";
+import { getActiveBrowserTabForBundleId } from "../active-browser-tab.js";
+import { listRecentApps } from "../recent-apps.js";
 
 const IDLE_HMR_STATE: SelfModHmrState = {
   phase: "idle",
@@ -62,6 +64,23 @@ export const createHostRunnerHandlers = (
         );
       },
     ),
+  getAppBrowserContext: async () => {
+    const apps = (await listRecentApps(8)) ?? [];
+    const activeApp = apps.find((app) => app.isActive && app.bundleId);
+    const activeBrowserTab = activeApp?.bundleId
+      ? await getActiveBrowserTabForBundleId(activeApp.bundleId)
+      : null;
+    return {
+      apps: apps.map((app) => ({
+        name: app.name,
+        pid: app.pid,
+        isActive: app.isActive,
+        ...(app.bundleId ? { bundleId: app.bundleId } : {}),
+        ...(app.windowTitle ? { windowTitle: app.windowTitle } : {}),
+      })),
+      activeBrowserTab,
+    };
+  },
   requestCredential: (payload) =>
     context.services.credentialService.requestCredential(payload),
   requestConnectorCredential: (payload) =>

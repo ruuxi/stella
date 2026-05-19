@@ -2695,57 +2695,6 @@ export class SessionStore {
   }
 
   /**
-   * Increment the memory-injection user-turn counter for the given
-   * conversation and return the new value. Caller is responsible for gating
-   * on `uiVisibility !== "hidden"` so that synthetic task-callback turns do
-   * not inflate the count. Used by prepareOrchestratorRun to decide whether
-   * the next orchestrator turn should re-inject the memory bundle (every N
-   * user turns) instead of paying for it on every single turn.
-   */
-  incrementUserTurnsSinceMemoryInjection(conversationId: string): number {
-    const row = this.db.prepare(`
-      SELECT user_turns_since_injection AS userTurnsSinceInjection
-      FROM runtime_memory_injection_state
-      WHERE conversation_id = ?
-      LIMIT 1
-    `).get(conversationId) as { userTurnsSinceInjection?: unknown } | undefined;
-    const current = typeof row?.userTurnsSinceInjection === "number"
-      ? Math.max(0, Math.floor(row.userTurnsSinceInjection))
-      : 0;
-    const next = current + 1;
-    this.db.prepare(`
-      INSERT INTO runtime_memory_injection_state (
-        conversation_id,
-        user_turns_since_injection
-      )
-      VALUES (?, ?)
-      ON CONFLICT(conversation_id) DO UPDATE SET
-        user_turns_since_injection = excluded.user_turns_since_injection
-    `).run(conversationId, next);
-    return next;
-  }
-
-  /**
-   * Reset the memory-injection user-turn counter to one. Call this on the
-   * exact turn that just (re)injected the memory bundle so the count is "1
-   * turn since injection" going into the next turn — keeps the existing
-   * 40-turn cadence consistent across both the cold-start case (counter was
-   * already 1) and the every-N-turn case (counter rolled past the
-   * threshold).
-   */
-  resetUserTurnsSinceMemoryInjection(conversationId: string): void {
-    this.db.prepare(`
-      INSERT INTO runtime_memory_injection_state (
-        conversation_id,
-        user_turns_since_injection
-      )
-      VALUES (?, 1)
-      ON CONFLICT(conversation_id) DO UPDATE SET
-        user_turns_since_injection = 1
-    `).run(conversationId);
-  }
-
-  /**
    * Append a row to the self-mod revert ledger. Called from the worker's
    * `INTERNAL_WORKER_SELF_MOD_REVERT` handler after a successful git
    * revert; the revert-notice hook drains pending rows on the next
@@ -2790,71 +2739,6 @@ export class SessionStore {
   /** Mark the origin-thread slot consumed for these revert ids. */
   markSelfModRevertsOriginThreadConsumed(revertIds: string[]): void {
     markOriginThreadConsumedImpl(this.db, revertIds);
-  }
-
-  /**
-   * Read the per-conversation chronicle injection watermark. Returns the
-   * largest mtime (in epoch ms) we've already injected for each window;
-   * the caller compares against the file's current mtime to decide
-   * whether the chronicle has rolled forward since the last injection.
-   * Missing row => `{ tenMinMtimeMs: 0, sixHourMtimeMs: 0 }` so a first
-   * injection always fires once the file exists.
-   */
-  getChronicleInjectionWatermark(conversationId: string): {
-    tenMinMtimeMs: number;
-    sixHourMtimeMs: number;
-  } {
-    const row = this.db.prepare(`
-      SELECT last_10m_mtime_ms AS tenMinMtimeMs,
-             last_6h_mtime_ms AS sixHourMtimeMs
-      FROM runtime_chronicle_injection_state
-      WHERE conversation_id = ?
-      LIMIT 1
-    `).get(conversationId) as
-      | { tenMinMtimeMs?: unknown; sixHourMtimeMs?: unknown }
-      | undefined;
-    return {
-      tenMinMtimeMs:
-        typeof row?.tenMinMtimeMs === "number" && row.tenMinMtimeMs > 0
-          ? row.tenMinMtimeMs
-          : 0,
-      sixHourMtimeMs:
-        typeof row?.sixHourMtimeMs === "number" && row.sixHourMtimeMs > 0
-          ? row.sixHourMtimeMs
-          : 0,
-    };
-  }
-
-  /**
-   * Advance the chronicle injection watermark for one or both windows.
-   * Pass only the windows that were actually injected on this turn — the
-   * other window keeps its existing watermark so a single window roll
-   * doesn't silently mark the other as "already injected".
-   */
-  updateChronicleInjectionWatermark(
-    conversationId: string,
-    args: { tenMinMtimeMs?: number; sixHourMtimeMs?: number },
-  ): void {
-    const existing = this.getChronicleInjectionWatermark(conversationId);
-    const nextTenMin =
-      typeof args.tenMinMtimeMs === "number" && args.tenMinMtimeMs > 0
-        ? args.tenMinMtimeMs
-        : existing.tenMinMtimeMs;
-    const nextSixHour =
-      typeof args.sixHourMtimeMs === "number" && args.sixHourMtimeMs > 0
-        ? args.sixHourMtimeMs
-        : existing.sixHourMtimeMs;
-    this.db.prepare(`
-      INSERT INTO runtime_chronicle_injection_state (
-        conversation_id,
-        last_10m_mtime_ms,
-        last_6h_mtime_ms
-      )
-      VALUES (?, ?, ?)
-      ON CONFLICT(conversation_id) DO UPDATE SET
-        last_10m_mtime_ms = excluded.last_10m_mtime_ms,
-        last_6h_mtime_ms = excluded.last_6h_mtime_ms
-    `).run(conversationId, nextTenMin, nextSixHour);
   }
 
   /**

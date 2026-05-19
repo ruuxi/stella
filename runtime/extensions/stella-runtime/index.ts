@@ -3,12 +3,10 @@ import type {
   ExtensionFactory,
   HookDefinition,
 } from "../../kernel/extensions/types.js";
-import { createChronicleInjectionHook } from "./hooks/chronicle-injection.hook.js";
 import { createConnectorFormatReminderHook } from "./hooks/connector-format-reminder.hook.js";
 import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.hook.js";
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
 import { createHomeSuggestionsRefreshHook } from "./hooks/home-suggestions-refresh.hook.js";
-import { createMemoryInjectionHook } from "./hooks/memory-injection.hook.js";
 import { createMemoryReviewHook } from "./hooks/memory-review.hook.js";
 import { createPersonalityHook } from "./hooks/personality.hook.js";
 import { createRevertNoticeHook } from "./hooks/revert-notice.hook.js";
@@ -29,7 +27,6 @@ const AGENTS_DIR = new URL("./agents/", import.meta.url);
  *   - Self-mod baseline + detect-applied
  *   - Stale-user reminder
  *   - Dynamic memory reminder
- *   - Memory injection cadence + bundle assembly
  *   - Memory review spawn (post-orchestrator finalize)
  *   - Dream scheduler notify (post-subagent finalize)
  *   - Home-suggestions refresh tick (post-subagent finalize)
@@ -77,27 +74,6 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   // Runs alongside the other before_user_message reminders since it
   // costs nothing when no reverts are pending.
   register(createRevertNoticeHook({ store: services.store }));
-  // Keep memory injection after reminder hooks: reminders prepend near the
-  // top, while the memory bundle appends close to the user's message.
-  register(
-    createMemoryInjectionHook({
-      stellaHome: services.stellaHome,
-      stellaRoot: services.stellaRoot,
-      store: services.store,
-      memoryStore: services.memoryStore,
-    }),
-  );
-  // Chronicle injection rides the same `before_user_message` cadence as
-  // the memory bundle but gates on file mtime (not turn count) so fresh
-  // chronicle summaries surface the moment the user returns after an
-  // idle period, without re-injecting when nothing changed.
-  register(
-    createChronicleInjectionHook({
-      stellaHome: services.stellaHome,
-      stellaRoot: services.stellaRoot,
-      store: services.store,
-    }),
-  );
   register(
     createMemoryReviewHook({
       stellaRoot: services.stellaRoot,

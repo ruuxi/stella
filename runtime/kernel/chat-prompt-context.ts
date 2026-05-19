@@ -36,7 +36,9 @@ const buildAppSelectionSnippet = (
     attrs.push(`source="${escapeXmlAttribute(loc)}"`);
   }
   if (selection.source?.componentName) {
-    attrs.push(`component="${escapeXmlAttribute(selection.source.componentName)}"`);
+    attrs.push(
+      `component="${escapeXmlAttribute(selection.source.componentName)}"`,
+    );
   }
 
   const bodyParts: string[] = [escapeXmlText(selection.snapshot.trim())];
@@ -57,10 +59,7 @@ const escapeXmlAttribute = (value: string) =>
     .replace(/>/g, "&gt;");
 
 const escapeXmlText = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export const buildChatPromptMessages = ({
   userPrompt,
@@ -70,6 +69,7 @@ export const buildChatPromptMessages = ({
 }: BuildChatPromptMessagesArgs): {
   visibleUserPrompt: string;
   windowContextLabel?: string;
+  browserUrl?: string;
   appSelectionLabel?: string;
   promptMessages?: RuntimePromptMessage[];
   windowScreenshotAttachment?: RuntimeAttachmentRef;
@@ -79,6 +79,7 @@ export const buildChatPromptMessages = ({
   const windowSnippet = buildWindowSnippet(chatContext);
   const appSelectionSnippet = buildAppSelectionSnippet(chatContext);
   const appSelectionLabel = chatContext?.appSelection?.label?.trim();
+  const browserUrl = chatContext?.browserUrl?.trim();
   const visibleParts: string[] = [];
   const hiddenContextParts: string[] = [];
   const windowScreenshotDataUrl = chatContext?.windowScreenshot?.dataUrl ?? "";
@@ -88,7 +89,13 @@ export const buildChatPromptMessages = ({
 
   if (windowSnippet) {
     hiddenContextParts.push(
-      `<active-window context="The user's currently focused window. May or may not be relevant to their request.">${windowSnippet}</active-window>`,
+      browserUrl
+        ? `<active-browser-tab url="${escapeXmlAttribute(browserUrl)}" context="The user's currently focused browser tab. May or may not be relevant to their request.">${escapeXmlText(windowSnippet)}</active-browser-tab>`
+        : `<active-window context="The user's currently focused window. May or may not be relevant to their request.">${escapeXmlText(windowSnippet)}</active-window>`,
+    );
+  } else if (browserUrl) {
+    hiddenContextParts.push(
+      `<active-browser-tab url="${escapeXmlAttribute(browserUrl)}" context="The user's currently focused browser tab. May or may not be relevant to their request." />`,
     );
   }
 
@@ -145,6 +152,7 @@ export const buildChatPromptMessages = ({
   return {
     visibleUserPrompt,
     ...(windowSnippet ? { windowContextLabel: windowSnippet } : {}),
+    ...(browserUrl ? { browserUrl } : {}),
     ...(appSelectionLabel ? { appSelectionLabel } : {}),
     ...(promptMessages.length > 0 ? { promptMessages } : {}),
     ...(windowScreenshotAttachment ? { windowScreenshotAttachment } : {}),

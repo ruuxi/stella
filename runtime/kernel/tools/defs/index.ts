@@ -26,6 +26,7 @@ import type {
 import { applyPatchTool } from "./apply-patch.js";
 import { askQuestionTool } from "./ask-question.js";
 import { askUserQuestionTool } from "./ask-user-question.js";
+import { createContextTool } from "./context.js";
 import { dreamTool } from "./dream.js";
 import { editTool } from "./edit.js";
 import { createExecCommandTool } from "./exec-command.js";
@@ -33,7 +34,6 @@ import { createFashionControlTools } from "./fashion-control.js";
 import { grepTool } from "./grep.js";
 import { createHtmlTool } from "./html.js";
 import { createImageGenTool } from "./image-gen.js";
-import { createMemoryTool } from "./memory.js";
 import { createMultiToolUseParallelTool } from "./multi-tool-use-parallel.js";
 import { readTool } from "./read.js";
 import { createRequestCredentialTool } from "./request-credential.js";
@@ -85,25 +85,34 @@ export const buildBuiltinTools = (
   tools.push(writeTool);
   tools.push(editTool);
   tools.push(viewImageTool);
-  tools.push(createImageGenTool({
-    getStellaSiteAuth: options.getStellaSiteAuth,
-    queryConvex: options.queryConvex,
-  }));
-  tools.push(createMultiToolUseParallelTool({
-    executeTool: options.executeTool,
-  }));
-  tools.push(createRequestCredentialTool({
-    requestCredential: options.requestCredential,
-  }));
+  tools.push(
+    createImageGenTool({
+      getStellaSiteAuth: options.getStellaSiteAuth,
+      queryConvex: options.queryConvex,
+    }),
+  );
+  tools.push(
+    createMultiToolUseParallelTool({
+      executeTool: options.executeTool,
+    }),
+  );
+  tools.push(
+    createRequestCredentialTool({
+      requestCredential: options.requestCredential,
+    }),
+  );
   tools.push(createWebTool({ webSearch: options.webSearch }));
 
   // Orchestrator coordination surface
   tools.push(askQuestionTool);
   tools.push(askUserQuestionTool);
   tools.push(createHtmlTool({ stellaRoot: options.stellaRoot }));
-  tools.push(createVoiceActionCompleteTool({
-    notifyVoiceActionComplete: options.notifyVoiceActionComplete,
-  }));
+  tools.push(
+    createVoiceActionCompleteTool({
+      notifyVoiceActionComplete: options.notifyVoiceActionComplete,
+    }),
+  );
+  tools.push(createContextTool({ contextProvider: options.contextProvider }));
   tools.push(
     createScheduleTool({
       agentApi: options.agentApi,
@@ -111,9 +120,6 @@ export const buildBuiltinTools = (
     }),
   );
   tools.push(...createAgentTools(options.stateContext));
-  if (options.memoryStore) {
-    tools.push(createMemoryTool({ memoryStore: options.memoryStore }));
-  }
 
   // Schedule subagent surface
   tools.push(

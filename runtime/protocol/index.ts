@@ -154,6 +154,7 @@ export const METHOD_NAMES = {
   HOST_DEVICE_HEARTBEAT_SIGN: "host.deviceHeartbeat.sign",
   HOST_CREDENTIALS_REQUEST: "host.credentials.request",
   HOST_CONNECTOR_CREDENTIAL_REQUEST: "host.connectorCredential.request",
+  HOST_APP_BROWSER_CONTEXT_GET: "host.appBrowserContext.get",
   HOST_DISPLAY_UPDATE: "host.display.update",
   HOST_NOTIFICATION_SHOW: "host.notification.show",
   HOST_SYSTEM_OPEN_EXTERNAL: "host.system.openExternal",
@@ -663,6 +664,26 @@ export type HostHeartbeatSignature = {
 export type HostDisplayUpdateParams = { payload: unknown };
 
 export type HostWindowTarget = "mini" | "full";
+
+export type HostRecentApp = {
+  name: string;
+  pid: number;
+  isActive: boolean;
+  bundleId?: string;
+  windowTitle?: string;
+};
+
+export type HostActiveBrowserTab = {
+  browser: string;
+  url: string;
+  bundleId?: string;
+  title?: string;
+};
+
+export type HostAppBrowserContextSnapshot = {
+  apps: HostRecentApp[];
+  activeBrowserTab: HostActiveBrowserTab | null;
+};
 
 export type StorePublishArgs = {
   packageId: string;

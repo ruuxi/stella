@@ -197,9 +197,16 @@ export type ToolHostOptions = {
     args: Record<string, unknown>,
   ) => Promise<unknown>;
   /**
-   * Optional MemoryStore wired to the orchestrator's memory surface.
+   * Optional one-shot context lookup used by the orchestrator's read-only
+   * Context tool.
    */
-  memoryStore?: import("../memory/memory-store.js").MemoryStore;
+  contextProvider?: (payload: {
+    conversationId: string;
+    requestId: string;
+    prompt: string;
+    agentType?: string;
+    signal?: AbortSignal;
+  }) => Promise<string>;
   /**
    * Optional ThreadSummariesStore + stellaHome used by the background Dream
    * agent's consolidation pass.

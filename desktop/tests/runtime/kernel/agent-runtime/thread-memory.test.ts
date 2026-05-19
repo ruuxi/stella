@@ -35,7 +35,7 @@ describe("buildSystemPrompt", () => {
 });
 
 describe("buildStartupPromptMessages", () => {
-  it("does not assemble dynamic memory; memory injection is extension-owned", async () => {
+  it("does not assemble dynamic memory", async () => {
     const messages = await buildStartupPromptMessages({
       context: {
         systemPrompt: "system",
