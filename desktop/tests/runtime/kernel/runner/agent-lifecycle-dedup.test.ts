@@ -47,6 +47,8 @@ describe("task lifecycle deduping", () => {
     });
 
     expect(completedPrompt).toContain("[Agent completed]");
+    expect(completedPrompt).toContain("the user did not see it.");
+    expect(completedPrompt).not.toContain("not waiting");
     expect(completedPrompt).toContain("description: Open Spotify and play jazz");
     expect(completedPrompt).toContain("result: Spotify is now open");
     expect(completedPrompt).toContain(
