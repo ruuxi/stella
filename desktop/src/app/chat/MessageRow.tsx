@@ -14,8 +14,9 @@
  * `assistant_message` lands, the overlay drops out of the list and the
  * persisted row reuses the same React key — no unmount, no Streamdown
  * re-parse, no flash. The only marker that the row is currently being
- * streamed (vs. backed by a persisted row) is `isStreaming` below,
- * which the scroll-management hook uses to find the in-flight row.
+ * streamed (vs. backed by a persisted row) is `isStreaming` below
+ * (styling). Scroll follow is driven by runtime `assistantScrollFollowKey`
+ * signals and `data-scroll-follow-key` on the row.
  *
  * Reasoning text is intentionally NOT rendered anywhere in this surface
  * (the underlying data still flows through state for model history).
@@ -77,9 +78,9 @@ export type AssistantRowViewModel = {
   cacheKey: string;
   /**
    * Set when this row is sourced from a live `StreamingAssistantOverlay`
-   * (text still growing). Drives the `event-row--streaming` class so
-   * `use-chat-scroll-management` can identify the in-flight row and
-   * apply the "pin streaming-row top to viewport top" auto-follow cap.
+   * (text still growing). Drives the `event-row--streaming` class for
+   * styling; scroll follow uses `data-scroll-follow-key` + runtime
+   * signals from `useLocalAgentStream`.
    */
   isStreaming?: boolean;
   responseTarget?: AgentResponseTarget;
@@ -303,6 +304,7 @@ export const AssistantMessageRow = memo(
     return (
       <div
         className={`event-row event-row--assistant${row.isStreaming ? " event-row--streaming" : ""}`}
+        data-scroll-follow-key={row.id}
       >
         <div
           className={`event-item assistant${!hasText && hasAskQuestion ? " event-item--ask-question-only" : ""}`}

@@ -11,6 +11,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
 import { displayTabs } from "@/shell/display/tab-store";
 import { payloadToTabSpec } from "@/shell/display/payload-to-tab-spec";
+import { notifyAssistantScrollFollowLayoutChange } from "@/shell/chat-scroll-follow";
 import "./inline-generated-image-card.css";
 
 type InlineGeneratedImagePayload = Extract<DisplayPayload, { kind: "media" }>;
@@ -220,6 +221,7 @@ export const InlineGeneratedImageCard = ({
               (primaryPath ? filenameOf(primaryPath) : "")
             }
             className="inline-generated-image-card__image"
+            onLoad={notifyAssistantScrollFollowLayoutChange}
           />
         ) : (
           <span className="inline-generated-image-card__placeholder">

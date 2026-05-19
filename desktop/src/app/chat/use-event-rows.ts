@@ -30,14 +30,16 @@ import {
   getAttachments,
   getChannelEnvelope,
 } from './lib/message-turn-display'
-import type { AgentResponseTarget } from '@/app/chat/streaming/streaming-types'
+import {
+  assistantScrollFollowKey,
+  type AgentResponseTarget,
+} from '@/app/chat/streaming/streaming-types'
 
 /**
  * Synthetic `_id` prefix carried by `StreamingAssistantOverlay` rows
  * merged into `displayMessages` by `useConversationDisplayMessages`.
  * The row builder uses this prefix to tag rows as `isStreaming: true`
- * so the scroll-management hook can identify the in-flight row via
- * the `event-row--streaming` CSS class.
+ * for styling (`event-row--streaming`).
  */
 const STREAMING_OVERLAY_ID_PREFIX = 'stream-overlay:'
 import {
@@ -313,9 +315,6 @@ type UseEventRowsResult = {
  * `userMessageId` payload field (rare — e.g. legacy rows or hidden
  * runs that surface without a user-message anchor).
  */
-const assistantRowKey = (userMessageId: string, indexWithinTurn: number) =>
-  `assistant-${userMessageId}-${indexWithinTurn}`
-
 /**
  * Stable cache key for a synthetic trailing artifact row (fire-and-
  * forget image emitted before any assistant text). Prefers the latest
@@ -366,10 +365,10 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     const computed: EventRowViewModel[] = []
     /**
      * 1-based per-`userMessageId` count of assistant rows seen so far
-     * in this projection walk. Drives `assistantRowKey(...)` so a
-     * live-streaming overlay and the eventual persisted row at the
-     * same position end up with the same React key (see
-     * `assistantRowKey`). The display-messages merge upstream filters
+     * in this projection walk. Drives `assistantScrollFollowKey(...)`
+     * so a live-streaming overlay and the eventual persisted row at
+     * the same position end up with the same React key. The display-
+     * messages merge upstream filters
      * out overlays whose persisted counterpart has landed, so each
      * `(userMessageId, indexInTurn)` slot is occupied by exactly one
      * source at a time.
@@ -443,7 +442,10 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             replyToUserMessageId,
             indexWithinTurn,
           )
-          stableKey = assistantRowKey(replyToUserMessageId, indexWithinTurn)
+          stableKey = assistantScrollFollowKey(
+            replyToUserMessageId,
+            indexWithinTurn,
+          )
         } else {
           stableKey = message._id
         }

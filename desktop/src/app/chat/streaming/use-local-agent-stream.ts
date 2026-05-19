@@ -15,7 +15,15 @@ import type {
   AgentResponseTarget,
   StreamingAssistantOverlay,
 } from './streaming-types'
-import { streamingAssistantOverlayId } from './streaming-types'
+import {
+  assistantScrollFollowKey,
+  streamingAssistantOverlayId,
+} from './streaming-types'
+import {
+  beginAssistantScrollFollow,
+  clearAssistantScrollFollow,
+  endAssistantScrollFollow,
+} from '@/shell/chat-scroll-follow'
 import type { AttachmentRef } from './chat-types'
 import type { ChatContext } from '@/shared/types/electron'
 import { resolveAgentNotReadyToast } from './agent-stream-errors'
@@ -150,6 +158,7 @@ export function useLocalAgentStream({
    */
   const beginStreamingRun = useCallback(
     (args: { runId: string; userMessageId: string | null }) => {
+      clearAssistantScrollFollow()
       setStreamingAssistants((current) =>
         current.filter((slot) => slot.runId === args.runId),
       )
@@ -202,6 +211,9 @@ export function useLocalAgentStream({
           timestamp: Date.now(),
           runId: args.runId,
         }
+        beginAssistantScrollFollow(
+          assistantScrollFollowKey(userMessageId, expectedIndex),
+        )
         return [...current, newSlot]
       })
       appendSmoothingChunk(args.chunk)
@@ -229,6 +241,9 @@ export function useLocalAgentStream({
       if (args.userMessageId) {
         const current =
           nextSlotIndexByUserMessageIdRef.current.get(args.userMessageId) ?? 1
+        endAssistantScrollFollow(
+          assistantScrollFollowKey(args.userMessageId, current),
+        )
         nextSlotIndexByUserMessageIdRef.current.set(
           args.userMessageId,
           current + 1,
@@ -289,6 +304,7 @@ export function useLocalAgentStream({
    */
   const dropOverlaysForRun = useCallback((runId: string | null) => {
     if (runId === null) {
+      clearAssistantScrollFollow()
       setStreamingAssistants([])
       return
     }
@@ -319,6 +335,7 @@ export function useLocalAgentStream({
   )
 
   const resetStreamingState = useCallback(() => {
+    clearAssistantScrollFollow()
     resetSmoothingBuffer()
     resetReasoningText()
     setPendingUserMessageId(null)
@@ -392,6 +409,7 @@ export function useLocalAgentStream({
   })
 
   useEffect(() => {
+    clearAssistantScrollFollow()
     resetSmoothingBuffer()
     resetReasoningText()
     setStreamingAssistants([])
