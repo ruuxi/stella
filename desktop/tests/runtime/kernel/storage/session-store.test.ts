@@ -775,14 +775,20 @@ describe("session-store", () => {
     });
   });
 
-  it("replaces preamble assistant text when the post-tool answer lands", () => {
+  it("keeps each assistant message in a single user turn as its own row", () => {
+    // The worker writes one `assistant-msg-<runId>-<seq>` row per
+    // assistant message in a run (preamble, post-tool answer, …) so
+    // they render linearly in chronological order rather than
+    // collapsing into a single overwriting row. Sanity-check that the
+    // store happily round-trips two distinct rows that share the same
+    // requestId/userMessageId.
     const { store } = createTestContext();
     const conversationId = store.getOrCreateDefaultConversationId();
     const userMessageId = "user-web-turn";
 
     store.appendEvent({
       conversationId,
-      eventId: `assistant-for-${userMessageId}`,
+      eventId: `assistant-msg-run-1-2`,
       type: "assistant_message",
       timestamp: 1_000,
       requestId: userMessageId,
@@ -793,7 +799,7 @@ describe("session-store", () => {
     });
     store.appendEvent({
       conversationId,
-      eventId: `assistant-for-${userMessageId}`,
+      eventId: `assistant-msg-run-1-5`,
       type: "assistant_message",
       timestamp: 1_001,
       requestId: userMessageId,
@@ -804,11 +810,11 @@ describe("session-store", () => {
     });
 
     const events = store.listEvents(conversationId, 10);
-    expect(events).toHaveLength(1);
-    expect(events[0]?.payload).toMatchObject({
-      text: "Here is what I found from the web.",
-      userMessageId,
-    });
+    expect(events).toHaveLength(2);
+    expect(events.map((event) => event.payload?.text)).toEqual([
+      "Let me look that up.",
+      "Here is what I found from the web.",
+    ]);
   });
 
   it("loads runtime thread history from shared message parts", () => {

@@ -535,20 +535,29 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   };
 
   /**
-   * Upsert the single assistant row for a user turn (`assistant-for-<uid>`).
-   * A Pi orchestrator run may emit several assistant messages (preamble,
-   * post-tool answer, …); each call replaces the prior text for that turn.
+   * Append a fresh persisted assistant row for one completed assistant
+   * message within a run. A Pi orchestrator run may emit several
+   * assistant messages (preamble, post-tool answer, …); each gets its
+   * own row keyed by `(runId, seq)` so they render linearly in
+   * chronological order rather than collapsing into a single
+   * `assistant-for-<userMessageId>` row that overwrites itself.
+   *
+   * Returns the persisted eventId so callers can track the latest row
+   * per user turn (e.g. for the `selfModApplied` patch target on
+   * `agent_end`).
    */
-  const upsertAssistantMessageForTurn = (args: {
+  const appendAssistantMessageForTurn = (args: {
     conversationId: string;
     text: string;
     userMessageId: string;
+    runId: string;
+    seq: number;
     timezone?: string;
     responseTarget?: RuntimeAgentEventPayload["responseTarget"];
-  }) => {
+  }): string | null => {
     const trimmedText = args.text.trim();
     if (!trimmedText) {
-      return;
+      return null;
     }
 
     const runtimeMetadata = args.responseTarget
@@ -559,9 +568,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         }
       : undefined;
 
+    const eventId = `assistant-msg-${args.runId}-${args.seq}`;
     const event = ensureChatStore().appendEvent({
       conversationId: args.conversationId,
-      eventId: `assistant-for-${args.userMessageId}`,
+      eventId,
       type: "assistant_message",
       requestId: args.userMessageId,
       payload: prepareStoredLocalChatPayload({
@@ -576,25 +586,28 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }),
     });
     notifyLocalChatUpdated(peer, args.conversationId, event);
+    return eventId;
   };
 
   /**
-   * Patch the persisted assistant message for `userMessageId` with the
-   * self-mod commit metadata produced by the `agent_end` hook. Drives the
-   * inline "Undo changes" button under the assistant row.
+   * Patch the persisted assistant message identified by `eventId` with
+   * the self-mod commit metadata produced by the `agent_end` hook.
+   * Drives the inline "Undo changes" button under the assistant row.
    *
-   * Called from `onEnd` after `upsertAssistantMessageForTurn` so the merge
-   * targets a row that already exists; if the row hasn't been written yet
-   * (e.g. empty-text completion), the merge silently no-ops.
+   * Targets the LAST assistant message of the run (tracked in the
+   * `startChat` closure as `lastAssistantMessageEventId`) so the undo
+   * affordance sits under the post-tool answer rather than under an
+   * earlier preamble. If no assistant row was ever written for this
+   * run (e.g. empty-text completion), the merge silently no-ops.
    */
   const attachSelfModToAssistantMessage = (args: {
     conversationId: string;
-    userMessageId: string;
+    eventId: string;
     selfModApplied: { featureId: string; files: string[]; batchIndex: number };
   }): void => {
     const updated = ensureChatStore().mergeEventPayload({
       conversationId: args.conversationId,
-      eventId: `assistant-for-${args.userMessageId}`,
+      eventId: args.eventId,
       patch: { selfModApplied: args.selfModApplied },
     });
     if (updated) {
@@ -1501,6 +1514,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const hiddenSystemRunIds = new Set<string>();
       let lastVisibleRunId = "";
       let lastVisibleRequestId = requestId;
+      /**
+       * Tracks the eventId of the most-recently-persisted orchestrator
+       * assistant message for this run. The `agent_end` self-mod patch
+       * targets this row so the inline "Undo changes" affordance lands
+       * under the post-tool answer (or under the only assistant message
+       * if the run did not preamble).
+       */
+      let lastAssistantMessageEventId: string | null = null;
       const mergedAttachments = [
         ...modelImageAttachments,
         ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
@@ -1539,13 +1560,59 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             ) {
               return;
             }
-            upsertAssistantMessageForTurn({
+            const assistantEventId = appendAssistantMessageForTurn({
               conversationId: payload.conversationId,
               text: ev.text,
               userMessageId: ev.userMessageId,
+              runId: ev.runId,
+              seq: ev.seq,
               timezone: payload.timezone,
               responseTarget: ev.responseTarget,
             });
+            if (assistantEventId) {
+              lastAssistantMessageEventId = assistantEventId;
+            }
+            // Boundary marker on the same wire as `STREAM` chunks so the
+            // renderer can reset its in-flight streaming buffer before
+            // chunks for the next assistant message in this run arrive
+            // (e.g. post-tool answer after a preamble). Without this the
+            // buffer keeps growing across messages and the live stream
+            // row replays the preamble text under the next message's
+            // content.
+            //
+            // Use the recorder's own seq for this event (`ev.seq`) — the
+            // renderer's per-conversation seq guard drops any event whose
+            // seq is `<= previousSeq`. A `Date.now()`-style synthetic seq
+            // here would clobber the cursor with a huge number and silently
+            // drop every subsequent small-seq STREAM chunk in the run
+            // (the post-tool answer would stop streaming live). For the
+            // rare hidden→visible mirror path the boundary seq has to
+            // belong to the visible run's cursor; fall back to a
+            // synthetic value there since the visible recorder is not
+            // reachable from this closure.
+            const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
+            const targetRunId = isHiddenRun ? lastVisibleRunId : ev.runId;
+            const targetRequestId = isHiddenRun
+              ? lastVisibleRequestId
+              : requestId;
+            const boundarySeq = isHiddenRun ? nextSyntheticSeq() : ev.seq;
+            if (targetRunId) {
+              emitRunEvent({
+                type: AGENT_STREAM_EVENT_TYPES.ASSISTANT_MESSAGE,
+                runId: targetRunId,
+                seq: boundarySeq,
+                conversationId: payload.conversationId,
+                ...(targetRequestId ? { requestId: targetRequestId } : {}),
+                userMessageId: ev.userMessageId,
+                agentType: ev.agentType,
+                ...(assistantEventId
+                  ? { assistantMessageEventId: assistantEventId }
+                  : {}),
+                ...(ev.responseTarget
+                  ? { responseTarget: ev.responseTarget }
+                  : {}),
+              });
+            }
           },
           onRunStarted: (ev) => {
             activeRunId = ev.runId;
@@ -1805,33 +1872,28 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           onEnd: (ev) => {
             const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
             hiddenSystemRunIds.delete(ev.runId);
-            const finalText =
-              typeof ev.finalText === "string" ? ev.finalText : "";
             if (
               (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) ===
               AGENT_IDS.ORCHESTRATOR
             ) {
-              // Authoritative end-of-run text from the latest assistant
-              // message (covers post-tool answers after a preamble).
-              upsertAssistantMessageForTurn({
-                conversationId: payload.conversationId,
-                text: finalText,
-                userMessageId: ev.userMessageId,
-                timezone: payload.timezone,
-                responseTarget: ev.responseTarget,
-              });
-              // When the agent produced a self-mod commit AND a chat
-              // reply, patch `selfModApplied` onto the assistant row
-              // so the inline "Undo changes" affordance appears.
-              // When the agent commits but says nothing, the merge
-              // no-ops (no row to attach to) and the user loses the
+              // Each assistant message in the run was already persisted
+              // by `onAssistantMessage` as its own row, so end-of-run no
+              // longer writes a new row from `finalText` (doing so would
+              // append a duplicate of the last message).
+              //
+              // When the agent produced a self-mod commit AND at least
+              // one chat reply, patch `selfModApplied` onto the LAST
+              // persisted assistant row so the inline "Undo changes"
+              // affordance sits under the post-tool answer.
+              // When the agent commits but says nothing,
+              // `lastAssistantMessageEventId` is null and we drop the
               // inline button for that turn — accepted trade-off
               // against the alternative of a floating-button-only
               // empty bubble.
-              if (ev.selfModApplied && ev.userMessageId) {
+              if (ev.selfModApplied && lastAssistantMessageEventId) {
                 attachSelfModToAssistantMessage({
                   conversationId: payload.conversationId,
-                  userMessageId: ev.userMessageId,
+                  eventId: lastAssistantMessageEventId,
                   selfModApplied: ev.selfModApplied,
                 });
               }

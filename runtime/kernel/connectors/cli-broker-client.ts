@@ -98,6 +98,7 @@ export const requestConnectorCredentialFromBridge = async ({
   oauthClientId,
   oauthResource,
   scopes,
+  preregisteredOAuth,
   description,
   placeholder,
   timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -112,6 +113,27 @@ export const requestConnectorCredentialFromBridge = async ({
   oauthClientId?: string;
   oauthResource?: string;
   scopes?: string[];
+  preregisteredOAuth?: {
+    clientId: string;
+    authorizationEndpoint: string;
+    tokenEndpoint?: string;
+    responseType?: "code" | "token";
+    resourceUrl?: string;
+    oauthResource?: string | null;
+    callbackUrl?: string;
+    callbackId?: string;
+    callbackMode?: "local" | "external";
+      scopeSeparator?: string;
+      usesPkce?: boolean;
+      authorizationRedirectParam?: string;
+      authorizationParams?: Record<string, string>;
+      tokenRedirectParam?: string;
+      tokenAuth?: "body" | "basic";
+    tokenExchange?: {
+      type: "backend";
+      provider: string;
+    };
+  };
   description?: string;
   placeholder?: string;
   timeoutMs?: number;
@@ -127,6 +149,7 @@ export const requestConnectorCredentialFromBridge = async ({
       oauthClientId,
       oauthResource,
       scopes,
+      preregisteredOAuth,
       description,
       placeholder,
     },

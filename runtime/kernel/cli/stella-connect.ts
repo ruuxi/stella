@@ -21,19 +21,22 @@ import {
 import {
   deleteConnectorAccessTokens,
   loadConnectorAccessToken,
+  loadConnectorTokenPayload,
 } from "../connectors/oauth.js";
+import {
+  getNativeOAuthProviderConfig,
+  type NativeOAuthProviderConfig,
+} from "../connectors/native-oauth-provider-config.js";
 import {
   disableNativeConnector,
   enableNativeConnector,
   getNativeConnectorCatalogEntry,
+  getNativeConnectorCatalogActions,
   getNativeConnectorTools,
   isNativeConnectorEnabled,
   listNativeConnectors,
+  nativeOAuthApiRequestToolName,
 } from "../connectors/native-integrations.js";
-import {
-  callNativeProviderAction,
-  getNativeProviderManifest,
-} from "../connectors/native-provider-actions.js";
 import type {
   ConnectorCommandConfig,
   ConnectorToolInfo,
@@ -158,6 +161,76 @@ type ConnectorAuthHints = {
   oauthClientId?: string;
   oauthResource?: string;
   scopes?: string[];
+  preregisteredOAuth?: {
+    clientId: string;
+    authorizationEndpoint: string;
+    tokenEndpoint?: string;
+    responseType?: "code" | "token";
+    resourceUrl?: string;
+    oauthResource?: string | null;
+    callbackUrl?: string;
+    callbackId?: string;
+    callbackMode?: "local" | "external";
+    scopeSeparator?: string;
+    usesPkce?: boolean;
+    authorizationClientIdParam?: string;
+    authorizationRedirectParam?: string;
+    authorizationParams?: Record<string, string>;
+    tokenRedirectParam?: string;
+    tokenAuth?: "body" | "basic";
+    tokenExchange?: {
+      type: "backend";
+      provider: string;
+    };
+  };
+};
+
+const nativeOAuthAuthHints = (
+  id: string,
+  config: NativeOAuthProviderConfig | null,
+): ConnectorAuthHints | undefined => {
+  if (!config) return undefined;
+  if (config.flow !== "authorization_code") {
+    return {
+      authType: "oauth",
+      resourceUrl: config.resourceUrl,
+      oauthClientId: config.clientId,
+      oauthResource: config.oauthResource ?? undefined,
+      scopes: config.scopes,
+    };
+  }
+  return {
+    authType: "oauth",
+    resourceUrl: config.resourceUrl ?? config.authorizationEndpoint,
+    oauthClientId: config.clientId,
+    oauthResource: config.oauthResource ?? undefined,
+    scopes: config.scopes,
+    preregisteredOAuth: {
+      clientId: config.clientId,
+      authorizationEndpoint: config.authorizationEndpoint,
+      tokenEndpoint: config.tokenEndpoint,
+      responseType: config.responseType,
+      resourceUrl: config.resourceUrl,
+      oauthResource: config.oauthResource,
+      callbackUrl: config.callbackUrl,
+      callbackId: config.callbackId,
+      callbackMode: config.callbackMode,
+      scopeSeparator: config.scopeSeparator,
+      usesPkce: config.usesPkce,
+      authorizationClientIdParam: config.authorizationClientIdParam,
+      authorizationRedirectParam: config.authorizationRedirectParam,
+      authorizationParams: config.authorizationParams,
+      tokenRedirectParam: config.tokenRedirectParam,
+      tokenAuth: config.tokenAuth,
+      tokenExchange:
+        config.tokenExchange?.type === "backend"
+          ? {
+              type: "backend",
+              provider: config.tokenExchange.provider ?? id,
+            }
+          : undefined,
+    },
+  };
 };
 
 const resolveConnectorAuthHints = async (
@@ -221,6 +294,7 @@ const withAuthRetry = async <T>(
         oauthClientId: hints.oauthClientId,
         oauthResource: hints.oauthResource,
         scopes: hints.scopes,
+        preregisteredOAuth: hints.preregisteredOAuth,
       });
     } catch (bridgeError) {
       // The bridge was advertised but isn't reachable — fall through to
@@ -257,6 +331,21 @@ const connectorAuthStatus = async (auth: ConnectorCommandConfig["auth"]) => {
     : "not_logged_in";
 };
 
+const nativeConnectorAuthStatus = async (
+  entry: NonNullable<ReturnType<typeof getNativeConnectorCatalogEntry>>,
+) => {
+  if (entry.provider === "google-workspace") {
+    return (await loadConnectorAccessToken(stellaRoot, "google-workspace"))
+      ? "connected"
+      : "not_logged_in";
+  }
+  const config = getNativeOAuthProviderConfig(entry.id);
+  if (!config?.tokenKey) return "unsupported" as const;
+  return (await loadConnectorAccessToken(stellaRoot, config.tokenKey))
+    ? "connected"
+    : "not_logged_in";
+};
+
 const ensureNativeEnabled = async (id: string) => {
   const entry = findNative(id);
   if (!entry) return null;
@@ -271,30 +360,186 @@ const ensureNativeEnabled = async (id: string) => {
 const callNativeConnector = async (
   id: string,
   action: string,
-  args: Record<string, unknown>,
+  args: {
+    body: Record<string, unknown>;
+    method?: string;
+    query?: Record<string, string | number | boolean>;
+    headers?: Record<string, string>;
+  },
 ) => {
   const entry = await ensureNativeEnabled(id);
   if (!entry) return null;
   const allowedTools = new Set(
     getNativeConnectorTools(entry).map((tool) => tool.name),
   );
+  if (
+    entry.provider === "oauth-catalog" &&
+    id === "linear" &&
+    action === "LINEAR_RUN_QUERY_OR_MUTATION"
+  ) {
+    if (typeof args.body.query !== "string" || !args.body.query.trim()) {
+      fail("LINEAR_RUN_QUERY_OR_MUTATION requires a GraphQL `query` string.");
+    }
+    const config = getNativeOAuthProviderConfig(id);
+    const tokenPayload = config?.tokenKey
+      ? await loadConnectorTokenPayload(stellaRoot, config.tokenKey)
+      : null;
+    const baseUrl =
+      tokenPayload?.resourceUrl ??
+      config?.resourceUrl ??
+      fail(`${entry.name} does not expose a native GraphQL endpoint yet.`);
+    const tokenKey =
+      config?.tokenKey ??
+      fail(`${entry.name} does not expose a native GraphQL endpoint yet.`);
+    return await withAuthRetry(
+      () =>
+        callApiConnector(
+          stellaRoot,
+          {
+            id,
+            displayName: entry.name,
+            baseUrl,
+            auth: {
+              type: "oauth",
+              tokenKey,
+              scheme: "bearer",
+              headerName: "Authorization",
+            },
+          },
+          {
+            method: "POST",
+            path: "/graphql",
+            body: args.body,
+          },
+        ),
+      nativeOAuthAuthHints(id, config),
+    );
+  }
+  const callNativeOAuthApiPath = async (
+    path: string,
+    options: {
+      method?: string;
+      query?: Record<string, string | number | boolean>;
+      body?: Record<string, unknown>;
+      headers?: Record<string, string>;
+    },
+  ) => {
+    const config = getNativeOAuthProviderConfig(id);
+    const tokenKey =
+      config?.tokenKey ??
+      fail(`${entry.name} does not expose a native REST endpoint yet.`);
+    const tokenInQuery = config?.apiAuthPlacement === "access_token_query";
+    const attempt = async () => {
+      const tokenPayload = await loadConnectorTokenPayload(stellaRoot, tokenKey);
+      const baseUrl =
+        tokenPayload?.resourceUrl ??
+        config?.resourceUrl ??
+        fail(`${entry.name} does not expose a native REST endpoint yet.`);
+      if (tokenInQuery && !tokenPayload?.accessToken) {
+        throw new ConnectorAuthError(
+          0,
+          entry.name,
+          tokenKey,
+          `${entry.name} is not connected yet.`,
+        );
+      }
+      const queryAccessToken =
+        tokenInQuery && tokenPayload?.accessToken
+          ? tokenPayload.accessToken
+          : null;
+      return await callApiConnector(
+        stellaRoot,
+        {
+          id,
+          displayName: entry.name,
+          baseUrl,
+          auth: tokenInQuery
+            ? { type: "none" }
+            : {
+                type: "oauth",
+                tokenKey,
+                scheme: config?.apiAuthScheme ?? "bearer",
+                headerName: "Authorization",
+              },
+        },
+        {
+          method: options.method,
+          path,
+          query: {
+            ...(config?.apiQueryParams ?? {}),
+            ...(queryAccessToken ? { access_token: queryAccessToken } : {}),
+            ...(options.query ?? {}),
+          },
+          body:
+            options.body && Object.keys(options.body).length
+              ? options.body
+              : undefined,
+          headers: options.headers,
+        },
+      );
+    };
+    return await withAuthRetry(
+      attempt,
+      nativeOAuthAuthHints(id, config),
+    );
+  };
+  if (entry.provider === "oauth-catalog" && action.startsWith("/")) {
+    return await callNativeOAuthApiPath(action, {
+      method: args.method,
+      query: args.query,
+      body: args.body,
+      headers: args.headers,
+    });
+  }
+  if (
+    entry.provider === "oauth-catalog" &&
+    action === nativeOAuthApiRequestToolName(id)
+  ) {
+    const path = args.body.path;
+    if (typeof path !== "string" || !path.startsWith("/")) {
+      fail(`${action} requires a \`path\` string beginning with /.`);
+    }
+    const apiPath = path as string;
+    const method = args.body.method;
+    const query = args.body.query;
+    const body = args.body.body;
+    const headers = args.body.headers;
+    return await callNativeOAuthApiPath(apiPath, {
+      method: typeof method === "string" ? method : args.method,
+      query:
+        query && typeof query === "object" && !Array.isArray(query)
+          ? (query as Record<string, string | number | boolean>)
+          : args.query,
+      body:
+        body && typeof body === "object" && !Array.isArray(body)
+          ? (body as Record<string, unknown>)
+          : {},
+      headers:
+        headers && typeof headers === "object" && !Array.isArray(headers)
+          ? Object.fromEntries(
+              Object.entries(headers).flatMap(([key, value]) =>
+                typeof value === "string" ? [[key, value]] : [],
+              ),
+            )
+          : args.headers,
+    });
+  }
   if (!allowedTools.has(action)) {
     fail(
       `${entry.name} does not expose ${action}. Run: stella-connect tools ${id}`,
     );
   }
-  if (entry.provider === "native") {
-    return await callNativeProviderAction(stellaRoot, id, entry.name, action, args);
-  }
   if (entry.provider !== "google-workspace") {
-    fail(`${entry.name} does not have a native CLI dispatcher yet.`);
+    fail(
+      `${entry.name} is connected for OAuth catalog metadata, but Stella does not have a native tool dispatcher for it yet.`,
+    );
   }
   const { callTool, disconnect } = await loadGoogleWorkspaceTools({
     stellaRoot,
   });
   try {
     const googleCallTool = callTool;
-    if (googleCallTool) return await googleCallTool(action, args);
+    if (googleCallTool) return await googleCallTool(action, args.body);
     fail("Google Workspace tools are unavailable.");
   } finally {
     await disconnect().catch(() => undefined);
@@ -373,6 +618,7 @@ const importMcp = async (argv: string[]) => {
   const authScheme = optionString(options, "auth-scheme") as
     | "bearer"
     | "basic"
+    | "oauth"
     | "raw"
     | undefined;
   const authEnvVar = optionString(options, "auth-env-var");
@@ -522,7 +768,8 @@ const HELP_TEXT = [
   "                                    until credentials land. Run `refresh-skill` after.",
   "  refresh-skill <id>                Re-probe a configured connector and rewrite its skill.",
   "  tools <id>                        List actions for a configured connector.",
-  "  call <id> <action-or-path> [--json '{}'] [--method GET] [--query-json '{}']",
+  "  catalog-actions <id>              List recovered native OAuth catalog action references.",
+  "  call <id> <action-or-path> [--json '{}'] [--method GET] [--query-json '{}'] [--header-json '{}']",
   "                                    Invoke a connector action or REST path.",
   "  remove <id>                       Remove a configured connector (state only).",
 ].join("\n");
@@ -549,12 +796,27 @@ const main = async () => {
             authStatus: await connectorAuthStatus(api.auth),
           })),
         ),
-        native: native.filter((entry) => entry.enabled),
+        native: await Promise.all(
+          native
+            .filter((entry) => entry.enabled)
+            .map(async (entry) => ({
+              ...entry,
+              authStatus: await nativeConnectorAuthStatus(entry),
+            })),
+        ),
       });
       return;
     }
     case "apps": {
-      printJson(await listNativeConnectors(stellaRoot));
+      const native = await listNativeConnectors(stellaRoot);
+      printJson(
+        await Promise.all(
+          native.map(async (entry) => ({
+            ...entry,
+            authStatus: await nativeConnectorAuthStatus(entry),
+          })),
+        ),
+      );
       return;
     }
     case "enable-native": {
@@ -588,6 +850,16 @@ const main = async () => {
       );
       return;
     }
+    case "catalog-actions": {
+      const id = rest[0];
+      if (!id)
+        fail("Usage: stella-connect catalog-actions <native-integration-id>");
+      const native = findNative(id);
+      if (!native) fail(`Native integration is not installed: ${id}`);
+      if (!native) return;
+      printJson(getNativeConnectorCatalogActions(native));
+      return;
+    }
     case "call": {
       const { positionals, options } = parseOptions(rest);
       const id = positionals[0];
@@ -602,11 +874,18 @@ const main = async () => {
         {},
       );
       if (findNative(id)) {
-        const manifest = getNativeProviderManifest(id);
         printJson(
-          await withAuthRetry(() => callNativeConnector(id, target, body), {
-            authType: manifest?.auth.type,
-            scopes: [],
+          await callNativeConnector(id, target, {
+            body,
+            method: optionString(options, "method"),
+            query: parseJson<Record<string, string | number | boolean>>(
+              optionString(options, "query-json"),
+              {},
+            ),
+            headers: parseJson<Record<string, string>>(
+              optionString(options, "header-json"),
+              {},
+            ),
           }),
         );
         return;
@@ -625,6 +904,10 @@ const main = async () => {
                 {},
               ),
               body: Object.keys(body).length ? body : undefined,
+              headers: parseJson<Record<string, string>>(
+                optionString(options, "header-json"),
+                {},
+              ),
             }),
           ),
         );
