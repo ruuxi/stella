@@ -304,6 +304,21 @@ export const AssistantMessageRow = memo(
       !hasCustomSlot &&
       !hasScheduleReceipt
     ) {
+      // Reserve a scroll-follow target before the first token lands;
+      // otherwise `followActiveAssistantRow` can't find
+      // `[data-scroll-follow-key]` and auto-follow waits on ResizeObserver
+      // luck.
+      if (row.isStreaming) {
+        return (
+          <div
+            className="event-row event-row--assistant event-row--streaming"
+            data-scroll-follow-key={row.id}
+            aria-hidden
+          >
+            <div className="event-item assistant event-item--streaming-placeholder" />
+          </div>
+        );
+      }
       return null;
     }
 
