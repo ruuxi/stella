@@ -21,10 +21,20 @@ import {
 import { convexClient } from "@/infra/convex-client";
 import { getJwtExpMs } from "@/shared/lib/jwt";
 
-const TOKEN_BOOTSTRAP_RETRY_MS = 3_000;
+const TOKEN_BOOTSTRAP_RETRY_BASE_MS = 3_000;
+const TOKEN_BOOTSTRAP_RETRY_MAX_MS = 60_000;
+const TOKEN_BOOTSTRAP_MAX_ATTEMPTS = 10;
 const TOKEN_REFRESH_FALLBACK_MS = 3 * 60 * 1000;
 const TOKEN_REFRESH_MARGIN_MS = 90_000;
 const TOKEN_MIN_REFRESH_MS = 15_000;
+
+const getTokenBootstrapRetryDelayMs = (attempt: number) => {
+  const exponent = Math.max(0, attempt - 1);
+  return Math.min(
+    TOKEN_BOOTSTRAP_RETRY_MAX_MS,
+    TOKEN_BOOTSTRAP_RETRY_BASE_MS * 2 ** exponent,
+  );
+};
 
 export type AuthBootstrapStatus =
   | "loading_session"
@@ -251,6 +261,7 @@ function DesktopAuthRuntimeEffects({
     let cancelled = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let bootstrapAttempts = 0;
 
     const clearTimers = () => {
       if (refreshTimer) {
@@ -301,6 +312,7 @@ function DesktopAuthRuntimeEffects({
           clearTimeout(retryTimer);
           retryTimer = null;
         }
+        bootstrapAttempts = 0;
         void systemApi.setAuthState(nextState);
         if (requestId && systemApi.completeRuntimeAuthRefresh) {
           void systemApi.completeRuntimeAuthRefresh({
@@ -324,16 +336,31 @@ function DesktopAuthRuntimeEffects({
           ...nextState,
         });
       }
-      if (!retryTimer) {
-        setAuthBootstrapState({
-          status: "syncing_runtime_token",
-          error: null,
-        });
-        retryTimer = setTimeout(() => {
-          retryTimer = null;
-          void syncToken();
-        }, TOKEN_BOOTSTRAP_RETRY_MS);
+      // A live refresh request (heartbeat/subscription) is not part of the
+      // initial bootstrap loop — it can fail without poisoning startup.
+      if (requestId) {
+        return;
       }
+      if (retryTimer) {
+        return;
+      }
+      bootstrapAttempts += 1;
+      if (bootstrapAttempts >= TOKEN_BOOTSTRAP_MAX_ATTEMPTS) {
+        setAuthBootstrapState({
+          status: "failed",
+          error:
+            "Stella couldn't reach the auth runtime. Check your connection and try again.",
+        });
+        return;
+      }
+      setAuthBootstrapState({
+        status: "syncing_runtime_token",
+        error: null,
+      });
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        void syncToken();
+      }, getTokenBootstrapRetryDelayMs(bootstrapAttempts));
     };
 
     runtimeAuthRefreshHandlerRef.current = syncToken;
