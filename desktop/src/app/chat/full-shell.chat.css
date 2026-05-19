@@ -72,6 +72,7 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
+  margin-top: 10px;
 }
 
 .composer-queued-message {
@@ -92,11 +93,11 @@
   border: 1px solid var(--border-strong);
   border-radius: 18px;
   border-bottom-right-radius: 4px;
-  padding: 9px 13px;
-  max-width: 85%;
+  padding: 7px 11px;
+  max-width: 78%;
   width: fit-content;
-  font-size: 15px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.35;
   color: var(--text-strong);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
