@@ -604,6 +604,16 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                 },
                 senderWebContentsId,
               ),
+            onAssistantMessage: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.ASSISTANT_MESSAGE,
+                  conversationId: payload.conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
             onStatus: (ev) =>
               emitAgentEvent(
                 {
