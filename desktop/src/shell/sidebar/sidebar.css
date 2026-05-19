@@ -299,12 +299,71 @@
   border-top: 1px solid var(--border-weak);
 }
 
-/* ── Account row: avatar (initials) + Upgrade / current-plan pill ── */
+/* Compact footer row: avatar on the left, quick-action icon buttons
+   on the right. Replaces the prior stacked Connect / Settings rows
+   plus the Upgrade pill — Theme / Settings / Connect live as icon
+   buttons here, billing/plan now surfaces inside the avatar menu. */
+.sidebar-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 0;
+}
+
+.sidebar-footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-footer-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.sidebar-footer-icon:hover,
+.sidebar-footer-icon:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  color: var(--text-strong);
+  border-color: var(--border-weak);
+  outline: none;
+}
+
+.sidebar-footer-icon-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hint dot reuses the AppNavItem accent — small red dot in the upper
+   right of the icon button, dismissed once the user opens Connect. */
+.sidebar-footer-icon .sidebar-nav-hint-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+/* ── Account row: avatar (initials only) ─────────────────────────── */
 .sidebar-account {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 4px;
 }
 
 .sidebar-account-avatar {
@@ -564,8 +623,14 @@
   align-self: center;
 }
 
-.sidebar.sidebar--rail .sidebar-account-pill {
+.sidebar.sidebar--rail .sidebar-account-pill,
+.sidebar.sidebar--rail .sidebar-footer-actions {
   display: none;
+}
+
+.sidebar.sidebar--rail .sidebar-footer-row {
+  justify-content: center;
+  padding: 0;
 }
 
 .sidebar.sidebar--rail .sidebar-account-signin {
