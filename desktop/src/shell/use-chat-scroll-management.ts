@@ -3,8 +3,7 @@
  *
  * The list owns scrolling and viewport measurement; this hook layers
  * surface-level UI concerns on top:
- *   - "is the user at/near the bottom" → drives `at-bottom` styling and
- *     scroll-to-bottom button visibility,
+ *   - scroll-to-bottom button visibility from distance off the end,
  *   - custom scrollbar thumb position/height,
  *   - `scrollToBottom` via the list ref,
  *   - `onStartReached` → load older history,
@@ -40,8 +39,6 @@ type ThumbState = {
 }
 
 const SCROLL_BUTTON_THRESHOLD = 180
-const NEAR_BOTTOM_THRESHOLD = 96
-const FOLLOW_REARM_THRESHOLD = 16
 const THUMB_MIN_HEIGHT = 24
 const THUMB_FADE_MS = 1200
 /**
@@ -114,6 +111,13 @@ const TRAILING_REGION_MIN_PX = {
 /** Breathing room between the user bubble's bottom edge and the footer. */
 const POST_SEND_USER_MESSAGE_BREATHING_PX = 48
 
+/** Extra slack beyond the trailing-region min-height for follow re-arm (less than post-send breathing). */
+const FOLLOW_REARM_EXTRA_PX = 24
+
+/** Re-arm stream auto-follow after scroll-up within the footer stack below the last message. */
+const followRearmThresholdPx = (trailingRegionMinPx: number): number =>
+  trailingRegionMinPx + FOLLOW_REARM_EXTRA_PX
+
 type ChatScrollSurface = keyof typeof TRAILING_REGION_MIN_PX
 
 type ChatScrollManagementOptions = {
@@ -147,9 +151,9 @@ export function useChatScrollManagement({
   surface = 'full',
 }: ChatScrollManagementOptions = {}) {
   const trailingRegionMinPx = TRAILING_REGION_MIN_PX[surface]
+  const followRearmThreshold = followRearmThresholdPx(trailingRegionMinPx)
   const listRef = useRef<LegendListRef | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
-  const [isNearBottom, setIsNearBottom] = useState(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [thumbState, setThumbState] = useState<ThumbState>({
     top: 0,
@@ -222,18 +226,16 @@ export function useChatScrollManagement({
       // Booleans bail out on === inside React's setState, so these are
       // effectively no-ops while nothing has changed.
       setIsAtBottom(isAtEnd)
-      setIsNearBottom(isAtEnd || distFromEnd <= NEAR_BOTTOM_THRESHOLD)
       setShowScrollButton(distFromEnd > SCROLL_BUTTON_THRESHOLD)
       updateThumb(scroll, scrollLength, contentLength)
 
-      // Re-arm follow as the user comes back to the bottom themselves.
-      // The 16px threshold is tighter than `isNearBottom` so we don't
-      // re-engage prematurely while they're still browsing scrollback.
-      if (isAtEnd || distFromEnd <= FOLLOW_REARM_THRESHOLD) {
+      // Re-arm follow when back in the normal reading position above the
+      // off-screen trailing footer (not only at the literal scroll end).
+      if (isAtEnd || distFromEnd <= followRearmThreshold) {
         followRef.current = true
       }
     },
-    [updateThumb],
+    [followRearmThreshold, updateThumb],
   )
 
   /** `onStartReached` from Legend List — fires when the user nears the top. */
@@ -253,25 +255,13 @@ export function useChatScrollManagement({
     [],
   )
 
-  const getIsNearBottom = useCallback(() => {
-    const state = listRef.current?.getState()
-    if (!state) return isNearBottom
-    const { scroll, scrollLength, contentLength, isAtEnd } = state
-    const distFromEnd = Math.max(0, contentLength - scrollLength - scroll)
-    return isAtEnd || distFromEnd <= NEAR_BOTTOM_THRESHOLD
-  }, [isNearBottom])
-
   /**
    * Reads the follow latch — true while content growth should pull
    * the viewport along with new content. This is the right signal
    * for "should I auto-nudge on the next send?" because the latch
    * survives the gap between when a short assistant reply finishes
-   * (leaving the user `trailingRegionHeight − breathing` ≈ 150px
-   * physically away from the absolute end, off-screen empty footer)
-   * and when the next user message lands. `getIsNearBottom` measures
-   * raw pixel distance and reports false in that window even though
-   * the user is visually at the bottom of the conversation and
-   * hasn't expressed any intent to leave it.
+   * (leaving the user above the absolute end with the trailing footer
+   * off-screen) and when the next user message lands.
    */
   const getIsFollowing = useCallback(() => followRef.current, [])
 
@@ -664,8 +654,6 @@ export function useChatScrollManagement({
     onListScroll,
     onStartReached,
     isAtBottom,
-    isNearBottom,
-    getIsNearBottom,
     showScrollButton,
     scrollToBottom,
     releaseFollow,
