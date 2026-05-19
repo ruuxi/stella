@@ -154,6 +154,7 @@ export function useChatScrollManagement({
   const followRearmThreshold = followRearmThresholdPx(trailingRegionMinPx)
   const listRef = useRef<LegendListRef | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
+  const [isFollowingLatest, setIsFollowingLatest] = useState(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [thumbState, setThumbState] = useState<ThumbState>({
     top: 0,
@@ -170,6 +171,11 @@ export function useChatScrollManagement({
    * scroll-to-bottom button).
    */
   const followRef = useRef(true)
+
+  const setFollow = useCallback((following: boolean) => {
+    followRef.current = following
+    setIsFollowingLatest(following)
+  }, [])
 
   /**
    * Imperative bridge to the per-scroll-element follow loop. Populated
@@ -232,10 +238,10 @@ export function useChatScrollManagement({
       // Re-arm follow when back in the normal reading position above the
       // off-screen trailing footer (not only at the literal scroll end).
       if (isAtEnd || distFromEnd <= followRearmThreshold) {
-        followRef.current = true
+        setFollow(true)
       }
     },
-    [followRearmThreshold, updateThumb],
+    [followRearmThreshold, setFollow, updateThumb],
   )
 
   /** `onStartReached` from Legend List — fires when the user nears the top. */
@@ -246,13 +252,13 @@ export function useChatScrollManagement({
 
   const scrollToBottom = useCallback(
     (behavior: 'instant' | 'smooth' = 'smooth') => {
-      followRef.current = true
+      setFollow(true)
       // Legend's own scrollToEnd owns this motion; cancel any lerp
       // so we don't write scrollTop on the same frame Legend does.
       followApi.current?.cancel()
       void listRef.current?.scrollToEnd({ animated: behavior !== 'instant' })
     },
-    [],
+    [setFollow],
   )
 
   /**
@@ -283,10 +289,10 @@ export function useChatScrollManagement({
    * follow.
    */
   const releaseFollow = useCallback(() => {
-    followRef.current = false
+    setFollow(false)
     clearAssistantScrollFollow()
     followApi.current?.cancel()
-  }, [])
+  }, [setFollow])
 
   /**
    * Smooth one-shot scroll bump used by send handlers when the user
@@ -301,13 +307,13 @@ export function useChatScrollManagement({
    * a real position rather than getting clamped to the old maxScroll.
    */
   const nudgeBy = useCallback((delta: number) => {
-    followRef.current = true
+    setFollow(true)
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         followApi.current?.nudgeBy(delta)
       })
     })
-  }, [])
+  }, [setFollow])
 
   /**
    * After send, scroll so the latest user bubble is fully visible and
@@ -316,14 +322,14 @@ export function useChatScrollManagement({
    * clipped at the top while empty space exists off-screen below.
    */
   const nudgeAfterSend = useCallback(() => {
-    followRef.current = true
+    setFollow(true)
     clearAssistantScrollFollow()
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         followApi.current?.scrollLatestUserMessageIntoView()
       })
     })
-  }, [])
+  }, [setFollow])
 
   /**
    * Wheel/touch/keyboard listeners + auto-follow loop.
@@ -523,7 +529,7 @@ export function useChatScrollManagement({
 
       // ---- user-input release handlers -----------------------------
       const releaseLocalFollow = () => {
-        followRef.current = false
+        setFollow(false)
         stopLoop()
       }
       const handleWheel = (event: WheelEvent) => {
@@ -647,13 +653,14 @@ export function useChatScrollManagement({
       cancelAnimationFrame(frame)
       cleanup()
     }
-  }, [trailingRegionMinPx])
+  }, [setFollow, trailingRegionMinPx])
 
   return {
     listRef,
     onListScroll,
     onStartReached,
     isAtBottom,
+    isFollowingLatest,
     showScrollButton,
     scrollToBottom,
     releaseFollow,

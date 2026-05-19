@@ -24,12 +24,17 @@
   transition: box-shadow 200ms ease, border-color 200ms ease;
 }
 
-/* Suggestion chips (auto-context: frontmost app, browser tab, recents)
- * sit above the shell. Constrain to the same max-width as the shell so the
- * chips align with the input below them. */
-.composer > .composer-context-actions--suggestions {
+/* Anchor for the above-composer stack (assistant reply peek + suggestion
+ * chips). Constrained to the same max-width as the shell so both align
+ * with the input below, and `position: relative` so the peek can absolute-
+ * position itself flush above the chips row. */
+.composer-context-peek-anchor {
   width: 100%;
   max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
+}
+
+.composer-context-peek-anchor .composer-context-actions--suggestions {
+  width: 100%;
 }
 
 /* Wraps the optional chip strip + form so the ResizeObserver can spring
@@ -198,7 +203,7 @@
   }
 
   .composer-shell,
-  .composer > .composer-context-actions--suggestions {
+  .composer-context-peek-anchor {
     max-width: 100%;
   }
 }

@@ -7,6 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
+import {
+  AssistantReplyPeek,
+  type AssistantReplyPeekProps,
+} from "./AssistantReplyPeek";
 import { ComposerAddMenu } from "./ComposerAddMenu";
 import { ComposerAreaSelectOverlay } from "./ComposerAreaSelectOverlay";
 import {
@@ -42,6 +46,7 @@ type ComposerProps = {
   onSend: () => void;
   onStop: () => void;
   indicator?: InlineWorkingIndicatorMountProps;
+  replyPeek?: AssistantReplyPeekProps | null;
 };
 
 export function Composer({
@@ -58,6 +63,7 @@ export function Composer({
   onSend,
   onStop,
   indicator,
+  replyPeek,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -130,11 +136,14 @@ export function Composer({
 
   return (
     <div className="composer">
-      <ComposerSuggestionContextRow
-        chatContext={chatContext}
-        setChatContext={setChatContext}
-        indicator={indicator}
-      />
+      <div className="composer-context-peek-anchor">
+        {replyPeek ? <AssistantReplyPeek {...replyPeek} /> : null}
+        <ComposerSuggestionContextRow
+          chatContext={chatContext}
+          setChatContext={setChatContext}
+          indicator={indicator}
+        />
+      </div>
       <div ref={shellRef} className="composer-shell">
         <div ref={shellContentRef} className="composer-shell-content">
           {hasAttachedChips && (
