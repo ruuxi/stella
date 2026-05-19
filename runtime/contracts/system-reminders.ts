@@ -20,10 +20,7 @@ export const formatRealtimeSystemMessage = (text: string): string =>
 export const formatAgentTerminalStateSystemReminder = (lines: string[]): string =>
   [
     `<${INTERNAL_SYSTEM_REMINDER_TAG}>`,
-    "A subagent you delegated to has reached a terminal state. The block below is",
-    "an internal coordination signal — the user did not see it.",
-    "",
-    "Decide what to do next: delegate further or reply to the user.",
+    "The agent has finished. The user cannot see this report. You must respond to the user. If the task is not complete, discuss it with the user or delegate automatically to finish the task.",
     `</${INTERNAL_SYSTEM_REMINDER_TAG}>`,
     "",
     ...lines,
