@@ -271,6 +271,7 @@ const assistantRowEqual = (
   a.text === b.text &&
   a.cacheKey === b.cacheKey &&
   Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
+  (a.replyToUserMessageId ?? null) === (b.replyToUserMessageId ?? null) &&
   JSON.stringify(a.responseTarget ?? null) ===
     JSON.stringify(b.responseTarget ?? null) &&
   (a.officePreviewRef?.sessionId ?? null) ===

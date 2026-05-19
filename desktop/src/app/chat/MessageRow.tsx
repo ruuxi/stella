@@ -31,14 +31,14 @@ import {
   EndResourceCard,
   SourceDiffEndResource,
 } from "@/app/chat/EndResourceCard";
-import { InlineGeneratedImageCardGroup } from "@/app/chat/InlineGeneratedImageCard";
+import { InlineGeneratedImageStrip } from "@/app/chat/InlineGeneratedImageCard";
+import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
-import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import {
   AskQuestionBubble,
@@ -84,6 +84,8 @@ export type AssistantRowViewModel = {
    */
   isStreaming?: boolean;
   responseTarget?: AgentResponseTarget;
+  /** User turn this assistant row belongs to (for inline-image coalescing). */
+  replyToUserMessageId?: string;
   officePreviewRef?: OfficePreviewRef;
   resourcePayload?: DisplayPayload;
   /** Orchestrator image_gen inline cards — one group per tool call. */
@@ -322,16 +324,19 @@ export const AssistantMessageRow = memo(
           {row.officePreviewRef && (
             <OfficePreviewCard previewRef={row.officePreviewRef} />
           )}
-          {row.inlineImagePayloads?.map((payload, index) =>
-            payload.kind === "media" &&
-            payload.presentation === "inline-image" &&
-            payload.asset.kind === "image" ? (
-              <InlineGeneratedImageCardGroup
-                key={payload.jobId ?? `inline-image-${index}`}
-                payload={payload}
-              />
-            ) : null,
-          )}
+          {row.inlineImagePayloads && row.inlineImagePayloads.length > 0 ? (
+            <InlineGeneratedImageStrip
+              payloads={row.inlineImagePayloads.filter(
+                (payload): payload is Extract<
+                  DisplayPayload,
+                  { kind: "media" }
+                > =>
+                  payload.kind === "media" &&
+                  payload.presentation === "inline-image" &&
+                  payload.asset.kind === "image",
+              )}
+            />
+          ) : null}
           {row.sourceDiffPayloads && row.sourceDiffPayloads.length > 0 ? (
             <SourceDiffEndResource
               batchId={row.id}

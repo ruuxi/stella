@@ -303,6 +303,53 @@ type UseEventRowsResult = {
   pendingAskQuestion: AskQuestionState | null
 }
 
+const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
+  row.text.trim().length === 0 &&
+  (row.inlineImagePayloads?.length ?? 0) > 0 &&
+  !row.officePreviewRef &&
+  !row.resourcePayload &&
+  !(row.sourceDiffPayloads?.length) &&
+  !row.selfModApplied &&
+  !row.scheduleReceipt &&
+  !row.askQuestion &&
+  !row.customSlot
+
+/** Merge sequential one-by-one image_gen rows into a single inline strip. */
+const coalesceInlineImageRows = (
+  rows: EventRowViewModel[],
+): EventRowViewModel[] => {
+  const out: EventRowViewModel[] = []
+  for (const row of rows) {
+    if (row.kind !== 'assistant' || !isImageOnlyInlineRow(row)) {
+      out.push(row)
+      continue
+    }
+    const prev = out[out.length - 1]
+    if (
+      prev?.kind === 'assistant' &&
+      prev.replyToUserMessageId === row.replyToUserMessageId &&
+      !prev.officePreviewRef &&
+      !prev.resourcePayload &&
+      !(prev.sourceDiffPayloads?.length) &&
+      !prev.selfModApplied &&
+      !prev.scheduleReceipt &&
+      !prev.askQuestion &&
+      !prev.customSlot
+    ) {
+      out[out.length - 1] = {
+        ...prev,
+        inlineImagePayloads: [
+          ...(prev.inlineImagePayloads ?? []),
+          ...(row.inlineImagePayloads ?? []),
+        ],
+      }
+      continue
+    }
+    out.push(row)
+  }
+  return out
+}
+
 /**
  * Stable React key for an assistant row. Live-streaming overlays and
  * their eventual persisted counterparts share this key (both anchor
@@ -473,6 +520,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           cacheKey: stableKey,
           ...(isStreamingOverlay ? { isStreaming: true } : {}),
           ...(responseTarget ? { responseTarget } : {}),
+          ...(replyToUserMessageId ? { replyToUserMessageId } : {}),
           ...(getOfficePreviewRef(toolEvents)
             ? { officePreviewRef: getOfficePreviewRef(toolEvents) }
             : {}),
@@ -511,12 +559,13 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           id: stableKey,
           text: '',
           cacheKey: stableKey,
+          replyToUserMessageId: lastDisplayMessage._id,
           inlineImagePayloads: trailingInlineImagePayloads,
         })
       }
     }
 
-    return computed
+    return coalesceInlineImageRows(computed)
   }, [
     askQuestion,
     developerResourcePreviewsEnabled,
