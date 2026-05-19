@@ -127,6 +127,19 @@ export const useMaterializedMediaPayload = (
     () => null,
   )
 
+export const useMaterializedMediaPayloadSnapshot = (): ReadonlyMap<
+  string,
+  DisplayPayload
+> =>
+  useSyncExternalStore(
+    (listener) => {
+      materializedPayloadListeners.add(listener)
+      return () => materializedPayloadListeners.delete(listener)
+    },
+    () => materializedPayloadsByJobId,
+    () => new Map(),
+  )
+
 /**
  * Mark a jobId as already-handled so the materializer skips it. Use this
  * from any UI that materializes its own jobs (e.g. MediaStudio) so we don't

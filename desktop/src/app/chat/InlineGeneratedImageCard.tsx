@@ -5,6 +5,7 @@ import {
   markMediaJobMaterialized,
   publishMaterializedMediaPayload,
   useMaterializedMediaPayload,
+  useMaterializedMediaPayloadSnapshot,
 } from "@/app/media/use-media-materializer";
 import { extractOutput, saveOutputToStella } from "@/app/media/media-store";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
@@ -15,6 +16,13 @@ import { notifyAssistantScrollFollowLayoutChange } from "@/shell/chat-scroll-fol
 import "./inline-generated-image-card.css";
 
 type InlineGeneratedImagePayload = Extract<DisplayPayload, { kind: "media" }>;
+
+type StripTileSpec = {
+  key: string;
+  payload: InlineGeneratedImagePayload;
+  imageIndex: number;
+  materializeJob: boolean;
+};
 
 const filenameOf = (filePath: string): string =>
   filePath.split(/[\\/]/).pop() ?? filePath;
@@ -152,22 +160,115 @@ const resolveImageCount = (
   );
 };
 
-export const InlineGeneratedImageCardGroup = ({
-  payload,
+const buildStripTiles = (
+  payloads: InlineGeneratedImagePayload[],
+  materializedByJobId: ReadonlyMap<string, DisplayPayload>,
+): StripTileSpec[] => {
+  const tiles: StripTileSpec[] = [];
+  let materializeAssigned = false;
+
+  for (const payload of payloads) {
+    const materializedPayload = payload.jobId
+      ? (materializedByJobId.get(payload.jobId) ?? null)
+      : null;
+    const hasResolvedAssets =
+      payload.asset.kind === "image" && payload.asset.filePaths.length > 0;
+    const imageCount = resolveImageCount(payload, materializedPayload);
+
+    for (let imageIndex = 0; imageIndex < imageCount; imageIndex += 1) {
+      const needsMaterialize =
+        !materializeAssigned &&
+        Boolean(payload.jobId) &&
+        !materializedPayload &&
+        !hasResolvedAssets;
+      tiles.push({
+        key: `${payload.jobId ?? payload.createdAt}-${imageIndex}`,
+        payload,
+        imageIndex,
+        materializeJob: needsMaterialize,
+      });
+      if (needsMaterialize) materializeAssigned = true;
+    }
+  }
+
+  return tiles;
+};
+
+const countLoadedStripTiles = (
+  tiles: StripTileSpec[],
+  materializedByJobId: ReadonlyMap<string, DisplayPayload>,
+): number => {
+  let loaded = 0;
+  for (const tile of tiles) {
+    const materializedPayload = tile.payload.jobId
+      ? (materializedByJobId.get(tile.payload.jobId) ?? null)
+      : null;
+    const payloadPath =
+      tile.payload.asset.kind === "image"
+        ? tile.payload.asset.filePaths[tile.imageIndex]
+        : undefined;
+    const materializedPath =
+      materializedPayload?.kind === "media" &&
+      materializedPayload.asset.kind === "image"
+        ? materializedPayload.asset.filePaths[tile.imageIndex]
+        : undefined;
+    if (payloadPath || materializedPath) loaded += 1;
+  }
+  return loaded;
+};
+
+/** Renders every inline image for a turn in one row (strip or single card). */
+export const InlineGeneratedImageStrip = ({
+  payloads,
 }: {
-  payload: InlineGeneratedImagePayload;
+  payloads: InlineGeneratedImagePayload[];
 }) => {
-  const materializedPayload = useMaterializedMediaPayload(payload.jobId);
-  const imageCount = resolveImageCount(payload, materializedPayload);
+  const materializedByJobId = useMaterializedMediaPayloadSnapshot();
+  const tiles = useMemo(
+    () => buildStripTiles(payloads, materializedByJobId),
+    [materializedByJobId, payloads],
+  );
+
+  if (tiles.length === 0) return null;
+
+  const isStrip = tiles.length > 1;
+  const loadedTileCount = countLoadedStripTiles(tiles, materializedByJobId);
+  const isStripPending = isStrip && loadedTileCount === 0;
 
   return (
-    <div className="inline-generated-image-cards">
-      {Array.from({ length: imageCount }, (_, index) => (
+    <div
+      className={
+        isStrip
+          ? `inline-generated-image-cards inline-generated-image-cards--strip${
+              isStripPending
+                ? " inline-generated-image-cards--strip-pending"
+                : ""
+            }`
+          : "inline-generated-image-cards"
+      }
+      style={
+        isStrip
+          ? ({
+              "--inline-generated-image-count": tiles.length,
+            } as CSSProperties)
+          : undefined
+      }
+      aria-label={isStrip ? "Generated images" : undefined}
+      aria-busy={isStripPending ? true : undefined}
+    >
+      {isStripPending ? (
+        <span className="inline-generated-image-cards__pending-label">
+          Generating...
+        </span>
+      ) : null}
+      {tiles.map((tile) => (
         <InlineGeneratedImageCard
-          key={`${payload.jobId ?? payload.createdAt}-${index}`}
-          payload={payload}
-          imageIndex={index}
-          materializeJob={index === 0}
+          key={tile.key}
+          payload={tile.payload}
+          imageIndex={tile.imageIndex}
+          materializeJob={tile.materializeJob}
+          layout={isStrip ? "strip" : "single"}
+          sharedStripPending={isStripPending}
         />
       ))}
     </div>
@@ -178,10 +279,14 @@ export const InlineGeneratedImageCard = ({
   payload,
   imageIndex = 0,
   materializeJob = true,
+  layout = "single",
+  sharedStripPending = false,
 }: {
   payload: InlineGeneratedImagePayload;
   imageIndex?: number;
   materializeJob?: boolean;
+  layout?: "single" | "strip";
+  sharedStripPending?: boolean;
 }) => {
   const materializedPayload = useMaterializedMediaPayload(payload.jobId);
   const hasResolvedAssets =
@@ -261,16 +366,34 @@ export const InlineGeneratedImageCard = ({
 
   if (!isImage) return null;
 
+  const placeholderLabel = error
+    ? "Could not load image"
+    : loading || filePaths.length === 0
+      ? "Generating image..."
+      : "Image";
+
   return (
     <button
       type="button"
       className={
         primaryFile
           ? "inline-generated-image-card inline-generated-image-card--image"
-          : "inline-generated-image-card"
+          : `inline-generated-image-card${
+              sharedStripPending
+                ? " inline-generated-image-card--strip-slot"
+                : ""
+            }`
       }
       onClick={handleClick}
       title="Open in panel"
+      aria-label={
+        sharedStripPending
+          ? undefined
+          : layout === "strip" && !primaryFile
+            ? placeholderLabel
+            : undefined
+      }
+      tabIndex={sharedStripPending ? -1 : undefined}
     >
       <span
         className={
@@ -291,12 +414,15 @@ export const InlineGeneratedImageCard = ({
             onLoad={notifyAssistantScrollFollowLayoutChange}
           />
         ) : (
-          <span className="inline-generated-image-card__placeholder">
-            {error
-              ? "Could not load image"
-              : loading || filePaths.length === 0
-                ? "Generating image..."
-                : "Image"}
+          <span
+            className={
+              sharedStripPending
+                ? "inline-generated-image-card__placeholder inline-generated-image-card__placeholder--slot"
+                : "inline-generated-image-card__placeholder"
+            }
+            aria-hidden={layout === "strip" || sharedStripPending}
+          >
+            {sharedStripPending || layout === "strip" ? null : placeholderLabel}
           </span>
         )}
       </span>
