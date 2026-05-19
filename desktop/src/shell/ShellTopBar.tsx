@@ -114,7 +114,11 @@ export const ShellTopBar = () => {
       .catch(() => setMiniAlwaysOnTopState(!next));
   }, [miniAlwaysOnTop]);
 
-  const tabsStyle: CSSProperties | undefined =
+  // Panel width must live on the topbar root so `.shell-topbar-center` can
+  // read it when centering Store/Billing web controls over `.content-area`.
+  // Setting it only on `.shell-topbar-tabs` does not work — custom properties
+  // inherit downward, not to sibling elements.
+  const shellTopbarStyle: CSSProperties | undefined =
     panelWidth != null
       ? ({ "--display-panel-width": `${panelWidth}px` } as CSSProperties)
       : undefined;
@@ -122,6 +126,7 @@ export const ShellTopBar = () => {
   return (
     <header
       className="shell-topbar"
+      style={shellTopbarStyle}
       data-platform={isMac ? "mac" : "other"}
       data-display-open={panelOpen ? "true" : "false"}
       data-display-expanded={panelExpanded ? "true" : "false"}
@@ -161,7 +166,7 @@ export const ShellTopBar = () => {
           <ShellTopBarWebControls surfaceLabel={webViewSurfaceLabel} />
         </div>
       ) : null}
-      <div className="shell-topbar-tabs" style={tabsStyle}>
+      <div className="shell-topbar-tabs" >
         <DisplayTabBar />
       </div>
       <div className="shell-topbar-right">
