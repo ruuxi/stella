@@ -30,6 +30,9 @@ export const createRuntimeUnavailableError = (
 export const isRuntimeUnavailableError = (error: unknown): error is RpcError =>
   error instanceof RpcError && error.code === RPC_ERROR_CODES.RUNTIME_UNAVAILABLE;
 
+const toError = (value: unknown, fallback: () => Error): Error =>
+  value instanceof Error ? value : fallback();
+
 export class JsonRpcPeer {
   private readonly pending = new Map<
     JsonRpcId,
@@ -43,6 +46,7 @@ export class JsonRpcPeer {
   private readonly notificationHandlers = new Map<string, NotificationHandler>();
   private nextId = 1;
   private readonly events = new EventEmitter();
+  private disposed = false;
 
   constructor(
     private readonly sendMessage: (message: JsonRpcMessage) => void,
@@ -59,10 +63,22 @@ export class JsonRpcPeer {
     };
   }
 
-  dispose() {
+  isClosed() {
+    return this.disposed;
+  }
+
+  dispose(reason?: unknown) {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    const rejection = toError(
+      reason,
+      () => new RpcError(RPC_ERROR_CODES.INTERNAL_ERROR, "RPC peer disposed."),
+    );
     for (const [, pending] of this.pending) {
       clearTimeout(pending.timeout);
-      pending.reject(new RpcError(RPC_ERROR_CODES.INTERNAL_ERROR, "RPC peer disposed."));
+      pending.reject(rejection);
     }
     this.pending.clear();
     this.events.emit("closed");
@@ -78,10 +94,13 @@ export class JsonRpcPeer {
 
   notify(method: string, params?: unknown) {
     const message: JsonRpcNotification = { method, ...(params === undefined ? {} : { params }) };
-    this.sendMessage(message);
+    this.sendMessageSafely(message);
   }
 
   request<TResult = unknown>(method: string, params?: unknown): Promise<TResult> {
+    if (this.disposed) {
+      return Promise.reject(createRuntimeUnavailableError("RPC peer is closed."));
+    }
     const id = this.nextId++;
     const timeoutMs = this.options.requestTimeoutMs ?? 30 * 60 * 1000;
     const message: JsonRpcRequest = { id, method, ...(params === undefined ? {} : { params }) };
@@ -91,8 +110,33 @@ export class JsonRpcPeer {
         reject(new RpcError(RPC_ERROR_CODES.INTERNAL_ERROR, `RPC request timed out: ${method}`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timeout });
-      this.sendMessage(message);
+      try {
+        this.sendMessageSafely(message);
+      } catch (error) {
+        clearTimeout(timeout);
+        this.pending.delete(id);
+        reject(error);
+      }
     });
+  }
+
+  private sendMessageSafely(message: JsonRpcMessage) {
+    if (this.disposed) {
+      throw createRuntimeUnavailableError("RPC peer is closed.");
+    }
+    try {
+      this.sendMessage(message);
+    } catch (error) {
+      const safeError = toError(
+        error,
+        () => new RpcError(RPC_ERROR_CODES.INTERNAL_ERROR, String(error)),
+      );
+      if (!isRuntimeUnavailableError(safeError)) {
+        this.options.onError?.(safeError);
+      }
+      this.dispose(safeError);
+      throw safeError;
+    }
   }
 
   async handleMessage(message: JsonRpcMessage) {
@@ -127,7 +171,7 @@ export class JsonRpcPeer {
   private async handleRequest(message: JsonRpcRequest) {
     const handler = this.requestHandlers.get(message.method);
     if (!handler) {
-      this.sendMessage({
+      this.sendMessageSafely({
         id: message.id,
         error: {
           code: RPC_ERROR_CODES.METHOD_NOT_FOUND,
@@ -139,7 +183,7 @@ export class JsonRpcPeer {
 
     try {
       const result = await handler(message.params);
-      this.sendMessage({
+      this.sendMessageSafely({
         id: message.id,
         result: result === undefined ? null : result,
       } satisfies JsonRpcSuccess);
@@ -151,7 +195,7 @@ export class JsonRpcPeer {
               RPC_ERROR_CODES.INTERNAL_ERROR,
               error instanceof Error ? error.message : String(error),
             );
-      this.sendMessage({
+      this.sendMessageSafely({
         id: message.id,
         error: {
           code: rpcError.code,

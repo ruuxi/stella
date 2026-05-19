@@ -22,7 +22,10 @@ const createMockConnection = (): WorkerConnection => {
   return {
     process,
     pid: 12345,
-    peer: {} as WorkerConnection["peer"],
+    peer: {
+      isClosed: () => false,
+      on: () => () => {},
+    } as WorkerConnection["peer"],
   };
 };
 

@@ -293,6 +293,11 @@ export class RuntimeWorkerLifecycleController {
     return this.connection;
   }
 
+  private getLivePeer() {
+    const peer = this.connection?.peer;
+    return peer && !peer.isClosed() ? peer : null;
+  }
+
   private clearIdleTimer() {
     if (!this.idleTimer) {
       return;
@@ -349,7 +354,7 @@ export class RuntimeWorkerLifecycleController {
         "Stella runtime host is not started.",
       );
     }
-    if (this.state === "running" && this.connection?.peer) return;
+    if (this.state === "running" && this.getLivePeer()) return;
     if (this.state === "stopping" && this.stopPromise) {
       await this.stopPromise;
     }
@@ -373,6 +378,16 @@ export class RuntimeWorkerLifecycleController {
           );
       this.connection = connection;
       this.stoppingPid = null;
+
+      connection.peer.on("closed", () => {
+        if (this.connection?.peer !== connection.peer) {
+          return;
+        }
+        this.connection = null;
+        if (this.state === "running") {
+          this.setState("idle");
+        }
+      });
 
       connection.process.once("exit", () => {
         const wasIntentional = this.stoppingPid === connection.pid;
@@ -463,7 +478,7 @@ export class RuntimeWorkerLifecycleController {
     if (options.ensureWorker) {
       await this.ensureStarted();
     }
-    const peer = this.connection?.peer;
+    const peer = this.getLivePeer();
     if (!peer) {
       throw createRuntimeUnavailableError("Runtime worker is not running.");
     }
@@ -478,7 +493,7 @@ export class RuntimeWorkerLifecycleController {
       if (
         options.retryOnceOnDisconnect &&
         this.options.isHostStarted() &&
-        !this.connection?.peer
+        !this.getLivePeer()
       ) {
         await this.ensureStarted();
         return await this.request(execute, {
@@ -516,15 +531,16 @@ export class RuntimeWorkerLifecycleController {
     if (args.ensureWorker) {
       await this.ensureStarted();
     }
-    if (!this.connection?.peer) return null;
-    return await this.options.fetchHealth(this.connection);
+    const connection = this.connection;
+    if (!connection || connection.peer.isClosed()) return null;
+    return await this.options.fetchHealth(connection);
   }
 
   private scheduleIdleEvaluation(
     delayMs = 0,
   ) {
     if (
-      !this.connection?.peer ||
+      !this.getLivePeer() ||
       !this.options.isHostStarted() ||
       this.state !== "running"
     ) {
@@ -544,7 +560,7 @@ export class RuntimeWorkerLifecycleController {
 
   private async evaluateIdle() {
     if (
-      !this.connection?.peer ||
+      !this.getLivePeer() ||
       !this.options.isHostStarted() ||
       this.state !== "running"
     ) {
