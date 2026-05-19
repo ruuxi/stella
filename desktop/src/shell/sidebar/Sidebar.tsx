@@ -767,6 +767,12 @@ export const Sidebar = ({
     void navigate({ to: "/settings" });
   }, [navigate]);
 
+  // Signed-out users get a full-width "Sign in" row (the auth label
+  // doesn't fit alongside the Theme/Settings/Connect icons in the
+  // 170px sidebar), with the action icons stacked beneath. Signed-in
+  // users keep the compact avatar-on-left / icons-on-right row.
+  const { hasConnectedAccount } = useCurrentUser();
+
   // Auto-prompted feedback. The hook tracks active (visible + focused) time
   // across the whole shell and flips `shouldPrompt` once the user has been
   // active for ~30 minutes today AND it's been ≥24h since the last prompt.
@@ -933,7 +939,12 @@ export const Sidebar = ({
                   onHintDismiss={() => dismissHintForApp(app)}
                 />
               ))}
-              <div className="sidebar-footer-row">
+              <div
+                className={
+                  "sidebar-footer-row" +
+                  (hasConnectedAccount ? "" : " sidebar-footer-row--stacked")
+                }
+              >
                 <AccountRow
                   onSignIn={onSignIn}
                   onUpgrade={handleUpgrade}
