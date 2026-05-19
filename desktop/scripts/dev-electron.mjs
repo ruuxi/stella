@@ -7,6 +7,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
   watch,
 } from 'node:fs'
@@ -52,6 +53,8 @@ const requiredFiles = [
   path.join(watchedDir, 'desktop', 'electron', 'preload.js'),
 ]
 const restartDebounceMs = 150
+const buildOutputSettleQuietMs = 350
+const buildOutputSettleTimeoutMs = 5_000
 const forcedShutdownTimeoutMs = 1_500
 const startupWatchDelayMs = 2_500
 const staleAppShutdownPollMs = 150
@@ -94,6 +97,51 @@ const readHash = (filePath) => {
     return null
   }
   return createHash('md5').update(readFileSync(filePath)).digest('hex')
+}
+
+const sleep = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms))
+
+const getLatestRestartRelevantBuildMtimeMs = () => {
+  let latestMtimeMs = 0
+  const visit = (dir) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const absPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        visit(absPath)
+        continue
+      }
+      if (!entry.isFile()) continue
+      const relPath = path.relative(watchedDir, absPath)
+      if (!shouldRestartElectronForBuildPath(relPath)) continue
+      try {
+        latestMtimeMs = Math.max(latestMtimeMs, statSync(absPath).mtimeMs)
+      } catch {
+        // Ignore files that disappear while esbuild is rewriting the tree.
+      }
+    }
+  }
+  visit(watchedDir)
+  return latestMtimeMs
+}
+
+const waitForBuildOutputsToSettle = async () => {
+  const startedAt = Date.now()
+  while (!shuttingDown) {
+    const latestMtimeMs = getLatestRestartRelevantBuildMtimeMs()
+    if (latestMtimeMs === 0 || Date.now() - latestMtimeMs >= buildOutputSettleQuietMs) {
+      return
+    }
+    if (Date.now() - startedAt >= buildOutputSettleTimeoutMs) {
+      return
+    }
+    await sleep(75)
+  }
 }
 
 /**
@@ -778,6 +826,7 @@ const scheduleRestart = () => {
       .then(async () => {
         showRestartSplash()
         await stopApp()
+        await waitForBuildOutputsToSettle()
         if (!shuttingDown) {
           restartRequestedByWatcher = false
           startApp()
@@ -830,6 +879,7 @@ await waitOn({
 await terminateStaleDevApps()
 
 seedLastBuildHashes()
+await waitForBuildOutputsToSettle()
 
 watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
   if (!shouldRestartElectronForBuildPath(filename)) {
