@@ -54,15 +54,10 @@ function ChatDisplayTab({
       latestMessageTimestampMs={
         chat.conversation.activity.latestMessageTimestampMs
       }
-      streamingText={chat.conversation.streamingText}
-      streamingResponseTarget={chat.conversation.streamingResponseTarget}
       isStreaming={chat.conversation.isStreaming}
       runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
       pendingUserMessageId={chat.conversation.pendingUserMessageId}
       queuedUserMessages={chat.conversation.streaming.queuedUserMessages}
-      optimisticUserMessageIds={
-        chat.conversation.streaming.optimisticUserMessageIds
-      }
       liveTasks={chat.conversation.streaming.liveTasks}
       hasOlderMessages={chat.conversation.hasOlderMessages}
       isLoadingOlder={chat.conversation.isLoadingOlder}

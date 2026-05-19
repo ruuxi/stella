@@ -27,30 +27,29 @@
 }
 
 /*
- * Tail region: wraps the latest user message + every row after it
- * (assistant continuations, the streaming tail, the pending askQuestion
- * bubble). A small fixed floor pre-allocates empty space below the
- * just-sent user bubble without reserving the full viewport.
- *
- * `content-visibility: visible` keeps the tail laid out at all times
- * so its size is stable across resizes.
+ * Trailing region: renders as the LegendList footer underneath every
+ * virtualized row. Hosts the pending askQuestion bubble, the queued
+ * user-message stack, any surface-specific `extraTail` node, and a
+ * fixed bottom-floor `min-height` so the reading area below the latest
+ * row stays pre-allocated even when the row itself is short (a freshly
+ * sent user bubble before the assistant has streamed, or an empty
+ * streaming placeholder). Pre-virtualization this lived on a synthetic
+ * "tail" list item that wrapped the latest user + assistant rows; that
+ * caused the rows to migrate between virtualized contexts on send,
+ * losing their measured sizes and producing a visible upward scroll
+ * jump back to the top of the previous assistant reply.
  */
-.event-row-region--tail {
+.event-list-trailing-region {
   display: flex;
   flex-direction: column;
   gap: 20px;
   min-height: 160px;
 }
 
-.chat-viewport-region--sidebar .event-row-region--tail,
-.chat-viewport-region--mini .event-row-region--tail,
-.chat-viewport-region--orb .event-row-region--tail {
+.chat-viewport-region--sidebar .event-list-trailing-region,
+.chat-viewport-region--mini .event-list-trailing-region,
+.chat-viewport-region--orb .event-list-trailing-region {
   min-height: 120px;
-}
-
-.chat-viewport-region .event-row-region--tail {
-  content-visibility: visible;
-  contain-intrinsic-size: none;
 }
 
 .event-list-extra-tail {
@@ -157,10 +156,10 @@
   scroll-margin-top: 2px;
 }
 
-/* Freshly-sent user bubble grows/fades in once. Tagged from the top of
-   the chat surface (`ConversationEvents`) only while the row's id
-   matches `pendingUserMessageId`; the class drops on completion so the
-   animation never replays on remount/scrollback. */
+/* Freshly-sent user bubble grows/fades in once. Tagged from
+   `ConversationEvents` while `pendingUserMessageId` matches the row;
+   the class drops after one play so the animation never replays on
+   remount or scrollback. */
 .event-row--user--just-sent .event-item.user {
   animation: user-message-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: right bottom;
@@ -214,11 +213,6 @@
   background: transparent;
   padding: 0;
   border: none;
-}
-
-/* Streaming state — animation handled by indicators.css */
-.event-item.streaming {
-  border-color: transparent;
 }
 
 .event-type {

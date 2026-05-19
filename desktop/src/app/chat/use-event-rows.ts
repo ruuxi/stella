@@ -31,6 +31,15 @@ import {
   getChannelEnvelope,
 } from './lib/message-turn-display'
 import type { AgentResponseTarget } from '@/app/chat/streaming/streaming-types'
+
+/**
+ * Synthetic `_id` prefix carried by `StreamingAssistantOverlay` rows
+ * merged into `displayMessages` by `useConversationDisplayMessages`.
+ * The row builder uses this prefix to tag rows as `isStreaming: true`
+ * so the scroll-management hook can identify the in-flight row via
+ * the `event-row--streaming` CSS class.
+ */
+const STREAMING_OVERLAY_ID_PREFIX = 'stream-overlay:'
 import {
   parseAskQuestionArgs,
   parseAskQuestionAnswersMessage,
@@ -283,45 +292,29 @@ const deriveAskQuestions = (
 type UseEventRowsOptions = {
   messages: MessageRecord[]
   maxItems?: number
-  isStreaming?: boolean
-  pendingUserMessageId?: string | null
-  streamingResponseTarget?: AgentResponseTarget | null
-  /**
-   * Live streaming buffer for the in-flight assistant reply. Overlaid
-   * onto the assistant row that responds to `pendingUserMessageId` so
-   * there is no separate "streaming tail" row to swap in/out at finish.
-   */
-  streamingText?: string
 }
 
 type UseEventRowsResult = {
   rows: EventRowViewModel[]
-  /** Index in `rows` of the last visible user message (-1 if none). */
-  lastUserRowIndex: number
   /** Rare pending askQuestion with no row anchor. */
   pendingAskQuestion: AskQuestionState | null
 }
 
-const assistantKeyFor = (userMessageId: string) =>
-  `assistant-for-${userMessageId}`
-
-/** Live stream row after a persisted preamble for the same user turn. */
-const assistantStreamKeyFor = (userMessageId: string) =>
-  `assistant-stream-for-${userMessageId}`
-
-const responseTargetKeyFor = (
-  responseTarget: AgentResponseTarget | null | undefined,
-): string | null => {
-  if (!responseTarget || responseTarget.type === 'user_turn') return null
-  if (responseTarget.type === 'agent_terminal_notice') {
-    return `agent-terminal-notice:${responseTarget.agentId}:${responseTarget.terminalState}`
-  }
-  return `agent-turn:${responseTarget.agentId}`
-}
-
-const assistantKeyForResponseTarget = (
-  responseTarget: AgentResponseTarget,
-): string => `assistant-for-${responseTargetKeyFor(responseTarget) ?? 'target'}`
+/**
+ * Stable React key for an assistant row. Live-streaming overlays and
+ * their eventual persisted counterparts share this key (both anchor
+ * on `(userMessageId, indexInTurn)`), so when the persisted row lands
+ * and the overlay drops out of `displayMessages`, LegendList treats it
+ * as a content update on the same slot rather than an
+ * unmount-followed-by-mount. Preserves the slot's measured size and
+ * Streamdown's parse cache across the handoff.
+ *
+ * Falls back to `message._id` for assistant messages without a
+ * `userMessageId` payload field (rare — e.g. legacy rows or hidden
+ * runs that surface without a user-message anchor).
+ */
+const assistantRowKey = (userMessageId: string, indexWithinTurn: number) =>
+  `assistant-${userMessageId}-${indexWithinTurn}`
 
 /**
  * Stable cache key for a synthetic trailing artifact row (fire-and-
@@ -343,15 +336,7 @@ const stableToolSegmentKey = (events: readonly EventRecord[]): string => {
 export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   const developerResourcePreviewsEnabled =
     useDeveloperResourcePreviewsEnabled()
-  const {
-    messages,
-    maxItems,
-    isStreaming,
-    pendingUserMessageId,
-    streamingResponseTarget,
-    streamingText,
-  } = opts
-  const streamingResponseTargetKey = responseTargetKeyFor(streamingResponseTarget)
+  const { messages, maxItems } = opts
 
   const displayMessages = useMemo(
     () => filterMessagesForUiDisplay(messages),
@@ -380,15 +365,16 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   const allRows = useMemo<EventRowViewModel[]>(() => {
     const computed: EventRowViewModel[] = []
     /**
-     * Tracks the first assistant row seen per `userMessageId` so it
-     * "owns" the stable `assistant-for-<uid>` key. Any later assistant
-     * messages tied to the same user turn (e.g. agent terminal notices)
-     * fall back to their own event id.
+     * 1-based per-`userMessageId` count of assistant rows seen so far
+     * in this projection walk. Drives `assistantRowKey(...)` so a
+     * live-streaming overlay and the eventual persisted row at the
+     * same position end up with the same React key (see
+     * `assistantRowKey`). The display-messages merge upstream filters
+     * out overlays whose persisted counterpart has landed, so each
+     * `(userMessageId, indexInTurn)` slot is occupied by exactly one
+     * source at a time.
      */
-    const primaryAssistantByUserMessageId = new Set<string>()
-    let pendingAssistantWasProjected = false
-    let pendingAssistantHasPersistedText = false
-    let streamingTargetWasProjected = false
+    const assistantCountByUserMessageId = new Map<string, number>()
 
     for (const message of displayMessages) {
       if (isUserMessage(message)) {
@@ -436,46 +422,31 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
 
       if (isAssistantMessage(message)) {
-        const persistedText = getDisplayMessageText(message)
+        const text = getDisplayMessageText(message)
         const payload = getMessagePayload(message)
         const replyToUserMessageId =
           typeof payload?.userMessageId === 'string' &&
           payload.userMessageId.length > 0
             ? payload.userMessageId
             : undefined
-        const isPrimaryReply =
-          replyToUserMessageId !== undefined &&
-          !primaryAssistantByUserMessageId.has(replyToUserMessageId)
-        if (isPrimaryReply && replyToUserMessageId) {
-          primaryAssistantByUserMessageId.add(replyToUserMessageId)
-        }
-        const isPendingReply =
-          isPrimaryReply &&
-          replyToUserMessageId !== undefined &&
-          replyToUserMessageId === pendingUserMessageId
-        if (isPendingReply) {
-          pendingAssistantWasProjected = true
-          if (persistedText.trim()) {
-            pendingAssistantHasPersistedText = true
-          }
-        }
         const responseTarget = responseTargetByAssistantId.get(message._id)
-        const isStreamingTargetReply =
-          streamingResponseTargetKey !== null &&
-          responseTargetKeyFor(responseTarget) === streamingResponseTargetKey
-        if (isStreamingTargetReply) {
-          streamingTargetWasProjected = true
+        // Unified key for both live-streaming overlays (synthetic
+        // `_id`s) and the eventual persisted rows that replace them at
+        // the same `(userMessageId, indexInTurn)` slot. The dedupe in
+        // `useConversationDisplayMessages` ensures only one source is
+        // present at a time, so the count stays consistent.
+        let stableKey: string
+        if (replyToUserMessageId !== undefined) {
+          const indexWithinTurn =
+            (assistantCountByUserMessageId.get(replyToUserMessageId) ?? 0) + 1
+          assistantCountByUserMessageId.set(
+            replyToUserMessageId,
+            indexWithinTurn,
+          )
+          stableKey = assistantRowKey(replyToUserMessageId, indexWithinTurn)
+        } else {
+          stableKey = message._id
         }
-        const canOverlayStreaming =
-          (isPendingReply || isStreamingTargetReply) &&
-          isStreaming &&
-          !persistedText.trim()
-        const text = canOverlayStreaming ? (streamingText ?? '') : persistedText
-        const isAnimating = canOverlayStreaming
-        const stableKey =
-          isPrimaryReply && replyToUserMessageId
-            ? assistantKeyFor(replyToUserMessageId)
-            : message._id
         const toolEvents = message.toolEvents
         const resourcePayload = deriveTurnResource(
           toolEvents,
@@ -488,12 +459,15 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         })
         const askQuestionState = askQuestion.payloadByAssistantId.get(message._id)
         const selfModApplied = payload?.selfModApplied
+        const isStreamingOverlay = message._id.startsWith(
+          STREAMING_OVERLAY_ID_PREFIX,
+        )
         const row: AssistantRowViewModel = {
           kind: 'assistant',
           id: stableKey,
           text,
           cacheKey: stableKey,
-          ...(isAnimating ? { isAnimating: true } : {}),
+          ...(isStreamingOverlay ? { isStreaming: true } : {}),
           ...(responseTarget ? { responseTarget } : {}),
           ...(getOfficePreviewRef(toolEvents)
             ? { officePreviewRef: getOfficePreviewRef(toolEvents) }
@@ -543,72 +517,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
     }
 
-    /**
-     * Synthesize a live stream row for the in-flight user turn.
-     * - Before any persisted assistant text: reuse `assistant-for-<uid>`
-     *   so the eventual SQLite row swaps in without remounting.
-     * - After a preamble is persisted: append `assistant-stream-for-<uid>`
-     *   below the preamble instead of replacing it in place.
-     */
-    const shouldShowStreamingPlaceholder = (() => {
-      if (!pendingUserMessageId) return false
-      if (!pendingAssistantWasProjected) {
-        return (
-          Boolean(isStreaming) ||
-          Boolean(streamingText && streamingText.length > 0)
-        )
-      }
-      if (!pendingAssistantHasPersistedText) return false
-      // Preamble already on screen — only mount a live stream row while the
-      // run is active. Stale replayed `streamingText` after reload must not
-      // duplicate the persisted preamble.
-      return Boolean(isStreaming)
-    })()
-
-    if (shouldShowStreamingPlaceholder && pendingUserMessageId) {
-      const stableKey = pendingAssistantWasProjected
-        ? assistantStreamKeyFor(pendingUserMessageId)
-        : assistantKeyFor(pendingUserMessageId)
-      const placeholder: AssistantRowViewModel = {
-        kind: 'assistant',
-        id: stableKey,
-        text: streamingText ?? '',
-        cacheKey: stableKey,
-        ...(isStreaming ? { isAnimating: true } : {}),
-      }
-      computed.push(placeholder)
-    }
-
-    if (
-      streamingResponseTarget &&
-      streamingResponseTargetKey &&
-      !streamingTargetWasProjected &&
-      (Boolean(isStreaming) ||
-        Boolean(streamingText && streamingText.length > 0))
-    ) {
-      const stableKey = assistantKeyForResponseTarget(streamingResponseTarget)
-      const placeholder: AssistantRowViewModel = {
-        kind: 'assistant',
-        id: stableKey,
-        text: streamingText ?? '',
-        cacheKey: stableKey,
-        responseTarget: streamingResponseTarget,
-        ...(isStreaming ? { isAnimating: true } : {}),
-      }
-      computed.push(placeholder)
-    }
-
     return computed
   }, [
     askQuestion,
     developerResourcePreviewsEnabled,
     displayMessages,
-    isStreaming,
-    pendingUserMessageId,
     responseTargetByAssistantId,
-    streamingResponseTarget,
-    streamingResponseTargetKey,
-    streamingText,
   ])
 
   const rowsStableRef = useRef<StableTurnRowsState<EventRowViewModel> | null>(
@@ -634,16 +548,8 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     return stableRows.slice(stableRows.length - cap)
   }, [maxItems, stableRows])
 
-  const lastUserRowIndex = useMemo(() => {
-    for (let i = slicedRows.length - 1; i >= 0; i -= 1) {
-      if (slicedRows[i].kind === 'user') return i
-    }
-    return -1
-  }, [slicedRows])
-
   return {
     rows: slicedRows,
-    lastUserRowIndex,
     pendingAskQuestion: askQuestion.pendingWithoutAnchor,
   }
 }

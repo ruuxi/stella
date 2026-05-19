@@ -2,8 +2,16 @@
  * Renderer-side mirror of `SessionStore.assembleMessageWindow`. Walks a
  * flat `EventRecord[]` in chronological order, groups by turn (boundary
  * = `user_message`), and attaches each turn's tool/`agent-completed`
- * events to its anchor — first assistant of the turn when one exists,
- * otherwise the user_message of the turn.
+ * events to the assistant message that most-recently preceded them in
+ * the same turn (falling back to the turn's user_message when no
+ * assistant has fired yet).
+ *
+ * Per-assistant attachment — rather than dumping the whole turn's tools
+ * onto the FIRST assistant message — is what lets the chat render
+ * linearly when an orchestrator run produces multiple assistant
+ * messages (e.g. preamble → tools → post-tool answer): the tools fall
+ * under the preamble row, and the post-tool answer renders as its own
+ * row below them.
  *
  * Used by:
  *  - `useFullShellChat` for the cloud-mode chat timeline (no
@@ -43,41 +51,64 @@ export const groupEventsIntoMessages = (
 ): MessageRecord[] => {
   const messages: MessageRecord[] = [];
   let turnUserMessage: MessageRecord | null = null;
-  let firstAssistantInTurn: MessageRecord | null = null;
-  let toolsInTurn: EventRecord[] = [];
+  let currentAssistant: MessageRecord | null = null;
+  let pendingPreAssistantTools: EventRecord[] = [];
 
-  const commitTurn = () => {
-    const anchor = firstAssistantInTurn ?? turnUserMessage;
-    if (anchor && toolsInTurn.length > 0) {
-      anchor.toolEvents = toolsInTurn;
+  /**
+   * End-of-turn flush: any tools that fired in this turn without ever
+   * seeing an assistant message fall back to the user_message anchor
+   * (preserves the inline-artifact path for turns whose only output is
+   * a fire-and-forget tool result).
+   */
+  const finalizePreAssistantTools = () => {
+    if (pendingPreAssistantTools.length > 0 && turnUserMessage) {
+      turnUserMessage.toolEvents = [
+        ...turnUserMessage.toolEvents,
+        ...pendingPreAssistantTools,
+      ];
     }
-    turnUserMessage = null;
-    firstAssistantInTurn = null;
-    toolsInTurn = [];
+    pendingPreAssistantTools = [];
   };
 
   for (const event of events) {
     if (event.type === "user_message") {
-      commitTurn();
+      finalizePreAssistantTools();
       const message = toMessageRecord(event);
       messages.push(message);
       turnUserMessage = message;
+      currentAssistant = null;
       continue;
     }
     if (event.type === "assistant_message") {
       const message = toMessageRecord(event);
       messages.push(message);
-      if (firstAssistantInTurn === null) {
-        firstAssistantInTurn = message;
+      // Tools that fired before any assistant in this turn belong to
+      // the first assistant message (so e.g. an `image_gen` tool fired
+      // before the preamble text still surfaces as an inline artifact
+      // on the preamble bubble). Tools that fire after this assistant
+      // attach to whichever assistant is current at that moment.
+      if (pendingPreAssistantTools.length > 0) {
+        message.toolEvents = [
+          ...message.toolEvents,
+          ...pendingPreAssistantTools,
+        ];
+        pendingPreAssistantTools = [];
       }
+      currentAssistant = message;
       continue;
     }
     if (isTurnDecorationEvent(event)) {
-      toolsInTurn.push(event);
+      if (currentAssistant) {
+        currentAssistant.toolEvents = [
+          ...currentAssistant.toolEvents,
+          event,
+        ];
+      } else {
+        pendingPreAssistantTools.push(event);
+      }
     }
   }
 
-  commitTurn();
-
+  finalizePreAssistantTools();
   return messages;
 };

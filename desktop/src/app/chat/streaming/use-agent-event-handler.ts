@@ -1,12 +1,18 @@
 /**
  * Translates inbound `AgentStreamEvent`s into reducer actions + side
- * effects (toasts, streaming-text accumulator, response target).
+ * effects (toasts, per-slot overlay pushes, response target).
  *
  * Refs (`activeConversationIdRef`, `activeRunIdByConversationRef`,
- * `lastSeqByConversationRef`, `terminalRunIdsRef`, `terminalTaskKeysRef`,
- * `pendingRequestIdsRef`) and dispatch are passed in so the hook can be
- * composed with the rest of `useLocalAgentStream` without duplicating
- * the reducer's source of truth.
+ * `lastSeqByConversationRef`, `terminalRunIdsRef`,
+ * `terminalTaskKeysRef`, `pendingRequestIdsRef`) and dispatch are
+ * passed in so the hook can be composed with the rest of
+ * `useLocalAgentStream` without duplicating the reducer's source of
+ * truth. The slot-management callbacks (`beginStreamingRun`,
+ * `acceptStreamChunk`, `finalizeMessageBoundary`,
+ * `finalizeRunOnFinish`, `dropOverlaysForRun`) own the in-memory
+ * `streamingAssistants` overlay array — see `useLocalAgentStream` for
+ * the lifecycle, and `useConversationDisplayMessages` for the merge
+ * with persisted SQLite-backed messages.
  */
 import { useCallback, type Dispatch, type MutableRefObject } from 'react'
 import {
@@ -47,13 +53,36 @@ type UseAgentEventHandlerOptions = {
     pendingRequestIdsRef: MutableRefObject<Set<string>>
   }
   streaming: {
-    appendStreamingDelta: (chunk: string) => void
-    resetStreamingText: () => void
-    resetReasoningText: () => void
     setPendingUserMessageId: Dispatch<React.SetStateAction<string | null>>
-    setStreamingResponseTarget: Dispatch<
-      React.SetStateAction<AgentResponseTarget | null>
-    >
+    /**
+     * Hooks into the per-slot overlay lifecycle exposed by
+     * `useLocalAgentStream`. Each runtime stream event maps onto
+     * exactly one of these so the in-memory `streamingAssistants`
+     * array stays consistent with the runtime's view of the world:
+     *
+     *   - RUN_STARTED  → beginStreamingRun
+     *   - STREAM       → acceptStreamChunk
+     *   - ASSISTANT_MESSAGE boundary → finalizeMessageBoundary
+     *   - RUN_FINISHED → finalizeRunOnFinish (+ dropOverlaysForRun
+     *                    on hard-cancel paths)
+     */
+    beginStreamingRun: (args: {
+      runId: string
+      userMessageId: string | null
+    }) => void
+    acceptStreamChunk: (args: {
+      runId: string
+      userMessageId: string | null
+      responseTarget?: AgentResponseTarget | null
+      chunk: string
+    }) => void
+    finalizeMessageBoundary: (args: {
+      runId: string
+      userMessageId: string | null
+    }) => void
+    finalizeRunOnFinish: (args: { runId: string }) => void
+    dropOverlaysForRun: (runId: string | null) => void
+    resetReasoningText: () => void
   }
   timers: {
     scheduleTaskRemoval: (
@@ -86,11 +115,13 @@ export function useAgentEventHandler({
     pendingRequestIdsRef,
   } = refs
   const {
-    appendStreamingDelta,
-    resetStreamingText,
-    resetReasoningText,
     setPendingUserMessageId,
-    setStreamingResponseTarget,
+    beginStreamingRun,
+    acceptStreamChunk,
+    finalizeMessageBoundary,
+    finalizeRunOnFinish,
+    dropOverlaysForRun,
+    resetReasoningText,
   } = streaming
   const { scheduleTaskRemoval, clearScheduledTaskRemoval } = timers
   const {
@@ -108,7 +139,23 @@ export function useAgentEventHandler({
       }
 
       const seq = Number.isFinite(event.seq) ? event.seq : 0
-      if (seq > 0) {
+      // Synthetic seqs (used by sub-agent lifecycle events and hidden
+      // → visible mirror events on the worker, generated as
+      // `Date.now() + n`) are orders of magnitude larger than the
+      // recorder's per-run seqs (which start at 1 and increment per
+      // event). If we let a synthetic seq advance the conversation
+      // cursor, every subsequent recorder-seq event in the same
+      // conversation — including the orchestrator's post-tool
+      // `STREAM` chunks — fails the `seq > previousSeq` check and
+      // gets silently dropped, which manifests as "no live streaming
+      // after a tool, message just pops in fully when done".
+      //
+      // Threshold: recorder seqs are bounded by event count per run
+      // (a few thousand at most); `Date.now()` floors at ~1.78e12.
+      // Anything past 1e10 is unambiguously synthetic — let it
+      // through but don't touch the cursor.
+      const SYNTHETIC_SEQ_FLOOR = 1e10
+      if (seq > 0 && seq < SYNTHETIC_SEQ_FLOOR) {
         const previousSeq =
           lastSeqByConversationRef.current.get(conversationId) ?? 0
         if (seq <= previousSeq) {
@@ -163,10 +210,22 @@ export function useAgentEventHandler({
             args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR ||
             args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED)
         ) {
-          resetStreamingText()
+          if (args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED) {
+            // Hard cancel: the runtime may not persist an
+            // assistant_message for the in-flight slot, so leaving the
+            // overlay around would linger forever. Drop everything
+            // tied to this run.
+            dropOverlaysForRun(event.runId)
+          } else {
+            // Finalize the current overlay slot so its text equals the
+            // full received text (smoothing drain). Overlay entries
+            // stay in the array until their persisted counterparts
+            // land via `chat:localUpdated` (see the dedupe in
+            // `useConversationDisplayMessages`).
+            finalizeRunOnFinish({ runId: event.runId })
+          }
           resetReasoningText()
           setPendingUserMessageId(null)
-          setStreamingResponseTarget(null)
         }
         // `selfModApplied` is patched onto the persisted assistant
         // message payload by the worker (`attachSelfModToAssistantMessage`
@@ -193,14 +252,16 @@ export function useAgentEventHandler({
             uiVisibility: event.uiVisibility,
           })
           if (conversationId === activeConversationIdRef.current) {
-            resetStreamingText()
-            resetReasoningText()
-            setPendingUserMessageId(
+            const anchorUserMessageId =
               event.responseTarget && event.responseTarget.type !== 'user_turn'
                 ? null
-                : (event.userMessageId ?? null),
-            )
-            setStreamingResponseTarget(event.responseTarget ?? null)
+                : (event.userMessageId ?? null)
+            beginStreamingRun({
+              runId: event.runId,
+              userMessageId: anchorUserMessageId,
+            })
+            resetReasoningText()
+            setPendingUserMessageId(anchorUserMessageId)
           }
           break
         }
@@ -217,9 +278,11 @@ export function useAgentEventHandler({
               conversationId,
               requestId: event.requestId,
             })
-            resetStreamingText()
+            beginStreamingRun({
+              runId: event.runId,
+              userMessageId: event.userMessageId ?? null,
+            })
             resetReasoningText()
-            setStreamingResponseTarget(null)
           }
           dispatch({
             type: 'run-status',
@@ -231,8 +294,34 @@ export function useAgentEventHandler({
             isOrchestratorEvent &&
             event.chunk
           ) {
-            setStreamingResponseTarget(event.responseTarget ?? null)
-            appendStreamingDelta(event.chunk)
+            acceptStreamChunk({
+              runId: event.runId,
+              userMessageId: event.userMessageId ?? null,
+              ...(event.responseTarget
+                ? { responseTarget: event.responseTarget }
+                : {}),
+              chunk: event.chunk,
+            })
+          }
+          break
+        }
+        case AGENT_STREAM_EVENT_TYPES.ASSISTANT_MESSAGE: {
+          // Boundary between two assistant messages within the same run
+          // (e.g. preamble finalized → post-tool answer about to stream).
+          // Lock the current overlay slot's text (smoothing drain) and
+          // advance the per-turn slot index so the next chunk lands on
+          // a fresh slot. The locked slot stays visible in the chat
+          // until its persisted counterpart lands via
+          // `chat:localUpdated` and the merge dedupe in
+          // `useConversationDisplayMessages` filters it out.
+          if (
+            (isPrimaryRun || isOrchestratorEvent) &&
+            conversationId === activeConversationIdRef.current
+          ) {
+            finalizeMessageBoundary({
+              runId: event.runId,
+              userMessageId: event.userMessageId ?? null,
+            })
           }
           break
         }
@@ -392,21 +481,23 @@ export function useAgentEventHandler({
       }
     },
     [
+      acceptStreamChunk,
       activeConversationIdRef,
       activeRunIdByConversationRef,
-      appendStreamingDelta,
+      beginStreamingRun,
       clearScheduledTaskRemoval,
       discardPendingReasoningChunks,
       dispatch,
+      dropOverlaysForRun,
+      finalizeMessageBoundary,
+      finalizeRunOnFinish,
       flushPendingReasoningChunks,
       lastSeqByConversationRef,
       pendingRequestIdsRef,
       queueAgentReasoningChunk,
       resetReasoningText,
-      resetStreamingText,
       scheduleTaskRemoval,
       setPendingUserMessageId,
-      setStreamingResponseTarget,
       terminalRunIdsRef,
       terminalTaskKeysRef,
     ],

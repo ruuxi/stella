@@ -4,6 +4,15 @@ export type StreamBuffer = {
   text: string;
   append: (delta: string) => void;
   reset: () => void;
+  /**
+   * Immediately drain any buffered (but not yet displayed) text into
+   * the visible `text` and stop the painter. Returns the full text
+   * (everything appended since the last reset) so the caller can lock
+   * it into a downstream sink in the same React tick — `text` state
+   * batches with subsequent setters so reading it via `streamBuffer.text`
+   * after `flushAll()` may not yet reflect the final value.
+   */
+  flushAll: () => string;
 };
 
 /**
@@ -106,11 +115,16 @@ export function useStreamBuffer(
     }
   }, []);
 
-  const flushAll = useCallback(() => {
-    if (bufferRef.current.length === 0) return;
+  const flushAll = useCallback((): string => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (bufferRef.current.length === 0) return displayedRef.current;
     displayedRef.current = displayedRef.current + bufferRef.current;
     bufferRef.current = "";
     setText(displayedRef.current);
+    return displayedRef.current;
   }, []);
 
   const tick = useCallback(() => {
@@ -178,5 +192,5 @@ export function useStreamBuffer(
 
   useEffect(() => () => clearTimer(), [clearTimer]);
 
-  return { text, append, reset };
+  return { text, append, reset, flushAll };
 }

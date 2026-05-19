@@ -23,7 +23,6 @@
   --compact-chat-assistant-radius: 0px;
   --compact-chat-assistant-tail-radius: var(--compact-chat-assistant-radius);
   --compact-chat-assistant-max-width: 100%;
-  --compact-chat-assistant-streaming-opacity: 1;
 }
 
 /*
@@ -84,7 +83,6 @@
   --compact-chat-assistant-radius: 14px;
   --compact-chat-assistant-tail-radius: 4px;
   --compact-chat-assistant-max-width: 100%;
-  --compact-chat-assistant-streaming-opacity: 1;
 }
 
 .chat-conversation-surface .event-list {
@@ -194,10 +192,6 @@
   color: var(--text-base);
 }
 
-.chat-conversation-surface .event-item.assistant.streaming {
-  opacity: var(--compact-chat-assistant-streaming-opacity);
-}
-
 /* Tighter clamp for compact surfaces (sidebar / orb / mini) where bubbles
    are narrower and a smaller chunk reads better. */
 .chat-conversation-surface .event-user-body {
@@ -223,7 +217,6 @@
   --compact-chat-assistant-radius: 0px;
   --compact-chat-assistant-tail-radius: 0px;
   --compact-chat-assistant-max-width: 100%;
-  --compact-chat-assistant-streaming-opacity: 1;
 }
 
 .chat-conversation-surface--orb .event-item.assistant .text-shimmer {

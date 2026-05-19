@@ -10,7 +10,40 @@ const event = (overrides: Partial<EventRecord>): EventRecord => ({
 });
 
 describe("groupEventsIntoMessages", () => {
-  it("attaches turn tools to the first assistant of the turn", () => {
+  it("attaches tools after a preamble to the preamble, not the post-tool answer", () => {
+    // Linear chat: orchestrator emits preamble → tool calls → post-tool
+    // answer. Tools belong to the preceding assistant (the preamble),
+    // so derived inline artifacts (Schedule receipt, image card, etc.)
+    // surface on the preamble bubble and the post-tool answer renders
+    // as its own row beneath them.
+    const events: EventRecord[] = [
+      event({ _id: "u1", type: "user_message", timestamp: 1 }),
+      event({ _id: "a1-preamble", type: "assistant_message", timestamp: 2 }),
+      event({
+        _id: "t1",
+        type: "tool_request",
+        timestamp: 3,
+        payload: { toolName: "exec_command", args: { cmd: "ls" } },
+      }),
+      event({
+        _id: "t2",
+        type: "tool_result",
+        timestamp: 4,
+        payload: { toolName: "exec_command" },
+      }),
+      event({ _id: "a2-final", type: "assistant_message", timestamp: 5 }),
+    ];
+    const messages = groupEventsIntoMessages(events);
+    expect(messages.map((m) => m._id)).toEqual([
+      "u1",
+      "a1-preamble",
+      "a2-final",
+    ]);
+    expect(messages[1]!.toolEvents.map((e) => e._id)).toEqual(["t1", "t2"]);
+    expect(messages[2]!.toolEvents).toEqual([]);
+  });
+
+  it("attaches turn tools to the only assistant of the turn", () => {
     const events: EventRecord[] = [
       event({ _id: "u1", type: "user_message", timestamp: 1 }),
       event({ _id: "a1", type: "assistant_message", timestamp: 2 }),
