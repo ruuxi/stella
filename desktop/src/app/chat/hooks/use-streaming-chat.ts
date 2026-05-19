@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getPlatform } from '@/platform/electron/platform'
 import { useChatStore } from '@/context/chat-store'
 import { getOrCreateDeviceId } from '@/platform/electron/device'
@@ -37,8 +37,6 @@ export type QueuedUserMessage = {
 
 const createLocalMessageId = () =>
   `local-${crypto.randomUUID()}`
-
-const JUST_SENT_CLASS_MS = 900
 
 const buildContextMessageMetadata = (
   chatContext: SendMessageArgs['chatContext'],
@@ -90,8 +88,6 @@ export function useStreamingChat({
   const [queuedUserMessages, setQueuedUserMessages] = useState<
     QueuedUserMessage[]
   >([])
-  const [justSentUserMessageIds, setJustSentUserMessageIds] = useState<string[]>([])
-  const justSentTimeoutsRef = useRef(new Map<string, number>())
   const locale = useLocale()
   const notifyTierRestrictedModel = useTierRestrictedModelToast()
   const {
@@ -102,11 +98,11 @@ export function useStreamingChat({
   const {
     liveTasks,
     runtimeStatusText,
-    streamingText,
     reasoningText,
-    streamingResponseTarget,
+    streamingAssistants,
     isStreaming,
     pendingUserMessageId,
+    setPendingUserMessageId,
     startStream,
     queueStream,
     cancelCurrentStream,
@@ -117,47 +113,22 @@ export function useStreamingChat({
   })
 
   useEffect(() => {
-    if (!pendingUserMessageId && !streamingResponseTarget) return
+    if (!pendingUserMessageId) return
 
+    // Once the runtime is no longer streaming AND we've seen a
+    // persisted assistant_message that targets the pending user
+    // message, drop `pendingUserMessageId` so composer / scroll
+    // gating logic stops treating the turn as in-flight. Overlay
+    // entries clean themselves up via the SQLite-vs-overlay dedupe
+    // in `useConversationDisplayMessages`; nothing else here.
+    if (isStreaming) return
     const hasAssistantReply = persistedMessages.some((message) => {
       if (message.type !== 'assistant_message') return false
-
-      if (message.payload && typeof message.payload === 'object') {
-        const payload = message.payload as {
-          userMessageId?: string
-          metadata?: {
-            runtime?: {
-              responseTarget?: typeof streamingResponseTarget
-            }
-          }
-        }
-        const responseTarget = payload.metadata?.runtime?.responseTarget
-        if (
-          !isStreaming &&
-          streamingResponseTarget &&
-          responseTarget &&
-          (responseTarget.type === 'agent_turn' ||
-            responseTarget.type === 'agent_terminal_notice') &&
-          (streamingResponseTarget.type === 'agent_turn' ||
-            streamingResponseTarget.type === 'agent_terminal_notice') &&
-          responseTarget.agentId === streamingResponseTarget.agentId
-        ) {
-          return true
-        }
-        return (
-          pendingUserMessageId !== null &&
-          payload.userMessageId === pendingUserMessageId
-        )
-      }
-
-      return false
+      if (!message.payload || typeof message.payload !== 'object') return false
+      const payload = message.payload as { userMessageId?: string }
+      return payload.userMessageId === pendingUserMessageId
     })
-
-    // Preamble assistant_message rows land mid-run (before tools finish).
-    // Clearing streaming state here drops `pendingUserMessageId` and
-    // leaves the live post-tool answer with nowhere to render until the
-    // run ends — the stream appears above the preamble, then jumps.
-    if (hasAssistantReply && !isStreaming) {
+    if (hasAssistantReply) {
       resetStreamingState()
     }
   }, [
@@ -165,7 +136,6 @@ export function useStreamingChat({
     pendingUserMessageId,
     persistedMessages,
     resetStreamingState,
-    streamingResponseTarget,
   ])
 
   useEffect(() => {
@@ -186,46 +156,14 @@ export function useStreamingChat({
     })
   }, [persistedMessages, queuedUserMessages.length])
 
-  useEffect(
-    () => () => {
-      for (const timeoutId of justSentTimeoutsRef.current.values()) {
-        window.clearTimeout(timeoutId)
-      }
-      justSentTimeoutsRef.current.clear()
-    },
-    [],
-  )
-
-  const markJustSent = useCallback((messageId: string) => {
-    setJustSentUserMessageIds((current) =>
-      current.includes(messageId) ? current : [...current, messageId],
-    )
-    const existingTimeoutId = justSentTimeoutsRef.current.get(messageId)
-    if (existingTimeoutId) {
-      window.clearTimeout(existingTimeoutId)
-    }
-    const timeoutId = window.setTimeout(() => {
-      justSentTimeoutsRef.current.delete(messageId)
-      setJustSentUserMessageIds((current) =>
-        current.filter((id) => id !== messageId),
-      )
-    }, JUST_SENT_CLASS_MS)
-    justSentTimeoutsRef.current.set(messageId, timeoutId)
-  }, [])
-
   const clearOptimisticMessage = useCallback((messageId: string) => {
     setOptimisticEvents((current) =>
       current.filter((event) => event._id !== messageId),
     )
-    const timeoutId = justSentTimeoutsRef.current.get(messageId)
-    if (timeoutId) {
-      window.clearTimeout(timeoutId)
-      justSentTimeoutsRef.current.delete(messageId)
-    }
-    setJustSentUserMessageIds((current) =>
-      current.filter((id) => id !== messageId),
+    setPendingUserMessageId((current) =>
+      current === messageId ? null : current,
     )
-  }, [])
+  }, [setPendingUserMessageId])
 
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
@@ -295,7 +233,7 @@ export function useStreamingChat({
             ...(mode ? { mode } : {}),
           }),
         ])
-        markJustSent(optimisticUserMessageId)
+        setPendingUserMessageId(optimisticUserMessageId)
       }
       options.onClear()
 
@@ -371,7 +309,7 @@ export function useStreamingChat({
       queueStream,
       startStream,
       locale,
-      markJustSent,
+      setPendingUserMessageId,
       clearOptimisticMessage,
     ],
   )
@@ -380,11 +318,9 @@ export function useStreamingChat({
     liveTasks,
     optimisticEvents,
     queuedUserMessages,
-    justSentUserMessageIds,
     runtimeStatusText,
-    streamingText,
     reasoningText,
-    streamingResponseTarget,
+    streamingAssistants,
     isStreaming,
     pendingUserMessageId,
     sendMessage,
