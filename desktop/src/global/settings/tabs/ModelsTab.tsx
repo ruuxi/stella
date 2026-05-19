@@ -7,18 +7,17 @@ import {
 } from "@/global/settings/hooks/use-llm-credentials";
 import { LLM_PROVIDERS } from "@/global/settings/lib/llm-providers";
 
-const AgentModelPicker = lazy(() =>
-  import("@/global/settings/AgentModelPicker").then((m) => ({
-    default: m.AgentModelPicker,
+const SettingsModelsView = lazy(() =>
+  import("@/global/settings/SettingsModelsView").then((m) => ({
+    default: m.SettingsModelsView,
   })),
 );
 
 function ModelConfigSection() {
   return (
     <div className="settings-card settings-card--models">
-      <h3 className="settings-card-title">Models</h3>
       <Suspense fallback={null}>
-        <AgentModelPicker surface="settings" />
+        <SettingsModelsView />
       </Suspense>
     </div>
   );

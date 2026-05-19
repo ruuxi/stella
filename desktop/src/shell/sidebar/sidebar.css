@@ -419,69 +419,17 @@
   text-overflow: ellipsis;
 }
 
-/* ── Actions bar: settings / theme / connect / pets ────────────────
-   Single compact row of icon-only utility buttons that sit just below
-   the account row. In rail mode, the same actions move back into the
-   title bar where they used to live. */
-.sidebar-actions-bar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 4px;
-  margin-top: 8px;
-  padding: 8px 4px 0;
-  border-top: 1px solid var(--border-weak);
-}
-
-.sidebar-actions-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm, 6px);
-  background: transparent;
-  color: var(--text-weak);
-  cursor: default;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-/* Mirror of `.sidebar-nav-hint-dot` for the actions-bar buttons (Connect).
-   Position and tone match the nav dots so the post-onboarding nudges
-   read as a single visual language across the sidebar. */
-.sidebar-actions-btn-hint-dot {
+/* Hidden anchor for the Theme picker popover that's opened from the
+   avatar dropdown. The anchor occupies no space; Radix anchors the
+   theme-picker popover to its position which sits next to the avatar
+   row. */
+.sidebar-account-theme-anchor {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #ef4444;
-  box-shadow: 0 0 0 2px var(--surface-base, var(--background));
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-}
-
-.sidebar-actions-btn:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-strong);
-}
-
-.sidebar-actions-btn:active {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-}
-
-/* Match the gentle hover motion the rest of the sidebar nav icons get
-   (`.icon-settings .set-p`) — applied directly to the lucide SVG since
-   the rail menu's gear is the lucide component, not the custom one. */
-.sidebar-actions-btn > svg {
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.sidebar-actions-btn:hover > svg {
-  transform: rotate(45deg);
+  opacity: 0;
 }
 
 /* ── Sidebar dialogs ───────────────────────────────────────────── */
@@ -628,27 +576,6 @@
 
 .sidebar.sidebar--rail .sidebar-account-signin-label {
   display: none;
-}
-
-.sidebar.sidebar--rail .sidebar-actions-bar {
-  /* Rail-width is too narrow for the four-button row; the menu
-     variant (single gear button) is what's actually rendered here.
-     Strip the divider/padding so the gear sits cleanly under the
-     account row. */
-  border-top: none;
-  margin-top: 4px;
-  padding: 0;
-  justify-content: stretch;
-}
-
-/* In rail mode the gear becomes a full-width nav-style hit target so
-   its hover surface matches the surrounding nav items rather than
-   reading as a tiny 28px chip. */
-.sidebar.sidebar--rail .sidebar-actions-bar .sidebar-actions-btn {
-  width: 100%;
-  height: auto;
-  padding: 10px 0;
-  border-radius: var(--radius-md);
 }
 
 .sidebar.sidebar--rail [aria-label]::after {

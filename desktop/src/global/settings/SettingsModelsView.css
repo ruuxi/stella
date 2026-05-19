@@ -1,0 +1,521 @@
+/* SettingsModelsView — file-editor-style model picker.
+
+   Every configurable agent + the media surfaces are listed as
+   clickable rows; the chooser appears in an anchored popover so
+   the underlying list stays visible (and editable) for context.
+*/
+
+.models-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+}
+
+.models-editor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.models-editor__title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.models-editor__title h2 {
+  margin: 0;
+  font-family: var(--font-family-sans, "Manrope", inherit);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.models-editor__title p {
+  margin: 0;
+  color: var(--text-weak);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.models-editor__toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.models-editor__icon-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.models-editor__icon-btn:hover:not(:disabled),
+.models-editor__icon-btn:focus-visible {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border-color: var(--border);
+  outline: none;
+}
+
+.models-editor__icon-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.models-editor__icon-btn svg[data-spinning] {
+  animation: models-editor-spin 700ms linear infinite;
+}
+
+@keyframes models-editor-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.models-editor__error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--danger, #c2410c) 8%, transparent);
+  color: var(--danger, #c2410c);
+  font-size: 12px;
+}
+
+.models-editor__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.models-editor__group-label {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+}
+
+/* The rows themselves sit inside a single bordered card so the whole
+   group reads as one editor surface. Internal hairlines separate rows. */
+.models-editor__rows {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg, 12px);
+  border: 1px solid var(--border-weak);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  overflow: hidden;
+}
+
+.models-editor__rows > * + * {
+  border-top: 1px solid var(--border-weak);
+}
+
+.models-row {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text-base);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.models-row:hover:not(:disabled),
+.models-row:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  outline: none;
+}
+
+.models-row[data-selected] {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.models-row[data-selected]:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.models-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.models-row__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+.models-row__desc {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-weak);
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.models-row__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  max-width: 55%;
+  min-width: 0;
+}
+
+.models-row__value-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 0;
+}
+
+.models-row__value-primary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.models-row__value-sub {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-weak);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Small inline chip used for the reasoning-effort badge on the row.
+   Only renders when the agent is on a non-default effort, so it reads
+   as a deliberate flag rather than noise. */
+.models-row__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border: 1px solid var(--border-weak);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-strong);
+}
+
+/* The override accent — a thin left bar on rows that have an explicit
+   per-agent pick, matching the Connect-card 'connected' accent. */
+.models-row {
+  position: relative;
+}
+
+.models-row[data-overridden]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--interactive, var(--text-strong));
+}
+
+.models-row--skeleton {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+/* ── master/detail layout ─────────────────────────────────────── */
+
+.models-editor__split {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  gap: 20px;
+  align-items: start;
+  min-width: 0;
+}
+
+.models-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.models-editor__detail {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: var(--radius-lg, 12px);
+  border: 1px solid var(--border-weak);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  min-width: 0;
+}
+
+@container (max-width: 720px) {
+  .models-editor__split {
+    grid-template-columns: 1fr;
+  }
+  .models-editor__detail {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .models-editor__split {
+    grid-template-columns: 1fr;
+  }
+  .models-editor__detail {
+    position: static;
+  }
+}
+
+.models-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.models-chooser--placeholder {
+  padding: 24px;
+  color: var(--text-weak);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.models-chooser__head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.models-chooser__head-desc {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-weak);
+  letter-spacing: -0.005em;
+}
+
+.models-chooser__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.models-chooser__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.models-chooser__head-label {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+.models-chooser__head-reset {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border-weak);
+  border-radius: var(--radius-full);
+  color: var(--text-weak);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.models-chooser__head-reset:hover:not(:disabled),
+.models-chooser__head-reset:focus-visible {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-color: var(--border);
+  outline: none;
+}
+
+.models-chooser__reasoning {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 0;
+}
+
+.models-chooser__reasoning-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+}
+
+.models-chooser__reasoning-segment {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid var(--border-weak);
+}
+
+.models-chooser__reasoning-btn {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--radius-sm, 5px);
+  background: transparent;
+  color: var(--text-weak);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.models-chooser__reasoning-btn:hover:not(:disabled),
+.models-chooser__reasoning-btn:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  outline: none;
+}
+
+.models-chooser__reasoning-btn[data-selected] {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.models-chooser__reasoning-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.models-chooser__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 6px 2px 0;
+  border-top: 1px solid var(--border-weak);
+}
+
+.models-chooser__more {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 2px;
+  background: none;
+  border: 0;
+  color: var(--text-weak);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.models-chooser__more:hover,
+.models-chooser__more:focus-visible {
+  color: var(--text-strong);
+  outline: none;
+}
+
+.models-chooser__more svg {
+  transition: transform 160ms ease;
+}
+
+.models-chooser__more svg[data-rotated] {
+  transform: rotate(180deg);
+}
+
+.models-chooser__apply-all {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border: 1px solid var(--border-weak);
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.models-chooser__apply-all:hover:not(:disabled),
+.models-chooser__apply-all:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  border-color: var(--border);
+  outline: none;
+}
+
+.models-chooser__apply-all:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
