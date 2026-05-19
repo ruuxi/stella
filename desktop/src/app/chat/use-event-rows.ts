@@ -10,6 +10,7 @@ import { isOfficePreviewRef } from '../../../../runtime/contracts/office-preview
 import type { ScheduleToolAffectedRef } from '../../../../runtime/kernel/shared/scheduling'
 import {
   collectTurnSourceDiffPayloads,
+  deriveTurnInlineImagePayloads,
   deriveTurnResource,
 } from '@/app/chat/lib/derive-turn-resource'
 import { filterMessagesForUiDisplay } from '@/app/chat/lib/message-display'
@@ -456,6 +457,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           getCwd(toolEvents),
           { developerResourcesEnabled: developerResourcePreviewsEnabled },
         )
+        const inlineImagePayloads = deriveTurnInlineImagePayloads(toolEvents)
         const sourceDiffPayloads = collectTurnSourceDiffPayloads(toolEvents, {
           developerResourcesEnabled: developerResourcePreviewsEnabled,
         })
@@ -475,6 +477,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             ? { officePreviewRef: getOfficePreviewRef(toolEvents) }
             : {}),
           ...(resourcePayload ? { resourcePayload } : {}),
+          ...(inlineImagePayloads.length > 0
+            ? { inlineImagePayloads }
+            : {}),
           ...(sourceDiffPayloads.length > 0 ? { sourceDiffPayloads } : {}),
           ...(selfModApplied ? { selfModApplied } : {}),
           ...(getScheduleReceipt(toolEvents)
@@ -495,17 +500,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     const lastDisplayMessage = displayMessages[displayMessages.length - 1]
     if (lastDisplayMessage && isUserMessage(lastDisplayMessage)) {
       const trailingTools = lastDisplayMessage.toolEvents
-      const trailingResourcePayload = deriveTurnResource(
-        trailingTools,
-        '',
-        getCwd(trailingTools),
-        { developerResourcesEnabled: developerResourcePreviewsEnabled },
-      )
-      if (
-        trailingResourcePayload?.kind === 'media' &&
-        trailingResourcePayload.presentation === 'inline-image' &&
-        trailingResourcePayload.asset.kind === 'image'
-      ) {
+      const trailingInlineImagePayloads =
+        deriveTurnInlineImagePayloads(trailingTools)
+      if (trailingInlineImagePayloads.length > 0) {
         const stableKey = `assistant-tool-resource-${stableToolSegmentKey(
           trailingTools,
         )}`
@@ -514,7 +511,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           id: stableKey,
           text: '',
           cacheKey: stableKey,
-          resourcePayload: trailingResourcePayload,
+          inlineImagePayloads: trailingInlineImagePayloads,
         })
       }
     }

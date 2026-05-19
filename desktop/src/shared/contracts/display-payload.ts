@@ -85,6 +85,10 @@ export type DisplayPayload =
       aspectRatio?: string;
       requestedSize?: { width: number; height: number };
       presentation?: "inline-image";
+      /** Which image from a multi-image job this inline card represents. */
+      imageIndex?: number;
+      /** Expected image count for in-flight jobs (placeholders). */
+      numImages?: number;
       createdAt: number;
     };
 
