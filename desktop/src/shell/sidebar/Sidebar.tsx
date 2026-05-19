@@ -4,9 +4,11 @@ import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
 import {
   ArrowLeft,
+  CreditCard,
   LogOut,
   MessageSquare,
   Palette,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { useT } from "@/shared/i18n";
@@ -75,43 +77,47 @@ const FeedbackDialog = lazy(() =>
   })),
 );
 
-interface ConnectFooterButtonProps {
-  onConnect?: () => void;
+interface FooterIconButtonProps {
+  label: string;
+  icon: ReactNode;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
+  onFocus?: () => void;
+  /** Optional small red hint dot, used by Connect post-onboarding. */
+  showHintDot?: boolean;
 }
 
 /**
- * Bottom-of-sidebar Connect entry. Renders as a full-row nav item so
- * it matches Store / Social / Settings rather than living in a
- * separate icon-only quick-action strip; the post-onboarding hint dot
- * sits in the same anchor spot used by `AppNavItem`.
+ * Small round icon button used in the new compact footer row beside
+ * the avatar. Visually paired with `.sidebar-account-avatar`: same
+ * size, same border treatment, transparent body so the avatar stays
+ * the only colored chip in the row.
  */
-const ConnectFooterButton = ({ onConnect }: ConnectFooterButtonProps) => {
-  const connectHint = usePostOnboardingHint("connect");
-  const handleClick = useCallback(() => {
-    preloadConnectDialog();
-    if (connectHint.active) connectHint.dismiss();
-    onConnect?.();
-  }, [connectHint, onConnect]);
-  return (
-    <button
-      type="button"
-      className="sidebar-nav-item"
-      onClick={handleClick}
-      onFocus={preloadConnectDialog}
-      onMouseEnter={preloadConnectDialog}
-      title="Connect"
-      aria-label="Connect"
-    >
-      <span className="sidebar-nav-icon">
-        <Device size={18} />
-        {connectHint.active && (
-          <span className="sidebar-nav-hint-dot" aria-hidden="true" />
-        )}
-      </span>
-      <span className="sidebar-nav-label">Connect</span>
-    </button>
-  );
-};
+const FooterIconButton = ({
+  label,
+  icon,
+  onClick,
+  onMouseEnter,
+  onFocus,
+  showHintDot,
+}: FooterIconButtonProps) => (
+  <button
+    type="button"
+    className="sidebar-footer-icon"
+    onClick={onClick}
+    onMouseEnter={onMouseEnter}
+    onFocus={onFocus}
+    title={label}
+    aria-label={label}
+  >
+    <span className="sidebar-footer-icon-glyph" aria-hidden="true">
+      {icon}
+    </span>
+    {showHintDot ? (
+      <span className="sidebar-nav-hint-dot" aria-hidden="true" />
+    ) : null}
+  </button>
+);
 
 
 // App discovery happens in `./app-registry`, which owns the glob over
@@ -296,9 +302,29 @@ interface AccountRowProps {
   onSignIn?: () => void;
   onUpgrade: () => void;
   onOpenFeedback: () => void;
+  /** Imperative trigger so the Theme icon button (rendered as a
+   *  sibling in the footer row) can open the picker anchored to the
+   *  avatar. */
+  themeOpenSignal: number;
+  /** Rail (collapsed) mode hides the sibling Theme/Settings/Connect
+   *  icon strip; in that case we surface those entries inside the
+   *  avatar dropdown so they stay reachable. */
+  showCompactActionsInMenu: boolean;
+  onOpenSettings: () => void;
+  onOpenConnect: () => void;
+  showConnectHint: boolean;
 }
 
-const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) => {
+const AccountRow = ({
+  onSignIn,
+  onUpgrade,
+  onOpenFeedback,
+  themeOpenSignal,
+  showCompactActionsInMenu,
+  onOpenSettings,
+  onOpenConnect,
+  showConnectHint,
+}: AccountRowProps) => {
   const t = useT();
   const { user: convexUser, hasConnectedAccount } = useCurrentUser();
   // Better Auth's session payload already carries email/name for the
@@ -372,8 +398,18 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
   // which dialog the close was intended to open.
   const pendingSignOutRef = useRef(false);
   const pendingFeedbackRef = useRef(false);
-  const pendingThemeRef = useRef(false);
+  const pendingConnectRef = useRef(false);
+  const pendingSettingsRef = useRef(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+
+  // External Theme-icon-button trigger (sibling in the footer row).
+  // Skip the first render so we don't auto-open on mount.
+  const lastThemeSignalRef = useRef(themeOpenSignal);
+  useEffect(() => {
+    if (themeOpenSignal === lastThemeSignalRef.current) return;
+    lastThemeSignalRef.current = themeOpenSignal;
+    setThemePickerOpen(true);
+  }, [themeOpenSignal]);
 
   // Cross-component "open the model picker" trigger. Toast actions
   // surfacing tier/usage rejections used to land on the sidebar's
@@ -403,13 +439,20 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
         onOpenFeedback();
         return;
       }
-      if (pendingThemeRef.current) {
-        pendingThemeRef.current = false;
+      if (pendingSettingsRef.current) {
+        pendingSettingsRef.current = false;
         event.preventDefault();
-        setThemePickerOpen(true);
+        onOpenSettings();
+        return;
+      }
+      if (pendingConnectRef.current) {
+        pendingConnectRef.current = false;
+        event.preventDefault();
+        onOpenConnect();
+        return;
       }
     },
-    [onOpenFeedback],
+    [onOpenFeedback, onOpenSettings, onOpenConnect],
   );
 
   const handleConfirmSignOut = useCallback(() => {
@@ -475,16 +518,79 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
           sideOffset={8}
           onCloseAutoFocus={handleDropdownCloseAutoFocus}
         >
+          {showCompactActionsInMenu ? (
+            <>
+              <DropdownMenuItem
+                onClick={() => {
+                  pendingSettingsRef.current = true;
+                }}
+                onMouseEnter={() => preloadSidebarRoute("settings")}
+                onFocus={() => preloadSidebarRoute("settings")}
+              >
+                <span data-slot="dropdown-menu-item-icon">
+                  <SettingsIcon size={14} strokeWidth={1.75} />
+                </span>
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  pendingConnectRef.current = true;
+                }}
+                onMouseEnter={preloadConnectDialog}
+                onFocus={preloadConnectDialog}
+              >
+                <span data-slot="dropdown-menu-item-icon">
+                  <Device size={14} />
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>Connect</span>
+                {showConnectHint ? (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 999,
+                      background: "var(--danger, #ef4444)",
+                    }}
+                  />
+                ) : null}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           <DropdownMenuItem
             onClick={() => {
-              pendingThemeRef.current = true;
+              preloadBillingScreen();
+              onUpgrade();
             }}
+            onMouseEnter={preloadBillingScreen}
+            onFocus={preloadBillingScreen}
+            title={
+              isPaidPlan
+                ? `${pillLabel} plan — manage billing`
+                : "Upgrade your plan"
+            }
           >
             <span data-slot="dropdown-menu-item-icon">
-              <Palette size={14} strokeWidth={1.75} />
+              <CreditCard size={14} strokeWidth={1.75} />
             </span>
-            Theme
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {isPaidPlan ? `${pillLabel} plan` : t("sidebar.upgrade")}
+            </span>
+            {isPaidPlan ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: "var(--text-weak)",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                Manage
+              </span>
+            ) : null}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => {
               pendingFeedbackRef.current = true;
@@ -509,23 +615,6 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <button
-        type="button"
-        className={
-          "sidebar-account-pill" +
-          (isPaidPlan ? " sidebar-account-pill--plan" : " sidebar-account-pill--upgrade")
-        }
-        onClick={() => {
-          preloadBillingScreen();
-          onUpgrade();
-        }}
-        onFocus={preloadBillingScreen}
-        onMouseEnter={preloadBillingScreen}
-        title={isPaidPlan ? `${pillLabel} plan — manage billing` : "Upgrade your plan"}
-        aria-label={isPaidPlan ? `${pillLabel} plan` : "Upgrade your plan"}
-      >
-        {pillLabel}
-      </button>
       <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
         <DialogContent
           fit
@@ -606,7 +695,11 @@ export const Sidebar = ({
     const visible = allApps.filter((a) => !a.hideFromSidebar);
     return {
       topApps: visible.filter((a) => a.slot === "top"),
-      bottomApps: visible.filter((a) => a.slot === "bottom"),
+      // Settings is rendered as a footer icon button next to the
+      // avatar instead of a full-width nav row, so exclude it here.
+      bottomApps: visible.filter(
+        (a) => a.slot === "bottom" && a.id !== "settings",
+      ),
     };
   }, [allApps]);
 
@@ -650,6 +743,28 @@ export const Sidebar = ({
 
   const handleUpgrade = useCallback(() => {
     void navigate({ to: "/billing" });
+  }, [navigate]);
+
+  // Counter bumped each time the Theme icon button is clicked. The
+  // `AccountRow` subscribes via an effect and opens the picker — keeps
+  // the avatar dropdown's existing ThemePicker mount as the source of
+  // truth without lifting it further up the tree.
+  const [themeOpenSignal, setThemeOpenSignal] = useState(0);
+  const handleOpenTheme = useCallback(() => {
+    setThemeOpenSignal((n) => n + 1);
+  }, []);
+
+  // Connect icon button: same post-onboarding hint logic the old full
+  // Connect row owned, lifted up so the icon button can render the dot.
+  const connectHint = usePostOnboardingHint("connect");
+  const handleOpenConnect = useCallback(() => {
+    preloadConnectDialog();
+    if (connectHint.active) connectHint.dismiss();
+    onConnect?.();
+  }, [connectHint, onConnect]);
+
+  const handleOpenSettings = useCallback(() => {
+    void navigate({ to: "/settings" });
   }, [navigate]);
 
   // Auto-prompted feedback. The hook tracks active (visible + focused) time
@@ -809,7 +924,6 @@ export const Sidebar = ({
               </DropdownMenu>
             </nav>
             <div className="sidebar-footer">
-              <ConnectFooterButton onConnect={onConnect} />
               {bottomApps.map((app) => (
                 <AppNavItem
                   key={app.id}
@@ -819,11 +933,40 @@ export const Sidebar = ({
                   onHintDismiss={() => dismissHintForApp(app)}
                 />
               ))}
-              <AccountRow
-                onSignIn={onSignIn}
-                onUpgrade={handleUpgrade}
-                onOpenFeedback={handleOpenFeedback}
-              />
+              <div className="sidebar-footer-row">
+                <AccountRow
+                  onSignIn={onSignIn}
+                  onUpgrade={handleUpgrade}
+                  onOpenFeedback={handleOpenFeedback}
+                  themeOpenSignal={themeOpenSignal}
+                  showCompactActionsInMenu={railCollapsed || isMobileWebView}
+                  onOpenSettings={handleOpenSettings}
+                  onOpenConnect={handleOpenConnect}
+                  showConnectHint={connectHint.active}
+                />
+                <div className="sidebar-footer-actions">
+                  <FooterIconButton
+                    label="Theme"
+                    icon={<Palette size={16} strokeWidth={1.75} />}
+                    onClick={handleOpenTheme}
+                  />
+                  <FooterIconButton
+                    label="Settings"
+                    icon={<SettingsIcon size={16} strokeWidth={1.75} />}
+                    onClick={handleOpenSettings}
+                    onMouseEnter={() => preloadSidebarRoute("settings")}
+                    onFocus={() => preloadSidebarRoute("settings")}
+                  />
+                  <FooterIconButton
+                    label="Connect"
+                    icon={<Device size={16} />}
+                    onClick={handleOpenConnect}
+                    onMouseEnter={preloadConnectDialog}
+                    onFocus={preloadConnectDialog}
+                    showHintDot={connectHint.active}
+                  />
+                </div>
+              </div>
             </div>
           </>
         )}
