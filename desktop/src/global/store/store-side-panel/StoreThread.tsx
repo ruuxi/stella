@@ -23,7 +23,7 @@ function toAssistantRow(msg: StoreThreadMessage): AssistantRowViewModel {
     id: msg._id,
     text: msg.text,
     cacheKey: msg._id,
-    isAnimating: msg.pending === true,
+    isStreaming: msg.pending === true,
   };
 }
 
