@@ -311,6 +311,20 @@
   padding: 4px 4px 0;
 }
 
+/* Signed-out variant: the "Sign in" label needs full width, so stack
+   the icon strip below it. Keeps Theme/Settings/Connect reachable
+   without truncating "Sign in" inside the 170px sidebar. */
+.sidebar-footer-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.sidebar-footer-row--stacked .sidebar-footer-actions {
+  justify-content: space-around;
+  width: 100%;
+}
+
 .sidebar-footer-actions {
   display: inline-flex;
   align-items: center;
