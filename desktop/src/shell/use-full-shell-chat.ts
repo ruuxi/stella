@@ -157,8 +157,6 @@ export function useFullShellChat({
     onListScroll,
     onStartReached,
     isAtBottom,
-    isNearBottom,
-    getIsNearBottom,
     getIsFollowing,
     showScrollButton,
     scrollToBottom,
@@ -193,9 +191,7 @@ export function useFullShellChat({
     // physical scroll position. After a short assistant reply, the
     // user is visually at the bottom of the conversation but ~150px
     // physically above the absolute end (because the trailing-region
-    // footer is off-screen below the latest text). A pure
-    // `getIsNearBottom()` check would falsely report "not near
-    // bottom" in that window and skip the next send's nudge.
+    // footer is off-screen below the latest text).
     const shouldNudgeAfterSend = showHomeContent || getIsFollowing()
     if (showHomeContent) {
       setComposerFocusRequestId((id) => id + 1)
@@ -224,7 +220,6 @@ export function useFullShellChat({
     chatContext,
     enterChatSurfaceForInteraction,
     getIsFollowing,
-    isAtBottom,
     message,
     nudgeAfterSend,
     releaseFollow,
@@ -333,8 +328,6 @@ export function useFullShellChat({
       onStartReached,
       showScrollButton,
       isAtBottom,
-      isNearBottom,
-      getIsNearBottom,
       scrollToBottom,
       thumbState,
     }),
@@ -344,8 +337,6 @@ export function useFullShellChat({
       onStartReached,
       showScrollButton,
       isAtBottom,
-      isNearBottom,
-      getIsNearBottom,
       scrollToBottom,
       thumbState,
     ],
