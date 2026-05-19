@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-type TabsModule = typeof import("../../../stella-browser/extension/commands/tabs.js");
+type TabsModule =
+  typeof import("../../../stella-browser/extension/commands/tabs.js");
 
 type MockTab = {
   id: number;
@@ -24,9 +25,12 @@ type MockWindow = {
 
 type MockOptions = {
   asyncWindowCreate?: boolean;
+  initialWindowUrl?: string;
 };
 
-type Listener<TArgs extends unknown[]> = (...args: TArgs) => void | Promise<void>;
+type Listener<TArgs extends unknown[]> = (
+  ...args: TArgs
+) => void | Promise<void>;
 
 const createEvent = <TArgs extends unknown[]>() => {
   const listeners: Listener<TArgs>[] = [];
@@ -53,7 +57,8 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
   let nextTabId = 1;
   let nextGroupId = 1;
 
-  const tabsRemoved = createEvent<[number, { windowId: number; isWindowClosing: boolean }]>();
+  const tabsRemoved =
+    createEvent<[number, { windowId: number; isWindowClosing: boolean }]>();
   const windowsRemoved = createEvent<[number]>();
   const debuggerEvents = createEvent<[{ tabId?: number }, string, unknown]>();
   const debuggerDetached = createEvent<[{ tabId?: number }, string]>();
@@ -80,7 +85,11 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
     }
   };
 
-  const createTab = (params: { windowId: number; url?: string; active?: boolean }) => {
+  const createTab = (params: {
+    windowId: number;
+    url?: string;
+    active?: boolean;
+  }) => {
     const tab: MockTab = {
       id: nextTabId++,
       windowId: params.windowId,
@@ -93,6 +102,17 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
     return tab;
   };
 
+  const createWindow = (url?: string) => {
+    const window: MockWindow = { id: nextWindowId++ };
+    windows.set(window.id, window);
+    createTab({ windowId: window.id, url, active: true });
+    return window;
+  };
+
+  if (mockOptions.initialWindowUrl) {
+    createWindow(mockOptions.initialWindowUrl);
+  }
+
   const chrome = {
     storage: {
       session: {
@@ -103,7 +123,9 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
           const keyList = Array.isArray(keys) ? keys : [keys];
           return Object.fromEntries(
             keyList
-              .filter((key) => Object.prototype.hasOwnProperty.call(sessionState, key))
+              .filter((key) =>
+                Object.prototype.hasOwnProperty.call(sessionState, key),
+              )
               .map((key) => [key, sessionState[key]]),
           );
         },
@@ -115,7 +137,10 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
     tabGroups: {
       async query(queryInfo: { title?: string }) {
         return Array.from(groups.values())
-          .filter((group) => queryInfo.title === undefined || group.title === queryInfo.title)
+          .filter(
+            (group) =>
+              queryInfo.title === undefined || group.title === queryInfo.title,
+          )
           .map(cloneGroup);
       },
       async get(groupId: number) {
@@ -140,11 +165,19 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
         if (mockOptions.asyncWindowCreate) {
           await Promise.resolve();
         }
-        const window: MockWindow = { id: nextWindowId++ };
-        windows.set(window.id, window);
+        const window = createWindow(options.url);
         stats.windowsCreated += 1;
-        createTab({ windowId: window.id, url: options.url, active: true });
         return cloneWindow(window);
+      },
+      async getLastFocused() {
+        const window = Array.from(windows.values()).at(-1);
+        if (!window) {
+          throw new Error("No focused window");
+        }
+        return cloneWindow(window);
+      },
+      async getAll() {
+        return Array.from(windows.values()).map(cloneWindow);
       },
       async get(windowId: number) {
         const window = windows.get(windowId);
@@ -157,15 +190,25 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
         if (!windows.has(windowId)) {
           throw new Error(`Unknown window ${windowId}`);
         }
-        await chrome.tabs.remove(getTabsForWindow(windowId).map((tab) => tab.id));
+        await chrome.tabs.remove(
+          getTabsForWindow(windowId).map((tab) => tab.id),
+        );
       },
     },
     tabs: {
       onRemoved: tabsRemoved,
       async query(queryInfo: { windowId?: number; groupId?: number }) {
         return Array.from(tabs.values())
-          .filter((tab) => queryInfo.windowId === undefined || tab.windowId === queryInfo.windowId)
-          .filter((tab) => queryInfo.groupId === undefined || tab.groupId === queryInfo.groupId)
+          .filter(
+            (tab) =>
+              queryInfo.windowId === undefined ||
+              tab.windowId === queryInfo.windowId,
+          )
+          .filter(
+            (tab) =>
+              queryInfo.groupId === undefined ||
+              tab.groupId === queryInfo.groupId,
+          )
           .sort((left, right) => left.id - right.id)
           .map(cloneTab);
       },
@@ -176,7 +219,11 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
         }
         return cloneTab(tab);
       },
-      async create(options: { url?: string; active?: boolean; windowId: number }) {
+      async create(options: {
+        url?: string;
+        active?: boolean;
+        windowId: number;
+      }) {
         if (!windows.has(options.windowId)) {
           throw new Error(`Unknown window ${options.windowId}`);
         }
@@ -201,7 +248,9 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
         groupId?: number;
         createProperties?: { windowId: number };
       }) {
-        const tabIds = Array.isArray(options.tabIds) ? options.tabIds : [options.tabIds];
+        const tabIds = Array.isArray(options.tabIds)
+          ? options.tabIds
+          : [options.tabIds];
         const groupedTabs = tabIds.map((tabId) => {
           const tab = tabs.get(tabId);
           if (!tab) {
@@ -212,7 +261,8 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
 
         let groupId = options.groupId;
         if (groupId == null) {
-          const windowId = options.createProperties?.windowId ?? groupedTabs[0]?.windowId;
+          const windowId =
+            options.createProperties?.windowId ?? groupedTabs[0]?.windowId;
           if (!Number.isInteger(windowId)) {
             throw new Error("A window is required to create a group.");
           }
@@ -243,7 +293,10 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
       },
       async remove(tabIds: number[] | number) {
         const ids = [...new Set(Array.isArray(tabIds) ? tabIds : [tabIds])];
-        const removeInfoByTabId = new Map<number, { windowId: number; isWindowClosing: boolean }>();
+        const removeInfoByTabId = new Map<
+          number,
+          { windowId: number; isWindowClosing: boolean }
+        >();
         const windowsClosing = new Set<number>();
 
         for (const tabId of ids) {
@@ -253,11 +306,15 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
           }
         }
 
-        for (const windowId of new Set(ids.map((tabId) => tabs.get(tabId)?.windowId ?? -1))) {
+        for (const windowId of new Set(
+          ids.map((tabId) => tabs.get(tabId)?.windowId ?? -1),
+        )) {
           const removedInWindow = new Set(
             ids.filter((tabId) => tabs.get(tabId)?.windowId === windowId),
           );
-          const remaining = getTabsForWindow(windowId).filter((tab) => !removedInWindow.has(tab.id));
+          const remaining = getTabsForWindow(windowId).filter(
+            (tab) => !removedInWindow.has(tab.id),
+          );
           const isWindowClosing = remaining.length === 0;
           if (isWindowClosing) {
             windowsClosing.add(windowId);
@@ -321,7 +378,49 @@ afterEach(() => {
 });
 
 describe("stella-browser shared tab group", () => {
-  it("keeps a parking tab so later owners reuse the same Stella group", async () => {
+  it("reuses the user's existing window without creating a parking tab", async () => {
+    const { module, state } = await loadTabsModule({
+      initialWindowUrl: "https://user.example",
+    });
+    const userWindowId = Array.from(state.windows.keys())[0];
+
+    await module.handleTabNew({
+      id: "first",
+      ownerId: "owner-a",
+      url: "https://example.com",
+    });
+
+    expect(state.stats.windowsCreated).toBe(0);
+    expect(state.windows.size).toBe(1);
+    expect(state.groups.size).toBe(1);
+    expect(state.tabs.size).toBe(2);
+    expect(
+      Array.from(state.tabs.values()).every(
+        (tab) => tab.windowId === userWindowId,
+      ),
+    ).toBe(true);
+
+    await module.closeOwnerTabs("owner-a");
+
+    expect(state.stats.windowsCreated).toBe(0);
+    expect(state.windows.size).toBe(1);
+    expect(Array.from(state.tabs.values()).map((tab) => tab.url)).toEqual([
+      "https://user.example",
+    ]);
+
+    await module.handleTabNew({
+      id: "second",
+      ownerId: "owner-b",
+      url: "https://cursor.com",
+    });
+
+    expect(state.stats.windowsCreated).toBe(0);
+    expect(state.windows.size).toBe(1);
+    expect(state.groups.size).toBe(1);
+    expect(state.tabs.size).toBe(2);
+  });
+
+  it("creates a new window with the requested page when no normal window exists", async () => {
     const { module, state } = await loadTabsModule();
 
     await module.handleTabNew({
@@ -330,33 +429,18 @@ describe("stella-browser shared tab group", () => {
       url: "https://example.com",
     });
 
-    const parkingTabId = state.sessionState.parkingTabId as number;
-    expect(state.stats.windowsCreated).toBe(1);
-    expect(state.groups.size).toBe(1);
-    expect(state.tabs.size).toBe(2);
-    expect(state.tabs.has(parkingTabId)).toBe(true);
-
-    await module.closeOwnerTabs("owner-a");
-
     expect(state.stats.windowsCreated).toBe(1);
     expect(state.windows.size).toBe(1);
     expect(state.groups.size).toBe(1);
-    expect(Array.from(state.tabs.keys())).toEqual([parkingTabId]);
-
-    await module.handleTabNew({
-      id: "second",
-      ownerId: "owner-b",
-      url: "https://cursor.com",
-    });
-
-    expect(state.stats.windowsCreated).toBe(1);
-    expect(state.windows.size).toBe(1);
-    expect(state.groups.size).toBe(1);
-    expect(state.tabs.size).toBe(2);
+    expect(Array.from(state.tabs.values()).map((tab) => tab.url)).toEqual([
+      "https://example.com",
+    ]);
   });
 
   it("auto-closes tabs that have been inactive for over 24 hours", async () => {
-    const { module, state } = await loadTabsModule();
+    const { module, state } = await loadTabsModule({
+      initialWindowUrl: "https://user.example",
+    });
 
     await module.handleTabNew({
       id: "stale",
@@ -364,29 +448,45 @@ describe("stella-browser shared tab group", () => {
       url: "https://example.com/stale",
     });
 
-    const parkingTabId = state.sessionState.parkingTabId as number;
-    const ownerState = (state.sessionState.ownerTabState as Record<string, any>)["owner-a"];
-    const staleTabId = ownerState.tabIds.find((tabId: number) => tabId !== parkingTabId);
+    const ownerState = (
+      state.sessionState.ownerTabState as Record<string, any>
+    )["owner-a"];
+    const staleTabId = ownerState.tabIds[0];
     ownerState.lastTouchedAtByTabId[String(staleTabId)] =
       Date.now() - 25 * 60 * 60 * 1000;
 
     await module.cleanupStaleTabs({ now: Date.now() });
 
     expect(state.tabs.has(staleTabId)).toBe(false);
-    expect(state.tabs.has(parkingTabId)).toBe(true);
-    expect((state.sessionState.ownerTabState as Record<string, unknown>)["owner-a"]).toBeUndefined();
+    expect(
+      (state.sessionState.ownerTabState as Record<string, unknown>)["owner-a"],
+    ).toBeUndefined();
     expect(state.windows.size).toBe(1);
+    expect(Array.from(state.tabs.values()).map((tab) => tab.url)).toEqual([
+      "https://user.example",
+    ]);
   });
 
-  it("serializes shared-window creation across concurrent owners", async () => {
-    const { module, state } = await loadTabsModule({ asyncWindowCreate: true });
+  it("serializes host-window reuse across concurrent owners", async () => {
+    const { module, state } = await loadTabsModule({
+      asyncWindowCreate: true,
+      initialWindowUrl: "https://user.example",
+    });
 
     await Promise.all([
-      module.handleTabNew({ id: "a", ownerId: "owner-a", url: "https://a.example" }),
-      module.handleTabNew({ id: "b", ownerId: "owner-b", url: "https://b.example" }),
+      module.handleTabNew({
+        id: "a",
+        ownerId: "owner-a",
+        url: "https://a.example",
+      }),
+      module.handleTabNew({
+        id: "b",
+        ownerId: "owner-b",
+        url: "https://b.example",
+      }),
     ]);
 
-    expect(state.stats.windowsCreated).toBe(1);
+    expect(state.stats.windowsCreated).toBe(0);
     expect(state.windows.size).toBe(1);
     expect(state.groups.size).toBe(1);
     expect(state.tabs.size).toBe(3);
