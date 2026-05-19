@@ -423,6 +423,11 @@
   text-align: center;
 }
 
+.model-picker-model-gap {
+  height: 1px;
+  flex-shrink: 0;
+}
+
 .model-picker-model {
   display: flex;
   align-items: center;
