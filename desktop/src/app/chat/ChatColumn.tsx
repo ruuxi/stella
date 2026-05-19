@@ -34,6 +34,7 @@ import { useFooterTasks } from "./hooks/use-footer-tasks";
 import { useFileDrop } from "./hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import type { ChatColumnProps } from "./chat-column-types";
+import { useAssistantReplyPeek } from "./hooks/use-assistant-reply-peek";
 import "./full-shell.chat.css";
 
 /**
@@ -121,7 +122,13 @@ export const ChatColumn = memo(function ChatColumn({
     scrollToBottom,
     thumbState,
     listRef,
+    isFollowingLatest,
   } = scroll;
+
+  const assistantReplyPeek = useAssistantReplyPeek({
+    messages: conversation.messages,
+    isFollowingLatest,
+  });
 
   /**
    * Delay unmount of home content so the fade-out can play. Synchronous
@@ -194,6 +201,15 @@ export const ChatColumn = memo(function ChatColumn({
       onSend={composer.onSend}
       onStop={composer.onStop}
       indicator={indicatorProps}
+      replyPeek={
+        assistantReplyPeek.visible
+          ? {
+              text: assistantReplyPeek.previewText,
+              onJumpToBottom: () => scrollToBottom("smooth"),
+              onDismiss: assistantReplyPeek.dismiss,
+            }
+          : null
+      }
     />
   );
 
@@ -252,7 +268,7 @@ export const ChatColumn = memo(function ChatColumn({
           />
         </div>
 
-        {showScrollButton && (
+        {showScrollButton && !assistantReplyPeek.visible && (
           <button
             className="scroll-to-bottom"
             onClick={() => scrollToBottom("smooth")}

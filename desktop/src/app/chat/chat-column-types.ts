@@ -101,6 +101,9 @@ export type ChatColumnScroll = {
   showScrollButton: boolean
   /** True when the user is at (or within ~1px of) the newest-content edge. */
   isAtBottom: boolean
+  /** True while stream/send auto-follow is armed (intent latch, not raw scrollTop). */
+  isFollowingLatest: boolean
+  getIsFollowing: () => boolean
   scrollToBottom: (behavior?: 'instant' | 'smooth') => void
   thumbState: ChatColumnThumbState
 }

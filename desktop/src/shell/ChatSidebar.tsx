@@ -43,6 +43,8 @@ import {
   updateComposerTextareaExpansion,
   useAnimatedComposerShell,
 } from "@/shared/hooks/use-animated-composer-shell";
+import { AssistantReplyPeek } from "@/app/chat/AssistantReplyPeek";
+import { useAssistantReplyPeek } from "@/app/chat/hooks/use-assistant-reply-peek";
 import "./chat-sidebar.css";
 
 // Legend List sums numeric paddings into its content length; passing
@@ -124,6 +126,11 @@ export function ChatPanelTab(
       surface: "compact",
     });
 
+    const assistantReplyPeek = useAssistantReplyPeek({
+      messages,
+      isFollowingLatest: sidebarScroll.isFollowingLatest,
+    });
+
     const sidebarScrollApi = useMemo<ChatColumnScroll>(
       () => ({
         listRef: sidebarScroll.listRef,
@@ -131,6 +138,8 @@ export function ChatPanelTab(
         onStartReached: sidebarScroll.onStartReached,
         showScrollButton: sidebarScroll.showScrollButton,
         isAtBottom: sidebarScroll.isAtBottom,
+        isFollowingLatest: sidebarScroll.isFollowingLatest,
+        getIsFollowing: sidebarScroll.getIsFollowing,
         scrollToBottom: sidebarScroll.scrollToBottom,
         thumbState: sidebarScroll.thumbState,
       }),
@@ -140,6 +149,8 @@ export function ChatPanelTab(
         sidebarScroll.onStartReached,
         sidebarScroll.showScrollButton,
         sidebarScroll.isAtBottom,
+        sidebarScroll.isFollowingLatest,
+        sidebarScroll.getIsFollowing,
         sidebarScroll.scrollToBottom,
         sidebarScroll.thumbState,
       ],
@@ -328,11 +339,22 @@ export function ChatPanelTab(
             />
 
             <div className="chat-sidebar-composer">
-              <ComposerSuggestionContextRow
-                chatContext={chatContext}
-                setChatContext={setChatContext}
-                indicator={suggestionIndicatorProps}
-              />
+              <div className="composer-context-peek-anchor">
+                {assistantReplyPeek.visible ? (
+                  <AssistantReplyPeek
+                    text={assistantReplyPeek.previewText}
+                    onJumpToBottom={() =>
+                      sidebarScroll.scrollToBottom("smooth")
+                    }
+                    onDismiss={assistantReplyPeek.dismiss}
+                  />
+                ) : null}
+                <ComposerSuggestionContextRow
+                  chatContext={chatContext}
+                  setChatContext={setChatContext}
+                  indicator={suggestionIndicatorProps}
+                />
+              </div>
 
               <div ref={shellRef} className="chat-sidebar-shell">
                 <div ref={shellContentRef} className="chat-sidebar-shell-content">
