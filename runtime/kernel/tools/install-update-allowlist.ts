@@ -3,11 +3,12 @@
  *
  * The install-update agent runs `git merge` against attached upstream
  * history (see `runtime/extensions/stella-runtime/agents/install_update.md`)
- * and otherwise inspects the repo. It does NOT need general bash access,
- * so we restrict every command it can run to a narrow `git`-only allowlist
- * — even though `isDangerousCommand` already blocks the worst patterns
- * globally, that's a blocklist; this is a defense-in-depth allowlist that
- * keeps the agent inside its lane.
+ * and otherwise inspects the repo. It only needs git plus the one dependency
+ * install command required after package manifest updates, so we restrict
+ * every command it can run to a narrow allowlist — even though
+ * `isDangerousCommand` already blocks the worst patterns globally, that's a
+ * blocklist; this is a defense-in-depth allowlist that keeps the agent inside
+ * its lane.
  *
  * Returns `null` if the command is allowed for `install_update`,
  * or a human-readable denial reason otherwise.
@@ -62,6 +63,17 @@ const tokenize = (command: string): string[] =>
     .split(/\s+/)
     .filter((t) => t.length > 0);
 
+const isAllowedBunInstall = (tokens: string[]): boolean => {
+  if (tokens[0] !== "bun" || tokens[1] !== "install") {
+    return false;
+  }
+  const args = tokens.slice(2);
+  if (args.length === 0) {
+    return true;
+  }
+  return args.every((arg) => arg === "--frozen-lockfile");
+};
+
 /**
  * Check whether the install-update agent is allowed to run `command`.
  * Returns `null` when allowed, or a denial reason when not.
@@ -82,8 +94,11 @@ export const getInstallUpdateCommandDenialReason = (
   }
 
   const tokens = tokenize(trimmed);
+  if (isAllowedBunInstall(tokens)) {
+    return null;
+  }
   if (tokens[0] !== "git") {
-    return "install_update: only git commands are allowed.";
+    return "install_update: only git commands and 'bun install --frozen-lockfile' are allowed.";
   }
 
   // Find the actual subcommand by skipping `-c key=value`, `--git-dir=…`,
