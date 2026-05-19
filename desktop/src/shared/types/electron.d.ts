@@ -1225,6 +1225,7 @@ export type ElectronNativeIntegration = {
   provider: "google-workspace" | "oauth-catalog";
   toolPrefix?: string;
   sourceUrl?: string;
+  iconUrl?: string;
   description: string;
   connectable: boolean;
   oauthSetupStatus:
@@ -1237,6 +1238,7 @@ export type ElectronNativeIntegration = {
     id: string;
     name: string;
   };
+  oauthProviderTemplate?: boolean;
   enabled: boolean;
   enabledAt?: number;
   skillPath?: string;

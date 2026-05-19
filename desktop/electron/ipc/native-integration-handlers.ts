@@ -1,13 +1,15 @@
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 
 import {
+  buildNativeConnectorCatalog,
   disableNativeConnector,
   enableNativeConnector,
   getNativeConnectorCatalogEntry,
+  getNativeConnectorOAuthConfig,
   listNativeConnectors,
+  type NativeConnectorCatalogEntry,
 } from "../../../runtime/kernel/connectors/native-integrations.js";
 import {
-  getNativeOAuthProviderConfig,
   hasNativeOAuthProviderClientIdOverride,
   isNativeOAuthProviderConfigReady,
 } from "../../../runtime/kernel/connectors/native-oauth-provider-config.js";
@@ -77,6 +79,10 @@ type BackendOAuthProvidersResponse = {
   }>;
 };
 
+type BackendNativeIntegrationsResponse = {
+  integrations?: unknown[];
+};
+
 type ConfiguredOAuthProviderSets = {
   backend: ReadonlySet<string>;
   externalCallback: ReadonlySet<string>;
@@ -137,13 +143,156 @@ const loadConfiguredOAuthProviders = async (
   return { backend, externalCallback };
 };
 
+const readStringArray = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return entries.length > 0 ? entries : undefined;
+};
+
+const readStringRecord = (value: unknown): Record<string, string> | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value).flatMap(([key, entry]) =>
+    typeof entry === "string" && key.trim() && entry.trim()
+      ? ([[key.trim(), entry.trim()]] as const)
+      : [],
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+};
+
+const toServerNativeConnectorEntry = (
+  value: unknown,
+): NativeConnectorCatalogEntry | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const connector =
+    record.connector && typeof record.connector === "object"
+      ? (record.connector as Record<string, unknown>)
+      : null;
+  const oauth =
+    connector?.oauth && typeof connector.oauth === "object"
+      ? (connector.oauth as Record<string, unknown>)
+      : null;
+  const id = typeof record.id === "string" ? record.id.trim().toLowerCase() : "";
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  const category =
+    typeof record.category === "string" ? record.category.trim() : "integrations";
+  const description =
+    typeof record.description === "string" ? record.description.trim() : "";
+  const clientId = typeof oauth?.clientId === "string" ? oauth.clientId.trim() : "";
+  const authorizationEndpoint =
+    typeof oauth?.authorizationEndpoint === "string"
+      ? oauth.authorizationEndpoint.trim()
+      : "";
+  const tokenEndpoint =
+    typeof oauth?.tokenEndpoint === "string" ? oauth.tokenEndpoint.trim() : "";
+  if (!id || !name || !description || !clientId || !authorizationEndpoint) {
+    return null;
+  }
+  const tokenExchangeProvider =
+    typeof oauth?.tokenExchangeProvider === "string"
+      ? oauth.tokenExchangeProvider.trim().toLowerCase()
+      : id;
+  const responseType = oauth?.responseType === "token" ? "token" : "code";
+  if (responseType === "code" && !tokenEndpoint) return null;
+  const scopes = readStringArray(oauth?.scopes);
+  const authorizationParams = readStringRecord(oauth?.authorizationParams);
+  return {
+    id,
+    name,
+    category,
+    auth: readStringArray(record.auth) ?? ["OAUTH2"],
+    catalogToolCount:
+      typeof record.catalogToolCount === "number" ? record.catalogToolCount : 0,
+    availability: "ready",
+    provider: "oauth-catalog",
+    description,
+    ...(typeof record.sourceUrl === "string" && record.sourceUrl.trim()
+      ? { sourceUrl: record.sourceUrl.trim() }
+      : {}),
+    ...(typeof record.iconUrl === "string" && record.iconUrl.trim()
+      ? { iconUrl: record.iconUrl.trim() }
+      : {}),
+    connectable: false,
+    oauthConfig: {
+      flow: "authorization_code",
+      tokenKey:
+        typeof oauth?.tokenKey === "string" && oauth.tokenKey.trim()
+          ? oauth.tokenKey.trim()
+          : `native-oauth:${id}`,
+      clientId,
+      authorizationEndpoint,
+      ...(tokenEndpoint ? { tokenEndpoint } : {}),
+      responseType,
+      callbackId:
+        typeof oauth?.callbackId === "string" && oauth.callbackId.trim()
+          ? oauth.callbackId.trim()
+          : id,
+      callbackUrl:
+        typeof oauth?.callbackUrl === "string" && oauth.callbackUrl.trim()
+          ? oauth.callbackUrl.trim()
+          : `https://stella.sh/oauth/${id}/callback`,
+      callbackMode: oauth?.callbackMode === "local" ? "local" : "external",
+      ...(scopes ? { scopes } : {}),
+      ...(typeof oauth?.resourceUrl === "string" && oauth.resourceUrl.trim()
+        ? { resourceUrl: oauth.resourceUrl.trim() }
+        : {}),
+      ...(typeof oauth?.oauthResource === "string"
+        ? { oauthResource: oauth.oauthResource.trim() || null }
+        : {}),
+      ...(oauth?.usesPkce === true ? { usesPkce: true } : {}),
+      ...(typeof oauth?.scopeSeparator === "string" && oauth.scopeSeparator
+        ? { scopeSeparator: oauth.scopeSeparator }
+        : {}),
+      ...(typeof oauth?.authorizationRedirectParam === "string" &&
+      oauth.authorizationRedirectParam.trim()
+        ? { authorizationRedirectParam: oauth.authorizationRedirectParam.trim() }
+        : {}),
+      ...(authorizationParams ? { authorizationParams } : {}),
+      ...(typeof oauth?.tokenRedirectParam === "string" &&
+      oauth.tokenRedirectParam.trim()
+        ? { tokenRedirectParam: oauth.tokenRedirectParam.trim() }
+        : {}),
+      ...(oauth?.tokenAuth === "basic" ? { tokenAuth: "basic" as const } : {}),
+      tokenExchange: {
+        type: "backend",
+        provider: tokenExchangeProvider,
+      },
+    },
+  };
+};
+
+const loadServerNativeConnectorCatalog = async (
+  options: NativeIntegrationHandlersOptions,
+) => {
+  const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
+  if (!siteUrl) return null;
+  const response = await fetch(`${siteUrl}/api/native-integrations/catalog`, {
+    headers: { accept: "application/json" },
+  }).catch(() => null);
+  if (!response?.ok) return null;
+  const payload = (await response
+    .json()
+    .catch(() => null)) as BackendNativeIntegrationsResponse | null;
+  return (payload?.integrations ?? [])
+    .map(toServerNativeConnectorEntry)
+    .filter((entry): entry is NativeConnectorCatalogEntry => Boolean(entry));
+};
+
 const ensureNativeCredential = async (
   options: NativeIntegrationHandlersOptions,
   stellaRoot: string,
   id: string,
 ) => {
   const configuredOAuthProviders = await loadConfiguredOAuthProviders(options);
-  const entry = getNativeConnectorCatalogEntry(id);
+  const catalog = buildNativeConnectorCatalog(
+    (await loadServerNativeConnectorCatalog(options)) ?? undefined,
+  );
+  const entry = getNativeConnectorCatalogEntry(id, catalog);
   if (entry?.provider === "google-workspace") {
     if (await loadConnectorAccessToken(stellaRoot, "google-workspace")) return;
     if (!options.requestPreregisteredOAuth) {
@@ -169,7 +318,7 @@ const ensureNativeCredential = async (
   }
 
   if (entry?.provider === "oauth-catalog") {
-    const config = getNativeOAuthProviderConfig(id);
+    const config = getNativeConnectorOAuthConfig(entry);
     if (!config) {
       throw new Error(
         `${entry.name} supports OAuth, but Stella's provider setup is not ready yet.`,
@@ -273,11 +422,16 @@ export const registerNativeIntegrationHandlers = (
     assertPrivilegedRequest(options, event, "nativeIntegrations:list");
     const configuredOAuthProviders =
       await loadConfiguredOAuthProviders(options);
-    return await listNativeConnectors(requireRoot(options), {
-      configuredBackendProviders: configuredOAuthProviders.backend,
-      configuredExternalCallbackProviders:
-        configuredOAuthProviders.externalCallback,
-    });
+    const serverCatalog = await loadServerNativeConnectorCatalog(options);
+    return await listNativeConnectors(
+      requireRoot(options),
+      {
+        configuredBackendProviders: configuredOAuthProviders.backend,
+        configuredExternalCallbackProviders:
+          configuredOAuthProviders.externalCallback,
+      },
+      serverCatalog ?? undefined,
+    );
   });
 
   ipcMain.handle(
@@ -289,11 +443,18 @@ export const registerNativeIntegrationHandlers = (
       await ensureNativeCredential(options, stellaRoot, id);
       const configuredOAuthProviders =
         await loadConfiguredOAuthProviders(options);
-      return await enableNativeConnector(stellaRoot, id, "store", {
-        configuredBackendProviders: configuredOAuthProviders.backend,
-        configuredExternalCallbackProviders:
-          configuredOAuthProviders.externalCallback,
-      });
+      const serverCatalog = await loadServerNativeConnectorCatalog(options);
+      return await enableNativeConnector(
+        stellaRoot,
+        id,
+        "store",
+        {
+          configuredBackendProviders: configuredOAuthProviders.backend,
+          configuredExternalCallbackProviders:
+            configuredOAuthProviders.externalCallback,
+        },
+        serverCatalog ?? undefined,
+      );
     },
   );
 
@@ -305,17 +466,30 @@ export const registerNativeIntegrationHandlers = (
       const id = readId(payload);
       const configuredOAuthProviders =
         await loadConfiguredOAuthProviders(options);
-      const result = await disableNativeConnector(stellaRoot, id, {
-        configuredBackendProviders: configuredOAuthProviders.backend,
-        configuredExternalCallbackProviders:
-          configuredOAuthProviders.externalCallback,
-      });
-      const entry = getNativeConnectorCatalogEntry(id);
+      const serverCatalog = await loadServerNativeConnectorCatalog(options);
+      const result = await disableNativeConnector(
+        stellaRoot,
+        id,
+        {
+          configuredBackendProviders: configuredOAuthProviders.backend,
+          configuredExternalCallbackProviders:
+            configuredOAuthProviders.externalCallback,
+        },
+        serverCatalog ?? undefined,
+      );
+      const entry = getNativeConnectorCatalogEntry(
+        id,
+        buildNativeConnectorCatalog(serverCatalog ?? undefined),
+      );
       if (
         entry?.provider === "google-workspace" &&
         options.disconnectGoogleWorkspace
       ) {
-        const remaining = await listNativeConnectors(stellaRoot);
+        const remaining = await listNativeConnectors(
+          stellaRoot,
+          {},
+          serverCatalog ?? undefined,
+        );
         const stillEnabledGoogle = remaining.some(
           (connector) =>
             connector.provider === "google-workspace" && connector.enabled,
