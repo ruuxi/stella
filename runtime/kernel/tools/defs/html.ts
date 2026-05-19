@@ -41,7 +41,7 @@ export const createHtmlTool = (options: HtmlToolOptions): ToolDefinition => {
     name: "html",
     agentTypes: [AGENT_IDS.ORCHESTRATOR],
     description:
-      "Write a self-contained HTML document and show it as a canvas artifact in the workspace panel. Use whenever a visually richer answer than markdown helps — plans, diagrams (SVG), comparisons, mockups, dashboards, structured reports, side-by-side options, anything with tables/colors/illustrations. Do NOT use to build a real Stella app (that's spawn_agent). The HTML must be a complete <!doctype html> document with all CSS/JS inline and no external resources. Returns immediately once the file is written.",
+      "Write a complete HTML document and show it as a canvas artifact in the workspace panel. Use whenever a richer answer than markdown helps — plans, diagrams (SVG), comparisons, mockups, dashboards, structured reports, documentation, long-form writeups, side-by-side options, anything with tables/colors/illustrations. Do NOT use to build a real Stella app (that's spawn_agent). The iframe has network — pull in Google Fonts, Tailwind, Chart.js, D3, three.js, icon sets, or any CDN asset that makes the canvas better. Returns immediately once the file is written.",
     promptSnippet:
       "Write a self-contained HTML doc to state/outputs/html/<slug>.html and show it in the Canvas tab",
     parameters: {
@@ -60,7 +60,7 @@ export const createHtmlTool = (options: HtmlToolOptions): ToolDefinition => {
         html: {
           type: "string",
           description:
-            "Complete <!doctype html> document. Inline all CSS in <style>; inline all JS in <script>; do not link to external stylesheets or fonts (the app is offline-capable). Use Stella's design vocabulary: CSS variables --background, --foreground, --card, --border, --accent, --radius-*, and font families var(--font-family-display) (Cormorant), var(--font-family-sans) (Manrope), var(--font-family-mono). The canvas inherits these; do NOT paint a hard background colour — let the global gradient show through.",
+            "Complete <!doctype html> document. The iframe has network — freely pull in Google Fonts, Tailwind, Chart.js, D3, three.js, icon sets, or any CDN asset via <link>, <script src>, or @import. Aim for a polished native-feeling canvas: spacious layout, soft borders, rounded cards, subtle shadows, Cormorant for display type and Manrope for body.",
         },
       },
       required: ["slug", "title", "html"],

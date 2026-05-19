@@ -72,8 +72,7 @@ export const createRevertNoticeHook = (
 ): HookDefinition<"before_user_message"> => ({
   event: "before_user_message",
   async handler(payload) {
-    // Synthetic hidden turns must not consume the notice — same gate as
-    // chronicle-injection.hook.ts.
+    // Synthetic hidden turns must not consume the notice.
     if (payload.isUserTurn !== true) return;
 
     const isOrchestrator = payload.agentType === AGENT_IDS.ORCHESTRATOR;

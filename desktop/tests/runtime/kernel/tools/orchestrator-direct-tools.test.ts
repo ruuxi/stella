@@ -4,7 +4,6 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MemoryStore } from "../../../../../runtime/kernel/memory/memory-store.js";
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
@@ -18,7 +17,7 @@ type TestHostContext = {
   db: SqliteDatabase;
   host: ReturnType<typeof createToolHost>;
   createdTasks: Array<Record<string, unknown>>;
-  displayCalls: string[];
+  contextLookups: Array<Record<string, unknown>>;
 };
 
 const activeContexts = new Set<TestHostContext>();
@@ -39,7 +38,7 @@ const createTestHost = async (
   initializeDesktopDatabase(db);
 
   const createdTasks: Array<Record<string, unknown>> = [];
-  const memoryStore = new MemoryStore(db);
+  const contextLookups: Array<Record<string, unknown>> = [];
 
   const host = createToolHost({
     stellaRoot: rootPath,
@@ -57,7 +56,10 @@ const createTestHost = async (
     },
     getSubagentTypes,
     webSearch: async (query) => ({ text: `results for ${query}` }),
-    memoryStore,
+    contextProvider: async (payload) => {
+      contextLookups.push(payload);
+      return "Relevant context for this turn.";
+    },
   });
 
   const context = {
@@ -65,6 +67,7 @@ const createTestHost = async (
     db,
     host,
     createdTasks,
+    contextLookups,
   };
   activeContexts.add(context);
   return context;
@@ -94,6 +97,7 @@ describe("orchestrator direct tool surface", () => {
     const orchestratorTools = new Set(
       host.getToolCatalog("orchestrator").map((tool) => tool.name),
     );
+    expect(orchestratorTools.has("Context")).toBe(true);
     expect(orchestratorTools.has("spawn_agent")).toBe(true);
     expect(orchestratorTools.has("send_input")).toBe(true);
     expect(orchestratorTools.has("pause_agent")).toBe(true);
@@ -101,7 +105,7 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("DisplayGuidelines")).toBe(false);
     expect(orchestratorTools.has("image_gen")).toBe(true);
     expect(orchestratorTools.has("web")).toBe(true);
-    expect(orchestratorTools.has("Memory")).toBe(true);
+    expect(orchestratorTools.has("Memory")).toBe(false);
     expect(orchestratorTools.has("askQuestion")).toBe(true);
     expect(orchestratorTools.has("Fashion")).toBe(false);
 
@@ -122,6 +126,7 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("Display")).toBe(false);
     expect(generalTools.has("DisplayGuidelines")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
+    expect(generalTools.has("Context")).toBe(false);
     expect(generalTools.has("askQuestion")).toBe(false);
     expect(generalTools.has("exec_command")).toBe(true);
     expect(generalTools.has("write_stdin")).toBe(true);
@@ -236,6 +241,41 @@ describe("orchestrator direct tool surface", () => {
     );
 
     expect(missingResult.error).toContain("questions array is required");
+  });
+
+  it("executes Context for the orchestrator and rejects other agents", async () => {
+    const { host, contextLookups } = await createTestHost();
+
+    const orchestratorResult = await host.executeTool(
+      "Context",
+      { prompt: "Find context for what the user means by yesterday's tab." },
+      makeToolContext("orchestrator"),
+    );
+
+    expect(orchestratorResult.error).toBeUndefined();
+    expect(orchestratorResult.result).toBe("Relevant context for this turn.");
+    expect(contextLookups).toHaveLength(1);
+    expect(contextLookups[0]).toMatchObject({
+      conversationId: "conv-1",
+      requestId: "req-1",
+      prompt: "Find context for what the user means by yesterday's tab.",
+      agentType: "orchestrator",
+    });
+
+    const generalResult = await host.executeTool(
+      "Context",
+      { prompt: "Find context." },
+      makeToolContext("general"),
+    );
+
+    expect(generalResult.error).toContain("only available to the orchestrator");
+
+    const missingPromptResult = await host.executeTool(
+      "Context",
+      {},
+      makeToolContext("orchestrator"),
+    );
+    expect(missingPromptResult.error).toContain("Context prompt is required");
   });
 
   it("executes spawn_agent directly for the orchestrator and rejects other agents", async () => {

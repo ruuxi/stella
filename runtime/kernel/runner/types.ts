@@ -42,6 +42,7 @@ import type {
   SelfModHmrState,
 } from "../../contracts/index.js";
 import type {
+  HostAppBrowserContextSnapshot,
   HostRuntimeAuthRefreshResult,
   RuntimeActiveRun,
   RuntimeAuthRefreshSource,
@@ -144,11 +145,9 @@ export type StellaHostRunnerOptions = {
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
   runtimeStore: RuntimeStore;
-  /**
-   * Optional MemoryStore wired to the orchestrator's memory surface.
-   * Defaults to `runtimeStore.memoryStore` when not provided.
-   */
-  memoryStore?: import("../memory/memory-store.js").MemoryStore;
+  getAppBrowserContext?: () =>
+    | Promise<HostAppBrowserContextSnapshot>
+    | HostAppBrowserContextSnapshot;
   listLocalChatEvents?: (
     conversationId: string,
     maxItems: number,

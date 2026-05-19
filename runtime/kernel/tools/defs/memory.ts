@@ -1,5 +1,5 @@
 /**
- * `Memory` — orchestrator-only durable memory mutation surface.
+ * `Memory` — internal durable memory mutation surface.
  *
  * Two stores: `target: "user"` (persistent identity facts) and
  * `target: "memory"` (orchestrator's own cross-session notes). Three
@@ -26,8 +26,8 @@ export const createMemoryTool = (
   options: MemoryToolOptions,
 ): ToolDefinition => ({
   name: "Memory",
-  // Orchestrator-only: gated declaratively. Catalog filter + executeTool
-  // dispatcher in `tools/host.ts` enforce this.
+  // Internal memory-review only. This definition is not registered with the
+  // normal tool host; the review pass builds it directly.
   agentTypes: [AGENT_IDS.ORCHESTRATOR],
   description:
     'Manage durable memory entries that survive across sessions (`target: "user"` or `target: "memory"`).',

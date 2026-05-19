@@ -49,6 +49,7 @@ import type {
 } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
+import { runContextLookup } from "../agent-runtime/context-lookup.js";
 import {
   defaultPromptForAgentType,
   DEFAULT_MAX_AGENT_DEPTH,
@@ -379,10 +380,10 @@ export const createRunnerContext = ({
 
   fashionApi,
   runtimeStore,
+  getAppBrowserContext,
   listLocalChatEvents,
   appendLocalChatEvent,
   getDefaultConversationId,
-  memoryStore,
 }: StellaHostRunnerOptions): RunnerContext => {
   const envProxyBaseUrl = sanitizeStellaBase(
     process.env.STELLA_LLM_PROXY_URL ?? null,
@@ -501,9 +502,34 @@ export const createRunnerContext = ({
         void client.close().catch(() => undefined);
       }
     },
-    ...((memoryStore ?? runtimeStore?.memoryStore)
-      ? { memoryStore: memoryStore ?? runtimeStore.memoryStore }
-      : {}),
+    contextProvider: async (payload) => {
+      const agent = resolveAgent(context, AGENT_IDS.ORCHESTRATOR);
+      const model = getConfiguredModel(context, AGENT_IDS.ORCHESTRATOR, agent);
+      const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
+        context,
+        AGENT_IDS.ORCHESTRATOR,
+        model,
+      );
+      const localEvents = context.listLocalChatEvents
+        ? context
+            .listLocalChatEvents(payload.conversationId, 800)
+            .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type))
+        : [];
+      const appBrowserContext = getAppBrowserContext
+        ? await getAppBrowserContext()
+        : undefined;
+      return await runContextLookup({
+        conversationId: payload.conversationId,
+        lookupPrompt: payload.prompt,
+        stellaRoot,
+        stellaHome: stellaRoot,
+        store: context.runtimeStore,
+        localEvents,
+        ...(appBrowserContext ? { appBrowserContext } : {}),
+        resolvedLlm,
+        ...(payload.signal ? { signal: payload.signal } : {}),
+      });
+    },
     ...(runtimeStore?.threadSummariesStore
       ? { threadSummariesStore: runtimeStore.threadSummariesStore }
       : {}),

@@ -9,6 +9,7 @@ import {
   STELLA_RUNTIME_PROTOCOL_VERSION,
   type AgentHealth,
   type HostDeviceIdentity,
+  type HostAppBrowserContextSnapshot,
   type RuntimeAttachmentRef,
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
@@ -44,7 +45,10 @@ import {
 import { runOneShotCompletion } from "../kernel/agent-runtime/one-shot-completion.js";
 import { buildChatPromptMessages } from "../kernel/chat-prompt-context.js";
 import { getDevServerUrl } from "./dev-url.js";
-import { startCliBridgeServer, type CliBridgeServer } from "./cli-bridge-server.js";
+import {
+  startCliBridgeServer,
+  type CliBridgeServer,
+} from "./cli-bridge-server.js";
 import { resolveRuntimePaths } from "./runtime-paths.js";
 import {
   discardGitDirtyFiles,
@@ -769,7 +773,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             try {
               return await peer.request<
                 | { ok: true }
-                | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
+                | {
+                    ok: false;
+                    reason: "cancelled" | "timeout" | "unsupported" | string;
+                  }
               >(METHOD_NAMES.HOST_CONNECTOR_CREDENTIAL_REQUEST, params, {
                 retryOnDisconnect: true,
               });
@@ -888,6 +895,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       deviceId: deviceIdentity.deviceId,
       stellaRoot: init.stellaRoot,
       runtimeStore,
+      getAppBrowserContext: async () =>
+        (await peer.request(
+          METHOD_NAMES.HOST_APP_BROWSER_CONTEXT_GET,
+          undefined,
+          {
+            retryOnDisconnect: true,
+          },
+        )) as HostAppBrowserContextSnapshot,
       listLocalChatEvents: (conversationId, maxItems) =>
         chatStore.listEvents(conversationId, maxItems),
       appendLocalChatEvent: (args) => {
@@ -1178,10 +1193,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           const absolutePaths = preRevertFiles.map((file) =>
             path.join(repoRoot, file),
           );
-          await selfModHmrController.recordWrite(
-            syntheticRunId,
-            absolutePaths,
-          );
+          await selfModHmrController.recordWrite(syntheticRunId, absolutePaths);
         }
 
         const result = await revertGitFeature({
@@ -1217,14 +1229,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         const decision = selfModHmrController.finalize(syntheticRunId);
         runRegisteredWithHmr = false;
         if (decision.appliedRuns.length === 0) {
-          await selfModHmrController.releaseRuns([syntheticRunId]).catch(
-            (error) => {
+          await selfModHmrController
+            .releaseRuns([syntheticRunId])
+            .catch((error) => {
               console.warn(
                 "[self-mod-revert] Failed to release Vite client update pause:",
                 (error as Error).message,
               );
-            },
-          );
+            });
           if (runtimeReloadPaused) {
             await releaseRuntimeReloadFor([syntheticRunId]);
             runtimeReloadPaused = false;
@@ -1250,9 +1262,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         return result;
       } catch (err) {
         if (runRegisteredWithHmr) {
-          await selfModHmrController.releaseRuns([syntheticRunId]).catch(
-            () => undefined,
-          );
+          await selfModHmrController
+            .releaseRuns([syntheticRunId])
+            .catch(() => undefined);
         }
         if (runtimeReloadPaused) {
           await releaseRuntimeReloadFor([syntheticRunId]).catch(
@@ -1289,9 +1301,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         // host display update bridge. The renderer normalizes it via
         // `normalizeDisplayPayload` and routes it to the workspace panel.
         void peer
-          .request(METHOD_NAMES.HOST_DISPLAY_UPDATE, { payload }, {
-            retryOnDisconnect: true,
-          })
+          .request(
+            METHOD_NAMES.HOST_DISPLAY_UPDATE,
+            { payload },
+            {
+              retryOnDisconnect: true,
+            },
+          )
           .catch(() => undefined);
       },
     });
@@ -1415,6 +1431,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const {
         visibleUserPrompt,
         windowContextLabel,
+        browserUrl,
         appSelectionLabel,
         promptMessages,
         windowScreenshotAttachment,
@@ -1427,7 +1444,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       });
       const userMessageTimestamp = Date.now();
       const windowPreviewImageUrl = windowScreenshotAttachment?.url;
-      const userMessageId = payload.userMessageEventId ?? `local:${crypto.randomUUID()}`;
+      const userMessageId =
+        payload.userMessageEventId ?? `local:${crypto.randomUUID()}`;
       let userMessageEventAppended = false;
       const appendUserMessageEvent = (timestamp = userMessageTimestamp) => {
         if (userMessageEventAppended) {
@@ -1452,12 +1470,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               ...(payload.locale ? { locale: payload.locale } : {}),
               ...(payload.messageMetadata ||
               windowContextLabel ||
+              browserUrl ||
               appSelectionLabel ||
               windowPreviewImageUrl
                 ? {
                     metadata: {
                       ...(payload.messageMetadata ?? {}),
                       ...(windowContextLabel ||
+                      browserUrl ||
                       appSelectionLabel ||
                       windowPreviewImageUrl
                         ? {
@@ -1466,6 +1486,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                               ...(windowContextLabel
                                 ? {
                                     windowLabel: windowContextLabel,
+                                  }
+                                : {}),
+                              ...(browserUrl
+                                ? {
+                                    browserUrl,
                                   }
                                 : {}),
                               ...(windowPreviewImageUrl
@@ -2153,18 +2178,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const materializedImageAttachments = await materializeImageAttachments(
         payload.attachments,
       );
-      return await ensureRunner().runAutomationTurn(
-        {
-          ...payload,
-          ...(materializedImageAttachments.length > 0
-            ? {
-                attachments: materializedImageAttachments.map(
-                  ({ attachment }) => attachment,
-                ),
-              }
-            : {}),
-        },
-      );
+      return await ensureRunner().runAutomationTurn({
+        ...payload,
+        ...(materializedImageAttachments.length > 0
+          ? {
+              attachments: materializedImageAttachments.map(
+                ({ attachment }) => attachment,
+              ),
+            }
+          : {}),
+      });
     },
   );
 
@@ -2349,7 +2372,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         throw new Error("That message is not a publishable blueprint.");
       }
       if (message.denied) {
-        throw new Error("The latest blueprint draft was denied. Edit it before publishing.");
+        throw new Error(
+          "The latest blueprint draft was denied. Edit it before publishing.",
+        );
       }
       const blueprintMarkdown = message.text.trim();
       if (!blueprintMarkdown) {
@@ -2446,7 +2471,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       });
       const repoRoot = state.init?.stellaRoot;
       if (!repoRoot) {
-        store.deleteStoreThreadMessages([userMessage._id, assistantMessage._id]);
+        store.deleteStoreThreadMessages([
+          userMessage._id,
+          assistantMessage._id,
+        ]);
         throw new Error("Worker has not been initialized.");
       }
       let prompt: string;
@@ -2461,7 +2489,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           transcript: store.listStoreThreadMessages(),
         });
       } catch (error) {
-        store.deleteStoreThreadMessages([userMessage._id, assistantMessage._id]);
+        store.deleteStoreThreadMessages([
+          userMessage._id,
+          assistantMessage._id,
+        ]);
         throw error;
       }
 
@@ -2481,7 +2512,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         });
         threadId = created.threadId;
       } catch (error) {
-        store.deleteStoreThreadMessages([userMessage._id, assistantMessage._id]);
+        store.deleteStoreThreadMessages([
+          userMessage._id,
+          assistantMessage._id,
+        ]);
         throw error;
       }
       state.activeStoreThreadAgentId = threadId;
@@ -2525,7 +2559,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 text:
                   agent.status === "canceled"
                     ? "Stopped."
-                    : agent.error ?? "The Store agent failed.",
+                    : (agent.error ?? "The Store agent failed."),
                 pending: false,
               });
               state.activeStoreThreadAgentId = null;
@@ -2702,7 +2736,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       // these files directly during the install run; the directory is
       // mutable user data and is wiped on next install of the same
       // package so retries always start clean.
-      const safePackageSegment = payload.packageId.replace(/[^a-z0-9_-]/gi, "_");
+      const safePackageSegment = payload.packageId.replace(
+        /[^a-z0-9_-]/gi,
+        "_",
+      );
       const installRoot = path.join(
         state.init.stellaRoot,
         "state",
@@ -2710,9 +2747,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         "store-installs",
         `${safePackageSegment}-r${payload.releaseNumber}`,
       );
-      await fsPromises.rm(installRoot, { recursive: true, force: true }).catch(
-        () => undefined,
-      );
+      await fsPromises
+        .rm(installRoot, { recursive: true, force: true })
+        .catch(() => undefined);
       await fsPromises.mkdir(installRoot, { recursive: true });
       const specPath = path.join(installRoot, "SPEC.md");
       await fsPromises.writeFile(specPath, payload.blueprintMarkdown, "utf8");
@@ -2734,9 +2771,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         referencePaths.push(path.relative(state.init.stellaRoot, filePath));
       }
 
-      const referenceListing = referencePaths.length > 0
-        ? referencePaths.map((p) => `- ${p}`).join("\n")
-        : "_(none — implement from the spec alone.)_";
+      const referenceListing =
+        referencePaths.length > 0
+          ? referencePaths.map((p) => `- ${p}`).join("\n")
+          : "_(none — implement from the spec alone.)_";
 
       const installPrompt = [
         `# Install Stella store release: ${payload.displayName} (${payload.packageId})`,
