@@ -56,19 +56,40 @@ export const createBootstrapServices = (options: {
   const securityPolicyService = new SecurityPolicyService({
     windowManagerTarget: lifecycle,
   });
+  let connectorCredentialService: ConnectorCredentialService | null = null;
 
   setPreventComputerSleep(
     loadLocalPreferences(config.stellaRoot).preventComputerSleep,
   );
+
+  const authService = new AuthService({
+    authProtocol: config.authProtocol,
+    isDev: config.isDev,
+    projectDir: path.resolve(config.electronDir, "..", ".."),
+    sessionPartition: config.sessionPartition,
+    runnerTarget: lifecycle,
+    onAuthCallback: (url) => {
+      if (connectorCredentialService?.handleExternalOAuthCallback(url)) {
+        return;
+      }
+      state.windowManager?.showWindow("full");
+      options.onAuthCallback(url);
+    },
+    onSecondInstanceFocus: () => {
+      state.windowManager?.getFullWindow()?.focus();
+    },
+  });
 
   const credentialService = new CredentialService({
     windowManagerTarget: lifecycle,
     getBroadcastToMobile: () => options.getMobileBroadcast(),
   });
 
-  const connectorCredentialService = new ConnectorCredentialService({
+  connectorCredentialService = new ConnectorCredentialService({
     windowManagerTarget: lifecycle,
     getStellaRoot: () => lifecycle.getStellaRoot(),
+    getConvexAuthToken: () => authService.getConvexAuthToken(),
+    getConvexSiteUrl: () => authService.getConvexSiteUrl(),
   });
 
   const captureService = new CaptureService({
@@ -87,21 +108,6 @@ export const createBootstrapServices = (options: {
         state.overlayController?.getWindow()?.getBounds() ?? null,
     },
     updateUiState: (partial) => uiStateService.update(partial),
-  });
-
-  const authService = new AuthService({
-    authProtocol: config.authProtocol,
-    isDev: config.isDev,
-    projectDir: path.resolve(config.electronDir, "..", ".."),
-    sessionPartition: config.sessionPartition,
-    runnerTarget: lifecycle,
-    onAuthCallback: (url) => {
-      state.windowManager?.showWindow("full");
-      options.onAuthCallback(url);
-    },
-    onSecondInstanceFocus: () => {
-      state.windowManager?.getFullWindow()?.focus();
-    },
   });
 
   const backupService = new BackupService({

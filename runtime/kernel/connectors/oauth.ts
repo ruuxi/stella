@@ -39,6 +39,11 @@ type ConnectorTokenPayload = {
   expiresAt?: number;
   clientId?: string;
   tokenEndpoint?: string;
+  tokenExchange?: {
+    type: "backend";
+    endpoint: string;
+    provider: string;
+  };
   resourceUrl?: string;
   scopes?: string[];
 };
@@ -48,12 +53,42 @@ type OAuthProviderErrorLike = Error & {
   providerErrorDescription?: string;
 };
 
+type DeviceAuthorizationResponse = {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete?: string;
+  expires_in: number;
+  interval?: number;
+};
+
 type AuthorizationServerMetadata = {
   authorization_endpoint: string;
   token_endpoint: string;
   registration_endpoint?: string;
   scopes_supported?: string[];
 };
+
+export type ConnectorOAuthCallbackWaiter = (args: {
+  state: string;
+  redirectUri: string;
+  callbackId?: string;
+  signal?: AbortSignal;
+}) => Promise<{
+  waitForCallback?: Promise<ConnectorOAuthCallbackResult>;
+  waitForCode: Promise<string>;
+}>;
+
+export type ConnectorOAuthCallbackResult = {
+  state: string;
+  code?: string;
+  accessToken?: string;
+  expiresIn?: number;
+  scope?: string;
+};
+
+export type PreregisteredConnectorOAuthTokenAuth = "body" | "basic";
+export type PreregisteredConnectorOAuthResponseType = "code" | "token";
 
 const DISCOVERY_TIMEOUT_MS = 5_000;
 const OAUTH_DISCOVERY_HEADER = "MCP-Protocol-Version";
@@ -159,6 +194,27 @@ const normalizeScopes = (scopes?: string[]) => {
     if (trimmed && !normalized.includes(trimmed)) normalized.push(trimmed);
   }
   return normalized;
+};
+
+const tokenExpiresAt = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Date.now() + value * 1000;
+  }
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber)) {
+    return Date.now() + asNumber * 1000;
+  }
+  const asDate = Date.parse(value);
+  return Number.isFinite(asDate) ? asDate : undefined;
+};
+
+const firstTokenExpiresAt = (...values: unknown[]) => {
+  for (const value of values) {
+    const expiresAt = tokenExpiresAt(value);
+    if (expiresAt) return expiresAt;
+  }
+  return undefined;
 };
 
 const base64Url = (buffer: Buffer) =>
@@ -330,9 +386,59 @@ const refreshConnectorAccessToken = async (
   tokenKey: string,
   payload: ConnectorTokenPayload,
 ): Promise<ConnectorTokenPayload | null> => {
-  if (!payload.refreshToken || !payload.clientId || !payload.tokenEndpoint) {
+  if (!payload.refreshToken || !payload.clientId) {
     return null;
   }
+  if (payload.tokenExchange?.type === "backend") {
+    const authToken =
+      process.env.STELLA_NATIVE_OAUTH_BACKEND_AUTH_TOKEN?.trim() ||
+      process.env.STELLA_LLM_PROXY_TOKEN?.trim();
+    if (!authToken) return null;
+    const token = await fetchJson<{
+      access_token: string;
+      refresh_token?: string;
+      expires_in?: number;
+      scope?: string;
+      api_domain?: string;
+      resource_url?: string;
+      instance_url?: string;
+      api_base_url_for_customer?: string;
+    }>(
+      payload.tokenExchange.endpoint,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          provider: payload.tokenExchange.provider,
+          grant_type: "refresh_token",
+          client_id: payload.clientId,
+          refresh_token: payload.refreshToken,
+        }),
+      },
+      60_000,
+    );
+    const next: ConnectorTokenPayload = {
+      ...payload,
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token ?? payload.refreshToken,
+      expiresAt: tokenExpiresAt(token.expires_in),
+      scopes: token.scope
+        ? normalizeScopes(token.scope.split(/\s+/u))
+        : payload.scopes,
+      resourceUrl:
+        token.api_domain ??
+        token.resource_url ??
+        token.instance_url ??
+        token.api_base_url_for_customer ??
+        payload.resourceUrl,
+    };
+    await saveConnectorTokenPayload(stellaRoot, tokenKey, next);
+    return next;
+  }
+  if (!payload.tokenEndpoint) return null;
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     client_id: payload.clientId,
@@ -344,6 +450,10 @@ const refreshConnectorAccessToken = async (
     refresh_token?: string;
     expires_in?: number;
     scope?: string;
+    api_domain?: string;
+    resource_url?: string;
+    instance_url?: string;
+    api_base_url_for_customer?: string;
   }>(
     payload.tokenEndpoint,
     {
@@ -357,12 +467,16 @@ const refreshConnectorAccessToken = async (
     ...payload,
     accessToken: token.access_token,
     refreshToken: token.refresh_token ?? payload.refreshToken,
-    expiresAt: token.expires_in
-      ? Date.now() + token.expires_in * 1000
-      : undefined,
+    expiresAt: tokenExpiresAt(token.expires_in),
     scopes: token.scope
       ? normalizeScopes(token.scope.split(/\s+/u))
       : payload.scopes,
+    resourceUrl:
+      token.api_domain ??
+      token.resource_url ??
+      token.instance_url ??
+      token.api_base_url_for_customer ??
+      payload.resourceUrl,
   };
   await saveConnectorTokenPayload(stellaRoot, tokenKey, next);
   return next;
@@ -372,7 +486,9 @@ export const loadConnectorAccessToken = async (
   stellaRoot: string,
   tokenKey?: string,
 ): Promise<string | null> => {
-  return (await loadConnectorTokenPayload(stellaRoot, tokenKey))?.accessToken ?? null;
+  return (
+    (await loadConnectorTokenPayload(stellaRoot, tokenKey))?.accessToken ?? null
+  );
 };
 
 export const saveConnectorAccessToken = async (
@@ -385,6 +501,123 @@ export const saveConnectorAccessToken = async (
     accessToken,
     expiresAt,
   });
+};
+
+export const beginConnectorDeviceOAuth = async (args: {
+  clientId: string;
+  deviceAuthorizationEndpoint: string;
+  scopes?: string[];
+  signal?: AbortSignal;
+}): Promise<DeviceAuthorizationResponse> => {
+  const body = new URLSearchParams({
+    client_id: args.clientId,
+  });
+  const scopes = normalizeScopes(args.scopes);
+  if (scopes.length > 0) body.set("scope", scopes.join(" "));
+  return await fetchJson<DeviceAuthorizationResponse>(
+    args.deviceAuthorizationEndpoint,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body,
+      signal: args.signal,
+    },
+    60_000,
+  );
+};
+
+const sleepWithAbort = async (ms: number, signal?: AbortSignal) =>
+  await new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(
+        signal.reason instanceof Error
+          ? signal.reason
+          : new Error("Connector authorization cancelled."),
+      );
+      return;
+    }
+    const timeout = setTimeout(resolve, ms);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      const reason = signal?.reason;
+      reject(
+        reason instanceof Error
+          ? reason
+          : new Error("Connector authorization cancelled."),
+      );
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
+export const completeConnectorDeviceOAuth = async (
+  stellaRoot: string,
+  args: {
+    tokenKey: string;
+    clientId: string;
+    tokenEndpoint: string;
+    authorization: DeviceAuthorizationResponse;
+    scopes?: string[];
+    resourceUrl?: string;
+    signal?: AbortSignal;
+  },
+) => {
+  let intervalMs = Math.max(0, args.authorization.interval ?? 5) * 1000;
+  const expiresAt = Date.now() + args.authorization.expires_in * 1000;
+  while (Date.now() < expiresAt) {
+    await sleepWithAbort(intervalMs, args.signal);
+    const body = new URLSearchParams({
+      client_id: args.clientId,
+      device_code: args.authorization.device_code,
+      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    });
+    const response = await fetchWithTimeout(
+      args.tokenEndpoint,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body,
+        signal: args.signal,
+      },
+      60_000,
+    );
+    const payload = (await response.json().catch(() => null)) as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+      scope?: string;
+      error?: string;
+      error_description?: string;
+    } | null;
+    if (response.ok && payload?.access_token) {
+      const scopes = payload.scope
+        ? normalizeScopes(payload.scope.split(/\s+/u))
+        : normalizeScopes(args.scopes);
+      await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token,
+        expiresAt: tokenExpiresAt(payload.expires_in),
+        clientId: args.clientId,
+        tokenEndpoint: args.tokenEndpoint,
+        resourceUrl: args.resourceUrl,
+        scopes,
+      });
+      return;
+    }
+    const error = payload?.error;
+    if (error === "authorization_pending") continue;
+    if (error === "slow_down") {
+      intervalMs += 5_000;
+      continue;
+    }
+    throw providerError(error, payload?.error_description);
+  }
+  throw new Error("Timed out waiting for connector authorization.");
 };
 
 export const deleteConnectorAccessTokens = async (
@@ -432,6 +665,17 @@ const callbackBindHost = (callbackUrl?: string) => {
   }
 };
 
+const callbackPortFromUrl = (callbackUrl?: string) => {
+  if (!callbackUrl) return undefined;
+  try {
+    const parsed = new URL(callbackUrl);
+    const port = Number(parsed.port);
+    return Number.isInteger(port) && port > 0 ? port : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const createOAuthCallbackListener = async (
   state: string,
   options: {
@@ -439,16 +683,20 @@ const createOAuthCallbackListener = async (
     signal?: AbortSignal;
     callbackPort?: number;
     callbackUrl?: string;
+    callbackId?: string;
   },
 ) =>
   await new Promise<{
     redirectUri: string;
+    waitForCallback: Promise<ConnectorOAuthCallbackResult>;
     waitForCode: Promise<string>;
   }>((resolve, reject) => {
     let settled = false;
     let redirectUri = "";
-    let codeResolver: ((code: string) => void) | null = null;
-    let codeRejecter: ((error: Error) => void) | null = null;
+    let callbackResolver:
+      | ((callback: ConnectorOAuthCallbackResult) => void)
+      | null = null;
+    let callbackRejecter: ((error: Error) => void) | null = null;
     const server = http.createServer((req, res) => {
       const host = req.headers.host;
       if (!host || !req.url || !redirectUri) return;
@@ -460,6 +708,7 @@ const createOAuthCallbackListener = async (
         return;
       }
       const code = url.searchParams.get("code");
+      const accessToken = url.searchParams.get("access_token");
       const returnedState = url.searchParams.get("state");
       const error = url.searchParams.get("error");
       const errorDescription = url.searchParams.get("error_description");
@@ -467,10 +716,10 @@ const createOAuthCallbackListener = async (
         settled = true;
         res.writeHead(400).end("Stella connector authorization failed.");
         server.close();
-        codeRejecter?.(providerError(error, errorDescription));
+        callbackRejecter?.(providerError(error, errorDescription));
         return;
       }
-      if (!code || returnedState !== state) {
+      if ((!code && !accessToken) || returnedState !== state) {
         res
           .writeHead(400)
           .end("Invalid Stella connector authorization callback.");
@@ -483,11 +732,32 @@ const createOAuthCallbackListener = async (
         );
       settled = true;
       server.close();
-      codeResolver?.(code);
+      const expiresIn = Number(url.searchParams.get("expires_in"));
+      const expires = Number(url.searchParams.get("expires"));
+      callbackResolver?.({
+        state,
+        ...(code ? { code } : {}),
+        ...(accessToken ? { accessToken } : {}),
+        ...((Number.isFinite(expiresIn) && expiresIn > 0) ||
+        (Number.isFinite(expires) && expires > 0)
+          ? { expiresIn: Number.isFinite(expiresIn) ? expiresIn : expires }
+          : {}),
+        ...(url.searchParams.get("scope")
+          ? { scope: url.searchParams.get("scope")! }
+          : {}),
+      });
     });
-    const waitForCode = new Promise<string>((codeResolve, codeReject) => {
-      codeResolver = codeResolve;
-      codeRejecter = codeReject;
+    const waitForCallback = new Promise<ConnectorOAuthCallbackResult>(
+      (callbackResolve, callbackReject) => {
+        callbackResolver = callbackResolve;
+        callbackRejecter = callbackReject;
+      },
+    );
+    const waitForCode = waitForCallback.then((callback) => {
+      if (!callback.code) {
+        throw new Error("OAuth callback did not include a code.");
+      }
+      return callback.code;
     });
     const onAbort = () => {
       if (settled) return null;
@@ -498,7 +768,7 @@ const createOAuthCallbackListener = async (
           ? options.signal.reason.message
           : "Connector authorization cancelled.",
       );
-      codeRejecter?.(error);
+      callbackRejecter?.(error);
       return error;
     };
     if (options.signal) {
@@ -510,7 +780,7 @@ const createOAuthCallbackListener = async (
     }
     server.on("error", reject);
     server.listen(
-      options.callbackPort ?? 0,
+      options.callbackPort ?? callbackPortFromUrl(options.callbackUrl) ?? 0,
       callbackBindHost(options.callbackUrl),
       () => {
         const address = server.address();
@@ -519,16 +789,16 @@ const createOAuthCallbackListener = async (
           options.callbackUrl ?? `http://127.0.0.1:${port}/callback`;
         redirectUri = appendCallbackId(
           baseRedirectUri,
-          callbackIdFromResourceUrl(options.resourceUrl),
+          options.callbackId ?? callbackIdFromResourceUrl(options.resourceUrl),
         );
-        resolve({ redirectUri, waitForCode });
+        resolve({ redirectUri, waitForCallback, waitForCode });
       },
     );
     setTimeout(() => {
       if (settled) return;
       settled = true;
       server.close();
-      codeRejecter?.(
+      callbackRejecter?.(
         new Error("Timed out waiting for connector authorization."),
       );
     }, 5 * 60_000).unref();
@@ -545,6 +815,7 @@ export const connectConnectorOAuth = async (
     oauthResource?: string;
     callbackPort?: number;
     callbackUrl?: string;
+    callbackId?: string;
     /** Aborting this signal tears down the local callback listener,
      *  rejects the in-flight `waitForCode`, and propagates the abort
      *  reason back to the caller (typically a renderer Cancel click).
@@ -587,6 +858,7 @@ export const connectConnectorOAuth = async (
       signal: args.signal,
       callbackPort: args.callbackPort,
       callbackUrl: args.callbackUrl,
+      callbackId: args.callbackId,
     });
 
     const client = args.oauthClientId
@@ -652,9 +924,7 @@ export const connectConnectorOAuth = async (
     await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
-      expiresAt: token.expires_in
-        ? Date.now() + token.expires_in * 1000
-        : undefined,
+      expiresAt: tokenExpiresAt(token.expires_in),
       clientId: client.client_id,
       tokenEndpoint: authMetadata.token_endpoint,
       resourceUrl: oauthResource,
@@ -683,74 +953,227 @@ export const connectPreregisteredConnectorOAuth = async (
     tokenKey: string;
     clientId: string;
     authorizationEndpoint: string;
-    tokenEndpoint: string;
+    tokenEndpoint?: string;
     openUrl: (url: string) => Promise<void> | void;
+    responseType?: PreregisteredConnectorOAuthResponseType;
     scopes?: string[];
     resourceUrl?: string;
+    oauthResource?: string | null;
+    scopeSeparator?: string;
+    usesPkce?: boolean;
+    authorizationClientIdParam?: string;
+    authorizationRedirectParam?: string;
+    authorizationParams?: Record<string, string>;
+    tokenRedirectParam?: string;
+    tokenAuth?: PreregisteredConnectorOAuthTokenAuth;
+    tokenExchange?: {
+      type: "backend";
+      endpoint: string;
+      provider: string;
+      authToken?: string | null;
+    };
     callbackPort?: number;
     callbackUrl?: string;
+    callbackId?: string;
+    callbackWaiter?: ConnectorOAuthCallbackWaiter;
     signal?: AbortSignal;
   },
 ) => {
   const scopes = normalizeScopes(args.scopes);
   const state = randomUUID();
-  const verifier = base64Url(randomBytes(32));
-  const callback = await createOAuthCallbackListener(state, {
-    resourceUrl: args.resourceUrl ?? args.authorizationEndpoint,
-    signal: args.signal,
-    callbackPort: args.callbackPort,
-    callbackUrl: args.callbackUrl,
-  });
+  const responseType = args.responseType ?? "code";
+  const usesPkce = responseType === "code" && args.usesPkce !== false;
+  const verifier = usesPkce ? base64Url(randomBytes(32)) : undefined;
+  const callback = args.callbackWaiter
+    ? (() => {
+        const fallbackCodePromise = (result: ConnectorOAuthCallbackResult) => {
+          if (!result.code) {
+            throw new Error("OAuth callback did not include a code.");
+          }
+          return result.code;
+        };
+        return args.callbackWaiter!({
+          state,
+          redirectUri: args.callbackUrl!,
+          callbackId: args.callbackId,
+          signal: args.signal,
+        }).then((waiter) => {
+          const waitForCallback: Promise<ConnectorOAuthCallbackResult> =
+            waiter.waitForCallback ??
+            waiter.waitForCode.then((code) => ({ state, code }));
+          return {
+            redirectUri: args.callbackUrl!,
+            waitForCallback,
+            waitForCode:
+              waiter.waitForCode ?? waitForCallback.then(fallbackCodePromise),
+          };
+        });
+      })()
+    : await createOAuthCallbackListener(state, {
+        resourceUrl: args.resourceUrl ?? args.authorizationEndpoint,
+        signal: args.signal,
+        callbackPort: args.callbackPort,
+        callbackUrl: args.callbackUrl,
+        callbackId: args.callbackId,
+      });
+  const resolvedCallback = await callback;
 
   const authorizationUrl = new URL(args.authorizationEndpoint);
-  authorizationUrl.searchParams.set("response_type", "code");
-  authorizationUrl.searchParams.set("client_id", args.clientId);
-  authorizationUrl.searchParams.set("redirect_uri", callback.redirectUri);
+  authorizationUrl.searchParams.set("response_type", responseType);
+  authorizationUrl.searchParams.set(
+    args.authorizationClientIdParam ?? "client_id",
+    args.clientId,
+  );
+  authorizationUrl.searchParams.set(
+    args.authorizationRedirectParam ?? "redirect_uri",
+    resolvedCallback.redirectUri,
+  );
   authorizationUrl.searchParams.set("state", state);
-  authorizationUrl.searchParams.set("code_challenge", sha256(verifier));
-  authorizationUrl.searchParams.set("code_challenge_method", "S256");
+  if (usesPkce && verifier) {
+    authorizationUrl.searchParams.set("code_challenge", sha256(verifier));
+    authorizationUrl.searchParams.set("code_challenge_method", "S256");
+  }
   authorizationUrl.searchParams.set("access_type", "offline");
   authorizationUrl.searchParams.set("prompt", "consent");
-  if (args.resourceUrl) authorizationUrl.searchParams.set("resource", args.resourceUrl);
-  if (scopes.length > 0) authorizationUrl.searchParams.set("scope", scopes.join(" "));
+  for (const [key, value] of Object.entries(args.authorizationParams ?? {})) {
+    if (key && value) authorizationUrl.searchParams.set(key, value);
+  }
+  const oauthResource =
+    args.oauthResource === null
+      ? undefined
+      : args.oauthResource?.trim() || args.resourceUrl;
+  if (oauthResource)
+    authorizationUrl.searchParams.set("resource", oauthResource);
+  if (scopes.length > 0) {
+    authorizationUrl.searchParams.set(
+      "scope",
+      scopes.join(args.scopeSeparator ?? " "),
+    );
+  }
 
-  const codePromise = callback.waitForCode;
-  codePromise.catch(() => undefined);
+  const callbackPromise = resolvedCallback.waitForCallback;
+  callbackPromise.catch(() => undefined);
+  resolvedCallback.waitForCode.catch(() => undefined);
   await args.openUrl(authorizationUrl.toString());
 
-  const code = await codePromise;
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    client_id: args.clientId,
-    code,
-    redirect_uri: callback.redirectUri,
-    code_verifier: verifier,
-  });
-  if (args.resourceUrl) body.set("resource", args.resourceUrl);
-  const token = await fetchJson<{
-    access_token: string;
-    refresh_token?: string;
-    expires_in?: number;
-    scope?: string;
-  }>(
-    args.tokenEndpoint,
-    {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body,
-      signal: args.signal,
-    },
-    60_000,
-  );
+  const callbackResult = await callbackPromise;
+  if (responseType === "token") {
+    if (!callbackResult.accessToken) {
+      throw new Error("OAuth callback did not include an access token.");
+    }
+    await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
+      accessToken: callbackResult.accessToken,
+      expiresAt: callbackResult.expiresIn
+        ? Date.now() + callbackResult.expiresIn * 1000
+        : undefined,
+      clientId: args.clientId,
+      resourceUrl: args.resourceUrl,
+      scopes: callbackResult.scope
+        ? normalizeScopes(callbackResult.scope.split(/\s+/u))
+        : scopes,
+    });
+    return { tokenKey: args.tokenKey };
+  }
+  const code = callbackResult.code;
+  if (!code) {
+    throw new Error("OAuth callback did not include a code.");
+  }
+  const exchangeToken = async () => {
+    if (!args.tokenEndpoint) {
+      throw new Error("OAuth token endpoint is missing.");
+    }
+    if (args.tokenExchange?.type !== "backend") {
+      const body = new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        [args.tokenRedirectParam ?? "redirect_uri"]: resolvedCallback.redirectUri,
+      });
+      if (args.tokenAuth !== "basic") body.set("client_id", args.clientId);
+      if (usesPkce && verifier) body.set("code_verifier", verifier);
+      if (oauthResource) body.set("resource", oauthResource);
+      const headers: Record<string, string> = {
+        "content-type": "application/x-www-form-urlencoded",
+      };
+      if (args.tokenAuth === "basic") {
+        headers.authorization = `Basic ${Buffer.from(`${args.clientId}:`).toString("base64")}`;
+      }
+      return await fetchJson<{
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+        expires?: number;
+        scope?: string;
+        api_domain?: string;
+        resource_url?: string;
+        instance_url?: string;
+        api_base_url_for_customer?: string;
+      }>(
+        args.tokenEndpoint,
+        {
+          method: "POST",
+          headers,
+          body,
+          signal: args.signal,
+        },
+        60_000,
+      );
+    }
+    return await fetchJson<{
+      access_token: string;
+      refresh_token?: string;
+      expires_in?: number;
+      expires?: number;
+      scope?: string;
+      api_domain?: string;
+      resource_url?: string;
+      instance_url?: string;
+      api_base_url_for_customer?: string;
+    }>(
+      args.tokenExchange.endpoint,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(args.tokenExchange.authToken
+            ? { authorization: `Bearer ${args.tokenExchange.authToken}` }
+            : {}),
+        },
+        body: JSON.stringify({
+          provider: args.tokenExchange.provider,
+          client_id: args.clientId,
+          code,
+          state,
+          redirect_uri: resolvedCallback.redirectUri,
+          ...(usesPkce && verifier ? { code_verifier: verifier } : {}),
+        }),
+        signal: args.signal,
+      },
+      60_000,
+    );
+  };
+
+  const token = await exchangeToken();
   await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
     accessToken: token.access_token,
     refreshToken: token.refresh_token,
-    expiresAt: token.expires_in
-      ? Date.now() + token.expires_in * 1000
-      : undefined,
+    expiresAt: firstTokenExpiresAt(token.expires_in, token.expires),
     clientId: args.clientId,
-    tokenEndpoint: args.tokenEndpoint,
-    resourceUrl: args.resourceUrl,
+    tokenEndpoint:
+      args.tokenExchange?.type === "backend" ? undefined : args.tokenEndpoint,
+    tokenExchange:
+      args.tokenExchange?.type === "backend"
+        ? {
+            type: "backend",
+            endpoint: args.tokenExchange.endpoint,
+            provider: args.tokenExchange.provider,
+          }
+        : undefined,
+    resourceUrl:
+      token.api_domain ??
+      token.resource_url ??
+      token.instance_url ??
+      token.api_base_url_for_customer ??
+      args.resourceUrl,
     scopes: token.scope ? normalizeScopes(token.scope.split(/\s+/u)) : scopes,
   });
   return { tokenKey: args.tokenKey };

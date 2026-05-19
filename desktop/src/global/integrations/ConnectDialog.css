@@ -74,6 +74,15 @@
   min-height: min(calc(100vh - 16px), 560px);
 }
 
+/* Phone pairing (QR + code) needs more vertical room than OAuth detail views */
+[data-component="dialog"][data-fit]:has(
+    [data-slot="dialog-content"].connect-dialog[data-phone-detail]
+  )
+  [data-slot="dialog-container"] {
+  height: min(calc(100vh - 16px), 700px);
+  min-height: min(calc(100vh - 16px), 700px);
+}
+
 /* Body fills space below header; main pane stays one size when switching views */
 .connect-dialog [data-slot="dialog-body"] {
   flex: 1;
@@ -165,21 +174,6 @@
   line-height: 1.25;
   color: var(--text-strong);
   white-space: normal;
-}
-
-.connect-grid-card-soon {
-  flex-shrink: 0;
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 11px;
-  font-weight: 500;
-  font-style: normal;
-  letter-spacing: 0;
-  color: var(--text-weak);
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border-weak);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  text-transform: none;
 }
 
 /* 2-column card grid */
@@ -530,6 +524,16 @@
   padding-bottom: 12px;
 }
 
+.connect-dialog[data-phone-detail] .connect-pair-centered {
+  gap: 20px;
+  padding-top: 8px;
+  padding-bottom: 20px;
+}
+
+.connect-dialog[data-phone-detail] .connect-full-view .connect-detail-body {
+  padding: 32px 28px 36px;
+}
+
 .connect-pair-headline {
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: clamp(1.5rem, 3.5vw, 1.9rem);
@@ -559,8 +563,8 @@
 }
 
 .connect-pair-qr {
-  width: 160px;
-  height: 160px;
+  width: 140px;
+  height: 140px;
   border-radius: 14px;
   flex-shrink: 0;
 }

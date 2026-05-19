@@ -107,7 +107,9 @@ class HttpConnectorBridgeSession {
           ? token
           : scheme === "basic"
             ? `Basic ${token}`
-            : `Bearer ${token}`;
+            : scheme === "oauth"
+              ? `OAuth ${token}`
+              : `Bearer ${token}`;
       headers[this.server.auth?.headerName ?? "authorization"] = value;
     } else if (this.server.auth?.type && this.server.auth.type !== "none") {
       throw new ConnectorAuthError(

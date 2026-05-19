@@ -15,7 +15,7 @@ export type ConnectorCommandConfig = {
     type: "oauth" | "api_key" | "none";
     tokenKey?: string;
     headerName?: string;
-    scheme?: "bearer" | "basic" | "raw";
+    scheme?: "bearer" | "basic" | "oauth" | "raw";
     envVar?: string;
     clientId?: string;
     resource?: string;
@@ -32,7 +32,7 @@ export type ApiConnectorConfig = {
     type: "api_key" | "oauth" | "none";
     tokenKey?: string;
     headerName?: string;
-    scheme?: "bearer" | "basic" | "raw";
+    scheme?: "bearer" | "basic" | "oauth" | "raw";
     clientId?: string;
     resource?: string;
     scopes?: string[];

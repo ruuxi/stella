@@ -488,9 +488,7 @@ export type ElectronDictationApi = {
   /** Returns whether dictation start/stop sound effects are enabled. */
   getSoundEffectsEnabled: () => Promise<boolean>;
   /** Enable or disable dictation start/stop sound effects. */
-  setSoundEffectsEnabled: (
-    enabled: boolean,
-  ) => Promise<{ enabled: boolean }>;
+  setSoundEffectsEnabled: (enabled: boolean) => Promise<{ enabled: boolean }>;
   localStatus: () => Promise<{
     available: boolean;
     model: string;
@@ -736,9 +734,7 @@ export type ElectronSystemApi = {
     enabled: boolean,
   ) => Promise<{ enabled: boolean }>;
   getReadAloudEnabled: () => Promise<boolean>;
-  setReadAloudEnabled: (
-    enabled: boolean,
-  ) => Promise<{ enabled: boolean }>;
+  setReadAloudEnabled: (enabled: boolean) => Promise<{ enabled: boolean }>;
   setGlobalShortcutsSuspended: (
     suspended: boolean,
   ) => Promise<{ supported: boolean; suspended: boolean }>;
@@ -852,6 +848,8 @@ export type ElectronSystemApi = {
         completionMode?: "approve" | "wait";
         description?: string;
         placeholder?: string;
+        oauthUserCode?: string;
+        oauthVerificationUri?: string;
       },
     ) => void,
   ) => () => void;
@@ -1223,14 +1221,27 @@ export type ElectronNativeIntegration = {
   category: string;
   auth: string[];
   catalogToolCount: number;
-  availability: "ready" | "planned";
-  provider?: "google-workspace";
+  availability: "ready";
+  provider: "google-workspace" | "oauth-catalog";
   toolPrefix?: string;
+  sourceUrl?: string;
   description: string;
+  connectable: boolean;
+  oauthSetupStatus:
+    | "ready"
+    | "missing_oauth_app"
+    | "missing_backend_exchange"
+    | "missing_callback_bridge";
+  oauthSetupMessage: string;
+  oauthSetupGroup?: {
+    id: string;
+    name: string;
+  };
   enabled: boolean;
   enabledAt?: number;
   skillPath?: string;
   toolCount: number;
+  actionCount?: number;
 };
 
 export type ElectronNativeIntegrationsApi = {
@@ -1326,9 +1337,7 @@ export type ElectronDisplayApi = {
    * giving the renderer file:// access. Bytes are transferred directly
    * via Electron's structured-clone IPC (no base64 round-trip).
    */
-  readFile: (
-    filePath: string,
-  ) => Promise<
+  readFile: (filePath: string) => Promise<
     | {
         bytes: Uint8Array;
         sizeBytes: number;

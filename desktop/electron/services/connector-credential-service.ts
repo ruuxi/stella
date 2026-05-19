@@ -14,8 +14,12 @@
 import { randomUUID } from "crypto";
 import { BrowserWindow, shell } from "electron";
 import {
+  beginConnectorDeviceOAuth,
+  completeConnectorDeviceOAuth,
   connectConnectorOAuth,
   connectPreregisteredConnectorOAuth,
+  type ConnectorOAuthCallbackResult,
+  type ConnectorOAuthCallbackWaiter,
   saveConnectorAccessToken,
 } from "../../../runtime/kernel/connectors/oauth.js";
 import type { WindowManagerTarget } from "../../../runtime/kernel/lifecycle-targets.js";
@@ -37,16 +41,33 @@ type PendingMeta = {
   oauthAbort?: AbortController;
   oauthStarted?: boolean;
   oauthFlow?: {
-    type: "mcp" | "preregistered";
+    type: "mcp" | "preregistered" | "device";
     stellaRoot: string;
     tokenKey: string;
     resourceUrl?: string;
     clientId?: string;
     authorizationEndpoint?: string;
+    deviceAuthorizationEndpoint?: string;
     tokenEndpoint?: string;
+    responseType?: "code" | "token";
     oauthClientId?: string;
-    oauthResource?: string;
+    oauthResource?: string | null;
     scopes?: string[];
+    scopeSeparator?: string;
+    usesPkce?: boolean;
+    authorizationRedirectParam?: string;
+    authorizationParams?: Record<string, string>;
+    tokenRedirectParam?: string;
+    tokenAuth?: "body" | "basic";
+    callbackMode?: "local" | "external";
+    callbackUrl?: string;
+    callbackId?: string;
+    verificationUri?: string;
+    tokenExchange?: {
+      type: "backend";
+      provider: string;
+    };
+    authorization?: Awaited<ReturnType<typeof beginConnectorDeviceOAuth>>;
     signal: AbortSignal;
   };
   windows: BrowserWindow[];
@@ -58,11 +79,22 @@ export class ConnectorCredentialService {
   private readonly pending =
     new PendingRequestStore<ConnectorCredentialOutcome>();
   private readonly meta = new Map<string, PendingMeta>();
+  private readonly pendingExternalOAuthCallbacks = new Map<
+    string,
+    {
+      callbackId?: string;
+      resolve: (callback: ConnectorOAuthCallbackResult) => void;
+      reject: (error: Error) => void;
+      cleanup: () => void;
+    }
+  >();
 
   constructor(
     private readonly options: {
       windowManagerTarget: WindowManagerTarget<BrowserWindow>;
       getStellaRoot: () => string | null;
+      getConvexAuthToken?: () => Promise<string | null>;
+      getConvexSiteUrl?: () => string | null;
     },
   ) {}
 
@@ -72,8 +104,9 @@ export class ConnectorCredentialService {
     authType?: ConnectorCredentialRequestMode;
     resourceUrl?: string;
     oauthClientId?: string;
-    oauthResource?: string;
+    oauthResource?: string | null;
     scopes?: string[];
+    scopeSeparator?: string;
     description?: string;
     placeholder?: string;
   }): Promise<ConnectorCredentialOutcome> {
@@ -102,9 +135,24 @@ export class ConnectorCredentialService {
     displayName: string;
     clientId: string;
     authorizationEndpoint: string;
-    tokenEndpoint: string;
+    tokenEndpoint?: string;
+    responseType?: "code" | "token";
     scopes?: string[];
     resourceUrl?: string;
+    oauthResource?: string | null;
+    callbackUrl?: string;
+    callbackId?: string;
+    callbackMode?: "local" | "external";
+    scopeSeparator?: string;
+    usesPkce?: boolean;
+    authorizationRedirectParam?: string;
+    authorizationParams?: Record<string, string>;
+    tokenRedirectParam?: string;
+    tokenAuth?: "body" | "basic";
+    tokenExchange?: {
+      type: "backend";
+      provider: string;
+    };
     description?: string;
   }): Promise<ConnectorCredentialOutcome> {
     return await this.enqueueRequest({
@@ -114,13 +162,75 @@ export class ConnectorCredentialService {
       resourceUrl: payload.resourceUrl ?? payload.authorizationEndpoint,
       oauthClientId: payload.clientId,
       scopes: payload.scopes,
+      scopeSeparator: payload.scopeSeparator,
       description: payload.description,
       kind: "credential",
       preregisteredOAuth: {
         clientId: payload.clientId,
         authorizationEndpoint: payload.authorizationEndpoint,
         tokenEndpoint: payload.tokenEndpoint,
+        responseType: payload.responseType,
         resourceUrl: payload.resourceUrl,
+        oauthResource: payload.oauthResource,
+        callbackUrl: payload.callbackUrl,
+        callbackId: payload.callbackId,
+        callbackMode: payload.callbackMode,
+        usesPkce: payload.usesPkce,
+        authorizationRedirectParam: payload.authorizationRedirectParam,
+        authorizationParams: payload.authorizationParams,
+        tokenRedirectParam: payload.tokenRedirectParam,
+        tokenAuth: payload.tokenAuth,
+        tokenExchange: payload.tokenExchange,
+      },
+    });
+  }
+
+  async requestDeviceOAuth(payload: {
+    tokenKey: string;
+    displayName: string;
+    clientId: string;
+    deviceAuthorizationEndpoint: string;
+    tokenEndpoint: string;
+    scopes?: string[];
+    resourceUrl?: string;
+    verificationUri?: string;
+    description?: string;
+  }): Promise<ConnectorCredentialOutcome> {
+    const stellaRoot = this.options.getStellaRoot();
+    if (!stellaRoot) {
+      return { ok: false, reason: "unsupported" };
+    }
+    const oauthAbort = new AbortController();
+    const authorization = await beginConnectorDeviceOAuth({
+      clientId: payload.clientId,
+      deviceAuthorizationEndpoint: payload.deviceAuthorizationEndpoint,
+      scopes: payload.scopes,
+      signal: oauthAbort.signal,
+    });
+    const verificationUri =
+      authorization.verification_uri_complete ||
+      authorization.verification_uri ||
+      payload.verificationUri;
+    return await this.enqueueRequest({
+      tokenKey: payload.tokenKey,
+      displayName: payload.displayName,
+      authType: "oauth",
+      resourceUrl: verificationUri,
+      scopes: payload.scopes,
+      description:
+        payload.description ??
+        `Stella needs to open ${payload.displayName} in your browser. Enter the code shown here to approve the connection.`,
+      kind: "credential",
+      oauthUserCode: authorization.user_code,
+      oauthVerificationUri: verificationUri,
+      oauthAbort,
+      deviceOAuth: {
+        clientId: payload.clientId,
+        deviceAuthorizationEndpoint: payload.deviceAuthorizationEndpoint,
+        tokenEndpoint: payload.tokenEndpoint,
+        resourceUrl: payload.resourceUrl,
+        verificationUri,
+        authorization,
       },
     });
   }
@@ -131,16 +241,43 @@ export class ConnectorCredentialService {
     authType?: ConnectorCredentialRequestMode;
     resourceUrl?: string;
     oauthClientId?: string;
-    oauthResource?: string;
+    oauthResource?: string | null;
     scopes?: string[];
+    scopeSeparator?: string;
     description?: string;
     placeholder?: string;
+    oauthUserCode?: string;
+    oauthVerificationUri?: string;
+    oauthAbort?: AbortController;
     kind: "credential" | "external_approval";
     preregisteredOAuth?: {
       clientId: string;
       authorizationEndpoint: string;
+      tokenEndpoint?: string;
+      responseType?: "code" | "token";
+      resourceUrl?: string;
+      oauthResource?: string | null;
+      callbackUrl?: string;
+      callbackId?: string;
+      callbackMode?: "local" | "external";
+      scopeSeparator?: string;
+      usesPkce?: boolean;
+      authorizationRedirectParam?: string;
+      authorizationParams?: Record<string, string>;
+      tokenRedirectParam?: string;
+      tokenAuth?: "body" | "basic";
+      tokenExchange?: {
+        type: "backend";
+        provider: string;
+      };
+    };
+    deviceOAuth?: {
+      clientId: string;
+      deviceAuthorizationEndpoint: string;
       tokenEndpoint: string;
       resourceUrl?: string;
+      verificationUri?: string;
+      authorization: Awaited<ReturnType<typeof beginConnectorDeviceOAuth>>;
     };
   }): Promise<ConnectorCredentialOutcome> {
     const stellaRoot = this.options.getStellaRoot();
@@ -175,9 +312,13 @@ export class ConnectorCredentialService {
       completionMode: payload.kind === "external_approval" ? "approve" : "wait",
       description: payload.description,
       placeholder: payload.placeholder,
+      oauthUserCode: payload.oauthUserCode,
+      oauthVerificationUri: payload.oauthVerificationUri,
     };
 
-    const oauthAbort = mode === "oauth" ? new AbortController() : undefined;
+    const oauthAbort =
+      payload.oauthAbort ??
+      (mode === "oauth" ? new AbortController() : undefined);
     this.meta.set(requestId, {
       tokenKey: payload.tokenKey,
       mode,
@@ -196,22 +337,56 @@ export class ConnectorCredentialService {
               authorizationEndpoint:
                 payload.preregisteredOAuth.authorizationEndpoint,
               tokenEndpoint: payload.preregisteredOAuth.tokenEndpoint,
+              responseType: payload.preregisteredOAuth.responseType,
               resourceUrl: payload.preregisteredOAuth.resourceUrl,
+              oauthResource: payload.preregisteredOAuth.oauthResource,
+              callbackUrl: payload.preregisteredOAuth.callbackUrl,
+              callbackId: payload.preregisteredOAuth.callbackId,
+              callbackMode: payload.preregisteredOAuth.callbackMode,
+              tokenExchange: payload.preregisteredOAuth.tokenExchange,
+              usesPkce: payload.preregisteredOAuth.usesPkce,
+              authorizationRedirectParam:
+                payload.preregisteredOAuth.authorizationRedirectParam,
+              authorizationParams:
+                payload.preregisteredOAuth.authorizationParams,
+              tokenRedirectParam:
+                payload.preregisteredOAuth.tokenRedirectParam,
+              tokenAuth: payload.preregisteredOAuth.tokenAuth,
               scopes: payload.scopes,
+              scopeSeparator: payload.scopeSeparator,
               signal: oauthAbort!.signal,
             }
-          : mode === "oauth" && payload.kind === "credential" && payload.resourceUrl
-          ? {
-              type: "mcp",
-              stellaRoot,
-              tokenKey: payload.tokenKey,
-              resourceUrl: payload.resourceUrl,
-              oauthClientId: payload.oauthClientId,
-              oauthResource: payload.oauthResource,
-              scopes: payload.scopes,
-              signal: oauthAbort!.signal,
-            }
-          : undefined,
+          : mode === "oauth" &&
+              payload.kind === "credential" &&
+              payload.deviceOAuth
+            ? {
+                type: "device",
+                stellaRoot,
+                tokenKey: payload.tokenKey,
+                clientId: payload.deviceOAuth.clientId,
+                deviceAuthorizationEndpoint:
+                  payload.deviceOAuth.deviceAuthorizationEndpoint,
+                tokenEndpoint: payload.deviceOAuth.tokenEndpoint,
+                resourceUrl: payload.deviceOAuth.resourceUrl,
+                verificationUri: payload.deviceOAuth.verificationUri,
+                scopes: payload.scopes,
+                authorization: payload.deviceOAuth.authorization,
+                signal: oauthAbort!.signal,
+              }
+            : mode === "oauth" &&
+                payload.kind === "credential" &&
+                payload.resourceUrl
+              ? {
+                  type: "mcp",
+                  stellaRoot,
+                  tokenKey: payload.tokenKey,
+                  resourceUrl: payload.resourceUrl,
+                  oauthClientId: payload.oauthClientId,
+                  oauthResource: payload.oauthResource,
+                  scopes: payload.scopes,
+                  signal: oauthAbort!.signal,
+                }
+              : undefined,
       windows: targetWindows,
     });
 
@@ -241,7 +416,8 @@ export class ConnectorCredentialService {
     requestId: string,
     outcome: ConnectorCredentialOutcome,
   ) {
-    const windows = this.meta.get(requestId)?.windows ?? BrowserWindow.getAllWindows();
+    const windows =
+      this.meta.get(requestId)?.windows ?? BrowserWindow.getAllWindows();
     for (const window of windows) {
       if (window.isDestroyed()) continue;
       window.webContents.send("connector-credential:complete", {
@@ -252,32 +428,231 @@ export class ConnectorCredentialService {
     }
   }
 
+  private backendTokenExchangeEndpoint() {
+    const siteUrl = this.options
+      .getConvexSiteUrl?.()
+      ?.trim()
+      .replace(/\/+$/u, "");
+    return siteUrl ? `${siteUrl}/api/native-oauth/token` : null;
+  }
+
+  private waitForExternalOAuthCallback: ConnectorOAuthCallbackWaiter = async (
+    args,
+  ) => {
+    if (!args.redirectUri) {
+      throw new Error("Missing OAuth redirect URI.");
+    }
+    if (this.pendingExternalOAuthCallbacks.has(args.state)) {
+      throw new Error("OAuth callback state collision.");
+    }
+    let settled = false;
+    let abortHandler: (() => void) | null = null;
+    const waitForCallback = new Promise<ConnectorOAuthCallbackResult>(
+      (resolve, reject) => {
+        const cleanup = () => {
+          this.pendingExternalOAuthCallbacks.delete(args.state);
+          if (abortHandler && args.signal) {
+            args.signal.removeEventListener("abort", abortHandler);
+          }
+        };
+        abortHandler = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(
+            args.signal?.reason instanceof Error
+              ? args.signal.reason
+              : new Error("Connector authorization cancelled."),
+          );
+        };
+        this.pendingExternalOAuthCallbacks.set(args.state, {
+          callbackId: args.callbackId,
+          resolve: (callback) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(callback);
+          },
+          reject: (error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(error);
+          },
+          cleanup,
+        });
+        if (args.signal) {
+          if (args.signal.aborted) {
+            abortHandler();
+          } else {
+            args.signal.addEventListener("abort", abortHandler, { once: true });
+          }
+        }
+      },
+    );
+    const waitForCode = waitForCallback.then((callback) => {
+      if (!callback.code) {
+        throw new Error("OAuth callback did not include a code.");
+      }
+      return callback.code;
+    });
+    return { waitForCallback, waitForCode };
+  };
+
+  handleExternalOAuthCallback(url: string) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return false;
+    }
+    if (parsed.protocol.toLowerCase() !== "stella:") return false;
+    if (parsed.hostname.trim().toLowerCase() !== "oauth") return false;
+    const pathParts = parsed.pathname
+      .split("/")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (pathParts[0] !== "callback") return true;
+    const callbackId = pathParts[1]?.toLowerCase();
+    const state = parsed.searchParams.get("state")?.trim();
+    if (!state) return true;
+    const pending = this.pendingExternalOAuthCallbacks.get(state);
+    if (!pending) return true;
+    if (
+      pending.callbackId &&
+      callbackId &&
+      pending.callbackId.toLowerCase() !== callbackId
+    ) {
+      pending.reject(new Error("OAuth callback provider did not match."));
+      return true;
+    }
+    const error = parsed.searchParams.get("error");
+    if (error) {
+      const description = parsed.searchParams.get("error_description");
+      pending.reject(
+        new Error(
+          description
+            ? `OAuth provider returned ${error}: ${description}`
+            : `OAuth provider returned ${error}`,
+        ),
+      );
+      return true;
+    }
+    const code = parsed.searchParams.get("code");
+    const accessToken = parsed.searchParams.get("access_token");
+    if (!code && !accessToken) {
+      pending.reject(
+        new Error("OAuth callback did not include a code or access token."),
+      );
+      return true;
+    }
+    const expiresIn = Number(parsed.searchParams.get("expires_in"));
+    pending.resolve({
+      state,
+      ...(code ? { code } : {}),
+      ...(accessToken ? { accessToken } : {}),
+      ...(Number.isFinite(expiresIn) && expiresIn > 0 ? { expiresIn } : {}),
+      ...(parsed.searchParams.get("scope")
+        ? { scope: parsed.searchParams.get("scope")! }
+        : {}),
+    });
+    return true;
+  }
+
   private async runOauthFlow(args: {
     requestId: string;
-    type: "mcp" | "preregistered";
+    type: "mcp" | "preregistered" | "device";
     stellaRoot: string;
     tokenKey: string;
     resourceUrl?: string;
     clientId?: string;
     authorizationEndpoint?: string;
+    deviceAuthorizationEndpoint?: string;
     tokenEndpoint?: string;
+    responseType?: "code" | "token";
     oauthClientId?: string;
-    oauthResource?: string;
+    oauthResource?: string | null;
     scopes?: string[];
+    scopeSeparator?: string;
+    usesPkce?: boolean;
+    authorizationRedirectParam?: string;
+    authorizationParams?: Record<string, string>;
+    tokenRedirectParam?: string;
+    tokenAuth?: "body" | "basic";
+    callbackUrl?: string;
+    callbackId?: string;
+    callbackMode?: "local" | "external";
+    tokenExchange?: {
+      type: "backend";
+      provider: string;
+    };
+    verificationUri?: string;
+    authorization?: Awaited<ReturnType<typeof beginConnectorDeviceOAuth>>;
     signal: AbortSignal;
   }) {
     try {
       // `connectConnectorOAuth` handles the full PKCE Authorization
       // Code flow + token persistence. It calls `saveConnectorAccessToken`
       // itself on success, so we just need to resolve the bridge promise.
-      if (args.type === "preregistered") {
+      if (args.type === "device") {
+        const verificationUri =
+          args.verificationUri || args.authorization?.verification_uri;
+        if (verificationUri) await shell.openExternal(verificationUri);
+        await completeConnectorDeviceOAuth(args.stellaRoot, {
+          tokenKey: args.tokenKey,
+          clientId: args.clientId!,
+          tokenEndpoint: args.tokenEndpoint!,
+          authorization: args.authorization!,
+          resourceUrl: args.resourceUrl,
+          scopes: args.scopes,
+          signal: args.signal,
+        });
+      } else if (args.type === "preregistered") {
+        const backendTokenExchangeEndpoint =
+          args.tokenExchange?.type === "backend"
+            ? this.backendTokenExchangeEndpoint()
+            : null;
+        const backendAuthToken =
+          args.tokenExchange?.type === "backend"
+            ? await this.options.getConvexAuthToken?.()
+            : null;
+        if (
+          args.tokenExchange?.type === "backend" &&
+          !backendTokenExchangeEndpoint
+        ) {
+          throw new Error("Stella backend OAuth exchange is unavailable.");
+        }
         await connectPreregisteredConnectorOAuth(args.stellaRoot, {
           tokenKey: args.tokenKey,
           clientId: args.clientId!,
           authorizationEndpoint: args.authorizationEndpoint!,
-          tokenEndpoint: args.tokenEndpoint!,
+          tokenEndpoint: args.tokenEndpoint,
+          responseType: args.responseType,
           resourceUrl: args.resourceUrl,
+          oauthResource: args.oauthResource,
+          callbackUrl: args.callbackUrl,
+          callbackId: args.callbackId,
+          callbackWaiter:
+            args.callbackMode === "external"
+              ? this.waitForExternalOAuthCallback
+              : undefined,
           scopes: args.scopes,
+          scopeSeparator: args.scopeSeparator,
+          usesPkce: args.usesPkce,
+          authorizationRedirectParam: args.authorizationRedirectParam,
+          authorizationParams: args.authorizationParams,
+          tokenRedirectParam: args.tokenRedirectParam,
+          tokenAuth: args.tokenAuth,
+          tokenExchange:
+            args.tokenExchange?.type === "backend" &&
+            backendTokenExchangeEndpoint
+              ? {
+                  type: "backend",
+                  endpoint: backendTokenExchangeEndpoint,
+                  provider: args.tokenExchange.provider,
+                  authToken: backendAuthToken,
+                }
+              : undefined,
           openUrl: (url) => shell.openExternal(url),
           signal: args.signal,
         });
@@ -286,7 +661,8 @@ export class ConnectorCredentialService {
           tokenKey: args.tokenKey,
           resourceUrl: args.resourceUrl!,
           oauthClientId: args.oauthClientId,
-          oauthResource: args.oauthResource,
+          oauthResource: args.oauthResource ?? undefined,
+          callbackId: args.callbackId,
           scopes: args.scopes,
           openUrl: (url) => shell.openExternal(url),
           signal: args.signal,

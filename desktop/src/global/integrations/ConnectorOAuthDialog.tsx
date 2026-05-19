@@ -17,6 +17,8 @@ type ConnectorOAuthDialogProps = {
   displayName: string;
   /** Optional sub copy override; defaults to the canonical normie line. */
   description?: string;
+  oauthUserCode?: string;
+  oauthVerificationUri?: string;
   waitForCompletion?: boolean;
   onOpenExternal: () => Promise<void>;
   onCancel: () => void;
@@ -36,6 +38,8 @@ export const ConnectorOAuthDialog = ({
   open,
   displayName,
   description,
+  oauthUserCode,
+  oauthVerificationUri,
   waitForCompletion = true,
   onOpenExternal,
   onCancel,
@@ -64,7 +68,9 @@ export const ConnectorOAuthDialog = ({
     }
   };
 
-  const headline = waiting ? `Waiting for ${displayName}` : `Connect ${displayName}`;
+  const headline = waiting
+    ? `Waiting for ${displayName}`
+    : `Connect ${displayName}`;
   const sub = waiting ? waitingSub : introSub;
 
   return (
@@ -88,6 +94,19 @@ export const ConnectorOAuthDialog = ({
             <p className="credential-modal-headline">{headline}</p>
             <p className="credential-modal-sub">{sub}</p>
           </div>
+          {oauthUserCode ? (
+            <div className="credential-modal-oauth-code">
+              <span className="credential-modal-oauth-code-label">
+                Use this code
+              </span>
+              <code>{oauthUserCode}</code>
+              {oauthVerificationUri ? (
+                <span className="credential-modal-oauth-code-uri">
+                  {oauthVerificationUri}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           {error ? <div className="credential-modal-error">{error}</div> : null}
 
           <div className="credential-modal-actions">

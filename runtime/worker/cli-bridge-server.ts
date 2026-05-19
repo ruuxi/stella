@@ -52,6 +52,27 @@ export type CliBridgeHandlers = {
     oauthClientId?: string;
     oauthResource?: string;
     scopes?: string[];
+    preregisteredOAuth?: {
+      clientId: string;
+      authorizationEndpoint: string;
+      tokenEndpoint?: string;
+      responseType?: "code" | "token";
+      resourceUrl?: string;
+      oauthResource?: string | null;
+      callbackUrl?: string;
+      callbackId?: string;
+      callbackMode?: "local" | "external";
+      scopeSeparator?: string;
+      usesPkce?: boolean;
+      authorizationRedirectParam?: string;
+      authorizationParams?: Record<string, string>;
+      tokenRedirectParam?: string;
+      tokenAuth?: "body" | "basic";
+      tokenExchange?: {
+        type: "backend";
+        provider: string;
+      };
+    };
     description?: string;
     placeholder?: string;
   }) => Promise<
@@ -192,6 +213,114 @@ const dispatch = async (
             (scope): scope is string => typeof scope === "string",
           )
         : undefined;
+      const preregisteredOAuth =
+        record.preregisteredOAuth &&
+        typeof record.preregisteredOAuth === "object"
+          ? (record.preregisteredOAuth as Record<string, unknown>)
+          : null;
+      const authorizationParams =
+        preregisteredOAuth?.authorizationParams &&
+        typeof preregisteredOAuth.authorizationParams === "object" &&
+        !Array.isArray(preregisteredOAuth.authorizationParams)
+          ? Object.fromEntries(
+              Object.entries(
+                preregisteredOAuth.authorizationParams as Record<
+                  string,
+                  unknown
+                >,
+              ).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[0] === "string" &&
+                  typeof entry[1] === "string",
+              ),
+            )
+          : null;
+      const normalizedPreregisteredOAuth =
+        preregisteredOAuth &&
+        typeof preregisteredOAuth.clientId === "string" &&
+        preregisteredOAuth.clientId.trim() &&
+        typeof preregisteredOAuth.authorizationEndpoint === "string" &&
+        preregisteredOAuth.authorizationEndpoint.trim()
+          ? {
+              clientId: preregisteredOAuth.clientId.trim(),
+              authorizationEndpoint:
+                preregisteredOAuth.authorizationEndpoint.trim(),
+              ...(typeof preregisteredOAuth.tokenEndpoint === "string" &&
+              preregisteredOAuth.tokenEndpoint.trim()
+                ? { tokenEndpoint: preregisteredOAuth.tokenEndpoint.trim() }
+                : {}),
+              ...(preregisteredOAuth.responseType === "token"
+                ? { responseType: "token" as const }
+                : {}),
+              ...(typeof preregisteredOAuth.resourceUrl === "string" &&
+              preregisteredOAuth.resourceUrl.trim()
+                ? { resourceUrl: preregisteredOAuth.resourceUrl.trim() }
+                : {}),
+              ...(typeof preregisteredOAuth.oauthResource === "string"
+                ? { oauthResource: preregisteredOAuth.oauthResource }
+                : preregisteredOAuth.oauthResource === null
+                  ? { oauthResource: null }
+                  : {}),
+              ...(typeof preregisteredOAuth.callbackUrl === "string" &&
+              preregisteredOAuth.callbackUrl.trim()
+                ? { callbackUrl: preregisteredOAuth.callbackUrl.trim() }
+                : {}),
+              ...(typeof preregisteredOAuth.callbackId === "string" &&
+              preregisteredOAuth.callbackId.trim()
+                ? { callbackId: preregisteredOAuth.callbackId.trim() }
+                : {}),
+              ...(preregisteredOAuth.callbackMode === "external"
+                ? { callbackMode: "external" as const }
+                : preregisteredOAuth.callbackMode === "local"
+                  ? { callbackMode: "local" as const }
+                  : {}),
+              ...(typeof preregisteredOAuth.scopeSeparator === "string"
+                ? { scopeSeparator: preregisteredOAuth.scopeSeparator }
+                : {}),
+              ...(typeof preregisteredOAuth.usesPkce === "boolean"
+                ? { usesPkce: preregisteredOAuth.usesPkce }
+                : {}),
+              ...(typeof preregisteredOAuth.authorizationRedirectParam ===
+              "string"
+                ? {
+                    authorizationRedirectParam:
+                      preregisteredOAuth.authorizationRedirectParam,
+                  }
+                : {}),
+              ...(authorizationParams && Object.keys(authorizationParams).length
+                ? {
+                    authorizationParams,
+                  }
+                : {}),
+              ...(typeof preregisteredOAuth.tokenRedirectParam === "string"
+                ? { tokenRedirectParam: preregisteredOAuth.tokenRedirectParam }
+                : {}),
+              ...(preregisteredOAuth.tokenAuth === "basic"
+                ? { tokenAuth: "basic" as const }
+                : preregisteredOAuth.tokenAuth === "body"
+                  ? { tokenAuth: "body" as const }
+                  : {}),
+              ...(preregisteredOAuth.tokenExchange &&
+              typeof preregisteredOAuth.tokenExchange === "object" &&
+              (preregisteredOAuth.tokenExchange as Record<string, unknown>)
+                .type === "backend" &&
+              typeof (
+                preregisteredOAuth.tokenExchange as Record<string, unknown>
+              ).provider === "string"
+                ? {
+                    tokenExchange: {
+                      type: "backend" as const,
+                      provider: (
+                        preregisteredOAuth.tokenExchange as Record<
+                          string,
+                          string
+                        >
+                      ).provider,
+                    },
+                  }
+                : {}),
+            }
+          : undefined;
       if (authType === "oauth" && !resourceUrl) {
         throw new Error(
           "connector.requestCredential: resourceUrl is required for authType=oauth",
@@ -209,6 +338,7 @@ const dispatch = async (
         oauthClientId,
         oauthResource,
         scopes,
+        preregisteredOAuth: normalizedPreregisteredOAuth,
         description,
         placeholder,
       });

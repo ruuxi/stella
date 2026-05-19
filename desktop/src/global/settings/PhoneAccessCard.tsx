@@ -30,7 +30,7 @@ export function PhoneAccessConnectCard() {
     removingMobileDeviceId,
     createPairing,
     removePhone,
-  } = usePhoneAccessController({ qrCodeWidth: 200 });
+  } = usePhoneAccessController({ qrCodeWidth: 140 });
   const [error, setError] = useState<string | null>(null);
   const visibleError = error ?? deviceLoadError;
 

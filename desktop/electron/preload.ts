@@ -576,7 +576,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
         error?: string;
       }>,
     getSoundEffectsEnabled: () =>
-      ipcRenderer.invoke("dictation:getSoundEffectsEnabled") as Promise<boolean>,
+      ipcRenderer.invoke(
+        "dictation:getSoundEffectsEnabled",
+      ) as Promise<boolean>,
     setSoundEffectsEnabled: (enabled: boolean) =>
       ipcRenderer.invoke(
         "dictation:setSoundEffectsEnabled",
@@ -993,10 +995,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getReadAloudEnabled: () =>
       ipcRenderer.invoke(IPC_PREFERENCES_GET_READ_ALOUD) as Promise<boolean>,
     setReadAloudEnabled: (enabled: boolean) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SET_READ_ALOUD,
-        enabled,
-      ) as Promise<{ enabled: boolean }>,
+      ipcRenderer.invoke(IPC_PREFERENCES_SET_READ_ALOUD, enabled) as Promise<{
+        enabled: boolean;
+      }>,
     setGlobalShortcutsSuspended: (suspended: boolean) =>
       ipcRenderer.invoke(
         IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
@@ -1159,6 +1160,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       completionMode?: "approve" | "wait";
       description?: string;
       placeholder?: string;
+      oauthUserCode?: string;
+      oauthVerificationUri?: string;
     }>("connector-credential:request"),
     onConnectorCredentialComplete: onIpcWithEvent<{
       requestId: string;
@@ -1579,10 +1582,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   localChat: {
     getOrCreateDefaultConversationId: () =>
       ipcRenderer.invoke("localChat:getOrCreateDefaultConversationId"),
-    listEvents: (payload: {
-      conversationId: string;
-      maxItems?: number;
-    }) => ipcRenderer.invoke("localChat:listEvents", payload),
+    listEvents: (payload: { conversationId: string; maxItems?: number }) =>
+      ipcRenderer.invoke("localChat:listEvents", payload),
     listMessages: (payload: {
       conversationId: string;
       maxVisibleMessages?: number;

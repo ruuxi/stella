@@ -23,6 +23,8 @@ type PendingConnectorCredentialRequest = {
   completionMode?: "approve" | "wait";
   description?: string;
   placeholder?: string;
+  oauthUserCode?: string;
+  oauthVerificationUri?: string;
 };
 
 export const ConnectorCredentialRequestLayer = () => {
@@ -49,17 +51,19 @@ export const ConnectorCredentialRequestLayer = () => {
     if (!systemApi?.onConnectorCredentialRequest) {
       return;
     }
-    const unsubscribe = systemApi.onConnectorCredentialRequest((_event, data) => {
-      setQueue((current) => {
-        // Same requestId arriving twice would be a main-process bug, but
-        // dedupe defensively rather than render two overlapping dialogs
-        // when state updates batch oddly.
-        if (current.some((entry) => entry.requestId === data.requestId)) {
-          return current;
-        }
-        return [...current, data];
-      });
-    });
+    const unsubscribe = systemApi.onConnectorCredentialRequest(
+      (_event, data) => {
+        setQueue((current) => {
+          // Same requestId arriving twice would be a main-process bug, but
+          // dedupe defensively rather than render two overlapping dialogs
+          // when state updates batch oddly.
+          if (current.some((entry) => entry.requestId === data.requestId)) {
+            return current;
+          }
+          return [...current, data];
+        });
+      },
+    );
     return () => unsubscribe();
   }, [apiHandle]);
 
@@ -95,7 +99,9 @@ export const ConnectorCredentialRequestLayer = () => {
       // Service kept the bridge entry alive (recoverable error). Let
       // CredentialModal surface the error and stay open so the user can
       // retry with the same `requestId`.
-      throw new Error(result.error ?? "Could not save the connector credential.");
+      throw new Error(
+        result.error ?? "Could not save the connector credential.",
+      );
     }
     dropHead(pending.requestId);
   };
@@ -136,6 +142,8 @@ export const ConnectorCredentialRequestLayer = () => {
         open={true}
         displayName={pending.displayName}
         description={pending.description}
+        oauthUserCode={pending.oauthUserCode}
+        oauthVerificationUri={pending.oauthVerificationUri}
         waitForCompletion={pending.completionMode !== "approve"}
         onOpenExternal={handleOpenOAuth}
         onCancel={handleCancel}

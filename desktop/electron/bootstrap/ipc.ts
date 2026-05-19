@@ -376,10 +376,12 @@ export const registerBootstrapIpcHandlers = (
 
   registerNativeIntegrationHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
-    requestConnectorCredential: (payload) =>
-      services.connectorCredentialService.requestCredential(payload),
     requestPreregisteredOAuth: (payload) =>
       services.connectorCredentialService.requestPreregisteredOAuth(payload),
+    requestDeviceOAuth: (payload) =>
+      services.connectorCredentialService.requestDeviceOAuth(payload),
+    getConvexAuthToken: () => services.authService.getConvexAuthToken(),
+    getConvexSiteUrl: () => services.authService.getConvexSiteUrl(),
     disconnectGoogleWorkspace: async () => {
       const runner = lifecycle.getRunner();
       if (!runner) return { ok: false };

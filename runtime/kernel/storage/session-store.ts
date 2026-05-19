@@ -1475,25 +1475,27 @@ export class SessionStore {
   /**
    * Walk fetched rows forward, group them into turns (boundary =
    * `user_message`), and attach every tool/`agent-completed` event in
-   * a turn to its turn anchor:
+   * a turn to the assistant message that most-recently preceded it:
    *
-   *   - **first assistant** of the turn when one exists — preserves the
-   *     prior `segmentToolEventsByAssistant` behavior so inline image,
-   *     schedule receipt, office preview, and source-diff artifacts
-   *     keep rendering against the assistant row even when the
-   *     orchestrator calls the tool BEFORE its reply text (common for
-   *     `image_gen` / `html` / `Schedule`);
+   *   - **most-recent preceding assistant** of the turn — orchestrator
+   *     runs that emit a preamble → tools → post-tool answer render
+   *     linearly with tool-derived artifacts on the preamble bubble
+   *     (rather than collapsing every assistant in the turn into one
+   *     row that owns every tool).
    *
-   *   - **user_message** of the turn when no assistant fires — fixes the
-   *     prior port's silent drop of tools in turns where the agent's
-   *     first action is `askQuestion`. The renderer's standalone-
-   *     askQuestion bubble and trailing-image artifact paths already
-   *     read from `user_message.toolEvents`, so they surface correctly.
+   *   - **first assistant** of the turn for tools that fired BEFORE
+   *     any assistant text (common for `image_gen` / `html` /
+   *     `Schedule` called eagerly) — those tools defer until the first
+   *     assistant arrives and attach to it, so inline image / schedule
+   *     receipt / office preview / source-diff artifacts still surface
+   *     on the assistant row.
    *
-   * Secondary assistants in the same turn (agent terminal notices,
-   * follow-up replies) come back with `toolEvents: []` — the row
-   * pipeline still finds them in `messages` for streaming-text overlay
-   * purposes, they just don't own the turn's artifacts.
+   *   - **user_message** of the turn when no assistant fires — fixes
+   *     the prior port's silent drop of tools in turns where the
+   *     agent's first action is `askQuestion`. The renderer's
+   *     standalone-askQuestion bubble and trailing-image artifact
+   *     paths already read from `user_message.toolEvents`, so they
+   *     surface correctly.
    *
    * `visibleMessageCount` is the count of user/assistant rows whose
    * payload doesn't satisfy `isUiHiddenChatMessagePayload`. The chat
@@ -1501,32 +1503,42 @@ export class SessionStore {
    * than raw `messages.length` so UI-hidden system reminders or
    * workspace-creation requests in the window don't make pagination
    * state latch against the wrong threshold.
+   *
+   * Mirror this in lockstep with `groupEventsIntoMessages` on the
+   * renderer so cloud-mode and local-mode produce identical shapes.
    */
   private assembleMessageWindow(
     rows: LocalChatEventRecord[],
   ): LocalChatMessageWindow {
     const messages: LocalChatMessageRecord[] = [];
     let turnUserMessage: LocalChatMessageRecord | null = null;
-    let firstAssistantInTurn: LocalChatMessageRecord | null = null;
-    let toolsInTurn: LocalChatEventRecord[] = [];
+    let currentAssistant: LocalChatMessageRecord | null = null;
+    let pendingPreAssistantTools: LocalChatEventRecord[] = [];
     let visibleMessageCount = 0;
 
-    const commitTurn = () => {
-      const anchor = firstAssistantInTurn ?? turnUserMessage;
-      if (anchor && toolsInTurn.length > 0) {
-        anchor.toolEvents = toolsInTurn;
+    /**
+     * Flush tools that arrived in the current turn without ever seeing
+     * an assistant message — fall back to the user_message anchor so
+     * inline artifacts on `askQuestion`-only or fire-and-forget turns
+     * still render. Mirrors `groupEventsIntoMessages` on the renderer.
+     */
+    const finalizePreAssistantTools = () => {
+      if (pendingPreAssistantTools.length > 0 && turnUserMessage) {
+        turnUserMessage.toolEvents = [
+          ...turnUserMessage.toolEvents,
+          ...pendingPreAssistantTools,
+        ];
       }
-      turnUserMessage = null;
-      firstAssistantInTurn = null;
-      toolsInTurn = [];
+      pendingPreAssistantTools = [];
     };
 
     for (const row of rows) {
       if (row.type === "user_message") {
-        commitTurn();
+        finalizePreAssistantTools();
         const message: LocalChatMessageRecord = { ...row, toolEvents: [] };
         messages.push(message);
         turnUserMessage = message;
+        currentAssistant = null;
         if (!isUiHiddenChatMessagePayload(row.payload ?? null)) {
           visibleMessageCount += 1;
         }
@@ -1535,18 +1547,37 @@ export class SessionStore {
       if (row.type === "assistant_message") {
         const message: LocalChatMessageRecord = { ...row, toolEvents: [] };
         messages.push(message);
-        if (firstAssistantInTurn === null) {
-          firstAssistantInTurn = message;
+        // Tools that fired before any assistant in this turn attach to
+        // the FIRST assistant (preserves the prior inline-artifact
+        // behavior for tools called before any reply text). Tools that
+        // fired between two assistants attach to whichever was most
+        // recently seen — so an orchestrator run that does
+        // preamble → tools → post-tool answer renders linearly with
+        // tool-derived artifacts on the preamble bubble.
+        if (pendingPreAssistantTools.length > 0) {
+          message.toolEvents = [
+            ...message.toolEvents,
+            ...pendingPreAssistantTools,
+          ];
+          pendingPreAssistantTools = [];
         }
+        currentAssistant = message;
         if (!isUiHiddenChatMessagePayload(row.payload ?? null)) {
           visibleMessageCount += 1;
         }
         continue;
       }
-      toolsInTurn.push(row);
+      if (currentAssistant) {
+        currentAssistant.toolEvents = [
+          ...currentAssistant.toolEvents,
+          row,
+        ];
+      } else {
+        pendingPreAssistantTools.push(row);
+      }
     }
 
-    commitTurn();
+    finalizePreAssistantTools();
 
     return { messages, visibleMessageCount };
   }
