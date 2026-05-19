@@ -12,6 +12,7 @@ import {
   hasNativeOAuthProviderClientIdOverride,
   hasNativeOAuthProviderTemplate,
   isNativeOAuthProviderConfigReady,
+  type NativeOAuthProviderConfig,
   type NativeOAuthProviderConfigOptions,
 } from "./native-oauth-provider-config.js";
 import { OAUTH_PROVIDER_CATALOG } from "./oauth-provider-catalog.js";
@@ -37,7 +38,9 @@ export type NativeConnectorCatalogEntry = {
   toolPrefix?: string;
   description: string;
   sourceUrl?: string;
+  iconUrl?: string;
   connectable: boolean;
+  oauthConfig?: NativeOAuthProviderConfig;
   oauthSetupGroup?: {
     id: string;
     name: string;
@@ -51,6 +54,8 @@ export type NativeConnectorCatalogAction = {
   description?: string;
   inputSchema?: Record<string, unknown>;
 };
+
+export type NativeConnectorCatalogOverride = readonly NativeConnectorCatalogEntry[];
 
 type NativeConnectorStateEntry = {
   enabled: boolean;
@@ -124,7 +129,7 @@ const API_KEY_ONLY_INTEGRATION_IDS = new Set([
 const isApiKeyOnlyIntegration = (id: string) =>
   API_KEY_ONLY_INTEGRATION_IDS.has(id);
 
-export const NATIVE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
+const GOOGLE_WORKSPACE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
   {
     id: "gmail",
     name: "Gmail",
@@ -175,7 +180,10 @@ export const NATIVE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
     description:
       "Search Drive, create folders, download files, and rename files.",
   },
-  ...OAUTH_PROVIDER_CATALOG.filter(
+];
+
+const FALLBACK_OAUTH_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] =
+  OAUTH_PROVIDER_CATALOG.filter(
     (entry) =>
       !isExistingGoogleIntegration(entry.id) &&
       !isBackendOwnedCommunicationIntegration(entry.id) &&
@@ -191,8 +199,22 @@ export const NATIVE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
     description: entry.description,
     sourceUrl: entry.sourceUrl,
     connectable: false,
-  })),
+  }));
+
+export const NATIVE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
+  ...GOOGLE_WORKSPACE_CONNECTOR_CATALOG,
+  ...FALLBACK_OAUTH_CONNECTOR_CATALOG,
 ];
+
+export const buildNativeConnectorCatalog = (
+  serverCatalog?: NativeConnectorCatalogOverride,
+): NativeConnectorCatalogEntry[] => {
+  if (serverCatalog === undefined) return NATIVE_CONNECTOR_CATALOG;
+  const byId = new Map<string, NativeConnectorCatalogEntry>();
+  for (const entry of GOOGLE_WORKSPACE_CONNECTOR_CATALOG) byId.set(entry.id, entry);
+  for (const entry of serverCatalog) byId.set(entry.id, entry);
+  return Array.from(byId.values());
+};
 
 const statePath = (stellaRoot: string) =>
   path.join(getConnectorStateRoot(stellaRoot), STATE_FILE);
@@ -223,8 +245,14 @@ const writeState = async (
   await fs.writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
 };
 
-export const getNativeConnectorCatalogEntry = (id: string) =>
-  NATIVE_CONNECTOR_CATALOG.find((entry) => entry.id === id);
+export const getNativeConnectorCatalogEntry = (
+  id: string,
+  catalog: NativeConnectorCatalogOverride = NATIVE_CONNECTOR_CATALOG,
+) => catalog.find((entry) => entry.id === id);
+
+export const getNativeConnectorOAuthConfig = (
+  entry: NativeConnectorCatalogEntry,
+) => entry.oauthConfig ?? getNativeOAuthProviderConfig(entry.id);
 
 const getOAuthCatalogProvider = (id: string) =>
   OAUTH_PROVIDER_CATALOG.find((entry) => entry.id === id);
@@ -303,6 +331,7 @@ export const getNativeConnectorCatalogActions = (
   entry: NativeConnectorCatalogEntry,
 ): NativeConnectorCatalogAction[] => {
   if (entry.provider === "oauth-catalog") {
+    if (entry.oauthConfig) return [];
     return (getOAuthCatalogProvider(entry.id)?.tools ?? []).map((tool) => ({
       name: normalizeOAuthCatalogToolName(tool),
       ...(tool.title ? { title: tool.title } : {}),
@@ -331,7 +360,7 @@ export const getNativeConnectorTools = (
   entry: NativeConnectorCatalogEntry,
 ): ConnectorToolInfo[] => {
   if (entry.provider === "oauth-catalog") {
-    const config = getNativeOAuthProviderConfig(entry.id);
+    const config = getNativeConnectorOAuthConfig(entry);
     if (!config?.resourceUrl) return [];
     const apiRequest: ConnectorToolInfo = {
       name: nativeOAuthApiRequestToolName(entry.id),
@@ -429,7 +458,7 @@ const getNativeConnectorOAuthSetup = (
       oauthSetupMessage: "Ready to connect.",
     };
   }
-  const config = getNativeOAuthProviderConfig(entry.id);
+  const config = getNativeConnectorOAuthConfig(entry);
   const setupGroup = getNativeOAuthProviderSetupGroup(entry.id);
   const hasProviderTemplate = hasNativeOAuthProviderTemplate(entry.id);
   if (!config) {
@@ -505,9 +534,10 @@ const getNativeConnectorOAuthSetup = (
 export const listNativeConnectors = async (
   stellaRoot: string,
   options: NativeOAuthProviderConfigOptions = {},
+  catalogOverride?: NativeConnectorCatalogOverride,
 ) => {
   const state = await readState(stellaRoot);
-  return NATIVE_CONNECTOR_CATALOG.map((entry) => {
+  return buildNativeConnectorCatalog(catalogOverride).map((entry) => {
     const stored = state.integrations[entry.id];
     const setup = getNativeConnectorOAuthSetup(entry, options);
     return {
@@ -632,12 +662,14 @@ export const enableNativeConnector = async (
   id: string,
   source: "store" | "cli" = "cli",
   options: NativeOAuthProviderConfigOptions = {},
+  catalogOverride?: NativeConnectorCatalogOverride,
 ) => {
-  const entry = getNativeConnectorCatalogEntry(id);
+  const catalog = buildNativeConnectorCatalog(catalogOverride);
+  const entry = getNativeConnectorCatalogEntry(id, catalog);
   if (!entry) throw new Error(`Unknown native integration: ${id}`);
   const setup = getNativeConnectorOAuthSetup(entry, options);
   if (!setup.connectable) {
-    const config = getNativeOAuthProviderConfig(entry.id);
+    const config = getNativeConnectorOAuthConfig(entry);
     if (config?.tokenExchange?.type === "backend") {
       const tokenExchangeProvider = (config.tokenExchange.provider ?? entry.id)
         .trim()
@@ -698,8 +730,10 @@ export const disableNativeConnector = async (
   stellaRoot: string,
   id: string,
   options: NativeOAuthProviderConfigOptions = {},
+  catalogOverride?: NativeConnectorCatalogOverride,
 ) => {
-  const entry = getNativeConnectorCatalogEntry(id);
+  const catalog = buildNativeConnectorCatalog(catalogOverride);
+  const entry = getNativeConnectorCatalogEntry(id, catalog);
   if (!entry) throw new Error(`Unknown native integration: ${id}`);
   const state = await readState(stellaRoot);
   const now = Date.now();
