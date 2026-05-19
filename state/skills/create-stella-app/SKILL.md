@@ -121,4 +121,5 @@ theme-adaptive overlays
 
 ## Backlinks
 
+- [stella-design](../stella-design/SKILL.md)
 - [stella-desktop](../stella-desktop/SKILL.md)
