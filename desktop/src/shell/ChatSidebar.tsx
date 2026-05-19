@@ -36,7 +36,6 @@ import { DropOverlay } from "@/app/chat/DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
-import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import { useCapturedChatContext } from "./use-captured-chat-context";
@@ -44,7 +43,6 @@ import {
   updateComposerTextareaExpansion,
   useAnimatedComposerShell,
 } from "@/shared/hooks/use-animated-composer-shell";
-import { smoothScrollTo } from "@/shared/lib/smooth-scroll";
 import "./chat-sidebar.css";
 
 // Legend List sums numeric paddings into its content length; passing
@@ -55,9 +53,6 @@ const SIDEBAR_CONTENT_STYLE = {
   paddingTop: 8,
   paddingBottom: 4,
 } as const;
-
-const SENT_MESSAGE_SCROLL_NUDGE_MS = 360;
-const SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS = 80;
 
 interface ChatSidebarOpenOptions {
   /** When provided, attaches/replaces the current chat context before opening. */
@@ -75,13 +70,10 @@ interface ChatPanelTabProps {
   messages: MessageRecord[];
   activities: EventRecord[];
   latestMessageTimestampMs: number | null;
-  streamingText: string;
-  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
-  optimisticUserMessageIds: string[];
   liveTasks?: TaskItem[];
   hasOlderMessages: boolean;
   isLoadingOlder: boolean;
@@ -101,13 +93,10 @@ export function ChatPanelTab(
       messages,
       activities,
       latestMessageTimestampMs,
-      streamingText,
-      streamingResponseTarget,
       isStreaming,
       runtimeStatusText,
       pendingUserMessageId,
       queuedUserMessages,
-      optimisticUserMessageIds,
       liveTasks,
       hasOlderMessages,
       isLoadingOlder,
@@ -132,6 +121,7 @@ export function ChatPanelTab(
       hasOlderEvents: hasOlderMessages,
       isLoadingOlder,
       onLoadOlder,
+      surface: "compact",
     });
 
     const sidebarScrollApi = useMemo<ChatColumnScroll>(
@@ -244,53 +234,39 @@ export function ChatPanelTab(
       syncOnNextFrame: true,
     });
 
-    const nudgeToCurrentBottomAfterSend = useCallback(() => {
-      const scrollToCurrentBottom = () => {
-        const el = sidebarScroll.listRef.current?.getScrollableNode() as
-          | HTMLElement
-          | null;
-        if (!el) return;
-        smoothScrollTo(
-          el,
-          el.scrollHeight - el.clientHeight,
-          SENT_MESSAGE_SCROLL_NUDGE_MS,
-        );
-      };
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollToCurrentBottom();
-          window.setTimeout(
-            scrollToCurrentBottom,
-            SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS,
-          );
-        });
-      });
-    }, [sidebarScroll.listRef]);
-
     const sendCurrentMessage = useCallback(() => {
       const { canSubmit, trimmedMessage } = deriveComposerState({
         message: inputText,
         chatContext,
       });
       if (!canSubmit) return;
-      const shouldNudgeAfterSend = sidebarScrollApi.getIsNearBottom();
+      // Follow-latch (intent) wins over the physical near-bottom
+      // pixel check: after a short reply the user is visually at the
+      // bottom but ~150px above the absolute content end (off-screen
+      // trailing-region footer). A pure pixel check would skip the
+      // next send's nudge in that window.
+      const shouldNudgeAfterSend = sidebarScroll.getIsFollowing();
       onSend(trimmedMessage, chatContext, selectedText);
       setInputText("");
       setChatContext(null);
       setSelectedText(null);
       setSidebarExpanded(false);
       if (shouldNudgeAfterSend) {
-        nudgeToCurrentBottomAfterSend();
+        // Routes the small post-send bump through the same lerp loop
+        // as streaming auto-follow so the two motions blend rather
+        // than fight via separate concurrent rAF tweens.
+        sidebarScroll.nudgeAfterSend();
+      } else {
+        sidebarScroll.releaseFollow();
       }
     }, [
       inputText,
       chatContext,
-      nudgeToCurrentBottomAfterSend,
       onSend,
       selectedText,
       setChatContext,
       setSelectedText,
-      sidebarScrollApi,
+      sidebarScroll,
     ]);
 
     const handleSubmit = useCallback(
@@ -344,13 +320,10 @@ export function ChatPanelTab(
               variant="sidebar"
               scroll={sidebarScrollApi}
               messages={messages}
-              streamingText={streamingText}
-              streamingResponseTarget={streamingResponseTarget}
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}
               queuedUserMessages={queuedUserMessages}
-              optimisticUserMessageIds={optimisticUserMessageIds}
               liveTasks={liveTasks}
               hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlder}

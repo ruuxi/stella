@@ -29,6 +29,7 @@ type AgentCallbacks = {
   onRunStarted?: (event: RuntimeAgentEventPayload) => void;
   onRunFinished: (event: RuntimeAgentEventPayload) => void;
   onStream: (event: RuntimeAgentEventPayload) => void;
+  onAssistantMessage?: (event: RuntimeAgentEventPayload) => void;
   onAgentReasoning?: (event: RuntimeAgentEventPayload) => void;
   onStatus?: (event: RuntimeAgentEventPayload) => void;
   onToolStart: (event: RuntimeAgentEventPayload) => void;
@@ -45,6 +46,15 @@ export type RuntimeAvailabilitySnapshot = {
 
 const isRunTerminalEvent = (type: string) =>
   type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED;
+
+/**
+ * Worker recorder seqs are small (event count per run). Hidden→visible
+ * mirrors and similar paths use `Date.now()`-scale synthetic seqs. If
+ * those advance `lastSeqByScope`, every subsequent recorder-seq STREAM
+ * chunk in the same run is dropped — post-tool / hidden replies stop
+ * streaming live and pop in only once persisted.
+ */
+const SYNTHETIC_RUN_EVENT_SEQ_FLOOR = 1e10;
 
 const isTaskScopedEvent = (type: string) =>
   type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING ||
@@ -199,11 +209,14 @@ export class RuntimeHostAdapter {
     }
 
     const scopeKey = `${isTaskScopedEvent(event.type) ? "task" : "run"}:${event.rootRunId ?? event.runId}`;
-    const previousSeq = session.lastSeqByScope.get(scopeKey);
-    if (typeof previousSeq === "number" && event.seq <= previousSeq) {
-      return true;
+    const seq = Number.isFinite(event.seq) ? event.seq : 0;
+    if (seq > 0 && seq < SYNTHETIC_RUN_EVENT_SEQ_FLOOR) {
+      const previousSeq = session.lastSeqByScope.get(scopeKey);
+      if (typeof previousSeq === "number" && seq <= previousSeq) {
+        return true;
+      }
+      session.lastSeqByScope.set(scopeKey, seq);
     }
-    session.lastSeqByScope.set(scopeKey, event.seq);
     return false;
   }
 
@@ -245,6 +258,9 @@ export class RuntimeHostAdapter {
         break;
       case AGENT_STREAM_EVENT_TYPES.STREAM:
         session.callbacks.onStream(event);
+        break;
+      case AGENT_STREAM_EVENT_TYPES.ASSISTANT_MESSAGE:
+        session.callbacks.onAssistantMessage?.(event);
         break;
       case AGENT_STREAM_EVENT_TYPES.AGENT_REASONING:
         session.callbacks.onAgentReasoning?.(event);
