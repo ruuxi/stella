@@ -27,7 +27,26 @@ const buildAppSelectionSnippet = (
   if (!selection?.snapshot?.trim()) return "";
 
   const label = selection.label?.trim() || "Selected area";
-  return `<selected-stella-area label="${escapeXmlAttribute(label)}">\n${escapeXmlText(selection.snapshot.trim())}\n</selected-stella-area>`;
+  const attrs: string[] = [`label="${escapeXmlAttribute(label)}"`];
+  if (selection.source?.filePath) {
+    const loc =
+      typeof selection.source.lineNumber === "number"
+        ? `${selection.source.filePath}:${selection.source.lineNumber}`
+        : selection.source.filePath;
+    attrs.push(`source="${escapeXmlAttribute(loc)}"`);
+  }
+  if (selection.source?.componentName) {
+    attrs.push(`component="${escapeXmlAttribute(selection.source.componentName)}"`);
+  }
+
+  const bodyParts: string[] = [escapeXmlText(selection.snapshot.trim())];
+  if (selection.stack?.trim()) {
+    bodyParts.push(
+      `<component-stack>\n${escapeXmlText(selection.stack.trim())}\n</component-stack>`,
+    );
+  }
+
+  return `<selected-stella-area ${attrs.join(" ")}>\n${bodyParts.join("\n")}\n</selected-stella-area>`;
 };
 
 const escapeXmlAttribute = (value: string) =>

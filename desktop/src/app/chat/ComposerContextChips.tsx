@@ -142,11 +142,17 @@ export function AppSelectionChip({
   textClassName,
 }: AppSelectionChipProps) {
   const label = appSelection.label || "Selected area";
+  const source = appSelection.source;
+  const sourceSuffix = source?.filePath
+    ? `\n${source.componentName ? `${source.componentName} — ` : ""}${source.filePath}${
+        typeof source.lineNumber === "number" ? `:${source.lineNumber}` : ""
+      }`
+    : "";
   return (
     <button
       type="button"
       className={cn(className)}
-      title={`${label} — click to remove selected area`}
+      title={`${label}${sourceSuffix}\n\nClick to remove selected area`}
       onClick={(event) => {
         clearComposerAppSelectionContext(setChatContext);
         event.currentTarget.blur();
