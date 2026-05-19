@@ -24,7 +24,7 @@ export function PhoneAccessBridge() {
   );
   const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const lastHandledIntentIdRef = useRef<string | null>(null);
+  const lastHandledIntentKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!hasConnectedAccount) {
@@ -110,7 +110,8 @@ export function PhoneAccessBridge() {
     ) {
       return;
     }
-    if (lastHandledIntentIdRef.current === intent.intentId) {
+    const intentKey = `${intent.intentId}:${intent.createdAt}`;
+    if (lastHandledIntentKeyRef.current === intentKey) {
       return;
     }
 
@@ -120,7 +121,7 @@ export function PhoneAccessBridge() {
         await window.electronAPI!.system.startPhoneAccessSession();
         await acknowledgeIntent({ intentId: intent.intentId });
         if (!cancelled) {
-          lastHandledIntentIdRef.current = intent.intentId;
+          lastHandledIntentKeyRef.current = intentKey;
         }
       } catch (error) {
         console.warn("[phone-access] Failed to activate session:", error);
