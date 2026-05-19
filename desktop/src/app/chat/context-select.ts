@@ -36,6 +36,8 @@ export type SelectionTarget = {
   bounds: ComposerAreaSelection["bounds"];
   label: string;
   snapshot: string;
+  source?: ComposerAreaSelection["source"];
+  stack?: ComposerAreaSelection["stack"];
 };
 
 const isVisible = (element: Element): boolean => {

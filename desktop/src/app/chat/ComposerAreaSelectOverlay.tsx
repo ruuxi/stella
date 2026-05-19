@@ -6,6 +6,10 @@ import {
   resolveComposerAreaSelection,
   type SelectionTarget,
 } from "./context-select";
+import {
+  primeReactGrabSource,
+  resolveReactGrabSource,
+} from "./react-grab-source";
 import "./composer-area-select.css";
 
 type ComposerAreaSelectOverlayProps = {
@@ -35,6 +39,8 @@ export function ComposerAreaSelectOverlay({
       return;
     }
 
+    primeReactGrabSource();
+
     const handlePointerMove = (event: PointerEvent) => {
       updateTarget(event);
     };
@@ -45,6 +51,11 @@ export function ComposerAreaSelectOverlay({
       const selected =
         targetRef.current ?? resolveComposerAreaSelection(event.clientX, event.clientY);
       if (selected) {
+        const baseSelection = {
+          label: selected.label,
+          snapshot: selected.snapshot,
+          bounds: selected.bounds,
+        };
         setChatContext((prev) => ({
           ...(prev ?? {
             window: null,
@@ -52,12 +63,45 @@ export function ComposerAreaSelectOverlay({
             selectedText: null,
             regionScreenshots: [],
           }),
-          appSelection: {
-            label: selected.label,
-            snapshot: selected.snapshot,
-            bounds: selected.bounds,
-          },
+          appSelection: baseSelection,
         }));
+
+        void resolveReactGrabSource(selected.element)
+          .then((resolved) => {
+            if (!resolved) return;
+            setChatContext((prev) => {
+              if (!prev?.appSelection) return prev;
+              if (
+                prev.appSelection.label !== baseSelection.label ||
+                prev.appSelection.snapshot !== baseSelection.snapshot
+              ) {
+                return prev;
+              }
+              return {
+                ...prev,
+                appSelection: {
+                  ...prev.appSelection,
+                  ...(resolved.filePath || resolved.lineNumber || resolved.componentName
+                    ? {
+                        source: {
+                          ...(resolved.filePath ? { filePath: resolved.filePath } : {}),
+                          ...(typeof resolved.lineNumber === "number"
+                            ? { lineNumber: resolved.lineNumber }
+                            : {}),
+                          ...(resolved.componentName
+                            ? { componentName: resolved.componentName }
+                            : {}),
+                        },
+                      }
+                    : {}),
+                  ...(resolved.stack ? { stack: resolved.stack } : {}),
+                },
+              };
+            });
+          })
+          .catch(() => {
+            // Source resolution is best-effort; fall back to aria/text snapshot.
+          });
       }
       onCancel();
     };

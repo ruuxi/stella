@@ -30,6 +30,12 @@ export type ChatContext = {
     label: string;
     snapshot: string;
     bounds: WindowBounds;
+    source?: {
+      filePath?: string;
+      lineNumber?: number;
+      componentName?: string;
+    };
+    stack?: string;
   } | null;
   windowContextEnabled?: boolean;
   browserUrl?: string | null;
