@@ -325,26 +325,48 @@ const fileChangeHtmlOutputPayload = (
   };
 };
 
-const inlineImageGenSubmissionPayload = (
+const normalizeNumImages = (value: unknown): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const rounded = Math.floor(value);
+  return rounded >= 1 ? Math.min(rounded, 4) : null;
+};
+
+const orchestratorImageGenRecord = (
+  event: EventRecord,
+): Record<string, unknown> | null => {
+  if (!isToolResult(event)) return null;
+  if (event.payload.toolName !== "image_gen" || event.payload.error) return null;
+  if (
+    (event.payload as { agentType?: unknown }).agentType !== "orchestrator"
+  ) {
+    return null;
+  }
+  const candidate =
+    event.payload.details && typeof event.payload.details === "object"
+      ? event.payload.details
+      : event.payload.result;
+  if (!candidate || typeof candidate !== "object") return null;
+  return candidate as Record<string, unknown>;
+};
+
+const isOrchestratorInlineImageGenResult = (event: EventRecord): boolean =>
+  orchestratorImageGenRecord(event) !== null;
+
+/**
+ * One payload per orchestrator `image_gen` call in the turn. Each payload
+ * may represent multiple images; the inline card group expands it into
+ * one placeholder/card per image.
+ */
+export const deriveTurnInlineImagePayloads = (
   toolEvents: EventRecord[],
-): DisplayPayload | null => {
-  for (let index = toolEvents.length - 1; index >= 0; index -= 1) {
-    const event = toolEvents[index]!;
-    if (!isToolResult(event)) continue;
-    if (event.payload.toolName !== "image_gen" || event.payload.error) continue;
-    if (
-      (event.payload as { agentType?: unknown }).agentType !== "orchestrator"
-    ) {
-      continue;
-    }
-    const candidate =
-      event.payload.details && typeof event.payload.details === "object"
-        ? event.payload.details
-        : event.payload.result;
-    if (!candidate || typeof candidate !== "object") continue;
-    const record = candidate as Record<string, unknown>;
+): DisplayPayload[] => {
+  const payloads: DisplayPayload[] = [];
+
+  for (const event of toolEvents) {
+    const record = orchestratorImageGenRecord(event);
+    if (!record) continue;
+
     const jobId = asNonEmptyString(record.jobId);
-    if (!jobId) continue;
     const rawPaths = record.filePaths;
     const filePaths = Array.isArray(rawPaths)
       ? rawPaths.filter(
@@ -352,10 +374,16 @@ const inlineImageGenSubmissionPayload = (
             typeof filePath === "string" && filePath.trim().length > 0,
         )
       : [];
-    return {
+    const numImages =
+      normalizeNumImages(record.numImages) ??
+      normalizeNumImages(record.num_images);
+
+    if (!jobId && filePaths.length === 0) continue;
+
+    payloads.push({
       kind: "media",
       asset: { kind: "image", filePaths },
-      jobId,
+      ...(jobId ? { jobId } : {}),
       ...(typeof record.capability === "string"
         ? { capability: record.capability }
         : {}),
@@ -366,11 +394,13 @@ const inlineImageGenSubmissionPayload = (
       ...(requestedSizeFromRecord(record.requestedSize)
         ? { requestedSize: requestedSizeFromRecord(record.requestedSize)! }
         : {}),
+      ...(numImages ? { numImages } : {}),
       presentation: "inline-image",
       createdAt: event.timestamp,
-    };
+    });
   }
-  return null;
+
+  return payloads;
 };
 
 export const buildPayloadFromBarePath = (
@@ -616,9 +646,6 @@ export const deriveTurnResource = (
   // session ids / prompts / capability context.
   const payloadByPath: PayloadByPath = new Map();
   const imagePayloads = imageGenPayloadsByPath(toolEvents);
-  const inlineImageSubmissionPayload =
-    inlineImageGenSubmissionPayload(toolEvents);
-  if (inlineImageSubmissionPayload) return inlineImageSubmissionPayload;
 
   for (const [filePath, payload] of imagePayloads) {
     if (!payloadByPath.has(filePath)) {
@@ -644,6 +671,7 @@ export const deriveTurnResource = (
   const editedPaths: string[] = [];
   const editedSeen = new Set<string>();
   for (const event of toolEvents) {
+    if (isOrchestratorInlineImageGenResult(event)) continue;
     const records = fileChangesForResult(event);
     for (const record of records) {
       const resolved = resolveFileChange(record, event.timestamp);
@@ -677,6 +705,7 @@ export const deriveTurnResource = (
   const producedPaths: string[] = [];
   const producedSeen = new Set<string>();
   for (const event of toolEvents) {
+    if (isOrchestratorInlineImageGenResult(event)) continue;
     const records = producedFilesForResult(event);
     for (const record of records) {
       const resolved = resolveFileChange(record, event.timestamp);

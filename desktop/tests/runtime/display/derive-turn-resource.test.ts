@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPayloadFromBarePath,
   collectTurnSourceDiffPayloads,
+  deriveTurnInlineImagePayloads,
   deriveTurnResource,
   extractMarkdownLinkPaths,
 } from "../../../src/app/chat/lib/derive-turn-resource";
@@ -302,69 +303,31 @@ describe("deriveTurnResource", () => {
     });
   });
 
-  it("marks orchestrator image_gen results for inline image presentation", () => {
-    const result = deriveTurnResource([
-      event({
-        _id: "ig-1",
-        type: "tool_result",
-        timestamp: 100,
-        payload: {
-          toolName: "image_gen",
-          agentType: "orchestrator",
-          result: {
-            jobId: "job-1",
-            prompt: "a product mockup",
-            filePaths: ["/state/media/outputs/job-1_0.png"],
-          },
-          fileChanges: [
-            {
-              path: "/state/media/outputs/job-1_0.png",
-              kind: { type: "add" },
+  it("does not surface orchestrator image_gen via deriveTurnResource", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "ig-1",
+          type: "tool_result",
+          timestamp: 100,
+          payload: {
+            toolName: "image_gen",
+            agentType: "orchestrator",
+            result: {
+              jobId: "job-1",
+              prompt: "a product mockup",
+              filePaths: ["/state/media/outputs/job-1_0.png"],
             },
-          ],
-        },
-      }),
-    ]);
-
-    expect(result).toMatchObject({
-      kind: "media",
-      asset: {
-        kind: "image",
-        filePaths: ["/state/media/outputs/job-1_0.png"],
-      },
-      presentation: "inline-image",
-    });
-  });
-
-  it("creates a pending inline image payload for submitted orchestrator image_gen jobs", () => {
-    const result = deriveTurnResource([
-      event({
-        _id: "ig-1",
-        type: "tool_result",
-        timestamp: 100,
-        payload: {
-          toolName: "image_gen",
-          agentType: "orchestrator",
-          result: "image_gen job job-1 submitted.",
-          details: {
-            jobId: "job-1",
-            capability: "text_to_image",
-            prompt: "a product mockup",
-            status: "submitted",
+            fileChanges: [
+              {
+                path: "/state/media/outputs/job-1_0.png",
+                kind: { type: "add" },
+              },
+            ],
           },
-        },
-      }),
-    ]);
-
-    expect(result).toEqual({
-      kind: "media",
-      asset: { kind: "image", filePaths: [] },
-      jobId: "job-1",
-      capability: "text_to_image",
-      prompt: "a product mockup",
-      presentation: "inline-image",
-      createdAt: 100,
-    });
+        }),
+      ]),
+    ).toBeNull();
   });
 
   it("preserves the full image set for multi-image image_gen turns", () => {
@@ -694,6 +657,156 @@ describe("deriveTurnResource", () => {
         }),
       ]),
     ).toBeNull();
+  });
+});
+
+describe("deriveTurnInlineImagePayloads", () => {
+  it("marks orchestrator image_gen results for inline image presentation", () => {
+    const result = deriveTurnInlineImagePayloads([
+      event({
+        _id: "ig-1",
+        type: "tool_result",
+        timestamp: 100,
+        payload: {
+          toolName: "image_gen",
+          agentType: "orchestrator",
+          result: {
+            jobId: "job-1",
+            prompt: "a product mockup",
+            filePaths: ["/state/media/outputs/job-1_0.png"],
+          },
+        },
+      }),
+    ]);
+
+    expect(result).toEqual([
+      {
+        kind: "media",
+        asset: {
+          kind: "image",
+          filePaths: ["/state/media/outputs/job-1_0.png"],
+        },
+        jobId: "job-1",
+        prompt: "a product mockup",
+        presentation: "inline-image",
+        createdAt: 100,
+      },
+    ]);
+  });
+
+  it("creates a pending inline image payload for submitted orchestrator image_gen jobs", () => {
+    const result = deriveTurnInlineImagePayloads([
+      event({
+        _id: "ig-1",
+        type: "tool_result",
+        timestamp: 100,
+        payload: {
+          toolName: "image_gen",
+          agentType: "orchestrator",
+          result: "image_gen job job-1 submitted.",
+          details: {
+            jobId: "job-1",
+            capability: "text_to_image",
+            prompt: "a product mockup",
+            numImages: 3,
+            status: "submitted",
+          },
+        },
+      }),
+    ]);
+
+    expect(result).toEqual([
+      {
+        kind: "media",
+        asset: { kind: "image", filePaths: [] },
+        jobId: "job-1",
+        capability: "text_to_image",
+        prompt: "a product mockup",
+        numImages: 3,
+        presentation: "inline-image",
+        createdAt: 100,
+      },
+    ]);
+  });
+
+  it("returns one payload per orchestrator image_gen call", () => {
+    const result = deriveTurnInlineImagePayloads([
+      event({
+        _id: "ig-1",
+        type: "tool_result",
+        timestamp: 100,
+        payload: {
+          toolName: "image_gen",
+          agentType: "orchestrator",
+          result: "image_gen job job-1 submitted.",
+          details: {
+            jobId: "job-1",
+            prompt: "first",
+            status: "submitted",
+          },
+        },
+      }),
+      event({
+        _id: "ig-2",
+        type: "tool_result",
+        timestamp: 110,
+        payload: {
+          toolName: "image_gen",
+          agentType: "orchestrator",
+          result: "image_gen job job-2 submitted.",
+          details: {
+            jobId: "job-2",
+            prompt: "second",
+            status: "submitted",
+          },
+        },
+      }),
+    ]);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.jobId).toBe("job-1");
+    expect(result[1]?.jobId).toBe("job-2");
+  });
+
+  it("preserves the full image set for multi-image orchestrator image_gen turns", () => {
+    const result = deriveTurnInlineImagePayloads([
+      event({
+        _id: "ig-1",
+        type: "tool_result",
+        timestamp: 100,
+        payload: {
+          toolName: "image_gen",
+          agentType: "orchestrator",
+          result: {
+            jobId: "job-1",
+            capability: "text_to_image",
+            prompt: "two options",
+            filePaths: [
+              "/state/media/outputs/job-1_0.png",
+              "/state/media/outputs/job-1_1.png",
+            ],
+          },
+        },
+      }),
+    ]);
+
+    expect(result).toEqual([
+      {
+        kind: "media",
+        asset: {
+          kind: "image",
+          filePaths: [
+            "/state/media/outputs/job-1_0.png",
+            "/state/media/outputs/job-1_1.png",
+          ],
+        },
+        jobId: "job-1",
+        capability: "text_to_image",
+        prompt: "two options",
+        presentation: "inline-image",
+        createdAt: 100,
+      },
+    ]);
   });
 });
 

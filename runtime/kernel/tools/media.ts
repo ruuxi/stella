@@ -267,6 +267,9 @@ const createImageGenHandler =
       ...(sizeArg && typeof sizeArg === "object" && input.image_size
         ? { requestedSize: input.image_size }
         : {}),
+      ...(typeof input.num_images === "number"
+        ? { numImages: input.num_images as number }
+        : {}),
       status: "submitted",
     };
     return {

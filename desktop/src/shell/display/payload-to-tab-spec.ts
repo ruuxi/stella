@@ -99,18 +99,28 @@ const idForMediaPayload = (
 const addGeneratedMediaItem = (
   payload: Extract<DisplayPayload, { kind: "media" }>,
 ): ReadonlyArray<GeneratedMediaItem> => {
-  const id = idForMediaPayload(payload);
-  if (!generatedMediaItemIds.has(id)) {
-    generatedMediaItemIds.add(id);
-    generatedMediaItems.push({
-      id,
-      asset: payload.asset,
-      ...(payload.prompt ? { prompt: payload.prompt } : {}),
-      ...(payload.capability ? { capability: payload.capability } : {}),
-      createdAt: payload.createdAt,
-    });
-    refreshGeneratedMediaSnapshot();
+  const payloads =
+    payload.asset.kind === "image" && payload.asset.filePaths.length > 1
+      ? payload.asset.filePaths.map((filePath) => ({
+          ...payload,
+          asset: { kind: "image" as const, filePaths: [filePath] },
+        }))
+      : [payload];
+
+  for (const entry of payloads) {
+    const id = idForMediaPayload(entry);
+    if (!generatedMediaItemIds.has(id)) {
+      generatedMediaItemIds.add(id);
+      generatedMediaItems.push({
+        id,
+        asset: entry.asset,
+        ...(entry.prompt ? { prompt: entry.prompt } : {}),
+        ...(entry.capability ? { capability: entry.capability } : {}),
+        createdAt: entry.createdAt,
+      });
+    }
   }
+  refreshGeneratedMediaSnapshot();
   return generatedMediaSnapshot;
 };
 

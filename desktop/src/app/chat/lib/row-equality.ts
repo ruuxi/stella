@@ -216,6 +216,8 @@ const resourcePayloadEqual = (
     case "media": {
       const bb = b as Extract<DisplayPayload, { kind: "media" }>;
       if ((a.presentation ?? null) !== (bb.presentation ?? null)) return false;
+      if ((a.numImages ?? null) !== (bb.numImages ?? null)) return false;
+      if ((a.imageIndex ?? null) !== (bb.imageIndex ?? null)) return false;
       if (a.asset.kind !== bb.asset.kind) return false;
       if (a.asset.kind === "image" && bb.asset.kind === "image") {
         return a.asset.filePaths.join("|") === bb.asset.filePaths.join("|");
@@ -274,6 +276,7 @@ const assistantRowEqual = (
   (a.officePreviewRef?.sessionId ?? null) ===
     (b.officePreviewRef?.sessionId ?? null) &&
   resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
+  sourceDiffPayloadsEqual(a.inlineImagePayloads, b.inlineImagePayloads) &&
   sourceDiffPayloadsEqual(a.sourceDiffPayloads, b.sourceDiffPayloads) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&

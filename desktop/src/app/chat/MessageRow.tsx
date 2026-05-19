@@ -31,7 +31,7 @@ import {
   EndResourceCard,
   SourceDiffEndResource,
 } from "@/app/chat/EndResourceCard";
-import { InlineGeneratedImageCard } from "@/app/chat/InlineGeneratedImageCard";
+import { InlineGeneratedImageCardGroup } from "@/app/chat/InlineGeneratedImageCard";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
@@ -86,6 +86,8 @@ export type AssistantRowViewModel = {
   responseTarget?: AgentResponseTarget;
   officePreviewRef?: OfficePreviewRef;
   resourcePayload?: DisplayPayload;
+  /** Orchestrator image_gen inline cards — one group per tool call. */
+  inlineImagePayloads?: DisplayPayload[];
   /**
    * Developer-resource source-diff payloads for this turn, in edit
    * order. Populated only when the developer-file-previews setting
@@ -282,6 +284,7 @@ export const AssistantMessageRow = memo(
     const hasText = text.trim().length > 0;
     const hasOfficePreview = Boolean(row.officePreviewRef);
     const hasResource = Boolean(row.resourcePayload);
+    const hasInlineImages = (row.inlineImagePayloads?.length ?? 0) > 0;
     const hasSelfMod = Boolean(row.selfModApplied);
     const hasAskQuestion = Boolean(row.askQuestion);
     const hasCustomSlot = Boolean(row.customSlot);
@@ -293,6 +296,7 @@ export const AssistantMessageRow = memo(
       !hasText &&
       !hasOfficePreview &&
       !hasResource &&
+      !hasInlineImages &&
       !hasSelfMod &&
       !hasAskQuestion &&
       !hasCustomSlot &&
@@ -318,11 +322,17 @@ export const AssistantMessageRow = memo(
           {row.officePreviewRef && (
             <OfficePreviewCard previewRef={row.officePreviewRef} />
           )}
-          {row.resourcePayload?.kind === "media" &&
-            row.resourcePayload.presentation === "inline-image" &&
-            row.resourcePayload.asset.kind === "image" ? (
-            <InlineGeneratedImageCard payload={row.resourcePayload} />
-          ) : row.sourceDiffPayloads && row.sourceDiffPayloads.length > 0 ? (
+          {row.inlineImagePayloads?.map((payload, index) =>
+            payload.kind === "media" &&
+            payload.presentation === "inline-image" &&
+            payload.asset.kind === "image" ? (
+              <InlineGeneratedImageCardGroup
+                key={payload.jobId ?? `inline-image-${index}`}
+                payload={payload}
+              />
+            ) : null,
+          )}
+          {row.sourceDiffPayloads && row.sourceDiffPayloads.length > 0 ? (
             <SourceDiffEndResource
               batchId={row.id}
               payloads={row.sourceDiffPayloads}

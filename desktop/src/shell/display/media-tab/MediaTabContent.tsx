@@ -34,6 +34,7 @@ export const MediaTabContent = ({
     () => incomingItems.filter((item) => !removedIds.has(item.id)),
     [incomingItems, removedIds],
   );
+  const railItems = useMemo(() => [...items].reverse(), [items]);
 
   const [selectedId, setSelectedId] = useState<string | null>(
     items.at(-1)?.id ?? null,
@@ -288,7 +289,7 @@ export const MediaTabContent = ({
           className="media-tab__file-input"
           onChange={handleFileChange}
         />
-        {items.map((item) => (
+        {railItems.map((item) => (
           <MediaTile
             key={item.id}
             item={item}

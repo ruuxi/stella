@@ -33,6 +33,16 @@ type MediaJobLookup = {
   updatedAt: number;
 } | null;
 
+const normalizeNumImages = (value: unknown): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const rounded = Math.floor(value);
+  return rounded >= 1 ? Math.min(rounded, 4) : null;
+};
+
+const numImagesFromJobRequest = (
+  input: Record<string, unknown> | undefined,
+): number | null => normalizeNumImages(input?.num_images);
+
 const mediaPayloadFromJob = async (
   job: Exclude<MediaJobLookup, null>,
 ): Promise<InlineGeneratedImagePayload | null> => {
@@ -57,6 +67,9 @@ const mediaPayloadFromJob = async (
           : {}),
         ...(requestedSizeFromInput(job.request?.input)
           ? { requestedSize: requestedSizeFromInput(job.request?.input)! }
+          : {}),
+        ...(numImagesFromJobRequest(job.request?.input)
+          ? { numImages: numImagesFromJobRequest(job.request?.input)! }
           : {}),
         createdAt: job.completedAt ?? job.updatedAt,
       };
@@ -120,30 +133,71 @@ const previewAspectRatio = (
   );
 };
 
-export const InlineGeneratedImageCard = ({
+const resolveImageCount = (
+  payload: InlineGeneratedImagePayload,
+  materializedPayload: DisplayPayload | null,
+): number => {
+  const materializedPaths =
+    materializedPayload?.kind === "media" &&
+    materializedPayload.asset.kind === "image"
+      ? materializedPayload.asset.filePaths
+      : [];
+  const payloadPaths =
+    payload.asset.kind === "image" ? payload.asset.filePaths : [];
+  return Math.max(
+    materializedPaths.length,
+    payloadPaths.length,
+    payload.numImages ?? 1,
+    1,
+  );
+};
+
+export const InlineGeneratedImageCardGroup = ({
   payload,
 }: {
   payload: InlineGeneratedImagePayload;
 }) => {
   const materializedPayload = useMaterializedMediaPayload(payload.jobId);
-  // Skip the per-card Convex subscription whenever we already have what
-  // it would have given us:
-  //   - `materializedPayload` from a sibling/prior session (cached),
-  //   - or resolved `filePaths` baked into the chat event itself (the
-  //     common case for any historical image card).
-  // This used to open one watcher per inline card on first paint of a
-  // long chat; now subscriptions only stay open for cards whose job is
-  // still pending (no asset paths yet).
+  const imageCount = resolveImageCount(payload, materializedPayload);
+
+  return (
+    <div className="inline-generated-image-cards">
+      {Array.from({ length: imageCount }, (_, index) => (
+        <InlineGeneratedImageCard
+          key={`${payload.jobId ?? payload.createdAt}-${index}`}
+          payload={payload}
+          imageIndex={index}
+          materializeJob={index === 0}
+        />
+      ))}
+    </div>
+  );
+};
+
+export const InlineGeneratedImageCard = ({
+  payload,
+  imageIndex = 0,
+  materializeJob = true,
+}: {
+  payload: InlineGeneratedImagePayload;
+  imageIndex?: number;
+  materializeJob?: boolean;
+}) => {
+  const materializedPayload = useMaterializedMediaPayload(payload.jobId);
   const hasResolvedAssets =
     payload.asset.kind === "image" && payload.asset.filePaths.length > 0;
   const job = useQuery(
     api.media_jobs.getByJobId,
-    payload.jobId && !materializedPayload && !hasResolvedAssets
+    payload.jobId &&
+      materializeJob &&
+      !materializedPayload &&
+      !hasResolvedAssets
       ? { jobId: payload.jobId }
       : "skip",
   ) as MediaJobLookup | undefined;
 
   useEffect(() => {
+    if (!materializeJob) return;
     if (!job || job.status !== "succeeded" || !job.output) return;
     let cancelled = false;
     void (async () => {
@@ -158,19 +212,32 @@ export const InlineGeneratedImageCard = ({
     return () => {
       cancelled = true;
     };
-  }, [job]);
+  }, [job, materializeJob]);
 
-  const effectivePayload = useMemo(
-    () =>
+  const effectivePayload = useMemo(() => {
+    const merged =
       materializedPayload?.kind === "media" &&
       materializedPayload.asset.kind === "image"
         ? ({
             ...materializedPayload,
             presentation: payload.presentation,
+            ...(payload.numImages ? { numImages: payload.numImages } : {}),
           } as const)
-        : payload,
-    [materializedPayload, payload],
-  );
+        : payload;
+
+    if (merged.asset.kind !== "image") return merged;
+
+    const payloadPath =
+      payload.asset.kind === "image"
+        ? payload.asset.filePaths[imageIndex]
+        : undefined;
+    const path = merged.asset.filePaths[imageIndex] ?? payloadPath ?? null;
+    return {
+      ...merged,
+      asset: { kind: "image" as const, filePaths: path ? [path] : [] },
+      imageIndex,
+    };
+  }, [imageIndex, materializedPayload, payload]);
 
   const isImage = effectivePayload.asset.kind === "image";
   const filePaths = isImage ? effectivePayload.asset.filePaths : [];
@@ -233,11 +300,6 @@ export const InlineGeneratedImageCard = ({
           </span>
         )}
       </span>
-      {filePaths.length > 1 && (
-        <span className="inline-generated-image-card__count">
-          {filePaths.length} images
-        </span>
-      )}
     </button>
   );
 };
