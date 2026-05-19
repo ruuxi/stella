@@ -46,6 +46,7 @@ import {
 import { ModelCatalogUpdatedAtProvider } from "@/global/settings/hooks/model-catalog-updated-at";
 import { ProviderConnectedDialog } from "@/global/settings/ProviderConnectedDialog";
 import { SubscriptionUpgradeDialog } from "@/global/billing/SubscriptionUpgradeDialog";
+import { MobileActivityNotificationsBridge } from "@/global/mobile/MobileActivityNotificationsBridge";
 import { useDictationToggleBridge } from "@/shell/root-chrome/use-dictation-toggle-bridge";
 import { useDisplayPayloadRouting } from "@/shell/root-chrome/use-display-payload-routing";
 import { useLastLocationRestore } from "@/shell/root-chrome/use-last-location-restore";
@@ -274,6 +275,8 @@ function RootChrome() {
 
   return (
     <>
+      <MobileActivityNotificationsBridge />
+
       {!isMiniWindow && !isMobileWebView && drawerOpen && (
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
