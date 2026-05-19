@@ -16,6 +16,140 @@
   text-overflow: ellipsis;
 }
 
+/* Model picker submenu — sized to fit the friendly Stella tier names
+   and their upstream subtitles without forcing the parent menu to
+   stretch. */
+[data-component="dropdown-menu-content"].composer-model-submenu {
+  min-width: 240px;
+  max-width: 300px;
+}
+
+.composer-model-submenu__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-model-submenu__sub {
+  margin-left: auto;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+  font-size: 11px;
+  color: var(--text-weak);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.composer-model-submenu__empty {
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--text-weak);
+  text-align: center;
+}
+
+.composer-model-submenu__restricted {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 2px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  color: var(--text-weak);
+}
+
+.composer-model-submenu__upgrade {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-strong);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.composer-model-submenu__upgrade:hover,
+.composer-model-submenu__upgrade:focus-visible {
+  opacity: 0.85;
+  outline: none;
+}
+
+/* Reasoning effort — compact segmented strip instead of a vertical list.
+   Six narrow pills fit on a single row inside the submenu's ~240–300px
+   content area; the active pill paints the standard hover fill so the
+   strip reads with the same visual language as the rest of the menu. */
+.composer-model-submenu__reasoning {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 10px 8px;
+}
+
+.composer-model-submenu__reasoning-label {
+  font-family: var(--font-family-sans, "Manrope", inherit);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weaker, var(--muted-foreground));
+}
+
+.composer-model-submenu__reasoning-segment {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid var(--border-weak);
+}
+
+.composer-model-submenu__reasoning-btn {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--radius-sm, 5px);
+  background: transparent;
+  color: var(--text-weak, var(--muted-foreground));
+  font-family: var(--font-family-sans, "Manrope", inherit);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.composer-model-submenu__reasoning-btn:hover:not(:disabled),
+.composer-model-submenu__reasoning-btn:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong, var(--foreground));
+  outline: none;
+}
+
+.composer-model-submenu__reasoning-btn[data-selected] {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  color: var(--text-strong, var(--foreground));
+  font-weight: 600;
+}
+
+.composer-model-submenu__reasoning-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* Native <input type="file"> is the file picker primitive — keep it in
    the DOM (so the click handler can trigger it) but never visible. */
 .composer-add-menu__file-input {

@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import { ComposerAddButton } from "./ComposerPrimitives";
+import { ComposerModelMenuItem } from "./ComposerModelMenuItem";
 import { getElectronApi } from "@/platform/electron/electron";
 import {
   applyProcessedAttachments,
@@ -161,6 +162,8 @@ export function ComposerAddMenu({
             </span>
             Select area
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <ComposerModelMenuItem />
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={handleToggleReadAloud}>
             <span data-slot="dropdown-menu-item-icon">

@@ -1,15 +1,13 @@
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { router } from "@/router";
 import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
 import {
   ArrowLeft,
-  Cpu,
   LogOut,
   MessageSquare,
   Palette,
-  Settings as SettingsIcon,
 } from "lucide-react";
-import { ModelsPicker } from "@/global/settings/ModelsPicker";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { useT } from "@/shared/i18n";
 import {
@@ -38,8 +36,6 @@ import {
   preloadAuthDialog,
   preloadBillingScreen,
   preloadConnectDialog,
-  preloadModelsPicker,
-  preloadSettingsScreen,
   preloadSidebarRoute,
 } from "@/shared/lib/sidebar-preloads";
 import {
@@ -79,265 +75,44 @@ const FeedbackDialog = lazy(() =>
   })),
 );
 
-interface SidebarActionsBarProps {
+interface ConnectFooterButtonProps {
   onConnect?: () => void;
-  onOpenSettings: () => void;
 }
 
 /**
- * Compact row of icon-only utility buttons rendered just below the
- * account row. Hosts Settings, Models, Theme, and Connect. Used when
- * the sidebar is in its full (non-rail) mode where there's room for
- * the four-button row; rail mode swaps this out for the single-button
- * `SidebarActionsMenu` instead.
+ * Bottom-of-sidebar Connect entry. Renders as a full-row nav item so
+ * it matches Store / Social / Settings rather than living in a
+ * separate icon-only quick-action strip; the post-onboarding hint dot
+ * sits in the same anchor spot used by `AppNavItem`.
  */
-const SidebarActionsBar = ({
-  onConnect,
-  onOpenSettings,
-}: SidebarActionsBarProps) => {
+const ConnectFooterButton = ({ onConnect }: ConnectFooterButtonProps) => {
   const connectHint = usePostOnboardingHint("connect");
-  const handleConnectClick = useCallback(() => {
+  const handleClick = useCallback(() => {
+    preloadConnectDialog();
     if (connectHint.active) connectHint.dismiss();
     onConnect?.();
   }, [connectHint, onConnect]);
   return (
-    <div className="sidebar-actions-bar" role="toolbar" aria-label="Quick actions">
-      <button
-        type="button"
-        className="sidebar-actions-btn"
-        onClick={() => {
-          preloadSettingsScreen();
-          onOpenSettings();
-        }}
-        onFocus={preloadSettingsScreen}
-        onMouseEnter={preloadSettingsScreen}
-        aria-label="Settings"
-        title="Settings"
-      >
-        <SettingsIcon size={15} strokeWidth={1.75} />
-      </button>
-      <ModelsPicker
-        side="top"
-        align="start"
-        trigger={
-          <button
-            type="button"
-            className="sidebar-actions-btn"
-            aria-label="Models"
-            title="Models"
-            onFocus={preloadModelsPicker}
-            onMouseEnter={preloadModelsPicker}
-          >
-            <Cpu size={15} strokeWidth={1.75} />
-          </button>
-        }
-      />
-      <ThemePicker
-        side="top"
-        align="start"
-        trigger={
-          <button
-            type="button"
-            className="sidebar-actions-btn"
-            aria-label="Theme"
-            title="Theme"
-          >
-            <Palette size={15} strokeWidth={1.75} />
-          </button>
-        }
-      />
-      <button
-        type="button"
-        className="sidebar-actions-btn"
-        onClick={handleConnectClick}
-        onFocus={preloadConnectDialog}
-        onMouseEnter={preloadConnectDialog}
-        aria-label="Connect"
-        title="Connect"
-      >
-        <Device size={15} />
+    <button
+      type="button"
+      className="sidebar-nav-item"
+      onClick={handleClick}
+      onFocus={preloadConnectDialog}
+      onMouseEnter={preloadConnectDialog}
+      title="Connect"
+      aria-label="Connect"
+    >
+      <span className="sidebar-nav-icon">
+        <Device size={18} />
         {connectHint.active && (
-          <span className="sidebar-actions-btn-hint-dot" aria-hidden="true" />
+          <span className="sidebar-nav-hint-dot" aria-hidden="true" />
         )}
-      </button>
-    </div>
+      </span>
+      <span className="sidebar-nav-label">Connect</span>
+    </button>
   );
 };
 
-type PendingMenuAction = "settings" | "models" | "theme" | "connect" | null;
-
-/**
- * Single gear-icon button rendered just below the account row in
- * rail / mini layouts where the four-button `SidebarActionsBar`
- * doesn't fit. Opens a popover menu with Settings / Models / Theme /
- * Connect.
- *
- * Models and Theme are themselves popovers. We render them with
- * hidden-but-anchored triggers next to the gear button and open
- * them in a controlled fashion when the matching menu item is
- * picked. The actual open is deferred to `onCloseAutoFocus` of the
- * dropdown so Radix doesn't restore focus to the gear button mid-
- * flight (same pattern as the avatar dropdown's sign-out flow).
- */
-const SidebarActionsMenu = ({
-  onConnect,
-  onOpenSettings,
-}: SidebarActionsBarProps) => {
-  const connectHint = usePostOnboardingHint("connect");
-  const [modelsOpen, setModelsOpen] = useState(false);
-  const [themeOpen, setThemeOpen] = useState(false);
-  const pendingActionRef = useRef<PendingMenuAction>(null);
-
-  // Cross-component "open the model picker" trigger. Used by toasts that
-  // surface tier/usage rejections so a single click on "Use my own key"
-  // pops the picker right where the user already sees the active model.
-  useEffect(() => {
-    const handler = () => {
-      preloadModelsPicker();
-      setModelsOpen(true);
-    };
-    window.addEventListener("stella:open-model-picker", handler);
-    return () => {
-      window.removeEventListener("stella:open-model-picker", handler);
-    };
-  }, []);
-
-  const handleCloseAutoFocus = useCallback(
-    (event: Event) => {
-      const action = pendingActionRef.current;
-      if (!action) return;
-      pendingActionRef.current = null;
-      event.preventDefault();
-      if (action === "settings") {
-        preloadSettingsScreen();
-        onOpenSettings();
-      } else if (action === "models") {
-        setModelsOpen(true);
-      } else if (action === "theme") {
-        setThemeOpen(true);
-      } else if (action === "connect") {
-        preloadConnectDialog();
-        if (connectHint.active) connectHint.dismiss();
-        onConnect?.();
-      }
-    },
-    [onOpenSettings, onConnect, connectHint],
-  );
-
-  return (
-    <div className="sidebar-actions-bar">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="sidebar-actions-btn"
-            aria-label="Quick settings"
-            title="Quick settings"
-            onFocus={() => {
-              preloadSettingsScreen();
-              preloadConnectDialog();
-            }}
-            onMouseEnter={() => {
-              preloadSettingsScreen();
-              preloadConnectDialog();
-            }}
-          >
-            <SettingsIcon size={18} strokeWidth={1.75} />
-            {connectHint.active && (
-              <span
-                className="sidebar-actions-btn-hint-dot"
-                aria-hidden="true"
-              />
-            )}
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="top"
-          align="start"
-          sideOffset={8}
-          onCloseAutoFocus={handleCloseAutoFocus}
-        >
-          <DropdownMenuItem
-            onFocus={preloadSettingsScreen}
-            onMouseEnter={preloadSettingsScreen}
-            onSelect={() => {
-              pendingActionRef.current = "settings";
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <SettingsIcon size={14} strokeWidth={1.75} />
-            </span>
-            Settings
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onFocus={preloadModelsPicker}
-            onMouseEnter={preloadModelsPicker}
-            onSelect={() => {
-              pendingActionRef.current = "models";
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <Cpu size={14} strokeWidth={1.75} />
-            </span>
-            Models
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              pendingActionRef.current = "theme";
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <Palette size={14} strokeWidth={1.75} />
-            </span>
-            Theme
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onFocus={preloadConnectDialog}
-            onMouseEnter={preloadConnectDialog}
-            onSelect={() => {
-              pendingActionRef.current = "connect";
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <Device size={14} />
-            </span>
-            Connect
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ModelsPicker
-        open={modelsOpen}
-        onOpenChange={setModelsOpen}
-        hideTrigger
-        side="top"
-        align="start"
-        trigger={
-          <button
-            type="button"
-            className="sidebar-actions-anchor"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        }
-      />
-      <ThemePicker
-        open={themeOpen}
-        onOpenChange={setThemeOpen}
-        hideTrigger
-        side="top"
-        align="start"
-        trigger={
-          <button
-            type="button"
-            className="sidebar-actions-anchor"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        }
-      />
-    </div>
-  );
-};
 
 // App discovery happens in `./app-registry`, which owns the glob over
 // `desktop/src/app/<id>/metadata.ts` and exposes a subscribable snapshot.
@@ -597,6 +372,22 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
   // which dialog the close was intended to open.
   const pendingSignOutRef = useRef(false);
   const pendingFeedbackRef = useRef(false);
+  const pendingThemeRef = useRef(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+
+  // Cross-component "open the model picker" trigger. Toast actions
+  // surfacing tier/usage rejections used to land on the sidebar's
+  // Models popover; now that the picker lives in the composer `+`
+  // menu, we just route to Settings → Models instead.
+  useEffect(() => {
+    const handler = () => {
+      void router.navigate({ to: "/settings", search: { tab: "models" } });
+    };
+    window.addEventListener("stella:open-model-picker", handler);
+    return () => {
+      window.removeEventListener("stella:open-model-picker", handler);
+    };
+  }, []);
 
   const handleDropdownCloseAutoFocus = useCallback(
     (event: Event) => {
@@ -610,6 +401,12 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
         pendingFeedbackRef.current = false;
         event.preventDefault();
         onOpenFeedback();
+        return;
+      }
+      if (pendingThemeRef.current) {
+        pendingThemeRef.current = false;
+        event.preventDefault();
+        setThemePickerOpen(true);
       }
     },
     [onOpenFeedback],
@@ -678,6 +475,16 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
           sideOffset={8}
           onCloseAutoFocus={handleDropdownCloseAutoFocus}
         >
+          <DropdownMenuItem
+            onClick={() => {
+              pendingThemeRef.current = true;
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <Palette size={14} strokeWidth={1.75} />
+            </span>
+            Theme
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
               pendingFeedbackRef.current = true;
@@ -752,6 +559,21 @@ const AccountRow = ({ onSignIn, onUpgrade, onOpenFeedback }: AccountRowProps) =>
           </div>
         </DialogContent>
       </Dialog>
+      <ThemePicker
+        open={themePickerOpen}
+        onOpenChange={setThemePickerOpen}
+        hideTrigger
+        side="top"
+        align="start"
+        trigger={
+          <button
+            type="button"
+            className="sidebar-account-theme-anchor"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        }
+      />
     </div>
   );
 };
@@ -793,26 +615,9 @@ export const Sidebar = ({
   // concept and is forced compact via CSS regardless of this state.
   const [railCollapsed, setRailCollapsed] = useState<boolean>(readPersistedRail);
 
-  // Mini windows render the sidebar as a rail via the `max-width: 600px`
-  // media query without flipping `railCollapsed`. Track that here so the
-  // actions row can swap to the single-button menu in either rail mode.
-  const [isCompactRail, setIsCompactRail] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(max-width: 600px)").matches;
-  });
   const isMobileWebView =
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-platform") === "mobile";
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 600px)");
-    const sync = () => setIsCompactRail(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  const railMode = railCollapsed || isCompactRail || isMobileWebView;
 
   const toggleRailCollapsed = useCallback(() => {
     setRailCollapsed((prev) => {
@@ -845,10 +650,6 @@ export const Sidebar = ({
 
   const handleUpgrade = useCallback(() => {
     void navigate({ to: "/billing" });
-  }, [navigate]);
-
-  const handleOpenSettings = useCallback(() => {
-    void navigate({ to: "/settings" });
   }, [navigate]);
 
   // Auto-prompted feedback. The hook tracks active (visible + focused) time
@@ -1008,6 +809,7 @@ export const Sidebar = ({
               </DropdownMenu>
             </nav>
             <div className="sidebar-footer">
+              <ConnectFooterButton onConnect={onConnect} />
               {bottomApps.map((app) => (
                 <AppNavItem
                   key={app.id}
@@ -1022,17 +824,6 @@ export const Sidebar = ({
                 onUpgrade={handleUpgrade}
                 onOpenFeedback={handleOpenFeedback}
               />
-              {railMode ? (
-                <SidebarActionsMenu
-                  onConnect={onConnect}
-                  onOpenSettings={handleOpenSettings}
-                />
-              ) : (
-                <SidebarActionsBar
-                  onConnect={onConnect}
-                  onOpenSettings={handleOpenSettings}
-                />
-              )}
             </div>
           </>
         )}
