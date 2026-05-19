@@ -27,6 +27,11 @@ import type {
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from '@legendapp/list/react'
+import {
+  clearAssistantScrollFollow,
+  getAssistantScrollFollowKey,
+  subscribeAssistantScrollFollow,
+} from '@/shell/chat-scroll-follow'
 
 type ThumbState = {
   top: number
@@ -289,6 +294,7 @@ export function useChatScrollManagement({
    */
   const releaseFollow = useCallback(() => {
     followRef.current = false
+    clearAssistantScrollFollow()
     followApi.current?.cancel()
   }, [])
 
@@ -321,6 +327,7 @@ export function useChatScrollManagement({
    */
   const nudgeAfterSend = useCallback(() => {
     followRef.current = true
+    clearAssistantScrollFollow()
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         followApi.current?.scrollLatestUserMessageIntoView()
@@ -502,6 +509,28 @@ export function useChatScrollManagement({
         cancel: stopLoop,
       }
 
+      const followActiveAssistantRow = () => {
+        if (!attached || !followRef.current) return
+        const followKey = getAssistantScrollFollowKey()
+        if (!followKey) return
+        const streamingRow = attached.querySelector<HTMLElement>(
+          `[data-scroll-follow-key="${CSS.escape(followKey)}"]`,
+        )
+        if (!streamingRow || streamingRow.offsetHeight <= 0) return
+        const rowRect = streamingRow.getBoundingClientRect()
+        const containerRect = attached.getBoundingClientRect()
+        const rowTop = rowRect.top - containerRect.top + attached.scrollTop
+        const rowBottom =
+          rowRect.bottom - containerRect.top + attached.scrollTop
+        const desiredScrollTop = Math.max(
+          0,
+          rowBottom - attached.clientHeight + FOLLOW_BREATHING_PX,
+        )
+        const pinnedTop = Math.max(0, rowTop - FOLLOW_TOP_PEEK_PX)
+        const target = Math.min(pinnedTop, desiredScrollTop)
+        setTarget(target)
+      }
+
       // ---- user-input release handlers -----------------------------
       const releaseLocalFollow = () => {
         followRef.current = false
@@ -575,61 +604,19 @@ export function useChatScrollManagement({
           return
         }
         if (!grew || !followRef.current) return
-        // Auto-follow is ONLY for a live streaming assistant reply.
-        // Everything else that grows `scrollHeight` — the just-sent
-        // user bubble, a persisted preamble, tool cards, the footer,
-        // the overlay→persisted swap at run-end — must not move the
-        // viewport. The send handler's ~48px nudge handles those.
-        // After an assistant boundary (preamble → post-tool answer,
-        // hidden agent-completion → orchestrator follow-up, etc.) the
-        // prior overlay slot stays in the timeline as a locked
-        // `.event-row--streaming` row until its persisted counterpart
-        // lands. The actively-growing slot is always the LAST match —
-        // grabbing the first one (querySelector) would keep tracking
-        // the now-static prior message and skip auto-follow on the
-        // new reply.
-        const streamingRows = attached.querySelectorAll<HTMLElement>(
-          '.event-row--streaming',
-        )
-        const streamingRow =
-          streamingRows.length > 0
-            ? streamingRows[streamingRows.length - 1]!
-            : null
-        if (!streamingRow || streamingRow.offsetHeight <= 0) return
-        const rowRect = streamingRow.getBoundingClientRect()
-        const containerRect = attached.getBoundingClientRect()
-        const rowTop = rowRect.top - containerRect.top + attached.scrollTop
-        const rowBottom =
-          rowRect.bottom - containerRect.top + attached.scrollTop
-        // Two competing targets:
-        //   - `desiredScrollTop` chases the streaming row's bottom
-        //     edge with `FOLLOW_BREATHING_PX` of margin, so the
-        //     latest text sits just above the viewport bottom rather
-        //     than stranded mid-viewport with empty footer below
-        //     (the old `naturalTarget`-only approach scrolled to the
-        //     absolute content end, leaving the streaming row pushed
-        //     up by the ~180px trailing-region footer).
-        //   - `rowTop - FOLLOW_TOP_PEEK_PX` is the pin: once
-        //     `desiredScrollTop` would push the row's top above the
-        //     viewport top, we stop a few px short so the bottom of
-        //     the previous message stays peeking in. Auto-follow
-        //     stops there and the user reads top-down from then on.
-        //
-        // `Math.min` picks `desiredScrollTop` while the row is short
-        // enough to keep the bottom in view AND the top (with peek)
-        // inside the viewport, then naturally switches to the pinned
-        // row-top as the row grows past
-        // `clientHeight − FOLLOW_BREATHING_PX`.
-        const desiredScrollTop = Math.max(
-          0,
-          rowBottom - attached.clientHeight + FOLLOW_BREATHING_PX,
-        )
-        const pinnedTop = Math.max(0, rowTop - FOLLOW_TOP_PEEK_PX)
-        const target = Math.min(pinnedTop, desiredScrollTop)
-        // `setTarget` already no-ops when target <= scrollTop, which
-        // naturally absorbs the "row still fits in the visible
-        // viewport" case without needing a separate guard.
-        setTarget(target)
+        // Auto-follow only while the runtime has armed a follow key
+        // for the active assistant slot (`beginAssistantScrollFollow`).
+        // Other scrollHeight growth (user bubble, footer, unrelated
+        // rows) is ignored; post-send positioning uses
+        // `scrollLatestUserMessageIntoView`.
+        followActiveAssistantRow()
+      })
+
+      const unsubscribeFollow = subscribeAssistantScrollFollow(() => {
+        if (!followRef.current) return
+        requestAnimationFrame(() => {
+          followActiveAssistantRow()
+        })
       })
       // Observe the scroll node itself plus its content child so we
       // pick up either form of growth (Legend's content wrapper resizes
@@ -640,6 +627,7 @@ export function useChatScrollManagement({
 
       cleanup = () => {
         if (!attached) return
+        unsubscribeFollow()
         attached.removeEventListener('wheel', handleWheel)
         attached.removeEventListener('touchstart', handleTouchStart)
         attached.removeEventListener('keydown', handleKeyDown)

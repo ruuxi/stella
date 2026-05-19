@@ -58,3 +58,9 @@ export const streamingAssistantOverlayId = (
   userMessageId: string,
   indexInTurn: number,
 ): string => `stream-overlay:${userMessageId}:${indexInTurn}`;
+
+/** Stable scroll-follow / React row key for an assistant slot in a turn. */
+export const assistantScrollFollowKey = (
+  userMessageId: string,
+  indexInTurn: number,
+): string => `assistant-${userMessageId}-${indexInTurn}`;
