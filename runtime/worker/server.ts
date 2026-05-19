@@ -2142,6 +2142,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         conversationId: string;
         userPrompt: string;
         agentType?: string;
+        modelOverride?: string;
         toolWorkspaceRoot?: string;
         attachments?: RuntimeAttachmentRef[];
         connectorDeliveryTarget?: {

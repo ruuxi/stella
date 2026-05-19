@@ -40,6 +40,7 @@ type RemoteTurnBridgeDeps = {
     conversationId: string;
     userPrompt: string;
     agentType?: string;
+    modelOverride?: string;
     provider?: string;
     attachments?: Array<{
       url: string;
@@ -232,6 +233,9 @@ export const createRemoteTurnBridge = (
         const userPrompt = getTrimmedString(payload?.text);
         const agentType = getTrimmedString(payload?.agentType) || undefined;
         const provider = getTrimmedString(payload?.provider) || undefined;
+        const deliveryMeta = asRecord(payload?.deliveryMeta);
+        const modelOverride =
+          getTrimmedString(deliveryMeta?.mobileModel) || undefined;
         const attachments = getRuntimeAttachments(payload?.mediaRefs);
 
         if (!conversationId || (!userPrompt && attachments.length === 0)) {
@@ -259,6 +263,7 @@ export const createRemoteTurnBridge = (
           conversationId,
           userPrompt: userPrompt || "The user sent an attachment.",
           agentType,
+          modelOverride,
           provider,
           attachments,
         });

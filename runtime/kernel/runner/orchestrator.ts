@@ -599,6 +599,7 @@ export const createOrchestratorController = (
       conversationId: string;
       userPrompt: string;
       agentType?: string;
+      modelOverride?: string;
       toolWorkspaceRoot?: string;
       attachments?: StartPreparedRunArgs["attachments"];
       connectorDeliveryTarget?: StartPreparedRunArgs["connectorDeliveryTarget"];
@@ -613,6 +614,7 @@ export const createOrchestratorController = (
       conversationId,
       userPrompt,
       agentType,
+      modelOverride,
       toolWorkspaceRoot,
       attachments,
       connectorDeliveryTarget,
@@ -635,6 +637,7 @@ export const createOrchestratorController = (
       conversationId,
       agentType,
       userPrompt,
+      ...(modelOverride ? { modelOverride } : {}),
       ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
       uiVisibility: "hidden",
       attachments,
@@ -656,6 +659,7 @@ export const createOrchestratorController = (
     conversationId: string;
     userPrompt: string;
     agentType?: string;
+    modelOverride?: string;
     toolWorkspaceRoot?: string;
     attachments?: StartPreparedRunArgs["attachments"];
     connectorDeliveryTarget?: StartPreparedRunArgs["connectorDeliveryTarget"];
