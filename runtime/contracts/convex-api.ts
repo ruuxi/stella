@@ -186,6 +186,9 @@ export type PublicApiType = {
     "watchIncomingConnectIntent": FunctionReference<'query', 'public', { desktopDeviceId: string; nowMs: number; }, any, string | undefined>;
     "acknowledgeConnectIntent": FunctionReference<'mutation', 'public', { intentId: Id<'mobile_connect_intents'>; }, any, string | undefined>;
   };
+  "mobile_push": {
+    "sendActivityNotification": FunctionReference<'action', 'public', { kind: 'started' | 'completed' | 'failed'; }, any, string | undefined>;
+  };
   "r2_files": {
     "generateUploadUrl": FunctionReference<'mutation', 'public', {}, any, string | undefined>;
     "syncMetadata": FunctionReference<'mutation', 'public', { key: string; }, any, string | undefined>;
