@@ -894,6 +894,7 @@ export class StellaRuntimeHost {
         conversationId,
         userPrompt,
         agentType,
+        modelOverride,
         provider,
         attachments,
       }) => {
@@ -925,6 +926,7 @@ export class StellaRuntimeHost {
             conversationId: localConversationId,
             userPrompt,
             ...(agentType ? { agentType } : {}),
+            ...(modelOverride ? { modelOverride } : {}),
             ...(attachments?.length ? { attachments } : {}),
             connectorDeliveryTarget: {
               requestId,

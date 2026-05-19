@@ -184,6 +184,7 @@ export type PreparedOrchestratorRun = {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
+  modelOverride?: string;
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
@@ -211,6 +212,7 @@ export const prepareOrchestratorRun = async (args: {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
+  modelOverride?: string;
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
@@ -228,8 +230,11 @@ export const prepareOrchestratorRun = async (args: {
   const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
     args.context,
     args.agentType,
-    agentContext.model,
+    args.modelOverride ?? agentContext.model,
   );
+  if (args.modelOverride) {
+    agentContext.model = args.modelOverride;
+  }
 
   args.context.state.activeOrchestratorRunId = args.runId;
   args.context.state.activeOrchestratorConversationId = args.conversationId;
@@ -619,6 +624,7 @@ export const startPreparedOrchestratorRun = async (args: {
   promptMessages?: RuntimePromptMessage[];
   responseTarget?: Parameters<typeof runOrchestratorTurn>[0]["responseTarget"];
   attachments: RuntimeAttachmentRef[];
+  modelOverride?: string;
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
@@ -642,6 +648,7 @@ export const startPreparedOrchestratorRun = async (args: {
     promptMessages: args.promptMessages,
     ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
     attachments: args.attachments,
+    ...(args.modelOverride ? { modelOverride: args.modelOverride } : {}),
     ...(args.connectorDeliveryTarget
       ? { connectorDeliveryTarget: args.connectorDeliveryTarget }
       : {}),

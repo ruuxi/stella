@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createRemoteTurnBridge } from "../../../../../runtime/kernel/remote-turn-bridge.js";
 import {
   getConvexErrorCode,
   isConvexUnauthenticatedError,
@@ -55,5 +56,61 @@ describe("remote-turn auth failure handling", () => {
         nowMs: 17_000,
       }),
     ).toBe(true);
+  });
+});
+
+describe("remote-turn mobile model override", () => {
+  it("passes the mobile-selected model into the local automation turn", async () => {
+    let onUpdate:
+      | ((events: Array<{
+          _id: string;
+          timestamp: number;
+          type: string;
+          requestId?: string;
+          payload?: Record<string, unknown>;
+        }>) => void)
+      | null = null;
+    let capturedModelOverride: string | undefined;
+    let completed = false;
+
+    const bridge = createRemoteTurnBridge({
+      deviceId: "desktop-1",
+      isEnabled: () => true,
+      isRunnerBusy: () => false,
+      subscribeRemoteTurnRequests: ({ onUpdate: nextOnUpdate }) => {
+        onUpdate = nextOnUpdate;
+        return () => {};
+      },
+      claimRemoteTurn: async () => {},
+      runLocalTurn: async ({ modelOverride }) => {
+        capturedModelOverride = modelOverride;
+        return { status: "ok", finalText: "done" };
+      },
+      completeConnectorTurn: async () => {
+        completed = true;
+      },
+    });
+
+    bridge.start();
+    onUpdate?.([
+      {
+        _id: "event-1",
+        timestamp: Date.now(),
+        type: "remote_turn_request",
+        requestId: "request-1",
+        payload: {
+          conversationId: "conversation-1",
+          text: "Use the model I picked on my phone.",
+          provider: "stella_app",
+          deliveryMeta: { mobileModel: "stella/designer" },
+        },
+      },
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(capturedModelOverride).toBe("stella/designer");
+    expect(completed).toBe(true);
+    bridge.stop();
   });
 });
