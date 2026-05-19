@@ -820,7 +820,7 @@ export const Sidebar = ({
   }, []);
 
   useEffect(() => {
-    window.electronAPI?.window.setNativeButtonsVisible(true);
+    window.electronAPI?.window.setNativeButtonsVisible?.(true);
   }, []);
 
   useEffect(() => {
