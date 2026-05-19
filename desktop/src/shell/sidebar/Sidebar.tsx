@@ -800,6 +800,9 @@ export const Sidebar = ({
     if (typeof window === "undefined") return false;
     return window.matchMedia("(max-width: 600px)").matches;
   });
+  const isMobileWebView =
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute("data-platform") === "mobile";
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
@@ -809,7 +812,7 @@ export const Sidebar = ({
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  const railMode = railCollapsed || isCompactRail;
+  const railMode = railCollapsed || isCompactRail || isMobileWebView;
 
   const toggleRailCollapsed = useCallback(() => {
     setRailCollapsed((prev) => {
@@ -908,18 +911,18 @@ export const Sidebar = ({
   const sidebarClass = useMemo(() => {
     const parts = ["sidebar"];
     if (className) parts.push(className);
-    if (railCollapsed) parts.push("sidebar--rail");
+    if (railCollapsed || isMobileWebView) parts.push("sidebar--rail");
     return parts.join(" ");
-  }, [className, railCollapsed]);
+  }, [className, railCollapsed, isMobileWebView]);
 
   // Mirror the rail-collapsed state onto the document root so absolutely
   // positioned chrome above the sidebar (e.g. the topbar's centered store
   // tabs) can pick the correct width when computing offsets.
   useEffect(() => {
     const root = document.documentElement;
-    if (railCollapsed) root.dataset.sidebarRail = "true";
+    if (railCollapsed || isMobileWebView) root.dataset.sidebarRail = "true";
     else delete root.dataset.sidebarRail;
-  }, [railCollapsed]);
+  }, [railCollapsed, isMobileWebView]);
 
   // The brand row is a button so it can also be the rail-toggle target.
   // Wrapping the icon + (optionally hidden) text gives us a single focusable

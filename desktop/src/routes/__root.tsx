@@ -122,6 +122,10 @@ function RootChrome() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isOnChatRoute = pathname === "/chat";
   const isMiniWindow = useWindowType() === "mini";
+  const isMobileWebView =
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute("data-platform") === "mobile";
+  const shouldRenderSidebar = !isMiniWindow || isMobileWebView;
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -270,15 +274,17 @@ function RootChrome() {
 
   return (
     <>
-      {!isMiniWindow && drawerOpen && (
+      {!isMiniWindow && !isMobileWebView && drawerOpen && (
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
 
       <ShellTopBar />
 
-      {!isMiniWindow && (
+      {shouldRenderSidebar && (
         <Sidebar
-          className={drawerOpen ? "sidebar--drawer-open" : undefined}
+          className={
+            !isMobileWebView && drawerOpen ? "sidebar--drawer-open" : undefined
+          }
           onSignIn={showAuthDialog}
           onConnect={showConnectDialog}
           onNewAppAskStella={() => {
@@ -294,7 +300,7 @@ function RootChrome() {
         onClose={handleContextMenuClosePanel}
       >
         <div className="content-area">
-          {!isMiniWindow && (
+          {!isMiniWindow && !isMobileWebView && (
             <button
               type="button"
               className="compact-hamburger"

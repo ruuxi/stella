@@ -1,49 +1,108 @@
 /* ================================================================
    Mobile WebView overrides
    Active when data-platform="mobile" is set on <html> by the
-   mobile bridge shim. Transforms the desktop layout into a
-   single-column layout with the sidebar as a slide-over drawer.
+   mobile bridge shim. Keeps the existing Stella sidebar in rail mode
+   so the WebView has stable left chrome without a native drawer button.
    ================================================================ */
 
-/* ── Sidebar → slide-over drawer ──────────────────────────────── */
+/* ── Sidebar → persistent rail ────────────────────────────────── */
+
+[data-platform="mobile"] .window-shell.full {
+  --shell-sidebar-rail-width: 68px;
+  --shell-topbar-left-width: var(--shell-sidebar-rail-width);
+}
 
 [data-platform="mobile"] .sidebar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 300;
-  width: 260px;
-  transform: translateX(-100%);
-  transition: transform 0.28s cubic-bezier(0.25, 0.1, 0.25, 1);
+  position: relative;
+  z-index: 2;
+  width: var(--shell-sidebar-rail-width, 68px);
+  flex-shrink: 0;
+  transform: none;
   box-shadow: none;
 }
 
-[data-platform="mobile"][data-sidebar-open] .sidebar {
-  transform: translateX(0);
-  /* The enormous spread acts as a full-screen backdrop dimmer while
-     staying in the sidebar's own stacking context. */
-  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.3);
+[data-platform="mobile"] .sidebar-brand {
+  justify-content: center;
+  padding: 4px 0 8px;
+  gap: 0;
 }
 
-[data-platform="mobile"] .sidebar-header {
-  height: 12px;
-  -webkit-app-region: none;
+[data-platform="mobile"] .sidebar-brand-logo {
+  width: 28px;
+  height: 28px;
+  opacity: 0.85;
 }
 
-/* ── Content area — full width, no sidebar offset ─────────────── */
+[data-platform="mobile"] .sidebar-brand-text,
+[data-platform="mobile"] .sidebar-nav-label,
+[data-platform="mobile"] .sidebar-account-signin-label,
+[data-platform="mobile"] .sidebar-account-pill {
+  display: none;
+}
 
-[data-platform="mobile"] .content-area {
-  padding-top: 0;
-  border-left: none;
+[data-platform="mobile"] .sidebar-nav,
+[data-platform="mobile"] .sidebar-footer {
+  padding-left: 6px;
+  padding-right: 6px;
+  overflow: visible;
+}
+
+[data-platform="mobile"] .sidebar-nav-item,
+[data-platform="mobile"] .sidebar-account-signin {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
+}
+
+[data-platform="mobile"] .sidebar-account {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+[data-platform="mobile"] .sidebar-account-avatar {
+  align-self: center;
+}
+
+[data-platform="mobile"] .sidebar-actions-bar {
   border-top: none;
-  border-top-left-radius: 0;
+  margin-top: 4px;
+  padding: 0;
+  justify-content: stretch;
+}
+
+[data-platform="mobile"] .sidebar-actions-bar .sidebar-actions-btn {
+  width: 100%;
+  height: auto;
+  padding: 10px 0;
+  border-radius: var(--radius-md);
+}
+
+[data-platform="mobile"] .sidebar-drawer-scrim,
+[data-platform="mobile"] .compact-hamburger,
+[data-platform="mobile"] .mobile-sidebar-toggle {
+  display: none;
+}
+
+[data-platform="mobile"] .shell-topbar-center {
+  --shell-topbar-center-left-inset: var(--shell-sidebar-rail-width);
+}
+
+[data-platform="mobile"] .shell-topbar[data-display-open="true"] .shell-topbar-left {
+  width: var(--shell-sidebar-rail-width);
+  min-width: var(--shell-sidebar-rail-width);
+}
+
+[data-platform="mobile"] .shell-topbar[data-display-open="true"] .shell-topbar-tablist {
+  flex: 1 1 0;
+  max-width: none;
 }
 
 /* ── Mobile-friendly spacing ──────────────────────────────────── */
 
 [data-platform="mobile"] .session-messages {
-  padding: 56px 16px 16px;
+  padding: 44px 16px 16px;
 }
 
 [data-platform="mobile"] .composer {
@@ -67,34 +126,3 @@
 [data-platform="mobile"] select {
   font-size: 16px;
 }
-
-/* ── Hamburger toggle (injected by shim) ──────────────────────── */
-
-.mobile-sidebar-toggle {
-  display: none;
-}
-
-[data-platform="mobile"] .mobile-sidebar-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: fixed;
-  top: 8px;
-  left: 8px;
-  z-index: 200;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  border: none;
-  background: color-mix(in oklch, var(--background) 80%, transparent);
-  color: var(--text-strong);
-  cursor: pointer;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: background 0.15s ease;
-}
-
-[data-platform="mobile"] .mobile-sidebar-toggle:active {
-  background: color-mix(in oklch, var(--background) 95%, transparent);
-}
-
