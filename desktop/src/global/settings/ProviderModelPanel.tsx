@@ -1,4 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
+import {
+  LegendList,
+  type LegendListRenderItemProps,
+} from "@legendapp/list/react";
 import { Check, KeyRound, LogIn, Search } from "lucide-react";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
@@ -26,6 +30,7 @@ const STELLA_PROVIDER_KEY = "stella";
 const LOCAL_PROVIDER_KEY = "local";
 const DEFAULT_TARGET = "__default__";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
+const MODEL_ROW_ESTIMATED_SIZE = 47;
 
 type ProviderTab = {
   key: string;
@@ -357,6 +362,70 @@ interface ProviderPaneProps {
   disabled: boolean;
 }
 
+type ModelListItem = {
+  id: string;
+  model: CatalogModel;
+};
+
+const keyModelListItem = (item: ModelListItem) => item.id;
+
+type ModelRowProps = {
+  model: CatalogModel;
+  selected: boolean;
+  rowRestricted: boolean;
+  restrictedPlanLabel: string | null;
+  onPick: (modelId: string) => void;
+  disabled: boolean;
+};
+
+const ModelRow = memo(function ModelRow({
+  model,
+  selected,
+  rowRestricted,
+  restrictedPlanLabel,
+  onPick,
+  disabled,
+}: ModelRowProps) {
+  const isStellaModel = model.provider === STELLA_PROVIDER_KEY;
+  const displayName = isStellaModel ? getStellaDisplayName(model) : model.name;
+  const subtitle = isStellaModel
+    ? getStellaSubtitle(model)
+    : model.upstreamModel && model.upstreamModel !== model.name
+      ? model.upstreamModel
+      : model.id !== model.name
+        ? model.id
+        : null;
+
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      aria-disabled={rowRestricted || undefined}
+      className="model-picker-model"
+      data-selected={selected || undefined}
+      data-restricted={rowRestricted || undefined}
+      title={
+        rowRestricted && restrictedPlanLabel
+          ? `Not available on the ${restrictedPlanLabel} plan`
+          : undefined
+      }
+      onClick={() => onPick(model.id)}
+      disabled={disabled || rowRestricted}
+    >
+      <span className="model-picker-model-text">
+        <span className="model-picker-model-name">{displayName}</span>
+        {subtitle ? (
+          <span className="model-picker-model-sub">{subtitle}</span>
+        ) : null}
+      </span>
+      {selected ? <Check size={13} className="model-picker-model-check" /> : null}
+    </button>
+  );
+});
+
+const ModelListSeparator = () => <div className="model-picker-model-gap" />;
+
 function ProviderPane({
   tab,
   query,
@@ -419,6 +488,58 @@ function ProviderPane({
   }
 
   const isDefaultSelected = !selectedModelId;
+  const modelItems = useMemo<ModelListItem[]>(
+    () => filteredModels.map((model) => ({ id: model.id, model })),
+    [filteredModels],
+  );
+  const renderModelItem = useCallback(
+    ({ item }: LegendListRenderItemProps<ModelListItem>) => {
+      const selected = item.model.id === selectedModelId;
+      const rowRestricted =
+        restrictStellaPicks &&
+        item.model.provider === STELLA_PROVIDER_KEY &&
+        !selected &&
+        item.model.allowedForAudience === false;
+      return (
+        <ModelRow
+          model={item.model}
+          selected={selected}
+          rowRestricted={rowRestricted}
+          restrictedPlanLabel={restrictedPlanLabel}
+          onPick={onPick}
+          disabled={disabled}
+        />
+      );
+    },
+    [
+      disabled,
+      onPick,
+      restrictedPlanLabel,
+      restrictStellaPicks,
+      selectedModelId,
+    ],
+  );
+  const modelListHeader = useMemo(() => {
+    if (!isStella || query.trim()) return undefined;
+    return (
+      <button
+        type="button"
+        role="option"
+        aria-selected={isDefaultSelected}
+        className="model-picker-model model-picker-model--default"
+        data-selected={isDefaultSelected || undefined}
+        onClick={() => onPick(DEFAULT_TARGET)}
+        disabled={disabled}
+      >
+        <span className="model-picker-model-text">
+          <span className="model-picker-model-name">{defaultLabel}</span>
+        </span>
+        {isDefaultSelected ? (
+          <Check size={13} className="model-picker-model-check" />
+        ) : null}
+      </button>
+    );
+  }, [defaultLabel, disabled, isDefaultSelected, isStella, onPick, query]);
 
   return (
     <div className="model-picker-pane-inner">
@@ -585,89 +706,23 @@ function ProviderPane({
             />
           </div>
           <div className="model-picker-models" role="listbox">
-            {isStella && !query.trim() ? (
-              <button
-                type="button"
-                role="option"
-                aria-selected={isDefaultSelected}
-                className="model-picker-model model-picker-model--default"
-                data-selected={isDefaultSelected || undefined}
-                onClick={() => onPick(DEFAULT_TARGET)}
-                disabled={disabled}
-              >
-                <span className="model-picker-model-text">
-                  <span className="model-picker-model-name">
-                    {defaultLabel}
-                  </span>
-                </span>
-                {isDefaultSelected ? (
-                  <Check size={13} className="model-picker-model-check" />
-                ) : null}
-              </button>
-            ) : null}
-            {filteredModels.length === 0 ? (
+            {modelItems.length === 0 ? (
               <div className="model-picker-empty">
                 {tab.models.length === 0
                   ? `No ${tab.label} models available yet.`
                   : "No models match."}
               </div>
             ) : (
-              filteredModels.map((model) => {
-                const selected = model.id === selectedModelId;
-                const isStellaModel = model.provider === "stella";
-                // Backend marks every Stella model row with
-                // `allowedForAudience` for the requesting user; we
-                // just mirror it. BYOK providers never carry the
-                // flag and stay enabled.
-                const rowRestricted =
-                  restrictStellaPicks &&
-                  isStellaModel &&
-                  !selected &&
-                  model.allowedForAudience === false;
-                const displayName = isStellaModel
-                  ? getStellaDisplayName(model)
-                  : model.name;
-                const subtitle = isStellaModel
-                  ? getStellaSubtitle(model)
-                  : model.upstreamModel && model.upstreamModel !== model.name
-                    ? model.upstreamModel
-                    : model.id !== model.name
-                      ? model.id
-                      : null;
-                return (
-                  <button
-                    key={model.id}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    aria-disabled={rowRestricted || undefined}
-                    className="model-picker-model"
-                    data-selected={selected || undefined}
-                    data-restricted={rowRestricted || undefined}
-                    title={
-                      rowRestricted && restrictedPlanLabel
-                        ? `Not available on the ${restrictedPlanLabel} plan`
-                        : undefined
-                    }
-                    onClick={() => onPick(model.id)}
-                    disabled={disabled || rowRestricted}
-                  >
-                    <span className="model-picker-model-text">
-                      <span className="model-picker-model-name">
-                        {displayName}
-                      </span>
-                      {subtitle ? (
-                        <span className="model-picker-model-sub">
-                          {subtitle}
-                        </span>
-                      ) : null}
-                    </span>
-                    {selected ? (
-                      <Check size={13} className="model-picker-model-check" />
-                    ) : null}
-                  </button>
-                );
-              })
+              <LegendList<ModelListItem>
+                data={modelItems}
+                keyExtractor={keyModelListItem}
+                renderItem={renderModelItem}
+                estimatedItemSize={MODEL_ROW_ESTIMATED_SIZE}
+                recycleItems
+                ListHeaderComponent={modelListHeader}
+                ItemSeparatorComponent={ModelListSeparator}
+                style={{ height: "100%", width: "100%" }}
+              />
             )}
           </div>
         </>
