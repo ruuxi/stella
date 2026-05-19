@@ -23,6 +23,7 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 - [stella-connect](stella-connect-mcp/SKILL.md) — use Store integrations and imported MCP/API connectors through the `stella-connect` CLI
 - [electron](electron/SKILL.md) — Electron app automation through Chromium remote debugging
 - [user-profile](user-profile/SKILL.md) — structured onboarding memory for the user, including projects, apps, interests, and environment
+- [stella-design](stella-design/SKILL.md) — frontend design quality guidance for Stella desktop UI and Stella-created apps
 
 ## Product and Integration Docs
 
