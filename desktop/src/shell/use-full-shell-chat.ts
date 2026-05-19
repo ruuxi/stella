@@ -23,10 +23,6 @@ import { useChatScrollManagement } from './use-chat-scroll-management'
 import { useChatHomeSurface } from './use-chat-home-surface'
 import { useAgentInputRouting } from './use-agent-input-routing'
 import { useStellaSendMessageBridge } from './use-stella-send-message-bridge'
-import { smoothScrollTo } from '@/shared/lib/smooth-scroll'
-
-const SENT_MESSAGE_SCROLL_NUDGE_MS = 360
-const SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS = 80
 
 type UseFullShellChatOptions = {
   activeConversationId: string | null
@@ -71,11 +67,9 @@ export function useFullShellChat({
   const {
     liveTasks,
     optimisticEvents,
-    justSentUserMessageIds,
     runtimeStatusText,
-    streamingText,
     reasoningText,
-    streamingResponseTarget,
+    streamingAssistants,
     isStreaming,
     pendingUserMessageId,
     queuedUserMessages,
@@ -87,13 +81,15 @@ export function useFullShellChat({
   })
 
   // Visible chat timeline: SQLite-backed `persistedMessages` plus the
-  // synthetic overlays (optimistic + scheduler-pending) that drop off
-  // once the runtime persists their backing rows. Lives in its own
-  // hook so the overlay-composition concerns stay next to each other.
+  // synthetic overlays (optimistic users, in-memory streaming
+  // assistants, scheduler-pending) that drop off as their persisted
+  // counterparts land. Lives in its own hook so the overlay-
+  // composition concerns stay next to each other.
   const displayMessages = useConversationDisplayMessages({
     conversationId: activeConversationId,
     persistedMessages,
     optimisticEvents,
+    streamingAssistants,
   })
 
   const taskProgressSummaries = useTaskProgressSummaries({
@@ -163,8 +159,11 @@ export function useFullShellChat({
     isAtBottom,
     isNearBottom,
     getIsNearBottom,
+    getIsFollowing,
     showScrollButton,
     scrollToBottom,
+    releaseFollow,
+    nudgeAfterSend,
     thumbState,
   } = useChatScrollManagement({
     hasOlderEvents: hasOlderMessages,
@@ -190,7 +189,14 @@ export function useFullShellChat({
   )
 
   const handleSend = useCallback(() => {
-    const shouldNudgeAfterSend = showHomeContent || getIsNearBottom()
+    // `getIsFollowing()` reads the follow latch (intent), not the
+    // physical scroll position. After a short assistant reply, the
+    // user is visually at the bottom of the conversation but ~150px
+    // physically above the absolute end (because the trailing-region
+    // footer is off-screen below the latest text). A pure
+    // `getIsNearBottom()` check would falsely report "not near
+    // bottom" in that window and skip the next send's nudge.
+    const shouldNudgeAfterSend = showHomeContent || getIsFollowing()
     if (showHomeContent) {
       setComposerFocusRequestId((id) => id + 1)
     }
@@ -207,29 +213,21 @@ export function useFullShellChat({
       },
     })
     if (shouldNudgeAfterSend) {
-      const scrollToCurrentBottom = () => {
-        const el = listRef.current?.getScrollableNode() as HTMLElement | null
-        if (!el) return
-        smoothScrollTo(
-          el,
-          el.scrollHeight - el.clientHeight,
-          SENT_MESSAGE_SCROLL_NUDGE_MS,
-        )
-      }
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollToCurrentBottom()
-          window.setTimeout(scrollToCurrentBottom, SENT_MESSAGE_SCROLL_SETTLE_DELAY_MS)
-        })
-      })
+      // Routes the small post-send bump through the same lerp loop
+      // as streaming auto-follow so the two motions blend rather
+      // than fight via separate concurrent rAF tweens.
+      nudgeAfterSend()
+    } else {
+      releaseFollow()
     }
   }, [
     chatContext,
     enterChatSurfaceForInteraction,
-    getIsNearBottom,
+    getIsFollowing,
     isAtBottom,
-    listRef,
     message,
+    nudgeAfterSend,
+    releaseFollow,
     resetIdleTimer,
     selectedText,
     sendMessage,
@@ -263,14 +261,11 @@ export function useFullShellChat({
         loadOlder: loadOlderFiles,
       },
       streaming: {
-        text: streamingText,
         reasoningText,
-        responseTarget: streamingResponseTarget,
         isStreaming,
         runtimeStatusText,
         pendingUserMessageId,
         queuedUserMessages,
-        optimisticUserMessageIds: justSentUserMessageIds,
         liveTasks,
         taskProgressSummaries,
       },
@@ -290,7 +285,6 @@ export function useFullShellChat({
       isLoadingOlderActivity,
       isLoadingOlderFiles,
       isLoadingOlderMessages,
-      justSentUserMessageIds,
       latestMessageTimestampMs,
       liveTasks,
       loadOlderActivity,
@@ -300,8 +294,6 @@ export function useFullShellChat({
       queuedUserMessages,
       reasoningText,
       runtimeStatusText,
-      streamingResponseTarget,
-      streamingText,
       isStreaming,
       taskProgressSummaries,
     ],
@@ -366,9 +358,7 @@ export function useFullShellChat({
       isLoadingOlder: isLoadingOlderMessages,
       isInitialLoading: isInitialLoadingMessages,
       loadOlderMessages,
-      streamingText,
       reasoningText,
-      streamingResponseTarget,
       isStreaming,
       pendingUserMessageId,
       queuedUserMessages,

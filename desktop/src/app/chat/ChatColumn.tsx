@@ -224,12 +224,8 @@ export const ChatColumn = memo(function ChatColumn({
       <div className="chat-viewport-region">
         <ConversationEvents
           messages={conversation.messages}
-          streamingText={conversation.streaming.text}
-          streamingResponseTarget={conversation.streaming.responseTarget}
-          isStreaming={conversation.streaming.isStreaming}
           pendingUserMessageId={conversation.streaming.pendingUserMessageId}
           queuedUserMessages={conversation.streaming.queuedUserMessages}
-          optimisticUserMessageIds={conversation.streaming.optimisticUserMessageIds}
           hasOlderMessages={conversation.history.hasOlderMessages}
           isLoadingOlder={conversation.history.isLoadingOlder}
           isLoadingHistory={conversation.history.isInitialLoading}

@@ -17,9 +17,19 @@
  *    the row's component instance are reused (no remount, no flash).
  *  - `maintainVisibleContentPosition` replaces the prior column-reverse
  *    + manual `captureResizeAnchor`/`restoreResizeAnchor` dance.
- *  - The active tail is rendered as one synthetic list item so its
- *    `.event-row-region--tail` min-height preserves the pre-virtualization
- *    "latest user message + following assistant rows" floor.
+ *  - Every row renders as its own virtualized item, so measurements
+ *    survive a user-send turn boundary. The prior "tail synthetic item
+ *    that wraps the latest user message + following assistant rows" was
+ *    re-keyed on every send (its key tracked `tailRows[0].id`); the
+ *    re-key tore down the wrapper, ejected a tall just-finished
+ *    assistant reply into `olderRows` as a freshly-mounted virtualized
+ *    item (initial size = `estimatedItemSize`), and dropped `scrollHeight`
+ *    by the gap between the real assistant height and the estimate. The
+ *    browser then clamped `scrollTop` up to the new max — visible as a
+ *    jump back to the top of the previous assistant reply just before
+ *    the post-send nudge animated back down. The fixed bottom-floor
+ *    `min-height` and the pending-askQuestion / queued-messages slots
+ *    live on the `ListFooterComponent` instead.
  *  - `onStartReached` triggers older-history pagination.
  *
  * Empty / loading-history states render outside the list, matching the
@@ -28,7 +38,6 @@
  * styling).
  */
 import {
-  Fragment,
   memo,
   useCallback,
   useMemo,
@@ -55,13 +64,7 @@ import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 
 type ChatTimelineProps = {
   rows: EventRowViewModel[];
-  /**
-   * Index of the latest user row in `rows`. Everything from this index
-   * onward is rendered inside one synthetic virtualized tail item so
-   * the old fixed-floor tail region semantics survive virtualization.
-   */
-  lastUserRowIndex?: number;
-  /** Optional pending askQuestion bubble rendered as the final tail row. */
+  /** Optional pending askQuestion bubble rendered in the trailing footer. */
   pendingAskQuestion?: AskQuestionState | null;
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
@@ -123,9 +126,7 @@ type ChatTimelineProps = {
 
 const ItemSeparator = () => <div style={{ height: 20 }} aria-hidden="true" />;
 
-type TimelineListItem =
-  | { kind: "row"; id: string; row: EventRowViewModel }
-  | { kind: "tail"; id: string; rows: EventRowViewModel[] };
+type TimelineListItem = { id: string; row: EventRowViewModel };
 
 const renderRow = (
   row: EventRowViewModel,
@@ -145,7 +146,6 @@ const renderRow = (
 
 export const ChatTimeline = memo(function ChatTimeline({
   rows,
-  lastUserRowIndex = -1,
   pendingAskQuestion = null,
   hasOlderEvents,
   isLoadingOlder,
@@ -163,58 +163,15 @@ export const ChatTimeline = memo(function ChatTimeline({
   className,
   contentContainerStyle,
 }: ChatTimelineProps) {
-  const tailStart = lastUserRowIndex >= 0 ? lastUserRowIndex : rows.length;
-  const olderRows = rows.slice(0, tailStart);
-  const tailRows = rows.slice(tailStart);
-  const hasTailItem = tailRows.length > 0 || Boolean(pendingAskQuestion);
-
-  const listItems = useMemo<TimelineListItem[]>(() => {
-    const items: TimelineListItem[] = olderRows.map((row) => ({
-      kind: "row",
-      id: row.id,
-      row,
-    }));
-    if (hasTailItem) {
-      const tailKey = tailRows[0]?.id ?? "pending-tail";
-      items.push({
-        kind: "tail",
-        id: `tail:${tailKey}`,
-        rows: tailRows,
-      });
-    }
-    return items;
-  }, [hasTailItem, olderRows, tailRows]);
-
-  const renderQueuedMessages = () => (
-    <ComposerQueuedMessages
-      key="queued-user-messages"
-      messages={queuedUserMessages ?? []}
-    />
+  const listItems = useMemo<TimelineListItem[]>(
+    () => rows.map((row) => ({ id: row.id, row })),
+    [rows],
   );
 
   const renderItem = useCallback(
-    ({ item }: LegendListRenderItemProps<TimelineListItem>) => {
-      if (item.kind === "row") {
-        return renderRow(item.row, onOpenAttachment);
-      }
-
-      return (
-        <div className="event-row-region event-row-region--tail">
-          {item.rows.map((row) => (
-            <Fragment key={row.id}>{renderRow(row, onOpenAttachment)}</Fragment>
-          ))}
-          {pendingAskQuestion && (
-            <PendingAskQuestionRow payload={pendingAskQuestion} />
-          )}
-          {renderQueuedMessages()}
-        </div>
-      );
-    },
-    [
-      onOpenAttachment,
-      pendingAskQuestion,
-      queuedUserMessages,
-    ],
+    ({ item }: LegendListRenderItemProps<TimelineListItem>) =>
+      renderRow(item.row, onOpenAttachment),
+    [onOpenAttachment],
   );
 
   const keyExtractor = useCallback((item: TimelineListItem) => item.id, []);
@@ -232,10 +189,30 @@ export const ChatTimeline = memo(function ChatTimeline({
     );
   }, [hasOlderEvents, isLoadingOlder]);
 
+  /**
+   * Footer: bottom-floor min-height + pending askQuestion + queued user
+   * messages, plus any surface-specific `extraTail` node. The min-height
+   * pre-allocates the empty reading area below the just-sent user bubble
+   * (and below short streaming replies) without reserving the full
+   * viewport. Living here — rather than wrapping the latest user/assistant
+   * rows in a re-keyed synthetic list item — means rows never migrate
+   * between virtualized contexts on send, so their measured sizes don't
+   * collapse into `estimatedItemSize` for a frame and `scrollHeight`
+   * doesn't dip back below the user's current `scrollTop`.
+   */
   const ListFooter = useMemo(
-    () =>
-      extraTail ? <div className="event-list-extra-tail">{extraTail}</div> : null,
-    [extraTail],
+    () => (
+      <div className="event-list-trailing-region">
+        {pendingAskQuestion && (
+          <PendingAskQuestionRow payload={pendingAskQuestion} />
+        )}
+        <ComposerQueuedMessages messages={queuedUserMessages ?? []} />
+        {extraTail && (
+          <div className="event-list-extra-tail">{extraTail}</div>
+        )}
+      </div>
+    ),
+    [extraTail, pendingAskQuestion, queuedUserMessages],
   );
 
   if (isLoadingHistory && rows.length === 0) {
@@ -279,7 +256,7 @@ export const ChatTimeline = memo(function ChatTimeline({
       onStartReached={onStartReached}
       onStartReachedThreshold={0.5}
       ListHeaderComponent={ListHeader ?? undefined}
-      ListFooterComponent={ListFooter ?? undefined}
+      ListFooterComponent={ListFooter}
       ItemSeparatorComponent={ItemSeparator}
       className={className}
       contentContainerStyle={contentContainerStyle}

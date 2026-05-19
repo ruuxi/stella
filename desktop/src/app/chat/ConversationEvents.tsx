@@ -8,7 +8,6 @@ import {
   memo,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type RefObject,
@@ -19,19 +18,22 @@ import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js"
 import { useEventRows } from "./use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
-import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
 
 const USER_MESSAGE_ENTER_MS = 360;
+
+/**
+ * Tracks message ids whose enter animation has already played. Module
+ * scope so a home→chat transition (ConversationEvents remount) or a
+ * dev remount doesn't replay the fade/grow on the same bubble.
+ */
+const justSentPlayedIds = new Set<string>();
+const justSentActiveUntil = new Map<string, number>();
 
 type Props = {
   messages: MessageRecord[];
   maxItems?: number;
-  streamingText?: string;
-  streamingResponseTarget?: AgentResponseTarget | null;
-  isStreaming?: boolean;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
-  optimisticUserMessageIds?: string[];
   hasOlderMessages?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -45,31 +47,49 @@ type Props = {
   estimatedItemSize?: number;
 };
 
+/**
+ * Returns the set of row ids that should carry `justSent` this frame.
+ * Registration runs synchronously during render so the CSS enter
+ * animation starts on the bubble's first paint — the previous
+ * `useEffect` path painted the row at full opacity, then added the
+ * class a frame later, which read as a double appear/re-render on
+ * the first send after a cold load (especially when ConversationEvents
+ * mounts for the first time on home→chat).
+ */
 function useOneShotIds(ids: readonly string[], durationMs: number): Set<string> {
-  const playedRef = useRef(new Set<string>());
-  const [active, setActive] = useState(() => new Set<string>());
   const key = useMemo(() => [...new Set(ids)].sort().join("\n"), [ids]);
+  const [tick, setTick] = useState(0);
+
+  const active = useMemo(() => {
+    const now = performance.now();
+    const set = new Set<string>();
+    for (const id of key ? key.split("\n") : []) {
+      if (!id) continue;
+      if (!justSentPlayedIds.has(id)) {
+        justSentPlayedIds.add(id);
+        justSentActiveUntil.set(id, now + durationMs);
+      }
+      const until = justSentActiveUntil.get(id) ?? 0;
+      if (until > now) {
+        set.add(id);
+      }
+    }
+    return set;
+  }, [durationMs, key, tick]);
 
   useEffect(() => {
-    if (!key) return;
-    const fresh = key
-      .split("\n")
-      .filter((id) => id && !playedRef.current.has(id));
-    if (fresh.length === 0) return;
-
-    fresh.forEach((id) => playedRef.current.add(id));
-    setActive((current) => new Set([...current, ...fresh]));
-
+    if (active.size === 0) return;
+    const now = performance.now();
+    let delayMs = durationMs;
+    for (const id of active) {
+      const until = justSentActiveUntil.get(id) ?? 0;
+      delayMs = Math.min(delayMs, Math.max(0, until - now));
+    }
     const timeoutId = window.setTimeout(() => {
-      setActive((current) => {
-        const next = new Set(current);
-        fresh.forEach((id) => next.delete(id));
-        return next;
-      });
-    }, durationMs);
-
+      setTick((current) => current + 1);
+    }, delayMs + 1);
     return () => window.clearTimeout(timeoutId);
-  }, [durationMs, key]);
+  }, [active, durationMs]);
 
   return active;
 }
@@ -77,12 +97,8 @@ function useOneShotIds(ids: readonly string[], durationMs: number): Set<string> 
 export const ConversationEvents = memo(function ConversationEvents({
   messages,
   maxItems,
-  streamingText,
-  streamingResponseTarget,
-  isStreaming,
   pendingUserMessageId,
   queuedUserMessages,
-  optimisticUserMessageIds,
   hasOlderMessages,
   isLoadingOlder,
   isLoadingHistory,
@@ -94,21 +110,15 @@ export const ConversationEvents = memo(function ConversationEvents({
   contentContainerStyle,
   estimatedItemSize,
 }: Props) {
-  const { rows: projectedRows, lastUserRowIndex, pendingAskQuestion } = useEventRows({
+  const { rows: projectedRows, pendingAskQuestion } = useEventRows({
     messages,
     maxItems,
-    isStreaming,
-    pendingUserMessageId,
-    streamingResponseTarget,
-    streamingText,
   });
 
-  const justSentCandidates = useMemo(() => {
-    const ids: string[] = [];
-    if (pendingUserMessageId) ids.push(pendingUserMessageId);
-    if (optimisticUserMessageIds) ids.push(...optimisticUserMessageIds);
-    return ids;
-  }, [optimisticUserMessageIds, pendingUserMessageId]);
+  const justSentCandidates = useMemo(
+    () => (pendingUserMessageId ? [pendingUserMessageId] : []),
+    [pendingUserMessageId],
+  );
   const animatingJustSentIds = useOneShotIds(
     justSentCandidates,
     USER_MESSAGE_ENTER_MS,
@@ -126,7 +136,6 @@ export const ConversationEvents = memo(function ConversationEvents({
   return (
     <ChatTimeline
       rows={rows}
-      lastUserRowIndex={lastUserRowIndex}
       pendingAskQuestion={pendingAskQuestion}
       hasOlderEvents={hasOlderMessages}
       isLoadingOlder={isLoadingOlder}

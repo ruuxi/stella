@@ -1,19 +1,21 @@
 /**
  * Linear chat row components.
  *
- * Each persisted message renders as a single row in chronological order,
- * with no per-turn user/assistant grouping. Tool-derived artifacts
- * (web-search badge, office preview, end-resource pill, self-mod undo,
+ * Each message renders as a single row in chronological order, with no
+ * per-turn user/assistant grouping. Tool-derived artifacts (web-search
+ * badge, office preview, end-resource pill, self-mod undo,
  * ask-question bubble) attach to the assistant row that immediately
  * followed the producing tool events.
  *
- * Streaming is NOT a separate row: while a turn is in flight,
- * `useEventRows` synthesizes (or augments) a single assistant row keyed
- * by the user message id being responded to, then overlays the streaming
- * buffer onto its `text` and flips `isAnimating`. When the persisted
- * `assistant_message` lands, the same row keeps its identity (same React
- * key, same Markdown `cacheKey`) and just swaps its data source — no
- * unmount, no Streamdown re-parse, no flash.
+ * Streaming is NOT a separate row: live stream chunks update an
+ * in-memory `MessageRecord` overlay that `useConversationDisplayMessages`
+ * merges into the displayed list under a stable
+ * `assistant-{userMessageId}-{indexInTurn}` key. When the persisted
+ * `assistant_message` lands, the overlay drops out of the list and the
+ * persisted row reuses the same React key — no unmount, no Streamdown
+ * re-parse, no flash. The only marker that the row is currently being
+ * streamed (vs. backed by a persisted row) is `isStreaming` below,
+ * which the scroll-management hook uses to find the in-flight row.
  *
  * Reasoning text is intentionally NOT rendered anywhere in this surface
  * (the underlying data still flows through state for model history).
@@ -73,8 +75,13 @@ export type AssistantRowViewModel = {
    * swap so the markdown parse cache is reused.
    */
   cacheKey: string;
-  /** True while the runtime is still streaming text into this row. */
-  isAnimating?: boolean;
+  /**
+   * Set when this row is sourced from a live `StreamingAssistantOverlay`
+   * (text still growing). Drives the `event-row--streaming` class so
+   * `use-chat-scroll-management` can identify the in-flight row and
+   * apply the "pin streaming-row top to viewport top" auto-follow cap.
+   */
+  isStreaming?: boolean;
   responseTarget?: AgentResponseTarget;
   officePreviewRef?: OfficePreviewRef;
   resourcePayload?: DisplayPayload;
@@ -295,10 +302,10 @@ export const AssistantMessageRow = memo(
 
     return (
       <div
-        className={`event-row event-row--assistant${row.isAnimating ? " event-row--streaming" : ""}`}
+        className={`event-row event-row--assistant${row.isStreaming ? " event-row--streaming" : ""}`}
       >
         <div
-          className={`event-item assistant${row.isAnimating ? " streaming" : ""}${!hasText && hasAskQuestion ? " event-item--ask-question-only" : ""}`}
+          className={`event-item assistant${!hasText && hasAskQuestion ? " event-item--ask-question-only" : ""}`}
         >
           {hasText && (
             <Markdown

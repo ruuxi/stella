@@ -14,7 +14,6 @@ import {
   type ResumeTaskSnapshot,
   type StreamStoreAction,
 } from './store'
-import type { AgentResponseTarget } from './streaming-types'
 
 type UseResumeSnapshotOptions = {
   dispatch: Dispatch<StreamStoreAction>
@@ -24,9 +23,6 @@ type UseResumeSnapshotOptions = {
   }
   streaming: {
     setPendingUserMessageId: Dispatch<React.SetStateAction<string | null>>
-    setStreamingResponseTarget: Dispatch<
-      React.SetStateAction<AgentResponseTarget | null>
-    >
   }
   timers: {
     scheduleTaskRemoval: (
@@ -44,7 +40,7 @@ export function useApplyResumeSnapshot({
   timers,
 }: UseResumeSnapshotOptions) {
   const { activeConversationIdRef, terminalTaskKeysRef } = refs
-  const { setPendingUserMessageId, setStreamingResponseTarget } = streaming
+  const { setPendingUserMessageId } = streaming
   const { scheduleTaskRemoval } = timers
 
   return useCallback(
@@ -74,7 +70,6 @@ export function useApplyResumeSnapshot({
             ? null
             : (args.activeRun?.userMessageId ?? null),
         )
-        setStreamingResponseTarget(null)
       }
       for (const task of args.tasks) {
         if (task.status === 'completed') {
@@ -91,7 +86,6 @@ export function useApplyResumeSnapshot({
       dispatch,
       scheduleTaskRemoval,
       setPendingUserMessageId,
-      setStreamingResponseTarget,
       terminalTaskKeysRef,
     ],
   )

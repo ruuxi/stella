@@ -3,7 +3,6 @@ import type { TaskItem } from "@/app/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
-import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
 import { ConversationEvents } from "./ConversationEvents";
 import "./full-shell.chat.css";
 import "./compact-conversation.css";
@@ -28,13 +27,10 @@ type CompactConversationSurfaceProps = {
   scroll: ChatColumnScroll;
   messages: MessageRecord[];
   maxItems?: number;
-  streamingText: string;
-  streamingResponseTarget?: AgentResponseTarget | null;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
-  optimisticUserMessageIds?: string[];
   liveTasks?: TaskItem[];
   hasOlderMessages?: boolean;
   isLoadingOlder?: boolean;
@@ -51,12 +47,8 @@ export function CompactConversationSurface({
   scroll,
   messages,
   maxItems,
-  streamingText,
-  streamingResponseTarget,
-  isStreaming,
   pendingUserMessageId,
   queuedUserMessages,
-  optimisticUserMessageIds,
   hasOlderMessages,
   isLoadingOlder,
   isLoadingHistory,
@@ -81,12 +73,8 @@ export function CompactConversationSurface({
           <ConversationEvents
             messages={messages}
             maxItems={maxItems}
-            streamingText={streamingText}
-            streamingResponseTarget={streamingResponseTarget}
-            isStreaming={isStreaming}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}
-            optimisticUserMessageIds={optimisticUserMessageIds}
             hasOlderMessages={hasOlderMessages}
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}

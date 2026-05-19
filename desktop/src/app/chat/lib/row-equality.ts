@@ -268,7 +268,7 @@ const assistantRowEqual = (
   a.id === b.id &&
   a.text === b.text &&
   a.cacheKey === b.cacheKey &&
-  Boolean(a.isAnimating) === Boolean(b.isAnimating) &&
+  Boolean(a.isStreaming) === Boolean(b.isStreaming) &&
   JSON.stringify(a.responseTarget ?? null) ===
     JSON.stringify(b.responseTarget ?? null) &&
   (a.officePreviewRef?.sessionId ?? null) ===
