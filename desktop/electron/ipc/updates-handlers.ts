@@ -81,6 +81,14 @@ const runGit = (cwd: string, args: string[]): Promise<GitRunResult> =>
     });
   });
 
+const readGitFile = async (
+  cwd: string,
+  revisionPath: string,
+): Promise<string | null> => {
+  const result = await runGit(cwd, ["show", revisionPath]);
+  return result.exitCode === 0 ? result.stdout : null;
+};
+
 type VerifyResult =
   | { ok: true; headCommit: string }
   | { ok: false; reason: string };
@@ -150,6 +158,9 @@ const verifyMergeApplied = async (
 };
 
 const parseManifest = (raw: string): InstallManifestSnapshot => {
+  if (!raw.trim()) {
+    throw new Error("Install manifest is empty.");
+  }
   const parsed = JSON.parse(raw) as Record<string, unknown>;
   return {
     version: requireString(parsed.version, "version"),
@@ -160,6 +171,97 @@ const parseManifest = (raw: string): InstallManifestSnapshot => {
     desktopReleaseCommit: asString(parsed.desktopReleaseCommit),
     desktopInstallBaseCommit: asString(parsed.desktopInstallBaseCommit),
   };
+};
+
+const tryParseManifest = (
+  raw: string,
+  source: string,
+): InstallManifestSnapshot | null => {
+  try {
+    return parseManifest(raw);
+  } catch (error) {
+    console.warn(
+      `[updates] Ignoring invalid install manifest from ${source}:`,
+      (error as Error).message,
+    );
+    return null;
+  }
+};
+
+const readReleaseManifest = async (
+  stellaRoot: string,
+): Promise<{ tag: string | null; commit: string | null }> => {
+  try {
+    const raw = await fs.readFile(path.join(stellaRoot, "stella-release.json"), "utf-8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      tag: asString(parsed.tag),
+      commit: asString(parsed.commit),
+    };
+  } catch {
+    return { tag: null, commit: null };
+  }
+};
+
+const recoverManifest = async (
+  stellaRoot: string,
+): Promise<InstallManifestSnapshot | null> => {
+  const tracked = await readGitFile(stellaRoot, `HEAD:${INSTALL_MANIFEST_BASENAME}`);
+  if (tracked) {
+    const parsed = tryParseManifest(tracked, "git HEAD");
+    if (parsed) return parsed;
+  }
+
+  const release = await readReleaseManifest(stellaRoot);
+  const head = await runGit(stellaRoot, ["rev-parse", "HEAD"]);
+  return {
+    version: "recovered",
+    platform: process.platform,
+    installPath: stellaRoot,
+    installedAt: new Date().toISOString(),
+    desktopReleaseTag: release.tag,
+    desktopReleaseCommit:
+      release.commit ?? (head.exitCode === 0 ? head.stdout.trim() : null),
+    desktopInstallBaseCommit: null,
+  };
+};
+
+const readManifestWithRecovery = async (
+  stellaRoot: string,
+): Promise<InstallManifestSnapshot | null> => {
+  const manifestPath = manifestPathFromRoot(stellaRoot);
+  try {
+    const raw = await fs.readFile(manifestPath, "utf-8");
+    const parsed = tryParseManifest(raw, manifestPath);
+    if (parsed) return parsed;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    console.warn(
+      "[updates] Failed to read install manifest:",
+      (err as Error).message,
+    );
+  }
+  return await recoverManifest(stellaRoot);
+};
+
+const writeFileAtomic = async (filePath: string, content: string) => {
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
+  );
+  const handle = await fs.open(tempPath, "w", 0o600);
+  try {
+    await handle.writeFile(content, "utf-8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await fs.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.unlink(tempPath).catch(() => undefined);
+    throw error;
+  }
 };
 
 export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
@@ -173,16 +275,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       }
       const stellaRoot = options.getStellaRoot();
       if (!stellaRoot) return null;
-      const manifestPath = manifestPathFromRoot(stellaRoot);
-      try {
-        const raw = await fs.readFile(manifestPath, "utf-8");
-        return parseManifest(raw);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          return null;
-        }
-        throw err;
-      }
+      return await readManifestWithRecovery(stellaRoot);
     },
   );
 
@@ -213,8 +306,28 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         throw new Error(verification.reason);
       }
       const manifestPath = manifestPathFromRoot(stellaRoot);
-      const raw = await fs.readFile(manifestPath, "utf-8");
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        const raw = await fs.readFile(manifestPath, "utf-8");
+        parseManifest(raw);
+        parsed = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        const recovered = await readManifestWithRecovery(stellaRoot);
+        if (recovered) {
+          parsed = {
+            version: recovered.version,
+            platform: recovered.platform,
+            installPath: recovered.installPath,
+            installedAt: recovered.installedAt,
+            desktopReleaseTag: recovered.desktopReleaseTag,
+            desktopReleaseCommit: recovered.desktopReleaseCommit,
+            desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
+          };
+        }
+      }
+      if (!parsed) {
+        throw new Error("Install manifest is unavailable.");
+      }
       parsed.desktopReleaseCommit = commit;
       // Tag flows in from the Convex publish payload (`currentRelease.tag`),
       // not derived locally — that way skipping releases (e.g. user goes
@@ -226,7 +339,8 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         parsed.desktopReleaseTag = tag;
       }
       const next = `${JSON.stringify(parsed, null, 2)}\n`;
-      await fs.writeFile(manifestPath, next, "utf-8");
+      parseManifest(next);
+      await writeFileAtomic(manifestPath, next);
       return parseManifest(next);
     },
   );

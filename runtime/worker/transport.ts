@@ -143,8 +143,13 @@ const startUnixSocketTransport = async (
   await fsPromises.mkdir(path.dirname(socketPath), { recursive: true });
   await removeIfStaleSocket(socketPath);
 
+  const sockets = new Set<Socket>();
   const server: Server = createServer((socket: Socket) => {
+    sockets.add(socket);
     socket.setNoDelay(true);
+    socket.once("close", () => {
+      sockets.delete(socket);
+    });
     socket.on("error", () => {
       // Connection-level errors (e.g. host crashed) just close the socket;
       // peer.dispose runs via the readline 'close' handler downstream.
@@ -228,6 +233,9 @@ const startUnixSocketTransport = async (
     close: async () => {
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
+        for (const socket of sockets) {
+          socket.destroy();
+        }
       });
       await fsPromises.unlink(socketPath).catch(() => undefined);
     },

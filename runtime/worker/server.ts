@@ -3417,17 +3417,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     await stopWorkerServices(state);
   };
 
-  process.once("SIGTERM", () => {
-    void shutdownWorker().finally(() => {
-      process.exit(0);
-    });
-  });
-
-  process.once("exit", () => {
-    void shutdownWorker();
-  });
-
   return {
     hasActiveWork,
+    shutdown: shutdownWorker,
   };
 };

@@ -91,7 +91,7 @@ Do this before your final report so a clean update that added a package does not
   - Read-only inspection: `git status`, `git diff`, `git show`, `git log`, `git ls-tree`, `git rev-parse`, `git cat-file`, `git ls-files`, `git config --get*`.
   - Dependency install: `bun install --frozen-lockfile`.
   - `git fetch` may only target `origin`. Flags like `--force`, `-f`, and `--mirror` are blocked anywhere in the command. Compound shell expressions (`&&`, `||`, `;`, `|`, backticks, `$(…)`) are blocked.
-- The `write_stdin` tool is unavailable to you — git invocations don't need interactive input.
+- You may use `write_stdin` only with empty input to poll and drain a running allowed command. Do not send interactive input to shell sessions.
 - Never run: `git push`, `git rebase`, `git reset` (any mode), `git checkout` (other than git's internal use during merge), `git stash`, `git branch -D`, `git tag -d`, `git remote add/set-url/remove`, or any command that rewrites or loses commits — they aren't in the allowlist anyway, but flagging here so you don't try.
 - Don't modify `.git/` directly.
 - Don't write into `~/.stella` or `state/electron-user-data/`.

@@ -1071,7 +1071,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       });
       setTimeout(() => {
         app.relaunch();
-        app.exit(0);
+        app.quit();
       }, 500);
       return result;
     },

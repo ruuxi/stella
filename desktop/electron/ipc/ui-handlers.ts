@@ -206,6 +206,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
   ipcMain.on("app:relaunch", (event) => {
     if (!options.assertPrivilegedSender(event, "app:relaunch")) return;
     app.relaunch();
-    app.exit(0);
+    app.quit();
   });
 };
