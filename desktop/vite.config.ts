@@ -271,6 +271,16 @@ export const resolveSelfModOverlayImportPath = (
   return null
 }
 
+export const shouldPromoteSuppressedShellUpdatePath = (
+  beforeShellMutation: string | undefined,
+  afterShellMutation: string,
+): boolean => {
+  if (beforeShellMutation !== undefined) {
+    return beforeShellMutation !== afterShellMutation
+  }
+  return afterShellMutation !== ''
+}
+
 const readDiskOrEmpty = (absPath: string): string => {
   try {
     return fs.readFileSync(absPath, 'utf-8')
@@ -513,6 +523,11 @@ function selfModHmrControl(): Plugin {
       if (!isViteTrackableAbsolutePath(absPath)) continue
       const repoRelative = normalizeContentionPath(absPath, STELLA_REPO_ROOT)
       if (!repoRelative) continue
+      const beforeShellMutation = prePeriodSnapshot.get(absPath)
+      const afterShellMutation = readDiskOrEmpty(absPath)
+      if (!shouldPromoteSuppressedShellUpdatePath(beforeShellMutation, afterShellMutation)) {
+        continue
+      }
       shellSnapshotPaths.delete(absPath)
       trackPath(absPath)
       promoted.push(repoRelative)

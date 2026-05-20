@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveSelfModHmrAbsolutePath,
   resolveSelfModOverlayImportPath,
+  shouldPromoteSuppressedShellUpdatePath,
 } from "../../../vite.config";
 
 const repoRoot = path
@@ -61,5 +62,32 @@ describe("resolveSelfModOverlayImportPath", () => {
     expect(
       resolveSelfModOverlayImportPath("react", importer, () => true),
     ).toBeNull();
+  });
+});
+
+describe("shouldPromoteSuppressedShellUpdatePath", () => {
+  it("ignores suppressed shell updates when disk content still matches the pre-command snapshot", () => {
+    expect(
+      shouldPromoteSuppressedShellUpdatePath(
+        "export const value = 'before';\n",
+        "export const value = 'before';\n",
+      ),
+    ).toBe(false);
+  });
+
+  it("promotes suppressed shell updates when disk content differs from the pre-command snapshot", () => {
+    expect(
+      shouldPromoteSuppressedShellUpdatePath(
+        "export const value = 'before';\n",
+        "export const value = 'after';\n",
+      ),
+    ).toBe(true);
+  });
+
+  it("promotes newly-created files but ignores missing files without a snapshot", () => {
+    expect(shouldPromoteSuppressedShellUpdatePath(undefined, "new file\n")).toBe(
+      true,
+    );
+    expect(shouldPromoteSuppressedShellUpdatePath(undefined, "")).toBe(false);
   });
 });
