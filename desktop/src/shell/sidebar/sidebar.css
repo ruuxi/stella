@@ -307,7 +307,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   padding: 4px 4px 0;
 }
 
@@ -328,7 +328,7 @@
 .sidebar-footer-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .sidebar-footer-icon {
@@ -336,11 +336,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
   padding: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-weak);
@@ -369,8 +369,8 @@
    right of the icon button, dismissed once the user opens Connect. */
 .sidebar-footer-icon .sidebar-nav-hint-dot {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 4px;
+  right: 4px;
 }
 
 /* ── Account row: avatar (initials only) ─────────────────────────── */
