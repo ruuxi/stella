@@ -348,11 +348,13 @@ export function ChatHomeOverview() {
   const runningTasks = useMemo(() => {
     return [...allTasks]
       .filter((task) => task.status === "running")
-      .sort((a, b) => {
-        const aTime = a.lastUpdatedAtMs ?? a.startedAtMs;
-        const bTime = b.lastUpdatedAtMs ?? b.startedAtMs;
-        return bTime - aTime;
-      });
+      // Sort by the row's stable start time, NOT `lastUpdatedAtMs` —
+      // otherwise every per-task progress summary bumps the row's
+      // updated-at, the sort re-runs, and concurrently-running tasks
+      // visibly swap places in the Now group while their feeds tick.
+      // Newest-started still floats to the top; siblings keep their
+      // slot for the rest of the run.
+      .sort((a, b) => b.startedAtMs - a.startedAtMs);
   }, [allTasks]);
 
   const doneTasks = useMemo(() => {
