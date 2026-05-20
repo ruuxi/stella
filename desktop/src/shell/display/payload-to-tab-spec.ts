@@ -60,8 +60,50 @@ export type GeneratedMediaItem = {
   createdAt: number;
 };
 
-const generatedMediaItems: GeneratedMediaItem[] = [];
-const generatedMediaItemIds = new Set<string>();
+const GENERATED_MEDIA_ITEMS_KEY = "stella-display-generated-media-items";
+const GENERATED_MEDIA_ITEMS_CAP = 300;
+
+const isGeneratedMediaItem = (value: unknown): value is GeneratedMediaItem => {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Partial<GeneratedMediaItem>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.createdAt === "number" &&
+    record.asset != null &&
+    typeof record.asset === "object" &&
+    "kind" in record.asset
+  );
+};
+
+const loadGeneratedMediaItems = (): GeneratedMediaItem[] => {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(GENERATED_MEDIA_ITEMS_KEY) || "[]",
+    );
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isGeneratedMediaItem).slice(-GENERATED_MEDIA_ITEMS_CAP);
+  } catch {
+    return [];
+  }
+};
+
+const persistGeneratedMediaItems = (): void => {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(
+      GENERATED_MEDIA_ITEMS_KEY,
+      JSON.stringify(generatedMediaItems.slice(-GENERATED_MEDIA_ITEMS_CAP)),
+    );
+  } catch {
+    // Best-effort; local output files remain on disk.
+  }
+};
+
+const generatedMediaItems: GeneratedMediaItem[] = loadGeneratedMediaItems();
+const generatedMediaItemIds = new Set(
+  generatedMediaItems.map((item) => item.id),
+);
 // Cached snapshot reference. Refresh only when the underlying list
 // actually mutates so consumers can rely on referential equality to
 // skip work.
@@ -70,6 +112,8 @@ let generatedMediaSnapshot: ReadonlyArray<GeneratedMediaItem> = [];
 const refreshGeneratedMediaSnapshot = () => {
   generatedMediaSnapshot = generatedMediaItems.slice();
 };
+
+refreshGeneratedMediaSnapshot();
 
 const hashText = (text: string): string => {
   let hash = 5381;
@@ -121,6 +165,7 @@ const addGeneratedMediaItem = (
     }
   }
   refreshGeneratedMediaSnapshot();
+  persistGeneratedMediaItems();
   return generatedMediaSnapshot;
 };
 
@@ -139,6 +184,7 @@ export const removeGeneratedMediaItem = (
   generatedMediaItems.splice(idx, 1);
   generatedMediaItemIds.delete(id);
   refreshGeneratedMediaSnapshot();
+  persistGeneratedMediaItems();
   return generatedMediaSnapshot;
 };
 

@@ -26,6 +26,7 @@ export const IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE =
 
 export const IPC_DISPLAY_UPDATE = "display:update" as const;
 export const IPC_DISPLAY_READ_FILE = "display:readFile" as const;
+export const IPC_DISPLAY_LIST_CANVAS_HTML = "display:listCanvasHtml" as const;
 export const IPC_DISPLAY_TRASH_LIST = "displayTrash:list" as const;
 export const IPC_DISPLAY_TRASH_FORCE_DELETE =
   "displayTrash:forceDelete" as const;

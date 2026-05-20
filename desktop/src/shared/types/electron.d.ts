@@ -1348,6 +1348,14 @@ export type ElectronDisplayApi = {
       }
     | { missing: true; mimeType: string; path: string }
   >;
+  listCanvasHtml: () => Promise<
+    Array<{
+      filePath: string;
+      slug: string;
+      title: string;
+      createdAt: number;
+    }>
+  >;
   listTrash: () => Promise<{
     items: Array<{
       id: string;
