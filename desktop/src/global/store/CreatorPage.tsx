@@ -4,20 +4,16 @@
  * Reachable via `/c/:username`. Author bylines on add-on cards link
  * here once the creator has a social profile.
  */
-import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Share2 } from "lucide-react";
 import { api } from "@/convex/api";
 import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import type { StorePackageRecord } from "@/shared/types/electron";
-import { ShareAddonDialog } from "./ShareAddonDialog";
 import "./store.css";
 
 type Props = { username: string };
 
 export function CreatorPage({ username }: Props) {
   const navigate = useNavigate();
-  const [sharePkg, setSharePkg] = useState<StorePackageRecord | null>(null);
   // One-shot, not a subscription: visiting a creator's page is
   // read-only browsing — neither the profile nor their published
   // package list will move while the user is on the page.
@@ -86,19 +82,6 @@ export function CreatorPage({ username }: Props) {
               <div className="store-card-body">
                 <div className="store-card-top">
                   <span className="store-card-name">{pkg.displayName}</span>
-                  <div className="store-card-actions">
-                    <button
-                      type="button"
-                      className="store-icon-btn"
-                      aria-label="Share add-on"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSharePkg(pkg);
-                      }}
-                    >
-                      <Share2 size={14} />
-                    </button>
-                  </div>
                 </div>
                 <div className="store-card-desc">{pkg.description}</div>
                 <div className="store-card-meta">
@@ -109,16 +92,6 @@ export function CreatorPage({ username }: Props) {
           ))}
         </div>
       )}
-
-      {sharePkg ? (
-        <ShareAddonDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setSharePkg(null);
-          }}
-          pkg={sharePkg}
-        />
-      ) : null}
     </div>
   );
 }
