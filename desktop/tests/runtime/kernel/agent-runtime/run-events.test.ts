@@ -39,6 +39,32 @@ const assistantMessage = {
 };
 
 describe("subscribeRuntimeAgentEvents", () => {
+  it("records a completed assistant text event without a Pi message object", () => {
+    const store = { recordRunEvent: vi.fn() };
+    const recorder = createRunEventRecorder({
+      store: store as never,
+      runId: "run-claude",
+      conversationId: "conversation-1",
+      agentType: "orchestrator",
+      userMessageId: "user-1",
+      getResponseTarget: () => ({ type: "user_turn" }),
+    });
+
+    recorder.recordStream("Hello ");
+    const event = recorder.recordAssistantTextEnd(" Hello from Claude Code. ");
+
+    expect(event).toEqual(
+      expect.objectContaining({
+        runId: "run-claude",
+        agentType: "orchestrator",
+        seq: 2,
+        userMessageId: "user-1",
+        text: "Hello from Claude Code.",
+        responseTarget: { type: "user_turn" },
+      }),
+    );
+  });
+
   it("routes provider thinking_delta to onReasoning (NOT onStream) and skips thinking_end", () => {
     // Reasoning deltas feed the per-agent reasoning UI, not the visible chat stream.
     let listener: ((event: AgentEvent) => void) | undefined;

@@ -537,6 +537,10 @@ const runClaudeHostedTurn = async (args: {
     agentType: args.opts.agentType,
     content: finalResult.text,
   });
+  const assistantMessageEvent = runEvents.recordAssistantTextEnd(finalResult.text);
+  if (assistantMessageEvent) {
+    args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
+  }
   args.opts.store.setThreadExternalSessionId(threadKey, finalResult.sessionId);
 
   return {
