@@ -18,6 +18,8 @@ DEV-CONTEXT.md
 /.stella-dev-splash-main.cjs
 /.stella-dev-splash.lock
 /.stella-dev-splash.ready
+/.stella-launch.log
+/stella-install.json
 
 # TypeScript incremental build artifacts (machine-generated; never commit).
 *.tsbuildinfo
