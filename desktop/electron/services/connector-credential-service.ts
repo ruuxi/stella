@@ -38,6 +38,7 @@ type PendingMeta = {
   tokenKey: string;
   mode: ConnectorCredentialRequestMode;
   kind: "credential" | "external_approval";
+  resourceUrl?: string;
   oauthAbort?: AbortController;
   oauthStarted?: boolean;
   oauthFlow?: {
@@ -119,12 +120,14 @@ export class ConnectorCredentialService {
   async requestExternalOAuthApproval(payload: {
     tokenKey: string;
     displayName: string;
+    resourceUrl: string;
     description?: string;
   }): Promise<ConnectorCredentialOutcome> {
     return await this.enqueueRequest({
       tokenKey: payload.tokenKey,
       displayName: payload.displayName,
       authType: "oauth",
+      resourceUrl: payload.resourceUrl,
       description: payload.description,
       kind: "external_approval",
     });
@@ -323,6 +326,7 @@ export class ConnectorCredentialService {
       tokenKey: payload.tokenKey,
       mode,
       kind: payload.kind,
+      resourceUrl: payload.resourceUrl,
       oauthAbort,
       oauthStarted: false,
       oauthFlow:
@@ -696,6 +700,9 @@ export class ConnectorCredentialService {
     }
     if (meta.mode === "oauth") {
       if (meta.kind === "external_approval") {
+        if (meta.resourceUrl) {
+          await shell.openExternal(meta.resourceUrl);
+        }
         const outcome = { ok: true } as const;
         this.pending.resolve(payload.requestId, outcome);
         this.meta.delete(payload.requestId);

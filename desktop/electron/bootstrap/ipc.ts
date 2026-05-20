@@ -380,6 +380,8 @@ export const registerBootstrapIpcHandlers = (
       services.connectorCredentialService.requestPreregisteredOAuth(payload),
     requestDeviceOAuth: (payload) =>
       services.connectorCredentialService.requestDeviceOAuth(payload),
+    requestExternalOAuthApproval: (payload) =>
+      services.connectorCredentialService.requestExternalOAuthApproval(payload),
     getConvexAuthToken: () => services.authService.getConvexAuthToken(),
     getConvexSiteUrl: () => services.authService.getConvexSiteUrl(),
     disconnectGoogleWorkspace: async () => {

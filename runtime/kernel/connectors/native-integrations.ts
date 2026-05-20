@@ -34,12 +34,16 @@ export type NativeConnectorCatalogEntry = {
   auth: readonly string[];
   catalogToolCount: number;
   availability: NativeConnectorAvailability;
-  provider: "google-workspace" | "oauth-catalog";
+  provider: "google-workspace" | "oauth-catalog" | "backend-composio";
   toolPrefix?: string;
   description: string;
   sourceUrl?: string;
   iconUrl?: string;
   connectable: boolean;
+  backendConnector?: {
+    type: "composio";
+    toolkit: string;
+  };
   oauthConfig?: NativeOAuthProviderConfig;
   oauthSetupGroup?: {
     id: string;
@@ -330,7 +334,7 @@ const summarizeInputSchema = (schema?: Record<string, unknown>) => {
 export const getNativeConnectorCatalogActions = (
   entry: NativeConnectorCatalogEntry,
 ): NativeConnectorCatalogAction[] => {
-  if (entry.provider === "oauth-catalog") {
+  if (entry.provider === "oauth-catalog" || entry.provider === "backend-composio") {
     if (entry.oauthConfig) return [];
     return (getOAuthCatalogProvider(entry.id)?.tools ?? []).map((tool) => ({
       name: normalizeOAuthCatalogToolName(tool),
@@ -356,9 +360,36 @@ export const getNativeConnectorCatalogActions = (
 export const nativeOAuthApiRequestToolName = (id: string) =>
   `${id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_REQUEST`;
 
+export const backendIntegrationRunToolName = (id: string) =>
+  `${id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_RUN_ACTION`;
+
 export const getNativeConnectorTools = (
   entry: NativeConnectorCatalogEntry,
 ): ConnectorToolInfo[] => {
+  if (entry.provider === "backend-composio") {
+    return [
+      {
+        name: backendIntegrationRunToolName(entry.id),
+        title: `Run ${entry.name} Action`,
+        description: `Run a ${entry.name} action through Stella's connected integration account. Use catalog-actions to inspect supported action names and inputs.`,
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["action"],
+          properties: {
+            action: {
+              type: "string",
+              description: "Action slug from stella-connect catalog-actions.",
+            },
+            arguments: {
+              type: "object",
+              additionalProperties: true,
+            },
+          },
+        },
+      },
+    ];
+  }
   if (entry.provider === "oauth-catalog") {
     const config = getNativeConnectorOAuthConfig(entry);
     if (!config?.resourceUrl) return [];
@@ -451,6 +482,13 @@ const getNativeConnectorOAuthSetup = (
   entry: NativeConnectorCatalogEntry,
   options: NativeOAuthProviderConfigOptions = {},
 ) => {
+  if (entry.provider === "backend-composio") {
+    return {
+      connectable: true,
+      oauthSetupStatus: "ready" as const,
+      oauthSetupMessage: "Ready to connect.",
+    };
+  }
   if (entry.connectable) {
     return {
       connectable: true,
@@ -548,7 +586,7 @@ export const listNativeConnectors = async (
       skillPath: stored?.skillPath,
       toolCount: getNativeConnectorTools(entry).length,
       actionCount:
-        entry.provider === "oauth-catalog"
+        entry.provider === "oauth-catalog" || entry.provider === "backend-composio"
           ? entry.catalogToolCount
           : getNativeConnectorCatalogActions(entry).length,
     };
@@ -591,10 +629,12 @@ const writeNativeConnectorSkill = async (
           .join("\n")
       : "- No recovered catalog actions were available for this provider.";
   const catalogActionsPath = path.join(skillDir, "ACTIONS.md");
-  if (entry.provider === "oauth-catalog") {
+  if (entry.provider === "oauth-catalog" || entry.provider === "backend-composio") {
     await fs.writeFile(
       catalogActionsPath,
-      `# ${entry.name} Catalog Actions\n\nThese are recovered OAuth action references from the Composio toolkit catalog. Use them to choose the right ${entry.name} API endpoint and arguments. Stella executes this integration through \`stella-connect call ${entry.id} /path\` and \`${nativeOAuthApiRequestToolName(entry.id)}\` until a provider-specific typed dispatcher exists.\n\n${catalogActionLines}\n`,
+      entry.provider === "backend-composio"
+        ? `# ${entry.name} Actions\n\nThese are Stella action references for ${entry.name}. Stella owns the CLI and backend contract; the current backend provider may use Composio behind the scenes. Call actions with \`stella-connect call ${entry.id} <action-name> --json '{}'\` or \`${backendIntegrationRunToolName(entry.id)}\`.\n\n${catalogActionLines}\n`
+        : `# ${entry.name} Catalog Actions\n\nThese are recovered OAuth action references from the Composio toolkit catalog. Use them to choose the right ${entry.name} API endpoint and arguments. Stella executes this integration through \`stella-connect call ${entry.id} /path\` and \`${nativeOAuthApiRequestToolName(entry.id)}\` until a provider-specific typed dispatcher exists.\n\n${catalogActionLines}\n`,
       "utf-8",
     );
   }
@@ -615,7 +655,23 @@ stella-connect tools ${entry.id}
 \`\`\`
 
 ${
-  entry.provider === "oauth-catalog"
+  entry.provider === "backend-composio"
+    ? `
+Call an action:
+
+\`\`\`bash
+stella-connect call ${entry.id} <action-name> --json '{"key":"value"}'
+\`\`\`
+
+This provider has ${entry.catalogToolCount} Stella catalog actions. Use \`ACTIONS.md\` in this skill folder as the action reference. The backend owns the provider boundary, so the CLI shape stays the same if Stella later moves this integration to native OAuth.
+
+Inspect the catalog actions:
+
+\`\`\`bash
+stella-connect catalog-actions ${entry.id}
+\`\`\`
+`
+    : entry.provider === "oauth-catalog"
     ? `
 For native OAuth API calls, pass an API path instead of an action name:
 
@@ -722,7 +778,9 @@ export const enableNativeConnector = async (
     actionCount:
       entry.provider === "oauth-catalog"
         ? entry.catalogToolCount
-        : getNativeConnectorCatalogActions(entry).length,
+        : entry.provider === "backend-composio"
+          ? entry.catalogToolCount
+          : getNativeConnectorCatalogActions(entry).length,
   };
 };
 
@@ -752,6 +810,8 @@ export const disableNativeConnector = async (
     actionCount:
       entry.provider === "oauth-catalog"
         ? entry.catalogToolCount
-        : getNativeConnectorCatalogActions(entry).length,
+        : entry.provider === "backend-composio"
+          ? entry.catalogToolCount
+          : getNativeConnectorCatalogActions(entry).length,
   };
 };

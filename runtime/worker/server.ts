@@ -787,6 +787,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               };
             }
           },
+          getStellaSiteAuth: () => {
+            const baseUrl = state.init?.convexSiteUrl?.trim() ?? init.convexSiteUrl?.trim();
+            const authToken = state.init?.authToken?.trim() ?? init.authToken?.trim();
+            if (!baseUrl || !authToken) {
+              return { ok: false, reason: "not_signed_in" };
+            }
+            return { ok: true, baseUrl, authToken };
+          },
         },
       });
     } catch (error) {
