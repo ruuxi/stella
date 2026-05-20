@@ -104,6 +104,26 @@ export const createRunEventRecorder = ({
     onStart?: () => void;
   }> = [];
   const nextSeq = () => ++seq;
+  const recordAssistantTextEnd = (
+    text: string,
+    timestamp: number = now(),
+  ): RuntimeAssistantMessageEvent | null => {
+    const trimmedText = text.trim();
+    if (!trimmedText) {
+      return null;
+    }
+    const responseTarget = getResponseTarget?.();
+    return {
+      runId,
+      agentType,
+      seq: nextSeq(),
+      userMessageId: currentUserMessageId,
+      text: trimmedText,
+      timestamp,
+      ...(responseTarget ? { responseTarget } : {}),
+      ...(uiVisibility ? { uiVisibility } : {}),
+    };
+  };
 
   return {
     queueUserMessageId(nextUserMessageId: string, onStart?: () => void): void {
@@ -136,21 +156,9 @@ export const createRunEventRecorder = ({
 
     recordAssistantMessageEnd(message: AgentMessage): RuntimeAssistantMessageEvent | null {
       const text = extractAssistantText(message).trim();
-      if (!text) {
-        return null;
-      }
-      const responseTarget = getResponseTarget?.();
-      return {
-        runId,
-        agentType,
-        seq: nextSeq(),
-        userMessageId: currentUserMessageId,
-        text,
-        timestamp: message.timestamp ?? now(),
-        ...(responseTarget ? { responseTarget } : {}),
-        ...(uiVisibility ? { uiVisibility } : {}),
-      };
+      return recordAssistantTextEnd(text, message.timestamp);
     },
+    recordAssistantTextEnd,
 
     recordRunStart(): void {
       store.recordRunEvent({
