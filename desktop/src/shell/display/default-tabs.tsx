@@ -8,7 +8,7 @@ import { ChatHomeOverview } from "./ChatHomeOverview";
 import { MediaTabContent } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { getCanvasHtmlItems } from "./canvas-tab/canvas-items";
-import { displayTabs } from "./tab-store";
+import { displayTabs, useDisplayPanelLayout } from "./tab-store";
 import {
   CANVAS_HTML_TAB_ID,
   GENERATED_MEDIA_TAB_ID,
@@ -26,9 +26,9 @@ export const CANVAS_DISPLAY_TAB_ID = CANVAS_HTML_TAB_ID;
  * Chat display tab body. Always mounted via the singleton tab store; its
  * content adapts to the current route:
  *
- *   - On `/chat` (home): the home view IS the chat, so duplicating it in
- *     the panel adds no value. Show `ChatHomeOverview` instead — recent
- *     activity and changed files at a glance.
+ *   - On `/chat` (home): the normal side panel shows `ChatHomeOverview`
+ *     instead of duplicating the main chat. Expanded mode takes over the
+ *     main outlet, so it renders the live chat there too.
  *   - Everywhere else: render the live `ChatPanelTab` so users can keep
  *     talking to Stella from any route.
  *
@@ -42,9 +42,10 @@ function ChatDisplayTab({
 }) {
   const matchRoute = useMatchRoute();
   const isOnHomeChatRoute = Boolean(matchRoute({ to: "/chat" }));
+  const { panelExpanded } = useDisplayPanelLayout();
   const chat = useChatRuntime();
 
-  if (isOnHomeChatRoute) return <ChatHomeOverview />;
+  if (isOnHomeChatRoute && !panelExpanded) return <ChatHomeOverview />;
 
   return (
     <ChatPanelTab

@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import {
+  IPC_DISPLAY_LIST_CANVAS_HTML,
   IPC_DISPLAY_READ_FILE,
   IPC_DISPLAY_TRASH_FORCE_DELETE,
   IPC_DISPLAY_TRASH_LIST,
@@ -166,6 +168,49 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
       };
     },
   );
+
+  ipcMain.handle(IPC_DISPLAY_LIST_CANVAS_HTML, async (event) => {
+    if (!options.assertPrivilegedSender(event, IPC_DISPLAY_LIST_CANVAS_HTML)) {
+      throw new Error(
+        `Blocked untrusted ${IPC_DISPLAY_LIST_CANVAS_HTML} request.`,
+      );
+    }
+
+    const htmlDir = path.join(requireStellaRoot(), "state", "outputs", "html");
+    let entries: Dirent<string>[];
+    try {
+      entries = await fs.readdir(htmlDir, { withFileTypes: true });
+    } catch (caught) {
+      if (
+        caught &&
+        typeof caught === "object" &&
+        (caught as NodeJS.ErrnoException).code === "ENOENT"
+      ) {
+        return [];
+      }
+      throw caught;
+    }
+
+    const items = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
+        .map(async (entry) => {
+          const filePath = path.join(htmlDir, entry.name);
+          const stats = await fs.stat(filePath);
+          const slug = entry.name.slice(0, -".html".length);
+          return {
+            filePath,
+            slug,
+            title: slug
+              .replace(/[-_]+/g, " ")
+              .replace(/\b\w/g, (char: string) => char.toUpperCase()),
+            createdAt: stats.mtimeMs,
+          };
+        }),
+    );
+
+    return items.sort((a, b) => a.createdAt - b.createdAt);
+  });
 
   ipcMain.handle(IPC_DISPLAY_TRASH_LIST, async (event) => {
     if (!options.assertPrivilegedSender(event, IPC_DISPLAY_TRASH_LIST)) {

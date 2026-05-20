@@ -17,6 +17,7 @@ import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import {
   type CanvasHtmlItem,
   getCanvasHtmlItems,
+  loadCanvasHtmlHistory,
   removeCanvasHtmlItem,
   subscribeCanvasHtmlItems,
 } from "./canvas-items";
@@ -131,6 +132,10 @@ export const CanvasTabContent = ({
   const [selectedId, setSelectedId] = useState<string | null>(
     items.at(-1)?.id ?? null,
   );
+
+  useEffect(() => {
+    void loadCanvasHtmlHistory();
+  }, []);
 
   useEffect(() => {
     if (items.length === 0) {
