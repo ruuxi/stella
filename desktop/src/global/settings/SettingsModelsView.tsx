@@ -1,17 +1,16 @@
 /**
- * SettingsModelsView — the redesigned Settings → Models surface.
+ * SettingsModelsView — Settings → Models (advanced surface).
  *
- * Replaces the tabbed `AgentModelPicker surface="settings"` layout with
- * a file-editor-style list: every configurable agent is a row showing
- * its current model + reasoning effort. Clicking the row opens an
- * anchored popover with the actual chooser (Stella presets + BYOK
- * expansion, plus a reasoning effort strip), and bulk actions live in
- * a single top-right menu.
+ * Two-column master/detail. Left rail lists every configurable agent
+ * plus the Image and Voice surfaces; right pane shows the full
+ * provider/model picker for the selected entry with every provider
+ * (Stella + each BYOK provider) one click away — no "more options"
+ * disclosure, no curated subset. The composer's model picker stays the
+ * one-click "normal" surface; this page is the everything-visible one.
  *
  * Reuses the existing read/write IPC (`getLocalModelPreferences` /
- * `setLocalModelPreferences`), `useModelCatalog`, and the catalog's
- * `CompactStellaModelList` / `ProviderModelPanel` so this is purely a
- * layout/UX redesign — the underlying preference shape is unchanged.
+ * `setLocalModelPreferences`), `useModelCatalog`, `ProviderModelPanel`,
+ * and `ProviderOnlyPicker`/`VoiceCatalogPicker`.
  */
 import {
   useCallback,
@@ -20,22 +19,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  Check,
-  ChevronDown,
-  MoreHorizontal,
-  RefreshCw,
-  RotateCcw,
-} from "lucide-react";
-import { CompactStellaModelList } from "@/global/settings/CompactStellaModelList";
+import { MoreHorizontal, RefreshCw, RotateCcw } from "lucide-react";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import { ProviderOnlyPicker, type ProviderOption } from "@/global/settings/ProviderOnlyPicker";
 import { VoiceCatalogPicker } from "@/global/settings/VoiceCatalogPicker";
-import { LocalRuntimeOptions } from "@/global/settings/LocalRuntimeOptions";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import {
   getStellaDisplayName,
-  type CatalogModel,
 } from "@/global/settings/lib/model-catalog";
 import {
   buildModelDefaultsMap,
@@ -56,7 +46,6 @@ import {
   type RealtimeVoicePreferences,
   type RealtimeVoiceUnderlyingProvider,
 } from "../../../../runtime/contracts/local-preferences";
-import { router } from "@/router";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -159,11 +148,6 @@ const isStellaModelId = (modelId: string): boolean =>
  */
 let cachedLocalPreferences: LocalModelPreferencesShape | null = null;
 
-/**
- * Hook that loads `LocalModelPreferences` and syncs with the existing
- * `stella:local-model-preferences-changed` event so an edit anywhere
- * (composer submenu, this view, etc.) re-renders every other reader.
- */
 function useLocalModelPreferences(): {
   preferences: LocalModelPreferencesShape | null;
   write: (
@@ -262,240 +246,74 @@ function useLocalModelPreferences(): {
 
 /* ── grouping ─────────────────────────────────────────────────── */
 
-const ASSISTANT_AGENT_KEYS: ReadonlySet<string> = new Set([
+const CONVERSATION_AGENT_KEYS: ReadonlySet<string> = new Set([
   "orchestrator",
   "general",
 ]);
 
 type AgentEntry = { key: string; label: string; desc: string };
 
-function groupAgents(agents: readonly AgentEntry[]): {
-  assistant: AgentEntry[];
+function partitionAgents(agents: readonly AgentEntry[]): {
+  conversation: AgentEntry[];
   background: AgentEntry[];
 } {
-  const assistant: AgentEntry[] = [];
+  const conversation: AgentEntry[] = [];
   const background: AgentEntry[] = [];
   for (const entry of agents) {
-    if (ASSISTANT_AGENT_KEYS.has(entry.key)) assistant.push(entry);
+    if (CONVERSATION_AGENT_KEYS.has(entry.key)) conversation.push(entry);
     else background.push(entry);
   }
-  // Keep orchestrator above general within Assistant; preserve the
-  // catalog-supplied order for everything else.
-  assistant.sort((a, b) => {
+  conversation.sort((a, b) => {
     if (a.key === b.key) return 0;
     if (a.key === "orchestrator") return -1;
     if (b.key === "orchestrator") return 1;
     return 0;
   });
-  return { assistant, background };
+  return { conversation, background };
 }
 
-/* ── chooser body shared by agent rows ────────────────────────── */
+/* ── list item (left rail) ────────────────────────────────────── */
 
-interface AgentChooserProps {
-  agentLabel: string;
-  agentDesc: string;
-  currentValue: string;
-  defaultLabel: string;
-  pending: boolean;
-  restricted: boolean;
-  restrictedPlanLabel: string | null;
-  reasoning: ReasoningEffort;
-  stellaModels: readonly CatalogModel[];
-  groups: ReturnType<typeof useModelCatalog>["groups"];
-  onSelectModel: (value: string) => void;
-  onSelectReasoning: (effort: ReasoningEffort) => void;
-  onApplyToAll: (value: string) => void;
-  onReset: () => void;
-}
-
-function AgentChooser({
-  agentLabel,
-  agentDesc,
-  currentValue,
-  defaultLabel,
-  pending,
-  restricted,
-  restrictedPlanLabel,
-  reasoning,
-  stellaModels,
-  groups,
-  onSelectModel,
-  onSelectReasoning,
-  onApplyToAll,
-  onReset,
-}: AgentChooserProps) {
-  const [expanded, setExpanded] = useState(false);
-  const isOverridden =
-    Boolean(currentValue) && currentValue !== STELLA_DEFAULT_MODEL;
-  const currentLabel = currentValue ? currentValue : defaultLabel;
-
-  return (
-    <div className="models-chooser">
-      <div className="models-chooser__head">
-        <div className="models-chooser__head-text">
-          <span className="models-chooser__head-label">{agentLabel}</span>
-          <span className="models-chooser__head-desc">{agentDesc}</span>
-        </div>
-        {isOverridden ? (
-          <button
-            type="button"
-            className="models-chooser__head-reset"
-            onClick={onReset}
-            disabled={pending}
-            title="Use the default for this agent"
-          >
-            <RotateCcw size={11} strokeWidth={2} />
-            Reset
-          </button>
-        ) : null}
-      </div>
-
-      <div className="models-chooser__body">
-        {expanded ? (
-          <>
-            <ProviderModelPanel
-              value={currentValue}
-              defaultLabel={defaultLabel}
-              currentLabel={currentLabel}
-              groups={groups}
-              excludeModelId={STELLA_DEFAULT_MODEL}
-              disabled={pending}
-              restrictStellaPicks={restricted}
-              restrictedPlanLabel={restrictedPlanLabel}
-              ariaLabel="Model picker"
-              onSelect={onSelectModel}
-            />
-            <LocalRuntimeOptions />
-          </>
-        ) : (
-          <CompactStellaModelList
-            stellaModels={stellaModels}
-            value={currentValue}
-            defaultLabel={defaultLabel}
-            onSelect={onSelectModel}
-            disabled={pending}
-            restricted={restricted}
-            restrictedPlanLabel={restrictedPlanLabel}
-            onUpgrade={() => {
-              void router.navigate({ to: "/billing" });
-            }}
-          />
-        )}
-      </div>
-
-      <div className="models-chooser__reasoning">
-        <span className="models-chooser__reasoning-label">Reasoning</span>
-        <div
-          className="models-chooser__reasoning-segment"
-          role="radiogroup"
-          aria-label="Reasoning effort"
-        >
-          {REASONING_OPTIONS.map((option) => {
-            const selected = option.id === reasoning;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                data-selected={selected || undefined}
-                className="models-chooser__reasoning-btn"
-                disabled={pending}
-                title={option.title}
-                onClick={() => onSelectReasoning(option.id)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="models-chooser__footer">
-        <button
-          type="button"
-          className="models-chooser__more"
-          onClick={() => setExpanded((prev) => !prev)}
-          aria-expanded={expanded}
-        >
-          <span>
-            {expanded ? "Hide providers" : "Connect a provider (BYOK)"}
-          </span>
-          <ChevronDown
-            size={12}
-            strokeWidth={2}
-            data-rotated={expanded || undefined}
-          />
-        </button>
-        {currentValue ? (
-          <button
-            type="button"
-            className="models-chooser__apply-all"
-            disabled={pending}
-            onClick={() => onApplyToAll(currentValue)}
-            title="Apply this model to every configurable agent"
-          >
-            Use for all agents
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/* ── list row ─────────────────────────────────────────────────── */
-
-interface ListRowProps {
+interface ListItemProps {
   label: string;
   desc: string;
-  badgePrimary: string;
-  badgeSub?: string | null;
-  reasoningChipLabel?: string | null;
-  reasoningChipTitle?: string | null;
+  valueLabel: string;
   isOverridden: boolean;
   isSelected: boolean;
+  reasoningChip: string | null;
   onSelect: () => void;
 }
 
-function ListRow({
+function ListItem({
   label,
   desc,
-  badgePrimary,
-  badgeSub,
-  reasoningChipLabel,
-  reasoningChipTitle,
+  valueLabel,
   isOverridden,
   isSelected,
+  reasoningChip,
   onSelect,
-}: ListRowProps) {
+}: ListItemProps) {
   return (
     <button
       type="button"
-      className="models-row"
+      className="models-list-item"
       data-selected={isSelected || undefined}
-      data-overridden={isOverridden || undefined}
       aria-pressed={isSelected}
       onClick={onSelect}
     >
-      <span className="models-row__main">
-        <span className="models-row__name">{label}</span>
-        <span className="models-row__desc">{desc}</span>
+      <span className="models-list-item-main">
+        <span className="models-list-item-name">{label}</span>
+        <span className="models-list-item-desc">{desc}</span>
       </span>
-      <span className="models-row__value">
-        <span className="models-row__value-label">
-          <span className="models-row__value-primary">{badgePrimary}</span>
-          {badgeSub ? (
-            <span className="models-row__value-sub">{badgeSub}</span>
-          ) : null}
+      <span className="models-list-item-value">
+        <span
+          className="models-list-item-value-label"
+          data-overridden={isOverridden || undefined}
+        >
+          {valueLabel}
         </span>
-        {reasoningChipLabel ? (
-          <span
-            className="models-row__chip"
-            title={reasoningChipTitle ?? undefined}
-          >
-            {reasoningChipLabel}
-          </span>
+        {reasoningChip ? (
+          <span className="models-list-item-chip">{reasoningChip}</span>
         ) : null}
       </span>
     </button>
@@ -519,9 +337,8 @@ export function SettingsModelsView() {
 
   const { preferences, write, pending, error } = useLocalModelPreferences();
 
-  // Master/detail: orchestrator selected by default; flips to the row
-  // the user clicks. Image / voice use the same selection state via
-  // their `__image__` / `__voice__` sentinel keys.
+  // Master/detail: left selection drives the right pane. Orchestrator
+  // is the most common starting point.
   const [selectedKey, setSelectedKey] = useState<string>("orchestrator");
 
   const modelDefaults = useMemo(
@@ -550,10 +367,8 @@ export function SettingsModelsView() {
     () => getConfigurableAgents(modelDefaults),
     [modelDefaults],
   );
-  const { assistant: assistantAgents, background: backgroundAgents } = useMemo(
-    () => groupAgents(configurableAgents),
-    [configurableAgents],
-  );
+  const { conversation: conversationAgents, background: backgroundAgents } =
+    useMemo(() => partitionAgents(configurableAgents), [configurableAgents]);
 
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
@@ -569,15 +384,14 @@ export function SettingsModelsView() {
   const restricted = isRestrictedModelOverrideAudience(audience);
   const restrictedPlanLabel = audience ? getPlanLabel(audience) : null;
 
+  /* ── mutation handlers ───────────────────────────────────────── */
+
   const handleSelectModel = useCallback(
     async (agentKey: string, value: string) => {
       if (!preferences) return;
       const nextOverrides = { ...preferences.modelOverrides };
       if (value === "") delete nextOverrides[agentKey];
       else nextOverrides[agentKey] = value;
-      // Picking a model explicitly for a single agent means the user is
-      // taking ownership — remove it from `assistantPropagatedAgents`
-      // so a later Assistant-side switch doesn't wipe their pick.
       const nextPropagated = (
         preferences.assistantPropagatedAgents ?? []
       ).filter((key) => key !== agentKey);
@@ -626,14 +440,11 @@ export function SettingsModelsView() {
       for (const entry of configurableAgents) {
         nextOverrides[entry.key] = value;
       }
-      // BYOK pick → mark every other agent as propagated so a later
-      // assistant-side switch can clean it back up. Stella picks
-      // intentionally leave the propagated set empty.
       const nextPropagated = isStellaModelId(value)
         ? []
         : configurableAgents
             .map((entry) => entry.key)
-            .filter((key) => !ASSISTANT_AGENT_KEYS.has(key));
+            .filter((key) => !CONVERSATION_AGENT_KEYS.has(key));
       await write({
         modelOverrides: nextOverrides,
         assistantPropagatedAgents: nextPropagated,
@@ -650,6 +461,28 @@ export function SettingsModelsView() {
       reasoningEfforts: {},
     });
   }, [preferences, write]);
+
+  /* ── global engine ───────────────────────────────────────────── */
+
+  // Engine is a process-wide choice (Stella's own runner vs the local
+  // Claude Code CLI) — not per-agent. Lives next to the title rather
+  // than buried in each agent's detail pane.
+  const engine: "default" | "claude_code_local" =
+    preferences?.agentRuntimeEngine ?? "default";
+  const handleEngineChange = useCallback(
+    async (next: "default" | "claude_code_local") => {
+      if (!preferences || preferences.agentRuntimeEngine === next) return;
+      await write({ agentRuntimeEngine: next });
+    },
+    [preferences, write],
+  );
+  const ENGINE_OPTIONS: ReadonlyArray<{
+    id: "default" | "claude_code_local";
+    label: string;
+  }> = [
+    { id: "default", label: "Stella" },
+    { id: "claude_code_local", label: "Claude Code" },
+  ];
 
   /* ── image / voice handlers ──────────────────────────────────── */
 
@@ -741,52 +574,68 @@ export function SettingsModelsView() {
     [preferences, write],
   );
 
-  /* ── row badge helpers ───────────────────────────────────────── */
+  /* ── row value helpers ───────────────────────────────────────── */
 
-  const agentBadge = (
+  const agentListValue = (
     entry: AgentEntry,
   ): {
-    badgePrimary: string;
-    badgeSub: string | null;
-    reasoningChip: { label: string; title: string } | null;
+    valueLabel: string;
     isOverridden: boolean;
+    reasoningChip: string | null;
   } => {
     const currentValue = overrides[entry.key] ?? "";
     const isOverridden = Boolean(currentValue);
-    const badgePrimary = currentValue
+    const valueLabel = currentValue
       ? getModelDisplayLabel(currentValue, modelNamesById)
       : modelNamesById.get(
           resolvedDefaultModelMap[entry.key] ??
             defaultModelMap[entry.key] ??
             STELLA_DEFAULT_MODEL,
         ) ?? "Stella";
-    const badgeSub = currentValue ? null : "Default";
-    const reasoning =
-      preferences?.reasoningEfforts?.[entry.key] ?? "default";
+    const reasoning = preferences?.reasoningEfforts?.[entry.key] ?? "default";
     const reasoningOpt = REASONING_OPTIONS.find((opt) => opt.id === reasoning);
     const reasoningChip =
-      reasoning !== "default" && reasoningOpt
-        ? { label: reasoningOpt.label, title: `Reasoning: ${reasoningOpt.title}` }
-        : null;
-    return { badgePrimary, badgeSub, reasoningChip, isOverridden };
+      reasoning !== "default" && reasoningOpt ? reasoningOpt.label : null;
+    return { valueLabel, isOverridden, reasoningChip };
   };
 
-  /* ── detail panel for the currently-selected row ─────────────── */
+  const orchestratorCurrent =
+    overrides.orchestrator ?? overrides.general ?? "";
+
+  /* ── left rail renderers ─────────────────────────────────────── */
+
+  const renderAgentItem = (entry: AgentEntry): ReactNode => {
+    const v = agentListValue(entry);
+    return (
+      <ListItem
+        key={entry.key}
+        label={entry.label}
+        desc={entry.desc}
+        valueLabel={v.valueLabel}
+        isOverridden={v.isOverridden}
+        reasoningChip={v.reasoningChip}
+        isSelected={selectedKey === entry.key}
+        onSelect={() => setSelectedKey(entry.key)}
+      />
+    );
+  };
+
+  /* ── right pane content for the active selection ─────────────── */
 
   const renderDetail = (): ReactNode => {
     if (selectedKey === IMAGE_KEY) {
       const provider = imagePreferences.provider ?? "stella";
       return (
-        <div className="models-chooser">
-          <div className="models-chooser__head">
-            <div className="models-chooser__head-text">
-              <span className="models-chooser__head-label">Image</span>
-              <span className="models-chooser__head-desc">
+        <div className="models-detail">
+          <div className="models-detail-head">
+            <div className="models-detail-head-text">
+              <span className="models-detail-head-title">Image</span>
+              <span className="models-detail-head-desc">
                 Photo and image-edit generation provider
               </span>
             </div>
           </div>
-          <div className="models-chooser__body">
+          <div className="models-detail-body">
             <ProviderOnlyPicker
               providers={IMAGE_PROVIDER_OPTIONS}
               value={provider}
@@ -801,16 +650,16 @@ export function SettingsModelsView() {
     if (selectedKey === VOICE_KEY) {
       const provider = voicePreferences.provider ?? "stella";
       return (
-        <div className="models-chooser">
-          <div className="models-chooser__head">
-            <div className="models-chooser__head-text">
-              <span className="models-chooser__head-label">Voice</span>
-              <span className="models-chooser__head-desc">
+        <div className="models-detail">
+          <div className="models-detail-head">
+            <div className="models-detail-head-text">
+              <span className="models-detail-head-title">Voice</span>
+              <span className="models-detail-head-desc">
                 Realtime voice provider and voice selection
               </span>
             </div>
           </div>
-          <div className="models-chooser__body">
+          <div className="models-detail-body">
             <ProviderOnlyPicker
               providers={VOICE_PROVIDER_OPTIONS}
               value={provider}
@@ -838,20 +687,19 @@ export function SettingsModelsView() {
         </div>
       );
     }
-    // Agent detail. Resolve the selected entry; fall back to the first
-    // configurable agent if the prior selection was wiped (catalog
-    // reload, etc).
+
+    // Agent detail — full provider/model picker with Stella + every
+    // BYOK provider as siblings (no disclosure), reasoning segmented
+    // control beneath, footer with Reset / Apply-to-all.
     const entry =
       configurableAgents.find((e) => e.key === selectedKey) ??
       configurableAgents[0];
     if (!entry) {
-      return (
-        <div className="models-chooser models-chooser--placeholder">
-          Loading…
-        </div>
-      );
+      return <div className="models-detail models-detail--empty">Loading…</div>;
     }
     const currentValue = overrides[entry.key] ?? "";
+    const isOverridden =
+      Boolean(currentValue) && currentValue !== STELLA_DEFAULT_MODEL;
     const defaultLabel = preferences
       ? getDefaultModelOptionLabel(
           entry.key,
@@ -860,176 +708,246 @@ export function SettingsModelsView() {
           modelNamesById,
         )
       : "Default";
+    const currentLabel = currentValue ? currentValue : defaultLabel;
     const reasoning =
       preferences?.reasoningEfforts?.[entry.key] ?? "default";
+
     return (
-      <AgentChooser
-        // Reset BYOK-expansion + scroll position when the user switches
-        // rows by keying the chooser on the agent id.
-        key={entry.key}
-        agentLabel={entry.label}
-        agentDesc={entry.desc}
-        currentValue={currentValue}
-        defaultLabel={defaultLabel}
-        pending={pending}
-        restricted={restricted}
-        restrictedPlanLabel={restrictedPlanLabel}
-        reasoning={reasoning}
-        stellaModels={stellaModels}
-        groups={groups}
-        onSelectModel={(value) => void handleSelectModel(entry.key, value)}
-        onSelectReasoning={(effort) =>
-          void handleSelectReasoning(entry.key, effort)
-        }
-        onApplyToAll={(value) => void handleApplyToAll(value)}
-        onReset={() => void handleResetAgent(entry.key)}
-      />
+      <div className="models-detail">
+        <div className="models-detail-head">
+          <div className="models-detail-head-text">
+            <span className="models-detail-head-title">{entry.label}</span>
+            <span className="models-detail-head-desc">{entry.desc}</span>
+          </div>
+          {isOverridden ? (
+            <button
+              type="button"
+              className="models-detail-reset"
+              onClick={() => void handleResetAgent(entry.key)}
+              disabled={pending}
+              title="Use the default for this agent"
+            >
+              Reset to default
+            </button>
+          ) : null}
+        </div>
+
+        <div className="models-detail-body">
+          <ProviderModelPanel
+            // Key on the agent id so internal tab + search state reset
+            // cleanly when the user switches agents.
+            key={entry.key}
+            value={currentValue}
+            defaultLabel={defaultLabel}
+            currentLabel={currentLabel}
+            groups={groups}
+            excludeModelId={STELLA_DEFAULT_MODEL}
+            disabled={pending}
+            restrictStellaPicks={restricted}
+            restrictedPlanLabel={restrictedPlanLabel}
+            ariaLabel={`${entry.label} model picker`}
+            onSelect={(value) => void handleSelectModel(entry.key, value)}
+          />
+        </div>
+
+        <div className="models-detail-footer">
+          <div className="models-detail-reasoning">
+            <span className="models-detail-reasoning-label">Reasoning</span>
+            <div
+              className="models-detail-reasoning-segment"
+              role="radiogroup"
+              aria-label="Reasoning effort"
+            >
+              {REASONING_OPTIONS.map((option) => {
+                const selected = option.id === reasoning;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    data-selected={selected || undefined}
+                    className="models-detail-reasoning-btn"
+                    disabled={pending}
+                    title={option.title}
+                    onClick={() =>
+                      void handleSelectReasoning(entry.key, option.id)
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {currentValue ? (
+            <button
+              type="button"
+              className="models-detail-apply-all"
+              disabled={pending}
+              onClick={() => void handleApplyToAll(currentValue)}
+              title="Apply this model to every configurable agent"
+            >
+              Apply to all agents
+            </button>
+          ) : null}
+        </div>
+      </div>
     );
-  };
-
-  /* ── bulk actions ────────────────────────────────────────────── */
-
-  const orchestratorCurrent =
-    overrides.orchestrator ?? overrides.general ?? "";
-
-  const renderAgentList = (entries: readonly AgentEntry[]): ReactNode => {
-    if (entries.length === 0) return <RowSkeleton />;
-    return entries.map((entry) => {
-      const badge = agentBadge(entry);
-      return (
-        <ListRow
-          key={entry.key}
-          label={entry.label}
-          desc={entry.desc}
-          badgePrimary={badge.badgePrimary}
-          badgeSub={badge.badgeSub}
-          reasoningChipLabel={badge.reasoningChip?.label ?? null}
-          reasoningChipTitle={badge.reasoningChip?.title ?? null}
-          isOverridden={badge.isOverridden}
-          isSelected={selectedKey === entry.key}
-          onSelect={() => setSelectedKey(entry.key)}
-        />
-      );
-    });
   };
 
   return (
     <div className="models-editor">
-      <header className="models-editor__header">
-        <div className="models-editor__title">
+      <header className="models-editor-header">
+        <div className="models-editor-title">
           <h2>Models</h2>
-          <p>Pick the model behind every Stella task.</p>
+          <p>
+            Every agent, every provider. Pick the agent on the left, pick the
+            model on the right.
+          </p>
         </div>
-        <div className="models-editor__toolbar">
-          <button
-            type="button"
-            className="models-editor__icon-btn"
-            onClick={() => void refresh()}
-            disabled={refreshing}
-            title="Refresh model catalog"
-            aria-label="Refresh model catalog"
-          >
-            <RefreshCw
-              size={14}
-              strokeWidth={1.75}
-              data-spinning={refreshing || undefined}
-            />
-          </button>
+        <div className="models-editor-header-actions">
+          <div className="models-editor-engine" role="radiogroup" aria-label="Agent engine">
+            <span className="models-editor-engine-label">Engine</span>
+            <div className="models-editor-engine-segment">
+              {ENGINE_OPTIONS.map((option) => {
+                const selected = option.id === engine;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    data-selected={selected || undefined}
+                    className="models-editor-engine-btn"
+                    disabled={pending || !preferences}
+                    onClick={() => void handleEngineChange(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="models-editor__icon-btn"
-                title="Bulk actions"
-                aria-label="Bulk actions"
-              >
-                <MoreHorizontal size={14} strokeWidth={1.75} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
-              <DropdownMenuItem
-                disabled={!orchestratorCurrent || pending}
-                onSelect={() => void handleApplyToAll(orchestratorCurrent)}
-              >
-                <span data-slot="dropdown-menu-item-icon">
-                  <Check size={14} strokeWidth={1.75} />
-                </span>
-                Apply orchestrator's model to all
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                disabled={pending}
-                onSelect={() => void handleResetAll()}
-              >
-                <span data-slot="dropdown-menu-item-icon">
-                  <RotateCcw size={14} strokeWidth={1.75} />
-                </span>
-                Reset every agent to default
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="models-editor-kebab"
+              title="More"
+              aria-label="More model actions"
+            >
+              <MoreHorizontal size={15} strokeWidth={1.75} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
+            <DropdownMenuItem
+              disabled={refreshing}
+              onSelect={() => void refresh()}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <RefreshCw
+                  size={14}
+                  strokeWidth={1.75}
+                  data-spinning={refreshing || undefined}
+                />
+              </span>
+              Refresh model catalog
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={!orchestratorCurrent || pending}
+              onSelect={() => void handleApplyToAll(orchestratorCurrent)}
+            >
+              Apply orchestrator's model to all
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={pending}
+              onSelect={() => void handleResetAll()}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <RotateCcw size={14} strokeWidth={1.75} />
+              </span>
+              Reset every agent to default
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         </div>
       </header>
 
       {error ? (
-        <p className="models-editor__error" role="alert">
+        <p className="models-editor-error" role="alert">
           {error}
         </p>
       ) : null}
 
-      <div className="models-editor__split">
-        <div
-          className="models-editor__list"
+      <div className="models-editor-split">
+        <aside
+          className="models-editor-rail"
           role="tablist"
           aria-label="Agents and media"
           aria-orientation="vertical"
         >
-          <section className="models-editor__group">
-            <h3 className="models-editor__group-label">Assistant</h3>
-            <div className="models-editor__rows">
-              {renderAgentList(assistantAgents)}
-              <ListRow
+          <section className="models-editor-section">
+            <div className="models-editor-section-label">Conversation</div>
+            <div className="models-editor-list">
+              {conversationAgents.length === 0 ? (
+                <ListItemSkeleton />
+              ) : (
+                conversationAgents.map(renderAgentItem)
+              )}
+            </div>
+          </section>
+
+          <section className="models-editor-section">
+            <div className="models-editor-section-label">Media</div>
+            <div className="models-editor-list">
+              <ListItem
                 label="Image"
-                desc="Photo and image-edit generation provider"
-                badgePrimary={
+                desc="Photo and image-edit provider"
+                valueLabel={
                   IMAGE_PROVIDER_OPTIONS.find(
-                    (opt) => opt.key === (imagePreferences.provider ?? "stella"),
+                    (opt) =>
+                      opt.key === (imagePreferences.provider ?? "stella"),
                   )?.label ?? "Stella"
                 }
-                badgeSub={null}
-                isOverridden={(imagePreferences.provider ?? "stella") !== "stella"}
+                isOverridden={
+                  (imagePreferences.provider ?? "stella") !== "stella"
+                }
+                reasoningChip={null}
                 isSelected={selectedKey === IMAGE_KEY}
                 onSelect={() => setSelectedKey(IMAGE_KEY)}
               />
-              <ListRow
+              <ListItem
                 label="Voice"
-                desc="Realtime voice provider and voice selection"
-                badgePrimary={
+                desc="Realtime voice provider"
+                valueLabel={
                   VOICE_PROVIDER_OPTIONS.find(
-                    (opt) => opt.key === (voicePreferences.provider ?? "stella"),
+                    (opt) =>
+                      opt.key === (voicePreferences.provider ?? "stella"),
                   )?.label ?? "Stella"
                 }
-                badgeSub={null}
-                isOverridden={(voicePreferences.provider ?? "stella") !== "stella"}
+                isOverridden={
+                  (voicePreferences.provider ?? "stella") !== "stella"
+                }
+                reasoningChip={null}
                 isSelected={selectedKey === VOICE_KEY}
                 onSelect={() => setSelectedKey(VOICE_KEY)}
               />
             </div>
           </section>
 
-          <section className="models-editor__group">
-            <h3 className="models-editor__group-label">Background</h3>
-            <div className="models-editor__rows">
-              {renderAgentList(backgroundAgents)}
-            </div>
-          </section>
-        </div>
+          {backgroundAgents.length > 0 ? (
+            <section className="models-editor-section">
+              <div className="models-editor-section-label">Background</div>
+              <div className="models-editor-list">
+                {backgroundAgents.map(renderAgentItem)}
+              </div>
+            </section>
+          ) : null}
+        </aside>
 
-        <div
-          className="models-editor__detail"
-          role="tabpanel"
-          aria-label="Selected agent settings"
-        >
+        <div className="models-editor-pane" role="tabpanel">
           {renderDetail()}
         </div>
       </div>
@@ -1037,11 +955,14 @@ export function SettingsModelsView() {
   );
 }
 
-function RowSkeleton() {
+function ListItemSkeleton() {
   return (
-    <div className="models-row models-row--skeleton" aria-hidden="true">
-      <span className="models-row__main">
-        <span className="models-row__name">Loading…</span>
+    <div
+      className="models-list-item models-list-item--skeleton"
+      aria-hidden="true"
+    >
+      <span className="models-list-item-main">
+        <span className="models-list-item-name">Loading…</span>
       </span>
     </div>
   );
