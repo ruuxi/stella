@@ -24,6 +24,7 @@ import {
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import {
   getStellaDisplayName,
+  getStellaSubtitle,
   type CatalogModel,
 } from "@/global/settings/lib/model-catalog";
 import {
@@ -471,6 +472,7 @@ export function ComposerModelMenuItem() {
                   restricted &&
                   !selected &&
                   model.allowedForAudience === false;
+                const upstreamLabel = getStellaSubtitle(model);
                 return (
                   <DropdownMenuItem
                     key={model.id}
@@ -495,6 +497,11 @@ export function ComposerModelMenuItem() {
                     <span className="composer-model-submenu__name">
                       {getStellaDisplayName(model)}
                     </span>
+                    {upstreamLabel ? (
+                      <span className="composer-model-submenu__trail">
+                        {upstreamLabel}
+                      </span>
+                    ) : null}
                   </DropdownMenuItem>
                 );
               })
