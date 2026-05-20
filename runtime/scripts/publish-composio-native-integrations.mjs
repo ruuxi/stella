@@ -77,6 +77,7 @@ const rows = OAUTH_PROVIDER_CATALOG.filter(shouldPublish).map((entry) => ({
   catalogToolCount: entry.catalogToolCount,
   description: entry.description,
   sourceUrl: entry.sourceUrl,
+  iconUrl: `https://logos.composio.dev/api/${entry.id}`,
   connector: {
     type: "composio",
     toolkit: entry.id,
