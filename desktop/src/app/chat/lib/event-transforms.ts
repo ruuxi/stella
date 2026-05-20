@@ -142,13 +142,18 @@ export function normalizeTaskDisplayStatusText(
 }
 
 export function getTaskDisplayText(task: TaskItem): string {
+  const description = isGenericTaskDescription(task.description)
+    ? ''
+    : task.description
+
   if (task.status === 'running') {
-    return (
-      normalizeTaskDisplayStatusText(task.statusText) ??
-      (isGenericTaskDescription(task.description) ? '' : task.description)
-    )
+    const statusText = normalizeTaskDisplayStatusText(task.statusText)
+    if (statusText && !isStandaloneTaskStatusText(statusText)) {
+      return statusText
+    }
+    return description
   }
-  return isGenericTaskDescription(task.description) ? '' : task.description
+  return description
 }
 
 export function getTaskWorkingIndicatorText(task: TaskItem): string {
