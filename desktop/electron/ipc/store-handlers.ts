@@ -534,29 +534,6 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     });
   });
 
-  ipcMain.handle(
-    "storeWeb:fashionLocalAction",
-    async (event, payload: unknown) => {
-      assertStoreWebRequest(event, "storeWeb:fashionLocalAction");
-      const payloadRecord =
-        payload && typeof payload === "object"
-          ? (payload as Record<string, unknown>)
-          : {};
-      const timeoutMs =
-        payloadRecord.action === "pickAndSaveBodyPhoto" ||
-        payloadRecord.action === "pickTryOnImages"
-          ? 5 * 60 * 1000
-          : undefined;
-      return await handleStoreWebLocalAction(
-        {
-          type: "fashion",
-          payload,
-        },
-        timeoutMs ? { timeoutMs } : undefined,
-      );
-    },
-  );
-
   ipcMain.handle("theme:listInstalled", async () => {
     const stellaRoot = options.getStellaRoot();
     if (!stellaRoot) {

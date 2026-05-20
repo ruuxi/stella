@@ -1,15 +1,11 @@
 /**
- * Store nav model.
+ * Store nav model (desktop shell routes the webview to matching `?tab=`).
  *
- * The Store has two top-level destinations:
- *   - "Discover" — browse + install add-ons. The Store side panel
- *     (in the workspace panel) handles publishing, updating, and
- *     library management — there is no separate "Installed" or
- *     "Publish" tab anymore.
- *   - "Fashion" — Shopify try-on flow.
+ * Browse/install UI lives in the embedded stella-website `/store` webview.
+ * The workspace side panel handles publishing and library management.
  */
 
-export const STORE_TAB_KEYS = ["discover", "pets", "emojis", "fashion"] as const;
+export const STORE_TAB_KEYS = ["discover", "pets", "emojis"] as const;
 
 export type StoreTab = (typeof STORE_TAB_KEYS)[number];
 
@@ -22,17 +18,19 @@ export const STORE_TABS: StoreTabDefinition[] = [
   { key: "discover", label: "Discover" },
   { key: "pets", label: "Pets" },
   { key: "emojis", label: "Emojis" },
-  { key: "fashion", label: "Fashion" },
 ];
 
 export const DEFAULT_STORE_TAB: StoreTab = "discover";
 
-const LEGACY_STORE_TAB_KEYS = new Set(["installed", "publish"]);
+const LEGACY_STORE_TAB_KEYS = new Set([
+  "installed",
+  "publish",
+  "fashion",
+]);
 
 /**
  * Convert any string (URL search param, localStorage value) into a
- * valid current tab key. Legacy values (`"installed"`, `"publish"`)
- * map to Discover; everything unknown also falls back to Discover.
+ * valid current tab key. Legacy values map to Discover.
  */
 export const normalizeStoreTab = (value: unknown): StoreTab => {
   if (typeof value !== "string") return DEFAULT_STORE_TAB;
