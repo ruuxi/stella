@@ -1,5 +1,5 @@
 import type { CSSProperties, ImgHTMLAttributes } from "react";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import { cn } from "@/shared/lib/utils";
 import { useActiveEmojiPack } from "./emoji-sprites/active-emoji-pack";
@@ -17,6 +17,9 @@ interface MarkdownProps {
   cacheKey?: string;
   className?: string;
   isAnimating?: boolean;
+  /** Suppress GFM horizontal rules (`---`). Used in chat bubbles where
+   *  models often append a trailing rule that reads as a message divider. */
+  hideHorizontalRules?: boolean;
 }
 
 type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
@@ -67,49 +70,55 @@ const areMarkdownPropsEqual = (
   prev.text === next.text &&
   prev.cacheKey === next.cacheKey &&
   prev.className === next.className &&
-  Boolean(prev.isAnimating) === Boolean(next.isAnimating);
+  Boolean(prev.isAnimating) === Boolean(next.isAnimating) &&
+  Boolean(prev.hideHorizontalRules) === Boolean(next.hideHorizontalRules);
 
-/**
- * `<img>` override: if the URL is one of our emoji-sprite sentinels,
- * render a CSS-sprite `<span>` instead. Anything else passes through
- * as a normal image. Hoisted so identity is stable across renders —
- * Streamdown's `components` map is otherwise a re-render trigger for
- * every memoized child.
- */
-const COMPONENTS = {
-  img: ({ src, alt, className, ...rest }: MarkdownImageProps) => {
-    const cell =
-      typeof src === "string" ? parseEmojiSpriteUrl(src) : null;
-    if (!cell) {
-      return <img {...rest} src={src} alt={alt} className={className} />;
-    }
-    const { row, col } = cellToRowCol(cell.cell);
-    const gridSize = getEmojiSpriteGridSize();
-    const last = Math.max(1, gridSize - 1);
-    return (
-      <span
-        className={cn("ai-emoji", className)}
-        style={
-          {
-            "--ai-emoji-row": String(row),
-            "--ai-emoji-col": String(col),
-            backgroundImage: `var(--ai-emoji-sheet-${cell.sheet}-url)`,
-            backgroundSize: `${gridSize * 100}% ${gridSize * 100}%`,
-            backgroundPosition: `${(col / last) * 100}% ${(row / last) * 100}%`,
-          } as CSSProperties
-        }
-        role="img"
-        aria-label={alt ?? ""}
-      />
-    );
-  },
+const MarkdownImage = ({
+  src,
+  alt,
+  className,
+  ...rest
+}: MarkdownImageProps) => {
+  const cell = typeof src === "string" ? parseEmojiSpriteUrl(src) : null;
+  if (!cell) {
+    return <img {...rest} src={src} alt={alt} className={className} />;
+  }
+  const { row, col } = cellToRowCol(cell.cell);
+  const gridSize = getEmojiSpriteGridSize();
+  const last = Math.max(1, gridSize - 1);
+  return (
+    <span
+      className={cn("ai-emoji", className)}
+      style={
+        {
+          "--ai-emoji-row": String(row),
+          "--ai-emoji-col": String(col),
+          backgroundImage: `var(--ai-emoji-sheet-${cell.sheet}-url)`,
+          backgroundSize: `${gridSize * 100}% ${gridSize * 100}%`,
+          backgroundPosition: `${(col / last) * 100}% ${(row / last) * 100}%`,
+        } as CSSProperties
+      }
+      role="img"
+      aria-label={alt ?? ""}
+    />
+  );
 };
+
+const buildComponents = (hideHorizontalRules: boolean) => ({
+  ...(hideHorizontalRules ? { hr: () => null } : {}),
+  img: MarkdownImage,
+});
 
 export const Markdown = memo(function Markdown({
   text,
   className,
   isAnimating = false,
+  hideHorizontalRules = false,
 }: MarkdownProps) {
+  const components = useMemo(
+    () => buildComponents(hideHorizontalRules),
+    [hideHorizontalRules],
+  );
   const [activeEmojiPack] = useActiveEmojiPack();
   const emojiGrid = useEmojiGridManifest();
   const emojiVars = activeEmojiPack && emojiGrid
@@ -130,7 +139,7 @@ export const Markdown = memo(function Markdown({
             ? REMARK_PLUGINS
             : DEFAULT_REMARK_PLUGINS
         }
-        components={COMPONENTS}
+        components={components}
         linkSafety={LINK_SAFETY}
       >
         {text}

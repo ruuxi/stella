@@ -112,8 +112,10 @@
   font-style: normal;
 }
 
-/* Horizontal Rule */
-.markdown hr {
+/* Horizontal rule — hidden in chat via `hideHorizontalRules`; still used
+ * in blueprint / display-sidebar markdown. */
+.markdown hr,
+.markdown [data-streamdown="horizontal-rule"] {
   border: none;
   height: 0;
   margin: 1.5rem 0;
