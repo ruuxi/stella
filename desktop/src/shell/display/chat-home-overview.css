@@ -14,6 +14,15 @@
      (see FILES_DEFAULT_VISIBLE in ChatHomeOverview.tsx) bounds the
      upper end. */
   grid-template-rows: minmax(0, 1fr) minmax(100px, auto);
+  /* Pin the single auto column to the sidebar's content width so a long
+     min-content child (e.g. an unbreakable task description) can't grow
+     the grid track past the visible area. Without `minmax(0, 1fr)` the
+     default `auto` column sizes to max-content, the section/section-body
+     stretches with it, and the right-side status badge ("Done" /
+     "Working" / "Tomorrow 8:30 AM") gets shoved past the sidebar edge
+     and clipped by this element's `overflow: hidden` instead of the
+     row's text ellipsis kicking in. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
   padding: 22px 18px 28px;
   height: 100%;
@@ -26,6 +35,7 @@
   flex-direction: column;
   gap: 14px;
   min-height: 0;
+  min-width: 0;
   /* Positioning context for the "Show more ⌄" indicator that floats
      above the bottom fade when there's still content below the
      viewport (see `.chat-home-overview__more-indicator`). */
@@ -43,6 +53,8 @@
 .chat-home-overview__section-body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none;
   --chat-home-overview-fade: 16px;
