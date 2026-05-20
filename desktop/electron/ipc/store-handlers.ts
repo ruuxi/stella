@@ -1,6 +1,5 @@
 import { promises as fs } from "fs";
 import {
-  dialog,
   ipcMain,
   type BrowserWindow,
   type IpcMainEvent,
@@ -132,46 +131,6 @@ const listInstalledThemes = async (stellaRoot: string) => {
 const safeStorePackageSegment = (packageId: string) =>
   packageId.replace(/[^a-z0-9_-]/gi, "_");
 
-const confirmStoreWebInstall = async (
-  release: StorePackageReleaseRecord,
-  ownerWindow?: BrowserWindow | null,
-) => {
-  const name = release.manifest.displayName || release.packageId;
-  const description = release.manifest.description?.trim();
-  const result = ownerWindow
-    ? await dialog.showMessageBox(ownerWindow, {
-        type: "question",
-        buttons: ["Install", "Cancel"],
-        defaultId: 0,
-        cancelId: 1,
-        title: `Install ${name}?`,
-        message: `Install ${name}?`,
-        detail: [
-          description,
-          `Release ${release.releaseNumber} from the Stella Store will be applied to this desktop app.`,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        noLink: true,
-      })
-    : await dialog.showMessageBox({
-        type: "question",
-        buttons: ["Install", "Cancel"],
-        defaultId: 0,
-        cancelId: 1,
-        title: `Install ${name}?`,
-        message: `Install ${name}?`,
-        detail: [
-          description,
-          `Release ${release.releaseNumber} from the Stella Store will be applied to this desktop app.`,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        noLink: true,
-      });
-  return result.response === 0;
-};
-
 const installConfirmedStoreRelease = async (
   options: StoreHandlersOptions,
   runner: StellaHostRunner,
@@ -187,19 +146,17 @@ const installConfirmedStoreRelease = async (
   if (!packageId || !Number.isFinite(releaseNumber)) {
     throw new Error("Invalid Store install request.");
   }
+  // Confirmation lives in the Store webview (`InstallConfirmDialog`)
+  // which shows the rendered blueprint markdown before the renderer
+  // even reaches this handler. We still fetch our own copy of the
+  // release here so a compromised renderer can't substitute install
+  // contents — the security boundary the OS dialog used to enforce.
   const release = (await runner.getStorePackageRelease(
     packageId,
     releaseNumber,
   )) satisfies StorePackageReleaseRecord | null;
   if (!release?.blueprintMarkdown) {
     throw new Error("This package is missing its install blueprint.");
-  }
-  const approved = await confirmStoreWebInstall(
-    release,
-    options.getFullWindow?.(),
-  );
-  if (!approved) {
-    return null;
   }
   const installPayload = {
     packageId: release.packageId,
