@@ -18,7 +18,7 @@ export type PublicApiType = {
     };
     "local_runtime": {
       "executeTool": FunctionReference<'action', 'public', { conversationId?: Id<'conversations'> | undefined; agentType?: string | undefined; toolArgs?: Value | undefined; toolName: string; }, any, string | undefined>;
-      "webSearch": FunctionReference<'action', 'public', { conversationId?: Id<'conversations'> | undefined; agentType?: string | undefined; category?: string | undefined; query: string; }, any, string | undefined>;
+      "webSearch": FunctionReference<'action', 'public', { conversationId?: Id<'conversations'> | undefined; category?: string | undefined; agentType?: string | undefined; query: string; }, any, string | undefined>;
       "shopifySearchProducts": FunctionReference<'action', 'public', { limit?: number | undefined; context?: string | undefined; savedCatalog?: string | undefined; query: string; }, any, string | undefined>;
       "shopifyDebugSearchProducts": FunctionReference<'action', 'public', { limit?: number | undefined; context?: string | undefined; savedCatalog?: string | undefined; query: string; }, any, string | undefined>;
       "shopifyGetProductDetails": FunctionReference<'action', 'public', { productId: string; }, any, string | undefined>;
@@ -41,19 +41,23 @@ export type PublicApiType = {
   };
   "billing": {
     "getSubscriptionStatus": FunctionReference<'query', 'public', { now?: number | undefined; }, any, string | undefined>;
-    "createCheckoutSession": FunctionReference<'action', 'public', { plan: 'go' | 'pro' | 'plus' | 'ultra'; returnUrl: string; }, { url: string; sessionId: string; }, string | undefined>;
+    "createCheckoutSession": FunctionReference<'action', 'public', { plan: 'go' | 'pro' | 'plus' | 'ultra'; returnUrl: string; }, any, string | undefined>;
+    "getUsageCreditPurchaseOptions": FunctionReference<'query', 'public', {}, any, string | undefined>;
+    "getUsageCreditStatus": FunctionReference<'query', 'public', {}, any, string | undefined>;
+    "createUsageCreditCheckoutSession": FunctionReference<'action', 'public', { amountCents: number; returnUrl: string; }, any, string | undefined>;
     "createBillingPortalSession": FunctionReference<'action', 'public', { returnUrl: string; }, any, string | undefined>;
     "getCurrentPlan": FunctionReference<'query', 'public', {}, any, string | undefined>;
   };
   "channels": {
     "connector_delivery": {
       "claimRemoteTurn": FunctionReference<'mutation', 'public', { deviceId?: string | undefined; conversationId: Id<'conversations'>; requestId: string; }, any, string | undefined>;
+      "cancelRemoteTurn": FunctionReference<'mutation', 'public', { requestId: string; }, any, string | undefined>;
       "completeRemoteTurn": FunctionReference<'mutation', 'public', { deviceId?: string | undefined; conversationId: Id<'conversations'>; text: string; requestId: string; }, any, string | undefined>;
       "sendConnectorFollowup": FunctionReference<'mutation', 'public', { deviceId?: string | undefined; conversationId: Id<'conversations'>; text: string; requestId: string; }, any, string | undefined>;
     };
     "link_codes": {
       "generateLinkCode": FunctionReference<'mutation', 'public', { provider: string; }, any, string | undefined>;
-      "verifyLinqLinkCode": FunctionReference<'mutation', 'public', { phoneNumber: string; code: string; }, any, string | undefined>;
+      "verifyLinqLinkCode": FunctionReference<'mutation', 'public', { code: string; phoneNumber: string; }, any, string | undefined>;
     };
     "linq": {
       "sendLinqLinkSms": FunctionReference<'action', 'public', { phoneNumber: string; }, any, string | undefined>;
@@ -100,11 +104,12 @@ export type PublicApiType = {
       "listLikes": FunctionReference<'query', 'public', { limit?: number | undefined; }, any, string | undefined>;
       "toggleLike": FunctionReference<'mutation', 'public', { currency?: string | undefined; imageUrl?: string | undefined; productUrl?: string | undefined; vendor?: string | undefined; priceCents?: number | undefined; title: string; productId: string; variantId: string; merchantOrigin: string; }, any, string | undefined>;
       "listCart": FunctionReference<'query', 'public', {}, any, string | undefined>;
-      "addToCart": FunctionReference<'mutation', 'public', { quantity?: number | undefined; currency?: string | undefined; imageUrl?: string | undefined; productUrl?: string | undefined; checkoutUrl?: string | undefined; vendor?: string | undefined; priceCents?: number | undefined; title: string; productId: string; variantId: string; merchantOrigin: string; }, any, string | undefined>;
+      "addToCart": FunctionReference<'mutation', 'public', { currency?: string | undefined; quantity?: number | undefined; imageUrl?: string | undefined; productUrl?: string | undefined; checkoutUrl?: string | undefined; vendor?: string | undefined; priceCents?: number | undefined; title: string; productId: string; variantId: string; merchantOrigin: string; }, any, string | undefined>;
       "removeFromCart": FunctionReference<'mutation', 'public', { cartItemId: Id<'fashion_cart_items'>; }, any, string | undefined>;
       "setCartQuantity": FunctionReference<'mutation', 'public', { quantity: number; cartItemId: Id<'fashion_cart_items'>; }, any, string | undefined>;
     };
     "integrations": {
+      "listStoreIntegrations": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "createSlackInstallUrl": FunctionReference<'mutation', 'public', {}, any, string | undefined>;
     };
     "pets": {
@@ -132,6 +137,8 @@ export type PublicApiType = {
     "store_packages": {
       "listPackages": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "listPublicPackages": FunctionReference<'query', 'public', { category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
+      "listNewPublicPackages": FunctionReference<'query', 'public', { limit?: number | undefined; }, any, string | undefined>;
+      "listPromotedPublicPackages": FunctionReference<'query', 'public', { limit?: number | undefined; nowMs: number; }, any, string | undefined>;
       "getPublicPackage": FunctionReference<'query', 'public', { packageId: string; }, any, string | undefined>;
       "getPublicPackagesByIds": FunctionReference<'query', 'public', { packageIds: string[]; }, any, string | undefined>;
       "listPublicReleases": FunctionReference<'query', 'public', { packageId: string; }, any, string | undefined>;
@@ -145,7 +152,7 @@ export type PublicApiType = {
       "listReleases": FunctionReference<'query', 'public', { packageId: string; }, any, string | undefined>;
       "getRelease": FunctionReference<'query', 'public', { packageId: string; releaseNumber: number; }, any, string | undefined>;
       "recordPackageInstall": FunctionReference<'mutation', 'public', { packageId: string; }, any, string | undefined>;
-      "createFirstRelease": FunctionReference<'action', 'public', { category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; description: string; displayName: string; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
+      "createFirstRelease": FunctionReference<'action', 'public', { description?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; displayName: string; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
       "createUpdateRelease": FunctionReference<'action', 'public', { iconUrl?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
     };
     "threads": {
@@ -166,10 +173,11 @@ export type PublicApiType = {
     };
   };
   "events": {
-    "appendEvent": FunctionReference<'mutation', 'public', { channelEnvelope?: { attachments?: { id?: string | undefined; name?: string | undefined; mimeType?: string | undefined; url?: string | undefined; size?: number | undefined; kind?: string | undefined; providerMeta?: Value | undefined; }[] | undefined; chatType?: string | undefined; externalUserId?: string | undefined; externalChatId?: string | undefined; externalMessageId?: string | undefined; threadId?: string | undefined; text?: string | undefined; reactions?: { targetMessageId?: string | undefined; emoji: string; action: 'add' | 'remove'; }[] | undefined; sourceTimestamp?: number | undefined; providerPayload?: Value | undefined; provider: string; kind: 'message' | 'reaction' | 'edit' | 'delete' | 'system'; } | undefined; deviceId?: string | undefined; timestamp?: number | undefined; requestId?: string | undefined; targetDeviceId?: string | undefined; type: 'user_message' | 'assistant_message' | 'agent-started' | 'agent-completed' | 'agent-failed' | 'agent-canceled' | 'agent-progress' | 'tool_request' | 'tool_result' | 'microcompact_boundary' | 'remote_turn_request' | 'screen_event'; conversationId: Id<'conversations'>; payload: Value; }, any, string | undefined>;
+    "appendEvent": FunctionReference<'mutation', 'public', { channelEnvelope?: { attachments?: { id?: string | undefined; kind?: string | undefined; url?: string | undefined; mimeType?: string | undefined; name?: string | undefined; size?: number | undefined; providerMeta?: Value | undefined; }[] | undefined; chatType?: string | undefined; externalUserId?: string | undefined; externalChatId?: string | undefined; externalMessageId?: string | undefined; threadId?: string | undefined; text?: string | undefined; reactions?: { targetMessageId?: string | undefined; emoji: string; action: 'add' | 'remove'; }[] | undefined; sourceTimestamp?: number | undefined; providerPayload?: Value | undefined; provider: string; kind: 'message' | 'reaction' | 'edit' | 'delete' | 'system'; } | undefined; deviceId?: string | undefined; timestamp?: number | undefined; requestId?: string | undefined; targetDeviceId?: string | undefined; type: 'user_message' | 'assistant_message' | 'agent-started' | 'agent-completed' | 'agent-failed' | 'agent-canceled' | 'agent-progress' | 'tool_request' | 'tool_result' | 'microcompact_boundary' | 'remote_turn_request' | 'screen_event'; conversationId: Id<'conversations'>; payload: Value; }, any, string | undefined>;
     "importLocalMessagesChunk": FunctionReference<'mutation', 'public', { messages: { deviceId?: string | undefined; text: string; timestamp: number; role: 'user' | 'assistant'; localMessageId: string; }[]; conversationId: Id<'conversations'>; }, any, string | undefined>;
     "listEvents": FunctionReference<'query', 'public', { conversationId: Id<'conversations'>; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
     "subscribeRemoteTurnRequestsForDevice": FunctionReference<'query', 'public', { limit?: number | undefined; deviceId: string; since: number; }, any, string | undefined>;
+    "subscribeRemoteTurnCancelsForDevice": FunctionReference<'query', 'public', { limit?: number | undefined; deviceId: string; since: number; }, any, string | undefined>;
     "isRemoteTurnClaimed": FunctionReference<'query', 'public', { requestId: string; }, any, string | undefined>;
   };
   "feedback": {
@@ -186,8 +194,16 @@ export type PublicApiType = {
     "watchIncomingConnectIntent": FunctionReference<'query', 'public', { desktopDeviceId: string; nowMs: number; }, any, string | undefined>;
     "acknowledgeConnectIntent": FunctionReference<'mutation', 'public', { intentId: Id<'mobile_connect_intents'>; }, any, string | undefined>;
   };
+  "mobile_chat": {
+    "sendChat": FunctionReference<'action', 'public', { model?: string | undefined; message: string; desktopDeviceId: string; mobileDeviceId: string; pairSecret: string; }, any, string | undefined>;
+    "cancelChat": FunctionReference<'action', 'public', { requestId: string; desktopDeviceId: string; mobileDeviceId: string; pairSecret: string; }, any, string | undefined>;
+  };
   "mobile_push": {
-    "sendActivityNotification": FunctionReference<'action', 'public', { kind: 'started' | 'completed' | 'failed'; }, any, string | undefined>;
+    "sendActivityNotification": FunctionReference<'action', 'public', { kind: 'completed' | 'failed' | 'started'; }, any, string | undefined>;
+  };
+  "mobile_replies": {
+    "watchDesktopReply": FunctionReference<'query', 'public', { requestId: string; }, any, string | undefined>;
+    "acknowledgeDesktopReply": FunctionReference<'mutation', 'public', { requestId: string; }, any, string | undefined>;
   };
   "r2_files": {
     "generateUploadUrl": FunctionReference<'mutation', 'public', {}, any, string | undefined>;
