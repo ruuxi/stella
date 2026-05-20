@@ -330,6 +330,21 @@ export class StellaRuntimeHost {
     string,
     { requestId: string; backendConversationId: string }
   >();
+  /**
+   * Reverse index of `connectorTargetsByLocalConversation` keyed by
+   * `requestId`. Used by the cancel subscription to map an inbound
+   * cancellation back to the active local conversation so we can call
+   * `cancelChatByConversation` on the worker. Maintained alongside the
+   * primary map: any write here happens immediately after a write there.
+   */
+  private localConversationByRequestId = new Map<string, string>();
+  /**
+   * Tracks requestIds we've already actioned a cancel for, so reconnects
+   * to `subscribeRemoteTurnCancelsForDevice` (which keeps returning
+   * cancelled rows for the lookback window) don't fire repeat aborts.
+   */
+  private cancelledRequestIds = new Set<string>();
+  private hostRemoteTurnCancelUnsubscribe: (() => void) | null = null;
 
   constructor(private readonly options: StellaRuntimeHostOptions) {
     const stellaRoot = this.options.initializeParams.stellaRoot;
@@ -609,6 +624,7 @@ export class StellaRuntimeHost {
     }
 
     this.stopHostHeartbeatLoop();
+    this.stopHostRemoteTurnCancelSubscription();
     this.hostRemoteTurnBridge?.stop();
     this.hostDeviceRegistered = false;
     this.hostDeviceRegistering = false;
@@ -914,6 +930,7 @@ export class StellaRuntimeHost {
           requestId,
           backendConversationId: conversationId,
         });
+        this.localConversationByRequestId.set(requestId, localConversationId);
         await this.appendLocalChatEvent({
           conversationId: localConversationId,
           type: "user_message",
@@ -1043,7 +1060,12 @@ export class StellaRuntimeHost {
       // to the desktop. Connector-sourced user messages (the ones armed
       // by `runLocalTurn` above) keep the target alive.
       if (source !== "connector") {
+        const cleared =
+          this.connectorTargetsByLocalConversation.get(conversationId);
         this.connectorTargetsByLocalConversation.delete(conversationId);
+        if (cleared) {
+          this.localConversationByRequestId.delete(cleared.requestId);
+        }
       }
       return;
     }
@@ -1068,6 +1090,7 @@ export class StellaRuntimeHost {
   private syncHostRemoteTurnBridge() {
     if (!this.started || !this.hostReady) {
       this.stopHostHeartbeatLoop();
+      this.stopHostRemoteTurnCancelSubscription();
       this.hostRemoteTurnBridge?.stop();
       void this.sendHostGoOffline().finally(() => {
         this.disposeHostConvexClient();
@@ -1079,6 +1102,7 @@ export class StellaRuntimeHost {
     const convexUrl = this.getConfiguredHostConvexUrl();
     if (!authToken || !convexUrl) {
       this.stopHostHeartbeatLoop();
+      this.stopHostRemoteTurnCancelSubscription();
       this.hostRemoteTurnBridge?.stop();
       this.hostDeviceRegistered = false;
       this.hostDeviceRegistering = false;
@@ -1087,6 +1111,7 @@ export class StellaRuntimeHost {
     }
     if (!this.configCache.hasConnectedAccount) {
       this.stopHostHeartbeatLoop();
+      this.stopHostRemoteTurnCancelSubscription();
       this.hostRemoteTurnBridge?.stop();
       void this.sendHostGoOffline().finally(() => {
         this.disposeHostConvexClient();
@@ -1105,6 +1130,86 @@ export class StellaRuntimeHost {
     void this.sendHostHeartbeat();
     this.hostRemoteTurnBridge.start();
     this.hostRemoteTurnBridge.kick();
+    this.ensureHostRemoteTurnCancelSubscription();
+  }
+
+  /**
+   * Subscribes to `events.subscribeRemoteTurnCancelsForDevice` so a phone
+   * (or any other client) that calls `mobile_chat.cancelChat` /
+   * `cancelRemoteTurn` can abort the in-flight orchestrator run on this
+   * desktop. The request feed alone is not enough — once the request is
+   * `claimed`, it drops out of `subscribeRemoteTurnRequestsForDevice`'s
+   * `pending`-only filter, so the active run is invisible to the request
+   * stream. The cancel feed is a dedicated channel for "abort a run you
+   * already started".
+   *
+   * Cancellation of a not-yet-claimed request is handled implicitly by
+   * the request feed (cancelled rows fall out of the snapshot and the
+   * bridge garbage-collects its pending entry) — this subscription only
+   * acts on cancels for active local conversations.
+   */
+  private ensureHostRemoteTurnCancelSubscription() {
+    if (this.hostRemoteTurnCancelUnsubscribe) return;
+    const deviceId = this.deviceIdentity?.deviceId;
+    if (!deviceId) return;
+    const client = this.ensureHostConvexClient();
+    if (!client) return;
+
+    const subscription = (client as any).onUpdate(
+      (
+        anyApi as {
+          events: { subscribeRemoteTurnCancelsForDevice: unknown };
+        }
+      ).events.subscribeRemoteTurnCancelsForDevice,
+      {
+        deviceId,
+        since: Date.now() - 5 * 60_000,
+        limit: 50,
+      },
+      (rows: unknown) => {
+        if (!Array.isArray(rows)) return;
+        for (const row of rows as Array<{
+          requestId?: string;
+          conversationId?: string;
+        }>) {
+          const requestId =
+            typeof row?.requestId === "string" ? row.requestId : "";
+          if (!requestId || this.cancelledRequestIds.has(requestId)) continue;
+          this.cancelledRequestIds.add(requestId);
+          const localConversationId =
+            this.localConversationByRequestId.get(requestId);
+          if (!localConversationId) continue;
+          void this.cancelChatByConversation(localConversationId).catch(
+            (error: unknown) => {
+              console.warn(
+                "[runtime-host] cancelChatByConversation failed:",
+                error instanceof Error ? error.message : String(error),
+              );
+            },
+          );
+        }
+      },
+      (error: Error) => {
+        console.warn(
+          "[runtime-host] Remote turn cancel subscription failed:",
+          error.message,
+        );
+      },
+    );
+
+    this.hostRemoteTurnCancelUnsubscribe = () => {
+      subscription.unsubscribe();
+    };
+  }
+
+  private stopHostRemoteTurnCancelSubscription() {
+    if (!this.hostRemoteTurnCancelUnsubscribe) return;
+    try {
+      this.hostRemoteTurnCancelUnsubscribe();
+    } catch {
+      // best-effort teardown
+    }
+    this.hostRemoteTurnCancelUnsubscribe = null;
   }
 
   on<K extends keyof RuntimeHostEvents>(
@@ -1249,6 +1354,14 @@ export class StellaRuntimeHost {
     return await this.requestWorker(
       METHOD_NAMES.INTERNAL_WORKER_CANCEL,
       { runId },
+      { ensureWorker: false, recordActivity: true },
+    );
+  }
+
+  async cancelChatByConversation(conversationId: string) {
+    return await this.requestWorker(
+      METHOD_NAMES.INTERNAL_WORKER_CANCEL_BY_CONVERSATION,
+      { conversationId },
       { ensureWorker: false, recordActivity: true },
     );
   }
@@ -1976,6 +2089,7 @@ export class StellaRuntimeHost {
   }
 
   private async stopHostServices() {
+    this.stopHostRemoteTurnCancelSubscription();
     this.hostRemoteTurnBridge?.stop();
     await this.sendHostGoOffline().catch(() => undefined);
     this.hostRemoteTurnBridge = null;

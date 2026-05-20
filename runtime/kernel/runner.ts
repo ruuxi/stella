@@ -209,6 +209,8 @@ export const createStellaHostRunner = (
     },
     cancelLocalAgent: taskOrchestration.cancelLocalAgent,
     cancelLocalChat: orchestratorController.cancelLocalChat,
+    cancelLocalChatByConversation:
+      orchestratorController.cancelLocalChatByConversation,
     getActiveOrchestratorRun: orchestratorController.getActiveOrchestratorRun,
     appendThreadMessage: (args) => {
       context.runtimeStore.appendThreadMessage({

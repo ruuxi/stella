@@ -431,6 +431,12 @@ export type RunnerPublicApi = {
     reason?: string,
   ) => Promise<{ canceled: boolean }>;
   cancelLocalChat: (runId: string) => void;
+  /**
+   * Cancel the active orchestrator run for the given local conversation,
+   * if one exists. Returns `true` if a run was cancelled. Used by the
+   * remote-turn cancel path so callers don't need to track runIds.
+   */
+  cancelLocalChatByConversation: (conversationId: string) => boolean;
   getActiveOrchestratorRun: () => RuntimeActiveRun | null;
   appendThreadMessage: (args: {
     threadKey: string;

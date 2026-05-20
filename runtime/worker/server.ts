@@ -2076,6 +2076,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     },
   );
 
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_CANCEL_BY_CONVERSATION,
+    async (params) => {
+      const cancelled = ensureRunner().cancelLocalChatByConversation(
+        (params as { conversationId: string }).conversationId,
+      );
+      return { ok: true, cancelled };
+    },
+  );
+
   // Worker-side replay: read everything past `lastSeq` for `runId` from
   // the persistent ring buffer. This is the path Electron takes after a
   // restart — by the time the host reconnects, the in-memory host buffer
