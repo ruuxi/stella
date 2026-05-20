@@ -170,6 +170,14 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_GET_ACTIVE: "internal.worker.getActive",
   INTERNAL_WORKER_START_CHAT: "internal.worker.startChat",
   INTERNAL_WORKER_CANCEL: "internal.worker.cancel",
+  /**
+   * Cancel the active orchestrator automation/chat run for a given local
+   * conversation. Used by the host's remote-turn bridge when the
+   * originating connector (e.g. the Stella mobile app) issues a
+   * server-side cancel for its in-flight `requestId`.
+   */
+  INTERNAL_WORKER_CANCEL_BY_CONVERSATION:
+    "internal.worker.cancelByConversation",
   INTERNAL_WORKER_RESUME_EVENTS: "internal.worker.resumeEvents",
   INTERNAL_WORKER_ACK_EVENTS: "internal.worker.ackEvents",
   INTERNAL_WORKER_LIST_ACTIVE_RUNS: "internal.worker.listActiveRuns",

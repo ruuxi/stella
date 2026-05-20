@@ -690,6 +690,26 @@ export const createOrchestratorController = (
     clearActiveOrchestratorRun(runId);
   };
 
+  /**
+   * Cancel whichever orchestrator run is currently active for the given
+   * conversation. There can only be one active orchestrator run per
+   * conversation at a time (see `activeOrchestratorRunId` /
+   * `activeOrchestratorConversationId`), so this is unambiguous when the
+   * conversation owns the live run; otherwise it's a no-op.
+   *
+   * Returns `true` if a run was cancelled, `false` if none matched.
+   */
+  const cancelLocalChatByConversation = (conversationId: string): boolean => {
+    const activeConversationId =
+      context.state.activeOrchestratorConversationId;
+    const activeRunId = context.state.activeOrchestratorRunId;
+    if (!activeRunId || activeConversationId !== conversationId) {
+      return false;
+    }
+    cancelLocalChat(activeRunId);
+    return true;
+  };
+
   const getActiveOrchestratorRun = (): {
     runId: string;
     conversationId: string;
@@ -717,6 +737,7 @@ export const createOrchestratorController = (
     sendUserMessage,
     runAutomationTurn,
     cancelLocalChat,
+    cancelLocalChatByConversation,
     getActiveOrchestratorRun,
   };
 };
