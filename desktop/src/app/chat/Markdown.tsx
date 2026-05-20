@@ -1,9 +1,14 @@
 import type { CSSProperties, ImgHTMLAttributes } from "react";
-import { memo, useMemo } from "react";
-import { Streamdown, defaultRemarkPlugins } from "streamdown";
+import { memo, useMemo, useRef } from "react";
+import {
+  Streamdown,
+  defaultRehypePlugins,
+  defaultRemarkPlugins,
+} from "streamdown";
 import { cn } from "@/shared/lib/utils";
 import { useActiveEmojiPack } from "./emoji-sprites/active-emoji-pack";
 import { remarkEmojiSprites } from "./emoji-sprites/remark-emoji-sprites";
+import { rehypeWordFade } from "./rehype-word-fade";
 import {
   cellToRowCol,
   getEmojiSpriteGridSize,
@@ -35,6 +40,30 @@ type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
  */
 const DEFAULT_REMARK_PLUGINS = Object.values(defaultRemarkPlugins);
 const REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS, remarkEmojiSprites];
+
+/*
+ * Streamdown's `rehypePlugins` prop, like `remarkPlugins`, *replaces*
+ * its defaults — re-spread them so harden / sanitize / raw stay in
+ * place. The word-fade plugin appends after them so it observes the
+ * post-sanitize HAST (and inherits the same allow-list).
+ */
+const DEFAULT_REHYPE_PLUGINS = Object.values(defaultRehypePlugins);
+const REHYPE_PLUGINS_STREAMING = [...DEFAULT_REHYPE_PLUGINS, rehypeWordFade];
+
+/*
+ * Streamdown internally defers streaming block updates with React
+ * `startTransition` only when its `animated` prop is absent. After an
+ * upstream token pause that deferred parse can catch up in one visible
+ * commit (the debug logs show `p` -> `p>p>p` with a large text-length
+ * jump), which reads as the remaining single flicker.
+ *
+ * We still do NOT want Streamdown's own animate rehype plugin because
+ * it snaps prior words to `duration: 0ms`. Passing a truthy `animated`
+ * prop but forcing Streamdown's `isAnimating` context false gives us the
+ * synchronous block-update path without registering its animation plugin.
+ * Our own `rehypeWordFade` remains gated by `pluginActive` below.
+ */
+const STREAMDOWN_SYNC_RENDER = { duration: 0, stagger: 0 } as const;
 
 /*
  * Disable Streamdown's built-in "Open external link?" confirmation modal.
@@ -115,6 +144,21 @@ export const Markdown = memo(function Markdown({
   isAnimating = false,
   hideHorizontalRules = false,
 }: MarkdownProps) {
+  /*
+   * Keep the word-fade HAST shape for the lifetime of a row once that
+   * row has streamed. During the overlay -> persisted-row handoff,
+   * `isAnimating` can briefly flip false while React keeps the same row
+   * key; if we removed the plugin immediately, Streamdown would rebuild
+   * the body from `<span data-stella-word-fade>…</span>` wrappers back
+   * into raw text nodes, which reads as a one-frame flicker near the
+   * start of some streams. Freshly mounted historical rows start with
+   * `isAnimating=false`, so they still render as plain markdown.
+   */
+  const hasRenderedStreamingMarkupRef = useRef(false);
+  if (isAnimating) {
+    hasRenderedStreamingMarkupRef.current = true;
+  }
+  const pluginActive = hasRenderedStreamingMarkupRef.current;
   const components = useMemo(
     () => buildComponents(hideHorizontalRules),
     [hideHorizontalRules],
@@ -132,12 +176,16 @@ export const Markdown = memo(function Markdown({
   return (
     <div style={emojiVars}>
       <Streamdown
-        isAnimating={isAnimating}
+        isAnimating={false}
+        animated={pluginActive ? STREAMDOWN_SYNC_RENDER : undefined}
         className={cn("markdown", className)}
         remarkPlugins={
           activeEmojiPack && emojiGrid
             ? REMARK_PLUGINS
             : DEFAULT_REMARK_PLUGINS
+        }
+        rehypePlugins={
+          pluginActive ? REHYPE_PLUGINS_STREAMING : DEFAULT_REHYPE_PLUGINS
         }
         components={components}
         linkSafety={LINK_SAFETY}
