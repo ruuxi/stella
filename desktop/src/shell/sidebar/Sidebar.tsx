@@ -88,10 +88,9 @@ interface FooterIconButtonProps {
 }
 
 /**
- * Small round icon button used in the new compact footer row beside
- * the avatar. Visually paired with `.sidebar-account-avatar`: same
- * size, same border treatment, transparent body so the avatar stays
- * the only colored chip in the row.
+ * Square icon button in the compact footer row beside the avatar.
+ * Larger hit/hover target than the 16px glyph; transparent body so
+ * the avatar stays the only colored chip in the row.
  */
 const FooterIconButton = ({
   label,
