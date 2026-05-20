@@ -299,6 +299,11 @@ const ensureNativeCredential = async (
       throw new Error("Google Workspace connection is unavailable.");
     }
     const config = loadConfig();
+    if (!configuredOAuthProviders.backend.has("google-workspace")) {
+      throw new Error(
+        "Google Workspace secure connection is not ready yet.",
+      );
+    }
     const connected = await options.requestPreregisteredOAuth({
       tokenKey: "google-workspace",
       displayName: "Google Workspace",
@@ -306,6 +311,10 @@ const ensureNativeCredential = async (
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenEndpoint: "https://oauth2.googleapis.com/token",
       scopes: GOOGLE_WORKSPACE_SCOPES,
+      tokenExchange: {
+        type: "backend",
+        provider: "google-workspace",
+      },
       description:
         "Stella needs to open Google in your browser so you can sign in and approve Workspace access.",
     });
