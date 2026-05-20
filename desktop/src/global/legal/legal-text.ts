@@ -29,7 +29,7 @@ You must be at least 13 years of age to use the Service. If you are under 18, yo
 
 Anonymous Use — Stella can be used without creating an account. Anonymous users receive access to core functionality subject to rate limits.
 
-Registered Accounts — You may optionally create an account using magic-link email authentication. If you create an account, you are responsible for maintaining the security of your login credentials and for all activity that occurs under your account.
+Registered Accounts — You may optionally create an account using magic-link email authentication or Google sign-in. If you create an account, you are responsible for maintaining the security of your login credentials and for all activity that occurs under your account.
 
 Account Linking — If you upgrade from anonymous use to a registered account, any anonymous session data may be linked to your new account.
 
@@ -265,9 +265,9 @@ The only exception is when the agent's actions require an LLM inference call (e.
 
 6. Information We Collect When You Create an Account
 
-Account creation is optional. If you choose to sign in, we collect: your email address (for authentication via magic link sign-in and account identification), your name if provided (for display purposes), and your account creation timestamp (for account management).
+Account creation is optional. If you choose to sign in, we collect: your email address (for authentication and account identification), your name if provided (for display purposes), and your account creation timestamp (for account management).
 
-We use Better Auth for authentication, with magic-link email sign-in. We do not collect passwords.
+We use Better Auth for authentication, with magic-link email sign-in and optional Google sign-in. We do not collect passwords.
 
 
 7. Billing Information
