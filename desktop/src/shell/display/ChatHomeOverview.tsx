@@ -22,13 +22,13 @@
  */
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
   type ReactNode,
-  type RefObject,
 } from "react";
-import { Activity, Check, ChevronDown, Clock } from "lucide-react";
+import { Activity, Check, Clock } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { useEdgeFade } from "@/shared/hooks/use-edge-fade";
@@ -68,12 +68,10 @@ const DONE_DEFAULT_VISIBLE = 4;
 const UP_NEXT_DEFAULT_VISIBLE = 3;
 const NEXT_RUN_TICK_MS = 30_000;
 /**
- * How many cheap-model progress phrases stay on screen per running task.
- * The hook still keeps a longer rolling buffer in memory (so the count
- * can grow if we ever want history-on-hover), but the rendered list is
- * capped here so the feed never visually grows past N rows — older
+ * Rendered cap on per-task progress phrases. The hook keeps a longer
+ * rolling buffer in memory; the visible slice is bounded here so older
  * phrases fall off the top deterministically without depending on
- * scrollable max-height behaviour inside the display sidebar.
+ * scrollable max-height inside the display sidebar.
  */
 const TASK_PROGRESS_VISIBLE = 4;
 
@@ -101,16 +99,25 @@ const taskBadgeFor = (task: TaskItem): string => {
 type ProgressSummary = { id: string; text: string; createdAt: number };
 
 /**
- * Sub-list rendered under a running task. Each entry is a 3-6 word phrase
- * the cheap summarizer returned for the agent's most recent activity.
- *
- * The list always shows at most `TASK_PROGRESS_VISIBLE` rows in a fixed
- * column — newer entries push the oldest one off the top. Previously
- * relied on `max-height` + `overflow-y: auto` + an autoscroll effect,
- * but inside the display sidebar's grid layout the max-height was not
- * always respected and the older entries visually piled up behind the
- * mask, reading as overlapping rows. A hard render-time slice removes
- * the failure mode entirely.
+ * Live "now" used to format relative next-run badges. Refreshes on a slow
+ * interval only while at least one schedule row is rendered, so an empty
+ * UP NEXT list costs nothing.
+ */
+function useNextRunTicker(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setNow(Date.now()), NEXT_RUN_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+/**
+ * Sub-list under a running task: short cheap-summarizer phrases of what
+ * the agent is currently doing. Capped at TASK_PROGRESS_VISIBLE; older
+ * phrases fall off the top. Recency cue is position (last row) and
+ * color (--text-base vs --text-weak) — no shimmer, no border-left.
  */
 function TaskProgressFeed({
   summaries,
@@ -135,21 +142,6 @@ function TaskProgressFeed({
   );
 }
 
-/**
- * Live "now" used to format relative next-run badges. Refreshes on a slow
- * interval only while at least one schedule row is rendered, so an empty
- * UP NEXT list costs nothing.
- */
-function useNextRunTicker(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    const id = window.setInterval(() => setNow(Date.now()), NEXT_RUN_TICK_MS);
-    return () => window.clearInterval(id);
-  }, [active]);
-  return now;
-}
-
 function TaskRow({
   task,
   summaries,
@@ -158,10 +150,7 @@ function TaskRow({
   summaries: ReadonlyArray<ProgressSummary>;
 }) {
   return (
-    <li
-      className="chat-home-overview__task"
-      data-status={task.status}
-    >
+    <li className="chat-home-overview__task" data-status={task.status}>
       <div className="chat-home-overview__task-row">
         <span className="chat-home-overview__task-text">
           {taskLineFor(task)}
@@ -172,8 +161,7 @@ function TaskRow({
       </div>
       {/* Per-task progress feed is only meaningful while the task is
           actively running. Once it's Done/Failed/Stopped, the description
-          and status badge tell the whole story — the older progress
-          phrases just add noise to the history. */}
+          and status badge tell the whole story. */}
       {task.status === "running" && summaries.length > 0 && (
         <TaskProgressFeed summaries={summaries} isRunning />
       )}
@@ -194,14 +182,16 @@ function ScheduleRow({
     <li className="chat-home-overview__task" data-status="scheduled">
       <button
         type="button"
-        className="chat-home-overview__task-row chat-home-overview__schedule-trigger"
+        className="chat-home-overview__schedule-trigger"
         onClick={() => onOpen(entry)}
       >
-        <span className="chat-home-overview__task-text">
-          {entry.name.trim()}
-        </span>
-        <span className="chat-home-overview__task-status">
-          {formatNextRun(entry.nextRunAtMs, nowMs)}
+        <span className="chat-home-overview__task-row">
+          <span className="chat-home-overview__task-text">
+            {entry.name.trim()}
+          </span>
+          <span className="chat-home-overview__task-status">
+            {formatNextRun(entry.nextRunAtMs, nowMs)}
+          </span>
         </span>
       </button>
     </li>
@@ -220,67 +210,38 @@ const scheduleEntryToAffectedRef = (
   nextRunAtMs: entry.nextRunAtMs,
 });
 
-function SubgroupLabel({
-  children,
-  icon,
-}: {
-  children: string;
-  icon: ReactNode;
-}) {
-  return (
-    <li
-      className="chat-home-overview__subgroup-label"
-      role="presentation"
-      aria-hidden="true"
-    >
-      <span
-        className="chat-home-overview__subgroup-label-icon"
-        aria-hidden="true"
-      >
-        {icon}
-      </span>
-      <span className="chat-home-overview__subgroup-label-text">
-        {children}
-      </span>
-    </li>
-  );
-}
-
 /**
- * Floating "Show more ⌄" pill that appears just above a section's bottom
- * fade whenever there's scrolled-off content below the viewport. Pure
- * sibling-CSS toggling drives visibility (see `chat-home-overview.css`
- * `[data-at-end="false"] ~ .chat-home-overview__more-indicator`) — this
- * component only owns the click-to-scroll behaviour.
+ * Subgroup: a real heading + a task list wired together via
+ * `aria-labelledby` so screen readers announce which group each row
+ * belongs to. The wrapping element is a `<section>` with the heading
+ * inside, not an `<li>` with role="presentation".
  */
-function MoreIndicator({
-  scrollerRef,
+function Subgroup({
+  label,
+  icon,
+  children,
 }: {
-  scrollerRef: RefObject<HTMLDivElement | null>;
+  label: string;
+  icon: ReactNode;
+  children: ReactNode;
 }) {
-  const handleClick = () => {
-    const node = scrollerRef.current;
-    if (!node) return;
-    node.scrollBy({
-      top: Math.max(80, node.clientHeight * 0.8),
-      behavior: "smooth",
-    });
-  };
+  const headingId = useId();
   return (
-    <button
-      type="button"
-      className="chat-home-overview__more-indicator"
-      onClick={handleClick}
-      aria-label="Show more"
+    <section
+      className="chat-home-overview__subgroup"
+      aria-labelledby={headingId}
     >
-      <span>Show more</span>
-      <span
-        className="chat-home-overview__more-indicator-chevron"
-        aria-hidden="true"
-      >
-        <ChevronDown size={12} strokeWidth={2.25} />
-      </span>
-    </button>
+      <h4 id={headingId} className="chat-home-overview__subgroup-label">
+        <span
+          className="chat-home-overview__subgroup-label-icon"
+          aria-hidden="true"
+        >
+          {icon}
+        </span>
+        <span className="chat-home-overview__subgroup-label-text">{label}</span>
+      </h4>
+      {children}
+    </section>
   );
 }
 
@@ -292,7 +253,7 @@ function SeeAllButton({
   onClick: () => void;
 }) {
   return (
-    <li className="chat-home-overview__show-more-row">
+    <div className="chat-home-overview__show-more-row">
       <button
         type="button"
         className="chat-home-overview__show-more"
@@ -300,7 +261,7 @@ function SeeAllButton({
       >
         See all ({total})
       </button>
-    </li>
+    </div>
   );
 }
 
@@ -313,10 +274,6 @@ export function ChatHomeOverview() {
   const summariesByAgent = chat.conversation.streaming.taskProgressSummaries;
   const schedules = useConversationSchedules(state.conversationId);
 
-  // Activity + Recent files each get their own hidden-scrollbar +
-  // edge-fade scroller. `useEdgeFade` toggles `data-at-start` /
-  // `data-at-end` on the element so the mask drops on the edge the
-  // user has scrolled to (see `chat-home-overview.css`).
   const activityScrollRef = useRef<HTMLDivElement | null>(null);
   const filesScrollRef = useRef<HTMLDivElement | null>(null);
   useEdgeFade(activityScrollRef, { axis: "vertical" });
@@ -335,12 +292,10 @@ export function ChatHomeOverview() {
   const runningTasks = useMemo(() => {
     return [...allTasks]
       .filter((task) => task.status === "running")
-      // Sort by the row's stable start time, NOT `lastUpdatedAtMs` —
+      // Sort by the row's stable start time, NOT lastUpdatedAtMs —
       // otherwise every per-task progress summary bumps the row's
       // updated-at, the sort re-runs, and concurrently-running tasks
       // visibly swap places in the Now group while their feeds tick.
-      // Newest-started still floats to the top; siblings keep their
-      // slot for the rest of the run.
       .sort((a, b) => b.startedAtMs - a.startedAtMs);
   }, [allTasks]);
 
@@ -365,9 +320,8 @@ export function ChatHomeOverview() {
     visibleSchedules.length > 0 || historySection === "upNext",
   );
 
-  const [openScheduleEntry, setOpenScheduleEntry] = useState<ScheduleEntry | null>(
-    null,
-  );
+  const [openScheduleEntry, setOpenScheduleEntry] =
+    useState<ScheduleEntry | null>(null);
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
     if (!openScheduleEntry || !state.conversationId) return [];
     return [scheduleEntryToAffectedRef(openScheduleEntry, state.conversationId)];
@@ -375,7 +329,7 @@ export function ChatHomeOverview() {
 
   // Inline view derives from the in-memory file-events window only —
   // the See-all dialog re-derives from the same stream and pages older
-  // history through `filesFeed.loadOlder` on demand.
+  // history through filesFeed.loadOlder on demand.
   const allFiles = useMemo<FileEntry[]>(
     () => deriveConversationFiles(filesFeed.files),
     [filesFeed.files],
@@ -396,11 +350,11 @@ export function ChatHomeOverview() {
 
   if (overviewIsEmpty) {
     return (
-      <div className="chat-home-overview chat-home-overview--empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", padding: 40, textAlign: "center", gap: 12 }}>
-        <div style={{ width: 200, height: 150, opacity: 0.85 }}>
+      <div className="chat-home-overview chat-home-overview--empty">
+        <div className="chat-home-overview__empty-illustration">
           <ChatIllustration />
         </div>
-        <p className="chat-home-overview__empty" style={{ maxWidth: 260, fontSize: 15 }}>
+        <p className="chat-home-overview__empty chat-home-overview__empty--lead">
           Activity and files from this conversation will show up here.
         </p>
       </div>
@@ -411,10 +365,6 @@ export function ChatHomeOverview() {
     <div className="chat-home-overview">
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Activity</h3>
-        {/* The scroller and the floating "Show more" indicator are
-            siblings under the section — the indicator's visibility is
-            driven purely by the scroller's `data-at-end` attribute via
-            a CSS sibling selector, so no React state is needed. */}
         <div
           ref={activityScrollRef}
           className="chat-home-overview__section-body"
@@ -422,94 +372,81 @@ export function ChatHomeOverview() {
           {activityIsEmpty ? (
             <p className="chat-home-overview__empty">Nothing in flight.</p>
           ) : (
-            <ul className="chat-home-overview__tasks">
+            <div className="chat-home-overview__subgroups">
               {runningTasks.length > 0 && (
-                <>
-                  <SubgroupLabel icon={<Activity size={12} strokeWidth={2.25} />}>
-                    Now
-                  </SubgroupLabel>
-                  {runningTasks.map((task) => (
-                    <TaskRow
-                      key={task.id}
-                      task={task}
-                      summaries={summariesByAgent.get(task.id) ?? []}
-                    />
-                  ))}
-                </>
+                <Subgroup
+                  label="Now"
+                  icon={<Activity size={12} strokeWidth={2.25} />}
+                >
+                  <ul className="chat-home-overview__tasks">
+                    {runningTasks.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        summaries={summariesByAgent.get(task.id) ?? []}
+                      />
+                    ))}
+                  </ul>
+                </Subgroup>
               )}
 
               {doneTasks.length > 0 && (
-                <>
-                  <SubgroupLabel icon={<Check size={12} strokeWidth={2.5} />}>
-                    Done
-                  </SubgroupLabel>
-                  {/*
-                   * Group container owns the soft glowing left bar
-                   * (see `.chat-home-overview__group--done` in
-                   * chat-home-overview.css). The bar is a single
-                   * `::before` pseudo-element spanning the group's
-                   * height, so it naturally grows as more Done rows
-                   * stack inside it.
-                   */}
-                  <li
-                    className="chat-home-overview__group chat-home-overview__group--done"
-                    role="presentation"
-                  >
-                    <ul className="chat-home-overview__group-inner">
-                      {visibleDone.map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          summaries={summariesByAgent.get(task.id) ?? []}
-                        />
-                      ))}
-                    </ul>
-                  </li>
+                <Subgroup
+                  label="Done"
+                  icon={<Check size={12} strokeWidth={2.5} />}
+                >
+                  <ul className="chat-home-overview__tasks">
+                    {visibleDone.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        summaries={summariesByAgent.get(task.id) ?? []}
+                      />
+                    ))}
+                  </ul>
                   {hiddenDoneCount > 0 && (
                     <SeeAllButton
                       total={doneTasks.length}
                       onClick={() => setHistorySection("done")}
                     />
                   )}
-                </>
+                </Subgroup>
               )}
 
               {visibleSchedules.length > 0 && (
-                <>
-                  <SubgroupLabel icon={<Clock size={12} strokeWidth={2.25} />}>
-                    Up next
-                  </SubgroupLabel>
-                  {visibleSchedules.map((entry) => (
-                    <ScheduleRow
-                      key={`${entry.kind}:${entry.id}`}
-                      entry={entry}
-                      nowMs={nowMs}
-                      onOpen={setOpenScheduleEntry}
-                    />
-                  ))}
+                <Subgroup
+                  label="Up next"
+                  icon={<Clock size={12} strokeWidth={2.25} />}
+                >
+                  <ul className="chat-home-overview__tasks">
+                    {visibleSchedules.map((entry) => (
+                      <ScheduleRow
+                        key={`${entry.kind}:${entry.id}`}
+                        entry={entry}
+                        nowMs={nowMs}
+                        onOpen={setOpenScheduleEntry}
+                      />
+                    ))}
+                  </ul>
                   {hiddenScheduleCount > 0 && (
                     <SeeAllButton
                       total={schedules.length}
                       onClick={() => setHistorySection("upNext")}
                     />
                   )}
-                </>
+                </Subgroup>
               )}
-            </ul>
+            </div>
           )}
         </div>
-        <MoreIndicator scrollerRef={activityScrollRef} />
       </section>
 
       <section className="chat-home-overview__section">
         <h3 className="chat-home-overview__heading">Recent files</h3>
-        <div
-          ref={filesScrollRef}
-          className="chat-home-overview__section-body"
-        >
+        <div ref={filesScrollRef} className="chat-home-overview__section-body">
           {allFiles.length === 0 ? (
             <p className="chat-home-overview__empty">
-              Files Stella changes or creates will show up here.
+              Files Stella works on will show up here.
             </p>
           ) : (
             <ul className="chat-home-overview__files">
@@ -532,15 +469,16 @@ export function ChatHomeOverview() {
                 </li>
               ))}
               {hiddenFilesCount > 0 && (
-                <SeeAllButton
-                  total={allFiles.length}
-                  onClick={() => setHistorySection("files")}
-                />
+                <li>
+                  <SeeAllButton
+                    total={allFiles.length}
+                    onClick={() => setHistorySection("files")}
+                  />
+                </li>
               )}
             </ul>
           )}
         </div>
-        <MoreIndicator scrollerRef={filesScrollRef} />
       </section>
 
       <ScheduleDetailsDialog
@@ -570,7 +508,7 @@ export function ChatHomeOverview() {
         conversationId={state.conversationId}
         nowMs={nowMs}
         onOpenSchedule={(entry) => {
-          // Hand the row off to the existing schedule manage dialog so
+          // Hand off to the existing schedule manage dialog so
           // Run-now / Pause / Delete behave identically whether the
           // user came in via the inline row or the "See all" list.
           setOpenScheduleEntry(entry);

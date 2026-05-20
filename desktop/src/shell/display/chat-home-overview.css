@@ -1,27 +1,16 @@
 /* ============================================================
-   Chat home overview — the body of the Chat display tab while
-   the user is on home (`/chat`). Apple-leaning: quiet headings,
-   relaxed spacing, single text color rhythm, no decorative
-   dots or pill badges.
+   Chat home overview — body of the Chat display tab while the
+   user is on home (`/chat`). Quiet by design: type hierarchy and
+   spacing carry the work, no accent stripes, no decorative motion.
    ============================================================ */
 
 .chat-home-overview {
   display: grid;
-  /* Activity flexes to take the remaining space; Recent files keeps a
-     reserved minimum (~200px) so it never collapses under heavy
-     Activity content, and can grow up to its intrinsic size when
-     Activity is short. The 5-row cap on Recent files
-     (see FILES_DEFAULT_VISIBLE in ChatHomeOverview.tsx) bounds the
-     upper end. */
-  grid-template-rows: minmax(0, 1fr) minmax(100px, auto);
-  /* Pin the single auto column to the sidebar's content width so a long
-     min-content child (e.g. an unbreakable task description) can't grow
-     the grid track past the visible area. Without `minmax(0, 1fr)` the
-     default `auto` column sizes to max-content, the section/section-body
-     stretches with it, and the right-side status badge ("Done" /
-     "Working" / "Tomorrow 8:30 AM") gets shoved past the sidebar edge
-     and clipped by this element's `overflow: hidden` instead of the
-     row's text ellipsis kicking in. */
+  /* Activity flexes; Recent files takes its intrinsic height
+     (the 5-row cap in TSX bounds the upper end). When files is
+     empty the heading + empty line stay; Activity still gets the
+     remainder. */
+  grid-template-rows: minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
   gap: 22px;
   padding: 22px 18px 28px;
@@ -30,25 +19,41 @@
   overflow: hidden;
 }
 
+.chat-home-overview--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px 24px;
+  text-align: center;
+  gap: 12px;
+}
+
+.chat-home-overview__empty-illustration {
+  width: 200px;
+  height: 150px;
+  opacity: 0.85;
+}
+
+.chat-home-overview__empty--lead {
+  max-width: 260px;
+  font-size: 14px;
+}
+
 .chat-home-overview__section {
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-height: 0;
   min-width: 0;
-  /* Positioning context for the "Show more ⌄" indicator that floats
-     above the bottom fade when there's still content below the
-     viewport (see `.chat-home-overview__more-indicator`). */
-  position: relative;
 }
 
 /*
- * Section body scroller. The scrollbar itself is intentionally hidden — a
- * visible scrollbar on a short list feels noisy. Overflow signal is carried
- * instead by a top/bottom fade mask that drops off the corresponding edge
- * once the scroller is at start / end (see `data-at-start` / `data-at-end`
- * toggled by `useEdgeFade`). Same pattern as the legal dialog body and the
- * topbar tablist — see `legal-dialog.css` and `full-shell.layout.css`.
+ * Section body scroller. Scrollbar hidden; overflow signal is the
+ * top/bottom fade mask that drops on whichever edge the user has
+ * scrolled to (data-at-start / data-at-end toggled by useEdgeFade).
+ * Same pattern as the legal dialog body and the topbar tablist.
  */
 .chat-home-overview__section-body {
   flex: 1;
@@ -91,7 +96,7 @@
 
 .chat-home-overview__heading {
   margin: 0;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text-strong);
@@ -105,66 +110,41 @@
 }
 
 /* --- Activity ------------------------------------------------ */
-/*
- * Hierarchy goal:
- *   Activity (h3)                                                  prominent
- *     NOW ───────────────────────────────────                      group label + rule
- *       [ ● Description                                    Working ]
- *       [ ● Description                                    Working ]   ← soft cards
- *     DONE ──────────────────────────────────              group label + rule
- *       Description                                              2m   ← dense rows
- *       Description                                              5m
- *     UP NEXT ───────────────────────────────              group label + rule
- *       Description                                  Tomorrow 8:30 AM ← dense rows
- *
- * The eye should land on NOW first (cards stand out), drop into DONE as
- * quieter history, then read UP NEXT as commitments.
- */
 
-.chat-home-overview__tasks {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.chat-home-overview__subgroups {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  /* Pin to the section body's content width so nested flex items can't
-     grow past it. Without this, a long unbreakable description in
-     `__task-text` lets the chain of flex children (li → ul → li → row)
-     each default to `min-width: auto` and push their intrinsic min-
-     content past the container, shoving the right-side status badge
-     ("Done" / "Working" / "Tomorrow 8:30 AM") off the visible edge
-     instead of letting the text ellipsis kick in. */
+  gap: 0;
   min-width: 0;
   max-width: 100%;
 }
 
-/* Recent files reads as a dense list, not breathing rows — keep the
-   items tight against each other so the section stays under its
-   100px minimum even with 5 items. */
-.chat-home-overview__files {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.chat-home-overview__subgroup {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
-/* Group divider: uppercase label paired with a hairline rule extending to
-   the right edge. The rule is what makes this read as a section break
-   instead of just small text floating above a row. */
+/* Section-internal heading: uppercase label + hairline rule. The rule
+   is what makes this read as a section break rather than small text
+   floating above a row. */
 .chat-home-overview__subgroup-label {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 18px 0 6px;
   padding: 0 4px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-strong);
+}
+
+.chat-home-overview__subgroup:first-child .chat-home-overview__subgroup-label {
+  margin-top: 0;
 }
 
 .chat-home-overview__subgroup-label-icon {
@@ -178,8 +158,6 @@
 }
 
 .chat-home-overview__subgroup-label-text {
-  /* Tighten the gap between the text and the trailing rule so the
-     hairline visually anchors to the label rather than floating. */
   margin-right: 2px;
 }
 
@@ -190,11 +168,30 @@
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
-.chat-home-overview__subgroup-label:first-child {
-  margin-top: 0;
+.chat-home-overview__tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Pin to content width so a long unbreakable description in
+     __task-text can't grow the flex chain past the section body
+     and shove the right-side status badge past the visible edge. */
+  min-width: 0;
+  max-width: 100%;
 }
 
-/* Base row: zeroed out, per-status rules below own the real layout. */
+/* Recent files reads as a dense list — keep items tight. */
+.chat-home-overview__files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .chat-home-overview__task {
   display: flex;
   flex-direction: column;
@@ -203,11 +200,7 @@
   font-size: 13px;
   line-height: 1.4;
   color: var(--text-base);
-  /* As a flex item in `__tasks` / `__group-inner`, default
-     `min-width: auto` would size the li to its intrinsic min-content
-     (status badge width + longest word in description). Force shrink
-     so the inner `__task-text` ellipsis kicks in first and the right-
-     side status stays anchored to the row's right edge. */
+  /* Same shrink-propagation reason as __tasks above. */
   min-width: 0;
   max-width: 100%;
 }
@@ -230,53 +223,19 @@
 
 .chat-home-overview__task-status {
   flex-shrink: 0;
-  /* Pin to a single line so the right-side label (Done / Working /
-     "Tomorrow 8:30 AM" / etc.) stays fully visible at any sidebar
-     width and the left-side description truncates first via the
-     ellipsis on `__task-text`. Without nowrap the browser sizes
-     this flex item by its longest word and wraps the rest, so the
-     trailing portion of multi-word labels visually gets clipped
-     against the right edge in narrow panels. */
   white-space: nowrap;
   font-size: 11.5px;
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
 }
 
-/* NOW rows: each running task gets its own soft glowing blue left bar
-   — same visual language as the Done group's green bar
-   (see `.chat-home-overview__group--done::before`) but applied PER ROW
-   since running tasks are highlighted individually rather than as a
-   stable batch. No card chrome: the bar alone separates live work
-   from history. */
-.chat-home-overview__task[data-status="running"] {
-  position: relative;
-  padding-left: 14px;
-}
-
-.chat-home-overview__task[data-status="running"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  border-radius: 2px;
-  /* Quieter than the saturated #3b82f6 / rgba(59,130,246,0.4) glow we
-     started with — the bar still reads as "live" but doesn't compete
-     with the row text or the Done group's green bar for attention. */
-  background: color-mix(in oklch, #3b82f6 70%, transparent);
-  box-shadow: 0 0 6px 1px color-mix(in oklch, #3b82f6 22%, transparent);
-  pointer-events: none;
-}
-
-.chat-home-overview__task[data-status="running"]
-  .chat-home-overview__task-text {
+/* Running rows: stronger weight + uppercase status. Differentiation
+   from Done is type, not decoration. */
+.chat-home-overview__task[data-status="running"] .chat-home-overview__task-text {
   font-weight: 500;
 }
 
-.chat-home-overview__task[data-status="running"]
-  .chat-home-overview__task-status {
+.chat-home-overview__task[data-status="running"] .chat-home-overview__task-status {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -284,60 +243,7 @@
   color: var(--text-base);
 }
 
-/* DONE group container: holds the soft glowing left bar that visually
-   marks "completed work" — mirrors the connected-provider rail glow in
-   the Connect dialog / model picker (see `.model-picker-rail-bar[data-on]`
-   in `ProviderModelPicker.css`). The bar is a single `::before` pseudo
-   on the group, so its height naturally tracks the number of Done rows
-   inside without each row drawing its own segment. */
-.chat-home-overview__group {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  /* Same shrink-propagation reason as `__task` above — without
-     `min-width: 0` the group li (which wraps the Done sub-list and
-     hosts the glowing left bar) inherits its child's intrinsic
-     min-content width and overflows the section body. */
-  min-width: 0;
-  max-width: 100%;
-}
-
-.chat-home-overview__group--done {
-  position: relative;
-  padding-left: 14px;
-  /* The bar sits in the left padding gutter. Hairline rounded ends
-     (top/bottom: 4px insets) keep the glow from squaring off where the
-     group meets adjacent sections. */
-}
-
-.chat-home-overview__group--done::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  border-radius: 2px;
-  /* Same brightness pass as the Now bar above — keep the green readable
-     as "completed" without burning a saturated stripe into the panel. */
-  background: color-mix(in oklch, #22c55e 65%, transparent);
-  box-shadow: 0 0 6px 1px color-mix(in oklch, #22c55e 20%, transparent);
-  pointer-events: none;
-}
-
-.chat-home-overview__group-inner {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  max-width: 100%;
-}
-
-/* DONE rows = quiet history. No card, smaller, weaker color so the eye
-   skims past them unless looking for one specifically. */
+/* Done rows = quiet history: text drops toward weak, looser leading. */
 .chat-home-overview__task:not([data-status="running"]):not([data-status="scheduled"]) {
   padding: 4px 4px;
 }
@@ -353,55 +259,64 @@
   color: var(--text-weak);
 }
 
+/* Failed / canceled: tint the row text too so the cue isn't only the
+   small right-edge badge. */
+.chat-home-overview__task[data-status="error"] .chat-home-overview__task-text,
+.chat-home-overview__task[data-status="canceled"] .chat-home-overview__task-text {
+  color: color-mix(in oklch, var(--text-base) 55%, var(--destructive));
+}
+
 .chat-home-overview__task[data-status="error"] .chat-home-overview__task-status,
 .chat-home-overview__task[data-status="canceled"] .chat-home-overview__task-status {
-  color: color-mix(in oklch, var(--foreground) 55%, #c33);
+  color: var(--destructive);
 }
 
-/* UP NEXT rows = commitments. Dense like DONE but keep the description in
-   the full text color and the badge in text-base so it reads as
+/* Up Next rows: commitments. Match Done's density but keep description
+   in --text-base and the time badge in --text-base so they read as
    "happening soon" rather than "happened a while ago". */
 .chat-home-overview__task[data-status="scheduled"] {
-  padding: 4px 4px;
+  padding: 0;
 }
 
-.chat-home-overview__task[data-status="scheduled"]
-  .chat-home-overview__task-text {
+.chat-home-overview__task[data-status="scheduled"] .chat-home-overview__task-text {
   color: var(--text-base);
   font-weight: 500;
 }
 
-.chat-home-overview__task[data-status="scheduled"]
-  .chat-home-overview__task-status {
+.chat-home-overview__task[data-status="scheduled"] .chat-home-overview__task-status {
   color: var(--text-base);
 }
 
-/* Schedule rows are buttons (clicking opens the manage dialog); strip
-   button chrome so they read identically to the non-interactive task
-   rows above and below them. */
+/* Schedule rows are buttons (open the manage dialog). Hover-bg matches
+   file rows so interactivity is discoverable without changing cursor
+   away from Stella's Apple-system convention. */
 .chat-home-overview__schedule-trigger {
   width: 100%;
   min-width: 0;
   max-width: 100%;
   border: none;
   background: transparent;
-  padding: 0;
-  margin: 0;
+  padding: 4px 8px;
+  margin: 0 -8px;
+  border-radius: 6px;
   text-align: left;
   cursor: default;
   color: inherit;
   font: inherit;
+  transition: background 120ms ease, color 120ms ease;
 }
 
-.chat-home-overview__schedule-trigger:hover .chat-home-overview__task-text {
-  text-decoration: underline;
-  text-decoration-color: color-mix(in oklch, var(--foreground) 24%, transparent);
-  text-underline-offset: 3px;
+.chat-home-overview__schedule-trigger:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-/* "See all (N)" reveal — text-only, no card; matches the section's tone.
-   Opens the per-section history dialog (see `ActivityHistoryDialog.tsx`)
-   where the user can search and scroll the full list. */
+.chat-home-overview__schedule-trigger:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+/* "See all (N)" — text-only, opens the per-section history dialog. */
 .chat-home-overview__show-more-row {
   list-style: none;
   padding: 6px 4px 2px;
@@ -418,26 +333,27 @@
   transition: color 120ms ease;
 }
 
-.chat-home-overview__show-more:hover {
+.chat-home-overview__show-more:hover,
+.chat-home-overview__show-more:focus-visible {
+  outline: none;
   color: var(--text-base);
 }
 
 /* --- Per-task progress feed --------------------------------- */
-/* Cheap-model summaries of what the agent is currently doing. The list
-   is hard-capped at the rendering layer (see TASK_PROGRESS_VISIBLE in
-   ChatHomeOverview.tsx) so older phrases fall off the top deterministically
-   — no scroll container, no max-height race with the parent grid. */
+/* Cheap-model summaries of what the agent is doing right now. The
+   list is hard-capped at TASK_PROGRESS_VISIBLE; older phrases fall
+   off the top. No border-left, no shimmer — recency is communicated
+   by position (last row) and color (--text-base vs --text-weak). */
 .chat-home-overview__task-feed {
   list-style: none;
   margin: 0 0 0 2px;
-  padding: 4px 0 4px 12px;
+  padding: 4px 0 4px 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-left: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   font-size: 12px;
   line-height: 1.35;
-  color: var(--text-base);
+  color: var(--text-weak);
 }
 
 .chat-home-overview__task-feed--idle {
@@ -450,74 +366,27 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* Older entries (not the latest) read as quieter so the eye drops to
-     the bottom-most row, which is what's happening right now. */
   color: var(--text-weak);
-  /* Newer phrases gently fade up into place as they push the oldest one
-     off the top — keeps the "oldest lost, newest kept" rotation readable
-     without animating heights. */
-  animation: chat-home-overview__task-feed-item-in 220ms ease-out both;
 }
 
-/* Latest phrase: base color and a subtle left-to-right shimmer running
-   across the text so the active line reads as live. */
 .chat-home-overview__task-feed-item:last-child {
   color: var(--text-base);
-  /* Gradient tile is 2x the element width with a single dim spot in the
-     middle. Tiling (repeat, the default) is intentional: adjacent dim
-     spots sit a full tile width (== 2x element width) apart, so at any
-     given moment only ONE dim spot is inside the element. Animating
-     position by exactly one tile width per cycle gives a seamless loop
-     with a single shimmer pass. Using `no-repeat` instead caused the
-     gradient to slide entirely off the element between cycles, which —
-     combined with `-webkit-text-fill-color: transparent` — made the
-     text literally vanish until the loop restarted. */
-  background: linear-gradient(
-    90deg,
-    var(--text-base) 0%,
-    var(--text-base) 40%,
-    color-mix(in oklch, var(--text-base) 45%, transparent) 50%,
-    var(--text-base) 60%,
-    var(--text-base) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation:
-    chat-home-overview__task-feed-item-in 220ms ease-out both,
-    chat-home-overview__task-feed-shimmer 2400ms linear infinite;
 }
 
-/* Pause the shimmer once the task stops running so completed feeds don't
-   keep animating in the background. */
-.chat-home-overview__task-feed--idle .chat-home-overview__task-feed-item:last-child {
-  animation: chat-home-overview__task-feed-item-in 220ms ease-out both;
-  background: none;
-  -webkit-text-fill-color: currentColor;
-}
+@media (prefers-reduced-motion: no-preference) {
+  .chat-home-overview__task-feed-item {
+    animation: chat-home-overview__task-feed-item-in 220ms ease-out both;
+  }
 
-@keyframes chat-home-overview__task-feed-item-in {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes chat-home-overview__task-feed-shimmer {
-  /* Shifts the background by exactly one tile width per cycle. Paired
-     with `background-size: 200%` and the default repeating background,
-     the dim spot sweeps from off-right to off-left across the element
-     once per cycle and the next tile's dim spot picks up seamlessly. */
-  from {
-    background-position: 0% 0;
-  }
-  to {
-    background-position: 200% 0;
+  @keyframes chat-home-overview__task-feed-item-in {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 }
 
@@ -547,6 +416,13 @@
   color: var(--text-strong);
 }
 
+.chat-home-overview__file:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
 .chat-home-overview__file-name {
   min-width: 0;
   flex: 1;
@@ -555,58 +431,5 @@
   white-space: nowrap;
 }
 
-/* --- Bottom "Show more" indicator --------------------------- */
-/* Floats just above the bottom fade mask of a section whenever there
-   is more content scrolled below the viewport. Visibility is driven
-   by the `data-at-end` attribute that `useEdgeFade` sets on the
-   scroller — when the user has scrolled to the bottom the indicator
-   fades out and disables pointer events. Clicking it scrolls the
-   section's scroller down by roughly one viewport. */
-.chat-home-overview__more-indicator {
-  position: absolute;
-  /* Sit clearly above the section body's bottom fade so the pill
-     reads as floating over content rather than crashing into the
-     fade itself. */
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%) translateY(2px);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--background) 80%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--text-base);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: default;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 160ms ease,
-    transform 160ms ease,
-    color 120ms ease;
-}
-
-.chat-home-overview__more-indicator:hover {
-  color: var(--text-strong);
-}
-
-.chat-home-overview__section-body[data-at-end="false"]
-  ~ .chat-home-overview__more-indicator {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(-50%) translateY(0);
-}
-
-.chat-home-overview__more-indicator-chevron {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 /* Ideas moved out of the sidebar entirely — they live as a footer dropup
-   on the home content (`HomeContent.tsx` + `home.css`). */
+   on the home content (HomeContent.tsx + home.css). */
