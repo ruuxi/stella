@@ -133,8 +133,8 @@ export function CompactStellaModelList({
         <div className="compact-stella-list-restricted">
           <span>
             {restrictedPlanLabel
-              ? `${restrictedPlanLabel} plan uses Stella's recommended model.`
-              : `Your plan uses Stella's recommended model.`}
+              ? `${restrictedPlanLabel} plan uses Stella's pick.`
+              : `Your plan uses Stella's pick.`}
           </span>
           {onUpgrade ? (
             <button

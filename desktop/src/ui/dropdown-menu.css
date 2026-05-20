@@ -11,9 +11,12 @@
   /* Hairline edge — slightly stronger than --border-weak so the menu
      keeps a crisp boundary against the gradient backdrop. */
   border: 1px solid var(--border-base);
-  /* Glass: tinted background + heavy blur. Falls back to --popover for
-     environments that don't support backdrop-filter. */
-  background: color-mix(in srgb, var(--popover, var(--background)) 88%, transparent);
+  /* Glass: same recipe as the popover surface (theme picker / Connect
+     dialog family). The 88% --popover mix that lived here read as a
+     near-solid pill against the gradient backdrop; --glass-bg is the
+     canonical Apple-polish surface this app uses everywhere else. */
+  background: var(--glass-bg);
+  background-clip: padding-box;
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--shadow-overlay);

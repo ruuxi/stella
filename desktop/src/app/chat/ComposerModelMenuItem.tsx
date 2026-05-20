@@ -24,13 +24,11 @@ import {
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import {
   getStellaDisplayName,
-  getStellaSubtitle,
   type CatalogModel,
 } from "@/global/settings/lib/model-catalog";
 import {
   buildModelDefaultsMap,
   buildResolvedModelDefaultsMap,
-  getDefaultModelOptionLabel,
   getLocalModelDefaults,
   normalizeModelOverrides,
 } from "@/global/settings/lib/model-defaults";
@@ -63,11 +61,22 @@ const REASONING_OPTIONS: ReadonlyArray<{
 
 const ASSISTANT_WRITE_KEYS = ["orchestrator", "general"] as const;
 
+type AgentRuntimeEngine = "default" | "claude_code_local";
+
+const ENGINE_OPTIONS: ReadonlyArray<{
+  id: AgentRuntimeEngine;
+  label: string;
+}> = [
+  { id: "default", label: "Stella" },
+  { id: "claude_code_local", label: "Claude Code" },
+];
+
 type LocalModelPreferencesShape = {
   defaultModels: Record<string, string>;
   modelOverrides: Record<string, string>;
   assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
+  agentRuntimeEngine: AgentRuntimeEngine;
 };
 
 // Module-scope snapshot so re-opening the menu doesn't flash a loading
@@ -171,6 +180,12 @@ export function ComposerModelMenuItem() {
 
   const trailingLabel = useMemo(() => {
     if (!preferences) return "Stella";
+    // Claude Code engine ignores the Stella tier pick — surface the
+    // actual model the bundled CLI runs (Opus 4.7) so the trigger row
+    // reflects what's serving the response, not the engine name.
+    if (preferences.agentRuntimeEngine === "claude_code_local") {
+      return "Claude Opus 4.7";
+    }
     if (isDefaultSelected) {
       // Friendly tier name only — "Stella Recommended (currently …)" is
       // too long for an inline trailing label.
@@ -190,14 +205,16 @@ export function ComposerModelMenuItem() {
     resolvedDefaultModelMap,
   ]);
 
-  const defaultRowLabel = useMemo(() => {
-    if (!preferences) return "Stella Recommended";
-    return getDefaultModelOptionLabel(
-      "orchestrator",
-      defaultModelMap,
-      resolvedDefaultModelMap,
-      modelNamesById,
-    );
+  // The resolved tier name behind "Default" today — used as a trailing
+  // chip on the Default row so users know what they're getting without
+  // the "Stella Recommended (currently …)" mouthful.
+  const defaultTierName = useMemo(() => {
+    if (!preferences) return "Stella";
+    const resolved =
+      resolvedDefaultModelMap.orchestrator ??
+      defaultModelMap.orchestrator ??
+      STELLA_DEFAULT_MODEL;
+    return modelNamesById.get(resolved) ?? "Stella";
   }, [preferences, defaultModelMap, resolvedDefaultModelMap, modelNamesById]);
 
   const restricted = isRestrictedModelOverrideAudience(audience);
@@ -311,6 +328,47 @@ export function ComposerModelMenuItem() {
     void router.navigate({ to: "/settings", search: { tab: "models" } });
   }, []);
 
+  // Engine is a global runtime choice (Stella's own runner vs the
+  // bundled Claude Code CLI). Mirrors the toggle in Settings → Models;
+  // surfacing it here means the user doesn't have to leave the chat
+  // composer to swap runtimes.
+  const currentEngine: AgentRuntimeEngine =
+    preferences?.agentRuntimeEngine ?? "default";
+
+  const handleEngineSelect = useCallback(
+    async (next: AgentRuntimeEngine) => {
+      if (!preferences || pending) return;
+      if (preferences.agentRuntimeEngine === next) return;
+      const previous = preferences;
+      const optimistic: LocalModelPreferencesShape = {
+        ...preferences,
+        agentRuntimeEngine: next,
+      };
+      cachedLocalPreferences = optimistic;
+      setPreferences(optimistic);
+      setPending(true);
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            agentRuntimeEngine: next,
+          });
+        if (saved) {
+          cachedLocalPreferences = saved as LocalModelPreferencesShape;
+          setPreferences(cachedLocalPreferences);
+        }
+        window.dispatchEvent(
+          new CustomEvent("stella:local-model-preferences-changed"),
+        );
+      } catch {
+        cachedLocalPreferences = previous;
+        setPreferences(previous);
+      } finally {
+        setPending(false);
+      }
+    },
+    [preferences, pending],
+  );
+
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
@@ -328,100 +386,15 @@ export function ComposerModelMenuItem() {
         alignOffset={-4}
         className="composer-model-submenu"
       >
-        <DropdownMenuItem
-          data-selected={isDefaultSelected || undefined}
-          onSelect={(event) => {
-            event.preventDefault();
-            void handleSelectModel("");
-          }}
-          disabled={pending}
-        >
-          <span data-slot="dropdown-menu-item-icon">
-            {isDefaultSelected ? (
-              <Check size={14} strokeWidth={2} />
-            ) : null}
-          </span>
-          <span className="composer-model-submenu__name">
-            {defaultRowLabel}
-          </span>
-        </DropdownMenuItem>
-
-        {presets.length === 0 ? (
-          <div className="composer-model-submenu__empty">
-            Loading Stella models…
-          </div>
-        ) : (
-          presets.map((model) => {
-            const selected = !isDefaultSelected && model.id === currentValue;
-            const subtitle = getStellaSubtitle(model);
-            const rowRestricted =
-              restricted &&
-              !selected &&
-              model.allowedForAudience === false;
-            return (
-              <DropdownMenuItem
-                key={model.id}
-                data-selected={selected || undefined}
-                disabled={pending || rowRestricted}
-                title={
-                  rowRestricted && restrictedPlanLabel
-                    ? `Not available on the ${restrictedPlanLabel} plan`
-                    : undefined
-                }
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void handleSelectModel(model.id);
-                }}
-              >
-                <span data-slot="dropdown-menu-item-icon">
-                  {selected ? (
-                    <Check size={14} strokeWidth={2} />
-                  ) : null}
-                </span>
-                <span className="composer-model-submenu__name">
-                  {getStellaDisplayName(model)}
-                </span>
-                {subtitle ? (
-                  <span className="composer-model-submenu__sub">
-                    {subtitle}
-                  </span>
-                ) : null}
-              </DropdownMenuItem>
-            );
-          })
-        )}
-
-        {restricted ? (
-          <div className="composer-model-submenu__restricted">
-            <span>
-              {restrictedPlanLabel
-                ? `${restrictedPlanLabel} plan uses Stella's recommended model.`
-                : `Your plan uses Stella's recommended model.`}
-            </span>
-            <button
-              type="button"
-              className="composer-model-submenu__upgrade"
-              onClick={() => {
-                void router.navigate({ to: "/billing" });
-              }}
-            >
-              Upgrade
-            </button>
-          </div>
-        ) : null}
-
-        <DropdownMenuSeparator />
-        <div className="composer-model-submenu__reasoning">
-          <span className="composer-model-submenu__reasoning-label">
-            Reasoning
-          </span>
+        <div className="composer-model-submenu__engine">
+          <span className="composer-model-submenu__engine-label">Engine</span>
           <div
-            className="composer-model-submenu__reasoning-segment"
+            className="composer-model-submenu__engine-segment"
             role="radiogroup"
-            aria-label="Reasoning effort"
+            aria-label="Agent engine"
           >
-            {REASONING_OPTIONS.map((option) => {
-              const selected = option.id === currentReasoning;
+            {ENGINE_OPTIONS.map((option) => {
+              const selected = option.id === currentEngine;
               return (
                 <button
                   key={option.id}
@@ -429,13 +402,12 @@ export function ComposerModelMenuItem() {
                   role="radio"
                   aria-checked={selected}
                   data-selected={selected || undefined}
-                  className="composer-model-submenu__reasoning-btn"
-                  disabled={pending}
-                  title={option.title}
+                  className="composer-model-submenu__engine-btn"
+                  disabled={pending || !preferences}
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    void handleReasoningSelect(option.id);
+                    void handleEngineSelect(option.id);
                   }}
                 >
                   {option.label}
@@ -446,11 +418,150 @@ export function ComposerModelMenuItem() {
         </div>
 
         <DropdownMenuSeparator />
+
+        {currentEngine === "claude_code_local" ? (
+          // Claude Code ships its own model — surface it as a single
+          // locked row so the user can see what's actually serving the
+          // response without offering tier choices that don't apply.
+          <div
+            className="composer-model-submenu__row composer-model-submenu__row--locked"
+            data-selected
+            aria-disabled
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <Check size={14} strokeWidth={2} />
+            </span>
+            <span className="composer-model-submenu__name">
+              Claude Opus 4.7
+            </span>
+          </div>
+        ) : null}
+
+        {currentEngine === "default" ? (
+          <>
+            <DropdownMenuItem
+              data-selected={isDefaultSelected || undefined}
+              onSelect={(event) => {
+                event.preventDefault();
+                void handleSelectModel("");
+              }}
+              disabled={pending}
+              className="composer-model-submenu__row"
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                {isDefaultSelected ? (
+                  <Check size={14} strokeWidth={2} />
+                ) : null}
+              </span>
+              <span className="composer-model-submenu__name">Default</span>
+              <span className="composer-model-submenu__trail">
+                {defaultTierName}
+              </span>
+            </DropdownMenuItem>
+
+            {presets.length === 0 ? (
+              <div className="composer-model-submenu__empty">
+                Loading Stella models…
+              </div>
+            ) : (
+              presets.map((model) => {
+                const selected =
+                  !isDefaultSelected && model.id === currentValue;
+                const rowRestricted =
+                  restricted &&
+                  !selected &&
+                  model.allowedForAudience === false;
+                return (
+                  <DropdownMenuItem
+                    key={model.id}
+                    data-selected={selected || undefined}
+                    disabled={pending || rowRestricted}
+                    title={
+                      rowRestricted && restrictedPlanLabel
+                        ? `Not available on the ${restrictedPlanLabel} plan`
+                        : undefined
+                    }
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      void handleSelectModel(model.id);
+                    }}
+                    className="composer-model-submenu__row"
+                  >
+                    <span data-slot="dropdown-menu-item-icon">
+                      {selected ? (
+                        <Check size={14} strokeWidth={2} />
+                      ) : null}
+                    </span>
+                    <span className="composer-model-submenu__name">
+                      {getStellaDisplayName(model)}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })
+            )}
+
+            {restricted ? (
+              <div className="composer-model-submenu__restricted">
+                <span>
+                  {restrictedPlanLabel
+                    ? `${restrictedPlanLabel} plan uses Stella's pick.`
+                    : `Your plan uses Stella's pick.`}
+                </span>
+                <button
+                  type="button"
+                  className="composer-model-submenu__upgrade"
+                  onClick={() => {
+                    void router.navigate({ to: "/billing" });
+                  }}
+                >
+                  Upgrade
+                </button>
+              </div>
+            ) : null}
+
+            <DropdownMenuSeparator />
+            <div className="composer-model-submenu__reasoning">
+              <span className="composer-model-submenu__reasoning-label">
+                Reasoning
+              </span>
+              <div
+                className="composer-model-submenu__reasoning-segment"
+                role="radiogroup"
+                aria-label="Reasoning effort"
+              >
+                {REASONING_OPTIONS.map((option) => {
+                  const selected = option.id === currentReasoning;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      data-selected={selected || undefined}
+                      className="composer-model-submenu__reasoning-btn"
+                      disabled={pending}
+                      title={option.title}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void handleReasoningSelect(option.id);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleAdvanced}>
           <span data-slot="dropdown-menu-item-icon">
             <Sliders size={14} strokeWidth={1.75} />
           </span>
-          Advanced (Image, Voice, BYOK)…
+          Use your own provider or key
         </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
