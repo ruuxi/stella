@@ -93,43 +93,4 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
   clearEmojiPack: (payload?: { packId?: string }) =>
     invoke("storeWeb:clearEmojiPack", payload),
   getEmojiPackState: () => invoke("storeWeb:getEmojiPackState"),
-  fashion: {
-    pickAndSaveBodyPhoto: () =>
-      invoke("storeWeb:fashionLocalAction", {
-        action: "pickAndSaveBodyPhoto",
-      }),
-    getBodyPhotoInfo: () =>
-      invoke("storeWeb:fashionLocalAction", { action: "getBodyPhotoInfo" }),
-    getBodyPhotoDataUrl: () =>
-      invoke("storeWeb:fashionLocalAction", { action: "getBodyPhotoDataUrl" }),
-    getLocalImageDataUrl: (path: string) =>
-      invoke("storeWeb:fashionLocalAction", {
-        action: "getLocalImageDataUrl",
-        payload: { path },
-      }),
-    pickTryOnImages: () =>
-      invoke("storeWeb:fashionLocalAction", { action: "pickTryOnImages" }),
-    getDroppedFilePath: (_file: File) => "",
-    startOutfitBatch: (payload: {
-      prompt?: string;
-      batchId?: string;
-      count?: number;
-      excludeProductIds?: string[];
-      seedHints?: string[];
-    }) =>
-      invoke("storeWeb:fashionLocalAction", {
-        action: "startOutfitBatch",
-        payload,
-      }),
-    startTryOn: (payload: {
-      prompt?: string;
-      batchId?: string;
-      imagePaths?: string[];
-      imageUrls?: string[];
-    }) =>
-      invoke("storeWeb:fashionLocalAction", {
-        action: "startTryOn",
-        payload,
-      }),
-  },
 });

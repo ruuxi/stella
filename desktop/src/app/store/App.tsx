@@ -56,38 +56,6 @@ const getEmojiPackState = () => ({
 const normalizeActionRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
-const normalizeStringArray = (value: unknown): string[] | undefined => {
-  if (!Array.isArray(value)) return undefined;
-  const entries = value
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  return entries.length > 0 ? entries : undefined;
-};
-
-const approvedStoreWebTryOnImagePaths = new Set<string>();
-
-const rememberApprovedTryOnImagePaths = (value: unknown) => {
-  const record = normalizeActionRecord(value);
-  const paths = normalizeStringArray(record.paths);
-  if (!paths) return;
-  for (const imagePath of paths) {
-    approvedStoreWebTryOnImagePaths.add(imagePath);
-  }
-};
-
-const filterApprovedTryOnImagePaths = (value: unknown): string[] | undefined => {
-  const paths = normalizeStringArray(value);
-  if (!paths) return undefined;
-  const approved = paths.filter((imagePath) =>
-    approvedStoreWebTryOnImagePaths.has(imagePath),
-  );
-  if (approved.length !== paths.length) {
-    throw new Error("Choose local try-on images from Stella before using them.");
-  }
-  return approved.length > 0 ? approved : undefined;
-};
-
 type StoreWebLocalActionHandlers = {
   openSignIn: () => void;
 };
@@ -99,8 +67,6 @@ const handleStoreWebLocalAction = async (
   const record = normalizeActionRecord(action);
   const type = record.type;
   const payload = normalizeActionRecord(record.payload);
-  const fashion = window.electronAPI?.fashion;
-
   switch (type) {
     case "openStorePanel": {
       openStoreDisplayTab();
@@ -177,70 +143,6 @@ const handleStoreWebLocalAction = async (
     }
     case "getEmojiPackState":
       return getEmojiPackState();
-    case "fashion": {
-      const innerAction = payload.action;
-      const innerPayload = normalizeActionRecord(payload.payload);
-      switch (innerAction) {
-        case "pickAndSaveBodyPhoto":
-          return await fashion?.pickAndSaveBodyPhoto?.();
-        case "getBodyPhotoInfo":
-          return await fashion?.getBodyPhotoInfo?.();
-        case "getBodyPhotoDataUrl":
-          return await fashion?.getBodyPhotoDataUrl?.();
-        case "getLocalImageDataUrl": {
-          const imagePath =
-            typeof innerPayload.path === "string" ? innerPayload.path : "";
-          if (!imagePath) throw new Error("Missing image path.");
-          return await fashion?.getLocalImageDataUrl?.(imagePath);
-        }
-        case "pickTryOnImages": {
-          const result = await fashion?.pickTryOnImages?.();
-          rememberApprovedTryOnImagePaths(result);
-          return result;
-        }
-        case "startOutfitBatch":
-          return await fashion?.startOutfitBatch?.({
-            ...(typeof innerPayload.prompt === "string"
-              ? { prompt: innerPayload.prompt }
-              : {}),
-            ...(typeof innerPayload.batchId === "string"
-              ? { batchId: innerPayload.batchId }
-              : {}),
-            ...(typeof innerPayload.count === "number"
-              ? { count: innerPayload.count }
-              : {}),
-            ...(normalizeStringArray(innerPayload.excludeProductIds)
-              ? {
-                  excludeProductIds: normalizeStringArray(
-                    innerPayload.excludeProductIds,
-                  ),
-                }
-              : {}),
-            ...(normalizeStringArray(innerPayload.seedHints)
-              ? { seedHints: normalizeStringArray(innerPayload.seedHints) }
-              : {}),
-          });
-        case "startTryOn": {
-          const approvedImagePaths = filterApprovedTryOnImagePaths(
-            innerPayload.imagePaths,
-          );
-          return await fashion?.startTryOn?.({
-            ...(typeof innerPayload.prompt === "string"
-              ? { prompt: innerPayload.prompt }
-              : {}),
-            ...(typeof innerPayload.batchId === "string"
-              ? { batchId: innerPayload.batchId }
-              : {}),
-            ...(approvedImagePaths ? { imagePaths: approvedImagePaths } : {}),
-            ...(normalizeStringArray(innerPayload.imageUrls)
-              ? { imageUrls: normalizeStringArray(innerPayload.imageUrls) }
-              : {}),
-          });
-        }
-        default:
-          throw new Error("Unknown Store Fashion bridge action.");
-      }
-    }
     default:
       throw new Error("Unknown Store bridge action.");
   }
