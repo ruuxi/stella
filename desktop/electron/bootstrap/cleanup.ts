@@ -74,4 +74,9 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
       stopLocalParakeet();
     },
   );
+  processRuntime.registerCleanup("before-quit", "global-input-hooks", () => {
+    context.services.radialGestureService.stop();
+    context.state.globalInputHooksStarted = false;
+    context.state.globalInputHooksStartScheduled = false;
+  });
 };

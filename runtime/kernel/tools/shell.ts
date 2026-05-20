@@ -1323,15 +1323,6 @@ export const handleWriteStdin = async (
   signal?: AbortSignal,
 ): Promise<ToolResult> => {
   const callStartedAt = Date.now();
-  if (context?.agentType === AGENT_IDS.INSTALL_UPDATE) {
-    // The install-update agent runs only one-shot git commands via the
-    // exec_command allowlist; no git invocation it makes needs interactive
-    // stdin. Blocking write_stdin closes a small attack surface where the
-    // agent could try to drive a shell session interactively.
-    return {
-      error: "Command blocked: install_update may not use write_stdin.",
-    };
-  }
   const sessionId = String(args.session_id ?? "").trim();
   if (!sessionId) {
     return { error: "session_id is required." };
@@ -1342,6 +1333,12 @@ export const handleWriteStdin = async (
   }
 
   const chars = typeof args.chars === "string" ? args.chars : "";
+  if (context?.agentType === AGENT_IDS.INSTALL_UPDATE && chars.length > 0) {
+    return {
+      error:
+        "Command blocked: install_update may only poll running sessions with empty write_stdin input.",
+    };
+  }
   const observedVersion = record.outputVersion;
   try {
     await writeToShellStdin(record, chars);

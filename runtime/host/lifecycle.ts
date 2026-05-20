@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createConnection, type Socket } from "node:net";
 import {
   existsSync,
@@ -328,6 +328,67 @@ const pollForWorkerReady = async (
   );
 };
 
+const findSameRootWorkerPids = async (
+  workerEntryPath: string,
+  stellaRoot: string,
+): Promise<number[]> => {
+  if (process.platform === "win32") return [];
+  const psOutput = await new Promise<string>((resolve) => {
+    execFile("ps", ["-axo", "pid=,args="], (error, stdout) => {
+      resolve(error ? "" : stdout);
+    });
+  });
+  const pids: number[] = [];
+  for (const line of psOutput.split("\n")) {
+    const match = line.match(/^\s*(\d+)\s+(.*)$/);
+    if (!match) continue;
+    const pid = Number.parseInt(match[1] ?? "", 10);
+    const args = match[2] ?? "";
+    if (
+      Number.isInteger(pid) &&
+      pid > 0 &&
+      pid !== process.pid &&
+      args.includes(workerEntryPath) &&
+      (args.includes(`--stella-root ${stellaRoot}`) ||
+        args.includes(`--stella-root=${stellaRoot}`))
+    ) {
+      pids.push(pid);
+    }
+  }
+  return pids;
+};
+
+const stopPids = async (pids: number[], graceMs = 750): Promise<void> => {
+  if (pids.length === 0) return;
+  for (const pid of pids) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Already gone.
+    }
+  }
+  const deadline = Date.now() + graceMs;
+  while (Date.now() < deadline) {
+    const alive = pids.filter((pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (alive.length === 0) return;
+    await delay(50);
+  }
+  for (const pid of pids) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  }
+};
+
 /**
  * Resolve a connected socket to the runtime worker, spawning a new
  * worker if one is not already running for `stellaRoot`. Idempotent
@@ -384,6 +445,16 @@ export const startOrAttachWorker = async (
         }
       }
     } else {
+      const orphanPids = await findSameRootWorkerPids(
+        options.workerEntryPath,
+        options.stellaRoot,
+      );
+      if (orphanPids.length > 0) {
+        console.warn(
+          `[runtime-host] Reaping ${orphanPids.length} pidless runtime worker(s) for ${options.stellaRoot} before spawning a fresh worker.`,
+        );
+        await stopPids(orphanPids);
+      }
       await removeStaleRuntimeArtifacts(options.stellaRoot);
     }
 

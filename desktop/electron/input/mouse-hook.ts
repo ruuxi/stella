@@ -231,11 +231,15 @@ export class MouseHookManager {
     if (this.uiohookStarted) {
       try {
         uIOhook.stop();
-      } catch {
-        // ignore — uIOhook can throw if already stopped on shutdown
+      } catch (error) {
+        console.warn(
+          "[mouse-hook] Failed to stop input hook:",
+          (error as Error).message,
+        );
       }
       this.uiohookStarted = false;
     }
+    this.detachUiohookListeners();
   }
 
   setRadialTriggerKey(radialTriggerKey: RadialTriggerCode) {
@@ -288,7 +292,18 @@ export class MouseHookManager {
     }
   }
 
+  private detachUiohookListeners() {
+    if (!this.uiohookListenersAttached) return;
+    this.uiohookListenersAttached = false;
+    uIOhook.off("keydown", this.handleKeydown);
+    uIOhook.off("keyup", this.handleKeyup);
+    uIOhook.off("mousemove", this.handleMousemove);
+    uIOhook.off("mousedown", this.handleMousedown);
+    uIOhook.off("mouseup", this.handleMouseup);
+  }
+
   private readonly handleKeydown = (event: UiohookKeyboardEvent) => {
+    if (!this.started) return;
     const wasAlreadyDown = this.pressedKeycodes.has(event.keycode);
     this.pressedKeycodes.add(event.keycode);
     const isAlt = MODIFIER_KEYCODES.Alt.has(event.keycode);
@@ -370,6 +385,7 @@ export class MouseHookManager {
   };
 
   private readonly handleKeyup = (event: UiohookKeyboardEvent) => {
+    if (!this.started) return;
     const wasTriggerHeld = this.matchesTriggerKey();
     this.pressedKeycodes.delete(event.keycode);
     const isAlt = MODIFIER_KEYCODES.Alt.has(event.keycode);
@@ -409,12 +425,14 @@ export class MouseHookManager {
   };
 
   private readonly handleMousemove = (event: UiohookMouseEvent) => {
+    if (!this.started) return;
     if (this.radialActive) {
       this.events.onMouseMove(event.x, event.y);
     }
   };
 
   private readonly handleMousedown = (event: UiohookMouseEvent) => {
+    if (!this.started) return;
     const button = typeof event.button === "number" ? event.button : -1;
     if (
       this.events.isDictationPushToTalkEnabled?.() === true &&
@@ -430,6 +448,7 @@ export class MouseHookManager {
   };
 
   private readonly handleMouseup = (event: UiohookMouseEvent) => {
+    if (!this.started) return;
     const handler = this.events.onLeftMouseUp;
     if (!handler) return;
     const button = typeof event.button === "number" ? event.button : -1;

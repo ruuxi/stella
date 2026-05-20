@@ -77,6 +77,25 @@ const main = async () => {
 
   const broker = new WorkerPeerBroker();
   const runtimeServer = createRuntimeWorkerServer(broker);
+  let server: Awaited<ReturnType<typeof startWorkerTransport>> | null = null;
+  let shuttingDown = false;
+
+  const teardown = async () => {
+    if (server) {
+      try {
+        await server.close();
+      } catch {
+        // Best effort during process shutdown.
+      }
+      server = null;
+    }
+    try {
+      await runtimeServer.shutdown();
+    } catch {
+      // Best effort during process shutdown.
+    }
+    broker.dispose();
+  };
 
   let lifecycle: WorkerLifecycleServer | null = null;
   let detachedMode = false;
@@ -92,8 +111,11 @@ const main = async () => {
       stellaRoot: cliArgs.stellaRoot,
       ...(cliArgs.idleShutdownMs ? { idleShutdownMs: cliArgs.idleShutdownMs } : {}),
       shouldKeepAlive: () => runtimeServer.hasActiveWork(),
-      onShutdown: async () => {
-        broker.dispose();
+      onShutdown: async (reason) => {
+        await teardown();
+        if (reason === "idle") {
+          setImmediate(() => process.exit(0));
+        }
       },
     });
     try {
@@ -113,7 +135,7 @@ const main = async () => {
     });
   }
 
-  const server = await startWorkerTransport({
+  server = await startWorkerTransport({
     transport,
     broker,
     onError: (error) => {
@@ -128,15 +150,12 @@ const main = async () => {
   }
 
   const shutdown = async (signal: string) => {
-    try {
-      await server.close();
-    } catch {
-      // Best effort.
-    }
+    if (shuttingDown) return;
+    shuttingDown = true;
     if (lifecycle) {
       await lifecycle.shutdown("signal");
     } else {
-      broker.dispose();
+      await teardown();
     }
     process.exit(signal === "SIGTERM" ? 0 : 0);
   };

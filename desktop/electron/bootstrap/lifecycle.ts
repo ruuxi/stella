@@ -43,7 +43,7 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
 
       if (result.response === 0) {
         app.relaunch();
-        app.exit(1);
+        app.quit();
         return;
       }
 
