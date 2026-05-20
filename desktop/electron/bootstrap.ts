@@ -18,7 +18,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const stellaRoot = path.resolve(__dirname, '..', '..', '..', '..')
 
-const isDev = process.env.NODE_ENV === 'development'
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const installDevBrokenPipeGuards = () => {
   if (!isDev) {
     return

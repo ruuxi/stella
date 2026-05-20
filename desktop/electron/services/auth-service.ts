@@ -464,10 +464,11 @@ export class AuthService {
 
   registerAuthProtocol() {
     if (this.options.isDev) {
+      const appPath = app.getAppPath();
       app.setAsDefaultProtocolClient(
         this.options.authProtocol,
         process.execPath,
-        [this.options.projectDir],
+        [appPath],
       );
       return;
     }
