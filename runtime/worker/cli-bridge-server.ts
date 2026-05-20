@@ -79,6 +79,13 @@ export type CliBridgeHandlers = {
     | { ok: true }
     | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
   >;
+  getStellaSiteAuth?: () =>
+    | Promise<
+        | { ok: true; baseUrl: string; authToken: string }
+        | { ok: false; reason: string }
+      >
+    | { ok: true; baseUrl: string; authToken: string }
+    | { ok: false; reason: string };
 };
 
 export type CliBridgeServer = {
@@ -178,6 +185,12 @@ const dispatch = async (
   handlers: CliBridgeHandlers,
 ): Promise<unknown> => {
   switch (method) {
+    case "stella.getSiteAuth": {
+      if (!handlers.getStellaSiteAuth) {
+        return { ok: false, reason: "unsupported" };
+      }
+      return await handlers.getStellaSiteAuth();
+    }
     case "connector.requestCredential": {
       const record =
         params && typeof params === "object"

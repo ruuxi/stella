@@ -18,6 +18,10 @@ export type ConnectorCredentialResult =
   | { ok: true }
   | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string };
 
+export type StellaSiteAuthResult =
+  | { ok: true; baseUrl: string; authToken: string }
+  | { ok: false; reason: string };
+
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 let nextRequestId = 1;
 
@@ -166,5 +170,42 @@ export const requestConnectorCredentialFromBridge = async ({
       typeof record.reason === "string" && record.reason
         ? record.reason
         : "unknown",
+  };
+};
+
+export const requestStellaSiteAuthFromBridge = async ({
+  socketPath,
+  timeoutMs = 5_000,
+}: {
+  socketPath: string;
+  timeoutMs?: number;
+}): Promise<StellaSiteAuthResult> => {
+  const result = await sendRequest(
+    socketPath,
+    "stella.getSiteAuth",
+    {},
+    timeoutMs,
+  );
+  if (!result || typeof result !== "object") {
+    return { ok: false, reason: "invalid_response" };
+  }
+  const record = result as Record<string, unknown>;
+  if (
+    record.ok === true &&
+    typeof record.baseUrl === "string" &&
+    typeof record.authToken === "string"
+  ) {
+    return {
+      ok: true,
+      baseUrl: record.baseUrl,
+      authToken: record.authToken,
+    };
+  }
+  return {
+    ok: false,
+    reason:
+      typeof record.reason === "string" && record.reason
+        ? record.reason
+        : "unavailable",
   };
 };

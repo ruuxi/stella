@@ -5,6 +5,7 @@ import path from "node:path";
 import { callApiConnector } from "../connectors/api-client.js";
 import {
   requestConnectorCredentialFromBridge,
+  requestStellaSiteAuthFromBridge,
   type ConnectorCredentialResult,
 } from "../connectors/cli-broker-client.js";
 import {
@@ -28,6 +29,8 @@ import {
   type NativeOAuthProviderConfig,
 } from "../connectors/native-oauth-provider-config.js";
 import {
+  backendIntegrationRunToolName,
+  buildNativeConnectorCatalog,
   disableNativeConnector,
   enableNativeConnector,
   getNativeConnectorCatalogEntry,
@@ -36,6 +39,8 @@ import {
   isNativeConnectorEnabled,
   listNativeConnectors,
   nativeOAuthApiRequestToolName,
+  type NativeConnectorCatalogEntry,
+  type NativeConnectorCatalogOverride,
 } from "../connectors/native-integrations.js";
 import type {
   ConnectorCommandConfig,
@@ -321,7 +326,153 @@ const findApi = async (id: string) => {
   return apis.find((entry) => entry.id === id);
 };
 
-const findNative = (id: string) => getNativeConnectorCatalogEntry(id);
+const readStringArray = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return entries.length > 0 ? entries : undefined;
+};
+
+const toBackendComposioEntry = (
+  value: unknown,
+): NativeConnectorCatalogEntry | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const connector =
+    record.connector && typeof record.connector === "object"
+      ? (record.connector as Record<string, unknown>)
+      : null;
+  if (connector?.type !== "composio") return null;
+  const id = typeof record.id === "string" ? record.id.trim().toLowerCase() : "";
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  const description =
+    typeof record.description === "string" ? record.description.trim() : "";
+  const toolkit =
+    typeof connector.toolkit === "string"
+      ? connector.toolkit.trim().toUpperCase()
+      : "";
+  if (!id || !name || !description || !toolkit) return null;
+  return {
+    id,
+    name,
+    category:
+      typeof record.category === "string"
+        ? record.category.trim()
+        : "integrations",
+    auth: readStringArray(record.auth) ?? ["OAUTH2"],
+    catalogToolCount:
+      typeof record.catalogToolCount === "number" ? record.catalogToolCount : 0,
+    availability: "ready",
+    provider: "backend-composio",
+    description,
+    ...(typeof record.sourceUrl === "string" && record.sourceUrl.trim()
+      ? { sourceUrl: record.sourceUrl.trim() }
+      : {}),
+    ...(typeof record.iconUrl === "string" && record.iconUrl.trim()
+      ? { iconUrl: record.iconUrl.trim() }
+      : {}),
+    connectable: true,
+    backendConnector: {
+      type: "composio",
+      toolkit,
+    },
+  };
+};
+
+const loadStellaSiteAuth = async () => {
+  const envBaseUrl =
+    process.env.STELLA_CONVEX_SITE_URL?.trim() ||
+    process.env.STELLA_SITE_URL?.trim() ||
+    "";
+  const envAuthToken =
+    process.env.STELLA_NATIVE_OAUTH_BACKEND_AUTH_TOKEN?.trim() ||
+    process.env.STELLA_SITE_AUTH_TOKEN?.trim() ||
+    "";
+  if (envBaseUrl && envAuthToken) {
+    return { ok: true as const, baseUrl: envBaseUrl, authToken: envAuthToken };
+  }
+  const socketPath = process.env.STELLA_CLI_BRIDGE_SOCK;
+  if (!socketPath) return { ok: false as const, reason: "no_bridge" };
+  return await requestStellaSiteAuthFromBridge({ socketPath }).catch((error) => ({
+    ok: false as const,
+    reason: (error as Error).message || "bridge_unavailable",
+  }));
+};
+
+const loadServerNativeCatalog = async (): Promise<
+  NativeConnectorCatalogOverride | undefined
+> => {
+  const siteAuth = await loadStellaSiteAuth();
+  if (!siteAuth.ok) return undefined;
+  const response = await fetch(
+    `${siteAuth.baseUrl.replace(/\/+$/u, "")}/api/native-integrations/catalog`,
+    {
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${siteAuth.authToken}`,
+      },
+    },
+  ).catch(() => null);
+  if (!response?.ok) return undefined;
+  const payload = (await response.json().catch(() => null)) as
+    | { integrations?: unknown[] }
+    | null;
+  const entries = (payload?.integrations ?? [])
+    .map(toBackendComposioEntry)
+    .filter((entry): entry is NativeConnectorCatalogEntry => Boolean(entry));
+  return entries.length > 0 ? entries : undefined;
+};
+
+const callBackendNativeIntegration = async (
+  id: string,
+  action: string,
+  input: Record<string, unknown>,
+) => {
+  const siteAuth = await loadStellaSiteAuth();
+  if (!siteAuth.ok) {
+    fail("Sign in to Stella before using this integration.");
+  }
+  const connectedSiteAuth = siteAuth as {
+    ok: true;
+    baseUrl: string;
+    authToken: string;
+  };
+  const siteBaseUrl = connectedSiteAuth.baseUrl.replace(/\/+$/u, "");
+  const response = await fetch(
+    `${siteBaseUrl}/api/native-integrations/run`,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        authorization: `Bearer ${connectedSiteAuth.authToken}`,
+      },
+      body: JSON.stringify({ id, action, input }),
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+        ? payload.error
+        : `Integration action failed (${response.status}).`;
+    fail(message);
+  }
+  return payload;
+};
+
+const findNative = (
+  id: string,
+  catalogOverride?: NativeConnectorCatalogOverride,
+) =>
+  getNativeConnectorCatalogEntry(
+    id,
+    catalogOverride === undefined
+      ? undefined
+      : buildNativeConnectorCatalog(catalogOverride),
+  );
 
 const connectorAuthStatus = async (auth: ConnectorCommandConfig["auth"]) => {
   if (!auth || auth.type === "none") return "unsupported" as const;
@@ -339,6 +490,7 @@ const nativeConnectorAuthStatus = async (
       ? "connected"
       : "not_logged_in";
   }
+  if (entry.provider === "backend-composio") return "connected" as const;
   const config = getNativeOAuthProviderConfig(entry.id);
   if (!config?.tokenKey) return "unsupported" as const;
   return (await loadConnectorAccessToken(stellaRoot, config.tokenKey))
@@ -346,8 +498,11 @@ const nativeConnectorAuthStatus = async (
     : "not_logged_in";
 };
 
-const ensureNativeEnabled = async (id: string) => {
-  const entry = findNative(id);
+const ensureNativeEnabled = async (
+  id: string,
+  catalogOverride?: NativeConnectorCatalogOverride,
+) => {
+  const entry = findNative(id, catalogOverride);
   if (!entry) return null;
   if (!(await isNativeConnectorEnabled(stellaRoot, id))) {
     fail(
@@ -366,9 +521,29 @@ const callNativeConnector = async (
     query?: Record<string, string | number | boolean>;
     headers?: Record<string, string>;
   },
+  catalogOverride?: NativeConnectorCatalogOverride,
 ) => {
-  const entry = await ensureNativeEnabled(id);
+  const entry = await ensureNativeEnabled(id, catalogOverride);
   if (!entry) return null;
+  if (entry.provider === "backend-composio") {
+    const runAction = backendIntegrationRunToolName(id);
+    if (action === runAction) {
+      const nestedAction = args.body.action;
+      if (typeof nestedAction !== "string" || !nestedAction.trim()) {
+        fail(`${runAction} requires an action string.`);
+      }
+      const nestedActionName = (nestedAction as string).trim();
+      const nestedArgs = args.body.arguments;
+      return await callBackendNativeIntegration(
+        id,
+        nestedActionName,
+        nestedArgs && typeof nestedArgs === "object" && !Array.isArray(nestedArgs)
+          ? (nestedArgs as Record<string, unknown>)
+          : {},
+      );
+    }
+    return await callBackendNativeIntegration(id, action, args.body);
+  }
   const allowedTools = new Set(
     getNativeConnectorTools(entry).map((tool) => tool.name),
   );
@@ -776,12 +951,13 @@ const HELP_TEXT = [
 
 const main = async () => {
   const [commandName, ...rest] = process.argv.slice(2);
+  const serverNativeCatalog = await loadServerNativeCatalog();
   switch (commandName) {
     case "installed": {
       const [commands, apis, native] = await Promise.all([
         listConfiguredConnectorCommands(stellaRoot),
         listConfiguredApiConnectors(stellaRoot),
-        listNativeConnectors(stellaRoot),
+        listNativeConnectors(stellaRoot, {}, serverNativeCatalog),
       ]);
       printJson({
         commands: await Promise.all(
@@ -808,7 +984,7 @@ const main = async () => {
       return;
     }
     case "apps": {
-      const native = await listNativeConnectors(stellaRoot);
+      const native = await listNativeConnectors(stellaRoot, {}, serverNativeCatalog);
       printJson(
         await Promise.all(
           native.map(async (entry) => ({
@@ -822,21 +998,29 @@ const main = async () => {
     case "enable-native": {
       const id = rest[0];
       if (!id) fail("Usage: stella-connect enable-native <integration-id>");
-      printJson(await enableNativeConnector(stellaRoot, id, "cli"));
+      printJson(
+        await enableNativeConnector(
+          stellaRoot,
+          id,
+          "cli",
+          {},
+          serverNativeCatalog,
+        ),
+      );
       return;
     }
     case "disable-native": {
       const id = rest[0];
       if (!id) fail("Usage: stella-connect disable-native <integration-id>");
-      printJson(await disableNativeConnector(stellaRoot, id));
+      printJson(await disableNativeConnector(stellaRoot, id, {}, serverNativeCatalog));
       return;
     }
     case "tools": {
       const id = rest[0];
       if (!id) fail("Usage: stella-connect tools <connector-id>");
-      const native = findNative(id);
+      const native = findNative(id, serverNativeCatalog);
       if (native) {
-        await ensureNativeEnabled(id);
+        await ensureNativeEnabled(id, serverNativeCatalog);
         printJson(getNativeConnectorTools(native));
         return;
       }
@@ -854,7 +1038,7 @@ const main = async () => {
       const id = rest[0];
       if (!id)
         fail("Usage: stella-connect catalog-actions <native-integration-id>");
-      const native = findNative(id);
+      const native = findNative(id, serverNativeCatalog);
       if (!native) fail(`Native integration is not installed: ${id}`);
       if (!native) return;
       printJson(getNativeConnectorCatalogActions(native));
@@ -873,7 +1057,7 @@ const main = async () => {
         optionString(options, "json"),
         {},
       );
-      if (findNative(id)) {
+      if (findNative(id, serverNativeCatalog)) {
         printJson(
           await callNativeConnector(id, target, {
             body,
@@ -886,7 +1070,7 @@ const main = async () => {
               optionString(options, "header-json"),
               {},
             ),
-          }),
+          }, serverNativeCatalog),
         );
         return;
       }
@@ -936,8 +1120,8 @@ const main = async () => {
     case "remove": {
       const id = rest[0];
       if (!id) fail("Usage: stella-connect remove <connector-id>");
-      if (findNative(id)) {
-        printJson(await disableNativeConnector(stellaRoot, id));
+      if (findNative(id, serverNativeCatalog)) {
+        printJson(await disableNativeConnector(stellaRoot, id, {}, serverNativeCatalog));
         return;
       }
       const removed = await removeConfiguredConnector(stellaRoot, id);

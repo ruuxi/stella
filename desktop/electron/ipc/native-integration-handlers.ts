@@ -62,6 +62,15 @@ type NativeIntegrationHandlersOptions = {
     | { ok: true }
     | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
   >;
+  requestExternalOAuthApproval?: (payload: {
+    tokenKey: string;
+    displayName: string;
+    resourceUrl: string;
+    description?: string;
+  }) => Promise<
+    | { ok: true }
+    | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
+  >;
   disconnectGoogleWorkspace?: () => Promise<{ ok: boolean }>;
   getConvexAuthToken?: () => Promise<string | null>;
   getConvexSiteUrl?: () => string | null;
@@ -173,6 +182,8 @@ const toServerNativeConnectorEntry = (
     record.connector && typeof record.connector === "object"
       ? (record.connector as Record<string, unknown>)
       : null;
+  const connectorType =
+    typeof connector?.type === "string" ? connector.type.trim() : "";
   const oauth =
     connector?.oauth && typeof connector.oauth === "object"
       ? (connector.oauth as Record<string, unknown>)
@@ -190,6 +201,37 @@ const toServerNativeConnectorEntry = (
       : "";
   const tokenEndpoint =
     typeof oauth?.tokenEndpoint === "string" ? oauth.tokenEndpoint.trim() : "";
+  if (
+    connectorType === "composio" &&
+    id &&
+    name &&
+    description &&
+    typeof connector?.toolkit === "string" &&
+    connector.toolkit.trim()
+  ) {
+    return {
+      id,
+      name,
+      category,
+      auth: readStringArray(record.auth) ?? ["OAUTH2"],
+      catalogToolCount:
+        typeof record.catalogToolCount === "number" ? record.catalogToolCount : 0,
+      availability: "ready",
+      provider: "backend-composio",
+      description,
+      ...(typeof record.sourceUrl === "string" && record.sourceUrl.trim()
+        ? { sourceUrl: record.sourceUrl.trim() }
+        : {}),
+      ...(typeof record.iconUrl === "string" && record.iconUrl.trim()
+        ? { iconUrl: record.iconUrl.trim() }
+        : {}),
+      connectable: true,
+      backendConnector: {
+        type: "composio",
+        toolkit: connector.toolkit.trim().toUpperCase(),
+      },
+    };
+  }
   if (!id || !name || !description || !clientId || !authorizationEndpoint) {
     return null;
   }
@@ -266,6 +308,40 @@ const toServerNativeConnectorEntry = (
   };
 };
 
+const createBackendIntegrationConnectLink = async (
+  options: NativeIntegrationHandlersOptions,
+  id: string,
+) => {
+  const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
+  if (!siteUrl) throw new Error("Stella backend is unavailable.");
+  const authToken = await options.getConvexAuthToken?.();
+  if (!authToken) throw new Error("Sign in to Stella before connecting this integration.");
+  const response = await fetch(`${siteUrl}/api/native-integrations/connect-link`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ id }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { url?: unknown; error?: unknown; message?: unknown }
+    | null;
+  if (!response.ok) {
+    const message =
+      typeof payload?.error === "string"
+        ? payload.error
+        : typeof payload?.message === "string"
+          ? payload.message
+          : "Could not start this connection.";
+    throw new Error(message);
+  }
+  const url = typeof payload?.url === "string" ? payload.url.trim() : "";
+  if (!url) throw new Error("Stella backend did not return a connect link.");
+  return url;
+};
+
 const loadServerNativeConnectorCatalog = async (
   options: NativeIntegrationHandlersOptions,
 ) => {
@@ -322,6 +398,23 @@ const ensureNativeCredential = async (
       throw new Error(
         `Could not connect Google Workspace: ${connected.reason}`,
       );
+    }
+    return;
+  }
+
+  if (entry?.provider === "backend-composio") {
+    if (!options.requestExternalOAuthApproval) {
+      throw new Error(`${entry.name} connection is unavailable.`);
+    }
+    const url = await createBackendIntegrationConnectLink(options, id);
+    const connected = await options.requestExternalOAuthApproval({
+      tokenKey: `backend-integration:${id}`,
+      displayName: entry.name,
+      resourceUrl: url,
+      description: `Stella needs to open ${entry.name} in your browser so you can sign in and approve access.`,
+    });
+    if (!connected.ok) {
+      throw new Error(`Could not connect ${entry.name}: ${connected.reason}`);
     }
     return;
   }
