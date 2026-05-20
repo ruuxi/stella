@@ -175,19 +175,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 24px;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
 }
 
 .home-ideas-footer__pill {
-  padding: 4px 2px;
+  padding: 6px 3px;
   margin: 0;
   border: none;
   background: transparent;
   color: var(--text-weak);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   letter-spacing: 0;
+  line-height: 1.25;
   cursor: default;
   transition: color 140ms ease;
 }
@@ -221,12 +222,12 @@
 .home-ideas-dropup {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 12px);
   translate: -50% 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -256,9 +257,9 @@
 .home-ideas-dropup__option {
   border: none;
   background: transparent;
-  padding: 4px 6px;
+  padding: 5px 7px;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 400;
   line-height: 1.35;
   color: var(--text-base);

@@ -460,6 +460,24 @@ const AccountRow = ({
     void secureSignOut();
   }, []);
 
+  const themePicker = (
+    <ThemePicker
+      open={themePickerOpen}
+      onOpenChange={setThemePickerOpen}
+      hideTrigger
+      side="top"
+      align="start"
+      trigger={
+        <button
+          type="button"
+          className="sidebar-account-theme-anchor"
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+      }
+    />
+  );
+
   if (!hasConnectedAccount) {
     return (
       <div className="sidebar-account">
@@ -482,6 +500,7 @@ const AccountRow = ({
             {t("sidebar.signIn")}
           </span>
         </button>
+        {themePicker}
       </div>
     );
   }
@@ -648,21 +667,7 @@ const AccountRow = ({
           </div>
         </DialogContent>
       </Dialog>
-      <ThemePicker
-        open={themePickerOpen}
-        onOpenChange={setThemePickerOpen}
-        hideTrigger
-        side="top"
-        align="start"
-        trigger={
-          <button
-            type="button"
-            className="sidebar-account-theme-anchor"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        }
-      />
+      {themePicker}
     </div>
   );
 };

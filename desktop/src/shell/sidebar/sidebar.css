@@ -375,6 +375,7 @@
 
 /* ── Account row: avatar (initials only) ─────────────────────────── */
 .sidebar-account {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
