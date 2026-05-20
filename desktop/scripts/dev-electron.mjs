@@ -8,7 +8,6 @@ import {
   renameSync,
   rmSync,
   statSync,
-  symlinkSync,
   writeFileSync,
   watch,
 } from 'node:fs'
@@ -296,53 +295,24 @@ const patchDevMicrophoneUsageDescription = () => {
   }
 }
 
-const patchDevProtocolApp = () => {
+const cleanupDevProtocolApp = () => {
   if (process.platform !== 'darwin') {
     return
   }
 
   const resourcesDir = path.resolve(path.dirname(electronBinary), '..', 'Resources')
   const appDir = path.join(resourcesDir, 'app')
-  const nodeModulesLink = path.join(appDir, 'node_modules')
   const packageJsonPath = path.join(appDir, 'package.json')
-  const mainPath = path.join(appDir, 'main.cjs')
-  const repoNodeModules = path.join(repoRootDir, 'node_modules')
 
   try {
-    rmSync(appDir, { force: true, recursive: true })
-    mkdirSync(appDir, { recursive: true })
-    writeFileSync(
-      packageJsonPath,
-      JSON.stringify(
-        {
-          name: 'stella-dev-protocol-app',
-          main: 'main.cjs',
-        },
-        null,
-        2,
-      ),
-      'utf8',
-    )
-    writeFileSync(
-      mainPath,
-      [
-        "const path = require('node:path')",
-        "const { pathToFileURL } = require('node:url')",
-        `const repoRoot = ${JSON.stringify(repoRootDir)}`,
-        "process.env.NODE_ENV = process.env.NODE_ENV || 'development'",
-        'process.chdir(repoRoot)',
-        "const mainPath = path.join(repoRoot, 'desktop', 'dist-electron', 'desktop', 'electron', 'main.js')",
-        "import(pathToFileURL(mainPath).href).catch((error) => {",
-        "  console.error('[stella-dev-protocol-app] Failed to launch Stella main process:', error)",
-        '  process.exitCode = 1',
-        '})',
-        '',
-      ].join('\n'),
-      'utf8',
-    )
-    if (existsSync(repoNodeModules)) {
-      symlinkSync(repoNodeModules, nodeModulesLink, 'dir')
+    if (!existsSync(packageJsonPath)) {
+      return
     }
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
+    if (packageJson?.name !== 'stella-dev-protocol-app') {
+      return
+    }
+    rmSync(appDir, { force: true, recursive: true })
   } catch {
     // Best-effort; may fail if node_modules is read-only.
   }
@@ -398,7 +368,7 @@ if (process.platform === 'darwin') {
   patchDevIcon()
   patchDevAppName()
   patchDevMicrophoneUsageDescription()
-  patchDevProtocolApp()
+  cleanupDevProtocolApp()
   resignDevAppBundle()
 }
 let disclaimBinary = null
