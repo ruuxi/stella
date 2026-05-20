@@ -334,6 +334,7 @@ export const AssistantMessageRow = memo(
             <Markdown
               text={text}
               cacheKey={row.cacheKey}
+              hideHorizontalRules
             />
           )}
           {row.officePreviewRef && (
