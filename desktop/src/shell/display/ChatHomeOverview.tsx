@@ -76,24 +76,11 @@ const NEXT_RUN_TICK_MS = 30_000;
  * scrollable max-height behaviour inside the display sidebar.
  */
 const TASK_PROGRESS_VISIBLE = 4;
-/**
- * Hard character cap for activity row descriptions (Now / Done / Up next).
- * The width-based CSS ellipsis still applies on top as a safety net for
- * very narrow panels, but the character cap keeps the visual rhythm of
- * the list consistent regardless of how wide the display sidebar is.
- */
-const MAX_TASK_TITLE_CHARS = 45;
-
-const truncateTitle = (value: string): string => {
-  const trimmed = value.trim();
-  if (trimmed.length <= MAX_TASK_TITLE_CHARS) return trimmed;
-  return `${trimmed.slice(0, MAX_TASK_TITLE_CHARS - 1).trimEnd()}…`;
-};
 
 type FileEntry = ConversationFileEntry;
 
 const taskLineFor = (task: TaskItem): string => {
-  return truncateTitle(getTaskDisplayText(task) || task.description);
+  return (getTaskDisplayText(task) || task.description).trim();
 };
 
 const taskBadgeFor = (task: TaskItem): string => {
@@ -211,7 +198,7 @@ function ScheduleRow({
         onClick={() => onOpen(entry)}
       >
         <span className="chat-home-overview__task-text">
-          {truncateTitle(entry.name)}
+          {entry.name.trim()}
         </span>
         <span className="chat-home-overview__task-status">
           {formatNextRun(entry.nextRunAtMs, nowMs)}
