@@ -116,6 +116,15 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* Pin to the section body's content width so nested flex items can't
+     grow past it. Without this, a long unbreakable description in
+     `__task-text` lets the chain of flex children (li → ul → li → row)
+     each default to `min-width: auto` and push their intrinsic min-
+     content past the container, shoving the right-side status badge
+     ("Done" / "Working" / "Tomorrow 8:30 AM") off the visible edge
+     instead of letting the text ellipsis kick in. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Recent files reads as a dense list, not breathing rows — keep the
@@ -182,6 +191,13 @@
   font-size: 13px;
   line-height: 1.4;
   color: var(--text-base);
+  /* As a flex item in `__tasks` / `__group-inner`, default
+     `min-width: auto` would size the li to its intrinsic min-content
+     (status badge width + longest word in description). Force shrink
+     so the inner `__task-text` ellipsis kicks in first and the right-
+     side status stays anchored to the row's right edge. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chat-home-overview__task-row {
@@ -266,6 +282,12 @@
   list-style: none;
   padding: 0;
   margin: 0;
+  /* Same shrink-propagation reason as `__task` above — without
+     `min-width: 0` the group li (which wraps the Done sub-list and
+     hosts the glowing left bar) inherits its child's intrinsic
+     min-content width and overflows the section body. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chat-home-overview__group--done {
@@ -298,6 +320,8 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* DONE rows = quiet history. No card, smaller, weaker color so the eye
@@ -345,6 +369,8 @@
    rows above and below them. */
 .chat-home-overview__schedule-trigger {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: none;
   background: transparent;
   padding: 0;
