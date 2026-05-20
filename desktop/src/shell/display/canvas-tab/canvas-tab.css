@@ -161,16 +161,11 @@
   max-width: 32ch;
 }
 
-/*
- * Bottom thumbnail strip — mirrors the Media tab's rail spacing/shape so
- * navigating between artifacts feels uniform across canvas types. Tiles
- * are wider than media tiles because legible text inside the iframe at
- * thumbnail size needs a bit more horizontal room.
- */
+/* Bottom chip rail — compact tabs with glyph + title (no previews). */
 .canvas-tab__rail {
   flex: 0 0 auto;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
   padding: 4px 2px 2px;
   scrollbar-width: thin;
@@ -185,61 +180,60 @@
   border-radius: 999px;
 }
 
+/* Match shell-topbar-tab rounding — 7px corners, not pills. */
 .canvas-tab__tile {
   appearance: none;
   background: transparent;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  border-radius: 10px;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 124px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 3px 8px;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  max-width: 168px;
   flex-shrink: 0;
   cursor: pointer;
+  font-size: 12px;
+  color: var(--text-base);
   transition:
-    border-color 0.15s ease,
-    transform 0.15s ease;
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .canvas-tab__tile:hover {
-  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
 }
 
 .canvas-tab__tile--active {
-  border-color: color-mix(in oklch, var(--foreground) 38%, transparent);
-}
-
-.canvas-tab__tile-frame {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: 7px;
-  overflow: hidden;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  color: color-mix(in oklch, var(--foreground) 55%, transparent);
-}
-
-.canvas-tab__tile-frame--active {
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
-  color: color-mix(in oklch, var(--foreground) 75%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+  background: transparent;
+  color: var(--text-strong);
 }
 
 .canvas-tab__tile-glyph {
-  width: 48%;
-  height: auto;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
   display: block;
+  color: color-mix(in oklch, var(--foreground) 55%, transparent);
+}
+
+.canvas-tab__tile--active .canvas-tab__tile-glyph,
+.canvas-tab__tile:hover .canvas-tab__tile-glyph {
+  color: color-mix(in oklch, var(--foreground) 72%, transparent);
 }
 
 .canvas-tab__tile-label {
-  font-size: 10.5px;
-  line-height: 1.25;
-  color: color-mix(in oklch, var(--foreground) 75%, transparent);
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 500;
+  color: inherit;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0 2px;
 }

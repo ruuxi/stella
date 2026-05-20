@@ -3,12 +3,11 @@
  * produced via the `html` tool.
  *
  * Layout mirrors the Media tab: an action bar on top, a hero frame in the
- * middle, and a horizontal rail of sibling thumbnails along the bottom.
+ * middle, and a horizontal chip rail along the bottom.
  * The hero is a sandboxed iframe rendering the file as `srcdoc` so the
  * canvas can run its own scripts without leaking globals into the
- * renderer; tile thumbnails are static glyph + title placeholders (no
- * iframe, no script execution) so a session with N canvases doesn't keep
- * N JS realms alive in the rail.
+ * renderer; rail chips are glyph + title only (no iframe previews) so a
+ * session with N canvases doesn't keep N JS realms alive in the rail.
  */
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -71,29 +70,6 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
     />
   );
 };
-
-/**
- * Tile variant — static glyph + title pattern. Live iframe rendering at
- * thumbnail size was running every canvas's scripts (and re-running them
- * any time the rail re-mounted), so a session with several artifacts kept
- * just as many JS realms alive in the background. The rail is a navigator,
- * not a preview surface — the hero already shows the live canvas — so we
- * paint a lightweight tile decorated with the same canvas glyph used in
- * the display tab strip and call it done. Cheap enough to render dozens
- * of tiles without measurable cost.
- */
-const CanvasTileFrame = ({ isActive }: { isActive: boolean }) => (
-  <span
-    className={
-      isActive
-        ? "canvas-tab__tile-frame canvas-tab__tile-frame--active"
-        : "canvas-tab__tile-frame"
-    }
-    aria-hidden
-  >
-    <CanvasTileGlyph />
-  </span>
-);
 
 const CanvasTileGlyph = () => (
   <svg
@@ -268,7 +244,7 @@ export const CanvasTabContent = ({
                 title={item.title}
                 aria-label={item.title}
               >
-                <CanvasTileFrame isActive={isActive} />
+                <CanvasTileGlyph />
                 <span className="canvas-tab__tile-label">{item.title}</span>
               </button>
             );
