@@ -2484,6 +2484,196 @@
   font-size: 14px;
 }
 
+/* ── Engine phase ───────────────────────────────────────────────────── */
+
+.onboarding-engine-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.onboarding-engine-tile {
+  padding: 14px 16px;
+  gap: 6px;
+}
+
+.onboarding-engine-tile .onboarding-selection-tile-label {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.onboarding-engine-tile .onboarding-selection-tile-desc {
+  font-size: 13px;
+  font-weight: 300;
+}
+
+.onboarding-engine-byok {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px dashed
+    color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 10px;
+  animation: onboardingInstantFadeIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
+}
+
+.onboarding-engine-providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.onboarding-engine-provider {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 999px;
+  background: none;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.onboarding-engine-provider:hover {
+  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.onboarding-engine-provider[data-connected] {
+  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.onboarding-engine-provider[data-active] {
+  border-color: color-mix(in oklch, var(--foreground) 32%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.onboarding-engine-provider[data-pending] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.onboarding-engine-provider:disabled {
+  cursor: not-allowed;
+}
+
+.onboarding-engine-provider-icon {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.onboarding-engine-provider[data-connected] .onboarding-engine-provider-icon {
+  opacity: 1;
+}
+
+.onboarding-engine-provider-label {
+  white-space: nowrap;
+}
+
+.onboarding-engine-auth {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid
+    color-mix(in oklch, var(--foreground) 8%, transparent);
+  animation: onboardingInstantFadeIn var(--onboarding-duration-text)
+    var(--onboarding-ease-standard) both;
+}
+
+.onboarding-engine-auth-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.onboarding-engine-auth-title {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+}
+
+.onboarding-engine-auth-desc {
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+  opacity: 0.65;
+}
+
+.onboarding-engine-auth-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-engine-auth-row > :first-child {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.onboarding-engine-auth-row > [class*="text-field"],
+.onboarding-engine-auth-row > input,
+.onboarding-engine-auth-row > .text-field-root {
+  flex: 1;
+  min-width: 0;
+}
+
+.onboarding-engine-error {
+  margin-top: 10px;
+  font-size: 12px;
+  color: color-mix(in oklch, var(--foreground) 70%, var(--destructive, #c0392b));
+}
+
+.onboarding-engine-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.onboarding-engine-skip {
+  background: none;
+  border: none;
+  color: var(--foreground);
+  opacity: 0.55;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: opacity 0.2s ease;
+}
+
+.onboarding-engine-skip:hover {
+  opacity: 0.85;
+}
+
+.onboarding-engine-skip:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.onboarding-dialogue[data-phase="engine"] .onboarding-step-label {
+  font-size: 14px;
+}
+
+.onboarding-dialogue[data-phase="engine"] .onboarding-step-desc {
+  font-size: 16px;
+  line-height: 1.62;
+}
+
 /* ═══ Top-level reduced-motion overrides ═══
  *
  * Catch-all for the cost-heavy animations declared throughout this file.

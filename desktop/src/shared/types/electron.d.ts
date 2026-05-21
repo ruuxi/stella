@@ -815,6 +815,19 @@ export type ElectronSystemApi = {
     plaintext: string;
   }) => Promise<LocalLlmCredentialSummary>;
   deleteLlmCredential: (provider: string) => Promise<{ removed: boolean }>;
+  detectTechnicalUserSignals: () => Promise<{
+    signals: Array<
+      | "claude-app"
+      | "chatgpt-app"
+      | "cursor-app"
+      | "claude-cli"
+      | "codex-cli"
+      | "opencode-cli"
+      | "pi-cli"
+      | "openclaw-cli"
+      | "hermes-cli"
+    >;
+  }>;
   resetMessages: () => Promise<{ ok: boolean }>;
   onCredentialRequest: (
     callback: (

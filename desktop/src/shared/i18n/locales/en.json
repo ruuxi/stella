@@ -132,6 +132,7 @@
       "secondary": "Stella isn't for everyone. Stella is for you."
     },
     "stepTitles": {
+      "engine": "Pick what powers Stella.",
       "extension": "Add Stella to your browser.",
       "browser": "Let Stella get to know you.",
       "creation": "Stella can change when you ask. Click the buttons to try.",
