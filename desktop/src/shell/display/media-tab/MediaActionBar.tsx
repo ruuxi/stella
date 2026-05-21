@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Download, Trash2 } from "lucide-react";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
 import { copyImageBlob } from "@/shell/media-clipboard";
@@ -96,7 +96,7 @@ export const MediaActionBar = ({
   }, [confirmDelete, onDelete]);
 
   return (
-    <div className="media-tab__actions" aria-label="Item actions">
+    <Fragment>
       {canSave ? (
         <button
           type="button"
@@ -133,6 +133,6 @@ export const MediaActionBar = ({
       {message ? (
         <span className="media-tab__action-status">{message}</span>
       ) : null}
-    </div>
+    </Fragment>
   );
 };
