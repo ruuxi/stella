@@ -468,6 +468,13 @@ function RootChrome() {
         sidebarVisible={sidebarVisibleInLayout}
         onToggleSidebar={toggleSidebar}
         showSidebarToggle={canToggleSidebar}
+        showWorkspaceStripToggle={
+          isOnChatRoute &&
+          !chat.showHomeContent &&
+          !isMiniWindow &&
+          !isMobileWebView &&
+          !shouldAutoHideRightContextPanel
+        }
       />
 
       {shouldRenderSidebar && (

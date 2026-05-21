@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  LayoutList,
   Maximize2,
   Minimize2,
   Minus,
@@ -12,6 +13,7 @@ import {
   Square,
   X,
 } from "lucide-react";
+import { chatWorkspaceStripStore, useChatWorkspaceStripStore } from "@/app/chat/chat-workspace-strip-store";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
@@ -27,6 +29,8 @@ type ShellTopBarProps = {
   sidebarVisible: boolean;
   onToggleSidebar: () => void;
   showSidebarToggle?: boolean;
+  /** Show the inline chat workspace strip hide/show control (active chat only). */
+  showWorkspaceStripToggle?: boolean;
 };
 
 const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
@@ -85,11 +89,13 @@ export const ShellTopBar = ({
   sidebarVisible,
   onToggleSidebar,
   showSidebarToggle = true,
+  showWorkspaceStripToggle = false,
 }: ShellTopBarProps) => {
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
   const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
+  const { stripVisible } = useChatWorkspaceStripStore();
   // Only the Store route adapts the top bar — other routes keep the
   // default layout (display tab strip on the right).
   const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -241,15 +247,37 @@ export const ShellTopBar = ({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className="shell-topbar-icon-btn"
-              onClick={dispatchOpenWorkspacePanel}
-              aria-label="Open workspace panel"
-              title="Open workspace panel"
-            >
-              <PanelRight size={14} strokeWidth={1.75} />
-            </button>
+            <>
+              {showWorkspaceStripToggle ? (
+                <button
+                  type="button"
+                  className="shell-topbar-icon-btn shell-topbar-workspace-strip-btn"
+                  onClick={() => chatWorkspaceStripStore.toggleStripVisible()}
+                  aria-label={
+                    stripVisible
+                      ? "Hide workspace strip"
+                      : "Show workspace strip"
+                  }
+                  aria-pressed={stripVisible}
+                  title={
+                    stripVisible
+                      ? "Hide workspace strip"
+                      : "Show workspace strip"
+                  }
+                >
+                  <LayoutList size={14} strokeWidth={1.75} />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="shell-topbar-icon-btn"
+                onClick={dispatchOpenWorkspacePanel}
+                aria-label="Open workspace panel"
+                title="Open workspace panel"
+              >
+                <PanelRight size={14} strokeWidth={1.75} />
+              </button>
+            </>
           )}
         </div>
         {!isMac && isMiniWindow ? <WindowControls /> : null}
