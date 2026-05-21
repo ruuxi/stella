@@ -17,6 +17,7 @@ import {
   isSupportedMediaFile,
   readSourceAsDataUri,
 } from "./media-files";
+import { notifyMediaGenerationError } from "@/shared/billing/paid-media-tier-toast";
 import { useMediaGeneration } from "./use-media-generation";
 import { MediaTile } from "./MediaTile";
 import { AttachedChip } from "./AttachedChip";
@@ -45,7 +46,7 @@ export const MediaTabContent = ({
   const [draggingMedia, setDraggingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragCounterRef = useRef(0);
-  const { submitting, error, setError, submit } = useMediaGeneration();
+  const { submitting, submit } = useMediaGeneration();
 
   useEffect(() => {
     if (items.length === 0) {
@@ -85,32 +86,35 @@ export const MediaTabContent = ({
       try {
         await importLocalMedia(file);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not import file");
+        notifyMediaGenerationError(err);
       }
     },
-    [setError],
+    [],
   );
 
   const importDroppedFiles = useCallback(
     async (files: File[]) => {
       const supported = files.filter(isSupportedMediaFile);
       if (supported.length === 0) {
-        setError("Drop an image, video, or audio file.");
+        notifyMediaGenerationError(
+          new Error("Drop an image, video, or audio file."),
+        );
         return;
       }
-      setError(null);
       try {
         for (const file of supported) {
           await importLocalMedia(file);
         }
         if (supported.length < files.length) {
-          setError("Some files were skipped because they are not media.");
+          notifyMediaGenerationError(
+            new Error("Some files were skipped because they are not media."),
+          );
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not import files");
+        notifyMediaGenerationError(err);
       }
     },
-    [setError],
+    [],
   );
 
   const handleDragEnter = useCallback(
@@ -215,7 +219,7 @@ export const MediaTabContent = ({
       setPrompt("");
       if (attachedItemId) setAttachedItemId(null);
     } catch {
-      // submit() already wrote `error` for us; nothing to do here.
+      // submitMediaJob already toasted; nothing to do here.
     }
   };
 
@@ -300,8 +304,6 @@ export const MediaTabContent = ({
           />
         ))}
       </div>
-
-      {error ? <div className="media-tab__error">{error}</div> : null}
 
       <form className="media-tab__composer" onSubmit={onSubmit}>
         <div

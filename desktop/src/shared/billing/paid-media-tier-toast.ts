@@ -36,14 +36,39 @@ const extractErrorMessage = (error: unknown): string => {
   return ''
 }
 
+/** Unwrap JSON error bodies from Stella media HTTP responses. */
+export const parseMediaApiErrorMessage = (raw: string): string => {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  if (!trimmed.startsWith('{')) return trimmed
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      error?: unknown
+      message?: unknown
+    }
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      return parsed.error.trim()
+    }
+    if (typeof parsed.message === 'string' && parsed.message.trim()) {
+      return parsed.message.trim()
+    }
+  } catch {
+    // fall through
+  }
+  return trimmed
+}
+
+const readableMediaErrorMessage = (error: unknown): string => {
+  const message = extractErrorMessage(error)
+  return message ? parseMediaApiErrorMessage(message) : ''
+}
+
 /**
  * If `error` looks like a Stella paid-tier rejection, fire the upgrade
- * toast and return true. Caller should still surface the underlying
- * error in its UI (inline label, throw, etc.) — this is purely the
- * notification side-channel.
+ * toast and return true.
  */
 export const maybeShowPaidMediaTierToast = (error: unknown): boolean => {
-  const message = extractErrorMessage(error)
+  const message = readableMediaErrorMessage(error)
   if (!message || !matchesPaidTierError(message)) return false
   showToast({
     title: 'Upgrade to use media generation',
@@ -60,4 +85,16 @@ export const maybeShowPaidMediaTierToast = (error: unknown): boolean => {
     secondaryAction: BYOK_TOAST_ACTION,
   })
   return true
+}
+
+/** Toast-only error surface for display-sidebar Media tab and `/api/media` callers. */
+export const notifyMediaGenerationError = (error: unknown): void => {
+  if (maybeShowPaidMediaTierToast(error)) return
+  const message = readableMediaErrorMessage(error)
+  if (!message) return
+  showToast({
+    title: message,
+    variant: 'error',
+    duration: 8000,
+  })
 }

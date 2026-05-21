@@ -9,7 +9,10 @@
  */
 import { useCallback, useState } from "react";
 import { createServiceRequest } from "@/infra/http/service-request";
-import { maybeShowPaidMediaTierToast } from "@/shared/billing/paid-media-tier-toast";
+import {
+  notifyMediaGenerationError,
+  parseMediaApiErrorMessage,
+} from "@/shared/billing/paid-media-tier-toast";
 import type { MediaActionId } from "./media-actions";
 
 export type SubmitMediaJobArgs = {
@@ -48,39 +51,32 @@ export const submitMediaJob = async (
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    const message = text || `Media request failed (${response.status})`;
+    const message =
+      parseMediaApiErrorMessage(text) ||
+      `Media request failed (${response.status})`;
     const error = new Error(message);
-    maybeShowPaidMediaTierToast(error);
+    notifyMediaGenerationError(error);
     throw error;
   }
 };
 
 /**
  * Hook for surfaces (currently just the Media tab) that need to
- * track "submitting" + "last error" around `submitMediaJob`.
- * `MediaStudio` doesn't use this — it owns its own job-id-driven
- * subscription state instead.
+ * track "submitting" around `submitMediaJob`. Errors toast only —
+ * never inline text. `MediaStudio` doesn't use this; it owns its
+ * own job-id-driven subscription state instead.
  */
 export function useMediaGeneration() {
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const submit = useCallback(async (args: SubmitMediaJobArgs) => {
     setSubmitting(true);
-    setError(null);
     try {
       await submitMediaJob(args);
-    } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "Could not start media work";
-      setError(message);
-      throw caught;
     } finally {
       setSubmitting(false);
     }
   }, []);
 
-  const clearError = useCallback(() => setError(null), []);
-
-  return { submitting, error, setError, clearError, submit };
+  return { submitting, submit };
 }
