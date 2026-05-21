@@ -54,6 +54,17 @@ export class WebsiteViewController {
   private layout: WebsiteViewLayout | null = null;
   private latestTheme: WebsiteViewTheme | null = null;
 
+  /** Window currently owning the resize-tracking listeners installed by
+   *  `attachResizeTracking`, plus the bound handler we'll remove with.
+   *  `attachResizeTracking` is idempotent against the same window: re-
+   *  attaching is a no-op rather than stacking another batch of five
+   *  listeners (the bug `MaxListenersExceededWarning` was catching). */
+  private resizeTrackedWindow: BrowserWindow | null = null;
+  private resizeTrackingHandler: (() => void) | null = null;
+  /** Closed-listener kept so we can remove it cleanly when detaching
+   *  (e.g. on window swap) — otherwise it'd outlive the tracked window. */
+  private resizeTrackedClosedHandler: (() => void) | null = null;
+
   constructor(private readonly options: WebsiteViewControllerOptions) {}
 
   private ensureView() {
@@ -228,6 +239,7 @@ export class WebsiteViewController {
 
   destroy() {
     this.hide();
+    this.detachResizeTracking();
     if (this.view && !this.view.webContents.isDestroyed()) {
       this.view.webContents.close();
     }
@@ -235,11 +247,53 @@ export class WebsiteViewController {
   }
 
   attachResizeTracking(window: BrowserWindow) {
-    window.on("resize", () => this.syncBounds());
-    window.on("maximize", () => this.syncBounds());
-    window.on("unmaximize", () => this.syncBounds());
-    window.on("enter-full-screen", () => this.syncBounds());
-    window.on("leave-full-screen", () => this.syncBounds());
+    if (this.resizeTrackedWindow === window) {
+      // Already wired against this window — calling again is a no-op
+      // rather than stacking another batch of listeners.
+      return;
+    }
+    this.detachResizeTracking();
+    if (window.isDestroyed()) return;
+
+    const handler = () => this.syncBounds();
+    const closedHandler = () => {
+      // The tracked window went away — drop our refs so the next
+      // `attachResizeTracking` (against a fresh window) attaches cleanly.
+      this.resizeTrackedWindow = null;
+      this.resizeTrackingHandler = null;
+      this.resizeTrackedClosedHandler = null;
+    };
+
+    window.on("resize", handler);
+    window.on("maximize", handler);
+    window.on("unmaximize", handler);
+    window.on("enter-full-screen", handler);
+    window.on("leave-full-screen", handler);
+    window.once("closed", closedHandler);
+
+    this.resizeTrackedWindow = window;
+    this.resizeTrackingHandler = handler;
+    this.resizeTrackedClosedHandler = closedHandler;
+  }
+
+  detachResizeTracking() {
+    const tracked = this.resizeTrackedWindow;
+    const handler = this.resizeTrackingHandler;
+    const closedHandler = this.resizeTrackedClosedHandler;
+    this.resizeTrackedWindow = null;
+    this.resizeTrackingHandler = null;
+    this.resizeTrackedClosedHandler = null;
+    if (!tracked || tracked.isDestroyed()) return;
+    if (handler) {
+      tracked.removeListener("resize", handler);
+      tracked.removeListener("maximize", handler);
+      tracked.removeListener("unmaximize", handler);
+      tracked.removeListener("enter-full-screen", handler);
+      tracked.removeListener("leave-full-screen", handler);
+    }
+    if (closedHandler) {
+      tracked.removeListener("closed", closedHandler);
+    }
   }
 }
 
