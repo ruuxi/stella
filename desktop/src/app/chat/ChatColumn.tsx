@@ -27,6 +27,7 @@ import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { DropOverlay } from "./DropOverlay";
 import { HomeContent } from "@/app/home/HomeContent";
+import { HomeWorkspaceMock } from "@/app/home/HomeWorkspaceMock";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import { getCurrentRunningTool } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
@@ -234,7 +235,8 @@ export const ChatColumn = memo(function ChatColumn({
   }
 
   return (
-    <div className="full-body-main" {...dropHandlers}>
+    <div className="full-body-row">
+      <div className="full-body-main" {...dropHandlers}>
       <DropOverlay visible={isDragOver} variant="surface" />
       {/* Viewport region: list + overlays (custom scrollbar, scroll-to-bottom). */}
       <div className="chat-viewport-region">
@@ -293,6 +295,8 @@ export const ChatColumn = memo(function ChatColumn({
       <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
         {composerElement}
       </div>
+      </div>
+      <HomeWorkspaceMock />
     </div>
   );
 });
