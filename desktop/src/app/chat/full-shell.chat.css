@@ -10,11 +10,11 @@
  * parallel variables.
  * ============================================================ */
 .chat-viewport-region {
-  --chat-text-size: 16px;
+  --chat-text-size: 15px;
   --chat-text-weight: 400;
   --chat-text-strong-weight: 500;
   --chat-text-tracking: 0.032em;
-  --chat-text-line-height: 1.45;
+  --chat-text-line-height: 1.35;
   --chat-text-color: var(--text-strong);
 }
 
@@ -330,12 +330,12 @@
   font-weight: var(--chat-text-strong-weight);
 }
 
-.event-item.assistant .markdown h1 { font-size: 21px; }
-.event-item.assistant .markdown h2 { font-size: 18px; }
-.event-item.assistant .markdown h3 { font-size: 16px; }
-.event-item.assistant .markdown h4 { font-size: 14px; }
+.event-item.assistant .markdown h1 { font-size: 20px; }
+.event-item.assistant .markdown h2 { font-size: 17px; }
+.event-item.assistant .markdown h3 { font-size: 15px; }
+.event-item.assistant .markdown h4 { font-size: 13px; }
 .event-item.assistant .markdown h5,
-.event-item.assistant .markdown h6 { font-size: 13px; }
+.event-item.assistant .markdown h6 { font-size: 12px; }
 
 .event-window-badge-hovercard {
   position: relative;

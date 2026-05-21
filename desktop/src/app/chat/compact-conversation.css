@@ -18,11 +18,11 @@
   /* Mirror the `--chat-text-*` defaults from `.chat-viewport-region`
      so compact hosts that don't live inside a viewport region (most
      notably the Store side-panel thread) still resolve every token. */
-  --chat-text-size: 16px;
+  --chat-text-size: 15px;
   --chat-text-weight: 400;
   --chat-text-strong-weight: 500;
   --chat-text-tracking: 0.032em;
-  --chat-text-line-height: 1.45;
+  --chat-text-line-height: 1.35;
   --chat-text-color: var(--text-strong);
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
@@ -65,7 +65,7 @@
 .chat-conversation-surface--mini,
 .chat-conversation-surface--orb,
 .chat-conversation-surface--sidebar {
-  --chat-text-size: 14px;
+  --chat-text-size: 13px;
 }
 
 .chat-conversation-surface--orb {
