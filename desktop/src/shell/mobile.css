@@ -1,97 +1,13 @@
 /* ================================================================
    Mobile WebView overrides
    Active when data-platform="mobile" is set on <html> by the
-   mobile bridge shim. Keeps the existing Stella sidebar in rail mode
-   so the WebView has stable left chrome without a native drawer button.
+   mobile bridge shim. Uses the same full sidebar + topbar toggle
+   as desktop rather than a persistent icon-only rail.
    ================================================================ */
 
-/* ── Sidebar → persistent rail ────────────────────────────────── */
-
-[data-platform="mobile"] .window-shell.full {
-  --shell-sidebar-rail-width: 68px;
-  --shell-topbar-left-width: var(--shell-sidebar-rail-width);
-}
-
-[data-platform="mobile"] .sidebar {
-  position: relative;
-  z-index: 2;
-  width: var(--shell-sidebar-rail-width, 68px);
-  flex-shrink: 0;
-  transform: none;
-  box-shadow: none;
-}
-
-[data-platform="mobile"] .sidebar-brand {
-  justify-content: center;
-  padding: 4px 0 8px;
-  gap: 0;
-}
-
-[data-platform="mobile"] .sidebar-brand-logo {
-  width: 28px;
-  height: 28px;
-  opacity: 0.85;
-}
-
-[data-platform="mobile"] .sidebar-brand-text,
-[data-platform="mobile"] .sidebar-nav-label,
-[data-platform="mobile"] .sidebar-account-signin-label,
-[data-platform="mobile"] .sidebar-account-pill {
-  display: none;
-}
-
-[data-platform="mobile"] .sidebar-nav,
-[data-platform="mobile"] .sidebar-footer {
-  padding-left: 6px;
-  padding-right: 6px;
-  overflow: visible;
-}
-
-[data-platform="mobile"] .sidebar-nav-item,
-[data-platform="mobile"] .sidebar-account-signin {
-  justify-content: center;
-  padding: 10px 0;
-  gap: 0;
-}
-
-[data-platform="mobile"] .sidebar-account {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 4px 0;
-}
-
-[data-platform="mobile"] .sidebar-account-avatar {
-  align-self: center;
-}
-
-[data-platform="mobile"] .sidebar-actions-bar {
-  border-top: none;
-  margin-top: 4px;
-  padding: 0;
-  justify-content: stretch;
-}
-
-[data-platform="mobile"] .sidebar-actions-bar .sidebar-actions-btn {
-  width: 100%;
-  height: auto;
-  padding: 10px 0;
-  border-radius: var(--radius-md);
-}
-
 [data-platform="mobile"] .sidebar-drawer-scrim,
-[data-platform="mobile"] .compact-hamburger,
-[data-platform="mobile"] .mobile-sidebar-toggle {
+[data-platform="mobile"] .compact-hamburger {
   display: none;
-}
-
-[data-platform="mobile"] .shell-topbar-center {
-  --shell-topbar-center-left-inset: var(--shell-sidebar-rail-width);
-}
-
-[data-platform="mobile"] .shell-topbar[data-display-open="true"] .shell-topbar-left {
-  width: var(--shell-sidebar-rail-width);
-  min-width: var(--shell-sidebar-rail-width);
 }
 
 [data-platform="mobile"] .shell-topbar[data-display-open="true"] .shell-topbar-tablist {

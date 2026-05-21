@@ -114,6 +114,7 @@ export type ChatColumnProps = {
   scroll: ChatColumnScroll
   composerEntering?: boolean
   conversationId: string | null
+  hideRightContextPanel?: boolean
   showHomeContent?: boolean
   onSuggestionClick?: (prompt: string) => void
   onDismissHome?: () => void

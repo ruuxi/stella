@@ -24,9 +24,14 @@ import {
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
 import { ShellTopBar } from "@/shell/ShellTopBar";
-import { useDisplayPanelLayout } from "@/shell/display/tab-store";
+import { displayTabs, useDisplayPanelLayout } from "@/shell/display/tab-store";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
+import {
+  readPersistedSidebarVisible,
+  syncSidebarHiddenDataset,
+  writePersistedSidebarVisible,
+} from "@/shell/sidebar/sidebar-visibility";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
@@ -56,6 +61,20 @@ import { useWorkspacePanelEvents } from "@/shell/root-chrome/use-workspace-panel
 
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
+
+const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH = 960;
+const SHELL_LEFT_SIDEBAR_AUTO_HIDE_WIDTH = 720;
+
+type ShellBreakpointState = {
+  hideLeftSidebar: boolean;
+  hideRightContextPanel: boolean;
+};
+
+const getShellBreakpointState = (width: number): ShellBreakpointState => ({
+  hideLeftSidebar: width > 0 && width <= SHELL_LEFT_SIDEBAR_AUTO_HIDE_WIDTH,
+  hideRightContextPanel:
+    width > 0 && width <= SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH,
+});
 
 type PendingAskStellaRequest = {
   id: number;
@@ -114,6 +133,17 @@ function RootChrome() {
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(
+    readPersistedSidebarVisible,
+  );
+  const sidebarVisibleRef = useRef(sidebarVisible);
+  const [shellBreakpoints, setShellBreakpoints] =
+    useState<ShellBreakpointState>(() =>
+      getShellBreakpointState(
+        typeof window === "undefined" ? 0 : window.innerWidth,
+      ),
+  );
+  const shellBreakpointsRef = useRef(shellBreakpoints);
 
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
 
@@ -127,6 +157,29 @@ function RootChrome() {
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-platform") === "mobile";
   const shouldRenderSidebar = !isMiniWindow || isMobileWebView;
+  const shouldAutoHideRightContextPanel =
+    !isMiniWindow &&
+    !isMobileWebView &&
+    shellBreakpoints.hideRightContextPanel;
+  const shouldAutoHideLeftSidebar =
+    !isMiniWindow && !isMobileWebView && shellBreakpoints.hideLeftSidebar;
+  const sidebarVisibleInLayout = sidebarVisible && !shouldAutoHideLeftSidebar;
+  const canToggleSidebar = shouldRenderSidebar && !shouldAutoHideLeftSidebar;
+
+  const setSidebarVisiblePersisted = useCallback((next: boolean) => {
+    sidebarVisibleRef.current = next;
+    setSidebarVisible(next);
+    writePersistedSidebarVisible(next);
+  }, []);
+
+  const hideSidebar = useCallback(() => {
+    setSidebarVisiblePersisted(false);
+  }, [setSidebarVisiblePersisted]);
+
+  const toggleSidebar = useCallback(() => {
+    if (shouldAutoHideLeftSidebar) return;
+    setSidebarVisiblePersisted(!sidebarVisibleRef.current);
+  }, [setSidebarVisiblePersisted, shouldAutoHideLeftSidebar]);
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -256,6 +309,86 @@ function RootChrome() {
   });
 
   useEffect(() => {
+    const shell = document.querySelector<HTMLElement>(".full-body");
+    if (!shell) return;
+
+    let frame = 0;
+    let pendingWidth = 0;
+    const syncWidth = (width: number) => {
+      pendingWidth = width;
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const next = getShellBreakpointState(Math.round(pendingWidth));
+        const previous = shellBreakpointsRef.current;
+        if (
+          next.hideLeftSidebar === previous.hideLeftSidebar &&
+          next.hideRightContextPanel === previous.hideRightContextPanel
+        ) {
+          return;
+        }
+        shellBreakpointsRef.current = next;
+        setShellBreakpoints(next);
+      });
+    };
+
+    syncWidth(shell.getBoundingClientRect().width);
+
+    if (typeof ResizeObserver === "undefined") {
+      const onResize = () => syncWidth(shell.getBoundingClientRect().width);
+      window.addEventListener("resize", onResize);
+      return () => {
+        cancelAnimationFrame(frame);
+        window.removeEventListener("resize", onResize);
+      };
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      syncWidth(entry.contentRect.width);
+    });
+    observer.observe(shell);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isMiniWindow || isMobileWebView) return;
+
+    if (shellBreakpoints.hideRightContextPanel) {
+      const { panelExpanded, panelOpen } = displayTabs.getSnapshot();
+      if (panelExpanded) displayTabs.setPanelExpanded(false);
+      if (panelOpen) displayTabs.setPanelOpen(false);
+    }
+
+    if (shellBreakpoints.hideLeftSidebar) {
+      setDrawerOpen(false);
+    }
+  }, [
+    isMiniWindow,
+    isMobileWebView,
+    shellBreakpoints.hideLeftSidebar,
+    shellBreakpoints.hideRightContextPanel,
+  ]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (shouldAutoHideRightContextPanel) {
+      root.dataset.shellRightContextHidden = "true";
+    } else {
+      delete root.dataset.shellRightContextHidden;
+    }
+
+    return () => {
+      delete root.dataset.shellRightContextHidden;
+    };
+  }, [shouldAutoHideRightContextPanel]);
+
+  useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
     const handler = () => {
       if (!mq.matches) setDrawerOpen(false);
@@ -273,6 +406,14 @@ function RootChrome() {
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
+  useEffect(() => {
+    sidebarVisibleRef.current = sidebarVisible;
+  }, [sidebarVisible]);
+
+  useEffect(() => {
+    syncSidebarHiddenDataset(sidebarVisibleInLayout);
+  }, [sidebarVisibleInLayout]);
+
   return (
     <>
       <MobileActivityNotificationsBridge />
@@ -281,10 +422,16 @@ function RootChrome() {
         <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
       )}
 
-      <ShellTopBar />
+      <ShellTopBar
+        sidebarVisible={sidebarVisibleInLayout}
+        onToggleSidebar={toggleSidebar}
+        showSidebarToggle={canToggleSidebar}
+      />
 
       {shouldRenderSidebar && (
         <Sidebar
+          visible={sidebarVisibleInLayout}
+          onHide={hideSidebar}
           className={
             !isMobileWebView && drawerOpen ? "sidebar--drawer-open" : undefined
           }
@@ -303,7 +450,7 @@ function RootChrome() {
         onClose={handleContextMenuClosePanel}
       >
         <div className="content-area">
-          {!isMiniWindow && !isMobileWebView && (
+          {!isMiniWindow && !isMobileWebView && !shouldAutoHideLeftSidebar && (
             <button
               type="button"
               className="compact-hamburger"
@@ -335,6 +482,7 @@ function RootChrome() {
               composer={chat.composer}
               scroll={chat.scroll}
               conversationId={conversationId}
+              hideRightContextPanel={shouldAutoHideRightContextPanel}
               showHomeContent={chat.showHomeContent}
               onSuggestionClick={chat.onSuggestionClick}
               onDismissHome={chat.dismissHome}

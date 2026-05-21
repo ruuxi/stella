@@ -6,6 +6,7 @@ import {
   Maximize2,
   Minimize2,
   Minus,
+  PanelLeft,
   PanelRight,
   Pin,
   Square,
@@ -22,7 +23,11 @@ import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
 import { ShellTopBarWebControls } from "@/shell/ShellTopBarStoreControls";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
 
-export const STELLA_TOGGLE_SIDEBAR_RAIL_EVENT = "stella:toggle-sidebar-rail";
+type ShellTopBarProps = {
+  sidebarVisible: boolean;
+  onToggleSidebar: () => void;
+  showSidebarToggle?: boolean;
+};
 
 const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
 
@@ -76,7 +81,11 @@ const WindowControls = () => {
   );
 };
 
-export const ShellTopBar = () => {
+export const ShellTopBar = ({
+  sidebarVisible,
+  onToggleSidebar,
+  showSidebarToggle = true,
+}: ShellTopBarProps) => {
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
@@ -135,6 +144,18 @@ export const ShellTopBar = () => {
       }
     >
       <div className="shell-topbar-left">
+        {showSidebarToggle ? (
+          <button
+            type="button"
+            className="shell-topbar-icon-btn shell-topbar-sidebar-btn"
+            onClick={onToggleSidebar}
+            aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+            aria-pressed={sidebarVisible}
+            title={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+          >
+            <PanelLeft size={15} strokeWidth={1.75} />
+          </button>
+        ) : null}
         <button
           type="button"
           className="shell-topbar-icon-btn shell-topbar-history-btn"
