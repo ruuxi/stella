@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Check, KeyRound, LogIn } from "lucide-react";
-import { OnboardingSelectionTile } from "./OnboardingSelectionTile";
+import { StellaLogoIcon } from "@/ui/stella-logo-icon";
+import { ClaudeLogoIcon } from "@/ui/claude-logo-icon";
 import {
   LLM_PROVIDERS,
   isApiKeyOnlyPlaceholder,
@@ -236,31 +237,41 @@ export function OnboardingEnginePhase({
       </p>
 
       <div className="onboarding-engine-tiles">
-        <OnboardingSelectionTile
-          className="onboarding-engine-tile"
+        <EngineTile
+          variant="hero"
           active={choice === "stella"}
           onClick={handleSelectStella}
+          icon={<StellaLogoIcon size={32} aria-hidden />}
           label="Stella"
-          description="Default. Stella picks the right model for each task — no setup needed."
+          description="Use Stella's defaults, or pick any model you want."
         />
-        <OnboardingSelectionTile
-          className="onboarding-engine-tile"
-          active={choice === "claude_code"}
-          onClick={handleSelectClaudeCode}
-          label="Claude Code"
-          description="Uses your Claude Code CLI with your account."
-        />
-        <OnboardingSelectionTile
-          className="onboarding-engine-tile"
-          active={choice === "byok"}
-          onClick={handleSelectByok}
-          label="Bring your own provider"
-          description="Sign in or paste an API key for OpenAI, Anthropic, OpenRouter, and more."
-        />
+        <div className="onboarding-engine-tiles-row">
+          <EngineTile
+            variant="compact"
+            active={choice === "claude_code"}
+            onClick={handleSelectClaudeCode}
+            icon={<ClaudeLogoIcon size={18} aria-hidden />}
+            label="Claude Code"
+            description="Use your Claude Code CLI."
+          />
+          <EngineTile
+            variant="compact"
+            active={choice === "byok"}
+            onClick={handleSelectByok}
+            icon={<KeyRound size={16} strokeWidth={1.5} aria-hidden />}
+            label="Bring your own provider"
+            description="API key or OAuth."
+          />
+        </div>
       </div>
 
-      {choice === "byok" ? (
-        <div className="onboarding-engine-byok">
+      <div
+        className="onboarding-engine-byok-reveal"
+        data-visible={choice === "byok" || undefined}
+        aria-hidden={choice !== "byok"}
+      >
+        <div className="onboarding-engine-byok-reveal-inner">
+          <div className="onboarding-engine-byok">
           <div
             className="onboarding-engine-providers"
             role="list"
@@ -386,7 +397,8 @@ export function OnboardingEnginePhase({
             </div>
           ) : null}
         </div>
-      ) : null}
+        </div>
+      </div>
 
       {error ? (
         <p className="onboarding-engine-error" role="alert">
@@ -402,16 +414,59 @@ export function OnboardingEnginePhase({
       >
         Continue
       </button>
-      {choice === "byok" ? (
-        <button
-          type="button"
-          className="onboarding-engine-skip"
-          disabled={splitTransitionActive}
-          onClick={handleContinue}
-        >
-          I'll set this up later
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className="onboarding-engine-skip"
+        data-visible={choice === "byok" || undefined}
+        disabled={splitTransitionActive || choice !== "byok"}
+        aria-hidden={choice !== "byok"}
+        onClick={handleContinue}
+      >
+        I'll set this up later
+      </button>
     </div>
+  );
+}
+
+type EngineTileProps = {
+  variant: "hero" | "compact";
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  label: string;
+  description: string;
+};
+
+/**
+ * Engine selection tile with a leading brand icon. Two sizes:
+ *  - `hero`: full-width Stella tile, sized to read as the recommended
+ *    default (large logo, generous padding).
+ *  - `compact`: smaller alternative-engine tile that pairs with another
+ *    `compact` in the same row.
+ */
+function EngineTile({
+  variant,
+  active,
+  onClick,
+  icon,
+  label,
+  description,
+}: EngineTileProps) {
+  return (
+    <button
+      type="button"
+      className="onboarding-selection-tile onboarding-engine-tile"
+      data-variant={variant}
+      data-active={active}
+      onClick={onClick}
+    >
+      <span className="onboarding-engine-tile-icon" aria-hidden>
+        {icon}
+      </span>
+      <span className="onboarding-engine-tile-body">
+        <span className="onboarding-selection-tile-label">{label}</span>
+        <span className="onboarding-selection-tile-desc">{description}</span>
+      </span>
+    </button>
   );
 }

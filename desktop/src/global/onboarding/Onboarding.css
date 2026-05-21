@@ -508,7 +508,7 @@
   align-items: center;
   justify-content: flex-start;
   max-width: none;
-  min-height: min(704px, calc(100vh - 96px));
+  min-height: min(600px, calc(100vh - 96px));
   width: 100%;
   gap: 14px;
 }
@@ -714,8 +714,25 @@
   opacity: 1;
 }
 
+.onboarding-pill[data-disabled="true"] {
+  opacity: 0.22;
+  cursor: not-allowed;
+}
+
+.onboarding-pill[data-disabled="true"]:hover {
+  opacity: 0.22;
+}
+
+.onboarding-pill[data-disabled="true"][data-active="true"] {
+  opacity: 0.55;
+}
+
 .onboarding-pill:active {
   transform: scale(0.96);
+}
+
+.onboarding-pill[data-disabled="true"]:active {
+  transform: none;
 }
 
 .onboarding-pill--sm {
@@ -816,29 +833,40 @@
   font-size: 12px;
 }
 
-/* Progressive disclosure for theme sub-sections */
-.onboarding-theme-reveal {
+/* Theme step: each sub-row (Appearance → Gradient Style → Color) grows open
+ * via grid 0fr→1fr. No opacity fade and no pill-stagger — content stays
+ * visible as height expands so it never reads as a top-down reveal. */
+.onboarding-theme-grow-in {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows var(--onboarding-duration-enter)
     var(--onboarding-ease-soft);
 }
 
-.onboarding-theme-reveal[data-visible] {
+.onboarding-theme-grow-in[data-visible] {
   grid-template-rows: 1fr;
 }
 
-.onboarding-theme-reveal-inner {
+/* Pearl/Noir unlock all three at once — stagger grows so they cascade. */
+.onboarding-theme-grow-in--delayed-1[data-visible] {
+  transition-delay: 140ms;
+}
+
+.onboarding-theme-grow-in--delayed-2[data-visible] {
+  transition-delay: 280ms;
+}
+
+.onboarding-theme-grow-in-inner {
   overflow: hidden;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  opacity: 0;
-  transition: opacity var(--onboarding-duration-fade) ease 80ms;
 }
 
-.onboarding-theme-reveal[data-visible] > .onboarding-theme-reveal-inner {
+.onboarding-theme-grow-in-inner .onboarding-theme-row .onboarding-pill {
+  animation: none;
   opacity: 1;
+  transform: none;
 }
 
 /* ═══ Hide real sidebar during onboarding ═══ */
@@ -2493,29 +2521,131 @@
   margin-top: 16px;
 }
 
+/* Overrides `.onboarding-selection-tile`'s default column layout: engine
+ * tiles run as `icon | (label + desc)` so the brand logo (Stella / Claude
+ * mark / key glyph) sits on the left and visually anchors both text rows. */
 .onboarding-engine-tile {
-  padding: 14px 16px;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
 }
 
-.onboarding-engine-tile .onboarding-selection-tile-label {
-  font-size: 15px;
+.onboarding-engine-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--foreground);
+}
+
+.onboarding-engine-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Hero tile (Stella, the recommended default): bigger padding, larger
+ * logo + label so it reads first against the two compact alternatives
+ * below. */
+.onboarding-engine-tile[data-variant="hero"] {
+  padding: 18px 20px;
+  gap: 16px;
+}
+
+.onboarding-engine-tile[data-variant="hero"] .onboarding-engine-tile-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.onboarding-engine-tile[data-variant="hero"]
+  .onboarding-selection-tile-label {
+  font-size: 17px;
   letter-spacing: 0.02em;
 }
 
-.onboarding-engine-tile .onboarding-selection-tile-desc {
-  font-size: 13px;
+.onboarding-engine-tile[data-variant="hero"]
+  .onboarding-selection-tile-desc {
+  font-size: 13.5px;
   font-weight: 300;
+  opacity: 0.75;
+}
+
+/* Compact tiles (Claude Code, Bring your own provider): smaller everything
+ * so they read as alternative engines, not competing peers to the hero. */
+.onboarding-engine-tiles-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.onboarding-engine-tile[data-variant="compact"] {
+  padding: 10px 12px;
+  gap: 10px;
+}
+
+.onboarding-engine-tile[data-variant="compact"] .onboarding-engine-tile-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.onboarding-engine-tile[data-variant="compact"]
+  .onboarding-selection-tile-label {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.onboarding-engine-tile[data-variant="compact"]
+  .onboarding-selection-tile-desc {
+  font-size: 11.5px;
+  font-weight: 300;
+  opacity: 0.65;
+  line-height: 1.35;
+}
+
+/* Progressive disclosure for the BYOK panel: grows in (height) and
+ * fades in (opacity) when "Bring your own provider" is selected, then
+ * collapses smoothly back to zero when another engine is chosen. Same
+ * `grid-template-rows: 0fr → 1fr` pattern used by `.onboarding-theme-grow-in`
+ * — the only CSS technique that gracefully animates from collapsed to
+ * intrinsic content height without a JS measurement step. */
+.onboarding-engine-byok-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--onboarding-duration-enter)
+    var(--onboarding-ease-soft);
+}
+
+.onboarding-engine-byok-reveal[data-visible] {
+  grid-template-rows: 1fr;
+}
+
+.onboarding-engine-byok-reveal-inner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0;
+  opacity: 0;
+  /* Fade in lockstep with the height grow — a delayed opacity pop was
+   * reading as a bump once the panel had already partially opened. */
+  transition:
+    padding-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    opacity var(--onboarding-duration-enter) var(--onboarding-ease-soft);
+}
+
+.onboarding-engine-byok-reveal[data-visible]
+  > .onboarding-engine-byok-reveal-inner {
+  padding-top: 14px;
+  opacity: 1;
 }
 
 .onboarding-engine-byok {
-  margin-top: 14px;
   padding: 14px;
   border: 1px dashed
     color-mix(in oklch, var(--foreground) 12%, transparent);
   border-radius: 10px;
-  animation: onboardingInstantFadeIn var(--onboarding-duration-text)
-    var(--onboarding-ease-standard) both;
 }
 
 .onboarding-engine-providers {
@@ -2640,22 +2770,42 @@
  * subtle subtext — no flex wrapper so the parent `.onboarding-step-content`
  * keeps its standard gap rhythm and the Continue button stays a direct
  * child (matches every other split phase). */
+/* Collapse like `.onboarding-confirm` so the link never pops into the
+ * flex column in one frame when BYOK is selected (that instant mount was
+ * shoving Continue upward mid-reveal). */
 .onboarding-engine-skip {
+  --onboarding-collapse-gap: 20px;
   align-self: center;
-  margin-top: -8px;
+  box-sizing: border-box;
   background: none;
   border: none;
   color: var(--foreground);
-  opacity: 0.55;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 0.02em;
   cursor: pointer;
-  padding: 4px 8px;
-  transition: opacity 0.2s ease;
+  height: 0;
+  margin-top: calc(-1 * var(--onboarding-collapse-gap));
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  padding: 0 10px;
+  transition:
+    height var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    margin-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    opacity var(--onboarding-duration-enter) var(--onboarding-ease-soft),
+    padding var(--onboarding-duration-enter) var(--onboarding-ease-soft);
 }
 
-.onboarding-engine-skip:hover {
+.onboarding-engine-skip[data-visible="true"] {
+  height: auto;
+  margin-top: -6px;
+  opacity: 0.6;
+  pointer-events: auto;
+  padding: 6px 10px;
+}
+
+.onboarding-engine-skip[data-visible="true"]:hover {
   opacity: 0.85;
 }
 
@@ -2817,7 +2967,7 @@
     height: 72px;
   }
 
-  /* Capabilities — height-bound the frame so the stage's 16/7.7 aspect
+  /* Capabilities — height-bound the frame so the stage's 16/8 aspect
    * doesn't dictate a height larger than the viewport allows. The third
    * term in min() converts available vertical space into a width via the
    * stage aspect ratio (≈80px reserved for caption + words + padding). */
@@ -2834,13 +2984,23 @@
   .onboarding-cap-frame {
     /* Reserve ~320px for split padding (~80) + cap title (~50) + words
      * (~36) + body desc (~54) + gaps (~30) + Continue (~50) + breathing
-     * room. Stage width via `aspect-ratio: 16/7.7` is then bounded by
+     * room. Stage width via `aspect-ratio: 16/8` is then bounded by
      * the remaining vertical space. */
     width: min(
-      1180px,
-      calc(100vw - 80px),
-      calc((100vh - 320px) * 16 / 7.7)
+      var(--cap-frame-max-width),
+      calc(100vw - var(--cap-frame-viewport-gutter)),
+      calc((100vh - 320px) * 16 / 8)
     );
+  }
+
+  .onboarding-cap-title-slot {
+    min-height: 4.75rem;
+    margin-bottom: 14px;
+  }
+
+  .onboarding-cap-caption-slot {
+    min-height: 5rem;
+    margin-top: 14px;
   }
 
   .onboarding-cap-title {
@@ -2940,10 +3100,20 @@
    * only reserve ~250px (smaller padding + title + words + Continue). */
   .onboarding-cap-frame {
     width: min(
-      1180px,
+      var(--cap-frame-max-width),
       calc(100vw - 60px),
-      calc((100vh - 250px) * 16 / 7.7)
+      calc((100vh - 250px) * 16 / 8)
     );
+  }
+
+  .onboarding-cap-title-slot {
+    min-height: 3.25rem;
+    margin-bottom: 10px;
+  }
+
+  .onboarding-cap-caption-slot {
+    min-height: 0;
+    margin-top: 10px;
   }
 
   .onboarding-cap-title {
