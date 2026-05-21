@@ -1,17 +1,11 @@
 /**
  * Canvas tab — workspace-panel viewer for HTML artifacts the orchestrator
- * produced via the `html` tool.
- *
- * Layout mirrors the Media tab: an action bar on top, a hero frame in the
- * middle, and a horizontal chip rail along the bottom.
- * The hero is a sandboxed iframe rendering the file as `srcdoc` so the
- * canvas can run its own scripts without leaking globals into the
- * renderer; rail chips are glyph + title only (no iframe previews) so a
- * session with N canvases doesn't keep N JS realms alive in the rail.
+ * produced via the `html` tool. Layout is a chip rail of saved canvases
+ * over a sandboxed iframe rendering the selected file as `srcdoc`.
  */
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowUpRight, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { X } from "lucide-react";
 import { displayTabs } from "../tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import {
@@ -26,18 +20,8 @@ import "./canvas-tab.css";
 
 const decoder = new TextDecoder("utf-8");
 
-/**
- * "Create app" prompt fed back into the chat composer when the user wants
- * to promote a canvas into a real Stella app. Phrasing keeps the user-
- * visible message normie-friendly while still pinning the file path so
- * the orchestrator can route it to a general agent without guessing.
- */
-const createAppPrompt = (item: CanvasHtmlItem): string =>
-  `Build this canvas as a real Stella app. Use it as the design and behavior reference: ${item.filePath}`;
+const expandPanel = () => displayTabs.setPanelExpanded(true);
 
-/**
- * Hero variant: always live (the user is looking right at it).
- */
 const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
   const { bytes, error, loading } = useDisplayFileBytes(
     item.filePath,
@@ -111,15 +95,84 @@ const CanvasTileGlyph = () => (
 
 const useCanvasItems = (
   initial: ReadonlyArray<CanvasHtmlItem>,
-): ReadonlyArray<CanvasHtmlItem> => {
-  // External-store subscription keeps the rail and hero in sync with
-  // any new canvases the orchestrator emits while the panel is open.
-  // The snapshot getter returns a stable cached reference between
-  // mutations so React doesn't think the store is constantly changing.
-  return useSyncExternalStore(
+): ReadonlyArray<CanvasHtmlItem> =>
+  useSyncExternalStore(
     subscribeCanvasHtmlItems,
     getCanvasHtmlItems,
     () => initial,
+  );
+
+const CanvasHistoryTile = ({
+  item,
+  isActive,
+  onSelect,
+}: {
+  item: CanvasHtmlItem;
+  isActive: boolean;
+  onSelect: () => void;
+}) => {
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    },
+    [],
+  );
+
+  const handleRemoveClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    if (!confirmRemove) {
+      setConfirmRemove(true);
+      confirmTimerRef.current = setTimeout(
+        () => setConfirmRemove(false),
+        3000,
+      );
+      return;
+    }
+    confirmTimerRef.current = null;
+    setConfirmRemove(false);
+    removeCanvasHtmlItem(item.filePath);
+  };
+
+  return (
+    <div
+      className={
+        isActive
+          ? "canvas-tab__tile canvas-tab__tile--active"
+          : "canvas-tab__tile"
+      }
+    >
+      <button
+        type="button"
+        className="canvas-tab__tile-main"
+        onClick={onSelect}
+        onDoubleClick={expandPanel}
+        title={item.title}
+        aria-label={item.title}
+        aria-pressed={isActive}
+      >
+        <CanvasTileGlyph />
+        <span className="canvas-tab__tile-label">{item.title}</span>
+      </button>
+      <button
+        type="button"
+        className={
+          confirmRemove
+            ? "canvas-tab__tile-remove canvas-tab__tile-remove--confirm"
+            : "canvas-tab__tile-remove"
+        }
+        onClick={handleRemoveClick}
+        aria-label={
+          confirmRemove ? "Click again to remove" : `Remove ${item.title}`
+        }
+        title={confirmRemove ? "Click again to remove" : "Remove"}
+      >
+        <X size={confirmRemove ? 14 : 12} strokeWidth={2.2} />
+      </button>
+    </div>
   );
 };
 
@@ -150,112 +203,37 @@ export const CanvasTabContent = ({
   const selectedItem =
     items.find((item) => item.id === selectedId) ?? items.at(-1) ?? null;
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      removeCanvasHtmlItem(id);
-    },
-    [],
-  );
-
-  const expandPanel = useCallback(() => {
-    displayTabs.setPanelExpanded(true);
-  }, []);
-
-  const handleCreateApp = useCallback(() => {
-    if (!selectedItem) return;
-    window.dispatchEvent(
-      new CustomEvent("stella:send-message", {
-        detail: { text: createAppPrompt(selectedItem) },
-      }),
-    );
-  }, [selectedItem]);
-
   return (
     <div className="canvas-tab">
-      <div className="canvas-tab__top">
-        {selectedItem ? (
-          <>
-            <div className="canvas-tab__title-group">
-              <span className="canvas-tab__eyebrow">Canvas</span>
-              <div className="canvas-tab__title" title={selectedItem.title}>
-                {selectedItem.title}
-              </div>
-            </div>
-            <div className="canvas-tab__actions">
-              <button
-                type="button"
-                className="canvas-tab__action canvas-tab__action--primary"
-                onClick={handleCreateApp}
-                title="Build this canvas as a real app"
-              >
-                <Sparkles size={14} strokeWidth={1.85} />
-                <span>Create app</span>
-              </button>
-              <button
-                type="button"
-                className="canvas-tab__action"
-                onClick={expandPanel}
-                aria-label="Expand canvas"
-                title="Expand"
-              >
-                <ArrowUpRight size={14} strokeWidth={1.85} />
-              </button>
-              <button
-                type="button"
-                className="canvas-tab__action canvas-tab__action--danger"
-                onClick={() => handleDelete(selectedItem.id)}
-                aria-label="Remove from canvas list"
-                title="Remove from canvas list"
-              >
-                <Trash2 size={14} strokeWidth={1.85} />
-              </button>
-            </div>
-          </>
-        ) : null}
-      </div>
+      {items.length > 0 && (
+        <div className="canvas-tab__rail" aria-label="Saved canvases">
+          {items.map((item) => (
+            <CanvasHistoryTile
+              key={item.id}
+              item={item}
+              isActive={item.id === selectedItem?.id}
+              onSelect={() => setSelectedId(item.id)}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="canvas-tab__hero">
         {selectedItem ? (
           <CanvasHeroFrame item={selectedItem} />
         ) : (
           <div className="canvas-tab__hero-empty">
-            <div style={{ width: 160, height: 120, margin: "0 auto 16px", opacity: 0.9 }}>
+            <div className="canvas-tab__hero-empty-illustration">
               <CanvasIllustration />
             </div>
             <div className="canvas-tab__hero-empty-title">No canvases yet</div>
-            <div className="canvas-tab__hero-empty-hint" style={{ fontSize: 15 }}>
+            <div className="canvas-tab__hero-empty-hint">
               Ask Stella to plan, compare, sketch, or chart something — answers
               that don't fit in plain text show up here.
             </div>
           </div>
         )}
       </div>
-
-      {items.length > 0 && (
-        <div className="canvas-tab__rail" aria-label="Saved canvases">
-          {items.map((item) => {
-            const isActive = item.id === selectedItem?.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={
-                  isActive
-                    ? "canvas-tab__tile canvas-tab__tile--active"
-                    : "canvas-tab__tile"
-                }
-                onClick={() => setSelectedId(item.id)}
-                onDoubleClick={expandPanel}
-                title={item.title}
-                aria-label={item.title}
-              >
-                <CanvasTileGlyph />
-                <span className="canvas-tab__tile-label">{item.title}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 };

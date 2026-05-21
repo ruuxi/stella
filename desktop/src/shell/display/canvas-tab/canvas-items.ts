@@ -1,14 +1,8 @@
 /**
  * Module-scoped store of HTML canvases the orchestrator's `html` tool has
- * produced this session.
- *
- * Mirrors `generatedMediaItems` in `payload-to-tab-spec.ts`: the Canvas tab
- * has a single stable id and re-renders against the live items list whenever
- * a new `canvas-html` payload arrives. The hero shows the most-recently-added
- * canvas; the bottom rail navigates between siblings.
- *
- * The files live under `state/outputs/html/`; this store keeps a small
- * persisted index so the Canvas tab survives renderer and desktop restarts.
+ * produced. The Canvas tab subscribes via `useSyncExternalStore`; files
+ * live under `state/outputs/html/` and a small localStorage index keeps
+ * the rail populated across renderer and desktop restarts.
  */
 
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
@@ -28,71 +22,57 @@ const STORAGE_KEY = "stella-display-canvas-html-items";
 const REMOVED_KEY = "stella-display-canvas-html-removed";
 const MAX_ITEMS = 200;
 
-// Cached snapshot reference for `useSyncExternalStore`. The contract is
-// that `getSnapshot` must return the same reference between mutations,
-// otherwise React believes the store is constantly changing and may
-// re-render in a loop. We refresh this only when the underlying items
-// list mutates.
+// Stable snapshot for `useSyncExternalStore`; refreshed only on mutation.
 let snapshot: ReadonlyArray<CanvasHtmlItem> = [];
 
 const refreshSnapshot = () => {
   snapshot = items.slice();
 };
 
-const readPersistedItems = (): CanvasHtmlItem[] => {
+const readJsonArray = <T>(key: string): T[] => {
   if (typeof localStorage === "undefined") return [];
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((entry): entry is CanvasHtmlItem => {
-        if (!entry || typeof entry !== "object") return false;
-        const record = entry as Partial<CanvasHtmlItem>;
-        return (
-          typeof record.id === "string" &&
-          typeof record.filePath === "string" &&
-          typeof record.title === "string" &&
-          typeof record.createdAt === "number"
-        );
-      })
-      .slice(-MAX_ITEMS);
+    const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch {
     return [];
   }
 };
 
-const persistItems = (): void => {
+const writeJsonArray = <T>(key: string, value: ReadonlyArray<T>): void => {
   if (typeof localStorage === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(-MAX_ITEMS)));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // Best effort only; disk files remain the source of truth.
   }
 };
 
-const readRemovedPaths = (): Set<string> => {
-  if (typeof localStorage === "undefined") return new Set();
-  try {
-    const parsed = JSON.parse(localStorage.getItem(REMOVED_KEY) || "[]");
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(
-      parsed.filter((path): path is string => typeof path === "string"),
-    );
-  } catch {
-    return new Set();
-  }
+const isPersistedItem = (entry: unknown): entry is CanvasHtmlItem => {
+  if (!entry || typeof entry !== "object") return false;
+  const record = entry as Partial<CanvasHtmlItem>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.filePath === "string" &&
+    typeof record.title === "string" &&
+    typeof record.createdAt === "number"
+  );
 };
 
-const removedPaths = readRemovedPaths();
+const readPersistedItems = (): CanvasHtmlItem[] =>
+  readJsonArray<unknown>(STORAGE_KEY).filter(isPersistedItem).slice(-MAX_ITEMS);
 
-const persistRemovedPaths = (): void => {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(REMOVED_KEY, JSON.stringify(Array.from(removedPaths)));
-  } catch {
-    // Best effort; removal is a UI preference, not data loss protection.
-  }
-};
+const persistItems = (): void =>
+  writeJsonArray(STORAGE_KEY, items.slice(-MAX_ITEMS));
+
+const removedPaths = new Set(
+  readJsonArray<unknown>(REMOVED_KEY).filter(
+    (path): path is string => typeof path === "string",
+  ),
+);
+
+const persistRemovedPaths = (): void =>
+  writeJsonArray(REMOVED_KEY, Array.from(removedPaths));
 
 const emit = () => {
   refreshSnapshot();

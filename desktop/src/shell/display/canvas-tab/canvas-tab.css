@@ -10,101 +10,6 @@
   color: var(--foreground);
 }
 
-.canvas-tab__top {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 2px 4px 4px;
-  min-height: 28px;
-}
-
-.canvas-tab__title-group {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.canvas-tab__eyebrow {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: color-mix(in oklch, var(--foreground) 55%, transparent);
-}
-
-.canvas-tab__title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--foreground);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.canvas-tab__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.canvas-tab__action {
-  appearance: none;
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  color: color-mix(in oklch, var(--foreground) 75%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
-  border-radius: 999px;
-  height: 26px;
-  padding: 0 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.canvas-tab__action:hover {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
-  color: var(--foreground);
-  border-color: color-mix(in oklch, var(--foreground) 16%, transparent);
-}
-
-/*
- * Squarer "icon-only" affordances (expand, delete) collapse the pill to a
- * 26×26 square so they don't fight the labelled "Create app" pill for
- * visual weight.
- */
-.canvas-tab__action[aria-label] {
-  width: 26px;
-  padding: 0;
-  justify-content: center;
-}
-
-.canvas-tab__action--primary {
-  background: var(--accent, color-mix(in oklch, var(--foreground) 12%, transparent));
-  color: var(--accent-foreground, var(--foreground));
-  border-color: transparent;
-}
-
-.canvas-tab__action--primary:hover {
-  background: color-mix(in oklch, var(--accent, var(--foreground)) 88%, white 12%);
-}
-
-.canvas-tab__action--danger {
-  color: color-mix(in oklch, #ef4444 90%, var(--foreground) 10%);
-}
-
-.canvas-tab__action--danger:hover {
-  background: color-mix(in oklch, #ef4444 14%, transparent);
-  border-color: color-mix(in oklch, #ef4444 28%, transparent);
-}
-
 .canvas-tab__hero {
   position: relative;
   flex: 1;
@@ -136,7 +41,6 @@
   color: color-mix(in oklch, var(--foreground) 60%, transparent);
 }
 
-
 .canvas-tab__hero-empty {
   flex: 1;
   display: flex;
@@ -148,6 +52,13 @@
   text-align: center;
 }
 
+.canvas-tab__hero-empty-illustration {
+  width: 160px;
+  height: 120px;
+  margin-bottom: 16px;
+  opacity: 0.9;
+}
+
 .canvas-tab__hero-empty-title {
   font-size: 16px;
   font-weight: 500;
@@ -155,19 +66,19 @@
 }
 
 .canvas-tab__hero-empty-hint {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
   color: color-mix(in oklch, var(--foreground) 60%, transparent);
   max-width: 32ch;
 }
 
-/* Bottom chip rail — compact tabs with glyph + title (no previews). */
+/* Top chip rail — compact tabs with glyph + title (no previews). */
 .canvas-tab__rail {
   flex: 0 0 auto;
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 4px 2px 2px;
+  padding: 2px 2px 4px;
   scrollbar-width: thin;
 }
 
@@ -182,35 +93,101 @@
 
 /* Match shell-topbar-tab rounding — 7px corners, not pills. */
 .canvas-tab__tile {
-  appearance: none;
-  background: transparent;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 168px;
+  flex-shrink: 0;
   border: 1px solid transparent;
   border-radius: 7px;
-  padding: 3px 8px;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.canvas-tab__tile-main {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 3px 4px 3px 8px;
   display: inline-flex;
   flex-direction: row;
   align-items: center;
   gap: 6px;
   min-height: 28px;
-  max-width: 168px;
-  flex-shrink: 0;
+  min-width: 0;
+  flex: 1;
   cursor: pointer;
   font-size: 12px;
   color: var(--text-base);
   transition:
     background 120ms ease,
-    border-color 120ms ease,
     color 120ms ease;
 }
 
-.canvas-tab__tile:hover {
+.canvas-tab__tile-remove {
+  appearance: none;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: color-mix(in oklch, var(--foreground) 55%, transparent);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.canvas-tab__tile-remove--confirm,
+.canvas-tab__tile:hover .canvas-tab__tile-remove,
+.canvas-tab__tile:focus-within .canvas-tab__tile-remove {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.canvas-tab__tile-remove:hover {
+  background: color-mix(in oklch, #ef4444 14%, transparent);
+  color: #ef4444;
+}
+
+.canvas-tab__tile-remove--confirm {
+  width: 24px;
+  height: 24px;
+  background: color-mix(in oklch, #ef4444 26%, transparent);
+  color: #ef4444;
+}
+
+.canvas-tab__tile-remove--confirm:hover {
+  background: color-mix(in oklch, #ef4444 36%, transparent);
+  color: #dc2626;
+}
+
+.canvas-tab__tile:hover,
+.canvas-tab__tile:focus-within {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.canvas-tab__tile:hover .canvas-tab__tile-main,
+.canvas-tab__tile:focus-within .canvas-tab__tile-main {
   color: var(--text-strong);
 }
 
 .canvas-tab__tile--active {
   border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
   background: transparent;
+}
+
+.canvas-tab__tile--active .canvas-tab__tile-main {
   color: var(--text-strong);
 }
 
@@ -223,7 +200,8 @@
 }
 
 .canvas-tab__tile--active .canvas-tab__tile-glyph,
-.canvas-tab__tile:hover .canvas-tab__tile-glyph {
+.canvas-tab__tile:hover .canvas-tab__tile-glyph,
+.canvas-tab__tile:focus-within .canvas-tab__tile-glyph {
   color: color-mix(in oklch, var(--foreground) 72%, transparent);
 }
 
