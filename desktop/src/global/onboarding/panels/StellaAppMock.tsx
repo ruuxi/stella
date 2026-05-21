@@ -42,7 +42,7 @@ const ICON_SVG_PROPS = {
 const SECTION_PILLS: SectionPill[] = [
   {
     key: "sidebar",
-    label: "Workspace rail",
+    label: "Add a workspace rail",
     icon: (
       <svg {...ICON_SVG_PROPS}>
         <rect x="3" y="3" width="6" height="18" rx="1.5" />
@@ -52,7 +52,7 @@ const SECTION_PILLS: SectionPill[] = [
   },
   {
     key: "header",
-    label: "Tabs",
+    label: "Give me tabs",
     icon: (
       <svg {...ICON_SVG_PROPS}>
         <path d="M3 9h6a1 1 0 0 0 1-1V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9z" />
@@ -62,7 +62,7 @@ const SECTION_PILLS: SectionPill[] = [
   },
   {
     key: "messages",
-    label: "Dashboard",
+    label: "Make it a dashboard",
     icon: (
       <svg {...ICON_SVG_PROPS}>
         <rect x="3" y="4" width="18" height="6" rx="1.5" />
@@ -72,7 +72,7 @@ const SECTION_PILLS: SectionPill[] = [
   },
   {
     key: "composer",
-    label: "Cozy mode",
+    label: "Make it cozy",
     icon: (
       <svg width={14} height={14} viewBox="0 0 24 24" fill="currentColor">
         <ellipse cx="12" cy="17" rx="4.2" ry="3.6" />
@@ -85,7 +85,7 @@ const SECTION_PILLS: SectionPill[] = [
   },
   {
     key: "createApp",
-    label: "Create an app",
+    label: "Build me an app",
     icon: (
       <svg {...ICON_SVG_PROPS}>
         <path d="M12 3v18M3 12h18" />
@@ -272,7 +272,8 @@ const ICON_PLUS = (
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth={2}
+    strokeWidth={1.5}
+    strokeLinecap="round"
   >
     <line x1="12" y1="5" x2="12" y2="19" />
     <line x1="5" y1="12" x2="19" y2="12" />
@@ -655,17 +656,7 @@ const STUDIO_KNOBS = [
   { label: "Reverb", value: 0.58 },
 ] as const;
 const STUDIO_METER_LEVELS = [6, 7, 8, 7, 6, 5, 4, 3] as const;
-const MOCHI_CHIPS = ["Today", "Naps", "Treats", "Play"] as const;
-const MOCHI_PURR_LEVELS = [
-  40, 60, 80, 65, 50, 70, 85, 60, 45, 65, 80, 55,
-] as const;
-const MOCHI_MOMENTS = [
-  { time: "7:14 AM", body: "Greeted you with a soft head bump" },
-  { time: "9:02 AM", body: "Watched the birds at the feeder · 18 min" },
-  { time: "11:30 AM", body: "Curled into a perfect loaf in the sun" },
-  { time: "1:42 PM", body: "Asleep by the window. Rain outside." },
-] as const;
-
+const MOCHI_CHIPS = ["Home", "Store", "Social", "Memories"] as const;
 const COZY_HOME_SUGGESTIONS: string[] = [
   "Set a quiet hour while Mochi naps",
   "Schedule Mochi's next vet visit",
@@ -706,166 +697,131 @@ const COZY_CAT_SVG = (
   <svg viewBox="0 0 180 140" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="samCatBody" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#2a2a2a" />
-        <stop offset="100%" stopColor="#0a0a0a" />
+        <stop offset="0%" stopColor="#2E303F" />
+        <stop offset="100%" stopColor="#14151B" />
       </linearGradient>
       <linearGradient id="samCatBelly" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stopColor="#ffffff" />
-        <stop offset="100%" stopColor="#f0f0f0" />
+        <stop offset="0%" stopColor="#FFFFFF" />
+        <stop offset="100%" stopColor="#F5F6F9" />
+      </linearGradient>
+      <linearGradient id="samCatInner" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#F4D3D2" />
+        <stop offset="100%" stopColor="#E2A6A4" />
       </linearGradient>
       <filter id="samCatShadow" x="-20%" y="-20%" width="140%" height="140%">
         <feDropShadow
           dx="0"
-          dy="4"
+          dy="3"
           stdDeviation="4"
-          floodColor="#000000"
-          floodOpacity="0.25"
+          floodColor="#0D0E12"
+          floodOpacity="0.15"
         />
       </filter>
     </defs>
 
     <g className="sam-cozy-cat-tail">
-      {/* Tail Base (Black) */}
+      {/* Sleek wrapping tail */}
       <path
-        d="M 140 100 C 170 100 175 130 140 130 L 60 130"
+        d="M 135 98 C 158 98 168 114 154 124 C 142 129 116 129 96 129 L 65 129"
         stroke="url(#samCatBody)"
-        strokeWidth="14"
+        strokeWidth="11"
         strokeLinecap="round"
+        strokeLinejoin="round"
         fill="none"
       />
-      {/* Tail Tip (White overlay with rounded cap) */}
+      {/* Subtle tail tip highlight */}
       <path
-        d="M 70 130 L 45 130"
+        d="M 75 129 L 60 129"
         stroke="url(#samCatBelly)"
-        strokeWidth="14"
+        strokeWidth="11"
         strokeLinecap="round"
         fill="none"
       />
     </g>
 
     <g className="sam-cozy-cat-body">
-      {/* Main Body Loaf */}
+      {/* Sleek, flowing body silhouette */}
       <path
-        d="M 50 120 L 140 120 C 165 120 165 75 140 65 C 115 55 85 55 70 60 C 45 65 30 90 50 120 Z"
+        d="M 52 116 C 36 98 42 78 68 70 C 88 64 112 60 132 72 C 148 82 152 102 142 118 C 134 124 115 124 95 123 C 75 122 58 121 52 116 Z"
         fill="url(#samCatBody)"
       />
 
-      {/* Chest White (under the head) */}
+      {/* Elegant cream chest patch */}
       <path
-        d="M 50 95 C 50 120 90 120 90 95 C 80 107 60 107 50 95 Z"
+        d="M 52 110 C 48 95 58 85 75 85 C 88 85 92 98 92 110 C 92 118 78 119 65 118 C 56 117 53 113 52 110 Z"
         fill="url(#samCatBelly)"
       />
 
-      {/* Tucked Paws */}
+      {/* Tucked minimal paws */}
       <rect
-        x="48"
+        x="50"
         y="112"
-        width="18"
-        height="10"
-        rx="5"
+        width="14"
+        height="8"
+        rx="4"
         fill="url(#samCatBelly)"
       />
       <rect
-        x="74"
+        x="70"
         y="112"
-        width="18"
-        height="10"
-        rx="5"
+        width="14"
+        height="8"
+        rx="4"
         fill="url(#samCatBelly)"
-      />
-      <path
-        d="M 54 113 L 54 121 M 60 113 L 60 121"
-        stroke="#d0d0d0"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 80 113 L 80 121 M 86 113 L 86 121"
-        stroke="#d0d0d0"
-        strokeWidth="1.2"
-        strokeLinecap="round"
       />
 
-      {/* Head Group (Ears & Face) */}
+      {/* Head Group with sleek ears & face */}
       <g transform="translate(17.5, 23) scale(0.75)">
-        {/* Back Left Ear */}
-        <path d="M 42 42 C 35 15 48 15 62 34 Z" fill="url(#samCatBody)" />
-        <path d="M 45 40 C 42 22 49 20 57 34 Z" fill="#eba4a2" />
+        {/* Sleek ears */}
+        <path d="M 42 53 C 38 20 48 18 58 42 Z" fill="url(#samCatBody)" />
+        <path d="M 45 49 C 42 25 49 23 55 39 Z" fill="url(#samCatInner)" />
 
-        {/* Back Right Ear */}
-        <path d="M 98 42 C 105 15 92 15 78 34 Z" fill="url(#samCatBody)" />
-        <path d="M 95 40 C 98 22 91 20 83 34 Z" fill="#eba4a2" />
+        <path d="M 98 53 C 102 20 92 18 82 42 Z" fill="url(#samCatBody)" />
+        <path d="M 95 49 C 98 25 91 23 85 39 Z" fill="url(#samCatInner)" />
 
-        {/* Head Base with Drop Shadow */}
+        {/* Head Base with Soft Shadow */}
         <g filter="url(#samCatShadow)">
-          <circle cx="70" cy="65" r="34" fill="url(#samCatBody)" />
+          <circle cx="70" cy="65" r="31" fill="url(#samCatBody)" />
 
-          {/* Tuxedo Mask (White) */}
+          {/* Minimal cream mask */}
           <path
-            d="M 70 46 C 62 60 50 72 40 78 C 55 96 85 96 100 78 C 90 72 78 60 70 46 Z"
+            d="M 70 48 C 62 60 52 70 44 76 C 54 90 86 90 96 76 C 88 70 78 60 70 48 Z"
             fill="url(#samCatBelly)"
           />
 
-          {/* Cheeks Blush */}
-          <ellipse
-            cx="50"
-            cy="74"
-            rx="5"
-            ry="3"
-            fill="#ffb6c1"
-            opacity="0.4"
-            transform="rotate(-15 50 74)"
-          />
-          <ellipse
-            cx="90"
-            cy="74"
-            rx="5"
-            ry="3"
-            fill="#ffb6c1"
-            opacity="0.4"
-            transform="rotate(15 90 74)"
-          />
-
-          {/* Sleeping Eyes */}
+          {/* Serene sleeping eyes (ultra-fine lines) */}
           <path
-            d="M 48 68 Q 55 73 62 68"
-            stroke="#1a1a1a"
-            strokeWidth="2.5"
+            d="M 49 69 Q 55 73 61 69"
+            stroke="#14151B"
+            strokeWidth="1.8"
             strokeLinecap="round"
             fill="none"
           />
           <path
-            d="M 78 68 Q 85 73 92 68"
-            stroke="#1a1a1a"
-            strokeWidth="2.5"
+            d="M 79 69 Q 85 73 91 69"
+            stroke="#14151B"
+            strokeWidth="1.8"
             strokeLinecap="round"
             fill="none"
           />
 
-          {/* Nose */}
-          <path d="M 64 80 L 76 80 L 70 86 Z" fill="#eba4a2" />
-          <path
-            d="M 70 86 L 70 91 M 70 91 Q 62 95 58 91 M 70 91 Q 78 95 82 91"
-            stroke="#1a1a1a"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            fill="none"
-          />
+          {/* Tiny clean nose */}
+          <path d="M 68 78 L 72 78 L 70 81 Z" fill="url(#samCatInner)" />
 
-          {/* Whiskers */}
+          {/* Soft elegant whiskers (fine, high transparency) */}
           <path
-            d="M 42 76 L 25 73 M 42 80 L 22 80 M 43 84 L 27 87"
-            stroke="#ffffff"
-            strokeWidth="1.5"
+            d="M 38 76 L 24 74 M 38 81 L 21 81"
+            stroke="#FFFFFF"
+            strokeWidth="1.2"
             strokeLinecap="round"
-            opacity="0.6"
+            opacity="0.45"
           />
           <path
-            d="M 98 76 L 115 73 M 98 80 L 118 80 M 97 84 L 113 87"
-            stroke="#ffffff"
-            strokeWidth="1.5"
+            d="M 102 76 L 116 74 M 102 81 L 119 81"
+            stroke="#FFFFFF"
+            strokeWidth="1.2"
             strokeLinecap="round"
-            opacity="0.6"
+            opacity="0.45"
           />
         </g>
       </g>
@@ -941,7 +897,7 @@ function StellaAppMockImpl({
             </button>
             <button type="button" className="sam-nav-item sam-nav-item--studio">
               <span className="sam-nav-icon">{ICON_MUSIC}</span>
-              <span>Music Studio</span>
+              <span>Music</span>
               <span className="sam-nav-item-tag" aria-hidden="true">
                 New
               </span>
@@ -1491,122 +1447,62 @@ function StellaAppMockImpl({
         </div>
       </div>
 
-      {/* COZY MODE — completely different app layout. When the user
-            picks "Cozy mode", the standard sidebar + main shell is
-            hidden and this magazine-style "Mochi's home" surface takes
-            over the entire window. Different chrome, different rhythm,
-            different navigation — to make it clear that Stella isn't
-            just retinted, it's an entirely different application. */}
+      {/* COZY MODE — when the user picks the cozy pill, Stella drops
+            the chat shell entirely and becomes a single contemplative
+            scene: soft rain on the window, the cat asleep in a pool of
+            silver light. No chrome, no chat, no cards — the transformation
+            IS the demo. */}
       <div className="sam-mochi" aria-hidden={!toggles.composer}>
-        <div className="sam-mochi__bg" aria-hidden="true" />
+        <div className="sam-mochi__lamp" aria-hidden="true" />
+        <div className="sam-mochi__rain" aria-hidden="true">
+          {Array.from({ length: 14 }).map((_, i) => (
+            <span
+              key={i}
+              className="sam-mochi__drop"
+              style={{ ["--drop-i" as string]: i }}
+            />
+          ))}
+        </div>
+
         <header className="sam-mochi__header">
-          <span className="sam-mochi__brand">
-            <span className="sam-mochi__brand-paw" aria-hidden="true">
-              {COZY_ICON_PAW}
-            </span>
-            <span>Mochi</span>
-          </span>
-          <nav className="sam-mochi__chips" aria-label="Mochi sections">
+          <span className="sam-mochi__brand">Mochi</span>
+          <nav className="sam-mochi__nav" aria-label="Mochi sections">
             {MOCHI_CHIPS.map((label, idx) => (
               <span
                 key={label}
-                className={`sam-mochi__chip${idx === 0 ? " is-active" : ""}`}
+                className={`sam-mochi__nav-item${idx === 0 ? " is-active" : ""}`}
               >
                 {label}
               </span>
             ))}
           </nav>
-          <span className="sam-mochi__time">
-            <span className="sam-mochi__time-dot" aria-hidden="true" />
-            Purring · 1h 42m
-          </span>
         </header>
 
-        <main className="sam-mochi__stage">
-          <section className="sam-mochi__feature">
-            <div className="sam-mochi__feature-eyebrow">
-              A small day, well kept
-            </div>
-            <h1 className="sam-mochi__feature-title">
-              Curled by the <em>window.</em>
-            </h1>
-            <p className="sam-mochi__feature-body">
-              Soft rain. The radiator hums. Mochi has been napping since 1:42 —
-              turn the lights down a little if you&rsquo;re passing.
-            </p>
-            <div className="sam-mochi__feature-actions">
-              <button
-                type="button"
-                className="sam-mochi__btn sam-mochi__btn--primary"
-              >
-                <span aria-hidden="true">{"\u2665"}</span>
-                Send a head scratch
-              </button>
-              <button type="button" className="sam-mochi__btn">
-                Quiet hour
-              </button>
-            </div>
-            <div className="sam-mochi__feature-cat" aria-hidden="true">
-              {COZY_CAT_SVG}
-            </div>
-          </section>
+        <div className="sam-mochi__copy">
+          <h1 className="sam-mochi__headline">
+            <span>She&rsquo;s asleep</span>
+            <span className="sam-mochi__headline-em">by the window.</span>
+          </h1>
+          <p className="sam-mochi__sub">
+            Soft rain. The radiator hums. Don&rsquo;t wake her.
+          </p>
+        </div>
 
-          <aside className="sam-mochi__pulse">
-            <div className="sam-mochi__pulse-row">
-              <span className="sam-mochi__pulse-label">Naps today</span>
-              <span className="sam-mochi__pulse-value">3</span>
-              <span className="sam-mochi__pulse-meta">of usually 5</span>
-            </div>
-            <div className="sam-mochi__pulse-row">
-              <span className="sam-mochi__pulse-label">Treats</span>
-              <span className="sam-mochi__pulse-value">1</span>
-              <span className="sam-mochi__pulse-meta">after dinner</span>
-            </div>
-            <div className="sam-mochi__pulse-row">
-              <span className="sam-mochi__pulse-label">Window time</span>
-              <span className="sam-mochi__pulse-value">42m</span>
-              <span className="sam-mochi__pulse-meta">birds at the feeder</span>
-            </div>
-            <div className="sam-mochi__purr">
-              <div className="sam-mochi__purr-head">
-                <span>Purr meter</span>
-                <span className="sam-mochi__purr-value">soft</span>
-              </div>
-              <div className="sam-mochi__purr-bars" aria-hidden="true">
-                {MOCHI_PURR_LEVELS.map((h, i) => (
-                  <span
-                    key={i}
-                    className="sam-mochi__purr-bar"
-                    style={{
-                      ["--purr-h" as string]: `${h}%`,
-                      ["--purr-i" as string]: i,
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </aside>
-
-          <section className="sam-mochi__moments">
-            <header className="sam-mochi__moments-head">
-              <h2>Today&rsquo;s little things</h2>
-              <span>Quietly noted by Mochi</span>
-            </header>
-            <ol className="sam-mochi__moments-list">
-              {MOCHI_MOMENTS.map((item) => (
-                <li key={item.time} className="sam-mochi__moment">
-                  <span className="sam-mochi__moment-time">{item.time}</span>
-                  <span className="sam-mochi__moment-body">{item.body}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        </main>
+        <div className="sam-mochi__cat" aria-hidden="true">
+          {COZY_CAT_SVG}
+        </div>
 
         <footer className="sam-mochi__compose">
+          <button
+            type="button"
+            className="sam-mochi__compose-attach"
+            aria-label="Attach"
+          >
+            <span aria-hidden="true">{"\u002B"}</span>
+          </button>
           <span className="sam-mochi__compose-input">
             <span className="sam-mochi__compose-placeholder">
-              Whisper to Mochi&hellip;
+              Message Mochi&hellip;
             </span>
           </span>
           <button
@@ -1614,7 +1510,20 @@ function StellaAppMockImpl({
             className="sam-mochi__compose-send"
             aria-label="Send"
           >
-            <span aria-hidden="true">{"\u2665"}</span>
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 19V5" />
+              <path d="M5 12l7-7 7 7" />
+            </svg>
           </button>
         </footer>
       </div>
