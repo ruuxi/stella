@@ -37,8 +37,51 @@
   flex: 1;
   display: grid;
   place-items: center;
-  font-size: 12px;
-  color: color-mix(in oklch, var(--foreground) 60%, transparent);
+  padding: 24px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-weak);
+  text-align: center;
+}
+
+.canvas-tab__frame-state--error {
+  color: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 70%,
+    var(--text-base) 30%
+  );
+}
+
+/* Quiet load skeleton — a single subtle band travels left→right.
+   Replaces a bare "Loading…" string per product law: skeletons over
+   spinners/text. Disabled cleanly under prefers-reduced-motion. */
+.canvas-tab__skeleton {
+  flex: 1;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklch, var(--foreground) 5%, transparent) 50%,
+      transparent 100%
+    ),
+    color-mix(in oklch, var(--foreground) 3%, transparent);
+  background-size:
+    180% 100%,
+    100% 100%;
+  background-repeat: no-repeat;
+  background-position:
+    -60% 0,
+    0 0;
+  animation: canvas-tab-skeleton 1200ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@keyframes canvas-tab-skeleton {
+  to {
+    background-position:
+      160% 0,
+      0 0;
+  }
 }
 
 .canvas-tab__hero-empty {
@@ -47,29 +90,30 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 24px;
+  gap: 10px;
+  padding: 32px 24px;
   text-align: center;
 }
 
-.canvas-tab__hero-empty-illustration {
-  width: 160px;
-  height: 120px;
-  margin-bottom: 16px;
-  opacity: 0.9;
+.canvas-tab__hero-empty-glyph {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 6px;
+  color: color-mix(in oklch, var(--foreground) 38%, transparent);
 }
 
 .canvas-tab__hero-empty-title {
-  font-size: 16px;
+  font-size: 13.5px;
   font-weight: 500;
-  color: var(--foreground);
+  letter-spacing: -0.005em;
+  color: var(--text-strong);
 }
 
 .canvas-tab__hero-empty-hint {
-  font-size: 15px;
+  font-size: 12.5px;
   line-height: 1.5;
-  color: color-mix(in oklch, var(--foreground) 60%, transparent);
-  max-width: 32ch;
+  color: var(--text-weak);
+  max-width: 38ch;
 }
 
 /* Top chip rail — compact tabs with glyph + title (no previews). */
@@ -156,20 +200,37 @@
 }
 
 .canvas-tab__tile-remove:hover {
-  background: color-mix(in oklch, #ef4444 14%, transparent);
-  color: #ef4444;
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 12%,
+    transparent
+  );
+  color: var(--destructive, oklch(0.6 0.2 25));
 }
 
-.canvas-tab__tile-remove--confirm {
-  width: 24px;
-  height: 24px;
-  background: color-mix(in oklch, #ef4444 26%, transparent);
-  color: #ef4444;
-}
-
+.canvas-tab__tile-remove--confirm,
 .canvas-tab__tile-remove--confirm:hover {
-  background: color-mix(in oklch, #ef4444 36%, transparent);
-  color: #dc2626;
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 22%,
+    transparent
+  );
+  color: var(--destructive, oklch(0.6 0.2 25));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-tab__skeleton {
+    animation: none;
+    background:
+      color-mix(in oklch, var(--foreground) 4%, transparent);
+  }
+
+  .canvas-tab__tile,
+  .canvas-tab__tile-main,
+  .canvas-tab__tile-remove,
+  .canvas-tab__tile-glyph {
+    transition: none;
+  }
 }
 
 .canvas-tab__tile:hover,

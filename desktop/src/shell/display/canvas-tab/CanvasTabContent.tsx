@@ -15,7 +15,6 @@ import {
   removeCanvasHtmlItem,
   subscribeCanvasHtmlItems,
 } from "./canvas-items";
-import { CanvasIllustration } from "../illustrations/CanvasIllustration";
 import "./canvas-tab.css";
 
 const decoder = new TextDecoder("utf-8");
@@ -31,17 +30,13 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
 
   if (error) {
     return (
-      <div className="canvas-tab__frame-state canvas-tab__frame-state--hero">
-        Couldn't load canvas
+      <div className="canvas-tab__frame-state canvas-tab__frame-state--error">
+        Couldn't load this canvas.
       </div>
     );
   }
   if (loading || !html) {
-    return (
-      <div className="canvas-tab__frame-state canvas-tab__frame-state--hero">
-        Loading…
-      </div>
-    );
+    return <div className="canvas-tab__skeleton" aria-hidden />;
   }
 
   return (
@@ -68,27 +63,42 @@ const CanvasTileGlyph = () => (
       y="5"
       width="16"
       height="14"
-      rx="2.2"
+      rx="2.4"
       stroke="currentColor"
-      strokeOpacity="0.55"
       strokeWidth="1.4"
-      fill="currentColor"
-      fillOpacity="0.06"
     />
     <path
-      d="M4 9h16"
+      d="M8 14l3-3 2.4 2.4L17 10"
       stroke="currentColor"
-      strokeOpacity="0.45"
-      strokeWidth="1.2"
-    />
-    <circle cx="6.5" cy="7" r="0.7" fill="currentColor" fillOpacity="0.5" />
-    <circle cx="9" cy="7" r="0.7" fill="currentColor" fillOpacity="0.35" />
-    <path
-      d="M7 13h10M7 16h7"
-      stroke="currentColor"
-      strokeOpacity="0.35"
-      strokeWidth="1.1"
+      strokeWidth="1.4"
       strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const CanvasEmptyGlyph = () => (
+  <svg
+    className="canvas-tab__hero-empty-glyph"
+    viewBox="0 0 48 48"
+    fill="none"
+    aria-hidden
+  >
+    <rect
+      x="6"
+      y="9"
+      width="36"
+      height="30"
+      rx="4"
+      stroke="currentColor"
+      strokeWidth="1.4"
+    />
+    <path
+      d="M13 30l7-8 5 5 4-4 6 7"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
   </svg>
 );
@@ -170,7 +180,7 @@ const CanvasHistoryTile = ({
         }
         title={confirmRemove ? "Click again to remove" : "Remove"}
       >
-        <X size={confirmRemove ? 14 : 12} strokeWidth={2.2} />
+        <X size={12} strokeWidth={2.2} />
       </button>
     </div>
   );
@@ -223,13 +233,11 @@ export const CanvasTabContent = ({
           <CanvasHeroFrame item={selectedItem} />
         ) : (
           <div className="canvas-tab__hero-empty">
-            <div className="canvas-tab__hero-empty-illustration">
-              <CanvasIllustration />
-            </div>
-            <div className="canvas-tab__hero-empty-title">No canvases yet</div>
+            <CanvasEmptyGlyph />
+            <div className="canvas-tab__hero-empty-title">Canvases land here</div>
             <div className="canvas-tab__hero-empty-hint">
-              Ask Stella to plan, compare, sketch, or chart something — answers
-              that don't fit in plain text show up here.
+              Charts, plans, comparisons, and other HTML views Stella renders
+              are saved here.
             </div>
           </div>
         )}
