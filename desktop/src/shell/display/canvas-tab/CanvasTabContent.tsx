@@ -4,7 +4,7 @@
  * over a sandboxed iframe rendering the selected file as `srcdoc`.
  */
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { displayTabs } from "../tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
@@ -15,11 +15,33 @@ import {
   removeCanvasHtmlItem,
   subscribeCanvasHtmlItems,
 } from "./canvas-items";
+import { CanvasIllustration } from "../illustrations/CanvasIllustration";
 import "./canvas-tab.css";
 
 const decoder = new TextDecoder("utf-8");
 
 const expandPanel = () => displayTabs.setPanelExpanded(true);
+
+const CanvasLoadingDots = () => (
+  <span className="canvas-tab__loading-dots" aria-hidden>
+    <span>.</span>
+    <span>.</span>
+    <span>.</span>
+  </span>
+);
+
+const CanvasIllustrationSpot = ({
+  label,
+}: {
+  label?: ReactNode;
+}) => (
+  <div className="canvas-tab__illustration-spot">
+    <div className="canvas-tab__illustration-art">
+      <CanvasIllustration />
+    </div>
+    {label ? <div className="canvas-tab__illustration-label">{label}</div> : null}
+  </div>
+);
 
 const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
   const { bytes, error, loading } = useDisplayFileBytes(
@@ -36,7 +58,16 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
     );
   }
   if (loading || !html) {
-    return <div className="canvas-tab__skeleton" aria-hidden />;
+    return (
+      <CanvasIllustrationSpot
+        label={
+          <div className="canvas-tab__loading-label">
+            Loading
+            <CanvasLoadingDots />
+          </div>
+        }
+      />
+    );
   }
 
   return (
@@ -69,32 +100,6 @@ const CanvasTileGlyph = () => (
     />
     <path
       d="M8 14l3-3 2.4 2.4L17 10"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
-const CanvasEmptyGlyph = () => (
-  <svg
-    className="canvas-tab__hero-empty-glyph"
-    viewBox="0 0 48 48"
-    fill="none"
-    aria-hidden
-  >
-    <rect
-      x="6"
-      y="9"
-      width="36"
-      height="30"
-      rx="4"
-      stroke="currentColor"
-      strokeWidth="1.4"
-    />
-    <path
-      d="M13 30l7-8 5 5 4-4 6 7"
       stroke="currentColor"
       strokeWidth="1.4"
       strokeLinecap="round"
@@ -233,7 +238,7 @@ export const CanvasTabContent = ({
           <CanvasHeroFrame item={selectedItem} />
         ) : (
           <div className="canvas-tab__hero-empty">
-            <CanvasEmptyGlyph />
+            <CanvasIllustrationSpot />
             <div className="canvas-tab__hero-empty-title">Canvases land here</div>
             <div className="canvas-tab__hero-empty-hint">
               Charts, plans, comparisons, and other HTML views Stella renders
