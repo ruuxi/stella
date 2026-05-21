@@ -67,6 +67,8 @@ const computeMaxWidth = (): number => {
   return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.floor(available));
 };
 
+const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 72;
+
 const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
   const [ready, setReady] = useState(false);
 
@@ -205,7 +207,7 @@ export const DisplaySidebar = forwardRef<
       event.currentTarget.setPointerCapture?.(event.pointerId);
 
       const aside = asideRef.current;
-      const startWidth =
+      const measuredStartWidth =
         aside?.getBoundingClientRect().width ?? panelWidth ?? 0;
       const startX = event.clientX;
       const pointerId = event.pointerId;
@@ -216,8 +218,11 @@ export const DisplaySidebar = forwardRef<
       // simultaneously resized (which is exceedingly rare during a
       // user-initiated panel drag).
       const maxWidth = computeMaxWidth();
+      const startWidth = panelExpanded ? maxWidth : measuredStartWidth;
       let pendingWidth: number | null = null;
       let frame = 0;
+      let snappedToExpanded = panelExpanded;
+      let collapsedFromExpanded = false;
 
       const commitPendingWidth = () => {
         frame = 0;
@@ -240,11 +245,39 @@ export const DisplaySidebar = forwardRef<
       document.body.dataset.displayResizing = "true";
 
       const onMove = (ev: PointerEvent) => {
+        if (collapsedFromExpanded) return;
+
         // Panel sits on the right edge, so dragging left increases width.
         const delta = startX - ev.clientX;
+        let rawWidth = startWidth + delta;
+
+        if (snappedToExpanded) {
+          if (delta > -DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD) return;
+          snappedToExpanded = false;
+          collapsedFromExpanded = true;
+          displayTabs.setPanelWidth(maxWidth);
+          displayTabs.setPanelExpanded(false);
+          return;
+        }
+
+        if (
+          !snappedToExpanded &&
+          rawWidth >= maxWidth + DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD
+        ) {
+          snappedToExpanded = true;
+          pendingWidth = null;
+          if (frame !== 0) {
+            cancelAnimationFrame(frame);
+            frame = 0;
+          }
+          displayTabs.setPanelWidth(maxWidth);
+          displayTabs.setPanelExpanded(true);
+          return;
+        }
+
         pendingWidth = Math.max(
           DISPLAY_PANEL_MIN_WIDTH,
-          Math.min(maxWidth, startWidth + delta),
+          Math.min(maxWidth, rawWidth),
         );
         if (frame === 0) {
           frame = requestAnimationFrame(commitPendingWidth);
@@ -276,7 +309,7 @@ export const DisplaySidebar = forwardRef<
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     },
-    [panelWidth],
+    [panelExpanded, panelWidth],
   );
 
   const handleResizeDoubleClick = useCallback(() => {
@@ -303,19 +336,15 @@ export const DisplaySidebar = forwardRef<
       aria-hidden={!panelOpen}
       {...(widthStyle ? { style: widthStyle } : {})}
     >
-      {/* Left-edge drag handle. Hidden visually while expanded since
-            the panel already fills the space. */}
-      {!panelExpanded && (
-        <div
-          className="display-sidebar__resize-handle"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize display panel"
-          onPointerDown={handleResizeStart}
-          onDoubleClick={handleResizeDoubleClick}
-          title="Drag to resize · double-click to reset"
-        />
-      )}
+      <div
+        className="display-sidebar__resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize display panel"
+        onPointerDown={handleResizeStart}
+        onDoubleClick={handleResizeDoubleClick}
+        title="Drag to resize · double-click to reset"
+      />
       <div className="display-sidebar-inner">
         <div className="display-sidebar__active">
           {panelOpen && activeTab ? (

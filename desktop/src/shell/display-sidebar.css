@@ -136,7 +136,7 @@
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   min-width: 0;
   border-left: 1px solid
-    color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
+    color-mix(in oklch, var(--foreground, #0f1728) 10%, transparent);
   border-radius: 0 0 0 32px;
   transform: translate3d(12px, 0, 0);
   opacity: 0;
@@ -249,7 +249,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   width: 1px;
   background: color-mix(
     in oklch,
-    var(--foreground, #0f1728) 18%,
+    var(--foreground, #0f1728) 14%,
     transparent
   );
 }
@@ -261,9 +261,9 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   height: 32px;
   border-bottom-left-radius: 32px;
   border-left: 1px solid
-    color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent);
+    color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
   border-bottom: 1px solid
-    color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent);
+    color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
 }
 
 .display-sidebar--open .display-sidebar__resize-handle:hover,
