@@ -1,12 +1,12 @@
-/* Right-side workspace mockup rendered next to the home/chat surface.
+/* Right-side workspace strip rendered next to the active chat surface.
    Each section is its own outlined card — rounded corners + 1px subtle
    border, no painted background fill. No divider between the strip
    itself and the main content. */
 
-.home-workspace-mock {
-  --home-workspace-panel-width: 300px;
+.chat-workspace-strip {
+  --chat-workspace-strip-width: 300px;
   flex: 0 0 auto;
-  width: var(--home-workspace-panel-width);
+  width: var(--chat-workspace-strip-width);
   height: 100%;
   min-height: 0;
   display: flex;
@@ -21,16 +21,16 @@
   transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
 }
 
-.home-workspace-mock--hidden,
-:root[data-display-panel-open="true"] .home-workspace-mock,
-:root[data-shell-right-context-hidden="true"] .home-workspace-mock {
+.chat-workspace-strip--hidden,
+:root[data-display-panel-open="true"] .chat-workspace-strip,
+:root[data-shell-right-context-hidden="true"] .chat-workspace-strip {
   width: 0;
   pointer-events: none;
 }
 
-.home-workspace-mock__inner {
-  width: var(--home-workspace-panel-width);
-  min-width: var(--home-workspace-panel-width);
+.chat-workspace-strip__inner {
+  width: var(--chat-workspace-strip-width);
+  min-width: var(--chat-workspace-strip-width);
   height: 100%;
   min-height: 0;
   display: flex;
@@ -48,14 +48,14 @@
     opacity 220ms ease-out;
 }
 
-.home-workspace-mock--hidden .home-workspace-mock__inner,
-:root[data-display-panel-open="true"] .home-workspace-mock__inner,
-:root[data-shell-right-context-hidden="true"] .home-workspace-mock__inner {
+.chat-workspace-strip--hidden .chat-workspace-strip__inner,
+:root[data-display-panel-open="true"] .chat-workspace-strip__inner,
+:root[data-shell-right-context-hidden="true"] .chat-workspace-strip__inner {
   transform: translate3d(12px, 0, 0);
   opacity: 0;
 }
 
-.home-workspace-mock__scroll {
+.chat-workspace-strip__scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -69,35 +69,35 @@
     transparent;
 }
 
-.home-workspace-mock__scroll::-webkit-scrollbar {
+.chat-workspace-strip__scroll::-webkit-scrollbar {
   width: 6px;
 }
 
-.home-workspace-mock__scroll::-webkit-scrollbar-thumb {
+.chat-workspace-strip__scroll::-webkit-scrollbar-thumb {
   background: color-mix(in oklch, var(--foreground) 14%, transparent);
   border-radius: 999px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-workspace-mock,
-  .home-workspace-mock__inner {
+  .chat-workspace-strip,
+  .chat-workspace-strip__inner {
     transition: none;
   }
 
-  .home-workspace-mock--hidden .home-workspace-mock__inner,
-  :root[data-display-panel-open="true"] .home-workspace-mock__inner,
-  :root[data-shell-right-context-hidden="true"] .home-workspace-mock__inner {
+  .chat-workspace-strip--hidden .chat-workspace-strip__inner,
+  :root[data-display-panel-open="true"] .chat-workspace-strip__inner,
+  :root[data-shell-right-context-hidden="true"] .chat-workspace-strip__inner {
     transform: none;
   }
 }
 
 @media (max-width: 960px) {
-  .home-workspace-mock {
+  .chat-workspace-strip {
     width: 0;
     pointer-events: none;
   }
 
-  .home-workspace-mock__inner {
+  .chat-workspace-strip__inner {
     transform: translate3d(12px, 0, 0);
     opacity: 0;
   }
@@ -105,7 +105,7 @@
 
 /* ── Card ─────────────────────────────────────────────────────────── */
 
-.home-workspace-mock__card {
+.chat-workspace-strip__card {
   display: flex;
   flex-direction: column;
   background: transparent;
@@ -114,7 +114,7 @@
   overflow: hidden;
 }
 
-.home-workspace-mock__card-header {
+.chat-workspace-strip__card-header {
   appearance: none;
   background: transparent;
   border: none;
@@ -133,31 +133,31 @@
   text-align: left;
 }
 
-.home-workspace-mock__card-title {
+.chat-workspace-strip__card-title {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-.home-workspace-mock__card-title-icon {
+.chat-workspace-strip__card-title-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-weak);
 }
 
-.home-workspace-mock__card-chevron {
+.chat-workspace-strip__card-chevron {
   color: var(--text-weak);
   flex-shrink: 0;
   transition: transform 160ms ease;
 }
 
-.home-workspace-mock__card--collapsed .home-workspace-mock__card-chevron {
+.chat-workspace-strip__card--collapsed .chat-workspace-strip__card-chevron {
   transform: rotate(-90deg);
 }
 
-.home-workspace-mock__card-body {
+.chat-workspace-strip__card-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -166,7 +166,7 @@
 
 /* ── Subhead inside Activity ──────────────────────────────────────── */
 
-.home-workspace-mock__subhead {
+.chat-workspace-strip__subhead {
   margin: 6px 0 2px;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 10.5px;
@@ -176,13 +176,13 @@
   color: color-mix(in oklch, var(--text-weak) 80%, transparent);
 }
 
-.home-workspace-mock__subhead:first-child {
+.chat-workspace-strip__subhead:first-child {
   margin-top: 0;
 }
 
 /* ── Rows ─────────────────────────────────────────────────────────── */
 
-.home-workspace-mock__list {
+.chat-workspace-strip__list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -191,7 +191,7 @@
   gap: 2px;
 }
 
-.home-workspace-mock__row {
+.chat-workspace-strip__row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -204,12 +204,12 @@
   color: var(--text-base);
 }
 
-.home-workspace-mock__row[data-status="done"] {
+.chat-workspace-strip__row[data-status="done"] {
   color: var(--text-weak);
 }
 
-.home-workspace-mock__row-label,
-.home-workspace-mock__file-name {
+.chat-workspace-strip__row-label,
+.chat-workspace-strip__file-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -217,11 +217,11 @@
   white-space: nowrap;
 }
 
-.home-workspace-mock__file-name {
+.chat-workspace-strip__file-name {
   font-variant-numeric: tabular-nums;
 }
 
-.home-workspace-mock__row-meta {
+.chat-workspace-strip__row-meta {
   flex-shrink: 0;
   font-size: 11.5px;
   color: var(--text-weak);
@@ -231,7 +231,7 @@
 
 /* ── Tabs-to-open card ────────────────────────────────────────────── */
 
-.home-workspace-mock__tab-list {
+.chat-workspace-strip__tab-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -240,7 +240,7 @@
   gap: 4px;
 }
 
-.home-workspace-mock__tab-button {
+.chat-workspace-strip__tab-button {
   appearance: none;
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   background: transparent;
@@ -261,7 +261,7 @@
     color 140ms ease;
 }
 
-.home-workspace-mock__tab-button:hover {
+.chat-workspace-strip__tab-button:hover {
   border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
   color: var(--text-strong);
 }

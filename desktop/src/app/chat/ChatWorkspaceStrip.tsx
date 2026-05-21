@@ -9,10 +9,10 @@
  * a chevron collapse affordance. Cards stack vertically; empty cards
  * are omitted entirely.
  *
- * This is still a visualization scaffold — it consumes the same data
- * the Chat-tab `ChatHomeOverview` consumes, but renders it as discrete
- * outlined cards so we can iterate on the workspace-strip shape
- * without touching the existing Chat tab body.
+ * Shares its data sources with the display sidebar's Chat tab
+ * (`ChatHomeOverview`) — same `useChatRuntime` + `useConversationSchedules`
+ * plumbing — so both surfaces stay in sync without one re-deriving
+ * against the other.
  */
 import { useMemo, useState, type ReactNode } from "react";
 import {
@@ -47,7 +47,7 @@ import {
 } from "@/shell/display/default-tabs";
 import type { DisplayTabKind } from "@/shell/display/types";
 import { DisplayTabIcon } from "@/shell/display/icons";
-import "./home-workspace-mock.css";
+import "./chat-workspace-strip.css";
 
 const NOW_VISIBLE = 4;
 const DONE_VISIBLE = 4;
@@ -89,7 +89,7 @@ const TAB_OPTIONS: ReadonlyArray<TabOpenOption> = [
   },
 ];
 
-function MockCard({
+function WorkspaceCard({
   title,
   icon,
   children,
@@ -103,17 +103,17 @@ function MockCard({
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section
-      className={`home-workspace-mock__card${open ? "" : " home-workspace-mock__card--collapsed"}`}
+      className={`chat-workspace-strip__card${open ? "" : " chat-workspace-strip__card--collapsed"}`}
     >
       <button
         type="button"
-        className="home-workspace-mock__card-header"
+        className="chat-workspace-strip__card-header"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        <span className="home-workspace-mock__card-title">
+        <span className="chat-workspace-strip__card-title">
           <span
-            className="home-workspace-mock__card-title-icon"
+            className="chat-workspace-strip__card-title-icon"
             aria-hidden="true"
           >
             {icon}
@@ -121,31 +121,31 @@ function MockCard({
           {title}
         </span>
         <ChevronDown
-          className="home-workspace-mock__card-chevron"
+          className="chat-workspace-strip__card-chevron"
           size={14}
           strokeWidth={2}
           aria-hidden="true"
         />
       </button>
-      {open && <div className="home-workspace-mock__card-body">{children}</div>}
+      {open && <div className="chat-workspace-strip__card-body">{children}</div>}
     </section>
   );
 }
 
 function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
   return (
-    <ul className="home-workspace-mock__list">
+    <ul className="chat-workspace-strip__list">
       {tasks.map((task) => {
         const label = (getTaskDisplayText(task) || task.description).trim();
         return (
           <li
             key={task.id}
-            className="home-workspace-mock__row"
+            className="chat-workspace-strip__row"
             data-status={task.status === "running" ? "now" : "done"}
           >
-            <span className="home-workspace-mock__row-label">{label}</span>
+            <span className="chat-workspace-strip__row-label">{label}</span>
             {task.status === "running" && (
-              <span className="home-workspace-mock__row-meta">Working</span>
+              <span className="chat-workspace-strip__row-meta">Working</span>
             )}
           </li>
         );
@@ -154,13 +154,13 @@ function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
   );
 }
 
-type HomeWorkspaceMockProps = {
+type ChatWorkspaceStripProps = {
   forceHidden?: boolean;
 };
 
-export function HomeWorkspaceMock({
+export function ChatWorkspaceStrip({
   forceHidden = false,
-}: HomeWorkspaceMockProps) {
+}: ChatWorkspaceStripProps) {
   const { panelOpen } = useDisplayPanelLayout();
   const chat = useChatRuntime();
   const { state } = useUiState();
@@ -216,22 +216,22 @@ export function HomeWorkspaceMock({
 
   return (
     <aside
-      className={`home-workspace-mock${hidden ? " home-workspace-mock--hidden" : ""}`}
+      className={`chat-workspace-strip${hidden ? " chat-workspace-strip--hidden" : ""}`}
       aria-label="Workspace"
       aria-hidden={hidden}
     >
-      <div className="home-workspace-mock__inner">
-        <div className="home-workspace-mock__scroll">
-          <MockCard
+      <div className="chat-workspace-strip__inner">
+        <div className="chat-workspace-strip__scroll">
+          <WorkspaceCard
             title="Open"
             icon={<LayoutPanelTop size={12} strokeWidth={2.25} />}
           >
-            <ul className="home-workspace-mock__tab-list">
+            <ul className="chat-workspace-strip__tab-list">
               {TAB_OPTIONS.map((opt) => (
                 <li key={opt.id}>
                   <button
                     type="button"
-                    className="home-workspace-mock__tab-button"
+                    className="chat-workspace-strip__tab-button"
                     onClick={() => {
                       if (
                         displayTabs
@@ -250,70 +250,70 @@ export function HomeWorkspaceMock({
                 </li>
               ))}
             </ul>
-          </MockCard>
+          </WorkspaceCard>
 
           {hasActivity && (
-            <MockCard
+            <WorkspaceCard
               title="Activity"
               icon={<ActivityIcon size={12} strokeWidth={2.25} />}
             >
               {runningTasks.length > 0 && (
                 <>
-                  <div className="home-workspace-mock__subhead">Now</div>
+                  <div className="chat-workspace-strip__subhead">Now</div>
                   <TasksList tasks={runningTasks} />
                 </>
               )}
               {doneTasks.length > 0 && (
                 <>
-                  <div className="home-workspace-mock__subhead">Done</div>
+                  <div className="chat-workspace-strip__subhead">Done</div>
                   <TasksList tasks={doneTasks} />
                 </>
               )}
-            </MockCard>
+            </WorkspaceCard>
           )}
 
           {hasFiles && (
-            <MockCard
+            <WorkspaceCard
               title="Files"
               icon={<FolderClosed size={12} strokeWidth={2.25} />}
             >
-              <ul className="home-workspace-mock__list">
+              <ul className="chat-workspace-strip__list">
                 {files.map((file) => (
                   <li
                     key={file.path}
-                    className="home-workspace-mock__row"
+                    className="chat-workspace-strip__row"
                     title={file.path}
                   >
-                    <span className="home-workspace-mock__file-name">
+                    <span className="chat-workspace-strip__file-name">
                       {basenameOf(file.path)}
                     </span>
                   </li>
                 ))}
               </ul>
-            </MockCard>
+            </WorkspaceCard>
           )}
 
           {hasSchedule && (
-            <MockCard
+            <WorkspaceCard
               title="Schedule"
               icon={<CalendarClock size={12} strokeWidth={2.25} />}
             >
-              <ul className="home-workspace-mock__list">
+              <ul className="chat-workspace-strip__list">
                 {upNext.map((entry) => (
                   <li
                     key={`${entry.kind}:${entry.id}`}
-                    className="home-workspace-mock__row"
+                    className="chat-workspace-strip__row"
                   >
-                    <span className="home-workspace-mock__row-label">
+                    <span className="chat-workspace-strip__row-label">
                       {entry.name.trim()}
                     </span>
-                    <span className="home-workspace-mock__row-meta">
+                    <span className="chat-workspace-strip__row-meta">
                       {formatNextRun(entry.nextRunAtMs, nowMs)}
                     </span>
                   </li>
                 ))}
               </ul>
-            </MockCard>
+            </WorkspaceCard>
           )}
         </div>
       </div>

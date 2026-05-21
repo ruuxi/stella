@@ -27,7 +27,7 @@ import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { DropOverlay } from "./DropOverlay";
 import { HomeContent } from "@/app/home/HomeContent";
-import { HomeWorkspaceMock } from "@/app/home/HomeWorkspaceMock";
+import { ChatWorkspaceStrip } from "./ChatWorkspaceStrip";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import { getCurrentRunningTool } from "./lib/event-transforms";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
@@ -297,7 +297,7 @@ export const ChatColumn = memo(function ChatColumn({
         {composerElement}
       </div>
       </div>
-      <HomeWorkspaceMock forceHidden={hideRightContextPanel} />
+      <ChatWorkspaceStrip forceHidden={hideRightContextPanel} />
     </div>
   );
 });
