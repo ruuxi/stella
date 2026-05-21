@@ -164,7 +164,8 @@ export function InlineWorkingIndicator({
   // remains after the grow-out exit completes (no layout shift). A new
   // turn replaces the wrapper entirely (different React key in
   // `ChatTimeline`), at which point the new wrapper occupies the slot.
-  const showInner = renderShell && indicatorState.shouldRender;
+  const showInner =
+    renderShell && (indicatorState.shouldRender || leaving);
 
   return (
     <div
