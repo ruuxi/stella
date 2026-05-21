@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Folder } from "lucide-react";
 import { DropOverlay } from "@/app/chat/DropOverlay";
+import { updateComposerTextareaExpansion } from "@/shared/hooks/use-animated-composer-shell";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { displayTabs } from "../tab-store";
 import { removeGeneratedMediaItem } from "../payload-to-tab-spec";
@@ -22,7 +23,11 @@ import { useMediaGeneration } from "./use-media-generation";
 import { MediaTile } from "./MediaTile";
 import { AttachedChip } from "./AttachedChip";
 import { MediaActionBar } from "./MediaActionBar";
-import { MediaIllustration } from "../illustrations/MediaIllustration";
+import { HeroPrompt } from "./HeroPrompt";
+import {
+  MEDIA_TAB_VISUAL_MOCK,
+  MediaTabVisualMock,
+} from "./media-tab-visual-mock";
 import "../media-tab.css";
 
 export const MediaTabContent = ({
@@ -30,6 +35,10 @@ export const MediaTabContent = ({
 }: {
   items: ReadonlyArray<MediaTabItem>;
 }) => {
+  if (MEDIA_TAB_VISUAL_MOCK) {
+    return <MediaTabVisualMock />;
+  }
+
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
   const items = useMemo(
     () => incomingItems.filter((item) => !removedIds.has(item.id)),
@@ -43,8 +52,10 @@ export const MediaTabContent = ({
   const [prompt, setPrompt] = useState("");
   const [actionId, setActionId] = useState<MediaActionId>("text_to_image");
   const [attachedItemId, setAttachedItemId] = useState<string | null>(null);
+  const [composerExpanded, setComposerExpanded] = useState(false);
   const [draggingMedia, setDraggingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const dragCounterRef = useRef(0);
   const { submitting, submit } = useMediaGeneration();
 
@@ -57,6 +68,19 @@ export const MediaTabContent = ({
       setSelectedId(items.at(-1)?.id ?? null);
     }
   }, [items, selectedId]);
+
+  useEffect(() => {
+    if (prompt === "") {
+      setComposerExpanded(false);
+      return;
+    }
+    requestAnimationFrame(() => {
+      updateComposerTextareaExpansion(
+        promptInputRef.current,
+        setComposerExpanded,
+      );
+    });
+  }, [prompt]);
 
   const selectedItem =
     items.find((item) => item.id === selectedId) ?? items.at(-1) ?? null;
@@ -236,46 +260,66 @@ export const MediaTabContent = ({
       onDrop={handleDrop}
     >
       <DropOverlay visible={draggingMedia} variant="sidebar" />
-      <div className="media-tab__top">
-        {selectedItem ? (
-          <MediaActionBar
-            item={selectedItem}
-            onDelete={() => handleDelete(selectedItem.id)}
-          />
-        ) : null}
-      </div>
 
-      <div
-        className="media-tab__hero"
-        onClick={selectedItem ? expandPanel : undefined}
-        role={selectedItem ? "button" : undefined}
-        title={selectedItem ? "Expand panel" : undefined}
-      >
+      <div className="media-tab__surface">
+      <div className="media-tab__main">
+      <div className="media-tab__hero">
         {selectedItem ? (
-          <MediaPreviewCard
-            asset={selectedItem.asset}
-            inDialog
-            {...(selectedItem.prompt ? { prompt: selectedItem.prompt } : {})}
-            {...(selectedItem.capability
-              ? { capability: selectedItem.capability }
-              : {})}
-          />
+          <>
+            <div
+              className="media-tab__hero-bar"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="media-tab__hero-bar-top">
+                {selectedItem.capability ? (
+                  <span className="media-tab__hero-cap">
+                    {selectedItem.capability.replace(/_/g, " ")}
+                  </span>
+                ) : null}
+                <div
+                  className="media-tab__hero-actions"
+                  role="group"
+                  aria-label="Item actions"
+                >
+                  <MediaActionBar
+                    item={selectedItem}
+                    onDelete={() => handleDelete(selectedItem.id)}
+                  />
+                </div>
+              </div>
+              {selectedItem.prompt ? (
+                <HeroPrompt text={selectedItem.prompt} />
+              ) : null}
+            </div>
+            <div
+              className="media-tab__hero-preview"
+              onClick={expandPanel}
+              role="button"
+              title="Open"
+            >
+              <MediaPreviewCard
+                asset={selectedItem.asset}
+                inDialog
+                {...(selectedItem.prompt ? { prompt: selectedItem.prompt } : {})}
+                {...(selectedItem.capability
+                  ? { capability: selectedItem.capability }
+                  : {})}
+              />
+            </div>
+          </>
         ) : (
-          <div className="media-tab__hero-empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, textAlign: "center", padding: 24 }}>
-            <div style={{ width: 180, height: 135, opacity: 0.9 }}>
-              <MediaIllustration />
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text-strong)" }}>
-              No media yet
-            </div>
-            <div style={{ fontSize: 15, color: "var(--text-weak)", maxWidth: 260, lineHeight: 1.45 }}>
-              Generate an image, video, or audio from the composer below — or
-              drop a file in to edit it.
+          <div className="media-tab__empty">
+            <div className="media-tab__empty-title">Nothing made yet</div>
+            <div className="media-tab__empty-body">
+              Make a photo, video, or sound below, or drop a file in to edit
+              it.
             </div>
           </div>
         )}
       </div>
+      </div>
 
+      <div className="media-tab__footer">
       <div className="media-tab__rail" aria-label="Generated media">
         <button
           type="button"
@@ -305,7 +349,10 @@ export const MediaTabContent = ({
         ))}
       </div>
 
-      <form className="media-tab__composer" onSubmit={onSubmit}>
+      <form
+        className={`media-tab__composer${composerExpanded ? " expanded" : ""}`}
+        onSubmit={onSubmit}
+      >
         <div
           className="media-tab__modes"
           role="tablist"
@@ -341,11 +388,26 @@ export const MediaTabContent = ({
               onRemove={() => setAttachedItemId(null)}
             />
           ) : null}
-          <input
-            type="text"
+          <textarea
+            ref={promptInputRef}
             className="media-tab__prompt-input"
             value={prompt}
-            onChange={(event) => setPrompt(event.currentTarget.value)}
+            rows={1}
+            onChange={(event) => {
+              setPrompt(event.currentTarget.value);
+              requestAnimationFrame(() => {
+                updateComposerTextareaExpansion(
+                  promptInputRef.current,
+                  setComposerExpanded,
+                );
+              });
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
             placeholder={activeAction.placeholder}
             aria-label={activeAction.placeholder}
           />
@@ -359,6 +421,8 @@ export const MediaTabContent = ({
           </button>
         </div>
       </form>
+      </div>
+      </div>
     </div>
   );
 };

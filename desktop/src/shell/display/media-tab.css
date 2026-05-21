@@ -1,82 +1,60 @@
+/* Media tab — one surface, three zones (viewer / history / make).
+   No nested cards, no glass, no drop shadows. Hairlines only. */
+
 .media-tab {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 8px 12px 12px;
+  padding: 8px 8px 6px;
+  --media-tab-footer-slot: 182px;
+  overflow: hidden;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   color: var(--foreground);
 }
 
-.media-tab__top {
-  flex: 0 0 auto;
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-}
-
-.media-tab__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.media-tab__action-btn {
-  appearance: none;
-  background: transparent;
-  color: color-mix(in oklch, var(--foreground) 70%, transparent);
-  border: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
-}
-
-.media-tab__action-btn:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-}
-
-.media-tab__action-btn--danger {
-  color: #ef4444;
-  background: color-mix(in oklch, #ef4444 10%, transparent);
-}
-
-.media-tab__action-btn--danger:hover {
-  background: color-mix(in oklch, #ef4444 18%, transparent);
-  color: #ef4444;
-}
-
-.media-tab__action-status {
-  font-size: 13px;
-  color: var(
-    --text-weak,
-    color-mix(in oklch, var(--foreground) 60%, transparent)
-  );
-  margin-left: 4px;
-}
-
-.media-tab__hero {
+.media-tab__surface {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
-  align-items: stretch;
-  justify-content: stretch;
+  flex-direction: column;
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.media-tab__main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--media-tab-footer-slot);
+  overflow: hidden;
+}
+
+.media-tab__footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 6px 0 0;
   background: transparent;
 }
 
-.media-tab__hero > * {
+/* ── Viewer (hero) ─────────────────────────────────────────────── */
+
+.media-tab__hero {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .media-tab__hero .display-media {
@@ -85,80 +63,215 @@
   background: transparent;
 }
 
-.media-tab__hero .display-media__primary-img {
-  background: transparent;
-  border-radius: 14px;
-}
-
-.media-tab__hero .display-media__strip {
-  display: none;
-}
-
+.media-tab__hero .display-media-meta,
+.media-tab__hero .display-media__strip,
 .media-tab__hero .display-media__actions {
   display: none;
 }
 
-.media-tab__hero[role="button"] {
-  cursor: zoom-in;
-}
-
-.media-tab__hero .display-media-meta {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
+.media-tab__hero-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   padding: 10px 12px;
-  border-radius: 12px;
-  color: #fff;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.18));
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 0.18s ease,
-    transform 0.18s ease;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
 }
 
-.media-tab__hero:hover .display-media-meta,
-.media-tab__hero:focus-within .display-media-meta {
-  opacity: 1;
-  transform: translateY(0);
+.media-tab__hero-bar-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
 }
 
-.media-tab__hero .display-media-meta__cap {
-  color: rgba(255, 255, 255, 0.75);
+.media-tab__hero-cap {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-weak);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.media-tab__hero .display-media-meta__prompt {
-  color: #fff;
-  opacity: 0.95;
+.media-tab__hero-prompt {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
-/* Empty hero is intentionally blank — the composer below already
-   prompts the user. Keep the box so layout slot stays reserved. */
-.media-tab__hero-empty {
+.media-tab__hero-prompt--truncatable {
+  cursor: pointer;
+}
+
+.media-tab__hero-prompt--truncatable:hover {
+  color: var(--text-strong);
+}
+
+.media-tab__hero-prompt--expanded {
   display: block;
+  -webkit-line-clamp: unset;
+  overflow-y: auto;
+  max-height: 8.5em;
+  scrollbar-width: thin;
+  cursor: pointer;
 }
+
+.media-tab__hero-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.media-tab__action-btn {
+  appearance: none;
+  background: transparent;
+  color: var(--text-base);
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.media-tab__action-btn:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.media-tab__action-btn--danger {
+  color: var(--destructive, var(--error, #ef5350));
+  border-color: color-mix(
+    in oklch,
+    var(--destructive, var(--error, #ef5350)) 40%,
+    transparent
+  );
+}
+
+.media-tab__action-btn--danger:hover {
+  background: color-mix(
+    in oklch,
+    var(--destructive, var(--error, #ef5350)) 8%,
+    transparent
+  );
+}
+
+.media-tab__action-status {
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.media-tab__hero-preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.media-tab__hero-preview[role="button"] {
+  cursor: pointer;
+}
+
+.media-tab__hero-preview .display-media {
+  flex: 0 1 auto;
+  width: 100%;
+  max-height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.media-tab__hero-preview .display-media__primary-btn {
+  flex: 0 1 auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.media-tab__hero-preview .display-media__primary-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 6px;
+}
+
+.media-tab__hero-preview .display-media__video,
+.media-tab__hero-preview .display-media__audio-card,
+.media-tab__hero-preview .display-media__download-card,
+.media-tab__hero-preview .display-media__text {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.media-tab__empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.media-tab__empty-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.media-tab__empty-body {
+  max-width: 240px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-weak);
+}
+
+/* ── History rail ──────────────────────────────────────────────── */
 
 .media-tab__rail {
   flex: 0 0 auto;
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 2px 2px 4px;
+  padding: 0 12px 2px;
   scrollbar-width: thin;
 }
 
 .media-tab__rail-import {
   flex: 0 0 auto;
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  border: 1px dashed color-mix(in oklch, var(--border) 80%, transparent);
+  width: 52px;
+  height: 52px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
   background: transparent;
-  color: color-mix(in oklch, var(--foreground) 65%, transparent);
+  color: var(--text-weak);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -169,8 +282,8 @@
 }
 
 .media-tab__rail-import:hover {
-  color: var(--foreground);
-  border-color: color-mix(in oklch, var(--foreground) 45%, transparent);
+  color: var(--text-strong);
+  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
@@ -182,72 +295,36 @@
   pointer-events: none;
 }
 
-.media-tab__tile-attach {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 18px;
-  height: 18px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  opacity: 0;
-  transform: scale(0.85);
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease,
-    background 0.15s ease;
-}
-
-.media-tab__tile:hover .media-tab__tile-attach,
-.media-tab__tile:focus-within .media-tab__tile-attach {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.media-tab__tile-attach:hover {
-  background: rgba(0, 0, 0, 0.8);
-}
-
 .media-tab__rail::-webkit-scrollbar {
-  height: 6px;
+  height: 4px;
 }
 
 .media-tab__rail::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--foreground) 18%, transparent);
-  border-radius: 3px;
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  border-radius: 2px;
 }
 
 .media-tab__tile {
   flex: 0 0 auto;
   position: relative;
   appearance: none;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
   border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 0;
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   overflow: hidden;
   cursor: pointer;
-  transition:
-    transform 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .media-tab__tile:hover {
-  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
 }
 
 .media-tab__tile--active {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 35%, transparent);
-  transform: translateY(-1px);
 }
 
 .media-tab__tile--missing {
@@ -259,11 +336,7 @@
 }
 
 .media-tab__tile--pending {
-  background: repeating-linear-gradient(
-    -45deg,
-    color-mix(in oklch, var(--foreground) 6%, transparent) 0 6px,
-    transparent 6px 12px
-  );
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .media-tab__tile-img {
@@ -278,59 +351,71 @@
   place-items: center;
   width: 100%;
   height: 100%;
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: 10px;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: color-mix(in oklch, var(--foreground) 65%, transparent);
+  color: var(--text-weak);
 }
 
 .media-tab__tile-badge {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
+  right: 3px;
+  bottom: 3px;
+  padding: 1px 4px;
+  border-radius: 3px;
   font-size: 9px;
-  letter-spacing: 0.04em;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  letter-spacing: 0.02em;
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--background) 82%, var(--foreground));
 }
 
-/* ── Composer shell (pinned bottom) ─────────────────────────────── */
+.media-tab__tile-attach {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--background) 78%, var(--foreground));
+  color: var(--text-strong);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
 
-/* Single shell that visually fuses the mode tabs and the prompt row.
-   Borders, background, and shadow match the canonical app composer
-   (.composer-shell): var(--background), var(--border), var(--shadow-md). */
+.media-tab__tile:hover .media-tab__tile-attach,
+.media-tab__tile:focus-within .media-tab__tile-attach {
+  opacity: 1;
+}
+
+/* ── Composer (fused into footer dock) ─────────────────────────── */
+
 .media-tab__composer {
-  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  gap: 0;
+  margin: 0 10px 6px;
+  padding: 8px 10px 10px;
   background: var(--background);
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-  border-radius: 18px;
-  box-shadow: var(--shadow-md);
-  overflow: hidden;
-  transition:
-    box-shadow 200ms ease,
-    border-color 200ms ease;
+  border: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
+  border-radius: 12px;
+  box-shadow: none;
+  overflow: visible;
 }
 
-.media-tab__composer:focus-within {
-  box-shadow:
-    var(--shadow-md),
-    0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+.media-tab__composer:focus-within .media-tab__composer-row {
+  border-color: color-mix(in oklch, var(--primary) 35%, transparent);
 }
 
-/* Mode strip: sits attached to the top of the prompt row, visually
-   anchored to it via a hairline divider. Active mode is unambiguous
-   without shouting. */
 .media-tab__modes {
   display: flex;
   gap: 2px;
-  padding: 6px 6px 4px;
+  margin-bottom: 6px;
   overflow-x: auto;
   scrollbar-width: none;
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
 }
 
 .media-tab__modes::-webkit-scrollbar {
@@ -338,69 +423,74 @@
 }
 
 .media-tab__mode {
-  position: relative;
   appearance: none;
   background: transparent;
   border: none;
+  border-bottom: 2px solid transparent;
   font: inherit;
-  font-size: 12px;
-  letter-spacing: 0.01em;
-  padding: 4px 10px;
-  border-radius: 999px;
-  color: color-mix(in oklch, var(--foreground) 55%, transparent);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  padding: 3px 9px 5px;
+  margin-bottom: -1px;
+  border-radius: 0;
+  color: var(--text-weak);
   cursor: pointer;
   white-space: nowrap;
   transition:
     color 0.15s ease,
-    background 0.15s ease;
+    border-color 0.15s ease;
 }
 
 .media-tab__mode:not(.media-tab__mode--active):hover:not(:disabled) {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-base);
 }
 
 .media-tab__mode--active {
-  color: var(--background);
-  background: var(--foreground);
+  color: var(--text-strong);
   font-weight: 600;
+  border-bottom-color: var(--primary);
 }
 
 .media-tab__mode:disabled {
-  opacity: 0.3;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-/* Prompt row: input + circular submit, no inner border (shell already
-   carries the chrome). */
 .media-tab__composer-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
-  min-height: 46px;
-  padding: 7px 8px 7px 14px;
+  min-height: 40px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  transition:
+    border-color 0.15s ease,
+    border-radius 0.2s ease;
 }
 
-/* Outer wrapper has overflow:visible so the dismiss "x" can poke past
-   the edge; the inner clip carries the rounding + background. */
+.media-tab__composer.expanded .media-tab__composer-row {
+  border-radius: 20px;
+}
+
 .media-tab__attached {
   flex: 0 0 auto;
   position: relative;
   display: inline-block;
-  width: 28px;
-  height: 28px;
-  margin-right: 4px;
+  width: 26px;
+  height: 26px;
 }
 
 .media-tab__attached-clip {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 8px;
+  border-radius: 5px;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--foreground);
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
 .media-tab__attached-thumb {
@@ -415,36 +505,32 @@
   place-items: center;
   width: 100%;
   height: 100%;
-  font-size: 9px;
-  letter-spacing: 0.04em;
+  font-size: 8px;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: color-mix(in oklch, var(--foreground) 65%, transparent);
+  color: var(--text-weak);
 }
 
 .media-tab__attached-x {
   position: absolute;
-  top: -5px;
-  right: -5px;
-  width: 16px;
-  height: 16px;
+  top: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 1px solid var(--background);
-  background: rgba(0, 0, 0, 0.78);
-  color: #fff;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  background: var(--background);
+  color: var(--text-base);
   display: grid;
   place-items: center;
   cursor: pointer;
   opacity: 0;
-  transform: scale(0.8);
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
+  transition: opacity 0.15s ease;
 }
 
 .media-tab__attached:hover .media-tab__attached-x,
 .media-tab__attached:focus-within .media-tab__attached-x {
   opacity: 1;
-  transform: scale(1);
 }
 
 .media-tab__prompt-input {
@@ -455,33 +541,42 @@
   border: none;
   outline: none;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--foreground);
-  padding: 6px 0;
+  padding: 4px 0;
+  field-sizing: content;
+  min-height: 22px;
+  max-height: 120px;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .media-tab__prompt-input::placeholder {
-  color: color-mix(in oklch, var(--foreground) 45%, transparent);
+  color: var(--text-weak);
 }
 
 .media-tab__prompt-submit {
   appearance: none;
-  border: none;
-  width: 26px;
-  height: 26px;
+  border: 1px solid transparent;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--primary);
   color: var(--primary-foreground, var(--background));
   display: grid;
   place-items: center;
   cursor: pointer;
+  flex: 0 0 auto;
   transition:
-    transform 0.15s ease,
-    opacity 0.15s ease;
+    opacity 0.15s ease,
+    background 0.15s ease;
 }
 
 .media-tab__prompt-submit:hover:not(:disabled) {
-  transform: scale(1.04);
+  opacity: 0.92;
 }
 
 .media-tab__prompt-submit:disabled {
@@ -498,4 +593,3 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-
