@@ -314,6 +314,16 @@
   animation: stellaWordFadeIn 600ms ease-out both;
 }
 
+/*
+ * Latched in `Markdown.tsx` when a row finishes streaming. Prevents the
+ * overlay -> persisted handoff (or any late Streamdown re-parse) from
+ * re-firing the per-group fade on spans that already revealed live.
+ */
+.markdown--reveal-settled [data-stella-word-fade] {
+  animation: none;
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .markdown [data-stella-word-fade] {
     animation: none !important;

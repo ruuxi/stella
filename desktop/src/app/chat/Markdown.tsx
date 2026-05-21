@@ -153,12 +153,20 @@ export const Markdown = memo(function Markdown({
    * into raw text nodes, which reads as a one-frame flicker near the
    * start of some streams. Freshly mounted historical rows start with
    * `isAnimating=false`, so they still render as plain markdown.
+   *
+   * When streaming finishes, Streamdown may still re-parse the final
+   * body (overlay -> persisted swap, incomplete-markdown settle, late
+   * layout). That remounts `[data-stella-word-fade]` spans and the CSS
+   * entrance animation would fire again for the whole message.
+   * `revealSettled` latches after the first stream so settled rows
+   * render those spans at full opacity with no animation.
    */
   const hasRenderedStreamingMarkupRef = useRef(false);
   if (isAnimating) {
     hasRenderedStreamingMarkupRef.current = true;
   }
   const pluginActive = hasRenderedStreamingMarkupRef.current;
+  const revealSettled = pluginActive && !isAnimating;
   const components = useMemo(
     () => buildComponents(hideHorizontalRules),
     [hideHorizontalRules],
@@ -178,7 +186,11 @@ export const Markdown = memo(function Markdown({
       <Streamdown
         isAnimating={false}
         animated={pluginActive ? STREAMDOWN_SYNC_RENDER : undefined}
-        className={cn("markdown", className)}
+        className={cn(
+          "markdown",
+          revealSettled && "markdown--reveal-settled",
+          className,
+        )}
         remarkPlugins={
           activeEmojiPack && emojiGrid
             ? REMARK_PLUGINS
