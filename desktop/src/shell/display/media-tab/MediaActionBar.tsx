@@ -1,8 +1,23 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, Download, Trash2 } from "lucide-react";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
+import { useConfirmAction } from "@/shared/hooks/use-confirm-action";
 import { copyImageBlob } from "@/shell/media-clipboard";
 import type { MediaTabItem } from "./media-actions";
+
+const filePathsForItem = (item: MediaTabItem): string[] => {
+  switch (item.asset.kind) {
+    case "image":
+      return item.asset.filePaths.slice(0, 1);
+    case "video":
+    case "audio":
+    case "model3d":
+    case "download":
+      return [item.asset.filePath];
+    case "text":
+      return [];
+  }
+};
 
 export const MediaActionBar = ({
   item,
@@ -12,22 +27,9 @@ export const MediaActionBar = ({
   onDelete: () => void;
 }) => {
   const [message, setMessage] = useState<string | null>(null);
-  const filePaths = useMemo(() => {
-    switch (item.asset.kind) {
-      case "image":
-        return item.asset.filePaths.slice(0, 1);
-      case "video":
-      case "audio":
-      case "model3d":
-      case "download":
-        return [item.asset.filePath];
-      case "text":
-        return [];
-    }
-  }, [item]);
-  const { files } = useDisplayFileBlobs(filePaths);
+  const filePath = useMemo(() => filePathsForItem(item)[0] ?? null, [item]);
+  const { files } = useDisplayFileBlobs(filePath ? [filePath] : []);
   const blob = files[0] ?? null;
-  const filePath = filePaths[0] ?? null;
 
   const handleSave = useCallback(async () => {
     if (!filePath) return;
@@ -43,18 +45,14 @@ export const MediaActionBar = ({
     try {
       if (item.asset.kind === "image" && blob) {
         await copyImageBlob(blob.blob);
-        setMessage("Copied");
-        return;
-      }
-      if (item.asset.kind === "text") {
+      } else if (item.asset.kind === "text") {
         await navigator.clipboard.writeText(item.asset.text);
-        setMessage("Copied");
+      } else if (filePath) {
+        await navigator.clipboard.writeText(filePath);
+      } else {
         return;
       }
-      if (filePath) {
-        await navigator.clipboard.writeText(filePath);
-        setMessage("Copied");
-      }
+      setMessage("Copied");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Could not copy");
     }
@@ -62,38 +60,13 @@ export const MediaActionBar = ({
 
   const canSave = Boolean(filePath && window.electronAPI?.system?.saveFileAs);
 
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-    },
-    [],
-  );
-  useEffect(() => {
-    setConfirmDelete(false);
-    if (confirmTimerRef.current) {
-      clearTimeout(confirmTimerRef.current);
-      confirmTimerRef.current = null;
-    }
-  }, [item.id]);
+  const {
+    armed: confirmDelete,
+    trigger: handleDelete,
+    reset: resetConfirmDelete,
+  } = useConfirmAction(onDelete, { armedMs: 3000 });
 
-  const handleDelete = useCallback(() => {
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-      confirmTimerRef.current = setTimeout(() => {
-        setConfirmDelete(false);
-      }, 3000);
-      return;
-    }
-    if (confirmTimerRef.current) {
-      clearTimeout(confirmTimerRef.current);
-      confirmTimerRef.current = null;
-    }
-    setConfirmDelete(false);
-    onDelete();
-  }, [confirmDelete, onDelete]);
+  useEffect(() => resetConfirmDelete(), [item.id, resetConfirmDelete]);
 
   return (
     <Fragment>
@@ -119,11 +92,9 @@ export const MediaActionBar = ({
       </button>
       <button
         type="button"
-        className={
-          confirmDelete
-            ? "media-tab__action-btn media-tab__action-btn--danger"
-            : "media-tab__action-btn"
-        }
+        className={`media-tab__action-btn${
+          confirmDelete ? " media-tab__action-btn--danger" : ""
+        }`}
         onClick={handleDelete}
         aria-label={confirmDelete ? "Click again to delete" : "Delete"}
         title={confirmDelete ? "Click again to delete" : "Delete"}

@@ -360,11 +360,9 @@ export const MediaTabContent = ({
                 type="button"
                 role="tab"
                 aria-selected={action.id === activeAction.id}
-                className={
-                  action.id === activeAction.id
-                    ? "media-tab__mode media-tab__mode--active"
-                    : "media-tab__mode"
-                }
+                className={`media-tab__mode${
+                  action.id === activeAction.id ? " media-tab__mode--active" : ""
+                }`}
                 disabled={disabled}
                 onClick={() => setActionId(action.id)}
               >

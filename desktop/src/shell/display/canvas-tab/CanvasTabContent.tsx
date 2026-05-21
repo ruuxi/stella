@@ -4,10 +4,11 @@
  * over a sandboxed iframe rendering the selected file as `srcdoc`.
  */
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { displayTabs } from "../tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
+import { useConfirmAction } from "@/shared/hooks/use-confirm-action";
 import {
   type CanvasHtmlItem,
   getCanvasHtmlItems,
@@ -126,39 +127,18 @@ const CanvasHistoryTile = ({
   isActive: boolean;
   onSelect: () => void;
 }) => {
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-    },
-    [],
+  const { armed: confirmRemove, trigger: requestRemove } = useConfirmAction(
+    () => removeCanvasHtmlItem(item.filePath),
   );
 
   const handleRemoveClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-    if (!confirmRemove) {
-      setConfirmRemove(true);
-      confirmTimerRef.current = setTimeout(
-        () => setConfirmRemove(false),
-        3000,
-      );
-      return;
-    }
-    confirmTimerRef.current = null;
-    setConfirmRemove(false);
-    removeCanvasHtmlItem(item.filePath);
+    requestRemove();
   };
 
   return (
     <div
-      className={
-        isActive
-          ? "canvas-tab__tile canvas-tab__tile--active"
-          : "canvas-tab__tile"
-      }
+      className={`canvas-tab__tile${isActive ? " canvas-tab__tile--active" : ""}`}
     >
       <button
         type="button"
@@ -174,11 +154,9 @@ const CanvasHistoryTile = ({
       </button>
       <button
         type="button"
-        className={
-          confirmRemove
-            ? "canvas-tab__tile-remove canvas-tab__tile-remove--confirm"
-            : "canvas-tab__tile-remove"
-        }
+        className={`canvas-tab__tile-remove${
+          confirmRemove ? " canvas-tab__tile-remove--confirm" : ""
+        }`}
         onClick={handleRemoveClick}
         aria-label={
           confirmRemove ? "Click again to remove" : `Remove ${item.title}`
