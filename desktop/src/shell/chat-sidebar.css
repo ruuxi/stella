@@ -49,6 +49,38 @@
   box-shadow: none;
 }
 
+/* Expanded display panel — match the main chat column width + composer. */
+.chat-panel-tab--wide {
+  min-height: 0;
+}
+
+.chat-panel-tab__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-panel-tab--wide .chat-panel-tab__row {
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-panel-tab--wide .chat-sidebar-inner {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-panel-tab--wide .chat-sidebar-composer {
+  padding-inline: 24px;
+}
+
+.chat-panel-tab--wide .composer-context-peek-anchor,
+.chat-panel-tab--wide .chat-sidebar-shell {
+  width: 100%;
+  max-width: min(50rem, calc(100% - 48px));
+}
+
 /* Scroll + composer sit above the contained shifting gradient */
 .chat-sidebar-main {
   position: relative;

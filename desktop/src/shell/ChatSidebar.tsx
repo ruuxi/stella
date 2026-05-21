@@ -45,6 +45,7 @@ import {
 } from "@/shared/hooks/use-animated-composer-shell";
 import { AssistantReplyPeek } from "@/app/chat/AssistantReplyPeek";
 import { useAssistantReplyPeek } from "@/app/chat/hooks/use-assistant-reply-peek";
+import { ChatWorkspaceStrip } from "@/app/chat/ChatWorkspaceStrip";
 import "./chat-sidebar.css";
 
 // Legend List sums numeric paddings into its content length; passing
@@ -53,6 +54,17 @@ const SIDEBAR_CONTENT_STYLE = {
   paddingLeft: 10,
   paddingRight: 10,
   paddingTop: 8,
+  paddingBottom: 4,
+} as const;
+
+/** Centered column when the display panel owns the full content area. */
+const WIDE_PANEL_CONTENT_STYLE = {
+  maxWidth: "min(50rem, 100%)",
+  marginLeft: "auto",
+  marginRight: "auto",
+  paddingLeft: 24,
+  paddingRight: 24,
+  paddingTop: 16,
   paddingBottom: 4,
 } as const;
 
@@ -87,11 +99,14 @@ interface ChatPanelTabProps {
     selectedText?: string | null,
   ) => void;
   onStop?: () => void;
+  /** When the display sidebar is expanded to full width. */
+  wideLayout?: boolean;
 }
 
 export function ChatPanelTab(
     {
       openRequest,
+      wideLayout = false,
       messages,
       activities,
       latestMessageTimestampMs,
@@ -316,9 +331,14 @@ export function ChatPanelTab(
 
     return (
       <div
-        className="chat-panel-tab"
+        className={`chat-panel-tab${wideLayout ? " chat-panel-tab--wide" : ""}`}
         {...dropHandlers}
       >
+        <div
+          className={
+            wideLayout ? "full-body-row chat-panel-tab__row" : "chat-panel-tab__body"
+          }
+        >
         <div className="chat-sidebar-inner">
           <DropOverlay visible={isDragOver} variant="sidebar" />
           <div className="chat-sidebar-main">
@@ -335,7 +355,10 @@ export function ChatPanelTab(
               hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlder}
               isLoadingHistory={isInitialLoading}
-              contentContainerStyle={SIDEBAR_CONTENT_STYLE}
+              contentContainerStyle={
+                wideLayout ? WIDE_PANEL_CONTENT_STYLE : SIDEBAR_CONTENT_STYLE
+              }
+              estimatedItemSize={wideLayout ? 140 : undefined}
             />
 
             <div className="chat-sidebar-composer">
@@ -480,6 +503,8 @@ export function ChatPanelTab(
               </div>
             </div>
           </div>
+        </div>
+        {wideLayout ? <ChatWorkspaceStrip embeddedInDisplayPanel /> : null}
         </div>
         {previewScreenshot && previewScreenshotIndex !== null && (
           <ScreenshotPreviewOverlay

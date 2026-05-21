@@ -166,6 +166,32 @@
   width: 100%;
 }
 
+/*
+ * Expanded panel tab bodies — center a readable column instead of
+ * stretching edge-to-edge. Chat owns its own row (50rem chat + strip);
+ * every other tab root under `.display-sidebar__active` picks up the
+ * shared max-width here.
+ */
+.display-sidebar--expanded {
+  --display-panel-expanded-column: min(50rem, calc(100% - 48px));
+  --display-panel-expanded-wide-column: min(960px, calc(100% - 48px));
+}
+
+.display-sidebar--expanded .display-sidebar__active > :not(.chat-panel-tab) {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--display-panel-expanded-column);
+  margin-inline: auto;
+}
+
+.display-sidebar--expanded .display-sidebar__active > .media-tab,
+.display-sidebar--expanded .display-sidebar__active > .canvas-tab,
+.display-sidebar--expanded
+  .display-sidebar__active
+  > .display-sidebar__rich:not(.display-sidebar__rich--store) {
+  max-width: var(--display-panel-expanded-wide-column);
+}
+
 .shell-topbar[data-display-expanded="true"] .shell-topbar-center {
   --shell-topbar-center-right-inset: 0px;
 }
@@ -351,7 +377,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 }
 
 .display-sidebar__rich--media {
-  padding: 12px 12px 16px;
+  padding: 12px 12px 12px;
   gap: 12px;
 }
 
