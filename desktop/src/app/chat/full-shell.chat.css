@@ -314,7 +314,12 @@
   font-size: var(--chat-text-size);
   font-weight: var(--chat-text-weight);
   letter-spacing: var(--chat-text-tracking);
-  line-height: var(--chat-text-line-height);
+  /* Assistant markdown deliberately keeps the airier base `.markdown`
+     line-height (set in `markdown.css`) instead of the chat body's
+     1.45 — long-form assistant responses read better with extra
+     breathing room than the user bubble's compact ratio. Compact
+     surfaces override this back down to `--chat-text-line-height`
+     in `compact-conversation.css`. */
 }
 
 .event-item.assistant .markdown :is(p, li, blockquote, td, th) {
