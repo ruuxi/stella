@@ -182,7 +182,7 @@
   color: var(--text-strong);
 }
 
-.shell-topbar-icon-btn[aria-pressed="true"] {
+.shell-topbar-icon-btn[aria-pressed="true"]:not(.shell-topbar-sidebar-btn) {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
   color: var(--text-strong);
 }
