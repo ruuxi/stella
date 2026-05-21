@@ -13,6 +13,7 @@ import {
   type CatalogModel,
   type ProviderGroup,
 } from "@/global/settings/lib/model-catalog";
+import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 import {
   LLM_PROVIDERS,
   isApiKeyOnlyPlaceholder,
@@ -487,14 +488,16 @@ function ProviderPane({
     authDescription = `The key stays on this device.`;
   }
 
-  const isDefaultSelected = !selectedModelId;
+  const isDefaultSelected =
+    !selectedModelId || selectedModelId === STELLA_DEFAULT_MODEL;
   const modelItems = useMemo<ModelListItem[]>(
     () => filteredModels.map((model) => ({ id: model.id, model })),
     [filteredModels],
   );
   const renderModelItem = useCallback(
     ({ item }: LegendListRenderItemProps<ModelListItem>) => {
-      const selected = item.model.id === selectedModelId;
+      const selected =
+        !isDefaultSelected && item.model.id === selectedModelId;
       const rowRestricted =
         restrictStellaPicks &&
         item.model.provider === STELLA_PROVIDER_KEY &&
@@ -513,6 +516,7 @@ function ProviderPane({
     },
     [
       disabled,
+      isDefaultSelected,
       onPick,
       restrictedPlanLabel,
       restrictStellaPicks,
