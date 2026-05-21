@@ -57,7 +57,6 @@ export function OnboardingEnginePhase({
   const credentials = useLlmCredentials();
 
   const [choice, setChoice] = useState<EngineChoice>("stella");
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthInFlight, setOauthInFlight] = useState<string | null>(null);
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
@@ -93,47 +92,54 @@ export function OnboardingEnginePhase({
     };
   }, [credentials.apiKeys, credentials.oauthCredentials]);
 
-  const persistEngine = useCallback(
-    async (next: "default" | "claude_code_local") => {
-      setPending(true);
-      setError(null);
-      try {
-        await window.electronAPI?.system?.setLocalModelPreferences?.({
-          agentRuntimeEngine: next,
-        });
-        window.dispatchEvent(
-          new CustomEvent("stella:local-model-preferences-changed"),
-        );
-      } catch (caught) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Failed to save engine selection.",
-        );
-      } finally {
-        setPending(false);
-      }
+  // Persist the chosen engine pref + advance. Fire-and-forget so the
+  // visible transition matches every other onboarding phase — the IPC
+  // round-trip never holds the Continue click. If saving fails we still
+  // advance and surface the error after the fact via the system event
+  // listeners that already retry; blocking onboarding on a local-pref
+  // write would be a worse UX than a one-line warning.
+  const persistAndContinue = useCallback(
+    (next: "default" | "claude_code_local") => {
+      void (async () => {
+        try {
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            agentRuntimeEngine: next,
+          });
+          window.dispatchEvent(
+            new CustomEvent("stella:local-model-preferences-changed"),
+          );
+        } catch (caught) {
+          // The user has already moved on by this point — log instead
+          // of stranding them on the engine phase.
+          console.warn(
+            "[onboarding/engine] Failed to persist engine pref",
+            caught,
+          );
+        }
+      })();
+      onContinue();
     },
-    [],
+    [onContinue],
   );
 
   const handleSelectStella = useCallback(() => {
     setChoice("stella");
     setActiveProvider(null);
-    void persistEngine("default");
-  }, [persistEngine]);
+  }, []);
 
   const handleSelectClaudeCode = useCallback(() => {
     setChoice("claude_code");
     setActiveProvider(null);
-    void persistEngine("claude_code_local");
-  }, [persistEngine]);
+  }, []);
 
   const handleSelectByok = useCallback(() => {
     setChoice("byok");
     // BYOK runs through Stella's own runner — engine stays "default".
-    void persistEngine("default");
-  }, [persistEngine]);
+  }, []);
+
+  const handleContinue = useCallback(() => {
+    persistAndContinue(choice === "claude_code" ? "claude_code_local" : "default");
+  }, [choice, persistAndContinue]);
 
   const handleProviderClick = useCallback((providerKey: string) => {
     // Toggle the inline auth panel for the picked provider so users can
@@ -278,7 +284,7 @@ export function OnboardingEnginePhase({
                     data-active={isActive || undefined}
                     data-connected={connected || undefined}
                     data-pending={inFlight || undefined}
-                    disabled={pending || inFlight}
+                    disabled={inFlight}
                     onClick={() => handleProviderClick(entry.key)}
                     title={
                       connected
@@ -332,9 +338,7 @@ export function OnboardingEnginePhase({
                         activeEntry.entry.label,
                       )
                     }
-                    disabled={
-                      oauthInFlight === activeEntry.entry.key || pending
-                    }
+                    disabled={oauthInFlight === activeEntry.entry.key}
                   >
                     {oauthInFlight === activeEntry.entry.key
                       ? "Opening…"
@@ -362,7 +366,7 @@ export function OnboardingEnginePhase({
                       }
                     }}
                     autoFocus={!activeEntry.supportsOAuth}
-                    disabled={savingKey || pending}
+                    disabled={savingKey}
                   />
                   <Button
                     type="button"
@@ -373,7 +377,7 @@ export function OnboardingEnginePhase({
                         activeEntry.entry.label,
                       )
                     }
-                    disabled={!draftKey.trim() || savingKey || pending}
+                    disabled={!draftKey.trim() || savingKey}
                   >
                     {savingKey ? "Saving…" : "Save"}
                   </Button>
@@ -390,26 +394,24 @@ export function OnboardingEnginePhase({
         </p>
       ) : null}
 
-      <div className="onboarding-engine-footer">
+      <button
+        className="onboarding-confirm"
+        data-visible={true}
+        disabled={splitTransitionActive}
+        onClick={handleContinue}
+      >
+        Continue
+      </button>
+      {choice === "byok" ? (
         <button
-          className="onboarding-confirm"
-          data-visible={true}
-          disabled={splitTransitionActive || pending}
-          onClick={onContinue}
+          type="button"
+          className="onboarding-engine-skip"
+          disabled={splitTransitionActive}
+          onClick={handleContinue}
         >
-          Continue
+          I'll set this up later
         </button>
-        {choice === "byok" ? (
-          <button
-            type="button"
-            className="onboarding-engine-skip"
-            disabled={splitTransitionActive || pending}
-            onClick={onContinue}
-          >
-            I'll set this up later
-          </button>
-        ) : null}
-      </div>
+      ) : null}
     </div>
   );
 }

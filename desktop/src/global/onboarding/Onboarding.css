@@ -2636,14 +2636,13 @@
   color: color-mix(in oklch, var(--foreground) 70%, var(--destructive, #c0392b));
 }
 
-.onboarding-engine-footer {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
+/* "I'll set this up later" sits flush under the Continue button as a
+ * subtle subtext — no flex wrapper so the parent `.onboarding-step-content`
+ * keeps its standard gap rhythm and the Continue button stays a direct
+ * child (matches every other split phase). */
 .onboarding-engine-skip {
+  align-self: center;
+  margin-top: -8px;
   background: none;
   border: none;
   color: var(--foreground);
