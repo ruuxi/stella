@@ -24,10 +24,6 @@ import { MediaTile } from "./MediaTile";
 import { AttachedChip } from "./AttachedChip";
 import { MediaActionBar } from "./MediaActionBar";
 import { HeroPrompt } from "./HeroPrompt";
-import {
-  MEDIA_TAB_VISUAL_MOCK,
-  MediaTabVisualMock,
-} from "./media-tab-visual-mock";
 import "../media-tab.css";
 
 export const MediaTabContent = ({
@@ -35,10 +31,6 @@ export const MediaTabContent = ({
 }: {
   items: ReadonlyArray<MediaTabItem>;
 }) => {
-  if (MEDIA_TAB_VISUAL_MOCK) {
-    return <MediaTabVisualMock />;
-  }
-
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
   const items = useMemo(
     () => incomingItems.filter((item) => !removedIds.has(item.id)),
