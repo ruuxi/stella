@@ -1,22 +1,36 @@
-/* Message list — column-reverse viewport handles bottom-anchoring,
-   so no justify-content: flex-end or min-height: 100% needed. The list
-   is a flat sequence of `.event-row` siblings, one per persisted
-   message. */
+/* ============================================================
+ * Chat typography contract
+ *
+ * Every chat surface — full chat, sidebar, mini window, orb,
+ * and the Store thread — lives inside `.chat-viewport-region`.
+ * Defining the message typography tokens here means the
+ * virtualized rows (which are NOT descendants of any `.event-list`
+ * wrapper) reliably inherit them. Surfaces override individual
+ * tokens (most commonly `--chat-text-size`) rather than inventing
+ * parallel variables.
+ * ============================================================ */
 .chat-viewport-region {
-  --chat-message-font-size: 16px;
-  --chat-message-letter-spacing: 0.032em;
-  --chat-message-font-weight: 375;
+  --chat-text-size: 16px;
+  --chat-text-weight: 400;
+  --chat-text-strong-weight: 500;
+  --chat-text-tracking: 0.032em;
+  --chat-text-line-height: 1.45;
+  --chat-text-color: var(--text-strong);
 }
 
-.event-list {
+/* Fallback wrapper used only by the empty / loading-history states in
+   `ChatTimeline`. Real messages render directly inside the virtualized
+   LegendList, so this wrapper is NOT in the message tree. The name
+   makes that explicit; do not hang typography tokens on it. */
+.event-list-fallback {
   display: flex;
   flex-direction: column;
   gap: 20px;
   padding-top: 32px;
 }
 
-.event-list[data-empty="true"],
-.event-list[data-loading-history="true"] {
+.event-list-fallback[data-empty="true"],
+.event-list-fallback[data-loading-history="true"] {
   flex: 1;
   justify-content: center;
   min-height: 100%;
@@ -104,8 +118,8 @@
   width: fit-content;
   font-size: 13px;
   line-height: 1.35;
-  font-weight: var(--chat-message-font-weight, 375);
-  letter-spacing: var(--chat-message-letter-spacing, 0.032em);
+  font-weight: var(--chat-text-weight);
+  letter-spacing: var(--chat-text-tracking);
   color: var(--text-strong);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -238,12 +252,12 @@
 }
 
 .event-body {
-  font-size: var(--chat-message-font-size, 16px);
-  line-height: 1.45;
-  font-weight: var(--chat-message-font-weight, 375);
-  color: var(--text-strong);
+  font-size: var(--chat-text-size);
+  line-height: var(--chat-text-line-height);
+  font-weight: var(--chat-text-weight);
+  color: var(--chat-text-color);
   white-space: pre-wrap;
-  letter-spacing: var(--chat-message-letter-spacing, 0.032em);
+  letter-spacing: var(--chat-text-tracking);
 }
 
 /* Long user-message truncation. Per-surface line counts are set via the
@@ -296,10 +310,11 @@
 }
 
 .event-item.assistant .markdown {
-  color: var(--text-strong);
-  font-size: var(--chat-message-font-size, 16px);
-  font-weight: var(--chat-message-font-weight, 375);
-  letter-spacing: var(--chat-message-letter-spacing, 0.032em);
+  color: var(--chat-text-color);
+  font-size: var(--chat-text-size);
+  font-weight: var(--chat-text-weight);
+  letter-spacing: var(--chat-text-tracking);
+  line-height: var(--chat-text-line-height);
 }
 
 .event-item.assistant .markdown :is(p, li, blockquote, td, th) {
@@ -307,7 +322,7 @@
 }
 
 .event-item.assistant .markdown :is(strong, b) {
-  font-weight: 450;
+  font-weight: var(--chat-text-strong-weight);
 }
 
 .event-item.assistant .markdown h1 { font-size: 21px; }

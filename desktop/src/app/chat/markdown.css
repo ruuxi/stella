@@ -1,14 +1,21 @@
-/* Markdown Component Styles */
+/* Markdown Component Styles
+ *
+ * `.markdown` inherits typography from its host (chat bubble, display
+ * viewer, blueprint dialog, etc.). It deliberately sets no font-size
+ * or font-weight here so a missing rule on the host can't silently
+ * fall back to a hard-coded default that drifts from the surrounding
+ * UI (the chat-text refactor relies on this). Hosts MUST set
+ * font-size on the wrapping element. */
 .markdown {
-  /* Reset & Base Typography */
   min-width: 0;
   max-width: 100%;
   overflow-wrap: break-word;
   color: var(--text-base, var(--foreground));
   font-family: var(--font-family-sans, inherit);
   font-feature-settings: var(--font-family-sans--font-feature-settings, normal);
-  font-size: 14px;
-  line-height: 180%;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
 }
 
 /* Spacing for flow */
@@ -20,7 +27,9 @@
   margin-bottom: 0;
 }
 
-/* Headings: a compact scale that still reads as hierarchy against 14px body. */
+/* Headings: an absolute scale used by non-chat hosts (display viewer,
+   blueprint dialog). Chat surfaces override these via higher-specificity
+   `.event-item.assistant .markdown :is(h1, …)` rules. */
 .markdown h1,
 .markdown h2,
 .markdown h3,

@@ -1,3 +1,14 @@
+/* ============================================================
+ * Compact chat surface (sidebar, mini window, orb, Store thread)
+ *
+ * Typography tokens (`--chat-text-*`) live on `.chat-viewport-region`
+ * in `full-shell.chat.css`. The variant blocks below only override
+ * the values they want to change (most commonly `--chat-text-size`).
+ *
+ * `--compact-chat-*` tokens that remain here are layout-only —
+ * bubble shape, padding, gap, per-side colors. They have no full-chat
+ * equivalent, so they don't need parallel naming.
+ * ============================================================ */
 .chat-conversation-surface {
   width: 100%;
   min-height: 100%;
@@ -6,12 +17,6 @@
   justify-content: flex-end;
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 16px;
-  --compact-chat-line-height: 1.45;
-  --compact-chat-letter-spacing: 0.032em;
-  --compact-chat-body-color: var(--text-strong);
-  --compact-chat-markdown-color: var(--text-strong);
-  --compact-chat-markdown-weight: 375;
   --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
   --compact-chat-user-radius: 12px;
   --compact-chat-user-tail-radius: var(--compact-chat-user-radius);
@@ -47,32 +52,14 @@
   min-height: 0;
 }
 
-.chat-conversation-surface--mini {
-  --compact-chat-gap: 8px;
-  --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 14px;
-  --compact-chat-line-height: 1.45;
-  --compact-chat-body-color: var(--text-strong);
-  --compact-chat-markdown-color: var(--text-strong);
-  --compact-chat-markdown-weight: 375;
-  --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
-  --compact-chat-user-radius: 12px;
-  --compact-chat-user-max-width: 85%;
-  --compact-chat-assistant-bg: transparent;
-  --compact-chat-assistant-border-width: 0px;
-  --compact-chat-assistant-border-color: transparent;
-  --compact-chat-assistant-radius: 0px;
-  --compact-chat-assistant-max-width: 100%;
+/* Compact surfaces share the same smaller body size. */
+.chat-conversation-surface--mini,
+.chat-conversation-surface--orb,
+.chat-conversation-surface--sidebar {
+  --chat-text-size: 14px;
 }
 
 .chat-conversation-surface--orb {
-  --compact-chat-gap: 8px;
-  --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 14px;
-  --compact-chat-line-height: 1.45;
-  --compact-chat-body-color: var(--text-strong);
-  --compact-chat-markdown-color: var(--text-strong);
-  --compact-chat-markdown-weight: 375;
   --compact-chat-user-bg: color-mix(in srgb, var(--primary) 30%, var(--background));
   --compact-chat-user-radius: 14px;
   --compact-chat-user-tail-radius: 4px;
@@ -82,10 +69,15 @@
   --compact-chat-assistant-border-color: var(--orb-assistant-border-color);
   --compact-chat-assistant-radius: 14px;
   --compact-chat-assistant-tail-radius: 4px;
-  --compact-chat-assistant-max-width: 100%;
 }
 
-.chat-conversation-surface .event-list {
+.chat-conversation-surface--sidebar {
+  --compact-chat-user-radius: 14px;
+  --compact-chat-user-tail-radius: 4px;
+  --compact-chat-user-max-width: 88%;
+}
+
+.chat-conversation-surface .event-list-fallback {
   gap: var(--compact-chat-gap);
 }
 
@@ -96,8 +88,6 @@
 
 .chat-conversation-surface .event-item {
   padding: var(--compact-chat-item-padding);
-  font-size: var(--compact-chat-font-size);
-  line-height: var(--compact-chat-line-height);
   background: transparent;
   border-color: transparent;
   border-radius: 0;
@@ -125,21 +115,11 @@
   width: 100%;
 }
 
-.chat-conversation-surface .event-body {
-  font-size: var(--compact-chat-font-size);
-  line-height: var(--compact-chat-line-height);
-  font-weight: var(--compact-chat-markdown-weight);
-  color: var(--compact-chat-body-color);
-  letter-spacing: var(--compact-chat-letter-spacing);
-}
-
-.chat-conversation-surface .event-item.assistant .markdown {
-  color: var(--compact-chat-markdown-color);
-  font-size: var(--compact-chat-font-size);
-  line-height: var(--compact-chat-line-height);
-  font-weight: var(--compact-chat-markdown-weight);
-  letter-spacing: var(--compact-chat-letter-spacing);
-}
+/*
+ * Compact surfaces inherit `.event-body` and `.event-item.assistant .markdown`
+ * typography from `full-shell.chat.css` via the shared `--chat-text-*` tokens.
+ * Only the size differs (set on the variant block above).
+ */
 
 .chat-conversation-surface .event-item.assistant .markdown p {
   margin-bottom: 0.5rem;
@@ -151,42 +131,23 @@
   margin-bottom: 0.5rem;
 }
 
-.chat-conversation-surface .event-item.assistant .markdown h1,
-.chat-conversation-surface .event-item.assistant .markdown h2,
-.chat-conversation-surface .event-item.assistant .markdown h3,
-.chat-conversation-surface .event-item.assistant .markdown h4,
-.chat-conversation-surface .event-item.assistant .markdown h5,
-.chat-conversation-surface .event-item.assistant .markdown h6 {
-  color: var(--compact-chat-markdown-color);
-  font-size: var(--compact-chat-font-size);
+.chat-conversation-surface .event-item.assistant .markdown :is(h1, h2, h3, h4, h5, h6) {
+  /* Compact bubbles are narrow; size headings to the body so the
+     row doesn't blow out vertically on a leading `# Heading`. */
+  font-size: var(--chat-text-size);
   font-weight: 600;
   line-height: 1.35;
   margin-top: 0.85rem;
   margin-bottom: 0.35rem;
 }
 
-.chat-conversation-surface .event-item.assistant .markdown h1:first-child,
-.chat-conversation-surface .event-item.assistant .markdown h2:first-child,
-.chat-conversation-surface .event-item.assistant .markdown h3:first-child,
-.chat-conversation-surface .event-item.assistant .markdown h4:first-child,
-.chat-conversation-surface .event-item.assistant .markdown h5:first-child,
-.chat-conversation-surface .event-item.assistant .markdown h6:first-child {
+.chat-conversation-surface .event-item.assistant .markdown :is(h1, h2, h3, h4, h5, h6):first-child {
   margin-top: 0;
-}
-
-.chat-conversation-surface .event-item.assistant .markdown strong,
-.chat-conversation-surface .event-item.assistant .markdown b {
-  color: var(--compact-chat-markdown-color);
-  font-weight: 450;
 }
 
 .chat-conversation-surface .event-item.assistant .markdown :is(pre, code, .shiki, kbd, samp) {
   font-weight: 400;
   letter-spacing: normal;
-}
-
-.chat-conversation-surface .event-item.assistant .markdown li::marker {
-  color: var(--compact-chat-markdown-color);
 }
 
 .chat-conversation-surface .event-item.assistant .markdown blockquote {
@@ -197,27 +158,6 @@
    are narrower and a smaller chunk reads better. */
 .chat-conversation-surface .event-user-body {
   --user-message-clamp-lines: 8;
-}
-
-.chat-conversation-surface--sidebar {
-  --compact-chat-gap: 8px;
-  --compact-chat-item-padding: 10px 12px;
-  --compact-chat-font-size: 14px;
-  --compact-chat-line-height: 1.45;
-  --compact-chat-body-color: var(--text-strong);
-  --compact-chat-markdown-color: var(--text-strong);
-  --compact-chat-markdown-weight: 375;
-  --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
-  --compact-chat-user-radius: 14px;
-  --compact-chat-user-tail-radius: 4px;
-  --compact-chat-user-max-width: 88%;
-  --compact-chat-user-color: var(--text-strong);
-  --compact-chat-assistant-bg: transparent;
-  --compact-chat-assistant-border-width: 0px;
-  --compact-chat-assistant-border-color: transparent;
-  --compact-chat-assistant-radius: 0px;
-  --compact-chat-assistant-tail-radius: 0px;
-  --compact-chat-assistant-max-width: 100%;
 }
 
 .chat-conversation-surface--orb .event-item.assistant .text-shimmer {

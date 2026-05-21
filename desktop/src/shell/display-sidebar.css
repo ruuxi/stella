@@ -405,6 +405,10 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 .display-markdown-viewer .markdown {
   max-width: 760px;
   color: var(--text-base);
+  /* `.markdown` itself inherits font-size (see markdown.css); the viewer
+     is a full-bleed reading surface, so size up from the chat default. */
+  font-size: 15px;
+  line-height: 1.7;
 }
 
 .display-markdown-viewer .markdown pre {

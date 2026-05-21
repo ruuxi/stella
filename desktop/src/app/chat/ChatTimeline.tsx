@@ -217,7 +217,7 @@ export const ChatTimeline = memo(function ChatTimeline({
 
   if (isLoadingHistory && rows.length === 0) {
     return (
-      <div className="event-list" data-loading-history="true">
+      <div className="event-list-fallback" data-loading-history="true">
         <div className="event-history-status" role="status" aria-live="polite">
           Loading conversation...
         </div>
@@ -235,7 +235,7 @@ export const ChatTimeline = memo(function ChatTimeline({
 
   if (rows.length === 0) {
     return (
-      <div className="event-list" data-empty="true">
+      <div className="event-list-fallback" data-empty="true">
         {emptyState ?? <div className="event-empty">Start a conversation</div>}
       </div>
     );
