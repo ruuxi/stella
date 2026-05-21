@@ -47,6 +47,12 @@ import {
 } from "@/shell/display/default-tabs";
 import type { DisplayTabKind } from "@/shell/display/types";
 import { DisplayTabIcon } from "@/shell/display/icons";
+import {
+  chatWorkspaceStripStore,
+  useChatWorkspaceStripStore,
+  type WorkspaceStripSection,
+  type WorkspaceStripSections,
+} from "./chat-workspace-strip-store";
 import "./chat-workspace-strip.css";
 
 const NOW_VISIBLE = 4;
@@ -61,6 +67,28 @@ type TabOpenOption = {
   kind: DisplayTabKind;
   open: () => void;
 };
+
+const SECTION_TOGGLES: ReadonlyArray<{
+  id: WorkspaceStripSection;
+  label: string;
+  icon: ReactNode;
+}> = [
+  {
+    id: "activity",
+    label: "Activity",
+    icon: <ActivityIcon size={14} strokeWidth={2.25} />,
+  },
+  {
+    id: "files",
+    label: "Files",
+    icon: <FolderClosed size={14} strokeWidth={2.25} />,
+  },
+  {
+    id: "schedule",
+    label: "Schedule",
+    icon: <CalendarClock size={14} strokeWidth={2.25} />,
+  },
+];
 
 const TAB_OPTIONS: ReadonlyArray<TabOpenOption> = [
   {
@@ -89,44 +117,81 @@ const TAB_OPTIONS: ReadonlyArray<TabOpenOption> = [
   },
 ];
 
+function SectionToggles({ sections }: { sections: WorkspaceStripSections }) {
+  return (
+    <div
+      className="chat-workspace-strip__section-toggles"
+      role="toolbar"
+      aria-label="Show or hide workspace sections"
+    >
+      {SECTION_TOGGLES.map((toggle) => (
+        <button
+          key={toggle.id}
+          type="button"
+          className="chat-workspace-strip__section-toggle"
+          aria-label={`${sections[toggle.id] ? "Hide" : "Show"} ${toggle.label}`}
+          aria-pressed={sections[toggle.id]}
+          title={`${sections[toggle.id] ? "Hide" : "Show"} ${toggle.label}`}
+          onClick={() => chatWorkspaceStripStore.toggleSection(toggle.id)}
+        >
+          {toggle.icon}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function WorkspaceCard({
   title,
   icon,
   children,
   defaultOpen = true,
+  headerTrailing,
 }: {
   title: string;
   icon: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
+  headerTrailing?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const toggleOpen = () => setOpen((v) => !v);
   return (
     <section
       className={`chat-workspace-strip__card${open ? "" : " chat-workspace-strip__card--collapsed"}`}
     >
-      <button
-        type="button"
-        className="chat-workspace-strip__card-header"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="chat-workspace-strip__card-title">
-          <span
-            className="chat-workspace-strip__card-title-icon"
-            aria-hidden="true"
-          >
-            {icon}
+      <div className="chat-workspace-strip__card-header">
+        <button
+          type="button"
+          className="chat-workspace-strip__card-header-main"
+          onClick={toggleOpen}
+          aria-expanded={open}
+        >
+          <span className="chat-workspace-strip__card-title">
+            <span
+              className="chat-workspace-strip__card-title-icon"
+              aria-hidden="true"
+            >
+              {icon}
+            </span>
+            {title}
           </span>
-          {title}
-        </span>
-        <ChevronDown
-          className="chat-workspace-strip__card-chevron"
-          size={14}
-          strokeWidth={2}
+        </button>
+        {headerTrailing}
+        <button
+          type="button"
+          className="chat-workspace-strip__card-header-chevron"
+          onClick={toggleOpen}
+          tabIndex={-1}
           aria-hidden="true"
-        />
-      </button>
+        >
+          <ChevronDown
+            className="chat-workspace-strip__card-chevron"
+            size={14}
+            strokeWidth={2}
+          />
+        </button>
+      </div>
       {open && <div className="chat-workspace-strip__card-body">{children}</div>}
     </section>
   );
@@ -162,6 +227,7 @@ export function ChatWorkspaceStrip({
   forceHidden = false,
 }: ChatWorkspaceStripProps) {
   const { panelOpen } = useDisplayPanelLayout();
+  const { stripVisible, sections } = useChatWorkspaceStripStore();
   const chat = useChatRuntime();
   const { state } = useUiState();
 
@@ -212,7 +278,10 @@ export function ChatWorkspaceStrip({
   const hasSchedule = upNext.length > 0;
 
   const nowMs = Date.now();
-  const hidden = panelOpen || forceHidden;
+  const hidden = panelOpen || forceHidden || !stripVisible;
+  const showActivity = sections.activity && hasActivity;
+  const showFiles = sections.files && hasFiles;
+  const showSchedule = sections.schedule && hasSchedule;
 
   return (
     <aside
@@ -225,6 +294,7 @@ export function ChatWorkspaceStrip({
           <WorkspaceCard
             title="Open"
             icon={<LayoutPanelTop size={12} strokeWidth={2.25} />}
+            headerTrailing={<SectionToggles sections={sections} />}
           >
             <ul className="chat-workspace-strip__tab-list">
               {TAB_OPTIONS.map((opt) => (
@@ -252,7 +322,7 @@ export function ChatWorkspaceStrip({
             </ul>
           </WorkspaceCard>
 
-          {hasActivity && (
+          {showActivity && (
             <WorkspaceCard
               title="Activity"
               icon={<ActivityIcon size={12} strokeWidth={2.25} />}
@@ -272,7 +342,7 @@ export function ChatWorkspaceStrip({
             </WorkspaceCard>
           )}
 
-          {hasFiles && (
+          {showFiles && (
             <WorkspaceCard
               title="Files"
               icon={<FolderClosed size={12} strokeWidth={2.25} />}
@@ -293,7 +363,7 @@ export function ChatWorkspaceStrip({
             </WorkspaceCard>
           )}
 
-          {hasSchedule && (
+          {showSchedule && (
             <WorkspaceCard
               title="Schedule"
               icon={<CalendarClock size={12} strokeWidth={2.25} />}

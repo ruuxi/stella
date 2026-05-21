@@ -182,7 +182,9 @@
   color: var(--text-strong);
 }
 
-.shell-topbar-icon-btn[aria-pressed="true"]:not(.shell-topbar-sidebar-btn) {
+.shell-topbar-icon-btn[aria-pressed="true"]:not(.shell-topbar-sidebar-btn):not(
+    .shell-topbar-workspace-strip-btn
+  ) {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
   color: var(--text-strong);
 }
