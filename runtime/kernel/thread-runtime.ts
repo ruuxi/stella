@@ -9,11 +9,13 @@ import type { ResolvedLlmRoute } from "./model-routing.js";
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 const THREAD_COMPACTION_SYSTEM_PROMPT = "Output ONLY the summary content.";
 const THREAD_COMPACTION_RESERVE_TOKENS = 16_384;
+const THREAD_COMPACTION_TRIGGER_TOKENS = 60_000;
 const THREAD_COMPACTION_PROTECT_HEAD_MESSAGES = 3;
 const THREAD_COMPACTION_KEEP_RECENT_TOKENS = 20_000;
 const THREAD_COMPACTION_MIN_TAIL_MESSAGES = 2;
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 const MIN_TRIGGER_TOKENS = 8_000;
+const USE_MODEL_SCALED_COMPACTION_TRIGGER = false;
 const MAX_BLOCK_CHARS = 100_000;
 const TOOL_RESULT_MAX_CHARS = 2_000;
 const ESTIMATED_IMAGE_TOKENS = 1_200;
@@ -226,8 +228,19 @@ const getContextWindow = (route: ResolvedLlmRoute): number => {
   return Math.floor(value);
 };
 
-const getCompactionTriggerTokens = (route: ResolvedLlmRoute): number =>
+const getModelScaledCompactionTriggerTokens = (route: ResolvedLlmRoute): number =>
   Math.max(MIN_TRIGGER_TOKENS, getContextWindow(route) - THREAD_COMPACTION_RESERVE_TOKENS);
+
+const getCompactionTriggerTokens = (
+  route: ResolvedLlmRoute,
+  agentType: string,
+): number => {
+  // Flip this flag back to true to restore model-window based orchestrator compaction.
+  if (agentType === "orchestrator" && !USE_MODEL_SCALED_COMPACTION_TRIGGER) {
+    return THREAD_COMPACTION_TRIGGER_TOKENS;
+  }
+  return getModelScaledCompactionTriggerTokens(route);
+};
 
 export const getThreadTokenEstimate = (messages: StoredThreadMessage[]): number =>
   messages.reduce((sum, message) => sum + estimateStoredMessageTokens(message), 0);
@@ -590,7 +603,7 @@ export const maybeCompactRuntimeThread = async (args: {
   }
 
   const totalTokens = getThreadTokenEstimate(storedMessages);
-  if (totalTokens < getCompactionTriggerTokens(args.resolvedLlm)) {
+  if (totalTokens < getCompactionTriggerTokens(args.resolvedLlm, args.agentType)) {
     return { compacted: false };
   }
 
