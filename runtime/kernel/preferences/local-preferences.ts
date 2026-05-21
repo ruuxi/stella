@@ -155,7 +155,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   soundNotificationsEnabled: true,
   dictationSoundEffectsEnabled: true,
   wakeWordEnabled: false,
-  wakeWordThreshold: 0.68,
+  wakeWordThreshold: 0.6,
   readAloudEnabled: false,
 };
 

@@ -461,7 +461,7 @@ export const registerBootstrapIpcHandlers = (
   const stellaRoot = lifecycle.getStellaRoot();
   const wakePrefs = stellaRoot
     ? loadLocalPreferences(stellaRoot)
-    : { wakeWordEnabled: false, wakeWordThreshold: 0.68 };
+    : { wakeWordEnabled: false, wakeWordThreshold: 0.6 };
   wakeword = new WakewordService({
     threshold: wakePrefs.wakeWordThreshold,
     onWake: (event) => {
