@@ -151,25 +151,6 @@ export function OnboardingThemePhase({
     setHasSelectedGradientColor(true);
   }, []);
 
-  // Resuming onboarding (or landing with Pearl/Noir already persisted)
-  // should show the locked sub-options immediately.
-  useEffect(() => {
-    if (!forcedMode) return;
-    applyForcedThemePreferences(
-      forcedMode,
-      onSelectColorMode,
-      onSelectGradientMode,
-      onSelectGradientColor,
-    );
-    revealForcedThemeOptions();
-  }, [
-    forcedMode,
-    onSelectColorMode,
-    onSelectGradientColor,
-    onSelectGradientMode,
-    revealForcedThemeOptions,
-  ]);
-
   const handleSelectTheme = useCallback(
     (id: string) => {
       const nextTheme = getThemeById(id);
