@@ -118,7 +118,7 @@ export const applyDesktopUpdate = async (
     `Release tag: ${options.publishedTag}`,
     `Install root: ${options.installManifest.installPath}`,
     "",
-    "Walk the GitHub compare API and apply each in-scope file change. Follow the system prompt for scope, conflicts, and the apply order.",
+    "Run the normal update merge from the install root: fetch the target commit, merge it, resolve conflicts only if Git reports them, and install dependencies only if package manifests or lockfiles changed.",
     "When finished, report which files updated cleanly, which were merged with local edits, and which were skipped.",
   ].join("\n");
 

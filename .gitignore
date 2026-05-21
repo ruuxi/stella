@@ -19,7 +19,11 @@ DEV-CONTEXT.md
 /.stella-dev-splash.lock
 /.stella-dev-splash.ready
 /.stella-launch.log
+/.stella-desktop-download.tar.zst
+/launch.sh
 /stella-install.json
+/stella-install.log
+/stella-release.json
 
 # TypeScript incremental build artifacts (machine-generated; never commit).
 *.tsbuildinfo
