@@ -47,7 +47,6 @@ import {
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { secureSignOut } from "@/global/auth/services/auth";
-import { STELLA_TOGGLE_SIDEBAR_RAIL_EVENT } from "@/shell/ShellTopBar";
 import { Button } from "@/ui/button";
 import {
   Dialog,
@@ -133,32 +132,13 @@ const useRegisteredApps = (): readonly AppMetadata[] =>
 
 interface SidebarProps {
   className?: string;
+  visible?: boolean;
+  onHide?: () => void;
   onSignIn?: () => void;
   onConnect?: () => void;
   onNewApp?: () => void;
   onNewAppAskStella?: () => void;
 }
-
-const RAIL_STORAGE_KEY = "stella:sidebar:rail";
-
-const readPersistedRail = (): boolean => {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(RAIL_STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
-
-const writePersistedRail = (collapsed: boolean) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(RAIL_STORAGE_KEY, collapsed ? "1" : "0");
-  } catch {
-    // localStorage can throw in private mode / sandboxed contexts; the
-    // toggle is purely visual, so a silent no-op is the right thing.
-  }
-};
 
 interface AppNavItemProps {
   app: AppMetadata;
@@ -305,9 +285,8 @@ interface AccountRowProps {
    *  sibling in the footer row) can open the picker anchored to the
    *  avatar. */
   themeOpenSignal: number;
-  /** Rail (collapsed) mode hides the sibling Theme/Settings/Connect
-   *  icon strip; in that case we surface those entries inside the
-   *  avatar dropdown so they stay reachable. */
+  /** Mobile WebView hides the sibling Theme/Settings/Connect icon strip;
+   *  in that case we surface those entries inside the avatar dropdown. */
   showCompactActionsInMenu: boolean;
   onOpenSettings: () => void;
   onOpenConnect: () => void;
@@ -679,6 +658,8 @@ const TitleBarSpacer = () => <div className="sidebar-titlebar" />;
 
 export const Sidebar = ({
   className,
+  visible = true,
+  onHide,
   onSignIn,
   onConnect,
   onNewApp,
@@ -707,43 +688,17 @@ export const Sidebar = ({
     };
   }, [allApps]);
 
-  // User-toggled rail (icon-only) collapse. Persisted in localStorage so the
-  // preference survives reloads. The window-mode "mini" mode is a separate
-  // concept and is forced compact via CSS regardless of this state.
-  const [railCollapsed, setRailCollapsed] = useState<boolean>(readPersistedRail);
-
   const isMobileWebView =
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-platform") === "mobile";
-
-  const toggleRailCollapsed = useCallback(() => {
-    setRailCollapsed((prev) => {
-      const next = !prev;
-      writePersistedRail(next);
-      return next;
-    });
-  }, []);
 
   useEffect(() => {
     window.electronAPI?.window.setNativeButtonsVisible?.(true);
   }, []);
 
-  useEffect(() => {
-    window.addEventListener(
-      STELLA_TOGGLE_SIDEBAR_RAIL_EVENT,
-      toggleRailCollapsed,
-    );
-    return () => {
-      window.removeEventListener(
-        STELLA_TOGGLE_SIDEBAR_RAIL_EVENT,
-        toggleRailCollapsed,
-      );
-    };
-  }, [toggleRailCollapsed]);
-
   const handleBrandClick = useCallback(() => {
-    toggleRailCollapsed();
-  }, [toggleRailCollapsed]);
+    onHide?.();
+  }, [onHide]);
 
   const handleUpgrade = useCallback(() => {
     void navigate({ to: "/billing" });
@@ -837,30 +792,17 @@ export const Sidebar = ({
   const sidebarClass = useMemo(() => {
     const parts = ["sidebar"];
     if (className) parts.push(className);
-    if (railCollapsed || isMobileWebView) parts.push("sidebar--rail");
+    if (!visible) parts.push("sidebar--hidden");
     return parts.join(" ");
-  }, [className, railCollapsed, isMobileWebView]);
+  }, [className, visible]);
 
-  // Mirror the rail-collapsed state onto the document root so absolutely
-  // positioned chrome above the sidebar (e.g. the topbar's centered store
-  // tabs) can pick the correct width when computing offsets.
-  useEffect(() => {
-    const root = document.documentElement;
-    if (railCollapsed || isMobileWebView) root.dataset.sidebarRail = "true";
-    else delete root.dataset.sidebarRail;
-  }, [railCollapsed, isMobileWebView]);
-
-  // The brand row is a button so it can also be the rail-toggle target.
-  // Wrapping the icon + (optionally hidden) text gives us a single focusable
-  // surface that works both as "click to collapse" and "click to expand".
   const brandRow: ReactNode = (
     <button
       type="button"
       className="sidebar-brand"
       onClick={handleBrandClick}
-      title={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      aria-label={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      aria-pressed={railCollapsed}
+      title="Hide sidebar"
+      aria-label="Hide sidebar"
     >
       <span className="sidebar-brand-logo" aria-hidden="true">
         <img src="stella-logo.svg" alt="" className="sidebar-brand-logo-art" />
@@ -954,7 +896,7 @@ export const Sidebar = ({
                   onUpgrade={handleUpgrade}
                   onOpenFeedback={handleOpenFeedback}
                   themeOpenSignal={themeOpenSignal}
-                  showCompactActionsInMenu={railCollapsed || isMobileWebView}
+                  showCompactActionsInMenu={isMobileWebView}
                   onOpenSettings={handleOpenSettings}
                   onOpenConnect={handleOpenConnect}
                   showConnectHint={connectHint.active}

@@ -63,6 +63,7 @@ export const ChatColumn = memo(function ChatColumn({
   scroll,
   composerEntering,
   conversationId,
+  hideRightContextPanel = false,
   showHomeContent,
   onSuggestionClick,
   onDismissHome,
@@ -296,7 +297,7 @@ export const ChatColumn = memo(function ChatColumn({
         {composerElement}
       </div>
       </div>
-      <HomeWorkspaceMock />
+      <HomeWorkspaceMock forceHidden={hideRightContextPanel} />
     </div>
   );
 });

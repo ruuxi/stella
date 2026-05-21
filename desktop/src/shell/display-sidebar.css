@@ -35,8 +35,8 @@
   margin-left: 0;
 }
 
-:root[data-sidebar-rail="true"] .display-sidebar--open.display-sidebar--expanded {
-  left: var(--shell-sidebar-rail-width, 82px);
+:root[data-sidebar-hidden="true"] .display-sidebar--open.display-sidebar--expanded {
+  left: 0;
 }
 
 /* Expanded mode overlays the content area but `.display-sidebar-inner` is

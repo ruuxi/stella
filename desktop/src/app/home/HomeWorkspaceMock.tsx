@@ -1,7 +1,8 @@
 /**
  * Right-aligned workspace strip rendered next to the active chat
- * conversation surface (NOT on the home content, and NOT when the
- * display sidebar is open).
+ * conversation surface (NOT on the home content). When the display
+ * sidebar opens, this stays mounted as a clipped zero-width slot so
+ * the chat column can resize smoothly.
  *
  * Each section is its own outlined card (rounded corners, 1px subtle
  * border, no painted fill) with a header row that carries the title +
@@ -52,6 +53,7 @@ const NOW_VISIBLE = 4;
 const DONE_VISIBLE = 4;
 const FILES_VISIBLE = 5;
 const UPNEXT_VISIBLE = 3;
+const EMPTY_TASKS: TaskItem[] = [];
 
 type TabOpenOption = {
   id: string;
@@ -152,14 +154,20 @@ function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
   );
 }
 
-export function HomeWorkspaceMock() {
+type HomeWorkspaceMockProps = {
+  forceHidden?: boolean;
+};
+
+export function HomeWorkspaceMock({
+  forceHidden = false,
+}: HomeWorkspaceMockProps) {
   const { panelOpen } = useDisplayPanelLayout();
   const chat = useChatRuntime();
   const { state } = useUiState();
 
   const conversationId = state.conversationId;
   const activity = chat.conversation.activity;
-  const liveTasks = chat.conversation.streaming.liveTasks ?? [];
+  const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
   const filesFeed = chat.conversation.files;
   const schedules = useConversationSchedules(conversationId);
 
@@ -197,114 +205,117 @@ export function HomeWorkspaceMock() {
     [filesFeed.files],
   );
 
-  const upNext = useMemo(
-    () => schedules.slice(0, UPNEXT_VISIBLE),
-    [schedules],
-  );
-
-  // Hide the entire strip while the real display sidebar is open — the
-  // user is already looking at the workspace there, no need to double
-  // up.
-  if (panelOpen) return null;
+  const upNext = useMemo(() => schedules.slice(0, UPNEXT_VISIBLE), [schedules]);
 
   const hasActivity = runningTasks.length > 0 || doneTasks.length > 0;
   const hasFiles = files.length > 0;
   const hasSchedule = upNext.length > 0;
 
   const nowMs = Date.now();
+  const hidden = panelOpen || forceHidden;
 
   return (
-    <aside className="home-workspace-mock" aria-label="Workspace">
-      <div className="home-workspace-mock__scroll">
-        <MockCard
-          title="Open"
-          icon={<LayoutPanelTop size={12} strokeWidth={2.25} />}
-        >
-          <ul className="home-workspace-mock__tab-list">
-            {TAB_OPTIONS.map((opt) => (
-              <li key={opt.id}>
-                <button
-                  type="button"
-                  className="home-workspace-mock__tab-button"
-                  onClick={() => {
-                    if (displayTabs.getTabListSnapshot().tabs.some((t) => t.id === opt.id)) {
-                      displayTabs.activateTab(opt.id);
-                    } else {
-                      opt.open();
-                    }
-                  }}
-                >
-                  <DisplayTabIcon kind={opt.kind} size={16} />
-                  <span>{opt.label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </MockCard>
-
-        {hasActivity && (
+    <aside
+      className={`home-workspace-mock${hidden ? " home-workspace-mock--hidden" : ""}`}
+      aria-label="Workspace"
+      aria-hidden={hidden}
+    >
+      <div className="home-workspace-mock__inner">
+        <div className="home-workspace-mock__scroll">
           <MockCard
-            title="Activity"
-            icon={<ActivityIcon size={12} strokeWidth={2.25} />}
+            title="Open"
+            icon={<LayoutPanelTop size={12} strokeWidth={2.25} />}
           >
-            {runningTasks.length > 0 && (
-              <>
-                <div className="home-workspace-mock__subhead">Now</div>
-                <TasksList tasks={runningTasks} />
-              </>
-            )}
-            {doneTasks.length > 0 && (
-              <>
-                <div className="home-workspace-mock__subhead">Done</div>
-                <TasksList tasks={doneTasks} />
-              </>
-            )}
-          </MockCard>
-        )}
-
-        {hasFiles && (
-          <MockCard
-            title="Files"
-            icon={<FolderClosed size={12} strokeWidth={2.25} />}
-          >
-            <ul className="home-workspace-mock__list">
-              {files.map((file) => (
-                <li
-                  key={file.path}
-                  className="home-workspace-mock__row"
-                  title={file.path}
-                >
-                  <span className="home-workspace-mock__file-name">
-                    {basenameOf(file.path)}
-                  </span>
+            <ul className="home-workspace-mock__tab-list">
+              {TAB_OPTIONS.map((opt) => (
+                <li key={opt.id}>
+                  <button
+                    type="button"
+                    className="home-workspace-mock__tab-button"
+                    onClick={() => {
+                      if (
+                        displayTabs
+                          .getTabListSnapshot()
+                          .tabs.some((t) => t.id === opt.id)
+                      ) {
+                        displayTabs.activateTab(opt.id);
+                      } else {
+                        opt.open();
+                      }
+                    }}
+                  >
+                    <DisplayTabIcon kind={opt.kind} size={16} />
+                    <span>{opt.label}</span>
+                  </button>
                 </li>
               ))}
             </ul>
           </MockCard>
-        )}
 
-        {hasSchedule && (
-          <MockCard
-            title="Schedule"
-            icon={<CalendarClock size={12} strokeWidth={2.25} />}
-          >
-            <ul className="home-workspace-mock__list">
-              {upNext.map((entry) => (
-                <li
-                  key={`${entry.kind}:${entry.id}`}
-                  className="home-workspace-mock__row"
-                >
-                  <span className="home-workspace-mock__row-label">
-                    {entry.name.trim()}
-                  </span>
-                  <span className="home-workspace-mock__row-meta">
-                    {formatNextRun(entry.nextRunAtMs, nowMs)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </MockCard>
-        )}
+          {hasActivity && (
+            <MockCard
+              title="Activity"
+              icon={<ActivityIcon size={12} strokeWidth={2.25} />}
+            >
+              {runningTasks.length > 0 && (
+                <>
+                  <div className="home-workspace-mock__subhead">Now</div>
+                  <TasksList tasks={runningTasks} />
+                </>
+              )}
+              {doneTasks.length > 0 && (
+                <>
+                  <div className="home-workspace-mock__subhead">Done</div>
+                  <TasksList tasks={doneTasks} />
+                </>
+              )}
+            </MockCard>
+          )}
+
+          {hasFiles && (
+            <MockCard
+              title="Files"
+              icon={<FolderClosed size={12} strokeWidth={2.25} />}
+            >
+              <ul className="home-workspace-mock__list">
+                {files.map((file) => (
+                  <li
+                    key={file.path}
+                    className="home-workspace-mock__row"
+                    title={file.path}
+                  >
+                    <span className="home-workspace-mock__file-name">
+                      {basenameOf(file.path)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </MockCard>
+          )}
+
+          {hasSchedule && (
+            <MockCard
+              title="Schedule"
+              icon={<CalendarClock size={12} strokeWidth={2.25} />}
+            >
+              <ul className="home-workspace-mock__list">
+                {upNext.map((entry) => (
+                  <li
+                    key={`${entry.kind}:${entry.id}`}
+                    className="home-workspace-mock__row"
+                  >
+                    <span className="home-workspace-mock__row-label">
+                      {entry.name.trim()}
+                    </span>
+                    <span className="home-workspace-mock__row-meta">
+                      {formatNextRun(entry.nextRunAtMs, nowMs)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </MockCard>
+          )}
+        </div>
       </div>
     </aside>
   );

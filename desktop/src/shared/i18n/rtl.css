@@ -31,19 +31,6 @@
   left: -8px;
 }
 
-[dir="rtl"] .sidebar.sidebar--rail [aria-label]::after {
-  /* Tooltip lives to the right of the rail in LTR; flip to the left
-   * for RTL so it sits over the chat surface, not off-screen. */
-  left: auto;
-  right: calc(100% + 8px);
-  transform: translateY(-50%) translateX(2px);
-}
-
-[dir="rtl"] .sidebar.sidebar--rail [aria-label]:hover::after,
-[dir="rtl"] .sidebar.sidebar--rail [aria-label]:focus-visible::after {
-  transform: translateY(-50%) translateX(0);
-}
-
 /* Onboarding's prev/next chevron buttons are positioned glyphs
  * (`<path d="M15 18l-6-6 6-6"/>`). The icon meaning ("go back") is
  * semantically tied to direction, not to the literal arrow shape.

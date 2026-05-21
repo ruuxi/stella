@@ -4,18 +4,55 @@
    itself and the main content. */
 
 .home-workspace-mock {
+  --home-workspace-panel-width: 300px;
   flex: 0 0 auto;
-  width: clamp(260px, 24vw, 340px);
+  width: var(--home-workspace-panel-width);
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: transparent;
+  /* Explicitly no divider against the main content. */
+  border: none;
+  pointer-events: auto;
+  overflow: hidden;
+  contain: layout paint;
+  transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
+}
+
+.home-workspace-mock--hidden,
+.full-body:has(.display-sidebar--open) .home-workspace-mock,
+:root[data-shell-right-context-hidden="true"] .home-workspace-mock {
+  width: 0;
+  pointer-events: none;
+}
+
+.home-workspace-mock__inner {
+  width: var(--home-workspace-panel-width);
+  min-width: var(--home-workspace-panel-width);
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   padding: 88px 20px 24px 12px;
   box-sizing: border-box;
-  background: transparent;
-  /* Explicitly no divider against the main content. */
-  border: none;
-  pointer-events: auto;
+  overflow: hidden;
+  contain: layout paint;
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+  transition:
+    width 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    min-width 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    transform 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    opacity 220ms ease-out;
+}
+
+.home-workspace-mock--hidden .home-workspace-mock__inner,
+.full-body:has(.display-sidebar--open) .home-workspace-mock__inner,
+:root[data-shell-right-context-hidden="true"] .home-workspace-mock__inner {
+  transform: translate3d(12px, 0, 0);
+  opacity: 0;
 }
 
 .home-workspace-mock__scroll {
@@ -41,14 +78,38 @@
   border-radius: 999px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .home-workspace-mock,
+  .home-workspace-mock__inner {
+    transition: none;
+  }
+
+  .home-workspace-mock--hidden .home-workspace-mock__inner,
+  .full-body:has(.display-sidebar--open) .home-workspace-mock__inner,
+  :root[data-shell-right-context-hidden="true"] .home-workspace-mock__inner {
+    transform: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .home-workspace-mock {
+    width: 0;
+    pointer-events: none;
+  }
+
+  .home-workspace-mock__inner {
+    transform: translate3d(12px, 0, 0);
+    opacity: 0;
+  }
+}
+
 /* ── Card ─────────────────────────────────────────────────────────── */
 
 .home-workspace-mock__card {
   display: flex;
   flex-direction: column;
   background: transparent;
-  border: 1px solid
-    color-mix(in oklch, var(--foreground) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -181,8 +242,7 @@
 
 .home-workspace-mock__tab-button {
   appearance: none;
-  border: 1px solid
-    color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   background: transparent;
   border-radius: 8px;
   padding: 7px 10px;
@@ -196,7 +256,9 @@
   color: var(--text-base);
   cursor: default;
   text-align: left;
-  transition: border-color 140ms ease, color 140ms ease;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .home-workspace-mock__tab-button:hover {

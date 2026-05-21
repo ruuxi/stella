@@ -60,8 +60,8 @@ const readShellSizeVar = (name: string, fallback: number): number => {
 const computeMaxWidth = (): number => {
   const viewport = window.innerWidth;
   const sidebarWidth =
-    document.documentElement.dataset.sidebarRail === "true"
-      ? readShellSizeVar("--shell-sidebar-rail-width", 82)
+    document.documentElement.dataset.sidebarHidden === "true"
+      ? 0
       : readShellSizeVar("--shell-sidebar-width", 170);
   const available = viewport - sidebarWidth - DISPLAY_MAIN_CONTENT_MIN_WIDTH;
   return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.floor(available));
@@ -206,6 +206,15 @@ export const DisplaySidebar = forwardRef<
       // simultaneously resized (which is exceedingly rare during a
       // user-initiated panel drag).
       const maxWidth = computeMaxWidth();
+      let pendingWidth: number | null = null;
+      let frame = 0;
+
+      const commitPendingWidth = () => {
+        frame = 0;
+        if (pendingWidth == null) return;
+        displayTabs.setPanelWidth(pendingWidth);
+        pendingWidth = null;
+      };
 
       // Pin the cursor / disable selection globally so dragging across
       // the chat outlet doesn't accidentally start a text selection.
@@ -223,14 +232,20 @@ export const DisplaySidebar = forwardRef<
       const onMove = (ev: PointerEvent) => {
         // Panel sits on the right edge, so dragging left increases width.
         const delta = startX - ev.clientX;
-        const next = Math.max(
+        pendingWidth = Math.max(
           DISPLAY_PANEL_MIN_WIDTH,
           Math.min(maxWidth, startWidth + delta),
         );
-        displayTabs.setPanelWidth(next);
+        if (frame === 0) {
+          frame = requestAnimationFrame(commitPendingWidth);
+        }
       };
 
       const onUp = () => {
+        if (frame !== 0) {
+          cancelAnimationFrame(frame);
+          commitPendingWidth();
+        }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
