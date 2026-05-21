@@ -2,9 +2,8 @@
  * Store side panel.
  *
  * Three stacked surfaces:
- * 1. Recent changes — the rolling-window feature snapshot. Each row has
- *    explicit Add (multi-select chip) and Publish (auto-fires a draft
- *    request) actions on the right.
+ * 1. Recent changes — rolling-window feature snapshot. Rows toggle
+ *    multi-select; one Publish bar below shows how many are selected.
  * 2. Chat thread — local messages with the Store agent rendered through
  *    the same `UserMessageRow` / `AssistantMessageRow` components as the
  *    full chat / chat sidebar, so bubble alignment, markdown, and
@@ -16,10 +15,9 @@
  *    sidebar.
  *
  * Blueprint drafts render as an `EndResourceCard`-shaped artifact pill
- * inside the assistant row, with a right-aligned bordered state badge
- * ("Review required" / "Published" / "Denied"). Clicking opens a glass
- * Radix `Dialog` with the markdown on a solid surface; approving opens
- * a second glass dialog for the publish form.
+ * inside the assistant row, with a status dot and label. Clicking opens
+ * a glass Radix `Dialog` with the markdown on a solid surface; approving
+ * opens a second glass dialog for the publish form.
  *
  * When a new blueprint draft lands while the panel is mounted, fires an
  * OS notification so the user gets pulled back even if the side panel
@@ -104,15 +102,15 @@ export function StoreSidePanel() {
     state.selectedFeatureNames,
   ]);
 
-  const handlePublishRow = useCallback(
-    async (name: string) => {
-      await sendThreadTurn({
-        text: `Draft a blueprint to publish: ${name}`,
-        attachedFeatureNames: [name],
-      });
-    },
-    [sendThreadTurn],
-  );
+  const handlePublishSelected = useCallback(async () => {
+    const names = Array.from(state.selectedFeatureNames);
+    if (names.length === 0 || sending || isInFlight) return;
+    const text =
+      names.length === 1
+        ? `Draft a blueprint to publish: ${names[0]}`
+        : `Draft a blueprint to publish these changes: ${names.join(", ")}`;
+    await sendThreadTurn({ text, attachedFeatureNames: names });
+  }, [isInFlight, sendThreadTurn, sending, state.selectedFeatureNames]);
 
   const handleApproveBlueprint = useCallback(() => {
     setReviewingMessage(null);
@@ -144,7 +142,8 @@ export function StoreSidePanel() {
         snapshot={state.snapshot}
         snapshotLoading={state.snapshotLoading}
         selectedFeatureNames={state.selectedFeatureNames}
-        onPublish={(name) => void handlePublishRow(name)}
+        publishDisabled={sending || isInFlight}
+        onPublishSelected={() => void handlePublishSelected()}
       />
 
       <StoreThread
@@ -153,17 +152,19 @@ export function StoreSidePanel() {
         hideEmptyPrompt={(state.snapshot?.items ?? []).length === 0}
       />
 
-      {messages.length === 0 && (state.snapshot?.items ?? []).length === 0 && !state.snapshotLoading && (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center", gap: 12 }}>
-          <div style={{ width: 180, height: 135, opacity: 0.9 }}>
+      {messages.length === 0 &&
+      (state.snapshot?.items ?? []).length === 0 &&
+      !state.snapshotLoading ? (
+        <div className="store-side-panel-empty-state">
+          <div className="store-side-panel-empty-state-art">
             <StoreIllustration />
           </div>
-          <div className="store-side-panel-empty" style={{ maxWidth: 240, fontSize: 15 }}>
+          <p className="store-side-panel-empty-state-body">
             After Stella makes a change for you, publish it to the store from
             here.
-          </div>
+          </p>
         </div>
-      )}
+      ) : null}
 
       <StoreComposer
         composer={composer}
