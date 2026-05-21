@@ -295,24 +295,123 @@ const patchDevMicrophoneUsageDescription = () => {
   }
 }
 
-const cleanupDevProtocolApp = () => {
+const patchDevProtocolRegistration = () => {
   if (process.platform !== 'darwin') {
     return
   }
 
+  const appBundle = path.resolve(path.dirname(electronBinary), '..', '..')
+  const infoPlist = path.join(appBundle, 'Contents', 'Info.plist')
   const resourcesDir = path.resolve(path.dirname(electronBinary), '..', 'Resources')
   const appDir = path.join(resourcesDir, 'app')
   const packageJsonPath = path.join(appDir, 'package.json')
+  const mainJsPath = path.join(appDir, 'main.js')
 
   try {
-    if (!existsSync(packageJsonPath)) {
-      return
+    if (existsSync(infoPlist)) {
+      execFileSync(
+        'plutil',
+        [
+          '-replace',
+          'CFBundleURLTypes',
+          '-json',
+          JSON.stringify([
+            {
+              CFBundleURLName: 'Stella Auth',
+              CFBundleURLSchemes: ['stella', 'Stella'],
+            },
+          ]),
+          infoPlist,
+        ],
+        { stdio: 'ignore' },
+      )
     }
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
-    if (packageJson?.name !== 'stella-dev-protocol-app') {
-      return
-    }
-    rmSync(appDir, { force: true, recursive: true })
+  } catch {
+    // Best-effort; LaunchServices can still use the explicit registration.
+  }
+
+  try {
+    mkdirSync(appDir, { recursive: true })
+    writeFileSync(
+      packageJsonPath,
+      JSON.stringify(
+        {
+          name: 'stella-dev-protocol-app',
+          version: '0.0.0',
+          main: 'main.js',
+          private: true,
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    )
+    writeFileSync(
+      mainJsPath,
+      `'use strict'
+
+const { app } = require('electron')
+const { spawn } = require('node:child_process')
+
+const repoRootDir = ${JSON.stringify(repoRootDir)}
+
+app.commandLine.appendSwitch('use-mock-keychain')
+app.commandLine.appendSwitch('password-store', 'basic')
+
+let pendingUrl = process.argv.find((arg) => /^stella:\\/\\//i.test(arg)) || null
+let forwarded = false
+let readyFallbackTimer = null
+
+const forwardToDevApp = () => {
+  if (forwarded) return
+  forwarded = true
+  if (readyFallbackTimer) {
+    clearTimeout(readyFallbackTimer)
+    readyFallbackTimer = null
+  }
+  const args = ['.']
+  if (pendingUrl) args.push(pendingUrl)
+  const env = {
+    ...process.env,
+    NODE_ENV: 'development',
+    ...(process.env.STELLA_LAUNCHER_PROTECTED_STORAGE_BIN
+      ? {}
+      : { STELLA_DEV_INSECURE_PROTECTED_STORAGE: '1' }),
+  }
+  const child = spawn(process.execPath, args, {
+    cwd: repoRootDir,
+    env,
+    detached: process.platform !== 'win32',
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  child.unref?.()
+}
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  if (!pendingUrl && /^stella:\\/\\//i.test(url)) {
+    pendingUrl = url
+  }
+  forwardToDevApp()
+  app.quit()
+})
+
+app.whenReady().then(() => {
+  if (pendingUrl) {
+    forwardToDevApp()
+    app.quit()
+    return
+  }
+  readyFallbackTimer = setTimeout(() => {
+    forwardToDevApp()
+    app.quit()
+  }, 500)
+  readyFallbackTimer.unref?.()
+})
+`,
+      'utf8',
+    )
   } catch {
     // Best-effort; may fail if node_modules is read-only.
   }
@@ -368,7 +467,7 @@ if (process.platform === 'darwin') {
   patchDevIcon()
   patchDevAppName()
   patchDevMicrophoneUsageDescription()
-  cleanupDevProtocolApp()
+  patchDevProtocolRegistration()
   resignDevAppBundle()
 }
 let disclaimBinary = null
