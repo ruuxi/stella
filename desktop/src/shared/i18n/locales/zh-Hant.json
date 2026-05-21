@@ -28,7 +28,7 @@
   "settings": {
     "title": "設定",
     "tabs": {
-      "basic": "一般",
+      "general": "一般",
       "shortcuts": "快速鍵",
       "memory": "記憶",
       "backup": "備份",

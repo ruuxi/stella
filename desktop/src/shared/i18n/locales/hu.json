@@ -28,7 +28,7 @@
   "settings": {
     "title": "Beállítások",
     "tabs": {
-      "basic": "Általános",
+      "general": "Általános",
       "shortcuts": "Gyorsbillentyűk",
       "memory": "Memória",
       "backup": "Biztonsági mentések",

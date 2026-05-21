@@ -28,7 +28,7 @@
   "settings": {
     "title": "الإعدادات",
     "tabs": {
-      "basic": "عام",
+      "general": "عام",
       "shortcuts": "الاختصارات",
       "memory": "الذاكرة",
       "backup": "النسخ الاحتياطي",

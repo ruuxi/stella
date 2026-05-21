@@ -28,7 +28,7 @@
   "settings": {
     "title": "設定",
     "tabs": {
-      "basic": "基本",
+      "general": "基本",
       "shortcuts": "ショートカット",
       "memory": "メモリ",
       "backup": "バックアップ",

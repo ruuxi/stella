@@ -28,7 +28,7 @@
   "settings": {
     "title": "Nastavení",
     "tabs": {
-      "basic": "Obecné",
+      "general": "Obecné",
       "shortcuts": "Zkratky",
       "memory": "Paměť",
       "backup": "Zálohy",

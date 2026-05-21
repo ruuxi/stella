@@ -28,7 +28,7 @@
   "settings": {
     "title": "Settings",
     "tabs": {
-      "basic": "Basic",
+      "general": "General",
       "shortcuts": "Shortcuts",
       "memory": "Memory",
       "backup": "Backups",
@@ -39,6 +39,83 @@
     "language": {
       "title": "Language",
       "description": "Choose the language Stella uses across the app and when responding to you."
+    },
+    "developerPreviews": {
+      "title": "Developer file previews",
+      "description": "Show code changes in chat and open them in the side panel."
+    },
+    "voice": {
+      "title": "Voice",
+      "personality": {
+        "label": "Personality"
+      }
+    },
+    "notifications": {
+      "title": "Sound notifications",
+      "description": "Play a sound when Stella finishes an agent run."
+    },
+    "power": {
+      "title": "Keep computer awake",
+      "description": "Stop your computer from sleeping while Stella is open."
+    },
+    "browserExtension": {
+      "title": "Stella for Chrome",
+      "description": "Lets Stella see the page you're on and take actions in your browser.",
+      "action": "Get extension"
+    },
+    "permissions": {
+      "title": "Permissions",
+      "enable": "Enable",
+      "granted": "Granted",
+      "opening": "Opening…",
+      "reset": "Reset",
+      "resetting": "Resetting…",
+      "accessibility": {
+        "label": "Accessibility",
+        "description": "Lets Stella read selected text and open from the ⌘+right-click shortcut anywhere on your computer."
+      },
+      "screen": {
+        "label": "Screen Capture",
+        "description": "Lets Stella see your screen so it can help with what you're looking at. You may need to quit and reopen Stella after turning this on."
+      },
+      "microphone": {
+        "label": "Microphone",
+        "description": "Used for voice and dictation. Reset if Stella was previously denied and macOS won't prompt again."
+      },
+      "restart": {
+        "label": "Restart Stella",
+        "description": "Screen capture was just turned on. Quit and reopen Stella to finish setting it up.",
+        "action": "Restart",
+        "closing": "Closing…"
+      }
+    },
+    "connectedProviders": {
+      "title": "Connected providers",
+      "empty": "No providers connected yet. Pick a non-Stella option in the model picker above to add an API key or sign in.",
+      "apiKey": "API key",
+      "signedIn": "Signed in",
+      "removeKey": "Remove key",
+      "removingKey": "Removing…",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…"
+    },
+    "errors": {
+      "loadPower": "Failed to load power setting.",
+      "savePower": "Failed to update power setting.",
+      "powerUnavailable": "Power settings are unavailable in this window.",
+      "loadSoundNotifications": "Failed to load sound notification setting.",
+      "saveSoundNotifications": "Failed to update sound notification setting.",
+      "soundNotificationsUnavailable": "Sound notification settings are unavailable in this window.",
+      "loadVoice": "Failed to load voice setting.",
+      "saveVoice": "Failed to update voice setting.",
+      "voiceUnavailable": "Voice settings are unavailable in this window.",
+      "loadPermissions": "Failed to load desktop permission status.",
+      "savePermission": "Failed to update {kind} permission.",
+      "resetPermission": "Failed to reset {kind} permission.",
+      "resetPermissionMaybeReopen": "Could not reset {kind} permission. Stella may need to be reopened.",
+      "microphoneDeniedReopen": "Microphone access was denied earlier. Turn it on in System Settings, then reopen Stella.",
+      "microphoneStillOff": "Microphone access is still off. Turn it on in System Settings, then reopen Stella.",
+      "restart": "Failed to restart Stella."
     }
   },
   "onboarding": {

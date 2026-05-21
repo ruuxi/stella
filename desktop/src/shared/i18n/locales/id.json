@@ -28,7 +28,7 @@
   "settings": {
     "title": "Pengaturan",
     "tabs": {
-      "basic": "Umum",
+      "general": "Umum",
       "shortcuts": "Pintasan",
       "memory": "Memori",
       "backup": "Cadangan",

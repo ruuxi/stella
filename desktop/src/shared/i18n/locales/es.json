@@ -28,7 +28,7 @@
   "settings": {
     "title": "Ajustes",
     "tabs": {
-      "basic": "General",
+      "general": "General",
       "shortcuts": "Atajos",
       "memory": "Memoria",
       "backup": "Copias de seguridad",

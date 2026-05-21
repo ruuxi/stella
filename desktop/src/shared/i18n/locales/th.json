@@ -28,7 +28,7 @@
   "settings": {
     "title": "การตั้งค่า",
     "tabs": {
-      "basic": "ทั่วไป",
+      "general": "ทั่วไป",
       "shortcuts": "ทางลัด",
       "memory": "หน่วยความจำ",
       "backup": "สำรองข้อมูล",

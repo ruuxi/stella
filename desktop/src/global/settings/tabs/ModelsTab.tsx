@@ -6,6 +6,7 @@ import {
   useLlmCredentials,
 } from "@/global/settings/hooks/use-llm-credentials";
 import { LLM_PROVIDERS } from "@/global/settings/lib/llm-providers";
+import { useT } from "@/shared/i18n";
 
 const SettingsModelsView = lazy(() =>
   import("@/global/settings/SettingsModelsView").then((m) => ({
@@ -26,9 +27,12 @@ function ModelConfigSection() {
 /**
  * Read-only "Connected providers" view. Sign-in / API-key entry now happens
  * inline inside the model picker — this card just shows the user which
- * providers are currently authenticated and lets them disconnect.
+ * providers are currently authenticated and lets them disconnect. Connection
+ * state reads as a thin vertical bar on the leading edge of each row, not
+ * a green dot.
  */
 function ConnectedProvidersSection() {
+  const t = useT();
   const credentials = useLlmCredentials();
   const [removingProvider, setRemovingProvider] = useState<string | null>(null);
 
@@ -69,7 +73,9 @@ function ConnectedProvidersSection() {
 
   return (
     <div className="settings-card">
-      <h3 className="settings-card-title">Connected providers</h3>
+      <h3 className="settings-card-title">
+        {t("settings.connectedProviders.title")}
+      </h3>
       {credentials.error ? (
         <p
           className="settings-card-desc settings-card-desc--error"
@@ -80,27 +86,27 @@ function ConnectedProvidersSection() {
       ) : null}
       {connectedProviders.length === 0 ? (
         <p className="settings-card-desc">
-          No providers connected yet. Pick a non-Stella option in the model
-          picker above to add an API key or sign in.
+          {t("settings.connectedProviders.empty")}
         </p>
       ) : (
         connectedProviders.map((provider) => {
           const isRemoving = removingProvider === provider.key;
           return (
-            <div key={provider.key} className="settings-row">
+            <div
+              key={provider.key}
+              className="settings-row settings-row--connected"
+            >
               <div className="settings-row-info">
                 <div className="settings-row-label">{provider.label}</div>
                 <div className="settings-row-sublabel">
                   {provider.apiKey ? (
                     <span className="settings-key-status">
-                      <span className="settings-key-dot settings-key-dot--active" />
-                      API key
+                      {t("settings.connectedProviders.apiKey")}
                     </span>
                   ) : null}
                   {provider.oauth ? (
                     <span className="settings-key-status">
-                      <span className="settings-key-dot settings-key-dot--active" />
-                      Signed in
+                      {t("settings.connectedProviders.signedIn")}
                     </span>
                   ) : null}
                 </div>
@@ -114,7 +120,9 @@ function ConnectedProvidersSection() {
                     onClick={() => void handleRemove(provider.key, "key")}
                     disabled={isRemoving}
                   >
-                    {isRemoving ? "Removing…" : "Remove key"}
+                    {isRemoving
+                      ? t("settings.connectedProviders.removingKey")
+                      : t("settings.connectedProviders.removeKey")}
                   </Button>
                 ) : null}
                 {provider.oauth ? (
@@ -125,7 +133,9 @@ function ConnectedProvidersSection() {
                     onClick={() => void handleRemove(provider.key, "oauth")}
                     disabled={isRemoving}
                   >
-                    {isRemoving ? "Signing out…" : "Sign out"}
+                    {isRemoving
+                      ? t("settings.connectedProviders.signingOut")
+                      : t("settings.connectedProviders.signOut")}
                   </Button>
                 ) : null}
               </div>

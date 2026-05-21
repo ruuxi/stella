@@ -1,5 +1,5 @@
 export const SETTINGS_TAB_KEYS = [
-  "basic",
+  "general",
   "shortcuts",
   "memory",
   "backup",
@@ -17,7 +17,7 @@ export type SettingsTab = (typeof SETTINGS_TAB_KEYS)[number];
  * (`labelKey`) so callers don't need to know the catalog layout.
  */
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
-  { key: "basic", labelKey: "settings.tabs.basic" },
+  { key: "general", labelKey: "settings.tabs.general" },
   { key: "shortcuts", labelKey: "settings.tabs.shortcuts" },
   { key: "memory", labelKey: "settings.tabs.memory" },
   { key: "backup", labelKey: "settings.tabs.backup" },

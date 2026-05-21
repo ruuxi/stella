@@ -28,7 +28,7 @@
   "settings": {
     "title": "Inställningar",
     "tabs": {
-      "basic": "Allmänt",
+      "general": "Allmänt",
       "shortcuts": "Genvägar",
       "memory": "Minne",
       "backup": "Säkerhetskopior",

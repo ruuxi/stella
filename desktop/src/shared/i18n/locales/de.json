@@ -28,7 +28,7 @@
   "settings": {
     "title": "Einstellungen",
     "tabs": {
-      "basic": "Allgemein",
+      "general": "Allgemein",
       "shortcuts": "Tastenkürzel",
       "memory": "Erinnerungen",
       "backup": "Sicherungen",

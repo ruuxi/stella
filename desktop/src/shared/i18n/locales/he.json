@@ -28,7 +28,7 @@
   "settings": {
     "title": "הגדרות",
     "tabs": {
-      "basic": "כללי",
+      "general": "כללי",
       "shortcuts": "קיצורים",
       "memory": "זיכרון",
       "backup": "גיבויים",

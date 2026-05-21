@@ -28,7 +28,7 @@
   "settings": {
     "title": "Paramètres",
     "tabs": {
-      "basic": "Général",
+      "general": "Général",
       "shortcuts": "Raccourcis",
       "memory": "Mémoire",
       "backup": "Sauvegardes",

@@ -28,7 +28,7 @@
   "settings": {
     "title": "Setări",
     "tabs": {
-      "basic": "General",
+      "general": "General",
       "shortcuts": "Comenzi rapide",
       "memory": "Memorie",
       "backup": "Copii de rezervă",
