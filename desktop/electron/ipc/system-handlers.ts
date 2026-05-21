@@ -10,6 +10,8 @@ import {
   type IpcMainInvokeEvent,
 } from "electron";
 import { copyFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   getLocalModelPreferences,
@@ -202,6 +204,183 @@ const clampHeapTraceDurationMs = (value: unknown) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 5_000;
   return Math.min(30_000, Math.max(1_000, Math.floor(parsed)));
+};
+
+/**
+ * Best-effort detection for "this user already runs other AI dev tooling".
+ * Used by the onboarding engine phase to hide BYOK / Claude Code surfaces
+ * from non-technical users while leaving them visible for anyone who has
+ * Claude desktop, ChatGPT desktop, Cursor, or the claude/codex CLI on this
+ * machine. Strictly read-only: only checks well-known install paths and
+ * walks `$PATH` for the two CLI bins. No subprocess spawning.
+ */
+type TechnicalUserSignal =
+  | "claude-app"
+  | "chatgpt-app"
+  | "cursor-app"
+  | "claude-cli"
+  | "codex-cli"
+  | "opencode-cli"
+  | "pi-cli"
+  | "openclaw-cli"
+  | "hermes-cli";
+
+const macAppPaths = (appName: string): string[] => {
+  const home = os.homedir();
+  return [
+    `/Applications/${appName}.app`,
+    path.join(home, "Applications", `${appName}.app`),
+  ];
+};
+
+const winAppPaths = (relPath: string): string[] => {
+  const localAppData =
+    process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+  const programFiles =
+    process.env["ProgramFiles"] ?? "C:\\Program Files";
+  const programFilesX86 =
+    process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
+  return [
+    path.join(localAppData, relPath),
+    path.join(programFiles, relPath),
+    path.join(programFilesX86, relPath),
+  ];
+};
+
+const anyExists = (paths: readonly string[]): boolean => {
+  for (const candidate of paths) {
+    try {
+      if (existsSync(candidate)) return true;
+    } catch {
+      /* best-effort */
+    }
+  }
+  return false;
+};
+
+const findCliOnPath = (binName: string): boolean => {
+  const home = os.homedir();
+  const wellKnown =
+    binName === "claude"
+      ? [
+          path.join(home, ".claude", "local", "claude"),
+          path.join(home, ".claude", "bin", "claude"),
+        ]
+      : binName === "codex"
+        ? [
+            path.join(home, ".codex", "bin", "codex"),
+            path.join(home, ".cargo", "bin", "codex"),
+          ]
+        : binName === "opencode"
+          ? [
+              path.join(home, ".opencode", "bin", "opencode"),
+              path.join(home, ".bun", "bin", "opencode"),
+            ]
+          : binName === "hermes"
+            ? // Per Hermes install docs: per-user / pip installer drops
+              // `~/.local/bin/hermes` (symlink); root-mode installer drops
+              // `/usr/local/bin/hermes`. `~/.local/bin` is often missing
+              // from a service user's PATH, so we check it explicitly.
+              process.platform === "win32"
+              ? []
+              : [
+                  path.join(home, ".local", "bin", "hermes"),
+                  "/usr/local/bin/hermes",
+                ]
+            : // pi & openclaw: install via npm-global / curl installers
+              // that drop `pi` / `openclaw` straight onto PATH; no
+              // documented sub-bin path to short-circuit on.
+              [];
+  if (anyExists(wellKnown)) return true;
+
+  const pathEnv = process.env.PATH ?? "";
+  const sep = process.platform === "win32" ? ";" : ":";
+  const exts =
+    process.platform === "win32"
+      ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")
+      : [""];
+  for (const dir of pathEnv.split(sep)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      try {
+        if (existsSync(path.join(dir, `${binName}${ext.toLowerCase()}`))) {
+          return true;
+        }
+        if (existsSync(path.join(dir, `${binName}${ext}`))) {
+          return true;
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+  return false;
+};
+
+const detectTechnicalUserSignals = (): TechnicalUserSignal[] => {
+  const signals: TechnicalUserSignal[] = [];
+  if (process.platform === "darwin") {
+    if (anyExists(macAppPaths("Claude"))) signals.push("claude-app");
+    if (anyExists(macAppPaths("ChatGPT"))) signals.push("chatgpt-app");
+    if (anyExists(macAppPaths("Cursor"))) signals.push("cursor-app");
+  } else if (process.platform === "win32") {
+    if (
+      anyExists(winAppPaths("AnthropicClaude\\Claude.exe")) ||
+      anyExists(winAppPaths("Programs\\Claude\\Claude.exe"))
+    ) {
+      signals.push("claude-app");
+    }
+    if (anyExists(winAppPaths("Programs\\OpenAI ChatGPT\\ChatGPT.exe"))) {
+      signals.push("chatgpt-app");
+    }
+    if (anyExists(winAppPaths("Programs\\Cursor\\Cursor.exe"))) {
+      signals.push("cursor-app");
+    }
+  }
+  if (findCliOnPath("claude")) signals.push("claude-cli");
+  if (findCliOnPath("codex")) signals.push("codex-cli");
+  if (findCliOnPath("opencode")) signals.push("opencode-cli");
+
+  const home = os.homedir();
+
+  // Pi coding agent (earendil-works/pi) — docs put settings at
+  // `~/.pi/agent/settings.json`, so that directory's existence is the
+  // canonical signal. The bare `pi` binary name is too common to trust
+  // alone, so we only fall back to PATH if the config dir is missing.
+  if (existsSync(path.join(home, ".pi", "agent")) || findCliOnPath("pi")) {
+    signals.push("pi-cli");
+  }
+
+  // OpenClaw — docs put state at `~/.openclaw/` (override via
+  // `OPENCLAW_STATE_DIR` / `OPENCLAW_HOME`); Ubuntu installs may use
+  // `~/.config/openclaw/` as a compatibility fallback.
+  const openclawStateDir =
+    process.env.OPENCLAW_STATE_DIR ??
+    (process.env.OPENCLAW_HOME
+      ? path.join(process.env.OPENCLAW_HOME, ".openclaw")
+      : path.join(home, ".openclaw"));
+  if (
+    existsSync(openclawStateDir) ||
+    existsSync(path.join(home, ".config", "openclaw")) ||
+    findCliOnPath("openclaw")
+  ) {
+    signals.push("openclaw-cli");
+  }
+
+  // Hermes Agent (NousResearch) — docs put per-user / pip data at
+  // `~/.hermes/` (overridable via `HERMES_HOME`). Native Windows
+  // installer puts the cloned repo at `%LOCALAPPDATA%\hermes\hermes-agent`.
+  const hermesDataDirs: string[] = [];
+  if (process.env.HERMES_HOME) hermesDataDirs.push(process.env.HERMES_HOME);
+  hermesDataDirs.push(path.join(home, ".hermes"));
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+    hermesDataDirs.push(path.join(process.env.LOCALAPPDATA, "hermes"));
+  }
+  if (hermesDataDirs.some((p) => existsSync(p)) || findCliOnPath("hermes")) {
+    signals.push("hermes-cli");
+  }
+
+  return signals;
 };
 
 type SystemHandlersOptions = {
@@ -1839,4 +2018,18 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       return { ...result, openedSettings };
     },
   );
+
+  ipcMain.handle("system:detectTechnicalUserSignals", (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        "system:detectTechnicalUserSignals",
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted system:detectTechnicalUserSignals request.",
+      );
+    }
+    return { signals: detectTechnicalUserSignals() };
+  });
 };

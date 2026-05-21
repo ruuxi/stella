@@ -1145,6 +1145,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("llmCredentials:delete", { provider }) as Promise<{
         removed: boolean;
       }>,
+    detectTechnicalUserSignals: () =>
+      ipcRenderer.invoke("system:detectTechnicalUserSignals") as Promise<{
+        signals: Array<
+          | "claude-app"
+          | "chatgpt-app"
+          | "cursor-app"
+          | "claude-cli"
+          | "codex-cli"
+          | "opencode-cli"
+          | "pi-cli"
+          | "openclaw-cli"
+          | "hermes-cli"
+        >;
+      }>,
     resetMessages: () =>
       ipcRenderer.invoke("app:resetLocalMessages") as Promise<{ ok: boolean }>,
     onCredentialRequest: onIpcWithEvent<{

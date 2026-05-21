@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 import { SPLIT_PHASES, SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
@@ -22,6 +22,7 @@ import "./Onboarding.css";
  * `Onboarding.css` so any future async content (data fetches, etc.)
  * can't reproduce the jump. */
 import { OnboardingCapabilitiesPhase } from "./OnboardingCapabilitiesPhase";
+import { OnboardingEnginePhase } from "./OnboardingEnginePhase";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 import { OnboardingExtensionPhase } from "./OnboardingExtensionPhase";
 import { OnboardingBrowserPhase } from "./OnboardingBrowserPhase";
@@ -42,6 +43,7 @@ import { OnboardingMockWindows } from "./OnboardingMockWindows";
  * static step title would otherwise be — that's why it's omitted here.
  */
 const STEP_TITLE_KEYS: Partial<Record<Phase, string>> = {
+  engine: "onboarding.stepTitles.engine",
   extension: "onboarding.stepTitles.extension",
   browser: "onboarding.stepTitles.browser",
   creation: "onboarding.stepTitles.creation",
@@ -83,10 +85,40 @@ export const OnboardingStep1 = ({
   discoveryWelcomeReady = false,
 }: OnboardingStep1Props) => {
   const t = useT();
-  const skippedPhases = useMemo(
-    () => (discoveryWelcomeExpected ? undefined : new Set<Phase>(["enter"])),
-    [discoveryWelcomeExpected],
-  );
+
+  // The engine phase (Stella / Claude Code / BYOK provider) is only useful
+  // for users who already run other AI dev tooling. Detection is a one-shot
+  // filesystem probe in the main process — see
+  // `system:detectTechnicalUserSignals` — and defaults to "skip" until
+  // resolved so non-technical users never even see the phase. Detection
+  // completes in milliseconds; capabilities cycles for ~38s before the
+  // user can click Continue, so the result is always known by the time
+  // navigation reaches `engine`.
+  const [showEnginePhase, setShowEnginePhase] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const result =
+          await window.electronAPI?.system?.detectTechnicalUserSignals?.();
+        if (cancelled) return;
+        setShowEnginePhase(Boolean(result?.signals?.length));
+      } catch {
+        // Best-effort; default-to-skip stays in effect on failure.
+      }
+    };
+    void probe();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const skippedPhases = useMemo(() => {
+    const skipped = new Set<Phase>();
+    if (!discoveryWelcomeExpected) skipped.add("enter");
+    if (!showEnginePhase) skipped.add("engine");
+    return skipped.size > 0 ? skipped : undefined;
+  }, [discoveryWelcomeExpected, showEnginePhase]);
   const {
     phase,
     leaving,
@@ -153,6 +185,13 @@ export const OnboardingStep1 = ({
       case "capabilities":
         return (
           <OnboardingCapabilitiesPhase
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
+        );
+      case "engine":
+        return (
+          <OnboardingEnginePhase
             splitTransitionActive={leaving}
             onContinue={nextSplitStep}
           />
