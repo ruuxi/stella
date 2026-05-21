@@ -135,7 +135,8 @@
      the "roll away" effect on close instead of letting content reflow. */
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   min-width: 0;
-  border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  border-left: 1px solid
+    color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
   border-radius: 0 0 0 32px;
   transform: translate3d(12px, 0, 0);
   opacity: 0;
@@ -230,17 +231,39 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   height: 100%;
   z-index: 3;
   cursor: col-resize;
-  /* Subtle visual: a 1px highlight on the actual border line, with a
-     wider invisible hit area for easier grabbing. */
-  background: linear-gradient(
-    to right,
-    color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent) 0,
-    color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent) 1px,
-    transparent 1px,
-    transparent 100%
-  );
   opacity: 0;
   transition: opacity 0.15s ease;
+}
+
+.display-sidebar__resize-handle::before,
+.display-sidebar__resize-handle::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.display-sidebar__resize-handle::before {
+  top: 0;
+  bottom: 32px;
+  left: 0;
+  width: 1px;
+  background: color-mix(
+    in oklch,
+    var(--foreground, #0f1728) 18%,
+    transparent
+  );
+}
+
+.display-sidebar__resize-handle::after {
+  left: 0;
+  bottom: 0;
+  width: 32px;
+  height: 32px;
+  border-bottom-left-radius: 32px;
+  border-left: 1px solid
+    color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent);
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--foreground, #0f1728) 18%, transparent);
 }
 
 .display-sidebar--open .display-sidebar__resize-handle:hover,
