@@ -1661,6 +1661,23 @@
   padding: 6px 12px 10px;
 }
 
+/* Expanded display panel — align store thread/composer gutters with chat. */
+.display-sidebar--expanded .store-side-panel-list,
+.display-sidebar--expanded .store-side-panel-thread,
+.display-sidebar--expanded .store-side-panel-publish-bar,
+.display-sidebar--expanded .store-side-panel > .chat-sidebar-composer {
+  padding-inline: 24px;
+}
+
+.display-sidebar--expanded .store-side-panel > .chat-sidebar-composer {
+  padding-bottom: 10px;
+}
+
+.display-sidebar--expanded .store-side-panel .chat-sidebar-shell {
+  width: 100%;
+  max-width: none;
+}
+
 /*
  * Blueprint review + Publish dialogs.
  *
