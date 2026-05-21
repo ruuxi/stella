@@ -62,7 +62,7 @@ import { useWorkspacePanelEvents } from "@/shell/root-chrome/use-workspace-panel
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
 
-const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH = 960;
+const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH = 1280;
 const SHELL_LEFT_SIDEBAR_AUTO_HIDE_WIDTH = 720;
 
 type ShellBreakpointState = {
