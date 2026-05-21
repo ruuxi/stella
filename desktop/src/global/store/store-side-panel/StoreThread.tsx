@@ -38,12 +38,17 @@ export function BlueprintPill({
   published: boolean;
   onOpen: () => void;
 }) {
-  const tier = denied ? "denied" : published ? "published" : "review";
-  const badgeLabel = denied
-    ? "Denied"
+  const tier: "denied" | "published" | "review" = denied
+    ? "denied"
     : published
-      ? "Published"
-      : "Review required";
+      ? "published"
+      : "review";
+  const statusLabel =
+    tier === "denied"
+      ? "Denied"
+      : tier === "published"
+        ? "Published"
+        : "Review required";
   return (
     <button
       type="button"
@@ -58,8 +63,9 @@ export function BlueprintPill({
         <span className="end-resource-card__label">Blueprint draft</span>
         <span className="end-resource-card__action">{name}</span>
       </span>
-      <span className="store-side-panel-blueprint-badge" data-tier={tier}>
-        {badgeLabel}
+      <span className="store-side-panel-blueprint-status" data-tier={tier}>
+        <span className="store-side-panel-blueprint-status-dot" aria-hidden />
+        {statusLabel}
       </span>
     </button>
   );
@@ -89,10 +95,9 @@ export function StoreThread({
     }
     return (
       <div className="store-side-panel-thread">
-        <div className="store-side-panel-thread-empty">
-          Pick changes above or just type — Stella will help draft a blueprint
-          to publish.
-        </div>
+        <p className="store-side-panel-thread-empty">
+          Pick a change above, or describe what to publish.
+        </p>
       </div>
     );
   }
