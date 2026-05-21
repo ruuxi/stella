@@ -28,7 +28,7 @@
   "settings": {
     "title": "Indstillinger",
     "tabs": {
-      "basic": "Generelt",
+      "general": "Generelt",
       "shortcuts": "Genveje",
       "memory": "Hukommelse",
       "backup": "Sikkerhedskopier",

@@ -28,7 +28,7 @@
   "settings": {
     "title": "Asetukset",
     "tabs": {
-      "basic": "Yleiset",
+      "general": "Yleiset",
       "shortcuts": "Pikanäppäimet",
       "memory": "Muisti",
       "backup": "Varmuuskopiot",

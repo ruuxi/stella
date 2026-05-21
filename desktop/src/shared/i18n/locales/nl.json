@@ -28,7 +28,7 @@
   "settings": {
     "title": "Instellingen",
     "tabs": {
-      "basic": "Algemeen",
+      "general": "Algemeen",
       "shortcuts": "Sneltoetsen",
       "memory": "Geheugen",
       "backup": "Back-ups",

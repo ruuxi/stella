@@ -28,7 +28,7 @@
   "settings": {
     "title": "Innstillinger",
     "tabs": {
-      "basic": "Generelt",
+      "general": "Generelt",
       "shortcuts": "Snarveier",
       "memory": "Minne",
       "backup": "Sikkerhetskopier",

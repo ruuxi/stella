@@ -28,8 +28,8 @@ const LegalDialog = lazy(() =>
     default: m.LegalDialog,
   })),
 );
-const BasicTab = lazy(() =>
-  import("./tabs/BasicTab").then((m) => ({ default: m.BasicTab })),
+const GeneralTab = lazy(() =>
+  import("./tabs/GeneralTab").then((m) => ({ default: m.GeneralTab })),
 );
 const ShortcutsTab = lazy(() =>
   import("./tabs/ShortcutsTab").then((m) => ({ default: m.ShortcutsTab })),
@@ -68,7 +68,7 @@ interface SettingsScreenProps {
 }
 
 const TAB_PRELOADERS: Record<SettingsTab, () => Promise<unknown>> = {
-  basic: () => import("./tabs/BasicTab"),
+  general: () => import("./tabs/GeneralTab"),
   shortcuts: () => import("./tabs/ShortcutsTab"),
   memory: () => import("./tabs/MemoryTab"),
   backup: () => import("./tabs/BackupTab"),
@@ -122,7 +122,7 @@ export const SettingsScreen = ({
   onActiveTabChange,
   onSignOut,
 }: SettingsScreenProps) => {
-  const [selectedTab, setSelectedTab] = useState<SettingsTab>("basic");
+  const [selectedTab, setSelectedTab] = useState<SettingsTab>("general");
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
     null,
   );
@@ -214,9 +214,12 @@ export const SettingsScreen = ({
                 return (
                   <button
                     key={tab.key}
+                    id={`settings-tab-${tab.key}`}
                     type="button"
                     role="tab"
                     aria-selected={isActive}
+                    aria-controls={`settings-tabpanel-${tab.key}`}
+                    tabIndex={isActive ? 0 : -1}
                     className={`settings-tab-rail-item${isActive ? " settings-tab-rail-item--active" : ""}`}
                     onClick={() => {
                       if (isSearching) setSearchQuery("");
@@ -239,13 +242,19 @@ export const SettingsScreen = ({
                 onClear={() => setSearchQuery("")}
               />
             ) : (
-              <SettingsTabContent
-                activeTab={activeTab}
-                onSignOut={onSignOut}
-                onOpenLegal={setActiveLegalDoc}
-                pendingScrollTarget={pendingScrollTarget}
-                onScrollTargetHandled={() => setPendingScrollTarget(null)}
-              />
+              <div
+                id={`settings-tabpanel-${activeTab}`}
+                role="tabpanel"
+                aria-labelledby={`settings-tab-${activeTab}`}
+              >
+                <SettingsTabContent
+                  activeTab={activeTab}
+                  onSignOut={onSignOut}
+                  onOpenLegal={setActiveLegalDoc}
+                  pendingScrollTarget={pendingScrollTarget}
+                  onScrollTargetHandled={() => setPendingScrollTarget(null)}
+                />
+              </div>
             )}
           </SettingsPanel>
         </div>
@@ -353,8 +362,8 @@ function SettingsTabContent({
   return (
     <div ref={contentRef} className="settings-panel-content">
       <Suspense fallback={null}>
-        {activeTab === "basic" ? (
-          <BasicTab />
+        {activeTab === "general" ? (
+          <GeneralTab />
         ) : activeTab === "shortcuts" ? (
           <ShortcutsTab />
         ) : activeTab === "memory" ? (
@@ -368,7 +377,7 @@ function SettingsTabContent({
         ) : activeTab === "audio" ? (
           <AudioTab />
         ) : (
-          <BasicTab />
+          <GeneralTab />
         )}
       </Suspense>
     </div>

@@ -40,7 +40,7 @@ type I18nContextValue = {
    */
   setLocale: (locale: Locale) => void;
   /**
-   * Translate a dotted key (e.g. `settings.tabs.basic`) against the
+   * Translate a dotted key (e.g. `settings.tabs.general`) against the
    * active catalog. Falls back to English, then the raw key.
    */
   t: (key: string, params?: TranslateParams) => string;

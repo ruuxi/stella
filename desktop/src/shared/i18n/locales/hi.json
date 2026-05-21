@@ -28,7 +28,7 @@
   "settings": {
     "title": "सेटिंग्स",
     "tabs": {
-      "basic": "बुनियादी",
+      "general": "बुनियादी",
       "shortcuts": "शॉर्टकट",
       "memory": "मेमोरी",
       "backup": "बैकअप",

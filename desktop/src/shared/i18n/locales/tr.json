@@ -28,7 +28,7 @@
   "settings": {
     "title": "Ayarlar",
     "tabs": {
-      "basic": "Genel",
+      "general": "Genel",
       "shortcuts": "Kısayollar",
       "memory": "Bellek",
       "backup": "Yedekler",

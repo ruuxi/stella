@@ -116,6 +116,13 @@
   --tab-rail-fade-end: 0px;
 }
 
+/* No scrollable overflow → drop the mask entirely so the strip doesn't
+   carry decorative fade noise on widths where every tab fits. */
+.settings-tab-rail-nav[data-at-start="true"][data-at-end="true"] {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
 .settings-tab-rail-nav::-webkit-scrollbar {
   display: none;
 }
@@ -386,7 +393,7 @@
 }
 
 .settings-row + .settings-row {
-  border-top: 1px solid color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
 }
 
 .settings-card > .settings-row:first-of-type {
@@ -403,21 +410,20 @@
 }
 
 .settings-row-label {
-  /* Eyebrow per-setting label — tells the eye what this row is at a
-     glance; the sublabel below carries the full description. */
-  font-size: 11px;
+  /* Primary row label — visually dominant. The sublabel below is the
+     supporting description, not the headline. */
+  font-size: 13.5px;
   font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  line-height: 1;
-  color: color-mix(in oklch, var(--text-base) 55%, var(--text-weak));
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+  color: var(--text-strong);
 }
 
 .settings-row-sublabel {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-base);
-  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: color-mix(in oklch, var(--text-base) 70%, var(--text-weak));
+  margin-top: 3px;
 }
 
 .settings-row-control {
@@ -654,29 +660,39 @@
   background: transparent;
 }
 
-/* ---- Key Status ---- */
+/* ---- Connected provider rows ----
+   "Connected" is conveyed by a thin vertical bar on the row's leading
+   edge, not a colored dot. Bar color is derived from `--interactive`
+   so it tints with the active theme rather than fighting it with a
+   raw green. */
+
+.settings-row--connected {
+  position: relative;
+  padding-left: 14px;
+}
+
+.settings-row--connected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--interactive) 70%, transparent);
+}
 
 .settings-key-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
+  color: color-mix(in oklch, var(--text-base) 70%, var(--text-weak));
+}
+
+.settings-key-status + .settings-key-status::before {
+  content: "·";
+  margin: 0 6px;
   color: var(--text-weak);
-}
-
-.settings-key-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.settings-key-dot--active {
-  background: #22c55e;
-}
-
-.settings-key-dot--inactive {
-  background: var(--border);
 }
 
 /* ---- Global search results view ---- */

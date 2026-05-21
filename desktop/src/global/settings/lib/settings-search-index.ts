@@ -38,9 +38,9 @@ export interface SettingsSearchEntry {
 }
 
 export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
-  // ---------- Basic ----------
+  // ---------- General ----------
   {
-    tab: "basic",
+    tab: "general",
     title: "Language",
     description: "Choose the language Stella uses across the app.",
     keywords: [
@@ -60,20 +60,20 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
     ],
   },
   {
-    tab: "basic",
-    title: "Chat previews",
+    tab: "general",
+    title: "Developer file previews",
     description: "Show developer file changes in chat and the side panel.",
     keywords: ["developer", "code", "diff", "file previews", "preview"],
   },
   {
-    tab: "basic",
+    tab: "general",
     title: "Voice",
     description: "Pick Stella's speaking style and personality voice.",
     keywords: ["personality", "tone", "stella voice", "accent"],
   },
   {
-    tab: "basic",
-    title: "Notifications",
+    tab: "general",
+    title: "Sound notifications",
     description: "Play a sound when Stella finishes an agent run.",
     keywords: [
       "alerts",
@@ -86,12 +86,13 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
       "chime",
       "bell",
       "do not disturb",
+      "notifications",
     ],
   },
   {
-    tab: "basic",
-    title: "Power",
-    description: "Keep this computer awake while Stella is running.",
+    tab: "general",
+    title: "Keep computer awake",
+    description: "Stop your computer from sleeping while Stella is open.",
     keywords: [
       "prevent sleep",
       "keep awake",
@@ -99,11 +100,12 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
       "screensaver",
       "energy",
       "idle",
+      "power",
     ],
   },
   {
-    tab: "basic",
-    title: "Browser extension",
+    tab: "general",
+    title: "Stella for Chrome",
     description: "Add the Stella extension to Chrome and other browsers.",
     keywords: [
       "chrome",
@@ -115,10 +117,11 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
       "plugin",
       "addon",
       "add-on",
+      "browser extension",
     ],
   },
   {
-    tab: "basic",
+    tab: "general",
     title: "Permissions",
     description:
       "Grant accessibility, screen capture, and microphone access on macOS.",
@@ -346,25 +349,11 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
     keywords: ["chime", "ping", "feedback", "mute dictation"],
   },
   {
-    tab: "basic",
+    tab: "general",
     title: "Prevent sleep",
-    cardTitle: "Power",
+    cardTitle: "Keep computer awake",
     description: "Stop your computer from sleeping while Stella is open.",
-    keywords: ["caffeinate", "keep awake", "no sleep", "stay on"],
-  },
-  {
-    tab: "basic",
-    title: "Stella for Chrome",
-    cardTitle: "Browser extension",
-    description: "Add the Stella browser extension to Chrome.",
-    keywords: ["chrome extension", "install extension"],
-  },
-  {
-    tab: "basic",
-    title: "Sound notifications",
-    cardTitle: "Notifications",
-    description: "Play a sound when Stella finishes an agent run.",
-    keywords: ["mute", "silence", "ping", "alert sound"],
+    keywords: ["caffeinate", "keep awake", "no sleep", "stay on", "power"],
   },
   {
     tab: "account",

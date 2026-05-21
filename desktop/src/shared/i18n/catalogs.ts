@@ -7,9 +7,9 @@
  *
  * Catalogs are nested objects:
  *
- *   { common: { continue: "Continue" }, settings: { tabs: { basic: "Basic" } } }
+ *   { common: { continue: "Continue" }, settings: { tabs: { general: "General" } } }
  *
- * `t("settings.tabs.basic")` walks the dot-notation path inside the
+ * `t("settings.tabs.general")` walks the dot-notation path inside the
  * active catalog and falls back to the English catalog (and finally the
  * raw key) if the path is missing. Keep keys descriptive — they're the
  * developer-facing source of truth even when English copy ships untranslated.

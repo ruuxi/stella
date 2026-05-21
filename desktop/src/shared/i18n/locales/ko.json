@@ -28,7 +28,7 @@
   "settings": {
     "title": "설정",
     "tabs": {
-      "basic": "기본",
+      "general": "기본",
       "shortcuts": "단축키",
       "memory": "메모리",
       "backup": "백업",

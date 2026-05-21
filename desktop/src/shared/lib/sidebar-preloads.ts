@@ -4,7 +4,7 @@ type PreloadKey =
   | "connect"
   | "models-picker"
   | "settings"
-  | "settings-basic"
+  | "settings-general"
   | "social"
   | "social-chat-pane"
   | "social-friends-dialog"
@@ -33,14 +33,14 @@ export const preloadConnectDialog = () =>
 export const preloadModelsPicker = () =>
   runOnce("models-picker", () => import("@/global/settings/AgentModelPicker"));
 
-// Settings opens to BasicTab by default (`?tab=` is the override). Warming
-// both the shell and BasicTab in the same preload kills the brief Suspense
+// Settings opens to GeneralTab by default (`?tab=` is the override). Warming
+// both the shell and GeneralTab in the same preload kills the brief Suspense
 // flash users would otherwise see for the active tab on first open.
 export const preloadSettingsScreen = () => {
   runOnce("settings", () => import("@/global/settings/SettingsView"));
   runOnce(
-    "settings-basic",
-    () => import("@/global/settings/tabs/BasicTab"),
+    "settings-general",
+    () => import("@/global/settings/tabs/GeneralTab"),
   );
 };
 

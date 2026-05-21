@@ -28,7 +28,7 @@
   "settings": {
     "title": "Impostazioni",
     "tabs": {
-      "basic": "Generale",
+      "general": "Generale",
       "shortcuts": "Scorciatoie",
       "memory": "Memoria",
       "backup": "Backup",

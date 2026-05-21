@@ -28,7 +28,7 @@
   "settings": {
     "title": "Cài đặt",
     "tabs": {
-      "basic": "Chung",
+      "general": "Chung",
       "shortcuts": "Phím tắt",
       "memory": "Bộ nhớ",
       "backup": "Sao lưu",
