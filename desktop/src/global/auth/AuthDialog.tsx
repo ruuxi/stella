@@ -11,7 +11,9 @@ import {
 import { MagicLinkAuthFlow } from "./MagicLinkAuthFlow";
 import { authClient } from "./lib/auth-client";
 import { useAuthSessionState } from "./hooks/use-auth-session-state";
+import { refreshAuthSession } from "./services/auth-session";
 import { openExternalUrl } from "@/platform/electron/open-external";
+import { readConfiguredConvexSiteUrl } from "@/shared/lib/convex-urls";
 import "./AuthDialog.css";
 
 interface AuthDialogProps {
@@ -29,14 +31,78 @@ type SocialSignInResult = {
   } | null;
 };
 
-const getDesktopAuthCallbackUrl = () => {
-  const protocol =
-    (import.meta.env.VITE_STELLA_PROTOCOL as string | undefined)
-      ?.replace("://", "")
-      .replace(":", "")
-      .trim()
-      .toLowerCase() || "stella";
-  return `${protocol}://auth/callback`;
+const SOCIAL_AUTH_POLL_INTERVAL_MS = 2500;
+const SOCIAL_AUTH_TIMEOUT_MS = 2 * 60_000;
+
+const wait = (ms: number) =>
+  new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+const getConvexSiteUrl = () => {
+  const url = readConfiguredConvexSiteUrl(
+    import.meta.env.VITE_CONVEX_SITE_URL as string | undefined,
+  );
+  if (!url) {
+    throw new Error("Convex site URL is not configured.");
+  }
+  return url;
+};
+
+const startDesktopSocialAuth = async () => {
+  const convexSiteUrl = getConvexSiteUrl();
+  const response = await fetch(`${convexSiteUrl}/api/auth/desktop-social/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "google" }),
+  });
+  const data = (await response.json().catch(() => null)) as {
+    requestId?: string;
+    callbackURL?: string;
+    error?: string;
+  } | null;
+  if (!response.ok || !data?.requestId || !data.callbackURL) {
+    throw new Error(data?.error || "Google sign-in could not start.");
+  }
+  return {
+    convexSiteUrl,
+    requestId: data.requestId,
+    callbackURL: data.callbackURL,
+  };
+};
+
+const pollDesktopSocialAuth = async (
+  convexSiteUrl: string,
+  requestId: string,
+) => {
+  const deadline = Date.now() + SOCIAL_AUTH_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await wait(SOCIAL_AUTH_POLL_INTERVAL_MS);
+    const response = await fetch(
+      `${convexSiteUrl}/api/auth/link/status?requestId=${encodeURIComponent(requestId)}`,
+    );
+    if (!response.ok) {
+      continue;
+    }
+    const data = (await response.json().catch(() => null)) as {
+      status?: string;
+      sessionCookie?: string;
+    } | null;
+    if (data?.status === "completed" && data.sessionCookie) {
+      await window.electronAPI?.system.applyAuthSessionCookie?.(
+        data.sessionCookie,
+      );
+      await refreshAuthSession();
+      return;
+    }
+    if (data?.status === "completed") {
+      throw new Error("Google sign-in completed without a session.");
+    }
+    if (data?.status === "expired") {
+      throw new Error("Google sign-in expired. Please try again.");
+    }
+  }
+  throw new Error("Google sign-in timed out. Please try again.");
 };
 
 export const AuthDialog = ({ open, onOpenChange }: AuthDialogProps) => {
@@ -107,9 +173,11 @@ function GoogleAuthButton() {
     setIsSigningIn(true);
 
     try {
+      const { convexSiteUrl, requestId, callbackURL } =
+        await startDesktopSocialAuth();
       const result = (await authClient.signIn.social({
         provider: "google",
-        callbackURL: getDesktopAuthCallbackUrl(),
+        callbackURL,
         disableRedirect: true,
       })) as SocialSignInResult | undefined;
       const url = result?.data?.url;
@@ -124,6 +192,7 @@ function GoogleAuthButton() {
       }
 
       openExternalUrl(url);
+      await pollDesktopSocialAuth(convexSiteUrl, requestId);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Google sign-in could not start.",
@@ -142,7 +211,7 @@ function GoogleAuthButton() {
         disabled={isSigningIn}
       >
         <GoogleIcon />
-        {isSigningIn ? "Opening Google..." : "Continue with Google"}
+        {isSigningIn ? "Waiting for Google..." : "Continue with Google"}
       </button>
       {error ? <div className="auth-dialog-error">{error}</div> : null}
     </div>
