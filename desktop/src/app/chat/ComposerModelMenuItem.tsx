@@ -11,7 +11,7 @@
  * for previous BYOK selections), so picking a Stella preset here always
  * unwinds any prior auto-propagation to other agents.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, Cpu, Sliders } from "lucide-react";
 import { router } from "@/router";
 import {
@@ -85,6 +85,47 @@ type LocalModelPreferencesShape = {
 // `AgentModelPicker` keeps for the same reason.
 let cachedLocalPreferences: LocalModelPreferencesShape | null = null;
 
+function recordsEqual(
+  left: Record<string, string> | undefined,
+  right: Record<string, string> | undefined,
+): boolean {
+  const a = left ?? {};
+  const b = right ?? {};
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+function localModelPreferencesEqual(
+  left: LocalModelPreferencesShape | null,
+  right: LocalModelPreferencesShape | null,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.agentRuntimeEngine === right.agentRuntimeEngine &&
+    recordsEqual(left.defaultModels, right.defaultModels) &&
+    recordsEqual(left.modelOverrides, right.modelOverrides) &&
+    recordsEqual(left.reasoningEfforts, right.reasoningEfforts) &&
+    left.assistantPropagatedAgents.length ===
+      right.assistantPropagatedAgents.length &&
+    left.assistantPropagatedAgents.every(
+      (key, index) => key === right.assistantPropagatedAgents[index],
+    )
+  );
+}
+
+function notifyLocalModelPreferencesChanged(skipReloadRef: { current: boolean }) {
+  // This component already holds the optimistic/saved snapshot — reloading
+  // from IPC on our own write only re-renders the open submenu.
+  skipReloadRef.current = true;
+  window.dispatchEvent(
+    new CustomEvent("stella:local-model-preferences-changed"),
+  );
+}
+
 export function ComposerModelMenuItem() {
   const {
     models: stellaModels,
@@ -92,9 +133,30 @@ export function ComposerModelMenuItem() {
     audience,
   } = useModelCatalog();
 
-  const [preferences, setPreferences] =
+  const [preferences, setPreferencesRaw] =
     useState<LocalModelPreferencesShape | null>(() => cachedLocalPreferences);
-  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const skipExternalReloadRef = useRef(false);
+
+  const setPreferences = useCallback(
+    (
+      updater:
+        | LocalModelPreferencesShape
+        | null
+        | ((
+            prev: LocalModelPreferencesShape | null,
+          ) => LocalModelPreferencesShape | null),
+    ) => {
+      setPreferencesRaw((current) => {
+        const next =
+          typeof updater === "function" ? updater(current) : updater;
+        if (next) cachedLocalPreferences = next;
+        if (localModelPreferencesEqual(current, next)) return current;
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -103,8 +165,9 @@ export function ComposerModelMenuItem() {
         const next =
           await window.electronAPI?.system?.getLocalModelPreferences?.();
         if (!cancelled && next) {
-          cachedLocalPreferences = next as LocalModelPreferencesShape;
-          setPreferences(cachedLocalPreferences);
+          const typed = next as LocalModelPreferencesShape;
+          cachedLocalPreferences = typed;
+          setPreferences(typed);
         }
       } catch {
         // Non-fatal: the submenu degrades to "Default" until the next
@@ -114,6 +177,10 @@ export function ComposerModelMenuItem() {
     };
     void load();
     const onExternalChange = () => {
+      if (skipExternalReloadRef.current) {
+        skipExternalReloadRef.current = false;
+        return;
+      }
       void load();
     };
     window.addEventListener(
@@ -127,7 +194,7 @@ export function ComposerModelMenuItem() {
         onExternalChange,
       );
     };
-  }, []);
+  }, [setPreferences]);
 
   const modelDefaults = useMemo(
     () =>
@@ -228,7 +295,7 @@ export function ComposerModelMenuItem() {
 
   const handleSelectModel = useCallback(
     async (value: string) => {
-      if (!preferences || pending) return;
+      if (!preferences || pendingRef.current) return;
       const previousOverrides = { ...preferences.modelOverrides };
       const previousPropagated = [
         ...(preferences.assistantPropagatedAgents ?? []),
@@ -246,13 +313,12 @@ export function ComposerModelMenuItem() {
         else nextOverrides[key] = value;
       }
 
-      setPending(true);
+      pendingRef.current = true;
       const optimistic: LocalModelPreferencesShape = {
         ...preferences,
         modelOverrides: nextOverrides,
         assistantPropagatedAgents: [],
       };
-      cachedLocalPreferences = optimistic;
       setPreferences(optimistic);
       try {
         const saved =
@@ -261,30 +327,25 @@ export function ComposerModelMenuItem() {
             assistantPropagatedAgents: [],
           });
         if (saved) {
-          cachedLocalPreferences = saved as LocalModelPreferencesShape;
-          setPreferences(cachedLocalPreferences);
+          setPreferences(saved as LocalModelPreferencesShape);
         }
-        window.dispatchEvent(
-          new CustomEvent("stella:local-model-preferences-changed"),
-        );
+        notifyLocalModelPreferencesChanged(skipExternalReloadRef);
       } catch {
-        const rolled: LocalModelPreferencesShape = {
+        setPreferences({
           ...preferences,
           modelOverrides: previousOverrides,
           assistantPropagatedAgents: previousPropagated,
-        };
-        cachedLocalPreferences = rolled;
-        setPreferences(rolled);
+        });
       } finally {
-        setPending(false);
+        pendingRef.current = false;
       }
     },
-    [preferences, pending],
+    [preferences, setPreferences],
   );
 
   const handleReasoningSelect = useCallback(
     async (effort: ReasoningEffort) => {
-      if (!preferences || pending) return;
+      if (!preferences || pendingRef.current) return;
       const previous = { ...(preferences.reasoningEfforts ?? {}) };
       const next = { ...previous };
       if (effort === "default") {
@@ -292,12 +353,11 @@ export function ComposerModelMenuItem() {
       } else {
         for (const key of ASSISTANT_WRITE_KEYS) next[key] = effort;
       }
-      setPending(true);
+      pendingRef.current = true;
       const optimistic: LocalModelPreferencesShape = {
         ...preferences,
         reasoningEfforts: next,
       };
-      cachedLocalPreferences = optimistic;
       setPreferences(optimistic);
       try {
         const saved =
@@ -305,24 +365,19 @@ export function ComposerModelMenuItem() {
             reasoningEfforts: next,
           });
         if (saved) {
-          cachedLocalPreferences = saved as LocalModelPreferencesShape;
-          setPreferences(cachedLocalPreferences);
+          setPreferences(saved as LocalModelPreferencesShape);
         }
-        window.dispatchEvent(
-          new CustomEvent("stella:local-model-preferences-changed"),
-        );
+        notifyLocalModelPreferencesChanged(skipExternalReloadRef);
       } catch {
-        const rolled: LocalModelPreferencesShape = {
+        setPreferences({
           ...preferences,
           reasoningEfforts: previous,
-        };
-        cachedLocalPreferences = rolled;
-        setPreferences(rolled);
+        });
       } finally {
-        setPending(false);
+        pendingRef.current = false;
       }
     },
-    [preferences, pending],
+    [preferences, setPreferences],
   );
 
   const handleAdvanced = useCallback(() => {
@@ -338,36 +393,31 @@ export function ComposerModelMenuItem() {
 
   const handleEngineSelect = useCallback(
     async (next: AgentRuntimeEngine) => {
-      if (!preferences || pending) return;
+      if (!preferences || pendingRef.current) return;
       if (preferences.agentRuntimeEngine === next) return;
       const previous = preferences;
       const optimistic: LocalModelPreferencesShape = {
         ...preferences,
         agentRuntimeEngine: next,
       };
-      cachedLocalPreferences = optimistic;
       setPreferences(optimistic);
-      setPending(true);
+      pendingRef.current = true;
       try {
         const saved =
           await window.electronAPI?.system?.setLocalModelPreferences?.({
             agentRuntimeEngine: next,
           });
         if (saved) {
-          cachedLocalPreferences = saved as LocalModelPreferencesShape;
-          setPreferences(cachedLocalPreferences);
+          setPreferences(saved as LocalModelPreferencesShape);
         }
-        window.dispatchEvent(
-          new CustomEvent("stella:local-model-preferences-changed"),
-        );
+        notifyLocalModelPreferencesChanged(skipExternalReloadRef);
       } catch {
-        cachedLocalPreferences = previous;
         setPreferences(previous);
       } finally {
-        setPending(false);
+        pendingRef.current = false;
       }
     },
-    [preferences, pending],
+    [preferences, setPreferences],
   );
 
   return (
@@ -404,7 +454,7 @@ export function ComposerModelMenuItem() {
                   aria-checked={selected}
                   data-selected={selected || undefined}
                   className="composer-model-submenu__engine-btn"
-                  disabled={pending || !preferences}
+                  disabled={!preferences}
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -446,7 +496,6 @@ export function ComposerModelMenuItem() {
                 event.preventDefault();
                 void handleSelectModel("");
               }}
-              disabled={pending}
               className="composer-model-submenu__row"
             >
               <span data-slot="dropdown-menu-item-icon">
@@ -477,7 +526,7 @@ export function ComposerModelMenuItem() {
                   <DropdownMenuItem
                     key={model.id}
                     data-selected={selected || undefined}
-                    disabled={pending || rowRestricted}
+                    disabled={rowRestricted}
                     title={
                       rowRestricted && restrictedPlanLabel
                         ? `Not available on the ${restrictedPlanLabel} plan`
@@ -546,7 +595,6 @@ export function ComposerModelMenuItem() {
                       aria-checked={selected}
                       data-selected={selected || undefined}
                       className="composer-model-submenu__reasoning-btn"
-                      disabled={pending}
                       title={option.title}
                       onClick={(event) => {
                         event.preventDefault();
