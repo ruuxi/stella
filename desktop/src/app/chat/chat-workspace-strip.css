@@ -22,7 +22,8 @@
 }
 
 .chat-workspace-strip--hidden,
-:root[data-display-panel-open="true"] .chat-workspace-strip,
+:root[data-display-panel-open="true"]
+  .chat-workspace-strip:not(.chat-workspace-strip--display-panel),
 :root[data-shell-right-context-hidden="true"] .chat-workspace-strip,
 :root[data-chat-workspace-strip-user-hidden="true"] .chat-workspace-strip {
   width: 0;
@@ -50,11 +51,17 @@
 }
 
 .chat-workspace-strip--hidden .chat-workspace-strip__inner,
-:root[data-display-panel-open="true"] .chat-workspace-strip__inner,
+:root[data-display-panel-open="true"]
+  .chat-workspace-strip:not(.chat-workspace-strip--display-panel)
+  .chat-workspace-strip__inner,
 :root[data-shell-right-context-hidden="true"] .chat-workspace-strip__inner,
 :root[data-chat-workspace-strip-user-hidden="true"] .chat-workspace-strip__inner {
   transform: translate3d(12px, 0, 0);
   opacity: 0;
+}
+
+.chat-workspace-strip--display-panel .chat-workspace-strip__inner {
+  padding-top: 20px;
 }
 
 .chat-workspace-strip__scroll {
@@ -87,7 +94,9 @@
   }
 
   .chat-workspace-strip--hidden .chat-workspace-strip__inner,
-  :root[data-display-panel-open="true"] .chat-workspace-strip__inner,
+  :root[data-display-panel-open="true"]
+    .chat-workspace-strip:not(.chat-workspace-strip--display-panel)
+    .chat-workspace-strip__inner,
   :root[data-shell-right-context-hidden="true"] .chat-workspace-strip__inner,
   :root[data-chat-workspace-strip-user-hidden="true"] .chat-workspace-strip__inner {
     transform: none;
