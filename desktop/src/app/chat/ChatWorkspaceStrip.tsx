@@ -221,10 +221,13 @@ function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
 
 type ChatWorkspaceStripProps = {
   forceHidden?: boolean;
+  /** Rendered beside expanded display-panel chat; not clipped by panelOpen. */
+  embeddedInDisplayPanel?: boolean;
 };
 
 export function ChatWorkspaceStrip({
   forceHidden = false,
+  embeddedInDisplayPanel = false,
 }: ChatWorkspaceStripProps) {
   const { panelOpen } = useDisplayPanelLayout();
   const { stripVisible, sections } = useChatWorkspaceStripStore();
@@ -278,14 +281,19 @@ export function ChatWorkspaceStrip({
   const hasSchedule = upNext.length > 0;
 
   const nowMs = Date.now();
-  const hidden = panelOpen || forceHidden || !stripVisible;
+  const hidden =
+    forceHidden ||
+    !stripVisible ||
+    (panelOpen && !embeddedInDisplayPanel);
   const showActivity = sections.activity && hasActivity;
   const showFiles = sections.files && hasFiles;
   const showSchedule = sections.schedule && hasSchedule;
 
   return (
     <aside
-      className={`chat-workspace-strip${hidden ? " chat-workspace-strip--hidden" : ""}`}
+      className={`chat-workspace-strip${
+        hidden ? " chat-workspace-strip--hidden" : ""
+      }${embeddedInDisplayPanel ? " chat-workspace-strip--display-panel" : ""}`}
       aria-label="Workspace"
       aria-hidden={hidden}
     >

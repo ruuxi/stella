@@ -24,7 +24,8 @@ import {
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
 import { ShellTopBar } from "@/shell/ShellTopBar";
-import { displayTabs, useDisplayPanelLayout } from "@/shell/display/tab-store";
+import { displayTabs, useDisplayPanelLayout, useDisplayTabList } from "@/shell/display/tab-store";
+import { CHAT_DISPLAY_TAB_ID } from "@/shell/display/default-tabs";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
 import {
@@ -129,6 +130,7 @@ function RootChrome() {
   const conversationId = state.conversationId;
   const chat = useChatRuntime();
   const { panelOpen, panelExpanded } = useDisplayPanelLayout();
+  const { activeTabId } = useDisplayTabList();
 
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
@@ -456,6 +458,11 @@ function RootChrome() {
     syncSidebarHiddenDataset(sidebarVisibleInLayout);
   }, [sidebarVisibleInLayout]);
 
+  const expandedDisplayPanelChat =
+    panelOpen &&
+    panelExpanded &&
+    activeTabId === CHAT_DISPLAY_TAB_ID;
+
   return (
     <>
       <MobileActivityNotificationsBridge />
@@ -470,10 +477,10 @@ function RootChrome() {
         showSidebarToggle={canToggleSidebar}
         showWorkspaceStripToggle={
           isOnChatRoute &&
-          !chat.showHomeContent &&
           !isMiniWindow &&
           !isMobileWebView &&
-          !shouldAutoHideRightContextPanel
+          !shouldAutoHideRightContextPanel &&
+          (!chat.showHomeContent || expandedDisplayPanelChat)
         }
       />
 
