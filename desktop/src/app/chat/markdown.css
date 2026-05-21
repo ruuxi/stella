@@ -15,7 +15,11 @@
   font-feature-settings: var(--font-family-sans--font-feature-settings, normal);
   font-size: inherit;
   font-weight: inherit;
-  line-height: inherit;
+  /* Generous default for non-chat hosts (display viewer, blueprint
+     dialog) and full-chat assistant markdown. Compact chat surfaces
+     and other hosts that want a tighter ratio set line-height
+     themselves. */
+  line-height: 1.7;
 }
 
 /* Spacing for flow */

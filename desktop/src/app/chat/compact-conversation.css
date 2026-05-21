@@ -15,6 +15,15 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  /* Mirror the `--chat-text-*` defaults from `.chat-viewport-region`
+     so compact hosts that don't live inside a viewport region (most
+     notably the Store side-panel thread) still resolve every token. */
+  --chat-text-size: 16px;
+  --chat-text-weight: 400;
+  --chat-text-strong-weight: 500;
+  --chat-text-tracking: 0.032em;
+  --chat-text-line-height: 1.45;
+  --chat-text-color: var(--text-strong);
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
   --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
@@ -119,7 +128,15 @@
  * Compact surfaces inherit `.event-body` and `.event-item.assistant .markdown`
  * typography from `full-shell.chat.css` via the shared `--chat-text-*` tokens.
  * Only the size differs (set on the variant block above).
+ *
+ * Full-chat assistant markdown intentionally keeps the airier base
+ * `.markdown` line-height (1.7) for long-form readability; in narrow
+ * compact bubbles that ratio leaves too much vertical air between
+ * lines, so tighten back down to the chat body line-height.
  */
+.chat-conversation-surface .event-item.assistant .markdown {
+  line-height: var(--chat-text-line-height);
+}
 
 .chat-conversation-surface .event-item.assistant .markdown p {
   margin-bottom: 0.5rem;
@@ -148,6 +165,10 @@
 .chat-conversation-surface .event-item.assistant .markdown :is(pre, code, .shiki, kbd, samp) {
   font-weight: 400;
   letter-spacing: normal;
+}
+
+.chat-conversation-surface .event-item.assistant .markdown li::marker {
+  color: var(--chat-text-color);
 }
 
 .chat-conversation-surface .event-item.assistant .markdown blockquote {
