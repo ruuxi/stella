@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getThemeById } from "@/shared/theme/themes";
 
 type ThemeSummary = {
   id: string;
@@ -27,6 +28,10 @@ const DISPLAY_LABELS: Record<string, string> = {
   light: "Light",
   dark: "Dark",
   system: "System",
+  soft: "Soft",
+  flat: "Flat",
+  relative: "Relative",
+  strong: "Strong",
 };
 
 const renderThemeOptionRow = <T extends string>(
@@ -34,23 +39,49 @@ const renderThemeOptionRow = <T extends string>(
   options: readonly T[],
   selectedValue: T,
   onSelect: (value: T) => void,
-) => (
-  <>
-    <div className="onboarding-step-label">{label}</div>
-    <div className="onboarding-theme-row onboarding-pill-stagger">
-      {options.map((option) => (
-        <button
-          key={option}
-          className="onboarding-pill"
-          data-active={selectedValue === option}
-          onClick={() => onSelect(option)}
-        >
-          {DISPLAY_LABELS[option] ?? option.charAt(0).toUpperCase() + option.slice(1)}
-        </button>
-      ))}
-    </div>
-  </>
-);
+  disabledOptions?: readonly T[],
+) => {
+  const disabled = new Set(disabledOptions ?? []);
+  return (
+    <>
+      <div className="onboarding-step-label">{label}</div>
+      <div className="onboarding-theme-row">
+        {options.map((option) => {
+          const isDisabled = disabled.has(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              className="onboarding-pill"
+              data-active={selectedValue === option}
+              data-disabled={isDisabled || undefined}
+              disabled={isDisabled}
+              onClick={() => {
+                if (isDisabled) return;
+                onSelect(option);
+              }}
+            >
+              {DISPLAY_LABELS[option] ??
+                option.charAt(0).toUpperCase() + option.slice(1)}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+};
+
+/** Pearl / Noir ignore gradient controls — flat surface, strong color. */
+const applyForcedThemePreferences = (
+  forcedMode: "light" | "dark",
+  onSelectColorMode: (mode: "light" | "dark" | "system") => void,
+  onSelectGradientMode: (mode: "soft" | "flat") => void,
+  onSelectGradientColor: (color: "relative" | "strong") => void,
+) => {
+  onSelectColorMode(forcedMode);
+  onSelectGradientMode("flat");
+  onSelectGradientColor("strong");
+};
 
 export function OnboardingThemePhase({
   colorMode,
@@ -72,6 +103,9 @@ export function OnboardingThemePhase({
   const [showGradientStyle, setShowGradientStyle] = useState(false);
   const [showGradientColor, setShowGradientColor] = useState(false);
   const [hasSelectedGradientColor, setHasSelectedGradientColor] = useState(false);
+
+  const selectedTheme = useMemo(() => getThemeById(themeId), [themeId]);
+  const forcedMode = selectedTheme?.forcedMode;
 
   // rAF-coalesce theme preview hover. `previewTheme(id)` writes CSS
   // variables on `:root` and triggers a full-tree style recalc; sweeping
@@ -110,40 +144,104 @@ export function OnboardingThemePhase({
     [],
   );
 
+  const revealForcedThemeOptions = useCallback(() => {
+    setShowAppearance(true);
+    setShowGradientStyle(true);
+    setShowGradientColor(true);
+    setHasSelectedGradientColor(true);
+  }, []);
+
+  // Resuming onboarding (or landing with Pearl/Noir already persisted)
+  // should show the locked sub-options immediately.
+  useEffect(() => {
+    if (!forcedMode) return;
+    applyForcedThemePreferences(
+      forcedMode,
+      onSelectColorMode,
+      onSelectGradientMode,
+      onSelectGradientColor,
+    );
+    revealForcedThemeOptions();
+  }, [
+    forcedMode,
+    onSelectColorMode,
+    onSelectGradientColor,
+    onSelectGradientMode,
+    revealForcedThemeOptions,
+  ]);
+
   const handleSelectTheme = useCallback(
     (id: string) => {
+      const nextTheme = getThemeById(id);
       onSelectTheme(id);
+      if (nextTheme?.forcedMode) {
+        applyForcedThemePreferences(
+          nextTheme.forcedMode,
+          onSelectColorMode,
+          onSelectGradientMode,
+          onSelectGradientColor,
+        );
+        revealForcedThemeOptions();
+        return;
+      }
+      // Regular themes: only ensure Appearance is visible on the very
+      // first pick. Switching themes (including Pearl/Noir → anything
+      // else) never collapses the sub-rows — only pill disabled states
+      // change via `forcedMode`.
       setShowAppearance(true);
     },
-    [onSelectTheme],
+    [
+      onSelectTheme,
+      onSelectColorMode,
+      onSelectGradientMode,
+      onSelectGradientColor,
+      revealForcedThemeOptions,
+    ],
   );
 
   const handleSelectColorMode = useCallback(
     (mode: "light" | "dark" | "system") => {
+      if (forcedMode) return;
       onSelectColorMode(mode);
       setShowGradientStyle(true);
     },
-    [onSelectColorMode],
+    [forcedMode, onSelectColorMode],
   );
 
   const handleSelectGradientMode = useCallback(
     (mode: "soft" | "flat") => {
+      if (forcedMode) return;
       onSelectGradientMode(mode);
       setShowGradientColor(true);
     },
-    [onSelectGradientMode],
+    [forcedMode, onSelectGradientMode],
   );
 
   const handleSelectGradientColor = useCallback(
     (color: "relative" | "strong") => {
+      if (forcedMode) return;
       onSelectGradientColor(color);
       setHasSelectedGradientColor(true);
     },
-    [onSelectGradientColor],
+    [forcedMode, onSelectGradientColor],
   );
 
-  // Forced-mode themes (Pearl, Noir) skip Appearance + Gradient choices
-  // entirely — selecting one is enough to continue.
+  const effectiveColorMode = forcedMode ?? colorMode;
+  const effectiveGradientMode = forcedMode ? "flat" : gradientMode;
+  const effectiveGradientColor = forcedMode ? "strong" : gradientColor;
+
+  const appearanceDisabled = useMemo((): Array<"light" | "dark" | "system"> => {
+    if (forcedMode === "light") return ["dark", "system"];
+    if (forcedMode === "dark") return ["light", "system"];
+    return [];
+  }, [forcedMode]);
+
+  const gradientStyleDisabled = forcedMode ? (["soft"] as const) : [];
+  const gradientColorDisabled = forcedMode ? (["relative"] as const) : [];
+
+  // Forced-mode themes (Pearl, Noir) lock Appearance + Gradient to the
+  // values that match the standardized surface — selecting one is enough
+  // to continue once the sub-rows are visible.
   const canContinue = isForcedTheme
     ? showAppearance
     : showAppearance && showGradientStyle && showGradientColor && hasSelectedGradientColor;
@@ -158,6 +256,7 @@ export function OnboardingThemePhase({
         {sortedThemes.map((theme) => (
           <button
             key={theme.id}
+            type="button"
             className="onboarding-pill"
             data-active={theme.id === themeId}
             onClick={() => handleSelectTheme(theme.id)}
@@ -168,35 +267,47 @@ export function OnboardingThemePhase({
         ))}
       </div>
 
-      <div className="onboarding-theme-reveal" data-visible={showAppearance || undefined}>
-        <div className="onboarding-theme-reveal-inner">
+      <div
+        className="onboarding-theme-grow-in"
+        data-visible={showAppearance || undefined}
+      >
+        <div className="onboarding-theme-grow-in-inner">
           {renderThemeOptionRow(
             "Appearance",
             ["light", "dark", "system"] as const,
-            colorMode,
+            effectiveColorMode,
             handleSelectColorMode,
+            appearanceDisabled,
           )}
         </div>
       </div>
 
-      <div className="onboarding-theme-reveal" data-visible={showGradientStyle || undefined}>
-        <div className="onboarding-theme-reveal-inner">
+      <div
+        className="onboarding-theme-grow-in onboarding-theme-grow-in--delayed-1"
+        data-visible={showGradientStyle || undefined}
+      >
+        <div className="onboarding-theme-grow-in-inner">
           {renderThemeOptionRow(
             "Gradient Style",
             ["soft", "flat"] as const,
-            gradientMode,
+            effectiveGradientMode,
             handleSelectGradientMode,
+            gradientStyleDisabled,
           )}
         </div>
       </div>
 
-      <div className="onboarding-theme-reveal" data-visible={showGradientColor || undefined}>
-        <div className="onboarding-theme-reveal-inner">
+      <div
+        className="onboarding-theme-grow-in onboarding-theme-grow-in--delayed-2"
+        data-visible={showGradientColor || undefined}
+      >
+        <div className="onboarding-theme-grow-in-inner">
           {renderThemeOptionRow(
             "Gradient Color",
             ["relative", "strong"] as const,
-            gradientColor,
+            effectiveGradientColor,
             handleSelectGradientColor,
+            gradientColorDisabled,
           )}
         </div>
       </div>

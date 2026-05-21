@@ -320,12 +320,11 @@ export function OnboardingCapabilitiesPhase({
 
   return (
     <div className="onboarding-step-content onboarding-cap-step">
-      <h3
-        className="onboarding-cap-title"
-        key={`title-${sceneKey}`}
-      >
-        {activeScene.title}
-      </h3>
+      <div className="onboarding-cap-title-slot" aria-live="polite">
+        <h3 className="onboarding-cap-title" key={`title-${sceneKey}`}>
+          {activeScene.title}
+        </h3>
+      </div>
 
       <div
         className="onboarding-cap-frame"
@@ -384,12 +383,11 @@ export function OnboardingCapabilitiesPhase({
         </div>
       </div>
 
-      <p
-        className="onboarding-cap-caption__body"
-        key={`caption-${sceneKey}`}
-      >
-        {activeScene.caption}
-      </p>
+      <div className="onboarding-cap-caption-slot" aria-live="polite">
+        <p className="onboarding-cap-caption__body" key={`caption-${sceneKey}`}>
+          {activeScene.caption}
+        </p>
+      </div>
 
       <button
         className="onboarding-confirm onboarding-cap-continue"

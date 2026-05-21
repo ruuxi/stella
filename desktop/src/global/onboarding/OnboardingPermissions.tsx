@@ -23,14 +23,14 @@ const PERMISSION_CARDS: PermissionCard[] = [
     kind: "accessibility",
     title: "Accessibility",
     description:
-      "Lets Stella open the quick menu (⌘/Ctrl + right-click), read selected text, and interact with what is under the cursor.",
+      "Required to act on selected text or what's under the cursor.",
     actionLabel: "Enable",
   },
   {
     kind: "screen",
     title: "Screen Capture",
     description:
-      "Lets Stella capture screenshots and window content for capture and vision tasks.",
+      "Required for screenshots and screen sharing.",
     actionLabel: "Enable",
     requiresRelaunch: true,
   },
@@ -228,7 +228,7 @@ export function OnboardingPermissions({
 
           const detailParts = [
             card.requiresRelaunch
-              ? "You may need to reopen Stella after enabling it"
+              ? "Reopen Stella after enabling."
               : null,
             card.kind === "microphone" && microphoneDenied
               ? "Previously denied on this Mac"

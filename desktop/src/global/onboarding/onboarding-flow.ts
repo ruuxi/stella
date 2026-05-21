@@ -38,11 +38,11 @@ export const SPLIT_PHASES = new Set<Phase>([
 
 export const SPLIT_STEP_ORDER: Phase[] = [
   "capabilities",
-  "engine",
+  "theme",
   "permissions",
   "browser",
+  "engine",
   "extension",
-  "theme",
   "personality",
   "creation",
   "shortcuts-global",
