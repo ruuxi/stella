@@ -36,16 +36,16 @@ export class FullWindowController {
           height: 940,
           minWidth: FULL_SHELL_MIN_SIZE.width,
           minHeight: FULL_SHELL_MIN_SIZE.height,
-          // Transparent + frameless so the renderer can feather the window's
-          // edges (fog effect) during onboarding, and round its corners during
-          // normal use. On macOS we keep the traffic lights via
-          // `titleBarStyle: 'hidden'`, which is compatible with `frame: false`
-          // and `transparent: true`.
-          frame: !isMac,
-          transparent: isMac,
-          backgroundColor: isMac ? '#00000000' : '#101016',
+          // Keep the full shell opaque like Codex's primary window. Transparent
+          // BrowserWindows are significantly more expensive for macOS to
+          // composite during live resize.
+          frame: true,
+          transparent: false,
+          backgroundColor: isMac ? '#f2f4f8' : '#101016',
           hasShadow: true,
-          titleBarStyle: isMac ? 'hidden' : undefined,
+          vibrancy: isMac ? 'menu' : undefined,
+          visualEffectState: isMac ? 'active' : undefined,
+          titleBarStyle: isMac ? 'hiddenInset' : undefined,
           trafficLightPosition: isMac ? { x: 16, y: 13 } : undefined,
           icon: windowIcon,
           webPreferences: createSharedWebPreferences({

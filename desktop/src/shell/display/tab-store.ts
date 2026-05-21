@@ -340,7 +340,7 @@ export const displayTabs = {
   /**
    * Toggle / set the "expand to fill" mode. While expanded, the panel
    * occupies the entire content area to the right of the rail; the chat
-   * outlet is hidden via `:has(.display-sidebar--expanded)` in CSS.
+   * outlet is hidden via the root `data-display-panel-expanded` flag.
    */
   setPanelExpanded(expanded: boolean): void {
     if (state.panelExpanded === expanded) return;

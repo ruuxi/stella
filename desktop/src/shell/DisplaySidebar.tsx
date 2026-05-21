@@ -178,12 +178,22 @@ export const DisplaySidebar = forwardRef<
   // width down so we don't end up wider than the viewport allows.
   useEffect(() => {
     if (panelWidth == null) return;
+    let frame = 0;
     const onResize = () => {
-      const max = computeMaxWidth();
-      if (panelWidth > max) displayTabs.setPanelWidth(max);
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const currentWidth = displayTabs.getSnapshot().panelWidth;
+        if (currentWidth == null) return;
+        const max = computeMaxWidth();
+        if (currentWidth > max) displayTabs.setPanelWidth(max);
+      });
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onResize);
+    };
   }, [panelWidth]);
 
   const handleResizeStart = useCallback(
