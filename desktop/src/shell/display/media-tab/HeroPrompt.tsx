@@ -6,28 +6,22 @@ export const HeroPrompt = ({ text }: { text: string }) => {
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > LONG_PROMPT_CHARS;
 
-  useEffect(() => {
-    setExpanded(false);
-  }, [text]);
+  useEffect(() => setExpanded(false), [text]);
+
+  if (!isLong) {
+    return <p className="media-tab__hero-prompt">{text}</p>;
+  }
 
   return (
     <p
-      className={[
-        "media-tab__hero-prompt",
-        expanded ? "media-tab__hero-prompt--expanded" : null,
-        isLong ? "media-tab__hero-prompt--truncatable" : null,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      title={!expanded && isLong ? text : undefined}
-      onClick={
-        isLong
-          ? (event) => {
-              event.stopPropagation();
-              setExpanded((prev) => !prev);
-            }
-          : undefined
-      }
+      className={`media-tab__hero-prompt media-tab__hero-prompt--truncatable${
+        expanded ? " media-tab__hero-prompt--expanded" : ""
+      }`}
+      title={expanded ? undefined : text}
+      onClick={(event) => {
+        event.stopPropagation();
+        setExpanded((prev) => !prev);
+      }}
     >
       {text}
     </p>
