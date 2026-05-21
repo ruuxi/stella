@@ -79,10 +79,7 @@ export function RecentChangesList({
       {snapshotLoading && items.length === 0 ? (
         <div className="store-side-panel-empty">Loading…</div>
       ) : items.length === 0 ? (
-        <div className="store-side-panel-empty">
-          No recent changes yet. After Stella makes a change for you, it'll show
-          up here.
-        </div>
+        <div className="store-side-panel-empty">No recent changes yet.</div>
       ) : (
         <div className="store-side-panel-list">
           {items.map((item, index) => {
