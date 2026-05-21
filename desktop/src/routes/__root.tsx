@@ -128,7 +128,7 @@ function RootChrome() {
   const { state } = useUiState();
   const conversationId = state.conversationId;
   const chat = useChatRuntime();
-  const { panelOpen } = useDisplayPanelLayout();
+  const { panelOpen, panelExpanded } = useDisplayPanelLayout();
 
   const [pendingAskStellaRequest, setPendingAskStellaRequest] =
     useState<PendingAskStellaRequest | null>(null);
@@ -307,6 +307,48 @@ function RootChrome() {
     latestDisplayPayloadRef,
     openChatPanel,
   });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (panelOpen) root.dataset.displayPanelOpen = "true";
+    else delete root.dataset.displayPanelOpen;
+
+    if (panelOpen && panelExpanded) root.dataset.displayPanelExpanded = "true";
+    else delete root.dataset.displayPanelExpanded;
+
+    return () => {
+      delete root.dataset.displayPanelOpen;
+      delete root.dataset.displayPanelExpanded;
+    };
+  }, [panelExpanded, panelOpen]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    let active = false;
+    let timeout = 0;
+
+    const clearActive = () => {
+      active = false;
+      timeout = 0;
+      delete root.dataset.shellWindowResizing;
+    };
+
+    const onResize = () => {
+      if (!active) {
+        active = true;
+        root.dataset.shellWindowResizing = "true";
+      }
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(clearActive, 140);
+    };
+
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("resize", onResize);
+      delete root.dataset.shellWindowResizing;
+    };
+  }, []);
 
   useEffect(() => {
     const shell = document.querySelector<HTMLElement>(".full-body");

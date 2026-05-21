@@ -22,7 +22,7 @@
 }
 
 .home-workspace-mock--hidden,
-.full-body:has(.display-sidebar--open) .home-workspace-mock,
+:root[data-display-panel-open="true"] .home-workspace-mock,
 :root[data-shell-right-context-hidden="true"] .home-workspace-mock {
   width: 0;
   pointer-events: none;
@@ -49,7 +49,7 @@
 }
 
 .home-workspace-mock--hidden .home-workspace-mock__inner,
-.full-body:has(.display-sidebar--open) .home-workspace-mock__inner,
+:root[data-display-panel-open="true"] .home-workspace-mock__inner,
 :root[data-shell-right-context-hidden="true"] .home-workspace-mock__inner {
   transform: translate3d(12px, 0, 0);
   opacity: 0;
@@ -85,7 +85,7 @@
   }
 
   .home-workspace-mock--hidden .home-workspace-mock__inner,
-  .full-body:has(.display-sidebar--open) .home-workspace-mock__inner,
+  :root[data-display-panel-open="true"] .home-workspace-mock__inner,
   :root[data-shell-right-context-hidden="true"] .home-workspace-mock__inner {
     transform: none;
   }
