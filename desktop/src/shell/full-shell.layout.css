@@ -93,6 +93,10 @@
   padding-left: 84px;
 }
 
+.shell-topbar-sidebar-btn {
+  margin-left: -4px;
+}
+
 .shell-topbar-icon-btn,
 .shell-topbar-wc-btn {
   position: relative;
