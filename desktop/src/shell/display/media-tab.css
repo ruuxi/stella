@@ -499,8 +499,3 @@
   stroke-linejoin: round;
 }
 
-.media-tab__error {
-  font-size: 14px;
-  margin: -4px 4px 0;
-  color: color-mix(in oklch, #ef4444 80%, var(--foreground));
-}
