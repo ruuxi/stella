@@ -44,16 +44,6 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  transform: translateX(0);
-  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.composer-context-actions--suggestions:has(
-    .composer-context-working-indicator
-      .inline-working-indicator:not(.inline-working-indicator--vacated)
-  )
-  .composer-context-suggestion-lanes {
-  transform: translateX(20px);
 }
 
 .composer-context-actions--suggestions:has(
@@ -78,29 +68,6 @@
 
 .composer-context-working-indicator .inline-working-indicator__indicator {
   min-height: 24px;
-}
-
-.composer-context-actions--suggestions:has(
-    .composer-context-working-indicator
-      .inline-working-indicator:not(.inline-working-indicator--vacated)
-  )
-  .composer-context-suggestion {
-  padding-inline: 6px;
-}
-
-.composer-context-actions--suggestions:has(
-    .composer-context-working-indicator
-      .inline-working-indicator:not(.inline-working-indicator--vacated)
-  )
-  .composer-context-suggestion__label,
-.composer-context-actions--suggestions:has(
-    .composer-context-working-indicator
-      .inline-working-indicator:not(.inline-working-indicator--vacated)
-  )
-  .composer-context-suggestion__meta {
-  max-width: 0;
-  opacity: 0;
-  margin-left: 0;
 }
 
 /* A lane = one fixed slot in the suggestion strip. Renders up to two
@@ -133,8 +100,8 @@
 .composer-context-suggestion {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
+  gap: 4px;
+  padding: 3px 8px 3px 6px;
   background: transparent;
   border: 1px dashed color-mix(in oklch, var(--foreground) 22%, transparent);
   border-radius: 999px;
@@ -213,25 +180,6 @@
   flex-shrink: 0;
   user-select: none;
   -webkit-user-drag: none;
-}
-
-.composer-context-suggestion__meta {
-  margin-left: 2px;
-  color: var(--text-weak);
-  opacity: 0.65;
-  font-size: 11px;
-  white-space: nowrap;
-  max-width: 8ch;
-  overflow: hidden;
-  transition:
-    max-width 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 200ms ease,
-    margin-left 320ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.composer-context-suggestion--tab .composer-context-suggestion__label {
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.005em;
 }
 
 .chat-composer-context-chip,

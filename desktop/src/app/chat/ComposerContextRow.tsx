@@ -435,11 +435,6 @@ function AppSuggestionChip({
         +
       </span>
       <ChipAppGlyph iconDataUrl={app.iconDataUrl} fallbackLabel={app.name} />
-      {app.windowTitle && (
-        <span className="composer-context-suggestion__meta">
-          {truncateChipLabel(app.windowTitle)}
-        </span>
-      )}
     </button>
   );
 }
@@ -469,9 +464,6 @@ function TabSuggestionChip({
         +
       </span>
       <ChipAppGlyph iconDataUrl={tab.iconDataUrl} fallbackLabel={tab.browser} />
-      <span className="composer-context-suggestion__meta">
-        {truncateChipLabel(tab.host)}
-      </span>
     </button>
   );
 }
