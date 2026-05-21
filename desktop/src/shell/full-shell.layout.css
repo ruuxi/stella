@@ -50,8 +50,8 @@
 :root[data-shell-window-resizing="true"] .sidebar-stack,
 :root[data-shell-window-resizing="true"] .display-sidebar,
 :root[data-shell-window-resizing="true"] .display-sidebar-inner,
-:root[data-shell-window-resizing="true"] .home-workspace-mock,
-:root[data-shell-window-resizing="true"] .home-workspace-mock__inner,
+:root[data-shell-window-resizing="true"] .chat-workspace-strip,
+:root[data-shell-window-resizing="true"] .chat-workspace-strip__inner,
 :root[data-shell-window-resizing="true"] .shell-topbar-center,
 :root[data-shell-window-resizing="true"] .shell-topbar-tablist {
   transition: none !important;
