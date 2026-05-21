@@ -104,6 +104,18 @@
 }
 
 @media (max-width: 1280px) {
+  :root:not([data-sidebar-hidden="true"]) .chat-workspace-strip {
+    width: 0;
+    pointer-events: none;
+  }
+
+  :root:not([data-sidebar-hidden="true"]) .chat-workspace-strip__inner {
+    transform: translate3d(12px, 0, 0);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 1120px) {
   .chat-workspace-strip {
     width: 0;
     pointer-events: none;

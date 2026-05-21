@@ -63,7 +63,8 @@ import { useWorkspacePanelEvents } from "@/shell/root-chrome/use-workspace-panel
 const NEW_APP_ASK_STELLA_PROMPT =
   "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
 
-const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH = 1280;
+const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITH_SIDEBAR = 1280;
+const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITHOUT_SIDEBAR = 1120;
 const SHELL_LEFT_SIDEBAR_AUTO_HIDE_WIDTH = 720;
 
 type ShellBreakpointState = {
@@ -71,11 +72,22 @@ type ShellBreakpointState = {
   hideRightContextPanel: boolean;
 };
 
-const getShellBreakpointState = (width: number): ShellBreakpointState => ({
-  hideLeftSidebar: width > 0 && width <= SHELL_LEFT_SIDEBAR_AUTO_HIDE_WIDTH,
-  hideRightContextPanel:
-    width > 0 && width <= SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH,
-});
+const getShellBreakpointState = (
+  width: number,
+  userSidebarVisible = true,
+): ShellBreakpointState => {
+  const hideLeftSidebar =
+    width > 0 && width <= SHELL_LEFT_SIDEBAR_AUTO_HIDE_WIDTH;
+  const leftSidebarVisible = userSidebarVisible && !hideLeftSidebar;
+  const rightPanelBreakpoint = leftSidebarVisible
+    ? SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITH_SIDEBAR
+    : SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITHOUT_SIDEBAR;
+
+  return {
+    hideLeftSidebar,
+    hideRightContextPanel: width > 0 && width <= rightPanelBreakpoint,
+  };
+};
 
 type PendingAskStellaRequest = {
   id: number;
@@ -143,6 +155,7 @@ function RootChrome() {
     useState<ShellBreakpointState>(() =>
       getShellBreakpointState(
         typeof window === "undefined" ? 0 : window.innerWidth,
+        sidebarVisible,
       ),
   );
   const shellBreakpointsRef = useRef(shellBreakpoints);
@@ -363,7 +376,10 @@ function RootChrome() {
       if (frame !== 0) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const next = getShellBreakpointState(Math.round(pendingWidth));
+        const next = getShellBreakpointState(
+          Math.round(pendingWidth),
+          sidebarVisibleRef.current,
+        );
         const previous = shellBreakpointsRef.current;
         if (
           next.hideLeftSidebar === previous.hideLeftSidebar &&
@@ -399,6 +415,24 @@ function RootChrome() {
       observer.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    const shell = document.querySelector<HTMLElement>(".full-body");
+    if (!shell) return;
+    const next = getShellBreakpointState(
+      Math.round(shell.getBoundingClientRect().width),
+      sidebarVisible,
+    );
+    const previous = shellBreakpointsRef.current;
+    if (
+      next.hideLeftSidebar === previous.hideLeftSidebar &&
+      next.hideRightContextPanel === previous.hideRightContextPanel
+    ) {
+      return;
+    }
+    shellBreakpointsRef.current = next;
+    setShellBreakpoints(next);
+  }, [sidebarVisible]);
 
   useEffect(() => {
     if (isMiniWindow || isMobileWebView) return;
