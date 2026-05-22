@@ -345,13 +345,23 @@ export function useLocalAgentStream({
     setPendingUserMessageId(null)
     setStreamingAssistants([])
     nextSlotIndexByUserMessageIdRef.current.clear()
-    if (activeRunId) {
+    if (activeConversationId) {
+      dispatch({
+        type: 'clear-conversation-tasks',
+        conversationId: activeConversationId,
+      })
+    } else if (activeRunId) {
       dispatch({
         type: 'clear-run-tasks',
         runId: activeRunId,
       })
     }
-  }, [activeRunId, resetReasoningText, resetSmoothingBuffer])
+  }, [
+    activeConversationId,
+    activeRunId,
+    resetReasoningText,
+    resetSmoothingBuffer,
+  ])
 
   const handleAgentEvent = useAgentEventHandler({
     dispatch,
