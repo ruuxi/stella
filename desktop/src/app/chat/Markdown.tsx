@@ -37,6 +37,19 @@ type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
  * have to spread its defaults back in alongside our additions.
  * `defaultRemarkPlugins` is exported as a `Record<string, Pluggable>`
  * map; the prop wants an array, so unwrap with `Object.values`.
+ *
+ * `REMARK_PLUGINS` is the single stable array shape we ever hand
+ * Streamdown — including `remarkEmojiSprites` unconditionally. The
+ * emoji plugin is a deliberate no-op when no manifest is cached
+ * (`getSpriteCache()` returns a `(?!)` regex that matches nothing
+ * and `splitTextNode` bails), so always-including it is safe even
+ * for users without an active emoji pack. We MUST NOT swap this
+ * array reference mid-conversation: doing so makes Streamdown rebuild
+ * its unified processor and re-parse, which tears down the existing
+ * `<span data-stella-word-fade>` markup and re-mounts it — the user
+ * sees a one-shot flash shortly after stream begin that lines up
+ * exactly with the async Convex `getManifest` query resolving on
+ * first stream after app launch.
  */
 const DEFAULT_REMARK_PLUGINS = Object.values(defaultRemarkPlugins);
 const REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS, remarkEmojiSprites];
@@ -219,15 +232,31 @@ export const Markdown = memo(function Markdown({
     [hideHorizontalRules],
   );
   const [activeEmojiPack] = useActiveEmojiPack();
-  const emojiGrid = useEmojiGridManifest();
-  const emojiVars = activeEmojiPack && emojiGrid
-    ? (Object.fromEntries(
-        activeEmojiPack.sheetUrls.map((url, index) => [
-          `--ai-emoji-sheet-${index}-url`,
-          `url("${url}")`,
-        ]),
-      ) as CSSProperties)
-    : undefined;
+  /*
+   * Subscribe to the manifest so emoji sprites paint correctly once the
+   * Convex query resolves — but DO NOT thread the manifest into a
+   * Streamdown prop. The value is consumed transitively via
+   * `getEmojiSpriteCell` / `getEmojiSheets` inside `remarkEmojiSprites`,
+   * which reads the live module-level state each parse.
+   */
+  useEmojiGridManifest();
+  /*
+   * `emojiVars` is memoized so the outer `<div>`'s `style` reference is
+   * stable across renders when the active emoji pack hasn't changed.
+   * Otherwise React would diff the style object identity every commit
+   * and write the same custom-property declarations back to the DOM —
+   * harmless but pointless work that can mask other identity issues
+   * during debugging.
+   */
+  const emojiVars = useMemo<CSSProperties | undefined>(() => {
+    if (!activeEmojiPack) return undefined;
+    return Object.fromEntries(
+      activeEmojiPack.sheetUrls.map((url, index) => [
+        `--ai-emoji-sheet-${index}-url`,
+        `url("${url}")`,
+      ]),
+    ) as CSSProperties;
+  }, [activeEmojiPack]);
   return (
     <div style={emojiVars}>
       <Streamdown
@@ -238,11 +267,7 @@ export const Markdown = memo(function Markdown({
           revealSettled && "markdown--reveal-settled",
           className,
         )}
-        remarkPlugins={
-          activeEmojiPack && emojiGrid
-            ? REMARK_PLUGINS
-            : DEFAULT_REMARK_PLUGINS
-        }
+        remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={rehypePlugins}
         components={components}
         linkSafety={LINK_SAFETY}
