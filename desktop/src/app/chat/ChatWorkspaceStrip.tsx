@@ -644,13 +644,15 @@ export function ChatWorkspaceStrip({
                 {displayRunningTasks.length > 0 &&
                   displayVisibleDoneTasks.length > 0 && (
                     <div className="chat-workspace-strip__activity-done-label">
-                      <span
-                        className="chat-workspace-strip__card-title-icon"
-                        aria-hidden="true"
-                      >
-                        <Check size={12} strokeWidth={2.25} />
+                      <span className="chat-workspace-strip__card-title">
+                        <span
+                          className="chat-workspace-strip__card-title-icon"
+                          aria-hidden="true"
+                        >
+                          <Check size={12} strokeWidth={2.25} />
+                        </span>
+                        Done
                       </span>
-                      <span>Done</span>
                     </div>
                   )}
                 {displayVisibleDoneTasks.length > 0 && (

@@ -314,13 +314,13 @@
 /* ── Activity: running vs done ────────────────────────────────────── */
 
 .chat-workspace-strip__activity-done-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   margin: 8px 0 4px;
+}
+
+.chat-workspace-strip__activity-done-label .chat-workspace-strip__card-title {
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0;
   color: var(--text-strong);
 }
