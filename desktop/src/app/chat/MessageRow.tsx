@@ -336,7 +336,6 @@ export const AssistantMessageRow = memo(
               text={text}
               cacheKey={row.cacheKey}
               hideHorizontalRules
-              isAnimating={row.isStreaming === true}
             />
           )}
           {row.officePreviewRef && (
@@ -345,10 +344,9 @@ export const AssistantMessageRow = memo(
           {row.inlineImagePayloads && row.inlineImagePayloads.length > 0 ? (
             <InlineGeneratedImageStrip
               payloads={row.inlineImagePayloads.filter(
-                (payload): payload is Extract<
-                  DisplayPayload,
-                  { kind: "media" }
-                > =>
+                (
+                  payload,
+                ): payload is Extract<DisplayPayload, { kind: "media" }> =>
                   payload.kind === "media" &&
                   payload.presentation === "inline-image" &&
                   payload.asset.kind === "image",

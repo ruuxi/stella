@@ -78,11 +78,13 @@ const detectChunk = (
  * of teleporting into the DOM. Sparse trickles still emit at the
  * upstream rate — the timer only fires when there's something to drain.
  *
- * Existing semantics preserved:
+ * Existing semantics:
  *   - `append("")` is a no-op; `append(...)` is fire-and-forget.
  *   - `reset()` clears both buffer and displayed text immediately.
- *   - When `active` flips to true, both clear (mirrors prior "every
- *     new run starts blank" behavior).
+ *   - Callers clear explicitly at run/message boundaries. The hook must
+ *     not clear when `active` flips to true, because a run-start render
+ *     can race after the first visible chunks and wipe the text for one
+ *     frame before streaming continues.
  *   - When `active` flips to false, the painter keeps emitting queued
  *     words at the same cadence, then flushes any final partial word
  *     (no trailing whitespace) so the last tokens always surface.
@@ -178,17 +180,12 @@ export function useStreamBuffer(
 
   useEffect(() => {
     activeRef.current = active;
-    if (active) {
-      bufferRef.current = "";
-      displayedRef.current = "";
-      clearTimer();
-      setText("");
-    } else {
+    if (!active) {
       // Drain remaining buffered words; tick will detect `active=false`
       // and flush any trailing partial word once no more words match.
       ensureTimer();
     }
-  }, [active, clearTimer, ensureTimer]);
+  }, [active, ensureTimer]);
 
   useEffect(() => () => clearTimer(), [clearTimer]);
 
