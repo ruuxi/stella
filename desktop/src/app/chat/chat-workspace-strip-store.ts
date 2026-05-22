@@ -100,11 +100,23 @@ export const chatWorkspaceStripStore = {
   toggleStripVisible(): void {
     chatWorkspaceStripStore.setStripVisible(!snapshot.stripVisible);
   },
-  setSectionVisible(section: WorkspaceStripSection, visible: boolean): void {
-    if (snapshot.sections[section] === visible) return;
-    const sections = { ...snapshot.sections, [section]: visible };
+  setSections(sections: WorkspaceStripSections): void {
+    if (
+      snapshot.sections.activity === sections.activity &&
+      snapshot.sections.files === sections.files &&
+      snapshot.sections.schedule === sections.schedule
+    ) {
+      return;
+    }
     writePersistedSections(sections);
     emit({ ...snapshot, sections });
+  },
+  setSectionVisible(section: WorkspaceStripSection, visible: boolean): void {
+    if (snapshot.sections[section] === visible) return;
+    chatWorkspaceStripStore.setSections({
+      ...snapshot.sections,
+      [section]: visible,
+    });
   },
   toggleSection(section: WorkspaceStripSection): void {
     chatWorkspaceStripStore.setSectionVisible(

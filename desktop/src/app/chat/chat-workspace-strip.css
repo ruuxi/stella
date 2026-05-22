@@ -71,7 +71,8 @@
   .chat-workspace-strip:not(.chat-workspace-strip--display-panel)
   .chat-workspace-strip__inner,
 :root[data-shell-right-context-hidden="true"] .chat-workspace-strip__inner,
-:root[data-chat-workspace-strip-user-hidden="true"] .chat-workspace-strip__inner {
+:root[data-chat-workspace-strip-user-hidden="true"]
+  .chat-workspace-strip__inner {
   transform: translate3d(12px, 0, 0);
   opacity: 0;
 }
@@ -83,82 +84,15 @@
 .chat-workspace-strip__scroll {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  /* No `gap` — section reveals manage their own margin so collapsed
-     panels don't leave a gap-shaped void in the stack. Bottom padding
-     only reserves space for the last card's shadow halo. */
+  /* No `gap` — section reveals manage their own margin so hidden panels
+     don't leave a gap-shaped void in the stack. */
   padding: 3px 4px 2px 2px;
-  /* Explicit mask rules per scroll edge — WebKit does not reliably
-     recompute mask-image when only a custom property inside the
-     gradient changes, which made the top fade look permanently on. */
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    black 24px,
-    black calc(100% - 52px),
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    black 24px,
-    black calc(100% - 52px),
-    transparent 100%
-  );
-  transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent)
-    transparent;
-}
-
-/* At top — bottom fade only. */
-.chat-workspace-strip__scroll[data-at-start="true"]:not([data-at-end="true"]) {
-  mask-image: linear-gradient(
-    to bottom,
-    black 0,
-    black calc(100% - 52px),
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    black 0,
-    black calc(100% - 52px),
-    transparent 100%
-  );
-}
-
-/* At bottom — top fade only. */
-.chat-workspace-strip__scroll[data-at-end="true"]:not([data-at-start="true"]) {
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    black 24px,
-    black 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    black 24px,
-    black 100%
-  );
-}
-
-/* No overflow — no fade on either edge. */
-.chat-workspace-strip__scroll[data-at-start="true"][data-at-end="true"] {
   mask-image: none;
   -webkit-mask-image: none;
-}
-
-.chat-workspace-strip__scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-workspace-strip__scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--foreground) 14%, transparent);
-  border-radius: 999px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -178,7 +112,8 @@
     .chat-workspace-strip:not(.chat-workspace-strip--display-panel)
     .chat-workspace-strip__inner,
   :root[data-shell-right-context-hidden="true"] .chat-workspace-strip__inner,
-  :root[data-chat-workspace-strip-user-hidden="true"] .chat-workspace-strip__inner {
+  :root[data-chat-workspace-strip-user-hidden="true"]
+    .chat-workspace-strip__inner {
     transform: none;
   }
 }
@@ -209,17 +144,10 @@
 
 /* ── Section reveal (toggled via Open card toolbar) ───────────────── */
 
-/* Wraps each toggleable card so show/hide animates with the same iOS
-   ease as the per-card body grow. Uses grid 0fr→1fr to animate
-   intrinsic height, plus opacity/transform/margin for a polished feel.
-   Margin-top animates with the height so the 16px gap between panels
-   collapses in lockstep — no whitespace left behind when hidden. */
 .chat-workspace-strip__section-reveal {
   display: grid;
   grid-template-rows: 0fr;
   margin-top: 0;
-  /* Default = closing direction. Asymmetric: closes are quicker and
-     accelerate (ease-in-ish) since the user already committed. */
   transition:
     grid-template-rows var(--chat-workspace-strip-panel-duration-close)
       var(--chat-workspace-strip-panel-ease-out),
@@ -230,7 +158,6 @@
 .chat-workspace-strip__section-reveal[data-visible] {
   grid-template-rows: 1fr;
   margin-top: 16px;
-  /* Opening direction wins this declaration — slower, settles in. */
   transition:
     grid-template-rows var(--chat-workspace-strip-panel-duration-open)
       var(--chat-workspace-strip-panel-ease),
@@ -238,13 +165,6 @@
       var(--chat-workspace-strip-panel-ease);
 }
 
-/* No opacity fade on the inner — the card's glass + border must paint
-   immediately as the height grows, otherwise the panel reads as empty
-   air sliding open and only "materializes" at the end. The clipping
-   from overflow:hidden already gives a clean reveal from the top.
-   `contain: paint` isolates this region from the parent's paint tree
-   so the backdrop-filter inside the card doesn't force the whole strip
-   to re-rasterize each animation frame. */
 .chat-workspace-strip__section-reveal-inner {
   min-height: 0;
   overflow: hidden;
@@ -358,7 +278,8 @@
 .chat-workspace-strip__card-body-grow {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--chat-workspace-strip-panel-duration-close)
+  transition: grid-template-rows
+    var(--chat-workspace-strip-panel-duration-close)
     var(--chat-workspace-strip-panel-ease-out);
 }
 
@@ -386,8 +307,7 @@
   > .chat-workspace-strip__card-body-inner
   > .chat-workspace-strip__card-body {
   opacity: 1;
-  transition:
-    opacity 280ms var(--chat-workspace-strip-panel-ease-out)
+  transition: opacity 280ms var(--chat-workspace-strip-panel-ease-out)
     calc(var(--chat-workspace-strip-panel-duration-open) * 0.12);
 }
 
