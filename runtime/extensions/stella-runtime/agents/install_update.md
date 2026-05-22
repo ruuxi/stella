@@ -36,8 +36,10 @@ Run every git command from the install root.
    ```
    exec_command({ cmd: "git merge --no-edit -m 'Update to <tag>' <targetCommit>", cwd: "<installRoot>" })
    ```
+   If the tool result says `"running": true`, poll that same command session with empty `write_stdin` calls until it returns a real exit code. Do not inspect `git status` while the merge command is still running, and do not guess from partial output. The merge command's final exit code is the source of truth for whether this is the clean-merge path or the conflict path.
 
 3. **Clean merge (exit 0)?** Most of the time this is almost the whole job. Skim `git diff HEAD^ HEAD --name-only` to see what changed. Inspect that output yourself; do not use pipes, grep, `|| true`, or any other shell composition to filter it. If any dependency manifest or lockfile changed (`package.json`, `bun.lock`, `bun.lockb`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, or `npm-shrinkwrap.json`), run `bun install --frozen-lockfile` from the install root before reporting. If the user clearly hasn't customized any of the changed files, you're done after the dependency install — jump to **Reporting**. If the merge touched files the user has visibly restructured (renamed identifiers, removed components, restyled UI), re-open those files and reconcile any references upstream added that point at code the user no longer has. Amend the merge commit with `git commit --amend --no-edit` if you fixed anything.
+   Do not chase unrelated `git status` output after a clean merge. Personal state files such as `state/skills/<user-skill>/SKILL.md` may already be staged or untracked in the user's install tree; if they are not in the upstream changed-file list and Git did not report a conflict, leave them alone and finish.
 
 4. **Conflicts (non-zero exit)?** Resolve each one with the bias guide below. Use `git status --porcelain` to find conflicts (look for `UU`, `AA`, `DU`, `UD`, `AU`, `UA`). For each:
    - Read the file (it has `<<<<<<<` / `=======` / `>>>>>>>` markers).
