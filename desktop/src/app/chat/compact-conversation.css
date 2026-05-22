@@ -22,7 +22,7 @@
   --chat-text-weight: 400;
   --chat-text-strong-weight: 500;
   --chat-text-tracking: 0.032em;
-  --chat-text-line-height: 1.35;
+  --chat-text-line-height: 1.75;
   --chat-text-color: var(--text-strong);
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
@@ -130,7 +130,7 @@
  * Only the size differs (set on the variant block above).
  *
  * Full-chat assistant markdown intentionally keeps the airier base
- * `.markdown` line-height (1.7) for long-form readability; in narrow
+ * `.markdown` line-height for long-form readability; in narrow
  * compact bubbles that ratio leaves too much vertical air between
  * lines, so tighten back down to the chat body line-height.
  */
