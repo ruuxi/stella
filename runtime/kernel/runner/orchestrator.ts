@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import type { RuntimeEndEvent } from "../agent-runtime/types.js";
 import { createRuntimePromptAgentMessage } from "../agent-runtime/run-preparation.js";
 import { persistThreadPayloadMessage } from "../agent-runtime/thread-memory.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -630,6 +631,23 @@ export const createOrchestratorController = (
     }
 
     const runId = `local:auto:${crypto.randomUUID()}`;
+    const appendConnectorTerminalNotice = (event: RuntimeEndEvent) => {
+      if (!connectorDeliveryTarget) {
+        return;
+      }
+      if (event.responseTarget?.type !== "agent_terminal_notice") {
+        return;
+      }
+      const text = event.finalText.trim();
+      if (!text) {
+        return;
+      }
+      context.appendLocalChatEvent?.({
+        conversationId,
+        type: "assistant_message",
+        payload: { text },
+      });
+    };
     await startPreparedOrchestratorRun({
       context,
       buildAgentContext: deps.buildAgentContext,
@@ -646,7 +664,9 @@ export const createOrchestratorController = (
       createRuntimeCallbacks: ({ runId }) =>
         createRuntimeCallbacks(
           runId,
-          createAutomationAgentCallbacks(resolveResult),
+          createAutomationAgentCallbacks(resolveResult, {
+            onEnd: appendConnectorTerminalNotice,
+          }),
         ),
       cleanupRun,
       onFatalError: createAutomationFatalErrorHandler(resolveResult),

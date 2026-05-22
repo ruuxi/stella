@@ -21,6 +21,7 @@ import type { DiscoveryKnowledgeSeedPayload } from "../contracts/discovery.js";
 import type { LocalChatUpdatedPayload } from "../contracts/local-chat.js";
 import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import { AGENT_STREAM_EVENT_TYPES } from "../contracts/agent-runtime.js";
+import { resolveConnectorFollowupAction } from "./connector-followup.js";
 import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
@@ -98,6 +99,13 @@ type RuntimeHostEvents = {
   "local-chat-updated": LocalChatUpdatedPayload | null;
   "store-thread-updated": StoreThreadSnapshot;
   "schedule-updated": void;
+};
+
+type ConnectorFollowupTarget = {
+  requestId: string;
+  backendConversationId: string;
+  initialTurnCompleted: boolean;
+  pendingFollowupTexts: string[];
 };
 
 export type RuntimeHostHandlers = {
@@ -328,7 +336,7 @@ export class StellaRuntimeHost {
    */
   private connectorTargetsByLocalConversation = new Map<
     string,
-    { requestId: string; backendConversationId: string }
+    ConnectorFollowupTarget
   >();
   /**
    * Reverse index of `connectorTargetsByLocalConversation` keyed by
@@ -929,6 +937,8 @@ export class StellaRuntimeHost {
         this.connectorTargetsByLocalConversation.set(localConversationId, {
           requestId,
           backendConversationId: conversationId,
+          initialTurnCompleted: false,
+          pendingFollowupTexts: [],
         });
         this.localConversationByRequestId.set(requestId, localConversationId);
         await this.appendLocalChatEvent({
@@ -996,6 +1006,10 @@ export class StellaRuntimeHost {
           ).channels.connector_delivery.completeRemoteTurn,
           { requestId, conversationId, text },
         );
+        this.markConnectorInitialTurnCompleted({
+          requestId,
+          backendConversationId: conversationId,
+        });
       },
       log: (level, message, error) => {
         const logger = level === "error" ? console.error : console.warn;
@@ -1040,51 +1054,84 @@ export class StellaRuntimeHost {
     }
   }
 
+  private markConnectorInitialTurnCompleted(args: {
+    requestId: string;
+    backendConversationId: string;
+  }): void {
+    const localConversationId = this.localConversationByRequestId.get(
+      args.requestId,
+    );
+    if (!localConversationId) {
+      return;
+    }
+    const target =
+      this.connectorTargetsByLocalConversation.get(localConversationId);
+    if (
+      !target ||
+      target.requestId !== args.requestId ||
+      target.backendConversationId !== args.backendConversationId
+    ) {
+      return;
+    }
+    target.initialTurnCompleted = true;
+    const pendingTexts = target.pendingFollowupTexts.splice(0);
+    for (const text of pendingTexts) {
+      void this.sendConnectorFollowup({
+        requestId: target.requestId,
+        backendConversationId: target.backendConversationId,
+        text,
+      });
+    }
+  }
+
+  private queueOrSendConnectorFollowup(args: {
+    target: ConnectorFollowupTarget;
+    text: string;
+  }): void {
+    if (!args.target.initialTurnCompleted) {
+      args.target.pendingFollowupTexts.push(args.text);
+      return;
+    }
+    void this.sendConnectorFollowup({
+      requestId: args.target.requestId,
+      backendConversationId: args.target.backendConversationId,
+      text: args.text,
+    });
+  }
+
   private handleLocalChatUpdateForConnectorFollowup(
     payload: LocalChatUpdatedPayload | null,
   ): void {
     if (!payload) return;
     const conversationId = payload.conversationId;
-    const event = payload.event;
-    if (!conversationId || !event) return;
+    if (!conversationId || !payload.event) return;
 
     const target = this.connectorTargetsByLocalConversation.get(conversationId);
     if (!target) return;
 
-    const eventPayload = event.payload as Record<string, unknown> | undefined;
-    const source =
-      typeof eventPayload?.source === "string" ? eventPayload.source : "";
-
-    if (event.type === "user_message") {
-      // The desktop user typed in this conversation — switch routing back
-      // to the desktop. Connector-sourced user messages (the ones armed
-      // by `runLocalTurn` above) keep the target alive.
-      if (source !== "connector") {
+    const action = resolveConnectorFollowupAction(payload);
+    switch (action.type) {
+      case "clear-target": {
+        // The desktop user typed in this conversation — switch routing back
+        // to the desktop. Connector-sourced user messages (the ones armed
+        // by `runLocalTurn` above) keep the target alive.
         const cleared =
           this.connectorTargetsByLocalConversation.get(conversationId);
         this.connectorTargetsByLocalConversation.delete(conversationId);
         if (cleared) {
           this.localConversationByRequestId.delete(cleared.requestId);
         }
+        return;
       }
-      return;
+      case "send":
+        this.queueOrSendConnectorFollowup({
+          target,
+          text: action.text,
+        });
+        return;
+      case "ignore":
+        return;
     }
-
-    if (event.type !== "assistant_message") return;
-    // The first orchestrator reply already shipped through
-    // `completeRemoteTurn`; the host marked that one with
-    // `source: "connector"`. Everything else is a real follow-up.
-    if (source === "connector") return;
-
-    const text =
-      typeof eventPayload?.text === "string" ? eventPayload.text.trim() : "";
-    if (!text) return;
-
-    void this.sendConnectorFollowup({
-      requestId: target.requestId,
-      backendConversationId: target.backendConversationId,
-      text,
-    });
   }
 
   private syncHostRemoteTurnBridge() {
