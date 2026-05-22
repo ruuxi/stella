@@ -1,5 +1,5 @@
 import type { CSSProperties, ImgHTMLAttributes } from "react";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useMemo, useRef } from "react";
 import {
   Streamdown,
   defaultRehypePlugins,
@@ -8,7 +8,6 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { useActiveEmojiPack } from "./emoji-sprites/active-emoji-pack";
 import { remarkEmojiSprites } from "./emoji-sprites/remark-emoji-sprites";
-import { rehypeWordFade, resetWordFadeCursor } from "./rehype-word-fade";
 import {
   cellToRowCol,
   getEmojiSpriteGridSize,
@@ -20,7 +19,6 @@ interface MarkdownProps {
   text: string;
   cacheKey?: string;
   className?: string;
-  isAnimating?: boolean;
   /** Suppress GFM horizontal rules (`---`). Used in chat bubbles where
    *  models often append a trailing rule that reads as a message divider. */
   hideHorizontalRules?: boolean;
@@ -53,21 +51,6 @@ const REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS, remarkEmojiSprites];
  * post-sanitize HAST (and inherits the same allow-list).
  */
 const DEFAULT_REHYPE_PLUGINS = Object.values(defaultRehypePlugins);
-
-/*
- * Streamdown internally defers streaming block updates with React
- * `startTransition` only when its `animated` prop is absent. After an
- * upstream token pause that deferred parse can catch up in one visible
- * commit (the debug logs show `p` -> `p>p>p` with a large text-length
- * jump), which reads as the remaining single flicker.
- *
- * We still do NOT want Streamdown's own animate rehype plugin because
- * it snaps prior words to `duration: 0ms`. Passing a truthy `animated`
- * prop but forcing Streamdown's `isAnimating` context false gives us the
- * synchronous block-update path without registering its animation plugin.
- * Our own `rehypeWordFade` remains gated by `pluginActive` below.
- */
-const STREAMDOWN_SYNC_RENDER = { duration: 0, stagger: 0 } as const;
 
 /*
  * Disable Streamdown's built-in "Open external link?" confirmation modal.
@@ -103,7 +86,6 @@ const areMarkdownPropsEqual = (
   prev.text === next.text &&
   prev.cacheKey === next.cacheKey &&
   prev.className === next.className &&
-  Boolean(prev.isAnimating) === Boolean(next.isAnimating) &&
   Boolean(prev.hideHorizontalRules) === Boolean(next.hideHorizontalRules);
 
 const MarkdownImage = ({
@@ -148,77 +130,18 @@ export const Markdown = memo(function Markdown({
   text,
   cacheKey,
   className,
-  isAnimating = false,
   hideHorizontalRules = false,
 }: MarkdownProps) {
   /*
-   * Keep the word-fade HAST shape for the lifetime of a row once that
-   * row has streamed. When the live row locks, `isAnimating` flips
-   * false while React keeps the same row key; if we removed the plugin
-   * immediately, Streamdown would rebuild the body from
-   * `<span data-stella-word-fade>…</span>` wrappers back into raw text
-   * nodes, which reads as a one-frame flicker near the start of some
-   * streams. Freshly mounted historical rows start with
-   * `isAnimating=false`, so they still render as plain markdown.
-   *
-   * When streaming finishes, Streamdown may still re-parse the final
-   * body (incomplete-markdown settle, late layout, or eventual
-   * persisted-row handoff). That remounts `[data-stella-word-fade]`
-   * spans, but each
-   * span's inline `--stella-word-fade-duration: 0ms` (stamped by the
-   * plugin based on the previous render's prose length) collapses the
-   * keyframe to 0ms — instant fully-opaque, no flash. `revealSettled`
-   * still drops `animation: none` on top of that as a belt-and-
-   * suspenders guard for any final-row settle.
-   */
-  const hasRenderedStreamingMarkupRef = useRef(false);
-  if (isAnimating) {
-    hasRenderedStreamingMarkupRef.current = true;
-  }
-  const pluginActive = hasRenderedStreamingMarkupRef.current;
-  const revealSettled = pluginActive && !isAnimating;
-  /*
    * Stable per-instance fallback when the caller didn't supply one,
-   * so the prevContentLength cursor never collides between two
-   * independent Markdown instances that happen to render the same
-   * text. Bumped lazily so server-side / first-render parity stays
-   * intact.
+   * matching Streamdown's per-row parse/cache expectations. Bumped
+   * lazily so server-side / first-render parity stays intact.
    */
   const anonCacheKeyRef = useRef<string | null>(null);
   if (anonCacheKeyRef.current === null) {
     anonCacheKeyRef.current = `markdown-anon-${nextAnonCacheKey++}`;
   }
   const effectiveCacheKey = cacheKey ?? anonCacheKeyRef.current;
-  /*
-   * Clear the cursor entry when this Markdown unmounts so the module-
-   * scope map doesn't grow unbounded over a long session.
-   */
-  useEffect(() => {
-    return () => resetWordFadeCursor(effectiveCacheKey);
-  }, [effectiveCacheKey]);
-  /*
-   * Unified's `.use()` treats each entry as a plugin FACTORY. The
-   * pre-applied form `rehypeWordFade({ cacheKey })` is the inner
-   * transformer (signature `(tree) => void`); passing that directly
-   * makes unified call the transformer at freeze time with no tree
-   * argument — silently dropping our spans. Use the tuple form
-   * `[plugin, options]` so unified invokes `plugin(options)` to obtain
-   * the transformer the way every other rehype/remark plugin is
-   * registered.
-   */
-  const rehypePlugins = useMemo(
-    () =>
-      pluginActive
-        ? [
-            ...DEFAULT_REHYPE_PLUGINS,
-            [rehypeWordFade, { cacheKey: effectiveCacheKey }] as [
-              typeof rehypeWordFade,
-              { cacheKey: string },
-            ],
-          ]
-        : DEFAULT_REHYPE_PLUGINS,
-    [pluginActive, effectiveCacheKey],
-  );
   const components = useMemo(
     () => buildComponents(hideHorizontalRules),
     [hideHorizontalRules],
@@ -244,15 +167,10 @@ export const Markdown = memo(function Markdown({
   return (
     <div style={emojiVars}>
       <Streamdown
-        isAnimating={false}
-        animated={pluginActive ? STREAMDOWN_SYNC_RENDER : undefined}
-        className={cn(
-          "markdown",
-          revealSettled && "markdown--reveal-settled",
-          className,
-        )}
+        key={effectiveCacheKey}
+        className={cn("markdown", className)}
         remarkPlugins={REMARK_PLUGINS}
-        rehypePlugins={rehypePlugins}
+        rehypePlugins={DEFAULT_REHYPE_PLUGINS}
         components={components}
         linkSafety={LINK_SAFETY}
       >
