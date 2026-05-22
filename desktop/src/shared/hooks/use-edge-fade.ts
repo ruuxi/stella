@@ -51,14 +51,27 @@ export function useEdgeFade<T extends HTMLElement>(
     };
 
     update();
+    requestAnimationFrame(update);
+
     node.addEventListener("scroll", update, { passive: true });
     const observer = new ResizeObserver(update);
     observer.observe(node);
+    for (const child of node.children) {
+      if (child instanceof Element) observer.observe(child);
+    }
+    const childListObserver = new MutationObserver(() => {
+      for (const child of node.children) {
+        if (child instanceof Element) observer.observe(child);
+      }
+      update();
+    });
+    childListObserver.observe(node, { childList: true });
     window.addEventListener("resize", update);
 
     return () => {
       node.removeEventListener("scroll", update);
       observer.disconnect();
+      childListObserver.disconnect();
       window.removeEventListener("resize", update);
     };
   }, [ref, axis]);

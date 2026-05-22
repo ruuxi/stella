@@ -54,6 +54,9 @@
 }
 
 :root[data-shell-window-resizing="true"] .sidebar-stack,
+:root[data-shell-window-resizing="true"] .chat-workspace-strip__card,
+:root[data-shell-window-resizing="true"] .composer-shell,
+:root[data-shell-window-resizing="true"] .chat-sidebar-shell,
 :root[data-shell-window-resizing="true"] .chat-sidebar-inner,
 :root[data-shell-window-resizing="true"] .shell-topbar-store-controls {
   backdrop-filter: none !important;
@@ -715,9 +718,10 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   display: flex;
   flex-direction: column;
   position: relative;
+  z-index: 1;
   overflow: hidden;
   background: transparent;
-  border-left: 1px solid var(--border-weak);
+  border-left: none;
   border-top: 1px solid var(--border-weak);
   padding-top: var(--shell-topbar-height);
   box-sizing: border-box;

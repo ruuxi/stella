@@ -15,8 +15,10 @@
  * against the other.
  */
 import { useMemo, useState, type ReactNode } from "react";
+import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import {
   ChevronDown,
+  History,
   Activity as ActivityIcon,
   FolderClosed,
   CalendarClock,
@@ -69,12 +71,20 @@ import {
   type WorkspaceStripSection,
   type WorkspaceStripSections,
 } from "./chat-workspace-strip-store";
+import { TextShimmer } from "./TextShimmer";
+import {
+  WORKSPACE_STRIP_MOCK_ENABLED,
+  mockWorkspaceStripDoneTasks,
+  mockWorkspaceStripFiles,
+  mockWorkspaceStripRunningTasks,
+  mockWorkspaceStripSchedules,
+} from "./chat-workspace-strip-mock";
 import "./chat-workspace-strip.css";
 
 const NOW_VISIBLE = 4;
 const DONE_VISIBLE = 4;
 const FILES_VISIBLE = 5;
-const UPNEXT_VISIBLE = 3;
+const UPNEXT_VISIBLE = 5;
 const EMPTY_TASKS: TaskItem[] = [];
 
 type TabOpenOption = {
@@ -163,19 +173,24 @@ function WorkspaceCard({
   children,
   defaultOpen = true,
   headerTrailing,
+  onOpenHistory,
+  historyLabel,
 }: {
   title: string;
   icon: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
   headerTrailing?: ReactNode;
+  onOpenHistory?: () => void;
+  historyLabel?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const toggleOpen = () => setOpen((v) => !v);
   return (
-    <section
-      className={`chat-workspace-strip__card${open ? "" : " chat-workspace-strip__card--collapsed"}`}
-    >
+    <div className="chat-workspace-strip__card-frame">
+      <section
+        className={`chat-workspace-strip__card${open ? "" : " chat-workspace-strip__card--collapsed"}`}
+      >
       <div className="chat-workspace-strip__card-header">
         <button
           type="button"
@@ -194,6 +209,17 @@ function WorkspaceCard({
           </span>
         </button>
         {headerTrailing}
+        {onOpenHistory ? (
+          <button
+            type="button"
+            className="chat-workspace-strip__card-header-history"
+            onClick={onOpenHistory}
+            aria-label={historyLabel ?? `View ${title} history`}
+            title={historyLabel ?? `View ${title} history`}
+          >
+            <History size={14} strokeWidth={2} aria-hidden="true" />
+          </button>
+        ) : null}
         <button
           type="button"
           className="chat-workspace-strip__card-header-chevron"
@@ -208,8 +234,17 @@ function WorkspaceCard({
           />
         </button>
       </div>
-      {open && <div className="chat-workspace-strip__card-body">{children}</div>}
-    </section>
+      <div
+        className="chat-workspace-strip__card-body-grow"
+        data-expanded={open || undefined}
+        aria-hidden={!open}
+      >
+        <div className="chat-workspace-strip__card-body-inner">
+          <div className="chat-workspace-strip__card-body">{children}</div>
+        </div>
+      </div>
+      </section>
+    </div>
   );
 }
 
@@ -224,34 +259,21 @@ function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
             className="chat-workspace-strip__row"
             data-status={task.status === "running" ? "now" : "done"}
           >
-            <span className="chat-workspace-strip__row-label">{label}</span>
-            {task.status === "running" && (
-              <span className="chat-workspace-strip__row-meta">Working</span>
-            )}
+            <span className="chat-workspace-strip__row-label">
+              {task.status === "running" ? (
+                <TextShimmer
+                  text={label}
+                  durationMs={2000}
+                  className="chat-workspace-strip__row-label-shimmer"
+                />
+              ) : (
+                label
+              )}
+            </span>
           </li>
         );
       })}
     </ul>
-  );
-}
-
-function SeeAllButton({
-  total,
-  onClick,
-}: {
-  total: number;
-  onClick: () => void;
-}) {
-  return (
-    <div className="chat-workspace-strip__show-more-row">
-      <button
-        type="button"
-        className="chat-workspace-strip__show-more"
-        onClick={onClick}
-      >
-        See all ({total})
-      </button>
-    </div>
   );
 }
 
@@ -291,6 +313,7 @@ export function ChatWorkspaceStrip({
     useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
     useState<ScheduleEntry | null>(null);
+  const scrollRef = useEdgeFadeRef<HTMLDivElement>({ axis: "vertical" });
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
@@ -319,24 +342,46 @@ export function ChatWorkspaceStrip({
         }),
     [allTasks],
   );
-  const visibleDoneTasks = doneTasks.slice(0, DONE_VISIBLE);
-  const hiddenDoneCount = doneTasks.length - visibleDoneTasks.length;
-
   const allFiles = useMemo(
     () => deriveConversationFiles(filesFeed.files),
     [filesFeed.files],
   );
-  const visibleFiles = allFiles.slice(0, FILES_VISIBLE);
-  const hiddenFilesCount = allFiles.length - visibleFiles.length;
-
-  const upNext = useMemo(() => schedules.slice(0, UPNEXT_VISIBLE), [schedules]);
-  const hiddenScheduleCount = schedules.length - upNext.length;
-
-  const hasActivity = runningTasks.length > 0 || visibleDoneTasks.length > 0;
-  const hasFiles = allFiles.length > 0;
-  const hasSchedule = upNext.length > 0;
 
   const nowMs = Date.now();
+
+  const useMockContent = WORKSPACE_STRIP_MOCK_ENABLED;
+  const displayRunningTasks =
+    useMockContent && runningTasks.length === 0
+      ? mockWorkspaceStripRunningTasks
+      : runningTasks;
+  const displayDoneTasks =
+    useMockContent && doneTasks.length === 0
+      ? mockWorkspaceStripDoneTasks
+      : doneTasks;
+  const displayVisibleDoneTasks = displayDoneTasks.slice(0, DONE_VISIBLE);
+  const displayHiddenDoneCount =
+    displayDoneTasks.length - displayVisibleDoneTasks.length;
+  const displayAllFiles =
+    useMockContent && allFiles.length === 0
+      ? mockWorkspaceStripFiles
+      : allFiles;
+  const displayVisibleFiles = displayAllFiles.slice(0, FILES_VISIBLE);
+  const displayHiddenFilesCount =
+    displayAllFiles.length - displayVisibleFiles.length;
+  const displaySchedules =
+    useMockContent && schedules.length === 0
+      ? mockWorkspaceStripSchedules(nowMs)
+      : schedules;
+  const upNext = useMemo(
+    () => displaySchedules.slice(0, UPNEXT_VISIBLE),
+    [displaySchedules],
+  );
+  const hiddenScheduleCount = displaySchedules.length - upNext.length;
+
+  const hasActivity =
+    displayRunningTasks.length > 0 || displayVisibleDoneTasks.length > 0;
+  const hasFiles = displayAllFiles.length > 0;
+  const hasSchedule = upNext.length > 0;
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
     if (!openScheduleEntry || !conversationId) return [];
     return [scheduleEntryToAffectedRef(openScheduleEntry, conversationId)];
@@ -352,6 +397,16 @@ export function ChatWorkspaceStrip({
   const showFiles = sections.files && hasFiles;
   const showSchedule = sections.schedule && hasSchedule;
 
+  const renderReveal = (visible: boolean, content: ReactNode) => (
+    <div
+      className="chat-workspace-strip__section-reveal"
+      data-visible={visible || undefined}
+      aria-hidden={!visible}
+    >
+      <div className="chat-workspace-strip__section-reveal-inner">{content}</div>
+    </div>
+  );
+
   return (
     <aside
       className={`chat-workspace-strip${
@@ -361,7 +416,12 @@ export function ChatWorkspaceStrip({
       aria-hidden={hidden}
     >
       <div className="chat-workspace-strip__inner">
-        <div className="chat-workspace-strip__scroll">
+        <div
+          className="chat-workspace-strip__scroll"
+          ref={scrollRef}
+          data-at-start="true"
+          data-at-end="true"
+        >
           <WorkspaceCard
             title="Open"
             icon={<LayoutPanelTop size={12} strokeWidth={2.25} />}
@@ -393,39 +453,49 @@ export function ChatWorkspaceStrip({
             </ul>
           </WorkspaceCard>
 
-          {showActivity && (
-            <WorkspaceCard
+          {hasActivity &&
+            renderReveal(
+              showActivity,
+              <WorkspaceCard
               title="Activity"
               icon={<ActivityIcon size={12} strokeWidth={2.25} />}
+              onOpenHistory={
+                displayHiddenDoneCount > 0
+                  ? () => setHistorySection("done")
+                  : undefined
+              }
+              historyLabel={`View all activity (${displayDoneTasks.length})`}
             >
-              {runningTasks.length > 0 && (
+              {displayRunningTasks.length > 0 && (
                 <>
                   <div className="chat-workspace-strip__subhead">Now</div>
-                  <TasksList tasks={runningTasks} />
+                  <TasksList tasks={displayRunningTasks} />
                 </>
               )}
-              {visibleDoneTasks.length > 0 && (
+              {displayVisibleDoneTasks.length > 0 && (
                 <>
                   <div className="chat-workspace-strip__subhead">Done</div>
-                  <TasksList tasks={visibleDoneTasks} />
-                  {hiddenDoneCount > 0 && (
-                    <SeeAllButton
-                      total={doneTasks.length}
-                      onClick={() => setHistorySection("done")}
-                    />
-                  )}
+                  <TasksList tasks={displayVisibleDoneTasks} />
                 </>
               )}
-            </WorkspaceCard>
-          )}
+            </WorkspaceCard>,
+            )}
 
-          {showFiles && (
-            <WorkspaceCard
+          {hasFiles &&
+            renderReveal(
+              showFiles,
+              <WorkspaceCard
               title="Files"
               icon={<FolderClosed size={12} strokeWidth={2.25} />}
+              onOpenHistory={
+                displayHiddenFilesCount > 0
+                  ? () => setHistorySection("files")
+                  : undefined
+              }
+              historyLabel={`View all files (${displayAllFiles.length})`}
             >
               <ul className="chat-workspace-strip__list">
-                {visibleFiles.map((file) => (
+                {displayVisibleFiles.map((file) => (
                   <li
                     key={file.path}
                     className="chat-workspace-strip__row"
@@ -446,22 +516,22 @@ export function ChatWorkspaceStrip({
                     </button>
                   </li>
                 ))}
-                {hiddenFilesCount > 0 && (
-                  <li>
-                    <SeeAllButton
-                      total={allFiles.length}
-                      onClick={() => setHistorySection("files")}
-                    />
-                  </li>
-                )}
               </ul>
-            </WorkspaceCard>
-          )}
+            </WorkspaceCard>,
+            )}
 
-          {showSchedule && (
-            <WorkspaceCard
+          {hasSchedule &&
+            renderReveal(
+              showSchedule,
+              <WorkspaceCard
               title="Schedule"
               icon={<CalendarClock size={12} strokeWidth={2.25} />}
+              onOpenHistory={
+                hiddenScheduleCount > 0
+                  ? () => setHistorySection("upNext")
+                  : undefined
+              }
+              historyLabel={`View all schedules (${displaySchedules.length})`}
             >
               <ul className="chat-workspace-strip__list">
                 {upNext.map((entry) => (
@@ -477,17 +547,9 @@ export function ChatWorkspaceStrip({
                     </span>
                   </li>
                 ))}
-                {hiddenScheduleCount > 0 && (
-                  <li>
-                    <SeeAllButton
-                      total={schedules.length}
-                      onClick={() => setHistorySection("upNext")}
-                    />
-                  </li>
-                )}
               </ul>
-            </WorkspaceCard>
-          )}
+            </WorkspaceCard>,
+            )}
         </div>
       </div>
       <ScheduleDetailsDialog

@@ -132,7 +132,9 @@
 .chat-sidebar-shell {
   position: relative;
   width: 100%;
-  background: color-mix(in oklch, var(--background) 18%, transparent);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
   border-radius: 999px; /* fallback before JS; overridden by motion */
   box-shadow: var(--shadow-md);

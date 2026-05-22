@@ -7,8 +7,8 @@
 }
 
 /* Floating suggestion row that sits ABOVE the composer shell (the chat
- * sidebar opts into this). Matches the chip strip's left padding so the
- * dashed chips align with the composer's left edge.
+ * sidebar opts into this). Left inset nudges the working indicator + icon
+ * chips slightly right so they align with the attached chip row in the shell.
  *
  * `min-height` keeps the strip's vertical footprint reserved even when
  * every lane is empty / hidden, so the composer doesn't pop up and down
@@ -18,7 +18,7 @@
   position: relative;
   flex-wrap: nowrap;
   overflow: hidden;
-  padding: 0 4px 4px;
+  padding: 0 4px 4px 20px;
   min-height: calc(24px + 4px);
   align-items: center;
   /* Animate the strip-level gap change so chips glide together with the

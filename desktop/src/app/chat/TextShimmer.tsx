@@ -10,17 +10,21 @@ interface TextShimmerProps {
   /** Whether shimmer is actively running */
   active?: boolean;
   className?: string;
+  /** Fixed sweep duration; when omitted, scales with text length. */
+  durationMs?: number;
 }
 
 export function TextShimmer({
   text,
   active = true,
   className,
+  durationMs,
 }: TextShimmerProps) {
   const duration = useMemo(() => {
+    if (durationMs !== undefined) return durationMs;
     const perCharMs = 95;
     return Math.max(1400, Math.min(4000, text.length * perCharMs));
-  }, [text.length]);
+  }, [durationMs, text.length]);
 
   if (!active) {
     return <span className={className}>{text}</span>;
