@@ -10,7 +10,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { completeSimple, readAssistantText } from "../../ai/stream.js";
-import type { Context, Message } from "../../ai/types.js";
+import type {
+  AssistantMessage,
+  Context,
+  Message,
+  Tool,
+  ToolCall,
+} from "../../ai/types.js";
 import {
   collectBrowserActivityWindows,
   type BrowserActivityWindow,
@@ -89,13 +95,35 @@ const SYSTEM_PROMPT = [
   "Use the supplied recent Stella activity, thread summaries, and browser activity for exactly the requested window.",
   "The output is rendered directly in Stella's trusted Canvas viewer. You may use inline scripts, external scripts, external stylesheets, CDN imports, charts, tables, and interactive controls when helpful.",
   "",
+  "You MUST deliver the report by calling the `emit_report` tool exactly once with the complete HTML document in the `html` parameter. Do NOT include the HTML in your text response. Do NOT skip the tool call.",
+  "",
   "Rules:",
-  "  1. Output one complete HTML document only. No markdown fences or commentary.",
+  "  1. Pass one complete <!doctype html> document in the `html` argument. No markdown fences. No commentary outside the tool call.",
   "  2. Ground every claim in the supplied activity. Do not invent private details.",
   "  3. Make it useful at a glance: short sections, concrete links/domains/tasks, and next-step suggestions.",
   "  4. If there is little activity, say that plainly and still provide a clean status report.",
-  "  5. Keep the visual style quiet, native-feeling, and readable in a side panel.",
+  "  5. Keep the visual style quiet, native-feeling, and readable in a side panel. Cormorant for display type and Manrope for body when convenient.",
 ].join("\n");
+
+const EMIT_REPORT_TOOL: Tool = {
+  name: "emit_report",
+  description:
+    "Deliver the finished HTML report. Call this exactly once with the complete <!doctype html> document in the `html` argument.",
+  // Tool.parameters is typed as `TSchema` but providers consume the
+  // underlying JSON-Schema-shaped object at runtime. Mirrors the same
+  // cast used by `runtime/kernel/agent-runtime/memory-review.ts`.
+  parameters: {
+    type: "object",
+    properties: {
+      html: {
+        type: "string",
+        description:
+          "The complete HTML document to render in the Canvas viewer. Must include a doctype and a <body> with the report content.",
+      },
+    },
+    required: ["html"],
+  } as unknown as Tool["parameters"],
+};
 
 const reportsDir = (stellaRoot: string) =>
   path.join(stellaRoot, "state", "open-panel-reports");
@@ -185,9 +213,30 @@ const stripFences = (text: string): string => {
   return fenced ? fenced[1]!.trim() : text.trim();
 };
 
-const normalizeHtml = (text: string, title: string): string => {
+// Pulls usable HTML body content out of arbitrary text. Returns "" when
+// nothing recognizable as HTML is present so the caller can refuse to
+// overwrite a previously good report with a blank shell.
+const extractHtmlFromText = (text: string): string => {
   const stripped = stripFences(text);
-  if (/<html[\s>]/i.test(stripped)) return stripped;
+  if (stripped.length === 0) return "";
+  if (/<\s*\/?\s*[a-z!][^>]*>/i.test(stripped)) return stripped;
+  return "";
+};
+
+const extractHtmlFromToolCall = (response: AssistantMessage): string => {
+  const call = response.content.find(
+    (part): part is ToolCall =>
+      part.type === "toolCall" && part.name === EMIT_REPORT_TOOL.name,
+  );
+  if (!call) return "";
+  const raw = call.arguments?.html;
+  return typeof raw === "string" ? raw.trim() : "";
+};
+
+const normalizeHtml = (rawHtml: string, title: string): string => {
+  const trimmed = rawHtml.trim();
+  if (trimmed.length === 0) return "";
+  if (/<html[\s>]/i.test(trimmed)) return trimmed;
   return `<!doctype html>
 <html>
 <head>
@@ -196,7 +245,7 @@ const normalizeHtml = (text: string, title: string): string => {
   <title>${title}</title>
 </head>
 <body>
-${stripped}
+${trimmed}
 </body>
 </html>
 `;
@@ -331,42 +380,61 @@ const generateReport = async (args: {
 
   const sinceMs = args.nowMs - args.cadence.windowMs;
   const activity = formatRecentActivity(args.store, sinceMs);
+  const userMessage: Message = {
+    role: "user",
+    content: [
+      {
+        type: "text",
+        text: buildUserPrompt({
+          cadence: args.cadence,
+          sinceMs,
+          nowMs: args.nowMs,
+          summaries: args.summaries,
+          activity,
+          browserWindow: args.browserWindow,
+        }),
+      },
+    ],
+    timestamp: Date.now(),
+  };
   const context: Context = {
     systemPrompt: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: buildUserPrompt({
-              cadence: args.cadence,
-              sinceMs,
-              nowMs: args.nowMs,
-              summaries: args.summaries,
-              activity,
-              browserWindow: args.browserWindow,
-            }),
-          },
-        ],
-        timestamp: Date.now(),
-      } satisfies Message,
-    ],
+    messages: [userMessage],
+    tools: [EMIT_REPORT_TOOL],
   };
 
-  let responseText: string;
+  let rawHtml = "";
   try {
     if (useClaudeCode) {
-      responseText = await runClaudeCodeAgentTextCompletion({
+      let captured = "";
+      const finalText = await runClaudeCodeAgentTextCompletion({
         stellaRoot: args.stellaRoot,
         agentType: AGENT_IDS.OPEN_PANEL_REPORTS,
         context,
+        executeTool: async (_toolCallId, toolName, toolArgs) => {
+          if (toolName !== EMIT_REPORT_TOOL.name) {
+            return { error: `Tool ${toolName} is not available.` };
+          }
+          const html = toolArgs?.html;
+          if (typeof html === "string") captured = html;
+          return { result: "ok" };
+        },
       });
+      rawHtml = captured.trim() || extractHtmlFromText(finalText);
     } else {
       const response = await completeSimple(args.resolvedLlm.model, context, {
         apiKey,
+        // Drop the default 32k cap (see `runtime/ai/providers/simple-options.ts`)
+        // so reasoning models don't burn the entire token budget thinking
+        // and return an empty assistant message. Use the model's full headroom
+        // when known; let the provider decide otherwise.
+        ...(args.resolvedLlm.model.maxTokens > 0
+          ? { maxTokens: args.resolvedLlm.model.maxTokens }
+          : {}),
       });
-      responseText = readAssistantText(response);
+      rawHtml =
+        extractHtmlFromToolCall(response) ||
+        extractHtmlFromText(readAssistantText(response));
     }
   } catch (error) {
     logger.debug("open-panel-report.completeSimple.failed", {
@@ -376,8 +444,15 @@ const generateReport = async (args: {
     return null;
   }
 
+  const html = normalizeHtml(rawHtml, args.cadence.title);
+  if (html.length === 0) {
+    logger.debug("open-panel-report.skipped.empty-output", {
+      cadence: args.cadence.id,
+    });
+    return null;
+  }
+
   const filePath = outputPathForCadence(args.stellaRoot, args.cadence.id);
-  const html = normalizeHtml(responseText, args.cadence.title);
   await fs.mkdir(reportsDir(args.stellaRoot), { recursive: true });
   await fs.writeFile(filePath, html, "utf-8");
 
