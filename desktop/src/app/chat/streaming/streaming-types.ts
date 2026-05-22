@@ -19,9 +19,9 @@ import type { AgentResponseTarget } from "../../../../../runtime/contracts/agent
  * Vercel `useChat`), the renderer treats stream chunks as updates to
  * a synthetic in-memory `MessageRecord` rather than overlaying a
  * separate "tail row" on top of the persisted list. The overlay is
- * inserted into `displayMessages` by `useConversationDisplayMessages`
- * and dropped the moment a persisted row at the same
- * `(userMessageId, indexInTurn)` slot lands via `chat:localUpdated`.
+ * inserted into `displayMessages` by `useConversationDisplayMessages`.
+ * While it exists, it masks the persisted row at the same
+ * `(userMessageId, indexInTurn)` slot and borrows that row's metadata.
  *
  * Layout invariants:
  *   - `indexInTurn` is 1-based per `userMessageId`. The first assistant
@@ -29,9 +29,9 @@ import type { AgentResponseTarget } from "../../../../../runtime/contracts/agent
  *     answer gets `2`; etc.
  *   - `timestamp` need only sort the overlay AFTER its anchoring user
  *     message and after any earlier persisted assistants in the same
- *     turn. `Date.now()` at creation time satisfies that — once the
- *     real persisted row lands, the overlay is dropped before its
- *     timestamp matters for sort stability.
+ *     turn. `Date.now()` at creation time satisfies that; if the real
+ *     persisted row lands while the overlay is still present, the
+ *     persisted twin is hidden until the overlay is cleared.
  *   - `responseTarget` mirrors the runtime's per-message target so the
  *     row renderer can pick up agent-terminal-notice styling, etc.
  */

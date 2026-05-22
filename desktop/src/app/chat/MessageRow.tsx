@@ -11,12 +11,13 @@
  * in-memory `MessageRecord` overlay that `useConversationDisplayMessages`
  * merges into the displayed list under a stable
  * `assistant-{userMessageId}-{indexInTurn}` key. When the persisted
- * `assistant_message` lands, the overlay drops out of the list and the
- * persisted row reuses the same React key — no unmount, no Streamdown
- * re-parse, no flash. The only marker that the row is currently being
- * streamed (vs. backed by a persisted row) is `isStreaming` below
- * (styling). Scroll follow is driven by runtime `assistantScrollFollowKey`
- * signals and `data-scroll-follow-key` on the row.
+ * `assistant_message` lands, the overlay remains the visible text
+ * source while borrowing persisted metadata/tool events; when the
+ * overlay later clears, the persisted row reuses the same React key.
+ * The only marker that the row is currently receiving chunks is
+ * `isStreaming` below (styling). Scroll follow is driven by runtime
+ * `assistantScrollFollowKey` signals and `data-scroll-follow-key` on
+ * the row.
  *
  * Reasoning text is intentionally NOT rendered anywhere in this surface
  * (the underlying data still flows through state for model history).
@@ -66,14 +67,14 @@ export type AssistantRowViewModel = {
   /**
    * React key for this row. Stable across the streaming → persisted
    * transition: a row that responds to user message `U` keeps the same
-   * `id` whether it's a placeholder fed by the streaming buffer, or the
-   * persisted `assistant_message` that eventually replaces it.
+   * `id` whether it is fed by the streaming buffer or loaded from the
+   * persisted `assistant_message`.
    */
   id: string;
   text: string;
   /**
-   * Stable Streamdown cache key. Same value across the streaming → persisted
-   * swap so the markdown parse cache is reused.
+   * Stable Streamdown cache key. Same value across the streaming →
+   * persisted handoff so the markdown parse cache is reused.
    */
   cacheKey: string;
   /**

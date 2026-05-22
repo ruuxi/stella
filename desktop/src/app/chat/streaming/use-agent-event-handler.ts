@@ -311,9 +311,8 @@ export function useAgentEventHandler({
           // Lock the current overlay slot's text (smoothing drain) and
           // advance the per-turn slot index so the next chunk lands on
           // a fresh slot. The locked slot stays visible in the chat
-          // until its persisted counterpart lands via
-          // `chat:localUpdated` and the merge dedupe in
-          // `useConversationDisplayMessages` filters it out.
+          // even after its persisted counterpart lands; the display
+          // merge masks the persisted twin and borrows its metadata.
           if (
             (isPrimaryRun || isOrchestratorEvent) &&
             conversationId === activeConversationIdRef.current

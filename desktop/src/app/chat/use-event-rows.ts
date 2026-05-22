@@ -353,11 +353,10 @@ const coalesceInlineImageRows = (
 /**
  * Stable React key for an assistant row. Live-streaming overlays and
  * their eventual persisted counterparts share this key (both anchor
- * on `(userMessageId, indexInTurn)`), so when the persisted row lands
- * and the overlay drops out of `displayMessages`, LegendList treats it
- * as a content update on the same slot rather than an
- * unmount-followed-by-mount. Preserves the slot's measured size and
- * Streamdown's parse cache across the handoff.
+ * on `(userMessageId, indexInTurn)`). While the live overlay is still
+ * present it masks the persisted twin; once the overlay is cleared,
+ * the persisted row reuses the same key. Preserves the slot's
+ * measured size and Streamdown's parse cache across the handoff.
  *
  * Falls back to `message._id` for assistant messages without a
  * `userMessageId` payload field (rare — e.g. legacy rows or hidden
@@ -477,11 +476,16 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             ? payload.userMessageId
             : undefined
         const responseTarget = responseTargetByAssistantId.get(message._id)
+        const runtimeMetadata = (
+          payload?.metadata as
+            | { runtime?: { isStreaming?: boolean } }
+            | undefined
+        )?.runtime
         // Unified key for both live-streaming overlays (synthetic
-        // `_id`s) and the eventual persisted rows that replace them at
-        // the same `(userMessageId, indexInTurn)` slot. The dedupe in
-        // `useConversationDisplayMessages` ensures only one source is
-        // present at a time, so the count stays consistent.
+        // `_id`s) and the eventual persisted rows for the same
+        // `(userMessageId, indexInTurn)` slot. The display merge
+        // ensures only one source is present at a time, so the count
+        // stays consistent.
         let stableKey: string
         if (replyToUserMessageId !== undefined) {
           const indexWithinTurn =
@@ -510,9 +514,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         })
         const askQuestionState = askQuestion.payloadByAssistantId.get(message._id)
         const selfModApplied = payload?.selfModApplied
-        const isStreamingOverlay = message._id.startsWith(
-          STREAMING_OVERLAY_ID_PREFIX,
-        )
+        const isStreamingOverlay =
+          message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
+          runtimeMetadata?.isStreaming !== false
         const row: AssistantRowViewModel = {
           kind: 'assistant',
           id: stableKey,
