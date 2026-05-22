@@ -604,6 +604,54 @@
   margin-top: 4px;
 }
 
+.connect-pair-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.connect-pair-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.connect-pair-step-title {
+  margin: 0;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-strong);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.connect-pair-step-num {
+  font-size: 34px;
+  font-weight: 500;
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.connect-pair-step-visual {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.connect-pair-step-visual .connect-pair-qr-block {
+  padding: 0;
+}
+
 .connect-paired-devices {
   display: flex;
   flex-direction: column;
