@@ -14,7 +14,7 @@
   --chat-text-weight: 400;
   --chat-text-strong-weight: 500;
   --chat-text-tracking: 0.032em;
-  --chat-text-line-height: 1.35;
+  --chat-text-line-height: 1.75;
   --chat-text-color: var(--text-strong);
 }
 
@@ -316,7 +316,7 @@
   letter-spacing: var(--chat-text-tracking);
   /* Assistant markdown deliberately keeps the airier base `.markdown`
      line-height (set in `markdown.css`) instead of the chat body's
-     1.45 — long-form assistant responses read better with extra
+     1.75 — long-form assistant responses read better with extra
      breathing room than the user bubble's compact ratio. Compact
      surfaces override this back down to `--chat-text-line-height`
      in `compact-conversation.css`. */
