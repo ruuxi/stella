@@ -1,8 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { ConnectHeroAnimation } from "@/global/integrations/ConnectHeroAnimation";
 import { usePhoneAccessController } from "@/global/settings/hooks/use-phone-access-controller";
 import { Button } from "@/ui/button";
 import { showToast } from "@/ui/toast";
+
+const APP_STORE_URL =
+  "https://apps.apple.com/us/app/stella-your-ai/id6761148311";
 
 const toErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback;
@@ -33,6 +37,25 @@ export function PhoneAccessConnectCard() {
   } = usePhoneAccessController({ qrCodeWidth: 140 });
   const [error, setError] = useState<string | null>(null);
   const visibleError = error ?? deviceLoadError;
+  const [appStoreQrDataUrl, setAppStoreQrDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(APP_STORE_URL, {
+      width: 140,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" },
+    })
+      .then((url) => {
+        if (!cancelled) setAppStoreQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setAppStoreQrDataUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleCreate = useCallback(async () => {
     setError(null);
@@ -113,20 +136,60 @@ export function PhoneAccessConnectCard() {
           </>
         ) : (
           <>
-            <p className="connect-pair-headline">Pair your phone</p>
-            <p className="connect-pair-sub">
-              Link the Stella mobile app to this computer so they work together. You only need to do this once.
+            <p className="connect-pair-headline">
+              Connect your phone to your computer
             </p>
 
-            {visibleError && <div className="connect-error">{visibleError}</div>}
+            <ol className="connect-pair-steps">
+              <li className="connect-pair-step">
+                <p className="connect-pair-step-title">
+                  <span className="connect-pair-step-num">1.</span>
+                  Download the app
+                </p>
+                <div className="connect-pair-step-visual">
+                  <div className="connect-pair-qr-block">
+                    {appStoreQrDataUrl ? (
+                      <img
+                        src={appStoreQrDataUrl}
+                        alt="Scan to download Stella from the App Store"
+                        className="connect-pair-qr"
+                      />
+                    ) : (
+                      <div className="connect-skeleton connect-pair-qr" />
+                    )}
+                  </div>
+                </div>
+              </li>
 
-            <Button
-              variant="ghost"
-              onClick={() => void handleCreate()}
-              disabled={!desktopDeviceId || isCreating}
-            >
-              {isCreating ? "Preparing..." : "Get Code"}
-            </Button>
+              <li className="connect-pair-step">
+                <p className="connect-pair-step-title">
+                  <span className="connect-pair-step-num">2.</span>
+                  Connect your phone
+                </p>
+                <div className="connect-pair-step-visual">
+                  <Button
+                    variant="ghost"
+                    onClick={() => void handleCreate()}
+                    disabled={!desktopDeviceId || isCreating}
+                    style={{
+                      fontFamily:
+                        'var(--font-family-display, "Cormorant Garamond", Georgia, serif)',
+                      fontSize: 24,
+                      fontWeight: 500,
+                      letterSpacing: "0.01em",
+                      padding: "10px 24px",
+                      height: "auto",
+                      textDecoration: "underline",
+                      textUnderlineOffset: "4px",
+                    }}
+                  >
+                    {isCreating ? "Preparing..." : "Get Code"}
+                  </Button>
+                </div>
+              </li>
+            </ol>
+
+            {visibleError && <div className="connect-error">{visibleError}</div>}
           </>
         )}
 
