@@ -158,14 +158,56 @@ type PerCacheState = {
 
 const stateByCacheKey = new Map<string, PerCacheState>();
 
+/**
+ * Per-cacheKey deferred cleanup timer. `resetWordFadeCursor` schedules
+ * the drop instead of running it synchronously so that a transient
+ * unmount → remount (e.g. text briefly empty mid-stream collapses the
+ * `AssistantMessageRow` to its placeholder branch and React tears
+ * down `<Markdown>`, then text re-arrives and React mounts a fresh
+ * `<Markdown>` on the next commit) doesn't wipe the prior render's
+ * span signatures. Without this, the freshly-mounted plugin sees
+ * every existing word group as "new" — case 3 — and the whole
+ * message re-fades in a single visible flash.
+ *
+ * The TTL is intentionally well above any plausible Vite HMR / React
+ * commit gap but well below a user navigating away from a chat and
+ * coming back. ~10s catches every spurious mid-stream remount we've
+ * observed; if a user genuinely returns to a chat after >10s, a
+ * one-time fade for the visible content is acceptable and not the
+ * bug being defended against.
+ */
+const CURSOR_TTL_MS = 10_000;
+const pendingDrops = new Map<string, ReturnType<typeof setTimeout>>();
+
 const emptyState: PerCacheState = {
   emittedKeys: new Set(),
   priorRanges: [],
 };
 
-/** Drop the per-row cursor when this Markdown row unmounts. */
+/**
+ * Schedule a deferred cleanup of the per-row cursor when its Markdown
+ * row unmounts. Cancelled if the same cacheKey re-registers within
+ * the TTL (`cancelPendingDrop` from the plugin entry below), so a
+ * remount inside that window reuses the prior state and the plugin's
+ * case-1 path applies to every existing span.
+ */
 export const resetWordFadeCursor = (cacheKey: string): void => {
-  stateByCacheKey.delete(cacheKey);
+  const existing = pendingDrops.get(cacheKey);
+  if (existing !== undefined) clearTimeout(existing);
+  pendingDrops.set(
+    cacheKey,
+    setTimeout(() => {
+      pendingDrops.delete(cacheKey);
+      stateByCacheKey.delete(cacheKey);
+    }, CURSOR_TTL_MS),
+  );
+};
+
+const cancelPendingDrop = (cacheKey: string): void => {
+  const existing = pendingDrops.get(cacheKey);
+  if (existing === undefined) return;
+  clearTimeout(existing);
+  pendingDrops.delete(cacheKey);
 };
 
 /*
@@ -274,6 +316,11 @@ export type RehypeWordFadeOptions = {
 
 export const rehypeWordFade =
   (options: RehypeWordFadeOptions) => (tree: Root) => {
+    // A render arrived for this cacheKey within the TTL window. The
+    // prior state (if any) is the source of truth for case 1/2
+    // detection; cancel the scheduled drop so the next unmount /
+    // schedule cycle starts cleanly.
+    cancelPendingDrop(options.cacheKey);
     const prior = stateByCacheKey.get(options.cacheKey) ?? emptyState;
     const nextEmittedKeys = new Set<string>();
     const nextRanges: Array<{ start: number; end: number }> = [];
