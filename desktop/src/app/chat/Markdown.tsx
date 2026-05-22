@@ -192,12 +192,25 @@ export const Markdown = memo(function Markdown({
   useEffect(() => {
     return () => resetWordFadeCursor(effectiveCacheKey);
   }, [effectiveCacheKey]);
+  /*
+   * Unified's `.use()` treats each entry as a plugin FACTORY. The
+   * pre-applied form `rehypeWordFade({ cacheKey })` is the inner
+   * transformer (signature `(tree) => void`); passing that directly
+   * makes unified call the transformer at freeze time with no tree
+   * argument — silently dropping our spans. Use the tuple form
+   * `[plugin, options]` so unified invokes `plugin(options)` to obtain
+   * the transformer the way every other rehype/remark plugin is
+   * registered.
+   */
   const rehypePlugins = useMemo(
     () =>
       pluginActive
         ? [
             ...DEFAULT_REHYPE_PLUGINS,
-            rehypeWordFade({ cacheKey: effectiveCacheKey }),
+            [rehypeWordFade, { cacheKey: effectiveCacheKey }] as [
+              typeof rehypeWordFade,
+              { cacheKey: string },
+            ],
           ]
         : DEFAULT_REHYPE_PLUGINS,
     [pluginActive, effectiveCacheKey],
