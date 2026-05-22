@@ -22,12 +22,25 @@
  * "lock" and the next group spawns as a new sibling span — which is
  * the moment the next fade fires.
  *
- * Why not use Streamdown's bundled `animated` plugin: it walks the
- * same HAST but rewrites every prior span's inline `--sd-duration` to
- * 0 ms based on a `prevContentLength` counter (instant snap to
- * visible). With Stella's word-cadence smooth-stream that collapses
- * the wave down to a single visible word at a time — the bug we hit
- * on the first attempt.
+ * Why this plugin instead of Streamdown's bundled `animated` plugin:
+ * Streamdown emits one span per word; we group three words so the
+ * reveal reads as a soft phrase wave rather than a per-token flicker.
+ * Both plugins share the same `prevContentLength` cursor (below) so
+ * structural remounts of already-rendered content stay flash-free.
+ *
+ * Why `prevContentLength`: Streamdown re-parses markdown on every
+ * stream tick. When the markdown parser revises a token's shape (e.g.
+ * `*foo` → `*foo*` becomes `<em><span>foo</span></em>`, or
+ * `[label` → `[label](url)` becomes `<a><span>label</span></a>`), the
+ * span moves to a new tree position. React's position-based key
+ * reconciliation treats the relocated span as a new mount, so the CSS
+ * fade-in keyframe replays from `opacity: 0` — that's the visible
+ * "blink" mid-stream. Tracking each group's start position in the
+ * source prose text and stamping `--stella-word-fade-duration: 0ms`
+ * onto groups whose end position is within the previous render's
+ * prose length means relocated spans still mount with the fade
+ * animation, but the keyframe completes in 0ms — instant fully-
+ * opaque, no flash.
  *
  * Skipped subtrees:
  *  - `<code>`, `<pre>`, `<math>`, `<style>`, `<script>`, `<svg>`,
@@ -93,12 +106,36 @@ const tokenize = (value: string): string[] => {
 
 const isWhitespace = (value: string): boolean => /^\s+$/.test(value);
 
-const wrapAsSpan = (text: string): Element => ({
+/**
+ * `instant: true` stamps `--stella-word-fade-duration: 0ms` so the CSS
+ * keyframe completes immediately — used for groups whose entire span
+ * of source text was already rendered before this tick. Without the
+ * override the fade replays from `opacity: 0` on any mid-stream
+ * structural remount (e.g. `*foo` revising to `<em>foo</em>`).
+ */
+const wrapAsSpan = (text: string, instant: boolean): Element => ({
   type: "element",
   tagName: "span",
-  properties: { "data-stella-word-fade": true },
+  properties: {
+    "data-stella-word-fade": true,
+    ...(instant ? { style: "--stella-word-fade-duration:0ms" } : {}),
+  },
   children: [{ type: "text", value: text }],
 });
+
+/**
+ * Per-cacheKey cumulative prose-character count from the prior render.
+ * Module-scope so it survives Markdown component re-renders for the
+ * same row (cacheKey is the stable per-row id passed in from
+ * `useEventRows`). Cleared on demand from `resetWordFadeCursor` when a
+ * row's Markdown instance unmounts.
+ */
+const prevContentLengthByCacheKey = new Map<string, number>();
+
+/** Drop the prevContentLength cursor for a row that has unmounted. */
+export const resetWordFadeCursor = (cacheKey: string): void => {
+  prevContentLengthByCacheKey.delete(cacheKey);
+};
 
 /*
  * Bucket the flat token stream into reveal groups. Each group bundles
@@ -116,16 +153,27 @@ const wrapAsSpan = (text: string): Element => ({
  * Only when the group reaches WORDS_PER_GROUP words does the *next*
  * render start emitting a fresh sibling span after it — which is the
  * moment the next fade fires.
+ *
+ * `cursor` advances by emitted character so each group can stamp
+ * itself as `instant` when its end position is `<= prevLength`.
  */
-const groupTokens = (tokens: string[]): RootContent[] => {
+const groupTokens = (
+  tokens: string[],
+  cursor: { position: number },
+  prevLength: number,
+): RootContent[] => {
   const out: RootContent[] = [];
   let buffer = "";
+  let bufferStart = cursor.position;
   let wordCount = 0;
   let pendingSeparator = "";
 
   const flush = () => {
     if (buffer.length === 0) return;
-    out.push(wrapAsSpan(buffer));
+    const bufferEnd = bufferStart + buffer.length;
+    const instant = prevLength > 0 && bufferEnd <= prevLength;
+    out.push(wrapAsSpan(buffer, instant));
+    cursor.position = bufferEnd;
     buffer = "";
     wordCount = 0;
   };
@@ -136,6 +184,8 @@ const groupTokens = (tokens: string[]): RootContent[] => {
         // Leading whitespace before any word in the current group —
         // belongs outside as a bare text node.
         out.push({ type: "text", value: tok });
+        cursor.position += tok.length;
+        bufferStart = cursor.position;
       } else {
         // Defer until we see whether another word joins this group;
         // if not, the whitespace separates this group from the next.
@@ -145,6 +195,7 @@ const groupTokens = (tokens: string[]): RootContent[] => {
     }
     if (wordCount === 0) {
       buffer = tok;
+      bufferStart = cursor.position;
       wordCount = 1;
     } else {
       buffer = buffer + pendingSeparator + tok;
@@ -155,6 +206,8 @@ const groupTokens = (tokens: string[]): RootContent[] => {
       flush();
       if (pendingSeparator.length > 0) {
         out.push({ type: "text", value: pendingSeparator });
+        cursor.position += pendingSeparator.length;
+        bufferStart = cursor.position;
         pendingSeparator = "";
       }
     }
@@ -162,31 +215,46 @@ const groupTokens = (tokens: string[]): RootContent[] => {
   flush();
   if (pendingSeparator.length > 0) {
     out.push({ type: "text", value: pendingSeparator });
+    cursor.position += pendingSeparator.length;
   }
   return out;
 };
 
-export const rehypeWordFade = () => (tree: Root) => {
-  visitParents(tree, "text", (node: Text, ancestors) => {
-    for (const ancestor of ancestors) {
-      if (ancestor.type === "element" && isSkippableAncestor(ancestor)) {
-        return SKIP;
-      }
-    }
-    const value = node.value;
-    if (value.length === 0) return;
-    if (isWhitespace(value)) return;
-
-    const parent = ancestors[ancestors.length - 1];
-    if (!parent || !("children" in parent)) return;
-    const index = parent.children.indexOf(node);
-    if (index === -1) return;
-
-    const tokens = tokenize(value);
-    if (tokens.length === 0) return;
-    const replacements = groupTokens(tokens);
-    if (replacements.length === 0) return;
-    parent.children.splice(index, 1, ...replacements);
-    return [SKIP, index + replacements.length];
-  });
+export type RehypeWordFadeOptions = {
+  /** Stable per-row id; gates the prevContentLength cursor map. */
+  cacheKey: string;
 };
+
+export const rehypeWordFade =
+  (options: RehypeWordFadeOptions) => (tree: Root) => {
+    const prevLength = prevContentLengthByCacheKey.get(options.cacheKey) ?? 0;
+    const cursor = { position: 0 };
+
+    visitParents(tree, "text", (node: Text, ancestors) => {
+      for (const ancestor of ancestors) {
+        if (ancestor.type === "element" && isSkippableAncestor(ancestor)) {
+          return SKIP;
+        }
+      }
+      const value = node.value;
+      if (value.length === 0) return;
+      if (isWhitespace(value)) {
+        cursor.position += value.length;
+        return;
+      }
+
+      const parent = ancestors[ancestors.length - 1];
+      if (!parent || !("children" in parent)) return;
+      const index = parent.children.indexOf(node);
+      if (index === -1) return;
+
+      const tokens = tokenize(value);
+      if (tokens.length === 0) return;
+      const replacements = groupTokens(tokens, cursor, prevLength);
+      if (replacements.length === 0) return;
+      parent.children.splice(index, 1, ...replacements);
+      return [SKIP, index + replacements.length];
+    });
+
+    prevContentLengthByCacheKey.set(options.cacheKey, cursor.position);
+  };
