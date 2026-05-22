@@ -1,22 +1,22 @@
 /**
  * Lookup table + matcher for the AI-generated emoji sprite sheets.
  *
- * Built from the cached backend emoji grid manifest: each emoji string is
- * mapped to the `(sheet, cell)` pair that locates it on disk, and a regex
- * is compiled that matches any supported emoji in a longest-first order.
+ * Built from the bundled emoji grid: each emoji string is mapped to the
+ * `(sheet, cell)` pair that locates it on the active pack's local sheets, and
+ * a regex is compiled that matches any supported emoji in longest-first order.
  *
  * Both the remark plugin and the markdown image override consume this
  * module; nothing else should construct sprite URLs by hand.
  */
 
 import {
-  getEmojiGridManifest,
+  EMOJI_PACK_GRID_VERSION,
   getEmojiSheetGridSize,
   getEmojiSheets,
 } from "./cells";
 
 export type EmojiSpriteCell = {
-  /** 0-based sheet index — matches the backend manifest order. */
+  /** 0-based sheet index in the bundled emoji grid. */
   sheet: number;
   /** 0-based cell index inside its sheet, row-major. */
   cell: number;
@@ -30,7 +30,9 @@ type SpriteCache = {
 
 let spriteCache: SpriteCache | null = null;
 
-const buildLookup = (sheets: string[][]): ReadonlyMap<string, EmojiSpriteCell> => {
+const buildLookup = (
+  sheets: readonly (readonly string[])[],
+): ReadonlyMap<string, EmojiSpriteCell> => {
   const map = new Map<string, EmojiSpriteCell>();
   sheets.forEach((sheet, sheetIndex) => {
     sheet.forEach((emoji, cellIndex) => {
@@ -48,27 +50,19 @@ const escapeRegex = (value: string): string =>
 const buildEmojiRegexSource = (
   lookup: ReadonlyMap<string, EmojiSpriteCell>,
 ): string => {
-  const sorted = [...lookup.keys()].sort(
-    (a, b) => b.length - a.length,
-  );
+  const sorted = [...lookup.keys()].sort((a, b) => b.length - a.length);
   if (sorted.length === 0) return "(?!)";
   const alternation = sorted.map(escapeRegex).join("|");
   return `(${alternation})`;
 };
 
 const getSpriteCache = (): SpriteCache => {
-  const manifest = getEmojiGridManifest();
-  if (!manifest) {
-    return {
-      version: "",
-      lookup: new Map<string, EmojiSpriteCell>(),
-      regexSource: "(?!)",
-    };
-  }
-  if (spriteCache?.version === manifest.version) return spriteCache;
-  const lookup = buildLookup(manifest.sheets);
+  const sheets = getEmojiSheets();
+  const version = EMOJI_PACK_GRID_VERSION;
+  if (spriteCache?.version === version) return spriteCache;
+  const lookup = buildLookup(sheets);
   spriteCache = {
-    version: manifest.version,
+    version,
     lookup,
     regexSource: buildEmojiRegexSource(lookup),
   };
@@ -98,8 +92,7 @@ export const getEmojiSpriteGridSize = (): number =>
 export const buildEmojiSpriteUrl = ({ sheet, cell }: EmojiSpriteCell): string =>
   `/emoji-sprites/sheet-${sheet + 1}.webp#emoji-cell=${cell}`;
 
-const URL_PATTERN =
-  /^\/emoji-sprites\/sheet-(\d+)\.webp#emoji-cell=(\d+)$/;
+const URL_PATTERN = /^\/emoji-sprites\/sheet-(\d+)\.webp#emoji-cell=(\d+)$/;
 
 export const parseEmojiSpriteUrl = (url: string): EmojiSpriteCell | null => {
   const match = url.match(URL_PATTERN);
@@ -118,11 +111,9 @@ export const parseEmojiSpriteUrl = (url: string): EmojiSpriteCell | null => {
 
 /**
  * Translate a cell index into its row/col coordinates inside the sheet.
- * Uses the grid size from the cached backend manifest.
+ * Uses the bundled grid size.
  */
-export const cellToRowCol = (
-  cell: number,
-): { row: number; col: number } => ({
+export const cellToRowCol = (cell: number): { row: number; col: number } => ({
   row: Math.floor(cell / getEmojiSpriteGridSize()),
   col: cell % getEmojiSpriteGridSize(),
 });
