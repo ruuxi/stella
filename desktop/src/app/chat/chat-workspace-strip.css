@@ -1,13 +1,26 @@
 /* Right-side workspace strip rendered next to the active chat surface.
-   Each section is its own outlined card — rounded corners + 1px subtle
-   border, no painted background fill. No divider between the strip
-   itself and the main content. */
+   Each section is its own glass panel (same surface as the left sidebar)
+   with a subtle outline and shadow. No divider between the strip itself
+   and the main content. */
 
 .chat-workspace-strip {
-  --chat-workspace-strip-width: 300px;
+  --chat-workspace-strip-width: 320px;
+  --chat-workspace-strip-inset-top: 10px;
+  --chat-workspace-strip-inset-right: 10px;
+  --chat-workspace-strip-inset-left: 4px;
+  --chat-workspace-strip-inset-bottom: 10px;
+  /* iOS-canonical decelerate. (0.32, 0.72, 0, 1) starts moving on frame
+     one (no leading flat region) and settles smoothly — the same family
+     of curves SwiftUI uses for sheet presentations. */
+  --chat-workspace-strip-panel-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --chat-workspace-strip-panel-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Asymmetric durations: opens slower (settling motion), closes faster
+     (decisive dismiss). Matches macOS sidebar / Finder disclosure feel. */
+  --chat-workspace-strip-panel-duration-open: 420ms;
+  --chat-workspace-strip-panel-duration-close: 300ms;
   flex: 0 0 auto;
+  align-self: stretch;
   width: var(--chat-workspace-strip-width);
-  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -37,7 +50,10 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 88px 20px 24px 12px;
+  padding: var(--chat-workspace-strip-inset-top)
+    var(--chat-workspace-strip-inset-right)
+    var(--chat-workspace-strip-inset-bottom)
+    var(--chat-workspace-strip-inset-left);
   box-sizing: border-box;
   overflow: hidden;
   contain: layout paint;
@@ -71,11 +87,69 @@
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding-right: 6px;
+  /* No `gap` — section reveals manage their own margin so collapsed
+     panels don't leave a gap-shaped void in the stack. Bottom padding
+     only reserves space for the last card's shadow halo. */
+  padding: 3px 4px 2px 2px;
+  /* Explicit mask rules per scroll edge — WebKit does not reliably
+     recompute mask-image when only a custom property inside the
+     gradient changes, which made the top fade look permanently on. */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 24px,
+    black calc(100% - 52px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 24px,
+    black calc(100% - 52px),
+    transparent 100%
+  );
+  transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent)
     transparent;
+}
+
+/* At top — bottom fade only. */
+.chat-workspace-strip__scroll[data-at-start="true"]:not([data-at-end="true"]) {
+  mask-image: linear-gradient(
+    to bottom,
+    black 0,
+    black calc(100% - 52px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0,
+    black calc(100% - 52px),
+    transparent 100%
+  );
+}
+
+/* At bottom — top fade only. */
+.chat-workspace-strip__scroll[data-at-end="true"]:not([data-at-start="true"]) {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 24px,
+    black 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 24px,
+    black 100%
+  );
+}
+
+/* No overflow — no fade on either edge. */
+.chat-workspace-strip__scroll[data-at-start="true"][data-at-end="true"] {
+  mask-image: none;
+  -webkit-mask-image: none;
 }
 
 .chat-workspace-strip__scroll::-webkit-scrollbar {
@@ -89,7 +163,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace-strip,
-  .chat-workspace-strip__inner {
+  .chat-workspace-strip__inner,
+  .chat-workspace-strip__scroll,
+  .chat-workspace-strip__card-body-grow,
+  .chat-workspace-strip__card-body,
+  .chat-workspace-strip__card-chevron,
+  .chat-workspace-strip__section-reveal,
+  .chat-workspace-strip__section-reveal-inner {
     transition: none;
   }
 
@@ -127,12 +207,69 @@
   }
 }
 
+/* ── Section reveal (toggled via Open card toolbar) ───────────────── */
+
+/* Wraps each toggleable card so show/hide animates with the same iOS
+   ease as the per-card body grow. Uses grid 0fr→1fr to animate
+   intrinsic height, plus opacity/transform/margin for a polished feel.
+   Margin-top animates with the height so the 16px gap between panels
+   collapses in lockstep — no whitespace left behind when hidden. */
+.chat-workspace-strip__section-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: 0;
+  /* Default = closing direction. Asymmetric: closes are quicker and
+     accelerate (ease-in-ish) since the user already committed. */
+  transition:
+    grid-template-rows var(--chat-workspace-strip-panel-duration-close)
+      var(--chat-workspace-strip-panel-ease-out),
+    margin-top var(--chat-workspace-strip-panel-duration-close)
+      var(--chat-workspace-strip-panel-ease-out);
+}
+
+.chat-workspace-strip__section-reveal[data-visible] {
+  grid-template-rows: 1fr;
+  margin-top: 16px;
+  /* Opening direction wins this declaration — slower, settles in. */
+  transition:
+    grid-template-rows var(--chat-workspace-strip-panel-duration-open)
+      var(--chat-workspace-strip-panel-ease),
+    margin-top var(--chat-workspace-strip-panel-duration-open)
+      var(--chat-workspace-strip-panel-ease);
+}
+
+/* No opacity fade on the inner — the card's glass + border must paint
+   immediately as the height grows, otherwise the panel reads as empty
+   air sliding open and only "materializes" at the end. The clipping
+   from overflow:hidden already gives a clean reveal from the top.
+   `contain: paint` isolates this region from the parent's paint tree
+   so the backdrop-filter inside the card doesn't force the whole strip
+   to re-rasterize each animation frame. */
+.chat-workspace-strip__section-reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+  contain: layout paint;
+}
+
 /* ── Card ─────────────────────────────────────────────────────────── */
+
+/* Shadow on the frame so each panel lifts independently; the card
+   keeps overflow:hidden for rounded content without clipping the halo.
+   `contain: layout paint` keeps backdrop-filter recomputation scoped
+   to this panel during the per-card chevron grow. */
+.chat-workspace-strip__card-frame {
+  flex-shrink: 0;
+  border-radius: 12px;
+  box-shadow: var(--panel-elevated-shadow);
+  contain: layout paint;
+}
 
 .chat-workspace-strip__card {
   display: flex;
   flex-direction: column;
-  background: transparent;
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
   border-radius: 12px;
   overflow: hidden;
@@ -148,6 +285,7 @@
 }
 
 .chat-workspace-strip__card-header-main,
+.chat-workspace-strip__card-header-history,
 .chat-workspace-strip__card-header-chevron {
   appearance: none;
   background: transparent;
@@ -169,6 +307,7 @@
   align-items: center;
 }
 
+.chat-workspace-strip__card-header-history,
 .chat-workspace-strip__card-header-chevron {
   flex-shrink: 0;
   display: inline-flex;
@@ -176,6 +315,15 @@
   justify-content: center;
   padding: 2px;
   color: var(--text-weak);
+  transition: color 120ms ease;
+}
+
+.chat-workspace-strip__card-header-history:hover,
+.chat-workspace-strip__card-header-history:focus-visible,
+.chat-workspace-strip__card-header-chevron:hover,
+.chat-workspace-strip__card-header-chevron:focus-visible {
+  outline: none;
+  color: var(--text-base);
 }
 
 .chat-workspace-strip__card-title {
@@ -192,14 +340,37 @@
   color: var(--text-weak);
 }
 
+/* Chevron is decoupled from body grow — runs on a quicker, snappier
+   curve so the affordance reads instantly while the panel itself
+   settles in over its slower duration. */
 .chat-workspace-strip__card-chevron {
   color: var(--text-weak);
   flex-shrink: 0;
-  transition: transform 160ms ease;
+  transition: transform 220ms var(--chat-workspace-strip-panel-ease-out);
 }
 
 .chat-workspace-strip__card--collapsed .chat-workspace-strip__card-chevron {
   transform: rotate(-90deg);
+}
+
+/* Per-card body grow (chevron toggle). Height clip reveals the body;
+   inner content fades in so lists/tabs don't pop fully formed. */
+.chat-workspace-strip__card-body-grow {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--chat-workspace-strip-panel-duration-close)
+    var(--chat-workspace-strip-panel-ease-out);
+}
+
+.chat-workspace-strip__card-body-grow[data-expanded] {
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--chat-workspace-strip-panel-duration-open)
+    var(--chat-workspace-strip-panel-ease);
+}
+
+.chat-workspace-strip__card-body-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-workspace-strip__card-body {
@@ -207,6 +378,17 @@
   flex-direction: column;
   gap: 6px;
   padding: 4px 12px 12px;
+  opacity: 0;
+  transition: opacity 220ms var(--chat-workspace-strip-panel-ease-out);
+}
+
+.chat-workspace-strip__card-body-grow[data-expanded]
+  > .chat-workspace-strip__card-body-inner
+  > .chat-workspace-strip__card-body {
+  opacity: 1;
+  transition:
+    opacity 280ms var(--chat-workspace-strip-panel-ease-out)
+    calc(var(--chat-workspace-strip-panel-duration-open) * 0.12);
 }
 
 /* ── Subhead inside Activity ──────────────────────────────────────── */
@@ -253,6 +435,10 @@
   color: var(--text-weak);
 }
 
+.chat-workspace-strip__row[data-status="now"] .chat-workspace-strip__row-label {
+  font-weight: 500;
+}
+
 .chat-workspace-strip__row-label,
 .chat-workspace-strip__file-name {
   flex: 1;
@@ -260,6 +446,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-workspace-strip__row-label-shimmer {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .chat-workspace-strip__file-name {
@@ -300,31 +494,6 @@
   color: var(--text-weak);
   font-weight: 500;
   letter-spacing: 0;
-}
-
-.chat-workspace-strip__show-more-row {
-  list-style: none;
-  padding: 6px 0 2px;
-}
-
-.chat-workspace-strip__show-more {
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--text-weak);
-  cursor: default;
-  transition: color 120ms ease;
-}
-
-.chat-workspace-strip__show-more:hover,
-.chat-workspace-strip__show-more:focus-visible {
-  outline: none;
-  color: var(--text-base);
 }
 
 /* ── Tabs-to-open card ────────────────────────────────────────────── */
@@ -387,12 +556,19 @@
   color: var(--text-base);
   cursor: default;
   transition:
-    background-color 140ms ease,
-    opacity 140ms ease;
+    background-color 180ms var(--chat-workspace-strip-panel-ease-out),
+    opacity 180ms var(--chat-workspace-strip-panel-ease-out),
+    transform 140ms var(--chat-workspace-strip-panel-ease-out);
 }
 
 .chat-workspace-strip__section-toggle:hover {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+/* Tactile press — subtle scale on mousedown, like an iOS toolbar icon. */
+.chat-workspace-strip__section-toggle:active {
+  transform: scale(0.92);
+  transition-duration: 80ms;
 }
 
 .chat-workspace-strip__section-toggle[aria-pressed="false"] {

@@ -65,7 +65,7 @@ import "./chat-home-overview.css";
 
 const FILES_DEFAULT_VISIBLE = 5;
 const DONE_DEFAULT_VISIBLE = 4;
-const UP_NEXT_DEFAULT_VISIBLE = 3;
+const UP_NEXT_DEFAULT_VISIBLE = 5;
 const NEXT_RUN_TICK_MS = 30_000;
 /**
  * Rendered cap on per-task progress phrases. The hook keeps a longer

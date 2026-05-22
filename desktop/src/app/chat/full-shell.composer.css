@@ -16,7 +16,9 @@
   position: relative;
   width: 100%;
   max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
-  background: var(--background);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
   border-radius: 999px; /* CSS fallback; overridden by motion inline style */
   box-shadow: var(--shadow-md);
