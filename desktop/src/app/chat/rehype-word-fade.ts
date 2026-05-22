@@ -132,23 +132,35 @@ const wrapAsSpan = (text: string, instant: boolean): Element => ({
 });
 
 /**
- * Per-cacheKey snapshot from the prior plugin run. `emittedKeys` is
- * the set of `(bufferStart|parentPath)` signatures we emitted last
- * time; matches here are the "same span continuing" case (case 1)
- * and MUST NOT receive an inline-style stamp. `priorProse` is the
- * concatenated prose text of the prior render; substring matches are
- * the "fresh mount of previously-visible content" case (case 2).
+ * Per-cacheKey snapshot from the prior plugin run.
+ *
+ *   - `emittedKeys`: `(bufferStart|parentPath)` signatures we emitted
+ *     last tick. Matches this tick are case 1 (same span continuing).
+ *   - `priorRanges`: half-open `[start, end)` source-text ranges that
+ *     each prior span occupied. A new span whose start position falls
+ *     INSIDE one of these ranges is case 2 (reshape — the prior span
+ *     got broken up and its content moved under a new parent).
+ *     Outside every range → case 3 (genuinely new tail content).
+ *
+ * The earlier "substring of prior prose" heuristic was too loose: a
+ * single-character fresh trailing group (e.g. the new "m" after
+ * "Hello, this is a streaming assistant ") found "m" in every prior
+ * tick's prose and got stamped instant — which froze the span at
+ * opacity:1 from its first mount onward. Position-range membership
+ * eliminates that false positive while still catching the real
+ * reshape (the new span's start position is one that USED to be
+ * inside a prior span's body).
  */
 type PerCacheState = {
   emittedKeys: Set<string>;
-  priorProse: string;
+  priorRanges: Array<{ start: number; end: number }>;
 };
 
 const stateByCacheKey = new Map<string, PerCacheState>();
 
 const emptyState: PerCacheState = {
   emittedKeys: new Set(),
-  priorProse: "",
+  priorRanges: [],
 };
 
 /** Drop the per-row cursor when this Markdown row unmounts. */
@@ -202,6 +214,7 @@ const groupTokens = (
   tokens: string[],
   cursor: { position: number },
   decideInstant: (info: { content: string; bufferStart: number }) => boolean,
+  recordRange: (range: { start: number; end: number }) => void,
 ): RootContent[] => {
   const out: RootContent[] = [];
   let buffer = "";
@@ -213,9 +226,11 @@ const groupTokens = (
     if (buffer.length === 0) return;
     const content = buffer;
     const start = bufferStart;
+    const end = start + content.length;
     const instant = decideInstant({ content, bufferStart: start });
     out.push(wrapAsSpan(content, instant));
-    cursor.position = start + content.length;
+    recordRange({ start, end });
+    cursor.position = end;
     buffer = "";
     wordCount = 0;
   };
@@ -261,7 +276,7 @@ export const rehypeWordFade =
   (options: RehypeWordFadeOptions) => (tree: Root) => {
     const prior = stateByCacheKey.get(options.cacheKey) ?? emptyState;
     const nextEmittedKeys = new Set<string>();
-    let proseAcc = "";
+    const nextRanges: Array<{ start: number; end: number }> = [];
     const cursor = { position: 0 };
 
     visitParents(tree, "text", (node: Text, ancestors) => {
@@ -272,7 +287,6 @@ export const rehypeWordFade =
       }
       const value = node.value;
       if (value.length === 0) return;
-      proseAcc += value;
       if (isWhitespace(value)) {
         cursor.position += value.length;
         return;
@@ -299,19 +313,37 @@ export const rehypeWordFade =
         // Case 1: the same span survives from the prior render. Never
         // stamp an inline style — that would truncate the live fade.
         if (prior.emittedKeys.has(key)) return false;
-        // Case 2: fresh mount, but the content was already on screen
-        // (markdown reshape moved the span to a new tree position).
-        // Stamp instant so the keyframe completes in 0ms and the user
-        // doesn't see a structural-remount flash.
-        if (prior.priorProse.length > 0 && prior.priorProse.includes(info.content)) {
-          return true;
+        // Case 2: fresh mount whose source-text START position used
+        // to be INSIDE a prior span's body. That's the reshape
+        // signal — the prior span got broken up and its content
+        // moved to a new parent (e.g. `*foo` → `<em>foo</em>` splits
+        // a single span into Hello / world spans, both of whose
+        // start positions fall inside the prior unified span). Stamp
+        // instant so the keyframe completes in 0ms on mount, no
+        // structural-remount flash.
+        for (const range of prior.priorRanges) {
+          if (
+            info.bufferStart >= range.start &&
+            info.bufferStart < range.end
+          ) {
+            return true;
+          }
         }
-        // Case 3: fresh mount, genuinely new content. Default 600ms
-        // fade plays.
+        // Case 3: fresh mount at a position no prior span covered.
+        // Genuinely new tail content — default 600ms fade plays.
         return false;
       };
 
-      const replacements = groupTokens(tokens, cursor, decideInstant);
+      const recordRange = (range: { start: number; end: number }) => {
+        nextRanges.push(range);
+      };
+
+      const replacements = groupTokens(
+        tokens,
+        cursor,
+        decideInstant,
+        recordRange,
+      );
       if (replacements.length === 0) return;
       parent.children.splice(index, 1, ...replacements);
       return [SKIP, index + replacements.length];
@@ -319,6 +351,6 @@ export const rehypeWordFade =
 
     stateByCacheKey.set(options.cacheKey, {
       emittedKeys: nextEmittedKeys,
-      priorProse: proseAcc,
+      priorRanges: nextRanges,
     });
   };
