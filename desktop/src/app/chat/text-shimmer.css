@@ -1,14 +1,16 @@
 /* TextShimmer — gradient sweeps across the full phrase (shared background) */
 
 .text-shimmer {
+  --text-shimmer-from: var(--text-strong);
+  --text-shimmer-via: var(--text-weaker);
   display: inline;
-  background: linear-gradient(
+  background-image: linear-gradient(
     90deg,
-    var(--text-strong) 0%,
-    var(--text-strong) 35%,
-    var(--text-weaker) 50%,
-    var(--text-strong) 65%,
-    var(--text-strong) 100%
+    var(--text-shimmer-from) 0%,
+    var(--text-shimmer-from) 35%,
+    var(--text-shimmer-via) 50%,
+    var(--text-shimmer-from) 65%,
+    var(--text-shimmer-from) 100%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -18,6 +20,10 @@
   animation-duration: var(--text-shimmer-duration, 2s);
   animation-iteration-count: infinite;
   animation-timing-function: linear;
+}
+
+.text-shimmer--base {
+  --text-shimmer-from: var(--text-base);
 }
 
 @keyframes text-shimmer-sweep {
