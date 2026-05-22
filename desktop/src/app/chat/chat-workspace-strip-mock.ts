@@ -14,7 +14,7 @@ export const WORKSPACE_STRIP_MOCK_ENABLED = import.meta.env.DEV;
 const MOCK_NOW_COUNT = 4;
 const MOCK_DONE_COUNT = 4;
 const MOCK_FILES_COUNT = 5;
-const MOCK_SCHEDULE_COUNT = 5;
+const MOCK_SCHEDULE_COUNT = 4;
 
 const mockNowMs = () => Date.now();
 

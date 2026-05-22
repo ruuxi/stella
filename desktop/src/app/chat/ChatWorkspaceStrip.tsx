@@ -27,6 +27,7 @@ import {
   ChevronDown,
   History,
   Activity as ActivityIcon,
+  Check,
   FolderClosed,
   CalendarClock,
   LayoutPanelTop,
@@ -50,17 +51,6 @@ import {
 } from "@/shell/display/derive-conversation-files";
 import { basenameOf } from "@/shell/display/path-to-viewer";
 import { displayTabs, useDisplayPanelLayout } from "@/shell/display/tab-store";
-import {
-  CANVAS_DISPLAY_TAB_ID,
-  MEDIA_DISPLAY_TAB_ID,
-  STORE_DISPLAY_TAB_ID,
-  TRASH_DISPLAY_TAB_ID,
-  openCanvasDisplayTab,
-  openMediaDisplayTab,
-  openStoreDisplayTab,
-  openTrashDisplayTab,
-} from "@/shell/display/default-tabs";
-import type { DisplayTabKind } from "@/shell/display/types";
 import { DisplayTabIcon } from "@/shell/display/icons";
 import {
   ActivityHistoryDialog,
@@ -99,15 +89,8 @@ import "./chat-workspace-strip.css";
 const NOW_VISIBLE = 4;
 const DONE_VISIBLE = 4;
 const FILES_VISIBLE = 5;
-const UPNEXT_VISIBLE = 5;
+const UPNEXT_VISIBLE = 4;
 const EMPTY_TASKS: TaskItem[] = [];
-
-type TabOpenOption = {
-  id: string;
-  label: string;
-  kind: DisplayTabKind;
-  open: () => void;
-};
 
 const SECTION_TOGGLES: ReadonlyArray<{
   id: WorkspaceStripSection;
@@ -128,33 +111,6 @@ const SECTION_TOGGLES: ReadonlyArray<{
     id: "schedule",
     label: "Schedule",
     icon: <CalendarClock size={14} strokeWidth={2.25} />,
-  },
-];
-
-const TAB_OPTIONS: ReadonlyArray<TabOpenOption> = [
-  {
-    id: CANVAS_DISPLAY_TAB_ID,
-    label: "Canvas",
-    kind: "canvas",
-    open: openCanvasDisplayTab,
-  },
-  {
-    id: MEDIA_DISPLAY_TAB_ID,
-    label: "Media",
-    kind: "media",
-    open: openMediaDisplayTab,
-  },
-  {
-    id: STORE_DISPLAY_TAB_ID,
-    label: "Store",
-    kind: "store",
-    open: openStoreDisplayTab,
-  },
-  {
-    id: TRASH_DISPLAY_TAB_ID,
-    label: "Trash",
-    kind: "trash",
-    open: openTrashDisplayTab,
   },
 ];
 
@@ -199,45 +155,56 @@ function WorkspaceCard({
   headerTrailing,
   onOpenHistory,
   historyLabel,
+  headerOnly = false,
 }: {
   id: WorkspaceStripPanelId;
   title: string;
   icon: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   open: boolean;
   onToggle: (panelId: WorkspaceStripPanelId) => void;
   measureRef: (node: HTMLDivElement | null) => void;
   headerTrailing?: ReactNode;
   onOpenHistory?: () => void;
   historyLabel?: string;
+  headerOnly?: boolean;
 }) {
   const toggleOpen = () => onToggle(id);
+  const titleContent = (
+    <span className="chat-workspace-strip__card-title">
+      <span
+        className="chat-workspace-strip__card-title-icon"
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
+      {title}
+    </span>
+  );
   return (
     <div className="chat-workspace-strip__card-frame" ref={measureRef}>
       <section
         data-workspace-strip-card
-        className={`chat-workspace-strip__card${open ? "" : " chat-workspace-strip__card--collapsed"}`}
+        className={`chat-workspace-strip__card${open && !headerOnly ? "" : " chat-workspace-strip__card--collapsed"}`}
       >
         <div
           className="chat-workspace-strip__card-header"
           data-workspace-strip-card-header
         >
-          <button
-            type="button"
-            className="chat-workspace-strip__card-header-main"
-            onClick={toggleOpen}
-            aria-expanded={open}
-          >
-            <span className="chat-workspace-strip__card-title">
-              <span
-                className="chat-workspace-strip__card-title-icon"
-                aria-hidden="true"
-              >
-                {icon}
-              </span>
-              {title}
-            </span>
-          </button>
+          {headerOnly ? (
+            <div className="chat-workspace-strip__card-header-main">
+              {titleContent}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="chat-workspace-strip__card-header-main"
+              onClick={toggleOpen}
+              aria-expanded={open}
+            >
+              {titleContent}
+            </button>
+          )}
           {headerTrailing}
           {onOpenHistory ? (
             <button
@@ -250,32 +217,36 @@ function WorkspaceCard({
               <History size={14} strokeWidth={2} aria-hidden="true" />
             </button>
           ) : null}
-          <button
-            type="button"
-            className="chat-workspace-strip__card-header-chevron"
-            onClick={toggleOpen}
-            tabIndex={-1}
-            aria-hidden="true"
-          >
-            <ChevronDown
-              className="chat-workspace-strip__card-chevron"
-              size={14}
-              strokeWidth={2}
-            />
-          </button>
+          {!headerOnly ? (
+            <button
+              type="button"
+              className="chat-workspace-strip__card-header-chevron"
+              onClick={toggleOpen}
+              tabIndex={-1}
+              aria-hidden="true"
+            >
+              <ChevronDown
+                className="chat-workspace-strip__card-chevron"
+                size={14}
+                strokeWidth={2}
+              />
+            </button>
+          ) : null}
         </div>
-        <div
-          className="chat-workspace-strip__card-body-grow"
-          data-expanded={open || undefined}
-          aria-hidden={!open}
-        >
+        {!headerOnly ? (
           <div
-            className="chat-workspace-strip__card-body-inner"
-            data-workspace-strip-card-body-inner
+            className="chat-workspace-strip__card-body-grow"
+            data-expanded={open || undefined}
+            aria-hidden={!open}
           >
-            <div className="chat-workspace-strip__card-body">{children}</div>
+            <div
+              className="chat-workspace-strip__card-body-inner"
+              data-workspace-strip-card-body-inner
+            >
+              <div className="chat-workspace-strip__card-body">{children}</div>
+            </div>
           </div>
-        </div>
+        ) : null}
       </section>
     </div>
   );
@@ -297,7 +268,7 @@ function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
                 <TextShimmer
                   text={label}
                   durationMs={2000}
-                  className="chat-workspace-strip__row-label-shimmer"
+                  className="text-shimmer--base chat-workspace-strip__row-label-shimmer"
                 />
               ) : (
                 label
@@ -481,7 +452,7 @@ export function ChatWorkspaceStrip({
           "[data-workspace-strip-card-body-inner]",
         );
 
-        if (!card || !header || !bodyInner) return null;
+        if (!card || !header) return null;
 
         const cardStyle = window.getComputedStyle(card);
         const borderHeight =
@@ -490,6 +461,14 @@ export function ChatWorkspaceStrip({
         const collapsedHeight = Math.ceil(
           header.getBoundingClientRect().height + borderHeight,
         );
+
+        if (!bodyInner) {
+          measurements[panelId] = {
+            collapsedHeight,
+            expandedHeight: collapsedHeight,
+          };
+          continue;
+        }
 
         measurements[panelId] = {
           collapsedHeight,
@@ -639,32 +618,8 @@ export function ChatWorkspaceStrip({
                 onToggleSection={handleToggleSection}
               />
             }
-          >
-            <ul className="chat-workspace-strip__tab-list">
-              {TAB_OPTIONS.map((opt) => (
-                <li key={opt.id}>
-                  <button
-                    type="button"
-                    className="chat-workspace-strip__tab-button"
-                    onClick={() => {
-                      if (
-                        displayTabs
-                          .getTabListSnapshot()
-                          .tabs.some((t) => t.id === opt.id)
-                      ) {
-                        displayTabs.activateTab(opt.id);
-                      } else {
-                        opt.open();
-                      }
-                    }}
-                  >
-                    <DisplayTabIcon kind={opt.kind} size={16} />
-                    <span>{opt.label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </WorkspaceCard>
+            headerOnly
+          />
 
           {hasActivity &&
             renderReveal(
@@ -684,16 +639,22 @@ export function ChatWorkspaceStrip({
                 historyLabel={`View all activity (${displayDoneTasks.length})`}
               >
                 {displayRunningTasks.length > 0 && (
-                  <>
-                    <div className="chat-workspace-strip__subhead">Now</div>
-                    <TasksList tasks={displayRunningTasks} />
-                  </>
+                  <TasksList tasks={displayRunningTasks} />
                 )}
+                {displayRunningTasks.length > 0 &&
+                  displayVisibleDoneTasks.length > 0 && (
+                    <div className="chat-workspace-strip__activity-done-label">
+                      <span
+                        className="chat-workspace-strip__card-title-icon"
+                        aria-hidden="true"
+                      >
+                        <Check size={12} strokeWidth={2.25} />
+                      </span>
+                      <span>Done</span>
+                    </div>
+                  )}
                 {displayVisibleDoneTasks.length > 0 && (
-                  <>
-                    <div className="chat-workspace-strip__subhead">Done</div>
-                    <TasksList tasks={displayVisibleDoneTasks} />
-                  </>
+                  <TasksList tasks={displayVisibleDoneTasks} />
                 )}
               </WorkspaceCard>,
             )}
