@@ -189,8 +189,7 @@ const automationDaemonStartupBudgetMs = 7_500;
 // 30s covers heavy AppKit apps (Mail with thousands of messages, Notes with
 // large note bodies, Music with full library indexed) where the AX walk
 // reaches the maxNodes cap of 1500 before the daemon can return. Lighter
-// apps (Spotify, Notes empty) finish in 1–3s. Codex's desktop automation also runs ~10s
-// for a busy Mail snapshot and ~3s for everything else.
+// apps (Spotify, Notes empty) finish in 1–3s.
 const automationDaemonRequestTimeoutMs = 30_000;
 const sessionPruneIntervalMs = 24 * 60 * 60 * 1000;
 const sessionRetentionMs = 24 * 60 * 60 * 1000;
@@ -936,7 +935,7 @@ const COLLAPSIBLE_CONTAINER_ROLES = new Set([
   "AXSplitGroup",
 ]);
 
-export const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] => {
+export const formatNodeLines = (node: SnapshotNode, depth = 0): string[] => {
   const indent = "\t".repeat(depth);
   const id =
     typeof node.index === "number" && Number.isFinite(node.index)
@@ -1067,7 +1066,7 @@ export const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] =>
       return [];
     }
     if (node.children.length === 1) {
-      return formatNodeLinesCodex(node.children[0]!, depth);
+      return formatNodeLines(node.children[0]!, depth);
     }
   }
 
@@ -1078,9 +1077,8 @@ export const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] =>
       line += `, ${extras.join(", ")}`;
     }
   } else if (extras.length > 0) {
-    // Match Codex-style macOS desktop automation: when there's no primary label,
-    // extras hang directly off the role with a single space, no comma. The
-    // extras among themselves are still ", "-joined.
+    // When there's no primary label, extras hang directly off the role with a
+    // single space, no comma. The extras among themselves are still ", "-joined.
     line += ` ${extras.join(", ")}`;
   }
   // Skip rendering the lone AXCell child of an AXRow when its description
@@ -1096,7 +1094,7 @@ export const formatNodeLinesCodex = (node: SnapshotNode, depth = 0): string[] =>
       : node.children;
   return [
     line,
-    ...childrenToRender.flatMap((child) => formatNodeLinesCodex(child, depth + 1)),
+    ...childrenToRender.flatMap((child) => formatNodeLines(child, depth + 1)),
   ];
 };
 
@@ -1188,7 +1186,7 @@ const formatAppStateBlock = (snapshot: SnapshotDocument) => {
     process.stdout.write(`Window: "${snapshot.windowTitle}", App: ${snapshot.appName}.\n`);
   }
   for (const node of snapshot.nodes) {
-    process.stdout.write(`${formatNodeLinesCodex(node).join("\n")}\n`);
+    process.stdout.write(`${formatNodeLines(node).join("\n")}\n`);
   }
   if (snapshot.selectedText) {
     process.stdout.write(`\nSelected text: [${snapshot.selectedText}]\n`);
@@ -1230,10 +1228,9 @@ const formatAction = (payload: ActionPayload, snapshot: SnapshotDocument | null)
   printWarnings(payload.warnings);
 };
 
-// Codex-style macOS desktop automation returns only "regular" (user-launchable)
-// apps. macOS exposes ~30 accessory/background helper apps (Spotlight,
-// LoginWindow, WindowManager, every Cursor renderer helper) that pollute
-// the list and have no addressable UI for the agent. Hide them.
+// Return only "regular" (user-launchable) apps. macOS exposes accessory and
+// background helpers (Spotlight, LoginWindow, WindowManager, renderer helpers)
+// that pollute the list and have no addressable UI for the agent.
 const LISTED_ACTIVATION_POLICIES = new Set(["regular"]);
 
 const formatListApps = (payload: ListAppsPayload) => {

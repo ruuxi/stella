@@ -32,7 +32,7 @@ Do not add auxiliary docs such as `README.md`, `CHANGELOG.md`, or installation g
 - Put trigger conditions in the frontmatter `description`; the body is loaded only after the skill triggers.
 - Prefer one-level references linked directly from `SKILL.md`.
 - Use scripts when repeated code would otherwise be rewritten often or when correctness depends on a fragile sequence.
-- Use product-aligned language. Stella skills are for Stella agents, not generic Codex packaging.
+- Use product-aligned language. Stella skills are for Stella agents, not generic agent packaging.
 
 ## Creating a Skill
 
@@ -79,5 +79,5 @@ Also verify Stella's current catalog expectations in `runtime/kernel/shared/skil
 
 ## Bundled References
 
-- `references/openai_yaml.md` documents Codex/OpenAI UI metadata. Read it only if the user explicitly needs OpenAI-style skill metadata.
-- `scripts/init_skill.py`, `scripts/quick_validate.py`, and `scripts/generate_openai_yaml.py` are copied from Codex's canonical skill-creator sample and may need Stella-specific cleanup when used for a strict Stella-only skill.
+- `references/openai_yaml.md` documents OpenAI UI metadata. Read it only if the user explicitly needs OpenAI-style skill metadata.
+- `scripts/init_skill.py`, `scripts/quick_validate.py`, and `scripts/generate_openai_yaml.py` are copied from an upstream skill-creator sample and may need Stella-specific cleanup when used for a strict Stella-only skill.

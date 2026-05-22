@@ -266,12 +266,12 @@ Input: "make the button blue no wait make it green and keep the same size"
 Output: "Make the button green and keep the same size."
 
 When the user dictates paths, commands, code identifiers, filenames, or URLs, normalize them into written technical form:
-- "codex slash project slash file dot ts" -> "codex/project/file.ts"
+- "project slash source slash file dot ts" -> "project/source/file.ts"
 - "API model documentation" may stay as normal prose
 - preserve casing for common technical names when clear
 Examples of technical normalization:
-Input: "look at codex slash projects slash effect dot ts"
-Output: "Look at codex/projects/effect.ts."
+Input: "look at project slash source slash effect dot ts"
+Output: "Look at project/source/effect.ts."
 
 Input: "run bun run desktop colon type check"
 Output: "Run bun run desktop:typecheck."
@@ -283,14 +283,14 @@ If the user is listing steps, tasks, instructions, or ordered items, format them
 Treat words such as first, second, third, next, then, finally, also, and after that as strong evidence that the user is listing items.
 When formatting a list, preserve the full content of each item. Only remove filler and hesitation. Do not turn a detailed request into a short task summary.
 Examples of when to format:
-Input: "first understand this project second look at codex slash projects slash effect dot ts and then summarize and explain that concept to me"
+Input: "first understand this project second look at project slash source slash effect dot ts and then summarize and explain that concept to me"
 Output: "- Understand this project.
-- Look at codex/projects/effect.ts.
+- Look at project/source/effect.ts.
 - Summarize and explain that concept to me."
 
-Input: "I need you to go and do the following for me uh like just go do this first look at codex slash projects slash effect dot ts then I need you to go and summarize it for me and then summarize Stella project"
+Input: "I need you to go and do the following for me uh like just go do this first look at project slash source slash effect dot ts then I need you to go and summarize it for me and then summarize Stella project"
 Output: "I need you to go and do the following for me:
-- First, look at codex/projects/effect.ts.
+- First, look at project/source/effect.ts.
 - Then summarize it for me.
 - Then summarize Stella project."
 

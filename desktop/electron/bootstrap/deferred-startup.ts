@@ -2,15 +2,13 @@ import { getSelectedText } from "../selected-text.js";
 import { ChronicleController } from "../services/chronicle-controller.js";
 import { type BootstrapContext } from "./context.js";
 
-// Codex's Chronicle daemon refreshes the rolling 10-min summary once per
-// minute and the rolling 6-hour summary once per hour. We mirror those
-// cadences from the Electron host (see chronicle-summarizer.ts).
+// Chronicle refreshes the rolling 10-min summary once per minute and the
+// rolling 6-hour summary once per hour.
 const CHRONICLE_10M_TICK_INTERVAL_MS = 60_000;
 const CHRONICLE_6H_TICK_INTERVAL_MS = 60 * 60_000;
 // Wait this long after startup before the first 10m tick fires, to avoid
-// summarizing pre-startup or near-empty capture windows. Codex behaves
-// similarly: Phase-2 consolidation runs at app startup once Phase 1 catches
-// up, not on a wall-clock interval.
+// summarizing pre-startup or near-empty capture windows. Phase-2 consolidation
+// runs at app startup once Phase 1 catches up, not on a wall-clock interval.
 const CHRONICLE_FIRST_TICK_DELAY_MS = 30_000;
 const DREAM_READY_RETRY_MS = 5_000;
 
@@ -117,8 +115,7 @@ const createDeferredStartupTasks = (
     {
       // One-shot catch-up sweep: anything left in thread_summaries or
       // memories_extensions/ from the prior session should get folded
-      // immediately on startup, not 60 seconds later. Mirrors Codex's
-      // startup-driven Phase 2 run.
+      // immediately on startup, not 60 seconds later.
       label: "dream-startup-sweep",
       delayMs: config.startupStageDelayMs,
       run: () => {

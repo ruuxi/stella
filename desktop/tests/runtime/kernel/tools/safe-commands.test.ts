@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { isKnownSafeCommand } from "../../../../../runtime/kernel/tools/safe-commands.js";
 
-describe("isKnownSafeCommand (codex parity)", () => {
+describe("isKnownSafeCommand", () => {
   it("accepts the simple read-only allowlist", () => {
     for (const cmd of [
       "ls",

@@ -210,7 +210,7 @@ const clampHeapTraceDurationMs = (value: unknown) => {
  * Best-effort detection for "this user already runs other AI dev tooling".
  * Used by the onboarding engine phase to hide BYOK / Claude Code surfaces
  * from non-technical users while leaving them visible for anyone who has
- * Claude desktop, ChatGPT desktop, Cursor, or the claude/codex CLI on this
+ * Claude desktop, ChatGPT desktop, Cursor, or common coding CLIs on this
  * machine. Strictly read-only: only checks well-known install paths and
  * walks `$PATH` for the two CLI bins. No subprocess spawning.
  */

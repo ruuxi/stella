@@ -1,7 +1,7 @@
 /**
  * Dream Protocol scheduler.
  *
- * Triggered by explicit events (Codex-style), not by a wall-clock interval:
+ * Triggered by explicit events, not by a wall-clock interval:
  *   - `subagent_finalize`        — a General-agent task just produced a fresh
  *                                  thread_summaries row.
  *   - `chronicle_summary`        — Chronicle just rolled a new 10m/6h

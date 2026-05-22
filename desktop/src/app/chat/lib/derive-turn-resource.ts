@@ -1,11 +1,8 @@
 /**
- * Per-turn primary-resource derivation — Codex-style.
- *
- * Mirrors Codex's `ga(turn)` + `vde(...)` pipeline in
- * `send-app-server-request-BTldVjKF.js` and `index-CxBol07n.js`:
+ * Per-turn primary-resource derivation.
  *
  *   1. Walk every `tool_result` in the turn and collect normalized
- *      `fileChanges` records (explicit Codex-style edit provenance) plus
+ *      `fileChanges` records (explicit edit provenance) plus
  *      Stella `producedFiles` records (user-facing outputs detected from
  *      shell/CLI side effects).
  *   2. Collect `referencedFilePaths` from
@@ -13,7 +10,7 @@
  *          not edits, so they belong with referenced files)
  *        - markdown links in the assistant message text
  *   3. Combine both pools (deduped by absolute path) and feed into
- *      `pickPrimaryEditedPath` (our equivalent of Codex's `vde`):
+ *      `pickPrimaryEditedPath`:
  *      a single office/PDF/media artifact wins; otherwise we only
  *      surface a pill if the entire turn touched exactly one
  *      previewable file.
@@ -148,7 +145,7 @@ const officeRefForResult = (event: EventRecord): OfficePreviewRef | null => {
 
 /**
  * Resolve a fileChange record into the canonical post-mutation path,
- * exactly like Codex's `pa`:
+ * using the post-mutation path:
  *   - `update` with `move_path` → use the new location
  *   - `update` without `move_path` / `add` → use `path`
  *   - `delete` → produces no edited path; deleted files can't be
@@ -521,9 +518,9 @@ const requestIdForEvent = (event: EventRecord): string | undefined => {
 
 /**
  * Extract local file paths referenced via markdown links in the
- * assistant message text. Mirrors Codex's `yde` + `bde` pair: walk the
- * markdown for link nodes, decode the url, and discard anything that
- * looks like an http(s) / mailto link or otherwise isn't a local path.
+ * assistant message text. Walk the markdown for link nodes, decode the url,
+ * and discard anything that looks like an http(s) / mailto link or otherwise
+ * isn't a local path.
  *
  * Uses a regex instead of a full markdown AST walk because we don't
  * already have the parsed tree on hand and the rules are simple.
@@ -667,7 +664,7 @@ export const deriveTurnResource = (
     }
   }
 
-  // Codex's "edited" pool = paths from explicit fileChange items.
+  // Edited pool = paths from explicit fileChange items.
   const editedPaths: string[] = [];
   const editedSeen = new Set<string>();
   for (const event of toolEvents) {
@@ -700,8 +697,8 @@ export const deriveTurnResource = (
   }
 
   // Stella's produced-file pool = user-facing outputs detected from shell/CLI
-  // side effects or rolled up from child agents. These are not Codex-style
-  // explicit edit artifacts, but they should still surface in Stella's chat.
+  // side effects or rolled up from child agents. These are not explicit edit
+  // artifacts, but they should still surface in Stella's chat.
   const producedPaths: string[] = [];
   const producedSeen = new Set<string>();
   for (const event of toolEvents) {
@@ -730,8 +727,8 @@ export const deriveTurnResource = (
     }
   }
 
-  // Codex's "referenced" pool = office preview ref source paths +
-  // markdown links in the assistant message text.
+  // Referenced pool = office preview ref source paths + markdown links in the
+  // assistant message text.
   const referencedPaths: string[] = [];
   const referencedSeen = new Set<string>();
   const absoluteCandidates = [

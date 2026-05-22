@@ -1,7 +1,7 @@
 /**
  * Shared contract for normalized per-tool file mutations.
  *
- * Mirrors the shape Codex's runtime emits on its `fileChange` items
+ * Normalized shape for per-tool `fileChange` items
  * (`{ path, kind: { type: 'add' | 'update' | 'delete', move_path? } }`).
  *
  * Tools that explicitly edit the filesystem populate the optional
@@ -23,7 +23,7 @@ export type FileChangeKind =
   /**
    * `move_path` is set when the update also renames / moves the file. The
    * client treats `move_path` as the canonical post-change location for
-   * resource picking, exactly like Codex's `vde` heuristic does.
+   * resource picking.
    */
   | { type: "update"; move_path?: string };
 
@@ -35,7 +35,7 @@ export type FileChangeRecord = {
 
 /**
  * User-facing output detected from a tool/run side effect. This deliberately
- * stays separate from Codex-style `fileChanges`: a shell command that writes
+ * stays separate from explicit `fileChanges`: a shell command that writes
  * `deck.pptx` did not emit an explicit fileChange item, but Stella should
  * still surface the produced file to the user.
  */

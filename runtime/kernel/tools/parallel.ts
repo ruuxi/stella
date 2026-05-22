@@ -12,9 +12,8 @@ export const MULTI_TOOL_USE_PARALLEL_TOOL_NAME = "multi_tool_use_parallel";
 
 /**
  * Tools that mutate session state and must never be invoked concurrently
- * inside a single `multi_tool_use_parallel` batch. Mirrors Codex's
- * `supports_parallel_tool_calls: false` flag (e.g. `write_stdin` would race
- * other writes against the same PTY session).
+ * inside a single `multi_tool_use_parallel` batch. These tools mutate shared
+ * state, so `write_stdin` would race other writes against the same PTY session.
  */
 const NON_PARALLEL_TOOL_NAMES = new Set<string>([
   "apply_patch",

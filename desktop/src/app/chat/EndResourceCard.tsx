@@ -1,10 +1,9 @@
 /**
  * Per-turn "end-resource" pill rendered after the assistant content.
  *
- * Matches Codex's `wde` component: a clickable badge that points at the
- * primary file the agent edited, generated, or read in the turn. Click
- * opens (or re-activates) the matching tab in the workspace panel via
- * the singleton `displayTabs` store.
+ * Clickable badge that points at the primary file the agent edited,
+ * generated, or read in the turn. Click opens (or re-activates) the matching
+ * tab in the workspace panel via the singleton `displayTabs` store.
  */
 
 import { useCallback, useMemo } from "react";

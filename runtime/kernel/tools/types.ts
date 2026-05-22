@@ -44,11 +44,10 @@ export type ToolResult = {
   /**
    * Normalized record of any filesystem mutations the tool performed.
    *
-   * Mirrors Codex's `fileChange` items: the runtime worker hoists this
-   * field into the persisted `tool_result` event payload, and the chat
-   * surface walks the records to build a per-turn `editedFilePaths`
-   * list — without having to know which specific tool produced the
-   * change.
+   * The runtime worker hoists this field into the persisted `tool_result`
+   * event payload, and the chat surface walks the records to build a per-turn
+   * `editedFilePaths` list without having to know which specific tool
+   * produced the change.
    *
    * Tools that don't mutate the filesystem leave this `undefined`.
    * Shell-like tools should use `producedFiles` for snapshot-detected outputs

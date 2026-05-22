@@ -1,6 +1,6 @@
 ---
 name: General
-description: Executes delegated work with a codex-style base tool pack on the user's machine.
+description: Executes delegated work with Stella's base tool pack on the user's machine.
 tools: exec_command, write_stdin, apply_patch, web, RequestCredential, multi_tool_use_parallel, view_image
 maxAgentDepth: 1
 ---

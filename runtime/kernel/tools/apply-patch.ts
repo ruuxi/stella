@@ -31,10 +31,10 @@ type HunkLine =
   | { kind: "add"; text: string };
 
 /**
- * Codex behavior: paths in the envelope are typically relative and resolved
- * against the turn cwd (`AbsolutePathBuf::resolve_path_against_base`). We keep
- * raw paths during parse so callers can resolve them against their own cwd
- * (e.g. the HMR resolver in agent-orchestration). Empty paths are rejected.
+ * Paths in the envelope are typically relative and resolved against the turn
+ * cwd. We keep raw paths during parse so callers can resolve them against their
+ * own cwd (e.g. the HMR resolver in agent-orchestration). Empty paths are
+ * rejected.
  */
 const normalizeRawPath = (raw: string): string => {
   const expanded = expandHomePath(raw.trim());
@@ -50,9 +50,9 @@ const resolveAgainstCwd = (raw: string, cwd: string): string =>
 // ----------------------------------------------------------------------------
 
 /**
- * gpt-4.1 sometimes wraps its `apply_patch` argument in a shell heredoc
- * (`<<EOF\n*** Begin Patch\n...\nEOF`). Codex's lenient parser strips that
- * wrapper before parsing. Mirrors `check_patch_boundaries_lenient`.
+ * Some models wrap their `apply_patch` argument in a shell heredoc
+ * (`<<EOF\n*** Begin Patch\n...\nEOF`). Stella strips that wrapper before
+ * parsing.
  */
 const stripHeredocWrapper = (text: string): string => {
   const lines = text.split("\n");
@@ -134,8 +134,8 @@ const parsePatch = (input: string): FileOp[] => {
           if (header) hunk.header = header;
           i++;
         } else if (hunks.length > 0) {
-          // Subsequent chunks must start with @@ (matches Codex which only
-          // permits header omission on the first chunk).
+          // Subsequent chunks must start with @@; only the first chunk may
+          // omit the header.
           throw new Error(
             `apply_patch: expected '@@' header inside Update File '${filePath}'. Saw: '${next}'`,
           );
@@ -199,13 +199,13 @@ const parsePatch = (input: string): FileOp[] => {
 };
 
 // ----------------------------------------------------------------------------
-// Tolerant context matching (mirrors codex-rs/apply-patch/src/seek_sequence.rs)
+// Tolerant context matching
 // ----------------------------------------------------------------------------
 
 /**
  * Common typographic look-alikes folded to ASCII so patches authored against
  * straight ASCII can still match source containing dashes, curly quotes, NBSP,
- * etc. Matches the table in Codex's `seek_sequence::normalise`.
+ * etc. This keeps patch matching stable across typographic look-alikes.
  */
 const fuzzyChar = (ch: string): string => {
   switch (ch) {
@@ -392,7 +392,7 @@ const computeReplacements = (
       hunk.isEndOfFile === true,
     );
 
-    // Codex retry: if the pattern's last line is the empty sentinel that
+    // Retry: if the pattern's last line is the empty sentinel that
     // represents the file's terminating newline, drop it (and the matching
     // empty in the replacement) and search again.
     if (found === -1 && pattern[pattern.length - 1] === "") {
@@ -594,7 +594,7 @@ export const handleApplyPatch = async (
   args: Record<string, unknown>,
   context?: ToolContext,
 ): Promise<ToolResult> => {
-  // Codex JSON tool uses `input`; Convex/device paths may send `patch`.
+  // Stella's JSON tool uses `input`; Convex/device paths may send `patch`.
   const patch = String(args.input ?? args.patch ?? "").trim();
   if (!patch) {
     return { error: "apply_patch requires a patch envelope." };

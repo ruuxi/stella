@@ -1,7 +1,6 @@
 /**
- * Curated allowlist of "obviously safe" shell commands, ported from Codex's
- * `codex-shell-command::is_safe_command::is_known_safe_command`. Single
- * source of truth for "this command is read-only, never blocks/escalates."
+ * Curated allowlist of "obviously safe" shell commands. Single source of
+ * truth for "this command is read-only, never blocks/escalates."
  *
  * Used to:
  *   - Skip HMR speculation on commands that can't possibly write source.
@@ -171,8 +170,7 @@ const tokenizeShell = (command: string): string[] | null => {
         continue;
       }
       // Backgrounding (`&`) is intentionally rejected rather than treated as a
-      // separator; Codex's tree-sitter parser also rejects it for safe-command
-      // classification.
+      // separator for safe-command classification.
       return null;
     }
     if (ch === "|") {
@@ -246,7 +244,7 @@ const isSafeBinaryInvocation = (cmd: string[]): boolean => {
   if (!head) return false;
   // If operators leaked into the args, this is a composite (split it instead).
   if (cmd.some((arg) => SAFE_OPERATORS.has(arg))) return false;
-  // Treat `zsh` as `bash` for matching, mirroring Codex.
+  // Treat `zsh` as `bash` for matching.
   const lookup = executableLookupKey(head === "zsh" ? "bash" : head);
   if (!lookup) return false;
 
@@ -283,7 +281,7 @@ const gitGlobalOptionRequiresPrompt = (arg: string): boolean => {
   for (const opt of UNSAFE_GIT_GLOBAL_OPTIONS) {
     if (arg.startsWith(`${opt}=`)) return true;
   }
-  // Codex also blocks `-ccore.pager=cat` (option fused with value, no `=`).
+  // Also block `-ccore.pager=cat` (option fused with value, no `=`).
   if (arg.startsWith("-c") && arg !== "-c" && arg.length > 2) return true;
   return false;
 };
@@ -350,7 +348,7 @@ const isSafeGitInvocation = (cmd: string[]): boolean => {
 const SED_N_ARG_PATTERN = /^(\d+,)?\d+p$/;
 
 const isSafeSedInvocation = (cmd: string[]): boolean => {
-  // Only `sed -n {N|M,N}p [file]` is whitelisted (matches Codex).
+  // Only `sed -n {N|M,N}p [file]` is whitelisted.
   if (cmd.length > 4) return false;
   if (cmd[1] !== "-n") return false;
   const sedArg = cmd[2];

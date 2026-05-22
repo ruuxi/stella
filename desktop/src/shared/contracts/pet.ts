@@ -10,10 +10,9 @@
  *   - `pet:openChat`      pet → main (focus full app, sidebar chat)
  *   - `pet:sendMessage`   pet composer → main → full shell chat
  *
- * Animation rows mirror the eight-by-nine sprite-sheet layout shared by
- * every pet on https://codex-pet-share.pages.dev — each pet is a
- * 1536×1872 webp arranged as 8 columns × 9 rows of 192×208 frames.
- * Custom pet packs only need to obey that grid.
+ * Animation rows mirror the eight-by-nine sprite-sheet layout shared by every
+ * pet: each pet is a 1536×1872 webp arranged as 8 columns × 9 rows of 192×208
+ * frames. Custom pet packs only need to obey that grid.
  */
 
 /** All animation rows exposed by a pet sprite sheet. */

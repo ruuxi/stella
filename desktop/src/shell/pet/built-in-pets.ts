@@ -44,7 +44,7 @@ export const normalizePet = (pet: Partial<BuiltInPet>): BuiltInPet | null => {
       ? { previewUrl: pet.previewUrl }
       : {}),
     sourceUrl: pet.sourceUrl ?? "",
-    creator: ownerName ?? "Codex Pet Share",
+    creator: ownerName ?? "Pet Share",
     downloads:
       typeof pet.downloads === "number" && Number.isFinite(pet.downloads)
         ? Math.max(0, Math.floor(pet.downloads))

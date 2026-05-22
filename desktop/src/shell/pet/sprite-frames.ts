@@ -3,8 +3,8 @@ import type { PetAnimationState } from "@/shared/contracts/pet";
 /**
  * Pet sprite-sheet geometry.
  *
- * Every spritesheet shipped via the Codex Pet Share format is a single
- * 1536×1872 image arranged as 8 columns × 9 rows of 192×208 frames. The
+ * Every pet spritesheet is a single 1536×1872 image arranged as 8 columns ×
+ * 9 rows of 192×208 frames. The
  * renderer (`PetSprite`) draws one frame at a time by setting
  * `background-image` once and updating `background-position` on every
  * tick — never scaling the image, never re-uploading textures.
@@ -28,8 +28,7 @@ export type SpriteAnimation = {
 };
 
 /**
- * The idle "breathing" loop. Mirrors the row-0 sequence used by every
- * Codex Pet Share sheet; each pet's pose is in the same slot. The first
+ * The idle "breathing" loop. Each pet's pose is in the same slot. The first
  * and last frames hold longer to read as a soft sigh.
  */
 const IDLE_BASE: SpriteFrame[] = [
@@ -65,10 +64,9 @@ const buildRow = (
 /**
  * Per-state animation tables.
  *
- * Frame counts and timings come from the published Codex Pet Share viewer
- * (`https://codex-pet-share.pages.dev/assets/index-*.js`) — the same
- * spec every uploaded pet sheet conforms to. Keep these in lockstep with
- * the public spec so third-party sheets render identically here.
+ * Frame counts and timings come from the shared pet sprite-sheet spec. Keep
+ * these in lockstep with the public spec so third-party sheets render
+ * identically here.
  */
 const ANIMATION_TABLE: Record<PetAnimationState, SpriteFrame[]> = {
   idle: IDLE_BASE,
@@ -87,7 +85,7 @@ const ANIMATION_TABLE: Record<PetAnimationState, SpriteFrame[]> = {
  *
  * `idle` loops forever on its slow rest cadence. Every other state plays
  * its full row three times, then settles back into the idle rest loop —
- * matching how Codex's pet runs a cheer/wave/run for a few cycles before
+ * matching how Stella runs a cheer/wave/run for a few cycles before
  * returning to ambient breathing without waiting for an external trigger.
  *
  * Honors `prefers-reduced-motion` by collapsing to a single static frame.
