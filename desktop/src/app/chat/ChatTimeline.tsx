@@ -13,8 +13,9 @@
  *    React identity).
  *  - `recycleItems` reuses item containers; `useStreamingChat`/
  *    `useEventRows` keep the streaming assistant row's id stable
- *    across the live → persisted swap so Streamdown's parse cache and
- *    the row's component instance are reused (no remount, no flash).
+ *    across the live → persisted handoff so Streamdown's parse cache
+ *    and the row's component instance are reused (no remount, no
+ *    flash).
  *  - `maintainVisibleContentPosition` replaces the prior column-reverse
  *    + manual `captureResizeAnchor`/`restoreResizeAnchor` dance.
  *  - Every row renders as its own virtualized item, so measurements

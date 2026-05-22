@@ -68,8 +68,9 @@ export function useLocalAgentStream({
    * active conversation. The renderer merges these into
    * `displayMessages` so the live stream is just a regular assistant
    * row (whose text grows) rather than a separate "tail" overlay.
-   * Entries drop the moment a persisted row at the same
-   * `(userMessageId, indexInTurn)` slot lands via `chat:localUpdated`.
+   * Entries keep owning the visible text while present, even after
+   * SQLite has persisted the matching `(userMessageId, indexInTurn)`
+   * slot.
    */
   const [streamingAssistants, setStreamingAssistants] = useState<
     StreamingAssistantOverlay[]
@@ -236,10 +237,9 @@ export function useLocalAgentStream({
       // Trim to match the worker's persisted form. The smoothing
       // buffer holds raw stream chunks (may carry a trailing newline
       // mid-burst); the worker `.trim()`s the same text before
-      // persisting. Matching here means the overlay → persisted swap
-      // at the same `assistantRowKey` slot is a byte-for-byte text
-      // identity update inside Streamdown — no markdown re-flow, no
-      // perceptible "settle" jump when the row content swaps.
+      // persisting. Matching here means the live row and its persisted
+      // twin carry byte-for-byte identical text, so later handoff to
+      // the SQLite row has no markdown re-flow or perceptible settle.
       const fullText = flushSmoothingBuffer().trim()
       if (args.userMessageId) {
         const current =
@@ -276,9 +276,9 @@ export function useLocalAgentStream({
   /**
    * `RUN_FINISHED` (any outcome): drain smoothing into the current
    * slot, lock it, and stop expecting more chunks. The remaining
-   * overlay entries stay in the array until their persisted
-   * counterparts land via `chat:localUpdated` (see
-   * `useConversationDisplayMessages`'s filter).
+   * overlay entries stay in the array so the active UI does not swap
+   * from the streamed text to SQLite just because persistence
+   * completed.
    */
   const finalizeRunOnFinish = useCallback(
     (args: { runId: string }) => {

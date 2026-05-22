@@ -350,8 +350,8 @@
 
 /*
  * Latched in `Markdown.tsx` when a row finishes streaming. Prevents the
- * overlay -> persisted handoff (or any late Streamdown re-parse) from
- * re-firing the per-group fade on spans that already revealed live.
+ * final-row handoff (or any late Streamdown re-parse) from re-firing
+ * the per-group fade on spans that already revealed live.
  */
 .markdown--reveal-settled [data-stella-word-fade] {
   animation: none;

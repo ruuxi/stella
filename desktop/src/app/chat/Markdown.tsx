@@ -148,24 +148,23 @@ export const Markdown = memo(function Markdown({
 }: MarkdownProps) {
   /*
    * Keep the word-fade HAST shape for the lifetime of a row once that
-   * row has streamed. During the overlay -> persisted-row handoff,
-   * `isAnimating` can briefly flip false while React keeps the same row
-   * key; if we removed the plugin immediately, Streamdown would rebuild
-   * the body from `<span data-stella-word-fade>…</span>` wrappers back
-   * into raw text nodes, which reads as a one-frame flicker near the
-   * start of some streams. Freshly mounted historical rows start with
+   * row has streamed. When the live row locks, `isAnimating` flips
+   * false while React keeps the same row key; if we removed the plugin
+   * immediately, Streamdown would rebuild the body from
+   * `<span data-stella-word-fade>…</span>` wrappers back into raw text
+   * nodes, which reads as a one-frame flicker near the start of some
+   * streams. Freshly mounted historical rows start with
    * `isAnimating=false`, so they still render as plain markdown.
    *
    * When streaming finishes, Streamdown may still re-parse the final
-   * body (overlay -> persisted swap, incomplete-markdown settle, late
-   * layout). That remounts `[data-stella-word-fade]` spans, but each
+   * body (incomplete-markdown settle, late layout, or eventual
+   * persisted-row handoff). That remounts `[data-stella-word-fade]`
+   * spans, but each
    * span's inline `--stella-word-fade-duration: 0ms` (stamped by the
    * plugin based on the previous render's prose length) collapses the
    * keyframe to 0ms — instant fully-opaque, no flash. `revealSettled`
    * still drops `animation: none` on top of that as a belt-and-
-   * suspenders guard for the persisted-swap (where the persisted body
-   * may have minor whitespace differences from the locked overlay text
-   * and the prevContentLength wouldn't line up exactly).
+   * suspenders guard for any final-row settle.
    */
   const hasRenderedStreamingMarkupRef = useRef(false);
   if (isAnimating) {

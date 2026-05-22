@@ -12,14 +12,18 @@
  *     being streamed from the runtime. Per Option A (standard chat-UI
  *     pattern, c.f. Vercel `useChat`), live stream content is just a
  *     regular assistant row whose text grows over time, NOT a
- *     separate "tail" overlay layered on top of the persisted list.
- *     Each overlay is dropped the moment a persisted row at the same
- *     `(userMessageId, indexInTurn)` slot lands.
+ *     separate "tail" overlay layered on top of the persisted list. If
+ *     SQLite catches up while the live row is still present, the live
+ *     row keeps ownership of the visible text and borrows persisted
+ *     metadata/tool events from the matching `(userMessageId,
+ *     indexInTurn)` slot.
  *
  * Optimistic / scheduled overlays are projected to `MessageRecord[]`
  * via `groupEventsIntoMessages`; streaming overlays are already in
  * `MessageRecord` shape. All four merge into one shape and sort by
- * timestamp + id with `persistedMessages` winning on `_id` dedupe.
+ * timestamp + id. For active streamed assistant slots, the live row
+ * masks its persisted twin so completion does not swap the rendered
+ * message source just because SQLite acknowledged the final text.
  *
  * Kept separate from `useConversationMessages` because the overlay
  * needs `optimisticEvents` / `streamingAssistants` from
@@ -60,28 +64,112 @@ const mergeMessageSources = (
   });
 };
 
+const getAssistantUserMessageId = (
+  message: MessageRecord,
+): string | undefined => {
+  if (message.type !== "assistant_message") return undefined;
+  const payload = message.payload as { userMessageId?: string } | undefined;
+  const userMessageId = payload?.userMessageId;
+  return typeof userMessageId === "string" && userMessageId.length > 0
+    ? userMessageId
+    : undefined;
+};
+
+export const getPersistedAssistantSlots = (
+  persistedMessages: MessageRecord[],
+): Map<string, MessageRecord[]> => {
+  const slots = new Map<string, MessageRecord[]>();
+  for (const message of persistedMessages) {
+    const userMessageId = getAssistantUserMessageId(message);
+    if (!userMessageId) continue;
+    const current = slots.get(userMessageId);
+    if (current) {
+      current.push(message);
+    } else {
+      slots.set(userMessageId, [message]);
+    }
+  }
+  return slots;
+};
+
 /**
  * Materialize a streaming overlay slot into a `MessageRecord` so it
  * slots into the timeline alongside persisted assistant messages.
- * Keep `toolEvents` empty — only persisted assistant rows carry tool
- * decorations (the runtime attaches tools to messages at persist time,
- * and the overlay's lifespan is bounded by the persisted catching up).
+ * When the matching persisted row exists, keep the live row's text and
+ * synthetic id but borrow canonical persisted metadata/decorations.
  */
-const overlayToMessageRecord = (
+export const overlayToMessageRecord = (
   overlay: StreamingAssistantOverlay,
+  persisted?: MessageRecord,
 ): MessageRecord => ({
+  ...(persisted ?? {}),
   _id: overlay._id,
   timestamp: overlay.timestamp,
   type: "assistant_message",
   payload: {
+    ...(persisted?.payload ?? {}),
     text: overlay.text,
     userMessageId: overlay.userMessageId,
-    ...(overlay.responseTarget
-      ? { metadata: { runtime: { responseTarget: overlay.responseTarget } } }
-      : {}),
+    metadata: {
+      ...((
+        persisted?.payload as { metadata?: Record<string, unknown> } | undefined
+      )?.metadata ?? {}),
+      runtime: {
+        ...((
+          persisted?.payload as
+            | { metadata?: { runtime?: Record<string, unknown> } }
+            | undefined
+        )?.metadata?.runtime ?? {}),
+        isStreaming: !overlay.locked,
+        ...(overlay.responseTarget
+          ? { responseTarget: overlay.responseTarget }
+          : {}),
+      },
+    },
   },
-  toolEvents: [],
+  toolEvents: persisted?.toolEvents ?? [],
 });
+
+export const mergeConversationDisplayMessageSources = (args: {
+  persistedMessages: MessageRecord[];
+  overlayMessages: MessageRecord[];
+  streamingAssistants: StreamingAssistantOverlay[];
+  persistedAssistantSlots: Map<string, MessageRecord[]>;
+}): MessageRecord[] => {
+  const {
+    persistedMessages,
+    overlayMessages,
+    streamingAssistants,
+    persistedAssistantSlots,
+  } = args;
+  if (streamingAssistants.length === 0) {
+    return overlayMessages.length === 0
+      ? persistedMessages
+      : mergeMessageSources(persistedMessages, overlayMessages);
+  }
+
+  const maskedPersistedIds = new Set<string>();
+  for (const slot of streamingAssistants) {
+    const persisted = persistedAssistantSlots.get(slot.userMessageId)?.[
+      slot.indexInTurn - 1
+    ];
+    if (persisted) {
+      maskedPersistedIds.add(persisted._id);
+    }
+  }
+
+  const persistedMessagesForDisplay =
+    maskedPersistedIds.size === 0
+      ? persistedMessages
+      : persistedMessages.filter(
+          (message) => !maskedPersistedIds.has(message._id),
+        );
+
+  if (overlayMessages.length === 0) {
+    return persistedMessagesForDisplay;
+  }
+  return mergeMessageSources(persistedMessagesForDisplay, overlayMessages);
+};
 
 export const useConversationDisplayMessages = ({
   conversationId,
@@ -95,30 +183,16 @@ export const useConversationDisplayMessages = ({
     maxItems: SCHEDULED_EVENTS_OVERLAY_MAX,
   });
 
-  // Count persisted assistants per `userMessageId` so the streaming
-  // overlay dedupe can drop slots whose persisted counterpart at the
-  // same `indexInTurn` has already landed. The persisted row wins —
-  // it has the canonical text, tool events, and self-mod metadata.
-  const persistedAssistantCountByUserMessageId = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const message of persistedMessages) {
-      if (message.type !== "assistant_message") continue;
-      const payload = message.payload as { userMessageId?: string } | undefined;
-      const userMessageId = payload?.userMessageId;
-      if (!userMessageId) continue;
-      counts.set(userMessageId, (counts.get(userMessageId) ?? 0) + 1);
-    }
-    return counts;
-  }, [persistedMessages]);
+  const persistedAssistantSlots = useMemo(
+    () => getPersistedAssistantSlots(persistedMessages),
+    [persistedMessages],
+  );
 
   const overlayMessages = useMemo(() => {
     const overlayEvents: EventRecord[] = [];
     for (const event of optimisticEvents) overlayEvents.push(event);
     for (const event of scheduledEvents) {
-      if (
-        event.type !== "user_message" &&
-        event.type !== "assistant_message"
-      ) {
+      if (event.type !== "user_message" && event.type !== "assistant_message") {
         continue;
       }
       if (overlayEvents.some((other) => other._id === event._id)) continue;
@@ -129,13 +203,10 @@ export const useConversationDisplayMessages = ({
 
     const streamingOverlay: MessageRecord[] = [];
     for (const slot of streamingAssistants) {
-      const persistedCount =
-        persistedAssistantCountByUserMessageId.get(slot.userMessageId) ?? 0;
-      if (slot.indexInTurn <= persistedCount) {
-        // Persisted row at this slot has landed; drop the overlay.
-        continue;
-      }
-      streamingOverlay.push(overlayToMessageRecord(slot));
+      const persisted = persistedAssistantSlots.get(slot.userMessageId)?.[
+        slot.indexInTurn - 1
+      ];
+      streamingOverlay.push(overlayToMessageRecord(slot, persisted));
     }
 
     if (fromEvents.length === 0 && streamingOverlay.length === 0) {
@@ -144,13 +215,24 @@ export const useConversationDisplayMessages = ({
     return [...fromEvents, ...streamingOverlay];
   }, [
     optimisticEvents,
-    persistedAssistantCountByUserMessageId,
+    persistedAssistantSlots,
     scheduledEvents,
     streamingAssistants,
   ]);
 
-  return useMemo(() => {
-    if (overlayMessages.length === 0) return persistedMessages;
-    return mergeMessageSources(persistedMessages, overlayMessages);
-  }, [overlayMessages, persistedMessages]);
+  return useMemo(
+    () =>
+      mergeConversationDisplayMessageSources({
+        persistedMessages,
+        overlayMessages,
+        streamingAssistants,
+        persistedAssistantSlots,
+      }),
+    [
+      overlayMessages,
+      persistedAssistantSlots,
+      persistedMessages,
+      streamingAssistants,
+    ],
+  );
 };
