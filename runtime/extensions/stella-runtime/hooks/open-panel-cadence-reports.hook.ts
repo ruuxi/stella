@@ -7,9 +7,26 @@ import {
 } from "../../../kernel/agent-runtime/open-panel-cadence-reports.js";
 import { createRuntimeLogger } from "../../../kernel/debug.js";
 import type { HookDefinition } from "../../../kernel/extensions/types.js";
+import {
+  getDefaultModel,
+  getModelOverride,
+} from "../../../kernel/preferences/local-preferences.js";
 import type { RuntimeStore } from "../../../kernel/storage/runtime-store.js";
 
 const logger = createRuntimeLogger("stella-runtime.open-panel-cadence-reports");
+
+// When the user has not explicitly picked a model for the report agent,
+// ride the orchestrator's pick. Reports are a background helper; honoring
+// the user's main assistant choice (incl. BYOK) beats falling through to
+// the Stella default for a feature they may have moved off Stella entirely.
+const hasExplicitPreference = (
+  stellaRoot: string,
+  agentType: string,
+): boolean =>
+  Boolean(
+    getModelOverride(stellaRoot, agentType) ??
+      getDefaultModel(stellaRoot, agentType),
+  );
 
 export const createOpenPanelCadenceReportsHook = (opts: {
   stellaRoot: string;
@@ -29,10 +46,14 @@ export const createOpenPanelCadenceReportsHook = (opts: {
     try {
       let resolvedLlm = services.resolvedLlm;
       if (services.resolveSubsidiaryLlmRoute) {
+        const preferredAgent = hasExplicitPreference(
+          opts.stellaRoot,
+          AGENT_IDS.OPEN_PANEL_REPORTS,
+        )
+          ? AGENT_IDS.OPEN_PANEL_REPORTS
+          : AGENT_IDS.ORCHESTRATOR;
         try {
-          resolvedLlm = services.resolveSubsidiaryLlmRoute(
-            AGENT_IDS.OPEN_PANEL_REPORTS,
-          );
+          resolvedLlm = services.resolveSubsidiaryLlmRoute(preferredAgent);
         } catch (error) {
           logger.debug("open-panel-reports.route-fallback", {
             error: error instanceof Error ? error.message : String(error),
