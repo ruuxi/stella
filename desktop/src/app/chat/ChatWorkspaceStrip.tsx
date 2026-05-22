@@ -24,7 +24,10 @@ import {
 } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
-import { useConversationSchedules } from "@/global/schedule/use-conversation-schedules";
+import {
+  useConversationSchedules,
+  type ScheduleEntry,
+} from "@/global/schedule/use-conversation-schedules";
 import { formatNextRun } from "@/global/schedule/format-schedule";
 import {
   extractTasksFromActivities,
@@ -32,7 +35,10 @@ import {
   mergeFooterTasks,
   type TaskItem,
 } from "@/app/chat/lib/event-transforms";
-import { deriveConversationFiles } from "@/shell/display/derive-conversation-files";
+import {
+  deriveConversationFiles,
+  type ConversationFileEntry,
+} from "@/shell/display/derive-conversation-files";
 import { basenameOf } from "@/shell/display/path-to-viewer";
 import { displayTabs, useDisplayPanelLayout } from "@/shell/display/tab-store";
 import {
@@ -47,6 +53,16 @@ import {
 } from "@/shell/display/default-tabs";
 import type { DisplayTabKind } from "@/shell/display/types";
 import { DisplayTabIcon } from "@/shell/display/icons";
+import {
+  ActivityHistoryDialog,
+  type ActivityHistorySection,
+} from "@/shell/display/ActivityHistoryDialog";
+import {
+  displayTabKindForPayload,
+  payloadToTabSpec,
+} from "@/shell/display/payload-to-tab-spec";
+import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
+import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import {
   chatWorkspaceStripStore,
   useChatWorkspaceStripStore,
@@ -219,11 +235,43 @@ function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
   );
 }
 
+function SeeAllButton({
+  total,
+  onClick,
+}: {
+  total: number;
+  onClick: () => void;
+}) {
+  return (
+    <div className="chat-workspace-strip__show-more-row">
+      <button
+        type="button"
+        className="chat-workspace-strip__show-more"
+        onClick={onClick}
+      >
+        See all ({total})
+      </button>
+    </div>
+  );
+}
+
 type ChatWorkspaceStripProps = {
   forceHidden?: boolean;
   /** Rendered beside expanded display-panel chat; not clipped by panelOpen. */
   embeddedInDisplayPanel?: boolean;
 };
+
+const scheduleEntryToAffectedRef = (
+  entry: ScheduleEntry,
+  conversationId: string,
+): ScheduleToolAffectedRef => ({
+  kind: entry.kind,
+  id: entry.id,
+  conversationId,
+  name: entry.name,
+  enabled: entry.enabled,
+  nextRunAtMs: entry.nextRunAtMs,
+});
 
 export function ChatWorkspaceStrip({
   forceHidden = false,
@@ -239,6 +287,10 @@ export function ChatWorkspaceStrip({
   const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
   const filesFeed = chat.conversation.files;
   const schedules = useConversationSchedules(conversationId);
+  const [historySection, setHistorySection] =
+    useState<ActivityHistorySection | null>(null);
+  const [openScheduleEntry, setOpenScheduleEntry] =
+    useState<ScheduleEntry | null>(null);
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
@@ -264,23 +316,34 @@ export function ChatWorkspaceStrip({
           const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
           const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
           return bTime - aTime;
-        })
-        .slice(0, DONE_VISIBLE),
+        }),
     [allTasks],
   );
+  const visibleDoneTasks = doneTasks.slice(0, DONE_VISIBLE);
+  const hiddenDoneCount = doneTasks.length - visibleDoneTasks.length;
 
-  const files = useMemo(
-    () => deriveConversationFiles(filesFeed.files).slice(0, FILES_VISIBLE),
+  const allFiles = useMemo(
+    () => deriveConversationFiles(filesFeed.files),
     [filesFeed.files],
   );
+  const visibleFiles = allFiles.slice(0, FILES_VISIBLE);
+  const hiddenFilesCount = allFiles.length - visibleFiles.length;
 
   const upNext = useMemo(() => schedules.slice(0, UPNEXT_VISIBLE), [schedules]);
+  const hiddenScheduleCount = schedules.length - upNext.length;
 
-  const hasActivity = runningTasks.length > 0 || doneTasks.length > 0;
-  const hasFiles = files.length > 0;
+  const hasActivity = runningTasks.length > 0 || visibleDoneTasks.length > 0;
+  const hasFiles = allFiles.length > 0;
   const hasSchedule = upNext.length > 0;
 
   const nowMs = Date.now();
+  const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
+    if (!openScheduleEntry || !conversationId) return [];
+    return [scheduleEntryToAffectedRef(openScheduleEntry, conversationId)];
+  }, [conversationId, openScheduleEntry]);
+  const handleOpenFile = (entry: ConversationFileEntry) => {
+    displayTabs.openTab(payloadToTabSpec(entry.payload));
+  };
   const hidden =
     forceHidden ||
     !stripVisible ||
@@ -341,10 +404,16 @@ export function ChatWorkspaceStrip({
                   <TasksList tasks={runningTasks} />
                 </>
               )}
-              {doneTasks.length > 0 && (
+              {visibleDoneTasks.length > 0 && (
                 <>
                   <div className="chat-workspace-strip__subhead">Done</div>
-                  <TasksList tasks={doneTasks} />
+                  <TasksList tasks={visibleDoneTasks} />
+                  {hiddenDoneCount > 0 && (
+                    <SeeAllButton
+                      total={doneTasks.length}
+                      onClick={() => setHistorySection("done")}
+                    />
+                  )}
                 </>
               )}
             </WorkspaceCard>
@@ -356,17 +425,35 @@ export function ChatWorkspaceStrip({
               icon={<FolderClosed size={12} strokeWidth={2.25} />}
             >
               <ul className="chat-workspace-strip__list">
-                {files.map((file) => (
+                {visibleFiles.map((file) => (
                   <li
                     key={file.path}
                     className="chat-workspace-strip__row"
                     title={file.path}
                   >
-                    <span className="chat-workspace-strip__file-name">
-                      {basenameOf(file.path)}
-                    </span>
+                    <button
+                      type="button"
+                      className="chat-workspace-strip__file-button"
+                      onClick={() => handleOpenFile(file)}
+                    >
+                      <DisplayTabIcon
+                        kind={displayTabKindForPayload(file.payload)}
+                        size={15}
+                      />
+                      <span className="chat-workspace-strip__file-name">
+                        {basenameOf(file.path)}
+                      </span>
+                    </button>
                   </li>
                 ))}
+                {hiddenFilesCount > 0 && (
+                  <li>
+                    <SeeAllButton
+                      total={allFiles.length}
+                      onClick={() => setHistorySection("files")}
+                    />
+                  </li>
+                )}
               </ul>
             </WorkspaceCard>
           )}
@@ -390,11 +477,52 @@ export function ChatWorkspaceStrip({
                     </span>
                   </li>
                 ))}
+                {hiddenScheduleCount > 0 && (
+                  <li>
+                    <SeeAllButton
+                      total={schedules.length}
+                      onClick={() => setHistorySection("upNext")}
+                    />
+                  </li>
+                )}
               </ul>
             </WorkspaceCard>
           )}
         </div>
       </div>
+      <ScheduleDetailsDialog
+        open={openScheduleEntry !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenScheduleEntry(null);
+        }}
+        affected={dialogAffected}
+      />
+      <ActivityHistoryDialog
+        open={historySection !== null}
+        onOpenChange={(next) => {
+          if (!next) setHistorySection(null);
+        }}
+        section={historySection ?? "done"}
+        activities={activity.activities}
+        latestMessageTimestampMs={activity.latestMessageTimestampMs}
+        onLoadMoreActivity={activity.loadOlder}
+        hasMoreActivity={activity.hasOlder}
+        isLoadingMoreActivity={activity.isLoadingOlder}
+        fileEvents={filesFeed.files}
+        onLoadMoreFiles={filesFeed.loadOlder}
+        hasMoreFiles={filesFeed.hasOlder}
+        isLoadingMoreFiles={filesFeed.isLoadingOlder}
+        schedules={schedules}
+        conversationId={conversationId}
+        nowMs={nowMs}
+        onOpenSchedule={(entry) => {
+          setOpenScheduleEntry(entry);
+        }}
+        onOpenFile={(entry) => {
+          handleOpenFile(entry);
+          setHistorySection(null);
+        }}
+      />
     </aside>
   );
 }
