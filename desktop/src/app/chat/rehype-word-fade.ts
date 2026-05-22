@@ -22,25 +22,33 @@
  * "lock" and the next group spawns as a new sibling span — which is
  * the moment the next fade fires.
  *
- * Why this plugin instead of Streamdown's bundled `animated` plugin:
- * Streamdown emits one span per word; we group three words so the
- * reveal reads as a soft phrase wave rather than a per-token flicker.
- * Both plugins share the same `prevContentLength` cursor (below) so
- * structural remounts of already-rendered content stay flash-free.
+ * Three-way decision for each emitted span:
  *
- * Why `prevContentLength`: Streamdown re-parses markdown on every
- * stream tick. When the markdown parser revises a token's shape (e.g.
- * `*foo` → `*foo*` becomes `<em><span>foo</span></em>`, or
- * `[label` → `[label](url)` becomes `<a><span>label</span></a>`), the
- * span moves to a new tree position. React's position-based key
- * reconciliation treats the relocated span as a new mount, so the CSS
- * fade-in keyframe replays from `opacity: 0` — that's the visible
- * "blink" mid-stream. Tracking each group's start position in the
- * source prose text and stamping `--stella-word-fade-duration: 0ms`
- * onto groups whose end position is within the previous render's
- * prose length means relocated spans still mount with the fade
- * animation, but the keyframe completes in 0ms — instant fully-
- * opaque, no flash.
+ *   1. SAME span as the prior render (matching `(bufferStart, parent
+ *      path)` signature): emit with no inline style. Its in-flight
+ *      animation (if any) keeps running untouched. THIS IS THE
+ *      LOAD-BEARING CASE — any inline style change to an existing
+ *      span causes Chromium to recompute `animation-duration`
+ *      retroactively, which truncates the live fade and reads as
+ *      "no animation".
+ *
+ *   2. New span carrying content that was visible in the prior render
+ *      (structural remount — `*foo` → `<em>foo</em>` moves the span
+ *      to a new tree position and React mounts a fresh DOM element):
+ *      stamp `--stella-word-fade-duration:0ms`. Fresh mount, so the
+ *      CSS keyframe is freshly evaluated with the var at 0ms and
+ *      completes instantly. The previously-visible text stays silently
+ *      on screen during the structural shuffle. No truncation
+ *      concern — the span never had a 600ms animation to begin with.
+ *
+ *   3. New span carrying genuinely new content (the streaming tail
+ *      just produced a new word group): emit with no inline style and
+ *      let the default 600ms fade-in play.
+ *
+ * Substring check (case 2) uses the prior render's concatenated prose
+ * text. It's O(n·m) per span; for typical streaming message lengths
+ * (a few KB) it's still cheap. The reshape signal is "the span's
+ * tree position is new but its text was already on screen".
  *
  * Skipped subtrees:
  *  - `<code>`, `<pre>`, `<math>`, `<style>`, `<script>`, `<svg>`,
@@ -108,10 +116,10 @@ const isWhitespace = (value: string): boolean => /^\s+$/.test(value);
 
 /**
  * `instant: true` stamps `--stella-word-fade-duration: 0ms` so the CSS
- * keyframe completes immediately — used for groups whose entire span
- * of source text was already rendered before this tick. Without the
- * override the fade replays from `opacity: 0` on any mid-stream
- * structural remount (e.g. `*foo` revising to `<em>foo</em>`).
+ * keyframe completes immediately — only used for FRESHLY MOUNTED
+ * spans carrying previously-visible content. NEVER applied to a span
+ * that already exists from the prior render; mid-flight inline-style
+ * changes truncate the live animation.
  */
 const wrapAsSpan = (text: string, instant: boolean): Element => ({
   type: "element",
@@ -124,17 +132,49 @@ const wrapAsSpan = (text: string, instant: boolean): Element => ({
 });
 
 /**
- * Per-cacheKey cumulative prose-character count from the prior render.
- * Module-scope so it survives Markdown component re-renders for the
- * same row (cacheKey is the stable per-row id passed in from
- * `useEventRows`). Cleared on demand from `resetWordFadeCursor` when a
- * row's Markdown instance unmounts.
+ * Per-cacheKey snapshot from the prior plugin run. `emittedKeys` is
+ * the set of `(bufferStart|parentPath)` signatures we emitted last
+ * time; matches here are the "same span continuing" case (case 1)
+ * and MUST NOT receive an inline-style stamp. `priorProse` is the
+ * concatenated prose text of the prior render; substring matches are
+ * the "fresh mount of previously-visible content" case (case 2).
  */
-const prevContentLengthByCacheKey = new Map<string, number>();
+type PerCacheState = {
+  emittedKeys: Set<string>;
+  priorProse: string;
+};
 
-/** Drop the prevContentLength cursor for a row that has unmounted. */
+const stateByCacheKey = new Map<string, PerCacheState>();
+
+const emptyState: PerCacheState = {
+  emittedKeys: new Set(),
+  priorProse: "",
+};
+
+/** Drop the per-row cursor when this Markdown row unmounts. */
 export const resetWordFadeCursor = (cacheKey: string): void => {
-  prevContentLengthByCacheKey.delete(cacheKey);
+  stateByCacheKey.delete(cacheKey);
+};
+
+/*
+ * Build a `parentPath` string from the visitor's ancestor chain. Each
+ * element segment is `${childIndex}:${tagName}` — childIndex makes
+ * sibling paragraphs distinguishable (otherwise two `<p>` siblings
+ * would share `p` and look "the same"). The root is omitted.
+ */
+const buildParentPath = (
+  ancestors: ReadonlyArray<Root | Element>,
+): string => {
+  const parts: string[] = [];
+  for (let i = 1; i < ancestors.length; i++) {
+    const parent = ancestors[i - 1];
+    const child = ancestors[i];
+    if (parent.type !== "root" && parent.type !== "element") continue;
+    if (child.type !== "element") continue;
+    const index = (parent.children as RootContent[]).indexOf(child);
+    parts.push(`${index}:${child.tagName}`);
+  }
+  return parts.join(">");
 };
 
 /*
@@ -154,13 +194,14 @@ export const resetWordFadeCursor = (cacheKey: string): void => {
  * render start emitting a fresh sibling span after it — which is the
  * moment the next fade fires.
  *
- * `cursor` advances by emitted character so each group can stamp
- * itself as `instant` when its end position is `<= prevLength`.
+ * Per-group `instant` decision is delegated to the caller via
+ * `decideInstant({ content, bufferStart })` so the same grouping pass
+ * can ask the per-cacheKey signature/prose-substring tracker.
  */
 const groupTokens = (
   tokens: string[],
   cursor: { position: number },
-  prevLength: number,
+  decideInstant: (info: { content: string; bufferStart: number }) => boolean,
 ): RootContent[] => {
   const out: RootContent[] = [];
   let buffer = "";
@@ -170,10 +211,11 @@ const groupTokens = (
 
   const flush = () => {
     if (buffer.length === 0) return;
-    const bufferEnd = bufferStart + buffer.length;
-    const instant = prevLength > 0 && bufferEnd <= prevLength;
-    out.push(wrapAsSpan(buffer, instant));
-    cursor.position = bufferEnd;
+    const content = buffer;
+    const start = bufferStart;
+    const instant = decideInstant({ content, bufferStart: start });
+    out.push(wrapAsSpan(content, instant));
+    cursor.position = start + content.length;
     buffer = "";
     wordCount = 0;
   };
@@ -181,14 +223,10 @@ const groupTokens = (
   for (const tok of tokens) {
     if (isWhitespace(tok)) {
       if (wordCount === 0) {
-        // Leading whitespace before any word in the current group —
-        // belongs outside as a bare text node.
         out.push({ type: "text", value: tok });
         cursor.position += tok.length;
         bufferStart = cursor.position;
       } else {
-        // Defer until we see whether another word joins this group;
-        // if not, the whitespace separates this group from the next.
         pendingSeparator += tok;
       }
       continue;
@@ -204,12 +242,6 @@ const groupTokens = (
     }
     if (wordCount >= WORDS_PER_GROUP) {
       flush();
-      if (pendingSeparator.length > 0) {
-        out.push({ type: "text", value: pendingSeparator });
-        cursor.position += pendingSeparator.length;
-        bufferStart = cursor.position;
-        pendingSeparator = "";
-      }
     }
   }
   flush();
@@ -221,13 +253,15 @@ const groupTokens = (
 };
 
 export type RehypeWordFadeOptions = {
-  /** Stable per-row id; gates the prevContentLength cursor map. */
+  /** Stable per-row id; gates the per-cacheKey signature/prose map. */
   cacheKey: string;
 };
 
 export const rehypeWordFade =
   (options: RehypeWordFadeOptions) => (tree: Root) => {
-    const prevLength = prevContentLengthByCacheKey.get(options.cacheKey) ?? 0;
+    const prior = stateByCacheKey.get(options.cacheKey) ?? emptyState;
+    const nextEmittedKeys = new Set<string>();
+    let proseAcc = "";
     const cursor = { position: 0 };
 
     visitParents(tree, "text", (node: Text, ancestors) => {
@@ -238,6 +272,7 @@ export const rehypeWordFade =
       }
       const value = node.value;
       if (value.length === 0) return;
+      proseAcc += value;
       if (isWhitespace(value)) {
         cursor.position += value.length;
         return;
@@ -250,11 +285,40 @@ export const rehypeWordFade =
 
       const tokens = tokenize(value);
       if (tokens.length === 0) return;
-      const replacements = groupTokens(tokens, cursor, prevLength);
+
+      const parentPath = buildParentPath(
+        ancestors as ReadonlyArray<Root | Element>,
+      );
+
+      const decideInstant = (info: {
+        content: string;
+        bufferStart: number;
+      }): boolean => {
+        const key = `${info.bufferStart}|${parentPath}`;
+        nextEmittedKeys.add(key);
+        // Case 1: the same span survives from the prior render. Never
+        // stamp an inline style — that would truncate the live fade.
+        if (prior.emittedKeys.has(key)) return false;
+        // Case 2: fresh mount, but the content was already on screen
+        // (markdown reshape moved the span to a new tree position).
+        // Stamp instant so the keyframe completes in 0ms and the user
+        // doesn't see a structural-remount flash.
+        if (prior.priorProse.length > 0 && prior.priorProse.includes(info.content)) {
+          return true;
+        }
+        // Case 3: fresh mount, genuinely new content. Default 600ms
+        // fade plays.
+        return false;
+      };
+
+      const replacements = groupTokens(tokens, cursor, decideInstant);
       if (replacements.length === 0) return;
       parent.children.splice(index, 1, ...replacements);
       return [SKIP, index + replacements.length];
     });
 
-    prevContentLengthByCacheKey.set(options.cacheKey, cursor.position);
+    stateByCacheKey.set(options.cacheKey, {
+      emittedKeys: nextEmittedKeys,
+      priorProse: proseAcc,
+    });
   };
