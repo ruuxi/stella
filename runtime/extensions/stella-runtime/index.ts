@@ -8,6 +8,7 @@ import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.h
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
 import { createHomeSuggestionsRefreshHook } from "./hooks/home-suggestions-refresh.hook.js";
 import { createMemoryReviewHook } from "./hooks/memory-review.hook.js";
+import { createOpenPanelCadenceReportsHook } from "./hooks/open-panel-cadence-reports.hook.js";
 import { createPersonalityHook } from "./hooks/personality.hook.js";
 import { createRevertNoticeHook } from "./hooks/revert-notice.hook.js";
 import { createSelfModHooks } from "./hooks/self-mod.hook.js";
@@ -88,6 +89,12 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   );
   register(
     createHomeSuggestionsRefreshHook({
+      stellaRoot: services.stellaRoot,
+      store: services.store,
+    }),
+  );
+  register(
+    createOpenPanelCadenceReportsHook({
       stellaRoot: services.stellaRoot,
       store: services.store,
     }),

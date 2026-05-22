@@ -20,6 +20,7 @@ import {
   type LocalChatAppendEventArgs,
   type LocalChatEventRecord,
   type LocalChatEventRow,
+  type LocalChatRecentActivityRecord,
   type LocalChatFilesWindow,
   type LocalChatMessageRecord,
   type LocalChatMessageWindow,
@@ -1188,6 +1189,66 @@ export class SessionStore {
     `).all(conversationId, normalizedLimit) as LocalChatEventRow[];
 
     return rows.map((row) => this.deserializeEventRow(row));
+  }
+
+  /**
+   * Return cross-conversation activity newer than `sinceMs` (plain ms
+   * since the Unix epoch — same unit `message.created_at` is written
+   * with by every `appendLocalChatEvent` call). Capped at `limit`
+   * (default 80) of the most recent events and returned oldest→newest
+   * so callers can fold them into a chronological brief.
+   */
+  listRecentActivitySince(args: {
+    sinceMs: number;
+    limit?: number;
+  }): LocalChatRecentActivityRecord[] {
+    const sinceMs = Number.isFinite(args.sinceMs)
+      ? Math.max(0, Math.floor(args.sinceMs))
+      : 0;
+    const normalizedLimit = Math.max(
+      1,
+      Math.min(Math.floor(args.limit ?? 80), 500),
+    );
+    const rows = this.db.prepare(`
+      SELECT
+        recent.session_id AS conversationId,
+        recent.id AS _id,
+        recent.created_at AS timestamp,
+        recent.type AS type,
+        recent.device_id AS deviceId,
+        recent.request_id AS requestId,
+        recent.target_device_id AS targetDeviceId,
+        part.data_json AS payloadJson,
+        recent.data_json AS channelEnvelopeJson
+      FROM (
+        SELECT *
+        FROM message
+        WHERE created_at >= ?
+          AND type IN (
+            'user_message',
+            'assistant_message',
+            'agent-started',
+            'agent-progress',
+            'agent-completed',
+            'agent-failed',
+            'agent-canceled',
+            'tool_result'
+          )
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      ) recent
+      LEFT JOIN part
+        ON part.message_id = recent.id
+       AND part.ord = 0
+      ORDER BY recent.created_at ASC, recent.id ASC
+    `).all(sinceMs, normalizedLimit) as Array<
+      LocalChatEventRow & { conversationId: string }
+    >;
+
+    return rows.map((row) => ({
+      conversationId: row.conversationId,
+      ...this.deserializeEventRow(row),
+    }));
   }
 
   /**

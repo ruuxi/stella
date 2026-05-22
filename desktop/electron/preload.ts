@@ -28,6 +28,8 @@ import {
   IPC_DISCOVERY_WRITE_CORE_MEMORY,
   IPC_DISCOVERY_WRITE_KNOWLEDGE,
   IPC_DISPLAY_LIST_CANVAS_HTML,
+  IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS,
+  IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED,
   IPC_DISPLAY_TRASH_FORCE_DELETE,
   IPC_DISPLAY_TRASH_LIST,
   IPC_OFFICE_PREVIEW_LIST,
@@ -203,6 +205,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
           createdAt: number;
         }>
       >,
+    listOpenPanelReports: () =>
+      ipcRenderer.invoke(IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS),
+    markOpenPanelReportOpened: (payload: { cadence: string }) =>
+      ipcRenderer.invoke(IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED, payload),
     listTrash: () => ipcRenderer.invoke(IPC_DISPLAY_TRASH_LIST),
     forceDeleteTrash: (payload: { id?: string; all?: boolean }) =>
       ipcRenderer.invoke(IPC_DISPLAY_TRASH_FORCE_DELETE, payload),

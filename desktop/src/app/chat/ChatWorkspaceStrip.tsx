@@ -30,7 +30,7 @@ import {
   Check,
   FolderClosed,
   CalendarClock,
-  LayoutPanelTop,
+  Compass,
 } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -583,8 +583,8 @@ export function ChatWorkspaceStrip({
         <div className="chat-workspace-strip__scroll" ref={stripStackRef}>
           <WorkspaceCard
             id="open"
-            title="Open"
-            icon={<LayoutPanelTop size={12} strokeWidth={2.25} />}
+            title="Discover"
+            icon={<Compass size={12} strokeWidth={2.25} />}
             open={openPanels.open}
             onToggle={handleTogglePanel}
             measureRef={(node) => setPanelFrameRef("open", node)}

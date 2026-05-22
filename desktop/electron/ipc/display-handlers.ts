@@ -4,10 +4,17 @@ import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import {
   IPC_DISPLAY_LIST_CANVAS_HTML,
+  IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS,
+  IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED,
   IPC_DISPLAY_READ_FILE,
   IPC_DISPLAY_TRASH_FORCE_DELETE,
   IPC_DISPLAY_TRASH_LIST,
 } from "../../src/shared/contracts/ipc-channels.js";
+import {
+  listOpenPanelReports,
+  markOpenPanelReportOpened,
+  type OpenPanelReportCadence,
+} from "../../../runtime/kernel/agent-runtime/open-panel-cadence-reports.js";
 import {
   listDeferredDeletes,
   purgeAllDeferredDeletes,
@@ -211,6 +218,44 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
 
     return items.sort((a, b) => a.createdAt - b.createdAt);
   });
+
+  ipcMain.handle(IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS, async (event) => {
+    if (
+      !options.assertPrivilegedSender(
+        event,
+        IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS,
+      )
+    ) {
+      throw new Error(
+        `Blocked untrusted ${IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS} request.`,
+      );
+    }
+    return await listOpenPanelReports(requireStellaRoot());
+  });
+
+  ipcMain.handle(
+    IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED,
+    async (event, payload?: { cadence?: unknown }) => {
+      if (
+        !options.assertPrivilegedSender(
+          event,
+          IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED,
+        )
+      ) {
+        throw new Error(
+          `Blocked untrusted ${IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED} request.`,
+        );
+      }
+      const cadence = payload?.cadence;
+      if (cadence !== "4h" && cadence !== "daily" && cadence !== "weekly") {
+        throw new Error("Unknown Open panel report cadence.");
+      }
+      return await markOpenPanelReportOpened(
+        requireStellaRoot(),
+        cadence as OpenPanelReportCadence,
+      );
+    },
+  );
 
   ipcMain.handle(IPC_DISPLAY_TRASH_LIST, async (event) => {
     if (!options.assertPrivilegedSender(event, IPC_DISPLAY_TRASH_LIST)) {
