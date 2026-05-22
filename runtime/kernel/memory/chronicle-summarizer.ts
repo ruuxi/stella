@@ -1,11 +1,8 @@
 /**
  * Chronicle rolling summary generator.
  *
- * Codex's Chronicle daemon does its own LLM-driven rolling summaries inside
- * the Rust process (10-min summary refreshed every minute, 6-hour summary
- * refreshed every hour). Stella keeps the Swift sidecar focused on capture +
- * raw OCR; this module is the Node-side equivalent of Codex's
- * `recursive_summarizer`.
+ * Stella keeps the Swift sidecar focused on capture + raw OCR; this module
+ * builds the rolling summaries consumed by memory and context surfaces.
  *
  * For each tick:
  *   1. Read the tail of `state/chronicle/captures.jsonl` for the window.

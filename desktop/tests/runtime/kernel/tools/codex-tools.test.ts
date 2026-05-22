@@ -23,7 +23,7 @@ const repoRoot = path.resolve(
 afterEach(() => tempDirs.cleanup());
 
 const createTempDir = async () => {
-  return await tempDirs.create("stella-codex-tools-");
+  return await tempDirs.create("stella-general-tools-");
 };
 
 const ONE_BY_ONE_PNG = Buffer.from(
@@ -31,7 +31,7 @@ const ONE_BY_ONE_PNG = Buffer.from(
   "base64",
 );
 
-describe("codex-style general tools", () => {
+describe("general agent tools", () => {
   it("exec_command returns one-shot output inline", async () => {
     const root = await createTempDir();
     const shellState = createShellState(root);
@@ -123,7 +123,7 @@ describe("codex-style general tools", () => {
     expect(await readFile(filePath, "utf-8")).toBe("hello\nstella\n");
   });
 
-  it("apply_patch accepts the codex `input` key with a relative path", async () => {
+  it("apply_patch accepts the `input` key with a relative path", async () => {
     const root = await createTempDir();
     const relPath = path.join("nested", "notes.txt");
     const absPath = path.join(root, relPath);

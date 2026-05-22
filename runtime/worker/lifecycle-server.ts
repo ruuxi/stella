@@ -19,13 +19,13 @@ import { resolveRuntimePaths, type RuntimePaths } from "./runtime-paths.js";
  *   3. Maintaining a self-shutdown timer that fires when no client has
  *      been connected for `idleShutdownMs`. This is what lets the
  *      worker outlive the host across restart but eventually die when
- *      nobody comes back (matching codex's 30-min thread-loaded model
+ *      nobody comes back (matching Stella's 30-min thread-loaded model
  *      at a smaller granularity).
  *
  * The flock on `runtime.lock` is non-blocking and exclusive — we use
  * `O_EXCL` with `O_CREAT` to avoid a separate lock file race. On macOS
  * and Linux this is sufficient; Windows is out of scope (the worker is
- * Unix-only post-detach for now, matching codex daemon's posture).
+ * Unix-only post-detach for now, matching the worker daemon's posture).
  */
 
 export type LifecycleServerOptions = {

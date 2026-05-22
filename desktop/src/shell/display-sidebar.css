@@ -565,7 +565,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   color: var(--text-weak);
 }
 
-/* ── Codex-style office artifact panels ─────────────────────────── */
+/* ── Office artifact panels ─────────────────────────────────────── */
 
 .display-artifact-panel {
   flex: 1;

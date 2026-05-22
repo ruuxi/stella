@@ -22,7 +22,7 @@ import type { WorkerPeerBroker } from "./peer-broker.js";
  *   --listen unix://PATH      (detached topology, host attaches via UDS)
  *
  * Both share the same JSON-RPC protocol — only the byte stream changes.
- * Inspired by codex's `app-server-transport` enum (`AppServerTransport`).
+ * Shared worker transport names for Stella app-server connections.
  *
  * Stdio mode supports a single connection over stdin/stdout for the lifetime
  * of the process; UDS mode accepts an arbitrary number of sequential or

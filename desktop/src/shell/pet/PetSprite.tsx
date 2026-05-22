@@ -45,7 +45,7 @@ export type PetSpriteProps = {
  * Why direct DOM mutation? React re-renders are unnecessary work on
  * every frame and would invalidate the sprite-sheet's loaded texture
  * across hot-paths (the overlay window also hosts voice / capture /
- * morph surfaces). Codex's pet ships exactly this pattern; we keep it.
+ * morph surfaces).
  */
 export const PetSprite = ({
   spritesheetUrl,

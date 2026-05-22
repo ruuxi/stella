@@ -126,7 +126,7 @@ struct ListedAppPayload: Codable {
     let activationPolicy: String
     let isRunning: Bool
     let isActive: Bool
-    // Spotlight-tracked usage signals so the wrapper can emit Codex-style
+    // Spotlight-tracked usage signals so the wrapper can emit
     // `[running, last-used=YYYY-MM-DD, uses=N]` annotations. Both are nil
     // when LaunchServices has no Spotlight metadata for the app bundle.
     let lastUsedDate: String?
@@ -578,7 +578,6 @@ let baseForbiddenBundleIdentifiers: Set<String> = [
     "com.stella.desktop",
     "com.stella.app",
     "com.stella.runtime",
-    "com.openai.codex",
     // System security / privacy surfaces.
     "com.apple.systempreferences",
     "com.apple.SystemSettings",
@@ -611,8 +610,7 @@ func forbiddenBundleIdentifiers() -> Set<String> {
 // Per-app operator manuals that ship with the binary. Keyed by bundle id.
 // When `get_app_state` resolves to one of these targets we surface the
 // matching guidance to the agent so it doesn't have to rediscover app
-// quirks each session. This mirrors Codex Computer Use's bundled
-// `AppInstructions/*.md` resources.
+// quirks each session.
 let bundledAppInstructions: [String: String] = [
     "com.apple.iCal": """
         # Calendar Computer Use
@@ -1944,9 +1942,8 @@ func resolveTarget(
         }
     }
 
-    // Codex launches apps on demand if they are installed but not already
-    // running. Keep Stella's explicit target requirement, but once the
-    // caller has named an app, attempt launch before failing.
+    // Keep Stella's explicit target requirement, but once the caller has
+    // named an app, attempt launch before failing.
     launchTargetIfPossible(appName: appName, bundleId: bundleId)
     for _ in 0..<20 {
         if let bundleId = trimmed(bundleId),
@@ -3730,9 +3727,7 @@ func withUnifiedActionOverlay<T>(
     )
 }
 
-// PNG encoder mirroring Codex Computer Use's path:
-// `SCScreenshotManager.captureImage(...)` → `CGImageDestination` writing the
-// PNG with `UTType.png` to a CFMutableData. No downscaling, no format
+// PNG encoder for `SCScreenshotManager.captureImage(...)` output. No format
 // conversion, no quality knob — the screenshot ships at the native pixel
 // scale that ScreenCaptureKit produces. CGImageDestination is preferred over
 // NSBitmapImageRep here because it accepts ImageIO compression hints and
@@ -3965,12 +3960,10 @@ private func captureViaScreenCaptureKit(
         let pixelHeight = Int(window.frame.height * scale)
         cfg.width = pixelWidth
         cfg.height = pixelHeight
-        // Mirror Codex Computer Use's `SCStreamConfiguration` setup:
-        // explicitly set `sourceRect` to the window's full content (no
+        // Explicitly set `sourceRect` to the window's full content (no
         // cropping) and pin the pixel format to BGRA. Both are no-ops
-        // relative to ScreenCaptureKit's defaults for a windowed
-        // capture, but they make the intent explicit and match the
-        // reverse-engineered Codex SkyComputerUseService path.
+        // relative to ScreenCaptureKit's defaults for a windowed capture,
+        // but they make the intent explicit.
         cfg.sourceRect = CGRect(origin: .zero, size: window.frame.size)
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
         cfg.showsCursor = false
@@ -4004,9 +3997,7 @@ private func captureViaScreenCaptureKit(
     // PNG-encoding. ScreenCaptureKit hands us native retina pixels — a
     // 1700x1000-point window comes back as 3400x2000, which encodes to 2-5
     // MB and overflows downstream prompt budgets on multi-step tool runs.
-    // Codex offloads resize to OpenAI's CUA backend; we ship PNGs straight
-    // to the model so we resize in-process. 1024 is the same long-edge cap
-    // OpenAI's computer-use API uses internally.
+    // Stella ships PNGs straight to the model, so resize in-process.
     let resized = resizeCGImageIfLargerThan(cgImage, maxLongEdge: SCREENSHOT_MAX_LONG_EDGE)
     guard let png = encodePNGViaImageIO(resized) else {
         return (nil, "PNG encoding failed")
@@ -5290,9 +5281,9 @@ func performClick(
         }
     }
 
-    // Codex falls back to a targeted per-pid pointer click for element
-    // clicks even when AX couldn't press the element. This path is *not*
-    // global HID injection and should not require Stella's explicit
+    // Fall back to a targeted per-pid pointer click for element clicks even
+    // when AX couldn't press the element. This path is *not* global HID
+    // injection and should not require Stella's explicit
     // `--coordinate-fallback`/`--allow-hid` gate.
     if let point,
        simulateLeftClickToPid(
@@ -5437,9 +5428,8 @@ func performScroll(
 
     // Fallback: synthesize a real scroll-wheel event posted to the
     // target app's pid so the scroll handler in the hovered view fires.
-    // Mirrors Codex's `performScrollEvent` which falls through to
-    // `scrollTargeted` for elements without an AXScroll<dir>ByPage
-    // action.
+    // Falls through to targeted scroll for elements without an
+    // AXScroll<dir>ByPage action.
     guard let target,
           let frame = candidate.frame else {
         return nil
@@ -5689,10 +5679,10 @@ func runSystemEventsOnTarget(
 }
 
 // Global HID-tap left click. Last-resort fallback used only when the
-// per-pid path has failed. Mirrors Codex's `clickGlobally`: 3 events
-// (mouseMoved → down → up), `mouseEventClickState` set on each so the
-// receiver's click-state machine sees a coherent sequence, and a 30 ms
-// inter-event sleep so the run loop has time to dispatch each event.
+// per-pid path has failed. Posts 3 events (mouseMoved → down → up),
+// `mouseEventClickState` set on each so the receiver's click-state machine
+// sees a coherent sequence, and a 30 ms inter-event sleep so the run loop
+// has time to dispatch each event.
 func simulateLeftClick(at point: CGPoint, clickCount: Int = 1, button: CGMouseButton = .left) -> Bool {
     guard let source = CGEventSource(stateID: .hidSystemState) else {
         return false
@@ -6167,10 +6157,10 @@ func simulateLeftClickToPid(
     return true
 }
 
-// Per-pid Unicode typing. Mirrors Codex's `InputSimulation.typeText`:
-// one character at a time, each as a keyboardSetUnicodeString event
-// posted directly to the target pid. Background apps (web-views,
-// non-frontmost apps) drop bulk keystroke events; this delivery
+// Per-pid Unicode typing: one character at a time, each as a
+// keyboardSetUnicodeString event posted directly to the target pid.
+// Background apps (web-views, non-frontmost apps) drop bulk keystroke events;
+// this delivery
 // pattern is what they actually receive reliably.
 func simulateUnicodeTextToPid(_ text: String, pid: pid_t) -> Bool {
     for character in text.utf16 {
@@ -6192,10 +6182,9 @@ func simulateUnicodeTextToPid(_ text: String, pid: pid_t) -> Bool {
     return true
 }
 
-// Per-pid key chord. Mirrors Codex's `InputSimulation.pressKey`:
-// modifier keyDown events first (with cumulative flag mask), then the
-// main key down/up with the full mask, then modifier keyUp in reverse.
-// Each event posted directly to the target pid so the chord lands
+// Per-pid key chord: modifier keyDown events first (with cumulative flag
+// mask), then the main key down/up with the full mask, then modifier keyUp in
+// reverse. Each event is posted directly to the target pid so the chord lands
 // inside the targeted app even when it is not frontmost.
 func simulateKeyChordToPid(_ keySpec: String, pid: pid_t) -> Bool {
     let parts = keySpec.split(separator: "+").map(String.init)
@@ -6273,10 +6262,9 @@ func simulateKeyChordToPid(_ keySpec: String, pid: pid_t) -> Bool {
     return true
 }
 
-// Per-pid drag. Mirrors Codex's `InputSimulation.dragTargeted`:
-// mouseMoved + mouseDown at the start, 10 leftMouseDragged steps along
-// the path (fixed step count is what AppKit's drag-tracking expects),
-// mouseUp at the end. Each event posted to the target pid with
+// Per-pid drag: mouseMoved + mouseDown at the start, 10 leftMouseDragged
+// steps along the path (fixed step count is what AppKit's drag-tracking
+// expects), mouseUp at the end. Each event is posted to the target pid with
 // click-state set so the receiver registers a contiguous drag gesture.
 func simulateDragToPid(from start: CGPoint, to end: CGPoint, pid: pid_t) -> Bool {
     guard let source = CGEventSource(stateID: .combinedSessionState) else {
@@ -6313,10 +6301,10 @@ func simulateDragToPid(from start: CGPoint, to end: CGPoint, pid: pid_t) -> Bool
     return post(.leftMouseUp, at: end)
 }
 
-// Per-pid scroll wheel. Mirrors Codex's `InputSimulation.scrollTargeted`.
-// Used when an element does not advertise an `AXScroll<dir>ByPage`
-// action; we fall back to synthesizing a real scroll-wheel event posted
-// to the target pid so the wheel handler in the focused view fires.
+// Per-pid scroll wheel. Used when an element does not advertise an
+// `AXScroll<dir>ByPage` action; we fall back to synthesizing a real
+// scroll-wheel event posted to the target pid so the wheel handler in the
+// focused view fires.
 func simulateScrollToPid(at point: CGPoint, direction: String, pages: Double, pid: pid_t) -> Bool {
     let raw = max(1.0, (12.0 * pages).rounded(.toNearestOrAwayFromZero))
     let delta = Int32(min(Double(Int32.max), raw))
@@ -6404,7 +6392,7 @@ private func performPreferredAxAction(
 }
 
 // Walk a few levels of descendants looking for one that exposes a
-// pressable AX action. Codex does this when the leaf returned by
+// pressable AX action. This helps when the leaf returned by
 // `AXUIElementCopyElementAtPosition` is a non-actionable container
 // (e.g. an `AXGroup` wrapping the real button); the model's coordinate
 // landed on the container's bounds rather than the button's.
@@ -6494,7 +6482,7 @@ func postLeftClick(
     // System Events `click at {x, y}` and HID-tap CGEvent posts both
     // route to whatever window is on top at the screen point — useless
     // when the target app is backgrounded. When raise=false (the
-    // computer-use default; Codex doesn't raise either) we walk three
+    // computer-use default) we walk three
     // steps in order:
     //   1) AX-at-position press: best for native AX-mapped UI (buttons,
     //      menu items). No-op for web-view content.
@@ -6543,10 +6531,10 @@ func postLeftClick(
 }
 
 // Global HID-tap drag. Last-resort fallback; the per-pid path
-// (`simulateDragToPid`) is preferred. Mirrors Codex's `dragGlobally`:
-// mouseMoved + mouseDown at start, 10 fixed leftMouseDragged steps,
-// mouseUp at end. Click-state set on every event so the receiver
-// registers a contiguous gesture instead of stray button events.
+// (`simulateDragToPid`) is preferred. Sends mouseMoved + mouseDown at start,
+// 10 fixed leftMouseDragged steps, and mouseUp at end. Click-state is set on
+// every event so the receiver registers a contiguous gesture instead of stray
+// button events.
 func simulateDrag(from start: CGPoint, to end: CGPoint) -> Bool {
     guard let source = CGEventSource(stateID: .hidSystemState) else {
         return false
@@ -6601,10 +6589,10 @@ func postDrag(from start: CGPoint, to end: CGPoint, target: AppTarget, raise: Bo
 
 // MARK: - NSDraggingSession content drag
 //
-// Codex's "Drag" tool uses NSDraggingSession (not raw mouse-drag CGEvents).
-// That gives the destination app a real drag-and-drop pipeline: the right
+// `drag-element` uses NSDraggingSession (not raw mouse-drag CGEvents). That
+// gives the destination app a real drag-and-drop pipeline: the right
 // pasteboard types, drag-image animation, and `NSDraggingDestination`
-// callbacks fire correctly. We do the same here for `drag-element`.
+// callbacks fire correctly.
 //
 // The host of an NSDraggingSession must be an NSView in our process. We
 // create a tiny transparent overlay window at the source point, host a
@@ -7460,9 +7448,9 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
     // `CGS_REQUIRE_INIT` if the process hasn't first promoted its
     // activation policy, called `finishLaunching`, and spun the run-loop
     // once to let SkyLight finish the handshake. This is the same
-    // bootstrap Codex Computer Use's service does at LSApplicationCheckIn
-    // time — it never operates in a degraded "no graphical session" mode,
-    // and neither do we. Surface a clean error envelope if the host has
+    // bootstrap happens at LSApplicationCheckIn time; Stella never operates
+    // in a degraded "no graphical session" mode. Surface a clean error
+    // envelope if the host has
     // no WindowServer session at all (headless ssh, non-user launchd
     // job, etc.) so the model gets a directly actionable message instead
     // of a process-killing CG assertion.
@@ -7959,10 +7947,10 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         )
     case "drag-element":
-        // Codex-style content drag: source identified by a ref, destination
-        // by either another ref or x/y coords. Uses NSDraggingSession so the
-        // destination app sees a real drag-and-drop with proper pasteboard
-        // types, not synthesized mouse events at the destination view.
+        // Content drag: source identified by a ref, destination by either
+        // another ref or x/y coords. Uses NSDraggingSession so the destination
+        // app sees a real drag-and-drop with proper pasteboard types, not
+        // synthesized mouse events at the destination view.
         let options = try actionOptions(from: commandArgs)
         guard options.allowHid else {
             throw NSError(domain: "desktop_automation", code: 41, userInfo: [

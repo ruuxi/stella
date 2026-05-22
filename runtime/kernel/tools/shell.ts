@@ -1,5 +1,5 @@
 /**
- * Shell tools: platform shell plus Codex-style exec_command/write_stdin handlers.
+ * Shell tools: platform shell plus `exec_command` / `write_stdin` handlers.
  */
 
 import { spawn } from "child_process";
@@ -97,7 +97,7 @@ type ExternalCandidateSnapshot =
       snapshot: FileSnapshot | null;
     };
 
-// Codex defaults: 10s for exec_command, 250ms for write_stdin. Letting
+// Stella defaults: 10s for exec_command, 250ms for write_stdin. Letting
 // short commands finish on the first call dramatically reduces the
 // "got a session_id, must call write_stdin to drain" round-trip the model
 // would otherwise need for every fast shell invocation.
@@ -123,9 +123,8 @@ const SNAPSHOT_IGNORED_DIRS = new Set([
 
 const APPROX_BYTES_PER_TOKEN = 4;
 /**
- * Cheap byte-count → token estimate matching Codex's
- * `codex_utils_string::approx_token_count`. Off by a small constant from
- * any real tokenizer, but stable enough for "did this output get truncated".
+ * Cheap byte-count → token estimate. Off by a small constant from any real
+ * tokenizer, but stable enough for "did this output get truncated".
  */
 export const approxTokenCount = (text: string): number =>
   Math.ceil(text.length / APPROX_BYTES_PER_TOKEN);
@@ -1184,7 +1183,7 @@ const buildExecToolPayload = (
   callStartedAt: number,
 ): Record<string, unknown> => {
   const wallTimeSeconds = (Date.now() - callStartedAt) / 1000;
-  // Mirrors Codex's unified-exec output schema: includes wall_time_seconds and
+  // Includes wall_time_seconds and
   // (when truncation happened) original_token_count so the model can detect
   // dropped output and react.
   const payload: Record<string, unknown> = {
@@ -1193,7 +1192,7 @@ const buildExecToolPayload = (
     exit_code: record.running ? null : record.exitCode,
     output: drained.text,
     wall_time_seconds: wallTimeSeconds,
-    // Mirrors Codex: always report the pre-truncation token estimate so callers
+    // Always report the pre-truncation token estimate so callers
     // can distinguish "small output" from "output omitted because it was huge".
     original_token_count: Math.ceil(
       drained.originalLength / APPROX_BYTES_PER_TOKEN,

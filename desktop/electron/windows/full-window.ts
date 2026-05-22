@@ -36,9 +36,9 @@ export class FullWindowController {
           height: 940,
           minWidth: FULL_SHELL_MIN_SIZE.width,
           minHeight: FULL_SHELL_MIN_SIZE.height,
-          // Keep the full shell opaque like Codex's primary window. Transparent
-          // BrowserWindows are significantly more expensive for macOS to
-          // composite during live resize.
+          // Keep the full shell opaque. Transparent BrowserWindows are
+          // significantly more expensive for macOS to composite during live
+          // resize.
           frame: true,
           transparent: false,
           backgroundColor: isMac ? '#f2f4f8' : '#101016',

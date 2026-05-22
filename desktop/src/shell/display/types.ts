@@ -1,18 +1,18 @@
 /**
  * workspace panel tab manager — type definitions.
  *
- * Modeled after the right-side panel in the Codex desktop app: a generic
- * tabs container where each tab carries its own viewer component, dedups by
- * a stable string id, and opening a tab implicitly opens the panel.
+ * Workspace panel tab manager: a generic tabs container where each tab carries
+ * its own viewer component, dedups by a stable string id, and opening a tab
+ * implicitly opens the panel.
  */
 
 import type { ReactNode } from "react";
 
 /**
  * Discriminator for the kind of content a tab is showing. Used for icons,
- * grouping, and click-handler routing. Mirrors `ArtifactTabContent`'s
- * `importKind` in Codex but keeps Stella-specific variants (html, video,
- * audio, model3d, download, text) since the workspace panel fans out wider.
+ * grouping, and click-handler routing. Keeps Stella-specific variants (html,
+ * video, audio, model3d, download, text) since the workspace panel fans out
+ * wider.
  */
 export type DisplayTabKind =
   | "chat"
@@ -51,8 +51,7 @@ export type DisplayTabSpec = {
   tooltip?: string;
   /**
    * Component renderer. Receives nothing — the spec captures all inputs the
-   * viewer needs in its closure, mirroring how Codex's `openTab(state, C, {
-   * props })` snapshots props at registration time.
+   * viewer needs in its closure, snapshotting props at registration time.
    */
   render: () => ReactNode;
   /**

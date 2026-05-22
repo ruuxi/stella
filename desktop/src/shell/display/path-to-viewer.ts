@@ -1,7 +1,6 @@
 /**
  * Pure functions that map file paths and tool-call shapes to
- * `DisplayTabKind` / id / title — the equivalent of Codex's `Ds(path)` /
- * `Ms(path)` mappers in `use-model-settings-ldiRRtPt.js`.
+ * `DisplayTabKind` / id / title.
  *
  * Kept render-free and dependency-free so the chat surface, IPC bridge, and
  * tests can all share the same routing rules.
@@ -44,8 +43,7 @@ const DEVELOPER_RESOURCE_EXTS = new Set(DEVELOPER_EXTS);
 
 /**
  * Extensions whose mere appearance in a turn's edited-paths list should
- * surface a clickable end-of-turn resource pill in the chat. Mirrors
- * Codex's `_de` set but adds the media types Stella also previews.
+ * surface a clickable end-of-turn resource pill in the chat.
  */
 const PREFERRED_RESOURCE_EXTS = new Set<string>([
   ...OFFICE_DOC_EXTS,
@@ -60,8 +58,8 @@ const PREFERRED_RESOURCE_EXTS = new Set<string>([
 
 /**
  * Broader set: only used as a fallback when the turn touched exactly one
- * unique path. Mirrors Codex's `gde`. Adds markdown-ish + plain-text source
- * files we want the user to be able to peek at.
+ * unique path. Adds markdown-ish + plain-text source files we want the user
+ * to be able to peek at.
  */
 const FALLBACK_RESOURCE_EXTS = new Set<string>([
   ...PREFERRED_RESOURCE_EXTS,
@@ -155,12 +153,12 @@ export const isDeveloperResourceExtension = (
 ): boolean => extension != null && DEVELOPER_RESOURCE_EXTS.has(extension);
 
 /**
- * Codex-style primary-path picker for a turn.
+ * Primary-path picker for a turn.
  *
  * Returns the single most-relevant edited / generated file path for a
  * completed turn, or `null` if there isn't one worth surfacing as a card.
  *
- * Rules (mirrors `vde` + `_de`/`gde` in Codex's bundle):
+ * Rules:
  *   1. Dedupe by absolute path; keep the first display form.
  *   2. If any path's extension is in `PREFERRED_RESOURCE_EXTS` (Office/PDF/
  *      media/3D), return the **first** such — this prioritizes a single

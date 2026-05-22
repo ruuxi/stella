@@ -8,10 +8,8 @@
  * with `import { displayTabs } from ".../tab-store"` can register a tab
  * without first having to climb back up the component tree.
  *
- * Mirrors the shape of Codex's `$c({ panelId, panelOpen$, setPanelOpen })`
- * factory: opening any tab activates it AND sets `panelOpen=true`. There
- * is no separate "open the panel" verb — UI surfaces never need to think
- * about that invariant.
+ * Opening any tab activates it AND sets `panelOpen=true`. There is no separate
+ * "open the panel" verb; UI surfaces never need to think about that invariant.
  */
 
 import { useSyncExternalStore } from "react";
@@ -276,8 +274,8 @@ export const displayTabs = {
   },
   /**
    * Activate an existing tab by id. No-op if the id is unknown. Always
-   * opens the panel as a side effect (matches Codex's `activateTab`
-   * behaviour where activating from a closed panel re-opens it).
+   * opens the panel as a side effect, so activating from a closed panel
+   * re-opens it.
    */
   activateTab(tabId: string): void {
     if (findIndex(state, tabId) === -1) return;

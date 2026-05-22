@@ -1,9 +1,5 @@
 /**
- * `exec_command` tool — Codex-style PTY shell execution.
- *
- * Mirrors the surface from
- * https://github.com/openai/codex/blob/main/codex-rs/tools/src/local_tool.rs
- * so models that already know Codex's contract transfer 1:1.
+ * `exec_command` tool — PTY shell execution for Stella agents.
  *
  * Returns immediate output, or a `session_id` when the process is still
  * running so the model can poll / interact via `write_stdin`.
