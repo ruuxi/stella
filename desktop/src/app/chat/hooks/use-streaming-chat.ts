@@ -106,7 +106,6 @@ export function useStreamingChat({
     startStream,
     queueStream,
     cancelCurrentStream,
-    resetStreamingState,
   } = useLocalAgentStream({
     activeConversationId,
     storageMode,
@@ -119,8 +118,16 @@ export function useStreamingChat({
     // persisted assistant_message that targets the pending user
     // message, drop `pendingUserMessageId` so composer / scroll
     // gating logic stops treating the turn as in-flight. Overlay
-    // entries clean themselves up via the SQLite-vs-overlay dedupe
-    // in `useConversationDisplayMessages`; nothing else here.
+    // entries clean themselves up via the per-slot SQLite-vs-overlay
+    // dedupe in `useConversationDisplayMessages` — do NOT wipe
+    // `streamingAssistants` here. A multi-message run (preamble +
+    // post-tool answer) persists each row as its own SQLite write;
+    // they often surface across two `localChat:updated` snapshots.
+    // Calling a blanket reset on the first snapshot — when only the
+    // preamble's persisted twin exists — drops the still-needed
+    // post-tool overlay, so its row vanishes for one tick until the
+    // second snapshot's persisted row lands. That's the "short
+    // disappear-then-reappear" flash mid-stream.
     if (isStreaming) return
     const hasAssistantReply = persistedMessages.some((message) => {
       if (message.type !== 'assistant_message') return false
@@ -129,13 +136,13 @@ export function useStreamingChat({
       return payload.userMessageId === pendingUserMessageId
     })
     if (hasAssistantReply) {
-      resetStreamingState()
+      setPendingUserMessageId(null)
     }
   }, [
     isStreaming,
     pendingUserMessageId,
     persistedMessages,
-    resetStreamingState,
+    setPendingUserMessageId,
   ])
 
   useEffect(() => {
@@ -325,6 +332,5 @@ export function useStreamingChat({
     pendingUserMessageId,
     sendMessage,
     cancelCurrentStream,
-    resetStreamingState,
   }
 }
