@@ -31,6 +31,7 @@ import {
   FolderClosed,
   CalendarClock,
   Compass,
+  Shuffle,
 } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -77,7 +78,7 @@ import {
   type WorkspaceStripPanelMeasurements,
 } from "./chat-workspace-strip-layout";
 import { TextShimmer } from "./TextShimmer";
-import { HomeSuggestionFooter } from "@/app/home/HomeSuggestionFooter";
+import { DiscoverList, useDiscoverItems } from "./DiscoverList";
 import "./chat-workspace-strip.css";
 
 const NOW_VISIBLE = 4;
@@ -322,6 +323,7 @@ export function ChatWorkspaceStrip({
   const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
   const filesFeed = chat.conversation.files;
   const schedules = useConversationSchedules(conversationId);
+  const discover = useDiscoverItems(conversationId);
   const [historySection, setHistorySection] =
     useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
@@ -589,17 +591,40 @@ export function ChatWorkspaceStrip({
             onToggle={handleTogglePanel}
             measureRef={(node) => setPanelFrameRef("open", node)}
             headerTrailing={
-              <SectionToggles
-                sections={sections}
-                onToggleSection={handleToggleSection}
-              />
+              <div className="chat-workspace-strip__discover-actions">
+                {onSuggestionClick && discover.canShuffle ? (
+                  <button
+                    type="button"
+                    className="chat-workspace-strip__discover-shuffle"
+                    onClick={discover.shuffle}
+                    aria-label="Shuffle suggestions"
+                    title="Shuffle suggestions"
+                  >
+                    <Shuffle
+                      size={13}
+                      strokeWidth={2.25}
+                      aria-hidden="true"
+                    />
+                    {discover.shuffleSeen ? null : (
+                      <span
+                        className="chat-workspace-strip__discover-shuffle-dot"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </button>
+                ) : null}
+                <SectionToggles
+                  sections={sections}
+                  onToggleSection={handleToggleSection}
+                />
+              </div>
             }
             headerOnly={!onSuggestionClick}
           >
             {onSuggestionClick ? (
-              <div className="chat-workspace-strip__open-footer">
-                <HomeSuggestionFooter
-                  conversationId={conversationId}
+              <div className="chat-workspace-strip__discover-body">
+                <DiscoverList
+                  items={discover.items}
                   onSuggestionClick={onSuggestionClick}
                 />
               </div>

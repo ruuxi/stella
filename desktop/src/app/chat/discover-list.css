@@ -1,0 +1,126 @@
+/* Body content of the Discover card on the workspace strip. One
+   integrated stream — fresh cadence reports up top, suggestion
+   prompts filling the remaining slots — capped at 4 rows. Row
+   geometry matches the rest of the strip (no leading icons, no
+   pills, no colored borders, no status dots). Differentiation is
+   type-only: right-side metadata (relative timestamp vs uppercase
+   category tag) and weight (fresh report > suggestion > read
+   report). */
+
+.discover-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.discover-list__item {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.discover-list__row {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  color: var(--text-base);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: default;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.discover-list__row:hover,
+.discover-list__row:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+}
+
+.discover-list__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discover-list__meta {
+  flex-shrink: 0;
+  color: var(--text-weak);
+  transition:
+    color 120ms ease,
+    opacity 120ms ease;
+}
+
+.discover-list__meta--tag {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.discover-list__row:hover .discover-list__meta--tag,
+.discover-list__row:focus-visible .discover-list__meta--tag {
+  opacity: 1;
+}
+
+.discover-list__meta--time {
+  font-size: 11.5px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reports use a quieter weight than suggestions when read, so the
+   suggestion stream stays the visual anchor; fresh (unread) reports
+   bump to weight 500 + stronger ink so newness is encoded by the row
+   itself, no badge or dot. */
+.discover-list__row--report {
+  align-items: center;
+  color: var(--text-weak);
+}
+
+.discover-list__row--fresh {
+  color: var(--text-base);
+  font-weight: 500;
+}
+
+.discover-list__row--fresh:hover,
+.discover-list__row--fresh:focus-visible {
+  color: var(--text-strong);
+}
+
+.discover-list__hover-icon {
+  flex-shrink: 0;
+  color: var(--text-weak);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.discover-list__row:hover .discover-list__hover-icon,
+.discover-list__row:focus-visible .discover-list__hover-icon {
+  opacity: 1;
+}
