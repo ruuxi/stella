@@ -24,7 +24,11 @@ import {
   type DisplaySidebarHandle,
 } from "@/shell/DisplaySidebar";
 import { ShellTopBar } from "@/shell/ShellTopBar";
-import { displayTabs, useDisplayPanelLayout, useDisplayTabList } from "@/shell/display/tab-store";
+import {
+  displayTabs,
+  useDisplayPanelLayout,
+  useDisplayTabList,
+} from "@/shell/display/tab-store";
 import { CHAT_DISPLAY_TAB_ID } from "@/shell/display/default-tabs";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { Sidebar } from "@/shell/sidebar/Sidebar";
@@ -157,7 +161,7 @@ function RootChrome() {
         typeof window === "undefined" ? 0 : window.innerWidth,
         sidebarVisible,
       ),
-  );
+    );
   const shellBreakpointsRef = useRef(shellBreakpoints);
 
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
@@ -173,9 +177,7 @@ function RootChrome() {
     document.documentElement.getAttribute("data-platform") === "mobile";
   const shouldRenderSidebar = !isMiniWindow || isMobileWebView;
   const shouldAutoHideRightContextPanel =
-    !isMiniWindow &&
-    !isMobileWebView &&
-    shellBreakpoints.hideRightContextPanel;
+    !isMiniWindow && !isMobileWebView && shellBreakpoints.hideRightContextPanel;
   const shouldAutoHideLeftSidebar =
     !isMiniWindow && !isMobileWebView && shellBreakpoints.hideLeftSidebar;
   const sidebarVisibleInLayout = sidebarVisible && !shouldAutoHideLeftSidebar;
@@ -493,9 +495,7 @@ function RootChrome() {
   }, [sidebarVisibleInLayout]);
 
   const expandedDisplayPanelChat =
-    panelOpen &&
-    panelExpanded &&
-    activeTabId === CHAT_DISPLAY_TAB_ID;
+    panelOpen && panelExpanded && activeTabId === CHAT_DISPLAY_TAB_ID;
 
   return (
     <>
@@ -514,7 +514,7 @@ function RootChrome() {
           !isMiniWindow &&
           !isMobileWebView &&
           !shouldAutoHideRightContextPanel &&
-          (!chat.showHomeContent || expandedDisplayPanelChat)
+          (!panelOpen || expandedDisplayPanelChat)
         }
       />
 

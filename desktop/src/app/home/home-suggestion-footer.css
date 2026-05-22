@@ -1,0 +1,162 @@
+.home-suggestion-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* No `gap`: the dropup carries its own bottom padding when expanded
+     so the closed state collapses to just the pill row with zero dead
+     space between it and the dropup wrapper. */
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.home-suggestion-footer__pills {
+  display: flex;
+  align-items: center;
+  /* Equal gaps between pills and equal inset from the card edges —
+     a fixed-column grid centers each label in its own column, which
+     leaves uneven outer margins when label widths differ. */
+  justify-content: space-evenly;
+  width: 100%;
+  min-width: 0;
+}
+
+.home-suggestion-footer__pill {
+  appearance: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-base);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-align: center;
+  cursor: default;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.home-suggestion-footer__pill:hover,
+.home-suggestion-footer__pill:focus-visible,
+.home-suggestion-footer__pill--open {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.home-suggestion-footer__pill-label {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-suggestion-footer__pill-dot {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(
+    --accent,
+    color-mix(in oklch, var(--foreground) 70%, #4a90e2)
+  );
+  pointer-events: none;
+}
+
+/* Pixel-height-driven wrapper. Width grows naturally from inner ul's
+   intrinsic size; height is set inline based on a ResizeObserver
+   measurement so open / close / category-swap all transition between
+   real heights instead of snapping. */
+.home-suggestion-footer__dropdown-grow {
+  overflow: hidden;
+  transition: height 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: height;
+}
+
+.home-suggestion-footer__dropdown-inner {
+  min-height: 0;
+}
+
+.home-suggestion-footer__dropdown {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  /* Padding-top gives breathing room between the pill row above and the
+     options below; collapses to nothing when the dropdown is closed. */
+  padding: 10px 0 0;
+  min-width: 0;
+  animation: homeSuggestionFooterOptionsIn 200ms
+    cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.home-suggestion-footer__item {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.home-suggestion-footer__option {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  padding: 5px 6px;
+  color: var(--text-base);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.home-suggestion-footer__option:hover,
+.home-suggestion-footer__option:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+}
+
+@keyframes homeSuggestionFooterOptionsIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-suggestion-footer__dropdown-grow {
+    transition: none;
+  }
+
+  .home-suggestion-footer__dropdown {
+    animation: none;
+  }
+}

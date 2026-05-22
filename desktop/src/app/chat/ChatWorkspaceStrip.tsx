@@ -77,13 +77,7 @@ import {
   type WorkspaceStripPanelMeasurements,
 } from "./chat-workspace-strip-layout";
 import { TextShimmer } from "./TextShimmer";
-import {
-  WORKSPACE_STRIP_MOCK_ENABLED,
-  mockWorkspaceStripDoneTasks,
-  mockWorkspaceStripFiles,
-  mockWorkspaceStripRunningTasks,
-  mockWorkspaceStripSchedules,
-} from "./chat-workspace-strip-mock";
+import { HomeSuggestionFooter } from "@/app/home/HomeSuggestionFooter";
 import "./chat-workspace-strip.css";
 
 const NOW_VISIBLE = 4;
@@ -285,6 +279,7 @@ type ChatWorkspaceStripProps = {
   forceHidden?: boolean;
   /** Rendered beside expanded display-panel chat; not clipped by panelOpen. */
   embeddedInDisplayPanel?: boolean;
+  onSuggestionClick?: (prompt: string) => void;
 };
 
 const scheduleEntryToAffectedRef = (
@@ -307,6 +302,7 @@ const parseCssPx = (value: string): number => {
 export function ChatWorkspaceStrip({
   forceHidden = false,
   embeddedInDisplayPanel = false,
+  onSuggestionClick,
 }: ChatWorkspaceStripProps) {
   const { panelOpen } = useDisplayPanelLayout();
   const { stripVisible, sections } = useChatWorkspaceStripStore();
@@ -370,38 +366,18 @@ export function ChatWorkspaceStrip({
 
   const nowMs = Date.now();
 
-  const useMockContent = WORKSPACE_STRIP_MOCK_ENABLED;
-  const displayRunningTasks =
-    useMockContent && runningTasks.length === 0
-      ? mockWorkspaceStripRunningTasks
-      : runningTasks;
-  const displayDoneTasks =
-    useMockContent && doneTasks.length === 0
-      ? mockWorkspaceStripDoneTasks
-      : doneTasks;
-  const displayVisibleDoneTasks = displayDoneTasks.slice(0, DONE_VISIBLE);
-  const displayHiddenDoneCount =
-    displayDoneTasks.length - displayVisibleDoneTasks.length;
-  const displayAllFiles =
-    useMockContent && allFiles.length === 0
-      ? mockWorkspaceStripFiles
-      : allFiles;
-  const displayVisibleFiles = displayAllFiles.slice(0, FILES_VISIBLE);
-  const displayHiddenFilesCount =
-    displayAllFiles.length - displayVisibleFiles.length;
-  const displaySchedules =
-    useMockContent && schedules.length === 0
-      ? mockWorkspaceStripSchedules(nowMs)
-      : schedules;
+  const visibleDoneTasks = doneTasks.slice(0, DONE_VISIBLE);
+  const hiddenDoneCount = doneTasks.length - visibleDoneTasks.length;
+  const visibleFiles = allFiles.slice(0, FILES_VISIBLE);
+  const hiddenFilesCount = allFiles.length - visibleFiles.length;
   const upNext = useMemo(
-    () => displaySchedules.slice(0, UPNEXT_VISIBLE),
-    [displaySchedules],
+    () => schedules.slice(0, UPNEXT_VISIBLE),
+    [schedules],
   );
-  const hiddenScheduleCount = displaySchedules.length - upNext.length;
+  const hiddenScheduleCount = schedules.length - upNext.length;
 
-  const hasActivity =
-    displayRunningTasks.length > 0 || displayVisibleDoneTasks.length > 0;
-  const hasFiles = displayAllFiles.length > 0;
+  const hasActivity = runningTasks.length > 0 || visibleDoneTasks.length > 0;
+  const hasFiles = allFiles.length > 0;
   const hasSchedule = upNext.length > 0;
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
     if (!openScheduleEntry || !conversationId) return [];
@@ -618,8 +594,17 @@ export function ChatWorkspaceStrip({
                 onToggleSection={handleToggleSection}
               />
             }
-            headerOnly
-          />
+            headerOnly={!onSuggestionClick}
+          >
+            {onSuggestionClick ? (
+              <div className="chat-workspace-strip__open-footer">
+                <HomeSuggestionFooter
+                  conversationId={conversationId}
+                  onSuggestionClick={onSuggestionClick}
+                />
+              </div>
+            ) : null}
+          </WorkspaceCard>
 
           {hasActivity &&
             renderReveal(
@@ -632,17 +617,12 @@ export function ChatWorkspaceStrip({
                 onToggle={handleTogglePanel}
                 measureRef={(node) => setPanelFrameRef("activity", node)}
                 onOpenHistory={
-                  displayHiddenDoneCount > 0
-                    ? () => setHistorySection("done")
-                    : undefined
+                  hiddenDoneCount > 0 ? () => setHistorySection("done") : undefined
                 }
-                historyLabel={`View all activity (${displayDoneTasks.length})`}
+                historyLabel={`View all activity (${doneTasks.length})`}
               >
-                {displayRunningTasks.length > 0 && (
-                  <TasksList tasks={displayRunningTasks} />
-                )}
-                {displayRunningTasks.length > 0 &&
-                  displayVisibleDoneTasks.length > 0 && (
+                {runningTasks.length > 0 && <TasksList tasks={runningTasks} />}
+                {runningTasks.length > 0 && visibleDoneTasks.length > 0 && (
                     <div className="chat-workspace-strip__activity-done-label">
                       <span className="chat-workspace-strip__card-title">
                         <span
@@ -655,8 +635,8 @@ export function ChatWorkspaceStrip({
                       </span>
                     </div>
                   )}
-                {displayVisibleDoneTasks.length > 0 && (
-                  <TasksList tasks={displayVisibleDoneTasks} />
+                {visibleDoneTasks.length > 0 && (
+                  <TasksList tasks={visibleDoneTasks} />
                 )}
               </WorkspaceCard>,
             )}
@@ -672,14 +652,14 @@ export function ChatWorkspaceStrip({
                 onToggle={handleTogglePanel}
                 measureRef={(node) => setPanelFrameRef("files", node)}
                 onOpenHistory={
-                  displayHiddenFilesCount > 0
+                  hiddenFilesCount > 0
                     ? () => setHistorySection("files")
                     : undefined
                 }
-                historyLabel={`View all files (${displayAllFiles.length})`}
+                historyLabel={`View all files (${allFiles.length})`}
               >
                 <ul className="chat-workspace-strip__list">
-                  {displayVisibleFiles.map((file) => (
+                  {visibleFiles.map((file) => (
                     <li
                       key={file.path}
                       className="chat-workspace-strip__row"
@@ -719,7 +699,7 @@ export function ChatWorkspaceStrip({
                     ? () => setHistorySection("upNext")
                     : undefined
                 }
-                historyLabel={`View all schedules (${displaySchedules.length})`}
+                historyLabel={`View all schedules (${schedules.length})`}
               >
                 <ul className="chat-workspace-strip__list">
                   {upNext.map((entry) => (

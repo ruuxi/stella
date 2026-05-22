@@ -325,6 +325,14 @@
   color: var(--text-strong);
 }
 
+/* Open panel footer: home suggestion categories moved here so workspace
+   actions live with the strip controls instead of the home canvas. */
+.chat-workspace-strip__open-footer {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
 /* ── Rows ─────────────────────────────────────────────────────────── */
 
 .chat-workspace-strip__list {
