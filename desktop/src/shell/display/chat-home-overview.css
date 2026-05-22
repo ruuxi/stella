@@ -79,7 +79,9 @@
     black calc(100% - var(--chat-home-overview-fade-end)),
     transparent 100%
   );
-  transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
+  transition:
+    mask-image 160ms ease,
+    -webkit-mask-image 160ms ease;
 }
 
 .chat-home-overview__section-body::-webkit-scrollbar {
@@ -231,11 +233,13 @@
 
 /* Running rows: stronger weight + uppercase status. Differentiation
    from Done is type, not decoration. */
-.chat-home-overview__task[data-status="running"] .chat-home-overview__task-text {
+.chat-home-overview__task[data-status="running"]
+  .chat-home-overview__task-text {
   font-weight: 500;
 }
 
-.chat-home-overview__task[data-status="running"] .chat-home-overview__task-status {
+.chat-home-overview__task[data-status="running"]
+  .chat-home-overview__task-status {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -244,17 +248,23 @@
 }
 
 /* Done rows = quiet history: text drops toward weak, looser leading. */
-.chat-home-overview__task:not([data-status="running"]):not([data-status="scheduled"]) {
+.chat-home-overview__task:not([data-status="running"]):not(
+    [data-status="scheduled"]
+  ) {
   padding: 4px 4px;
 }
 
-.chat-home-overview__task:not([data-status="running"]):not([data-status="scheduled"])
+.chat-home-overview__task:not([data-status="running"]):not(
+    [data-status="scheduled"]
+  )
   .chat-home-overview__task-text {
   color: color-mix(in oklch, var(--text-base) 80%, transparent);
   font-weight: 400;
 }
 
-.chat-home-overview__task:not([data-status="running"]):not([data-status="scheduled"])
+.chat-home-overview__task:not([data-status="running"]):not(
+    [data-status="scheduled"]
+  )
   .chat-home-overview__task-status {
   color: var(--text-weak);
 }
@@ -262,12 +272,14 @@
 /* Failed / canceled: tint the row text too so the cue isn't only the
    small right-edge badge. */
 .chat-home-overview__task[data-status="error"] .chat-home-overview__task-text,
-.chat-home-overview__task[data-status="canceled"] .chat-home-overview__task-text {
+.chat-home-overview__task[data-status="canceled"]
+  .chat-home-overview__task-text {
   color: color-mix(in oklch, var(--text-base) 55%, var(--destructive));
 }
 
 .chat-home-overview__task[data-status="error"] .chat-home-overview__task-status,
-.chat-home-overview__task[data-status="canceled"] .chat-home-overview__task-status {
+.chat-home-overview__task[data-status="canceled"]
+  .chat-home-overview__task-status {
   color: var(--destructive);
 }
 
@@ -278,12 +290,14 @@
   padding: 0;
 }
 
-.chat-home-overview__task[data-status="scheduled"] .chat-home-overview__task-text {
+.chat-home-overview__task[data-status="scheduled"]
+  .chat-home-overview__task-text {
   color: var(--text-base);
   font-weight: 500;
 }
 
-.chat-home-overview__task[data-status="scheduled"] .chat-home-overview__task-status {
+.chat-home-overview__task[data-status="scheduled"]
+  .chat-home-overview__task-status {
   color: var(--text-base);
 }
 
@@ -303,7 +317,9 @@
   cursor: default;
   color: inherit;
   font: inherit;
-  transition: background 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .chat-home-overview__schedule-trigger:hover {
@@ -431,5 +447,4 @@
   white-space: nowrap;
 }
 
-/* Ideas moved out of the sidebar entirely — they live as a footer dropup
-   on the home content (HomeContent.tsx + home.css). */
+/* Suggestions live in the workspace strip Open panel, not this Chat tab. */

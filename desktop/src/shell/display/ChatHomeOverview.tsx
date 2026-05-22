@@ -13,10 +13,10 @@
  *   - Recent files: the assistant's recent file changes for this
  *     conversation, capped, with show-more.
  *
- * Ideas are no longer rendered here — they live as a footer dropup on the
- * home content itself (see `desktop/src/app/home/HomeContent.tsx`). On
- * every other route, the Chat tab keeps rendering the live ChatPanelTab
- * (see `default-tabs.tsx`). The route swap happens at the render level,
+ * Suggestions are no longer rendered here or on the home canvas — they
+ * live in the workspace strip's Open panel. On every other route, the Chat
+ * tab keeps rendering the live ChatPanelTab (see `default-tabs.tsx`).
+ * The route swap happens at the render level,
  * not by closing/reopening the tab — selection and panel state never
  * change just because the user navigates.
  */
@@ -67,6 +67,7 @@ const FILES_DEFAULT_VISIBLE = 5;
 const DONE_DEFAULT_VISIBLE = 4;
 const UP_NEXT_DEFAULT_VISIBLE = 5;
 const NEXT_RUN_TICK_MS = 30_000;
+const EMPTY_TASKS: TaskItem[] = [];
 /**
  * Rendered cap on per-task progress phrases. The hook keeps a longer
  * rolling buffer in memory; the visible slice is bounded here so older
@@ -268,7 +269,7 @@ function SeeAllButton({
 export function ChatHomeOverview() {
   const chat = useChatRuntime();
   const { state } = useUiState();
-  const liveTasks = chat.conversation.streaming.liveTasks ?? [];
+  const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
   const activity = chat.conversation.activity;
   const filesFeed = chat.conversation.files;
   const summariesByAgent = chat.conversation.streaming.taskProgressSummaries;
@@ -290,13 +291,15 @@ export function ChatHomeOverview() {
   }, [activity.activities, activity.latestMessageTimestampMs, liveTasks]);
 
   const runningTasks = useMemo(() => {
-    return [...allTasks]
-      .filter((task) => task.status === "running")
-      // Sort by the row's stable start time, NOT lastUpdatedAtMs —
-      // otherwise every per-task progress summary bumps the row's
-      // updated-at, the sort re-runs, and concurrently-running tasks
-      // visibly swap places in the Now group while their feeds tick.
-      .sort((a, b) => b.startedAtMs - a.startedAtMs);
+    return (
+      [...allTasks]
+        .filter((task) => task.status === "running")
+        // Sort by the row's stable start time, NOT lastUpdatedAtMs —
+        // otherwise every per-task progress summary bumps the row's
+        // updated-at, the sort re-runs, and concurrently-running tasks
+        // visibly swap places in the Now group while their feeds tick.
+        .sort((a, b) => b.startedAtMs - a.startedAtMs)
+    );
   }, [allTasks]);
 
   const doneTasks = useMemo(() => {
@@ -324,7 +327,9 @@ export function ChatHomeOverview() {
     useState<ScheduleEntry | null>(null);
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
     if (!openScheduleEntry || !state.conversationId) return [];
-    return [scheduleEntryToAffectedRef(openScheduleEntry, state.conversationId)];
+    return [
+      scheduleEntryToAffectedRef(openScheduleEntry, state.conversationId),
+    ];
   }, [openScheduleEntry, state.conversationId]);
 
   // Inline view derives from the in-memory file-events window only —

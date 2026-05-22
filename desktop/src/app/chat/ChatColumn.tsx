@@ -15,14 +15,7 @@
  * `getState()` snapshot rather than reading `scrollTop` from a manual
  * div.
  */
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { DropOverlay } from "./DropOverlay";
@@ -164,8 +157,7 @@ export const ChatColumn = memo(function ChatColumn({
   );
   const footerTasks = useFooterTasks({
     activities: conversation.activity.activities,
-    latestMessageTimestampMs:
-      conversation.activity.latestMessageTimestampMs,
+    latestMessageTimestampMs: conversation.activity.latestMessageTimestampMs,
     liveTasks: conversation.streaming.liveTasks,
     appSessionStartedAtMs,
   });
@@ -217,17 +209,47 @@ export const ChatColumn = memo(function ChatColumn({
 
   if (shouldShowHomeContent && onSuggestionClick) {
     return (
+      <div className="full-body-row">
+        <div
+          className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
+          {...dropHandlers}
+        >
+          <DropOverlay visible={isDragOver} variant="surface" />
+          <HomeContent onDismissHome={onDismissHome}>
+            <div
+              className={
+                composerEntering
+                  ? "composer-wrap composer-wrap--entering"
+                  : "composer-wrap"
+              }
+            >
+              {composerElement}
+            </div>
+          </HomeContent>
+        </div>
+        <ChatWorkspaceStrip
+          forceHidden={hideRightContextPanel}
+          onSuggestionClick={onSuggestionClick}
+        />
+      </div>
+    );
+  }
+
+  if (shouldShowHomeContent) {
+    return (
       <div
         className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
         {...dropHandlers}
       >
         <DropOverlay visible={isDragOver} variant="surface" />
-        <HomeContent
-          conversationId={conversationId}
-          onDismissHome={onDismissHome}
-          onSuggestionClick={onSuggestionClick}
-        >
-          <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
+        <HomeContent onDismissHome={onDismissHome}>
+          <div
+            className={
+              composerEntering
+                ? "composer-wrap composer-wrap--entering"
+                : "composer-wrap"
+            }
+          >
             {composerElement}
           </div>
         </HomeContent>
@@ -238,66 +260,74 @@ export const ChatColumn = memo(function ChatColumn({
   return (
     <div className="full-body-row">
       <div className="full-body-main" {...dropHandlers}>
-      <DropOverlay visible={isDragOver} variant="surface" />
-      {/* Viewport region: list + overlays (custom scrollbar, scroll-to-bottom). */}
-      <div className="chat-viewport-region">
-        <ConversationEvents
-          messages={conversation.messages}
-          pendingUserMessageId={conversation.streaming.pendingUserMessageId}
-          queuedUserMessages={conversation.streaming.queuedUserMessages}
-          hasOlderMessages={conversation.history.hasOlderMessages}
-          isLoadingOlder={conversation.history.isLoadingOlder}
-          isLoadingHistory={conversation.history.isInitialLoading}
-          listRef={listRef}
-          onListScroll={onListScroll}
-          onStartReached={scroll.onStartReached}
-          className="session-content"
-          contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
-          estimatedItemSize={140}
-        />
-
-        {/* Custom scrollbar thumb overlay */}
-        <div className="chat-scrollbar">
-          <div
-            className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
-            style={{
-              top: `${thumbState.top}px`,
-              height: `${thumbState.height}px`,
-            }}
-            onPointerDown={handleThumbDown}
-            onPointerMove={handleThumbMove}
-            onPointerUp={handleThumbUp}
-            onPointerCancel={handleThumbUp}
+        <DropOverlay visible={isDragOver} variant="surface" />
+        {/* Viewport region: list + overlays (custom scrollbar, scroll-to-bottom). */}
+        <div className="chat-viewport-region">
+          <ConversationEvents
+            messages={conversation.messages}
+            pendingUserMessageId={conversation.streaming.pendingUserMessageId}
+            queuedUserMessages={conversation.streaming.queuedUserMessages}
+            hasOlderMessages={conversation.history.hasOlderMessages}
+            isLoadingOlder={conversation.history.isLoadingOlder}
+            isLoadingHistory={conversation.history.isInitialLoading}
+            listRef={listRef}
+            onListScroll={onListScroll}
+            onStartReached={scroll.onStartReached}
+            className="session-content"
+            contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
+            estimatedItemSize={140}
           />
+
+          {/* Custom scrollbar thumb overlay */}
+          <div className="chat-scrollbar">
+            <div
+              className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
+              style={{
+                top: `${thumbState.top}px`,
+                height: `${thumbState.height}px`,
+              }}
+              onPointerDown={handleThumbDown}
+              onPointerMove={handleThumbMove}
+              onPointerUp={handleThumbUp}
+              onPointerCancel={handleThumbUp}
+            />
+          </div>
+
+          {showScrollButton && !assistantReplyPeek.visible && (
+            <button
+              className="scroll-to-bottom"
+              onClick={() => scrollToBottom("smooth")}
+              aria-label="Scroll to bottom"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {showScrollButton && !assistantReplyPeek.visible && (
-          <button
-            className="scroll-to-bottom"
-            onClick={() => scrollToBottom("smooth")}
-            aria-label="Scroll to bottom"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
-        )}
-
+        {/* Composer: normal flow below the scroll viewport */}
+        <div
+          className={
+            composerEntering
+              ? "composer-wrap composer-wrap--entering"
+              : "composer-wrap"
+          }
+        >
+          {composerElement}
+        </div>
       </div>
-
-      {/* Composer: normal flow below the scroll viewport */}
-      <div className={composerEntering ? "composer-wrap composer-wrap--entering" : "composer-wrap"}>
-        {composerElement}
-      </div>
-      </div>
-      <ChatWorkspaceStrip forceHidden={hideRightContextPanel} />
+      <ChatWorkspaceStrip
+        forceHidden={hideRightContextPanel}
+        onSuggestionClick={onSuggestionClick}
+      />
     </div>
   );
 });
