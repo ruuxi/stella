@@ -103,6 +103,10 @@ export type StreamStoreAction =
       runId: string
     }
   | {
+      type: 'clear-conversation-tasks'
+      conversationId: string
+    }
+  | {
       type: 'hydrate-conversation'
       conversationId: string
       activeRun: ActiveRunSnapshot
@@ -329,6 +333,28 @@ export function streamStoreReducer(
       return {
         ...state,
         tasksByRunId: nextTasksByRunId,
+      }
+    }
+    case 'clear-conversation-tasks': {
+      const nextTasksByRunId = Object.fromEntries(
+        Object.entries(state.tasksByRunId).filter(([runId]) => {
+          const runRecord = state.runsById[runId]
+          return runRecord?.conversationId !== action.conversationId
+        }),
+      )
+      const activeRunId =
+        state.activeRunIdByConversation[action.conversationId] ?? null
+      const nextActiveRunIdByConversation =
+        activeRunId === null
+          ? state.activeRunIdByConversation
+          : {
+              ...state.activeRunIdByConversation,
+              [action.conversationId]: null,
+            }
+      return {
+        ...state,
+        tasksByRunId: nextTasksByRunId,
+        activeRunIdByConversation: nextActiveRunIdByConversation,
       }
     }
     case 'hydrate-conversation': {

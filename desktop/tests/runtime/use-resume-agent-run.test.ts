@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { shouldRetainResumedStreamingState } from "../../src/app/chat/hooks/use-resume-agent-run";
-import { reconcileTerminalTaskKeysFromResumeTasks } from "../../src/app/chat/streaming/store";
+import {
+  initialStoreState,
+  reconcileTerminalTaskKeysFromResumeTasks,
+  streamStoreReducer,
+} from "../../src/app/chat/streaming/store";
 
 describe("shouldRetainResumedStreamingState", () => {
   it("drops stale resumed state when replay is exhausted and the run is gone", () => {
@@ -96,6 +100,74 @@ describe("reconcileTerminalTaskKeysFromResumeTasks", () => {
     expect([...currentKeys].sort()).toEqual([
       "run-1:task-1",
       "run-9:task-9",
+    ]);
+  });
+});
+
+describe("stream resume cleanup", () => {
+  it("clears replay-hydrated hidden run tasks for the active conversation", () => {
+    const withTask = streamStoreReducer(initialStoreState, {
+      type: "task-upsert",
+      runId: "run-1",
+      conversationId: "conv-1",
+      task: {
+        id: "agent-1",
+        description: "Inspect stale footer",
+        agentType: "general",
+        status: "running",
+        startedAtMs: 100,
+        lastUpdatedAtMs: 100,
+      },
+    });
+
+    expect(Object.keys(withTask.tasksByRunId["run-1"] ?? {})).toEqual([
+      "agent-1",
+    ]);
+
+    const cleaned = streamStoreReducer(withTask, {
+      type: "clear-conversation-tasks",
+      conversationId: "conv-1",
+    });
+
+    expect(cleaned.tasksByRunId["run-1"]).toBeUndefined();
+  });
+
+  it("keeps tasks from other conversations when clearing replay state", () => {
+    const withFirstTask = streamStoreReducer(initialStoreState, {
+      type: "task-upsert",
+      runId: "run-1",
+      conversationId: "conv-1",
+      task: {
+        id: "agent-1",
+        description: "Inspect stale footer",
+        agentType: "general",
+        status: "running",
+        startedAtMs: 100,
+        lastUpdatedAtMs: 100,
+      },
+    });
+    const withBothTasks = streamStoreReducer(withFirstTask, {
+      type: "task-upsert",
+      runId: "run-2",
+      conversationId: "conv-2",
+      task: {
+        id: "agent-2",
+        description: "Keep this task",
+        agentType: "general",
+        status: "running",
+        startedAtMs: 200,
+        lastUpdatedAtMs: 200,
+      },
+    });
+
+    const cleaned = streamStoreReducer(withBothTasks, {
+      type: "clear-conversation-tasks",
+      conversationId: "conv-1",
+    });
+
+    expect(cleaned.tasksByRunId["run-1"]).toBeUndefined();
+    expect(Object.keys(cleaned.tasksByRunId["run-2"] ?? {})).toEqual([
+      "agent-2",
     ]);
   });
 });
