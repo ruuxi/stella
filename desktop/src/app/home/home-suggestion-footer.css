@@ -1,8 +1,13 @@
+/* Discover-card body content: a compact suggestion list and the
+   cadence-generated reports row. Shares the row vocabulary with the
+   workspace strip's Activity/Files/Schedule cards — text rows with
+   subtle hover lift, no pills, no decorative shapes. */
+
 .home-suggestion-footer {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0;
+  gap: 14px;
   width: 100%;
   min-width: 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
@@ -10,187 +15,64 @@
   user-select: none;
 }
 
-/* ── Primary "Ideas" disclosure ──────────────────────────────────────
-   One full-width disclosure button. Chevron + count signal what it
-   does; styled distinct enough from the Reports rows below that the
-   two affordance categories never read as the same thing.
-*/
+.home-suggestion-footer__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
 
-.home-suggestion-footer__ideas {
-  appearance: none;
+.home-suggestion-footer__section-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-  border: none;
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  padding: 7px 10px;
-  color: var(--text-base);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: 0;
-  text-align: left;
-  cursor: default;
-  /* Inset ring keeps a stable 1px outline for the "open" state without
-     causing a layout shift (no border-width change between states). */
-  box-shadow: inset 0 0 0 1px transparent;
-  transition:
-    background-color 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
-}
-
-.home-suggestion-footer__ideas:hover,
-.home-suggestion-footer__ideas:focus-visible {
-  outline: none;
-  background: color-mix(in oklch, var(--foreground) 7%, transparent);
-  color: var(--text-strong);
-}
-
-.home-suggestion-footer__ideas--open,
-.home-suggestion-footer__ideas--open:hover,
-.home-suggestion-footer__ideas--open:focus-visible {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
-  color: var(--text-strong);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in oklch, var(--foreground) 14%, transparent);
-}
-
-.home-suggestion-footer__ideas-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.home-suggestion-footer__ideas-count {
-  flex-shrink: 0;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--text-weak);
-  letter-spacing: 0;
-}
-
-.home-suggestion-footer__ideas-chevron {
-  flex-shrink: 0;
-  color: var(--text-weak);
-  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.home-suggestion-footer__ideas--open .home-suggestion-footer__ideas-chevron {
-  transform: rotate(180deg);
-}
-
-/* ── Dropdown (grouped suggestion chips) ──────────────────────────── */
-
-.home-suggestion-footer__dropdown-grow {
-  overflow: hidden;
-  transition: height 280ms cubic-bezier(0.32, 0.72, 0, 1);
-  will-change: height;
-}
-
-.home-suggestion-footer__dropdown-inner {
-  min-height: 0;
-}
-
-.home-suggestion-footer__groups {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px 0 0;
-  min-width: 0;
-  animation: homeSuggestionFooterOptionsIn 200ms
-    cubic-bezier(0.32, 0.72, 0, 1) both;
-}
-
-.home-suggestion-footer__group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-
-.home-suggestion-footer__group-label {
-  margin: 0;
+  gap: 6px;
   padding: 0 2px;
+  min-height: 18px;
+}
+
+.home-suggestion-footer__section-label {
+  flex: 1;
+  margin: 0;
   font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-weak);
 }
 
-.home-suggestion-footer__chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-}
-
-.home-suggestion-footer__chip-item {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  max-width: 100%;
-}
-
-.home-suggestion-footer__chip {
+.home-suggestion-footer__shuffle {
   appearance: none;
-  width: auto;
-  max-width: 100%;
-  min-width: 0;
   border: none;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  padding: 5px 9px;
-  color: var(--text-base);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 400;
-  line-height: 1.35;
-  letter-spacing: 0;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: transparent;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--text-weak);
   cursor: default;
   transition:
+    color 120ms ease,
     background-color 120ms ease,
-    color 120ms ease;
+    transform 140ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.home-suggestion-footer__chip:hover,
-.home-suggestion-footer__chip:focus-visible {
+.home-suggestion-footer__shuffle:hover,
+.home-suggestion-footer__shuffle:focus-visible {
   outline: none;
-  background: color-mix(in oklch, var(--foreground) 7%, transparent);
-  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-base);
 }
 
-/* ── Reports (cadence-generated HTML artifacts) ───────────────────────
-   Visually distinct from the Ideas chip: list rows with a leading
-   freshness marker and a trailing "open elsewhere" glyph. Different
-   shape → different behavior (opens an artifact in the display
-   sidebar, doesn't toggle anything in place).
-*/
-
-.home-suggestion-footer__reports {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 12px 2px 0;
-  min-width: 0;
+.home-suggestion-footer__shuffle:active {
+  transform: rotate(45deg);
+  transition-duration: 80ms;
 }
 
-.home-suggestion-footer__report-list {
+/* ── List + rows (shared by suggestions and reports) ──────────────── */
+
+.home-suggestion-footer__list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -199,11 +81,72 @@
   gap: 1px;
 }
 
-.home-suggestion-footer__report-item {
+.home-suggestion-footer__item {
   min-width: 0;
   margin: 0;
   padding: 0;
 }
+
+/* ── Suggestion row ───────────────────────────────────────────────── */
+
+.home-suggestion-footer__suggestion {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  color: var(--text-base);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: default;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.home-suggestion-footer__suggestion:hover,
+.home-suggestion-footer__suggestion:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+}
+
+.home-suggestion-footer__suggestion-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-suggestion-footer__suggestion-tag {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+  opacity: 0.7;
+  transition: opacity 120ms ease;
+}
+
+.home-suggestion-footer__suggestion:hover .home-suggestion-footer__suggestion-tag,
+.home-suggestion-footer__suggestion:focus-visible
+  .home-suggestion-footer__suggestion-tag {
+  opacity: 1;
+}
+
+/* ── Reports row (artifact opener) ────────────────────────────────── */
 
 .home-suggestion-footer__report {
   appearance: none;
@@ -237,11 +180,11 @@
   color: var(--text-strong);
 }
 
-/* Fresh / unread reports carry full body weight + an accent marker.
-   Read reports go quiet (weak text, hollow marker) so the row
-   itself encodes the unread state — no overloaded status dot. */
+/* Fresh / unread reports carry full body weight. Read reports go quiet
+   so the row itself encodes the unread state — no overloaded dot. */
 .home-suggestion-footer__report--fresh {
   color: var(--text-base);
+  font-weight: 500;
 }
 
 .home-suggestion-footer__report--fresh:hover,
@@ -249,33 +192,8 @@
   color: var(--text-strong);
 }
 
-.home-suggestion-footer__report-marker {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in oklch, var(--foreground) 28%, transparent);
-  background: transparent;
-}
-
-.home-suggestion-footer__report--fresh
-  .home-suggestion-footer__report-marker {
-  border-color: transparent;
-  background: var(
-    --accent,
-    color-mix(in oklch, var(--foreground) 70%, #4a90e2)
-  );
-}
-
 .home-suggestion-footer__report-label {
   flex-shrink: 0;
-  font-weight: 500;
-  color: inherit;
-}
-
-.home-suggestion-footer__report--fresh
-  .home-suggestion-footer__report-label {
-  font-weight: 600;
 }
 
 .home-suggestion-footer__report-meta {
@@ -301,24 +219,4 @@
 .home-suggestion-footer__report:focus-visible
   .home-suggestion-footer__report-icon {
   opacity: 1;
-}
-
-@keyframes homeSuggestionFooterOptionsIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .home-suggestion-footer__dropdown-grow,
-  .home-suggestion-footer__ideas-chevron {
-    transition: none;
-  }
-
-  .home-suggestion-footer__groups {
-    animation: none;
-  }
 }

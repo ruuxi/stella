@@ -1,17 +1,11 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { ChevronDown, SquareArrowOutUpRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Shuffle, SquareArrowOutUpRight } from "lucide-react";
 import { usePersonalizedCategories } from "@/app/home/categories";
-import { useIdeasSeen } from "@/app/home/use-ideas-seen";
 import { displayTabs } from "@/shell/display/tab-store";
 import { payloadToTabSpec } from "@/shell/display/payload-to-tab-spec";
 import "./home-suggestion-footer.css";
+
+const VISIBLE_SUGGESTIONS = 5;
 
 type ReportCadence = "4h" | "daily" | "weekly";
 
@@ -48,6 +42,42 @@ const formatReportTime = (timestamp: number): string => {
   return `${weeks}w ago`;
 };
 
+type FlatSuggestion = {
+  label: string;
+  prompt: string;
+  category: string;
+};
+
+// Interleave by category so any N-slice still spans Stella / Task /
+// Skills / Schedule rather than clumping into one category at the top.
+function interleaveByCategory(
+  categories: ReadonlyArray<{
+    label: string;
+    options: ReadonlyArray<{ label: string; prompt: string }>;
+  }>,
+): FlatSuggestion[] {
+  const cursors = categories.map(() => 0);
+  const result: FlatSuggestion[] = [];
+  let added = true;
+  while (added) {
+    added = false;
+    for (let i = 0; i < categories.length; i++) {
+      const category = categories[i];
+      const idx = cursors[i];
+      if (idx < category.options.length) {
+        result.push({
+          label: category.options[idx].label,
+          prompt: category.options[idx].prompt,
+          category: category.label,
+        });
+        cursors[i] = idx + 1;
+        added = true;
+      }
+    }
+  }
+  return result;
+}
+
 export function HomeSuggestionFooter({
   conversationId,
   onSuggestionClick,
@@ -57,34 +87,31 @@ export function HomeSuggestionFooter({
   onSuggestionClick: (prompt: string) => void;
   className?: string;
 }) {
-  const { categories, ready: categoriesReady } =
-    usePersonalizedCategories(conversationId);
-  const { isUnseen, markSeen } = useIdeasSeen(
-    conversationId,
-    categories,
-    categoriesReady,
-    true,
-  );
-  const [ideasOpen, setIdeasOpen] = useState(false);
+  const { categories } = usePersonalizedCategories(conversationId);
+  const [shuffleSeed, setShuffleSeed] = useState(0);
   const [reports, setReports] = useState<OpenPanelReport[]>([]);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const dropdownInnerRef = useRef<HTMLDivElement | null>(null);
-  const [dropdownHeight, setDropdownHeight] = useState(0);
 
-  // Group chips by their source category so the dropdown reads as
-  // structured sections (Stella / Task / Skills / Schedule) instead of
-  // one flat wall of ~16 pills. Each group renders its own chip row;
-  // empty groups are skipped.
-  const suggestionGroups = useMemo(
-    () =>
-      categories
-        .filter((category) => category.options.length > 0)
-        .map((category) => ({
-          label: category.label,
-          options: category.options,
-        })),
+  const flatSuggestions = useMemo(
+    () => interleaveByCategory(categories),
     [categories],
   );
+
+  const visibleSuggestions = useMemo(() => {
+    if (flatSuggestions.length === 0) return [];
+    const count = Math.min(VISIBLE_SUGGESTIONS, flatSuggestions.length);
+    const offset = shuffleSeed % flatSuggestions.length;
+    const sliced: FlatSuggestion[] = [];
+    for (let i = 0; i < count; i++) {
+      sliced.push(flatSuggestions[(offset + i) % flatSuggestions.length]);
+    }
+    return sliced;
+  }, [flatSuggestions, shuffleSeed]);
+
+  const canShuffle = flatSuggestions.length > VISIBLE_SUGGESTIONS;
+
+  const handleShuffle = useCallback(() => {
+    setShuffleSeed((seed) => seed + VISIBLE_SUGGESTIONS);
+  }, []);
 
   const reportsByCadence = useMemo(() => {
     const map = new Map<ReportCadence, OpenPanelReport>();
@@ -102,15 +129,6 @@ export function HomeSuggestionFooter({
     [reportsByCadence],
   );
 
-  const unseenCategoryCount = useMemo(
-    () =>
-      categories.reduce(
-        (acc, category) => (isUnseen(category.label) ? acc + 1 : acc),
-        0,
-      ),
-    [categories, isUnseen],
-  );
-
   const loadReports = useCallback(async () => {
     try {
       const next = await window.electronAPI?.display?.listOpenPanelReports?.();
@@ -121,48 +139,12 @@ export function HomeSuggestionFooter({
   }, []);
 
   useEffect(() => {
-    if (!ideasOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Node && rootRef.current?.contains(target)) return;
-      setIdeasOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIdeasOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [ideasOpen]);
-
-  useEffect(() => {
     void loadReports();
     const timer = window.setInterval(() => {
       void loadReports();
     }, 60_000);
     return () => window.clearInterval(timer);
   }, [loadReports]);
-
-  const handleToggleIdeas = useCallback(() => {
-    setIdeasOpen((current) => {
-      const next = !current;
-      if (next) {
-        for (const category of categories) markSeen(category.label);
-      }
-      return next;
-    });
-  }, [categories, markSeen]);
-
-  const handleSelectOption = useCallback(
-    (prompt: string) => {
-      onSuggestionClick(prompt);
-      setIdeasOpen(false);
-    },
-    [onSuggestionClick],
-  );
 
   const handleOpenReport = useCallback(
     async (cadence: ReportCadence) => {
@@ -196,121 +178,75 @@ export function HomeSuggestionFooter({
     [reportsByCadence],
   );
 
-  // Drive the dropdown container's pixel height off the inner content so
-  // opening and closing glide between real heights via a single CSS
-  // transition — no snap on mount, no layout shift on category swap.
-  useLayoutEffect(() => {
-    if (!ideasOpen) {
-      setDropdownHeight(0);
-      return;
-    }
-    const node = dropdownInnerRef.current;
-    if (!node) return;
-    const update = () => {
-      if (dropdownInnerRef.current) {
-        setDropdownHeight(dropdownInnerRef.current.scrollHeight);
-      }
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [ideasOpen]);
-
-  if (categories.length === 0) return null;
+  if (visibleSuggestions.length === 0 && visibleReports.length === 0) {
+    return null;
+  }
 
   return (
-    <div
-      className={`home-suggestion-footer${className ? ` ${className}` : ""}`}
-      ref={rootRef}
-    >
-      <button
-        type="button"
-        className={`home-suggestion-footer__ideas${
-          ideasOpen ? " home-suggestion-footer__ideas--open" : ""
-        }`}
-        aria-expanded={ideasOpen}
-        aria-controls="home-suggestion-footer-ideas-panel"
-        onClick={handleToggleIdeas}
-      >
-        <span className="home-suggestion-footer__ideas-label">Ideas</span>
-        {unseenCategoryCount > 0 ? (
-          <span
-            className="home-suggestion-footer__ideas-count"
-            aria-label={`${unseenCategoryCount} new`}
-          >
-            {unseenCategoryCount} new
-          </span>
-        ) : null}
-        <ChevronDown
-          className="home-suggestion-footer__ideas-chevron"
-          size={14}
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-      </button>
-      <div
-        id="home-suggestion-footer-ideas-panel"
-        className="home-suggestion-footer__dropdown-grow"
-        style={{ height: `${dropdownHeight}px` }}
-        aria-hidden={!ideasOpen}
-      >
-        <div
-          ref={dropdownInnerRef}
-          className="home-suggestion-footer__dropdown-inner"
+    <div className={`home-suggestion-footer${className ? ` ${className}` : ""}`}>
+      {visibleSuggestions.length > 0 ? (
+        <section
+          className="home-suggestion-footer__section"
+          aria-label="Suggested ideas"
         >
-          {ideasOpen && (
-            <div
-              className="home-suggestion-footer__groups"
-              role="listbox"
-              aria-label="Suggested ideas"
-            >
-              {suggestionGroups.map((group) => (
-                <section
-                  key={group.label}
-                  className="home-suggestion-footer__group"
-                  aria-label={group.label}
+          <header className="home-suggestion-footer__section-header">
+            <h4 className="home-suggestion-footer__section-label">Try</h4>
+            {canShuffle ? (
+              <button
+                type="button"
+                className="home-suggestion-footer__shuffle"
+                onClick={handleShuffle}
+                aria-label="Shuffle suggestions"
+                title="Shuffle"
+              >
+                <Shuffle size={11} strokeWidth={2} aria-hidden="true" />
+              </button>
+            ) : null}
+          </header>
+          <ul className="home-suggestion-footer__list">
+            {visibleSuggestions.map((suggestion, index) => (
+              <li
+                key={`${suggestion.category}:${suggestion.label}:${index}`}
+                className="home-suggestion-footer__item"
+              >
+                <button
+                  type="button"
+                  className="home-suggestion-footer__suggestion"
+                  onClick={() => onSuggestionClick(suggestion.prompt)}
+                  title={suggestion.prompt}
                 >
-                  <h4 className="home-suggestion-footer__group-label">
-                    {group.label}
-                  </h4>
-                  <ul className="home-suggestion-footer__chips">
-                    {group.options.map((option, index) => (
-                      <li
-                        key={`${option.label}:${index}`}
-                        className="home-suggestion-footer__chip-item"
-                      >
-                        <button
-                          type="button"
-                          className="home-suggestion-footer__chip"
-                          onClick={() => handleSelectOption(option.prompt)}
-                        >
-                          {option.label}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+                  <span className="home-suggestion-footer__suggestion-label">
+                    {suggestion.label}
+                  </span>
+                  <span
+                    className="home-suggestion-footer__suggestion-tag"
+                    aria-hidden="true"
+                  >
+                    {suggestion.category}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {visibleReports.length > 0 ? (
         <section
-          className="home-suggestion-footer__reports"
+          className="home-suggestion-footer__section home-suggestion-footer__section--reports"
           aria-label="Generated reports"
         >
-          <h4 className="home-suggestion-footer__group-label">Reports</h4>
-          <ul className="home-suggestion-footer__report-list">
+          <header className="home-suggestion-footer__section-header">
+            <h4 className="home-suggestion-footer__section-label">Reports</h4>
+          </header>
+          <ul className="home-suggestion-footer__list">
             {visibleReports.map(({ cadence, label, report }) => {
               const fresh =
                 !report.openedAt || report.openedAt < report.generatedAt;
               return (
                 <li
                   key={cadence}
-                  className="home-suggestion-footer__report-item"
+                  className="home-suggestion-footer__item"
                 >
                   <button
                     type="button"
@@ -320,10 +256,6 @@ export function HomeSuggestionFooter({
                     title={`Open ${report.title}`}
                     onClick={() => handleOpenReport(cadence)}
                   >
-                    <span
-                      className="home-suggestion-footer__report-marker"
-                      aria-hidden="true"
-                    />
                     <span className="home-suggestion-footer__report-label">
                       {label}
                     </span>
