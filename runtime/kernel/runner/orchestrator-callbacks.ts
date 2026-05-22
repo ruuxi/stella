@@ -1,3 +1,4 @@
+import type { RuntimeEndEvent } from "../agent-runtime/types.js";
 import type { AgentCallbacks } from "./types.js";
 
 export type AutomationTurnResult =
@@ -34,6 +35,9 @@ export const createAutomationSuccessResult = (
 
 export const createAutomationAgentCallbacks = (
   resolveResult: AutomationTurnResolver,
+  options?: {
+    onEnd?: (event: RuntimeEndEvent) => void;
+  },
 ): AgentCallbacks => ({
   onStream: () => {},
   onToolStart: () => {},
@@ -42,6 +46,7 @@ export const createAutomationAgentCallbacks = (
     resolveResult(createAutomationErrorResult(event.error || "Stella runtime failed"));
   },
   onEnd: (event) => {
+    options?.onEnd?.(event);
     resolveResult(createAutomationSuccessResult(event.finalText));
   },
 });
