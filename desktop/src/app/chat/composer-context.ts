@@ -153,7 +153,16 @@ export const deriveComposerState = ({
 
 export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
   setChatContext((prev) => (
-    prev ? { ...prev, window: null, windowScreenshot: null, windowContextEnabled: undefined } : prev
+    prev
+      ? {
+          ...prev,
+          window: null,
+          browserUrl: null,
+          windowScreenshot: null,
+          capturePending: false,
+          windowContextEnabled: undefined,
+        }
+      : prev
   ));
 };
 

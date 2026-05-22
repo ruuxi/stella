@@ -9,16 +9,27 @@ type UseCapturedChatContextOptions = {
   ) => void
 }
 
-function normalizeChatContext(context: ChatContext | null): ChatContext | null {
+export function normalizeChatContext(
+  context: ChatContext | null,
+): ChatContext | null {
   if (!context) return null
-  const hasWindow = Boolean(context.window)
-  const hasBrowserUrl = Boolean(context.browserUrl)
-  const hasSelectedText = Boolean(context.selectedText)
-  const hasAppSelection = Boolean(context.appSelection?.snapshot)
-  const hasScreenshots = Boolean(context.regionScreenshots?.length)
-  const hasFiles = Boolean(context.files?.length)
-  const hasPendingCapture = Boolean(context.capturePending)
-  const hasWindowScreenshot = Boolean(context.windowScreenshot)
+  const normalized: ChatContext = context.window
+    ? context
+    : {
+        ...context,
+        browserUrl: null,
+        windowScreenshot: null,
+        capturePending: false,
+        windowContextEnabled: undefined,
+      }
+  const hasWindow = Boolean(normalized.window)
+  const hasBrowserUrl = Boolean(normalized.browserUrl)
+  const hasSelectedText = Boolean(normalized.selectedText)
+  const hasAppSelection = Boolean(normalized.appSelection?.snapshot)
+  const hasScreenshots = Boolean(normalized.regionScreenshots?.length)
+  const hasFiles = Boolean(normalized.files?.length)
+  const hasPendingCapture = Boolean(normalized.capturePending)
+  const hasWindowScreenshot = Boolean(normalized.windowScreenshot)
 
   if (
     !hasWindow &&
@@ -33,7 +44,7 @@ function normalizeChatContext(context: ChatContext | null): ChatContext | null {
     return null
   }
 
-  return context
+  return normalized
 }
 
 export function useCapturedChatContext(options?: UseCapturedChatContextOptions) {

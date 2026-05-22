@@ -376,6 +376,7 @@ const captureAppWindowAsync = (
       setChatContext((prev) => {
         if (!prev?.window) return prev;
         if (prev.window.app !== appName) return prev;
+        if (prev.capturePending !== true) return prev;
         if (!capture) {
           return { ...prev, capturePending: false };
         }
