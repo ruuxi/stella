@@ -1,5 +1,5 @@
 import type { CSSProperties, ImgHTMLAttributes } from "react";
-import { memo, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import {
   Streamdown,
   defaultRehypePlugins,
@@ -8,7 +8,7 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { useActiveEmojiPack } from "./emoji-sprites/active-emoji-pack";
 import { remarkEmojiSprites } from "./emoji-sprites/remark-emoji-sprites";
-import { rehypeWordFade } from "./rehype-word-fade";
+import { rehypeWordFade, resetWordFadeCursor } from "./rehype-word-fade";
 import {
   cellToRowCol,
   getEmojiSpriteGridSize,
@@ -48,7 +48,6 @@ const REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS, remarkEmojiSprites];
  * post-sanitize HAST (and inherits the same allow-list).
  */
 const DEFAULT_REHYPE_PLUGINS = Object.values(defaultRehypePlugins);
-const REHYPE_PLUGINS_STREAMING = [...DEFAULT_REHYPE_PLUGINS, rehypeWordFade];
 
 /*
  * Streamdown internally defers streaming block updates with React
@@ -138,8 +137,11 @@ const buildComponents = (hideHorizontalRules: boolean) => ({
   img: MarkdownImage,
 });
 
+let nextAnonCacheKey = 0;
+
 export const Markdown = memo(function Markdown({
   text,
+  cacheKey,
   className,
   isAnimating = false,
   hideHorizontalRules = false,
@@ -156,10 +158,14 @@ export const Markdown = memo(function Markdown({
    *
    * When streaming finishes, Streamdown may still re-parse the final
    * body (overlay -> persisted swap, incomplete-markdown settle, late
-   * layout). That remounts `[data-stella-word-fade]` spans and the CSS
-   * entrance animation would fire again for the whole message.
-   * `revealSettled` latches after the first stream so settled rows
-   * render those spans at full opacity with no animation.
+   * layout). That remounts `[data-stella-word-fade]` spans, but each
+   * span's inline `--stella-word-fade-duration: 0ms` (stamped by the
+   * plugin based on the previous render's prose length) collapses the
+   * keyframe to 0ms — instant fully-opaque, no flash. `revealSettled`
+   * still drops `animation: none` on top of that as a belt-and-
+   * suspenders guard for the persisted-swap (where the persisted body
+   * may have minor whitespace differences from the locked overlay text
+   * and the prevContentLength wouldn't line up exactly).
    */
   const hasRenderedStreamingMarkupRef = useRef(false);
   if (isAnimating) {
@@ -167,6 +173,35 @@ export const Markdown = memo(function Markdown({
   }
   const pluginActive = hasRenderedStreamingMarkupRef.current;
   const revealSettled = pluginActive && !isAnimating;
+  /*
+   * Stable per-instance fallback when the caller didn't supply one,
+   * so the prevContentLength cursor never collides between two
+   * independent Markdown instances that happen to render the same
+   * text. Bumped lazily so server-side / first-render parity stays
+   * intact.
+   */
+  const anonCacheKeyRef = useRef<string | null>(null);
+  if (anonCacheKeyRef.current === null) {
+    anonCacheKeyRef.current = `markdown-anon-${nextAnonCacheKey++}`;
+  }
+  const effectiveCacheKey = cacheKey ?? anonCacheKeyRef.current;
+  /*
+   * Clear the cursor entry when this Markdown unmounts so the module-
+   * scope map doesn't grow unbounded over a long session.
+   */
+  useEffect(() => {
+    return () => resetWordFadeCursor(effectiveCacheKey);
+  }, [effectiveCacheKey]);
+  const rehypePlugins = useMemo(
+    () =>
+      pluginActive
+        ? [
+            ...DEFAULT_REHYPE_PLUGINS,
+            rehypeWordFade({ cacheKey: effectiveCacheKey }),
+          ]
+        : DEFAULT_REHYPE_PLUGINS,
+    [pluginActive, effectiveCacheKey],
+  );
   const components = useMemo(
     () => buildComponents(hideHorizontalRules),
     [hideHorizontalRules],
@@ -196,9 +231,7 @@ export const Markdown = memo(function Markdown({
             ? REMARK_PLUGINS
             : DEFAULT_REMARK_PLUGINS
         }
-        rehypePlugins={
-          pluginActive ? REHYPE_PLUGINS_STREAMING : DEFAULT_REHYPE_PLUGINS
-        }
+        rehypePlugins={rehypePlugins}
         components={components}
         linkSafety={LINK_SAFETY}
       >

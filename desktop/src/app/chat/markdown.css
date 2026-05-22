@@ -317,6 +317,14 @@
  * also lets us drop `display: inline-block`, which avoids the
  * whitespace-stripping and baseline-alignment quirks that flow from
  * giving every word its own inline formatting context.
+ *
+ * `--stella-word-fade-duration` is stamped per-span by the rehype
+ * plugin: groups whose entire source-text range was already rendered
+ * on the previous stream tick get `0ms`, which collapses the keyframe
+ * to instant. That's how a mid-stream markdown re-shape (e.g.
+ * `*foo` → `<em>foo</em>`) can remount the span at a new tree position
+ * without replaying the fade — the previously-rendered text stays
+ * silently visible during the structural shuffle.
  */
 @keyframes stellaWordFadeIn {
   from { opacity: 0; }
@@ -324,7 +332,7 @@
 }
 
 .markdown [data-stella-word-fade] {
-  animation: stellaWordFadeIn 600ms ease-out both;
+  animation: stellaWordFadeIn var(--stella-word-fade-duration, 600ms) ease-out both;
 }
 
 /*
