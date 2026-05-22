@@ -332,7 +332,20 @@
 }
 
 .markdown [data-stella-word-fade] {
-  animation: stellaWordFadeIn var(--stella-word-fade-duration, 600ms) ease-out both;
+  /*
+   * Split into longhand properties rather than the `animation`
+   * shorthand: Chromium's shorthand parser has historically had
+   * cases where a `var()` reference inside the shorthand fails to
+   * apply silently (invalid-at-parse semantics). Longhands evaluate
+   * each property independently, so `animation-duration: var(--…,
+   * 600ms)` reliably resolves to 600ms on case-1/case-3 spans (no
+   * inline style) and 0ms on case-2 reshape remounts (`style="--…
+   * :0ms"`).
+   */
+  animation-name: stellaWordFadeIn;
+  animation-duration: var(--stella-word-fade-duration, 600ms);
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
 }
 
 /*
