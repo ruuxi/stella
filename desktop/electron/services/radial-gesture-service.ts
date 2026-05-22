@@ -184,8 +184,6 @@ export class RadialGestureService {
       }
       case "capture": {
         this.clearScheduledRadialCapture();
-        capture.setRadialContextShouldCommit(true);
-        capture.commitStagedRadialContext(this.contextBeforeGesture);
         capture.cancelRadialContextCapture();
         updateUiState({ mode: "chat" });
         overlay.hideRadial();
