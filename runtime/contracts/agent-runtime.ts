@@ -10,6 +10,7 @@ export const AGENT_IDS = {
   DREAM: "dream",
   CHRONICLE: "chronicle",
   HOME_SUGGESTIONS: "home_suggestions",
+  OPEN_PANEL_REPORTS: "open_panel_reports",
   INSTALL_UPDATE: "install_update",
 } as const;
 
@@ -194,6 +195,24 @@ const BUILTIN_AGENT_DEFINITIONS = [
     modelSettings: {
       description: "Responds when Stella is offline",
       order: 9,
+    },
+  },
+  {
+    id: AGENT_IDS.OPEN_PANEL_REPORTS,
+    name: "Open Panel Reports",
+    description:
+      "Generates background HTML briefs for the Open panel cadence pills.",
+    activityLabel: "Briefing",
+    bundledCore: true,
+    runsAsSubagent: false,
+    includeInAgentRoster: false,
+    usesLocalCliRuntime: false,
+    promptRole: "subagent",
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: null,
+    modelSettings: {
+      description: "Generates Open panel cadence reports",
+      order: 11,
     },
   },
   {

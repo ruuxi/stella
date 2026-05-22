@@ -39,6 +39,16 @@ export type BrowserCollectionOptions = {
   selectedProfile?: string | null;
 };
 
+export type BrowserActivityWindowRequest = {
+  id: string;
+  label: string;
+  sinceMs: number;
+};
+
+export type BrowserActivityWindow = BrowserActivityWindowRequest & {
+  data: BrowserData;
+};
+
 type SqliteDatabase = {
   prepare(sql: string): { all(...params: unknown[]): unknown[] };
   close(): void;
@@ -1072,19 +1082,20 @@ LIMIT 30
 
 type DomainRow = { domain: string; visits: number };
 
-/**
- * Query most visited domains in the last 7 days.
- */
-const queryRecentDomains = (db: SqliteDatabase): DomainVisit[] => {
-  const sevenDaysAgo = toChromeTime(
-    new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-  );
-
+const queryRecentDomains = (
+  db: SqliteDatabase,
+  sinceMs = Date.now() - 7 * 24 * 60 * 60 * 1000,
+  options: { allowFallback?: boolean } = {},
+): DomainVisit[] => {
   try {
-    const rows = db.prepare(RECENT_DOMAINS_QUERY).all(sevenDaysAgo) as DomainRow[];
+    const rows = db.prepare(RECENT_DOMAINS_QUERY).all(toChromeTime(new Date(sinceMs))) as DomainRow[];
     return filterAndAggregateDomains(rows);
   } catch (error) {
     log("Recent domains query failed, trying fallback:", error);
+  }
+
+  if (options.allowFallback === false) {
+    return [];
   }
 
   // Fallback: Query all-time data from urls table only when recent query fails.
@@ -1227,6 +1238,27 @@ const emptyBrowserData = (browser: BrowserType | null = null): BrowserData => ({
   clusterKeywords: [],
 });
 
+const buildBrowserDataWindow = (
+  db: SqliteDatabase,
+  browserType: BrowserType,
+  sinceMs: number,
+): BrowserData => {
+  const recentDomains = queryRecentDomains(db, sinceMs, { allowFallback: false });
+  const clusterKeywords = queryClusterKeywords(db, toChromeTime(new Date(sinceMs)));
+  const domainDetails = queryDomainDetails(
+    db,
+    getTopDomainsForDetails(recentDomains, 15),
+  );
+  return {
+    browser: browserType,
+    clusterDomains: [],
+    recentDomains,
+    allTimeDomains: [],
+    domainDetails,
+    clusterKeywords,
+  };
+};
+
 /**
  * Collect browser data from the user's default browser
  */
@@ -1290,6 +1322,46 @@ export const collectBrowserData = async (
   } catch (error) {
     log("Error collecting browser data:", error);
     return emptyBrowserData(browser.type);
+  } finally {
+    db?.close?.();
+    if (tempDbPath) {
+      for (const suffix of ["", "-wal", "-shm"]) {
+        fs.unlink(tempDbPath + suffix).catch(() => {});
+      }
+      log("Cleaned up temp database");
+    }
+  }
+};
+
+export const collectBrowserActivityWindows = async (
+  StellaHome: string,
+  windows: BrowserActivityWindowRequest[],
+  options: BrowserCollectionOptions = {},
+): Promise<BrowserActivityWindow[]> => {
+  const browser = await findBrowserWithOptions(options);
+  if (!browser) {
+    return windows.map((window) => ({
+      ...window,
+      data: emptyBrowserData(options.selectedBrowser ?? null),
+    }));
+  }
+
+  let tempDbPath: string | null = null;
+  let db: SqliteDatabase | null = null;
+
+  try {
+    tempDbPath = await copyHistoryDatabase(browser.historyPath, StellaHome);
+    db = await openDatabase(tempDbPath);
+    return windows.map((window) => ({
+      ...window,
+      data: buildBrowserDataWindow(db!, browser.type, window.sinceMs),
+    }));
+  } catch (error) {
+    log("Error collecting browser activity windows:", error);
+    return windows.map((window) => ({
+      ...window,
+      data: emptyBrowserData(browser.type),
+    }));
   } finally {
     db?.close?.();
     if (tempDbPath) {

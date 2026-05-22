@@ -2,9 +2,6 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  /* No `gap`: the dropup carries its own bottom padding when expanded
-     so the closed state collapses to just the pill row with zero dead
-     space between it and the dropup wrapper. */
   gap: 0;
   width: 100%;
   min-width: 0;
@@ -13,73 +10,84 @@
   user-select: none;
 }
 
-.home-suggestion-footer__pills {
+/* ── Primary "Ideas" disclosure ──────────────────────────────────────
+   One full-width disclosure button. Chevron + count signal what it
+   does; styled distinct enough from the Reports rows below that the
+   two affordance categories never read as the same thing.
+*/
+
+.home-suggestion-footer__ideas {
+  appearance: none;
   display: flex;
   align-items: center;
-  /* Equal gaps between pills and equal inset from the card edges —
-     a fixed-column grid centers each label in its own column, which
-     leaves uneven outer margins when label widths differ. */
-  justify-content: space-evenly;
+  gap: 8px;
   width: 100%;
   min-width: 0;
-}
-
-.home-suggestion-footer__pill {
-  appearance: none;
-  flex: 0 1 auto;
-  min-width: 0;
   border: none;
-  border-radius: 7px;
-  background: transparent;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  padding: 7px 10px;
   color: var(--text-base);
-  padding: 6px 8px;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0;
-  text-align: center;
+  text-align: left;
   cursor: default;
+  /* Inset ring keeps a stable 1px outline for the "open" state without
+     causing a layout shift (no border-width change between states). */
+  box-shadow: inset 0 0 0 1px transparent;
   transition:
     background-color 140ms ease,
-    color 140ms ease;
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
-.home-suggestion-footer__pill:hover,
-.home-suggestion-footer__pill:focus-visible,
-.home-suggestion-footer__pill--open {
+.home-suggestion-footer__ideas:hover,
+.home-suggestion-footer__ideas:focus-visible {
   outline: none;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
   color: var(--text-strong);
 }
 
-.home-suggestion-footer__pill-label {
-  position: relative;
-  display: inline-block;
-  max-width: 100%;
+.home-suggestion-footer__ideas--open,
+.home-suggestion-footer__ideas--open:hover,
+.home-suggestion-footer__ideas--open:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  color: var(--text-strong);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+.home-suggestion-footer__ideas-label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.home-suggestion-footer__pill-dot {
-  position: absolute;
-  top: 0;
-  right: -6px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(
-    --accent,
-    color-mix(in oklch, var(--foreground) 70%, #4a90e2)
-  );
-  pointer-events: none;
+.home-suggestion-footer__ideas-count {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-weak);
+  letter-spacing: 0;
 }
 
-/* Pixel-height-driven wrapper. Width grows naturally from inner ul's
-   intrinsic size; height is set inline based on a ResizeObserver
-   measurement so open / close / category-swap all transition between
-   real heights instead of snapping. */
+.home-suggestion-footer__ideas-chevron {
+  flex-shrink: 0;
+  color: var(--text-weak);
+  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.home-suggestion-footer__ideas--open .home-suggestion-footer__ideas-chevron {
+  transform: rotate(180deg);
+}
+
+/* ── Dropdown (grouped suggestion chips) ──────────────────────────── */
+
 .home-suggestion-footer__dropdown-grow {
   overflow: hidden;
   transition: height 280ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -90,42 +98,67 @@
   min-height: 0;
 }
 
-.home-suggestion-footer__dropdown {
+.home-suggestion-footer__groups {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  list-style: none;
-  margin: 0;
-  /* Padding-top gives breathing room between the pill row above and the
-     options below; collapses to nothing when the dropdown is closed. */
+  gap: 10px;
   padding: 10px 0 0;
   min-width: 0;
   animation: homeSuggestionFooterOptionsIn 200ms
     cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
-.home-suggestion-footer__item {
+.home-suggestion-footer__group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.home-suggestion-footer__group-label {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+}
+
+.home-suggestion-footer__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.home-suggestion-footer__chip-item {
   min-width: 0;
   margin: 0;
   padding: 0;
+  max-width: 100%;
 }
 
-.home-suggestion-footer__option {
+.home-suggestion-footer__chip {
   appearance: none;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   min-width: 0;
   border: none;
-  border-radius: 6px;
-  background: transparent;
-  padding: 5px 6px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  padding: 5px 9px;
   color: var(--text-base);
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 400;
   line-height: 1.35;
   letter-spacing: 0;
-  text-align: left;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -135,11 +168,139 @@
     color 120ms ease;
 }
 
-.home-suggestion-footer__option:hover,
-.home-suggestion-footer__option:focus-visible {
+.home-suggestion-footer__chip:hover,
+.home-suggestion-footer__chip:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-strong);
+}
+
+/* ── Reports (cadence-generated HTML artifacts) ───────────────────────
+   Visually distinct from the Ideas chip: list rows with a leading
+   freshness marker and a trailing "open elsewhere" glyph. Different
+   shape → different behavior (opens an artifact in the display
+   sidebar, doesn't toggle anything in place).
+*/
+
+.home-suggestion-footer__reports {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 2px 0;
+  min-width: 0;
+}
+
+.home-suggestion-footer__report-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.home-suggestion-footer__report-item {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.home-suggestion-footer__report {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  color: var(--text-weak);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: default;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.home-suggestion-footer__report:hover,
+.home-suggestion-footer__report:focus-visible {
   outline: none;
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   color: var(--text-strong);
+}
+
+/* Fresh / unread reports carry full body weight + an accent marker.
+   Read reports go quiet (weak text, hollow marker) so the row
+   itself encodes the unread state — no overloaded status dot. */
+.home-suggestion-footer__report--fresh {
+  color: var(--text-base);
+}
+
+.home-suggestion-footer__report--fresh:hover,
+.home-suggestion-footer__report--fresh:focus-visible {
+  color: var(--text-strong);
+}
+
+.home-suggestion-footer__report-marker {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklch, var(--foreground) 28%, transparent);
+  background: transparent;
+}
+
+.home-suggestion-footer__report--fresh
+  .home-suggestion-footer__report-marker {
+  border-color: transparent;
+  background: var(
+    --accent,
+    color-mix(in oklch, var(--foreground) 70%, #4a90e2)
+  );
+}
+
+.home-suggestion-footer__report-label {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: inherit;
+}
+
+.home-suggestion-footer__report--fresh
+  .home-suggestion-footer__report-label {
+  font-weight: 600;
+}
+
+.home-suggestion-footer__report-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-weak);
+  letter-spacing: 0;
+}
+
+.home-suggestion-footer__report-icon {
+  flex-shrink: 0;
+  color: var(--text-weak);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.home-suggestion-footer__report:hover .home-suggestion-footer__report-icon,
+.home-suggestion-footer__report:focus-visible
+  .home-suggestion-footer__report-icon {
+  opacity: 1;
 }
 
 @keyframes homeSuggestionFooterOptionsIn {
@@ -152,11 +313,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-suggestion-footer__dropdown-grow {
+  .home-suggestion-footer__dropdown-grow,
+  .home-suggestion-footer__ideas-chevron {
     transition: none;
   }
 
-  .home-suggestion-footer__dropdown {
+  .home-suggestion-footer__groups {
     animation: none;
   }
 }

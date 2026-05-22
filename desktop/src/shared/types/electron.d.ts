@@ -1369,6 +1369,28 @@ export type ElectronDisplayApi = {
       createdAt: number;
     }>
   >;
+  listOpenPanelReports: () => Promise<
+    Array<{
+      cadence: "4h" | "daily" | "weekly";
+      label: string;
+      title: string;
+      filePath: string;
+      generatedAt: number;
+      windowStartAt: number;
+      openedAt?: number;
+    }>
+  >;
+  markOpenPanelReportOpened: (payload: {
+    cadence: "4h" | "daily" | "weekly";
+  }) => Promise<{
+    cadence: "4h" | "daily" | "weekly";
+    label: string;
+    title: string;
+    filePath: string;
+    generatedAt: number;
+    windowStartAt: number;
+    openedAt?: number;
+  } | null>;
   listTrash: () => Promise<{
     items: Array<{
       id: string;

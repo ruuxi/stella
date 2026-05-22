@@ -21,6 +21,10 @@ export type LocalChatEventRecord = {
   channelEnvelope?: Record<string, unknown>;
 };
 
+export type LocalChatRecentActivityRecord = LocalChatEventRecord & {
+  conversationId: string;
+};
+
 /**
  * Read shape backing `SessionStore.listMessages` — the same fields as
  * `LocalChatEventRecord` plus the turn-scoped `toolEvents` projection.
