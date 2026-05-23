@@ -275,7 +275,13 @@ export function ChatPanelTab(
       setChatContext(null);
       setSelectedText(null);
       setSidebarExpanded(false);
-      if (shouldNudgeAfterSend) {
+      if (isStreaming) {
+        // Queued follow-up — no new user row lands in the event
+        // list, just a chip in the trailing region. Nudging would
+        // fall through to the prior turn's user bubble and scroll
+        // backwards; the streaming-row auto-follow already owns the
+        // viewport here.
+      } else if (shouldNudgeAfterSend) {
         // Routes the small post-send bump through the same lerp loop
         // as streaming auto-follow so the two motions blend rather
         // than fight via separate concurrent rAF tweens.
@@ -286,6 +292,7 @@ export function ChatPanelTab(
     }, [
       inputText,
       chatContext,
+      isStreaming,
       onSend,
       selectedText,
       setChatContext,

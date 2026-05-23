@@ -470,11 +470,23 @@ export function useChatScrollManagement({
           nudgeBy(POST_SEND_USER_MESSAGE_BREATHING_PX)
           return
         }
-        const containerRect = attached.getBoundingClientRect()
-        const rowRect = userRow.getBoundingClientRect()
-        const rowTop = rowRect.top - containerRect.top + attached.scrollTop
-        const rowBottom =
-          rowRect.bottom - containerRect.top + attached.scrollTop
+        // Use offsetTop/offsetHeight (layout geometry) rather than
+        // getBoundingClientRect (post-transform). The just-sent bubble
+        // is mid-`user-message-enter` animation here (translateY 10→0,
+        // scale 0.97→1, 360ms), so its rendered rect sits a few px
+        // below its final layout position. Measuring the rect would
+        // bake that transient offset into a static lerp target — the
+        // bubble would end ~5–7px higher in the viewport than intended
+        // and the residual transform would visibly settle after the
+        // scroll lerp finished, reading as a tiny jagged "double
+        // motion" right after send.
+        let rowTop = 0
+        let node: HTMLElement | null = userRow
+        while (node && node !== attached) {
+          rowTop += node.offsetTop
+          node = node.offsetParent as HTMLElement | null
+        }
+        const rowBottom = rowTop + userRow.offsetHeight
         const readingSpaceBelow =
           trailingRegionMinPx + POST_SEND_USER_MESSAGE_BREATHING_PX
         const availableForRow = Math.max(
