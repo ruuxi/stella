@@ -93,6 +93,7 @@ import {
   IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
+  IPC_UPDATES_REFRESH_NATIVE_HELPERS,
   IPC_VOICE_CREATE_OPENAI_SESSION,
   IPC_VOICE_CREATE_XAI_SESSION,
   IPC_VOICE_CREATE_INWORLD_SESSION,
@@ -1218,6 +1219,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
         desktopReleaseCommit: string | null;
         desktopInstallBaseCommit: string | null;
       } | null>,
+    refreshNativeHelpers: (releaseTag: string) =>
+      ipcRenderer.invoke(IPC_UPDATES_REFRESH_NATIVE_HELPERS, {
+        releaseTag,
+      }) as Promise<{
+        ok: boolean;
+        manifestUrl: string;
+        stdout: string;
+        stderr: string;
+      }>,
     recordAppliedCommit: (commit: string, tag?: string) =>
       ipcRenderer.invoke(IPC_UPDATES_RECORD_APPLIED_COMMIT, {
         commit,

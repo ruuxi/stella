@@ -23,9 +23,12 @@ import path from "node:path";
 import {
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
+  IPC_UPDATES_REFRESH_NATIVE_HELPERS,
 } from "../../src/shared/contracts/ipc-channels.js";
 
 const INSTALL_MANIFEST_BASENAME = "stella-install.json";
+const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
+  "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers";
 
 export type InstallManifestSnapshot = {
   version: string;
@@ -60,6 +63,7 @@ const requireString = (value: unknown, field: string): string => {
 };
 
 type GitRunResult = { exitCode: number; stdout: string; stderr: string };
+type ProcessRunResult = { exitCode: number; stdout: string; stderr: string };
 
 const runGit = (cwd: string, args: string[]): Promise<GitRunResult> =>
   new Promise((resolve, reject) => {
@@ -80,6 +84,121 @@ const runGit = (cwd: string, args: string[]): Promise<GitRunResult> =>
       resolve({ exitCode: code ?? -1, stdout, stderr });
     });
   });
+
+const runProcess = (
+  cwd: string,
+  command: string,
+  args: string[],
+): Promise<ProcessRunResult> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf-8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf-8");
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({ exitCode: code ?? -1, stdout, stderr });
+    });
+  });
+
+const candidateBunCommands = (): string[] => {
+  const seen = new Set<string>();
+  const add = (candidate: string | null | undefined) => {
+    const value = candidate?.trim();
+    if (value) seen.add(value);
+  };
+  add(process.env.STELLA_BUN_PATH);
+  add(process.env.BUN_PATH);
+  add("bun");
+  const homeDir = process.env.HOME || process.env.USERPROFILE;
+  if (homeDir) {
+    add(
+      path.join(
+        homeDir,
+        ".bun",
+        "bin",
+        process.platform === "win32" ? "bun.exe" : "bun",
+      ),
+    );
+  }
+  return [...seen];
+};
+
+const getNativeHelpersBaseUrl = (): string =>
+  (
+    process.env.STELLA_NATIVE_HELPERS_BASE_URL ??
+    DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL
+  ).replace(/\/+$/, "");
+
+const manifestUrlForReleaseTag = (releaseTag: string): string => {
+  const tag = releaseTag.trim();
+  if (!/^desktop-v[0-9A-Za-z._-]+$/.test(tag)) {
+    throw new Error(`Invalid desktop release tag: ${releaseTag}`);
+  }
+  return `${getNativeHelpersBaseUrl()}/${tag}/manifest.json`;
+};
+
+const refreshNativeHelpers = async (
+  stellaRoot: string,
+  releaseTag: string,
+): Promise<{ manifestUrl: string; stdout: string; stderr: string }> => {
+  const manifestUrl = manifestUrlForReleaseTag(releaseTag);
+  const scriptPath = path.join(
+    stellaRoot,
+    "desktop",
+    "scripts",
+    "download-native-helpers.mjs",
+  );
+  try {
+    await fs.access(scriptPath);
+  } catch {
+    throw new Error(
+      "Native helper download script is missing from this install.",
+    );
+  }
+
+  let lastMissingBunError: Error | null = null;
+  for (const bunCommand of candidateBunCommands()) {
+    let result: ProcessRunResult;
+    try {
+      result = await runProcess(stellaRoot, bunCommand, [
+        scriptPath,
+        "--manifest-url",
+        manifestUrl,
+        "--force",
+      ]);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        lastMissingBunError = error as Error;
+        continue;
+      }
+      throw error;
+    }
+    if (result.exitCode !== 0) {
+      const detail = (result.stderr || result.stdout).trim();
+      throw new Error(
+        detail
+          ? `Native helper refresh failed: ${detail}`
+          : `Native helper refresh failed with exit code ${result.exitCode}.`,
+      );
+    }
+    return { manifestUrl, stdout: result.stdout, stderr: result.stderr };
+  }
+  throw new Error(
+    lastMissingBunError
+      ? "Native helper refresh failed because Bun is not available."
+      : "Native helper refresh failed because no Bun command was configured.",
+  );
+};
 
 const readGitFile = async (
   cwd: string,
@@ -192,7 +311,10 @@ const readReleaseManifest = async (
   stellaRoot: string,
 ): Promise<{ tag: string | null; commit: string | null }> => {
   try {
-    const raw = await fs.readFile(path.join(stellaRoot, "stella-release.json"), "utf-8");
+    const raw = await fs.readFile(
+      path.join(stellaRoot, "stella-release.json"),
+      "utf-8",
+    );
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
       tag: asString(parsed.tag),
@@ -206,7 +328,10 @@ const readReleaseManifest = async (
 const recoverManifest = async (
   stellaRoot: string,
 ): Promise<InstallManifestSnapshot | null> => {
-  const tracked = await readGitFile(stellaRoot, `HEAD:${INSTALL_MANIFEST_BASENAME}`);
+  const tracked = await readGitFile(
+    stellaRoot,
+    `HEAD:${INSTALL_MANIFEST_BASENAME}`,
+  );
   if (tracked) {
     const parsed = tryParseManifest(tracked, "git HEAD");
     if (parsed) return parsed;
@@ -271,11 +396,47 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (
         !options.assertPrivilegedSender(event, IPC_UPDATES_GET_INSTALL_MANIFEST)
       ) {
-        throw new Error("Blocked untrusted updates:getInstallManifest request.");
+        throw new Error(
+          "Blocked untrusted updates:getInstallManifest request.",
+        );
       }
       const stellaRoot = options.getStellaRoot();
       if (!stellaRoot) return null;
       return await readManifestWithRecovery(stellaRoot);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_UPDATES_REFRESH_NATIVE_HELPERS,
+    async (
+      event,
+      payload: { releaseTag?: string },
+    ): Promise<{
+      ok: boolean;
+      manifestUrl: string;
+      stdout: string;
+      stderr: string;
+    }> => {
+      if (
+        !options.assertPrivilegedSender(
+          event,
+          IPC_UPDATES_REFRESH_NATIVE_HELPERS,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted updates:refreshNativeHelpers request.",
+        );
+      }
+      const releaseTag = asString(payload?.releaseTag);
+      if (!releaseTag) {
+        throw new Error("releaseTag is required.");
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Stella install directory is unavailable.");
+      }
+      const result = await refreshNativeHelpers(stellaRoot, releaseTag);
+      return { ok: true, ...result };
     },
   );
 
@@ -286,7 +447,10 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       payload: { commit?: string; tag?: string },
     ): Promise<InstallManifestSnapshot | null> => {
       if (
-        !options.assertPrivilegedSender(event, IPC_UPDATES_RECORD_APPLIED_COMMIT)
+        !options.assertPrivilegedSender(
+          event,
+          IPC_UPDATES_RECORD_APPLIED_COMMIT,
+        )
       ) {
         throw new Error(
           "Blocked untrusted updates:recordAppliedCommit request.",

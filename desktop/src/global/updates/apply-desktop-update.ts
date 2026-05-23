@@ -82,6 +82,7 @@ export const applyDesktopUpdate = async (
   }
   if (
     !electronApi.agent.onStream ||
+    !electronApi.updates?.refreshNativeHelpers ||
     !electronApi.updates?.recordAppliedCommit
   ) {
     throw new Error("Stella update tracking is not available.");
@@ -165,6 +166,7 @@ export const applyDesktopUpdate = async (
       let effectiveEvent: AgentStreamIpcEvent = event;
       try {
         if (event.outcome === "completed") {
+          await electronApi.updates.refreshNativeHelpers(options.publishedTag);
           const manifest = await electronApi.updates.recordAppliedCommit(
             options.publishedCommit,
             options.publishedTag,
