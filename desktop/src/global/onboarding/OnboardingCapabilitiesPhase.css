@@ -41,7 +41,8 @@
   flex-direction: column;
   width: min(
     var(--cap-frame-max-width),
-    calc(100vw - var(--cap-frame-viewport-gutter))
+    calc(100vw - var(--cap-frame-viewport-gutter)),
+    calc((100vh - 380px) * 16 / 8)
   );
   max-width: var(--cap-frame-max-width);
   border-radius: var(--cap-frame-radius);

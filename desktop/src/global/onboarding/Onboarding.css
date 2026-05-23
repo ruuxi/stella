@@ -508,7 +508,7 @@
   align-items: center;
   justify-content: flex-start;
   max-width: none;
-  min-height: min(600px, calc(100vh - 96px));
+  min-height: 0;
   width: 100%;
   gap: 14px;
 }
@@ -548,7 +548,7 @@
   align-items: center;
   justify-content: space-between;
   max-width: none;
-  min-height: min(1040px, calc(100vh - 48px));
+  min-height: 0;
 }
 
 .onboarding-dialogue[data-phase="creation"] .onboarding-split-title {
@@ -1446,8 +1446,8 @@
 
 .onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
   width: min(1280px, calc(100vw - 80px));
-  height: clamp(860px, 94vh, 1080px);
-  min-height: clamp(860px, 94vh, 1080px);
+  height: clamp(560px, calc(100vh - 220px), 860px);
+  min-height: 0;
   overflow: visible;
   flex: 0 1 auto;
   pointer-events: auto;
@@ -3004,13 +3004,11 @@
     gap: clamp(8px, 1.2vw, 18px);
   }
 
-  /* Creation — the embedded canvas was floored at 860px and would
-   * exceed any window shorter than ~960px. Lower the floor so the
-   * Continue option below stays reachable; the canvas mock degrades
-   * gracefully because its inner layout is responsive. */
+  /* Creation — keep reserving space for the title, button, gaps, and
+   * split-pane padding instead of sizing the mock directly from `vh`. */
   .onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
-    height: clamp(420px, 88vh, 1080px);
-    min-height: clamp(420px, 88vh, 1080px);
+    height: clamp(420px, calc(100vh - 180px), 760px);
+    min-height: 0;
   }
 
   .onboarding-dialogue[data-phase="creation"] .onboarding-split-stage {
@@ -3122,8 +3120,8 @@
 
   /* Creation — tighter floor still. */
   .onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
-    height: clamp(360px, 84vh, 1080px);
-    min-height: clamp(360px, 84vh, 1080px);
+    height: clamp(320px, calc(100vh - 160px), 560px);
+    min-height: 0;
   }
 
   .onboarding-step-content--creation {
