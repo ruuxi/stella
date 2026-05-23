@@ -35,6 +35,15 @@ export const registerLocalChatHandlers = (
     },
   );
 
+  ipcMain.handle("localChat:createNewDefaultConversationId", async (event) => {
+    return await withLocalChatClient(
+      options,
+      event,
+      "localChat:createNewDefaultConversationId",
+      (client) => client.createNewDefaultConversationId(),
+    );
+  });
+
   ipcMain.handle(
     "localChat:listEvents",
     async (

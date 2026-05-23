@@ -1158,6 +1158,16 @@ export class SessionStore {
     return created;
   }
 
+  createNewDefaultConversationId(): string {
+    const created = generateLocalId();
+    const createdAt = Date.now();
+    this.withTransaction(() => {
+      this.upsertSession(created, createdAt);
+      this.setSetting(DEFAULT_CONVERSATION_SETTING_KEY, created);
+    });
+    return created;
+  }
+
   listEvents(
     conversationIdInput: string,
     maxItems = 200,

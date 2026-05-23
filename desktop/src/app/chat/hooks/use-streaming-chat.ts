@@ -136,6 +136,12 @@ export function useStreamingChat({
   })
 
   useEffect(() => {
+    setOptimisticEvents([])
+    setQueuedUserMessages([])
+    setPendingUserMessageId(null)
+  }, [activeConversationId, setPendingUserMessageId])
+
+  useEffect(() => {
     if (!pendingUserMessageId) return
 
     // Once the runtime is no longer streaming AND we've seen a

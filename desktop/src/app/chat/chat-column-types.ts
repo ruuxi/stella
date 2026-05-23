@@ -82,6 +82,7 @@ export type ChatColumnComposer = {
   focusRequestId?: number
   onSend: () => void
   onStop: () => void
+  onNewChat: () => void | Promise<void>
 }
 
 /**

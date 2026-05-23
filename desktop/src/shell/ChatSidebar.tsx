@@ -99,6 +99,7 @@ interface ChatPanelTabProps {
     selectedText?: string | null,
   ) => void;
   onStop?: () => void;
+  onNewChat: () => void | Promise<void>;
   /** When the display sidebar is expanded to full width. */
   wideLayout?: boolean;
 }
@@ -121,6 +122,7 @@ export function ChatPanelTab(
       onLoadOlder,
       onSend,
       onStop,
+      onNewChat,
     }: ChatPanelTabProps,
   ) {
     const [inputText, setInputText] = useState("");
@@ -409,7 +411,7 @@ export function ChatPanelTab(
                       title="Add"
                       setChatContext={setChatContext}
                       onSelectArea={() => setAreaSelectActive(true)}
-                      disabled={isStreaming}
+                      onNewChat={onNewChat}
                     />
 
                     {dictationInline ? (
@@ -454,7 +456,7 @@ export function ChatPanelTab(
                               title="Add"
                               setChatContext={setChatContext}
                               onSelectArea={() => setAreaSelectActive(true)}
-                              disabled={isStreaming}
+                              onNewChat={onNewChat}
                             />
                           </div>
 

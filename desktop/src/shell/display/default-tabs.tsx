@@ -67,6 +67,7 @@ function ChatDisplayTab({
       onLoadOlder={chat.conversation.loadOlderMessages}
       onSend={chat.conversation.sendMessageWithContext}
       onStop={chat.conversation.cancelCurrentStream}
+      onNewChat={chat.conversation.startNewChat}
     />
   );
 }
