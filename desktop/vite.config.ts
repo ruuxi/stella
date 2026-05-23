@@ -1256,9 +1256,19 @@ export default defineConfig({
     pdfWorkerAsset(),
   ],
   base: './',
+  optimizeDeps: {
+    rolldownOptions: {
+      transform: {
+        target: 'esnext',
+      },
+    },
+  },
   build: {
     outDir: 'dist',
-    target: 'chrome134',
+    target: 'esnext',
+    modulePreload: {
+      polyfill: false,
+    },
     rolldownOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),

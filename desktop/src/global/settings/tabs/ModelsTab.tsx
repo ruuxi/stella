@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/ui/button";
 import {
   findApiKey,
@@ -6,20 +6,13 @@ import {
   useLlmCredentials,
 } from "@/global/settings/hooks/use-llm-credentials";
 import { LLM_PROVIDERS } from "@/global/settings/lib/llm-providers";
+import { SettingsModelsView } from "@/global/settings/SettingsModelsView";
 import { useT } from "@/shared/i18n";
-
-const SettingsModelsView = lazy(() =>
-  import("@/global/settings/SettingsModelsView").then((m) => ({
-    default: m.SettingsModelsView,
-  })),
-);
 
 function ModelConfigSection() {
   return (
     <div className="settings-card settings-card--models">
-      <Suspense fallback={null}>
-        <SettingsModelsView />
-      </Suspense>
+      <SettingsModelsView />
     </div>
   );
 }
