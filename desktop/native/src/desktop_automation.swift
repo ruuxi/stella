@@ -8372,24 +8372,28 @@ final class LockedUsePhysicalInputMonitor {
         if eventTap != nil {
             return true
         }
-        let mask =
-            (1 << CGEventType.keyDown.rawValue) |
-            (1 << CGEventType.flagsChanged.rawValue) |
-            (1 << CGEventType.leftMouseDown.rawValue) |
-            (1 << CGEventType.rightMouseDown.rawValue) |
-            (1 << CGEventType.otherMouseDown.rawValue) |
-            (1 << CGEventType.mouseMoved.rawValue) |
-            (1 << CGEventType.leftMouseDragged.rawValue) |
-            (1 << CGEventType.rightMouseDragged.rawValue) |
-            (1 << CGEventType.otherMouseDragged.rawValue) |
-            (1 << CGEventType.scrollWheel.rawValue)
+        let monitoredEventTypes: [CGEventType] = [
+            .keyDown,
+            .flagsChanged,
+            .leftMouseDown,
+            .rightMouseDown,
+            .otherMouseDown,
+            .mouseMoved,
+            .leftMouseDragged,
+            .rightMouseDragged,
+            .otherMouseDragged,
+            .scrollWheel,
+        ]
+        let mask = monitoredEventTypes.reduce(CGEventMask(0)) { result, eventType in
+            result | (CGEventMask(1) << CGEventMask(eventType.rawValue))
+        }
 
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
             options: .listenOnly,
-            eventsOfInterest: CGEventMask(mask),
+            eventsOfInterest: mask,
             callback: { _, type, event, refcon in
                 guard let refcon else {
                     return Unmanaged.passUnretained(event)
