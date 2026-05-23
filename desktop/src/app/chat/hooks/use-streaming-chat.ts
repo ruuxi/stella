@@ -38,6 +38,11 @@ export type QueuedUserMessage = {
 const createLocalMessageId = () =>
   `local-${crypto.randomUUID()}`
 
+const nextAnimationFrame = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+
 const buildContextMessageMetadata = (
   chatContext: SendMessageArgs['chatContext'],
   base?: MessageMetadata,
@@ -212,6 +217,9 @@ export function useStreamingChat({
         cleanedText || options.selectedText?.trim() || 'Attached context'
 
       const messageTimestamp = Date.now()
+      options.onClear()
+      await nextAnimationFrame()
+
       if (mode === 'follow_up') {
         setQueuedUserMessages((current) => [
           ...current,
@@ -238,7 +246,6 @@ export function useStreamingChat({
         ])
         setPendingUserMessageId(optimisticUserMessageId)
       }
-      options.onClear()
 
       let deviceId: string
       try {

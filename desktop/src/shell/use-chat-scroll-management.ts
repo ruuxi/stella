@@ -341,18 +341,16 @@ export function useChatScrollManagement({
    *   the scroll themselves; we stop the loop so it doesn't fight the
    *   user's input on the next frame, but leave the latch armed so
    *   reaching the bottom re-engages auto-follow on the next chunk.
-   * - A `ResizeObserver` on the scroll element fires whenever its
-   *   `scrollHeight` grows (streamed text, new rows, etc.). When the
-   *   follow latch is set and the streaming assistant row's bottom
-   *   has dropped below the visible viewport, we update the lerp
-   *   target. The loop tweens toward it smoothly across however many
-   *   frames the catch-up takes, and absorbs follow-up target updates
-   *   without restarting the easing — no per-chunk snap, no
-   *   restart-on-every-frame jitter.
+   * - Streaming row layout changes publish explicit assistant-follow
+   *   notifications. When the follow latch is set and the streaming
+   *   assistant row's bottom has dropped below the visible viewport,
+   *   we update the lerp target. The loop tweens toward it smoothly
+   *   across however many frames the catch-up takes, and absorbs
+   *   follow-up target updates without restarting the easing — no
+   *   per-chunk snap, no restart-on-every-frame jitter.
    */
   useEffect(() => {
     let attached: HTMLElement | null = null
-    let resizeObserver: ResizeObserver | null = null
     let cleanup = () => {}
     let frame = 0
 
@@ -364,13 +362,6 @@ export function useChatScrollManagement({
       if (!node || node === attached) return Boolean(attached)
       cleanup()
       attached = node
-      let lastScrollHeight = node.scrollHeight
-      let lastClientWidth = node.clientWidth
-      // Becomes true on the first width-change tick of a resize burst so
-      // we only nudge the user away from the absolute bottom once per
-      // burst, not on every observer tick of the slide.
-      let resizeBurstActive = false
-      let resizeBurstResetId: ReturnType<typeof setTimeout> | null = null
 
       // ---- continuous lerp follow loop -----------------------------
       // `followTarget` is the absolute scrollTop the loop is currently
@@ -526,6 +517,14 @@ export function useChatScrollManagement({
         const target = Math.min(pinnedTop, desiredScrollTop)
         setTarget(target)
       }
+      let followAssistantRowRaf = 0
+      const scheduleFollowActiveAssistantRow = () => {
+        if (followAssistantRowRaf) return
+        followAssistantRowRaf = requestAnimationFrame(() => {
+          followAssistantRowRaf = 0
+          followActiveAssistantRow()
+        })
+      }
 
       // ---- user-input release handlers -----------------------------
       const releaseLocalFollow = () => {
@@ -554,72 +553,10 @@ export function useChatScrollManagement({
       node.addEventListener('touchstart', handleTouchStart, { passive: true })
       node.addEventListener('keydown', handleKeyDown)
 
-      resizeObserver = new ResizeObserver(() => {
-        if (!attached) return
-        const newHeight = attached.scrollHeight
-        const newWidth = attached.clientWidth
-        const widthChanged = newWidth !== lastClientWidth
-        if (newHeight === lastScrollHeight && !widthChanged) return
-        const grew = newHeight > lastScrollHeight
-        lastScrollHeight = newHeight
-        lastClientWidth = newWidth
-        // Width changes (display sidebar sliding open, drag handle,
-        // window resize) reflow the chat narrower/wider, which grows or
-        // shrinks `scrollHeight` on every observer tick of the ~460ms
-        // transition. Trying to keep the user glued to the absolute
-        // bottom through that reflow produces the visible bounce: the
-        // browser repaints the new layout one frame before our pin
-        // catches up, so the content visibly jumps.
-        //
-        // The simpler fix is to step the user off the absolute bottom
-        // at the start of the resize burst — once they're a few pixels
-        // up, no per-frame pin is needed and the reflow is invisible.
-        // `followRef` stays armed, so streaming-text growth + reaching
-        // the bottom themselves still re-engages auto-follow normally.
-        if (widthChanged) {
-          if (!resizeBurstActive && followRef.current) {
-            resizeBurstActive = true
-            const distFromEnd = Math.max(
-              0,
-              attached.scrollHeight -
-                attached.clientHeight -
-                attached.scrollTop,
-            )
-            if (distFromEnd < 12) {
-              attached.scrollTop = Math.max(
-                0,
-                attached.scrollTop - (12 - distFromEnd),
-              )
-            }
-          }
-          if (resizeBurstResetId) clearTimeout(resizeBurstResetId)
-          resizeBurstResetId = setTimeout(() => {
-            resizeBurstActive = false
-            resizeBurstResetId = null
-          }, 160)
-          return
-        }
-        if (!grew || !followRef.current) return
-        // Auto-follow only while the runtime has armed a follow key
-        // for the active assistant slot (`beginAssistantScrollFollow`).
-        // Other scrollHeight growth (user bubble, footer, unrelated
-        // rows) is ignored; post-send positioning uses
-        // `scrollLatestUserMessageIntoView`.
-        followActiveAssistantRow()
-      })
-
       const unsubscribeFollow = subscribeAssistantScrollFollow(() => {
         if (!followRef.current) return
-        requestAnimationFrame(() => {
-          followActiveAssistantRow()
-        })
+        scheduleFollowActiveAssistantRow()
       })
-      // Observe the scroll node itself plus its content child so we
-      // pick up either form of growth (Legend's content wrapper resizes
-      // independently of the scroll viewport's own box).
-      resizeObserver.observe(node)
-      const inner = node.firstElementChild as HTMLElement | null
-      if (inner) resizeObserver.observe(inner)
 
       cleanup = () => {
         if (!attached) return
@@ -627,14 +564,11 @@ export function useChatScrollManagement({
         attached.removeEventListener('wheel', handleWheel)
         attached.removeEventListener('touchstart', handleTouchStart)
         attached.removeEventListener('keydown', handleKeyDown)
-        resizeObserver?.disconnect()
-        resizeObserver = null
-        stopLoop()
-        if (resizeBurstResetId) {
-          clearTimeout(resizeBurstResetId)
-          resizeBurstResetId = null
+        if (followAssistantRowRaf) {
+          cancelAnimationFrame(followAssistantRowRaf)
+          followAssistantRowRaf = 0
         }
-        resizeBurstActive = false
+        stopLoop()
         followApi.current = null
         attached = null
       }

@@ -29,6 +29,11 @@ export function updateComposerTextareaExpansion(
   setExpanded: (expanded: boolean) => void,
 ) {
   if (!textarea) return;
+  if (textarea.value.length === 0) {
+    setExpanded(false);
+    return;
+  }
+
   const form = textarea.closest("form") as HTMLElement | null;
   if (!form) return;
   const isExpanded = form.classList.contains("expanded");
@@ -76,6 +81,30 @@ export function useAnimatedComposerShell({
 
     syncShellToContent();
 
+    let frameId: number | null = null;
+    let pendingHeight = lastHeightRef.current;
+
+    const scheduleShellAnimation = (nextHeight: number) => {
+      pendingHeight = nextHeight;
+      if (frameId !== null) return;
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        lastHeightRef.current = pendingHeight;
+        const targetRadius = getTargetRadius(form, content, pendingHeight);
+
+        heightAnimationRef.current?.stop();
+        heightAnimationRef.current = animate(
+          shell,
+          { height: `${pendingHeight}px`, borderRadius: `${targetRadius}px` },
+          {
+            type: "spring",
+            duration: 0.35,
+            bounce: 0,
+          },
+        );
+      });
+    };
+
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
@@ -83,28 +112,19 @@ export function useAnimatedComposerShell({
         entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
       if (Math.abs(nextHeight - lastHeightRef.current) < 1) return;
 
-      lastHeightRef.current = nextHeight;
-      const targetRadius = getTargetRadius(form, content, nextHeight);
-
-      heightAnimationRef.current?.stop();
-      heightAnimationRef.current = animate(
-        shell,
-        { height: `${nextHeight}px`, borderRadius: `${targetRadius}px` },
-        {
-          type: "spring",
-          duration: 0.35,
-          bounce: 0,
-        },
-      );
+      scheduleShellAnimation(nextHeight);
     });
 
     observer.observe(content);
 
-    const frameId = syncOnNextFrame
+    const syncFrameId = syncOnNextFrame
       ? requestAnimationFrame(syncShellToContent)
       : null;
 
     return () => {
+      if (syncFrameId !== null) {
+        cancelAnimationFrame(syncFrameId);
+      }
       if (frameId !== null) {
         cancelAnimationFrame(frameId);
       }
