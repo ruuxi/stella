@@ -29,7 +29,7 @@ const hasExplicitPreference = (
   );
 
 export const createOpenPanelCadenceReportsHook = (opts: {
-  stellaRoot: string;
+  stellaHome: string;
   store: RuntimeStore;
 }): HookDefinition<"agent_end"> => ({
   event: "agent_end",
@@ -47,7 +47,7 @@ export const createOpenPanelCadenceReportsHook = (opts: {
       let resolvedLlm = services.resolvedLlm;
       if (services.resolveSubsidiaryLlmRoute) {
         const preferredAgent = hasExplicitPreference(
-          opts.stellaRoot,
+          opts.stellaHome,
           AGENT_IDS.OPEN_PANEL_REPORTS,
         )
           ? AGENT_IDS.OPEN_PANEL_REPORTS
@@ -62,7 +62,7 @@ export const createOpenPanelCadenceReportsHook = (opts: {
       }
 
       spawnOpenPanelCadenceReports({
-        stellaRoot: opts.stellaRoot,
+        stellaRoot: opts.stellaHome,
         resolvedLlm,
         store: opts.store,
       });

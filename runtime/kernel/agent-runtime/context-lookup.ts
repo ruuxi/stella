@@ -15,7 +15,6 @@ import {
 
 const MAX_CONTEXT_OUTPUT_TOKENS = 900;
 const CHRONICLE_DIR_SEGMENTS = [
-  "state",
   "memories_extensions",
   "chronicle",
 ] as const;
@@ -134,12 +133,12 @@ const formatMemorySnapshot = (
 const readMemoryFiles = async (stellaHome: string): Promise<string> => {
   const files = [
     {
-      displayPath: "state/memories/memory_summary.md",
-      path: path.join(stellaHome, "state", "memories", "memory_summary.md"),
+      displayPath: "~/.stella/memories/memory_summary.md",
+      path: path.join(stellaHome, "memories", "memory_summary.md"),
     },
     {
-      displayPath: "state/memories/MEMORY.md",
-      path: path.join(stellaHome, "state", "memories", "MEMORY.md"),
+      displayPath: "~/.stella/memories/MEMORY.md",
+      path: path.join(stellaHome, "memories", "MEMORY.md"),
     },
   ];
   const blocks: string[] = [];

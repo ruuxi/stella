@@ -198,6 +198,7 @@ type RuntimeToolContextArgs = {
   agentType: string;
   deviceId: string;
   stellaRoot?: string;
+  stellaHome?: string;
   toolWorkspaceRoot?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
@@ -218,6 +219,7 @@ export const buildRuntimeToolContext = (
   ...(args.rootRunId ? { rootRunId: args.rootRunId } : {}),
   agentType: args.agentType,
   ...(args.stellaRoot ? { stellaRoot: args.stellaRoot } : {}),
+  ...(args.stellaHome ? { stellaHome: args.stellaHome } : {}),
   ...(args.toolWorkspaceRoot
     ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
     : {}),
@@ -323,6 +325,7 @@ export const createPiTools = (opts: {
   agentType: string;
   deviceId: string;
   stellaRoot?: string;
+  stellaHome?: string;
   toolWorkspaceRoot?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
@@ -374,6 +377,7 @@ export const createPiTools = (opts: {
           agentType: opts.agentType,
           deviceId: opts.deviceId,
           stellaRoot: opts.stellaRoot,
+          stellaHome: opts.stellaHome,
           toolWorkspaceRoot: opts.toolWorkspaceRoot,
           agentDepth: opts.agentDepth,
           maxAgentDepth: opts.maxAgentDepth,

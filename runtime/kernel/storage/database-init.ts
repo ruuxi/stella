@@ -5,7 +5,7 @@ import { ensurePrivateDirSync } from "../shared/private-fs.js";
 const DB_FILE = "stella.sqlite";
 
 export const ensureDatabaseStateRoot = (stellaHome: string) => {
-  const stateRoot = path.join(stellaHome, "state");
+  const stateRoot = stellaHome;
   ensurePrivateDirSync(stateRoot);
   return stateRoot;
 };

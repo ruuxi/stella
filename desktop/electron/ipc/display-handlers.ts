@@ -23,6 +23,7 @@ import {
 
 type DisplayHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaHome: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -106,6 +107,13 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
     }
     return stellaRoot;
   };
+  const requireStellaHome = () => {
+    const stellaHome = options.getStellaHome();
+    if (!stellaHome) {
+      throw new Error("Stella home is unavailable.");
+    }
+    return stellaHome;
+  };
 
   ipcMain.handle(
     IPC_DISPLAY_READ_FILE,
@@ -133,7 +141,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
       // Paths can outlive the file they point at — e.g. an `image_gen` /
       // tool-result registered a path in `generatedMediaItems`, and the
       // underlying file was later moved or deleted (especially for paths
-      // outside `state/`). Treat ENOENT as a soft "missing" result so the
+      // outside `~/.stella/`). Treat ENOENT as a soft "missing" result so the
       // renderer can render a placeholder instead of surfacing the raw
       // IPC error to the console / UI.
       let stats: Awaited<ReturnType<typeof fs.stat>>;
@@ -183,7 +191,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
       );
     }
 
-    const htmlDir = path.join(requireStellaRoot(), "state", "outputs", "html");
+    const htmlDir = path.join(requireStellaHome(), "outputs", "html");
     let entries: Dirent<string>[];
     try {
       entries = await fs.readdir(htmlDir, { withFileTypes: true });
@@ -230,7 +238,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
         `Blocked untrusted ${IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS} request.`,
       );
     }
-    return await listOpenPanelReports(requireStellaRoot());
+    return await listOpenPanelReports(requireStellaHome());
   });
 
   ipcMain.handle(
@@ -251,7 +259,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
         throw new Error("Unknown Open panel report cadence.");
       }
       return await markOpenPanelReportOpened(
-        requireStellaRoot(),
+        requireStellaHome(),
         cadence as OpenPanelReportCadence,
       );
     },
@@ -261,7 +269,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
     if (!options.assertPrivilegedSender(event, IPC_DISPLAY_TRASH_LIST)) {
       throw new Error(`Blocked untrusted ${IPC_DISPLAY_TRASH_LIST} request.`);
     }
-    return await listDeferredDeletes({ stellaHome: requireStellaRoot() });
+    return await listDeferredDeletes({ stellaHome: requireStellaHome() });
   });
 
   ipcMain.handle(
@@ -275,7 +283,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
         );
       }
 
-      const stellaHome = requireStellaRoot();
+      const stellaHome = requireStellaHome();
       if (payload?.all === true) {
         return await purgeAllDeferredDeletes({ stellaHome });
       }

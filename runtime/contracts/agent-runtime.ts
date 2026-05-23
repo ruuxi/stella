@@ -219,7 +219,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     id: AGENT_IDS.EXPLORE,
     name: "Explore",
     description:
-      "Stateless one-shot helper. Reads state/ to surface relevant paths for an upcoming General task.",
+      "Stateless one-shot helper. Reads ~/.stella/ to surface relevant paths for an upcoming General task.",
     activityLabel: "Exploring",
     bundledCore: true,
     runsAsSubagent: false,
@@ -255,7 +255,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     id: AGENT_IDS.DREAM,
     name: "Dream",
     description:
-      "Background memory consolidator. Reads thread_summaries + memories_extensions and surgically updates state/memories/ markdown files.",
+      "Background memory consolidator. Reads thread_summaries + memories_extensions and surgically updates ~/.stella/memories/ markdown files.",
     activityLabel: "Dreaming",
     bundledCore: true,
     runsAsSubagent: false,

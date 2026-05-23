@@ -233,14 +233,14 @@ export const createStellaHostRunner = (
     googleWorkspaceGetAuthStatus: async () => {
       return {
         connected: Boolean(
-          await loadConnectorAccessToken(context.stellaRoot, "google-workspace"),
+          await loadConnectorAccessToken(context.stellaHome, "google-workspace"),
         ),
       };
     },
 
     googleWorkspaceConnect: async () => {
       const { callTool, disconnect } = await loadGoogleWorkspaceTools({
-        stellaRoot: context.stellaRoot,
+        stellaRoot: context.stellaHome,
       });
       try {
         if (!callTool) return { connected: false, unavailable: true };
@@ -251,7 +251,7 @@ export const createStellaHostRunner = (
     },
 
     googleWorkspaceDisconnect: async () => {
-      await deleteConnectorAccessTokens(context.stellaRoot, ["google-workspace"]);
+      await deleteConnectorAccessTokens(context.stellaHome, ["google-workspace"]);
       return { ok: true };
     },
 
@@ -267,7 +267,7 @@ export const createStellaHostRunner = (
         const pendingThreadSummaries =
           context.runtimeStore.threadSummariesStore.countUnprocessed();
         const pendingExtensions = await countPendingDreamExtensions(
-          context.stellaRoot,
+          context.stellaHome,
         );
         if (pendingThreadSummaries + pendingExtensions === 0) {
           return {
@@ -289,7 +289,7 @@ export const createStellaHostRunner = (
           dreamModel,
         );
         return await maybeSpawnDreamRun({
-          stellaHome: context.stellaRoot,
+          stellaHome: context.stellaHome,
           store: context.runtimeStore,
           resolvedLlm,
           trigger,
@@ -325,7 +325,7 @@ export const createStellaHostRunner = (
           chronicleModel,
         );
         return await runChronicleSummary({
-          stellaHome: context.stellaRoot,
+          stellaHome: context.stellaHome,
           window,
           resolvedLlm,
         });

@@ -424,7 +424,7 @@ type SystemHandlersOptions = {
   /**
    * Connector credential brokers (`stella-connect` auth dialog). Distinct
    * pair from `submitCredential`/`cancelCredential` because the value is
-   * persisted directly to `state/connectors/.credentials.json` instead of
+   * persisted directly to `~/.stella/connectors/.credentials.json` instead of
    * being routed through Convex secrets.
    */
   submitConnectorCredential: (payload: {
@@ -556,13 +556,10 @@ const resolveLockedComputerUseHome = (stellaRoot: string | null) => {
   if (stellaRoot) {
     return path.resolve(stellaRoot);
   }
-  if (process.env.STELLA_ROOT) {
-    return path.resolve(process.env.STELLA_ROOT);
-  }
   if (process.env.STELLA_STATE_DIR) {
-    return path.dirname(path.resolve(process.env.STELLA_STATE_DIR));
+    return path.resolve(process.env.STELLA_STATE_DIR);
   }
-  return process.cwd();
+  return path.join(os.homedir(), ".stella");
 };
 
 const readLockedComputerUseEnabled = (stellaRoot: string | null) => {

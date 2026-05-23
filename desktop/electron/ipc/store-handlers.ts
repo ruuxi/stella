@@ -66,6 +66,7 @@ const sanitizeWebsiteViewTheme = (
 
 type StoreHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaHome: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
   getFullWindow?: () => BrowserWindow | null;
   onStellaHostRunnerChanged?: (
@@ -106,7 +107,7 @@ type StoreHandlersOptions = {
 };
 
 const listInstalledThemes = async (stellaRoot: string) => {
-  const themesDir = path.join(stellaRoot, "state", "themes");
+  const themesDir = path.join(stellaRoot, "themes");
   try {
     const files = await fs.readdir(themesDir);
     const themes = [];
@@ -168,9 +169,9 @@ const installConfirmedStoreRelease = async (
   const installRecord = (await runner.installFromBlueprint(
     installPayload,
   )) satisfies StoreInstallRecord;
-  const stellaRoot = options.getStellaRoot();
-  if (stellaRoot) {
-    await cleanupStoreInstallArtifacts(stellaRoot, installPayload).catch(
+  const stellaHome = options.getStellaHome();
+  if (stellaHome) {
+    await cleanupStoreInstallArtifacts(stellaHome, installPayload).catch(
       () => undefined,
     );
   }
@@ -181,7 +182,7 @@ const cleanupStoreInstallArtifacts = async (
   stellaRoot: string,
   payload: { packageId: string; releaseNumber: number },
 ) => {
-  const artifactRoot = path.join(stellaRoot, "state", "raw", "store-installs");
+  const artifactRoot = path.join(stellaRoot, "raw", "store-installs");
   const safePackageSegment = safeStorePackageSegment(payload.packageId);
   const packagePrefix = `${safePackageSegment}-r`;
   await fs.rm(
@@ -492,11 +493,11 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   });
 
   ipcMain.handle("theme:listInstalled", async () => {
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaHome = options.getStellaHome();
+    if (!stellaHome) {
       return [];
     }
-    return await listInstalledThemes(stellaRoot);
+    return await listInstalledThemes(stellaHome);
   });
 
   ipcMain.handle("store:readFeatureSnapshot", async (event) => {

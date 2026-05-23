@@ -9,7 +9,7 @@
  *     dynamic context each turn
  *
  * Descriptions come straight from each agent's markdown frontmatter, so
- * users extend the roster by dropping `state/agents/<id>.md`, not by
+ * users extend the roster by dropping `~/.stella/agents/<id>.md`, not by
  * editing runtime code.
  */
 

@@ -32,7 +32,7 @@ const writeLocalOnboardingCompleted = (completed: boolean) => {
     }
     localStorage.removeItem(ONBOARDING_COMPLETE_KEY);
   } catch {
-    // Best-effort; state/preferences.json is the durable source.
+    // Best-effort; ~/.stella/preferences.json is the durable source.
   }
 };
 

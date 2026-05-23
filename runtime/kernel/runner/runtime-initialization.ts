@@ -100,13 +100,10 @@ export const createRuntimeInitialization = (
   /**
    * Build the runtime services object once. Forwarded to every extension
    * factory invocation (initial load + every F1 reload) so factories can
-   * close over the services they need at registration time. Today the
-   * runner stores both the repo root and the user-data root under
-   * `context.stellaRoot`; when the user-data root migrates to `~/.stella`
-   * the `stellaHome` field will diverge.
+   * close over the services they need at registration time.
    */
   const buildExtensionServices = (): ExtensionServices => ({
-    stellaHome: context.stellaRoot,
+    stellaHome: context.stellaHome,
     stellaRoot: context.stellaRoot,
     selfModMonitor: context.selfModMonitor ?? null,
     store: context.runtimeStore,

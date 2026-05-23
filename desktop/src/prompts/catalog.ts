@@ -368,7 +368,7 @@ Stella is a desktop AI assistant with these capabilities:
 - Connected apps — Slack, Gmail, Outlook, Notion, Linear, Jira, Salesforce, Google Drive, and more
 
 **skill** — Reusable patterns Stella can save:
-- Create or update Stella skills under state/skills/<name>/SKILL.md
+- Create or update Stella skills under ~/.stella/skills/<name>/SKILL.md
 - Turn repeated workflows, repo conventions, tool recipes, or recurring preferences into reusable agent instructions
 - Add focused scripts, references, templates, or assets when a pattern needs them
 - Keep skills for durable behavior the user will likely need again, not one-off research or lookup

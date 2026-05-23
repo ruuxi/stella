@@ -1,7 +1,7 @@
 /**
  * Display-sidebar tab body for Stella's deferred-delete trash.
  *
- * The runtime moves agent-deleted paths into `state/deferred-delete/trash`
+ * The runtime moves agent-deleted paths into `~/.stella/deferred-delete/trash`
  * for 24h before purging. This view lists the staged items and offers
  * per-row + bulk "Delete now" actions backed by the privileged IPC at
  * `displayTrash:list` / `displayTrash:forceDelete`.

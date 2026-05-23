@@ -32,6 +32,7 @@ export type BootstrapConfig = {
   authProtocol: string;
   electronDir: string;
   stellaRoot: string;
+  stellaHomePath: string;
   hardResetMutableHomePaths: readonly string[];
   isDev: boolean;
   sessionPartition: string;
@@ -61,6 +62,7 @@ export type BootstrapState = {
   globalInputHooksStarted: boolean;
   globalInputHooksStartScheduled: boolean;
   stellaRoot: string | null;
+  stellaHomePath: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
   stellaBrowserBridgeService: StellaBrowserBridgeResource | null;
@@ -196,6 +198,7 @@ export const createBootstrapContext = (
     globalInputHooksStarted: false,
     globalInputHooksStartScheduled: false,
     stellaRoot: null,
+    stellaHomePath: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,
     stellaBrowserBridgeService: null,

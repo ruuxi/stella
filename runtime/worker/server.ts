@@ -86,6 +86,7 @@ import { createRuntimeLogger } from "../kernel/debug.js";
 type WorkerInitializationState = {
   protocolVersion?: string;
   stellaRoot: string;
+  stellaHomePath: string;
   stellaWorkspacePath: string;
   authToken: string | null;
   convexUrl: string | null;
@@ -678,6 +679,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
     const sameRuntimeRoot =
       state.init?.stellaRoot === init.stellaRoot &&
+      state.init?.stellaHomePath === init.stellaHomePath &&
       state.init?.stellaWorkspacePath === init.stellaWorkspacePath;
     if (sameRuntimeRoot && state.runner) {
       applyConfigPatch(init);
@@ -700,7 +702,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
     state.init = init;
 
-    const db = createDesktopDatabase(init.stellaRoot);
+    const db = createDesktopDatabase(init.stellaHomePath);
     const chatStore = new ChatStore(db);
     const runtimeStore = chatStore as RuntimeStore;
     const storeModStore = new StoreModStore(db);
@@ -902,6 +904,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const runnerOptions: StellaHostRunnerOptions = {
       deviceId: deviceIdentity.deviceId,
       stellaRoot: init.stellaRoot,
+      stellaHome: init.stellaHomePath,
       runtimeStore,
       getAppBrowserContext: async () =>
         (await peer.request(
@@ -2750,7 +2753,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       );
 
       // Materialise the spec + reference diffs into a per-install
-      // working directory under `state/raw/`. The general agent reads
+      // working directory under `~/.stella/raw/`. The general agent reads
       // these files directly during the install run; the directory is
       // mutable user data and is wiped on next install of the same
       // package so retries always start clean.
@@ -3346,6 +3349,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         request,
         runtime: {
           stellaRoot: init.stellaRoot,
+          stellaHome: init.stellaHomePath,
           siteBaseUrl: init.convexSiteUrl,
           getAuthToken: () => init.authToken,
           requestRuntimeAuthRefresh: async () => {

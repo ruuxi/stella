@@ -222,7 +222,7 @@ const imageGenPayloadsByPath = (
 /**
  * Pull the orchestrator's last `html` tool result for this turn and build
  * a file-backed `canvas-html` payload from it. The tool writes a
- * self-contained HTML document under `state/outputs/html/<slug>.html` and
+ * self-contained HTML document under `~/.stella/outputs/html/<slug>.html` and
  * we surface it as both an inline artifact card AND a Canvas display tab.
  *
  * Mirrors `inlineImageGenSubmissionPayload`: orchestrator-only, latest
@@ -269,7 +269,7 @@ const orchestratorHtmlPayload = (
 
 /**
  * Pull a `canvas-html` payload from any tool-result this turn whose
- * `fileChanges` touch `state/outputs/html/*.html`. Lets the general
+ * `fileChanges` touch `~/.stella/outputs/html/*.html`. Lets the general
  * agent (or any future tool that uses `apply_patch`/`exec_command`)
  * write a canvas to the same conventional output dir and have it
  * surface as an inline artifact + Canvas tab, the same way the
@@ -277,7 +277,8 @@ const orchestratorHtmlPayload = (
  * (title-carrying) result is preferred — this is the fallback when no
  * orchestrator html tool was used. Latest write in the turn wins.
  */
-const HTML_OUTPUT_PATH_RE = /(?:^|\/)state\/outputs\/html\/([^/]+)\.html$/;
+const HTML_OUTPUT_PATH_RE =
+  /(?:^|\/)(?:\.stella|state)\/outputs\/html\/([^/]+)\.html$/;
 
 const titleFromHtmlSlug = (slug: string): string => {
   const trimmed = slug.trim();
@@ -409,7 +410,7 @@ export const buildPayloadFromBarePath = (
     patch?: string;
   },
 ): DisplayPayload | null => {
-  // Canvas HTML artifacts live under `state/outputs/html/<slug>.html` and
+  // Canvas HTML artifacts live under `~/.stella/outputs/html/<slug>.html` and
   // need to surface as a `canvas-html` payload (not a generic .html source
   // diff) so the home overview's Recent files list, the inline chat card,
   // and the workspace Canvas tab all open the same viewer.
@@ -632,7 +633,7 @@ export const deriveTurnResource = (
   // orchestrator's first-class `html` tool is preferred (it carries an
   // explicit title); otherwise any other tool (e.g. the general agent
   // via `apply_patch`/`exec_command`) writing to
-  // `state/outputs/html/*.html` is treated the same way.
+  // `~/.stella/outputs/html/*.html` is treated the same way.
   const htmlPayload =
     orchestratorHtmlPayload(toolEvents) ??
     fileChangeHtmlOutputPayload(toolEvents);

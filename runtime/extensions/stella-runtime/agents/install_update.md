@@ -39,7 +39,7 @@ Run every git command from the install root.
    If the tool result says `"running": true`, poll that same command session with empty `write_stdin` calls until it returns a real exit code. Do not inspect `git status` while the merge command is still running, and do not guess from partial output. The merge command's final exit code is the source of truth for whether this is the clean-merge path or the conflict path.
 
 3. **Clean merge (exit 0)?** Most of the time this is almost the whole job. Skim `git diff HEAD^ HEAD --name-only` to see what changed. Inspect that output yourself; do not use pipes, grep, `|| true`, or any other shell composition to filter it. If any dependency manifest or lockfile changed (`package.json`, `bun.lock`, `bun.lockb`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, or `npm-shrinkwrap.json`), run `bun install --frozen-lockfile` from the install root before reporting. If the user clearly hasn't customized any of the changed files, you're done after the dependency install — jump to **Reporting**. If the merge touched files the user has visibly restructured (renamed identifiers, removed components, restyled UI), re-open those files and reconcile any references upstream added that point at code the user no longer has. Amend the merge commit with `git commit --amend --no-edit` if you fixed anything.
-   Do not chase unrelated `git status` output after a clean merge. Personal state files such as `state/skills/<user-skill>/SKILL.md` may already be staged or untracked in the user's install tree; if they are not in the upstream changed-file list and Git did not report a conflict, leave them alone and finish.
+   Do not chase unrelated `git status` output after a clean merge. Personal state files such as `~/.stella/skills/<user-skill>/SKILL.md` may already be staged or untracked in the user's install tree; if they are not in the upstream changed-file list and Git did not report a conflict, leave them alone and finish.
 
 4. **Conflicts (non-zero exit)?** Resolve each one with the bias guide below. Use `git status --porcelain` to find conflicts (look for `UU`, `AA`, `DU`, `UD`, `AU`, `UA`). For each:
    - Read the file (it has `<<<<<<<` / `=======` / `>>>>>>>` markers).
@@ -65,7 +65,7 @@ This bias only matters when the user has actually diverged from upstream on a fi
 - **Upstream renames an identifier or moves a file the user references in their custom code?** Update the user's references too — that's not a customization, it's a stale reference. Same for changed function signatures, renamed exports, etc. Mechanical renames flow through.
 - **Pure infrastructure** (`runtime/kernel/`, `runtime/contracts/`, `runtime/ai/`, `runtime/worker/`, `desktop/electron/`, `backend/`)? Bias toward upstream by default — these are areas the user is unlikely to have rewritten and where upstream changes often carry correctness or security fixes. If you can tell the user has customized them, prefer the user.
 - **User-facing surfaces** (`desktop/src/app/`, `desktop/src/shell/`, `desktop/src/global/`, `desktop/src/features/`, theming, CSS, fonts)? Strong bias toward user. This is where their customizations live and where upstream-vs-user divergence is most expected.
-- **User skills and personal state** (`state/skills/**`, `state/DREAM.md`, `state/registry.md`)? User's. Take upstream additions only if the user doesn't already have a skill/section with that name.
+- **User skills and personal state** (`~/.stella/skills/**`, `~/.stella/DREAM.md`, `~/.stella/registry.md`)? User's. Take upstream additions only if the user doesn't already have a skill/section with that name.
 
 When in doubt: prefer user. The cost of leaving an upstream change behind is small (the user can ask for it later); the cost of clobbering the user's customization is large (it breaks their Stella).
 
@@ -96,7 +96,7 @@ Do this before your final report so a clean update that added a package does not
 - You may use `write_stdin` only with empty input to poll and drain a running allowed command. Do not send interactive input to shell sessions.
 - Never run: `git push`, `git rebase`, `git reset` (any mode), `git checkout` (other than git's internal use during merge), `git stash`, `git branch -D`, `git tag -d`, `git remote add/set-url/remove`, or any command that rewrites or loses commits — they aren't in the allowlist anyway, but flagging here so you don't try.
 - Don't modify `.git/` directly.
-- Don't write into `~/.stella` or `state/electron-user-data/`.
+- Don't write into `~/.stella` or `electron-user-data/`.
 - Don't modify `node_modules/` (it gets regenerated on next launch).
 - `web` is allowed only if you genuinely need to consult the GitHub API for context (rare — `git log` and `git show` cover almost everything). Git fetch handles all routine network access.
 

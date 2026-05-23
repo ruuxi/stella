@@ -183,7 +183,7 @@ export const loadGoogleWorkspaceTools = async (options: {
   callTool: GoogleWorkspaceCallToolFn | null;
   hasStoredCredentials: boolean;
 }> => {
-  const root = path.join(options.stellaRoot, "state", "google-workspace");
+  const root = path.join(options.stellaRoot, "google-workspace");
   await mkdir(root, { recursive: true, mode: 0o700 });
   setGoogleWorkspaceProjectRoot(root);
 

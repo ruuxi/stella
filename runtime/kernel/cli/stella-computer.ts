@@ -217,13 +217,10 @@ const resolveStellaHome = () => {
   if (process.env.STELLA_HOME) {
     return path.resolve(process.env.STELLA_HOME);
   }
-  if (process.env.STELLA_ROOT) {
-    return path.resolve(process.env.STELLA_ROOT);
-  }
   if (process.env.STELLA_STATE_DIR) {
-    return path.dirname(path.resolve(process.env.STELLA_STATE_DIR));
+    return path.resolve(process.env.STELLA_STATE_DIR);
   }
-  return path.dirname(resolveStatePath());
+  return resolveStatePath();
 };
 
 const usage = `stella-computer - control macOS apps through Accessibility, in the background

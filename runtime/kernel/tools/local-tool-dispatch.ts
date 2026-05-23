@@ -53,8 +53,8 @@ const ensureDreamReadPath = async (
 ): Promise<string> => {
   const resolved = await resolveDreamToolPath(dream, filePath);
   const [memoriesRoot, extensionsRoot] = await Promise.all([
-    normalizePath(path.join(dream.stellaHome, "state", "memories")),
-    normalizePath(path.join(dream.stellaHome, "state", "memories_extensions")),
+    normalizePath(path.join(dream.stellaHome, "memories")),
+    normalizePath(path.join(dream.stellaHome, "memories_extensions")),
   ]);
   if (
     isWithinDirectory(resolved, memoriesRoot) ||
@@ -63,7 +63,7 @@ const ensureDreamReadPath = async (
     return resolved;
   }
   throw new Error(
-    "Dream Read may only access files under state/memories and state/memories_extensions.",
+    "Dream Read may only access files under ~/.stella/memories and ~/.stella/memories_extensions.",
   );
 };
 

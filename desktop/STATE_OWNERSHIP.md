@@ -36,7 +36,7 @@ initial sync.
 > other window cares. See `desktop/src/shared/lib/last-location.ts` and
 > the restore/persist effects in `desktop/src/routes/__root.tsx`. Adding a
 > new sidebar app is "drop a folder under `desktop/src/app/<id>/`" — see
-> `state/skills/stella-desktop/SKILL.md`.
+> `~/.stella/skills/stella-desktop/SKILL.md`.
 
 
 ### conversationId — detailed flow

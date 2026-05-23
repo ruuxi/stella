@@ -16,6 +16,7 @@ import { listOfficePreviewSnapshots } from "../bootstrap/office-preview-bridge.j
 
 type OfficePreviewHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaHome: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -127,12 +128,12 @@ export const registerOfficePreviewHandlers = (
       throw new Error("Blocked untrusted office preview request.");
     }
 
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot?.trim()) {
+    const stellaHome = options.getStellaHome();
+    if (!stellaHome?.trim()) {
       return [];
     }
 
-    return await listOfficePreviewSnapshots(stellaRoot);
+    return await listOfficePreviewSnapshots(stellaHome);
   });
 
   ipcMain.handle(
@@ -146,7 +147,8 @@ export const registerOfficePreviewHandlers = (
       }
 
       const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot?.trim()) {
+      const stellaHome = options.getStellaHome();
+      if (!stellaRoot?.trim() || !stellaHome?.trim()) {
         throw new Error("Office preview requires an initialized Stella root.");
       }
       const requestedPath =
@@ -171,8 +173,7 @@ export const registerOfficePreviewHandlers = (
       const sessionId = randomUUID();
       const title = path.basename(sourcePath);
       const ref: OfficePreviewRef = { sessionId, title, sourcePath };
-      const stateRoot = path.join(stellaRoot, "state");
-      const sessionDir = path.join(stateRoot, PREVIEW_ROOT_DIRNAME, sessionId);
+      const sessionDir = path.join(stellaHome, PREVIEW_ROOT_DIRNAME, sessionId);
       const startedAt = Date.now();
       await writeManifest(sessionDir, ref, format, "starting", startedAt);
 

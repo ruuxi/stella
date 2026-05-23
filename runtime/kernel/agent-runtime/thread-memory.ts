@@ -27,8 +27,8 @@ import type { AgentMessage } from "../agent-core/types.js";
 import { readOptionalTextFile } from "../shared/read-optional-text-file.js";
 
 const logger = createRuntimeLogger("agent-runtime.thread-memory");
-const LIFE_REGISTRY_DISPLAY_PATH = "state/registry.md";
-const LIFE_CORE_MEMORY_DISPLAY_PATH = "state/core-memory.md";
+const LIFE_REGISTRY_DISPLAY_PATH = "~/.stella/registry.md";
+const LIFE_CORE_MEMORY_DISPLAY_PATH = "~/.stella/core-memory.md";
 
 export const buildRunThreadKey = ({
   conversationId,
@@ -399,7 +399,7 @@ const readRegistryContent = async (args: {
   const stellaHome = args.stellaHome?.trim();
   if (stellaHome) {
     const stellaHomeRegistry = await readOptionalTextFile(
-      path.join(stellaHome, "state", "registry.md"),
+      path.join(stellaHome, "registry.md"),
     );
     if (stellaHomeRegistry) {
       return stellaHomeRegistry;

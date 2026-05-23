@@ -553,7 +553,7 @@ export const launchPreparedOrchestratorRun = (args: {
       }),
       toolExecutor,
       deviceId: context.deviceId,
-      stellaHome: context.stellaRoot,
+      stellaHome: context.stellaHome,
       resolvedLlm: prepared.resolvedLlm,
       store: context.runtimeStore,
       abortSignal: prepared.abortController.signal,

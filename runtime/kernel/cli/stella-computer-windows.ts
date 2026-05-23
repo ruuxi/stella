@@ -101,7 +101,7 @@ Usage:
   stella-computer [--session ID] press <key> [--app NAME]
 
 Notes:
-  - snapshot writes element state under state/stella-computer/sessions/<session>/windows-targets/
+  - snapshot writes element state under ~/.stella/stella-computer/sessions/<session>/windows-targets/
   - actions reuse the last snapshot for the target app and refresh it after each action
   - Windows uses the bundled stella-computer-helper.exe native helper
   - the helper uses UI Automation patterns first and Win32 window messages as fallback

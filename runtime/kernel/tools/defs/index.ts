@@ -106,7 +106,7 @@ export const buildBuiltinTools = (
   // Orchestrator coordination surface
   tools.push(askQuestionTool);
   tools.push(askUserQuestionTool);
-  tools.push(createHtmlTool({ stellaRoot: options.stellaRoot }));
+  tools.push(createHtmlTool({ stellaHome: options.stellaHome ?? options.stellaRoot }));
   tools.push(
     createVoiceActionCompleteTool({
       notifyVoiceActionComplete: options.notifyVoiceActionComplete,
@@ -125,7 +125,9 @@ export const buildBuiltinTools = (
   tools.push(
     ...createScheduleControlTools({ scheduleApi: options.scheduleApi }),
   );
-  tools.push(createScriptDraftTool({ stellaRoot: options.stellaRoot }));
+  tools.push(
+    createScriptDraftTool({ stellaHome: options.stellaHome ?? options.stellaRoot }),
+  );
 
   // (Store agent moved to backend — no local tools.)
 

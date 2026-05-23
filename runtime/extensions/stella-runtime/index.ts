@@ -95,7 +95,7 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   );
   register(
     createOpenPanelCadenceReportsHook({
-      stellaRoot: services.stellaRoot,
+      stellaHome: services.stellaHome,
       store: services.store,
     }),
   );

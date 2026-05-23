@@ -1,6 +1,6 @@
 /**
  * Subscribes to every succeeded media job for the current viewer and
- * materializes its outputs into `state/media/outputs/`. This is the single
+ * materializes its outputs into `~/.stella/media/outputs/`. This is the single
  * place that turns a remote media job (started by MediaStudio, by the
  * agent's `MediaGenerate` tool, by a CLI, …) into a local file plus a
  * `DisplayPayload` the sidebar can render.

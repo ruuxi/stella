@@ -555,11 +555,7 @@ export class LocalSchedulerService {
   private tickInFlight = false
 
   constructor(private readonly options: LocalSchedulerServiceOptions) {
-    this.statePath = path.join(
-      options.stellaHome,
-      'state',
-      'local-scheduler.json',
-    )
+    this.statePath = path.join(options.stellaHome, 'local-scheduler.json')
     this.scriptsDir = scheduleScriptsDir(options.stellaHome)
   }
 
@@ -701,7 +697,7 @@ export class LocalSchedulerService {
 
     // If we replaced a `script` payload (or swapped to a different kind),
     // the prior script file is now orphaned. Clean it up immediately so
-    // we don't accumulate dead `.ts` files in `~/.stella/state/schedule-scripts`.
+    // we don't accumulate dead `.ts` files in `~/.stella/schedule-scripts`.
     if (
       priorScriptPath &&
       (nextPayload.kind !== 'script' ||

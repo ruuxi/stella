@@ -1011,7 +1011,7 @@ const copyHistoryDatabase = async (
   historyPath: string,
   StellaHome: string
 ): Promise<string> => {
-  const cacheDir = path.join(StellaHome, "state", "cache");
+  const cacheDir = path.join(StellaHome, "cache");
   await fs.mkdir(cacheDir, { recursive: true });
 
   const timestamp = Date.now();
@@ -1378,8 +1378,8 @@ export const collectBrowserActivityWindows = async (
  */
 export const coreMemoryExists = async (StellaHome: string): Promise<boolean> => {
   const candidatePaths = [
-    path.join(StellaHome, "state", "core-memory.md"),
-    path.join(StellaHome, "state", "CORE_MEMORY.MD"),
+    path.join(StellaHome, "core-memory.md"),
+    path.join(StellaHome, "CORE_MEMORY.MD"),
   ];
   for (const coreMemoryPath of candidatePaths) {
     try {
@@ -1437,7 +1437,7 @@ export const writeCoreMemory = async (
   content: string,
   options?: { includeLocation?: boolean }
 ): Promise<void> => {
-  const statePath = path.join(StellaHome, "state");
+  const statePath = StellaHome;
   await fs.mkdir(statePath, { recursive: true });
   const coreMemoryPath = path.join(statePath, "core-memory.md");
   const location = options?.includeLocation
@@ -1447,7 +1447,7 @@ export const writeCoreMemory = async (
     ? `${content.trimEnd()}\n\n## Location\n${location}\n`
     : content;
   await fs.writeFile(coreMemoryPath, finalContent, "utf-8");
-  log(`Wrote state/core-memory.md${location ? " (with location)" : ""}`);
+  log(`Wrote ~/.stella/core-memory.md${location ? " (with location)" : ""}`);
 };
 
 

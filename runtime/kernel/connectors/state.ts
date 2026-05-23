@@ -12,7 +12,7 @@ const readJson = async <T = unknown>(filePath: string): Promise<T | null> => {
 };
 
 export const getConnectorStateRoot = (stellaRoot: string) =>
-  path.join(stellaRoot, "state", "connectors");
+  path.join(stellaRoot, "connectors");
 
 export const getConfiguredCommandsPath = (stellaRoot: string) =>
   path.join(getConnectorStateRoot(stellaRoot), "commands.json");

@@ -365,6 +365,7 @@ export const buildOrchestratorThreadHistory = (args: {
 export const createRunnerContext = ({
   deviceId,
   stellaRoot,
+  stellaHome,
   stellaBrowserBinPath,
   stellaOfficeBinPath,
   stellaComputerCliPath,
@@ -438,6 +439,7 @@ export const createRunnerContext = ({
 
   const toolHost = createToolHost({
     stellaRoot,
+    stellaHome,
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaComputerCliPath,
@@ -522,7 +524,7 @@ export const createRunnerContext = ({
         conversationId: payload.conversationId,
         lookupPrompt: payload.prompt,
         stellaRoot,
-        stellaHome: stellaRoot,
+        stellaHome,
         store: context.runtimeStore,
         localEvents,
         ...(appBrowserContext ? { appBrowserContext } : {}),
@@ -533,7 +535,6 @@ export const createRunnerContext = ({
     ...(runtimeStore?.threadSummariesStore
       ? { threadSummariesStore: runtimeStore.threadSummariesStore }
       : {}),
-    stellaHome: stellaRoot,
     agentApi: {
       createAgent: async (request) => {
         if (!context.state.localAgentManager) {
@@ -589,6 +590,7 @@ export const createRunnerContext = ({
     convexApi: anyApi,
     deviceId,
     stellaRoot,
+    stellaHome,
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaComputerCliPath,
@@ -656,8 +658,8 @@ export const getConfiguredModel = (
   agentType: string,
   agent?: ParsedAgentLike,
 ): string | undefined => {
-  const modelFromPrefs = getModelOverride(context.stellaRoot, agentType);
-  const defaultModel = getDefaultModel(context.stellaRoot, agentType);
+  const modelFromPrefs = getModelOverride(context.stellaHome, agentType);
+  const defaultModel = getDefaultModel(context.stellaHome, agentType);
   return modelFromPrefs ?? defaultModel ?? agent?.model;
 };
 
@@ -774,7 +776,7 @@ export const buildAgentContext = async (
           shouldInjectDynamicReminder: false,
           reminderTokensSinceLastInjection: 0,
         };
-  const agentEngine = getAgentRuntimeEngine(context.stellaRoot);
+  const agentEngine = getAgentRuntimeEngine(context.stellaHome);
 
   const fileEditToolFamily = getFileEditToolFamily({
     agentType: args.agentType,
@@ -796,7 +798,7 @@ export const buildAgentContext = async (
   }
   if (agentHasCapability(args.agentType, "injectsSkillCatalog")) {
     dynamicContextSections.push(
-      await renderSkillCatalogBlock(context.stellaRoot),
+      await renderSkillCatalogBlock(context.stellaHome),
     );
   }
   if (agentHasCapability(args.agentType, "injectsSubagentRoster")) {
@@ -817,14 +819,14 @@ export const buildAgentContext = async (
     connectorTransitionReminderText,
     toolsAllowlist,
     model,
-    reasoningEffort: getReasoningEffort(context.stellaRoot, args.agentType),
+    reasoningEffort: getReasoningEffort(context.stellaHome, args.agentType),
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
-    coreMemory: readCoreMemory(context.stellaRoot),
+    coreMemory: readCoreMemory(context.stellaHome),
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)
-      ? getMaxAgentConcurrency(context.stellaRoot)
+      ? getMaxAgentConcurrency(context.stellaHome)
       : undefined,
   };
 };

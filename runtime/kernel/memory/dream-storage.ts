@@ -66,7 +66,7 @@ const RAW_MEMORIES_TEMPLATE = `# Raw memories
 `;
 
 export const memoriesRoot = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "memories");
+  path.join(stellaHome, "memories");
 
 export const memoryFilePath = (stellaHome: string): string =>
   path.join(memoriesRoot(stellaHome), MEMORY_FILE);

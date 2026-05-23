@@ -13,7 +13,7 @@ import {
 describe("extensionOf", () => {
   it("extracts lowercased extension from common paths", () => {
     expect(extensionOf("/a/b/c.PNG")).toBe("png");
-    expect(extensionOf("/state/media/outputs/job_0.jpeg")).toBe("jpeg");
+    expect(extensionOf("/.stella/media/outputs/job_0.jpeg")).toBe("jpeg");
     expect(extensionOf("relative/file.docx")).toBe("docx");
     expect(extensionOf("Q4 invoice.pdf")).toBe("pdf");
   });

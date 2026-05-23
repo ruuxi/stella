@@ -118,6 +118,7 @@ const SNAPSHOT_IGNORED_DIRS = new Set([
   "build",
   "coverage",
   ".cache",
+  "electron-user-data",
   "state/electron-user-data",
 ]);
 
@@ -617,7 +618,7 @@ const resolveStellaHomeFromState = (state: ShellState): string | undefined => {
   if (path.basename(stateRoot) === "state") {
     return path.dirname(stateRoot);
   }
-  return undefined;
+  return stateRoot;
 };
 
 const maybeSweepDeferredDeletes = (state: ShellState) => {

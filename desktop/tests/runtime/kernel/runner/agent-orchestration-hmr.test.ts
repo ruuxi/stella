@@ -280,7 +280,7 @@ const createTestContext = (root: string, hmrController: unknown) => {
           getMockRuntime().mode === "real_shell_write"
         ) {
           return handleExecCommand(
-            createShellState(path.join(root, "state")),
+            createShellState(root),
             args,
             {
               ...context,

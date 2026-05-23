@@ -5,13 +5,13 @@
  * builds the rolling summaries consumed by memory and context surfaces.
  *
  * For each tick:
- *   1. Read the tail of `state/chronicle/captures.jsonl` for the window.
+ *   1. Read the tail of `~/.stella/chronicle/captures.jsonl` for the window.
  *   2. Aggregate `addedLines` into a deduped, ordered list.
  *   3. If too few unique lines, no-op (no LLM call, no file write).
  *   4. Otherwise call a single LLM completion to distill the OCR window into
  *      a short markdown block.
  *   5. Atomically overwrite
- *      `state/memories_extensions/chronicle/{prefix}-current.md`.
+ *      `~/.stella/memories_extensions/chronicle/{prefix}-current.md`.
  *
  * The Dream scheduler picks up the file's bumped mtime via the existing
  * `extension_files` watermark in `dream-core.ts`. Each tick that actually
@@ -19,7 +19,7 @@
  * the caller, but Dream's eligibility gate is the source of truth.
  *
  * Single-flight per (stellaHome, window) via a mkdir lock under
- * `state/locks/chronicle-summary-{window}/`, mirroring `dream-scheduler.ts`.
+ * `~/.stella/locks/chronicle-summary-{window}/`, mirroring `dream-scheduler.ts`.
  */
 
 import fs from "node:fs";
@@ -70,13 +70,13 @@ type StellaConfig = {
 };
 
 const chronicleStateDir = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "chronicle");
+  path.join(stellaHome, "chronicle");
 
 const capturesPath = (stellaHome: string): string =>
   path.join(chronicleStateDir(stellaHome), "captures.jsonl");
 
 const chronicleExtensionDir = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "memories_extensions", "chronicle");
+  path.join(stellaHome, "memories_extensions", "chronicle");
 
 const summaryFilePath = (
   stellaHome: string,
@@ -137,7 +137,7 @@ const ensureInstructions = async (stellaHome: string): Promise<void> => {
 const isChronicleEnabled = async (stellaHome: string): Promise<boolean> => {
   try {
     const raw = await fsp.readFile(
-      path.join(stellaHome, "state", "config.json"),
+      path.join(stellaHome, "config.json"),
       "utf-8",
     );
     const parsed = JSON.parse(raw) as StellaConfig;
@@ -148,7 +148,7 @@ const isChronicleEnabled = async (stellaHome: string): Promise<boolean> => {
 };
 
 const lockDir = (stellaHome: string, window: ChronicleSummaryWindow): string =>
-  path.join(stellaHome, "state", "locks", `chronicle-summary-${window}`);
+  path.join(stellaHome, "locks", `chronicle-summary-${window}`);
 
 const acquireLock = (
   stellaHome: string,

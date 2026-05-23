@@ -12,6 +12,7 @@ import type { SqliteDatabase } from "../../../runtime/kernel/storage/shared.js";
 
 export type ChronicleHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaHome: () => string | null;
   getController: () => ChronicleController | null;
   setController: (controller: ChronicleController | null) => void;
   assertPrivilegedSender: (event: IpcMainInvokeEvent, channel: string) => boolean;
@@ -30,15 +31,15 @@ const ensureController = (
 ): ChronicleController | null => {
   const existing = options.getController();
   if (existing) return existing;
-  const root = options.getStellaRoot();
+  const root = options.getStellaHome();
   if (!root) return null;
   const next = new ChronicleControllerCtor(root);
   options.setController(next);
   return next;
 };
 
-const clearDreamThreadSummaries = (stellaRoot: string): void => {
-  const db = new DatabaseSync(getDesktopDatabasePath(stellaRoot), {
+const clearDreamThreadSummaries = (stellaHome: string): void => {
+  const db = new DatabaseSync(getDesktopDatabasePath(stellaHome), {
     timeout: 5_000,
   }) as unknown as SqliteDatabase;
   try {
@@ -113,9 +114,9 @@ export const registerChronicleHandlers = (
     ) {
       throw new Error("Blocked untrusted chronicle:openMemoriesFolder request.");
     }
-    const root = options.getStellaRoot();
+    const root = options.getStellaHome();
     if (!root) return { ok: false } as const;
-    const dir = path.join(root, "state", "memories");
+    const dir = path.join(root, "memories");
     try {
       await fs.mkdir(dir, { recursive: true });
     } catch {
@@ -136,7 +137,7 @@ export const registerChronicleHandlers = (
     if (!options.assertPrivilegedSender(event, "chronicle:wipeMemories")) {
       throw new Error("Blocked untrusted chronicle:wipeMemories request.");
     }
-    const root = options.getStellaRoot();
+    const root = options.getStellaHome();
     if (!root) return { ok: false } as const;
     const controller = ensureController(options);
     let restartChronicle = false;
@@ -148,10 +149,10 @@ export const registerChronicleHandlers = (
         (rawStatus as Record<string, unknown>).running === true;
       await controller.stop();
     }
-    const memoriesDir = path.join(root, "state", "memories");
-    const extensionsDir = path.join(root, "state", "memories_extensions");
-    const chronicleDir = path.join(root, "state", "chronicle");
-    const dreamLockDir = path.join(root, "state", "locks", "dream");
+    const memoriesDir = path.join(root, "memories");
+    const extensionsDir = path.join(root, "memories_extensions");
+    const chronicleDir = path.join(root, "chronicle");
+    const dreamLockDir = path.join(root, "locks", "dream");
     for (const target of [memoriesDir, extensionsDir, chronicleDir, dreamLockDir]) {
       try {
         await fs.rm(target, { recursive: true, force: true });

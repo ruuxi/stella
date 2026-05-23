@@ -144,6 +144,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerMemoryHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaHome: lifecycle.getStellaHome,
     getController: () => state.chronicleController,
     setController: (controller) => {
       state.chronicleController = controller;
@@ -154,6 +155,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerChronicleHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaHome: lifecycle.getStellaHome,
     getController: () => state.chronicleController,
     setController: (controller) => {
       state.chronicleController = controller;
@@ -204,7 +206,7 @@ export const registerBootstrapIpcHandlers = (
     backupService: services.backupService,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
-    getStellaRoot: lifecycle.getStellaRoot,
+    getStellaRoot: lifecycle.getStellaHome,
     externalLinkService: services.externalLinkService,
     ensurePrivilegedActionApproval: (action, message, detail, event) =>
       services.securityPolicyService.ensureApproval(
@@ -259,6 +261,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerBrowserHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaHome: lifecycle.getStellaHome,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -278,12 +281,14 @@ export const registerBootstrapIpcHandlers = (
 
   registerOfficePreviewHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaHome: lifecycle.getStellaHome,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
   registerDisplayHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaHome: lifecycle.getStellaHome,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
@@ -317,6 +322,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerStoreHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaHome: lifecycle.getStellaHome,
     getStellaHostRunner: lifecycle.getRunner,
     getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
@@ -368,6 +374,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerFashionHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
+    getStellaHome: lifecycle.getStellaHome,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
@@ -375,7 +382,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerNativeIntegrationHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
+    getStellaRoot: lifecycle.getStellaHome,
     requestPreregisteredOAuth: (payload) =>
       services.connectorCredentialService.requestPreregisteredOAuth(payload),
     requestDeviceOAuth: (payload) =>
@@ -424,6 +431,7 @@ export const registerBootstrapIpcHandlers = (
     getBroadcastToMobile: lazyMobileBroadcast,
     getOverlayController: () => state.overlayController ?? null,
     stellaRoot: state.stellaRoot!,
+    stellaHomePath: state.stellaHomePath!,
   });
 
   // Register dictation first so we can pass `startPetDictation` into
@@ -432,7 +440,7 @@ export const registerBootstrapIpcHandlers = (
   const dictationPushToTalk = registerDictationHandlers({
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController ?? null,
-    getStellaRoot: lifecycle.getStellaRoot,
+    getStellaRoot: lifecycle.getStellaHome,
     onDictationActiveChanged: (active) => {
       wakewordPausedForDictation = active;
       syncWakewordPause();
@@ -458,9 +466,9 @@ export const registerBootstrapIpcHandlers = (
   // `togglePetVoice`). Mic buttons stay dictation-only — voice is
   // wake-word-gated. Auto-pauses while a voice session is active so
   // the assistant cannot trigger itself.
-  const stellaRoot = lifecycle.getStellaRoot();
-  const wakePrefs = stellaRoot
-    ? loadLocalPreferences(stellaRoot)
+  const stellaHome = lifecycle.getStellaHome();
+  const wakePrefs = stellaHome
+    ? loadLocalPreferences(stellaHome)
     : { wakeWordEnabled: false, wakeWordThreshold: 0.6 };
   wakeword = new WakewordService({
     threshold: wakePrefs.wakeWordThreshold,
@@ -497,7 +505,7 @@ export const registerBootstrapIpcHandlers = (
     ) {
       throw new Error("Blocked untrusted preferences:getWakeWord request.");
     }
-    const root = lifecycle.getStellaRoot();
+    const root = lifecycle.getStellaHome();
     if (!root) return false;
     return loadLocalPreferences(root).wakeWordEnabled;
   });
@@ -512,7 +520,7 @@ export const registerBootstrapIpcHandlers = (
       throw new Error("Blocked untrusted preferences:setWakeWord request.");
     }
     const next = enabled === true;
-    const root = lifecycle.getStellaRoot();
+    const root = lifecycle.getStellaHome();
     if (root) {
       const prefs = loadLocalPreferences(root);
       prefs.wakeWordEnabled = next;

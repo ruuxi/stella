@@ -87,6 +87,7 @@ const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {};
 
 export const createToolHost = ({
   stellaRoot,
+  stellaHome,
   stellaBrowserBinPath: _stellaBrowserBinPath,
   stellaOfficeBinPath: _stellaOfficeBinPath,
   stellaComputerCliPath,
@@ -105,7 +106,7 @@ export const createToolHost = ({
   contextProvider,
   notifyVoiceActionComplete,
 }: ToolHostOptions) => {
-  const stateRoot = path.join(stellaRoot, "state");
+  const stateRoot = stellaHome ?? path.join(stellaRoot, "state");
   const toolCatalog = new Map<string, ToolMetadata>();
 
   setFileToolsConfig({ stellaRoot });

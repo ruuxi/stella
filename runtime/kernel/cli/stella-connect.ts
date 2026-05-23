@@ -50,10 +50,7 @@ import { loadGoogleWorkspaceTools } from "../google-workspace/load-google-worksp
 import { resolveStatePath } from "./shared.js";
 
 const stateRoot = path.resolve(resolveStatePath());
-const stellaRoot =
-  path.basename(stateRoot) === "state"
-    ? path.dirname(stateRoot)
-    : path.dirname(stateRoot);
+const stellaRoot = stateRoot;
 
 const printJson = (value: unknown) => {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
@@ -905,7 +902,7 @@ const importMcp = async (argv: string[]) => {
           probeDeferred: true,
           probeDeferredReason,
           hint: auth.tokenKey
-            ? `Bind the credential under tokenKey "${auth.tokenKey}" (state/connectors/.credentials.json), then run \`stella-connect refresh-skill ${id}\` to populate the action list.`
+            ? `Bind the credential under tokenKey "${auth.tokenKey}" (~/.stella/connectors/.credentials.json), then run \`stella-connect refresh-skill ${id}\` to populate the action list.`
             : `Configure auth, then run \`stella-connect refresh-skill ${id}\` to populate the action list.`,
         }
       : {}),
@@ -934,7 +931,7 @@ const HELP_TEXT = [
   "  disable-native <id>               Disable a native Store integration and remove its generated skill.",
   "  import-mcp --id <id> (--url <u> | --command <cmd> [--args-json '[]'])",
   "                                    Probe an MCP, persist it as a CLI connector, and",
-  "                                    generate a matching skill under state/skills/<id>/.",
+  "                                    generate a matching skill under ~/.stella/skills/<id>/.",
   "                                    For authenticated hosted MCPs, declare auth with",
   "                                    --auth-type/--auth-token-key/--auth-header-name/",
   "                                    --auth-scheme/--auth-env-var; OAuth also supports",

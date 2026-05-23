@@ -9,7 +9,7 @@ import { hasMacPermission, requestMacPermission } from "../utils/macos-permissio
  *
  * Responsibilities:
  *   - Resolve the binary location (dev + packaged)
- *   - Skip cleanly when disabled in `state/config.json` or when Screen
+ *   - Skip cleanly when disabled in `~/.stella/config.json` or when Screen
  *     Recording permission is not granted
  *   - Spawn the daemon as a detached process and remember the pid for
  *     status checks
@@ -43,7 +43,7 @@ const CHRONICLE_EXCLUDED_BUNDLE_IDS = ["com.stella.app", "com.github.Electron"];
 const readConfig = async (stellaHome: string): Promise<ChronicleConfig> => {
   try {
     const raw = await fs.readFile(
-      path.join(stellaHome, "state", "config.json"),
+      path.join(stellaHome, "config.json"),
       "utf-8",
     );
     const parsed = JSON.parse(raw) as StellaConfig;
@@ -57,7 +57,7 @@ const writeConfigPatch = async (
   stellaHome: string,
   patch: ChronicleConfig,
 ): Promise<void> => {
-  const configPath = path.join(stellaHome, "state", "config.json");
+  const configPath = path.join(stellaHome, "config.json");
   let current: StellaConfig = {};
   try {
     const raw = await fs.readFile(configPath, "utf-8");
@@ -148,7 +148,7 @@ export class ChronicleController {
     }
 
     try {
-      await fs.mkdir(path.join(this.stellaHome, "state", "chronicle"), {
+      await fs.mkdir(path.join(this.stellaHome, "chronicle"), {
         recursive: true,
       });
     } catch {

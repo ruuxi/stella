@@ -1,7 +1,7 @@
 /**
  * Module-scoped store of HTML canvases the orchestrator's `html` tool has
  * produced. The Canvas tab subscribes via `useSyncExternalStore`; files
- * live under `state/outputs/html/` and a small localStorage index keeps
+ * live under `~/.stella/outputs/html/` and a small localStorage index keeps
  * the rail populated across renderer and desktop restarts.
  */
 

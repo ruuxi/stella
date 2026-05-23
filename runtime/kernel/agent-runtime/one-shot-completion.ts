@@ -41,6 +41,7 @@ const logger = createRuntimeLogger("agent-runtime.one-shot-completion");
 
 export type OneShotCompletionRuntimeContext = {
   stellaRoot: string;
+  stellaHome: string;
   siteBaseUrl: string | null;
   getAuthToken: () => string | null;
   requestRuntimeAuthRefresh?: () => Promise<{
@@ -51,19 +52,19 @@ export type OneShotCompletionRuntimeContext = {
 };
 
 const resolveModelName = (
-  stellaRoot: string,
+  stellaHome: string,
   agentType: string,
   fallbackAgentTypes: readonly string[] | undefined,
 ): string | undefined => {
   const direct =
-    getModelOverride(stellaRoot, agentType) ??
-    getDefaultModel(stellaRoot, agentType);
+    getModelOverride(stellaHome, agentType) ??
+    getDefaultModel(stellaHome, agentType);
   if (direct) return direct;
   if (!fallbackAgentTypes) return undefined;
   for (const fallback of fallbackAgentTypes) {
     const override =
-      getModelOverride(stellaRoot, fallback) ??
-      getDefaultModel(stellaRoot, fallback);
+      getModelOverride(stellaHome, fallback) ??
+      getDefaultModel(stellaHome, fallback);
     if (override) return override;
   }
   return undefined;
@@ -80,9 +81,9 @@ export const runOneShotCompletion = async (args: {
   }
 
   const route = resolveLlmRoute({
-    stellaRoot: runtime.stellaRoot,
+    stellaRoot: runtime.stellaHome,
     modelName: resolveModelName(
-      runtime.stellaRoot,
+      runtime.stellaHome,
       request.agentType,
       request.fallbackAgentTypes,
     ),
@@ -98,7 +99,7 @@ export const runOneShotCompletion = async (args: {
   });
 
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaRoot: runtime.stellaRoot,
+    stellaRoot: runtime.stellaHome,
     modelId: route.model.id,
   });
 

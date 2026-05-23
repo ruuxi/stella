@@ -30,10 +30,10 @@ const DEFAULT_CATEGORIES: SuggestionCategory[] = [
     { label: "Fill out a form for me", prompt: "Fill out a form for me" },
   ]},
   { label: "Skills", options: [
-    { label: "Save my PDF workflow", prompt: "Create a Stella skill for my repeated PDF workflows. Put it under state/skills and include clear instructions for reading, editing, rendering, and validating PDFs." },
+    { label: "Save my PDF workflow", prompt: "Create a Stella skill for my repeated PDF workflows. Put it under ~/.stella/skills and include clear instructions for reading, editing, rendering, and validating PDFs." },
     { label: "Remember project conventions", prompt: "Create or update a Stella skill that captures the recurring conventions from this project so future agents can follow them without rediscovering them." },
     { label: "Turn this into a skill", prompt: "Review the recent work in this conversation and create a reusable Stella skill for any durable pattern you find." },
-    { label: "Improve an existing skill", prompt: "Review state/skills for the closest existing skill to my recent workflow and update it if the instructions are stale or incomplete." },
+    { label: "Improve an existing skill", prompt: "Review ~/.stella/skills for the closest existing skill to my recent workflow and update it if the instructions are stale or incomplete." },
   ]},
   { label: "Schedule", options: [
     { label: "Remind me to stretch every hour", prompt: "Remind me to stretch every hour" },

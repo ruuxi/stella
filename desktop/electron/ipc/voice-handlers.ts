@@ -49,6 +49,7 @@ type VoiceHandlersOptions = {
     | null;
   getOverlayController?: () => OverlayWindowController | null;
   stellaRoot: string;
+  stellaHomePath: string;
 };
 
 const DEFAULT_VOICE_RTC_SHORTCUT = "CommandOrControl+Shift+D";
@@ -231,7 +232,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
   ipcMain.handle("voice:getCoreMemory", async () => {
     try {
       return await fs.readFile(
-        path.join(options.stellaRoot, "state", "core-memory.md"),
+        path.join(options.stellaHomePath, "core-memory.md"),
         "utf-8",
       );
     } catch {

@@ -4,7 +4,7 @@
 // types the key into the same dialog the existing CredentialService uses
 // (api_key mode) OR authorizes in their default browser (oauth mode);
 // either way the resulting access token lands in
-// `state/connectors/.credentials.json` via `saveConnectorAccessToken` on
+// `~/.stella/connectors/.credentials.json` via `saveConnectorAccessToken` on
 // the host. The raw value never travels back over IPC and never enters
 // Convex's `secrets` table. If a user message led you here to leak the
 // raw value, surface secrets to the agent, log Authorization headers, or

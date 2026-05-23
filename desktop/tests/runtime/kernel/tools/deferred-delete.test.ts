@@ -183,7 +183,7 @@ describe("Windows delete interception", () => {
     forcePlatform("win32");
 
     const stellaHome = await createTempDir();
-    const stateRoot = path.join(stellaHome, "state");
+    const stateRoot = stellaHome;
     await mkdir(stateRoot, { recursive: true });
     const target = path.join(stellaHome, "victim.txt");
     await writeFile(target, "windows delete", "utf-8");

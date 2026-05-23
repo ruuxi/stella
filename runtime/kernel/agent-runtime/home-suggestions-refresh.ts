@@ -71,7 +71,7 @@ const SYSTEM_PROMPT = [
   '  4. Each suggestion is `{"category":"stella"|"task"|"skill"|"schedule","label":"<3-8 word action label>","prompt":"<full instruction the user would send to Stella>"}`.',
   "  5. Keep suggestions the user already has if they still look relevant. Replace stale ones with new ones grounded in the recent activity. Add new suggestions that fit themes you observe.",
   "  6. Do not invent specifics that aren't supported by the activity summaries; prefer slightly generic phrasing over hallucinated detail.",
-  "  7. The skill category is only for reusable patterns Stella can save under state/skills/<name>/SKILL.md, not one-off research or web lookup.",
+  "  7. The skill category is only for reusable patterns Stella can save under ~/.stella/skills/<name>/SKILL.md, not one-off research or web lookup.",
   "  8. Skill suggestions should ask Stella to create or update a named skill from repeated workflows, tool usage patterns, repo conventions, or recurring user preferences found in the summaries.",
   '  9. Always keep one stella suggestion that says "Add a music player to home" with prompt "Add the music player to my home page. The component already exists at src/app/home/MusicPlayer.tsx — integrate it into the home page layout, don\'t rebuild it.".',
   "",

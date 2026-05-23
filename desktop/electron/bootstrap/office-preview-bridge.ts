@@ -42,8 +42,8 @@ const asString = (value: unknown): string =>
 const asNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
-const resolvePreviewRoot = (stellaRoot: string) =>
-  path.join(stellaRoot, "state", PREVIEW_ROOT_DIRNAME);
+const resolvePreviewRoot = (stellaHome: string) =>
+  path.join(stellaHome, PREVIEW_ROOT_DIRNAME);
 
 const readSnapshotFromSessionDir = async (
   sessionDir: string,
@@ -89,9 +89,9 @@ const readSnapshotFromSessionDir = async (
 };
 
 export const listOfficePreviewSnapshots = async (
-  stellaRoot: string,
+  stellaHome: string,
 ): Promise<OfficePreviewSnapshot[]> => {
-  const previewRoot = resolvePreviewRoot(stellaRoot);
+  const previewRoot = resolvePreviewRoot(stellaHome);
   await fs.mkdir(previewRoot, { recursive: true });
 
   const entries = await fs.readdir(previewRoot, { withFileTypes: true });
@@ -177,8 +177,8 @@ const findPreviewProcessIds = async (sessionId: string): Promise<number[]> => {
   }
 };
 
-export const stopOfficePreviewSessions = async (stellaRoot: string) => {
-  const snapshots = await listOfficePreviewSnapshots(stellaRoot).catch(
+export const stopOfficePreviewSessions = async (stellaHome: string) => {
+  const snapshots = await listOfficePreviewSnapshots(stellaHome).catch(
     () => [],
   );
   const activeSnapshots = snapshots.filter(
@@ -196,8 +196,8 @@ export const stopOfficePreviewSessions = async (stellaRoot: string) => {
 export const startOfficePreviewBridge = (
   context: BootstrapContext,
 ): (() => void) => {
-  const stellaRoot = context.state.stellaRoot;
-  if (!stellaRoot) {
+  const stellaHome = context.state.stellaHomePath;
+  if (!stellaHome) {
     return () => {};
   }
 
@@ -207,7 +207,7 @@ export const startOfficePreviewBridge = (
 
   const scan = async () => {
     try {
-      const snapshots = await listOfficePreviewSnapshots(stellaRoot);
+      const snapshots = await listOfficePreviewSnapshots(stellaHome);
       if (stopped) {
         return;
       }

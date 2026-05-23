@@ -39,7 +39,7 @@ export const createBootstrapServices = (options: {
   const uiStateService = new UiStateService();
   const externalLinkService = new ExternalLinkService();
   const localChatHistoryService = new LocalChatHistoryService({
-    stellaRoot: config.stellaRoot,
+    stellaRoot: config.stellaHomePath,
     onUpdated: (payload) => {
       for (const window of options.getAllWindows()) {
         if (!window.isDestroyed()) {
@@ -59,7 +59,7 @@ export const createBootstrapServices = (options: {
   let connectorCredentialService: ConnectorCredentialService | null = null;
 
   setPreventComputerSleep(
-    loadLocalPreferences(config.stellaRoot).preventComputerSleep,
+    loadLocalPreferences(config.stellaHomePath).preventComputerSleep,
   );
 
   const authService = new AuthService({
@@ -87,7 +87,7 @@ export const createBootstrapServices = (options: {
 
   connectorCredentialService = new ConnectorCredentialService({
     windowManagerTarget: lifecycle,
-    getStellaRoot: () => lifecycle.getStellaRoot(),
+    getStellaRoot: () => lifecycle.getStellaHome(),
     getConvexAuthToken: () => authService.getConvexAuthToken(),
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),
   });
@@ -112,7 +112,7 @@ export const createBootstrapServices = (options: {
 
   const backupService = new BackupService({
     stellaRoot: config.stellaRoot,
-    getStellaRoot: () => state.stellaRoot,
+    getStellaRoot: () => state.stellaHomePath,
     getRunner: () => lifecycle.getRunner(),
     getAuthToken: () => authService.getAuthToken(),
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),
@@ -167,14 +167,14 @@ export const createBootstrapServices = (options: {
 
   const radialGestureService = new RadialGestureService({
     getRadialTriggerKey: () => {
-      const stellaRoot = state.stellaRoot;
-      if (!stellaRoot) return DEFAULT_RADIAL_TRIGGER_CODE;
-      return loadLocalPreferences(stellaRoot).radialTriggerKey;
+      const stellaHomePath = state.stellaHomePath;
+      if (!stellaHomePath) return DEFAULT_RADIAL_TRIGGER_CODE;
+      return loadLocalPreferences(stellaHomePath).radialTriggerKey;
     },
     getMiniDoubleTapModifier: () => {
-      const stellaRoot = state.stellaRoot;
-      if (!stellaRoot) return "Alt";
-      return loadLocalPreferences(stellaRoot).miniDoubleTapModifier;
+      const stellaHomePath = state.stellaHomePath;
+      if (!stellaHomePath) return "Alt";
+      return loadLocalPreferences(stellaHomePath).miniDoubleTapModifier;
     },
     shouldEnable: () =>
       !uiStateService.state.suppressNativeRadialDuringOnboarding &&

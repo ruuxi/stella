@@ -29,7 +29,7 @@ const createTestHost = async (
     os.tmpdir(),
     `stella-orchestrator-tools-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
-  await mkdir(path.join(rootPath, "state"), { recursive: true });
+  await mkdir(path.join(rootPath), { recursive: true });
 
   const dbPath = getDesktopDatabasePath(rootPath);
   const db = new DatabaseSync(dbPath, {

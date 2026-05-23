@@ -175,7 +175,7 @@ const buildVoiceSessionInstructions = async (): Promise<string> => {
   const trimmed = coreMemory?.trim();
   const base = getVoiceSessionPromptConfig().basePrompt;
   return trimmed
-    ? `${base}\n\n<memory_file path="state/core-memory.md">\n${trimmed}\n</memory_file>`
+    ? `${base}\n\n<memory_file path="~/.stella/core-memory.md">\n${trimmed}\n</memory_file>`
     : base;
 };
 

@@ -16,7 +16,7 @@ const createStateRoot = async (): Promise<string> => {
     os.tmpdir(),
     `stella-explore-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
-  await mkdir(path.join(rootPath, "state"), { recursive: true });
+  await mkdir(rootPath, { recursive: true });
   activeRoots.add(rootPath);
   return rootPath;
 };
@@ -29,15 +29,28 @@ afterEach(async () => {
 });
 
 describe("sanitizeExploreToolArgs", () => {
-  it("pins Grep to state/ when no path is provided", async () => {
+  it("pins Grep to the Stella home when no path is provided", async () => {
     const rootPath = await createStateRoot();
     const result = await sanitizeExploreToolArgs("Grep", { pattern: "skill" }, rootPath);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.args.path).toBe(path.join(rootPath, "state"));
+    expect(result.args.path).toBe(rootPath);
   });
 
-  it("rejects Read paths outside state/", async () => {
+  it("expands ~/.stella display paths into the Stella home", async () => {
+    const rootPath = await createStateRoot();
+    await mkdir(path.join(rootPath, "skills"), { recursive: true });
+    const result = await sanitizeExploreToolArgs(
+      "Read",
+      { file_path: "~/.stella/skills/index.md" },
+      rootPath,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.args.file_path).toBe(path.join(rootPath, "skills", "index.md"));
+  });
+
+  it("rejects Read paths outside the Stella home", async () => {
     const rootPath = await createStateRoot();
     const result = await sanitizeExploreToolArgs(
       "Read",
@@ -46,7 +59,7 @@ describe("sanitizeExploreToolArgs", () => {
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error).toContain("inside state/");
+    expect(result.error).toContain("inside ~/.stella/");
   });
 });
 

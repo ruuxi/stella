@@ -11,7 +11,7 @@ export type DisplayFileArtifactKind =
  * Tagged union for resources Stella can surface in chat or the workspace panel.
  *
  * - `canvas-html` — file-backed self-contained HTML written by the orchestrator's
- *              `html` tool to `state/outputs/html/<slug>.html`. Rendered as an
+ *              `html` tool to `~/.stella/outputs/html/<slug>.html`. Rendered as an
  *              inline artifact card in chat AND opened in the Canvas panel tab.
  * - `office` — docx/xlsx/pptx live-preview produced by `stella-office preview`.
  *              Renders the existing OfficePreviewCard (iframe + auto-refresh).
@@ -21,7 +21,7 @@ export type DisplayFileArtifactKind =
  *              preview ref. The sidebar resolves it into the right viewer.
  * - `pdf`    — local PDF file rendered with react-pdf in the renderer.
  * - `media`  — generated media (image/video/audio/3d/text) materialized to
- *              `state/media/outputs/`. Emitted by the media materializer when
+ *              `~/.stella/media/outputs/`. Emitted by the media materializer when
  *              any media job for the current owner succeeds.
  * - `trash`  — Stella's deferred-delete trash. The actual UI is intentionally
  *              owned by the future tab implementation; this payload wires the

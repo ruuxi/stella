@@ -24,6 +24,7 @@ export type ToolContext = {
   rootRunId?: string;
   agentType?: string;
   stellaRoot?: string;
+  stellaHome?: string;
   toolWorkspaceRoot?: string;
   storageMode?: "cloud" | "local";
   agentId?: string;
