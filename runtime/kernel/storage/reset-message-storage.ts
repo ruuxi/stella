@@ -8,7 +8,7 @@ const SQLITE_BASENAMES = [
 ] as const;
 
 export const resetMessageStorage = async (stellaHome: string): Promise<void> => {
-  const stateRoot = path.join(stellaHome, "state");
+  const stateRoot = stellaHome;
 
   await Promise.allSettled([
     ...SQLITE_BASENAMES.map((basename) =>

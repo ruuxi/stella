@@ -117,7 +117,7 @@ const persistSelectedCategories = async (
   categories: DiscoveryCategory[],
 ): Promise<void> => {
   try {
-    const stateDir = path.join(stellaHome, "state");
+    const stateDir = stellaHome;
     const statePath = path.join(stateDir, DISCOVERY_CATEGORIES_STATE_FILE);
     await ensurePrivateDir(stateDir);
     await writePrivateFile(

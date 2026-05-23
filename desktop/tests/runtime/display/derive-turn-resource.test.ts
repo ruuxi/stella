@@ -40,7 +40,7 @@ describe("deriveTurnResource", () => {
     ).toBeNull();
   });
 
-  it("surfaces general-agent apply_patch writes to state/outputs/html/* as canvas-html", () => {
+  it("surfaces general-agent apply_patch writes to ~/.stella/outputs/html/* as canvas-html", () => {
     expect(
       deriveTurnResource([
         event({
@@ -53,7 +53,7 @@ describe("deriveTurnResource", () => {
             result: "ok",
             fileChanges: [
               {
-                path: "/Users/me/projects/stella/state/outputs/html/onboarding-options.html",
+                path: "/Users/me/.stella/outputs/html/onboarding-options.html",
                 kind: { type: "add" },
               },
             ],
@@ -63,14 +63,14 @@ describe("deriveTurnResource", () => {
     ).toEqual({
       kind: "canvas-html",
       filePath:
-        "/Users/me/projects/stella/state/outputs/html/onboarding-options.html",
+        "/Users/me/.stella/outputs/html/onboarding-options.html",
       title: "Onboarding Options",
       slug: "onboarding-options",
       createdAt: 7,
     });
   });
 
-  it("ignores html files written outside state/outputs/html/", () => {
+  it("ignores html files written outside ~/.stella/outputs/html/", () => {
     expect(
       deriveTurnResource([
         event({
@@ -90,7 +90,7 @@ describe("deriveTurnResource", () => {
           },
         }),
       ]),
-    ).not.toMatchObject({ kind: "canvas-html" });
+    ).toBeNull();
   });
 
   it("prefers the orchestrator html tool result over a fileChange fallback", () => {
@@ -105,20 +105,20 @@ describe("deriveTurnResource", () => {
             agentType: "orchestrator",
             result: "Canvas saved",
             details: {
-              filePath: "/state/outputs/html/plan.html",
+              filePath: "/.stella/outputs/html/plan.html",
               slug: "plan",
               title: "Plan",
               createdAt: 3,
             },
             fileChanges: [
-              { path: "/state/outputs/html/plan.html", kind: { type: "add" } },
+              { path: "/.stella/outputs/html/plan.html", kind: { type: "add" } },
             ],
           },
         }),
       ]),
     ).toEqual({
       kind: "canvas-html",
-      filePath: "/state/outputs/html/plan.html",
+      filePath: "/.stella/outputs/html/plan.html",
       title: "Plan",
       slug: "plan",
       createdAt: 3,
@@ -278,11 +278,11 @@ describe("deriveTurnResource", () => {
             jobId: "job-1",
             capability: "text_to_image",
             prompt: "a dog over Tokyo",
-            filePaths: ["/state/media/outputs/job-1_0.png"],
+            filePaths: ["/.stella/media/outputs/job-1_0.png"],
           },
           fileChanges: [
             {
-              path: "/state/media/outputs/job-1_0.png",
+              path: "/.stella/media/outputs/job-1_0.png",
               kind: { type: "add" },
             },
           ],
@@ -294,7 +294,7 @@ describe("deriveTurnResource", () => {
       kind: "media",
       asset: {
         kind: "image",
-        filePaths: ["/state/media/outputs/job-1_0.png"],
+        filePaths: ["/.stella/media/outputs/job-1_0.png"],
       },
       jobId: "job-1",
       capability: "text_to_image",
@@ -316,11 +316,11 @@ describe("deriveTurnResource", () => {
             result: {
               jobId: "job-1",
               prompt: "a product mockup",
-              filePaths: ["/state/media/outputs/job-1_0.png"],
+              filePaths: ["/.stella/media/outputs/job-1_0.png"],
             },
             fileChanges: [
               {
-                path: "/state/media/outputs/job-1_0.png",
+                path: "/.stella/media/outputs/job-1_0.png",
                 kind: { type: "add" },
               },
             ],
@@ -343,17 +343,17 @@ describe("deriveTurnResource", () => {
             capability: "text_to_image",
             prompt: "two options",
             filePaths: [
-              "/state/media/outputs/job-1_0.png",
-              "/state/media/outputs/job-1_1.png",
+              "/.stella/media/outputs/job-1_0.png",
+              "/.stella/media/outputs/job-1_1.png",
             ],
           },
           fileChanges: [
             {
-              path: "/state/media/outputs/job-1_0.png",
+              path: "/.stella/media/outputs/job-1_0.png",
               kind: { type: "add" },
             },
             {
-              path: "/state/media/outputs/job-1_1.png",
+              path: "/.stella/media/outputs/job-1_1.png",
               kind: { type: "add" },
             },
           ],
@@ -366,8 +366,8 @@ describe("deriveTurnResource", () => {
       asset: {
         kind: "image",
         filePaths: [
-          "/state/media/outputs/job-1_0.png",
-          "/state/media/outputs/job-1_1.png",
+          "/.stella/media/outputs/job-1_0.png",
+          "/.stella/media/outputs/job-1_1.png",
         ],
       },
       jobId: "job-1",
@@ -673,7 +673,7 @@ describe("deriveTurnInlineImagePayloads", () => {
           result: {
             jobId: "job-1",
             prompt: "a product mockup",
-            filePaths: ["/state/media/outputs/job-1_0.png"],
+            filePaths: ["/.stella/media/outputs/job-1_0.png"],
           },
         },
       }),
@@ -684,7 +684,7 @@ describe("deriveTurnInlineImagePayloads", () => {
         kind: "media",
         asset: {
           kind: "image",
-          filePaths: ["/state/media/outputs/job-1_0.png"],
+          filePaths: ["/.stella/media/outputs/job-1_0.png"],
         },
         jobId: "job-1",
         prompt: "a product mockup",
@@ -782,8 +782,8 @@ describe("deriveTurnInlineImagePayloads", () => {
             capability: "text_to_image",
             prompt: "two options",
             filePaths: [
-              "/state/media/outputs/job-1_0.png",
-              "/state/media/outputs/job-1_1.png",
+              "/.stella/media/outputs/job-1_0.png",
+              "/.stella/media/outputs/job-1_1.png",
             ],
           },
         },
@@ -796,8 +796,8 @@ describe("deriveTurnInlineImagePayloads", () => {
         asset: {
           kind: "image",
           filePaths: [
-            "/state/media/outputs/job-1_0.png",
-            "/state/media/outputs/job-1_1.png",
+            "/.stella/media/outputs/job-1_0.png",
+            "/.stella/media/outputs/job-1_1.png",
           ],
         },
         jobId: "job-1",
@@ -1003,16 +1003,16 @@ describe("extractMarkdownLinkPaths", () => {
 });
 
 describe("buildPayloadFromBarePath", () => {
-  it("recognizes state/outputs/html/<slug>.html as a canvas-html payload", () => {
+  it("recognizes ~/.stella/outputs/html/<slug>.html as a canvas-html payload", () => {
     expect(
       buildPayloadFromBarePath(
-        "/Users/me/projects/stella/state/outputs/html/plan-options.html",
+        "/Users/me/.stella/outputs/html/plan-options.html",
         42,
       ),
     ).toEqual({
       kind: "canvas-html",
       filePath:
-        "/Users/me/projects/stella/state/outputs/html/plan-options.html",
+        "/Users/me/.stella/outputs/html/plan-options.html",
       title: "Plan Options",
       slug: "plan-options",
       createdAt: 42,

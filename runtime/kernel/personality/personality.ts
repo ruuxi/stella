@@ -1,5 +1,5 @@
 /**
- * `state/personality.md` — the dynamic prefix to the orchestrator system
+ * `~/.stella/personality.md` — the dynamic prefix to the orchestrator system
  * prompt. Owns Stella's identity intro and her selected voice.
  *
  * Lifecycle:
@@ -25,7 +25,7 @@ import {
   findPersonalityVoice,
 } from "../../extensions/stella-runtime/personality/voices.js";
 
-const PERSONALITY_FILE_RELATIVE = path.join("state", "personality.md");
+const PERSONALITY_FILE_RELATIVE = "personality.md";
 const VOICE_TOKEN = "{{voice}}";
 
 const BUNDLED_TEMPLATE_URL = new URL(
@@ -82,7 +82,7 @@ export const readOrSeedPersonality = (
 };
 
 /**
- * Overwrite `state/personality.md` with the template interpolated against
+ * Overwrite `~/.stella/personality.md` with the template interpolated against
  * the given voice id. Used when the user picks a voice in onboarding or
  * changes it in settings.
  */

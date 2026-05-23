@@ -127,7 +127,7 @@ export type RuntimeHostHandlers = {
   /**
    * Pop a credential dialog for a connector token (Stella Connect MCP /
    * REST integrations). Unlike `requestCredential` the value is written
-   * directly to `state/connectors/.credentials.json` via
+   * directly to `~/.stella/connectors/.credentials.json` via
    * `saveConnectorAccessToken` on the host — the secret never travels
    * back over IPC and is never inserted into Convex's `secrets` table.
    * Called from the worker's CLI bridge when `stella-connect call` /
@@ -223,6 +223,7 @@ export type StellaRuntimeHostOptions = {
 type WorkerInitializationState = {
   protocolVersion: string;
   stellaRoot: string;
+  stellaHomePath: string;
   stellaWorkspacePath: string;
   authToken: string | null;
   convexUrl: string | null;
@@ -2019,7 +2020,7 @@ export class StellaRuntimeHost {
 
   async coreMemoryExists() {
     const { coreMemoryExists } = await import("../discovery/browser-data.js");
-    return await coreMemoryExists(this.options.initializeParams.stellaRoot);
+    return await coreMemoryExists(this.options.initializeParams.stellaHomePath);
   }
 
   async discoveryKnowledgeExists() {
@@ -2027,7 +2028,7 @@ export class StellaRuntimeHost {
       "../discovery/life-knowledge.js"
     );
     return await discoveryKnowledgeExists(
-      this.options.initializeParams.stellaRoot,
+      this.options.initializeParams.stellaHomePath,
     );
   }
 
@@ -2037,7 +2038,7 @@ export class StellaRuntimeHost {
   ) {
     const { writeCoreMemory } = await import("../discovery/browser-data.js");
     await writeCoreMemory(
-      this.options.initializeParams.stellaRoot,
+      this.options.initializeParams.stellaHomePath,
       content,
       options,
     );
@@ -2048,7 +2049,7 @@ export class StellaRuntimeHost {
       "../discovery/life-knowledge.js"
     );
     await writeDiscoveryKnowledge(
-      this.options.initializeParams.stellaRoot,
+      this.options.initializeParams.stellaHomePath,
       payload,
     );
   }
@@ -2100,7 +2101,7 @@ export class StellaRuntimeHost {
 
     const showNotificationHandler = this.options.hostHandlers.showNotification;
     const scheduler = new LocalSchedulerService({
-      stellaHome: this.options.initializeParams.stellaRoot,
+      stellaHome: this.options.initializeParams.stellaHomePath,
       runnerTarget: {
         getRunner: () => ({
           runAutomationTurn: async (payload) =>
@@ -2266,6 +2267,7 @@ export class StellaRuntimeHost {
     return {
       protocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
       stellaRoot: this.options.initializeParams.stellaRoot,
+      stellaHomePath: this.options.initializeParams.stellaHomePath,
       stellaWorkspacePath: this.options.initializeParams.stellaWorkspacePath,
       authToken: this.configCache.authToken ?? null,
       convexUrl: this.configCache.convexUrl ?? null,

@@ -55,6 +55,7 @@ const STATE_DIRECTORY_SKIP_PREFIXES = new Set([
   "logs",
   "electron-user-data",
   "tmp",
+  "workspace",
 ]);
 
 type BackupServiceDeps = {
@@ -923,7 +924,7 @@ export class BackupService {
     const sqliteEntry = await this.collectSqliteEntry(args);
     const stateEntries = await this.collectDirectoryEntries({
       ...args,
-      rootPath: path.join(args.stellaHomePath, "state"),
+      rootPath: args.stellaHomePath,
       scope: "state",
       shouldSkip: (relativePath, isDirectory) => {
         if (!relativePath) return false;
@@ -932,7 +933,8 @@ export class BackupService {
           topLevel === "backups" ||
           topLevel === "cache" ||
           topLevel === "logs" ||
-          topLevel === "electron-user-data"
+          topLevel === "electron-user-data" ||
+          topLevel === "workspace"
         ) {
           return true;
         }
@@ -948,7 +950,7 @@ export class BackupService {
     });
     const workspaceEntries = await this.collectDirectoryEntries({
       ...args,
-      rootPath: path.join(args.stellaHomePath, "workspace"),
+      rootPath: this.getWorkspaceRoot(),
       scope: "workspace",
       shouldSkip: () => false,
     });
@@ -975,11 +977,8 @@ export class BackupService {
     );
     const excludePrefixes =
       relativeHome && !relativeHome.startsWith("..")
-        ? [
-            normalizePath(path.posix.join(relativeHome, "state")),
-            normalizePath(path.posix.join(relativeHome, "workspace")),
-          ]
-        : [];
+        ? [relativeHome, "workspace"]
+        : ["workspace"];
     const repoFiles = await listGitWorkingTreeFiles(
       this.deps.stellaRoot,
       excludePrefixes,
@@ -1034,7 +1033,7 @@ export class BackupService {
     tempRoot: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry | null> {
-    const sqlitePath = path.join(args.stellaHomePath, "state", "stella.sqlite");
+    const sqlitePath = path.join(args.stellaHomePath, "stella.sqlite");
     if (!(await fileExists(sqlitePath))) {
       return null;
     }
@@ -1483,11 +1482,8 @@ export class BackupService {
       path.relative(this.deps.stellaRoot, stellaHomePath),
     );
     return relativeHome && !relativeHome.startsWith("..")
-      ? [
-          normalizePath(path.posix.join(relativeHome, "state")),
-          normalizePath(path.posix.join(relativeHome, "workspace")),
-        ]
-      : [];
+      ? [relativeHome, "workspace"]
+      : ["workspace"];
   }
 
   private async ensureRepoRestoreSafe(stellaHomePath: string) {
@@ -1541,13 +1537,15 @@ export class BackupService {
       repoEntries,
     );
     await this.restoreScopedDirectory({
-      rootPath: path.join(args.stellaHomePath, "workspace"),
+      rootPath: this.getWorkspaceRoot(),
+      scope: "workspace",
       entries: workspaceEntries,
       stagedObjectsDir: args.stagedObjectsDir,
       shouldSkip: () => false,
     });
     await this.restoreScopedDirectory({
-      rootPath: path.join(args.stellaHomePath, "state"),
+      rootPath: args.stellaHomePath,
+      scope: "state",
       entries: stateEntries.filter((entry) => !isPreservedStatePath(entry.path.slice("state/".length))),
       stagedObjectsDir: args.stagedObjectsDir,
       shouldSkip: shouldSkipStatePath,
@@ -1568,7 +1566,7 @@ export class BackupService {
     }
 
     if (sqliteEntry) {
-      const sqliteTarget = path.join(args.stellaHomePath, "state", "stella.sqlite");
+      const sqliteTarget = path.join(args.stellaHomePath, "stella.sqlite");
       await ensurePrivateDir(path.dirname(sqliteTarget));
       await removeFileIfExists(`${sqliteTarget}-shm`);
       await removeFileIfExists(`${sqliteTarget}-wal`);
@@ -1608,15 +1606,15 @@ export class BackupService {
 
   private async restoreScopedDirectory(args: {
     rootPath: string;
+    scope: "state" | "workspace";
     entries: BackupManifestEntry[];
     stagedObjectsDir: string;
     shouldSkip: (relativePath: string, isDirectory: boolean) => boolean;
   }) {
     await ensurePrivateDir(args.rootPath);
-    const scopePrefix = path.basename(args.rootPath);
     const snapshotEntries = args.entries.map((entry) => ({
       ...entry,
-      relativePath: normalizePath(entry.path.slice(`${scopePrefix}/`.length)),
+      relativePath: normalizePath(entry.path.slice(`${args.scope}/`.length)),
     }));
     const snapshotPaths = new Set(snapshotEntries.map((entry) => entry.relativePath));
     const currentFiles = await walkFiles(args.rootPath, args.shouldSkip);
@@ -1684,13 +1682,17 @@ export class BackupService {
 
   private async readSyncMode(stellaHomePath: string): Promise<"on" | "off"> {
     const prefs = await readJsonFile<{ syncMode?: string }>(
-      path.join(stellaHomePath, "state", "preferences.json"),
+      path.join(stellaHomePath, "preferences.json"),
     );
     return prefs?.syncMode === "on" ? "on" : "off";
   }
 
   private getBackupsRoot(stellaHomePath: string) {
-    return path.join(stellaHomePath, "state", "backups");
+    return path.join(stellaHomePath, "backups");
+  }
+
+  private getWorkspaceRoot() {
+    return path.join(this.deps.stellaRoot, "workspace");
   }
 
   private getBackupConfigPath(stellaHomePath: string) {

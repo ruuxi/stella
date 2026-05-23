@@ -12,7 +12,7 @@ export const SCHEDULE_SCRIPTS_DIRNAME = 'schedule-scripts'
 
 /** Resolve the absolute scripts directory under a Stella home. */
 export const scheduleScriptsDir = (stellaHome: string): string =>
-  path.join(stellaHome, 'state', SCHEDULE_SCRIPTS_DIRNAME)
+  path.join(stellaHome, SCHEDULE_SCRIPTS_DIRNAME)
 
 /**
  * Wall-clock cap for both the `ScriptDraft` dry-run and every scheduled

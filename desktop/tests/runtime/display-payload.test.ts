@@ -16,7 +16,7 @@ describe("normalizeDisplayPayload", () => {
   it("passes through canvas-html payloads", () => {
     const payload: DisplayPayload = {
       kind: "canvas-html",
-      filePath: "/state/outputs/html/plan.html",
+      filePath: "/.stella/outputs/html/plan.html",
       title: "Onboarding plan",
       slug: "plan",
       createdAt: 1,
@@ -111,7 +111,7 @@ describe("normalizeDisplayPayload", () => {
       kind: "media",
       asset: {
         kind: "image",
-        filePaths: ["/state/media/outputs/job_0.png"],
+        filePaths: ["/.stella/media/outputs/job_0.png"],
       },
       jobId: "job-1",
       capability: "text_to_image",
@@ -122,7 +122,7 @@ describe("normalizeDisplayPayload", () => {
 
     const video: DisplayPayload = {
       kind: "media",
-      asset: { kind: "video", filePath: "/state/media/outputs/job_0.mp4" },
+      asset: { kind: "video", filePath: "/.stella/media/outputs/job_0.mp4" },
       jobId: "job-2",
       createdAt: 456,
     };
@@ -181,14 +181,14 @@ describe("normalizeDisplayPayload", () => {
     expect(
       getDisplayPayloadTitle({
         kind: "canvas-html",
-        filePath: "/state/outputs/html/plan.html",
+        filePath: "/.stella/outputs/html/plan.html",
         createdAt: 1,
       }),
     ).toBe("plan.html");
     expect(
       getDisplayPayloadTitle({
         kind: "canvas-html",
-        filePath: "/state/outputs/html/plan.html",
+        filePath: "/.stella/outputs/html/plan.html",
         title: "Onboarding plan",
         createdAt: 1,
       }),

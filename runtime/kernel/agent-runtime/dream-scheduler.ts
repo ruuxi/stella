@@ -6,7 +6,7 @@
  *                                  thread_summaries row.
  *   - `chronicle_summary`        — Chronicle just rolled a new 10m/6h
  *                                  distilled summary into
- *                                  `state/memories_extensions/chronicle/`.
+ *                                  `.stella/memories_extensions/chronicle/`.
  *   - `startup_catchup`          — app just started; sweep anything left over
  *                                  from the previous session.
  *   - `manual`                   — user clicked "Run Dream now".
@@ -17,7 +17,7 @@
  * least one pending input. `manual` bypasses the gate entirely.
  *
  * Single-flight: only one Dream run may execute at a time. We use a mkdir
- * lock under `state/locks/dream/`, mirroring the desktop_automation lock
+ * lock under `.stella/locks/dream/`, mirroring the desktop_automation lock
  * pattern in `runtime/kernel/cli/stella-computer.ts`.
  *
  * Fire-and-forget: callers `void maybeSpawnDreamRun(...)` from finalize
@@ -88,7 +88,7 @@ const stateFor = (stellaHome: string): DreamRuntimeState => {
 };
 
 const lockDir = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "locks", "dream");
+  path.join(stellaHome, "locks", "dream");
 
 const acquireLock = (stellaHome: string): (() => void) | null => {
   const dir = lockDir(stellaHome);
@@ -129,7 +129,7 @@ const acquireLock = (stellaHome: string): (() => void) | null => {
 };
 
 const readDreamConfig = (stellaHome: string): DreamConfig => {
-  const configPath = path.join(stellaHome, "state", "config.json");
+  const configPath = path.join(stellaHome, "config.json");
   try {
     const raw = fs.readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(raw) as { dream?: Partial<DreamConfig> };
@@ -138,7 +138,7 @@ const readDreamConfig = (stellaHome: string): DreamConfig => {
       // Dream is on by default and consolidates `thread_summaries` into the
       // durable on-disk memory layout. It is independent of Live Memory
       // (Chronicle screen capture); the only way it stays off is if the
-      // user explicitly sets `dream.enabled: false` in `state/config.json`.
+      // user explicitly sets `dream.enabled: false` in `.stella/config.json`.
       enabled: dream.enabled !== false,
       triggerRowCount:
         typeof dream.triggerRowCount === "number" && dream.triggerRowCount > 0
@@ -161,7 +161,7 @@ const readDreamConfig = (stellaHome: string): DreamConfig => {
 const buildDreamSystemPrompt = (): string =>
   [
     "You are the Dream agent for Stella — a background memory consolidator.",
-    "You never see the user. Your sole job is to fold unprocessed rollout summaries and capture-layer outputs into the durable on-disk memory layout under state/memories/.",
+    "You never see the user. Your sole job is to fold unprocessed rollout summaries and capture-layer outputs into the durable on-disk memory layout under ~/.stella/memories/.",
     "",
     "Workflow:",
     "  1. Call Dream with action=\"list\" to see unprocessed thread_summaries and memories_extensions/* paths.",

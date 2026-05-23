@@ -3,7 +3,7 @@
  *
  * The "Now" pill keeps using home_suggestions. The slower cadence pills
  * (4h / Daily / Weekly) are global per-user HTML reports persisted under
- * state/open-panel-reports so the renderer can show last-generated time
+ * ~/.stella/open-panel-reports so the renderer can show last-generated time
  * and an unseen dot until the user opens the latest report.
  */
 
@@ -126,7 +126,7 @@ const EMIT_REPORT_TOOL: Tool = {
 };
 
 const reportsDir = (stellaRoot: string) =>
-  path.join(stellaRoot, "state", "open-panel-reports");
+  path.join(stellaRoot, "open-panel-reports");
 
 const indexPath = (stellaRoot: string) => path.join(reportsDir(stellaRoot), "index.json");
 

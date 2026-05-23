@@ -1,6 +1,6 @@
 /**
  * Catalog of selectable personality voices. Each voice swaps in for the
- * `{{voice}}` token in `template.md` when seeding `state/personality.md`.
+ * `{{voice}}` token in `template.md` when seeding `~/.stella/personality.md`.
  *
  * Keep voices to tone/register only. Hard constraints (never say
  * "task/agent/thread", preamble rule, completion-event rule, etc.) live in

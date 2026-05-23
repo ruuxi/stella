@@ -38,10 +38,10 @@ export type DreamListResult = {
 };
 
 const memoriesDir = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "memories");
+  path.join(stellaHome, "memories");
 
 const extensionsDir = (stellaHome: string): string =>
-  path.join(stellaHome, "state", "memories_extensions");
+  path.join(stellaHome, "memories_extensions");
 
 const watermarkPath = (stellaHome: string): string =>
   path.join(memoriesDir(stellaHome), DREAM_WATERMARK_FILE);

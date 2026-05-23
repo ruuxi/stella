@@ -224,7 +224,7 @@ const statePath = (stellaRoot: string) =>
   path.join(getConnectorStateRoot(stellaRoot), STATE_FILE);
 
 const skillsRoot = (stellaRoot: string) =>
-  path.join(stellaRoot, "state", "skills");
+  path.join(stellaRoot, "skills");
 
 const readState = async (
   stellaRoot: string,

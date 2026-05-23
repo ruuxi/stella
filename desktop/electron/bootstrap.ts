@@ -10,6 +10,7 @@ import {
   STELLA_WINDOWS_APP_USER_MODEL_ID,
 } from './bootstrap/constants.js'
 import { createBootstrapContext } from './bootstrap/context.js'
+import { resolveRuntimeStatePath } from '../../runtime/kernel/home/stella-home.js'
 import {
   initializeBootstrapSingleInstance,
   registerBootstrapLifecycle,
@@ -17,6 +18,7 @@ import {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const stellaRoot = path.resolve(__dirname, '..', '..', '..', '..')
+const stellaHomePath = resolveRuntimeStatePath(undefined, stellaRoot)
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const installDevBrokenPipeGuards = () => {
@@ -38,7 +40,7 @@ const configureDevUserDataPath = () => {
     return
   }
 
-  const devUserDataPath = path.join(stellaRoot, 'state', 'electron-user-data')
+  const devUserDataPath = path.join(stellaHomePath, 'electron-user-data')
   app.setPath('userData', devUserDataPath)
   app.setPath('sessionData', path.join(devUserDataPath, 'session-data'))
 }
@@ -89,6 +91,7 @@ export const bootstrapMainProcess = () => {
     authProtocol: AUTH_PROTOCOL,
     electronDir: __dirname,
     stellaRoot,
+    stellaHomePath,
     hardResetMutableHomePaths: HARD_RESET_MUTABLE_HOME_PATHS,
     isDev,
     sessionPartition: STELLA_SESSION_PARTITION,

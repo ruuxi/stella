@@ -24,9 +24,9 @@ const createRoot = async (): Promise<{
     `stella-context-lookup-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   roots.add(rootPath);
-  await mkdir(path.join(rootPath, "state", "memories"), { recursive: true });
+  await mkdir(path.join(rootPath, "memories"), { recursive: true });
   await mkdir(
-    path.join(rootPath, "state", "memories_extensions", "chronicle"),
+    path.join(rootPath, "memories_extensions", "chronicle"),
     { recursive: true },
   );
   const db = new DatabaseSync(getDesktopDatabasePath(rootPath), {
@@ -48,13 +48,12 @@ describe("buildContextLookupUserPrompt", () => {
     const { rootPath, db, memoryStore } = await createRoot();
     memoryStore.add("user", "User prefers concise answers.");
     await writeFile(
-      path.join(rootPath, "state", "memories", "memory_summary.md"),
+      path.join(rootPath, "memories", "memory_summary.md"),
       "Working on Stella memory routing.",
     );
     await writeFile(
       path.join(
         rootPath,
-        "state",
         "memories_extensions",
         "chronicle",
         "10m-current.md",
@@ -143,7 +142,7 @@ describe("buildContextLookupUserPrompt", () => {
     expect(prompt).not.toContain("How does this work?");
     expect(prompt).not.toContain("I can check the relevant context.");
     expect(prompt).toContain(
-      '<memory_file path="state/memories/memory_summary.md">',
+      '<memory_file path="~/.stella/memories/memory_summary.md">',
     );
     expect(prompt).toContain('<memory_snapshot target="user">');
     expect(prompt).toContain("Safari - Context docs");

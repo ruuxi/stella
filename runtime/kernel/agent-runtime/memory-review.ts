@@ -58,9 +58,9 @@ const MEMORY_REVIEW_SYSTEM_PROMPT = [
   "Use action=\"replace\" or action=\"remove\" if existing entries are now wrong or stale.",
   "",
   "Do NOT save:",
-  "  - Specific task content (the Dream agent folds that into state/memories/MEMORY.md).",
+  "  - Specific task content (the Dream agent folds that into ~/.stella/memories/MEMORY.md).",
   "  - One-off requests.",
-  "  - Environment, tool, or skill facts (the General agent writes those to state/skills/ or state/knowledge/).",
+  "  - Environment, tool, or skill facts (the General agent writes those to ~/.stella/skills/ or ~/.stella/knowledge/).",
   "",
   "If nothing meets the bar, respond exactly \"Nothing to save.\" and stop. Do not explain.",
 ].join("\n");

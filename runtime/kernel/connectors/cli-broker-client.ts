@@ -2,7 +2,7 @@
  * Client for the worker's CLI bridge UDS. The CLI dials it when an
  * MCP/REST call fails with auth, the worker pops a credential dialog
  * via the host, the user submits, the host writes the token directly
- * to `state/connectors/.credentials.json`, and we get `{ ok: true }`
+ * to `~/.stella/connectors/.credentials.json`, and we get `{ ok: true }`
  * back so the CLI can retry the original operation.
  *
  * Wire protocol mirrors `runtime/worker/cli-bridge-server.ts`: one

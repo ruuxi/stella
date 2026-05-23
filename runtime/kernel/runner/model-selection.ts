@@ -24,7 +24,7 @@ export const resolveRunnerLlmRoute = (
   modelName: string | undefined,
 ): ResolvedLlmRoute =>
   resolveLlmRoute({
-    stellaRoot: context.stellaRoot,
+    stellaRoot: context.stellaHome,
     modelName,
     agentType,
     site: createRunnerSiteConfig(context),
@@ -37,7 +37,7 @@ export const resolveRunnerLlmRouteWithMetadata = async (
 ): Promise<ResolvedLlmRoute> => {
   const site = createRunnerSiteConfig(context);
   const route = resolveLlmRoute({
-    stellaRoot: context.stellaRoot,
+    stellaRoot: context.stellaHome,
     modelName,
     agentType,
     site,
@@ -57,7 +57,7 @@ export const canResolveRunnerLlmRoute = (
   agentType = AGENT_IDS.ORCHESTRATOR,
 ): boolean =>
   canResolveLlmRoute({
-    stellaRoot: context.stellaRoot,
+    stellaRoot: context.stellaHome,
     modelName,
     agentType,
     site: createRunnerSiteConfig(context),

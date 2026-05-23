@@ -345,7 +345,7 @@ describe("native OAuth integration readiness", () => {
       actionCount: 45,
     });
     const actionsMarkdown = await readFile(
-      path.join(root, "state", "skills", "notion", "ACTIONS.md"),
+      path.join(root, "skills", "notion", "ACTIONS.md"),
       "utf-8",
     );
     expect(actionsMarkdown).toContain("Catalog Actions");
@@ -353,7 +353,7 @@ describe("native OAuth integration readiness", () => {
     expect(actionsMarkdown).toContain("choose the right Notion API endpoint");
 
     const skillMarkdown = await readFile(
-      path.join(root, "state", "skills", "notion", "SKILL.md"),
+      path.join(root, "skills", "notion", "SKILL.md"),
       "utf-8",
     );
     expect(skillMarkdown).toContain("Inspect executable tools");

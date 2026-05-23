@@ -10,14 +10,14 @@
 //   $ chronicle stop   --root <stellaHome>
 //   $ chronicle status --root <stellaHome>
 //
-// State layout (all under <stellaHome>/state/chronicle/):
+// State layout (all under <stellaHome>/chronicle/):
 //   chronicle.sock            AF_UNIX command socket
 //   chronicle.pid             Daemon pid (cleaned up on graceful exit)
 //   chronicle.state.json      { running: bool, paused: bool, lastCaptureAt: ISO }
 //   captures.jsonl            One line per OCR delta:
 //                             { ts, displayId, addedLines: [..], removedLines: [..] }
 //   summaries/<YYYY-MM-DD>.md Rolled daily summary (also mirrored to
-//                             <stellaHome>/state/memories_extensions/chronicle/<DATE>.md)
+//                             <stellaHome>/memories_extensions/chronicle/<DATE>.md)
 //
 // Permissions: requires Screen Recording (CGPreflightScreenCaptureAccess);
 // the daemon refuses to start without it. The Electron host is responsible
@@ -135,13 +135,13 @@ func shouldExcludeOwningApplication(
 
 struct ChroniclePaths {
     let root: String
-    var stateDir: String { root + "/state/chronicle" }
+    var stateDir: String { root + "/chronicle" }
     var sockPath: String { stateDir + "/chronicle.sock" }
     var pidPath: String { stateDir + "/chronicle.pid" }
     var statePath: String { stateDir + "/chronicle.state.json" }
     var capturesPath: String { stateDir + "/captures.jsonl" }
     var summariesDir: String { stateDir + "/summaries" }
-    var extensionDir: String { root + "/state/memories_extensions/chronicle" }
+    var extensionDir: String { root + "/memories_extensions/chronicle" }
     var instructionsPath: String { extensionDir + "/instructions.md" }
 
     func ensureDirectories() throws {

@@ -63,6 +63,7 @@ export class SubagentSession extends PiSessionCore {
       agentType: opts.agentType,
       deviceId: opts.deviceId,
       stellaRoot: opts.stellaRoot,
+      stellaHome: opts.stellaHome,
       toolWorkspaceRoot: opts.toolWorkspaceRoot,
       agentDepth: opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: opts.agentContext.maxAgentDepth,

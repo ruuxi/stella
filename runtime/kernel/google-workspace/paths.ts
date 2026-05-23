@@ -6,7 +6,7 @@
 
 let projectRoot = "";
 
-/** Stella sets this to `<desktopRoot>/state/google-workspace` before loading Google Workspace tools. */
+/** Stella sets this to `<stellaHome>/google-workspace` before loading Google Workspace tools. */
 export function setGoogleWorkspaceProjectRoot(root: string): void {
   projectRoot = root;
 }

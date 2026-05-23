@@ -31,6 +31,12 @@ export class BootstrapLifecycleBindings
     this.state.stellaRoot = stellaRoot;
   };
 
+  readonly getStellaHome = () => this.state.stellaHomePath;
+
+  readonly setStellaHome = (stellaHomePath: string | null) => {
+    this.state.stellaHomePath = stellaHomePath;
+  };
+
   readonly getRunner = () => this.state.stellaHostRunner;
 
   readonly setRunner = (runner: BootstrapState["stellaHostRunner"]) => {

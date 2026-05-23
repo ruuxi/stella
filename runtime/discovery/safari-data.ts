@@ -62,7 +62,7 @@ export const collectSafariHistory = async (
 
   try {
     // Copy the database to avoid lock issues
-    const cacheDir = path.join(stellaHome, "state", "cache");
+    const cacheDir = path.join(stellaHome, "cache");
     await fs.mkdir(cacheDir, { recursive: true });
 
     copyPath = path.join(cacheDir, "safari_history.db");

@@ -36,8 +36,8 @@ export const defaultPromptForAgentType = (agentType: string): string => {
 
 export const readCoreMemory = (stellaHome: string): string | undefined => {
   const candidatePaths = [
-    path.join(stellaHome, "state", "core-memory.md"),
-    path.join(stellaHome, "state", "CORE_MEMORY.MD"),
+    path.join(stellaHome, "core-memory.md"),
+    path.join(stellaHome, "CORE_MEMORY.MD"),
   ];
   for (const filePath of candidatePaths) {
     try {

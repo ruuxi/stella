@@ -41,10 +41,10 @@ const knowledgePages: KnowledgePageDef[] = [
 const normalizeContent = (value: string): string => value.trim().replace(/\n{3,}/g, "\n\n");
 
 const topicDir = (stellaHome: string) =>
-  path.join(stellaHome, "state", "skills", USER_PROFILE_SLUG);
+  path.join(stellaHome, "skills", USER_PROFILE_SLUG);
 
 const rawDiscoveryDir = (stellaHome: string) =>
-  path.join(stellaHome, "state", "raw", RAW_DISCOVERY_DIR);
+  path.join(stellaHome, "raw", RAW_DISCOVERY_DIR);
 
 const rawRelPath = (fileName: string) =>
   `../../raw/${RAW_DISCOVERY_DIR}/${fileName}`;
@@ -122,7 +122,7 @@ const buildSkillFile = (
     "",
     "- Start with the summary pages below — they are LLM-summarized from raw discovery data.",
     "- Drop into raw when you need the full unprocessed source material.",
-    "- Prefer updating these pages over expanding `state/core-memory.md` when new durable context appears.",
+    "- Prefer updating these pages over expanding `~/.stella/core-memory.md` when new durable context appears.",
     "",
     "## Summary Pages",
     "",

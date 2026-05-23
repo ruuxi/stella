@@ -336,6 +336,7 @@ export type RuntimeInitializeParams = {
   protocolVersion: string;
   isDev: boolean;
   stellaRoot: string;
+  stellaHomePath: string;
   stellaWorkspacePath: string;
 };
 

@@ -6,7 +6,7 @@
  * folding the deltas into markdown summaries.
  *
  * Dream — the background memory consolidator that folds thread_summaries
- * into `state/memories/MEMORY.md` — is a separate concern and is on by
+ * into `~/.stella/memories/MEMORY.md` — is a separate concern and is on by
  * default. It does not key off this toggle.
  *
  *   - `enable: true,  pending: true`  → user opted in but isn't signed in
@@ -26,6 +26,7 @@ import { hasMacPermission } from "../utils/macos-permissions.js";
 
 export type MemoryHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaHome: () => string | null;
   getController: () => ChronicleController | null;
   setController: (controller: ChronicleController | null) => void;
   assertPrivilegedSender: (
@@ -39,7 +40,7 @@ const ensureController = (
 ): ChronicleController | null => {
   const existing = options.getController();
   if (existing) return existing;
-  const root = options.getStellaRoot();
+  const root = options.getStellaHome();
   if (!root) return null;
   const next = new ChronicleControllerCtor(root);
   options.setController(next);
@@ -111,7 +112,7 @@ export const registerMemoryHandlers = (
         throw new Error("Blocked untrusted memory:setEnabled request.");
       }
       const controller = ensureController(options);
-      const root = options.getStellaRoot();
+      const root = options.getStellaHome();
       if (!controller || !root) {
         return {
           ok: false,
@@ -165,7 +166,7 @@ export const registerMemoryHandlers = (
       throw new Error("Blocked untrusted memory:promotePending request.");
     }
     const controller = ensureController(options);
-    const root = options.getStellaRoot();
+    const root = options.getStellaHome();
     if (!controller || !root) {
       return {
         ok: false,

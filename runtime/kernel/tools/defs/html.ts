@@ -1,6 +1,6 @@
 /**
  * `html` tool — write a self-contained HTML document under
- * `state/outputs/html/<slug>.html` and surface it inline in the chat as a
+ * `~/.stella/outputs/html/<slug>.html` and surface it inline in the chat as a
  * canvas artifact. The completed file is opened in the workspace panel's
  * Canvas tab; the model should not say "rendered" or describe what's on
  * screen — the user already sees the canvas.
@@ -18,7 +18,7 @@ import { fileChange } from "../../../contracts/file-changes.js";
 import type { ToolDefinition } from "../types.js";
 
 export type HtmlToolOptions = {
-  stellaRoot: string;
+  stellaHome: string;
 };
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -36,14 +36,14 @@ const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
 export const createHtmlTool = (options: HtmlToolOptions): ToolDefinition => {
-  const { stellaRoot } = options;
+  const { stellaHome } = options;
   return {
     name: "html",
     agentTypes: [AGENT_IDS.ORCHESTRATOR],
     description:
       "Write a complete HTML document and show it as a canvas artifact in the workspace panel. Use whenever a richer answer than markdown helps — plans, diagrams (SVG), comparisons, mockups, dashboards, structured reports, documentation, long-form writeups, side-by-side options, anything with tables/colors/illustrations. Do NOT use to build a real Stella app (that's spawn_agent). The iframe has network — pull in Google Fonts, Tailwind, Chart.js, D3, three.js, icon sets, or any CDN asset that makes the canvas better. Returns immediately once the file is written.",
     promptSnippet:
-      "Write a self-contained HTML doc to state/outputs/html/<slug>.html and show it in the Canvas tab",
+      "Write a self-contained HTML doc to ~/.stella/outputs/html/<slug>.html and show it in the Canvas tab",
     parameters: {
       type: "object",
       properties: {
@@ -74,7 +74,7 @@ export const createHtmlTool = (options: HtmlToolOptions): ToolDefinition => {
       if (html.length === 0) return { error: "html is required." };
 
       const slug = SLUG_RE.test(rawSlug) ? rawSlug : slugify(rawSlug || title);
-      const dir = path.join(stellaRoot, "state", "outputs", "html");
+      const dir = path.join(stellaHome, "outputs", "html");
       const filePath = path.join(dir, `${slug}.html`);
 
       let kind: "add" | "update";

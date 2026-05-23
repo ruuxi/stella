@@ -1,5 +1,5 @@
 /**
- * Explore - per-task scout that reads state/ before a General agent task runs.
+ * Explore - per-task scout that reads ~/.stella/ before a General agent task runs.
  *
  * Stateless one-shot helper. Not a real subagent task: no SQLite thread, no
  * runtime_threads row, no run-events emitted, no UI surface. The result is
@@ -8,7 +8,7 @@
  *
  * The Explore agent has only Read and Grep available. It is constrained by
  * its system prompt (runtime/extensions/stella-runtime/agents/explore.md) to
- * `state/` and to a strict JSON output shape.
+ * `~/.stella/` and to a strict JSON output shape.
  *
  * Failures are graceful: a 30-second timeout, a missing model route, or any
  * tool/LLM error all produce an `<explore_findings status="unavailable">`
@@ -46,7 +46,7 @@ const logger = createRuntimeLogger("agent-runtime.explore");
 const EXPLORE_TIMEOUT_MS = 30_000;
 const MAX_TOOL_ITERATIONS = 8;
 const EXPLORE_TOOL_NAMES = ["Read", "Grep"] as const;
-const STATE_DIR_NAME = "state";
+const STATE_DISPLAY_PATH = "~/.stella";
 
 export const FALLBACK_FINDINGS = `<explore_findings status="unavailable">
 {"relevant": [], "maybe": [], "nothing_found_for": []}
@@ -87,31 +87,44 @@ const maybeRealPath = async (candidate: string): Promise<string> => {
 
 const resolveStateScopedPath = async (
   candidate: string,
-  stellaRoot: string,
+  stateRoot: string,
 ): Promise<string | null> => {
-  const stateRoot = path.resolve(stellaRoot, STATE_DIR_NAME);
+  const resolvedStateRoot = path.resolve(stateRoot);
+  const displayRelativeCandidate =
+    candidate === STATE_DISPLAY_PATH
+      ? "."
+      : candidate.startsWith(`${STATE_DISPLAY_PATH}/`)
+        ? candidate.slice(`${STATE_DISPLAY_PATH}/`.length)
+        : null;
   const resolvedCandidate = path.resolve(
-    path.isAbsolute(candidate) ? candidate : path.join(stellaRoot, candidate),
+    displayRelativeCandidate !== null
+      ? path.join(resolvedStateRoot, displayRelativeCandidate)
+      : path.isAbsolute(candidate)
+        ? candidate
+        : path.join(resolvedStateRoot, candidate),
   );
   const [realStateRoot, realCandidate] = await Promise.all([
-    maybeRealPath(stateRoot),
+    maybeRealPath(resolvedStateRoot),
     maybeRealPath(resolvedCandidate),
   ]);
-  return isWithinRoot(realCandidate, realStateRoot) ? resolvedCandidate : null;
+  return isWithinRoot(realCandidate, realStateRoot) ||
+    isWithinRoot(resolvedCandidate, resolvedStateRoot)
+    ? resolvedCandidate
+    : null;
 };
 
 export const sanitizeExploreToolArgs = async (
   toolName: typeof EXPLORE_TOOL_NAMES[number],
   toolArgs: Record<string, unknown>,
-  stellaRoot: string,
+  stellaHome: string,
 ): Promise<
   | { ok: true; args: Record<string, unknown> }
   | { ok: false; error: string }
 > => {
-  if (!stellaRoot.trim()) {
+  if (!stellaHome.trim()) {
     return {
       ok: false,
-      error: "Explore requires a Stella root so it can stay inside state/.",
+      error: "Explore requires a Stella home so it can stay inside ~/.stella/.",
     };
   }
 
@@ -120,11 +133,11 @@ export const sanitizeExploreToolArgs = async (
     if (!rawPath) {
       return { ok: false, error: "Read requires a non-empty file_path." };
     }
-    const safePath = await resolveStateScopedPath(rawPath, stellaRoot);
+    const safePath = await resolveStateScopedPath(rawPath, stellaHome);
     if (!safePath) {
       return {
         ok: false,
-        error: `Explore can only read paths inside ${STATE_DIR_NAME}/.`,
+        error: `Explore can only read paths inside ${STATE_DISPLAY_PATH}/.`,
       };
     }
     return {
@@ -138,12 +151,12 @@ export const sanitizeExploreToolArgs = async (
 
   const rawPath = typeof toolArgs.path === "string" && toolArgs.path.trim()
     ? toolArgs.path.trim()
-    : STATE_DIR_NAME;
-  const safePath = await resolveStateScopedPath(rawPath, stellaRoot);
+    : stellaHome;
+  const safePath = await resolveStateScopedPath(rawPath, stellaHome);
   if (!safePath) {
     return {
       ok: false,
-      error: `Explore can only search inside ${STATE_DIR_NAME}/.`,
+      error: `Explore can only search inside ${STATE_DISPLAY_PATH}/.`,
     };
   }
   return {
@@ -280,7 +293,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
             const sanitized = await sanitizeExploreToolArgs(
               toolName as typeof EXPLORE_TOOL_NAMES[number],
               toolArgs,
-              context.stellaRoot,
+              context.stellaHome,
             );
             if (!sanitized.ok) {
               return { error: sanitized.error };
@@ -315,9 +328,9 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
 
   let resolvedLlm;
   try {
-    const modelName = getExploreModel(context.stellaRoot);
+    const modelName = getExploreModel(context.stellaHome);
     resolvedLlm = resolveLlmRoute({
-      stellaRoot: context.stellaRoot,
+      stellaRoot: context.stellaHome,
       modelName,
       agentType: AGENT_IDS.EXPLORE,
       site: createRunnerSiteConfig(context),
@@ -404,7 +417,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
           const sanitized = await sanitizeExploreToolArgs(
             toolCall.name as typeof EXPLORE_TOOL_NAMES[number],
             (toolCall.arguments as Record<string, unknown>) ?? {},
-            context.stellaRoot,
+            context.stellaHome,
           );
           if (!sanitized.ok) {
             messages.push(

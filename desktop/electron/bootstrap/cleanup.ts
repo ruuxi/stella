@@ -42,8 +42,9 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
     async () => {
       context.state.officePreviewBridgeStop?.();
       context.state.officePreviewBridgeStop = null;
-      const stellaRoot = context.state.stellaRoot ?? context.config.stellaRoot;
-      await stopOfficePreviewSessions(stellaRoot);
+      const stellaHome =
+        context.state.stellaHomePath ?? context.config.stellaHomePath;
+      await stopOfficePreviewSessions(stellaHome);
     },
   );
   processRuntime.registerCleanup(

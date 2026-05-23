@@ -147,7 +147,7 @@ async function collectAppUsageMacOS(stellaHome: string): Promise<AppUsageSummary
     );
 
     // Copy to cache to avoid locking issues
-    const cacheDir = path.join(stellaHome, "state", "cache");
+    const cacheDir = path.join(stellaHome, "cache");
     await fs.mkdir(cacheDir, { recursive: true });
     const cachedDb = path.join(cacheDir, "knowledgec.db");
 
@@ -244,7 +244,7 @@ async function collectAppUsageWindows(stellaHome: string): Promise<AppUsageSumma
     }
 
     // Copy to cache
-    const cacheDir = path.join(stellaHome, "state", "cache");
+    const cacheDir = path.join(stellaHome, "cache");
     await fs.mkdir(cacheDir, { recursive: true });
     const cachedDb = path.join(cacheDir, "activitiescache.db");
     await fs.copyFile(dbPath, cachedDb);

@@ -95,8 +95,8 @@ const findOrphanedDesktopAutomationPids = (): number[] => {
 
 // Stops every long-lived `desktop_automation` daemon spawned by stella-
 // computer. Each session caches a pidfile under
-// `state/stella-computer/sessions/<id>/automation.pid` and a socket
-// under `state/stella-computer/daemon-sockets/<sha>.sock`. We SIGTERM
+// `~/.stella/stella-computer/sessions/<id>/automation.pid` and a socket
+// under `~/.stella/stella-computer/daemon-sockets/<sha>.sock`. We SIGTERM
 // the pids, give them a moment to exit cleanly, then SIGKILL anything
 // that didn't, and finally clean up the pidfile + socket so the next
 // boot doesn't trip over stale entries.

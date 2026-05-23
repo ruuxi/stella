@@ -2,8 +2,8 @@
  * `Read` — local file read tool used by the Explore + Dream subagents.
  *
  * In the Dream subagent context, `dispatchLocalTool` intercepts and applies
- * path restrictions (only files under `state/memories` and
- * `state/memories_extensions`). In all other contexts the host's
+ * path restrictions (only files under `~/.stella/memories` and
+ * `~/.stella/memories_extensions`). In all other contexts the host's
  * `handleRead` runs directly.
  */
 

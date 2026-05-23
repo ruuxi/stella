@@ -4,7 +4,7 @@
  * needs the user to paste an API key.
  *
  * Unlike `CredentialRequestLayer`, the raw value is sent straight back
- * to the main process which writes it to `state/connectors/.credentials.json`
+ * to the main process which writes it to `~/.stella/connectors/.credentials.json`
  * via `saveConnectorAccessToken`. Nothing touches Convex's `secrets`
  * table, and the bridge gets `{ ok: true }` once the file write
  * completes so it can retry the original CLI call inline.

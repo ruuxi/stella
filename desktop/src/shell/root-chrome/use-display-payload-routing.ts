@@ -109,7 +109,7 @@ export function useDisplayPayloadRouting({
 
   // Owner-scoped materializer: any media job (this conversation,
   // another device, the agent, the studio, …) gets downloaded into
-  // `state/media/outputs/` and surfaced in the workspace panel.
+  // `~/.stella/media/outputs/` and surfaced in the workspace panel.
   useMediaMaterializer({ onMaterialized: routeDisplayPayload });
 
   return {

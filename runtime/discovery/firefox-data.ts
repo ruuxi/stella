@@ -170,7 +170,7 @@ export const collectFirefoxData = async (
 
   // Copy the database (Firefox holds WAL lock while running)
   const sourcePath = path.join(profilePath, "places.sqlite");
-  const tempDir = path.join(stellaHome, "state", "tmp");
+  const tempDir = path.join(stellaHome, "tmp");
   await fs.mkdir(tempDir, { recursive: true });
   const tempPath = path.join(tempDir, `firefox_places_${Date.now()}.sqlite`);
 

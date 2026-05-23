@@ -4,7 +4,7 @@
  * Single tool that fuses three steps the Schedule subagent would otherwise
  * have to chain via shell + apply_patch + a separate run:
  *
- *  1. Pick a fresh `<uuid>.ts` path under `~/.stella/state/schedule-scripts/`
+ *  1. Pick a fresh `<uuid>.ts` path under `~/.stella/schedule-scripts/`
  *     (the agent never picks the path — the tool owns it).
  *  2. Write the provided `code` to that path.
  *  3. Immediately dry-run it under the exact same `bun run` runtime that the
@@ -34,8 +34,8 @@ import {
 import type { ToolDefinition } from "../types.js";
 
 export type ScriptDraftToolOptions = {
-  /** Stella home root (e.g. `~/.stella` or repo root). Required. */
-  stellaRoot: string;
+  /** Stella home root (e.g. `~/.stella`). Required. */
+  stellaHome: string;
 };
 
 const formatResult = (params: {
@@ -87,7 +87,7 @@ export const createScriptDraftTool = (
       return { error: "code is required." };
     }
 
-    const dir = scheduleScriptsDir(options.stellaRoot);
+    const dir = scheduleScriptsDir(options.stellaHome);
     await ensurePrivateDir(dir);
     const scriptPath = path.join(dir, `${crypto.randomUUID()}.ts`);
     await writePrivateFile(scriptPath, code);

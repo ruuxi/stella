@@ -95,7 +95,7 @@ describe("connector OAuth credentials", () => {
     await saveConnectorAccessToken(root, "demo", "plain-secret-token");
 
     const raw = await readFile(
-      path.join(root, "state", "connectors", ".credentials.json"),
+      path.join(root, "connectors", ".credentials.json"),
       "utf-8",
     );
     expect(raw).not.toContain("plain-secret-token");
@@ -624,7 +624,7 @@ describe("connector OAuth credentials", () => {
         resourceUrl: `${server.baseUrl}/tenant-api`,
       });
       const raw = await readFile(
-        path.join(root, "state", "connectors", ".credentials.json"),
+        path.join(root, "connectors", ".credentials.json"),
         "utf-8",
       );
       expect(raw).not.toContain("backend-access");

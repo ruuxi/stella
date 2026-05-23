@@ -45,7 +45,7 @@ const normalizeProvider = (provider: string) => provider.trim().toLowerCase();
 const credentialScope = (provider: string) =>
   `${LLM_CREDENTIAL_SCOPE_PREFIX}:${normalizeProvider(provider)}`;
 
-const getStatePath = (stellaRoot: string) => path.join(stellaRoot, "state");
+const getStatePath = (stellaRoot: string) => stellaRoot;
 
 export const getLlmCredentialStorePath = (stellaRoot: string) =>
   path.join(getStatePath(stellaRoot), LLM_CREDENTIALS_FILE);

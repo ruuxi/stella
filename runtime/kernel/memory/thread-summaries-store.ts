@@ -4,7 +4,7 @@
  * Each completed subagent run (typically a General agent task) records one row
  * keyed by (thread_id, run_id). The Dream protocol later consolidates these
  * unprocessed rows into the on-disk markdown memory layout under
- * `state/memories/`.
+ * `~/.stella/memories/`.
  *
  * The store is intentionally tiny — it is a queue, not a search index.
  */
@@ -78,7 +78,7 @@ export class ThreadSummariesStore {
    * Insert or replace a summary for (thread_id, run_id).
    *
    * `rolloutSummary` is the General agent's final output text — the rollout
-   * summary that Dream consolidates into `state/memories/MEMORY.md`.
+   * summary that Dream consolidates into `~/.stella/memories/MEMORY.md`.
    * `rawMemory` is reserved for the Dream agent to fill in later if useful.
    */
   record(args: RecordArgs): void {

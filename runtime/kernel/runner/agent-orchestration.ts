@@ -350,7 +350,7 @@ export const createAgentOrchestration = (
 ) => {
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
-    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaRoot),
+    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaHome),
     resolveTaskThread: ({ conversationId, agentType, threadId }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
@@ -470,7 +470,7 @@ export const createAgentOrchestration = (
       let exploreFindingsBlock = "";
       if (
         agentType === AGENT_IDS.GENERAL &&
-        (await shouldUseAutomaticSkillExplore(context.stellaRoot))
+        (await shouldUseAutomaticSkillExplore(context.stellaHome))
       ) {
         exploreFindingsBlock = await runExplore({
           context,
@@ -720,7 +720,7 @@ export const createAgentOrchestration = (
           }),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
-          stellaHome: context.stellaRoot,
+          stellaHome: context.stellaHome,
           resolvedLlm,
           store: context.runtimeStore,
           abortSignal,
@@ -738,14 +738,14 @@ export const createAgentOrchestration = (
             : {}),
           resolveSubsidiaryLlmRoute: (subsidiaryAgentType: string) =>
             resolveLlmRoute({
-              stellaRoot: context.stellaRoot,
+              stellaRoot: context.stellaHome,
               // Honor any per-agent override the user set for this
               // subsidiary agent (or our Assistant-tab propagation —
               // home_suggestions etc. otherwise silently hit Stella even
               // when the user moved Assistant onto BYOK).
               modelName:
-                getModelOverride(context.stellaRoot, subsidiaryAgentType) ??
-                getDefaultModel(context.stellaRoot, subsidiaryAgentType),
+                getModelOverride(context.stellaHome, subsidiaryAgentType) ??
+                getDefaultModel(context.stellaHome, subsidiaryAgentType),
               agentType: subsidiaryAgentType,
               site: {
                 baseUrl: context.state.convexSiteUrl,
@@ -863,7 +863,7 @@ export const createAgentOrchestration = (
                   error: "Tools are not available for this one-shot prompt.",
                 }),
                 deviceId: context.deviceId,
-                stellaHome: context.stellaRoot,
+                stellaHome: context.stellaHome,
                 resolvedLlm,
                 store: context.runtimeStore,
                 suppressCompletionSideEffects: true,

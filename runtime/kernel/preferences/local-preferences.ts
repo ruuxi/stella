@@ -1,5 +1,5 @@
 /**
- * Local preferences — reads/writes `desktop/state/preferences.json`.
+ * Local preferences — reads/writes `~/.stella/preferences.json`.
  *
  * Serves as the local source of truth for user preferences. Model routing
  * preferences live here only; Convex does not own or sync them.
@@ -119,7 +119,7 @@ export type LocalPreferences = {
    */
   wakeWordEnabled: boolean;
   /**
-   * First-run onboarding completion. Stored in state/preferences.json so
+   * First-run onboarding completion. Stored in ~/.stella/preferences.json so
    * launcher reinstall/repair flows preserve it even if Electron web storage
    * is rebuilt.
    */
@@ -173,7 +173,7 @@ let _cached: LocalPreferences | null = null;
 let _cachedMtime: number | null = null;
 
 const prefsPath = (stellaHome: string) =>
-  path.join(stellaHome, "state", "preferences.json");
+  path.join(stellaHome, "preferences.json");
 
 export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
   const filePath = prefsPath(stellaHome);
@@ -398,7 +398,7 @@ export const updateLocalModelPreferences = (
  * (defaultModels["explore"]), then returns undefined to let resolveLlmRoute
  * fall back to STELLA_DEFAULT_MODEL.
  *
- * Explore is meant to be a fast cheap pass over state/. Users who want to
+ * Explore is meant to be a fast cheap pass over ~/.stella/. Users who want to
  * spend more should set modelOverrides["explore"] explicitly.
  */
 export const getExploreModel = (stellaHome: string): string | undefined => {

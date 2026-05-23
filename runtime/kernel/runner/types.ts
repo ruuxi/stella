@@ -57,6 +57,7 @@ import type { LocalChatAppendEventArgs } from "../storage/shared.js";
 export type StellaHostRunnerOptions = {
   deviceId: string;
   stellaRoot: string;
+  stellaHome: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
@@ -301,6 +302,7 @@ export type RunnerContext = {
   convexApi: unknown;
   deviceId: string;
   stellaRoot: string;
+  stellaHome: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
@@ -485,9 +487,9 @@ export type RunnerPublicApi = {
   }>;
   /**
    * Run one Chronicle rolling-summary pass for the given window. Reads the
-   * tail of `state/chronicle/captures.jsonl`, calls a single cheap LLM
+   * tail of `~/.stella/chronicle/captures.jsonl`, calls a single cheap LLM
    * completion, and atomically rewrites
-   * `state/memories_extensions/chronicle/{window}-current.md`. Designed to
+   * `~/.stella/memories_extensions/chronicle/{window}-current.md`. Designed to
    * be called by Electron on a fixed cadence (every 1 minute for "10m",
    * every 1 hour for "6h").
    */

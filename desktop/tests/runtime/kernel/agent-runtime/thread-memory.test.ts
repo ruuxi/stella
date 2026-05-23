@@ -70,7 +70,7 @@ describe("buildHistorySource", () => {
             customType: "bootstrap.memory_file",
             content: [{
               type: "text",
-              text: '<memory_file path="state/memories/memory_summary.md">\nold summary\n</memory_file>',
+              text: '<memory_file path="~/.stella/memories/memory_summary.md">\nold summary\n</memory_file>',
             }],
             display: false,
           },
@@ -101,7 +101,7 @@ describe("buildHistorySource", () => {
             customType: "bootstrap.memory_file",
             content: [{
               type: "text",
-              text: '<memory_file path="state/memories/memory_summary.md">\nnew summary\n</memory_file>',
+              text: '<memory_file path="~/.stella/memories/memory_summary.md">\nnew summary\n</memory_file>',
             }],
             display: false,
           },

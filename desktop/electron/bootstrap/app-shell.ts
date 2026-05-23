@@ -98,10 +98,16 @@ const storeWebOrigin = (value: string) => {
 
 const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
-  const stellaHome = await resolveStellaHome(app, config.stellaRoot);
+  const stellaHome = await resolveStellaHome(
+    app,
+    config.stellaRoot,
+    config.stellaHomePath,
+  );
 
   lifecycle.setStellaRoot(stellaHome.stellaRoot);
+  lifecycle.setStellaHome(stellaHome.statePath);
   state.stellaRoot = stellaHome.stellaRoot;
+  state.stellaHomePath = stellaHome.statePath;
   state.stellaWorkspacePath = stellaHome.workspacePath;
   services.backupService.start();
 

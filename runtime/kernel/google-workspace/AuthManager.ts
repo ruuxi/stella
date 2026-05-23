@@ -20,7 +20,7 @@ const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
 const stellaRootFromProjectRoot = () => {
   const projectRoot = getProjectRoot();
-  const suffix = "/state/google-workspace";
+  const suffix = "/google-workspace";
   if (!projectRoot.endsWith(suffix)) {
     throw new Error("Google Workspace project root is not under Stella state.");
   }

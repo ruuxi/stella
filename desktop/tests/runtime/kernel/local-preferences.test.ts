@@ -21,10 +21,9 @@ const writePreferences = (
   stellaHome: string,
   preferences: Record<string, unknown>,
 ) => {
-  const stateDir = path.join(stellaHome, "state");
-  fs.mkdirSync(stateDir, { recursive: true });
+  fs.mkdirSync(stellaHome, { recursive: true });
   fs.writeFileSync(
-    path.join(stateDir, "preferences.json"),
+    path.join(stellaHome, "preferences.json"),
     JSON.stringify(preferences),
   );
 };

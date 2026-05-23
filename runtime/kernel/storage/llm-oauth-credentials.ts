@@ -50,7 +50,7 @@ const normalizeProvider = (provider: string) => provider.trim().toLowerCase();
 const credentialScope = (provider: string) =>
   `${LLM_OAUTH_SCOPE_PREFIX}:${normalizeProvider(provider)}`;
 
-const getStatePath = (stellaRoot: string) => path.join(stellaRoot, "state");
+const getStatePath = (stellaRoot: string) => stellaRoot;
 
 export const getLlmOAuthCredentialStorePath = (stellaRoot: string) =>
   path.join(getStatePath(stellaRoot), LLM_OAUTH_CREDENTIALS_FILE);

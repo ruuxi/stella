@@ -66,7 +66,7 @@ export type CredentialResponsePayload = {
 /**
  * Connector credential dialog (Stella Connect / MCP). Distinct from
  * `CredentialRequestPayload` because the value is written directly to
- * `state/connectors/.credentials.json` via `saveConnectorAccessToken` on
+ * `~/.stella/connectors/.credentials.json` via `saveConnectorAccessToken` on
  * the host — it never travels back over IPC, never reaches the model
  * context, and never enters Convex's `secrets` table. The CLI bridge
  * spawns these when `stella-connect call` returns 401/403.
