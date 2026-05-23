@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { showToast } from '@/ui/toast'
 import { useStreamBuffer } from '@/shared/hooks/use-stream-buffer'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
@@ -34,6 +34,17 @@ export { reconcileTerminalTaskKeysFromResumeTasks } from './store'
 type UseLocalAgentStreamOptions = {
   activeConversationId: string | null
   storageMode: 'cloud' | 'local'
+  onRunStarted?: (event: {
+    runId: string
+    conversationId: string
+    userMessageId?: string
+  }) => void
+  onRunFinished?: (event: {
+    runId: string
+    conversationId: string
+    userMessageId?: string
+    outcome: 'completed' | 'error' | 'canceled'
+  }) => void
 }
 
 type StartStreamArgs = {
@@ -55,6 +66,8 @@ type StartStreamArgs = {
 export function useLocalAgentStream({
   activeConversationId,
   storageMode,
+  onRunStarted,
+  onRunFinished,
 }: UseLocalAgentStreamOptions) {
   const [storeState, dispatch] = useReducer(
     streamStoreReducer,
@@ -327,6 +340,13 @@ export function useLocalAgentStream({
 
   const timers = useTaskRemovalTimers(dispatch)
   const reasoning = useReasoningBatcher(dispatch)
+  const lifecycleCallbacks = useMemo(
+    () => ({
+      onRunStarted,
+      onRunFinished,
+    }),
+    [onRunFinished, onRunStarted],
+  )
 
   useEffect(
     () => () => {
@@ -384,6 +404,7 @@ export function useLocalAgentStream({
     },
     timers,
     reasoning,
+    lifecycle: lifecycleCallbacks,
   })
 
   const ensureAgentStreamSubscription = useCallback(() => {
@@ -443,7 +464,7 @@ export function useLocalAgentStream({
 
       ensureAgentStreamSubscription()
 
-      if (args.userMessageEventId) {
+      if (args.userMessageEventId && args.mode !== 'follow_up') {
         setPendingUserMessageId(args.userMessageEventId)
       }
 

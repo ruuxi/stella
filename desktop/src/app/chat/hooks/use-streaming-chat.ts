@@ -13,6 +13,13 @@ import {
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import { useLocale } from '@/shared/i18n'
 import { useTierRestrictedModelToast } from './use-tier-restricted-model-toast'
+import {
+  removeQueuedUserMessageById,
+  shouldClearQueuedUserMessagesForRunOutcome,
+  type QueuedUserMessage,
+} from './queued-user-messages'
+
+export type { QueuedUserMessage } from './queued-user-messages'
 
 type UseStreamingChatOptions = {
   conversationId: string | null
@@ -27,12 +34,6 @@ type UseStreamingChatOptions = {
    * displayMessages.
    */
   persistedMessages: MessageRecord[]
-}
-
-export type QueuedUserMessage = {
-  id: string
-  text: string
-  timestamp: number
 }
 
 const createLocalMessageId = () =>
@@ -100,6 +101,22 @@ export function useStreamingChat({
     storageMode,
   } = useChatStore()
 
+  const handleRunStarted = useCallback((event: { userMessageId?: string }) => {
+    const userMessageId = event.userMessageId
+    if (!userMessageId) return
+    setQueuedUserMessages((current) =>
+      removeQueuedUserMessageById(current, userMessageId),
+    )
+  }, [])
+
+  const handleRunFinished = useCallback(
+    (event: { outcome: 'completed' | 'error' | 'canceled' }) => {
+      if (!shouldClearQueuedUserMessagesForRunOutcome(event.outcome)) return
+      setQueuedUserMessages([])
+    },
+    [],
+  )
+
   const {
     liveTasks,
     runtimeStatusText,
@@ -114,6 +131,8 @@ export function useStreamingChat({
   } = useLocalAgentStream({
     activeConversationId,
     storageMode,
+    onRunStarted: handleRunStarted,
+    onRunFinished: handleRunFinished,
   })
 
   useEffect(() => {
