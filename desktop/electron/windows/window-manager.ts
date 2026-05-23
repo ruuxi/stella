@@ -614,6 +614,12 @@ export class WindowManager {
       }
       this.lastActiveWindowMode = mode
     })
+    window.on('close', (event) => {
+      if (process.platform !== 'win32' || mode !== 'full') return
+
+      event.preventDefault()
+      app.quit()
+    })
     window.on('hide', () => {
       this.syncLastActiveWindowMode()
       if (mode === 'mini') {
