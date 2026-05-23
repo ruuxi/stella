@@ -406,6 +406,15 @@ html[data-stella-window="mini"] #stella-mini-boot {
     overflow: hidden;
     height: 100%;
   }
+  /* Native macOS font anti-aliasing. Forces grayscale AA to match what
+   * AppKit apps render since Mojave; without it Chromium falls back to
+   * its own smoothing on transparent surfaces and text looks slightly
+   * off from the surrounding system. Toggled from Settings → General. */
+  html[data-native-font-smoothing="on"],
+  html[data-native-font-smoothing="on"] body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
   /* Tailwind v4 preflight resets `button { cursor: default }` to mimic the
    * native macOS convention. We want pointer affordance on real buttons
    * across the app - settings, onboarding, dialogs, etc. - so put it back. */

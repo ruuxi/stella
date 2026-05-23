@@ -44,6 +44,10 @@
       "title": "Developer file previews",
       "description": "Show code changes in chat and open them in the side panel."
     },
+    "nativeFontSmoothing": {
+      "title": "Native font smoothing",
+      "description": "Render text the way macOS apps do, with grayscale anti-aliasing."
+    },
     "voice": {
       "title": "Voice",
       "personality": {
