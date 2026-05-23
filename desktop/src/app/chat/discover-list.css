@@ -31,14 +31,17 @@
   appearance: none;
   width: 100%;
   min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
   border: none;
   border-radius: 6px;
   background: transparent;
-  padding: 5px 8px;
-  margin: 0 -8px;
+  /* Match the card header chevron inset (8px) rather than the body's
+     12px padding so category tags and timestamps line up with it. */
+  padding: 5px 0 5px 8px;
+  margin: 0 -12px 0 -8px;
   color: var(--text-base);
   font: inherit;
   font-size: 13px;
@@ -60,7 +63,6 @@
 }
 
 .discover-list__label {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -68,7 +70,6 @@
 }
 
 .discover-list__report-title {
-  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -77,6 +78,7 @@
 
 .discover-list__report-title .discover-list__label {
   flex: 0 1 auto;
+  min-width: 0;
 }
 
 .discover-list__status-dot {
@@ -94,11 +96,20 @@
 }
 
 .discover-list__meta {
-  flex-shrink: 0;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  text-align: right;
+  white-space: nowrap;
   color: var(--text-weak);
   transition:
     color 120ms ease,
     opacity 120ms ease;
+}
+
+.discover-list__row:hover .discover-list__meta,
+.discover-list__row:focus-visible .discover-list__meta {
+  opacity: 0;
 }
 
 .discover-list__meta--tag {
@@ -140,10 +151,13 @@
 }
 
 .discover-list__hover-icon {
-  flex-shrink: 0;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
   color: var(--text-weak);
   opacity: 0;
   transition: opacity 120ms ease;
+  pointer-events: none;
 }
 
 .discover-list__row:hover .discover-list__hover-icon,
