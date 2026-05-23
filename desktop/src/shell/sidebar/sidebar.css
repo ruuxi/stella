@@ -1,6 +1,6 @@
 /* ============================================
-   Sidebar — left navigation panel
-   Background matches the composer input bar
+   Sidebar — left navigation panel (tinted surface,
+   no backdrop-filter)
    ============================================ */
 
 .sidebar:not(.sidebar--hidden) {
@@ -29,9 +29,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--panel-surface-bg);
   width: var(--shell-sidebar-width, 170px);
   min-width: var(--shell-sidebar-width, 170px);
   overflow: hidden;

@@ -16,12 +16,10 @@
   position: relative;
   width: 100%;
   max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
-  background: var(--panel-glass-bg);
-  backdrop-filter: var(--panel-glass-blur);
-  -webkit-backdrop-filter: var(--panel-glass-blur);
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  background: var(--panel-surface-bg);
+  border: 1px solid var(--panel-surface-border);
   border-radius: 999px; /* CSS fallback; overridden by motion inline style */
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), var(--panel-surface-highlight);
   overflow: clip;
   transition: box-shadow 200ms ease, border-color 200ms ease;
 }
@@ -63,6 +61,7 @@
 .composer-shell:focus-within {
   box-shadow:
     var(--shadow-md),
+    var(--panel-surface-highlight),
     0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
 }
 

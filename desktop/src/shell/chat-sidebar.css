@@ -30,9 +30,7 @@
   flex: 1;
   min-height: 0;
   min-width: clamp(380px, 34vw, 520px);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: transparent;
   border-left: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
   border-radius: 0 0 0 32px;
   overflow: hidden;
@@ -127,17 +125,14 @@
   padding: 4px 12px 8px;
 }
 
-/* Shell: animated height + border-radius (motion inline; same pattern as .composer-shell).
-   No second glass layer — frosted panel + shifting gradient show through like the main sidebar. */
+/* Shell: animated height + border-radius (motion inline; same pattern as .composer-shell). */
 .chat-sidebar-shell {
   position: relative;
   width: 100%;
-  background: var(--panel-glass-bg);
-  backdrop-filter: var(--panel-glass-blur);
-  -webkit-backdrop-filter: var(--panel-glass-blur);
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  background: var(--panel-surface-bg);
+  border: 1px solid var(--panel-surface-border);
   border-radius: 999px; /* fallback before JS; overridden by motion */
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), var(--panel-surface-highlight);
   overflow: clip;
   transition: box-shadow 200ms ease, border-color 200ms ease;
 }
@@ -160,6 +155,7 @@
 .chat-sidebar-shell:focus-within {
   box-shadow:
     var(--shadow-md),
+    var(--panel-surface-highlight),
     0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
 }
 
