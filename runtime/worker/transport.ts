@@ -14,25 +14,31 @@ import {
   type JsonRpcMessage,
 } from "../protocol/index.js";
 import type { WorkerPeerBroker } from "./peer-broker.js";
+import {
+  isWindowsNamedPipePath,
+  runtimeIpcPathUsesFilesystem,
+} from "./runtime-paths.js";
 
 /**
  * Worker transport selection. The runtime worker can listen on:
  *
  *   --listen stdio://         (default, parent-spawned-child topology)
- *   --listen unix://PATH      (detached topology, host attaches via UDS)
+ *   --listen unix://PATH      (detached topology, host attaches via Unix socket)
+ *   --listen pipe://PIPE      (detached topology, host attaches via Windows named pipe)
  *
  * Both share the same JSON-RPC protocol — only the byte stream changes.
  * Shared worker transport names for Stella app-server connections.
  *
  * Stdio mode supports a single connection over stdin/stdout for the lifetime
- * of the process; UDS mode accepts an arbitrary number of sequential or
- * concurrent connections, which is what makes survival-across-host-restart
+ * of the process; IPC-listener mode accepts an arbitrary number of sequential
+ * or concurrent connections, which is what makes survival-across-host-restart
  * possible.
  */
 
 export type WorkerTransport =
   | { kind: "stdio" }
-  | { kind: "unix"; socketPath: string };
+  | { kind: "unix"; socketPath: string }
+  | { kind: "pipe"; socketPath: string };
 
 export type WorkerTransportParseResult =
   | { ok: true; transport: WorkerTransport }
@@ -60,9 +66,29 @@ export const parseWorkerListenUrl = (
       transport: { kind: "unix", socketPath: path.resolve(socketPath) },
     };
   }
+  if (normalized.startsWith("pipe://")) {
+    const socketPath = normalized.slice("pipe://".length).trim();
+    if (!socketPath) {
+      return {
+        ok: false,
+        error: "Missing pipe path: --listen pipe://PIPE requires a path.",
+      };
+    }
+    if (!isWindowsNamedPipePath(socketPath)) {
+      return {
+        ok: false,
+        error:
+          "Invalid Windows named pipe: --listen pipe://... expects \\\\.\\pipe\\NAME.",
+      };
+    }
+    return {
+      ok: true,
+      transport: { kind: "pipe", socketPath },
+    };
+  }
   return {
     ok: false,
-    error: `Unsupported --listen URL: ${listenUrl}; expected stdio:// or unix://PATH.`,
+    error: `Unsupported --listen URL: ${listenUrl}; expected stdio://, unix://PATH, or pipe://PIPE.`,
   };
 };
 
@@ -91,7 +117,7 @@ export type StartTransportArgs = {
 export type StartTransportResult = {
   /** Stop accepting new connections and close the listener. */
   close: () => Promise<void>;
-  /** Whichever socket address the listener bound to (UDS path for unix, "stdio" for stdio). */
+  /** Whichever socket address the listener bound to (IPC path for detached mode, "stdio" for stdio). */
   describe: () => string;
 };
 
@@ -113,9 +139,16 @@ const startStdioTransport = (
 };
 
 const removeIfStaleSocket = async (socketPath: string) => {
-  if (!existsSync(socketPath)) return;
+  const usesFilesystem = runtimeIpcPathUsesFilesystem(socketPath);
+  if (usesFilesystem && !existsSync(socketPath)) return;
   const liveSocket = await new Promise<boolean>((resolve) => {
-    const socket = createConnection(socketPath);
+    let socket: Socket;
+    try {
+      socket = createConnection(socketPath);
+    } catch {
+      resolve(false);
+      return;
+    }
     let settled = false;
     const finish = (alive: boolean) => {
       if (settled) return;
@@ -133,14 +166,23 @@ const removeIfStaleSocket = async (socketPath: string) => {
     throw new Error(`Runtime socket is already in use: ${socketPath}`);
   }
   // Best-effort cleanup for crashed workers that left a dead socket file.
-  await fsPromises.unlink(socketPath).catch(() => undefined);
+  if (usesFilesystem) {
+    await fsPromises.unlink(socketPath).catch(() => undefined);
+  }
 };
 
-const startUnixSocketTransport = async (
-  args: StartTransportArgs & { transport: { kind: "unix"; socketPath: string } },
+const startIpcSocketTransport = async (
+  args: StartTransportArgs & {
+    transport:
+      | { kind: "unix"; socketPath: string }
+      | { kind: "pipe"; socketPath: string };
+  },
 ): Promise<StartTransportResult> => {
   const { socketPath } = args.transport;
-  await fsPromises.mkdir(path.dirname(socketPath), { recursive: true });
+  const usesFilesystem = runtimeIpcPathUsesFilesystem(socketPath);
+  if (usesFilesystem) {
+    await fsPromises.mkdir(path.dirname(socketPath), { recursive: true });
+  }
   await removeIfStaleSocket(socketPath);
 
   const sockets = new Set<Socket>();
@@ -226,8 +268,10 @@ const startUnixSocketTransport = async (
     });
   });
 
-  // 0o600 — readable/writable only by the owning user.
-  await fsPromises.chmod(socketPath, 0o600).catch(() => undefined);
+  if (usesFilesystem) {
+    // 0o600 — readable/writable only by the owning user.
+    await fsPromises.chmod(socketPath, 0o600).catch(() => undefined);
+  }
 
   return {
     close: async () => {
@@ -237,9 +281,11 @@ const startUnixSocketTransport = async (
           socket.destroy();
         }
       });
-      await fsPromises.unlink(socketPath).catch(() => undefined);
+      if (usesFilesystem) {
+        await fsPromises.unlink(socketPath).catch(() => undefined);
+      }
     },
-    describe: () => `unix://${socketPath}`,
+    describe: () => `${args.transport.kind}://${socketPath}`,
   };
 };
 
@@ -249,7 +295,7 @@ export const startWorkerTransport = async (
   if (args.transport.kind === "stdio") {
     return startStdioTransport(args);
   }
-  return await startUnixSocketTransport({
+  return await startIpcSocketTransport({
     ...args,
     transport: args.transport,
   });

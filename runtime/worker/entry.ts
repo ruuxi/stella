@@ -21,14 +21,15 @@ import {
  *        manager spawns the worker as a regular child process.
  *
  *   bun run runtime/worker/entry.js --listen unix:///path/to/runtime.sock
- *     -> detached mode. The worker binds the socket, writes pid+lock to
- *        ~/.stella/runtime/<rootHash>/, and self-shuts-down 10s after
- *        the last client disconnect. The host attaches over UDS instead
- *        of stdio, so Electron restart drops the connection without
- *        killing the worker.
+ *   bun run runtime/worker/entry.js --listen pipe://\\.\pipe\stella-runtime-...
+ *     -> detached mode. The worker binds the IPC endpoint, writes pid+lock
+ *        to ~/.stella/runtime/<rootHash>/, and self-shuts-down 10s after
+ *        the last client disconnect. The host attaches over IPC instead of
+ *        stdio, so Electron restart drops the connection without killing
+ *        the worker.
  *
- *   ... --stella-root /path                    [required for unix mode]
- *   ... --idle-shutdown-ms 10000               [unix mode only]
+ *   ... --stella-root /path                    [required for detached mode]
+ *   ... --idle-shutdown-ms 10000               [detached mode only]
  */
 
 type ParsedArgs = {
@@ -99,10 +100,10 @@ const main = async () => {
 
   let lifecycle: WorkerLifecycleServer | null = null;
   let detachedMode = false;
-  if (transport.kind === "unix") {
+  if (transport.kind !== "stdio") {
     if (!cliArgs.stellaRoot) {
       console.error(
-        "[runtime-worker] --listen unix://... requires --stella-root <path>",
+        "[runtime-worker] detached --listen requires --stella-root <path>",
       );
       process.exit(2);
     }

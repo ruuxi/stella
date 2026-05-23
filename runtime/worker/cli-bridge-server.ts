@@ -1,7 +1,7 @@
 /**
- * Tiny Unix-socket RPC the worker exposes for sidecar CLIs (currently
- * just `stella-connect`) that need to call back into the host without
- * speaking the full host↔worker JSON-RPC protocol.
+ * Tiny local-IPC RPC the worker exposes for sidecar CLIs (currently just
+ * `stella-connect`) that need to call back into the host without speaking
+ * the full host↔worker JSON-RPC protocol.
  *
  * Protocol: one connection = one request line of JSON, one response line
  * of JSON, server closes. Request: `{ id, method, params }`. Response:
@@ -17,6 +17,7 @@
 import { promises as fsPromises } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import path from "node:path";
+import { runtimeIpcPathUsesFilesystem } from "./runtime-paths.js";
 
 type RequestMessage = {
   id?: string | number;
@@ -370,10 +371,13 @@ export const startCliBridgeServer = async ({
   handlers: CliBridgeHandlers;
   log?: (message: string, error?: unknown) => void;
 }): Promise<CliBridgeServer> => {
-  await fsPromises.mkdir(path.dirname(socketPath), { recursive: true });
-  // Stale socket files from a crashed prior worker (or a leftover from a
-  // graceful shutdown that didn't run) would block listen() with EADDRINUSE.
-  await fsPromises.unlink(socketPath).catch(() => undefined);
+  const usesFilesystem = runtimeIpcPathUsesFilesystem(socketPath);
+  if (usesFilesystem) {
+    await fsPromises.mkdir(path.dirname(socketPath), { recursive: true });
+    // Stale socket files from a crashed prior worker (or a leftover from a
+    // graceful shutdown that didn't run) would block listen() with EADDRINUSE.
+    await fsPromises.unlink(socketPath).catch(() => undefined);
+  }
 
   // Track live connections so `stop()` can tear them down rather than
   // waiting indefinitely for an in-flight credential round-trip to
@@ -404,15 +408,17 @@ export const startCliBridgeServer = async ({
     server.listen(socketPath);
   });
 
-  // 0o600 — readable/writable only by the owning user, matching the main
-  // runtime socket's policy (`runtime/worker/transport.ts`). This path
-  // pops the credential dialog and writes connector tokens on the user's
-  // behalf, so anything weaker would let a same-host but different-uid
-  // process trigger arbitrary credential prompts. `.catch(() => undefined)`
-  // mirrors the main socket — on platforms where `chmod` on a unix socket
-  // is a no-op (rare, but POSIX leaves it to the implementation), we'd
-  // rather keep serving than refuse to start.
-  await fsPromises.chmod(socketPath, 0o600).catch(() => undefined);
+  if (usesFilesystem) {
+    // 0o600 — readable/writable only by the owning user, matching the main
+    // runtime socket's policy (`runtime/worker/transport.ts`). This path
+    // pops the credential dialog and writes connector tokens on the user's
+    // behalf, so anything weaker would let a same-host but different-uid
+    // process trigger arbitrary credential prompts. `.catch(() => undefined)`
+    // mirrors the main socket — on platforms where `chmod` on a unix socket
+    // is a no-op (rare, but POSIX leaves it to the implementation), we'd
+    // rather keep serving than refuse to start.
+    await fsPromises.chmod(socketPath, 0o600).catch(() => undefined);
+  }
 
   return {
     socketPath,
@@ -431,7 +437,9 @@ export const startCliBridgeServer = async ({
         }
         activeSockets.clear();
         server.close(() => {
-          void fsPromises.unlink(socketPath).catch(() => undefined);
+          if (usesFilesystem) {
+            void fsPromises.unlink(socketPath).catch(() => undefined);
+          }
           resolve();
         });
       }),
