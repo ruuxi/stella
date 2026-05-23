@@ -99,6 +99,8 @@ export type LocalPreferences = {
   miniDoubleTapModifier: MiniDoubleTapModifier;
   /** Prevents the computer from sleeping while Stella is running. */
   preventComputerSleep: boolean;
+  /** Allows Stella computer use to continue through the macOS lock screen. */
+  lockedComputerUseEnabled: boolean;
   /** Allows desktop notification sounds for agent completion. */
   soundNotificationsEnabled: boolean;
   /** Allows start/stop sound effects for dictation. */
@@ -158,6 +160,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   voiceRtcShortcut: "CommandOrControl+Shift+D",
   miniDoubleTapModifier: DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   preventComputerSleep: false,
+  lockedComputerUseEnabled: false,
   soundNotificationsEnabled: true,
   dictationSoundEffectsEnabled: true,
   wakeWordEnabled: false,
@@ -218,6 +221,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.miniDoubleTapModifier,
       ),
       preventComputerSleep: parsed.preventComputerSleep === true,
+      lockedComputerUseEnabled: parsed.lockedComputerUseEnabled === true,
       soundNotificationsEnabled: parsed.soundNotificationsEnabled !== false,
       dictationSoundEffectsEnabled:
         parsed.dictationSoundEffectsEnabled !== false,
@@ -408,6 +412,10 @@ export const getSyncMode = (stellaHome: string): "on" | "off" => {
 
 export const getPreventComputerSleep = (stellaHome: string): boolean => {
   return loadLocalPreferences(stellaHome).preventComputerSleep;
+};
+
+export const getLockedComputerUseEnabled = (stellaHome: string): boolean => {
+  return loadLocalPreferences(stellaHome).lockedComputerUseEnabled;
 };
 
 export const getSoundNotificationsEnabled = (stellaHome: string): boolean => {

@@ -220,6 +220,10 @@ export const IPC_PREFERENCES_GET_PREVENT_SLEEP =
   "preferences:getPreventSleep" as const;
 export const IPC_PREFERENCES_SET_PREVENT_SLEEP =
   "preferences:setPreventSleep" as const;
+export const IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE =
+  "preferences:getLockedComputerUse" as const;
+export const IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE =
+  "preferences:setLockedComputerUse" as const;
 export const IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS =
   "preferences:getSoundNotifications" as const;
 export const IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS =

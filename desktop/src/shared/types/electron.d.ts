@@ -630,6 +630,17 @@ export type ElectronAgentApi = {
   fixViteError: () => Promise<{ ok: boolean }>;
 };
 
+export type LockedComputerUseStatus = {
+  ok: boolean;
+  enabled: boolean;
+  installed: boolean;
+  active: boolean;
+  locked: boolean;
+  suppressedUntilManualUnlock: boolean;
+  message: string;
+  warnings: string[];
+};
+
 export type ElectronSystemApi = {
   getDeviceId: () => Promise<string | null>;
   startPhoneAccessSession: () => Promise<{ ok: boolean }>;
@@ -729,6 +740,10 @@ export type ElectronSystemApi = {
   ) => Promise<{ modifier: MiniDoubleTapModifier }>;
   getPreventComputerSleep: () => Promise<boolean>;
   setPreventComputerSleep: (enabled: boolean) => Promise<{ enabled: boolean }>;
+  getLockedComputerUseStatus: () => Promise<LockedComputerUseStatus>;
+  setLockedComputerUseEnabled: (
+    enabled: boolean,
+  ) => Promise<LockedComputerUseStatus>;
   getSoundNotificationsEnabled: () => Promise<boolean>;
   setSoundNotificationsEnabled: (
     enabled: boolean,

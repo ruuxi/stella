@@ -9,6 +9,10 @@ import { resolveNativeHelperPath, runNativeHelper } from "./native-helper.js";
 import { screenshotPixelToScreenPoint } from "./screenshot-coordinates.js";
 import { runWindowsStellaComputer } from "./stella-computer-windows.js";
 import { sanitizeStellaComputerSessionId } from "../tools/stella-computer-session.js";
+import {
+  loadLocalPreferences,
+  saveLocalPreferences,
+} from "../preferences/local-preferences.js";
 
 type Rect = {
   x: number;
@@ -149,6 +153,17 @@ type AutomationHelperResult = {
   timedOut?: boolean;
 };
 
+type LockedUsePayload = {
+  ok: boolean;
+  enabled: boolean;
+  installed?: boolean | null;
+  active: boolean;
+  locked: boolean;
+  suppressedUntilManualUnlock: boolean;
+  message: string;
+  warnings: string[];
+};
+
 type SessionTargetSelector = {
   pid?: number | null;
   bundleId?: string | null;
@@ -175,6 +190,7 @@ type SessionTargetRegistry = {
 const stateDir = path.join(resolveStatePath(), "stella-computer");
 const sessionsDir = path.join(stateDir, "sessions");
 const locksDir = path.join(stateDir, "locks");
+const lockedUseDir = path.join(stateDir, "locked-use");
 const defaultSessionId = "manual";
 const defaultSessionStateExample = path.join(
   stateDir,
@@ -191,9 +207,24 @@ const automationDaemonStartupBudgetMs = 7_500;
 // reaches the maxNodes cap of 1500 before the daemon can return. Lighter
 // apps (Spotify, Notes empty) finish in 1–3s.
 const automationDaemonRequestTimeoutMs = 30_000;
+const lockedUseLeaseDurationMs = 30_000;
+const lockedUseInstallerTimeoutMs = 120_000;
 const sessionPruneIntervalMs = 24 * 60 * 60 * 1000;
 const sessionRetentionMs = 24 * 60 * 60 * 1000;
 const pruneStatePath = path.join(stateDir, "last-prune.json");
+
+const resolveStellaHome = () => {
+  if (process.env.STELLA_HOME) {
+    return path.resolve(process.env.STELLA_HOME);
+  }
+  if (process.env.STELLA_ROOT) {
+    return path.resolve(process.env.STELLA_ROOT);
+  }
+  if (process.env.STELLA_STATE_DIR) {
+    return path.dirname(path.resolve(process.env.STELLA_STATE_DIR));
+  }
+  return path.dirname(resolveStatePath());
+};
 
 const usage = `stella-computer - control macOS apps through Accessibility, in the background
 
@@ -219,6 +250,7 @@ Usage:
   stella-computer [--session ID] drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] type <text> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
   stella-computer [--session ID] press <key> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer locked-use status|enable|disable|install|uninstall [--json]
 
 Notes:
   - snapshot writes element state to ${defaultSessionStateExample}
@@ -239,6 +271,7 @@ Notes:
   - --raise (or STELLA_COMPUTER_RAISE=1) is OFF by default; only opt in for HID coordinate clicks/keystrokes that genuinely need the target frontmost. The legacy --no-raise / STELLA_COMPUTER_NO_RAISE flags are accepted as no-ops.
   - actions keep a session overlay alive between targets so the software cursor visibly moves from action to action; pass --no-overlay (or STELLA_COMPUTER_NO_OVERLAY=1) to skip it
   - STELLA_COMPUTER_ALWAYS_SIMULATE_INPUT=1 forces CGEvent synthesis for click/type/press (CLICK alias kept for back-compat)
+  - locked-use enables macOS locked-screen Computer Use through a native authorization plug-in and a short per-action unlock lease
   - STELLA_COMPUTER_APP_INSTRUCTIONS_DIR=<dir> adds per-bundle markdown manuals (e.g. com.example.app.md)
   - Forbidden bundles: ${"set STELLA_COMPUTER_FORBIDDEN_BUNDLES=a,b,c to extend; the built-in deny list covers Stella, Keychain, password managers, System Settings"}
   - Forbidden URLs: ${"set STELLA_COMPUTER_FORBIDDEN_URL_SUBSTRINGS=foo,bar to extend; the built-in list covers banking + auth surfaces"}
@@ -358,6 +391,7 @@ const withStatePath = (args: string[], statePath: string) => {
 const ensureStateDirectory = (sessionPaths: SessionPaths) => {
   fs.mkdirSync(stateDir, { recursive: true });
   fs.mkdirSync(locksDir, { recursive: true });
+  fs.mkdirSync(lockedUseDir, { recursive: true });
   fs.mkdirSync(sessionPaths.sessionDir, { recursive: true });
 };
 
@@ -570,6 +604,7 @@ const ensureAutomationDaemon = async (sessionPaths: SessionPaths) => {
       env: {
         ...process.env,
         STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+        STELLA_COMPUTER_STATE_DIR: stateDir,
       },
     },
   );
@@ -611,6 +646,7 @@ const runAutomationDaemonCommand = async (
     env: {
       ...filteredAutomationDaemonEnv(),
       STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+      STELLA_COMPUTER_STATE_DIR: stateDir,
     },
   } satisfies AutomationDaemonRequestPayload);
 
@@ -1756,6 +1792,353 @@ const acquireLocks = async (keys: string[], sessionId: string) => {
   }
 };
 
+const readLockedUseEnabled = () => {
+  if (isTruthyEnv(process.env.STELLA_COMPUTER_LOCKED_USE)) {
+    return true;
+  }
+  try {
+    return loadLocalPreferences(resolveStellaHome()).lockedComputerUseEnabled;
+  } catch {
+    return false;
+  }
+};
+
+const writeLockedUseEnabled = (enabled: boolean) => {
+  const stellaHome = resolveStellaHome();
+  const prefs = loadLocalPreferences(stellaHome);
+  saveLocalPreferences(stellaHome, {
+    ...prefs,
+    lockedComputerUseEnabled: enabled,
+  });
+};
+
+const runProcessCapture = async (
+  command: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<AutomationHelperResult> =>
+  await new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    const settle = (result: AutomationHelperResult) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+    timer = setTimeout(() => {
+      killDetachedProcess(child.pid);
+      settle({
+        status: 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr:
+          Buffer.concat(stderrChunks).toString("utf8").trim() ||
+          `${command} timed out after ${timeoutMs}ms`,
+        timedOut: true,
+      });
+    }, timeoutMs);
+    child.stdout?.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.once("error", (error) => {
+      settle({
+        status: 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr: error.message,
+        error,
+      });
+    });
+    child.once("exit", (status) => {
+      settle({
+        status: status ?? 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr: Buffer.concat(stderrChunks).toString("utf8").trim(),
+      });
+    });
+  });
+
+const lockedUseInstallerPaths = () => {
+  const installerPath = resolveNativeHelperPath("locked_use_installer");
+  if (!installerPath) {
+    throw new Error(
+      'Native helper "locked_use_installer" was not found. Build desktop/native first.',
+    );
+  }
+  return {
+    installerPath,
+    resourceDir: path.dirname(installerPath),
+  };
+};
+
+const lockedUseAuthorizerPath = () => {
+  const helperPath = resolveNativeHelperPath("Stella.app/Contents/MacOS/Stella");
+  if (!helperPath) {
+    throw new Error(
+      'Native helper "Stella.app" was not found. Build desktop/native first.',
+    );
+  }
+  return helperPath;
+};
+
+const runLockedUseInstaller = async (
+  action: "install" | "uninstall" | "status",
+  options: { admin?: boolean } = {},
+) => {
+  const { installerPath, resourceDir } = lockedUseInstallerPaths();
+  if (
+    options.admin &&
+    process.platform === "darwin" &&
+    typeof process.getuid === "function" &&
+    process.getuid() !== 0
+  ) {
+    return await runProcessCapture(
+      lockedUseAuthorizerPath(),
+      [action, resourceDir],
+      lockedUseInstallerTimeoutMs,
+    );
+  }
+  return await runNativeHelper({
+    helperName: "locked_use_installer",
+    helperArgs: [action, resourceDir],
+    timeoutMs: lockedUseInstallerTimeoutMs,
+  });
+};
+
+const lockedUseStatus = async () => {
+  let installed = false;
+  let statusText = "";
+  try {
+    const status = await runLockedUseInstaller("status");
+    statusText = [status.stdout, status.stderr].filter(Boolean).join("\n").trim();
+    installed = /\binstalled\b/.test(statusText) && !/\bnot-installed\b/.test(statusText);
+  } catch (error) {
+    statusText = error instanceof Error ? error.message : String(error);
+  }
+  return {
+    enabled: readLockedUseEnabled(),
+    installed,
+    statusText,
+  };
+};
+
+const runLockedUseManagementCommand = async (
+  action: string | undefined,
+  jsonMode: boolean,
+) => {
+  const requested = action ?? "status";
+  if (!["status", "enable", "disable", "install", "uninstall"].includes(requested)) {
+    process.stderr.write(`Unknown locked-use action: ${requested}\n`);
+    return 1;
+  }
+
+  if (requested === "status") {
+    const status = await lockedUseStatus();
+    const payload = {
+      ok: true,
+      enabled: status.enabled,
+      installed: status.installed,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: status.statusText || "Locked computer use status unavailable.",
+      warnings: [],
+    } satisfies LockedUsePayload;
+    if (jsonMode) {
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      process.stdout.write(
+        `Locked computer use: ${status.enabled ? "enabled" : "disabled"} (${status.installed ? "installed" : "not installed"})\n`,
+      );
+      if (status.statusText) process.stdout.write(`${status.statusText}\n`);
+    }
+    return 0;
+  }
+
+  if (requested === "disable") {
+    writeLockedUseEnabled(false);
+    const status = await lockedUseStatus();
+    const payload = {
+      ok: true,
+      enabled: status.enabled,
+      installed: status.installed,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: status.statusText || "OK",
+      warnings: [],
+    } satisfies LockedUsePayload;
+    if (jsonMode) {
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      process.stdout.write(`${status.statusText || "OK"}\n`);
+    }
+    return 0;
+  }
+
+  const shouldInstall = requested === "enable" || requested === "install";
+  const currentStatus = await lockedUseStatus();
+  if (shouldInstall && currentStatus.installed) {
+    writeLockedUseEnabled(true);
+    const status = await lockedUseStatus();
+    const payload = {
+      ok: true,
+      enabled: status.enabled,
+      installed: status.installed,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: status.statusText || "OK",
+      warnings: [],
+    } satisfies LockedUsePayload;
+    if (jsonMode) {
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      process.stdout.write(`${status.statusText || "OK"}\n`);
+    }
+    return 0;
+  }
+  if (requested === "uninstall" && !currentStatus.installed) {
+    writeLockedUseEnabled(false);
+    const status = await lockedUseStatus();
+    const payload = {
+      ok: true,
+      enabled: status.enabled,
+      installed: status.installed,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: status.statusText || "OK",
+      warnings: [],
+    } satisfies LockedUsePayload;
+    if (jsonMode) {
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      process.stdout.write(`${status.statusText || "OK"}\n`);
+    }
+    return 0;
+  }
+
+  const installerResult = await runLockedUseInstaller(
+    shouldInstall ? "install" : "uninstall",
+    { admin: true },
+  );
+  if (installerResult.status !== 0) {
+    const message =
+      installerResult.stderr ||
+      installerResult.stdout ||
+      `locked-use ${requested} failed`;
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            ok: false,
+            enabled: readLockedUseEnabled(),
+            installed: false,
+            active: false,
+            locked: false,
+            suppressedUntilManualUnlock: false,
+            message,
+            warnings: [],
+          } satisfies LockedUsePayload,
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      process.stderr.write(`${message}\n`);
+    }
+    return 1;
+  }
+
+  const status = await lockedUseStatus();
+  const installIncomplete = shouldInstall && !status.installed;
+  const uninstallIncomplete = requested === "uninstall" && status.installed;
+  if (installIncomplete || uninstallIncomplete) {
+    const message =
+      installerResult.stderr ||
+      installerResult.stdout ||
+      `locked-use ${requested} did not complete`;
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            ok: false,
+            enabled: readLockedUseEnabled(),
+            installed: status.installed,
+            active: false,
+            locked: false,
+            suppressedUntilManualUnlock: false,
+            message,
+            warnings: [],
+          } satisfies LockedUsePayload,
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      process.stderr.write(`${message}\n`);
+    }
+    return 1;
+  }
+
+  writeLockedUseEnabled(shouldInstall);
+  if (jsonMode) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          enabled: status.enabled,
+          installed: status.installed,
+          active: false,
+          locked: false,
+          suppressedUntilManualUnlock: false,
+          message: installerResult.stdout || installerResult.stderr || "OK",
+          warnings: [],
+        } satisfies LockedUsePayload,
+        null,
+        2,
+      )}\n`,
+    );
+  } else {
+    process.stdout.write(`${installerResult.stdout || installerResult.stderr || "OK"}\n`);
+  }
+  return 0;
+};
+
+const maybeBeginLockedUseLease = async (sessionPaths: SessionPaths) => {
+  if (process.platform !== "darwin" || !readLockedUseEnabled()) {
+    return false;
+  }
+  const result = await runAutomationDaemonCommand(
+    sessionPaths,
+    ["locked-use-begin", "--duration-ms", String(lockedUseLeaseDurationMs)],
+    7_500,
+  );
+  if (result.status !== 0 || !result.stdout) {
+    throw new Error(result.stderr || "Failed to open locked computer use lease.");
+  }
+  const payload = parseJson<LockedUsePayload>(result.stdout);
+  if (!payload.ok) {
+    throw new Error(payload.message || "Locked computer use lease was denied.");
+  }
+  return true;
+};
+
+const endLockedUseLease = async (sessionPaths: SessionPaths) => {
+  if (process.platform !== "darwin" || !readLockedUseEnabled()) {
+    return;
+  }
+  await runAutomationDaemonCommand(sessionPaths, ["locked-use-end"], 5_000).catch(() => {
+    // Best-effort cleanup; command result handling should not be masked by a
+    // failed lease close.
+  });
+};
+
 const validateHidAccess = (
   command: string,
   args: string[],
@@ -1912,7 +2295,12 @@ const runCommand = async (
     );
   }
 
+  let lockedUseLeaseOpened = false;
   try {
+    if (effectiveCommand !== "list-apps") {
+      lockedUseLeaseOpened = await maybeBeginLockedUseLease(sessionPaths);
+    }
+
     const result =
       effectiveCommand === "list-apps"
         ? await runNativeHelper({
@@ -1921,6 +2309,7 @@ const runCommand = async (
             env: {
               ...process.env,
               STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+              STELLA_COMPUTER_STATE_DIR: stateDir,
             },
           })
         : await runAutomationDaemonCommand(sessionPaths, initialHelperArgs);
@@ -1988,6 +2377,9 @@ const runCommand = async (
 
     return 0;
   } finally {
+    if (lockedUseLeaseOpened) {
+      await endLockedUseLease(sessionPaths);
+    }
     releaseLocks?.();
   }
 };
@@ -2030,39 +2422,52 @@ const command = argv[0];
 const restArgs = argv.slice(1);
 const { found: jsonMode, args: plainArgs } = stripFlag(restArgs, "--json");
 
-if (
-  ![
-    "list-apps",
-    "snapshot",
-    "get-state",
-    "click",
-    "fill",
-    "focus",
-    "secondary-action",
-    "perform-secondary-action",
-    "scroll",
-    "drag",
-    "drag-element",
-    "click-point",
-    "click-screenshot",
-    "drag-screenshot",
-    "type",
-    "press",
-  ].includes(command)
-) {
-  process.stderr.write(`Unknown command: ${command}\n\n${usage}`);
-  process.exit(1);
-}
-
-void (async () => {
-  try {
-    const exitCode = await runCommand(command, plainArgs, jsonMode, sessionOverride);
-    process.exit(exitCode);
-  } catch (error) {
-    process.stderr.write(
-      `${error instanceof Error ? error.message : String(error)}\n`,
-    );
+if (command === "locked-use") {
+  void runLockedUseManagementCommand(plainArgs[0], jsonMode)
+    .then((exitCode) => {
+      process.exit(exitCode);
+    })
+    .catch((error) => {
+      process.stderr.write(
+        `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exit(1);
+    });
+} else {
+  if (
+    ![
+      "list-apps",
+      "snapshot",
+      "get-state",
+      "click",
+      "fill",
+      "focus",
+      "secondary-action",
+      "perform-secondary-action",
+      "scroll",
+      "drag",
+      "drag-element",
+      "click-point",
+      "click-screenshot",
+      "drag-screenshot",
+      "type",
+      "press",
+    ].includes(command)
+  ) {
+    process.stderr.write(`Unknown command: ${command}\n\n${usage}`);
     process.exit(1);
   }
-})();
+
+  void (async () => {
+    try {
+      const exitCode = await runCommand(command, plainArgs, jsonMode, sessionOverride);
+      process.exit(exitCode);
+    } catch (error) {
+      process.stderr.write(
+        `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exit(1);
+    }
+  })();
+}
 }

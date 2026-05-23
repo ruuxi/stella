@@ -9,6 +9,7 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
+import { spawn } from "node:child_process";
 import { copyFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
@@ -96,6 +97,7 @@ import {
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
+  IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
@@ -103,6 +105,7 @@ import {
   IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
+  IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_READ_ALOUD,
@@ -112,6 +115,7 @@ import {
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
+import { resolveNativeHelperPath } from "../native-helper-path.js";
 import {
   hasMacPermission,
   clearPermissionCache,
@@ -522,6 +526,207 @@ export const setPreventComputerSleep = (enabled: boolean) => {
     }
     preventSleepBlockerId = null;
   }
+};
+
+type LockedComputerUseStatus = {
+  ok: boolean;
+  enabled: boolean;
+  installed: boolean;
+  active: boolean;
+  locked: boolean;
+  suppressedUntilManualUnlock: boolean;
+  message: string;
+  warnings: string[];
+};
+
+type ProcessCaptureResult = {
+  status: number;
+  stdout: string;
+  stderr: string;
+  timedOut?: boolean;
+  error?: Error;
+};
+
+const lockedComputerUseInstallerTimeoutMs = 120_000;
+
+const resolveLockedComputerUseHome = (stellaRoot: string | null) => {
+  if (process.env.STELLA_HOME) {
+    return path.resolve(process.env.STELLA_HOME);
+  }
+  if (stellaRoot) {
+    return path.resolve(stellaRoot);
+  }
+  if (process.env.STELLA_ROOT) {
+    return path.resolve(process.env.STELLA_ROOT);
+  }
+  if (process.env.STELLA_STATE_DIR) {
+    return path.dirname(path.resolve(process.env.STELLA_STATE_DIR));
+  }
+  return process.cwd();
+};
+
+const readLockedComputerUseEnabled = (stellaRoot: string | null) => {
+  try {
+    return loadLocalPreferences(
+      resolveLockedComputerUseHome(stellaRoot),
+    ).lockedComputerUseEnabled;
+  } catch {
+    return false;
+  }
+};
+
+const writeLockedComputerUseEnabled = (
+  stellaRoot: string | null,
+  enabled: boolean,
+) => {
+  const stellaHome = resolveLockedComputerUseHome(stellaRoot);
+  const prefs = loadLocalPreferences(stellaHome);
+  saveLocalPreferences(stellaHome, {
+    ...prefs,
+    lockedComputerUseEnabled: enabled,
+  });
+};
+
+const runProcessCapture = async (
+  command: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<ProcessCaptureResult> =>
+  await new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    const settle = (result: ProcessCaptureResult) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+    timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      settle({
+        status: 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr:
+          Buffer.concat(stderrChunks).toString("utf8").trim() ||
+          `${command} timed out after ${timeoutMs}ms`,
+        timedOut: true,
+      });
+    }, timeoutMs);
+    child.stdout?.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.once("error", (error) => {
+      settle({
+        status: 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr: error.message,
+        error,
+      });
+    });
+    child.once("exit", (status) => {
+      settle({
+        status: status ?? 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr: Buffer.concat(stderrChunks).toString("utf8").trim(),
+      });
+    });
+  });
+
+const lockedComputerUseInstallerPaths = () => {
+  const installerPath = resolveNativeHelperPath("locked_use_installer");
+  if (!installerPath) {
+    throw new Error(
+      'Native helper "locked_use_installer" was not found. Build desktop/native first.',
+    );
+  }
+  return {
+    installerPath,
+    resourceDir: path.dirname(installerPath),
+  };
+};
+
+const lockedComputerUseAuthorizerPath = (resourceDir: string) => {
+  const helperPath = path.join(
+    resourceDir,
+    "Stella.app",
+    "Contents",
+    "MacOS",
+    "Stella",
+  );
+  if (!existsSync(helperPath)) {
+    throw new Error(
+      'Native helper "Stella.app" was not found. Build desktop/native first.',
+    );
+  }
+  return helperPath;
+};
+
+const runLockedComputerUseInstaller = async (
+  action: "install" | "uninstall" | "status",
+  options: { admin?: boolean } = {},
+) => {
+  const { installerPath, resourceDir } = lockedComputerUseInstallerPaths();
+  if (
+    options.admin &&
+    process.platform === "darwin" &&
+    typeof process.getuid === "function" &&
+    process.getuid() !== 0
+  ) {
+    return await runProcessCapture(
+      lockedComputerUseAuthorizerPath(resourceDir),
+      [action, resourceDir],
+      lockedComputerUseInstallerTimeoutMs,
+    );
+  }
+  return await runProcessCapture(
+    installerPath,
+    [action, resourceDir],
+    lockedComputerUseInstallerTimeoutMs,
+  );
+};
+
+const getLockedComputerUseStatus = async (
+  stellaRoot: string | null,
+): Promise<LockedComputerUseStatus> => {
+  if (process.platform !== "darwin") {
+    return {
+      ok: true,
+      enabled: false,
+      installed: false,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: "Locked computer use is only available on macOS.",
+      warnings: [],
+    };
+  }
+
+  let installed = false;
+  let message = "";
+  try {
+    const status = await runLockedComputerUseInstaller("status");
+    message = [status.stdout, status.stderr].filter(Boolean).join("\n").trim();
+    installed =
+      /\binstalled\b/.test(message) && !/\bnot-installed\b/.test(message);
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+
+  return {
+    ok: true,
+    enabled: readLockedComputerUseEnabled(stellaRoot),
+    installed,
+    active: false,
+    locked: false,
+    suppressedUntilManualUnlock: false,
+    message: message || "Locked computer use status unavailable.",
+    warnings: [],
+  };
 };
 
 const createStoppedSocialSessionSnapshot = () => ({
@@ -1409,6 +1614,88 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       setPreventComputerSleep(nextEnabled);
       return { enabled: nextEnabled };
+    },
+  );
+
+  ipcMain.handle(IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted preferences:getLockedComputerUse request.",
+      );
+    }
+    return await getLockedComputerUseStatus(options.getStellaRoot());
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
+    async (event, enabled: boolean) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted preferences:setLockedComputerUse request.",
+        );
+      }
+      if (process.platform !== "darwin") {
+        throw new Error("Locked computer use is only available on macOS.");
+      }
+
+      const nextEnabled = enabled === true;
+      const stellaRoot = options.getStellaRoot();
+      const currentStatus = await getLockedComputerUseStatus(stellaRoot);
+      if (!nextEnabled) {
+        writeLockedComputerUseEnabled(stellaRoot, false);
+        return {
+          ...currentStatus,
+          enabled: false,
+        };
+      }
+      if (nextEnabled && currentStatus.installed) {
+        writeLockedComputerUseEnabled(stellaRoot, true);
+        return {
+          ...currentStatus,
+          enabled: true,
+        };
+      }
+
+      const installerResult = await runLockedComputerUseInstaller(
+        "install",
+        { admin: true },
+      );
+      if (installerResult.status !== 0) {
+        throw new Error(
+          installerResult.stderr ||
+            installerResult.stdout ||
+            "Failed to enable locked computer use.",
+        );
+      }
+
+      const status = await getLockedComputerUseStatus(stellaRoot);
+      if (!status.installed) {
+        throw new Error(
+          installerResult.stderr ||
+            installerResult.stdout ||
+            "Locked computer use install did not complete.",
+        );
+      }
+      writeLockedComputerUseEnabled(stellaRoot, nextEnabled);
+      return {
+        ...status,
+        enabled: true,
+        message:
+          installerResult.stdout ||
+          installerResult.stderr ||
+          status.message ||
+          "OK",
+      };
     },
   );
 

@@ -125,6 +125,20 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
+    title: "Locked computer use",
+    description: "Let Stella continue computer-use tasks after this Mac locks.",
+    keywords: [
+      "computer use",
+      "lock screen",
+      "locked use",
+      "unlock",
+      "authorization",
+      "remote",
+      "desktop automation",
+    ],
+  },
+  {
+    tab: "general",
     title: "Stella for Chrome",
     description: "Add the Stella extension to Chrome and other browsers.",
     keywords: [

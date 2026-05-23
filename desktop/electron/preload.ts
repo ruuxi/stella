@@ -68,6 +68,7 @@ import {
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
+  IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_READ_ALOUD,
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
@@ -76,6 +77,7 @@ import {
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
+  IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_READ_ALOUD,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
@@ -1002,6 +1004,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
         IPC_PREFERENCES_SET_PREVENT_SLEEP,
         enabled,
       ) as Promise<{ enabled: boolean }>,
+    getLockedComputerUseStatus: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE) as Promise<{
+        ok: boolean;
+        enabled: boolean;
+        installed: boolean;
+        active: boolean;
+        locked: boolean;
+        suppressedUntilManualUnlock: boolean;
+        message: string;
+        warnings: string[];
+      }>,
+    setLockedComputerUseEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
+        enabled,
+      ) as Promise<{
+        ok: boolean;
+        enabled: boolean;
+        installed: boolean;
+        active: boolean;
+        locked: boolean;
+        suppressedUntilManualUnlock: boolean;
+        message: string;
+        warnings: string[];
+      }>,
     getSoundNotificationsEnabled: () =>
       ipcRenderer.invoke(
         IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
