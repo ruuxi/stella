@@ -262,7 +262,12 @@ export const ChatColumn = memo(function ChatColumn({
     <div className="full-body-row">
       <div className="full-body-main" {...dropHandlers}>
         <DropOverlay visible={isDragOver} variant="surface" />
-        {/* Viewport region: list + overlays (custom scrollbar, scroll-to-bottom). */}
+        {/* Viewport region: list + overlay scroll-to-bottom.
+            The custom scrollbar deliberately hangs off the row (sibling
+            below) rather than the viewport region so it pins to the
+            right edge of the entire chat surface — past the workspace
+            strip — instead of sitting at the inside edge of the
+            centered chat column. */}
         <div className="chat-viewport-region">
           <ConversationEvents
             messages={conversation.messages}
@@ -278,21 +283,6 @@ export const ChatColumn = memo(function ChatColumn({
             contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
             estimatedItemSize={140}
           />
-
-          {/* Custom scrollbar thumb overlay */}
-          <div className="chat-scrollbar">
-            <div
-              className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
-              style={{
-                top: `${thumbState.top}px`,
-                height: `${thumbState.height}px`,
-              }}
-              onPointerDown={handleThumbDown}
-              onPointerMove={handleThumbMove}
-              onPointerUp={handleThumbUp}
-              onPointerCancel={handleThumbUp}
-            />
-          </div>
 
           {showScrollButton && !assistantReplyPeek.visible && (
             <button
@@ -329,6 +319,23 @@ export const ChatColumn = memo(function ChatColumn({
         forceHidden={hideRightContextPanel}
         onSuggestionClick={onSuggestionClick}
       />
+
+      {/* Custom scrollbar thumb overlay — pinned to the right edge of
+          the row (past the workspace strip) so it tracks the app side
+          rather than the inside edge of the chat column. */}
+      <div className="chat-scrollbar">
+        <div
+          className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
+          style={{
+            top: `${thumbState.top}px`,
+            height: `${thumbState.height}px`,
+          }}
+          onPointerDown={handleThumbDown}
+          onPointerMove={handleThumbMove}
+          onPointerUp={handleThumbUp}
+          onPointerCancel={handleThumbUp}
+        />
+      </div>
     </div>
   );
 });
