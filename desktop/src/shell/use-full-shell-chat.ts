@@ -223,7 +223,16 @@ export function useFullShellChat({
     // user is visually at the bottom of the conversation but ~150px
     // physically above the absolute end (because the trailing-region
     // footer is off-screen below the latest text).
-    const shouldNudgeAfterSend = showHomeContent || getIsFollowing()
+    //
+    // Skip the nudge while a stream is already in flight — that send
+    // queues as a follow-up chip in the trailing region (no new
+    // user-row in the event list), so `scrollLatestUserMessageIntoView`
+    // would fall through to the prior turn's user bubble and scroll
+    // *backwards* to re-frame it. The queued chip's own appearance
+    // plus the streaming-row auto-follow then re-target the viewport
+    // a frame later, producing the visible double-nudge jump.
+    const shouldNudgeAfterSend =
+      !isStreaming && (showHomeContent || getIsFollowing())
     if (showHomeContent) {
       setComposerFocusRequestId((id) => id + 1)
     }
@@ -239,7 +248,13 @@ export function useFullShellChat({
         setChatContext(null)
       },
     })
-    if (shouldNudgeAfterSend) {
+    if (isStreaming) {
+      // Queued follow-up — leave the scroll alone. The streaming
+      // assistant row's own auto-follow keeps it framed, and the
+      // queued-message chip animates into the trailing region in
+      // place. Touching the latch here (releaseFollow) would also
+      // detach the assistant-row follow key mid-stream.
+    } else if (shouldNudgeAfterSend) {
       // Routes the small post-send bump through the same lerp loop
       // as streaming auto-follow so the two motions blend rather
       // than fight via separate concurrent rAF tweens.
@@ -251,6 +266,7 @@ export function useFullShellChat({
     chatContext,
     enterChatSurfaceForInteraction,
     getIsFollowing,
+    isStreaming,
     message,
     nudgeAfterSend,
     releaseFollow,
