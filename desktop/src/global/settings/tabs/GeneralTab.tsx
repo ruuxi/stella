@@ -12,6 +12,10 @@ import {
   setDeveloperResourcePreviewsEnabled,
   useDeveloperResourcePreviewsEnabled,
 } from "@/shared/lib/developer-resource-previews";
+import {
+  setNativeFontSmoothingEnabled,
+  useNativeFontSmoothingEnabled,
+} from "@/shared/lib/native-font-smoothing";
 import { openExternalUrl } from "@/platform/electron/open-external";
 import { useT } from "@/shared/i18n";
 import {
@@ -31,6 +35,7 @@ export function GeneralTab() {
   const platform = window.electronAPI?.platform;
   const developerResourcePreviewsEnabled =
     useDeveloperResourcePreviewsEnabled();
+  const nativeFontSmoothingEnabled = useNativeFontSmoothingEnabled();
   const [preventComputerSleep, setPreventComputerSleep] = useState(false);
   const [preventSleepLoaded, setPreventSleepLoaded] = useState(false);
   const [isSavingPreventSleep, setIsSavingPreventSleep] = useState(false);
@@ -567,6 +572,16 @@ export function GeneralTab() {
           {t("settings.developerPreviews.description")}
         </p>
       </div>
+      {platform === "darwin"
+        ? renderToggleCard({
+            title: t("settings.nativeFontSmoothing.title"),
+            description: t("settings.nativeFontSmoothing.description"),
+            error: null,
+            checked: nativeFontSmoothingEnabled,
+            disabled: false,
+            onChange: (checked) => setNativeFontSmoothingEnabled(checked),
+          })
+        : null}
       {renderToggleCard({
         title: t("settings.notifications.title"),
         description: t("settings.notifications.description"),
