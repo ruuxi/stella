@@ -20,6 +20,7 @@ import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { setupEnvironment } from "dugite";
 import {
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
@@ -67,9 +68,12 @@ type ProcessRunResult = { exitCode: number; stdout: string; stderr: string };
 
 const runGit = (cwd: string, args: string[]): Promise<GitRunResult> =>
   new Promise((resolve, reject) => {
-    const child = spawn("git", args, {
+    const { env, gitLocation } = setupEnvironment({});
+    const child = spawn(gitLocation, args, {
       cwd,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     let stdout = "";
     let stderr = "";

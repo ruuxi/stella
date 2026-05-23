@@ -44,6 +44,7 @@ export type OneShotCompletionRuntimeContext = {
   stellaHome: string;
   siteBaseUrl: string | null;
   getAuthToken: () => string | null;
+  hasConnectedAccount: () => boolean;
   requestRuntimeAuthRefresh?: () => Promise<{
     authenticated: boolean;
     token: string | null;
@@ -91,6 +92,7 @@ export const runOneShotCompletion = async (args: {
     site: {
       baseUrl: runtime.siteBaseUrl,
       getAuthToken: () => runtime.getAuthToken()?.trim() ?? null,
+      hasConnectedAccount: () => runtime.hasConnectedAccount(),
       refreshAuthToken: async () => {
         const result = await runtime.requestRuntimeAuthRefresh?.();
         return result?.authenticated ? result.token : null;

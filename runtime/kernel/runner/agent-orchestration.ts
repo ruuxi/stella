@@ -427,6 +427,7 @@ export const createAgentOrchestration = (
       const site = {
         baseUrl: context.state.convexSiteUrl,
         getAuthToken: () => context.state.authToken?.trim(),
+        hasConnectedAccount: () => context.state.hasConnectedAccount,
         refreshAuthToken: async () => {
           const result = await context.requestRuntimeAuthRefresh?.({
             source: "stella_provider",
@@ -750,6 +751,7 @@ export const createAgentOrchestration = (
               site: {
                 baseUrl: context.state.convexSiteUrl,
                 getAuthToken: () => context.state.authToken?.trim(),
+                hasConnectedAccount: () => context.state.hasConnectedAccount,
                 refreshAuthToken: async () => {
                   const result = await context.requestRuntimeAuthRefresh?.({
                     source: "stella_provider",

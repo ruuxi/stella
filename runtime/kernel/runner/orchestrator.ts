@@ -68,6 +68,8 @@ export const createOrchestratorController = (
     createRuntimeCallbacks,
     queueOrchestratorTurn,
   } = coordinator;
+  const preExecutionCanceledRunIds = new Set<string>();
+  const preparingRunIds = new Set<string>();
 
   type StartPreparedRunArgs = Parameters<
     typeof startPreparedOrchestratorRun
@@ -127,64 +129,87 @@ export const createOrchestratorController = (
         args.callbacks,
       );
     }
-
-    await startPreparedOrchestratorRun({
-      context,
-      buildAgentContext: deps.buildAgentContext,
+    args.callbacks.onRunStarted?.({
       runId,
-      conversationId: args.conversationId,
       agentType: args.agentType,
-      userPrompt: args.userPrompt,
-      ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
-      ...(args.promptMessages?.length
-        ? { promptMessages: args.promptMessages }
-        : {}),
-      attachments: args.attachments,
+      seq: 0,
       userMessageId: args.userMessageId,
       ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
-      createRuntimeCallbacks: (runArgs) =>
-        args.createRunCallbacks(runArgs, steerableCallbacks.callbackProxy),
-      cleanupRun,
-      onPrepared: (prepared) => {
-        args.callbacks.onRunStarted?.({
-          runId: prepared.runId,
+      ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
+    });
+
+    preparingRunIds.add(runId);
+    try {
+      await startPreparedOrchestratorRun({
+        context,
+        buildAgentContext: deps.buildAgentContext,
+        runId,
+        conversationId: args.conversationId,
+        agentType: args.agentType,
+        userPrompt: args.userPrompt,
+        ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
+        ...(args.promptMessages?.length
+          ? { promptMessages: args.promptMessages }
+          : {}),
+        attachments: args.attachments,
+        userMessageId: args.userMessageId,
+        ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
+        createRuntimeCallbacks: (runArgs) =>
+          args.createRunCallbacks(runArgs, steerableCallbacks.callbackProxy),
+        cleanupRun,
+        onPrepared: (prepared) => {
+          args.onPrepared?.(prepared);
+        },
+        onExecutionSessionCreated: (session) => {
+          if (context.state.activeOrchestratorRunId !== runId) {
+            return;
+          }
+          context.state.activeOrchestratorSession = {
+            ...session,
+            conversationId: args.conversationId,
+            agentType: args.agentType,
+            uiVisibility: args.uiVisibility ?? UI_VISIBILITY_VISIBLE,
+            queueCallbackSwitch: (callbacks) => {
+              steerableCallbacks.switchTo(callbacks);
+            },
+            queueMessage: (
+              message: AgentMessage,
+              delivery: "steer" | "followUp",
+            ) => {
+              if (delivery === "followUp") {
+                session.agent.followUp(message);
+                return;
+              }
+              session.agent.steer(message);
+            },
+          } satisfies ActiveOrchestratorSession;
+        },
+        onFatalError: createOrchestratorFatalErrorHandler({
+          runId,
+          agentType: args.agentType,
+          callbacks: args.callbacks,
+        }),
+      });
+    } catch (error) {
+      if (preExecutionCanceledRunIds.delete(runId)) {
+        return { runId };
+      }
+      try {
+        args.callbacks.onError({
+          runId,
           agentType: args.agentType,
           seq: 0,
-          userMessageId: args.userMessageId,
-          ...(args.responseTarget
-            ? { responseTarget: args.responseTarget }
-            : {}),
+          error: error instanceof Error ? error.message : String(error),
+          fatal: true,
           ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
         });
-        args.onPrepared?.(prepared);
-      },
-      onExecutionSessionCreated: (session) => {
-        context.state.activeOrchestratorSession = {
-          ...session,
-          conversationId: args.conversationId,
-          agentType: args.agentType,
-          uiVisibility: args.uiVisibility ?? UI_VISIBILITY_VISIBLE,
-          queueCallbackSwitch: (callbacks) => {
-            steerableCallbacks.switchTo(callbacks);
-          },
-          queueMessage: (
-            message: AgentMessage,
-            delivery: "steer" | "followUp",
-          ) => {
-            if (delivery === "followUp") {
-              session.agent.followUp(message);
-              return;
-            }
-            session.agent.steer(message);
-          },
-        } satisfies ActiveOrchestratorSession;
-      },
-      onFatalError: createOrchestratorFatalErrorHandler({
-        runId,
-        agentType: args.agentType,
-        callbacks: args.callbacks,
-      }),
-    });
+      } finally {
+        cleanupRun(runId);
+      }
+      throw error;
+    } finally {
+      preparingRunIds.delete(runId);
+    }
 
     return { runId };
   };
@@ -705,7 +730,21 @@ export const createOrchestratorController = (
   const cancelLocalChat = (runId: string) => {
     const controller = context.state.activeRunAbortControllers.get(runId);
     if (!controller) return;
+    const wasPreExecution = preparingRunIds.has(runId);
+    const uiVisibility = context.state.activeOrchestratorUiVisibility;
+    const callbacks = context.state.runCallbacksByRunId.get(runId);
     controller.abort();
+    if (wasPreExecution) {
+      preExecutionCanceledRunIds.add(runId);
+      cleanupRun(runId);
+      callbacks?.onInterrupted?.({
+        runId,
+        agentType: AGENT_IDS.ORCHESTRATOR,
+        uiVisibility,
+        reason: "Canceled",
+      });
+      return;
+    }
     context.state.activeRunAbortControllers.delete(runId);
     clearActiveOrchestratorRun(runId);
   };

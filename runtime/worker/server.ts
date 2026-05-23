@@ -3352,6 +3352,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           stellaHome: init.stellaHomePath,
           siteBaseUrl: init.convexSiteUrl,
           getAuthToken: () => init.authToken,
+          hasConnectedAccount: () => state.init?.hasConnectedAccount ?? false,
           requestRuntimeAuthRefresh: async () => {
             try {
               return (await peer.request(

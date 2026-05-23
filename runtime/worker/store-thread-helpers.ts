@@ -17,12 +17,15 @@
  *   for the Store publish pipeline, with a best-effort redactor.
  */
 import os from "node:os";
-import { exec as gitExec } from "dugite";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { setupEnvironment } from "dugite";
 import type { StoreReleaseCommit } from "../contracts/index.js";
 import type { StoreModStore } from "../kernel/storage/store-mod-store.js";
 
 export const STORE_THREAD_CONVERSATION_ID = "store-agent-local";
 const STORE_THREAD_MAX_USER_TEXT = 8_000;
+const execFileAsync = promisify(execFile);
 
 export const normalizeStoreThreadText = (value: unknown): string => {
   const text = typeof value === "string" ? value.trim() : "";
@@ -109,22 +112,22 @@ const runStoreReleaseGitShow = async (
   if (!/^[0-9a-f]{7,40}$/i.test(commitHash)) {
     throw new Error(`Invalid commit hash: ${commitHash}`);
   }
-  const subjectResult = await gitExec(
+  const { env, gitLocation } = setupEnvironment({});
+  const subjectResult = await execFileAsync(
+    gitLocation,
     ["show", "-s", "--format=%s", "--no-color", commitHash],
-    repoRoot,
-    { encoding: "utf8", maxBuffer: 1 * 1024 * 1024 },
+    {
+      cwd: repoRoot,
+      env,
+      encoding: "utf8",
+      maxBuffer: 1 * 1024 * 1024,
+      windowsHide: true,
+    },
   );
-  const subjectStdout =
-    typeof subjectResult.stdout === "string"
-      ? subjectResult.stdout
-      : Buffer.from(subjectResult.stdout).toString("utf8");
-  if (subjectResult.exitCode !== 0) {
-    throw new Error(
-      `Unable to read ${commitHash}: git exited ${subjectResult.exitCode}`,
-    );
-  }
+  const subjectStdout = subjectResult.stdout;
   const subject = subjectStdout.trim() || `(no subject)`;
-  const diffResult = await gitExec(
+  const diffResult = await execFileAsync(
+    gitLocation,
     [
       "show",
       "-U10",
@@ -135,18 +138,15 @@ const runStoreReleaseGitShow = async (
       "--",
       ...STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS,
     ],
-    repoRoot,
-    { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
+    {
+      cwd: repoRoot,
+      env,
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      windowsHide: true,
+    },
   );
-  const diffStdout =
-    typeof diffResult.stdout === "string"
-      ? diffResult.stdout
-      : Buffer.from(diffResult.stdout).toString("utf8");
-  if (diffResult.exitCode !== 0) {
-    throw new Error(
-      `Unable to read ${commitHash}: git exited ${diffResult.exitCode}`,
-    );
-  }
+  const diffStdout = diffResult.stdout;
   const trimmed = diffStdout.trim() || `(empty commit ${commitHash})`;
   const diff =
     trimmed.length <= STORE_RELEASE_PER_COMMIT_DIFF_LIMIT

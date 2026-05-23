@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
+import { setupEnvironment } from "dugite";
 import type { RuntimeHealthSnapshot } from "../../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import {
@@ -222,9 +223,12 @@ const readJsonFile = async <T>(filePath: string): Promise<T | null> => {
 };
 
 const runGit = async (repoRoot: string, args: string[]): Promise<Buffer> => {
-  const { stdout } = await execFileAsync("git", ["-C", repoRoot, ...args], {
+  const { env, gitLocation } = setupEnvironment({});
+  const { stdout } = await execFileAsync(gitLocation, ["-C", repoRoot, ...args], {
+    env,
     encoding: "buffer",
     maxBuffer: EXEC_MAX_BUFFER,
+    windowsHide: true,
   });
   return Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
 };
@@ -1009,11 +1013,14 @@ export class BackupService {
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry | null> {
     const bundlePath = path.join(args.tempRoot, "repo.bundle");
+    const { env, gitLocation } = setupEnvironment({});
     await execFileAsync(
-      "git",
+      gitLocation,
       ["-C", this.deps.stellaRoot, "bundle", "create", bundlePath, "--all"],
       {
+        env,
         maxBuffer: EXEC_MAX_BUFFER,
+        windowsHide: true,
       },
     );
     if (!(await fileExists(bundlePath))) {

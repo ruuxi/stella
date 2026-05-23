@@ -221,21 +221,6 @@ export const prepareOrchestratorRun = async (args: {
 }): Promise<PreparedOrchestratorRun> => {
   const isUserTurn = args.uiVisibility !== "hidden";
 
-  const agentContext = await args.buildAgentContext({
-    conversationId: args.conversationId,
-    agentType: args.agentType,
-    runId: args.runId,
-    ...(args.toolWorkspaceRoot ? { toolWorkspaceRoot: args.toolWorkspaceRoot } : {}),
-  });
-  const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
-    args.context,
-    args.agentType,
-    args.modelOverride ?? agentContext.model,
-  );
-  if (args.modelOverride) {
-    agentContext.model = args.modelOverride;
-  }
-
   args.context.state.activeOrchestratorRunId = args.runId;
   args.context.state.activeOrchestratorConversationId = args.conversationId;
   args.context.state.activeOrchestratorUiVisibility =
@@ -244,48 +229,82 @@ export const prepareOrchestratorRun = async (args: {
   const abortController = new AbortController();
   args.context.state.activeRunAbortControllers.set(args.runId, abortController);
 
-  // Increment the memory-review counter only on real user-driven turns
-  // for agents that declare the `triggersMemoryReview` capability.
-  // Synthetic task-callback turns (uiVisibility === "hidden") and
-  // capability-less agents do not count — they would inflate the counter
-  // without representing user input.
-  let userTurnsSinceMemoryReview: number | undefined;
-  if (
-    isUserTurn &&
-    agentHasCapability(args.agentType, "triggersMemoryReview")
-  ) {
-    try {
-      userTurnsSinceMemoryReview =
-        args.context.runtimeStore.incrementUserTurnsSinceMemoryReview(
-          args.conversationId,
-        );
-    } catch {
-      // Memory review is best-effort. Counter failure must not block the turn.
+  try {
+    const agentContext = await args.buildAgentContext({
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+      runId: args.runId,
+      ...(args.toolWorkspaceRoot
+        ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
+        : {}),
+    });
+    if (abortController.signal.aborted) {
+      throw new Error("Run canceled.");
     }
-  }
+    const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
+      args.context,
+      args.agentType,
+      args.modelOverride ?? agentContext.model,
+    );
+    if (abortController.signal.aborted) {
+      throw new Error("Run canceled.");
+    }
+    if (args.modelOverride) {
+      agentContext.model = args.modelOverride;
+    }
 
-  return {
-    runId: args.runId,
-    conversationId: args.conversationId,
-    agentType: args.agentType,
-    userPrompt: args.userPrompt,
-    ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
-    promptMessages: args.promptMessages,
-    ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
-    attachments: args.attachments,
-    ...(args.connectorDeliveryTarget
-      ? { connectorDeliveryTarget: args.connectorDeliveryTarget }
-      : {}),
-    ...(args.toolWorkspaceRoot
-      ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
-      : {}),
-    agentContext,
-    resolvedLlm,
-    abortController,
-    ...(userTurnsSinceMemoryReview != null
-      ? { userTurnsSinceMemoryReview }
-      : {}),
-  };
+    // Increment the memory-review counter only on real user-driven turns
+    // for agents that declare the `triggersMemoryReview` capability.
+    // Synthetic task-callback turns (uiVisibility === "hidden") and
+    // capability-less agents do not count — they would inflate the counter
+    // without representing user input.
+    let userTurnsSinceMemoryReview: number | undefined;
+    if (
+      isUserTurn &&
+      agentHasCapability(args.agentType, "triggersMemoryReview")
+    ) {
+      try {
+        userTurnsSinceMemoryReview =
+          args.context.runtimeStore.incrementUserTurnsSinceMemoryReview(
+            args.conversationId,
+          );
+      } catch {
+        // Memory review is best-effort. Counter failure must not block the turn.
+      }
+    }
+
+    return {
+      runId: args.runId,
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+      userPrompt: args.userPrompt,
+      ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
+      promptMessages: args.promptMessages,
+      ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
+      attachments: args.attachments,
+      ...(args.connectorDeliveryTarget
+        ? { connectorDeliveryTarget: args.connectorDeliveryTarget }
+        : {}),
+      ...(args.toolWorkspaceRoot
+        ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
+        : {}),
+      agentContext,
+      resolvedLlm,
+      abortController,
+      ...(userTurnsSinceMemoryReview != null
+        ? { userTurnsSinceMemoryReview }
+        : {}),
+    };
+  } catch (error) {
+    if (args.context.state.activeOrchestratorRunId === args.runId) {
+      args.context.state.activeOrchestratorRunId = null;
+      args.context.state.activeOrchestratorConversationId = null;
+      args.context.state.activeOrchestratorUiVisibility = "visible";
+      args.context.state.activeOrchestratorSession = null;
+    }
+    args.context.state.activeRunAbortControllers.delete(args.runId);
+    throw error;
+  }
 };
 
 export const launchPreparedOrchestratorRun = (args: {

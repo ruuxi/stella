@@ -10,6 +10,7 @@ import type { RunnerContext } from "./types.js";
 export const createRunnerSiteConfig = (context: RunnerContext) => ({
   baseUrl: context.state.convexSiteUrl,
   getAuthToken: () => context.state.authToken?.trim(),
+  hasConnectedAccount: () => context.state.hasConnectedAccount,
   refreshAuthToken: async () => {
     const result = await context.requestRuntimeAuthRefresh?.({
       source: "stella_provider",

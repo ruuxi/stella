@@ -18,6 +18,7 @@ export type StellaSiteConfig = {
   baseUrl: string | null;
   getAuthToken: () => string | null | undefined;
   refreshAuthToken?: () => Promise<string | null | undefined> | string | null | undefined;
+  hasConnectedAccount?: () => boolean;
 };
 
 type ManagedGatewayProvider = StellaRelayProvider;
@@ -209,7 +210,10 @@ export const createStellaRoute = (args: {
 }): ResolvedLlmRoute | null => {
   const siteBaseUrl = normalizeStellaBase(args.site.baseUrl);
   const authToken = args.site.getAuthToken()?.trim();
-  if (!siteBaseUrl || !authToken) {
+  const canRefreshMissingToken =
+    Boolean(args.site.refreshAuthToken) &&
+    args.site.hasConnectedAccount?.() === true;
+  if (!siteBaseUrl || (!authToken && !canRefreshMissingToken)) {
     return null;
   }
 
@@ -228,7 +232,7 @@ export const createStellaRoute = (args: {
     if (currentToken && shouldRefreshToken(currentToken)) {
       return (await refreshApiKey()) || currentToken;
     }
-    return currentToken || undefined;
+    return currentToken || (await refreshApiKey()) || undefined;
   };
 
   return {
@@ -239,7 +243,7 @@ export const createStellaRoute = (args: {
       resolvedModelId,
       provider: relayProvider,
       agentType: args.agentType,
-      authToken,
+      authToken: authToken || "",
     }),
     getApiKey,
     refreshApiKey: args.site.refreshAuthToken ? refreshApiKey : undefined,
