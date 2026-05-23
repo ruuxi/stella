@@ -116,6 +116,12 @@ export type LocalPreferences = {
    * remain dictation-only; voice is wake-word-gated.
    */
   wakeWordEnabled: boolean;
+  /**
+   * First-run onboarding completion. Stored in state/preferences.json so
+   * launcher reinstall/repair flows preserve it even if Electron web storage
+   * is rebuilt.
+   */
+  onboardingCompleted: boolean;
   /** Wake-word detection threshold (0–1). Higher = stricter. */
   wakeWordThreshold: number;
 };
@@ -155,6 +161,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   soundNotificationsEnabled: true,
   dictationSoundEffectsEnabled: true,
   wakeWordEnabled: false,
+  onboardingCompleted: false,
   wakeWordThreshold: 0.6,
   readAloudEnabled: false,
 };
@@ -218,6 +225,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         typeof parsed.wakeWordEnabled === "boolean"
           ? parsed.wakeWordEnabled
           : DEFAULT_PREFERENCES.wakeWordEnabled,
+      onboardingCompleted: parsed.onboardingCompleted === true,
       wakeWordThreshold:
         typeof parsed.wakeWordThreshold === "number" &&
         Number.isFinite(parsed.wakeWordThreshold) &&
@@ -422,6 +430,20 @@ export const setReadAloudEnabled = (
 ): void => {
   const prefs = loadLocalPreferences(stellaHome);
   saveLocalPreferences(stellaHome, { ...prefs, readAloudEnabled: enabled });
+};
+
+export const getOnboardingCompleted = (stellaHome: string): boolean =>
+  loadLocalPreferences(stellaHome).onboardingCompleted;
+
+export const setOnboardingCompleted = (
+  stellaHome: string,
+  completed: boolean,
+): void => {
+  const prefs = loadLocalPreferences(stellaHome);
+  saveLocalPreferences(stellaHome, {
+    ...prefs,
+    onboardingCompleted: completed,
+  });
 };
 
 // ── Normalization helpers ─────────────────────────────────────────────────
