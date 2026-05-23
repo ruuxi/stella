@@ -9,7 +9,30 @@
       content="default-src 'self'; script-src 'self' 'unsafe-eval' https://js.stripe.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; font-src 'self' data:; connect-src 'self' http: https: ws: wss:; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
     <title>Stella</title>
+    <script src="/stella-boot.js"></script>
     <style>
+      :root {
+        --stella-launch-background: #f2f4f8;
+        --stella-launch-foreground: #161616;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-stella-boot-theme]) {
+          --stella-launch-background: #161616;
+          --stella-launch-foreground: #f2f4f8;
+        }
+      }
+
+      :root[data-stella-boot-theme="dark"] {
+        --stella-launch-background: #161616;
+        --stella-launch-foreground: #f2f4f8;
+      }
+
+      :root[data-stella-boot-theme="light"] {
+        --stella-launch-background: #f2f4f8;
+        --stella-launch-foreground: #161616;
+      }
+
       @font-face {
         font-family: "Cormorant Garamond Launch";
         src: url("/src/assets/fonts/cormorant-garamond-italic.ttf") format("truetype");
@@ -28,13 +51,7 @@
       }
 
       body {
-        background: #f2f4f8;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #161616;
-        }
+        background: var(--stella-launch-background);
       }
 
       .stella-launch {
@@ -43,18 +60,11 @@
         z-index: 2147483647;
         display: grid;
         place-items: center;
-        background: #f2f4f8;
-        color: #161616;
+        background: var(--stella-launch-background);
+        color: var(--stella-launch-foreground);
         opacity: 1;
         transition: opacity 220ms ease;
         pointer-events: none;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        .stella-launch {
-          background: #161616;
-          color: #f2f4f8;
-        }
       }
 
       .stella-launch[data-exiting="true"] {

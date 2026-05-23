@@ -235,6 +235,32 @@ const isViteTrackableAbsolutePath = (absPath: string): boolean => {
   return repoRelative != null && isViteTrackablePath(repoRelative)
 }
 
+const packageNameFromModuleId = (id: string): string | null => {
+  const normalized = id.replace(/\\/g, '/')
+  const marker = '/node_modules/'
+  const markerIndex = normalized.lastIndexOf(marker)
+  if (markerIndex === -1) return null
+
+  let rest = normalized.slice(markerIndex + marker.length)
+  if (rest.startsWith('.bun/')) {
+    const nestedIndex = rest.indexOf(marker)
+    if (nestedIndex === -1) return null
+    rest = rest.slice(nestedIndex + marker.length)
+  }
+
+  const [first, second] = rest.split('/')
+  if (!first) return null
+  if (first.startsWith('@')) {
+    return second ? `${first}/${second}` : null
+  }
+  return first
+}
+
+const packageChunkName = (packageName: string): string =>
+  `vendor-${packageName
+    .replace(/^@/, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')}`
+
 export const resolveSelfModOverlayImportPath = (
   source: string,
   importer: string | undefined,
@@ -1238,6 +1264,12 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
         pet: path.resolve(__dirname, 'pet.html'),
+      },
+      output: {
+        manualChunks(id: string) {
+          const packageName = packageNameFromModuleId(id)
+          return packageName ? packageChunkName(packageName) : undefined
+        },
       },
     },
   },
