@@ -160,6 +160,29 @@ export const OnboardingStep1 = ({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    let previousSuspended = false;
+    const api = window.electronAPI?.system;
+
+    void (async () => {
+      try {
+        const previous = await api?.getGlobalShortcutsSuspended?.();
+        if (cancelled) return;
+        previousSuspended = previous?.suspended === true;
+        await api?.setGlobalShortcutsSuspended?.(true);
+      } catch {
+        // Onboarding demos should still run even if shortcut suspension is
+        // unavailable in a dev shell.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      void api?.setGlobalShortcutsSuspended?.(previousSuspended);
+    };
+  }, []);
+
+  useEffect(() => {
     if (phase === "creation" && !leaving) {
       onDemoChange?.("default");
     } else {

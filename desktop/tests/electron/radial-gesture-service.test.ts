@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { ChatContext } from "../../../runtime/contracts/index.js";
 
 vi.mock("electron", () => ({
+  globalShortcut: {
+    isSuspended: vi.fn(() => false),
+    setSuspended: vi.fn(),
+  },
   screen: {
     getCursorScreenPoint: () => ({ x: 0, y: 0 }),
   },

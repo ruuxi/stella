@@ -1,4 +1,5 @@
 import { globalShortcut } from "electron";
+import { areGlobalShortcutsSuspended } from "./global-shortcuts.js";
 
 export type ShortcutRegistrationResult = {
   ok: boolean;
@@ -13,6 +14,11 @@ type ApplyShortcutRegistrationOptions = {
   currentShortcut: string;
   callback: () => void;
   onActiveShortcutChange?: (shortcut: string) => void;
+};
+
+const wrapShortcutCallback = (callback: () => void) => () => {
+  if (areGlobalShortcutsSuspended()) return;
+  callback();
 };
 
 export const applyShortcutRegistration = ({
@@ -45,7 +51,10 @@ export const applyShortcutRegistration = ({
 
   let registrationError: string | undefined;
   try {
-    const registered = globalShortcut.register(requestedShortcut, callback);
+    const registered = globalShortcut.register(
+      requestedShortcut,
+      wrapShortcutCallback(callback),
+    );
     if (registered) {
       onActiveShortcutChange?.(requestedShortcut);
       return {
@@ -65,7 +74,9 @@ export const applyShortcutRegistration = ({
   let restoredShortcut = "";
   if (currentShortcut) {
     try {
-      if (globalShortcut.register(currentShortcut, callback)) {
+      if (
+        globalShortcut.register(currentShortcut, wrapShortcutCallback(callback))
+      ) {
         restoredShortcut = currentShortcut;
       }
     } catch {

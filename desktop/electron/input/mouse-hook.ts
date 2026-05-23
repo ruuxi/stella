@@ -8,6 +8,7 @@ import {
   DEFAULT_MINI_DOUBLE_TAP_MODIFIER,
   type MiniDoubleTapModifier,
 } from "../../src/shared/lib/mini-double-tap.js";
+import { areGlobalShortcutsSuspended } from "../ipc/global-shortcuts.js";
 
 // uIOhook keycodes for the Option/Alt key (left + right). On macOS this is
 // the Option key; on Windows/Linux it is the Alt key. Mapped from
@@ -279,6 +280,25 @@ export class MouseHookManager {
     }
   }
 
+  private suppressActiveGestures() {
+    const hadPendingDictation =
+      this.dictationKeyDownAt !== null || this.dictationStarted;
+    const hadActiveRadial = this.radialActive;
+
+    this.pressedKeycodes.clear();
+    this.clearPendingDictationStart();
+    this.dictationStarted = false;
+    this.doubleTapDetector?.cancel();
+
+    if (hadPendingDictation) {
+      this.events.onDictationPushToTalkCancel?.();
+    }
+    if (hadActiveRadial) {
+      this.events.onRadialHide();
+      this.radialActive = false;
+    }
+  }
+
   private attachUiohookListeners() {
     if (this.uiohookListenersAttached) return;
     this.uiohookListenersAttached = true;
@@ -304,6 +324,10 @@ export class MouseHookManager {
 
   private readonly handleKeydown = (event: UiohookKeyboardEvent) => {
     if (!this.started) return;
+    if (areGlobalShortcutsSuspended()) {
+      this.suppressActiveGestures();
+      return;
+    }
     const wasAlreadyDown = this.pressedKeycodes.has(event.keycode);
     this.pressedKeycodes.add(event.keycode);
     const isAlt = MODIFIER_KEYCODES.Alt.has(event.keycode);
@@ -386,6 +410,10 @@ export class MouseHookManager {
 
   private readonly handleKeyup = (event: UiohookKeyboardEvent) => {
     if (!this.started) return;
+    if (areGlobalShortcutsSuspended()) {
+      this.suppressActiveGestures();
+      return;
+    }
     const wasTriggerHeld = this.matchesTriggerKey();
     this.pressedKeycodes.delete(event.keycode);
     const isAlt = MODIFIER_KEYCODES.Alt.has(event.keycode);
@@ -426,6 +454,7 @@ export class MouseHookManager {
 
   private readonly handleMousemove = (event: UiohookMouseEvent) => {
     if (!this.started) return;
+    if (areGlobalShortcutsSuspended()) return;
     if (this.radialActive) {
       this.events.onMouseMove(event.x, event.y);
     }
@@ -433,6 +462,7 @@ export class MouseHookManager {
 
   private readonly handleMousedown = (event: UiohookMouseEvent) => {
     if (!this.started) return;
+    if (areGlobalShortcutsSuspended()) return;
     const button = typeof event.button === "number" ? event.button : -1;
     if (
       this.events.isDictationPushToTalkEnabled?.() === true &&
@@ -449,6 +479,7 @@ export class MouseHookManager {
 
   private readonly handleMouseup = (event: UiohookMouseEvent) => {
     if (!this.started) return;
+    if (areGlobalShortcutsSuspended()) return;
     const handler = this.events.onLeftMouseUp;
     if (!handler) return;
     const button = typeof event.button === "number" ? event.button : -1;
