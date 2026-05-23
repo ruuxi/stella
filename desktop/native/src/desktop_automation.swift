@@ -160,6 +160,28 @@ struct AutomationDaemonResponse: Codable {
     let stderr: String
 }
 
+struct LockedUsePayload: Codable {
+    let ok: Bool
+    let enabled: Bool
+    let installed: Bool?
+    let active: Bool
+    let locked: Bool
+    let suppressedUntilManualUnlock: Bool
+    let message: String
+    let warnings: [String]
+}
+
+struct LockedUseLease: Codable {
+    var enabled: Bool
+    var leaseId: String
+    var sessionId: String?
+    var expiresAtUnixMs: Int64
+    var consumedAtUnixMs: Int64?
+    var suppressedUntilManualUnlock: Bool
+    var lastPhysicalInputAtUnixMs: Int64?
+    var updatedAtUnixMs: Int64
+}
+
 struct CommandExecutionResult {
     let status: Int32
     let stdout: String
@@ -568,6 +590,7 @@ let daemonScopedEnvironmentKeys: [String] = [
     "STELLA_COMPUTER_NO_RAISE",
     "STELLA_COMPUTER_RAISE",
     "STELLA_COMPUTER_SESSION",
+    "STELLA_COMPUTER_STATE_DIR",
     "STELLA_COMPUTER_TRACE",
 ]
 
@@ -7442,6 +7465,33 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         return commandResult(listAppsCommand())
     }
 
+    if command == "locked-use-begin" ||
+        command == "locked-use-end" ||
+        command == "locked-use-status" {
+        guard let lockedUse = currentLockedUseCoordinator else {
+            return commandResult(
+                ErrorPayload(
+                    ok: false,
+                    error: "Locked computer use is only available through the desktop_automation daemon.",
+                    warnings: [],
+                    screenshot: nil,
+                    screenshotPath: nil
+                ),
+                code: 1
+            )
+        }
+        switch command {
+        case "locked-use-begin":
+            let durationMs = parseNamedOption(commandArgs, key: "--duration-ms")
+                .flatMap(Int64.init) ?? lockedUseDefaultLeaseDurationMs
+            return commandResult(lockedUse.begin(durationMs: durationMs))
+        case "locked-use-end":
+            return commandResult(lockedUse.end())
+        default:
+            return commandResult(lockedUse.status())
+        }
+    }
+
     // Every other command touches a GUI-bound API: ScreenCaptureKit (used
     // by `snapshot`), NSBitmapImageRep, NSPanel, NSScreen, the action
     // overlay, NSDraggingSession. All of those assert inside
@@ -8215,6 +8265,464 @@ func executeCommand(args: [String]) -> CommandExecutionResult {
     }
 }
 
+let lockedUseSocketPath = "/tmp/com.stella.app.LockedComputerUse/Authorization.sock"
+let lockedUseDefaultLeaseDurationMs: Int64 = 30_000
+let lockedUseUnlockTriggerKeyCode: CGKeyCode = 36
+
+func nowUnixMs() -> Int64 {
+    Int64(Date().timeIntervalSince1970 * 1000)
+}
+
+func screenIsLocked() -> Bool {
+    guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else {
+        return false
+    }
+    if let locked = session["CGSSessionScreenIsLocked"] as? Bool {
+        return locked
+    }
+    if let locked = session["CGSSessionScreenIsLocked"] as? Int {
+        return locked != 0
+    }
+    return false
+}
+
+func postUnlockTriggerKey() {
+    guard let source = CGEventSource(stateID: .hidSystemState) else { return }
+    source.setLocalEventsFilterDuringSuppressionState(
+        [.permitLocalMouseEvents, .permitSystemDefinedEvents, .permitLocalKeyboardEvents],
+        state: .eventSuppressionStateSuppressionInterval
+    )
+    let down = CGEvent(keyboardEventSource: source, virtualKey: lockedUseUnlockTriggerKeyCode, keyDown: true)
+    let up = CGEvent(keyboardEventSource: source, virtualKey: lockedUseUnlockTriggerKeyCode, keyDown: false)
+    down?.post(tap: .cghidEventTap)
+    up?.post(tap: .cghidEventTap)
+}
+
+func relockMac() {
+    let process = Process()
+    process.executableURL = URL(
+        fileURLWithPath:
+            "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
+    )
+    process.arguments = ["-suspend"]
+    try? process.run()
+}
+
+final class LockedUseCoverWindow: NSPanel {
+    init(screen: NSScreen) {
+        super.init(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        isOpaque = true
+        backgroundColor = .black
+        hasShadow = false
+        ignoresMouseEvents = false
+        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.screenSaverWindow)) + 1)
+        collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .ignoresCycle,
+            .stationary,
+        ]
+        isMovableByWindowBackground = false
+        isReleasedWhenClosed = false
+        setFrame(screen.frame, display: false)
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+final class LockedUseGuardianOverlay {
+    private var windows: [LockedUseCoverWindow] = []
+
+    func show() {
+        guard tryBootstrapAppKit() else { return }
+        if !windows.isEmpty {
+            return
+        }
+        windows = NSScreen.screens.map { screen in
+            let window = LockedUseCoverWindow(screen: screen)
+            window.orderFrontRegardless()
+            return window
+        }
+    }
+
+    func hide() {
+        for window in windows {
+            window.orderOut(nil)
+        }
+        windows = []
+    }
+}
+
+final class LockedUsePhysicalInputMonitor {
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
+    private let onPhysicalInput: (CGEventType, Int64) -> Void
+
+    init(onPhysicalInput: @escaping (CGEventType, Int64) -> Void) {
+        self.onPhysicalInput = onPhysicalInput
+    }
+
+    func start() -> Bool {
+        if eventTap != nil {
+            return true
+        }
+        let mask =
+            (1 << CGEventType.keyDown.rawValue) |
+            (1 << CGEventType.flagsChanged.rawValue) |
+            (1 << CGEventType.leftMouseDown.rawValue) |
+            (1 << CGEventType.rightMouseDown.rawValue) |
+            (1 << CGEventType.otherMouseDown.rawValue) |
+            (1 << CGEventType.mouseMoved.rawValue) |
+            (1 << CGEventType.leftMouseDragged.rawValue) |
+            (1 << CGEventType.rightMouseDragged.rawValue) |
+            (1 << CGEventType.otherMouseDragged.rawValue) |
+            (1 << CGEventType.scrollWheel.rawValue)
+
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        guard let tap = CGEvent.tapCreate(
+            tap: .cghidEventTap,
+            place: .headInsertEventTap,
+            options: .listenOnly,
+            eventsOfInterest: CGEventMask(mask),
+            callback: { _, type, event, refcon in
+                guard let refcon else {
+                    return Unmanaged.passUnretained(event)
+                }
+                let monitor = Unmanaged<LockedUsePhysicalInputMonitor>
+                    .fromOpaque(refcon)
+                    .takeUnretainedValue()
+                let sourcePid = event.getIntegerValueField(.eventSourceUnixProcessID)
+                if sourcePid != Int64(getpid()) {
+                    monitor.onPhysicalInput(type, sourcePid)
+                }
+                return Unmanaged.passUnretained(event)
+            },
+            userInfo: refcon
+        ) else {
+            trace("locked-use:physical-input-monitor-unavailable")
+            return false
+        }
+
+        eventTap = tap
+        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        if let runLoopSource {
+            CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        }
+        CGEvent.tapEnable(tap: tap, enable: true)
+        trace("locked-use:physical-input-monitor-started")
+        return true
+    }
+
+    func stop() {
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
+        }
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        }
+        eventTap = nil
+        runLoopSource = nil
+    }
+}
+
+final class LockedUseAuthorizationServer {
+    private let stateDir: String
+    private let socketPath: String
+    private let serverQueue = DispatchQueue(label: "stella.locked-use.authorization-server")
+    private var listeningFD: Int32 = -1
+
+    init(stateDir: String, socketPath: String = lockedUseSocketPath) {
+        self.stateDir = stateDir
+        self.socketPath = socketPath
+    }
+
+    func start() {
+        if listeningFD >= 0 {
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(
+                at: URL(fileURLWithPath: socketPath).deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+            if FileManager.default.fileExists(atPath: socketPath) {
+                if Self.socketAcceptsConnection(socketPath) {
+                    trace("locked-use:authorization-server-already-running path=\(socketPath)")
+                    return
+                }
+                try? FileManager.default.removeItem(atPath: socketPath)
+            }
+            listeningFD = try makeListeningSocket(at: socketPath)
+            serverQueue.async { [weak self] in
+                self?.acceptLoop()
+            }
+            trace("locked-use:authorization-server-started path=\(socketPath)")
+        } catch {
+            listeningFD = -1
+            trace("locked-use:authorization-server-unavailable error=\(error.localizedDescription)")
+        }
+    }
+
+    private static func socketAcceptsConnection(_ path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+
+        var address = sockaddr_un()
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        address.sun_family = sa_family_t(AF_UNIX)
+        let maxPathLength = MemoryLayout.size(ofValue: address.sun_path)
+        let utf8Path = path.utf8CString
+        guard utf8Path.count <= maxPathLength else {
+            return false
+        }
+        withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+            let buffer = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: CChar.self)
+            buffer.initialize(repeating: 0, count: maxPathLength)
+            _ = utf8Path.withUnsafeBufferPointer { chars in
+                strncpy(buffer, chars.baseAddress, maxPathLength - 1)
+            }
+        }
+        let addressLength = socklen_t(address.sun_len)
+        let result = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, addressLength)
+            }
+        }
+        return result == 0
+    }
+
+    private func acceptLoop() {
+        while true {
+            let clientFD = accept(listeningFD, nil, nil)
+            if clientFD < 0 {
+                if errno == EINTR {
+                    continue
+                }
+                return
+            }
+            handleClient(clientFD)
+        }
+    }
+
+    private func handleClient(_ clientFD: Int32) {
+        defer {
+            close(clientFD)
+        }
+        _ = readSocketData(from: clientFD)
+        let allowed = consumeAuthorizationAttempt()
+        let response = allowed ? "allow\n" : "deny\n"
+        _ = response.withCString { pointer in
+            write(clientFD, pointer, strlen(pointer))
+        }
+    }
+
+    private func consumeAuthorizationAttempt() -> Bool {
+        let leasePath = LockedUseCoordinator.leasePath(in: stateDir)
+        guard var lease = LockedUseCoordinator.readLease(at: leasePath) else {
+            return false
+        }
+        let now = nowUnixMs()
+        guard lease.enabled,
+              !lease.suppressedUntilManualUnlock,
+              lease.expiresAtUnixMs >= now,
+              lease.consumedAtUnixMs == nil else {
+            return false
+        }
+        lease.consumedAtUnixMs = now
+        lease.updatedAtUnixMs = now
+        LockedUseCoordinator.writeLease(lease, to: leasePath)
+        trace("locked-use:authorization-consumed lease=\(lease.leaseId)")
+        return true
+    }
+}
+
+final class LockedUseCoordinator {
+    private let stateDir: String
+    private let sessionId: String
+    private let authorizationServer: LockedUseAuthorizationServer
+    private let guardian = LockedUseGuardianOverlay()
+    private lazy var physicalInputMonitor = LockedUsePhysicalInputMonitor { [weak self] type, sourcePid in
+        self?.handlePhysicalInput(type: type, sourcePid: sourcePid)
+    }
+
+    init(stateDir: String, sessionId: String) {
+        self.stateDir = stateDir
+        self.sessionId = sessionId
+        authorizationServer = LockedUseAuthorizationServer(stateDir: stateDir)
+    }
+
+    static func lockedUseDir(in stateDir: String) -> String {
+        URL(fileURLWithPath: stateDir).appendingPathComponent("locked-use").path
+    }
+
+    static func leasePath(in stateDir: String) -> String {
+        URL(fileURLWithPath: lockedUseDir(in: stateDir)).appendingPathComponent("lease.json").path
+    }
+
+    static func readLease(at path: String) -> LockedUseLease? {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(LockedUseLease.self, from: data)
+    }
+
+    static func writeLease(_ lease: LockedUseLease, to path: String) {
+        do {
+            let url = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(lease).write(to: url, options: .atomic)
+        } catch {
+            trace("locked-use:write-lease-failed error=\(error.localizedDescription)")
+        }
+    }
+
+    func start() {
+        authorizationServer.start()
+    }
+
+    func begin(durationMs: Int64) -> LockedUsePayload {
+        let locked = screenIsLocked()
+        let leasePath = Self.leasePath(in: stateDir)
+        var existing = Self.readLease(at: leasePath)
+        if existing?.suppressedUntilManualUnlock == true && !locked {
+            existing?.suppressedUntilManualUnlock = false
+            existing?.updatedAtUnixMs = nowUnixMs()
+            if let existing {
+                Self.writeLease(existing, to: leasePath)
+            }
+        }
+
+        if existing?.suppressedUntilManualUnlock == true && locked {
+            return LockedUsePayload(
+                ok: false,
+                enabled: true,
+                installed: nil,
+                active: false,
+                locked: locked,
+                suppressedUntilManualUnlock: true,
+                message: "Locked computer use is paused because local physical input was detected. Unlock the Mac manually before Stella tries again.",
+                warnings: []
+            )
+        }
+
+        let now = nowUnixMs()
+        let lease = LockedUseLease(
+            enabled: true,
+            leaseId: UUID().uuidString,
+            sessionId: sessionId,
+            expiresAtUnixMs: now + max(1_000, durationMs),
+            consumedAtUnixMs: nil,
+            suppressedUntilManualUnlock: false,
+            lastPhysicalInputAtUnixMs: existing?.lastPhysicalInputAtUnixMs,
+            updatedAtUnixMs: now
+        )
+        Self.writeLease(lease, to: leasePath)
+
+        if locked {
+            guardian.show()
+            guard physicalInputMonitor.start() else {
+                var deniedLease = lease
+                deniedLease.expiresAtUnixMs = nowUnixMs()
+                deniedLease.updatedAtUnixMs = nowUnixMs()
+                Self.writeLease(deniedLease, to: leasePath)
+                guardian.hide()
+                return LockedUsePayload(
+                    ok: false,
+                    enabled: true,
+                    installed: nil,
+                    active: false,
+                    locked: locked,
+                    suppressedUntilManualUnlock: false,
+                    message: "Locked computer use needs local input monitoring before Stella can unlock safely.",
+                    warnings: []
+                )
+            }
+            postUnlockTriggerKey()
+        }
+
+        return LockedUsePayload(
+            ok: true,
+            enabled: true,
+            installed: nil,
+            active: true,
+            locked: locked,
+            suppressedUntilManualUnlock: false,
+            message: locked
+                ? "Locked computer use authorization lease opened."
+                : "Locked computer use lease prepared; Mac is currently unlocked.",
+            warnings: []
+        )
+    }
+
+    func end() -> LockedUsePayload {
+        let leasePath = Self.leasePath(in: stateDir)
+        if var lease = Self.readLease(at: leasePath) {
+            lease.expiresAtUnixMs = min(lease.expiresAtUnixMs, nowUnixMs())
+            lease.updatedAtUnixMs = nowUnixMs()
+            Self.writeLease(lease, to: leasePath)
+        }
+        guardian.hide()
+        physicalInputMonitor.stop()
+        return status(message: "Locked computer use lease closed.")
+    }
+
+    func status(message: String = "Locked computer use daemon status.") -> LockedUsePayload {
+        let lease = Self.readLease(at: Self.leasePath(in: stateDir))
+        let now = nowUnixMs()
+        return LockedUsePayload(
+            ok: true,
+            enabled: lease?.enabled == true,
+            installed: nil,
+            active: (lease?.expiresAtUnixMs ?? 0) >= now && lease?.consumedAtUnixMs == nil,
+            locked: screenIsLocked(),
+            suppressedUntilManualUnlock: lease?.suppressedUntilManualUnlock == true,
+            message: message,
+            warnings: []
+        )
+    }
+
+    private func handlePhysicalInput(type: CGEventType, sourcePid: Int64) {
+        trace("locked-use:physical-input type=\(type.rawValue) sourcePid=\(sourcePid)")
+        let leasePath = Self.leasePath(in: stateDir)
+        var lease = Self.readLease(at: leasePath) ?? LockedUseLease(
+            enabled: true,
+            leaseId: UUID().uuidString,
+            sessionId: sessionId,
+            expiresAtUnixMs: nowUnixMs(),
+            consumedAtUnixMs: nil,
+            suppressedUntilManualUnlock: false,
+            lastPhysicalInputAtUnixMs: nil,
+            updatedAtUnixMs: nowUnixMs()
+        )
+        lease.expiresAtUnixMs = nowUnixMs()
+        lease.suppressedUntilManualUnlock = true
+        lease.lastPhysicalInputAtUnixMs = nowUnixMs()
+        lease.updatedAtUnixMs = nowUnixMs()
+        Self.writeLease(lease, to: leasePath)
+        relockMac()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            self?.guardian.hide()
+            self?.physicalInputMonitor.stop()
+        }
+    }
+}
+
+var currentLockedUseCoordinator: LockedUseCoordinator?
+
 struct AutomationDaemonOptions {
     let socketPath: String
     let pidFile: String
@@ -8315,6 +8823,19 @@ final class AutomationDaemon {
         let overlayService = UnifiedAutomationOverlayService(busyUntilPath: overlayBusyUntilPath)
         overlayService.start()
         currentAutomationOverlayService = overlayService
+        let lockedUseStateDir = ProcessInfo.processInfo.environment["STELLA_COMPUTER_STATE_DIR"]
+            ?? URL(fileURLWithPath: options.pidFile)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .path
+        let lockedUseSessionId = ProcessInfo.processInfo.environment["STELLA_COMPUTER_SESSION"] ?? "manual"
+        let lockedUseCoordinator = LockedUseCoordinator(
+            stateDir: lockedUseStateDir,
+            sessionId: lockedUseSessionId
+        )
+        lockedUseCoordinator.start()
+        currentLockedUseCoordinator = lockedUseCoordinator
         listeningFD = try makeListeningSocket(at: options.socketPath)
         serverQueue.async { [weak self] in
             self?.acceptLoop()

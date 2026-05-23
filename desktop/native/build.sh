@@ -31,6 +31,55 @@ build_swift_universal() {
   lipo -create -output "$OUTPUT_DIR/$output" "$TMP_DIR/$output-arm64" "$TMP_DIR/$output-x64"
 }
 
+build_c_bundle_universal() {
+  local bundle_name="$1"
+  local executable_name="$2"
+  local source="$3"
+  local info_plist="$4"
+  shift 4
+
+  clang -O2 -target "arm64-apple-macosx$MACOS_MIN_VERSION" -bundle -o "$TMP_DIR/$executable_name-arm64" "$source" "$@"
+  clang -O2 -target "x86_64-apple-macosx$MACOS_MIN_VERSION" -bundle -o "$TMP_DIR/$executable_name-x64" "$source" "$@"
+
+  local bundle_dir="$OUTPUT_DIR/$bundle_name"
+  rm -rf "$bundle_dir"
+  mkdir -p "$bundle_dir/Contents/MacOS"
+  cp "$info_plist" "$bundle_dir/Contents/Info.plist"
+  lipo -create -output "$bundle_dir/Contents/MacOS/$executable_name" \
+    "$TMP_DIR/$executable_name-arm64" \
+    "$TMP_DIR/$executable_name-x64"
+  chmod +x "$bundle_dir/Contents/MacOS/$executable_name"
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "$bundle_dir" >/dev/null 2>&1 || true
+  fi
+}
+
+build_c_app_universal() {
+  local app_name="$1"
+  local executable_name="$2"
+  local source="$3"
+  local info_plist="$4"
+  shift 4
+
+  clang -O2 -target "arm64-apple-macosx$MACOS_MIN_VERSION" -o "$TMP_DIR/$executable_name-arm64" "$source" "$@"
+  clang -O2 -target "x86_64-apple-macosx$MACOS_MIN_VERSION" -o "$TMP_DIR/$executable_name-x64" "$source" "$@"
+
+  local app_dir="$OUTPUT_DIR/$app_name"
+  rm -rf "$app_dir"
+  mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
+  cp "$info_plist" "$app_dir/Contents/Info.plist"
+  if [ -f "../build/icon.icns" ]; then
+    cp "../build/icon.icns" "$app_dir/Contents/Resources/icon.icns"
+  fi
+  lipo -create -output "$app_dir/Contents/MacOS/$executable_name" \
+    "$TMP_DIR/$executable_name-arm64" \
+    "$TMP_DIR/$executable_name-x64"
+  chmod +x "$app_dir/Contents/MacOS/$executable_name"
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "$app_dir" >/dev/null 2>&1 || true
+  fi
+}
+
 echo "Building disclaim-spawn (macOS)..."
 build_c_universal "disclaim-spawn" "../scripts/disclaim-spawn.c"
 echo "Build successful: $OUTPUT_DIR/disclaim-spawn"
@@ -65,6 +114,31 @@ build_swift_universal "desktop_automation" "src/desktop_automation.swift" \
   -framework OSAKit \
   -framework ScreenCaptureKit
 echo "Build successful: $OUTPUT_DIR/desktop_automation"
+
+echo "Building locked_use_installer (macOS)..."
+build_swift_universal "locked_use_installer" "src/locked_use_installer.swift" \
+  -framework Foundation
+echo "Build successful: $OUTPUT_DIR/locked_use_installer"
+
+echo "Building Stella.app authorization helper (macOS)..."
+build_c_app_universal \
+  "Stella.app" \
+  "Stella" \
+  "src/locked_use_authorizer.c" \
+  "src/locked_use_authorizer.Info.plist" \
+  -framework CoreFoundation \
+  -framework Security
+echo "Build successful: $OUTPUT_DIR/Stella.app"
+
+echo "Building StellaLockedComputerUseAuthorizationPlugin.bundle (macOS)..."
+build_c_bundle_universal \
+  "StellaLockedComputerUseAuthorizationPlugin.bundle" \
+  "StellaLockedComputerUseAuthorizationPlugin" \
+  "src/locked_use_auth_plugin.c" \
+  "src/locked_use_auth_plugin.Info.plist" \
+  -framework CoreFoundation \
+  -framework Security
+echo "Build successful: $OUTPUT_DIR/StellaLockedComputerUseAuthorizationPlugin.bundle"
 
 echo "Building home_apps (macOS)..."
 build_swift_universal "home_apps" "src/home_apps.swift" \

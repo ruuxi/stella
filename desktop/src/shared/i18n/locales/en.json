@@ -62,6 +62,11 @@
       "title": "Keep computer awake",
       "description": "Stop your computer from sleeping while Stella is open."
     },
+    "lockedComputerUse": {
+      "title": "Locked computer use",
+      "description": "Let Stella continue computer-use tasks after this Mac locks. Requires an administrator prompt and covers the screen while Stella works.",
+      "unsupported": "Locked computer use is only available on macOS."
+    },
     "browserExtension": {
       "title": "Stella for Chrome",
       "description": "Lets Stella see the page you're on and take actions in your browser.",
@@ -107,6 +112,9 @@
       "loadPower": "Failed to load power setting.",
       "savePower": "Failed to update power setting.",
       "powerUnavailable": "Power settings are unavailable in this window.",
+      "loadLockedComputerUse": "Failed to load locked computer use setting.",
+      "saveLockedComputerUse": "Failed to update locked computer use.",
+      "lockedComputerUseUnavailable": "Locked computer use is unavailable in this window.",
       "loadSoundNotifications": "Failed to load sound notification setting.",
       "saveSoundNotifications": "Failed to update sound notification setting.",
       "soundNotificationsUnavailable": "Sound notification settings are unavailable in this window.",

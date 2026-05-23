@@ -18,6 +18,7 @@ import {
 } from "@/shared/lib/native-font-smoothing";
 import { openExternalUrl } from "@/platform/electron/open-external";
 import { useT } from "@/shared/i18n";
+import type { LockedComputerUseStatus } from "@/shared/types/electron";
 import {
   DEFAULT_PERSONALITY_VOICE_ID,
   PERSONALITY_VOICES,
@@ -29,6 +30,16 @@ const STELLA_CHROME_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/kfnchfpocpmdblhfgcnpfaaebaioojnl?utm_source=item-share-cb";
 
 type PermissionKind = "accessibility" | "screen" | "microphone";
+
+const isMacAdminPromptCancelled = (error: unknown) => {
+  const message =
+    error instanceof Error ? error.message : String(error ?? "");
+  return (
+    message.includes("User canceled") ||
+    message.includes("(-128)") ||
+    message.includes("error -128")
+  );
+};
 
 export function GeneralTab() {
   const t = useT();
@@ -42,6 +53,14 @@ export function GeneralTab() {
   const [preventSleepError, setPreventSleepError] = useState<string | null>(
     null,
   );
+  const [lockedComputerUseStatus, setLockedComputerUseStatus] =
+    useState<LockedComputerUseStatus | null>(null);
+  const [lockedComputerUseLoaded, setLockedComputerUseLoaded] = useState(false);
+  const [isSavingLockedComputerUse, setIsSavingLockedComputerUse] =
+    useState(false);
+  const [lockedComputerUseError, setLockedComputerUseError] = useState<
+    string | null
+  >(null);
   const [soundNotificationsEnabled, setSoundNotificationsEnabled] =
     useState(true);
   const [soundNotificationsLoaded, setSoundNotificationsLoaded] =
@@ -88,6 +107,39 @@ export function GeneralTab() {
         }
       } finally {
         if (!cancelled) setPreventSleepLoaded(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const status =
+          await window.electronAPI?.system?.getLockedComputerUseStatus?.();
+        if (!cancelled) {
+          setLockedComputerUseStatus(status ?? null);
+          setLockedComputerUseError(
+            status && !status.ok
+              ? status.message
+              : null,
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLockedComputerUseError(
+            getSettingsErrorMessage(
+              error,
+              t("settings.errors.loadLockedComputerUse"),
+            ),
+          );
+        }
+      } finally {
+        if (!cancelled) setLockedComputerUseLoaded(true);
       }
     };
     void load();
@@ -150,6 +202,49 @@ export function GeneralTab() {
       }
     },
     [preventComputerSleep, t],
+  );
+
+  const handleLockedComputerUseChange = useCallback(
+    async (checked: boolean) => {
+      const systemApi = window.electronAPI?.system;
+      if (!systemApi?.setLockedComputerUseEnabled) {
+        setLockedComputerUseError(
+          t("settings.errors.lockedComputerUseUnavailable"),
+        );
+        return;
+      }
+
+      const previous = lockedComputerUseStatus;
+      if (previous) {
+        setLockedComputerUseStatus({ ...previous, enabled: checked });
+      }
+      setLockedComputerUseError(null);
+      setIsSavingLockedComputerUse(true);
+      try {
+        const result = await systemApi.setLockedComputerUseEnabled(checked);
+        setLockedComputerUseStatus(result);
+        setLockedComputerUseError(
+          result.ok
+            ? null
+            : result.message || t("settings.errors.saveLockedComputerUse"),
+        );
+      } catch (error) {
+        setLockedComputerUseStatus(previous);
+        if (isMacAdminPromptCancelled(error)) {
+          setLockedComputerUseError(null);
+          return;
+        }
+        setLockedComputerUseError(
+          getSettingsErrorMessage(
+            error,
+            t("settings.errors.saveLockedComputerUse"),
+          ),
+        );
+      } finally {
+        setIsSavingLockedComputerUse(false);
+      }
+    },
+    [lockedComputerUseStatus, t],
   );
 
   useEffect(() => {
@@ -597,6 +692,20 @@ export function GeneralTab() {
         checked: preventComputerSleep,
         disabled: !preventSleepLoaded || isSavingPreventSleep,
         onChange: (checked) => void handlePreventSleepChange(checked),
+      })}
+      {renderToggleCard({
+        title: t("settings.lockedComputerUse.title"),
+        description:
+          platform === "darwin"
+            ? t("settings.lockedComputerUse.description")
+            : t("settings.lockedComputerUse.unsupported"),
+        error: lockedComputerUseError,
+        checked: lockedComputerUseStatus?.enabled === true,
+        disabled:
+          platform !== "darwin" ||
+          !lockedComputerUseLoaded ||
+          isSavingLockedComputerUse,
+        onChange: (checked) => void handleLockedComputerUseChange(checked),
       })}
       <div className="settings-card">
         <h3 className="settings-card-title">{t("settings.voice.title")}</h3>
