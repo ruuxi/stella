@@ -8,7 +8,6 @@ import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } fr
 import { X } from "lucide-react";
 import { displayTabs } from "../tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
-import { useConfirmAction } from "@/shared/hooks/use-confirm-action";
 import {
   type CanvasHtmlItem,
   getCanvasHtmlItems,
@@ -127,13 +126,9 @@ const CanvasHistoryTile = ({
   isActive: boolean;
   onSelect: () => void;
 }) => {
-  const { armed: confirmRemove, trigger: requestRemove } = useConfirmAction(
-    () => removeCanvasHtmlItem(item.filePath),
-  );
-
-  const handleRemoveClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleCloseClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    requestRemove();
+    removeCanvasHtmlItem(item.filePath);
   };
 
   return (
@@ -154,14 +149,10 @@ const CanvasHistoryTile = ({
       </button>
       <button
         type="button"
-        className={`canvas-tab__tile-remove${
-          confirmRemove ? " canvas-tab__tile-remove--confirm" : ""
-        }`}
-        onClick={handleRemoveClick}
-        aria-label={
-          confirmRemove ? "Click again to remove" : `Remove ${item.title}`
-        }
-        title={confirmRemove ? "Click again to remove" : "Remove"}
+        className="canvas-tab__tile-remove"
+        onClick={handleCloseClick}
+        aria-label={`Close ${item.title}`}
+        title="Close"
       >
         <X size={12} strokeWidth={2.2} />
       </button>
