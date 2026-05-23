@@ -22,7 +22,7 @@
     "native:build": "cd desktop/native && npm install && npm run build",
     "native:download": "node desktop/scripts/download-native-helpers.mjs",
     "workspace:create-app": "cd desktop && node scripts/create-workspace-app.mjs",
-    "electron:install": "install-electron",
+    "electron:install": "bun ./node_modules/electron/install.js",
     "electron:dev": "node desktop/scripts/electron-dev-runner.mjs",
     "electron:typecheck": "cd desktop && tsgo -p tsconfig.electron.json --pretty false --noEmit && tsgo -p tsconfig.preload.json --pretty false --noEmit",
     "electron:typecheck:watch": "cd desktop && concurrently -k --kill-others-on-fail \"tsgo -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"tsgo -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
