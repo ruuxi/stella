@@ -212,13 +212,30 @@ jobs:
             --exclude "*" \
             --include "stella-desktop-*.tar.zst" \
             --endpoint-url "$R2_ENDPOINT"
-          aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/desktop/current.json" \
-            --content-type "application/json" \
-            --cache-control "no-cache" \
-            --endpoint-url "$R2_ENDPOINT"
           aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/${release_dir}/manifest.json" \
             --content-type "application/json" \
             --cache-control "public, max-age=31536000, immutable" \
+            --endpoint-url "$R2_ENDPOINT"
+
+          native_manifest_url="${R2_PUBLIC_BASE_URL%/}/native-helpers/${tag}/manifest.json"
+          echo "Waiting for matching native helpers manifest: ${native_manifest_url}"
+          deadline=$((SECONDS + 1800))
+          while true; do
+            status="$(curl --write-out "%{http_code}" --silent --output /dev/null "$native_manifest_url" || true)"
+            if [ "$status" = "200" ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Native helpers manifest was not published for ${tag}; leaving desktop/current.json unchanged."
+              exit 1
+            fi
+            echo "Native helpers manifest not ready yet (HTTP ${status:-request_failed}); retrying in 30s."
+            sleep 30
+          done
+
+          aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/desktop/current.json" \
+            --content-type "application/json" \
+            --cache-control "no-cache" \
             --endpoint-url "$R2_ENDPOINT"
 
       - name: Notify Convex of new desktop release
@@ -273,4 +290,3 @@ jobs:
             -H "Authorization: Bearer ${DESKTOP_RELEASE_PUBLISH_SECRET}" \
             -H "Content-Type: application/json" \
             --data-binary "@${payload_path}"
-
