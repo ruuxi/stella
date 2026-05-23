@@ -7,8 +7,9 @@
  * Reports and suggestions share row geometry; they're distinguished by
  * the kind of right-side metadata (relative timestamp vs uppercase
  * category tag) and by weight (fresh report > suggestion > read
- * report) — no leading icons, no badges, no status dots. Shuffle lives
- * on the parent card header and only re-rolls the suggestion fill.
+ * report). Fresh reports carry a small status dot until the user hovers
+ * them. Shuffle lives on the parent card header and only re-rolls the
+ * suggestion fill.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SquareArrowOutUpRight } from "lucide-react";
@@ -113,6 +114,7 @@ export type DiscoverItem =
       meta: string;
       fresh: boolean;
       onOpen: () => void;
+      onHover: () => void;
     }
   | {
       kind: "suggestion";
@@ -187,6 +189,40 @@ export function useDiscoverItems(conversationId: string | null): {
     [reports],
   );
 
+  const handleHoverReport = useCallback(
+    (cadence: ReportCadence) => {
+      const report = reports.find((entry) => entry.cadence === cadence);
+      if (
+        !report ||
+        (report.openedAt && report.openedAt >= report.generatedAt)
+      ) {
+        return;
+      }
+      const seenReport: OpenPanelReport = { ...report, openedAt: Date.now() };
+      setReports((current) =>
+        current.map((entry) =>
+          entry.cadence === cadence ? seenReport : entry,
+        ),
+      );
+      const markOpened = window.electronAPI?.display?.markOpenPanelReportOpened;
+      if (!markOpened) return;
+      void markOpened({ cadence })
+        .then((opened) => {
+          if (!opened) return;
+          setReports((current) =>
+            current.map((entry) =>
+              entry.cadence === cadence ? (opened as OpenPanelReport) : entry,
+            ),
+          );
+        })
+        .catch(() => {
+          // Keep the optimistic clear for this session; the next report
+          // poll will restore the dot if persistence failed.
+        });
+    },
+    [reports],
+  );
+
   const items = useMemo<DiscoverItem[]>(() => {
     const reportCap =
       flatSuggestions.length === 0
@@ -203,6 +239,7 @@ export function useDiscoverItems(conversationId: string | null): {
         meta: formatReportTime(report.generatedAt),
         fresh: !report.openedAt || report.openedAt < report.generatedAt,
         onOpen: () => void handleOpenReport(report.cadence),
+        onHover: () => handleHoverReport(report.cadence),
       }));
 
     const remaining = MAX_DISCOVER_ITEMS - reportItems.length;
@@ -222,7 +259,13 @@ export function useDiscoverItems(conversationId: string | null): {
       });
     }
     return [...reportItems, ...suggestionItems];
-  }, [flatSuggestions, handleOpenReport, reports, shuffleSeed]);
+  }, [
+    flatSuggestions,
+    handleHoverReport,
+    handleOpenReport,
+    reports,
+    shuffleSeed,
+  ]);
 
   // Shuffle is only meaningful when the suggestion pool exceeds the
   // number of slots suggestions currently occupy. Mirrors the cap used
@@ -277,8 +320,17 @@ export function DiscoverList({
                 }`}
                 title={`Open ${item.label}`}
                 onClick={item.onOpen}
+                onMouseEnter={item.onHover}
               >
-                <span className="discover-list__label">{item.label}</span>
+                <span className="discover-list__report-title">
+                  <span className="discover-list__label">{item.label}</span>
+                  {item.fresh ? (
+                    <span
+                      className="discover-list__status-dot"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </span>
                 <span className="discover-list__meta discover-list__meta--time">
                   {item.meta}
                 </span>
