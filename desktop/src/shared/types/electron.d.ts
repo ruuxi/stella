@@ -898,6 +898,12 @@ export type InstallManifestSnapshot = {
 
 export type ElectronUpdatesApi = {
   getInstallManifest: () => Promise<InstallManifestSnapshot | null>;
+  refreshNativeHelpers: (releaseTag: string) => Promise<{
+    ok: boolean;
+    manifestUrl: string;
+    stdout: string;
+    stderr: string;
+  }>;
   recordAppliedCommit: (
     commit: string,
     tag?: string,

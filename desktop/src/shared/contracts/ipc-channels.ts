@@ -119,8 +119,7 @@ export const IPC_VOICE_ORCHESTRATOR_CHAT = "voice:orchestratorChat" as const;
 export const IPC_VOICE_WEB_SEARCH = "voice:webSearch" as const;
 export const IPC_VOICE_CREATE_OPENAI_SESSION =
   "voice:createOpenAISession" as const;
-export const IPC_VOICE_CREATE_XAI_SESSION =
-  "voice:createXaiSession" as const;
+export const IPC_VOICE_CREATE_XAI_SESSION = "voice:createXaiSession" as const;
 export const IPC_VOICE_CREATE_INWORLD_SESSION =
   "voice:createInworldSession" as const;
 export const IPC_VOICE_GET_RUNTIME_STATE = "voice:getRuntimeState" as const;
@@ -137,8 +136,7 @@ export const IPC_DICTATION_TRIGGER = "dictation:trigger" as const;
 
 // ── Agent ───────────────────────────────────────────────────────────────────
 
-export const IPC_AGENT_ONE_SHOT_COMPLETION =
-  "agent:oneShotCompletion" as const;
+export const IPC_AGENT_ONE_SHOT_COMPLETION = "agent:oneShotCompletion" as const;
 export const IPC_AGENT_HEALTH_CHECK = "agent:healthCheck" as const;
 export const IPC_AGENT_GET_ACTIVE_RUN = "agent:getActiveRun" as const;
 export const IPC_AGENT_GET_SESSION_STARTED_AT =
@@ -268,6 +266,8 @@ export const IPC_UPDATES_GET_INSTALL_MANIFEST =
   "updates:getInstallManifest" as const;
 export const IPC_UPDATES_RECORD_APPLIED_COMMIT =
   "updates:recordAppliedCommit" as const;
+export const IPC_UPDATES_REFRESH_NATIVE_HELPERS =
+  "updates:refreshNativeHelpers" as const;
 
 // ── Onboarding ──────────────────────────────────────────────────────────────
 
@@ -360,14 +360,11 @@ export const IPC_FASHION_GET_LOCAL_IMAGE_DATA_URL =
 export const IPC_LOCAL_CHAT_GET_OR_CREATE_ID =
   "localChat:getOrCreateDefaultConversationId" as const;
 export const IPC_LOCAL_CHAT_LIST_EVENTS = "localChat:listEvents" as const;
-export const IPC_LOCAL_CHAT_LIST_MESSAGES =
-  "localChat:listMessages" as const;
+export const IPC_LOCAL_CHAT_LIST_MESSAGES = "localChat:listMessages" as const;
 export const IPC_LOCAL_CHAT_LIST_MESSAGES_BEFORE =
   "localChat:listMessagesBefore" as const;
-export const IPC_LOCAL_CHAT_LIST_ACTIVITY =
-  "localChat:listActivity" as const;
-export const IPC_LOCAL_CHAT_LIST_FILES =
-  "localChat:listFiles" as const;
+export const IPC_LOCAL_CHAT_LIST_ACTIVITY = "localChat:listActivity" as const;
+export const IPC_LOCAL_CHAT_LIST_FILES = "localChat:listFiles" as const;
 export const IPC_LOCAL_CHAT_GET_EVENT_COUNT =
   "localChat:getEventCount" as const;
 export const IPC_LOCAL_CHAT_PERSIST_WELCOME =
