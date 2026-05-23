@@ -779,6 +779,10 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   display: flex;
   flex-direction: row;
   align-items: stretch;
+  /* Anchor for `.chat-scrollbar` so the custom scrollbar pins to the
+     row's right edge (past the workspace strip) rather than sitting
+     at the inside edge of the centered chat column. */
+  position: relative;
 }
 
 /* Chat column — fills the chat panel or content area */
