@@ -47,19 +47,12 @@ const copyPathIfMissing = async (sourcePath: string, targetPath: string) => {
   await fs.copyFile(sourcePath, targetPath);
 };
 
-const copyChildrenIfMissing = async (sourceDir: string, targetDir: string) => {
-  if (!(await pathExists(sourceDir))) {
-    return;
-  }
-  await ensureDir(targetDir);
-  const entries = await fs.readdir(sourceDir);
-  for (const entry of entries) {
-    await copyPathIfMissing(
-      path.join(sourceDir, entry),
-      path.join(targetDir, entry),
-    );
-  }
-};
+const STELLA_HOME_SEED_ENTRIES = [
+  "DREAM.md",
+  "registry.md",
+  "skills",
+  path.join("outputs", "README.md"),
+] as const;
 
 export const resolveStellaRoot = (app?: App, explicitRoot?: string): string => {
   const normalizedExplicitRoot = explicitRoot?.trim();
@@ -74,7 +67,7 @@ export const resolveStellaRoot = (app?: App, explicitRoot?: string): string => {
 export const resolveDefaultStellaHomePath = (): string =>
   path.join(os.homedir(), ".stella");
 
-export const resolveLegacyStatePath = (stellaRoot: string): string =>
+export const resolveBundledStellaHomeSeedPath = (stellaRoot: string): string =>
   path.join(stellaRoot, "state");
 
 export const resolveRuntimeStatePath = (
@@ -84,18 +77,23 @@ export const resolveRuntimeStatePath = (
 ): string => {
   const configuredStatePath =
     explicitStatePath?.trim() ||
-    process.env.STELLA_STATE_DIR?.trim() ||
-    process.env.STELLA_STATE?.trim() ||
     process.env.STELLA_HOME?.trim();
   return path.resolve(configuredStatePath || resolveDefaultStellaHomePath());
 };
 
-export const ensureStellaStateLayout = async (
+export const ensureStellaHomeSeeded = async (
   stellaRoot: string,
-  statePath: string,
+  stellaHome: string,
 ) => {
-  await ensureDir(statePath);
-  await copyChildrenIfMissing(resolveLegacyStatePath(stellaRoot), statePath);
+  await ensureDir(stellaHome);
+  const seedPath = resolveBundledStellaHomeSeedPath(stellaRoot);
+  for (const entry of STELLA_HOME_SEED_ENTRIES) {
+    const sourcePath = path.join(seedPath, entry);
+    if (!(await pathExists(sourcePath))) {
+      continue;
+    }
+    await copyPathIfMissing(sourcePath, path.join(stellaHome, entry));
+  }
 };
 
 export const resolveStellaHome = async (
@@ -113,10 +111,8 @@ export const resolveStellaHome = async (
 
   process.env.STELLA_ROOT = stellaRoot;
   process.env.STELLA_HOME = statePath;
-  process.env.STELLA_STATE_DIR = statePath;
-  process.env.STELLA_STATE = statePath;
 
-  await ensureStellaStateLayout(stellaRoot, statePath);
+  await ensureStellaHomeSeeded(stellaRoot, statePath);
   await ensureDir(workspacePath);
   await ensureDir(workspaceAppsPath);
 

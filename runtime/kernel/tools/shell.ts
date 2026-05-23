@@ -696,9 +696,7 @@ const buildShellEnv = (
     ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
     STELLA_NODE_BIN: process.execPath,
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
-    ...(options?.secretStateRoot
-      ? { STELLA_STATE_DIR: options.secretStateRoot }
-      : {}),
+    ...(options?.secretStateRoot ? { STELLA_HOME: options.secretStateRoot } : {}),
     ...(options?.stellaBrowserBinPath
       ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath }
       : {}),

@@ -556,9 +556,6 @@ const resolveLockedComputerUseHome = (stellaRoot: string | null) => {
   if (stellaRoot) {
     return path.resolve(stellaRoot);
   }
-  if (process.env.STELLA_STATE_DIR) {
-    return path.resolve(process.env.STELLA_STATE_DIR);
-  }
   return path.join(os.homedir(), ".stella");
 };
 

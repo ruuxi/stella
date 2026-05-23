@@ -8,9 +8,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, '..', '..');
 const repoRootDir = resolve(desktopDir, '..');
 export const stellaStatePath = resolve(
-  process.env.STELLA_STATE_DIR?.trim() ||
-    process.env.STELLA_HOME?.trim() ||
-    resolve(homedir(), '.stella'),
+  process.env.STELLA_HOME?.trim() || resolve(homedir(), '.stella'),
 );
 
 const runnerScriptPath = resolve(desktopDir, 'scripts', 'electron-dev-runner.mjs');
