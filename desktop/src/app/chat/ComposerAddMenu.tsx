@@ -1,10 +1,15 @@
 /**
  * ComposerAddMenu — the dropdown that opens from the composer's "+" button.
  *
- * Three actions, each backed by something already in the chatContext model:
+ * Three attachment actions, each backed by something already in the
+ * chatContext model:
  *   1. Attach files…   → image-aware file picker (matches drag-and-drop).
  *   2. Capture         → radial-dial-style region/window capture.
- *   3. Recent files    → up to 3 of the most-recently picked attachments.
+ *   3. Select area     → region select overlay.
+ *
+ * Menu order (top → bottom): read-aloud, model, optional recent files,
+ * then new chat → select area → capture → attach files at the bottom
+ * (nearest the + button). No dividers between rows.
  *
  * The menu owns its own state (file input ref + recent-files store), so
  * both the home full-chat composer and the sidebar composer can reuse it
@@ -30,7 +35,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import { showToast } from "@/ui/toast";
@@ -190,42 +194,6 @@ export function ComposerAddMenu({
           sideOffset={6}
           className="composer-add-menu"
         >
-          <DropdownMenuItem onSelect={handleAttachFiles}>
-            <span data-slot="dropdown-menu-item-icon">
-              <Paperclip size={14} strokeWidth={1.75} />
-            </span>
-            Attach files…
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleCapture}>
-            <span data-slot="dropdown-menu-item-icon">
-              <Camera size={14} strokeWidth={1.75} />
-            </span>
-            Capture
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onSelectArea}>
-            <span data-slot="dropdown-menu-item-icon">
-              <Scan size={14} strokeWidth={1.75} />
-            </span>
-            Select area
-          </DropdownMenuItem>
-          {onNewChat ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  void handleNewChatSelect(event);
-                }}
-              >
-                <span data-slot="dropdown-menu-item-icon">
-                  <MessageSquarePlus size={14} strokeWidth={1.75} />
-                </span>
-                {newChatArmed ? "Confirm new chat" : "New chat"}
-              </DropdownMenuItem>
-            </>
-          ) : null}
-          <DropdownMenuSeparator />
-          <ComposerModelMenuItem />
-          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={handleToggleReadAloud}>
             <span data-slot="dropdown-menu-item-icon">
               {readAloudEnabled ? (
@@ -236,10 +204,9 @@ export function ComposerAddMenu({
             </span>
             {readAloudEnabled ? "Stop reading aloud" : "Read replies aloud"}
           </DropdownMenuItem>
-
+          <ComposerModelMenuItem />
           {recentFiles.length > 0 && (
             <>
-              <DropdownMenuSeparator />
               <DropdownMenuLabel>Recent</DropdownMenuLabel>
               {recentFiles.map((file) => (
                 <DropdownMenuItem
@@ -260,6 +227,36 @@ export function ComposerAddMenu({
               ))}
             </>
           )}
+          {onNewChat ? (
+            <DropdownMenuItem
+              onSelect={(event) => {
+                void handleNewChatSelect(event);
+              }}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <MessageSquarePlus size={14} strokeWidth={1.75} />
+              </span>
+              {newChatArmed ? "Confirm new chat" : "New chat"}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onSelect={onSelectArea}>
+            <span data-slot="dropdown-menu-item-icon">
+              <Scan size={14} strokeWidth={1.75} />
+            </span>
+            Select area
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleCapture}>
+            <span data-slot="dropdown-menu-item-icon">
+              <Camera size={14} strokeWidth={1.75} />
+            </span>
+            Capture
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleAttachFiles}>
+            <span data-slot="dropdown-menu-item-icon">
+              <Paperclip size={14} strokeWidth={1.75} />
+            </span>
+            Attach files…
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <input
