@@ -12,43 +12,26 @@ import type { LegalDocument } from "@/global/legal/legal-text";
 import { SettingsPanel } from "@/global/settings/SettingsPanel";
 import { SettingsSearch } from "@/global/settings/SettingsSearch";
 import { SettingsSearchResults } from "@/global/settings/SettingsSearchResults";
+import { AudioTab } from "@/global/settings/AudioTab";
 import {
   SETTINGS_TABS,
   type SettingsTab,
 } from "@/global/settings/settings-tabs";
+import { AccountTab } from "./tabs/AccountTab";
+import { BackupTab } from "./tabs/BackupTab";
+import { GeneralTab } from "./tabs/GeneralTab";
+import { MemoryTab } from "./tabs/MemoryTab";
+import { ModelsTab } from "./tabs/ModelsTab";
+import { ShortcutsTab } from "./tabs/ShortcutsTab";
 import type { ScoredSettingsSearchEntry } from "@/global/settings/lib/settings-search-index";
 import { useT } from "@/shared/i18n";
 import "@/global/settings/settings.css";
 
-// Each tab is its own chunk. Settings open is dominated by parse cost of
-// whichever tab the user actually lands on — lazy-loading them shrinks the
-// shell chunk to ~100 lines and lets us prefetch the active tab on hover.
+// Settings itself is already a route-level lazy chunk. Keep the tabs eager
+// inside that route so switching tabs does not show a blank Suspense gap.
 const LegalDialog = lazy(() =>
   import("@/global/legal/LegalDialog").then((m) => ({
     default: m.LegalDialog,
-  })),
-);
-const GeneralTab = lazy(() =>
-  import("./tabs/GeneralTab").then((m) => ({ default: m.GeneralTab })),
-);
-const ShortcutsTab = lazy(() =>
-  import("./tabs/ShortcutsTab").then((m) => ({ default: m.ShortcutsTab })),
-);
-const MemoryTab = lazy(() =>
-  import("./tabs/MemoryTab").then((m) => ({ default: m.MemoryTab })),
-);
-const BackupTab = lazy(() =>
-  import("./tabs/BackupTab").then((m) => ({ default: m.BackupTab })),
-);
-const AccountTab = lazy(() =>
-  import("./tabs/AccountTab").then((m) => ({ default: m.AccountTab })),
-);
-const ModelsTab = lazy(() =>
-  import("./tabs/ModelsTab").then((m) => ({ default: m.ModelsTab })),
-);
-const AudioTab = lazy(() =>
-  import("@/global/settings/AudioTab").then((m) => ({
-    default: m.AudioTab,
   })),
 );
 
@@ -65,51 +48,6 @@ interface SettingsScreenProps {
   onActiveTabChange?: (tab: SettingsTab) => void;
   /** Called when the user signs out from the Basic tab. */
   onSignOut?: () => void;
-}
-
-const TAB_PRELOADERS: Record<SettingsTab, () => Promise<unknown>> = {
-  general: () => import("./tabs/GeneralTab"),
-  shortcuts: () => import("./tabs/ShortcutsTab"),
-  memory: () => import("./tabs/MemoryTab"),
-  backup: () => import("./tabs/BackupTab"),
-  account: () => import("./tabs/AccountTab"),
-  models: () => import("./tabs/ModelsTab"),
-  audio: () => import("@/global/settings/AudioTab"),
-};
-
-const preloadTab = (tab: SettingsTab) => {
-  void TAB_PRELOADERS[tab]?.().catch(() => undefined);
-};
-
-/**
- * Best-effort idle prefetch of every Settings tab chunk. Runs once
- * after the user has been on `/settings` for ~1s, so first paint and
- * the user's first click aren't competing for the network/parser.
- * `requestIdleCallback` waits for the main thread to actually be idle;
- * the timeout cap ensures we still fire on tabs that never hit idle.
- */
-function preloadAllSettingsTabsWhenIdle(): () => void {
-  let cancelled = false;
-  const idleHandle = window.setTimeout(() => {
-    if (cancelled) return;
-    const schedule = (cb: () => void) => {
-      if (typeof window.requestIdleCallback === "function") {
-        window.requestIdleCallback(cb, { timeout: 2000 });
-      } else {
-        window.setTimeout(cb, 0);
-      }
-    };
-    for (const tab of Object.keys(TAB_PRELOADERS) as SettingsTab[]) {
-      schedule(() => {
-        if (cancelled) return;
-        preloadTab(tab);
-      });
-    }
-  }, 1000);
-  return () => {
-    cancelled = true;
-    window.clearTimeout(idleHandle);
-  };
 }
 
 /**
@@ -149,9 +87,9 @@ export const SettingsScreen = ({
   );
 
   // After picking a search result we need to (1) switch tabs and (2)
-  // scroll the matching card into view + briefly highlight it. The tab
-  // mount is async (Suspense), so we hand a "pending target" to the
-  // panel and let it resolve once the right cards are in the DOM.
+  // scroll the matching card into view + briefly highlight it. Some tab
+  // content can still schedule its own DOM updates, so the panel resolves
+  // the target once the right cards are actually present.
   const [pendingScrollTarget, setPendingScrollTarget] = useState<{
     tab: SettingsTab;
     title: string;
@@ -178,11 +116,6 @@ export const SettingsScreen = ({
   // Edge fade is on the horizontal tab strip itself — that's where the
   // scrollable overflow lives now that the rail is laid out as a row.
   const tabStripRef = useEdgeFadeRef<HTMLElement>();
-
-  // Once the user lands on /settings, prefetch every tab chunk during
-  // browser idle time. Tab switches become instant from then on and
-  // first paint isn't competing with the prefetch.
-  useEffect(() => preloadAllSettingsTabsWhenIdle(), []);
 
   return (
     <>
@@ -225,8 +158,6 @@ export const SettingsScreen = ({
                       if (isSearching) setSearchQuery("");
                       handleTabClick(tab.key);
                     }}
-                    onFocus={() => preloadTab(tab.key)}
-                    onMouseEnter={() => preloadTab(tab.key)}
                   >
                     {t(tab.labelKey)}
                   </button>
@@ -293,9 +224,8 @@ function SettingsTabContent({
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Resolve any pending "scroll to / highlight this card" request from
-  // the search results. Tab content mounts asynchronously through
-  // Suspense, so we use a short-lived MutationObserver to wait for the
-  // matching card to appear, then scroll + flash it.
+  // the search results. Use a short-lived MutationObserver to wait for
+  // any delayed tab content to appear, then scroll + flash it.
   useEffect(() => {
     if (!pendingScrollTarget) return;
     if (pendingScrollTarget.tab !== activeTab) return;
@@ -361,25 +291,23 @@ function SettingsTabContent({
 
   return (
     <div ref={contentRef} className="settings-panel-content">
-      <Suspense fallback={null}>
-        {activeTab === "general" ? (
-          <GeneralTab />
-        ) : activeTab === "shortcuts" ? (
-          <ShortcutsTab />
-        ) : activeTab === "memory" ? (
-          <MemoryTab />
-        ) : activeTab === "backup" ? (
-          <BackupTab />
-        ) : activeTab === "account" ? (
-          <AccountTab onSignOut={onSignOut} onOpenLegal={onOpenLegal} />
-        ) : activeTab === "models" ? (
-          <ModelsTab />
-        ) : activeTab === "audio" ? (
-          <AudioTab />
-        ) : (
-          <GeneralTab />
-        )}
-      </Suspense>
+      {activeTab === "general" ? (
+        <GeneralTab />
+      ) : activeTab === "shortcuts" ? (
+        <ShortcutsTab />
+      ) : activeTab === "memory" ? (
+        <MemoryTab />
+      ) : activeTab === "backup" ? (
+        <BackupTab />
+      ) : activeTab === "account" ? (
+        <AccountTab onSignOut={onSignOut} onOpenLegal={onOpenLegal} />
+      ) : activeTab === "models" ? (
+        <ModelsTab />
+      ) : activeTab === "audio" ? (
+        <AudioTab />
+      ) : (
+        <GeneralTab />
+      )}
     </div>
   );
 }

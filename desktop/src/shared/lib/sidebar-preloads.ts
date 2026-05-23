@@ -4,7 +4,6 @@ type PreloadKey =
   | "connect"
   | "models-picker"
   | "settings"
-  | "settings-general"
   | "social"
   | "social-chat-pane"
   | "social-friends-dialog"
@@ -33,15 +32,10 @@ export const preloadConnectDialog = () =>
 export const preloadModelsPicker = () =>
   runOnce("models-picker", () => import("@/global/settings/AgentModelPicker"));
 
-// Settings opens to GeneralTab by default (`?tab=` is the override). Warming
-// both the shell and GeneralTab in the same preload kills the brief Suspense
-// flash users would otherwise see for the active tab on first open.
+// Settings owns its tab content inside the route chunk, so warming the screen
+// chunk is enough to make both first open and tab switches feel immediate.
 export const preloadSettingsScreen = () => {
   runOnce("settings", () => import("@/global/settings/SettingsView"));
-  runOnce(
-    "settings-general",
-    () => import("@/global/settings/tabs/GeneralTab"),
-  );
 };
 
 export const preloadSocialApp = () =>

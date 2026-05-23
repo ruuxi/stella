@@ -98,7 +98,8 @@ function formatDreamRunResult(args: {
 
 function ChronicleSettingsCard() {
   const chronicleApi = window.electronAPI?.chronicle;
-  const { hasConnectedAccount } = useAuthSessionState();
+  const { hasConnectedAccount, isLoading: authLoading } =
+    useAuthSessionState();
   const [billingNowMs] = useState(() => Date.now());
   const billingStatus = useConvexOneShot(api.billing.getSubscriptionStatus, {
     now: billingNowMs,
@@ -174,6 +175,7 @@ function ChronicleSettingsCard() {
     !hasChronicleByokCredential;
   const credentialsLoading =
     !chronicleOverrideLoaded || credentials.loading;
+  const accessLoading = authLoading || billingLoading || credentialsLoading;
   const [available, setAvailable] = useState<boolean>(true);
   const [status, setStatus] = useState<ChronicleStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -349,6 +351,12 @@ function ChronicleSettingsCard() {
   const running = Boolean(status?.running);
   const fps = status?.fps;
   const lastCaptureAt = status?.lastCaptureAt ?? null;
+  const screenMemoryDescription =
+    accessLoading || canEnable
+      ? "Stella can glance at your screen now and then to remember what you were doing."
+      : !hasConnectedAccount
+        ? "Sign in to Stella, or pick a small model for Chronicle in Settings → Models."
+        : "Screen memory is included with any Stella plan. Upgrade, or pick a small model for Chronicle in Settings → Models.";
 
   return (
     <div className="settings-card">
@@ -357,11 +365,7 @@ function ChronicleSettingsCard() {
         <div className="settings-row-info">
           <div className="settings-row-label">Screen memory</div>
           <div className="settings-row-sublabel">
-            {canEnable
-              ? "Lets Stella glance at your screen now and then so it can remember what you were doing."
-              : !hasConnectedAccount
-                ? "Sign in to Stella, or pick a small model for Chronicle in Settings → Models."
-                : "Screen memory is included with any Stella plan. Upgrade, or pick a small model for Chronicle in Settings → Models."}
+            {screenMemoryDescription}
           </div>
         </div>
         <div className="settings-row-control">
@@ -369,23 +373,10 @@ function ChronicleSettingsCard() {
             type="button"
             variant="ghost"
             className="settings-btn"
-            disabled={
-              busy !== null ||
-              loading ||
-              billingLoading ||
-              credentialsLoading
-            }
+            disabled={busy !== null || loading || accessLoading}
             onClick={() => handleToggle(!enabled)}
           >
-            {busy === "toggle"
-              ? "Working…"
-              : enabled
-                ? "Disable"
-                : canEnable
-                  ? "Enable"
-                  : !hasConnectedAccount
-                    ? "Sign in or pick your own"
-                    : "Upgrade or pick your own"}
+            {busy === "toggle" ? "Working…" : enabled ? "Disable" : "Enable"}
           </Button>
         </div>
       </div>
