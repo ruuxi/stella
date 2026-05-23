@@ -1,450 +1,92 @@
 /* ============================================================
-   Chat home overview — body of the Chat display tab while the
-   user is on home (`/chat`). Quiet by design: type hierarchy and
-   spacing carry the work, no accent stripes, no decorative motion.
+   Chat home launcher — body of the Chat display tab while the
+   user is on home (`/chat`). Quiet list of the other display
+   tabs the user can jump into. Activity/files/schedules already
+   live in the workspace strip, so this surface doesn't repeat
+   them.
    ============================================================ */
 
-.chat-home-overview {
-  display: grid;
-  /* Activity flexes; Recent files takes its intrinsic height
-     (the 5-row cap in TSX bounds the upper end). When files is
-     empty the heading + empty line stay; Activity still gets the
-     remainder. */
-  grid-template-rows: minmax(0, 1fr) auto;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 22px;
-  padding: 22px 18px 28px;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.chat-home-overview--empty {
+.chat-home-launcher {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   height: 100%;
-  padding: 40px 24px;
-  text-align: center;
-  gap: 12px;
-}
-
-.chat-home-overview__empty-illustration {
-  width: 200px;
-  height: 150px;
-  opacity: 0.85;
-}
-
-.chat-home-overview__empty--lead {
-  max-width: 260px;
-  font-size: 14px;
-}
-
-.chat-home-overview__section {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
   min-height: 0;
-  min-width: 0;
-}
-
-/*
- * Section body scroller. Scrollbar hidden; overflow signal is the
- * top/bottom fade mask that drops on whichever edge the user has
- * scrolled to (data-at-start / data-at-end toggled by useEdgeFade).
- * Same pattern as the legal dialog body and the topbar tablist.
- */
-.chat-home-overview__section-body {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  overflow-x: hidden;
+  padding: 28px 18px;
   overflow-y: auto;
   scrollbar-width: none;
-  --chat-home-overview-fade: 16px;
-  --chat-home-overview-fade-start: var(--chat-home-overview-fade);
-  --chat-home-overview-fade-end: var(--chat-home-overview-fade);
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    black var(--chat-home-overview-fade-start),
-    black calc(100% - var(--chat-home-overview-fade-end)),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    black var(--chat-home-overview-fade-start),
-    black calc(100% - var(--chat-home-overview-fade-end)),
-    transparent 100%
-  );
-  transition:
-    mask-image 160ms ease,
-    -webkit-mask-image 160ms ease;
 }
 
-.chat-home-overview__section-body::-webkit-scrollbar {
+.chat-home-launcher::-webkit-scrollbar {
   display: none;
 }
 
-.chat-home-overview__section-body[data-at-start="true"] {
-  --chat-home-overview-fade-start: 0px;
-}
-
-.chat-home-overview__section-body[data-at-end="true"] {
-  --chat-home-overview-fade-end: 0px;
-}
-
-.chat-home-overview__heading {
+.chat-home-launcher__list {
+  list-style: none;
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text-strong);
-}
-
-.chat-home-overview__empty {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text-weak);
-}
-
-/* --- Activity ------------------------------------------------ */
-
-.chat-home-overview__subgroups {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.chat-home-overview__subgroup {
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 0;
-  max-width: 100%;
 }
 
-/* Section-internal heading: uppercase label + hairline rule. The rule
-   is what makes this read as a section break rather than small text
-   floating above a row. */
-.chat-home-overview__subgroup-label {
+.chat-home-launcher__entry {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 18px 0 6px;
-  padding: 0 4px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  gap: 12px;
+  padding: 10px 10px;
+  margin: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-base);
+  text-align: left;
+  cursor: default;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.chat-home-launcher__entry:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
   color: var(--text-strong);
 }
 
-.chat-home-overview__subgroup:first-child .chat-home-overview__subgroup-label {
-  margin-top: 0;
+.chat-home-launcher__entry:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
 }
 
-.chat-home-overview__subgroup-label-icon {
+.chat-home-launcher__entry-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  color: var(--text-base);
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
+  color: var(--text-base);
 }
 
-.chat-home-overview__subgroup-label-text {
-  margin-right: 2px;
-}
-
-.chat-home-overview__subgroup-label::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
-}
-
-.chat-home-overview__tasks {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.chat-home-launcher__entry-text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  /* Pin to content width so a long unbreakable description in
-     __task-text can't grow the flex chain past the section body
-     and shove the right-side status badge past the visible edge. */
+  gap: 1px;
   min-width: 0;
-  max-width: 100%;
+  flex: 1;
 }
 
-/* Recent files reads as a dense list — keep items tight. */
-.chat-home-overview__files {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.chat-home-overview__task {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 4px;
+.chat-home-launcher__entry-label {
   font-size: 13px;
-  line-height: 1.4;
-  color: var(--text-base);
-  /* Same shrink-propagation reason as __tasks above. */
-  min-width: 0;
-  max-width: 100%;
-}
-
-.chat-home-overview__task-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  min-width: 0;
-}
-
-.chat-home-overview__task-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500;
   color: var(--text-strong);
 }
 
-.chat-home-overview__task-status {
-  flex-shrink: 0;
-  white-space: nowrap;
-  font-size: 11.5px;
-  color: var(--text-weak);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Running rows: stronger weight + uppercase status. Differentiation
-   from Done is type, not decoration. */
-.chat-home-overview__task[data-status="running"]
-  .chat-home-overview__task-text {
-  font-weight: 500;
-}
-
-.chat-home-overview__task[data-status="running"]
-  .chat-home-overview__task-status {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-base);
-}
-
-/* Done rows = quiet history: text drops toward weak, looser leading. */
-.chat-home-overview__task:not([data-status="running"]):not(
-    [data-status="scheduled"]
-  ) {
-  padding: 4px 4px;
-}
-
-.chat-home-overview__task:not([data-status="running"]):not(
-    [data-status="scheduled"]
-  )
-  .chat-home-overview__task-text {
-  color: color-mix(in oklch, var(--text-base) 80%, transparent);
-  font-weight: 400;
-}
-
-.chat-home-overview__task:not([data-status="running"]):not(
-    [data-status="scheduled"]
-  )
-  .chat-home-overview__task-status {
-  color: var(--text-weak);
-}
-
-/* Failed / canceled: tint the row text too so the cue isn't only the
-   small right-edge badge. */
-.chat-home-overview__task[data-status="error"] .chat-home-overview__task-text,
-.chat-home-overview__task[data-status="canceled"]
-  .chat-home-overview__task-text {
-  color: color-mix(in oklch, var(--text-base) 55%, var(--destructive));
-}
-
-.chat-home-overview__task[data-status="error"] .chat-home-overview__task-status,
-.chat-home-overview__task[data-status="canceled"]
-  .chat-home-overview__task-status {
-  color: var(--destructive);
-}
-
-/* Up Next rows: commitments. Match Done's density but keep description
-   in --text-base and the time badge in --text-base so they read as
-   "happening soon" rather than "happened a while ago". */
-.chat-home-overview__task[data-status="scheduled"] {
-  padding: 0;
-}
-
-.chat-home-overview__task[data-status="scheduled"]
-  .chat-home-overview__task-text {
-  color: var(--text-base);
-  font-weight: 500;
-}
-
-.chat-home-overview__task[data-status="scheduled"]
-  .chat-home-overview__task-status {
-  color: var(--text-base);
-}
-
-/* Schedule rows are buttons (open the manage dialog). Hover-bg matches
-   file rows so interactivity is discoverable without changing cursor
-   away from Stella's Apple-system convention. */
-.chat-home-overview__schedule-trigger {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  border: none;
-  background: transparent;
-  padding: 4px 8px;
-  margin: 0 -8px;
-  border-radius: 6px;
-  text-align: left;
-  cursor: default;
-  color: inherit;
-  font: inherit;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.chat-home-overview__schedule-trigger:hover {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-}
-
-.chat-home-overview__schedule-trigger:focus-visible {
-  outline: none;
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
-}
-
-/* "See all (N)" — text-only, opens the per-section history dialog. */
-.chat-home-overview__show-more-row {
-  list-style: none;
-  padding: 6px 4px 2px;
-}
-
-.chat-home-overview__show-more {
-  border: none;
-  background: transparent;
-  padding: 0;
+.chat-home-launcher__entry-description {
   font-size: 12px;
-  font-weight: 500;
   color: var(--text-weak);
-  cursor: default;
-  transition: color 120ms ease;
-}
-
-.chat-home-overview__show-more:hover,
-.chat-home-overview__show-more:focus-visible {
-  outline: none;
-  color: var(--text-base);
-}
-
-/* --- Per-task progress feed --------------------------------- */
-/* Cheap-model summaries of what the agent is doing right now. The
-   list is hard-capped at TASK_PROGRESS_VISIBLE; older phrases fall
-   off the top. No border-left, no shimmer — recency is communicated
-   by position (last row) and color (--text-base vs --text-weak). */
-.chat-home-overview__task-feed {
-  list-style: none;
-  margin: 0 0 0 2px;
-  padding: 4px 0 4px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.35;
-  color: var(--text-weak);
-}
-
-.chat-home-overview__task-feed--idle {
-  opacity: 0.7;
-}
-
-.chat-home-overview__task-feed-item {
-  margin: 0;
-  padding: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text-weak);
-}
-
-.chat-home-overview__task-feed-item:last-child {
-  color: var(--text-base);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .chat-home-overview__task-feed-item {
-    animation: chat-home-overview__task-feed-item-in 220ms ease-out both;
-  }
-
-  @keyframes chat-home-overview__task-feed-item-in {
-    from {
-      opacity: 0;
-      transform: translateY(2px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
-}
-
-/* --- Files --------------------------------------------------- */
-
-.chat-home-overview__file {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
-  margin: 0 -8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-base);
-  font-size: 13px;
-  text-align: left;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.chat-home-overview__file:hover {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  color: var(--text-strong);
-}
-
-.chat-home-overview__file:focus-visible {
-  outline: none;
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  color: var(--text-strong);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
-}
-
-.chat-home-overview__file-name {
-  min-width: 0;
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* Suggestions live in the workspace strip Open panel, not this Chat tab. */
