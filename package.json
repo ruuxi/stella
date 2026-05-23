@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "cd desktop && vite",
     "preview": "cd desktop && vite preview",
-    "build": "bun run routes:generate && cd desktop && tsgo --build && vite build",
+    "build": "bun run routes:generate && cd desktop && tsgo --build && vite build && node scripts/check-renderer-bundle-budget.mjs",
     "format": "bunx prettier@3.6.2 --write .",
     "format:check": "bunx prettier@3.6.2 --check .",
     "lint": "cd desktop && eslint .",
@@ -26,7 +26,7 @@
     "electron:dev": "node desktop/scripts/electron-dev-runner.mjs",
     "electron:typecheck": "cd desktop && tsgo -p tsconfig.electron.json --pretty false --noEmit && tsgo -p tsconfig.preload.json --pretty false --noEmit",
     "electron:typecheck:watch": "cd desktop && concurrently -k --kill-others-on-fail \"tsgo -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"tsgo -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
-    "electron:build": "bun run native:build && cd desktop && tsgo --build && vite build && tsgo -p tsconfig.electron.json && tsgo -p tsconfig.preload.json && cd .. && electron-builder",
+    "electron:build": "bun run native:build && cd desktop && tsgo --build && vite build && node scripts/check-renderer-bundle-budget.mjs && tsgo -p tsconfig.electron.json && tsgo -p tsconfig.preload.json && cd .. && electron-builder",
     "electron:preview": "cd desktop && tsgo -p tsconfig.electron.json && tsgo -p tsconfig.preload.json && cd .. && electron .",
     "check:boundary": "node runtime/scripts/check-boundary.mjs",
     "tsc6": "bunx --package typescript@6.0.3 tsc"

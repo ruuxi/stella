@@ -10,10 +10,6 @@ import { RouterProvider } from "@tanstack/react-router";
 import { PageSidebarProvider } from "@/context/page-sidebar";
 import { useTheme } from "@/context/theme-context";
 import { useUiState } from "@/context/ui-state";
-import {
-  useAuthBootstrapState,
-  type AuthBootstrapStatus,
-} from "@/global/auth/DesktopConvexAuthProvider";
 import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import {
   SPLIT_STEP_ORDER,
@@ -88,21 +84,11 @@ const dismissLaunchSplash = () => {
 
 type OnboardingExperienceProps = {
   activeConversationId: string | null;
-  runtimeAuthReady: boolean;
-  authBootstrapStatus: AuthBootstrapStatus;
-  isPreparingStartup: boolean;
-  startupError: string | null;
-  onRetryStartup: () => void;
   onEnteredApp: () => void;
 };
 
 function OnboardingExperience({
   activeConversationId,
-  runtimeAuthReady,
-  authBootstrapStatus,
-  isPreparingStartup,
-  startupError,
-  onRetryStartup,
   onEnteredApp,
 }: OnboardingExperienceProps) {
   const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
@@ -223,12 +209,6 @@ function OnboardingExperience({
             onboardingDone={onboarding.onboardingDone}
             onboardingExiting={onboarding.onboardingExiting}
             isAuthenticated={onboarding.isAuthenticated}
-            isAuthLoading={
-              onboarding.isAuthLoading ||
-              (!runtimeAuthReady && authBootstrapStatus !== "failed")
-            }
-            isPreparingRuntime={isPreparingStartup}
-            runtimeError={startupError}
             splitMode={onboarding.splitMode}
             splitEntering={onboarding.splitEntering}
             hasDiscoverySelections={onboarding.hasDiscoverySelections}
@@ -243,7 +223,6 @@ function OnboardingExperience({
             startOnboarding={onboarding.startOnboarding}
             completeOnboarding={onboarding.completeOnboarding}
             handleEnterSplit={onboarding.handleEnterSplit}
-            onRetryRuntime={onRetryStartup}
             onDiscoveryConfirm={handleDiscoveryConfirm}
             onSelectionChange={onboarding.setHasDiscoverySelections}
             onDemoChange={handleDemoChange}
@@ -273,24 +252,6 @@ function OnboardingExperience({
   );
 }
 
-function PostOnboardingStartupGate({
-  startupError,
-  onRetryStartup,
-}: {
-  startupError: string | null;
-  onRetryStartup: () => void;
-}) {
-  if (!startupError) return null;
-
-  return (
-    <div className="post-onboarding-startup-gate">
-      <button className="pill-btn pill-btn-primary" onClick={onRetryStartup}>
-        Retry Stella Startup
-      </button>
-    </div>
-  );
-}
-
 export const FullShell = () => {
   const windowType = useWindowType();
   const isMiniWindow = windowType === "mini";
@@ -300,49 +261,26 @@ export const FullShell = () => {
   const { completed: onboardingDone, hydrated: onboardingHydrated } =
     useOnboardingState();
   const [hasEnteredApp, setHasEnteredApp] = useState(false);
-  const {
-    runtimeAuthReady,
-    status: authBootstrapStatus,
-    error: authBootstrapError,
-  } = useAuthBootstrapState();
-  const { runtimeStatus, runtimeError, retryRuntimeBootstrap } =
-    useBootstrapState();
+  const { runtimeStatus, retryRuntimeBootstrap } = useBootstrapState();
 
-  const startupReady = runtimeAuthReady && runtimeStatus === "ready";
+  const onboardingResolved = onboardingHydrated || onboardingDone;
   const appReady =
-    onboardingHydrated &&
+    onboardingResolved &&
     onboardingDone &&
-    (isMiniWindow || hasEnteredApp || startupReady);
+    (isMiniWindow || hasEnteredApp);
   const needsOnboarding = onboardingHydrated && !onboardingDone;
-  const isPreparingStartup =
-    runtimeStatus === "preparing" ||
-    (!runtimeAuthReady && authBootstrapStatus !== "failed");
-  const startupError =
-    authBootstrapStatus === "failed"
-      ? authBootstrapError
-      : runtimeStatus === "failed"
-        ? runtimeError
-        : null;
-
-  const handleRetryStartup = useCallback(() => {
-    if (authBootstrapStatus === "failed") {
-      window.location.reload();
-      return;
-    }
-    retryRuntimeBootstrap();
-  }, [authBootstrapStatus, retryRuntimeBootstrap]);
 
   useEffect(() => {
-    if (!onboardingHydrated || !onboardingDone || !startupReady) return;
+    if (!onboardingResolved || !onboardingDone) return;
     const timer = window.setTimeout(() => {
       setHasEnteredApp(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [onboardingDone, onboardingHydrated, startupReady]);
+  }, [onboardingDone, onboardingResolved]);
 
-  // The desktop app should not mount before auth has reached the runtime on
-  // startup. Once mounted, later sign-out/sign-in transitions keep the app
-  // visible while auth falls back to an anonymous local session.
+  // The renderer shell does not depend on auth or the local runtime. Those
+  // background bootstraps only unlock cloud state, chat history, sends, and
+  // local tools once their own state arrives.
   useEffect(() => {
     if (isMiniWindow) return;
     window.electronAPI?.ui.setAppReady?.(appReady);
@@ -354,13 +292,14 @@ export const FullShell = () => {
     });
   }, [appReady, updateState]);
 
-  // Keep the static launch splash up for returning users until the real app is
-  // ready. First-run onboarding preloads its chunk from OnboardingExperience.
+  // Keep the static launch splash up for returning users until React has
+  // mounted the real shell. First-run onboarding dismisses it after its chunk
+  // is loaded from OnboardingExperience.
   useEffect(() => {
-    if (appReady || startupError) {
+    if (appReady) {
       dismissLaunchSplash();
     }
-  }, [appReady, startupError]);
+  }, [appReady]);
 
   useEffect(() => {
     if (!appReady) return;
@@ -428,18 +367,10 @@ export const FullShell = () => {
         ) : needsOnboarding ? (
           <OnboardingExperience
             activeConversationId={activeConversationId}
-            runtimeAuthReady={runtimeAuthReady}
-            authBootstrapStatus={authBootstrapStatus}
-            isPreparingStartup={isPreparingStartup}
-            startupError={startupError}
-            onRetryStartup={handleRetryStartup}
             onEnteredApp={() => setHasEnteredApp(true)}
           />
         ) : (
-          <PostOnboardingStartupGate
-            startupError={startupError}
-            onRetryStartup={handleRetryStartup}
-          />
+          null
         )}
       </div>
     </div>

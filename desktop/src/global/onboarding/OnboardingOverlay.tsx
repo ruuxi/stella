@@ -100,9 +100,6 @@ export function OnboardingView({
   onboardingDone,
   onboardingExiting,
   isAuthenticated,
-  isAuthLoading,
-  isPreparingRuntime = false,
-  runtimeError = null,
   splitMode,
   splitEntering = false,
   hasDiscoverySelections,
@@ -115,7 +112,6 @@ export function OnboardingView({
   startOnboarding,
   completeOnboarding,
   handleEnterSplit,
-  onRetryRuntime,
   onDiscoveryConfirm,
   onSelectionChange,
   onDemoChange,
@@ -130,9 +126,6 @@ export function OnboardingView({
   onboardingDone: boolean;
   onboardingExiting?: boolean;
   isAuthenticated: boolean;
-  isAuthLoading: boolean;
-  isPreparingRuntime?: boolean;
-  runtimeError?: string | null;
   splitMode: boolean;
   splitEntering?: boolean;
   hasDiscoverySelections?: boolean;
@@ -145,7 +138,6 @@ export function OnboardingView({
   startOnboarding: () => void;
   completeOnboarding: () => void;
   handleEnterSplit: () => void;
-  onRetryRuntime?: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
   onDemoChange?: (demo: "default" | null) => void;
@@ -156,7 +148,6 @@ export function OnboardingView({
   stellaAnimationPaused?: boolean;
   stellaAnimationHidden?: boolean;
 }) {
-  const showRuntimeGate = isPreparingRuntime || Boolean(runtimeError);
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocument | null>(
     null,
   );
@@ -165,14 +156,8 @@ export function OnboardingView({
 
   // The language switch is only relevant on the very first screen —
   // once the user starts, every other phase has its own layout and
-  // settings already exposes the picker afterwards. Keep it hidden
-  // during runtime errors / loading so the start CTA stays the only
-  // call to action when something needs the user's attention.
-  const showLanguageSwitch =
-    !hasStarted &&
-    !showRuntimeGate &&
-    !isAuthLoading &&
-    !onboardingDone;
+  // settings already exposes the picker afterwards.
+  const showLanguageSwitch = !hasStarted && !onboardingDone;
 
   return (
     <div
@@ -228,23 +213,8 @@ export function OnboardingView({
           paused={stellaAnimationPaused || stellaAnimationHidden}
         />
       </div>
-      {(showRuntimeGate || !onboardingDone) &&
-        (isPreparingRuntime || isAuthLoading ? (
-          <div className="onboarding-moment onboarding-moment--auth">
-            <div className="onboarding-text">{t("onboarding.ready")}</div>
-          </div>
-        ) : runtimeError ? (
-          <div className="onboarding-moment onboarding-moment--start">
-            <button
-              className="onboarding-start-button"
-              onClick={() => {
-                onRetryRuntime?.();
-              }}
-            >
-              {t("onboarding.retryStart")}
-            </button>
-          </div>
-        ) : hasStarted ? (
+      {!onboardingDone &&
+        (hasStarted ? (
           <OnboardingStep1
             key={onboardingKey}
             initialPhase={initialPhase}
