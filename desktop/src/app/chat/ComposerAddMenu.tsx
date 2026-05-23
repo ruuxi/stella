@@ -10,9 +10,16 @@
  * both the home full-chat composer and the sidebar composer can reuse it
  * without threading a `onAdd` callback through the chat-column types.
  */
-import { useCallback, useRef, useSyncExternalStore } from "react";
+import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import type { ChangeEvent, Dispatch, SetStateAction } from "react";
-import { Camera, Paperclip, Scan, Volume2, VolumeX } from "lucide-react";
+import {
+  Camera,
+  MessageSquarePlus,
+  Paperclip,
+  Scan,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import {
   readAloudPrefStore,
   setReadAloudEnabled as persistReadAloudEnabled,
@@ -26,6 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
+import { showToast } from "@/ui/toast";
 import { ComposerAddButton } from "./ComposerPrimitives";
 import { ComposerModelMenuItem } from "./ComposerModelMenuItem";
 import { getElectronApi } from "@/platform/electron/electron";
@@ -40,8 +48,8 @@ import "./composer-add-menu.css";
 type ComposerAddMenuProps = {
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
   onSelectArea: () => void;
+  onNewChat?: () => void | Promise<void>;
   className?: string;
-  disabled?: boolean;
   title?: string;
 };
 
@@ -67,11 +75,14 @@ function truncateFileName(
 export function ComposerAddMenu({
   setChatContext,
   onSelectArea,
+  onNewChat,
   className,
-  disabled,
   title,
 }: ComposerAddMenuProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [newChatArmed, setNewChatArmed] = useState(false);
+  const [newChatPending, setNewChatPending] = useState(false);
   const { recentFiles, recordRecentFiles } = useRecentFiles();
 
   const handleAttachFiles = useCallback(() => {
@@ -106,6 +117,42 @@ export function ComposerAddMenu({
     }
   }, []);
 
+  const handleMenuOpenChange = useCallback(
+    (open: boolean) => {
+      if (newChatPending) return;
+      setMenuOpen(open);
+      if (!open) setNewChatArmed(false);
+    },
+    [newChatPending],
+  );
+
+  const handleNewChatSelect = useCallback(async (event: Event) => {
+    if (!onNewChat) return;
+    if (!newChatArmed) {
+      event.preventDefault();
+      setNewChatArmed(true);
+      return;
+    }
+    setNewChatPending(true);
+    try {
+      await onNewChat();
+      setMenuOpen(false);
+      setNewChatArmed(false);
+    } catch (error) {
+      console.warn("[composer-add-menu] new chat failed:", error);
+      showToast({
+        title: "Couldn’t start a new chat",
+        description:
+          error instanceof Error && error.message
+            ? error.message
+            : "Stella will keep this chat open.",
+        variant: "error",
+      });
+    } finally {
+      setNewChatPending(false);
+    }
+  }, [newChatArmed, onNewChat]);
+
   const readAloudEnabled = useSyncExternalStore(
     readAloudPrefStore.subscribe,
     readAloudPrefStore.getSnapshot,
@@ -130,12 +177,11 @@ export function ComposerAddMenu({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
           <ComposerAddButton
             className={className}
             title={title ?? "Add"}
-            disabled={disabled}
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -162,6 +208,21 @@ export function ComposerAddMenu({
             </span>
             Select area
           </DropdownMenuItem>
+          {onNewChat ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  void handleNewChatSelect(event);
+                }}
+              >
+                <span data-slot="dropdown-menu-item-icon">
+                  <MessageSquarePlus size={14} strokeWidth={1.75} />
+                </span>
+                {newChatArmed ? "Confirm new chat" : "New chat"}
+              </DropdownMenuItem>
+            </>
+          ) : null}
           <DropdownMenuSeparator />
           <ComposerModelMenuItem />
           <DropdownMenuSeparator />

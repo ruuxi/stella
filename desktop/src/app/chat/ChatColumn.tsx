@@ -194,6 +194,7 @@ export const ChatColumn = memo(function ChatColumn({
       conversationId={conversationId}
       onSend={composer.onSend}
       onStop={composer.onStop}
+      onNewChat={composer.onNewChat}
       indicator={indicatorProps}
       replyPeek={
         assistantReplyPeek.visible

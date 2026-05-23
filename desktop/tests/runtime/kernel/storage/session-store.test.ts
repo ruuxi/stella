@@ -44,6 +44,28 @@ afterEach(async () => {
 });
 
 describe("session-store", () => {
+  it("starts a fresh default conversation without deleting old messages", () => {
+    const { store } = createTestContext();
+    const firstConversationId = store.getOrCreateDefaultConversationId();
+    store.appendEvent({
+      conversationId: firstConversationId,
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "Keep this" },
+    });
+
+    const nextConversationId = store.createNewDefaultConversationId();
+
+    expect(nextConversationId).not.toBe(firstConversationId);
+    expect(store.getOrCreateDefaultConversationId()).toBe(nextConversationId);
+    expect(store.listMessages(nextConversationId, { maxVisibleMessages: 10 }).messages).toEqual([]);
+    expect(
+      store.listMessages(firstConversationId, { maxVisibleMessages: 10 }).messages.map(
+        (message) => message.payload.text,
+      ),
+    ).toEqual(["Keep this"]);
+  });
+
   it("reconstructs chat events from session, message, and part rows", () => {
     const { db, store } = createTestContext();
     const conversationId = store.getOrCreateDefaultConversationId();

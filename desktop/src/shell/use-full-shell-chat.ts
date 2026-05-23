@@ -10,6 +10,7 @@ import type {
   ChatColumnScroll,
 } from '@/app/chat/chat-column-types'
 import { deriveComposerState } from '@/app/chat/composer-context'
+import { createNewLocalConversationId } from '@/app/chat/services/local-chat-store'
 import { useConversationActivity } from '@/app/chat/hooks/use-conversation-activity'
 import { useConversationDisplayMessages } from '@/app/chat/hooks/use-conversation-display-messages'
 import { useConversationFiles } from '@/app/chat/hooks/use-conversation-files'
@@ -18,6 +19,8 @@ import { useStreamingChat } from '@/app/chat/hooks/use-streaming-chat'
 import { useTaskProgressSummaries } from '@/app/chat/hooks/use-task-progress-summaries'
 import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
 import { type EventRecord } from '@/app/chat/lib/event-transforms'
+import { useUiState } from '@/context/ui-state'
+import { router } from '@/router'
 import { useCapturedChatContext } from './use-captured-chat-context'
 import { useChatScrollManagement } from './use-chat-scroll-management'
 import { useChatHomeSurface } from './use-chat-home-surface'
@@ -36,6 +39,7 @@ export function useFullShellChat({
   isOnChatRoute,
   isDev,
 }: UseFullShellChatOptions) {
+  const { setConversationId } = useUiState()
   const [message, setMessage] = useState('')
   const [composerFocusRequestId, setComposerFocusRequestId] = useState(0)
   const { chatContext, setChatContext, selectedText, setSelectedText } =
@@ -131,6 +135,32 @@ export function useFullShellChat({
     isStreaming,
     activeConversationId,
   })
+
+  const startNewChat = useCallback(async () => {
+    const nextConversationId = await createNewLocalConversationId()
+    setMessage('')
+    setSelectedText(null)
+    setChatContext(null)
+    setConversationId(nextConversationId)
+    showHome()
+
+    if (isOnChatRoute) {
+      await router.navigate({
+        to: '/chat',
+        search: (prev: { c?: string } | undefined) => ({
+          ...(prev ?? {}),
+          c: nextConversationId,
+        }),
+        replace: true,
+      })
+    }
+  }, [
+    isOnChatRoute,
+    setChatContext,
+    setConversationId,
+    setSelectedText,
+    showHome,
+  ])
 
   const {
     sendContextlessMessage,
@@ -307,6 +337,7 @@ export function useFullShellChat({
       focusRequestId: composerFocusRequestId,
       onSend: handleSend,
       onStop: cancelCurrentStream,
+      onNewChat: startNewChat,
     }),
     [
       message,
@@ -319,6 +350,7 @@ export function useFullShellChat({
       composerFocusRequestId,
       handleSend,
       cancelCurrentStream,
+      startNewChat,
     ],
   )
 
@@ -362,6 +394,7 @@ export function useFullShellChat({
       sendContextlessMessage,
       sendMessageWithContext,
       cancelCurrentStream,
+      startNewChat,
     },
     composer: {
       ...chatColumnComposer,

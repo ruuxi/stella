@@ -34,6 +34,9 @@ const getLocalChatApi = () => {
 export const getOrCreateLocalConversationId = async (): Promise<string> =>
   getLocalChatApi().getOrCreateDefaultConversationId();
 
+export const createNewLocalConversationId = async (): Promise<string> =>
+  getLocalChatApi().createNewDefaultConversationId();
+
 export const listLocalEvents = async (
   conversationId: string,
   maxItems = 200,

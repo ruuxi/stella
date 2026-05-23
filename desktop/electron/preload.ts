@@ -1633,6 +1633,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   localChat: {
     getOrCreateDefaultConversationId: () =>
       ipcRenderer.invoke("localChat:getOrCreateDefaultConversationId"),
+    createNewDefaultConversationId: () =>
+      ipcRenderer.invoke("localChat:createNewDefaultConversationId"),
     listEvents: (payload: { conversationId: string; maxItems?: number }) =>
       ipcRenderer.invoke("localChat:listEvents", payload),
     listMessages: (payload: {

@@ -79,6 +79,10 @@ export class LocalChatHistoryService {
     return this.getStore().getOrCreateDefaultConversationId();
   }
 
+  createNewDefaultConversationId(): string {
+    return this.getStore().createNewDefaultConversationId();
+  }
+
   listEvents(args: {
     conversationId: string;
     maxItems?: number;

@@ -45,6 +45,7 @@ type ComposerProps = {
   conversationId: string | null;
   onSend: () => void;
   onStop: () => void;
+  onNewChat: () => void | Promise<void>;
   indicator?: InlineWorkingIndicatorMountProps;
   replyPeek?: AssistantReplyPeekProps | null;
 };
@@ -62,6 +63,7 @@ export function Composer({
   conversationId,
   onSend,
   onStop,
+  onNewChat,
   indicator,
   replyPeek,
 }: ComposerProps) {
@@ -172,7 +174,7 @@ export function Composer({
               title="Add"
               setChatContext={setChatContext}
               onSelectArea={() => setAreaSelectActive(true)}
-              disabled={isStreaming}
+              onNewChat={onNewChat}
             />
 
             {dictationInline ? (
@@ -217,7 +219,7 @@ export function Composer({
                       title="Add"
                       setChatContext={setChatContext}
                       onSelectArea={() => setAreaSelectActive(true)}
-                      disabled={isStreaming}
+                      onNewChat={onNewChat}
                     />
                   </div>
 

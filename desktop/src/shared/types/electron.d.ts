@@ -1171,6 +1171,7 @@ export type ElectronSocialSessionsApi = {
 
 export type ElectronLocalChatApi = {
   getOrCreateDefaultConversationId: () => Promise<string>;
+  createNewDefaultConversationId: () => Promise<string>;
   /**
    * Raw event-stream read kept for the few non-timeline consumers that
    * look for specific auxiliary event types (the welcome dialog reads
