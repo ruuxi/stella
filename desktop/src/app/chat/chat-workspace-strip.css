@@ -1,7 +1,6 @@
 /* Right-side workspace strip rendered next to the active chat surface.
-   Each section is its own glass panel (same surface as the left sidebar)
-   with a subtle outline and shadow. No divider between the strip itself
-   and the main content. */
+   Each section uses the shared tint-only panel surface (no
+   backdrop-filter). No divider between the strip and main content. */
 
 .chat-workspace-strip {
   --chat-workspace-strip-width: 320px;
@@ -174,9 +173,7 @@
 /* ── Card ─────────────────────────────────────────────────────────── */
 
 /* Shadow on the frame so each panel lifts independently; the card
-   keeps overflow:hidden for rounded content without clipping the halo.
-   `contain: layout paint` keeps backdrop-filter recomputation scoped
-   to this panel during the per-card chevron grow. */
+   keeps overflow:hidden for rounded content without clipping the halo. */
 .chat-workspace-strip__card-frame {
   flex-shrink: 0;
   border-radius: 12px;
@@ -187,10 +184,9 @@
 .chat-workspace-strip__card {
   display: flex;
   flex-direction: column;
-  background: var(--panel-glass-bg);
-  backdrop-filter: var(--panel-glass-blur);
-  -webkit-backdrop-filter: var(--panel-glass-blur);
-  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: var(--panel-surface-bg);
+  border: 1px solid var(--panel-surface-border);
+  box-shadow: var(--panel-surface-highlight);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -464,7 +460,7 @@
   height: 6px;
   border-radius: 9999px;
   background: var(--primary);
-  box-shadow: 0 0 0 2px var(--panel-glass-bg);
+  box-shadow: 0 0 0 2px var(--panel-surface-bg);
   pointer-events: none;
 }
 
