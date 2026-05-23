@@ -1,7 +1,6 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Download, Trash2 } from "lucide-react";
+import { Fragment, useCallback, useMemo, useState } from "react";
+import { Copy, Download, X } from "lucide-react";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
-import { useConfirmAction } from "@/shared/hooks/use-confirm-action";
 import { copyImageBlob } from "@/shell/media-clipboard";
 import type { MediaTabItem } from "./media-actions";
 
@@ -21,10 +20,10 @@ const filePathsForItem = (item: MediaTabItem): string[] => {
 
 export const MediaActionBar = ({
   item,
-  onDelete,
+  onClose,
 }: {
   item: MediaTabItem;
-  onDelete: () => void;
+  onClose: () => void;
 }) => {
   const [message, setMessage] = useState<string | null>(null);
   const filePath = useMemo(() => filePathsForItem(item)[0] ?? null, [item]);
@@ -60,14 +59,6 @@ export const MediaActionBar = ({
 
   const canSave = Boolean(filePath && window.electronAPI?.system?.saveFileAs);
 
-  const {
-    armed: confirmDelete,
-    trigger: handleDelete,
-    reset: resetConfirmDelete,
-  } = useConfirmAction(onDelete, { armedMs: 3000 });
-
-  useEffect(() => resetConfirmDelete(), [item.id, resetConfirmDelete]);
-
   return (
     <Fragment>
       {canSave ? (
@@ -92,14 +83,12 @@ export const MediaActionBar = ({
       </button>
       <button
         type="button"
-        className={`media-tab__action-btn${
-          confirmDelete ? " media-tab__action-btn--danger" : ""
-        }`}
-        onClick={handleDelete}
-        aria-label={confirmDelete ? "Click again to delete" : "Delete"}
-        title={confirmDelete ? "Click again to delete" : "Delete"}
+        className="media-tab__action-btn"
+        onClick={onClose}
+        aria-label="Close preview"
+        title="Close"
       >
-        <Trash2 size={14} strokeWidth={1.85} />
+        <X size={14} strokeWidth={1.85} />
       </button>
       {message ? (
         <span className="media-tab__action-status">{message}</span>

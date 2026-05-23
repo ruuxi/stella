@@ -4,7 +4,6 @@ import { DropOverlay } from "@/app/chat/DropOverlay";
 import { updateComposerTextareaExpansion } from "@/shared/hooks/use-animated-composer-shell";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { displayTabs } from "../tab-store";
-import { removeGeneratedMediaItem } from "../payload-to-tab-spec";
 import {
   MEDIA_ACTIONS,
   type MediaActionId,
@@ -31,11 +30,7 @@ export const MediaTabContent = ({
 }: {
   items: ReadonlyArray<MediaTabItem>;
 }) => {
-  const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
-  const items = useMemo(
-    () => incomingItems.filter((item) => !removedIds.has(item.id)),
-    [incomingItems, removedIds],
-  );
+  const items = incomingItems;
   const railItems = useMemo(() => [...items].reverse(), [items]);
 
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -56,7 +51,7 @@ export const MediaTabContent = ({
       setSelectedId(null);
       return;
     }
-    if (!selectedId || !items.some((item) => item.id === selectedId)) {
+    if (selectedId != null && !items.some((item) => item.id === selectedId)) {
       setSelectedId(items.at(-1)?.id ?? null);
     }
   }, [items, selectedId]);
@@ -75,20 +70,14 @@ export const MediaTabContent = ({
   }, [prompt]);
 
   const selectedItem =
-    items.find((item) => item.id === selectedId) ?? items.at(-1) ?? null;
+    selectedId != null
+      ? items.find((item) => item.id === selectedId) ?? null
+      : null;
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      setRemovedIds((prev) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-      removeGeneratedMediaItem(id);
-      if (attachedItemId === id) setAttachedItemId(null);
-    },
-    [attachedItemId],
-  );
+  const handleClosePreview = useCallback(() => {
+    setSelectedId(null);
+    if (attachedItemId === selectedItem?.id) setAttachedItemId(null);
+  }, [attachedItemId, selectedItem?.id]);
 
   const handlePickFile = useCallback(() => {
     fileInputRef.current?.click();
@@ -275,7 +264,7 @@ export const MediaTabContent = ({
                 >
                   <MediaActionBar
                     item={selectedItem}
-                    onDelete={() => handleDelete(selectedItem.id)}
+                    onClose={handleClosePreview}
                   />
                 </div>
               </div>
