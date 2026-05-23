@@ -9,6 +9,8 @@ import {
 } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import {
+  runtimeIpcListenUrl,
+  runtimeIpcPathUsesFilesystem,
   resolveRuntimePaths,
   type RuntimePaths,
 } from "../worker/runtime-paths.js";
@@ -23,11 +25,12 @@ import {
 
 /**
  * Host-side lifecycle: discover or launch the detached worker and
- * return a connected UDS Socket the caller can wrap with a JSON-RPC
+ * return a connected local-IPC Socket the caller can wrap with a JSON-RPC
  * peer.
  *
  * Discovery flow:
- *   1. Resolve ~/.stella/runtime/<rootHash>/runtime.{pid,sock}.
+ *   1. Resolve ~/.stella/runtime/<rootHash>/runtime.{pid,sock}
+ *      or the equivalent Windows named pipe path.
  *   2. If pidfile points to a live process AND we can connect to the
  *      socket, reuse it. This is the "Electron just restarted, reattach"
  *      path. Protocol or host-executable mismatch is a hard worker restart;
@@ -74,9 +77,17 @@ const tryConnectSocket = async (
   socketPath: string,
   timeoutMs: number,
 ): Promise<Socket | null> => {
-  if (!existsSync(socketPath)) return null;
+  if (runtimeIpcPathUsesFilesystem(socketPath) && !existsSync(socketPath)) {
+    return null;
+  }
   return await new Promise<Socket | null>((resolve) => {
-    const socket = createConnection(socketPath);
+    let socket: Socket;
+    try {
+      socket = createConnection(socketPath);
+    } catch {
+      resolve(null);
+      return;
+    }
     let settled = false;
     const finish = (result: Socket | null) => {
       if (settled) return;
@@ -271,7 +282,7 @@ const spawnDetachedWorker = (
     "run",
     options.workerEntryPath,
     "--listen",
-    `unix://${paths.socketPath}`,
+    runtimeIpcListenUrl(paths.socketPath),
     "--stella-root",
     options.stellaRoot,
   ];

@@ -49,6 +49,26 @@ describe("parseWorkerListenUrl", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("parses pipe:// with a Windows named pipe path", () => {
+    const result = parseWorkerListenUrl(
+      "pipe://\\\\.\\pipe\\stella-runtime-abc",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok && result.transport.kind === "pipe") {
+      expect(result.transport.socketPath).toBe(
+        "\\\\.\\pipe\\stella-runtime-abc",
+      );
+    } else {
+      throw new Error("expected pipe transport");
+    }
+  });
+
+  it("rejects pipe:// with a non-pipe path", () => {
+    const result = parseWorkerListenUrl("pipe://runtime.sock");
+    expect(result.ok).toBe(false);
+    expect(result.ok || result.error).toMatch(/named pipe/);
+  });
+
   it("rejects unsupported schemes", () => {
     const result = parseWorkerListenUrl("ws://127.0.0.1:8080");
     expect(result.ok).toBe(false);

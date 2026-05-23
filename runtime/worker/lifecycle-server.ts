@@ -6,7 +6,11 @@ import {
   promises as fsPromises,
   type WriteStream,
 } from "node:fs";
-import { resolveRuntimePaths, type RuntimePaths } from "./runtime-paths.js";
+import {
+  resolveRuntimePaths,
+  runtimeIpcPathUsesFilesystem,
+  type RuntimePaths,
+} from "./runtime-paths.js";
 
 /**
  * Worker-side lifecycle helpers. The detached worker is responsible for:
@@ -23,9 +27,9 @@ import { resolveRuntimePaths, type RuntimePaths } from "./runtime-paths.js";
  *      at a smaller granularity).
  *
  * The flock on `runtime.lock` is non-blocking and exclusive — we use
- * `O_EXCL` with `O_CREAT` to avoid a separate lock file race. On macOS
- * and Linux this is sufficient; Windows is out of scope (the worker is
- * Unix-only post-detach for now, matching the worker daemon's posture).
+ * `O_EXCL` with `O_CREAT` to avoid a separate lock file race. POSIX uses
+ * Unix socket files for transport; Windows uses named pipes plus the same
+ * pid/lock files under the runtime root.
  */
 
 export type LifecycleServerOptions = {
@@ -258,13 +262,18 @@ export const removeStaleRuntimeArtifacts = async (
   stellaRoot: string,
 ): Promise<void> => {
   const paths = resolveRuntimePaths(stellaRoot);
-  for (const filePath of [
+  const maybeFilePaths = [
     paths.pidFile,
     paths.lockFile,
-    paths.socketPath,
-    paths.cliBridgeSocketPath,
     paths.hostExecutableFile,
-  ]) {
+  ];
+  if (runtimeIpcPathUsesFilesystem(paths.socketPath)) {
+    maybeFilePaths.push(paths.socketPath);
+  }
+  if (runtimeIpcPathUsesFilesystem(paths.cliBridgeSocketPath)) {
+    maybeFilePaths.push(paths.cliBridgeSocketPath);
+  }
+  for (const filePath of maybeFilePaths) {
     await fsPromises.unlink(filePath).catch(() => undefined);
   }
 };
