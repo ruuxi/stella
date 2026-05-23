@@ -288,70 +288,49 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     }
   }, [theme.id, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors]);
 
-  // Re-render on resize
+  // First-render fallback only. We intentionally do NOT re-render on
+  // window/parent resize: the blob positions are normalized fractions
+  // of width/height with aspect-corrected radii, so any repaint at a
+  // different size visibly slides them around — exactly the "blobs
+  // move when I resize the window" behavior we want to avoid. CSS
+  // (`.gradient-base { width: 100%; height: 100% }`) bilinearly
+  // stretches the existing bitmap to fill the new size, which reads
+  // as a stable soft gradient since blobs are already soft.
+  //
+  // The fallback below covers the case where the parent has zero
+  // size at the time the settings effect first runs (pre-layout); we
+  // observe until we see a non-zero size, render once at that size,
+  // and disconnect.
   useEffect(() => {
     if (lightweight) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (canvas.width > 0 && canvas.height > 0) return;
 
-    let rafId: number | null = null;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    const performResize = () => {
-      const canvas = canvasRef.current;
+    const renderOnce = () => {
       const ctx = ctxRef.current;
-      if (!canvas || !ctx || blobsRef.current.length === 0) return;
-
+      if (!ctx || blobsRef.current.length === 0) return false;
       const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
       const rect = canvas.parentElement?.getBoundingClientRect();
-      const w = rect?.width ?? window.innerWidth;
-      const h = rect?.height ?? window.innerHeight;
-
+      const w = rect?.width ?? 0;
+      const h = rect?.height ?? 0;
+      if (w === 0 || h === 0) return false;
       renderGradient(ctx, w, h, bg, blobsRef.current, 0.25);
+      return true;
     };
 
-    // Coalesce bursts of resize events. The canvas paint is a
-    // per-pixel JS double-loop and is the dominant main-thread cost
-    // when a sidebar that hosts this gradient (`contained`) animates
-    // its width — every animation frame would otherwise trigger a
-    // full repaint via ResizeObserver. Debouncing with a short idle
-    // window means we keep the existing canvas (browser stretches it
-    // visually via `width:100%`) during the slide and repaint once
-    // after the size settles, which is imperceptible at typical
-    // sidebar transition durations.
-    const handleResize = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (rafId) cancelAnimationFrame(rafId);
-      timeoutId = setTimeout(() => {
-        timeoutId = null;
-        rafId = requestAnimationFrame(() => {
-          rafId = null;
-          performResize();
-        });
-      }, 120);
-    };
-
-    const cleanupTimers = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-
-    if (contained) {
-      const el = rootRef.current;
-      if (!el || typeof ResizeObserver === "undefined") return;
-
-      const ro = new ResizeObserver(() => {
-        handleResize();
-      });
-      ro.observe(el);
-      return () => {
-        ro.disconnect();
-        cleanupTimers();
-      };
+    if (typeof ResizeObserver === "undefined") {
+      renderOnce();
+      return;
     }
 
-    window.addEventListener("resize", handleResize);
+    const ro = new ResizeObserver(() => {
+      if (renderOnce()) ro.disconnect();
+    });
+    const target = contained ? rootRef.current : canvas.parentElement;
+    if (target) ro.observe(target);
     return () => {
-      window.removeEventListener("resize", handleResize);
-      cleanupTimers();
+      ro.disconnect();
     };
   }, [lightweight, colors, contained]);
 
