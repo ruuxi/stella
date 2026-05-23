@@ -1,11 +1,10 @@
 .welcome-dialog-content[data-slot="dialog-content"] {
   padding: 0;
   overflow: hidden;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--surface-raised);
   background-clip: padding-box;
   border: 1px solid var(--border-weak);
+  box-shadow: var(--shadow-overlay);
 }
 
 .welcome-dialog-close {

@@ -61,9 +61,7 @@
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
+    background: var(--panel-surface-bg);
     overflow: hidden;
     position: relative;
     z-index: 2;
@@ -227,10 +225,9 @@
     width: 220px;
     background: linear-gradient(
       180deg,
-      color-mix(in oklch, var(--primary) 6%, var(--glass-bg)) 0%,
-      var(--glass-bg) 100%
+      color-mix(in oklch, var(--primary) 6%, var(--panel-surface-bg)) 0%,
+      var(--panel-surface-bg) 100%
     );
-    backdrop-filter: var(--glass-blur);
     border-right: 1px solid color-mix(in oklch, var(--primary) 18%, transparent);
   }
   .sam-sidebar-modern {
@@ -462,11 +459,10 @@
     padding: 6px 22px;
     min-width: 88px;
     text-align: center;
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--border-strong);
+    background: var(--panel-surface-bg);
+    border: 1px solid var(--panel-surface-border);
     border-radius: 999px;
+    box-shadow: var(--panel-surface-highlight);
     color: var(--text-base);
     font-family: inherit;
     font-size: 13px;
@@ -512,9 +508,9 @@
     position: relative;
     padding: 12px 14px;
     border-radius: var(--radius-lg, 8px);
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--border-strong);
+    background: var(--panel-surface-bg);
+    border: 1px solid var(--panel-surface-border);
+    box-shadow: var(--panel-surface-highlight);
     overflow: hidden;
   }
   .sam-card::before {
@@ -777,8 +773,7 @@
     padding: 6px 22px;
     min-width: 88px;
     text-align: center;
-    background: rgba(255, 252, 246, 0.55);
-    backdrop-filter: blur(6px);
+    background: color-mix(in oklch, #fff9f0 78%, transparent);
     border: 1px solid rgba(139, 105, 75, 0.25);
     border-radius: 999px;
     color: #8b6240;
@@ -1697,13 +1692,12 @@
     gap: 8px;
     padding: 8px 8px 8px 12px;
     border-radius: 24px;
-    background: rgba(28, 30, 36, 0.78);
+    background: color-mix(in oklch, #1c1e24 88%, transparent);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.06) inset,
       0 14px 36px -20px rgba(0, 0, 0, 0.7),
       0 2px 6px -2px rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(14px) saturate(140%);
     z-index: 3;
   }
   .sam-mochi__compose-attach {
@@ -1773,9 +1767,7 @@
     padding: 12px 20px 12px 16px;
     border-radius: 999px;
     border: 1.5px solid color-mix(in oklch, var(--foreground) 18%, transparent);
-    background: color-mix(in oklch, var(--background) 82%, transparent);
-    backdrop-filter: blur(12px) saturate(1.2);
-    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    background: var(--panel-surface-bg);
     font-family: inherit;
     font-size: 14px;
     font-weight: 650;
