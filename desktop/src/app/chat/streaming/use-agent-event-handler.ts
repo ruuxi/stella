@@ -97,6 +97,19 @@ type UseAgentEventHandlerOptions = {
     flushPendingReasoningChunks: (onlyKey?: string) => void
     discardPendingReasoningChunks: (runId: string, agentId: string) => void
   }
+  lifecycle?: {
+    onRunStarted?: (event: {
+      runId: string
+      conversationId: string
+      userMessageId?: string
+    }) => void
+    onRunFinished?: (event: {
+      runId: string
+      conversationId: string
+      userMessageId?: string
+      outcome: 'completed' | 'error' | 'canceled'
+    }) => void
+  }
 }
 
 export function useAgentEventHandler({
@@ -105,6 +118,7 @@ export function useAgentEventHandler({
   streaming,
   timers,
   reasoning,
+  lifecycle,
 }: UseAgentEventHandlerOptions) {
   const {
     activeConversationIdRef,
@@ -198,6 +212,14 @@ export function useAgentEventHandler({
           conversationId,
           outcome: args.outcome,
         })
+        lifecycle?.onRunFinished?.({
+          runId: event.runId,
+          conversationId,
+          ...(event.userMessageId
+            ? { userMessageId: event.userMessageId }
+            : {}),
+          outcome: args.outcome,
+        })
         if (
           conversationId === activeConversationIdRef.current &&
           args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR
@@ -250,6 +272,13 @@ export function useAgentEventHandler({
             requestId: event.requestId,
             userMessageId: event.userMessageId,
             uiVisibility: event.uiVisibility,
+          })
+          lifecycle?.onRunStarted?.({
+            runId: event.runId,
+            conversationId,
+            ...(event.userMessageId
+              ? { userMessageId: event.userMessageId }
+              : {}),
           })
           if (conversationId === activeConversationIdRef.current) {
             const anchorUserMessageId =
@@ -492,6 +521,7 @@ export function useAgentEventHandler({
       finalizeRunOnFinish,
       flushPendingReasoningChunks,
       lastSeqByConversationRef,
+      lifecycle,
       pendingRequestIdsRef,
       queueAgentReasoningChunk,
       resetReasoningText,
