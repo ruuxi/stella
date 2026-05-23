@@ -66,6 +66,7 @@ import {
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
+  IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_READ_ALOUD,
@@ -73,6 +74,7 @@ import {
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
+  IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_READ_ALOUD,
@@ -1015,6 +1017,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_SET_READ_ALOUD, enabled) as Promise<{
         enabled: boolean;
       }>,
+    getOnboardingCompleted: () =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
+      ) as Promise<boolean>,
+    setOnboardingCompleted: (completed: boolean) =>
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
+        completed,
+      ) as Promise<{ completed: boolean }>,
     setGlobalShortcutsSuspended: (suspended: boolean) =>
       ipcRenderer.invoke(
         IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,

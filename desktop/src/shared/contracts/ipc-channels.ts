@@ -228,6 +228,10 @@ export const IPC_PREFERENCES_GET_READ_ALOUD =
   "preferences:getReadAloud" as const;
 export const IPC_PREFERENCES_SET_READ_ALOUD =
   "preferences:setReadAloud" as const;
+export const IPC_PREFERENCES_GET_ONBOARDING_COMPLETED =
+  "preferences:getOnboardingCompleted" as const;
+export const IPC_PREFERENCES_SET_ONBOARDING_COMPLETED =
+  "preferences:setOnboardingCompleted" as const;
 export const IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED =
   "globalShortcuts:setSuspended" as const;
 export const IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED =

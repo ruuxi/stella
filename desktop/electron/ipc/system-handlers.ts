@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   getLocalModelPreferences,
+  getOnboardingCompleted,
   getPersonalityVoiceId,
   getPreventComputerSleep,
   getReadAloudEnabled,
@@ -25,6 +26,7 @@ import {
   normalizeImageGenerationPreferences,
   normalizeRealtimeVoicePreferences,
   saveLocalPreferences,
+  setOnboardingCompleted,
   setPersonalityVoiceId,
   updateLocalModelPreferences,
   type LocalModelPreferencesSnapshot,
@@ -92,12 +94,14 @@ import {
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_MODELS,
+  IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_MODELS,
+  IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
@@ -1461,6 +1465,44 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     if (!stellaRoot) return false;
     return getReadAloudEnabled(stellaRoot);
   });
+
+  ipcMain.handle(IPC_PREFERENCES_GET_ONBOARDING_COMPLETED, (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted preferences:getOnboardingCompleted request.",
+      );
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return false;
+    return getOnboardingCompleted(stellaRoot);
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
+    (event, completed: boolean) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted preferences:setOnboardingCompleted request.",
+        );
+      }
+      const nextCompleted = completed === true;
+      const stellaRoot = options.getStellaRoot();
+      if (stellaRoot) {
+        setOnboardingCompleted(stellaRoot, nextCompleted);
+      }
+      return { completed: nextCompleted };
+    },
+  );
 
   ipcMain.handle(
     IPC_PREFERENCES_SET_READ_ALOUD,

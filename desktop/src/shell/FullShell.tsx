@@ -297,7 +297,8 @@ export const FullShell = () => {
   const { state, updateState } = useUiState();
   const activeConversationId = state.conversationId;
   const { gradientMode, gradientColor } = useTheme();
-  const { completed: onboardingDone } = useOnboardingState();
+  const { completed: onboardingDone, hydrated: onboardingHydrated } =
+    useOnboardingState();
   const [hasEnteredApp, setHasEnteredApp] = useState(false);
   const {
     runtimeAuthReady,
@@ -309,8 +310,10 @@ export const FullShell = () => {
 
   const startupReady = runtimeAuthReady && runtimeStatus === "ready";
   const appReady =
-    onboardingDone && (isMiniWindow || hasEnteredApp || startupReady);
-  const needsOnboarding = !onboardingDone;
+    onboardingHydrated &&
+    onboardingDone &&
+    (isMiniWindow || hasEnteredApp || startupReady);
+  const needsOnboarding = onboardingHydrated && !onboardingDone;
   const isPreparingStartup =
     runtimeStatus === "preparing" ||
     (!runtimeAuthReady && authBootstrapStatus !== "failed");
@@ -330,12 +333,12 @@ export const FullShell = () => {
   }, [authBootstrapStatus, retryRuntimeBootstrap]);
 
   useEffect(() => {
-    if (!onboardingDone || !startupReady) return;
+    if (!onboardingHydrated || !onboardingDone || !startupReady) return;
     const timer = window.setTimeout(() => {
       setHasEnteredApp(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [onboardingDone, startupReady]);
+  }, [onboardingDone, onboardingHydrated, startupReady]);
 
   // The desktop app should not mount before auth has reached the runtime on
   // startup. Once mounted, later sign-out/sign-in transitions keep the app
