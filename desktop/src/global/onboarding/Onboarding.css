@@ -1476,16 +1476,6 @@
   animation: none !important;
 }
 
-.onboarding-dialogue[data-phase="creation"] .sam-sidebar,
-.onboarding-dialogue[data-phase="creation"] .sam-header,
-.onboarding-dialogue[data-phase="creation"] .sam-mochi__chips,
-.onboarding-dialogue[data-phase="creation"] .sam-mochi__pulse,
-.onboarding-dialogue[data-phase="creation"] .sam-mochi__compose,
-.onboarding-dialogue[data-phase="creation"] .sam-pill {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
 /* ═══ Mock data preview windows (left side) ═══ */
 
 .onboarding-mock-windows {
@@ -1530,11 +1520,8 @@
     opacity: 0;
     transform: translate3d(0, var(--onboarding-reveal-translate), 0)
       scale(0.988);
-    /* Mock windows already carry their own `backdrop-filter: blur(12px)`;
-     * stacking a `filter: blur()` on the same element during the reveal
-     * forces the GPU to re-rasterize the already-blurred backdrop layer
-     * every frame. Resolve disclosure with opacity + transform only —
-     * the backdrop blur itself reads as the "soft" entry. */
+    /* Resolve disclosure with opacity + transform only — no stacked
+     * `filter: blur()` on the tinted window during the reveal. */
   }
   to {
     opacity: 1;
