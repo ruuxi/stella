@@ -394,23 +394,12 @@ const createInternalPromptMessage = (
 
 const readRegistryContent = async (args: {
   stellaHome?: string;
-  stellaRoot?: string;
 }): Promise<string | null> => {
   const stellaHome = args.stellaHome?.trim();
-  if (stellaHome) {
-    const stellaHomeRegistry = await readOptionalTextFile(
-      path.join(stellaHome, "registry.md"),
-    );
-    if (stellaHomeRegistry) {
-      return stellaHomeRegistry;
-    }
-  }
-
-  const stellaRoot = args.stellaRoot?.trim();
-  if (!stellaRoot) {
+  if (!stellaHome) {
     return null;
   }
-  return await readOptionalTextFile(path.join(stellaRoot, "state", "registry.md"));
+  return await readOptionalTextFile(path.join(stellaHome, "registry.md"));
 };
 
 export const buildStartupPromptMessages = async (args: {
@@ -424,7 +413,6 @@ export const buildStartupPromptMessages = async (args: {
   if (shouldIncludeStartupDocs) {
     const registryContent = await readRegistryContent({
       stellaHome: args.stellaHome,
-      stellaRoot: args.stellaRoot,
     });
     if (registryContent) {
       messages.push(

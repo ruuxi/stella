@@ -106,7 +106,7 @@ export const createToolHost = ({
   contextProvider,
   notifyVoiceActionComplete,
 }: ToolHostOptions) => {
-  const stateRoot = stellaHome ?? path.join(stellaRoot, "state");
+  const stateRoot = stellaHome ?? stellaRoot;
   const toolCatalog = new Map<string, ToolMetadata>();
 
   setFileToolsConfig({ stellaRoot });
