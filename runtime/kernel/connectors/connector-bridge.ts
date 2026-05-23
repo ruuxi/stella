@@ -286,6 +286,7 @@ class StdioConnectorBridgeSession {
         ...(await resolveSecretPlaceholders(this.stellaRoot, this.server.env)),
       },
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     });
     this.child.stderr.on("data", () => {
       // Drain diagnostics so verbose connector commands cannot block on a full pipe.

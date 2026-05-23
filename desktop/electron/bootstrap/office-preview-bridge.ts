@@ -158,8 +158,58 @@ const stopPreviewProcess = async (pid: number) => {
 };
 
 const findPreviewProcessIds = async (sessionId: string): Promise<number[]> => {
-  if (!sessionId.trim() || process.platform === "win32") {
+  if (!sessionId.trim()) {
     return [];
+  }
+
+  if (process.platform === "win32") {
+    const escapedSessionId = sessionId.replace(/'/g, "''");
+    const script = [
+      "$ErrorActionPreference = 'SilentlyContinue'",
+      `$session = '${escapedSessionId}'`,
+      "$currentPid = $PID",
+      "$processes = Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%__run-preview-session%'\"",
+      "$matches = @()",
+      "foreach ($proc in $processes) {",
+      "  $line = [string]$proc.CommandLine",
+      "  if (-not $line -or [int]$proc.ProcessId -eq $currentPid) { continue }",
+      "  if ($line.Contains('__run-preview-session') -and $line.Contains('--session') -and $line.Contains($session)) {",
+      "    $matches += [int]$proc.ProcessId",
+      "  }",
+      "}",
+      "$matches | ConvertTo-Json -Compress",
+    ].join("; ");
+    try {
+      const { stdout } = await execFileAsync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          script,
+        ],
+        { windowsHide: true, timeout: 5_000, maxBuffer: 1024 * 1024 },
+      );
+      const raw = stdout.trim();
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      const values = Array.isArray(parsed) ? parsed : [parsed];
+      return values
+        .map((value) =>
+          typeof value === "number"
+            ? value
+            : typeof value === "string"
+              ? Number.parseInt(value, 10)
+              : Number.NaN,
+        )
+        .filter(
+          (pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid,
+        );
+    } catch {
+      return [];
+    }
   }
 
   try {

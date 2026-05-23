@@ -129,15 +129,19 @@ const issuePasteKeystroke = async () => {
   }
 
   if (process.platform === "win32") {
-    await execFileAsync("powershell.exe", [
-      "-STA",
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')",
-    ]);
+    await execFileAsync(
+      "powershell.exe",
+      [
+        "-STA",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')",
+      ],
+      { windowsHide: true },
+    );
     return;
   }
 

@@ -296,7 +296,7 @@ const spawnDetachedWorker = (
       console.warn(`[runtime-host] Detached worker logs: ${paths.logFile}`);
     }
     child = spawn(options.bunBinaryPath ?? "bun", args, {
-      detached: true,
+      detached: process.platform !== "win32",
       stdio: ["ignore", logFd, logFd],
       env: {
         ...process.env,
@@ -343,7 +343,71 @@ const findSameRootWorkerPids = async (
   workerEntryPath: string,
   stellaRoot: string,
 ): Promise<number[]> => {
-  if (process.platform === "win32") return [];
+  if (process.platform === "win32") {
+    const powerShellLiteral = (value: string) =>
+      `'${value.replace(/'/g, "''")}'`;
+    const uniquePathVariants = (value: string) =>
+      [value, value.replace(/\//g, "\\"), value.replace(/\\/g, "/")].filter(
+        (entry, index, list) => entry && list.indexOf(entry) === index,
+      );
+    const powerShellArray = (values: string[]) =>
+      `@(${values.map(powerShellLiteral).join(",")})`;
+    const script = [
+      "$ErrorActionPreference = 'SilentlyContinue'",
+      `$entries = ${powerShellArray(uniquePathVariants(workerEntryPath))}`,
+      `$roots = ${powerShellArray(uniquePathVariants(stellaRoot))}`,
+      `$currentPid = ${process.pid}`,
+      "$stellaPids = @()",
+      "$processes = Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%--stella-root%'\"",
+      "foreach ($proc in $processes) {",
+      "  $line = [string]$proc.CommandLine",
+      "  if (-not $line -or [int]$proc.ProcessId -eq $currentPid) { continue }",
+      "  $entryMatch = $false",
+      "  foreach ($entry in $entries) { if ($line.Contains($entry)) { $entryMatch = $true; break } }",
+      "  if (-not $entryMatch) { continue }",
+      "  $rootMatch = $false",
+      "  foreach ($root in $roots) { if ($line.Contains('--stella-root') -and $line.Contains($root)) { $rootMatch = $true; break } }",
+      "  if ($rootMatch) { $stellaPids += [int]$proc.ProcessId }",
+      "}",
+      "$stellaPids | ConvertTo-Json -Compress",
+    ].join("; ");
+    const output = await new Promise<string>((resolve) => {
+      execFile(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          script,
+        ],
+        { windowsHide: true, timeout: 5_000, maxBuffer: 1024 * 1024 },
+        (error, stdout) => {
+          resolve(error ? "" : stdout);
+        },
+      );
+    });
+    const raw = output.trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const values = Array.isArray(parsed) ? parsed : [parsed];
+      return values
+        .map((value) =>
+          typeof value === "number"
+            ? value
+            : typeof value === "string"
+              ? Number.parseInt(value, 10)
+              : Number.NaN,
+        )
+        .filter(
+          (pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid,
+        );
+    } catch {
+      return [];
+    }
+  }
   const psOutput = await new Promise<string>((resolve) => {
     execFile("ps", ["-axo", "pid=,args="], (error, stdout) => {
       resolve(error ? "" : stdout);
@@ -451,7 +515,24 @@ export const startOrAttachWorker = async (
           if (retry) {
             return { socket: retry, pid: existingPid, paths, spawned: false };
           }
-          // Truly stale; sweep the artifacts and continue to spawn.
+          // Truly stale; only reap processes whose command line still matches
+          // this Stella root. A pidfile can outlive the original worker, and
+          // the OS may have reused that pid for an unrelated process.
+          const orphanPids = await findSameRootWorkerPids(
+            options.workerEntryPath,
+            options.stellaRoot,
+          );
+          if (!orphanPids.includes(existingPid)) {
+            console.warn(
+              `[runtime-host] Stale runtime pidfile pointed at pid ${existingPid}, but that pid no longer matches this worker root; leaving the process alone.`,
+            );
+          }
+          if (orphanPids.length > 0) {
+            console.warn(
+              `[runtime-host] Reaping ${orphanPids.length} stale runtime worker(s) for ${options.stellaRoot} before spawning a fresh worker.`,
+            );
+            await stopPids(orphanPids);
+          }
           await removeStaleRuntimeArtifacts(options.stellaRoot);
         }
       }

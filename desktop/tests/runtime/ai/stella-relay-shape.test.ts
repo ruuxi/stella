@@ -123,6 +123,51 @@ describe("Stella relay route shape", () => {
     expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/fireworks/v1`);
   });
 
+  it("creates a Stella route when auth is refreshable but not loaded yet", async () => {
+    const route = createStellaRoute({
+      site: {
+        baseUrl: STELLA_SITE,
+        getAuthToken: () => null,
+        hasConnectedAccount: () => true,
+        refreshAuthToken: () => STELLA_TOKEN,
+      },
+      agentType: "general",
+      modelId: "stella/standard",
+    });
+
+    expect(route).not.toBeNull();
+    expect(await route!.getApiKey()).toBe(STELLA_TOKEN);
+  });
+
+  it("does not create a refresh-only route for signed-out users", () => {
+    const route = createStellaRoute({
+      site: {
+        baseUrl: STELLA_SITE,
+        getAuthToken: () => null,
+        hasConnectedAccount: () => false,
+        refreshAuthToken: () => STELLA_TOKEN,
+      },
+      agentType: "general",
+      modelId: "stella/standard",
+    });
+
+    expect(route).toBeNull();
+  });
+
+  it("does not assume refresh-only auth is available without account state", () => {
+    const route = createStellaRoute({
+      site: {
+        baseUrl: STELLA_SITE,
+        getAuthToken: () => null,
+        refreshAuthToken: () => STELLA_TOKEN,
+      },
+      agentType: "general",
+      modelId: "stella/standard",
+    });
+
+    expect(route).toBeNull();
+  });
+
   it("OpenRouter relay: baseUrl, api, provider", () => {
     const route = makeRoute("stella/deepseek/deepseek-v4-flash");
     const model = route!.model;

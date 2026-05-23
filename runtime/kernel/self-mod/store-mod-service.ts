@@ -1,3 +1,6 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { setupEnvironment } from "dugite";
 import type {
   SelfModFeatureSnapshot,
   StoreInstallRecord,
@@ -11,6 +14,8 @@ import {
   listRecentGitCommits,
   revertGitCommits,
 } from "./git.js";
+
+const execFileAsync = promisify(execFile);
 
 export type CommitMessageProviderArgs = {
   /** What the agent was asked to do (subagent task description). */
@@ -332,20 +337,18 @@ export class StoreModService {
       return this.firstRepoCommit;
     }
     try {
-      const { exec } = await import("dugite");
-      const result = await exec(
+      const { env, gitLocation } = setupEnvironment({});
+      const result = await execFileAsync(
+        gitLocation,
         ["rev-list", "--max-parents=0", "HEAD"],
-        this.repoRoot,
-        { encoding: "utf8" },
+        {
+          cwd: this.repoRoot,
+          env,
+          encoding: "utf8",
+          windowsHide: true,
+        },
       );
-      if (result.exitCode !== 0) {
-        this.firstRepoCommit = null;
-        return null;
-      }
-      const stdout =
-        typeof result.stdout === "string"
-          ? result.stdout
-          : Buffer.from(result.stdout).toString("utf8");
+      const stdout = result.stdout;
       const lines = stdout
         .split("\n")
         .map((line) => line.trim())

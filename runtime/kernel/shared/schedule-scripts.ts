@@ -63,6 +63,7 @@ export const runScheduleScript = (
         STELLA_SCHEDULE_SCRIPT_PATH: scriptPath,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     })
 
     let stdout = ''
