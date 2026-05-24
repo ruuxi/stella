@@ -20,8 +20,26 @@ export const getConvexErrorCode = (error: unknown): string | null => {
   return null;
 };
 
+export const getConvexErrorMessage = (error: unknown): string | null => {
+  const directMessage = asRecord(error)?.message;
+  if (typeof directMessage === "string" && directMessage.trim()) {
+    return directMessage.trim();
+  }
+
+  const dataMessage = asRecord(asRecord(error)?.data)?.message;
+  if (typeof dataMessage === "string" && dataMessage.trim()) {
+    return dataMessage.trim();
+  }
+
+  return null;
+};
+
 export const isConvexUnauthenticatedError = (error: unknown): boolean =>
   getConvexErrorCode(error) === "UNAUTHENTICATED";
+
+export const isConvexDeviceKeyMismatchError = (error: unknown): boolean =>
+  getConvexErrorCode(error) === "UNAUTHORIZED" &&
+  getConvexErrorMessage(error) === "Device key mismatch for this machine.";
 
 export const shouldStopRemoteTurnForAuthFailure = (args: {
   authWindowStartedAt: number;

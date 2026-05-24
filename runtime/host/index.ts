@@ -9,6 +9,7 @@ import { readConfiguredConvexUrl } from "../kernel/convex-urls.js";
 import { LocalSchedulerService } from "../kernel/local-scheduler-service.js";
 import { createRemoteTurnBridge } from "../kernel/remote-turn-bridge.js";
 import {
+  isConvexDeviceKeyMismatchError,
   isConvexUnauthenticatedError,
   shouldStopRemoteTurnForAuthFailure,
 } from "../kernel/runner/remote-turn-auth.js";
@@ -111,6 +112,7 @@ type ConnectorFollowupTarget = {
 export type RuntimeHostHandlers = {
   getActiveConversationId?: () => Promise<string | null> | string | null;
   getDeviceIdentity: () => Promise<HostDeviceIdentity>;
+  resetDeviceIdentity?: () => Promise<HostDeviceIdentity>;
   signHeartbeatPayload: (signedAtMs: number) => Promise<HostHeartbeatSignature>;
   requestRuntimeAuthRefresh?: (
     params: HostRuntimeAuthRefreshParams,
@@ -323,6 +325,7 @@ export class StellaRuntimeHost {
   private hostRemoteTurnAuthWindowStartedAt = 0;
   private hostRemoteTurnUnauthenticatedFailures = 0;
   private hostRemoteTurnAuthRecoveryPromise: Promise<boolean> | null = null;
+  private hostDeviceIdentityRecoveryPromise: Promise<boolean> | null = null;
   private pendingRunEventAcks = new Map<string, number>();
   private runEventAckTimer: ReturnType<typeof setTimeout> | null = null;
   /**
@@ -694,7 +697,97 @@ export class StellaRuntimeHost {
     return await this.hostRemoteTurnAuthRecoveryPromise;
   }
 
+  private async markHostDeviceOffline(deviceId: string): Promise<void> {
+    if (
+      !this.getConfiguredHostAuthToken() ||
+      !this.getConfiguredHostConvexUrl()
+    ) {
+      return;
+    }
+    const client = this.ensureHostConvexClient();
+    if (!client) {
+      return;
+    }
+
+    await (client as any).mutation(
+      (
+        anyApi as unknown as {
+          agent: { device_resolver: { goOffline: unknown } };
+        }
+      ).agent.device_resolver.goOffline,
+      { deviceId },
+    );
+  }
+
+  private async recoverHostDeviceIdentityFromKeyMismatch(
+    error: unknown,
+  ): Promise<boolean> {
+    const resetDeviceIdentity = this.options.hostHandlers.resetDeviceIdentity;
+    if (!resetDeviceIdentity) {
+      console.warn(
+        "[remote-turn] Host device key mismatch cannot be recovered because identity reset is unavailable.",
+        error,
+      );
+      return false;
+    }
+    if (this.hostDeviceIdentityRecoveryPromise) {
+      return await this.hostDeviceIdentityRecoveryPromise;
+    }
+
+    this.hostDeviceIdentityRecoveryPromise = (async () => {
+      const previousDeviceId = this.deviceIdentity?.deviceId ?? null;
+      console.warn(
+        "[remote-turn] Host device key mismatch; rotating local device identity.",
+        error,
+      );
+
+      this.stopHostHeartbeatLoop();
+      this.stopHostRemoteTurnCancelSubscription();
+      this.hostRemoteTurnBridge?.stop();
+      this.hostRemoteTurnBridge = null;
+      this.hostDeviceRegistered = false;
+      this.hostDeviceRegistering = false;
+
+      if (previousDeviceId) {
+        await this.markHostDeviceOffline(previousDeviceId).catch(
+          () => undefined,
+        );
+      }
+
+      this.deviceIdentity = await resetDeviceIdentity();
+      this.workerHealthCache = null;
+      this.ensureHostRemoteTurnBridge();
+      this.ensureHostRemoteTurnCancelSubscription();
+      const remoteTurnBridge = this.hostRemoteTurnBridge as ReturnType<
+        typeof createRemoteTurnBridge
+      > | null;
+      remoteTurnBridge?.start();
+      remoteTurnBridge?.kick();
+
+      await this.registerHostDevice();
+      this.startHostHeartbeatLoop();
+      setTimeout(() => {
+        void this.sendHostHeartbeat();
+      }, 0);
+      const activeRun = await this.getActiveRun().catch(() => null);
+      if (!activeRun) {
+        void this.scheduleRuntimeReload();
+      }
+      this.events.emit("runtime-ready", await this.health());
+      return true;
+    })();
+
+    try {
+      return await this.hostDeviceIdentityRecoveryPromise;
+    } finally {
+      this.hostDeviceIdentityRecoveryPromise = null;
+    }
+  }
+
   private async sendHostHeartbeat(): Promise<void> {
+    if (this.hostDeviceIdentityRecoveryPromise) {
+      return;
+    }
     const authToken = this.getConfiguredHostAuthToken();
     if (!authToken || !this.configCache.hasConnectedAccount) {
       return;
@@ -712,6 +805,9 @@ export class StellaRuntimeHost {
       const signedAtMs = Date.now();
       const { publicKey, signature } =
         await this.options.hostHandlers.signHeartbeatPayload(signedAtMs);
+      if (this.deviceIdentity?.deviceId !== deviceId) {
+        return;
+      }
       await (client as any).mutation(
         (
           anyApi as unknown as {
@@ -730,6 +826,10 @@ export class StellaRuntimeHost {
       this.hostDeviceRegistered = true;
       this.noteHostRemoteTurnAuthHealthy();
     } catch (error) {
+      if (isConvexDeviceKeyMismatchError(error)) {
+        await this.recoverHostDeviceIdentityFromKeyMismatch(error);
+        return;
+      }
       const authFailure = this.handleHostRemoteTurnAuthFailure(
         "heartbeat",
         error,
@@ -775,6 +875,10 @@ export class StellaRuntimeHost {
     if (attempt === 0) {
       await new Promise((resolve) => setTimeout(resolve, 1_500));
     }
+    if (this.deviceIdentity?.deviceId !== deviceId) {
+      this.hostDeviceRegistering = false;
+      return;
+    }
     if (this.hostDeviceRegistered) {
       this.hostDeviceRegistering = false;
       return;
@@ -793,8 +897,10 @@ export class StellaRuntimeHost {
           platform: process.platform,
         },
       );
-      this.hostDeviceRegistered = true;
-      this.noteHostRemoteTurnAuthHealthy();
+      if (this.deviceIdentity?.deviceId === deviceId) {
+        this.hostDeviceRegistered = true;
+        this.noteHostRemoteTurnAuthHealthy();
+      }
     } catch (error) {
       const authFailure = this.handleHostRemoteTurnAuthFailure(
         "register",
@@ -835,20 +941,9 @@ export class StellaRuntimeHost {
       this.hostDeviceRegistered = false;
       return;
     }
-    const client = this.ensureHostConvexClient();
-    if (!client) {
-      return;
-    }
 
     try {
-      await (client as any).mutation(
-        (
-          anyApi as unknown as {
-            agent: { device_resolver: { goOffline: unknown } };
-          }
-        ).agent.device_resolver.goOffline,
-        { deviceId },
-      );
+      await this.markHostDeviceOffline(deviceId);
       this.hostDeviceRegistered = false;
     } catch {
       // best-effort

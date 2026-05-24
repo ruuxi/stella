@@ -55,16 +55,34 @@ const toStoredDeviceRecord = (identity: DeviceIdentity): DeviceRecord => ({
   ),
 });
 
+const createAndStoreDeviceIdentity = async (
+  recordPath: string,
+  previousPrivateKeyProtected?: string,
+): Promise<DeviceIdentity> => {
+  const payload: DeviceIdentity = {
+    deviceId: crypto.randomUUID(),
+    ...generateDeviceKeyPair(),
+  };
+  const record = toStoredDeviceRecord(payload);
+  await ensurePrivateDir(path.dirname(recordPath));
+  await writePrivateFile(recordPath, JSON.stringify(record, null, 2));
+  if (
+    previousPrivateKeyProtected &&
+    previousPrivateKeyProtected !== record.privateKeyProtected
+  ) {
+    deleteProtectedValue(DEVICE_PRIVATE_KEY_SCOPE, previousPrivateKeyProtected);
+  }
+  return payload;
+};
+
 export const getOrCreateDeviceIdentity = async (
   statePath: string,
 ): Promise<DeviceIdentity> => {
   const recordPath = getDeviceRecordPath(statePath);
-  let existingDeviceId: string | undefined;
   let previousPrivateKeyProtected: string | undefined;
   try {
     const raw = await fs.readFile(recordPath, "utf-8");
     const parsed = JSON.parse(raw) as DeviceRecord;
-    existingDeviceId = parsed.deviceId;
     previousPrivateKeyProtected = parsed.privateKeyProtected;
     if (parsed.deviceId && parsed.publicKey && parsed.privateKeyProtected) {
       const decryptedPrivateKey = unprotectValue(
@@ -81,25 +99,31 @@ export const getOrCreateDeviceIdentity = async (
       };
     }
   } catch {
-    // Fall through to create.
+    // Fall through to create a fresh identity.
   }
 
-  const deviceId = existingDeviceId || crypto.randomUUID();
-  const keyPair = generateDeviceKeyPair();
-  const payload: DeviceIdentity = {
-    deviceId,
-    ...keyPair,
-  };
-  const record = toStoredDeviceRecord(payload);
-  await ensurePrivateDir(path.dirname(recordPath));
-  await writePrivateFile(recordPath, JSON.stringify(record, null, 2));
-  if (
-    previousPrivateKeyProtected &&
-    previousPrivateKeyProtected !== record.privateKeyProtected
-  ) {
-    deleteProtectedValue(DEVICE_PRIVATE_KEY_SCOPE, previousPrivateKeyProtected);
+  return await createAndStoreDeviceIdentity(
+    recordPath,
+    previousPrivateKeyProtected,
+  );
+};
+
+export const resetDeviceIdentity = async (
+  statePath: string,
+): Promise<DeviceIdentity> => {
+  const recordPath = getDeviceRecordPath(statePath);
+  let previousPrivateKeyProtected: string | undefined;
+  try {
+    const raw = await fs.readFile(recordPath, "utf-8");
+    const parsed = JSON.parse(raw) as DeviceRecord;
+    previousPrivateKeyProtected = parsed.privateKeyProtected;
+  } catch {
+    // No usable previous record to clean up.
   }
-  return payload;
+  return await createAndStoreDeviceIdentity(
+    recordPath,
+    previousPrivateKeyProtected,
+  );
 };
 
 export const signDeviceHeartbeat = (

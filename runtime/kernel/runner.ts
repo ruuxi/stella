@@ -22,6 +22,8 @@ import type {
 export type { StellaHostRunnerOptions } from "./runner/types.js";
 export {
   getConvexErrorCode,
+  getConvexErrorMessage,
+  isConvexDeviceKeyMismatchError,
   isConvexUnauthenticatedError,
   REMOTE_TURN_AUTH_GRACE_MS,
   REMOTE_TURN_MAX_TRANSIENT_UNAUTHENTICATED_ERRORS,

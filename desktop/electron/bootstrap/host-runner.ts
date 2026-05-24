@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron";
 import {
   getOrCreateDeviceIdentity,
+  resetDeviceIdentity as resetStoredDeviceIdentity,
   signDeviceHeartbeat,
 } from "../../../runtime/kernel/home/device.js";
 import { getSoundNotificationsEnabled } from "../../../runtime/kernel/preferences/local-preferences.js";
@@ -34,12 +35,23 @@ export const createHostRunnerHandlers = (
     loadDeviceIdentity: () => Promise<
       Awaited<ReturnType<typeof getOrCreateDeviceIdentity>>
     >;
+    resetDeviceIdentity: () => Promise<
+      Awaited<ReturnType<typeof getOrCreateDeviceIdentity>>
+    >;
   },
 ): RuntimeHostHandlers => ({
   getActiveConversationId: () =>
     context.services.uiStateService.state.conversationId?.trim() || null,
   getDeviceIdentity: async () => {
     const identity = await options.loadDeviceIdentity();
+    return {
+      deviceId: identity.deviceId,
+      publicKey: identity.publicKey,
+    };
+  },
+  resetDeviceIdentity: async () => {
+    const identity = await options.resetDeviceIdentity();
+    context.state.deviceId = identity.deviceId;
     return {
       deviceId: identity.deviceId,
       publicKey: identity.publicKey,
@@ -229,6 +241,8 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
 
   const loadDeviceIdentity = async () =>
     await getOrCreateDeviceIdentity(stellaHomePath);
+  const resetDeviceIdentity = async () =>
+    await resetStoredDeviceIdentity(stellaHomePath);
 
   clearHostRunnerSubscriptions(context);
   context.state.officePreviewBridgeStop?.();
@@ -245,7 +259,10 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
         stellaHomePath,
         stellaWorkspacePath: state.stellaWorkspacePath,
       },
-      hostHandlers: createHostRunnerHandlers(context, { loadDeviceIdentity }),
+      hostHandlers: createHostRunnerHandlers(context, {
+        loadDeviceIdentity,
+        resetDeviceIdentity,
+      }),
     }),
   );
 
