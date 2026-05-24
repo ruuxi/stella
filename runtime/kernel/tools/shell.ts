@@ -468,17 +468,16 @@ export function createShellState(
 }
 
 const deferredDeleteHelperPath = (() => {
-  const jsPath = fileURLToPath(
+  const candidates = [
     new URL("./deferred-delete-cli.js", import.meta.url),
-  );
-  if (existsSync(jsPath)) {
-    return jsPath;
-  }
-  const tsPath = fileURLToPath(
+    new URL("../kernel/tools/deferred-delete-cli.js", import.meta.url),
     new URL("./deferred-delete-cli.ts", import.meta.url),
-  );
-  if (existsSync(tsPath)) {
-    return tsPath;
+  ];
+  for (const candidate of candidates) {
+    const filePath = fileURLToPath(candidate);
+    if (existsSync(filePath)) {
+      return filePath;
+    }
   }
   return "";
 })();
@@ -697,7 +696,9 @@ const buildShellEnv = (
     STELLA_NODE_BIN: process.execPath,
     STELLA_RUNTIME_WORKER_PID: String(process.pid),
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
-    ...(options?.secretStateRoot ? { STELLA_HOME: options.secretStateRoot } : {}),
+    ...(options?.secretStateRoot
+      ? { STELLA_HOME: options.secretStateRoot }
+      : {}),
     ...(options?.stellaBrowserBinPath
       ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath }
       : {}),
