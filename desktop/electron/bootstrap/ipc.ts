@@ -299,6 +299,7 @@ export const registerBootstrapIpcHandlers = (
 
   registerDiscoveryHandlers({
     getStellaHostRunner: lifecycle.getRunner,
+    onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
