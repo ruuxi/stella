@@ -52,6 +52,10 @@ export const createBootstrapServices = (options: {
   externalLinkService.setDevBuild(config.useDevServer);
   if (config.useDevServer) {
     externalLinkService.trustDevServerBaseUrl(getDevServerUrl());
+  } else {
+    externalLinkService.trustFileRendererRoot(
+      path.resolve(config.electronDir, "../../../dist"),
+    );
   }
   const securityPolicyService = new SecurityPolicyService({
     windowManagerTarget: lifecycle,

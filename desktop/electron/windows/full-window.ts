@@ -29,6 +29,7 @@ export class FullWindowController {
       mode: 'full',
       createWindow: () => {
         const isMac = process.platform === 'darwin'
+        const useNativeVibrancy = isMac && process.env.STELLA_STATIC_PREVIEW !== '1'
         const windowIcon = !isMac ? resolveAppIconPath(this.options.electronDir) : undefined
 
         return new BrowserWindow({
@@ -46,8 +47,8 @@ export class FullWindowController {
           transparent: false,
           backgroundColor: isMac ? '#f2f4f8' : '#101016',
           hasShadow: true,
-          vibrancy: isMac ? 'menu' : undefined,
-          visualEffectState: isMac ? 'active' : undefined,
+          vibrancy: useNativeVibrancy ? 'menu' : undefined,
+          visualEffectState: useNativeVibrancy ? 'active' : undefined,
           titleBarStyle: isMac ? 'hiddenInset' : undefined,
           trafficLightPosition: isMac ? { x: 16, y: 13 } : undefined,
           icon: windowIcon,

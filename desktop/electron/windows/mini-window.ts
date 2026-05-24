@@ -50,6 +50,7 @@ export class MiniWindowController {
       mode: 'mini',
       createWindow: () => {
         const isMac = process.platform === 'darwin'
+        const useNativeVibrancy = isMac && process.env.STELLA_STATIC_PREVIEW !== '1'
         const windowIcon = !isMac ? resolveAppIconPath(this.options.electronDir) : undefined
         const initial = this.nextInitialBounds
 
@@ -66,8 +67,8 @@ export class MiniWindowController {
           show: false,
           frame: process.platform !== 'win32',
           transparent: false,
-          vibrancy: isMac ? 'menu' : undefined,
-          visualEffectState: isMac ? 'active' : undefined,
+          vibrancy: useNativeVibrancy ? 'menu' : undefined,
+          visualEffectState: useNativeVibrancy ? 'active' : undefined,
           titleBarStyle: isMac ? 'hiddenInset' : undefined,
           trafficLightPosition: isMac ? { x: 16, y: 13 } : undefined,
           fullscreenable: false,
