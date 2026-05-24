@@ -14,9 +14,9 @@ import "./shell-topbar-update-pill.css";
 /**
  * Compact "update available" pill that lives in the shell top bar,
  * right of the macOS traffic-light controls. Mirrors the apply/cancel
- * flow that previously lived in the Settings banner — clicking the
- * pill spawns the install-update agent (never auto-applies, per
- * `AGENTS.md`), and the inline `×` cancels the in-flight run.
+ * flow that previously lived in the Settings banner. Clean merges apply
+ * directly; conflict cases fall back to the install-update agent, and the
+ * inline `×` cancels the in-flight agent.
  */
 export const ShellTopBarUpdatePill = () => {
   const isMiniWindow = useWindowType() === "mini";
@@ -62,13 +62,20 @@ export const ShellTopBarUpdatePill = () => {
         },
       });
       if (result) {
-        const active = getActiveDesktopUpdate();
-        if (active?.conversationId === result.conversationId) {
+        if (result.mode === "auto") {
           showToast({
-            title: "Update started",
-            description:
-              "Stella is applying the new release in a dedicated agent thread.",
+            title: "Update applied",
+            description: `Stella updated to ${currentRelease.tag}.`,
           });
+        } else {
+          const active = getActiveDesktopUpdate();
+          if (active?.conversationId === result.conversationId) {
+            showToast({
+              title: "Update started",
+              description:
+                "Stella is applying the new release in a dedicated agent thread.",
+            });
+          }
         }
       }
     } catch (error) {

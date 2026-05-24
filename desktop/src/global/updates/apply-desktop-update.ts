@@ -62,16 +62,29 @@ type ApplyDesktopUpdateOptions = {
 type ApplyDesktopUpdateResult = {
   requestId: string;
   conversationId: string;
+  mode: "auto" | "agent";
   cancel: () => boolean;
 };
 
+const buildSyntheticCompletedEvent = (
+  conversationId: string,
+  runId: string,
+): AgentStreamIpcEvent =>
+  ({
+    type: "run-finished",
+    runId,
+    seq: 0,
+    conversationId,
+    agentType: AGENT_IDS.INSTALL_UPDATE,
+    outcome: "completed",
+  }) as AgentStreamIpcEvent;
+
 /**
- * Spawn the install-update agent in its own conversation thread.
+ * Apply a desktop update.
  *
- * The agent receives a hidden user prompt with the upstream commit
- * range and the install root; the system prompt baked into
- * `runtime/extensions/stella-runtime/agents/install_update.md` covers
- * the apply loop and conflict handling.
+ * Clean merges go through a native Electron fast path that brackets the
+ * merge in the same self-mod HMR/morph lifecycle as agent-authored writes.
+ * Conflict or dirty-tree cases fall back to the install-update agent.
  */
 export const applyDesktopUpdate = async (
   options: ApplyDesktopUpdateOptions,
@@ -82,6 +95,7 @@ export const applyDesktopUpdate = async (
   }
   if (
     !electronApi.agent.onStream ||
+    !electronApi.updates?.tryApplyCleanUpdate ||
     !electronApi.updates?.refreshNativeHelpers ||
     !electronApi.updates?.recordAppliedCommit
   ) {
@@ -129,6 +143,50 @@ export const applyDesktopUpdate = async (
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : "UTC";
   const deviceId = (await getDeviceIdOrNull()) ?? "";
+
+  setActiveDesktopUpdate({
+    status: "running",
+    conversationId,
+    targetCommit: options.publishedCommit,
+    targetTag: options.publishedTag,
+  });
+  try {
+    const fastApply = await electronApi.updates.tryApplyCleanUpdate({
+      baseCommit,
+      targetCommit: options.publishedCommit,
+      releaseTag: options.publishedTag,
+    });
+    if (fastApply.status === "applied") {
+      await options.onAppliedCommit?.(fastApply.manifest);
+      options.onFinished?.(
+        buildSyntheticCompletedEvent(
+          conversationId,
+          `desktop-update-fast:${options.publishedCommit.slice(0, 12)}`,
+        ),
+      );
+      if (getActiveDesktopUpdate()?.conversationId === conversationId) {
+        setActiveDesktopUpdate(null);
+      }
+      return {
+        requestId: `desktop-update-fast:${conversationId}`,
+        conversationId,
+        mode: "auto",
+        cancel: () => false,
+      };
+    }
+  } catch (error) {
+    if (getActiveDesktopUpdate()?.conversationId === conversationId) {
+      setActiveDesktopUpdate(null);
+    }
+    throw error;
+  }
+
+  setActiveDesktopUpdate({
+    status: "starting",
+    conversationId,
+    targetCommit: options.publishedCommit,
+    targetTag: options.publishedTag,
+  });
 
   // Subscribe BEFORE startChat so we don't miss a fast-completing run.
   // On a successful RUN_FINISHED for this install-update conversation,
@@ -226,6 +284,7 @@ export const applyDesktopUpdate = async (
     return {
       requestId: result.requestId,
       conversationId,
+      mode: "agent",
       cancel: cancelActiveDesktopUpdate,
     };
   } catch (err) {

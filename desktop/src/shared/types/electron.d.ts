@@ -915,8 +915,28 @@ export type InstallManifestSnapshot = {
   desktopInstallBaseCommit: string | null;
 };
 
+export type DesktopUpdateFastApplyResult =
+  | {
+      status: "applied";
+      manifest: InstallManifestSnapshot | null;
+      headCommit: string;
+      changedFiles: string[];
+      dependencyInstallRan: boolean;
+      nativeHelpersRefreshed: boolean;
+    }
+  | {
+      status: "needs-agent";
+      reason: string;
+      changedFiles?: string[];
+    };
+
 export type ElectronUpdatesApi = {
   getInstallManifest: () => Promise<InstallManifestSnapshot | null>;
+  tryApplyCleanUpdate: (payload: {
+    baseCommit: string;
+    targetCommit: string;
+    releaseTag: string;
+  }) => Promise<DesktopUpdateFastApplyResult>;
   refreshNativeHelpers: (releaseTag: string) => Promise<{
     ok: boolean;
     manifestUrl: string;
