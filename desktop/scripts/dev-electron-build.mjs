@@ -11,11 +11,8 @@ const nodeTarget = `node${process.versions.node.split(".")[0]}`;
 const graphWatchRoots = [
   "desktop/electron",
   "runtime",
-  "desktop/src/shared/contracts",
-  "desktop/src/shared/ai",
   "desktop/src/shared",
   "desktop/src/convex",
-  "desktop/src/prompts",
 ];
 const runtimeStaticAssetRoots = [
   "runtime/extensions/stella-runtime/agents",
