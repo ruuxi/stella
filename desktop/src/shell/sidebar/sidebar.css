@@ -71,10 +71,10 @@
   --sidebar-brand-logo-size: 19px;
   --sidebar-footer-icon-glyph: 16px;
   /* Shared rail spacing — one inset from the sidebar edge for every row. */
-  --sidebar-inset-x: 12px;
+  --sidebar-inset-x: 7px;
   --sidebar-inset-top: 12px;
   --sidebar-inset-bottom: 8px;
-  --sidebar-row-x: 9px;
+  --sidebar-row-x: 7px;
   --sidebar-row-y: 8px;
   --sidebar-row-gap: 11px;
   --sidebar-label-indent: calc(
