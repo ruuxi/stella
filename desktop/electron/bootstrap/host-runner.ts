@@ -239,7 +239,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
       initializeParams: {
         clientName: "stella-electron-host",
         clientVersion: "0.0.0",
-        isDev: context.config.isDev,
+        isDev: context.config.useDevServer,
         platform: process.platform,
         stellaRoot,
         stellaHomePath,

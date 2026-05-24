@@ -1,0 +1,74 @@
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const electronBinary = require("electron");
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const desktopDir = resolve(scriptDir, "..");
+const repoRootDir = resolve(desktopDir, "..");
+const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");
+
+const writePidFile = () => {
+  writeFileSync(
+    pidFilePath,
+    JSON.stringify(
+      {
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+};
+
+const removeOwnPidFile = () => {
+  try {
+    if (!existsSync(pidFilePath)) return;
+    const parsed = JSON.parse(readFileSync(pidFilePath, "utf8"));
+    if (parsed?.pid === process.pid) {
+      rmSync(pidFilePath, { force: true });
+    }
+  } catch {
+    // Best-effort cleanup only; stale pid files are cleared by the launcher.
+  }
+};
+
+writePidFile();
+
+const child = spawn(electronBinary, ["."], {
+  cwd: repoRootDir,
+  env: {
+    ...process.env,
+    STELLA_STATIC_PREVIEW: "1",
+  },
+  stdio: "inherit",
+  windowsHide: true,
+});
+
+const forwardSignal = (signal) => {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  child.kill(signal);
+};
+
+process.on("SIGINT", () => forwardSignal("SIGINT"));
+process.on("SIGTERM", () => forwardSignal("SIGTERM"));
+
+child.on("exit", (code, signal) => {
+  removeOwnPidFile();
+  if (signal) {
+    process.kill(process.pid, signal);
+    return;
+  }
+  process.exit(code ?? 0);
+});
+
+child.on("error", (error) => {
+  removeOwnPidFile();
+  console.error(`[electron-static-preview] Failed to launch Electron: ${error.message}`);
+  process.exit(1);
+});

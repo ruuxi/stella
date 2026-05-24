@@ -32,7 +32,7 @@ export const startMobileBridge = (context: BootstrapContext) => {
 
     const resource = createMobileBridgeResource({
       electronDir: context.config.electronDir,
-      isDev: context.config.isDev,
+      isDev: context.config.useDevServer,
       getAuthToken: () => context.services.authService.getAuthToken(),
       getBootstrapPayload: () => readMobileBridgeBootstrap(context),
       getConvexSiteUrl: () => context.services.authService.getConvexSiteUrl(),

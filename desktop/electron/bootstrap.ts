@@ -21,6 +21,7 @@ const stellaRoot = path.resolve(__dirname, '..', '..', '..', '..')
 const stellaHomePath = resolveRuntimeStatePath(undefined, stellaRoot)
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+const useDevServer = isDev && process.env.STELLA_STATIC_PREVIEW !== '1'
 const installDevBrokenPipeGuards = () => {
   if (!isDev) {
     return
@@ -99,6 +100,7 @@ export const bootstrapMainProcess = () => {
     stellaHomePath,
     hardResetMutableHomePaths: HARD_RESET_MUTABLE_HOME_PATHS,
     isDev,
+    useDevServer,
     sessionPartition: STELLA_SESSION_PARTITION,
     startupStageDelayMs: STARTUP_STAGE_DELAY_MS,
   })
