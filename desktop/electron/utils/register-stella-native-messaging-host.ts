@@ -3,10 +3,11 @@
  * extension can connect without manual setup (Windows registry + per-browser JSON).
  */
 
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   STELLA_BROWSER_BRIDGE_SESSION,
   STELLA_BROWSER_EXTENSION_ID,
@@ -14,6 +15,8 @@ import {
   getStellaBrowserSocketDir,
 } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { resolveStellaBrowserRoot } from "./stella-browser-paths.js";
+
+const execFileAsync = promisify(execFile);
 
 function getStellaBrowserBinaryName(): string | null {
   const plat = os.platform();
@@ -52,7 +55,9 @@ function getStellaBrowserBinaryName(): string | null {
 
 const getSocketDir = getStellaBrowserSocketDir;
 
-function buildNativeHostManifest(launcherPath: string): Record<string, unknown> {
+function buildNativeHostManifest(
+  launcherPath: string,
+): Record<string, unknown> {
   return {
     name: STELLA_NATIVE_MESSAGING_HOST_NAME,
     description: "Stella browser extension bridge",
@@ -73,7 +78,11 @@ function quoteForSh(value: string): string {
 function writeLauncherAndManifest(
   binaryPath: string,
   socketDir: string,
-): { launcherPath: string; manifestPath: string; manifest: Record<string, unknown> } {
+): {
+  launcherPath: string;
+  manifestPath: string;
+  manifest: Record<string, unknown>;
+} {
   const plat = os.platform();
   const launcherPath =
     plat === "win32"
@@ -112,13 +121,16 @@ exec ${quotedBinaryPath} "$@"
   }
 
   const manifest = buildNativeHostManifest(launcherPath);
-  const manifestPath = path.join(socketDir, `${STELLA_NATIVE_MESSAGING_HOST_NAME}.json`);
+  const manifestPath = path.join(
+    socketDir,
+    `${STELLA_NATIVE_MESSAGING_HOST_NAME}.json`,
+  );
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
   return { launcherPath, manifestPath, manifest };
 }
 
-function installWindowsRegistry(manifestPath: string) {
+async function installWindowsRegistry(manifestPath: string) {
   const keys = [
     `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${STELLA_NATIVE_MESSAGING_HOST_NAME}`,
     `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${STELLA_NATIVE_MESSAGING_HOST_NAME}`,
@@ -126,17 +138,19 @@ function installWindowsRegistry(manifestPath: string) {
     `HKCU\\Software\\Chromium\\NativeMessagingHosts\\${STELLA_NATIVE_MESSAGING_HOST_NAME}`,
   ];
 
-  for (const key of keys) {
-    try {
-      execFileSync(
-        "reg",
-        ["add", key, "/ve", "/t", "REG_SZ", "/d", manifestPath, "/f"],
-        { stdio: "ignore", windowsHide: true },
-      );
-    } catch {
-      // Browser may not be installed; ignore.
-    }
-  }
+  await Promise.allSettled(
+    keys.map(async (key) => {
+      try {
+        await execFileAsync(
+          "reg",
+          ["add", key, "/ve", "/t", "REG_SZ", "/d", manifestPath, "/f"],
+          { windowsHide: true },
+        );
+      } catch {
+        // Browser may not be installed; ignore.
+      }
+    }),
+  );
 }
 
 function installUnixSymlinks(manifest: Record<string, unknown>) {
@@ -146,7 +160,10 @@ function installUnixSymlinks(manifest: Record<string, unknown>) {
   const dirs: string[] = [];
   if (plat === "darwin") {
     dirs.push(
-      path.join(homedir, "Library/Application Support/Google/Chrome/NativeMessagingHosts"),
+      path.join(
+        homedir,
+        "Library/Application Support/Google/Chrome/NativeMessagingHosts",
+      ),
       path.join(
         homedir,
         "Library/Application Support/Microsoft Edge/NativeMessagingHosts",
@@ -155,7 +172,10 @@ function installUnixSymlinks(manifest: Record<string, unknown>) {
         homedir,
         "Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts",
       ),
-      path.join(homedir, "Library/Application Support/Chromium/NativeMessagingHosts"),
+      path.join(
+        homedir,
+        "Library/Application Support/Chromium/NativeMessagingHosts",
+      ),
     );
   } else if (plat === "linux") {
     const cfg = path.join(homedir, ".config");
@@ -183,24 +203,21 @@ function installUnixSymlinks(manifest: Record<string, unknown>) {
 /**
  * Idempotently writes the native host launcher, manifest, and browser registrations.
  */
-export function registerStellaNativeMessagingHost(): {
+export async function registerStellaNativeMessagingHost(): Promise<{
   ok: boolean;
   error?: string;
-} {
+}> {
   try {
     const binaryName = getStellaBrowserBinaryName();
     if (!binaryName) {
       return {
         ok: false,
-        error: "Native messaging host registration is not supported on this system.",
+        error:
+          "Native messaging host registration is not supported on this system.",
       };
     }
 
-    const binaryPath = path.join(
-      resolveStellaBrowserRoot(),
-      "bin",
-      binaryName,
-    );
+    const binaryPath = path.join(resolveStellaBrowserRoot(), "bin", binaryName);
     if (!existsSync(binaryPath)) {
       return {
         ok: false,
@@ -212,10 +229,13 @@ export function registerStellaNativeMessagingHost(): {
     const socketDir = getSocketDir();
     mkdirSync(socketDir, { recursive: true });
 
-    const { manifestPath, manifest } = writeLauncherAndManifest(binaryPath, socketDir);
+    const { manifestPath, manifest } = writeLauncherAndManifest(
+      binaryPath,
+      socketDir,
+    );
 
     if (os.platform() === "win32") {
-      installWindowsRegistry(manifestPath);
+      await installWindowsRegistry(manifestPath);
     } else {
       installUnixSymlinks(manifest);
     }

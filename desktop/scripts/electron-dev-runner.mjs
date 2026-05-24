@@ -19,6 +19,7 @@ const managedScriptPaths = [
   resolve(scriptDir, "dev-electron-build.mjs"),
   resolve(scriptDir, "dev-electron.mjs"),
 ];
+const managedCommandNeedles = [viteBinPath, ...managedScriptPaths];
 
 if (!existsSync(viteBinPath)) {
   console.error(
@@ -84,6 +85,66 @@ function signalProcessGroup(pid, signal) {
 
 async function stopOrphanedDevChildren() {
   if (process.platform === "win32") {
+    let output = "";
+    try {
+      const escapedNeedles = managedCommandNeedles.map((needle) =>
+        needle.replace(/'/g, "''"),
+      );
+      const script = [
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        `$needles = @(${escapedNeedles.map((needle) => `'${needle}'`).join(",")})`,
+        "$currentPid = $PID",
+        "$matches = @()",
+        "Get-CimInstance Win32_Process | ForEach-Object {",
+        "  $line = [string]$_.CommandLine",
+        "  if ($line -and [int]$_.ProcessId -ne $currentPid) {",
+        "    foreach ($needle in $needles) {",
+        "      if ($line.Contains($needle)) { $matches += [int]$_.ProcessId; break }",
+        "    }",
+        "  }",
+        "}",
+        "$matches | Sort-Object -Unique | ConvertTo-Json -Compress",
+      ].join("; ");
+      output = execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", script],
+        {
+          encoding: "utf8",
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+        },
+      );
+    } catch {
+      return;
+    }
+
+    const raw = output.trim();
+    if (!raw) {
+      return;
+    }
+
+    let parsed = [];
+    try {
+      const value = JSON.parse(raw);
+      parsed = Array.isArray(value) ? value : [value];
+    } catch {
+      parsed = raw.split(/\s+/);
+    }
+
+    const pids = parsed
+      .map((value) => Number.parseInt(String(value), 10))
+      .filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid);
+
+    for (const pid of pids) {
+      try {
+        execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+      } catch {
+        signalPid(pid, "SIGTERM");
+      }
+    }
     return;
   }
 
@@ -108,7 +169,7 @@ async function stopOrphanedDevChildren() {
       Number.isFinite(pid) &&
       pid !== process.pid &&
       ppid === 1 &&
-      managedScriptPaths.some((scriptPath) => command.includes(scriptPath))
+      managedCommandNeedles.some((needle) => command.includes(needle))
     ) {
       pids.push(pid);
     }

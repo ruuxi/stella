@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import {
   STELLA_BROWSER_BRIDGE_PORT,
   STELLA_BROWSER_BRIDGE_SESSION,
@@ -12,6 +13,8 @@ import {
 import { registerStellaNativeMessagingHost } from "../utils/register-stella-native-messaging-host.js";
 import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
 import { stopChildProcessTree } from "../process-runtime.js";
+
+const execFileAsync = promisify(execFile);
 
 const DAEMON_READY_TIMEOUT_MS = 10_000;
 const COMMAND_TIMEOUT_MS = 10_000;
@@ -87,7 +90,7 @@ export class StellaBrowserBridgeService {
     this.isLaunching = true;
 
     try {
-      const registration = registerStellaNativeMessagingHost();
+      const registration = await registerStellaNativeMessagingHost();
       if (!registration.ok) {
         throw new Error(
           registration.error ??
@@ -168,7 +171,9 @@ export class StellaBrowserBridgeService {
       if (this.stopped || this.isLaunching) {
         return;
       }
-      this.onUnexpectedExit?.(`Failed to start browser bridge: ${error.message}`);
+      this.onUnexpectedExit?.(
+        `Failed to start browser bridge: ${error.message}`,
+      );
     });
 
     this.daemonProcess = daemon;
@@ -206,17 +211,20 @@ export class StellaBrowserBridgeService {
   private async closeExistingSession() {
     const daemonPort = getPortForSession(STELLA_BROWSER_BRIDGE_SESSION);
 
-    await this.sendCommand({
-      id: randomUUID(),
-      action: "close",
-    }, 1_500).catch(() => undefined);
+    await this.sendCommand(
+      {
+        id: randomUUID(),
+        action: "close",
+      },
+      1_500,
+    ).catch(() => undefined);
 
     const daemonStopped = await this.waitForPortToClose(
       daemonPort,
       DAEMON_SHUTDOWN_TIMEOUT_MS,
     );
     if (!daemonStopped) {
-      this.killProcessListeningOnPort(daemonPort);
+      await this.killProcessListeningOnPort(daemonPort);
       await this.waitForPortToClose(daemonPort, DAEMON_SHUTDOWN_TIMEOUT_MS);
     }
     await this.stopOrphanedBundledDaemons();
@@ -313,7 +321,10 @@ export class StellaBrowserBridgeService {
   private async openConnection(): Promise<net.Socket> {
     const endpoint =
       process.platform === "win32"
-        ? { port: getPortForSession(STELLA_BROWSER_BRIDGE_SESSION), host: "127.0.0.1" }
+        ? {
+            port: getPortForSession(STELLA_BROWSER_BRIDGE_SESSION),
+            host: "127.0.0.1",
+          }
         : { path: getSocketPath(STELLA_BROWSER_BRIDGE_SESSION) };
 
     return await new Promise<net.Socket>((resolve, reject) => {
@@ -327,6 +338,34 @@ export class StellaBrowserBridgeService {
         reject(error);
       };
       socket.once("error", rejectConnection);
+    });
+  }
+
+  private async isTcpPortListening(
+    port: number,
+    timeoutMs = 250,
+  ): Promise<boolean> {
+    if (!Number.isFinite(port) || port <= 0) {
+      return false;
+    }
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const socket = net.createConnection({ port, host: "127.0.0.1" });
+      const settle = (listening: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        socket.removeAllListeners();
+        socket.destroy();
+        resolve(listening);
+      };
+      const timeout = setTimeout(() => settle(false), timeoutMs);
+      timeout.unref?.();
+      socket.once("connect", () => settle(true));
+      socket.once("error", () => settle(false));
     });
   }
 
@@ -354,13 +393,13 @@ export class StellaBrowserBridgeService {
       );
   }
 
-  private findOrphanedBundledDaemonPids(): number[] {
+  private async findOrphanedBundledDaemonPids(): Promise<number[]> {
     const binDir = path.join(resolveStellaBrowserRoot(), "bin");
     if (process.platform === "win32") {
       const binaryPath = path.join(binDir, "stella-browser-win32-x64.exe");
       const quotedBinaryPath = binaryPath.replace(/'/g, "''");
       try {
-        const output = execFileSync(
+        const { stdout } = await execFileAsync(
           "powershell",
           [
             "-NoProfile",
@@ -375,10 +414,10 @@ export class StellaBrowserBridgeService {
           {
             encoding: "utf8",
             windowsHide: true,
-            stdio: ["ignore", "pipe", "ignore"],
+            maxBuffer: 1024 * 1024,
           },
         );
-        return output
+        return stdout
           .split(/\r?\n/)
           .map((value) => Number.parseInt(value.trim(), 10))
           .filter((value) => Number.isFinite(value) && value > 0);
@@ -394,11 +433,15 @@ export class StellaBrowserBridgeService {
     const binaryPaths = binaryNames.map((name) => path.join(binDir, name));
 
     try {
-      const output = execFileSync("ps", ["-axo", "pid=,ppid=,command="], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      return this.parseProcessRows(output)
+      const { stdout } = await execFileAsync(
+        "ps",
+        ["-axo", "pid=,ppid=,command="],
+        {
+          encoding: "utf8",
+          maxBuffer: 1024 * 1024,
+        },
+      );
+      return this.parseProcessRows(stdout)
         .filter(
           (row) =>
             row.pid !== process.pid &&
@@ -412,13 +455,12 @@ export class StellaBrowserBridgeService {
   }
 
   private async stopOrphanedBundledDaemons() {
-    const pids = this.findOrphanedBundledDaemonPids();
+    const pids = await this.findOrphanedBundledDaemonPids();
     if (pids.length === 0) return;
     for (const pid of pids) {
       if (process.platform === "win32") {
         try {
-          execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
-            stdio: "ignore",
+          await execFileAsync("taskkill", ["/pid", String(pid), "/T", "/F"], {
             windowsHide: true,
           });
           continue;
@@ -447,14 +489,14 @@ export class StellaBrowserBridgeService {
     }
   }
 
-  private getListeningProcessesForPort(port: number): number[] {
+  private async getListeningProcessesForPort(port: number): Promise<number[]> {
     if (!Number.isFinite(port) || port <= 0) {
       return [];
     }
 
     try {
       if (process.platform === "win32") {
-        const output = execFileSync(
+        const { stdout } = await execFileAsync(
           "powershell",
           [
             "-NoProfile",
@@ -464,26 +506,26 @@ export class StellaBrowserBridgeService {
           {
             encoding: "utf8",
             windowsHide: true,
-            stdio: ["ignore", "pipe", "ignore"],
+            maxBuffer: 1024 * 1024,
           },
         );
 
-        return output
+        return stdout
           .split(/\r?\n/)
           .map((value) => Number.parseInt(value.trim(), 10))
           .filter((value) => Number.isFinite(value) && value > 0);
       }
 
-      const output = execFileSync(
+      const { stdout } = await execFileAsync(
         "lsof",
         ["-ti", `tcp:${port}`, "-s", "tcp:listen"],
         {
           encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
+          maxBuffer: 1024 * 1024,
         },
       );
 
-      return output
+      return stdout
         .split(/\r?\n/)
         .map((value) => Number.parseInt(value.trim(), 10))
         .filter((value) => Number.isFinite(value) && value > 0);
@@ -495,24 +537,34 @@ export class StellaBrowserBridgeService {
   private async waitForPortToClose(port: number, timeoutMs: number) {
     const deadline = Date.now() + timeoutMs;
 
+    if (process.platform === "win32") {
+      while (Date.now() < deadline) {
+        if (!(await this.isTcpPortListening(port))) {
+          return true;
+        }
+        await delay(150);
+      }
+
+      return !(await this.isTcpPortListening(port));
+    }
+
     while (Date.now() < deadline) {
-      if (this.getListeningProcessesForPort(port).length === 0) {
+      if ((await this.getListeningProcessesForPort(port)).length === 0) {
         return true;
       }
       await delay(100);
     }
 
-    return this.getListeningProcessesForPort(port).length === 0;
+    return (await this.getListeningProcessesForPort(port)).length === 0;
   }
 
-  private killProcessListeningOnPort(port: number) {
-    const pids = this.getListeningProcessesForPort(port);
+  private async killProcessListeningOnPort(port: number) {
+    const pids = await this.getListeningProcessesForPort(port);
 
     for (const pid of pids) {
       if (process.platform === "win32") {
         try {
-          execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
-            stdio: "ignore",
+          await execFileAsync("taskkill", ["/pid", String(pid), "/T", "/F"], {
             windowsHide: true,
           });
           continue;

@@ -250,5 +250,7 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   );
 
   await connectHostRunner(context);
-  context.state.officePreviewBridgeStop = startOfficePreviewBridge(context);
+  if (state.appReady && !state.officePreviewBridgeStop) {
+    state.officePreviewBridgeStop = startOfficePreviewBridge(context);
+  }
 };

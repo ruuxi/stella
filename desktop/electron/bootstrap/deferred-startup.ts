@@ -1,4 +1,3 @@
-import { getSelectedText } from "../selected-text.js";
 import { ChronicleController } from "../services/chronicle-controller.js";
 import { type BootstrapContext } from "./context.js";
 
@@ -29,7 +28,10 @@ const runDeferredStartupTask = async (
     }
   }
 
-  if (context.state.isQuitting || context.state.processRuntime.isShuttingDown()) {
+  if (
+    context.state.isQuitting ||
+    context.state.processRuntime.isShuttingDown()
+  ) {
     return false;
   }
 
@@ -84,17 +86,6 @@ const createDeferredStartupTasks = (
       label: "overlay-window",
       run: () => {
         state.overlayController?.create();
-      },
-    },
-    {
-      label: "selected-text",
-      delayMs: config.startupStageDelayMs,
-      run: () => {
-        if (process.platform === "win32") {
-          context.state.processRuntime.setManagedTimeout(() => {
-            void getSelectedText();
-          }, 250);
-        }
       },
     },
     {
