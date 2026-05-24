@@ -10,7 +10,7 @@ import {
   type IpcMainInvokeEvent,
 } from "electron";
 import { spawn } from "node:child_process";
-import { copyFile, stat } from "node:fs/promises";
+import { access, copyFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -255,18 +255,32 @@ const winAppPaths = (relPath: string): string[] => {
   ];
 };
 
-const anyExists = (paths: readonly string[]): boolean => {
-  for (const candidate of paths) {
-    try {
-      if (existsSync(candidate)) return true;
-    } catch {
-      /* best-effort */
-    }
+const pathExists = async (candidate: string): Promise<boolean> => {
+  try {
+    await access(candidate);
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 };
 
-const findCliOnPath = (binName: string): boolean => {
+const anyExistsAsync = async (paths: readonly string[]): Promise<boolean> => {
+  if (paths.length === 0) return false;
+  const results = await Promise.all(paths.map(pathExists));
+  return results.some(Boolean);
+};
+
+/**
+ * On Windows the simplistic `for (dir in PATH) for (ext in PATHEXT) existsSync(...)`
+ * loop is the recurring source of slow onboarding. PATH typically has 30-50
+ * entries and PATHEXT defaults to `.EXE;.CMD;.BAT`, so each binary lookup is
+ * ~150-300 filesystem hits — and `existsSync` blocks the entire main process.
+ *
+ * We resolve each binary by running every candidate path through `fs.promises.access`
+ * in parallel. NTFS is case-insensitive so the lowercase-vs-uppercase double
+ * check the legacy code did is unnecessary; we use PATHEXT as-is.
+ */
+const findCliOnPathAsync = async (binName: string): Promise<boolean> => {
   const home = os.homedir();
   const wellKnown =
     binName === "claude"
@@ -299,7 +313,7 @@ const findCliOnPath = (binName: string): boolean => {
               // that drop `pi` / `openclaw` straight onto PATH; no
               // documented sub-bin path to short-circuit on.
               [];
-  if (anyExists(wellKnown)) return true;
+  if (await anyExistsAsync(wellKnown)) return true;
 
   const pathEnv = process.env.PATH ?? "";
   const sep = process.platform === "win32" ? ";" : ":";
@@ -307,88 +321,112 @@ const findCliOnPath = (binName: string): boolean => {
     process.platform === "win32"
       ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")
       : [""];
+  const candidates: string[] = [];
   for (const dir of pathEnv.split(sep)) {
     if (!dir) continue;
     for (const ext of exts) {
-      try {
-        if (existsSync(path.join(dir, `${binName}${ext.toLowerCase()}`))) {
-          return true;
-        }
-        if (existsSync(path.join(dir, `${binName}${ext}`))) {
-          return true;
-        }
-      } catch {
-        /* best-effort */
-      }
+      candidates.push(path.join(dir, `${binName}${ext}`));
     }
   }
-  return false;
+  return await anyExistsAsync(candidates);
 };
 
-const detectTechnicalUserSignals = (): TechnicalUserSignal[] => {
-  const signals: TechnicalUserSignal[] = [];
-  if (process.platform === "darwin") {
-    if (anyExists(macAppPaths("Claude"))) signals.push("claude-app");
-    if (anyExists(macAppPaths("ChatGPT"))) signals.push("chatgpt-app");
-    if (anyExists(macAppPaths("Cursor"))) signals.push("cursor-app");
-  } else if (process.platform === "win32") {
-    if (
-      anyExists(winAppPaths("AnthropicClaude\\Claude.exe")) ||
-      anyExists(winAppPaths("Programs\\Claude\\Claude.exe"))
-    ) {
-      signals.push("claude-app");
-    }
-    if (anyExists(winAppPaths("Programs\\OpenAI ChatGPT\\ChatGPT.exe"))) {
-      signals.push("chatgpt-app");
-    }
-    if (anyExists(winAppPaths("Programs\\Cursor\\Cursor.exe"))) {
-      signals.push("cursor-app");
-    }
-  }
-  if (findCliOnPath("claude")) signals.push("claude-cli");
-  if (findCliOnPath("codex")) signals.push("codex-cli");
-  if (findCliOnPath("opencode")) signals.push("opencode-cli");
-
+const detectTechnicalUserSignalsAsync = async (): Promise<
+  TechnicalUserSignal[]
+> => {
   const home = os.homedir();
 
-  // Pi coding agent (earendil-works/pi) — docs put settings at
-  // `~/.pi/agent/settings.json`, so that directory's existence is the
-  // canonical signal. The bare `pi` binary name is too common to trust
-  // alone, so we only fall back to PATH if the config dir is missing.
-  if (existsSync(path.join(home, ".pi", "agent")) || findCliOnPath("pi")) {
-    signals.push("pi-cli");
-  }
-
-  // OpenClaw — docs put state at `~/.openclaw/` (override via
-  // `OPENCLAW_STATE_DIR` / `OPENCLAW_HOME`); Ubuntu installs may use
-  // `~/.config/openclaw/` as a compatibility fallback.
+  // OpenClaw state-dir resolution mirrors the legacy sync path.
   const openclawStateDir =
     process.env.OPENCLAW_STATE_DIR ??
     (process.env.OPENCLAW_HOME
       ? path.join(process.env.OPENCLAW_HOME, ".openclaw")
       : path.join(home, ".openclaw"));
-  if (
-    existsSync(openclawStateDir) ||
-    existsSync(path.join(home, ".config", "openclaw")) ||
-    findCliOnPath("openclaw")
-  ) {
-    signals.push("openclaw-cli");
-  }
 
-  // Hermes Agent (NousResearch) — docs put per-user / pip data at
-  // `~/.hermes/` (overridable via `HERMES_HOME`). Native Windows
-  // installer puts the cloned repo at `%LOCALAPPDATA%\hermes\hermes-agent`.
   const hermesDataDirs: string[] = [];
   if (process.env.HERMES_HOME) hermesDataDirs.push(process.env.HERMES_HOME);
   hermesDataDirs.push(path.join(home, ".hermes"));
   if (process.platform === "win32" && process.env.LOCALAPPDATA) {
     hermesDataDirs.push(path.join(process.env.LOCALAPPDATA, "hermes"));
   }
-  if (hermesDataDirs.some((p) => existsSync(p)) || findCliOnPath("hermes")) {
-    signals.push("hermes-cli");
+
+  // Run every probe in parallel. Each probe resolves to a signal id or null.
+  // Wall time is dominated by the slowest single `fs.access`, not the sum of
+  // hundreds of sequential calls.
+  type ProbeResult = TechnicalUserSignal | null;
+  const probes: Promise<ProbeResult>[] = [];
+
+  if (process.platform === "darwin") {
+    probes.push(
+      anyExistsAsync(macAppPaths("Claude")).then((v) =>
+        v ? "claude-app" : null,
+      ),
+      anyExistsAsync(macAppPaths("ChatGPT")).then((v) =>
+        v ? "chatgpt-app" : null,
+      ),
+      anyExistsAsync(macAppPaths("Cursor")).then((v) =>
+        v ? "cursor-app" : null,
+      ),
+    );
+  } else if (process.platform === "win32") {
+    probes.push(
+      Promise.all([
+        anyExistsAsync(winAppPaths("AnthropicClaude\\Claude.exe")),
+        anyExistsAsync(winAppPaths("Programs\\Claude\\Claude.exe")),
+      ]).then(([a, b]) => (a || b ? "claude-app" : null)),
+      anyExistsAsync(winAppPaths("Programs\\OpenAI ChatGPT\\ChatGPT.exe")).then(
+        (v) => (v ? "chatgpt-app" : null),
+      ),
+      anyExistsAsync(winAppPaths("Programs\\Cursor\\Cursor.exe")).then((v) =>
+        v ? "cursor-app" : null,
+      ),
+    );
   }
 
-  return signals;
+  probes.push(
+    findCliOnPathAsync("claude").then((v) => (v ? "claude-cli" : null)),
+    findCliOnPathAsync("codex").then((v) => (v ? "codex-cli" : null)),
+    findCliOnPathAsync("opencode").then((v) => (v ? "opencode-cli" : null)),
+    Promise.all([
+      pathExists(path.join(home, ".pi", "agent")),
+      findCliOnPathAsync("pi"),
+    ]).then(([a, b]) => (a || b ? "pi-cli" : null)),
+    Promise.all([
+      pathExists(openclawStateDir),
+      pathExists(path.join(home, ".config", "openclaw")),
+      findCliOnPathAsync("openclaw"),
+    ]).then(([a, b, c]) => (a || b || c ? "openclaw-cli" : null)),
+    Promise.all([
+      anyExistsAsync(hermesDataDirs),
+      findCliOnPathAsync("hermes"),
+    ]).then(([a, b]) => (a || b ? "hermes-cli" : null)),
+  );
+
+  const results = await Promise.all(probes);
+  const seen = new Set<TechnicalUserSignal>();
+  for (const value of results) {
+    if (value) seen.add(value);
+  }
+  return Array.from(seen);
+};
+
+let technicalUserSignalsPromise: Promise<TechnicalUserSignal[]> | null = null;
+const detectTechnicalUserSignalsMemoized = (): Promise<
+  TechnicalUserSignal[]
+> => {
+  // Memoize for the lifetime of the Electron main process. The probe scans
+  // ~hundreds of filesystem entries on Windows and the answer can't change
+  // mid-session in any way the user cares about.
+  if (!technicalUserSignalsPromise) {
+    technicalUserSignalsPromise = detectTechnicalUserSignalsAsync().catch(
+      (error) => {
+        // Reset the cache on failure so a later probe can retry.
+        technicalUserSignalsPromise = null;
+        throw error;
+      },
+    );
+  }
+  return technicalUserSignalsPromise;
 };
 
 type SystemHandlersOptions = {
@@ -2342,7 +2380,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
-  ipcMain.handle("system:detectTechnicalUserSignals", (event) => {
+  ipcMain.handle("system:detectTechnicalUserSignals", async (event) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
         event,
@@ -2353,6 +2391,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted system:detectTechnicalUserSignals request.",
       );
     }
-    return { signals: detectTechnicalUserSignals() };
+    return { signals: await detectTechnicalUserSignalsMemoized() };
   });
 };
