@@ -209,8 +209,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --panel-surface-bg: color-mix(in srgb, var(--background) 50%, transparent);
   --panel-surface-bg-gradient: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--background) 6%, transparent),
-    color-mix(in srgb, var(--background) 14%, transparent)
+    color-mix(in srgb, var(--background) 12%, transparent),
+    color-mix(in srgb, var(--background) 18%, transparent)
   );
   --panel-surface-border: color-mix(in oklch, var(--border) 60%, transparent);
   --panel-surface-highlight: inset 0 1px 0
@@ -338,8 +338,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --panel-surface-bg: color-mix(in srgb, var(--background) 62%, transparent);
   --panel-surface-bg-gradient: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--background) 8%, transparent),
-    color-mix(in srgb, var(--background) 18%, transparent)
+    color-mix(in srgb, var(--background) 14%, transparent),
+    color-mix(in srgb, var(--background) 22%, transparent)
   );
   --panel-surface-highlight: inset 0 1px 0
     color-mix(in oklch, white 10%, transparent);
