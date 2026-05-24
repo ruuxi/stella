@@ -46,6 +46,7 @@ function useToast() {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
   const toastTimeoutsRef = React.useRef(new Map<string, number>());
+  const toastKeysRef = React.useRef(new Map<string, string>());
 
   const removeToast = React.useCallback((id: string) => {
     const timeoutId = toastTimeoutsRef.current.get(id);
@@ -53,17 +54,39 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       window.clearTimeout(timeoutId);
       toastTimeoutsRef.current.delete(id);
     }
+    for (const [key, value] of toastKeysRef.current) {
+      if (value === id) {
+        toastKeysRef.current.delete(key);
+        break;
+      }
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   const addToast = React.useCallback((options: ToastOptions) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    const toast: Toast = { id, ...options };
-    setToasts((prev) => [...prev, toast]);
+    const dedupeKey = `${options.variant ?? "default"}::${options.title ?? ""}::${options.description ?? ""}`;
+    const existingId = toastKeysRef.current.get(dedupeKey);
+    const id = existingId ?? Math.random().toString(36).substring(2, 9);
+
+    if (existingId) {
+      setToasts((prev) =>
+        prev.map((t) => (t.id === existingId ? { ...t, ...options, id: existingId } : t)),
+      );
+      const prevTimeout = toastTimeoutsRef.current.get(existingId);
+      if (prevTimeout !== undefined) {
+        window.clearTimeout(prevTimeout);
+        toastTimeoutsRef.current.delete(existingId);
+      }
+    } else {
+      const toast: Toast = { id, ...options };
+      setToasts((prev) => [...prev, toast]);
+      toastKeysRef.current.set(dedupeKey, id);
+    }
 
     if (options.duration !== 0) {
       const timeout = options.duration || 4000;
       const timeoutId = window.setTimeout(() => {
+        toastKeysRef.current.delete(dedupeKey);
         removeToast(id);
       }, timeout);
       toastTimeoutsRef.current.set(id, timeoutId);
