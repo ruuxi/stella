@@ -3,15 +3,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /**
  * Auto-prompt scheduler for the anonymous feedback dialog.
  *
- * Goal: nudge a user to leave feedback once per day, but only if they've
+ * Goal: nudge a user to leave feedback once, but only if they've
  * actually been *using* Stella — not just leaving the window open. We
  * accumulate "active" time (window visible AND focused) into a per-day
- * bucket; once that bucket crosses ~30 minutes and at least 24 hours have
- * passed since the last prompt, the hook flips `shouldPrompt` to true.
+ * bucket; once that bucket crosses ~30 minutes and the prompt has never been
+ * shown before, the hook flips `shouldPrompt` to true.
  *
  * Persistence is in localStorage so the budget survives reloads / restarts.
  * Acknowledging the prompt resets the day's bucket and stamps `lastPromptAt`
- * so the user gets at most one prompt per 24-hour window.
+ * so the automatic prompt is one-shot.
  */
 
 const STORAGE_KEY_BUCKET_DAY = "stella:feedback:bucketDay";
@@ -19,7 +19,6 @@ const STORAGE_KEY_ACTIVE_MS = "stella:feedback:activeMs";
 const STORAGE_KEY_LAST_PROMPT_AT = "stella:feedback:lastPromptAt";
 
 const ACTIVE_THRESHOLD_MS = 30 * 60 * 1000;
-const PROMPT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 // Tick every 30s. Short enough that a 30-minute threshold lands within one
 // tick of when it actually crosses; long enough that we're not waking the
 // renderer constantly.
@@ -110,8 +109,7 @@ export const useFeedbackPrompt = (): FeedbackPromptController => {
       setShouldPrompt(false);
       return;
     }
-    const lastPromptAt = safeReadNumber(STORAGE_KEY_LAST_PROMPT_AT);
-    if (nowMs - lastPromptAt < PROMPT_COOLDOWN_MS) {
+    if (safeReadNumber(STORAGE_KEY_LAST_PROMPT_AT) > 0) {
       setShouldPrompt(false);
       return;
     }
