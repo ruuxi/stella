@@ -218,6 +218,10 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_FEATURE_SNAPSHOT_READ:
     "internal.worker.selfMod.featureSnapshotRead",
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
+  INTERNAL_WORKER_SELF_MOD_EXTERNAL_BEGIN:
+    "internal.worker.selfMod.externalBegin",
+  INTERNAL_WORKER_SELF_MOD_EXTERNAL_FINISH:
+    "internal.worker.selfMod.externalFinish",
   INTERNAL_WORKER_KILL_ALL_SHELLS: "internal.worker.killAllShells",
   INTERNAL_WORKER_KILL_SHELL_BY_PORT: "internal.worker.killShellByPort",
   INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT:

@@ -1678,6 +1678,22 @@ export class StellaRuntimeHost {
     );
   }
 
+  async beginExternalSelfMod(payload: { runId: string; paths: string[] }) {
+    return await this.requestWorker<{ ok: true }>(
+      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_EXTERNAL_BEGIN,
+      payload,
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
+  async finishExternalSelfMod(payload: { runId: string; succeeded: boolean }) {
+    return await this.requestWorker<{ ok: true }>(
+      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_EXTERNAL_FINISH,
+      payload,
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
   async listStorePackages() {
     return await this.requestWorker<StorePackageRecord[]>(
       METHOD_NAMES.INTERNAL_WORKER_LIST_STORE_PACKAGES,

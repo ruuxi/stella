@@ -98,6 +98,7 @@ import {
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
   IPC_UPDATES_REFRESH_NATIVE_HELPERS,
+  IPC_UPDATES_TRY_APPLY_CLEAN,
   IPC_VOICE_CREATE_OPENAI_SESSION,
   IPC_VOICE_CREATE_XAI_SESSION,
   IPC_VOICE_CREATE_INWORLD_SESSION,
@@ -1257,6 +1258,34 @@ contextBridge.exposeInMainWorld("electronAPI", {
         desktopReleaseCommit: string | null;
         desktopInstallBaseCommit: string | null;
       } | null>,
+    tryApplyCleanUpdate: (payload: {
+      baseCommit: string;
+      targetCommit: string;
+      releaseTag: string;
+    }) =>
+      ipcRenderer.invoke(IPC_UPDATES_TRY_APPLY_CLEAN, payload) as Promise<
+        | {
+            status: "applied";
+            manifest: {
+              version: string;
+              platform: string;
+              installPath: string;
+              installedAt: string;
+              desktopReleaseTag: string | null;
+              desktopReleaseCommit: string | null;
+              desktopInstallBaseCommit: string | null;
+            } | null;
+            headCommit: string;
+            changedFiles: string[];
+            dependencyInstallRan: boolean;
+            nativeHelpersRefreshed: boolean;
+          }
+        | {
+            status: "needs-agent";
+            reason: string;
+            changedFiles?: string[];
+          }
+      >,
     refreshNativeHelpers: (releaseTag: string) =>
       ipcRenderer.invoke(IPC_UPDATES_REFRESH_NATIVE_HELPERS, {
         releaseTag,

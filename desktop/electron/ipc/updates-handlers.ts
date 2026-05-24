@@ -1,5 +1,5 @@
 /**
- * IPC for the install-update agent flow.
+ * IPC for desktop update tracking and the clean-merge fast path.
  *
  * The launcher writes `stella-install.json` to the install directory after
  * setup. We surface two read/write helpers here:
@@ -7,6 +7,11 @@
  *   - `updates:getInstallManifest` — return the parsed manifest so the
  *     renderer can compare its `desktopReleaseCommit` against the
  *     reactive `currentDesktopRelease` Convex query.
+ *   - `updates:tryApplyCleanUpdate` — fetch and preflight a Git merge
+ *     without touching the working tree; if Git reports no conflicts,
+ *     bracket the merge with the runtime self-mod HMR lifecycle so the
+ *     renderer morphs after the update. Conflict/dirty cases return a
+ *     fallback signal for the install-update agent.
  *   - `updates:recordAppliedCommit` — verify against the local git tree
  *     that the install-update agent actually landed the target commit,
  *     then overwrite the manifest's `desktopReleaseCommit`. The agent's
@@ -25,7 +30,9 @@ import {
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
   IPC_UPDATES_REFRESH_NATIVE_HELPERS,
+  IPC_UPDATES_TRY_APPLY_CLEAN,
 } from "../../src/shared/contracts/ipc-channels.js";
+import type { StellaHostRunner } from "../stella-host-runner.js";
 
 const INSTALL_MANIFEST_BASENAME = "stella-install.json";
 const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
@@ -43,6 +50,7 @@ export type InstallManifestSnapshot = {
 
 export type UpdatesHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaHostRunner?: () => StellaHostRunner | null;
   assertPrivilegedSender: (
     event: IpcMainInvokeEvent,
     channel: string,
@@ -215,6 +223,132 @@ const readGitFile = async (
 type VerifyResult =
   | { ok: true; headCommit: string }
   | { ok: false; reason: string };
+
+type DesktopUpdateFastApplyResult =
+  | {
+      status: "applied";
+      manifest: InstallManifestSnapshot | null;
+      headCommit: string;
+      changedFiles: string[];
+      dependencyInstallRan: boolean;
+      nativeHelpersRefreshed: boolean;
+    }
+  | {
+      status: "needs-agent";
+      reason: string;
+      changedFiles?: string[];
+    };
+
+const DEPENDENCY_FILE_NAMES = new Set([
+  "package.json",
+  "bun.lock",
+  "bun.lockb",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "npm-shrinkwrap.json",
+]);
+
+const parseGitNameList = (stdout: string): string[] =>
+  stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+const gitFailureDetail = (result: GitRunResult, fallback: string): string => {
+  const detail = (result.stderr || result.stdout).trim();
+  return detail || fallback;
+};
+
+const isDependencyChange = (filePath: string): boolean =>
+  DEPENDENCY_FILE_NAMES.has(path.basename(filePath));
+
+const readHeadCommit = async (stellaRoot: string): Promise<string> => {
+  const result = await runGit(stellaRoot, ["rev-parse", "HEAD"]);
+  if (result.exitCode !== 0) {
+    throw new Error(gitFailureDetail(result, "Could not read current HEAD."));
+  }
+  return result.stdout.trim();
+};
+
+const hasMergeInProgress = async (stellaRoot: string): Promise<boolean> => {
+  try {
+    await fs.access(path.join(stellaRoot, ".git", "MERGE_HEAD"));
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+};
+
+const hasTrackedWorkingTreeChanges = async (
+  stellaRoot: string,
+): Promise<boolean> => {
+  const status = await runGit(stellaRoot, [
+    "status",
+    "--porcelain",
+    "--untracked-files=no",
+  ]);
+  if (status.exitCode !== 0) {
+    throw new Error(
+      gitFailureDetail(status, "Could not inspect install tree status."),
+    );
+  }
+  return status.stdout.trim().length > 0;
+};
+
+const abortMergeIfNeeded = async (stellaRoot: string) => {
+  if (!(await hasMergeInProgress(stellaRoot))) return;
+  await runGit(stellaRoot, ["merge", "--abort"]).catch(() => undefined);
+};
+
+const writeAppliedCommit = async (
+  stellaRoot: string,
+  commit: string,
+  tag: string | null,
+): Promise<InstallManifestSnapshot | null> => {
+  const verification = await verifyMergeApplied(stellaRoot, commit);
+  if (!verification.ok) {
+    throw new Error(verification.reason);
+  }
+  const manifestPath = manifestPathFromRoot(stellaRoot);
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const raw = await fs.readFile(manifestPath, "utf-8");
+    parseManifest(raw);
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    const recovered = await readManifestWithRecovery(stellaRoot);
+    if (recovered) {
+      parsed = {
+        version: recovered.version,
+        platform: recovered.platform,
+        installPath: recovered.installPath,
+        installedAt: recovered.installedAt,
+        desktopReleaseTag: recovered.desktopReleaseTag,
+        desktopReleaseCommit: recovered.desktopReleaseCommit,
+        desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
+      };
+    }
+  }
+  if (!parsed) {
+    throw new Error("Install manifest is unavailable.");
+  }
+  parsed.desktopReleaseCommit = commit;
+  // Tag flows in from the Convex publish payload (`currentRelease.tag`),
+  // not derived locally — that way skipping releases (e.g. user goes
+  // 0.0.133 → 0.0.135) records the correct tag, not an auto-increment.
+  // `version` is intentionally left alone: it's set by the launcher to
+  // its own CARGO_PKG_VERSION at install time and represents the
+  // launcher binary's identity, not the desktop release.
+  if (tag) {
+    parsed.desktopReleaseTag = tag;
+  }
+  const next = `${JSON.stringify(parsed, null, 2)}\n`;
+  parseManifest(next);
+  await writeFileAtomic(manifestPath, next);
+  return parseManifest(next);
+};
 
 /**
  * Confirm the install-update agent actually landed `targetCommit` into the
@@ -393,6 +527,213 @@ const writeFileAtomic = async (filePath: string, content: string) => {
   }
 };
 
+const tryApplyCleanDesktopUpdate = async (
+  stellaRoot: string,
+  runner: StellaHostRunner | null,
+  args: {
+    baseCommit: string;
+    targetCommit: string;
+    releaseTag: string;
+  },
+): Promise<DesktopUpdateFastApplyResult> => {
+  if (await hasMergeInProgress(stellaRoot)) {
+    return {
+      status: "needs-agent",
+      reason: "A merge is already in progress in the install tree.",
+    };
+  }
+
+  if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
+    return {
+      status: "needs-agent",
+      reason: "The install tree has tracked local changes.",
+    };
+  }
+
+  const fetchResult = await runGit(stellaRoot, [
+    "fetch",
+    "--filter=blob:none",
+    "--no-tags",
+    "origin",
+    args.targetCommit,
+  ]);
+  if (fetchResult.exitCode !== 0) {
+    throw new Error(
+      gitFailureDetail(fetchResult, "Failed to fetch the desktop update."),
+    );
+  }
+
+  const alreadyApplied = await runGit(stellaRoot, [
+    "merge-base",
+    "--is-ancestor",
+    args.targetCommit,
+    "HEAD",
+  ]);
+  if (alreadyApplied.exitCode === 0) {
+    await refreshNativeHelpers(stellaRoot, args.releaseTag);
+    const manifest = await writeAppliedCommit(
+      stellaRoot,
+      args.targetCommit,
+      args.releaseTag,
+    );
+    return {
+      status: "applied",
+      manifest,
+      headCommit: await readHeadCommit(stellaRoot),
+      changedFiles: [],
+      dependencyInstallRan: false,
+      nativeHelpersRefreshed: true,
+    };
+  }
+
+  const mergeTree = await runGit(stellaRoot, [
+    "merge-tree",
+    "--write-tree",
+    "HEAD",
+    args.targetCommit,
+  ]);
+  if (mergeTree.exitCode !== 0) {
+    return {
+      status: "needs-agent",
+      reason: "Git reported merge conflicts.",
+    };
+  }
+
+  const mergeTreeOid = mergeTree.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^[0-9a-f]{40,64}$/i.test(line));
+  if (!mergeTreeOid) {
+    return {
+      status: "needs-agent",
+      reason: "Git could not preflight the merge tree.",
+    };
+  }
+
+  const changedResult = await runGit(stellaRoot, [
+    "diff",
+    "--name-only",
+    "HEAD",
+    mergeTreeOid,
+  ]);
+  if (changedResult.exitCode !== 0) {
+    throw new Error(
+      gitFailureDetail(changedResult, "Could not inspect update changes."),
+    );
+  }
+  const changedFiles = parseGitNameList(changedResult.stdout);
+  const runId = `desktop-update-fast:${Date.now()}:${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  let hmrRunStarted = false;
+  let mergeLanded = false;
+
+  try {
+    if (changedFiles.length > 0) {
+      if (!runner) {
+        return {
+          status: "needs-agent",
+          reason: "Stella runtime is not available for the update morph.",
+          changedFiles,
+        };
+      }
+      await runner.beginExternalSelfMod({ runId, paths: changedFiles });
+      hmrRunStarted = true;
+    }
+
+    const mergeResult = await runGit(stellaRoot, [
+      "merge",
+      "--no-edit",
+      "-m",
+      `Update to ${args.releaseTag}`,
+      args.targetCommit,
+    ]);
+    if (mergeResult.exitCode !== 0) {
+      await abortMergeIfNeeded(stellaRoot);
+      if (hmrRunStarted && runner) {
+        await runner
+          .finishExternalSelfMod({ runId, succeeded: false })
+          .catch(() => undefined);
+        hmrRunStarted = false;
+      }
+      return {
+        status: "needs-agent",
+        reason: gitFailureDetail(mergeResult, "Git could not merge cleanly."),
+        changedFiles,
+      };
+    }
+    mergeLanded = true;
+
+    const dependencyInstallRan = changedFiles.some(isDependencyChange);
+    if (dependencyInstallRan) {
+      let installResult: ProcessRunResult | null = null;
+      let lastMissingBunError: Error | null = null;
+      for (const bunCommand of candidateBunCommands()) {
+        try {
+          installResult = await runProcess(stellaRoot, bunCommand, [
+            "install",
+            "--frozen-lockfile",
+          ]);
+          break;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            lastMissingBunError = error as Error;
+            continue;
+          }
+          throw error;
+        }
+      }
+      if (!installResult) {
+        throw new Error(
+          lastMissingBunError
+            ? "Dependency install failed because Bun is not available."
+            : "Dependency install failed because no Bun command was configured.",
+        );
+      }
+      if (installResult.exitCode !== 0) {
+        const detail = (installResult.stderr || installResult.stdout).trim();
+        throw new Error(
+          detail
+            ? `Dependency install failed: ${detail}`
+            : `Dependency install failed with exit code ${installResult.exitCode}.`,
+        );
+      }
+    }
+
+    if (hmrRunStarted && runner) {
+      await runner.finishExternalSelfMod({ runId, succeeded: true });
+      hmrRunStarted = false;
+    }
+
+    await refreshNativeHelpers(stellaRoot, args.releaseTag);
+    const manifest = await writeAppliedCommit(
+      stellaRoot,
+      args.targetCommit,
+      args.releaseTag,
+    );
+    return {
+      status: "applied",
+      manifest,
+      headCommit: await readHeadCommit(stellaRoot),
+      changedFiles,
+      dependencyInstallRan,
+      nativeHelpersRefreshed: true,
+    };
+  } catch (error) {
+    if (hmrRunStarted && runner) {
+      await runner
+        .finishExternalSelfMod({ runId, succeeded: mergeLanded })
+        .catch((finishError) => {
+          console.warn(
+            "[updates] Failed to finalize fast-update self-mod lifecycle:",
+            finishError,
+          );
+        });
+    }
+    throw error;
+  }
+};
+
 export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
   ipcMain.handle(
     IPC_UPDATES_GET_INSTALL_MANIFEST,
@@ -407,6 +748,45 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       const stellaRoot = options.getStellaRoot();
       if (!stellaRoot) return null;
       return await readManifestWithRecovery(stellaRoot);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_UPDATES_TRY_APPLY_CLEAN,
+    async (
+      event,
+      payload: {
+        baseCommit?: string;
+        targetCommit?: string;
+        releaseTag?: string;
+      },
+    ): Promise<DesktopUpdateFastApplyResult> => {
+      if (!options.assertPrivilegedSender(event, IPC_UPDATES_TRY_APPLY_CLEAN)) {
+        throw new Error(
+          "Blocked untrusted updates:tryApplyCleanUpdate request.",
+        );
+      }
+      const baseCommit = asString(payload?.baseCommit);
+      if (!baseCommit) {
+        throw new Error("baseCommit is required.");
+      }
+      const targetCommit = asString(payload?.targetCommit);
+      if (!targetCommit) {
+        throw new Error("targetCommit is required.");
+      }
+      const releaseTag = asString(payload?.releaseTag);
+      if (!releaseTag) {
+        throw new Error("releaseTag is required.");
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Stella install directory is unavailable.");
+      }
+      return await tryApplyCleanDesktopUpdate(
+        stellaRoot,
+        options.getStellaHostRunner?.() ?? null,
+        { baseCommit, targetCommit, releaseTag },
+      );
     },
   );
 
@@ -469,47 +849,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!stellaRoot) {
         throw new Error("Stella install directory is unavailable.");
       }
-      const verification = await verifyMergeApplied(stellaRoot, commit);
-      if (!verification.ok) {
-        throw new Error(verification.reason);
-      }
-      const manifestPath = manifestPathFromRoot(stellaRoot);
-      let parsed: Record<string, unknown> | null = null;
-      try {
-        const raw = await fs.readFile(manifestPath, "utf-8");
-        parseManifest(raw);
-        parsed = JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        const recovered = await readManifestWithRecovery(stellaRoot);
-        if (recovered) {
-          parsed = {
-            version: recovered.version,
-            platform: recovered.platform,
-            installPath: recovered.installPath,
-            installedAt: recovered.installedAt,
-            desktopReleaseTag: recovered.desktopReleaseTag,
-            desktopReleaseCommit: recovered.desktopReleaseCommit,
-            desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
-          };
-        }
-      }
-      if (!parsed) {
-        throw new Error("Install manifest is unavailable.");
-      }
-      parsed.desktopReleaseCommit = commit;
-      // Tag flows in from the Convex publish payload (`currentRelease.tag`),
-      // not derived locally — that way skipping releases (e.g. user goes
-      // 0.0.133 → 0.0.135) records the correct tag, not an auto-increment.
-      // `version` is intentionally left alone: it's set by the launcher to
-      // its own CARGO_PKG_VERSION at install time and represents the
-      // launcher binary's identity, not the desktop release.
-      if (tag) {
-        parsed.desktopReleaseTag = tag;
-      }
-      const next = `${JSON.stringify(parsed, null, 2)}\n`;
-      parseManifest(next);
-      await writeFileAtomic(manifestPath, next);
-      return parseManifest(next);
+      return await writeAppliedCommit(stellaRoot, commit, tag);
     },
   );
 };

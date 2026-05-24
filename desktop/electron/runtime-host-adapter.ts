@@ -75,9 +75,12 @@ type LocalChatSession = {
 
 export class RuntimeHostAdapter {
   readonly host: StellaRuntimeHost;
-  private lastHealth:
-    | { ready: boolean; reason?: string; runnerVersion?: string; engine?: string }
-    | null = null;
+  private lastHealth: {
+    ready: boolean;
+    reason?: string;
+    runnerVersion?: string;
+    engine?: string;
+  } | null = null;
   private lastRuntimeHealth: RuntimeHealthSnapshot | null = null;
   private activeRun: RuntimeActiveRun | null = null;
   private connected = false;
@@ -286,7 +289,9 @@ export class RuntimeHostAdapter {
             agentId: event.agentId ?? "",
             agentType: event.agentType ?? "",
             ...(event.description ? { description: event.description } : {}),
-            ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
+            ...(event.parentAgentId
+              ? { parentAgentId: event.parentAgentId }
+              : {}),
             ...(event.result ? { result: event.result } : {}),
             ...(event.error ? { error: event.error } : {}),
             ...(event.statusText ? { statusText: event.statusText } : {}),
@@ -370,8 +375,10 @@ export class RuntimeHostAdapter {
     const reason =
       this.lastRuntimeHealth && !this.lastRuntimeHealth.ready
         ? "Stella runtime host is not ready."
-        : this.lastHealth?.reason ??
-      (!this.connected ? "Stella runtime client is not connected." : undefined);
+        : (this.lastHealth?.reason ??
+          (!this.connected
+            ? "Stella runtime client is not connected."
+            : undefined));
     return {
       connected: this.connected,
       ready,
@@ -397,7 +404,9 @@ export class RuntimeHostAdapter {
         this.lastConfigureError = null;
       } catch (error) {
         this.lastConfigureError =
-          error instanceof Error ? error.message : String(error ?? "Runtime configure failed.");
+          error instanceof Error
+            ? error.message
+            : String(error ?? "Runtime configure failed.");
         throw error;
       }
     }
@@ -427,7 +436,10 @@ export class RuntimeHostAdapter {
     this.host.setHostFocused(focused);
     if (focused) {
       void this.warmWorker().catch((error) => {
-        console.warn("[stella-runtime-adapter] Failed to warm runtime worker:", error);
+        console.warn(
+          "[stella-runtime-adapter] Failed to warm runtime worker:",
+          error,
+        );
       });
     }
   }
@@ -474,11 +486,16 @@ export class RuntimeHostAdapter {
         },
         (error) => {
           this.lastConfigureError =
-            error instanceof Error ? error.message : String(error ?? "Runtime configure failed.");
-          console.warn("[stella-runtime-adapter] Failed to apply runtime config patch:", {
-            patch: nextPatch,
-            error: this.lastConfigureError,
-          });
+            error instanceof Error
+              ? error.message
+              : String(error ?? "Runtime configure failed.");
+          console.warn(
+            "[stella-runtime-adapter] Failed to apply runtime config patch:",
+            {
+              patch: nextPatch,
+              error: this.lastConfigureError,
+            },
+          );
         },
       );
     });
@@ -591,7 +608,9 @@ export class RuntimeHostAdapter {
       conversationId: string;
       userPrompt: string;
       selectedText?: string | null;
-      chatContext?: import("../../runtime/contracts/index.js").ChatContext | null;
+      chatContext?:
+        | import("../../runtime/contracts/index.js").ChatContext
+        | null;
       deviceId?: string;
       platform?: string;
       timezone?: string;
@@ -608,7 +627,8 @@ export class RuntimeHostAdapter {
     callbacks: AgentCallbacks,
   ) {
     const requestId =
-      typeof payload.requestId === "string" && payload.requestId.trim().length > 0
+      typeof payload.requestId === "string" &&
+      payload.requestId.trim().length > 0
         ? payload.requestId
         : `local:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
@@ -707,7 +727,8 @@ export class RuntimeHostAdapter {
     callbacks: AgentCallbacks,
   ) {
     const requestId =
-      globalThis.crypto?.randomUUID?.() ?? `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      globalThis.crypto?.randomUUID?.() ??
+      `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let lastRunEventSeq = 0;
     let lastTaskEventSeq = 0;
     const activeTaskIds = new Set<string>();
@@ -740,7 +761,10 @@ export class RuntimeHostAdapter {
         lastRunEventSeq = event.seq;
       }
 
-      if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED && event.agentId) {
+      if (
+        event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED &&
+        event.agentId
+      ) {
         activeTaskIds.add(event.agentId);
       } else if (isTaskLifecycleTerminalType(event.type) && event.agentId) {
         activeTaskIds.delete(event.agentId);
@@ -771,7 +795,9 @@ export class RuntimeHostAdapter {
               agentId: event.agentId ?? "",
               agentType: event.agentType ?? "",
               ...(event.description ? { description: event.description } : {}),
-              ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
+              ...(event.parentAgentId
+                ? { parentAgentId: event.parentAgentId }
+                : {}),
               ...(event.result ? { result: event.result } : {}),
               ...(event.error ? { error: event.error } : {}),
               ...(event.statusText ? { statusText: event.statusText } : {}),
@@ -857,6 +883,14 @@ export class RuntimeHostAdapter {
 
   readSelfModFeatureSnapshot() {
     return this.host.readSelfModFeatureSnapshot();
+  }
+
+  beginExternalSelfMod(payload: { runId: string; paths: string[] }) {
+    return this.host.beginExternalSelfMod(payload);
+  }
+
+  finishExternalSelfMod(payload: { runId: string; succeeded: boolean }) {
+    return this.host.finishExternalSelfMod(payload);
   }
 
   getStorePackage(packageId: string) {
@@ -971,7 +1005,9 @@ export class RuntimeHostAdapter {
 
   onLocalChatUpdated(
     listener: (
-      payload: import("../../runtime/contracts/local-chat.js").LocalChatUpdatedPayload | null,
+      payload:
+        | import("../../runtime/contracts/local-chat.js").LocalChatUpdatedPayload
+        | null,
     ) => void,
   ) {
     return this.host.on("local-chat-updated", listener);
@@ -1043,7 +1079,10 @@ export class RuntimeHostAdapter {
     return this.host.killShellsByPort(port);
   }
 
-  collectBrowserData(options?: { selectedBrowser?: string; selectedProfile?: string }) {
+  collectBrowserData(options?: {
+    selectedBrowser?: string;
+    selectedProfile?: string;
+  }) {
     return this.host.collectBrowserData(options);
   }
 
@@ -1063,10 +1102,7 @@ export class RuntimeHostAdapter {
     return this.host.discoveryKnowledgeExists();
   }
 
-  writeCoreMemory(
-    content: string,
-    options?: { includeLocation?: boolean },
-  ) {
+  writeCoreMemory(content: string, options?: { includeLocation?: boolean }) {
     return this.host.writeCoreMemory(content, options);
   }
 

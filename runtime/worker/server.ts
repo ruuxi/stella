@@ -197,6 +197,12 @@ type WorkerState = {
         steps?: number;
       }) => Promise<RuntimeSelfModRevertResult>)
     | null;
+  beginExternalSelfModWithMorph:
+    | ((args: { runId: string; paths: string[] }) => Promise<{ ok: true }>)
+    | null;
+  finishExternalSelfModWithMorph:
+    | ((args: { runId: string; succeeded: boolean }) => Promise<{ ok: true }>)
+    | null;
   activeStoreThreadAgentId: string | null;
   activeStoreThreadMessageId: string | null;
   /**
@@ -388,6 +394,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     deviceId: null,
     selfModHmrController: null,
     revertSelfModWithMorph: null,
+    beginExternalSelfModWithMorph: null,
+    finishExternalSelfModWithMorph: null,
     activeStoreThreadAgentId: null,
     activeStoreThreadMessageId: null,
     runEventLog: null,
@@ -806,8 +814,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             }
           },
           getStellaSiteAuth: () => {
-            const baseUrl = state.init?.convexSiteUrl?.trim() ?? init.convexSiteUrl?.trim();
-            const authToken = state.init?.authToken?.trim() ?? init.authToken?.trim();
+            const baseUrl =
+              state.init?.convexSiteUrl?.trim() ?? init.convexSiteUrl?.trim();
+            const authToken =
+              state.init?.authToken?.trim() ?? init.authToken?.trim();
             if (!baseUrl || !authToken) {
               return { ok: false, reason: "not_signed_in" };
             }
@@ -915,6 +925,84 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           }
         }
       }
+    };
+
+    state.beginExternalSelfModWithMorph = async ({ runId, paths }) => {
+      if (!state.selfModHmrController) {
+        throw new Error("Self-mod HMR controller is not initialized.");
+      }
+      selfModRunRootIds.set(runId, runId);
+      await peer
+        .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, { runId })
+        .catch((error) => {
+          console.warn(
+            "[self-mod-external] Failed to pause host runtime reloads:",
+            (error as Error).message,
+          );
+        });
+      try {
+        await state.selfModHmrController.beginRun(runId);
+        const absolutePaths = paths.map((filePath) =>
+          path.isAbsolute(filePath)
+            ? filePath
+            : path.join(init.stellaRoot, filePath),
+        );
+        if (absolutePaths.length > 0) {
+          await state.selfModHmrController.recordWrite(runId, absolutePaths);
+        }
+        return { ok: true };
+      } catch (error) {
+        if (state.selfModHmrController.hasRun(runId)) {
+          await state.selfModHmrController.cancel(runId).catch(() => undefined);
+        }
+        await releaseRuntimeReloadFor([runId]);
+        selfModRunRootIds.delete(runId);
+        throw error;
+      }
+    };
+
+    state.finishExternalSelfModWithMorph = async ({ runId, succeeded }) => {
+      const controller = state.selfModHmrController;
+      if (!controller) {
+        throw new Error("Self-mod HMR controller is not initialized.");
+      }
+      if (!controller.hasRun(runId)) {
+        await controller.releaseRuns([runId]).catch((error) => {
+          console.warn(
+            "[self-mod-external] Failed to release Vite client update pause:",
+            (error as Error).message,
+          );
+        });
+        await releaseRuntimeReloadFor([runId]);
+        selfModRunRootIds.delete(runId);
+        return { ok: true };
+      }
+
+      if (!succeeded) {
+        const cancelResult = await controller.cancel(runId);
+        await releaseRuntimeReloadFor([runId]);
+        selfModRunRootIds.delete(runId);
+        await dispatchApplyBatch(cancelResult);
+        return { ok: true };
+      }
+
+      const decision = controller.finalize(runId);
+      if (decision.appliedRuns.length === 0) {
+        if (!controller.hasRun(runId)) {
+          await controller.releaseRuns([runId]).catch((error) => {
+            console.warn(
+              "[self-mod-external] Failed to release Vite client update pause:",
+              (error as Error).message,
+            );
+          });
+          await releaseRuntimeReloadFor([runId]);
+          selfModRunRootIds.delete(runId);
+        }
+        return { ok: true };
+      }
+
+      await dispatchApplyBatch(decision);
+      return { ok: true };
     };
 
     const runnerOptions: StellaHostRunnerOptions = {
@@ -2891,6 +2979,49 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         installCommitHash,
       });
       return installRecord;
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_EXTERNAL_BEGIN,
+    async (params) => {
+      const handler = state.beginExternalSelfModWithMorph;
+      if (!handler) {
+        throw new Error("External self-mod lifecycle is not initialized.");
+      }
+      const payload = params as { runId?: unknown; paths?: unknown };
+      const runId =
+        typeof payload?.runId === "string" ? payload.runId.trim() : "";
+      if (!runId) {
+        throw new Error("External self-mod begin requires a runId.");
+      }
+      const paths = Array.isArray(payload?.paths)
+        ? payload.paths.filter(
+            (filePath): filePath is string =>
+              typeof filePath === "string" && filePath.length > 0,
+          )
+        : [];
+      return await handler({ runId, paths });
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_EXTERNAL_FINISH,
+    async (params) => {
+      const handler = state.finishExternalSelfModWithMorph;
+      if (!handler) {
+        throw new Error("External self-mod lifecycle is not initialized.");
+      }
+      const payload = params as { runId?: unknown; succeeded?: unknown };
+      const runId =
+        typeof payload?.runId === "string" ? payload.runId.trim() : "";
+      if (!runId) {
+        throw new Error("External self-mod finish requires a runId.");
+      }
+      return await handler({
+        runId,
+        succeeded: payload?.succeeded === true,
+      });
     },
   );
 
