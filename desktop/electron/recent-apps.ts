@@ -1,4 +1,5 @@
 import { execFile } from 'child_process'
+import { app as electronApp } from 'electron'
 import { runNativeHelper } from './native-helper.js'
 import type { RecentApp } from '../src/shared/contracts/home.js'
 
@@ -219,7 +220,11 @@ type WinProcess = {
   ProcessName?: string
   Id?: number
   MainWindowTitle?: string
+  IsActive?: boolean
+  ExecutablePath?: string | null
 }
+
+const windowsIconCache = new Map<string, string | null>()
 
 const execAsync = (
   command: string,
@@ -249,9 +254,42 @@ const execAsync = (
 const cleanWindowsName = (name: string): string =>
   name.replace(/\.exe$/i, '').trim()
 
+const resolveWindowsIconDataUrl = async (
+  executablePath: string | undefined | null,
+): Promise<string | undefined> => {
+  const normalizedPath =
+    typeof executablePath === 'string' ? executablePath.trim() : ''
+  if (!normalizedPath) return undefined
+  if (!electronApp.isReady()) return undefined
+
+  const cached = windowsIconCache.get(normalizedPath)
+  if (cached !== undefined) return cached ?? undefined
+
+  try {
+    const icon = await electronApp.getFileIcon(normalizedPath, { size: 'normal' })
+    if (icon.isEmpty()) {
+      windowsIconCache.set(normalizedPath, null)
+      return undefined
+    }
+
+    const resized = icon.resize({ width: 32, height: 32 })
+    const dataUrl = resized.isEmpty() ? icon.toDataURL() : resized.toDataURL()
+    const normalizedDataUrl = dataUrl.startsWith('data:image/')
+      ? dataUrl
+      : null
+    windowsIconCache.set(normalizedPath, normalizedDataUrl)
+    return normalizedDataUrl ?? undefined
+  } catch {
+    windowsIconCache.set(normalizedPath, null)
+    return undefined
+  }
+}
+
 const listRecentAppsWindows = async (
   limit: number,
 ): Promise<RecentApp[] | null> => {
+  if (limit <= 0) return []
+
   // PowerShell: enumerate windowed processes, then mark the current foreground
   // window as active via P/Invoke (GetForegroundWindow).
   const psScript = `
@@ -265,7 +303,7 @@ public static extern int GetWindowThreadProcessId(System.IntPtr hWnd, out int lp
 $fgPid = 0
 $null = [Win32.StellaFW]::GetWindowThreadProcessId([Win32.StellaFW]::GetForegroundWindow(), [ref]$fgPid)
 $procs = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } |
-  Select-Object Id, ProcessName, MainWindowTitle, @{Name='IsActive';Expression={$_.Id -eq $fgPid}}
+  Select-Object Id, ProcessName, MainWindowTitle, @{Name='IsActive';Expression={$_.Id -eq $fgPid}}, @{Name='ExecutablePath';Expression={try { $_.MainModule.FileName } catch { $null }}}
 $procs | ConvertTo-Json -Compress
 `.trim()
   const encoded = Buffer.from(psScript, 'utf16le').toString('base64')
@@ -293,10 +331,8 @@ $procs | ConvertTo-Json -Compress
   const seenPids = new Set<number>()
   // Foreground window first, then by name (case-insensitive) for stable order.
   parsed.sort((a, b) => {
-    const aActive = a as { IsActive?: boolean }
-    const bActive = b as { IsActive?: boolean }
-    if (aActive.IsActive !== bActive.IsActive) {
-      return aActive.IsActive ? -1 : 1
+    if (a.IsActive !== b.IsActive) {
+      return a.IsActive ? -1 : 1
     }
     const aName = (a.ProcessName ?? '').toLowerCase()
     const bName = (b.ProcessName ?? '').toLowerCase()
@@ -313,12 +349,16 @@ $procs | ConvertTo-Json -Compress
     seenPids.add(pid)
 
     const windowTitle = raw.MainWindowTitle?.trim() ?? ''
+    const iconDataUrl = await resolveWindowsIconDataUrl(raw.ExecutablePath)
+
     cleaned.push({
       name: cleanWindowsName(rawName),
       pid,
-      isActive: Boolean((raw as { IsActive?: boolean }).IsActive),
+      isActive: Boolean(raw.IsActive),
       windowTitle: windowTitle || undefined,
+      iconDataUrl,
     })
+    if (cleaned.length >= limit) break
   }
 
   return cleaned.slice(0, Math.max(0, limit))

@@ -16,10 +16,10 @@ export type RecentApp = {
   windowTitle?: string;
   /**
    * Base64-encoded PNG data URL of the app's icon, downsized to 32×32.
-   * Populated on macOS via `NSRunningApplication.icon`. Undefined on
-   * platforms where icon extraction isn't implemented (currently Windows)
-   * or when the running app exposes no icon — renderers must fall back to
-   * the display name in that case.
+   * Populated on macOS via `NSRunningApplication.icon` and on Windows via
+   * Electron's executable file-icon lookup. Undefined on platforms where icon
+   * extraction isn't implemented or when the running app exposes no icon —
+   * renderers must fall back to the display name in that case.
    */
   iconDataUrl?: string;
 };
