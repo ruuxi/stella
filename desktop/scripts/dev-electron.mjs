@@ -76,11 +76,10 @@ const expectedExits = new WeakSet()
 /**
  * Last-seen content hash for every restart-relevant build output under
  * `dist-electron/`. The fs watcher fires on mtime/write events, but
- * esbuild's incremental rebuild (`context.watch()`) sometimes rewrites
- * a bundle with byte-identical content as a side effect of unrelated
- * package-manager operations — `bunx --package <pkg> tsc …` taps the
- * tsconfig graph + bun cache enough that esbuild flushes the output
- * even though the source is unchanged.
+ * the dev compiler watchers can rewrite byte-identical output as a side
+ * effect of unrelated package-manager operations — `bunx --package <pkg> tsc …`
+ * taps the tsconfig graph + bun cache enough that output can flush even
+ * though the source is unchanged.
  *
  * Without a content gate, that spurious rewrite tears down Electron
  * (and the in-flight self-mod morph cover with it) for nothing. We
@@ -911,7 +910,7 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
   }
 
   // Content gate: only honor the watcher tick when the file's bytes
-  // actually changed. esbuild routinely rewrites identical output as
+  // actually changed. Dev compilers can rewrite identical output as
   // a side effect of upstream watchers (tsconfig graph reaches into
   // node_modules, bunx mutates bun.lock, etc.). Restarting Electron
   // for those is the visible failure that kills self-mod morph

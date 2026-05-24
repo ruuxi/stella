@@ -16,7 +16,7 @@ export const resolveNativeHelperPath = (baseName: string): string | null => {
   const candidates = [
     // Packaged app: extraResources copies native/out → Resources/native/out
     path.join(process.resourcesPath, 'native', 'out', platformDir, fileName),
-    // Dev (esbuild output): dist-electron/desktop/electron/ → ../../../native/out
+    // Dev dist-electron output: dist-electron/desktop/electron/ → ../../../native/out
     path.join(__dirname, '..', '..', '..', 'native', 'out', platformDir, fileName),
     // From compiled tsc layout: dist-electron/electron/ → ../../native/out
     path.join(__dirname, '..', '..', 'native', 'out', platformDir, fileName),
