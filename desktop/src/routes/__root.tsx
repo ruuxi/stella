@@ -511,6 +511,7 @@ function RootChrome() {
         showSidebarToggle={canToggleSidebar}
         showWorkspaceStripToggle={
           isOnChatRoute &&
+          !chat.showHomeContent &&
           !isMiniWindow &&
           !isMobileWebView &&
           !shouldAutoHideRightContextPanel &&

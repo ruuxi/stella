@@ -210,28 +210,22 @@ export const ChatColumn = memo(function ChatColumn({
 
   if (shouldShowHomeContent && onSuggestionClick) {
     return (
-      <div className="full-body-row">
-        <div
-          className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
-          {...dropHandlers}
-        >
-          <DropOverlay visible={isDragOver} variant="surface" />
-          <HomeContent onDismissHome={onDismissHome}>
-            <div
-              className={
-                composerEntering
-                  ? "composer-wrap composer-wrap--entering"
-                  : "composer-wrap"
-              }
-            >
-              {composerElement}
-            </div>
-          </HomeContent>
-        </div>
-        <ChatWorkspaceStrip
-          forceHidden={hideRightContextPanel}
-          onSuggestionClick={onSuggestionClick}
-        />
+      <div
+        className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
+        {...dropHandlers}
+      >
+        <DropOverlay visible={isDragOver} variant="surface" />
+        <HomeContent onDismissHome={onDismissHome}>
+          <div
+            className={
+              composerEntering
+                ? "composer-wrap composer-wrap--entering"
+                : "composer-wrap"
+            }
+          >
+            {composerElement}
+          </div>
+        </HomeContent>
       </div>
     );
   }

@@ -3,10 +3,8 @@
  * (`/chat`) route.
  *
  * Home itself IS the chat, so this tab cannot host a duplicate conversation.
- * The home workspace strip already surfaces activity, files, and schedules,
- * so the display sidebar would just repeat the same content. Instead the
- * sidebar opens to a quiet launcher of the other tabs the user might want
- * (Canvas, Media, Store, Trash) — click one and that tab takes over.
+ * The display sidebar opens to a quiet launcher of the other tabs the user
+ * might want (Canvas, Media, Store, Trash) — click one and that tab takes over.
  *
  * On every other route, the Chat tab keeps rendering the live ChatPanelTab
  * (see `default-tabs.tsx`).
