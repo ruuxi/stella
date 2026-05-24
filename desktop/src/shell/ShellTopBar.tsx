@@ -93,7 +93,9 @@ export const ShellTopBar = ({
   showWorkspaceStripToggle = false,
 }: ShellTopBarProps) => {
   const router = useRouter();
-  const isMac = getPlatform() === "darwin";
+  const platform = getPlatform();
+  const isMac = platform === "darwin";
+  const isWin = platform === "win32";
   const isMiniWindow = useWindowType() === "mini";
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
@@ -134,7 +136,7 @@ export const ShellTopBar = ({
   return (
     <header
       className="shell-topbar"
-      data-platform={isMac ? "mac" : "other"}
+      data-platform={isMac ? "mac" : isWin ? "win" : "other"}
       data-display-open={panelOpen ? "true" : "false"}
       data-display-expanded={panelExpanded ? "true" : "false"}
       data-route={
@@ -272,7 +274,9 @@ export const ShellTopBar = ({
             </>
           )}
         </div>
-        {!isMac && isMiniWindow ? <WindowControls /> : null}
+        {/* Windows is frameless — render our own controls on every window.
+            On other non-mac platforms keep them mini-only (legacy behavior). */}
+        {isWin || (!isMac && isMiniWindow) ? <WindowControls /> : null}
       </div>
     </header>
   );

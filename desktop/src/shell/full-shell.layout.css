@@ -106,6 +106,13 @@
   margin-left: -10px;
 }
 
+/* Windows: no negative margin — the left padding (8px) gives the
+   button breathing room from the window edge since there's no native
+   traffic-light gutter on this platform. */
+.shell-topbar[data-platform="win"] .shell-topbar-sidebar-btn {
+  margin-left: 0;
+}
+
 .shell-topbar-icon-btn,
 .shell-topbar-wc-btn {
   position: relative;
