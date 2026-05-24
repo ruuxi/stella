@@ -5,6 +5,7 @@ import {
   STELLA_DEFAULT_MODEL,
   STELLA_MODELS_PATH,
   normalizeStellaSiteUrl,
+  type StellaRelayProvider,
 } from "../contracts/stella-api.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 import {
@@ -18,6 +19,7 @@ type CatalogModel = {
   name: string;
   provider: string;
   upstreamModel?: string;
+  relayProvider?: StellaRelayProvider;
 };
 
 type CatalogDefaultModel = {
@@ -32,6 +34,7 @@ type CatalogApiModel = {
   provider?: string;
   type?: string;
   upstreamModel?: string;
+  relayProvider?: StellaRelayProvider;
 };
 
 type CatalogApiResponse = {
@@ -156,6 +159,7 @@ const fetchStellaModelCatalog = async (args: {
               name: model.name ?? model.id,
               provider: model.provider ?? STELLA_PROVIDER,
               upstreamModel: model.upstreamModel,
+              relayProvider: model.relayProvider,
             })),
           defaults: data.defaults ?? [],
         };
@@ -202,7 +206,7 @@ const resolveStellaModelAlias = async (args: {
   site: StellaSiteConfig;
   deviceId?: string;
   modelCatalogUpdatedAt?: number | null;
-}): Promise<string | null> => {
+}): Promise<{ resolvedModelId: string; relayProvider?: StellaRelayProvider } | null> => {
   if (args.route.route !== "stella") {
     return null;
   }
@@ -210,7 +214,7 @@ const resolveStellaModelAlias = async (args: {
   const modelId = args.route.model.id.trim();
   const passthrough = resolvePassthroughStellaModel(modelId);
   if (passthrough) {
-    return passthrough;
+    return { resolvedModelId: passthrough };
   }
 
   const catalog = await fetchStellaModelCatalog({
@@ -223,13 +227,16 @@ const resolveStellaModelAlias = async (args: {
   }
 
   if (modelId === STELLA_DEFAULT_MODEL) {
-    return (
+    const resolvedModelId =
       catalog.defaults.find((entry) => entry.agentType === args.agentType)
-        ?.resolvedModel ?? null
-    );
+        ?.resolvedModel ?? null;
+    return resolvedModelId ? { resolvedModelId } : null;
   }
 
-  return catalog.models.find((model) => model.id === modelId)?.upstreamModel ?? null;
+  const model = catalog.models.find((entry) => entry.id === modelId);
+  return model?.upstreamModel
+    ? { resolvedModelId: model.upstreamModel, relayProvider: model.relayProvider }
+    : null;
 };
 
 export const withStellaModelCatalogMetadata = async (args: {
@@ -243,8 +250,8 @@ export const withStellaModelCatalogMetadata = async (args: {
     return args.route;
   }
 
-  const resolvedModelId = await resolveStellaModelAlias(args);
-  if (!resolvedModelId) {
+  const resolvedModel = await resolveStellaModelAlias(args);
+  if (!resolvedModel) {
     return args.route;
   }
 
@@ -252,11 +259,12 @@ export const withStellaModelCatalogMetadata = async (args: {
     site: args.site,
     agentType: args.agentType,
     modelId: args.route.model.id,
-    resolvedModelId,
+    resolvedModelId: resolvedModel.resolvedModelId,
+    relayProvider: resolvedModel.relayProvider,
   });
 
   return {
     ...(resolvedRoute ?? args.route),
-    toolPolicyModel: modelIdentityFromId(resolvedModelId),
+    toolPolicyModel: modelIdentityFromId(resolvedModel.resolvedModelId),
   };
 };
