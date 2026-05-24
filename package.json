@@ -28,7 +28,7 @@
     "electron:typecheck:watch": "cd desktop && concurrently -k --kill-others-on-fail \"tsgo -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"tsgo -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
     "electron:build": "bun run native:build && cd desktop && tsgo --build && vite build && node scripts/check-renderer-bundle-budget.mjs && tsgo -p tsconfig.electron.json && tsgo -p tsconfig.preload.json && cd .. && electron-builder",
     "electron:preview": "bun run electron:dev:low-resource",
-    "electron:dev:low-resource": "bun run build && node desktop/scripts/dev-electron-build.mjs --once && node desktop/scripts/electron-static-preview.mjs",
+    "electron:dev:low-resource": "node desktop/scripts/electron-low-resource-build.mjs && node desktop/scripts/electron-static-preview.mjs",
     "check:boundary": "node runtime/scripts/check-boundary.mjs",
     "tsc6": "bunx --package typescript@6.0.3 tsc"
   },

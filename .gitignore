@@ -14,6 +14,7 @@ DEV-CONTEXT.md
 /node_modules/
 /runtime/node_modules/
 /.stella-runtime-reload-state.json
+/desktop/.low-resource-build-cache.json
 /.stella-dev-splash.html
 /.stella-dev-splash-main.cjs
 /.stella-dev-splash.lock

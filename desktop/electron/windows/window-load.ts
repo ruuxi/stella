@@ -1,4 +1,5 @@
 import type { BrowserWindow, LoadFileOptions } from 'electron'
+import fs from 'fs'
 import path from 'path'
 
 export type WindowLoadMode = 'full' | 'mini' | 'overlay' | 'pet'
@@ -50,7 +51,19 @@ export const loadWindow = (
     return
   }
 
-  const filePath = path.join(options.electronDir, `../dist/${getWindowEntryFile(options.mode)}`)
+  const entryFile = getWindowEntryFile(options.mode)
+  const candidates = [
+    path.resolve(options.electronDir, '../../../dist', entryFile),
+    path.resolve(options.electronDir, '../dist', entryFile),
+  ]
+  const filePath =
+    candidates.find((candidate) => {
+      try {
+        return fs.statSync(candidate).isFile()
+      } catch {
+        return false
+      }
+    }) ?? candidates[0]
   const query = getWindowQuery(options.mode)
   if (query) {
     window.loadFile(filePath, { query })

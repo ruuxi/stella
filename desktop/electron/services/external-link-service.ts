@@ -1,4 +1,6 @@
 import { BrowserWindow, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 const MOBILE_BRIDGE_PROTOCOL = 'stella-mobile-bridge:'
 const MOBILE_BRIDGE_SENDER_URL = 'stella-mobile-bridge://mobile'
@@ -15,6 +17,7 @@ export class ExternalLinkService {
 
   /** When set (dev: Vite on LAN), renderer at this origin may use privileged IPC. */
   private trustedDevOrigin: string | null = null
+  private trustedFileRendererRoot: string | null = null
 
   /** Dev-only: allow privileged IPC when sender URL is missing (Electron edge cases). */
   private isDevBuild = false
@@ -27,11 +30,30 @@ export class ExternalLinkService {
     }
   }
 
+  private isTrustedFileRendererUrl(parsed: URL) {
+    if (parsed.protocol !== 'file:' || !this.trustedFileRendererRoot) {
+      return false
+    }
+    try {
+      const filePath = path.resolve(fileURLToPath(parsed))
+      const relativePath = path.relative(this.trustedFileRendererRoot, filePath)
+      return (
+        relativePath === '' ||
+        (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+      )
+    } catch {
+      return false
+    }
+  }
+
   isAppUrl(url: string) {
     const parsed = this.parseUrl(url)
     if (!parsed) return false
     if (parsed.protocol === 'about:' && parsed.href === 'about:blank') return true
     if (this.trustedDevOrigin && parsed.origin === this.trustedDevOrigin) {
+      return true
+    }
+    if (this.isTrustedFileRendererUrl(parsed)) {
       return true
     }
     return false
@@ -48,6 +70,12 @@ export class ExternalLinkService {
     this.trustedDevOrigin = parsed.origin
   }
 
+  trustFileRendererRoot(rootPath: string) {
+    const trimmed = rootPath.trim()
+    if (!trimmed) return
+    this.trustedFileRendererRoot = path.resolve(trimmed)
+  }
+
   setDevBuild(isDev: boolean) {
     this.isDevBuild = isDev
   }
@@ -59,6 +87,9 @@ export class ExternalLinkService {
       return true
     }
     if (this.trustedDevOrigin && parsed.origin === this.trustedDevOrigin) {
+      return true
+    }
+    if (this.isTrustedFileRendererUrl(parsed)) {
       return true
     }
     return false
