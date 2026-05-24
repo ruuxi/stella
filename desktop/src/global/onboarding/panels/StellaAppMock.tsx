@@ -888,12 +888,12 @@ function StellaAppMockImpl({
               <span>Home</span>
             </button>
             <button type="button" className="sam-nav-item">
-              <span className="sam-nav-icon">{ICON_USERS}</span>
-              <span>Social</span>
+              <span className="sam-nav-icon">{ICON_STORE}</span>
+              <span>Store</span>
             </button>
             <button type="button" className="sam-nav-item">
-              <span className="sam-nav-icon">{ICON_PLUS_SQUARE}</span>
-              <span>New App</span>
+              <span className="sam-nav-icon">{ICON_USERS}</span>
+              <span>Social</span>
             </button>
             <button type="button" className="sam-nav-item sam-nav-item--studio">
               <span className="sam-nav-icon">{ICON_MUSIC}</span>
@@ -904,33 +904,16 @@ function StellaAppMockImpl({
             </button>
           </nav>
           <div className="sam-sidebar-footer">
-            <div className="sam-footer-icons">
-              <button
-                type="button"
-                className="sam-icon-button"
-                aria-label="Theme"
-              >
-                {ICON_PALETTE}
-              </button>
-              <button
-                type="button"
-                className="sam-icon-button"
-                aria-label="Settings"
-              >
-                {ICON_SETTINGS}
-              </button>
-            </div>
-            <button type="button" className="sam-nav-item">
-              <span className="sam-nav-icon">{ICON_STORE}</span>
-              <span>Store</span>
-            </button>
-            <button type="button" className="sam-nav-item">
-              <span className="sam-nav-icon">{ICON_DEVICE}</span>
-              <span>Connect</span>
-            </button>
             <button type="button" className="sam-nav-item">
               <span className="sam-nav-icon">{ICON_LOGIN}</span>
               <span>Sign in</span>
+            </button>
+            <button
+              type="button"
+              className="sam-icon-button"
+              aria-label="Menu"
+            >
+              {ICON_SETTINGS}
             </button>
           </div>
         </div>

@@ -51,4 +51,6 @@ export type AppMetadata = {
    * `preventDefault()`s the underlying `<Link>` navigation.
    */
   onActiveClick?: () => void;
+  /** When true, the sidebar never paints the active/selected row styling. */
+  suppressActiveState?: boolean;
 };
