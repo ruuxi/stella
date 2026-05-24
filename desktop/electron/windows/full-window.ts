@@ -39,7 +39,10 @@ export class FullWindowController {
           // Keep the full shell opaque. Transparent BrowserWindows are
           // significantly more expensive for macOS to composite during live
           // resize.
-          frame: true,
+          // Windows: frameless so Stella's custom top bar provides the only
+          // chrome (custom min/max/close live in `ShellTopBar`). macOS keeps
+          // the native frame because traffic lights are hidden-inset under it.
+          frame: process.platform !== 'win32',
           transparent: false,
           backgroundColor: isMac ? '#f2f4f8' : '#101016',
           hasShadow: true,

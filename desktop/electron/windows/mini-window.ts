@@ -64,7 +64,7 @@ export class MiniWindowController {
           maxHeight: MINI_SHELL_MAX_SIZE.height,
           ...(isMac ? { type: 'panel' as const } : {}),
           show: false,
-          frame: true,
+          frame: process.platform !== 'win32',
           transparent: false,
           vibrancy: isMac ? 'menu' : undefined,
           visualEffectState: isMac ? 'active' : undefined,
