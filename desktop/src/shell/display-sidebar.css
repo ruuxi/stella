@@ -128,7 +128,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--panel-surface-bg);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   padding-top: var(--shell-topbar-height, 38px);
   box-sizing: border-box;
   /* Stay at the panel's "open" width even while the outer is animating

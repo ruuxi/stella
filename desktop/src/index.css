@@ -207,6 +207,11 @@ html[data-stella-window="mini"] #stella-mini-boot {
   /* Tint-only shell panels (sidebar, composer, workspace cards) — no
      backdrop-filter; reads like soft glass over the shifting gradient. */
   --panel-surface-bg: color-mix(in srgb, var(--background) 50%, transparent);
+  --panel-surface-bg-gradient: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--background) 46%, transparent),
+    color-mix(in srgb, var(--background) 58%, transparent)
+  );
   --panel-surface-border: color-mix(in oklch, var(--border) 60%, transparent);
   --panel-surface-highlight: inset 0 1px 0
     color-mix(in oklch, white 42%, transparent);
@@ -331,6 +336,11 @@ html[data-stella-window="mini"] #stella-mini-boot {
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 
   --panel-surface-bg: color-mix(in srgb, var(--background) 62%, transparent);
+  --panel-surface-bg-gradient: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--background) 56%, transparent),
+    color-mix(in srgb, var(--background) 70%, transparent)
+  );
   --panel-surface-highlight: inset 0 1px 0
     color-mix(in oklch, white 10%, transparent);
 
