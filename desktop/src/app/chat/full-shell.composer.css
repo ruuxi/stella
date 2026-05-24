@@ -16,7 +16,7 @@
   position: relative;
   width: 100%;
   max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
-  background: var(--panel-surface-bg);
+  background: var(--panel-surface-bg-gradient);
   border: 1px solid var(--panel-surface-border);
   border-radius: 999px; /* CSS fallback; overridden by motion inline style */
   box-shadow: var(--shadow-md), var(--panel-surface-highlight);
