@@ -18,6 +18,36 @@
   transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
 }
 
+/* Right-edge drag handle — drag leftward past the threshold to collapse.
+   Invisible by default; cursor changes on hover and stays during the drag. */
+.sidebar__collapse-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  z-index: 4;
+  cursor: col-resize;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  background: transparent;
+}
+
+.sidebar:hover .sidebar__collapse-handle,
+.sidebar__collapse-handle[data-dragging="true"] {
+  opacity: 1;
+}
+
+.sidebar--hidden .sidebar__collapse-handle {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar__collapse-handle {
+    transition: none;
+  }
+}
+
 .sidebar-stack {
   position: relative;
   z-index: 1;

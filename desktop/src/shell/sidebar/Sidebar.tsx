@@ -618,6 +618,10 @@ const AccountRow = ({
 
 const TitleBarSpacer = () => <div className="sidebar-titlebar" />;
 
+// Pixels of leftward drag past pointerdown before the sidebar collapses.
+// Matches the deliberate-gesture feel of the display panel's resize snap.
+const SIDEBAR_COLLAPSE_DRAG_THRESHOLD = 90;
+
 export const Sidebar = ({
   className,
   visible = true,
@@ -642,6 +646,59 @@ export const Sidebar = ({
   const handleBrandClick = useCallback(() => {
     onHide?.();
   }, [onHide]);
+
+  // Drag the right-edge handle leftward past the threshold to collapse.
+  // We don't shrink width live (sidebar is fixed-width); the threshold is
+  // a deliberate commit gesture that simply fires `onHide` once crossed.
+  const handleCollapseDragStart = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      if (!onHide) return;
+      event.preventDefault();
+      const handle = event.currentTarget;
+      const pointerId = event.pointerId;
+      handle.setPointerCapture?.(pointerId);
+      const startX = event.clientX;
+      let collapsed = false;
+
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      handle.dataset.dragging = "true";
+
+      const cleanup = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        if (handle.hasPointerCapture?.(pointerId)) {
+          handle.releasePointerCapture(pointerId);
+        }
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        delete handle.dataset.dragging;
+      };
+
+      const onMove = (ev: PointerEvent) => {
+        if (collapsed) return;
+        const delta = startX - ev.clientX;
+        if (delta >= SIDEBAR_COLLAPSE_DRAG_THRESHOLD) {
+          collapsed = true;
+          onHide();
+          cleanup();
+        }
+      };
+
+      const onUp = () => {
+        cleanup();
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [onHide],
+  );
 
   const handleUpgrade = useCallback(() => {
     void navigate({ to: "/billing" });
@@ -712,6 +769,16 @@ export const Sidebar = ({
 
   return (
     <aside className={sidebarClass}>
+      {onHide ? (
+        <div
+          className="sidebar__collapse-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Drag to collapse sidebar"
+          onPointerDown={handleCollapseDragStart}
+          title="Drag left to collapse"
+        />
+      ) : null}
       <div className="sidebar-stack">
         <TitleBarSpacer />
         <button
