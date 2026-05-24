@@ -16,7 +16,9 @@ const __dirname = path.dirname(__filename);
  * stella-browser.
  *
  * Instead of re-threading yet another root through every caller, we resolve
- * the folder by walking up from this file's compiled location:
+ * the folder by walking up from this file's compiled location. Dev bundling
+ * can collapse this helper into `main.js`, so try both the pre-bundle helper
+ * depth and the bundled-main depth.
  *
  *   desktop/dist-electron/desktop/electron/utils/stella-browser-paths.js
  *                                                 ^ __dirname
@@ -27,12 +29,17 @@ const __dirname = path.dirname(__filename);
  * bundle stella-browser as an extraResource, the existsSync fallback to
  * `<app resources>/stella-browser` will keep packaged builds working.
  */
-const compiledDesktopRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const compiledDesktopRootCandidates = [
+  path.resolve(__dirname, "..", "..", "..", ".."),
+  path.resolve(__dirname, "..", "..", ".."),
+];
 
 export const resolveStellaBrowserRoot = (): string => {
-  const desktopLocal = path.join(compiledDesktopRoot, "stella-browser");
-  if (existsSync(desktopLocal)) {
-    return desktopLocal;
+  for (const compiledDesktopRoot of compiledDesktopRootCandidates) {
+    const desktopLocal = path.join(compiledDesktopRoot, "stella-browser");
+    if (existsSync(desktopLocal)) {
+      return desktopLocal;
+    }
   }
 
   // Production fallback: if electron-builder ever copies stella-browser as an
@@ -47,5 +54,5 @@ export const resolveStellaBrowserRoot = (): string => {
     }
   }
 
-  return desktopLocal;
+  return path.join(compiledDesktopRootCandidates[0], "stella-browser");
 };

@@ -28,17 +28,30 @@ import {
 const PERSONALITY_FILE_RELATIVE = "personality.md";
 const VOICE_TOKEN = "{{voice}}";
 
-const BUNDLED_TEMPLATE_URL = new URL(
-  "../../extensions/stella-runtime/personality/template.md",
-  import.meta.url,
-);
+const BUNDLED_TEMPLATE_URLS = [
+  new URL(
+    "../../extensions/stella-runtime/personality/template.md",
+    import.meta.url,
+  ),
+  new URL(
+    "../extensions/stella-runtime/personality/template.md",
+    import.meta.url,
+  ),
+];
 
 const personalityFilePath = (stellaHome: string): string =>
   path.join(stellaHome, PERSONALITY_FILE_RELATIVE);
 
 const readBundledTemplate = (): string => {
-  const filePath = fileURLToPath(BUNDLED_TEMPLATE_URL);
-  return fs.readFileSync(filePath, "utf-8");
+  let lastError: unknown;
+  for (const templateUrl of BUNDLED_TEMPLATE_URLS) {
+    try {
+      return fs.readFileSync(fileURLToPath(templateUrl), "utf-8");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 };
 
 const composePersonalityContent = (voiceId: string | undefined): string => {

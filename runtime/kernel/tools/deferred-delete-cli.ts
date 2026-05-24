@@ -155,7 +155,8 @@ export const extractPowerShellDeleteTargets = (command: string) => {
 
 export const extractWindowsCmdDeleteTargets = (command: string) => {
   const targets: string[] = [];
-  const statementRegex = /(?:^|[&|;\n])\s*(?:del|erase|rd|rmdir)\b([^&|;\n]*)/gi;
+  const statementRegex =
+    /(?:^|[&|;\n])\s*(?:del|erase|rd|rmdir)\b([^&|;\n]*)/gi;
   let statementMatch = statementRegex.exec(command);
 
   while (statementMatch) {
@@ -224,7 +225,9 @@ const runPassthrough = async (binary: string, args: string[]) =>
     });
 
     child.on("error", (error) => {
-      console.error(`[deferred-delete] Failed to run ${binary}: ${error.message}`);
+      console.error(
+        `[deferred-delete] Failed to run ${binary}: ${error.message}`,
+      );
       resolve(127);
     });
   });
@@ -310,7 +313,9 @@ const handlePowerShellWrapper = async (args: string[]) => {
       });
 
       for (const error of trashResult.errors) {
-        console.error(`Remove-Item: failed to remove '${error.path}': ${error.error}`);
+        console.error(
+          `Remove-Item: failed to remove '${error.path}': ${error.error}`,
+        );
       }
 
       if (trashResult.trashed.length > 0) {
@@ -346,7 +351,9 @@ const handlePythonWrapper = async (args: string[]) => {
       });
 
       for (const error of trashResult.errors) {
-        console.error(`python: failed to remove '${error.path}': ${error.error}`);
+        console.error(
+          `python: failed to remove '${error.path}': ${error.error}`,
+        );
       }
 
       if (trashResult.trashed.length > 0) {
@@ -384,8 +391,11 @@ const isDirectExecution = () => {
   if (!process.argv[1]) {
     return false;
   }
-  const current = fileURLToPath(import.meta.url);
   const invoked = path.resolve(process.argv[1]);
+  if (!/^deferred-delete-cli\.(?:js|ts)$/.test(path.basename(invoked))) {
+    return false;
+  }
+  const current = fileURLToPath(import.meta.url);
   return current === invoked;
 };
 

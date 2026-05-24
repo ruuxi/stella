@@ -1,5 +1,4 @@
 import { context as createEsbuildContext } from "esbuild";
-import { spawn } from "node:child_process";
 import { existsSync, promises as fsPromises, watch as watchFs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,22 +12,20 @@ const runtimeStaticAssetRoots = [
   "runtime/extensions/stella-runtime/agents",
   "runtime/extensions/stella-runtime/personality",
 ];
+const electronRuntimeEntryPoints = [
+  "desktop/electron/main.ts",
+  "runtime/worker/entry.ts",
+  "runtime/kernel/cli/stella-computer.ts",
+  "runtime/kernel/cli/stella-connect.ts",
+  "runtime/kernel/tools/deferred-delete-cli.ts",
+];
 const preloadEntryPoints = ["desktop/electron/preload.ts"];
 const storeWebPreloadEntryPoints = ["desktop/electron/store-web-preload.ts"];
-const tsgoBinPath = path.resolve(
-  repoRootDir,
-  "node_modules",
-  "@typescript",
-  "native-preview",
-  "bin",
-  "tsgo.js",
-);
 
-let preloadBuildContexts = [];
+let buildContexts = [];
 let rebuildChain = Promise.resolve();
 let shuttingDown = false;
 const assetWatchers = [];
-let electronTypeScriptWatcher = null;
 const runnerPid = Number.parseInt(
   process.env.STELLA_ELECTRON_DEV_RUNNER_PID ?? "",
   10,
@@ -46,7 +43,21 @@ const isPidAlive = (pid) => {
   }
 };
 
-const createPreloadBuildOptions = () => [
+const createBuildOptions = () => [
+  {
+    absWorkingDir: repoRootDir,
+    bundle: true,
+    entryPoints: electronRuntimeEntryPoints,
+    external: ["electron"],
+    format: "esm",
+    logLevel: "info",
+    outbase: ".",
+    outdir: path.join("desktop", outdir),
+    packages: "external",
+    platform: "node",
+    target: nodeTarget,
+    tsconfig: path.join("desktop", "tsconfig.electron.json"),
+  },
   {
     absWorkingDir: repoRootDir,
     bundle: true,
@@ -56,6 +67,7 @@ const createPreloadBuildOptions = () => [
     logLevel: "info",
     outbase: ".",
     outdir: path.join("desktop", outdir),
+    packages: "external",
     platform: "node",
     target: nodeTarget,
     tsconfig: path.join("desktop", "tsconfig.preload.json"),
@@ -69,69 +81,19 @@ const createPreloadBuildOptions = () => [
     logLevel: "info",
     outbase: ".",
     outdir: path.join("desktop", outdir),
+    packages: "external",
     platform: "node",
     target: nodeTarget,
     tsconfig: path.join("desktop", "tsconfig.preload.json"),
   },
 ];
 
-const startPreloadBuildContexts = async () => {
+const startBuildContexts = async () => {
   const contexts = await Promise.all(
-    createPreloadBuildOptions().map((options) => createEsbuildContext(options)),
+    createBuildOptions().map((options) => createEsbuildContext(options)),
   );
   await Promise.all(contexts.map((ctx) => ctx.watch()));
   return contexts;
-};
-
-const startElectronTypeScriptWatcher = () => {
-  if (!existsSync(tsgoBinPath)) {
-    console.error(
-      `[electron-build] Missing tsgo binary at ${tsgoBinPath}. Run \`bun install\` at the repo root first.`,
-    );
-    process.exit(1);
-  }
-
-  const child = spawn(
-    process.execPath,
-    [
-      tsgoBinPath,
-      "-w",
-      "-p",
-      "tsconfig.electron.json",
-      "--preserveWatchOutput",
-    ],
-    {
-      cwd: desktopDir,
-      env: { ...process.env },
-      stdio: "inherit",
-    },
-  );
-  electronTypeScriptWatcher = child;
-
-  child.once("error", (error) => {
-    electronTypeScriptWatcher = null;
-    if (shuttingDown) {
-      return;
-    }
-    console.error(
-      `[electron-build] Electron TypeScript watcher failed to start: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(1);
-  });
-
-  child.once("exit", (code, signal) => {
-    electronTypeScriptWatcher = null;
-    if (shuttingDown) {
-      return;
-    }
-    const detail = signal
-      ? `exited via ${signal}`
-      : `exited with code ${code ?? 0}`;
-    console.error(
-      `[electron-build] Electron TypeScript watcher ${detail}; stopping electron build.`,
-    );
-    process.exit(code && code !== 0 ? code : 1);
-  });
 };
 
 const copyRuntimeStaticAssets = async () => {
@@ -157,43 +119,10 @@ const copyRuntimeStaticAssets = async () => {
   );
 };
 
-const disposePreloadBuildContexts = async () => {
-  const contextsToDispose = preloadBuildContexts;
-  preloadBuildContexts = [];
+const disposeBuildContexts = async () => {
+  const contextsToDispose = buildContexts;
+  buildContexts = [];
   await Promise.all(contextsToDispose.map((ctx) => ctx.dispose()));
-};
-
-const stopElectronTypeScriptWatcher = async () => {
-  const child = electronTypeScriptWatcher;
-  if (!child) {
-    return;
-  }
-  electronTypeScriptWatcher = null;
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return;
-  }
-
-  await new Promise((resolvePromise) => {
-    const timer = setTimeout(() => {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // Ignore races during shutdown.
-      }
-      resolvePromise();
-    }, 3_000);
-    timer.unref?.();
-    child.once("exit", () => {
-      clearTimeout(timer);
-      resolvePromise();
-    });
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      clearTimeout(timer);
-      resolvePromise();
-    }
-  });
 };
 
 const scheduleAssetCopy = () => {
@@ -253,15 +182,13 @@ const shutdown = async (exitCode) => {
   }
 
   await rebuildChain.catch(() => undefined);
-  await stopElectronTypeScriptWatcher();
-  await disposePreloadBuildContexts();
+  await disposeBuildContexts();
   process.exit(exitCode);
 };
 
 try {
   await cleanOutdir();
-  preloadBuildContexts = await startPreloadBuildContexts();
-  startElectronTypeScriptWatcher();
+  buildContexts = await startBuildContexts();
   await copyRuntimeStaticAssets();
   startAssetWatchers();
 } catch (error) {

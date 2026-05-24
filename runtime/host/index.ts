@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { promises as fs, watch, type FSWatcher } from "node:fs";
+import { existsSync, promises as fs, watch, type FSWatcher } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2735,7 +2735,6 @@ export class StellaRuntimeHost {
       path.dirname(workerEntryPath),
       "..",
       "..",
-      "..",
     );
     this.watcher = watch(
       distElectronRoot,
@@ -2749,14 +2748,31 @@ export class StellaRuntimeHost {
   }
 }
 
-const resolveDefaultWorkerEntryPath = (options: StellaRuntimeHostOptions) =>
-  options.workerEntryPath ??
-  path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "worker",
-    "entry.js",
-  );
+const resolveDefaultWorkerEntryPath = (options: StellaRuntimeHostOptions) => {
+  if (options.workerEntryPath) {
+    return options.workerEntryPath;
+  }
+
+  const currentModuleDir = path.dirname(fileURLToPath(import.meta.url));
+  const bundledCandidates = [
+    path.resolve(currentModuleDir, "..", "..", "runtime", "worker", "entry.js"),
+    path.join(
+      options.initializeParams.stellaRoot,
+      "desktop",
+      "dist-electron",
+      "runtime",
+      "worker",
+      "entry.js",
+    ),
+  ];
+  for (const bundledPath of bundledCandidates) {
+    if (existsSync(bundledPath)) {
+      return bundledPath;
+    }
+  }
+
+  return path.resolve(currentModuleDir, "..", "worker", "entry.js");
+};
 
 const shouldReloadRuntime = (normalizedFilename: string): boolean => {
   const hostOwnedRuntimeKernelPrefixes = [
