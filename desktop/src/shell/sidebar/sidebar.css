@@ -4,7 +4,6 @@
    ============================================ */
 
 .sidebar:not(.sidebar--hidden) {
-  overflow: visible;
   z-index: 3;
 }
 
@@ -15,7 +14,8 @@
   flex-shrink: 0;
   position: relative;
   z-index: 2;
-  transition: width 360ms cubic-bezier(0.32, 0.72, 0.16, 1);
+  overflow: hidden;
+  transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
 }
 
 .sidebar-stack {
@@ -30,7 +30,9 @@
   width: var(--shell-sidebar-width, 170px);
   min-width: var(--shell-sidebar-width, 170px);
   overflow: hidden;
-  contain: layout;
+  contain: layout paint;
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
   --sidebar-icon-box: 20px;
   --sidebar-icon-glyph: 18px;
   --sidebar-brand-logo-size: 19px;
@@ -46,8 +48,8 @@
     var(--sidebar-row-x) + var(--sidebar-icon-box) + var(--sidebar-row-gap)
   );
   transition:
-    width 360ms cubic-bezier(0.32, 0.72, 0.16, 1),
-    min-width 360ms cubic-bezier(0.32, 0.72, 0.16, 1);
+    transform 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    opacity 320ms ease-out 80ms;
 }
 
 /* Empty top band. The transparent shell topbar sits over this space while
@@ -641,9 +643,11 @@
 }
 
 .sidebar.sidebar--hidden .sidebar-stack {
-  width: 0;
-  min-width: 0;
+  transform: translate3d(-12px, 0, 0);
   opacity: 0;
+  transition:
+    transform 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    opacity 220ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
