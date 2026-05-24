@@ -219,6 +219,17 @@
   gap: 2px;
   padding: 0 8px;
   -webkit-app-region: no-drag;
+  /* Match the display panel's open/close easing so the cluster fades
+     in sync with the sliding sidebar rather than snapping out. */
+  transition:
+    opacity 320ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    transform 320ms cubic-bezier(0.32, 0.72, 0.16, 1);
+}
+
+.shell-topbar-window-controls[data-hidden="true"] {
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
 }
 
 .shell-topbar-tabs {

@@ -13,6 +13,10 @@ import {
   Square,
   X,
 } from "lucide-react";
+import {
+  WindowsMaximizeIcon,
+  WindowsRestoreIcon,
+} from "@/shell/ShellTopBarWindowsIcons";
 import { chatWorkspaceStripStore, useChatWorkspaceStripStore } from "@/app/chat/chat-workspace-strip-store";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
@@ -36,7 +40,13 @@ type ShellTopBarProps = {
 
 const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
 
-const WindowControls = () => {
+const WindowControls = ({
+  useWindowsIcons,
+  hidden,
+}: {
+  useWindowsIcons: boolean;
+  hidden: boolean;
+}) => {
   const [isMaximized, setIsMaximized] = useState(false);
 
   const updateMaximizedState = useCallback(() => {
@@ -50,7 +60,11 @@ const WindowControls = () => {
   }, [updateMaximizedState]);
 
   return (
-    <div className="shell-topbar-window-controls">
+    <div
+      className="shell-topbar-window-controls"
+      data-hidden={hidden ? "true" : undefined}
+      aria-hidden={hidden}
+    >
       <button
         type="button"
         className="shell-topbar-wc-btn"
@@ -68,7 +82,13 @@ const WindowControls = () => {
         }}
         aria-label={isMaximized ? "Restore" : "Maximize"}
       >
-        {isMaximized ? (
+        {useWindowsIcons ? (
+          isMaximized ? (
+            <WindowsRestoreIcon />
+          ) : (
+            <WindowsMaximizeIcon />
+          )
+        ) : isMaximized ? (
           <Square size={11} strokeWidth={1.8} />
         ) : (
           <Maximize2 size={12} strokeWidth={1.8} />
@@ -123,6 +143,8 @@ export const ShellTopBar = ({
       cancelled = true;
     };
   }, [isMiniWindow]);
+
+  const renderWindowControls = isWin || (!isMac && isMiniWindow);
 
   const toggleMiniAlwaysOnTop = useCallback(() => {
     const next = !miniAlwaysOnTop;
@@ -224,7 +246,13 @@ export const ShellTopBar = ({
                 aria-pressed={panelExpanded}
                 title={panelExpanded ? "Restore panel size" : "Expand panel"}
               >
-                {panelExpanded ? (
+                {isWin ? (
+                  panelExpanded ? (
+                    <WindowsRestoreIcon />
+                  ) : (
+                    <WindowsMaximizeIcon />
+                  )
+                ) : panelExpanded ? (
                   <Minimize2 size={14} strokeWidth={1.75} />
                 ) : (
                   <Maximize2 size={14} strokeWidth={1.75} />
@@ -276,7 +304,9 @@ export const ShellTopBar = ({
         </div>
         {/* Windows is frameless — render our own controls on every window.
             On other non-mac platforms keep them mini-only (legacy behavior). */}
-        {isWin || (!isMac && isMiniWindow) ? <WindowControls /> : null}
+        {renderWindowControls ? (
+          <WindowControls useWindowsIcons={isWin} hidden={panelOpen} />
+        ) : null}
       </div>
     </header>
   );
