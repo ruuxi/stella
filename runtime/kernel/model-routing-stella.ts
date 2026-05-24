@@ -207,7 +207,6 @@ export const createStellaRoute = (args: {
   agentType: string;
   modelId: string;
   resolvedModelId?: string;
-  relayProvider?: ManagedGatewayProvider;
 }): ResolvedLlmRoute | null => {
   const siteBaseUrl = normalizeStellaBase(args.site.baseUrl);
   const authToken = args.site.getAuthToken()?.trim();
@@ -221,8 +220,7 @@ export const createStellaRoute = (args: {
   const resolvedModelId =
     args.resolvedModelId ??
     fallbackResolvedModelForAlias(args.modelId, args.agentType);
-  const relayProvider =
-    args.relayProvider ?? inferManagedGatewayProviderFromModel(resolvedModelId);
+  const relayProvider = inferManagedGatewayProviderFromModel(resolvedModelId);
 
   const refreshApiKey = async (): Promise<string | undefined> => {
     const nextToken = (await args.site.refreshAuthToken?.())?.trim();
