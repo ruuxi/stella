@@ -136,6 +136,14 @@ export function useFullShellChat({
     activeConversationId,
   })
 
+  // Focus the composer on mount and whenever the user navigates onto the
+  // chat route (covers both home content and the full chat surface), so
+  // the user can start typing without clicking first.
+  useEffect(() => {
+    if (!isOnChatRoute) return
+    setComposerFocusRequestId((id) => id + 1)
+  }, [isOnChatRoute, activeConversationId])
+
   const startNewChat = useCallback(async () => {
     const nextConversationId = await createNewLocalConversationId()
     setMessage('')
