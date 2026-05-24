@@ -35,6 +35,7 @@ export type BootstrapConfig = {
   stellaHomePath: string;
   hardResetMutableHomePaths: readonly string[];
   isDev: boolean;
+  useDevServer: boolean;
   sessionPartition: string;
   startupStageDelayMs: number;
 };

@@ -127,7 +127,7 @@ const initializeWindowShell = (context: BootstrapContext) => {
   const allowedStoreWebOrigin = storeWebOrigin(storeWebBaseUrl);
   configureStellaSessionPermissions({
     appPartition: config.sessionPartition,
-    isDev: config.isDev,
+    isDev: config.useDevServer,
     getDevServerUrl,
   });
   configureNotificationActivationHandling(context);
@@ -136,14 +136,14 @@ const initializeWindowShell = (context: BootstrapContext) => {
     preloadPath,
     sessionPartition: config.sessionPartition,
     electronDir: config.electronDir,
-    isDev: config.isDev,
+    isDev: config.useDevServer,
     getDevServerUrl,
   });
   state.petController = new PetWindowController({
     preloadPath,
     sessionPartition: config.sessionPartition,
     electronDir: config.electronDir,
-    isDev: config.isDev,
+    isDev: config.useDevServer,
     getDevServerUrl,
   });
   state.overlayController.setSelectionChipClickHandler((requestId) => {
@@ -162,7 +162,7 @@ const initializeWindowShell = (context: BootstrapContext) => {
             storeWebOrigin(url) === allowedStoreWebOrigin,
         ),
       sessionPartition: config.sessionPartition,
-      isDev: config.isDev,
+      isDev: config.useDevServer,
       getDevServerUrl,
       isAppReady: () => state.appReady,
       externalLinkService: services.externalLinkService,

@@ -49,8 +49,8 @@ export const createBootstrapServices = (options: {
       options.getMobileBroadcast()?.("localChat:updated", payload ?? null);
     },
   });
-  externalLinkService.setDevBuild(config.isDev);
-  if (config.isDev) {
+  externalLinkService.setDevBuild(config.useDevServer);
+  if (config.useDevServer) {
     externalLinkService.trustDevServerBaseUrl(getDevServerUrl());
   }
   const securityPolicyService = new SecurityPolicyService({
