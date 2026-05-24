@@ -184,7 +184,9 @@
 .chat-workspace-strip__card {
   display: flex;
   flex-direction: column;
-  background: var(--panel-surface-bg);
+  background: var(--panel-surface-bg-gradient);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid var(--panel-surface-border);
   box-shadow: var(--panel-surface-highlight);
   border-radius: 12px;
