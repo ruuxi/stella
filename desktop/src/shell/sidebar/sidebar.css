@@ -56,9 +56,6 @@
   flex: 1;
   min-height: 0;
   background: var(--panel-surface-bg-gradient);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  border-right: 1px solid var(--border-base);
   box-shadow: var(--panel-surface-highlight);
   width: var(--shell-sidebar-width, 170px);
   min-width: var(--shell-sidebar-width, 170px);

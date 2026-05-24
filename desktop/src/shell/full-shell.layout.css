@@ -18,6 +18,8 @@
   --shell-topbar-left-width: var(--shell-sidebar-width);
   --shell-topbar-left-width-sidebar-hidden: 112px;
   --shell-topbar-panel-controls-width: 76px;
+  --shell-content-left-radius: 16px;
+  --shell-content-edge: color-mix(in oklch, var(--foreground) 11%, transparent);
   padding: 0;
 }
 
@@ -734,10 +736,23 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   z-index: 1;
   overflow: hidden;
   background: transparent;
-  border-left: none;
-  border-top: 1px solid var(--border-weak);
+  border: 1px solid var(--shell-content-edge);
+  border-right: none;
+  border-radius: var(--shell-content-left-radius) 0 0
+    var(--shell-content-left-radius);
   padding-top: var(--shell-topbar-height);
   box-sizing: border-box;
+}
+
+:root[data-sidebar-hidden="true"] .content-area {
+  border-left: none;
+  border-radius: 0;
+}
+
+html[data-stella-window="mini"] .content-area,
+html[data-platform="mobile"] .content-area {
+  border-left: none;
+  border-radius: 0;
 }
 
 /* Drag strip at top of content area for window dragging */
