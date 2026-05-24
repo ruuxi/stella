@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef } from "react";
-import { useDisplayPanelLayout } from "@/shell/display/tab-store";
+import {
+  useDisplayPanelExpanded,
+  useDisplayPanelOpen,
+} from "@/shell/display/tab-store";
 import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
 import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
 import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";
 
 export function BillingScreen() {
-  const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
+  const panelOpen = useDisplayPanelOpen();
+  const panelExpanded = useDisplayPanelExpanded();
   const layoutFrameRef = useRef<number | null>(null);
   const embeddedTheme = useEmbeddedWebsiteTheme();
   const {
@@ -56,7 +60,7 @@ export function BillingScreen() {
         layoutFrameRef.current = null;
       }
     };
-  }, [panelExpanded, panelOpen, panelWidth, scheduleBillingWebLayout, viewSuspended]);
+  }, [panelExpanded, panelOpen, scheduleBillingWebLayout, viewSuspended]);
 
   useEffect(() => {
     let cancelled = false;

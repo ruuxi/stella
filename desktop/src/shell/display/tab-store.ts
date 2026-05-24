@@ -391,9 +391,8 @@ export const displayTabs = {
 
 /**
  * React binding. Returns the current snapshot and re-renders on any change
- * to the store. Prefer `useDisplayTabList` or `useDisplayPanelLayout` —
- * this fires for both kinds of change and re-renders unnecessarily during
- * pointer-driven resize.
+ * to the store. Prefer `useDisplayTabList` or one of the per-field panel hooks below
+ * for new consumers.
  */
 export const useDisplayTabs = (): TabStoreSnapshot =>
   useSyncExternalStore(
@@ -415,16 +414,25 @@ export const useDisplayTabList = (): DisplayTabListSnapshot =>
   );
 
 /**
- * Subscribe to just the panel-layout slice (panelOpen, panelExpanded,
- * panelWidth). Used by the sidebar shell, top bar, and store layout —
- * tab strip consumers should use `useDisplayTabList` instead.
+ * Subscribe to a single field of the panel-layout snapshot. Per-field
+ * selectors keep open/expanded consumers from re-rendering when the user
+ * drags the resize handle (width updates fan out separately via a CSS
+ * variable on `:root` — see `DisplaySidebar.tsx`).
  */
-export const useDisplayPanelLayout = (): DisplayPanelLayoutSnapshot =>
+const useLayoutSlice = <T>(
+  pick: (snapshot: DisplayPanelLayoutSnapshot) => T,
+): T =>
   useSyncExternalStore(
     displayTabs.subscribeLayout,
-    displayTabs.getLayoutSnapshot,
-    displayTabs.getLayoutSnapshot,
+    () => pick(displayTabs.getLayoutSnapshot()),
+    () => pick(displayTabs.getLayoutSnapshot()),
   );
+
+export const useDisplayPanelOpen = (): boolean =>
+  useLayoutSlice((s) => s.panelOpen);
+
+export const useDisplayPanelExpanded = (): boolean =>
+  useLayoutSlice((s) => s.panelExpanded);
 
 export const useActiveDisplayTab = (): DisplayTab | null => {
   const { tabs, activeTabId } = useDisplayTabList();

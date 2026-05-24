@@ -3,10 +3,10 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
-  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -19,7 +19,8 @@ import {
   DISPLAY_PANEL_MIN_WIDTH,
   displayTabs,
   useActiveDisplayTab,
-  useDisplayPanelLayout,
+  useDisplayPanelExpanded,
+  useDisplayPanelOpen,
 } from "./display/tab-store";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
 import "./display-sidebar.css";
@@ -68,6 +69,19 @@ const computeMaxWidth = (): number => {
 };
 
 const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 72;
+const DISPLAY_PANEL_WIDTH_CSS_VAR = "--display-panel-width";
+
+// Set on `:root` (not on `.display-sidebar`) so siblings outside the panel
+// — most importantly `.shell-topbar-center`, which centers Store/Billing
+// controls over `.content-area` — can inherit the same value.
+const applyDisplayPanelWidthCssVar = (width: number | null): void => {
+  const root = document.documentElement;
+  if (width == null) {
+    root.style.removeProperty(DISPLAY_PANEL_WIDTH_CSS_VAR);
+    return;
+  }
+  root.style.setProperty(DISPLAY_PANEL_WIDTH_CSS_VAR, `${Math.round(width)}px`);
+};
 
 const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
   const [ready, setReady] = useState(false);
@@ -95,7 +109,8 @@ export const DisplaySidebar = forwardRef<
   DisplaySidebarHandle,
   DisplaySidebarProps
 >(function DisplaySidebar({ onOpenChange }, ref) {
-  const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
+  const panelOpen = useDisplayPanelOpen();
+  const panelExpanded = useDisplayPanelExpanded();
   const activeTab = useActiveDisplayTab();
   const asideRef = useRef<HTMLElement | null>(null);
 
@@ -151,6 +166,18 @@ export const DisplaySidebar = forwardRef<
     onOpenChange?.(panelOpen);
   }, [panelOpen, onOpenChange]);
 
+  useLayoutEffect(() => {
+    const syncWidthVar = () => {
+      applyDisplayPanelWidthCssVar(displayTabs.getLayoutSnapshot().panelWidth);
+    };
+    syncWidthVar();
+    const unsubscribe = displayTabs.subscribeLayout(syncWidthVar);
+    return () => {
+      unsubscribe();
+      applyDisplayPanelWidthCssVar(null);
+    };
+  }, []);
+
   // Toggling expand/restore swaps the panel between flex-row and absolute
   // layout instantly (no width animation on the panel itself), so the
   // tab strip's open/close transition would visibly re-animate from its
@@ -179,7 +206,6 @@ export const DisplaySidebar = forwardRef<
   // If the window shrinks below the user's chosen width, snap the stored
   // width down so we don't end up wider than the viewport allows.
   useEffect(() => {
-    if (panelWidth == null) return;
     let frame = 0;
     const onResize = () => {
       if (frame !== 0) return;
@@ -196,7 +222,7 @@ export const DisplaySidebar = forwardRef<
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", onResize);
     };
-  }, [panelWidth]);
+  }, []);
 
   const handleResizeStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -208,7 +234,9 @@ export const DisplaySidebar = forwardRef<
 
       const aside = asideRef.current;
       const measuredStartWidth =
-        aside?.getBoundingClientRect().width ?? panelWidth ?? 0;
+        aside?.getBoundingClientRect().width ??
+        displayTabs.getSnapshot().panelWidth ??
+        0;
       const startX = event.clientX;
       const pointerId = event.pointerId;
       const handle = event.currentTarget;
@@ -219,16 +247,19 @@ export const DisplaySidebar = forwardRef<
       // user-initiated panel drag).
       const maxWidth = computeMaxWidth();
       const startWidth = panelExpanded ? maxWidth : measuredStartWidth;
-      let pendingWidth: number | null = null;
+      // Keep the live drag on the CSS variable. Committing through React's
+      // store every frame wakes route-level layout subscribers and makes the
+      // handle trail the cursor. `latestWidth` doubles as the "user actually
+      // dragged" signal — null means no commit needed on pointer up.
+      let latestWidth: number | null = null;
       let frame = 0;
       let snappedToExpanded = panelExpanded;
       let collapsedFromExpanded = false;
 
-      const commitPendingWidth = () => {
+      const applyLatestWidth = () => {
         frame = 0;
-        if (pendingWidth == null) return;
-        displayTabs.setPanelWidth(pendingWidth);
-        pendingWidth = null;
+        if (latestWidth == null) return;
+        applyDisplayPanelWidthCssVar(latestWidth);
       };
 
       // Pin the cursor / disable selection globally so dragging across
@@ -249,45 +280,45 @@ export const DisplaySidebar = forwardRef<
 
         // Panel sits on the right edge, so dragging left increases width.
         const delta = startX - ev.clientX;
-        let rawWidth = startWidth + delta;
+        const rawWidth = startWidth + delta;
 
         if (snappedToExpanded) {
           if (delta > -DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD) return;
           snappedToExpanded = false;
           collapsedFromExpanded = true;
+          latestWidth = maxWidth;
+          applyDisplayPanelWidthCssVar(maxWidth);
           displayTabs.setPanelWidth(maxWidth);
           displayTabs.setPanelExpanded(false);
           return;
         }
 
-        if (
-          !snappedToExpanded &&
-          rawWidth >= maxWidth + DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD
-        ) {
+        if (rawWidth >= maxWidth + DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD) {
           snappedToExpanded = true;
-          pendingWidth = null;
+          latestWidth = maxWidth;
           if (frame !== 0) {
             cancelAnimationFrame(frame);
             frame = 0;
           }
+          applyDisplayPanelWidthCssVar(maxWidth);
           displayTabs.setPanelWidth(maxWidth);
           displayTabs.setPanelExpanded(true);
           return;
         }
 
-        pendingWidth = Math.max(
+        latestWidth = Math.max(
           DISPLAY_PANEL_MIN_WIDTH,
           Math.min(maxWidth, rawWidth),
         );
         if (frame === 0) {
-          frame = requestAnimationFrame(commitPendingWidth);
+          frame = requestAnimationFrame(applyLatestWidth);
         }
       };
 
       const onUp = () => {
         if (frame !== 0) {
           cancelAnimationFrame(frame);
-          commitPendingWidth();
+          applyLatestWidth();
         }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
@@ -299,6 +330,9 @@ export const DisplaySidebar = forwardRef<
         document.body.style.userSelect = previousUserSelect;
         aside?.classList.remove("display-sidebar--resizing");
         delete document.body.dataset.displayResizing;
+        if (latestWidth != null) {
+          displayTabs.setPanelWidth(latestWidth);
+        }
         // Force any pending coalesced width to disk so the user's most
         // recent position survives a reload, even if the next debounce
         // tick was still in flight.
@@ -309,7 +343,7 @@ export const DisplaySidebar = forwardRef<
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     },
-    [panelExpanded, panelWidth],
+    [panelExpanded],
   );
 
   const handleResizeDoubleClick = useCallback(() => {
@@ -319,14 +353,6 @@ export const DisplaySidebar = forwardRef<
 
   const portalTarget = document.querySelector(".full-body") ?? document.body;
 
-  // Inline CSS variable lets the stylesheet keep its `clamp()` default
-  // when the user hasn't resized yet. While expanded, the class wins via
-  // a higher-specificity rule (no need to clear the var).
-  const widthStyle: CSSProperties | undefined =
-    panelWidth != null
-      ? ({ "--display-panel-width": `${panelWidth}px` } as CSSProperties)
-      : undefined;
-
   return createPortal(
     <aside
       ref={asideRef}
@@ -334,7 +360,6 @@ export const DisplaySidebar = forwardRef<
         panelExpanded ? " display-sidebar--expanded" : ""
       }`}
       aria-hidden={!panelOpen}
-      {...(widthStyle ? { style: widthStyle } : {})}
     >
       <div
         className="display-sidebar__resize-handle"
