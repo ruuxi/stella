@@ -1,20 +1,17 @@
 name: Build Native Helpers
 
 # Native helpers (Swift/C/Rust binaries under desktop/native/out/) are built per
-# platform on CI rather than committed to git. The launcher fetches the
-# platform-relevant tarball from R2 at install time so end users never need
-# clang / swiftc / cargo / MSVC on their machine.
+# platform on CI rather than committed to git. Desktop releases bundle the
+# matching helper payload directly; this standalone workflow keeps the R2
+# helper channel available for repair and native-only refreshes.
 #
 # Triggers:
 #   - push to master that touches native sources
-#   - desktop-v* tag push (so every desktop release has matching helpers)
 #   - manual dispatch
 on:
   push:
     branches:
       - master
-    tags:
-      - "desktop-v*"
     paths:
       - "desktop/native/src/**"
       - "desktop/native/wakeword/**"
