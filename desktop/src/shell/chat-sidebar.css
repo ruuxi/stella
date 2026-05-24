@@ -153,10 +153,7 @@
 }
 
 .chat-sidebar-shell:focus-within {
-  box-shadow:
-    var(--shadow-md),
-    var(--panel-surface-highlight),
-    0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 18%, var(--panel-surface-border));
 }
 
 /* Form: layout only, mirrors composer-form */
