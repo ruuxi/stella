@@ -8,7 +8,7 @@ import { ChatHomeOverview } from "./ChatHomeOverview";
 import { MediaTabContent } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { getCanvasHtmlItems } from "./canvas-tab/canvas-items";
-import { displayTabs, useDisplayPanelLayout } from "./tab-store";
+import { displayTabs, useDisplayPanelExpanded } from "./tab-store";
 import {
   CANVAS_HTML_TAB_ID,
   GENERATED_MEDIA_TAB_ID,
@@ -42,7 +42,7 @@ function ChatDisplayTab({
 }) {
   const matchRoute = useMatchRoute();
   const isOnHomeChatRoute = Boolean(matchRoute({ to: "/chat" }));
-  const { panelExpanded } = useDisplayPanelLayout();
+  const panelExpanded = useDisplayPanelExpanded();
   const chat = useChatRuntime();
 
   if (isOnHomeChatRoute && !panelExpanded) return <ChatHomeOverview />;

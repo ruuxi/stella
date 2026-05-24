@@ -25,7 +25,8 @@ import {
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import {
   displayTabs,
-  useDisplayPanelLayout,
+  useDisplayPanelExpanded,
+  useDisplayPanelOpen,
   useDisplayTabList,
 } from "@/shell/display/tab-store";
 import { CHAT_DISPLAY_TAB_ID } from "@/shell/display/default-tabs";
@@ -132,7 +133,8 @@ function RootChrome() {
   const { state } = useUiState();
   const conversationId = state.conversationId;
   const chat = useChatRuntime();
-  const { panelOpen, panelExpanded } = useDisplayPanelLayout();
+  const panelOpen = useDisplayPanelOpen();
+  const panelExpanded = useDisplayPanelExpanded();
   const { activeTabId } = useDisplayTabList();
 
   const [drawerOpen, setDrawerOpen] = useState(false);

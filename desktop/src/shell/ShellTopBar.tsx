@@ -1,5 +1,5 @@
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,7 +18,8 @@ import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
   displayTabs,
-  useDisplayPanelLayout,
+  useDisplayPanelExpanded,
+  useDisplayPanelOpen,
 } from "@/shell/display/tab-store";
 import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
@@ -94,7 +95,8 @@ export const ShellTopBar = ({
   const router = useRouter();
   const isMac = getPlatform() === "darwin";
   const isMiniWindow = useWindowType() === "mini";
-  const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
+  const panelOpen = useDisplayPanelOpen();
+  const panelExpanded = useDisplayPanelExpanded();
   const { stripVisible } = useChatWorkspaceStripStore();
   // Only the Store route adapts the top bar — other routes keep the
   // default layout (display tab strip on the right).
@@ -129,19 +131,9 @@ export const ShellTopBar = ({
       .catch(() => setMiniAlwaysOnTopState(!next));
   }, [miniAlwaysOnTop]);
 
-  // Panel width must live on the topbar root so `.shell-topbar-center` can
-  // read it when centering Store/Billing web controls over `.content-area`.
-  // Setting it only on `.shell-topbar-tabs` does not work — custom properties
-  // inherit downward, not to sibling elements.
-  const shellTopbarStyle: CSSProperties | undefined =
-    panelWidth != null
-      ? ({ "--display-panel-width": `${panelWidth}px` } as CSSProperties)
-      : undefined;
-
   return (
     <header
       className="shell-topbar"
-      style={shellTopbarStyle}
       data-platform={isMac ? "mac" : "other"}
       data-display-open={panelOpen ? "true" : "false"}
       data-display-expanded={panelExpanded ? "true" : "false"}

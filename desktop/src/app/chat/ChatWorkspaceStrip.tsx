@@ -51,7 +51,7 @@ import {
   type ConversationFileEntry,
 } from "@/shell/display/derive-conversation-files";
 import { basenameOf } from "@/shell/display/path-to-viewer";
-import { displayTabs, useDisplayPanelLayout } from "@/shell/display/tab-store";
+import { displayTabs, useDisplayPanelOpen } from "@/shell/display/tab-store";
 import { DisplayTabIcon } from "@/shell/display/icons";
 import {
   ActivityHistoryDialog,
@@ -305,7 +305,7 @@ export function ChatWorkspaceStrip({
   embeddedInDisplayPanel = false,
   onSuggestionClick,
 }: ChatWorkspaceStripProps) {
-  const { panelOpen } = useDisplayPanelLayout();
+  const panelOpen = useDisplayPanelOpen();
   const { stripVisible, sections } = useChatWorkspaceStripStore();
   const chat = useChatRuntime();
   const { state } = useUiState();

@@ -23,7 +23,10 @@ import {
 } from "@/app/chat/emoji-sprites/active-emoji-pack";
 import { writeCachedPetById } from "@/shell/pet/pet-catalog-cache";
 import { normalizePet } from "@/shell/pet/built-in-pets";
-import { useDisplayPanelLayout } from "@/shell/display/tab-store";
+import {
+  useDisplayPanelExpanded,
+  useDisplayPanelOpen,
+} from "@/shell/display/tab-store";
 import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
 import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
 import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";
@@ -151,7 +154,8 @@ const handleStoreWebLocalAction = async (
 export function StoreApp() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/store" });
-  const { panelOpen, panelExpanded, panelWidth } = useDisplayPanelLayout();
+  const panelOpen = useDisplayPanelOpen();
+  const panelExpanded = useDisplayPanelExpanded();
   const layoutFrameRef = useRef<number | null>(null);
   const embeddedTheme = useEmbeddedWebsiteTheme();
   const {
@@ -215,7 +219,7 @@ export function StoreApp() {
         layoutFrameRef.current = null;
       }
     };
-  }, [panelExpanded, panelOpen, panelWidth, scheduleStoreWebLayout, viewSuspended]);
+  }, [panelExpanded, panelOpen, scheduleStoreWebLayout, viewSuspended]);
 
   // Two redirects share this effect:
   //   - Legacy `?tab=installed`/`?tab=publish` URLs collapse to Discover.
