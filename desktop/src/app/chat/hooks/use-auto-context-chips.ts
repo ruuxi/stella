@@ -40,7 +40,7 @@ export type RecentAppChip = {
   isActive: boolean
   /** Topmost on-screen window title for this app, when available. */
   windowTitle?: string
-  /** Base64 PNG data URL for the app's icon (macOS); undefined elsewhere. */
+  /** Base64 PNG data URL for the app's icon, when the platform exposes one. */
   iconDataUrl?: string
 }
 
