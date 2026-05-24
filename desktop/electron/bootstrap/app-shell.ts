@@ -222,6 +222,7 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
   }
 
   app.on("browser-window-focus", () => {
+    if (!state.appReady) return;
     state.stellaHostRunner?.setHostFocused(true);
   });
   app.on("browser-window-blur", () => {
