@@ -7,7 +7,6 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import {
-  startTransition,
   useCallback,
   useEffect,
   useRef,
@@ -46,10 +45,6 @@ import {
 } from "@/shared/lib/stella-orb-chat";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
-  dispatchStellaSendMessage,
-  WORKSPACE_CREATION_TRIGGER_KIND,
-} from "@/shared/lib/stella-send-message";
-import {
   ensureChatDisplayTab,
   openChatDisplayTab,
 } from "@/shell/display/default-tabs";
@@ -63,9 +58,6 @@ import { useLastLocationRestore } from "@/shell/root-chrome/use-last-location-re
 import { useOnboardingMemoryPromotion } from "@/shell/root-chrome/use-onboarding-memory-promotion";
 import { usePersistLastLocation } from "@/shell/root-chrome/use-persist-last-location";
 import { useWorkspacePanelEvents } from "@/shell/root-chrome/use-workspace-panel-events";
-
-const NEW_APP_ASK_STELLA_PROMPT =
-  "The user wants to create a new workspace (app) added to the sidebar with its own content. Be concise and provide 2-4 suggestions and ideas.";
 
 const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITH_SIDEBAR = 1280;
 const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITHOUT_SIDEBAR = 1120;
@@ -91,11 +83,6 @@ const getShellBreakpointState = (
     hideLeftSidebar,
     hideRightContextPanel: width > 0 && width <= rightPanelBreakpoint,
   };
-};
-
-type PendingAskStellaRequest = {
-  id: number;
-  text: string;
 };
 
 /**
@@ -148,8 +135,6 @@ function RootChrome() {
   const { panelOpen, panelExpanded } = useDisplayPanelLayout();
   const { activeTabId } = useDisplayTabList();
 
-  const [pendingAskStellaRequest, setPendingAskStellaRequest] =
-    useState<PendingAskStellaRequest | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(
     readPersistedSidebarVisible,
@@ -230,27 +215,6 @@ function RootChrome() {
     showAuthDialog,
   });
 
-  const handlePendingAskStellaHandled = useCallback((requestId: number) => {
-    setPendingAskStellaRequest((current) =>
-      current?.id === requestId ? null : current,
-    );
-  }, []);
-
-  // When the user starts a "new app" flow from home, keep them on the full
-  // chat surface instead of opening the display panel's chat tab. Everywhere
-  // else, the side-panel chat remains the active surface for the flow.
-  const handleNewAppAskStella = useCallback(() => {
-    startTransition(() => {
-      setPendingAskStellaRequest({
-        id: Date.now(),
-        text: NEW_APP_ASK_STELLA_PROMPT,
-      });
-    });
-    if (isOnChatRoute) {
-      chat.dismissHome();
-    }
-  }, [chat, isOnChatRoute]);
-
   const handleDialogOpenChange = useCallback(
     (open: boolean) => {
       if (!open) closeDialog();
@@ -282,33 +246,6 @@ function RootChrome() {
   }, []);
 
   const isContextMenuPanelOpen = panelOpen;
-
-  // Forward pending ask-Stella requests into the appropriate chat surface.
-  // We deliberately clear the queued request from this effect — the state
-  // here is acting as a one-shot mailbox, not derived state. The cascade is
-  // bounded (one render to null), so the lint rule is suppressed here.
-  useEffect(() => {
-    if (!pendingAskStellaRequest) return;
-
-    dispatchStellaSendMessage(
-      {
-        text: pendingAskStellaRequest.text,
-        uiVisibility: "hidden",
-        triggerKind: WORKSPACE_CREATION_TRIGGER_KIND,
-        triggerSource: "sidebar",
-      },
-      { openPanel: !isOnChatRoute },
-    );
-    if (!isOnChatRoute) {
-      openChatPanel();
-    }
-    handlePendingAskStellaHandled(pendingAskStellaRequest.id);
-  }, [
-    handlePendingAskStellaHandled,
-    isOnChatRoute,
-    openChatPanel,
-    pendingAskStellaRequest,
-  ]);
 
   const { latestDisplayPayloadRef } = useDisplayPayloadRouting({
     displaySidebarRef,
@@ -528,10 +465,6 @@ function RootChrome() {
           }
           onSignIn={showAuthDialog}
           onConnect={showConnectDialog}
-          onNewAppAskStella={() => {
-            closeDrawer();
-            handleNewAppAskStella();
-          }}
         />
       )}
 

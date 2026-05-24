@@ -14,7 +14,7 @@
 
 .window-shell.full {
   --shell-topbar-height: 38px;
-  --shell-sidebar-width: 170px;
+  --shell-sidebar-width: 180px;
   --shell-topbar-left-width: var(--shell-sidebar-width);
   --shell-topbar-left-width-sidebar-hidden: 112px;
   --shell-topbar-panel-controls-width: 76px;

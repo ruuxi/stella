@@ -4,12 +4,8 @@
    ============================================ */
 
 .sidebar:not(.sidebar--hidden) {
-  overflow-x: visible;
-  overflow-y: hidden;
-  contain: layout;
+  overflow: visible;
   z-index: 3;
-  /* Same elevation as workspace-strip panels; cast only to the right over chat. */
-  box-shadow: var(--panel-elevated-shadow-right);
 }
 
 .sidebar {
@@ -30,14 +26,25 @@
   flex: 1;
   min-height: 0;
   background: var(--panel-surface-bg);
+  border-right: 1px solid var(--border-base);
   width: var(--shell-sidebar-width, 170px);
   min-width: var(--shell-sidebar-width, 170px);
   overflow: hidden;
   contain: layout;
-  --sidebar-icon-box: 18px;
-  --sidebar-icon-glyph: 16px;
-  --sidebar-brand-logo-size: 17px;
-  --sidebar-footer-icon-glyph: 14px;
+  --sidebar-icon-box: 20px;
+  --sidebar-icon-glyph: 18px;
+  --sidebar-brand-logo-size: 19px;
+  --sidebar-footer-icon-glyph: 16px;
+  /* Shared rail spacing — one inset from the sidebar edge for every row. */
+  --sidebar-inset-x: 12px;
+  --sidebar-inset-top: 12px;
+  --sidebar-inset-bottom: 8px;
+  --sidebar-row-x: 9px;
+  --sidebar-row-y: 8px;
+  --sidebar-row-gap: 11px;
+  --sidebar-label-indent: calc(
+    var(--sidebar-row-x) + var(--sidebar-icon-box) + var(--sidebar-row-gap)
+  );
   transition:
     width 360ms cubic-bezier(0.32, 0.72, 0.16, 1),
     min-width 360ms cubic-bezier(0.32, 0.72, 0.16, 1);
@@ -51,19 +58,18 @@
   -webkit-app-region: no-drag;
 }
 
-/* Brand row: logo + "Stella" text, sitting just under the title bar.
-   Aligned to match the nav items below (`.sidebar-nav-item`) so the
-   logo and "Stella" text occupy the same icon-column and label-column
-   as Home, Settings, etc. Top pad stays larger than nav padding to
-   give breathing room against the title bar / macOS traffic lights. */
+/* Brand row: logo + "Stella" text, aligned to the same left rail as nav
+   items below. Top/bottom inset matches the reference sidebar spacing. */
 .sidebar-brand {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
-  /* Left pad = `.sidebar-nav` pad (12px) + `.sidebar-nav-item` pad (16px)
-     so the logo sits in the same column as the nav icons below. */
-  padding: 24px 16px 10px 28px;
+  gap: var(--sidebar-row-gap);
+  padding:
+    var(--sidebar-inset-top)
+    var(--sidebar-inset-x)
+    10px
+    calc(var(--sidebar-inset-x) + var(--sidebar-row-x));
   background: none;
   border: none;
   cursor: pointer;
@@ -98,7 +104,7 @@
 .sidebar-brand-text {
   color: var(--text-weak);
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 450;
   font-style: italic;
   letter-spacing: -0.02em;
@@ -109,8 +115,8 @@
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 12px 12px;
+  gap: 1px;
+  padding: 0 var(--sidebar-inset-x);
   flex: 1;
   overflow-y: auto;
   scrollbar-width: none;
@@ -139,18 +145,16 @@
 }
 
 .sidebar-page-back {
-  /* Inherit the visual treatment of `.sidebar-nav-item` so Back feels
-     like part of the same nav family — same icon column, same hover. */
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: var(--sidebar-row-gap);
+  padding: var(--sidebar-row-y) var(--sidebar-row-x);
   border-radius: var(--radius-md);
   background: transparent;
   border: none;
   color: var(--text-weak);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   cursor: default;
   transition: background 0.15s ease, color 0.15s ease;
@@ -192,8 +196,8 @@
 }
 
 .sidebar-section-label {
-  padding: 6px 16px 4px;
-  font-size: 9.5px;
+  padding: 6px var(--sidebar-row-x) 4px var(--sidebar-label-indent);
+  font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -204,14 +208,14 @@
 .sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: var(--sidebar-row-gap);
+  padding: var(--sidebar-row-y) var(--sidebar-row-x);
   border-radius: var(--radius-md);
   background: transparent;
   border: none;
   color: var(--text-base);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: default;
   transition: background 0.15s ease, color 0.15s ease;
@@ -314,55 +318,73 @@
   text-overflow: ellipsis;
 }
 
-/* Footer — pinned to bottom for global apps + account */
+/* Footer — pinned to bottom for account */
 .sidebar-footer {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px;
+  padding: 0 var(--sidebar-inset-x) var(--sidebar-inset-bottom);
+  margin-top: auto;
 }
 
-/* Compact footer row: avatar on the left, quick-action icon buttons
-   on the right. Replaces the prior stacked Connect / Settings rows
-   plus the Upgrade pill — Theme / Settings / Connect live as icon
-   buttons here, billing/plan now surfaces inside the avatar menu. */
-.sidebar-footer-row {
+/* ── Account row ─────────────────────────────────────────────────── */
+.sidebar-account {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 4px 4px 0;
-}
-
-/* Signed-out variant: the "Sign in" label needs full width, so stack
-   the icon strip below it. Keeps Theme/Settings/Connect reachable
-   without truncating "Sign in" inside the 170px sidebar. */
-.sidebar-footer-row--stacked {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-}
-
-.sidebar-footer-row--stacked .sidebar-footer-actions {
-  justify-content: space-around;
   width: 100%;
 }
 
-.sidebar-footer-actions {
-  display: inline-flex;
-  align-items: center;
+.sidebar-account:not(.sidebar-account--signed-out) {
+  align-items: stretch;
+}
+
+.sidebar-account--signed-out {
   gap: 2px;
 }
 
-.sidebar-footer-icon {
+.sidebar-account-menu {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+}
+
+.sidebar-account-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--sidebar-row-gap);
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: var(--sidebar-row-y) var(--sidebar-row-x);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-base);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: default;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-account-trigger:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-account-menu-trigger {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
   padding: 0;
+  margin-right: calc(var(--sidebar-row-x) * -0.5);
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: transparent;
@@ -374,62 +396,47 @@
     border-color 0.15s ease;
 }
 
-.sidebar-footer-icon:hover,
-.sidebar-footer-icon:focus-visible {
+.sidebar-account-menu-trigger:hover,
+.sidebar-account-menu-trigger:focus-visible {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
   color: var(--text-strong);
   border-color: var(--border-weak);
   outline: none;
 }
 
-.sidebar-footer-icon-glyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sidebar-footer-icon-glyph svg {
-  width: var(--sidebar-footer-icon-glyph);
-  height: var(--sidebar-footer-icon-glyph);
-}
-
-/* Hint dot reuses the AppNavItem accent — small red dot in the upper
-   right of the icon button, dismissed once the user opens Connect. */
-.sidebar-footer-icon .sidebar-nav-hint-dot {
+.sidebar-account-menu-trigger .sidebar-nav-hint-dot {
   position: absolute;
   top: 4px;
   right: 4px;
 }
 
-/* ── Account row: avatar (initials only) ─────────────────────────── */
-.sidebar-account {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.sidebar-account-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-account-avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
   border-radius: 50%;
   border: 1px solid var(--border-weak);
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--text-strong);
   font-family: inherit;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  cursor: default;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  pointer-events: none;
 }
 
-.sidebar-account-avatar:hover {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+.sidebar-account-trigger:hover .sidebar-account-avatar {
   border-color: var(--border-strong);
 }
 
@@ -479,16 +486,17 @@
 
 .sidebar-account-signin {
   flex: 1;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: var(--sidebar-row-gap);
+  padding: var(--sidebar-row-y) var(--sidebar-row-x);
   border-radius: var(--radius-md);
   border: none;
   background: transparent;
   color: var(--text-base);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: default;
   transition: background 0.15s ease, color 0.15s ease;
@@ -572,7 +580,7 @@
   margin: 0;
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
   letter-spacing: -0.01em;
