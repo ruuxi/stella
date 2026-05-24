@@ -136,21 +136,6 @@ const ICON_USERS = (
     <path d="M16 3.13a4 4 0 010 7.75" />
   </svg>
 );
-const ICON_PLUS_SQUARE = (
-  <svg
-    width={18}
-    height={18}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-    <path d="M12 8v8M8 12h8" />
-  </svg>
-);
 const ICON_MUSIC = (
   <svg
     width={18}
@@ -165,24 +150,6 @@ const ICON_MUSIC = (
     <path d="M9 18V5l12-2v13" />
     <circle cx="6" cy="18" r="3" />
     <circle cx="18" cy="16" r="3" />
-  </svg>
-);
-const ICON_PALETTE = (
-  <svg
-    width={16}
-    height={16}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
-    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
-    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
-    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
-    <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.6 1.5-1.5 0-.4-.1-.7-.3-1-.2-.2-.3-.5-.3-.8 0-.8.7-1.5 1.5-1.5h1.2c3.2 0 5.8-2.6 5.8-5.8C21.8 6.2 17.4 2 12 2z" />
   </svg>
 );
 const ICON_SETTINGS = (
@@ -214,23 +181,6 @@ const ICON_STORE = (
     <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
     <line x1="3" y1="6" x2="21" y2="6" />
     <path d="M16 10a4 4 0 01-8 0" />
-  </svg>
-);
-const ICON_DEVICE = (
-  <svg
-    width={18}
-    height={18}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="3" width="12" height="18" rx="2" ry="2" />
-    <path d="M7 18h4" />
-    <path d="M17 8.5a5 5 0 0 1 0 7" />
-    <path d="M20 5.5a9 9 0 0 1 0 13" />
   </svg>
 );
 const ICON_LOGIN = (
