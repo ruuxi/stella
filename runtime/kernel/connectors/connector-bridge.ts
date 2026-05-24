@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 
 import { loadConnectorAccessToken } from "./oauth.js";
+import {
+  removeConnectorBridgeProcessRecord,
+  stopConnectorBridgeProcess,
+  writeConnectorBridgeProcessRecord,
+} from "./process-registry.js";
 import type {
   ConnectorToolCallResult,
   ConnectorCommandConfig,
@@ -259,6 +264,7 @@ class HttpConnectorBridgeSession {
 
 class StdioConnectorBridgeSession {
   private child: ChildProcessWithoutNullStreams | null = null;
+  private processRecordPromise: Promise<string | null> | null = null;
   private nextId = 1;
   private pending = new Map<
     string,
@@ -279,33 +285,71 @@ class StdioConnectorBridgeSession {
     if (!this.server.command) {
       throw new Error(`${this.server.displayName} does not have a command.`);
     }
+    const bridgeSessionId = randomUUID();
+    const workerPid = Number.parseInt(
+      process.env.STELLA_RUNTIME_WORKER_PID ?? "",
+      10,
+    );
     this.child = spawn(this.server.command, this.server.args ?? [], {
       cwd: this.server.cwd,
       env: {
         ...process.env,
         ...(await resolveSecretPlaceholders(this.stellaRoot, this.server.env)),
+        STELLA_CONNECTOR_BRIDGE: "1",
+        STELLA_CONNECTOR_ID: this.server.id,
+        STELLA_CONNECTOR_SESSION: bridgeSessionId,
       },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      detached: process.platform !== "win32",
     });
+    const child = this.child;
+    this.processRecordPromise = child.pid
+      ? writeConnectorBridgeProcessRecord(this.stellaRoot, {
+          sessionId: bridgeSessionId,
+          pid: child.pid,
+          ownerPid: process.pid,
+          ...(Number.isInteger(workerPid) && workerPid > 0 ? { workerPid } : {}),
+          connectorId: this.server.id,
+          displayName: this.server.displayName,
+          command: this.server.command,
+          args: this.server.args ?? [],
+          ...(this.server.cwd ? { cwd: this.server.cwd } : {}),
+          startedAt: Date.now(),
+          processGroup: process.platform !== "win32",
+        })
+      : Promise.resolve(null);
+    const removeProcessRecord = (recordPromise = this.processRecordPromise) => {
+      void recordPromise?.then(removeConnectorBridgeProcessRecord);
+    };
     this.child.stderr.on("data", () => {
       // Drain diagnostics so verbose connector commands cannot block on a full pipe.
     });
     this.child.on("exit", () => {
+      const recordPromise = this.processRecordPromise;
       for (const pending of this.pending.values()) {
         pending.reject(new Error(`${this.server.displayName} exited.`));
       }
       this.pending.clear();
-      this.child = null;
-      this.initialized = false;
+      if (this.child === child) {
+        this.child = null;
+        this.processRecordPromise = null;
+        this.initialized = false;
+      }
+      removeProcessRecord(recordPromise);
     });
     this.child.on("error", (error) => {
+      const recordPromise = this.processRecordPromise;
       for (const pending of this.pending.values()) {
         pending.reject(error);
       }
       this.pending.clear();
-      this.child = null;
-      this.initialized = false;
+      if (this.child === child) {
+        this.child = null;
+        this.processRecordPromise = null;
+        this.initialized = false;
+      }
+      removeProcessRecord(recordPromise);
     });
     const rl = readline.createInterface({ input: this.child.stdout });
     rl.on("line", (line) => {
@@ -343,8 +387,7 @@ class StdioConnectorBridgeSession {
       })}\n`,
     );
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         if (this.pending.delete(id)) {
           reject(
             new Error(
@@ -353,6 +396,17 @@ class StdioConnectorBridgeSession {
           );
         }
       }, 60_000);
+      timeout.unref?.();
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
     });
   }
 
@@ -397,14 +451,22 @@ class StdioConnectorBridgeSession {
     return result as ConnectorToolCallResult;
   }
 
-  close() {
+  async close() {
     for (const pending of this.pending.values()) {
       pending.reject(new Error(`${this.server.displayName} was disconnected.`));
     }
     this.pending.clear();
-    this.child?.kill();
+    const child = this.child;
+    const recordPromise = this.processRecordPromise;
     this.child = null;
+    this.processRecordPromise = null;
     this.initialized = false;
+    if (child) {
+      await stopConnectorBridgeProcess(child.pid, {
+        processGroup: process.platform !== "win32",
+      });
+    }
+    await recordPromise?.then(removeConnectorBridgeProcessRecord);
   }
 }
 
@@ -437,14 +499,14 @@ export const callConnectorBridgeTool = async (
   args: Record<string, unknown>,
 ) => getSession(stellaRoot, server).callTool(toolName, args);
 
-export const closeConnectorBridgeSessions = (
+export const closeConnectorBridgeSessions = async (
   stellaRoot: string,
   serverIds: Iterable<string>,
 ) => {
   for (const serverId of serverIds) {
     const key = `${stellaRoot}:${serverId}`;
     const session = sessions.get(key);
-    session?.close();
+    await session?.close();
     sessions.delete(key);
   }
 };

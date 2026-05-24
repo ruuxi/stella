@@ -34,6 +34,7 @@ import {
 } from "../contracts/agent-runtime.js";
 import { prepareStoredLocalChatPayload } from "../kernel/storage/local-chat-payload.js";
 import { collectAllSignals } from "../discovery/collect-all.js";
+import { sweepStaleConnectorBridgeProcesses } from "../kernel/connectors/process-registry.js";
 import {
   collectBrowserData,
   formatBrowserDataForSynthesis,
@@ -699,6 +700,21 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     // workspace and the pending apply is no longer valid.
     if (!sameRuntimeRoot) {
       await releasePendingApplyBatches("worker initialization");
+    }
+    const connectorSweep = await sweepStaleConnectorBridgeProcesses(
+      init.stellaHomePath,
+      { currentWorkerPid: process.pid },
+    ).catch((error) => {
+      console.warn(
+        "[connector-bridge] Failed to sweep stale connector helpers:",
+        (error as Error).message,
+      );
+      return null;
+    });
+    if (connectorSweep?.stopped) {
+      console.warn(
+        `[connector-bridge] Stopped ${connectorSweep.stopped} stale connector helper(s).`,
+      );
     }
     state.init = init;
 

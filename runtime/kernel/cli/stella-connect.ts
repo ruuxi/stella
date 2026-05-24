@@ -10,6 +10,7 @@ import {
 } from "../connectors/cli-broker-client.js";
 import {
   callConnectorBridgeTool,
+  closeConnectorBridgeSessions,
   ConnectorAuthError,
   listConnectorBridgeTools,
 } from "../connectors/connector-bridge.js";
@@ -321,6 +322,17 @@ const findCommand = async (id: string) => {
 const findApi = async (id: string) => {
   const apis = await listConfiguredApiConnectors(stellaRoot);
   return apis.find((entry) => entry.id === id);
+};
+
+const withConnectorBridgeCleanup = async <T>(
+  command: ConnectorCommandConfig,
+  attempt: () => Promise<T>,
+): Promise<T> => {
+  try {
+    return await attempt();
+  } finally {
+    await closeConnectorBridgeSessions(stellaRoot, [command.id]);
+  }
 };
 
 const readStringArray = (value: unknown): string[] | undefined => {
@@ -862,15 +874,17 @@ const importMcp = async (argv: string[]) => {
   let probeDeferred = false;
   let probeDeferredReason: string | undefined;
   try {
-    tools = await withAuthRetry(
-      () => listConnectorBridgeTools(stellaRoot, command),
-      {
-        authType: command.auth?.type === "oauth" ? "oauth" : "api_key",
-        resourceUrl: command.url,
-        oauthClientId: command.auth?.clientId,
-        oauthResource: command.auth?.resource,
-        scopes: command.auth?.scopes,
-      },
+    tools = await withConnectorBridgeCleanup(command, () =>
+      withAuthRetry(
+        () => listConnectorBridgeTools(stellaRoot, command),
+        {
+          authType: command.auth?.type === "oauth" ? "oauth" : "api_key",
+          resourceUrl: command.url,
+          oauthClientId: command.auth?.clientId,
+          oauthResource: command.auth?.resource,
+          scopes: command.auth?.scopes,
+        },
+      ),
     );
   } catch (error) {
     if (error instanceof ConnectorAuthError && auth.type !== "none") {
@@ -913,8 +927,8 @@ const refreshSkill = async (id: string) => {
   const command = await findCommand(id);
   if (!command) fail(`Connector command is not installed: ${id}`);
   if (!command) return;
-  const tools = await withAuthRetry(() =>
-    listConnectorBridgeTools(stellaRoot, command),
+  const tools = await withConnectorBridgeCleanup(command, () =>
+    withAuthRetry(() => listConnectorBridgeTools(stellaRoot, command)),
   );
   const skillPath = await writeGeneratedSkill(command, tools, {
     probeDeferred: false,
@@ -1025,8 +1039,8 @@ const main = async () => {
       if (!command) fail(`Connector command is not installed: ${id}`);
       if (!command) return;
       printJson(
-        await withAuthRetry(() =>
-          listConnectorBridgeTools(stellaRoot, command),
+        await withConnectorBridgeCleanup(command, () =>
+          withAuthRetry(() => listConnectorBridgeTools(stellaRoot, command)),
         ),
       );
       return;
@@ -1098,8 +1112,10 @@ const main = async () => {
       if (!command) fail(`Connector command is not installed: ${id}`);
       if (!command) return;
       printJson(
-        await withAuthRetry(() =>
-          callConnectorBridgeTool(stellaRoot, command, target, body),
+        await withConnectorBridgeCleanup(command, () =>
+          withAuthRetry(() =>
+            callConnectorBridgeTool(stellaRoot, command, target, body),
+          ),
         ),
       );
       return;
@@ -1122,6 +1138,7 @@ const main = async () => {
         return;
       }
       const removed = await removeConfiguredConnector(stellaRoot, id);
+      await closeConnectorBridgeSessions(stellaRoot, [id]);
       await deleteConnectorAccessTokens(stellaRoot, [
         ...removed.removedCommands.map((command) => command.auth?.tokenKey),
         ...removed.removedApis.map((api) => api.auth?.tokenKey),
