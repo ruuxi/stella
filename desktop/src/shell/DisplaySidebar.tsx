@@ -91,7 +91,8 @@ const resolveDisplayPanelWidth = (preferredWidth: number | null): number => {
   );
 };
 
-const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 72;
+// Extra drag past the max resize width before snapping to expanded mode.
+const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 260;
 const DISPLAY_PANEL_WIDTH_CSS_VAR = "--display-panel-width";
 
 // Set on `:root` (not on `.display-sidebar`) so siblings outside the panel
