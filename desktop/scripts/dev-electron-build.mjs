@@ -1,4 +1,7 @@
-import { context as createEsbuildContext } from "esbuild";
+import {
+  build as runEsbuildBuild,
+  context as createEsbuildContext,
+} from "esbuild";
 import { existsSync, promises as fsPromises, watch as watchFs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +10,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(scriptDir, "..");
 const repoRootDir = path.resolve(desktopDir, "..");
 const outdir = "dist-electron";
+const buildOnce = process.argv.includes("--once");
 const nodeTarget = `node${process.versions.node.split(".")[0]}`;
 const runtimeStaticAssetRoots = [
   "runtime/extensions/stella-runtime/agents",
@@ -94,6 +98,12 @@ const startBuildContexts = async () => {
   );
   await Promise.all(contexts.map((ctx) => ctx.watch()));
   return contexts;
+};
+
+const runOneShotBuild = async () => {
+  await Promise.all(
+    createBuildOptions().map((options) => runEsbuildBuild(options)),
+  );
 };
 
 const copyRuntimeStaticAssets = async () => {
@@ -188,6 +198,11 @@ const shutdown = async (exitCode) => {
 
 try {
   await cleanOutdir();
+  if (buildOnce) {
+    await runOneShotBuild();
+    await copyRuntimeStaticAssets();
+    process.exit(0);
+  }
   buildContexts = await startBuildContexts();
   await copyRuntimeStaticAssets();
   startAssetWatchers();
