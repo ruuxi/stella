@@ -2,6 +2,8 @@ import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import type { BrowserData, BrowserType } from "../../../runtime/discovery/browser-data.js";
 import type { AllUserSignalsResult } from "../../../runtime/discovery/types.js";
 import type { DiscoveryKnowledgeSeedPayload } from "../../../runtime/contracts/discovery.js";
+import type { StellaHostRunner } from "../stella-host-runner.js";
+import { waitForConnectedRunner } from "./runtime-availability.js";
 import {
   IPC_DISCOVERY_COLLECT_ALL_SIGNALS,
   IPC_DISCOVERY_COLLECT_BROWSER_DATA,
@@ -14,29 +16,36 @@ import {
 } from "../../src/shared/contracts/ipc-channels.js";
 
 type DiscoveryHandlersOptions = {
-  getStellaHostRunner: () => import("../runtime-host-adapter.js").RuntimeHostAdapter | null;
+  getStellaHostRunner: () => StellaHostRunner | null;
+  onStellaHostRunnerChanged?: (
+    listener: (runner: StellaHostRunner | null) => void,
+  ) => () => void;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
 };
 
+const DISCOVERY_RUNNER_TIMEOUT_MS = 30_000;
+
+const waitForDiscoveryRunner = async (options: DiscoveryHandlersOptions) =>
+  await waitForConnectedRunner(options.getStellaHostRunner, {
+    timeoutMs: DISCOVERY_RUNNER_TIMEOUT_MS,
+    unavailableMessage: "Runtime not available.",
+    onRunnerChanged: options.onStellaHostRunnerChanged,
+  });
+
 const collectWithRunnerEnvelope = async <T extends { data: unknown; formatted: string | null }>(
   options: DiscoveryHandlersOptions,
   event: IpcMainEvent | IpcMainInvokeEvent,
   channel: string,
-  action: (
-    runner: NonNullable<ReturnType<DiscoveryHandlersOptions["getStellaHostRunner"]>>,
-  ) => Promise<T>,
+  action: (runner: StellaHostRunner) => Promise<T>,
 ): Promise<{ data: T["data"] | null; formatted: string | null; error?: string }> => {
   if (!options.assertPrivilegedSender(event, channel)) {
     throw new Error("Blocked untrusted request.");
   }
-  const runner = options.getStellaHostRunner();
-  if (!runner) {
-    return { data: null, formatted: null, error: "Runtime not available" };
-  }
   try {
+    const runner = await waitForDiscoveryRunner(options);
     return await action(runner);
   } catch (error) {
     return {
@@ -101,14 +110,11 @@ export const registerDiscoveryHandlers = (options: DiscoveryHandlersOptions) => 
       if (!options.assertPrivilegedSender(event, IPC_DISCOVERY_WRITE_CORE_MEMORY)) {
         throw new Error("Blocked untrusted request.");
       }
-      const runner = options.getStellaHostRunner();
-      if (!runner) {
-        return { ok: false, error: "Runtime not available" };
-      }
       const content = typeof payload === "string" ? payload : payload.content;
       const includeLocation =
         typeof payload === "string" ? false : payload.includeLocation === true;
       try {
+        const runner = await waitForDiscoveryRunner(options);
         await runner.writeCoreMemory(content, { includeLocation });
         return { ok: true };
       } catch (error) {
@@ -123,11 +129,8 @@ export const registerDiscoveryHandlers = (options: DiscoveryHandlersOptions) => 
       if (!options.assertPrivilegedSender(event, IPC_DISCOVERY_WRITE_KNOWLEDGE)) {
         throw new Error("Blocked untrusted request.");
       }
-      const runner = options.getStellaHostRunner();
-      if (!runner) {
-        return { ok: false, error: "Runtime not available" };
-      }
       try {
+        const runner = await waitForDiscoveryRunner(options);
         await runner.writeDiscoveryKnowledge(payload);
         return { ok: true };
       } catch (error) {
@@ -137,9 +140,8 @@ export const registerDiscoveryHandlers = (options: DiscoveryHandlersOptions) => 
   );
 
   ipcMain.handle(IPC_DISCOVERY_DETECT_PREFERRED_BROWSER, async () => {
-    const runner = options.getStellaHostRunner();
-    if (!runner) return null;
     try {
+      const runner = await waitForDiscoveryRunner(options);
       return await runner.detectPreferredBrowserProfile();
     } catch {
       return null;
@@ -149,9 +151,8 @@ export const registerDiscoveryHandlers = (options: DiscoveryHandlersOptions) => 
   ipcMain.handle(
     IPC_DISCOVERY_LIST_BROWSER_PROFILES,
     async (_event, browserType: string) => {
-      const runner = options.getStellaHostRunner();
-      if (!runner) return [];
       try {
+        const runner = await waitForDiscoveryRunner(options);
         return await runner.listBrowserProfiles(browserType);
       } catch {
         return [];
