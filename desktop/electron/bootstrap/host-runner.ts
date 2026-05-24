@@ -208,10 +208,8 @@ const connectHostRunner = async (context: BootstrapContext) => {
   });
 
   await runner.start();
-  if (BrowserWindow.getFocusedWindow()) {
-    await runner.warmWorker().catch((error) => {
-      console.warn("[stella-runtime] Initial worker warm failed:", error);
-    });
+  if (state.appReady && BrowserWindow.getFocusedWindow()) {
+    runner.setHostFocused(true);
   } else {
     runner.setHostFocused(false);
   }
