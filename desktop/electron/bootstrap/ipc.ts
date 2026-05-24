@@ -39,12 +39,18 @@ import { registerDictationHandlers } from "../ipc/dictation-handlers.js";
 import { startCapturingHandlers } from "../services/mobile-bridge/handler-registry.js";
 import { type BootstrapContext, getMobileBroadcast } from "./context.js";
 import type { BootstrapResetFlows } from "./resets.js";
-import { startMobileBridge, stopMobileBridge } from "./aux-runtime.js";
+import {
+  startMobileBridge,
+  startStellaBrowserBridge,
+  stopMobileBridge,
+} from "./aux-runtime.js";
 import { scheduleGlobalInputHooksAfterAppReady } from "./global-input-hooks.js";
 import { randomUUID } from "crypto";
 import { showStellaNotification } from "../services/notification-service.js";
+import { startOfficePreviewBridge } from "./office-preview-bridge.js";
 
 const DEFAULT_STORE_WEB_URL = "https://stella.sh/store";
+const WINDOWS_POST_READY_NATIVE_DELAY_MS = 4_000;
 
 const readStoreWebBaseUrl = () =>
   (
@@ -70,6 +76,27 @@ export const registerBootstrapIpcHandlers = (
   const lazyMobileBroadcast = () => getMobileBroadcast(context);
   const { config, lifecycle, services, state } = context;
   const allowedStoreWebOrigin = getUrlOrigin(readStoreWebBaseUrl());
+  let postReadyNativeServicesScheduled = false;
+
+  const schedulePostReadyNativeServices = () => {
+    if (postReadyNativeServicesScheduled) {
+      return;
+    }
+    postReadyNativeServicesScheduled = true;
+    const delayMs =
+      process.platform === "win32" ? WINDOWS_POST_READY_NATIVE_DELAY_MS : 0;
+    state.processRuntime.setManagedTimeout(() => {
+      postReadyNativeServicesScheduled = false;
+      if (!state.appReady || state.isQuitting) {
+        return;
+      }
+      startStellaBrowserBridge(context);
+      if (!state.officePreviewBridgeStop) {
+        state.officePreviewBridgeStop = startOfficePreviewBridge(context);
+      }
+    }, delayMs);
+  };
+
   const dispatchStoreWebLocalAction = (
     action: unknown,
     opts?: { timeoutMs?: number },
@@ -120,6 +147,7 @@ export const registerBootstrapIpcHandlers = (
       state.appReady = ready;
       if (ready) {
         scheduleGlobalInputHooksAfterAppReady(context);
+        schedulePostReadyNativeServices();
         if (BrowserWindow.getFocusedWindow()) {
           state.stellaHostRunner?.setHostFocused(true);
         }

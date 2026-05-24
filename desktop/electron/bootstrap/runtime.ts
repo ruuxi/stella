@@ -6,7 +6,6 @@ import {
   launchBootstrapAppShell,
   prepareBootstrapAppShell,
 } from "./app-shell.js";
-import { startStellaBrowserBridge } from "./aux-runtime.js";
 import { createManagedResource } from "../managed-resource.js";
 
 const BACKGROUND_RUNTIME_RETRY_DELAY_MS = 2_000;
@@ -28,7 +27,6 @@ export const initializeBootstrapApplication = async (
   );
   launchBootstrapAppShell(context);
 
-  startStellaBrowserBridge(context);
   createManagedResource<null>({
     processRuntime: context.state.processRuntime,
     canStart: () => !context.state.isQuitting,
@@ -38,7 +36,10 @@ export const initializeBootstrapApplication = async (
     oneShot: true,
     retry: { fixedDelayMs: BACKGROUND_RUNTIME_RETRY_DELAY_MS },
     onError: (error) => {
-      console.error("[startup] Failed to initialize Stella host runner:", error);
+      console.error(
+        "[startup] Failed to initialize Stella host runner:",
+        error,
+      );
     },
   }).start();
 };

@@ -83,7 +83,19 @@ export type SuggestionLane = {
 
 const LANE_COUNT = 3
 const POLL_INTERVAL_MS = 5_000
+const WINDOWS_POLL_INTERVAL_MS = 30_000
+const WINDOWS_INITIAL_POLL_DELAY_MS = 8_000
 const FADE_OUT_MS = 220
+
+const getPollingConfig = () => {
+  if (typeof window !== "undefined" && window.electronAPI?.platform === "win32") {
+    return {
+      initialDelayMs: WINDOWS_INITIAL_POLL_DELAY_MS,
+      pollIntervalMs: WINDOWS_POLL_INTERVAL_MS,
+    }
+  }
+  return { initialDelayMs: 0, pollIntervalMs: POLL_INTERVAL_MS }
+}
 
 // Identity key — two chips with the same key are considered "the same
 // suggestion" for content-refresh purposes. Tab key folds in URL because
@@ -443,7 +455,9 @@ export function useAutoContextChips(
     const api = getElectronApi()
     if (!api?.home?.listRecentApps) return
 
+    let initialTimer: number | null = null
     let interval: number | null = null
+    const { initialDelayMs, pollIntervalMs } = getPollingConfig()
 
     const refresh = async () => {
       const snapshot = await fetchSnapshot()
@@ -452,11 +466,20 @@ export function useAutoContextChips(
       dispatch({ type: "reconcile", candidates })
     }
 
-    void refresh()
-    interval = window.setInterval(refresh, POLL_INTERVAL_MS)
+    const startPolling = () => {
+      void refresh()
+      interval = window.setInterval(refresh, pollIntervalMs)
+    }
+
+    if (initialDelayMs > 0) {
+      initialTimer = window.setTimeout(startPolling, initialDelayMs)
+    } else {
+      startPolling()
+    }
 
     return () => {
       cancelledRef.current = true
+      if (initialTimer) window.clearTimeout(initialTimer)
       if (interval) window.clearInterval(interval)
     }
   }, [active])
