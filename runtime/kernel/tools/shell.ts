@@ -695,6 +695,7 @@ const buildShellEnv = (
   const mergedEnv = {
     ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
     STELLA_NODE_BIN: process.execPath,
+    STELLA_RUNTIME_WORKER_PID: String(process.pid),
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
     ...(options?.secretStateRoot ? { STELLA_HOME: options.secretStateRoot } : {}),
     ...(options?.stellaBrowserBinPath
