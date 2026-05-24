@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createRemoteTurnBridge } from "../../../../../runtime/kernel/remote-turn-bridge.js";
 import {
   getConvexErrorCode,
+  getConvexErrorMessage,
+  isConvexDeviceKeyMismatchError,
   isConvexUnauthenticatedError,
   shouldStopRemoteTurnForAuthFailure,
 } from "../../../../../runtime/kernel/runner.js";
@@ -17,6 +19,21 @@ describe("remote-turn auth failure handling", () => {
 
     expect(getConvexErrorCode(error)).toBe("UNAUTHENTICATED");
     expect(isConvexUnauthenticatedError(error)).toBe(true);
+  });
+
+  it("detects device key mismatch errors from nested Convex error data", () => {
+    const error = {
+      data: {
+        code: "UNAUTHORIZED",
+        message: "Device key mismatch for this machine.",
+      },
+    };
+
+    expect(getConvexErrorCode(error)).toBe("UNAUTHORIZED");
+    expect(getConvexErrorMessage(error)).toBe(
+      "Device key mismatch for this machine.",
+    );
+    expect(isConvexDeviceKeyMismatchError(error)).toBe(true);
   });
 
   it("ignores the first two unauthenticated failures inside the auth grace window", () => {
