@@ -53,6 +53,20 @@ const readShellSizeVar = (name: string, fallback: number): number => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const DISPLAY_PANEL_DEFAULT_MIN_WIDTH = 380;
+const DISPLAY_PANEL_DEFAULT_MAX_WIDTH = 520;
+const DISPLAY_PANEL_DEFAULT_VIEWPORT_RATIO = 0.34;
+
+const clampNumber = (value: number, min: number, max: number): number =>
+  Math.min(Math.max(value, min), max);
+
+const computeDefaultWidth = (): number =>
+  clampNumber(
+    window.innerWidth * DISPLAY_PANEL_DEFAULT_VIEWPORT_RATIO,
+    DISPLAY_PANEL_DEFAULT_MIN_WIDTH,
+    DISPLAY_PANEL_DEFAULT_MAX_WIDTH,
+  );
+
 /**
  * Compute the current upper bound for the user-resizable width from the
  * main outlet's minimum width. The panel can grow as much as it wants until
@@ -63,9 +77,18 @@ const computeMaxWidth = (): number => {
   const sidebarWidth =
     document.documentElement.dataset.sidebarHidden === "true"
       ? 0
-      : readShellSizeVar("--shell-sidebar-width", 170);
+      : readShellSizeVar("--shell-sidebar-width", 180);
   const available = viewport - sidebarWidth - DISPLAY_MAIN_CONTENT_MIN_WIDTH;
   return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.floor(available));
+};
+
+const resolveDisplayPanelWidth = (preferredWidth: number | null): number => {
+  const desired = preferredWidth ?? computeDefaultWidth();
+  return clampNumber(
+    desired,
+    DISPLAY_PANEL_MIN_WIDTH,
+    Math.max(DISPLAY_PANEL_MIN_WIDTH, computeMaxWidth()),
+  );
 };
 
 const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 72;
@@ -76,11 +99,15 @@ const DISPLAY_PANEL_WIDTH_CSS_VAR = "--display-panel-width";
 // controls over `.content-area` — can inherit the same value.
 const applyDisplayPanelWidthCssVar = (width: number | null): void => {
   const root = document.documentElement;
-  if (width == null) {
-    root.style.removeProperty(DISPLAY_PANEL_WIDTH_CSS_VAR);
-    return;
-  }
-  root.style.setProperty(DISPLAY_PANEL_WIDTH_CSS_VAR, `${Math.round(width)}px`);
+  const nextWidth = resolveDisplayPanelWidth(width);
+  root.style.setProperty(
+    DISPLAY_PANEL_WIDTH_CSS_VAR,
+    `${Math.round(nextWidth)}px`,
+  );
+};
+
+const clearDisplayPanelWidthCssVar = (): void => {
+  document.documentElement.style.removeProperty(DISPLAY_PANEL_WIDTH_CSS_VAR);
 };
 
 const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
@@ -167,14 +194,34 @@ export const DisplaySidebar = forwardRef<
   }, [panelOpen, onOpenChange]);
 
   useLayoutEffect(() => {
-    const syncWidthVar = () => {
+    let frame = 0;
+    const syncWidthVarNow = () => {
+      frame = 0;
       applyDisplayPanelWidthCssVar(displayTabs.getLayoutSnapshot().panelWidth);
     };
-    syncWidthVar();
-    const unsubscribe = displayTabs.subscribeLayout(syncWidthVar);
+
+    const scheduleWidthVarSync = () => {
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(syncWidthVarNow);
+    };
+
+    syncWidthVarNow();
+    const unsubscribe = displayTabs.subscribeLayout(scheduleWidthVarSync);
+    window.addEventListener("resize", scheduleWidthVarSync);
+    const sidebarObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(scheduleWidthVarSync);
+    sidebarObserver?.observe(document.documentElement, {
+      attributeFilter: ["data-sidebar-hidden"],
+      attributes: true,
+    });
     return () => {
+      cancelAnimationFrame(frame);
       unsubscribe();
-      applyDisplayPanelWidthCssVar(null);
+      window.removeEventListener("resize", scheduleWidthVarSync);
+      sidebarObserver?.disconnect();
+      clearDisplayPanelWidthCssVar();
     };
   }, []);
 
@@ -202,27 +249,6 @@ export const DisplaySidebar = forwardRef<
       delete document.body.dataset.displayExpanding;
     };
   }, [panelExpanded]);
-
-  // If the window shrinks below the user's chosen width, snap the stored
-  // width down so we don't end up wider than the viewport allows.
-  useEffect(() => {
-    let frame = 0;
-    const onResize = () => {
-      if (frame !== 0) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        const currentWidth = displayTabs.getSnapshot().panelWidth;
-        if (currentWidth == null) return;
-        const max = computeMaxWidth();
-        if (currentWidth > max) displayTabs.setPanelWidth(max);
-      });
-    };
-    window.addEventListener("resize", onResize);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", onResize);
-    };
-  }, []);
 
   const handleResizeStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {

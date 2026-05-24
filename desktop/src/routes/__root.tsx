@@ -6,12 +6,7 @@ import {
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { ChatRuntimeProvider } from "@/context/chat-runtime";
 import { useChatRuntime } from "@/context/use-chat-runtime";
@@ -59,32 +54,10 @@ import { useLastLocationRestore } from "@/shell/root-chrome/use-last-location-re
 import { useOnboardingMemoryPromotion } from "@/shell/root-chrome/use-onboarding-memory-promotion";
 import { usePersistLastLocation } from "@/shell/root-chrome/use-persist-last-location";
 import { useWorkspacePanelEvents } from "@/shell/root-chrome/use-workspace-panel-events";
-
-const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITH_SIDEBAR = 1280;
-const SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITHOUT_SIDEBAR = 1120;
-const SHELL_LEFT_SIDEBAR_AUTO_HIDE_WIDTH = 720;
-
-type ShellBreakpointState = {
-  hideLeftSidebar: boolean;
-  hideRightContextPanel: boolean;
-};
-
-const getShellBreakpointState = (
-  width: number,
-  userSidebarVisible = true,
-): ShellBreakpointState => {
-  const hideLeftSidebar =
-    width > 0 && width <= SHELL_LEFT_SIDEBAR_AUTO_HIDE_WIDTH;
-  const leftSidebarVisible = userSidebarVisible && !hideLeftSidebar;
-  const rightPanelBreakpoint = leftSidebarVisible
-    ? SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITH_SIDEBAR
-    : SHELL_RIGHT_PANEL_AUTO_CLOSE_WIDTH_WITHOUT_SIDEBAR;
-
-  return {
-    hideLeftSidebar,
-    hideRightContextPanel: width > 0 && width <= rightPanelBreakpoint,
-  };
-};
+import {
+  getShellBreakpointState,
+  type ShellBreakpointState,
+} from "@/shell/shell-breakpoints";
 
 /**
  * The root route owns the app chrome — sidebar, workspace panel, dialogs,
@@ -163,8 +136,8 @@ function RootChrome() {
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-platform") === "mobile";
   const shouldRenderSidebar = !isMiniWindow || isMobileWebView;
-  const shouldAutoHideRightContextPanel =
-    !isMiniWindow && !isMobileWebView && shellBreakpoints.hideRightContextPanel;
+  const shouldAutoHideWorkspaceStrip =
+    !isMiniWindow && !isMobileWebView && shellBreakpoints.hideWorkspaceStrip;
   const shouldAutoHideLeftSidebar =
     !isMiniWindow && !isMobileWebView && shellBreakpoints.hideLeftSidebar;
   const sidebarVisibleInLayout = sidebarVisible && !shouldAutoHideLeftSidebar;
@@ -324,7 +297,8 @@ function RootChrome() {
         const previous = shellBreakpointsRef.current;
         if (
           next.hideLeftSidebar === previous.hideLeftSidebar &&
-          next.hideRightContextPanel === previous.hideRightContextPanel
+          next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
+          next.hideDisplayPanel === previous.hideDisplayPanel
         ) {
           return;
         }
@@ -367,7 +341,8 @@ function RootChrome() {
     const previous = shellBreakpointsRef.current;
     if (
       next.hideLeftSidebar === previous.hideLeftSidebar &&
-      next.hideRightContextPanel === previous.hideRightContextPanel
+      next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
+      next.hideDisplayPanel === previous.hideDisplayPanel
     ) {
       return;
     }
@@ -378,7 +353,7 @@ function RootChrome() {
   useEffect(() => {
     if (isMiniWindow || isMobileWebView) return;
 
-    if (shellBreakpoints.hideRightContextPanel) {
+    if (shellBreakpoints.hideDisplayPanel) {
       const { panelExpanded, panelOpen } = displayTabs.getSnapshot();
       if (panelExpanded) displayTabs.setPanelExpanded(false);
       if (panelOpen) displayTabs.setPanelOpen(false);
@@ -390,13 +365,13 @@ function RootChrome() {
   }, [
     isMiniWindow,
     isMobileWebView,
+    shellBreakpoints.hideDisplayPanel,
     shellBreakpoints.hideLeftSidebar,
-    shellBreakpoints.hideRightContextPanel,
   ]);
 
   useEffect(() => {
     const root = document.documentElement;
-    if (shouldAutoHideRightContextPanel) {
+    if (shouldAutoHideWorkspaceStrip) {
       root.dataset.shellRightContextHidden = "true";
     } else {
       delete root.dataset.shellRightContextHidden;
@@ -405,7 +380,7 @@ function RootChrome() {
     return () => {
       delete root.dataset.shellRightContextHidden;
     };
-  }, [shouldAutoHideRightContextPanel]);
+  }, [shouldAutoHideWorkspaceStrip]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
@@ -453,7 +428,7 @@ function RootChrome() {
           !chat.showHomeContent &&
           !isMiniWindow &&
           !isMobileWebView &&
-          !shouldAutoHideRightContextPanel &&
+          !shouldAutoHideWorkspaceStrip &&
           (!panelOpen || expandedDisplayPanelChat)
         }
       />
@@ -508,7 +483,7 @@ function RootChrome() {
               composer={chat.composer}
               scroll={chat.scroll}
               conversationId={conversationId}
-              hideRightContextPanel={shouldAutoHideRightContextPanel}
+              hideRightContextPanel={shouldAutoHideWorkspaceStrip}
               showHomeContent={chat.showHomeContent}
               onSuggestionClick={chat.onSuggestionClick}
               onDismissHome={chat.dismissHome}
