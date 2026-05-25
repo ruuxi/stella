@@ -238,6 +238,8 @@ export type ElectronCaptureApi = {
       } | null;
     } | null,
   ) => void;
+  submitWindowAttachClick: (point: { x: number; y: number }) => void;
+  cancelWindowAttach: () => void;
   submitRegionClick: (point: { x: number; y: number }) => void;
   pageDataUrl: () => Promise<string | null>;
   getWindowCapture: (point: { x: number; y: number }) => Promise<{
@@ -272,6 +274,19 @@ export type ElectronCaptureApi = {
    * if the user dismissed the overlay (Esc / right-click).
    */
   beginRegionCapture: () => Promise<{ ok: true } | { cancelled: true }>;
+  beginWindowAttach: () => Promise<
+    | {
+        ok: true;
+        window: {
+          app: string;
+          title: string;
+          bounds: { x: number; y: number; width: number; height: number };
+        };
+        miniBounds: { x: number; y: number; width: number; height: number };
+      }
+    | { cancelled: true }
+    | { ok: false; reason: string; message: string }
+  >;
 };
 
 export type ElectronRadialApi = {
@@ -313,7 +328,9 @@ export type ElectronOverlayApi = {
   }) => void;
   hideWindowHighlight: () => void;
   previewWindowHighlightAtPoint: (point: { x: number; y: number }) => void;
-  onStartRegionCapture: (callback: () => void) => () => void;
+  onStartRegionCapture: (
+    callback: (data: { mode?: "capture" | "window-attach" }) => void,
+  ) => () => void;
   onEndRegionCapture: (callback: () => void) => () => void;
   onWindowHighlight: (
     callback: (

@@ -1,9 +1,10 @@
 // window_info - Returns JSON info about the window at a given screen point
-// Usage: window_info <x> <y> [--exclude-pids=1,2,3] [--screenshot=path.png]
+// Usage: window_info <x> <y> [--exclude-pids=1,2,3] [--screenshot=path.png] [--set-bounds=x,y,w,h]
 // Build: swiftc -O -o window_info src/window_info.swift -framework CoreGraphics -framework AppKit
 // Output: {"title":"...","process":"...","pid":123,"bounds":{"x":0,"y":0,"width":800,"height":600}}
 
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Foundation
 import ScreenCaptureKit
@@ -34,6 +35,28 @@ func parseScreenshotPath(_ args: ArraySlice<String>) -> String? {
     return nil
 }
 
+func parseSetBounds(_ args: ArraySlice<String>) -> CGRect? {
+    let prefix = "--set-bounds="
+    for arg in args {
+        guard arg.hasPrefix(prefix) else { continue }
+        let payload = String(arg.dropFirst(prefix.count))
+        let parts = payload.split(separator: ",").map {
+            Double($0.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        guard parts.count == 4,
+              let x = parts[0],
+              let y = parts[1],
+              let width = parts[2],
+              let height = parts[3],
+              width > 0,
+              height > 0 else {
+            continue
+        }
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+    return nil
+}
+
 func escapeJson(_ s: String) -> String {
     var out = ""
     for ch in s {
@@ -49,6 +72,130 @@ func escapeJson(_ s: String) -> String {
     return out
 }
 
+func axCopy(_ element: AXUIElement, _ attribute: String) -> AnyObject? {
+    var value: AnyObject?
+    let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+    return result == .success ? value : nil
+}
+
+func axString(_ element: AXUIElement, _ attribute: String) -> String? {
+    axCopy(element, attribute) as? String
+}
+
+func axBool(_ element: AXUIElement, _ attribute: String) -> Bool? {
+    guard let value = axCopy(element, attribute) else { return nil }
+    guard CFGetTypeID(value) == CFBooleanGetTypeID() else { return nil }
+    return CFBooleanGetValue((value as! CFBoolean))
+}
+
+func axPoint(_ element: AXUIElement, _ attribute: String) -> CGPoint? {
+    guard let value = axCopy(element, attribute),
+          CFGetTypeID(value) == AXValueGetTypeID() else {
+        return nil
+    }
+    let axValue = value as! AXValue
+    guard AXValueGetType(axValue) == .cgPoint else { return nil }
+    var point = CGPoint.zero
+    return AXValueGetValue(axValue, .cgPoint, &point) ? point : nil
+}
+
+func axSize(_ element: AXUIElement, _ attribute: String) -> CGSize? {
+    guard let value = axCopy(element, attribute),
+          CFGetTypeID(value) == AXValueGetTypeID() else {
+        return nil
+    }
+    let axValue = value as! AXValue
+    guard AXValueGetType(axValue) == .cgSize else { return nil }
+    var size = CGSize.zero
+    return AXValueGetValue(axValue, .cgSize, &size) ? size : nil
+}
+
+func axFrame(_ element: AXUIElement) -> CGRect? {
+    guard let point = axPoint(element, kAXPositionAttribute as String),
+          let size = axSize(element, kAXSizeAttribute as String),
+          size.width > 0,
+          size.height > 0 else {
+        return nil
+    }
+    return CGRect(origin: point, size: size)
+}
+
+func rectDistance(_ a: CGRect, _ b: CGRect) -> CGFloat {
+    abs(a.origin.x - b.origin.x) +
+        abs(a.origin.y - b.origin.y) +
+        abs(a.size.width - b.size.width) +
+        abs(a.size.height - b.size.height)
+}
+
+func axWindows(for pid: Int) -> [AXUIElement] {
+    let app = AXUIElementCreateApplication(pid_t(pid))
+    AXUIElementSetMessagingTimeout(app, 1.0)
+    guard let rawWindows = axCopy(app, kAXWindowsAttribute as String) else {
+        return []
+    }
+    if let windows = rawWindows as? [AXUIElement] {
+        return windows
+    }
+    guard CFGetTypeID(rawWindows) == CFArrayGetTypeID() else {
+        return []
+    }
+    let array = rawWindows as! CFArray
+    var windows: [AXUIElement] = []
+    for index in 0..<CFArrayGetCount(array) {
+        let raw = CFArrayGetValueAtIndex(array, index)
+        windows.append(unsafeBitCast(raw, to: AXUIElement.self))
+    }
+    return windows
+}
+
+func findAXWindow(pid: Int, title: String, oldBounds: CGRect) -> AXUIElement? {
+    let candidates = axWindows(for: pid).filter { element in
+        axString(element, kAXRoleAttribute as String) == kAXWindowRole as String &&
+            axBool(element, kAXMinimizedAttribute as String) != true
+    }
+    if candidates.isEmpty {
+        return nil
+    }
+
+    return candidates.min { lhs, rhs in
+        let lhsFrame = axFrame(lhs)
+        let rhsFrame = axFrame(rhs)
+        var lhsScore = lhsFrame.map { rectDistance($0, oldBounds) } ?? 100_000
+        var rhsScore = rhsFrame.map { rectDistance($0, oldBounds) } ?? 100_000
+        if !title.isEmpty {
+            if axString(lhs, kAXTitleAttribute as String) == title { lhsScore -= 1_000 }
+            if axString(rhs, kAXTitleAttribute as String) == title { rhsScore -= 1_000 }
+        }
+        return lhsScore < rhsScore
+    }
+}
+
+func setAXWindowBounds(pid: Int, title: String, oldBounds: CGRect, newBounds: CGRect) -> (Bool, CGRect?) {
+    guard let window = findAXWindow(pid: pid, title: title, oldBounds: oldBounds) else {
+        return (false, nil)
+    }
+
+    var point = newBounds.origin
+    var size = newBounds.size
+    guard let pointValue = AXValueCreate(.cgPoint, &point),
+          let sizeValue = AXValueCreate(.cgSize, &size) else {
+        return (false, axFrame(window))
+    }
+
+    let positionResult = AXUIElementSetAttributeValue(
+        window,
+        kAXPositionAttribute as CFString,
+        pointValue
+    )
+    let sizeResult = AXUIElementSetAttributeValue(
+        window,
+        kAXSizeAttribute as CFString,
+        sizeValue
+    )
+    let moved = positionResult == .success && sizeResult == .success
+    return (moved, axFrame(window))
+}
+
 guard CommandLine.arguments.count >= 3,
       let x = Double(CommandLine.arguments[1]),
       let y = Double(CommandLine.arguments[2]) else {
@@ -60,6 +207,7 @@ let point = CGPoint(x: x, y: y)
 let extraArgs = CommandLine.arguments.dropFirst(3)
 let excludedPids = parseExcludedPids(extraArgs)
 let screenshotPath = parseScreenshotPath(extraArgs)
+let setBounds = parseSetBounds(extraArgs)
 
 // Get all on-screen windows (excluding desktop elements)
 guard let windowList = CGWindowListCopyWindowInfo(
@@ -91,9 +239,24 @@ for window in windowList {
     if excludedPids.contains(pid) { continue }
 
     let windowID = (window[kCGWindowNumber as String] as? CGWindowID) ?? 0
+    var outputBounds = rect
+    var moved = false
+
+    if let targetBounds = setBounds {
+        let result = setAXWindowBounds(
+            pid: pid,
+            title: title,
+            oldBounds: rect,
+            newBounds: targetBounds
+        )
+        moved = result.0
+        if let finalBounds = result.1 {
+            outputBounds = finalBounds
+        }
+    }
 
     let json = """
-    {"title":"\(escapeJson(title))","process":"\(escapeJson(ownerName))","pid":\(pid),"bounds":{"x":\(Int(wx)),"y":\(Int(wy)),"width":\(Int(ww)),"height":\(Int(wh))}}
+    {"title":"\(escapeJson(title))","process":"\(escapeJson(ownerName))","pid":\(pid),"bounds":{"x":\(Int(outputBounds.origin.x.rounded())),"y":\(Int(outputBounds.origin.y.rounded())),"width":\(Int(outputBounds.size.width.rounded())),"height":\(Int(outputBounds.size.height.rounded()))},"moved":\(moved ? "true" : "false")}
     """
     print(json.trimmingCharacters(in: .whitespacesAndNewlines))
 

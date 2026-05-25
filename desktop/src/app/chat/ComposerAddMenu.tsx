@@ -1,11 +1,11 @@
 /**
  * ComposerAddMenu — the dropdown that opens from the composer's "+" button.
  *
- * Three attachment actions, each backed by something already in the
- * chatContext model:
+ * Attachment actions backed by chatContext or the desktop mini-window:
  *   1. Attach files…   → image-aware file picker (matches drag-and-drop).
  *   2. Capture         → radial-dial-style region/window capture.
  *   3. Select area     → region select overlay.
+ *   4. Attach Stella   → pick a window and dock the mini beside it.
  *
  * Menu order (top → bottom): read-aloud, model, optional recent files,
  * then new chat → select area → capture → attach files at the bottom
@@ -20,6 +20,7 @@ import type { ChangeEvent, Dispatch, SetStateAction } from "react";
 import {
   Camera,
   MessageSquarePlus,
+  PanelRight,
   Paperclip,
   Scan,
   Volume2,
@@ -121,6 +122,33 @@ export function ComposerAddMenu({
     }
   }, []);
 
+  const handleAttachWindow = useCallback(async () => {
+    const api = getElectronApi();
+    if (!api) return;
+    setMenuOpen(false);
+    try {
+      const result = await api.capture.beginWindowAttach();
+      if ("cancelled" in result || result.ok) {
+        return;
+      }
+      showToast({
+        title: "Couldn’t attach Stella",
+        description: result.message,
+        variant: "error",
+      });
+    } catch (error) {
+      console.warn("[composer-add-menu] attach failed:", error);
+      showToast({
+        title: "Couldn’t attach Stella",
+        description:
+          error instanceof Error && error.message
+            ? error.message
+            : "Try a normal app window.",
+        variant: "error",
+      });
+    }
+  }, []);
+
   const handleMenuOpenChange = useCallback(
     (open: boolean) => {
       if (newChatPending) return;
@@ -130,32 +158,35 @@ export function ComposerAddMenu({
     [newChatPending],
   );
 
-  const handleNewChatSelect = useCallback(async (event: Event) => {
-    if (!onNewChat) return;
-    if (!newChatArmed) {
-      event.preventDefault();
-      setNewChatArmed(true);
-      return;
-    }
-    setNewChatPending(true);
-    try {
-      await onNewChat();
-      setMenuOpen(false);
-      setNewChatArmed(false);
-    } catch (error) {
-      console.warn("[composer-add-menu] new chat failed:", error);
-      showToast({
-        title: "Couldn’t start a new chat",
-        description:
-          error instanceof Error && error.message
-            ? error.message
-            : "Stella will keep this chat open.",
-        variant: "error",
-      });
-    } finally {
-      setNewChatPending(false);
-    }
-  }, [newChatArmed, onNewChat]);
+  const handleNewChatSelect = useCallback(
+    async (event: Event) => {
+      if (!onNewChat) return;
+      if (!newChatArmed) {
+        event.preventDefault();
+        setNewChatArmed(true);
+        return;
+      }
+      setNewChatPending(true);
+      try {
+        await onNewChat();
+        setMenuOpen(false);
+        setNewChatArmed(false);
+      } catch (error) {
+        console.warn("[composer-add-menu] new chat failed:", error);
+        showToast({
+          title: "Couldn’t start a new chat",
+          description:
+            error instanceof Error && error.message
+              ? error.message
+              : "Stella will keep this chat open.",
+          variant: "error",
+        });
+      } finally {
+        setNewChatPending(false);
+      }
+    },
+    [newChatArmed, onNewChat],
+  );
 
   const readAloudEnabled = useSyncExternalStore(
     readAloudPrefStore.subscribe,
@@ -183,10 +214,7 @@ export function ComposerAddMenu({
     <>
       <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
-          <ComposerAddButton
-            className={className}
-            title={title ?? "Add"}
-          />
+          <ComposerAddButton className={className} title={title ?? "Add"} />
         </DropdownMenuTrigger>
         <DropdownMenuContent
           side="top"
@@ -250,6 +278,12 @@ export function ComposerAddMenu({
               <Camera size={14} strokeWidth={1.75} />
             </span>
             Capture
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleAttachWindow}>
+            <span data-slot="dropdown-menu-item-icon">
+              <PanelRight size={14} strokeWidth={1.75} />
+            </span>
+            Attach Stella
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleAttachFiles}>
             <span data-slot="dropdown-menu-item-icon">

@@ -71,6 +71,17 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     options.captureService.cancelRegionCapture();
   });
 
+  ipcMain.on(
+    "windowAttach:click",
+    (_event, point: { x: number; y: number }) => {
+      options.captureService.commitWindowAttachPoint(point);
+    },
+  );
+
+  ipcMain.on("windowAttach:cancel", () => {
+    options.captureService.cancelWindowAttach();
+  });
+
   ipcMain.handle(
     "region:prepareSelection",
     async (_event, selection: RegionSelection) => {
@@ -173,5 +184,45 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
     return result === null
       ? ({ cancelled: true } as const)
       : ({ ok: true } as const);
+  });
+
+  ipcMain.handle("capture:beginWindowAttach", async (event) => {
+    if (!options.assertPrivilegedSender(event, "capture:beginWindowAttach")) {
+      throw new Error("Blocked untrusted request.");
+    }
+
+    const wm = options.windowManager;
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const targetWindowMode =
+      wm.getShellWindowModeForWindow(senderWindow) ??
+      wm.getLastFocusedWindowMode();
+    const attachPointPromise = options.captureService.startWindowAttach();
+    const pickerWindowState = wm.hideShellWindowForExternalPicker(
+      targetWindowMode,
+      { skipMacFullscreenFullWindow: true },
+    );
+
+    const restorePickerWindow = () => {
+      if (!pickerWindowState.hidden) {
+        return;
+      }
+      if (pickerWindowState.wasFocused) {
+        wm.showWindow(pickerWindowState.mode);
+      } else if (pickerWindowState.wasVisible) {
+        wm.restoreWindowVisibility(pickerWindowState.mode);
+      }
+    };
+
+    const point = await attachPointPromise;
+    if (!point) {
+      restorePickerWindow();
+      return { cancelled: true } as const;
+    }
+
+    const result = await wm.attachMiniToExternalWindowAtPoint(point);
+    if (!result.ok) {
+      restorePickerWindow();
+    }
+    return result;
   });
 };

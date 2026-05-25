@@ -12,7 +12,10 @@ import { getWindowInfoAtPoint } from '../window-capture.js'
 
 const getAllDisplaysBounds = () => {
   const displays = screen.getAllDisplays()
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity
   for (const d of displays) {
     minX = Math.min(minX, d.bounds.x)
     minY = Math.min(minY, d.bounds.y)
@@ -44,16 +47,24 @@ class OverlayWindow {
 
   constructor(private readonly options: OverlayWindowControllerOptions) {}
 
-  getWindow() { return this.window }
-  getOverlayOrigin() { return this.overlayOrigin }
+  getWindow() {
+    return this.window
+  }
+  getOverlayOrigin() {
+    return this.overlayOrigin
+  }
   /** Keeps overlay-local coords aligned with `getContentBounds()` (macOS can nudge the panel). */
   refreshOverlayOriginFromContentBounds() {
     if (!this.window || this.window.isDestroyed()) return
     const cb = this.window.getContentBounds()
     this.overlayOrigin = { x: cb.x, y: cb.y }
   }
-  isReady() { return this.ready }
-  isDestroyed() { return this.destroyed }
+  isReady() {
+    return this.ready
+  }
+  isDestroyed() {
+    return this.destroyed
+  }
 
   async ensureReady(timeoutMs = 1_500) {
     const win = this.create()
@@ -118,7 +129,9 @@ class OverlayWindow {
       // Space (blank, because the full shell had just moved to its own
       // fullscreen Space) instead of drawing over the active fullscreen Space.
       fullscreenable: false,
-      ...(process.platform === 'darwin' ? { hiddenInMissionControl: true } : {}),
+      ...(process.platform === 'darwin'
+        ? { hiddenInMissionControl: true }
+        : {}),
       hasShadow: false,
       focusable: false,
       show: false,
@@ -145,7 +158,9 @@ class OverlayWindow {
       })
       this.window.excludedFromShownWindowsMenu = true
     } else {
-      this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+      this.window.setVisibleOnAllWorkspaces(true, {
+        visibleOnFullScreen: true,
+      })
     }
     this.window.setIgnoreMouseEvents(true, { forward: true })
 
@@ -168,13 +183,7 @@ class OverlayWindow {
     })
     this.window.webContents.on(
       'did-fail-load',
-      (
-        _event,
-        errorCode,
-        errorDescription,
-        validatedURL,
-        isMainFrame,
-      ) => {
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
         if (!isMainFrame || errorCode === -3) {
           return
         }
@@ -381,9 +390,7 @@ export class OverlayWindowController {
   private windowHighlightRequestId = 0
   private activeSelectionChip = false
   private currentSelectionChipRequestId: number | null = null
-  private selectionChipClickHandler:
-    | ((requestId: number) => void)
-    | null = null
+  private selectionChipClickHandler: ((requestId: number) => void) | null = null
 
   private readonly handleRadialAnimDone = () => {
     if (this.radialHideTimeout) {
@@ -394,7 +401,10 @@ export class OverlayWindowController {
     this.hideOverlayIfIdle()
   }
 
-  private readonly handleOverlaySetInteractive = (_event: unknown, interactive: boolean) => {
+  private readonly handleOverlaySetInteractive = (
+    _event: unknown,
+    interactive: boolean,
+  ) => {
     if (this.activeRegionCapture && !interactive) {
       return
     }
@@ -453,8 +463,14 @@ export class OverlayWindowController {
   constructor(options: OverlayWindowControllerOptions) {
     this.overlayWindow = new OverlayWindow(options)
     ipcMain.on('overlay:setInteractive', this.handleOverlaySetInteractive)
-    ipcMain.on('overlay:showWindowHighlight', this.handleOverlayShowWindowHighlight)
-    ipcMain.on('overlay:hideWindowHighlight', this.handleOverlayHideWindowHighlight)
+    ipcMain.on(
+      'overlay:showWindowHighlight',
+      this.handleOverlayShowWindowHighlight,
+    )
+    ipcMain.on(
+      'overlay:hideWindowHighlight',
+      this.handleOverlayHideWindowHighlight,
+    )
     ipcMain.on(
       'overlay:previewWindowHighlightAtPoint',
       this.handleOverlayPreviewWindowHighlightAtPoint,
@@ -470,22 +486,30 @@ export class OverlayWindowController {
     this.selectionChipClickHandler = handler
   }
 
-  getWindow() { return this.overlayWindow.getWindow() }
-  getOverlayOrigin() { return this.overlayWindow.getOverlayOrigin() }
+  getWindow() {
+    return this.overlayWindow.getWindow()
+  }
+  getOverlayOrigin() {
+    return this.overlayWindow.getOverlayOrigin()
+  }
 
-  create() { return this.overlayWindow.create() }
+  create() {
+    return this.overlayWindow.create()
+  }
   ensureReadyForMorph(timeoutMs?: number) {
     return this.overlayWindow.ensureReady(timeoutMs)
   }
 
   private get isAnyActive() {
-    return this.activeRadial ||
+    return (
+      this.activeRadial ||
       this.activeRegionCapture ||
       this.activeDictation ||
       this.activeScreenGuide ||
       this.activeWindowHighlight ||
       this.activeSelectionChip ||
       this.activeMorph
+    )
   }
 
   private setWindowHighlight(
@@ -577,7 +601,10 @@ export class OverlayWindowController {
   private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
   private static readonly CLOSE_ANIM_FALLBACK = 350
 
-  showRadial(options?: { compactFocused?: boolean; miniAlwaysOnTop?: boolean }) {
+  showRadial(options?: {
+    compactFocused?: boolean
+    miniAlwaysOnTop?: boolean
+  }) {
     if (this.radialHideTimeout) {
       clearTimeout(this.radialHideTimeout)
       this.radialHideTimeout = null
@@ -648,7 +675,9 @@ export class OverlayWindowController {
     this.overlayWindow.send('radial:cursor', payload)
   }
 
-  getRadialBounds() { return this.radialBounds }
+  getRadialBounds() {
+    return this.radialBounds
+  }
 
   setRadialInteractive(interactive: boolean) {
     this.overlayWindow.setIgnoreMouseEvents(!interactive)
@@ -656,12 +685,13 @@ export class OverlayWindowController {
 
   // ─── Region Capture ───────────────────────────────────────────────────
 
-  startRegionCapture() {
+  startRegionCapture(options?: { mode?: 'capture' | 'window-attach' }) {
     this.showSurface({
       setActive: () => {
         this.activeRegionCapture = true
       },
       channel: 'overlay:startRegionCapture',
+      payload: { mode: options?.mode ?? 'capture' },
       showOptions: { focus: true },
       interactive: true,
       focusable: true,
@@ -716,12 +746,14 @@ export class OverlayWindowController {
 
   // ─── Screen Guide ────────────────────────────────────────────────────
 
-  showScreenGuide(annotations: Array<{
-    id: string
-    label: string
-    x: number
-    y: number
-  }>) {
+  showScreenGuide(
+    annotations: Array<{
+      id: string
+      label: string
+      x: number
+      y: number
+    }>,
+  ) {
     this.activeScreenGuide = true
     this.overlayWindow.show({ inactive: true })
     const origin = this.overlayWindow.getOverlayOrigin()
@@ -730,7 +762,9 @@ export class OverlayWindowController {
       x: a.x - origin.x,
       y: a.y - origin.y,
     }))
-    this.overlayWindow.send('overlay:showScreenGuide', { annotations: adjusted })
+    this.overlayWindow.send('overlay:showScreenGuide', {
+      annotations: adjusted,
+    })
   }
 
   hideScreenGuide() {
@@ -776,21 +810,33 @@ export class OverlayWindowController {
   // ─── Morph Transition (HMR Resume) ───────────────────────────────────
 
   private activeMorph = false
-  private currentMorphBounds: { x: number; y: number; width: number; height: number } | null = null
+  private currentMorphBounds: {
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null = null
 
   private stopTrackingMorphWindow() {
     if (!this.morphTrackedWindow) return
-    this.morphTrackedWindow.removeListener('move', this.handleMorphWindowBoundsChanged)
-    this.morphTrackedWindow.removeListener('resize', this.handleMorphWindowBoundsChanged)
+    this.morphTrackedWindow.removeListener(
+      'move',
+      this.handleMorphWindowBoundsChanged,
+    )
+    this.morphTrackedWindow.removeListener(
+      'resize',
+      this.handleMorphWindowBoundsChanged,
+    )
     this.morphTrackedWindow = null
   }
 
   private syncMorphBounds() {
     if (!this.activeMorph || !this.activeMorphTransitionId) return
 
-    const trackedBounds = this.morphTrackedWindow && !this.morphTrackedWindow.isDestroyed()
-      ? this.morphTrackedWindow.getBounds()
-      : this.currentMorphBounds
+    const trackedBounds =
+      this.morphTrackedWindow && !this.morphTrackedWindow.isDestroyed()
+        ? this.morphTrackedWindow.getBounds()
+        : this.currentMorphBounds
 
     if (!trackedBounds) return
 
@@ -896,9 +942,18 @@ export class OverlayWindowController {
     if (this.destroyed) return
     this.destroyed = true
     this.stopTrackingMorphWindow()
-    ipcMain.removeListener('overlay:setInteractive', this.handleOverlaySetInteractive)
-    ipcMain.removeListener('overlay:showWindowHighlight', this.handleOverlayShowWindowHighlight)
-    ipcMain.removeListener('overlay:hideWindowHighlight', this.handleOverlayHideWindowHighlight)
+    ipcMain.removeListener(
+      'overlay:setInteractive',
+      this.handleOverlaySetInteractive,
+    )
+    ipcMain.removeListener(
+      'overlay:showWindowHighlight',
+      this.handleOverlayShowWindowHighlight,
+    )
+    ipcMain.removeListener(
+      'overlay:hideWindowHighlight',
+      this.handleOverlayHideWindowHighlight,
+    )
     ipcMain.removeListener(
       'overlay:previewWindowHighlightAtPoint',
       this.handleOverlayPreviewWindowHighlightAtPoint,

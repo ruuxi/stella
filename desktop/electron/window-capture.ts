@@ -13,6 +13,8 @@ export type WindowInfo = {
   bounds: { x: number; y: number; width: number; height: number }
 }
 
+type WindowBounds = WindowInfo['bounds']
+
 type WindowCapture = {
   windowInfo: WindowInfo
   screenshot: {
@@ -28,13 +30,26 @@ type QueryWindowInfoOptions = {
   excludePids?: number[]
 }
 
+type MoveResizeWindowAtPointOptions = QueryWindowInfoOptions & {
+  bounds: WindowBounds
+}
+
+type MoveResizeWindowAtPointResult = {
+  windowInfo: WindowInfo
+  moved: boolean
+}
+
 type WindowInfoByPidOptions = {
   excludePids?: number[]
 }
 
 const WINDOW_INFO_HELPER = 'window_info'
 
-const queryWindowInfo = (x: number, y: number, options?: QueryWindowInfoOptions): Promise<WindowInfo | null> => {
+const queryWindowInfo = (
+  x: number,
+  y: number,
+  options?: QueryWindowInfoOptions,
+): Promise<WindowInfo | null> => {
   return new Promise((resolve) => {
     const args = [String(x), String(y)]
     if (options?.excludePids?.length) {
@@ -73,6 +88,53 @@ export const getWindowInfoAtPoint = (
   return queryWindowInfo(x, y, options)
 }
 
+export const moveResizeWindowAtPoint = (
+  x: number,
+  y: number,
+  options: MoveResizeWindowAtPointOptions,
+): Promise<MoveResizeWindowAtPointResult | null> => {
+  return new Promise((resolve) => {
+    const args = [String(x), String(y)]
+    if (options.excludePids?.length) {
+      args.push(`--exclude-pids=${options.excludePids.join(',')}`)
+    }
+    const { bounds } = options
+    args.push(
+      `--set-bounds=${[bounds.x, bounds.y, bounds.width, bounds.height]
+        .map((value) => Math.round(value))
+        .join(',')}`,
+    )
+
+    void runNativeHelper(WINDOW_INFO_HELPER, args, {
+      timeout: 3000,
+      onError: (error) => {
+        console.warn('window_info move failed', error)
+      },
+    }).then((stdout) => {
+      if (!stdout) {
+        resolve(null)
+        return
+      }
+      try {
+        const info = JSON.parse(stdout) as WindowInfo & {
+          error?: string
+          moved?: boolean
+        }
+        if (info.error) {
+          resolve(null)
+          return
+        }
+        resolve({
+          windowInfo: info,
+          moved: info.moved === true,
+        })
+      } catch {
+        resolve(null)
+      }
+    })
+  })
+}
+
 /**
  * Capture a window screenshot using the native binary's --screenshot flag.
  * Returns window info + base64 PNG data URL, or null on failure.
@@ -86,7 +148,10 @@ export const captureWindowScreenshot = async (
 ): Promise<WindowCapture | null> => {
   if (!hasMacPermission('screen')) return null
 
-  const tempPath = path.join(tmpdir(), `stella_cap_${randomBytes(8).toString('hex')}.png`)
+  const tempPath = path.join(
+    tmpdir(),
+    `stella_cap_${randomBytes(8).toString('hex')}.png`,
+  )
   const args = [String(x), String(y), `--screenshot=${tempPath}`]
   if (options?.excludePids?.length) {
     args.push(`--exclude-pids=${options.excludePids.join(',')}`)
@@ -115,7 +180,10 @@ export const captureWindowScreenshotByPid = async (
   if (!hasMacPermission('screen')) return null
   if (!Number.isFinite(pid) || pid <= 0) return null
 
-  const tempPath = path.join(tmpdir(), `stella_cap_${randomBytes(8).toString('hex')}.png`)
+  const tempPath = path.join(
+    tmpdir(),
+    `stella_cap_${randomBytes(8).toString('hex')}.png`,
+  )
   const args = [`--pid=${pid}`, `--screenshot=${tempPath}`]
 
   return runWindowCapture(HOME_CAPTURE_HELPER, args, tempPath)
