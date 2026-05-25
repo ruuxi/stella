@@ -142,16 +142,21 @@ describe("third-party migration importers", () => {
   it("loads OpenClaw workspace paths, resolves model aliases, imports skills, and best-effort session JSONL", async () => {
     const root = await createTempRoot("stella-openclaw-import");
     const openclaw = path.join(root, ".openclaw");
-    const workspace = path.join(root, "custom-openclaw-workspace");
+    const workspace = path.join(openclaw, "workspace");
     const stellaHome = path.join(root, ".stella");
     await mkdir(path.join(workspace, "skills", "planner"), { recursive: true });
-    await mkdir(path.join(openclaw, "agents", "main", "sessions"), { recursive: true });
+    await mkdir(path.join(openclaw, "agents", "main", "sessions"), {
+      recursive: true,
+    });
+    await mkdir(path.join(openclaw, "agents", "other", "sessions"), {
+      recursive: true,
+    });
     await writeFile(
       path.join(openclaw, "openclaw.json"),
       JSON.stringify({
         agents: {
           defaults: {
-            workspace,
+            workspace: "workspace",
             model: { primary: "Claude Opus 4.6" },
             models: {
               "anthropic/claude-opus-4-6": { alias: "Claude Opus 4.6" },
@@ -161,9 +166,21 @@ describe("third-party migration importers", () => {
       }),
       "utf-8",
     );
-    await writeFile(path.join(workspace, "MEMORY.md"), "- Likes morning updates.\n", "utf-8");
-    await writeFile(path.join(workspace, "USER.md"), "User is Taylor.\n", "utf-8");
-    await writeFile(path.join(workspace, "SOUL.md"), "Direct, calm voice.\n", "utf-8");
+    await writeFile(
+      path.join(workspace, "MEMORY.md"),
+      "- Likes morning updates.\n",
+      "utf-8",
+    );
+    await writeFile(
+      path.join(workspace, "USER.md"),
+      "User is Taylor.\n",
+      "utf-8",
+    );
+    await writeFile(
+      path.join(workspace, "SOUL.md"),
+      "Direct, calm voice.\n",
+      "utf-8",
+    );
     await writeFile(
       path.join(workspace, "skills", "planner", "SKILL.md"),
       "---\nname: Planner\ndescription: Plans things.\n---\n\n# Planner\n",
@@ -172,8 +189,32 @@ describe("third-party migration importers", () => {
     await writeFile(
       path.join(openclaw, "agents", "main", "sessions", "main.jsonl"),
       [
-        JSON.stringify({ role: "user", content: "hello", timestamp: 1_700_000_000 }),
-        JSON.stringify({ role: "assistant", content: "hi", timestamp: 1_700_000_001 }),
+        JSON.stringify({
+          role: "user",
+          content: "hello",
+          timestamp: 1_700_000_000,
+        }),
+        JSON.stringify({
+          role: "assistant",
+          content: "hi",
+          timestamp: 1_700_000_001,
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeFile(
+      path.join(openclaw, "agents", "other", "sessions", "main.jsonl"),
+      [
+        JSON.stringify({
+          role: "user",
+          content: "second",
+          timestamp: 1_700_000_002,
+        }),
+        JSON.stringify({
+          role: "assistant",
+          content: "thread",
+          timestamp: 1_700_000_003,
+        }),
       ].join("\n"),
       "utf-8",
     );
@@ -182,9 +223,9 @@ describe("third-party migration importers", () => {
       source: "openclaw",
       sourceRoot: openclaw,
     });
-    expect(preview.findings.find((finding) => finding.option === "memory")?.paths).toContain(
-      path.join(workspace, "MEMORY.md"),
-    );
+    expect(
+      preview.findings.find((finding) => finding.option === "memory")?.paths,
+    ).toContain(path.join(workspace, "MEMORY.md"));
 
     const db = createDb(stellaHome);
     try {
@@ -194,7 +235,12 @@ describe("third-party migration importers", () => {
         stellaHome,
         db,
       });
-      expect(report.items.some((item) => item.kind === "sessionHistory" && item.status === "imported")).toBe(true);
+      expect(
+        report.items.some(
+          (item) =>
+            item.kind === "sessionHistory" && item.status === "imported",
+        ),
+      ).toBe(true);
 
       const prefs = JSON.parse(
         await readFile(path.join(stellaHome, "preferences.json"), "utf-8"),
@@ -208,9 +254,30 @@ describe("third-party migration importers", () => {
       expect(skill).toContain("name: Planner");
 
       const importedMessages = db
+        .prepare(
+          "SELECT thread_key AS threadKey, entry_type AS entryType FROM runtime_thread_entries ORDER BY thread_key",
+        )
+        .all() as Array<{ threadKey: string; entryType: string }>;
+      expect(importedMessages).toHaveLength(4);
+      expect(
+        new Set(importedMessages.map((message) => message.threadKey)),
+      ).toEqual(
+        new Set([
+          "import:openclaw:agents-main-sessions-main",
+          "import:openclaw:agents-other-sessions-main",
+        ]),
+      );
+
+      await runThirdPartyMigration({
+        source: "openclaw",
+        sourceRoot: openclaw,
+        stellaHome,
+        db,
+      });
+      const rerunMessages = db
         .prepare("SELECT entry_type AS entryType FROM runtime_thread_entries")
-        .all() as Array<{ entryType: string }>;
-      expect(importedMessages).toHaveLength(2);
+        .all();
+      expect(rerunMessages).toHaveLength(4);
 
       const markdown = await readFile(report.markdownPath, "utf-8");
       expect(markdown).toContain("[OpenClaw](https://github.com/openclaw/openclaw)");

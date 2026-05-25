@@ -260,6 +260,19 @@ const markImported = (
   state.sources[key][itemId] = fingerprint;
 };
 
+const resolveSourceConfiguredPath = (
+  sourceRoot: string,
+  value: string,
+): string => {
+  if (value === "~" || value.startsWith("~/")) {
+    return path.resolve(expandHome(value));
+  }
+  if (path.isAbsolute(value)) {
+    return path.resolve(value);
+  }
+  return path.resolve(sourceRoot, value);
+};
+
 export const resolveDefaultMigrationSourceRoot = (
   source: ThirdPartyMigrationSource,
   opts?: { homeDir?: string; env?: NodeJS.ProcessEnv },
@@ -486,14 +499,18 @@ const resolveOpenClawWorkspaceCandidates = async (
       const defaults = agents.defaults;
       if (isRecord(defaults)) {
         const workspace = asString(defaults.workspace);
-        if (workspace) candidates.unshift(path.resolve(expandHome(workspace)));
+        if (workspace) {
+          candidates.unshift(resolveSourceConfiguredPath(sourceRoot, workspace));
+        }
       }
       const list = agents.list;
       if (Array.isArray(list)) {
         for (const agent of list) {
           if (!isRecord(agent)) continue;
           const workspace = asString(agent.workspace);
-          if (workspace) candidates.push(path.resolve(expandHome(workspace)));
+          if (workspace) {
+            candidates.push(resolveSourceConfiguredPath(sourceRoot, workspace));
+          }
         }
       }
     }
@@ -614,6 +631,7 @@ export const runThirdPartyMigration = async (opts: {
       if (selected.sessionHistory) {
         await importSessionHistory({
           source: opts.source,
+          sourceRoot,
           paths,
           db,
           state: importState,
@@ -1088,6 +1106,7 @@ const extractOpenClawModelConfig = (text: string): string | null => {
 
 const importSessionHistory = async (args: {
   source: ThirdPartyMigrationSource;
+  sourceRoot: string;
   paths: SourcePaths;
   db: SqliteDatabase;
   state: ImportedState;
@@ -1098,7 +1117,10 @@ const importSessionHistory = async (args: {
   const sessions =
     args.source === "hermes"
       ? await loadHermesSessions(args.paths.hermesStateDb)
-      : await loadOpenClawSessions(args.paths.openClawSessionFiles);
+      : await loadOpenClawSessions(
+          args.paths.openClawSessionFiles,
+          args.sourceRoot,
+        );
   if (sessions.length === 0) {
     args.items.push({
       kind: "sessionHistory",
@@ -1175,6 +1197,7 @@ const loadHermesSessions = async (
 
 const loadOpenClawSessions = async (
   files: string[],
+  sourceRoot: string,
 ): Promise<SourceSession[]> => {
   const sessions: SourceSession[] = [];
   for (const file of files.slice(0, MAX_IMPORTED_SESSIONS)) {
@@ -1190,8 +1213,11 @@ const loadOpenClawSessions = async (
       } catch {}
     }
     if (messages.length > 0) {
+      const relativeSessionPath = path
+        .relative(sourceRoot, file)
+        .replace(/\.jsonl$/iu, "");
       sessions.push({
-        id: sanitizeImportedSessionId(path.basename(file, ".jsonl")),
+        id: sanitizeImportedSessionId(relativeSessionPath),
         timestamp: messages[0]?.timestamp ?? Date.now(),
         messages,
       });
