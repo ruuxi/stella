@@ -171,6 +171,12 @@
   color: var(--text-weak);
 }
 
+.engine-tab__meta {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weak);
+}
+
 .engine-tab__link {
   appearance: none;
   border: none;
@@ -317,4 +323,50 @@
   font-size: 11px;
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
+}
+
+.engine-tab__segmented {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--text-strong) 3%, transparent);
+}
+
+.engine-tab__segment {
+  appearance: none;
+  min-width: 0;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.engine-tab__segment:hover:not(:disabled),
+.engine-tab__segment:focus-visible {
+  outline: none;
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--text-strong) 5%, transparent);
+}
+
+.engine-tab__segment[data-selected] {
+  color: var(--text-strong);
+  border-color: color-mix(in oklch, var(--accent, #2f6df6) 45%, var(--border));
+  background: color-mix(in oklch, var(--accent, #2f6df6) 10%, transparent);
+}
+
+.engine-tab__segment:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }

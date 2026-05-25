@@ -42,6 +42,7 @@ import {
   type ReasoningEffort,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
 import { coerceAgentRuntimeEngine } from "../../../runtime/contracts/agent-engine.js";
+import { listCodexAppServerModels } from "../../../runtime/kernel/integrations/codex-agent-runtime.js";
 import { writePersonalityForVoice } from "../../../runtime/kernel/personality/personality.js";
 import { isKnownPersonalityVoiceId } from "../../../runtime/extensions/stella-runtime/personality/voices.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
@@ -106,6 +107,7 @@ import {
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_CURSOR_API_KEY,
   IPC_PREFERENCES_LIST_CURSOR_MODELS,
+  IPC_PREFERENCES_LIST_CODEX_MODELS,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
@@ -555,6 +557,19 @@ const sanitizeReasoningEfforts = (
     }
   }
   return nextRecord;
+};
+
+const sanitizeReasoningEffort = (value: unknown): ReasoningEffort => {
+  if (
+    value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+  ) {
+    return value;
+  }
+  return "default";
 };
 
 let preventSleepBlockerId: number | null = null;
@@ -2076,6 +2091,18 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     };
   });
 
+  ipcMain.handle(IPC_PREFERENCES_LIST_CODEX_MODELS, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_LIST_CODEX_MODELS,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:listCodexModels request.");
+    }
+    return listCodexAppServerModels();
+  });
+
   ipcMain.handle(
     IPC_PREFERENCES_SET_MODELS,
     (event, payload: Partial<LocalModelPreferencesSnapshot>) => {
@@ -2137,6 +2164,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           typeof payload.codexModel === "string"
             ? payload.codexModel.trim()
             : "";
+      }
+      if (payload?.codexReasoningEffort !== undefined) {
+        patch.codexReasoningEffort = sanitizeReasoningEffort(
+          payload.codexReasoningEffort,
+        );
       }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;

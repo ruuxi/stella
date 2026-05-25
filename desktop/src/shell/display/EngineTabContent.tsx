@@ -11,6 +11,7 @@ type LocalModelPreferences = {
   agentRuntimeEngine: AgentRuntimeEngine;
   cursorModel: string;
   codexModel: string;
+  codexReasoningEffort: CodexReasoningPreference;
 };
 
 type CursorModelOption = {
@@ -20,6 +21,32 @@ type CursorModelOption = {
   aliases?: string[];
 };
 
+type CodexReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
+type CodexReasoningPreference = Exclude<CodexReasoningEffort, "none"> | "default";
+
+type CodexModelOption = {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  hidden: boolean;
+  supportedReasoningEfforts: Array<{
+    reasoningEffort: CodexReasoningEffort;
+    description: string;
+  }>;
+  defaultReasoningEffort: CodexReasoningEffort;
+  inputModalities: string[];
+  additionalSpeedTiers: string[];
+  isDefault: boolean;
+};
+
 const ENGINE_OPTIONS: ReadonlyArray<{
   id: AgentRuntimeEngine;
   label: string;
@@ -27,12 +54,20 @@ const ENGINE_OPTIONS: ReadonlyArray<{
 }> = [
   { id: "default", label: "Stella", hint: "Built-in runtime" },
   { id: "cursor_sdk", label: "Cursor", hint: "Bring your API key" },
-  { id: "codex_cli", label: "Codex", hint: "Uses your Codex CLI" },
+  { id: "codex_cli", label: "Codex", hint: "Uses Codex app-server" },
   { id: "claude_code_local", label: "Claude Code", hint: "Uses your Claude CLI" },
 ];
 
 const DEFAULT_CURSOR_MODEL = "composer-latest";
 const DEFAULT_CODEX_MODEL = "gpt-5.5";
+const DEFAULT_CODEX_REASONING: CodexReasoningPreference = "default";
+const FALLBACK_CODEX_REASONING_OPTIONS: readonly CodexReasoningPreference[] = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+];
 const PREFS_EVENT = "stella:local-model-preferences-changed";
 const NOTICE_TTL_MS = 2400;
 
@@ -45,7 +80,40 @@ const prefsEqual = (
 ): boolean =>
   a.agentRuntimeEngine === b.agentRuntimeEngine &&
   a.cursorModel === b.cursorModel &&
-  a.codexModel === b.codexModel;
+  a.codexModel === b.codexModel &&
+  a.codexReasoningEffort === b.codexReasoningEffort;
+
+const isCodexReasoningPreference = (
+  value: CodexReasoningEffort,
+): value is Exclude<CodexReasoningEffort, "none"> & CodexReasoningPreference =>
+  value !== "none";
+
+const modelSupportsReasoning = (
+  model: CodexModelOption | undefined,
+  effort: CodexReasoningPreference,
+): boolean => {
+  if (effort === "default" || !model) return true;
+  return model.supportedReasoningEfforts.some(
+    (option) => option.reasoningEffort === effort,
+  );
+};
+
+const codexReasoningLabel = (effort: CodexReasoningPreference): string => {
+  switch (effort) {
+    case "default":
+      return "Auto";
+    case "minimal":
+      return "Min";
+    case "low":
+      return "Low";
+    case "medium":
+      return "Med";
+    case "high":
+      return "High";
+    case "xhigh":
+      return "Max";
+  }
+};
 
 export function EngineTabContent() {
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
@@ -54,6 +122,8 @@ export function EngineTabContent() {
   const [hasCursorApiKey, setHasCursorApiKey] = useState(false);
   const [cursorModels, setCursorModels] = useState<CursorModelOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [codexModels, setCodexModels] = useState<CodexModelOption[]>([]);
+  const [codexModelsLoading, setCodexModelsLoading] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [modelDraft, setModelDraft] = useState(DEFAULT_CURSOR_MODEL);
   const [codexModelDraft, setCodexModelDraft] = useState(DEFAULT_CODEX_MODEL);
@@ -76,7 +146,19 @@ export function EngineTabContent() {
     codexModelDraft.trim() !==
     (preferences?.codexModel ?? DEFAULT_CODEX_MODEL);
   const selectedModelId = preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL;
+  const selectedCodexModelId = preferences?.codexModel ?? DEFAULT_CODEX_MODEL;
+  const selectedCodexReasoning =
+    preferences?.codexReasoningEffort ?? DEFAULT_CODEX_REASONING;
   const inputsDisabled = loading || Boolean(saving);
+  const selectedCodexModel = useMemo(
+    () =>
+      codexModels.find(
+        (model) =>
+          model.id === selectedCodexModelId ||
+          model.model === selectedCodexModelId,
+      ),
+    [codexModels, selectedCodexModelId],
+  );
 
   const showNotice = useCallback((text: string) => {
     setStatus({ kind: "notice", text });
@@ -108,6 +190,8 @@ export function EngineTabContent() {
         agentRuntimeEngine: saved.agentRuntimeEngine,
         cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
         codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
+        codexReasoningEffort:
+          saved.codexReasoningEffort || DEFAULT_CODEX_REASONING,
       };
       setPreferences((current) =>
         current && prefsEqual(current, next) ? current : next,
@@ -142,7 +226,21 @@ export function EngineTabContent() {
     }
   }, [showError]);
 
+  const loadCodexModels = useCallback(async () => {
+    setCodexModelsLoading(true);
+    try {
+      const result = await window.electronAPI?.system?.listCodexModels?.();
+      setCodexModels(result?.models ?? []);
+      codexModelsLoadedRef.current = true;
+    } catch (caught) {
+      showError(errorText(caught, "Codex models did not load."));
+    } finally {
+      setCodexModelsLoading(false);
+    }
+  }, [showError]);
+
   const cursorModelsLoadedRef = useRef(false);
+  const codexModelsLoadedRef = useRef(false);
   useEffect(() => {
     if (cursorModels.length > 0) cursorModelsLoadedRef.current = true;
   }, [cursorModels.length]);
@@ -156,6 +254,12 @@ export function EngineTabContent() {
           window.electronAPI?.system?.getCursorApiKeyStatus?.(),
         ]);
         applySavedPrefs(prefs, { resetDrafts: !options?.silent });
+        if (
+          prefs?.agentRuntimeEngine === "codex_cli" &&
+          !codexModelsLoadedRef.current
+        ) {
+          void loadCodexModels();
+        }
         const nextHasKey = Boolean(keyStatus?.hasApiKey);
         setHasCursorApiKey(nextHasKey);
         if (nextHasKey && !cursorModelsLoadedRef.current) {
@@ -170,7 +274,7 @@ export function EngineTabContent() {
         if (!options?.silent) setLoading(false);
       }
     },
-    [applySavedPrefs, loadCursorModels, showError],
+    [applySavedPrefs, loadCodexModels, loadCursorModels, showError],
   );
 
   useEffect(() => {
@@ -190,6 +294,12 @@ export function EngineTabContent() {
     // `load` is stable for the lifecycle of the panel; avoid re-subscribing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (selectedEngine === "codex_cli" && !codexModelsLoadedRef.current) {
+      void loadCodexModels();
+    }
+  }, [loadCodexModels, selectedEngine]);
 
   const saveEngine = useCallback(
     async (engine: AgentRuntimeEngine) => {
@@ -298,16 +408,25 @@ export function EngineTabContent() {
     [persistCursorModel, preferences, saving],
   );
 
-  const saveCodexModel = useCallback(async () => {
+  const saveCodexModel = useCallback(async (modelId?: string) => {
     if (!preferences || saving) return;
-    const nextModel = codexModelDraft.trim() || DEFAULT_CODEX_MODEL;
-    if (nextModel === preferences.codexModel) return;
+    const nextModel = (modelId ?? codexModelDraft).trim() || DEFAULT_CODEX_MODEL;
+    const nextModelOption = codexModels.find(
+      (model) => model.id === nextModel || model.model === nextModel,
+    );
+    const resetReasoning =
+      preferences.codexReasoningEffort !== "default" &&
+      !modelSupportsReasoning(nextModelOption, preferences.codexReasoningEffort);
+    if (nextModel === preferences.codexModel && !resetReasoning) return;
     setSaving("model");
     clearStatus();
     try {
       const saved =
         await window.electronAPI?.system?.setLocalModelPreferences?.({
           codexModel: nextModel,
+          ...(resetReasoning
+            ? { codexReasoningEffort: DEFAULT_CODEX_REASONING }
+            : {}),
         });
       applySavedPrefs(saved, { resetDrafts: true });
       notifyPrefsChanged();
@@ -321,6 +440,7 @@ export function EngineTabContent() {
     applySavedPrefs,
     clearStatus,
     codexModelDraft,
+    codexModels,
     notifyPrefsChanged,
     preferences,
     saving,
@@ -328,11 +448,43 @@ export function EngineTabContent() {
     showNotice,
   ]);
 
+  const saveCodexReasoning = useCallback(
+    async (reasoning: CodexReasoningPreference) => {
+      if (!preferences || saving || reasoning === preferences.codexReasoningEffort) {
+        return;
+      }
+      setSaving("model");
+      clearStatus();
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.({
+            codexReasoningEffort: reasoning,
+          });
+        applySavedPrefs(saved, { resetDrafts: false });
+        notifyPrefsChanged();
+        showNotice("Codex reasoning saved");
+      } catch (caught) {
+        showError(errorText(caught, "Codex reasoning was not saved."));
+      } finally {
+        setSaving(null);
+      }
+    },
+    [
+      applySavedPrefs,
+      clearStatus,
+      notifyPrefsChanged,
+      preferences,
+      saving,
+      showError,
+      showNotice,
+    ],
+  );
+
   const subtitle = useMemo(() => {
     if (loading) return "Loading…";
     if (selectedEngine === "cursor_sdk")
       return cursorReady ? "Cursor ready" : "Add a Cursor key to continue";
-    if (selectedEngine === "codex_cli") return "Runs your local Codex CLI";
+    if (selectedEngine === "codex_cli") return "Runs Codex app-server";
     if (selectedEngine === "claude_code_local")
       return "Runs your local Claude Code CLI";
     return "Stella's built-in runtime";
@@ -515,35 +667,122 @@ export function EngineTabContent() {
           ) : selectedEngine === "codex_cli" ? (
             <div className="engine-tab__config" key="codex_cli">
               <div className="engine-tab__row">
-                <label
-                  className="engine-tab__label"
-                  htmlFor="engine-codex-model"
-                >
-                  Model
-                </label>
-                <div className="engine-tab__field-row">
-                  <input
-                    id="engine-codex-model"
-                    type="text"
-                    value={codexModelDraft}
-                    placeholder={DEFAULT_CODEX_MODEL}
-                    className="engine-tab__input"
-                    spellCheck={false}
-                    disabled={inputsDisabled}
-                    onChange={(event) =>
-                      setCodexModelDraft(event.target.value)
-                    }
-                  />
+                <div className="engine-tab__label-row">
+                  <span className="engine-tab__label">Model</span>
                   <button
                     type="button"
-                    className="pill-btn pill-btn--primary"
-                    disabled={
-                      loading || saving === "model" || !codexModelChanged
-                    }
-                    onClick={() => void saveCodexModel()}
+                    className="engine-tab__link"
+                    disabled={codexModelsLoading}
+                    onClick={() => void loadCodexModels()}
                   >
-                    Save
+                    {codexModelsLoading ? "Refreshing…" : "Refresh"}
                   </button>
+                </div>
+
+                {codexModels.length > 0 ? (
+                  <div
+                    className="engine-tab__model-list"
+                    role="radiogroup"
+                    aria-busy={codexModelsLoading || undefined}
+                  >
+                    {codexModels.map((model) => {
+                      const selected =
+                        model.id === selectedCodexModelId ||
+                        model.model === selectedCodexModelId;
+                      return (
+                        <button
+                          key={model.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={Boolean(selected)}
+                          data-selected={selected || undefined}
+                          className="engine-tab__model-option"
+                          disabled={inputsDisabled}
+                          onClick={() => void saveCodexModel(model.id)}
+                        >
+                          <span>{model.displayName || model.id}</span>
+                          <small>{model.model}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                {codexModelsLoading && codexModels.length === 0 ? (
+                  <p className="engine-tab__model-empty">Loading Codex models…</p>
+                ) : null}
+
+                {codexModels.length === 0 ? (
+                  <div className="engine-tab__field-row">
+                    <input
+                      id="engine-codex-model"
+                      type="text"
+                      value={codexModelDraft}
+                      placeholder={DEFAULT_CODEX_MODEL}
+                      className="engine-tab__input"
+                      spellCheck={false}
+                      disabled={inputsDisabled}
+                      onChange={(event) =>
+                        setCodexModelDraft(event.target.value)
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="pill-btn pill-btn--primary"
+                      disabled={
+                        loading || saving === "model" || !codexModelChanged
+                      }
+                      onClick={() => void saveCodexModel()}
+                    >
+                      Save
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="engine-tab__row">
+                <div className="engine-tab__label-row">
+                  <span className="engine-tab__label">Reasoning</span>
+                  <small className="engine-tab__meta">
+                    Default {selectedCodexModel
+                      ? codexReasoningLabel(
+                          selectedCodexModel.defaultReasoningEffort === "none"
+                            ? "default"
+                            : selectedCodexModel.defaultReasoningEffort,
+                        )
+                      : "Auto"}
+                  </small>
+                </div>
+                <div className="engine-tab__segmented" role="radiogroup">
+                  {[DEFAULT_CODEX_REASONING, ...(
+                    selectedCodexModel?.supportedReasoningEfforts
+                      .map((option) => option.reasoningEffort)
+                      .filter(isCodexReasoningPreference) ??
+                    FALLBACK_CODEX_REASONING_OPTIONS
+                  )]
+                    .filter(
+                      (effort, index, all): effort is CodexReasoningPreference =>
+                        all.indexOf(effort) === index &&
+                        (effort === selectedCodexReasoning ||
+                          modelSupportsReasoning(selectedCodexModel, effort)),
+                    )
+                    .map((effort) => {
+                      const selected = effort === selectedCodexReasoning;
+                      return (
+                        <button
+                          key={effort}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          data-selected={selected || undefined}
+                          className="engine-tab__segment"
+                          disabled={inputsDisabled}
+                          onClick={() => void saveCodexReasoning(effort)}
+                        >
+                          {codexReasoningLabel(effort)}
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
             </div>

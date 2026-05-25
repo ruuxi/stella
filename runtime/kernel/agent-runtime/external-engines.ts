@@ -8,7 +8,7 @@ import type {
   Usage,
 } from "../../ai/types.js";
 import type { AgentMessage } from "../agent-core/types.js";
-import type { ToolUpdateCallback } from "../tools/types.js";
+import type { ToolResult, ToolUpdateCallback } from "../tools/types.js";
 import {
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
@@ -724,6 +724,88 @@ const runCodexHostedTurn = async (args: {
     threadKey,
     engine: "codex_cli",
   });
+  const toolMetadata = getRuntimeToolMetadata({
+    toolsAllowlist: args.opts.agentContext.toolsAllowlist,
+    toolCatalog: args.opts.toolCatalog,
+  });
+  const emitToolUpdateStatus = (update: ToolResult) => {
+    const details =
+      update.details && typeof update.details === "object"
+        ? (update.details as { statusText?: unknown })
+        : null;
+    const statusText =
+      typeof details?.statusText === "string" && details.statusText.trim()
+        ? details.statusText.trim()
+        : buildToolResultText(update).trim();
+    if (statusText) {
+      args.callbacks?.onStatus?.(runEvents.recordStatus(statusText));
+    }
+  };
+  const executeCodexTool = async (
+    toolCallId: string,
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
+  ) => {
+    args.callbacks?.onToolStart?.(
+      runEvents.recordToolStart({
+        toolCallId,
+        toolName,
+        toolArgs,
+      }),
+    );
+    persistThreadPayloadMessage(args.opts.store, {
+      threadKey,
+      payload: buildToolCallPayload({
+        toolCallId,
+        toolName,
+        toolArgs,
+      }),
+    });
+    const toolResult = await executeRuntimeToolCall({
+      toolCallId,
+      toolName,
+      args: toolArgs,
+      runId,
+      rootRunId: args.opts.rootRunId ?? runId,
+      agentId: args.opts.agentId,
+      conversationId: args.opts.conversationId,
+      agentType: args.opts.agentType,
+      deviceId: args.opts.deviceId,
+      stellaRoot: args.opts.stellaRoot,
+      toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
+      agentDepth: args.opts.agentContext.agentDepth ?? 0,
+      maxAgentDepth: args.opts.agentContext.maxAgentDepth,
+      connectorDeliveryTarget: args.opts.connectorDeliveryTarget,
+      allowedToolNames: args.opts.agentContext.toolsAllowlist,
+      store: args.opts.store,
+      toolExecutor: args.opts.toolExecutor,
+      hookEmitter: args.opts.hookEmitter,
+      signal,
+      onUpdate,
+    });
+    args.callbacks?.onToolEnd?.(
+      runEvents.recordToolEnd({
+        toolCallId,
+        toolName,
+        result: toolResult,
+        details: toolResult.details,
+      }),
+    );
+    persistThreadPayloadMessage(args.opts.store, {
+      threadKey,
+      payload: {
+        role: "toolResult",
+        toolCallId,
+        toolName,
+        content: await buildToolResultContent(toolResult),
+        isError: Boolean(toolResult.error),
+        timestamp: now(),
+      },
+    });
+    return toolResult;
+  };
   const prompt = buildCodexPromptFromMessages({
     systemPrompt: args.systemPrompt,
     promptMessages: args.promptMessages,
@@ -737,6 +819,7 @@ const runCodexHostedTurn = async (args: {
     stellaHome: args.opts.stellaHome,
     stellaRoot: args.opts.stellaRoot,
     attachments: args.opts.attachments,
+    tools: toolMetadata,
     abortSignal: args.opts.abortSignal,
     onStatus: (status) => {
       args.opts.onProgress?.(status);
@@ -746,6 +829,8 @@ const runCodexHostedTurn = async (args: {
       args.opts.onProgress?.(chunk);
       args.callbacks?.onStream?.(runEvents.recordStream(chunk));
     },
+    onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
+    executeTool: executeCodexTool,
   });
 
   await persistAssistantReply({

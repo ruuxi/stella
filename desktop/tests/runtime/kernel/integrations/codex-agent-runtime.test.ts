@@ -3,7 +3,9 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildCodexExecArgs,
+  buildCodexThreadStartParams,
+  buildCodexTurnStartParams,
+  buildCodexUserInput,
   buildCodexPromptFromMessages,
   codexImagePathFromFileUrl,
   fileChangesFromCodexItem,
@@ -55,36 +57,90 @@ describe("Codex agent runtime", () => {
     expect(prompt).toContain('<message index="2" type="user" visibility="visible">');
   });
 
-  it("passes Codex exec the model, cwd, resume id, and permissive local policy", () => {
+  it("starts Codex app-server threads with Stella tools and read-only native writes", () => {
     expect(
-      buildCodexExecArgs({
+      buildCodexThreadStartParams({
         model: DEFAULT_CODEX_MODEL,
         cwd: "/repo",
-        persistedSessionId: "thread-1",
-        imagePaths: ["/tmp/image.png"],
+        tools: [
+          {
+            name: "exec_command",
+            description: "Run a command",
+            parameters: {
+              type: "object",
+              properties: { cmd: { type: "string" } },
+              required: ["cmd"],
+            },
+          },
+        ],
       }),
-    ).toEqual([
-      "exec",
-      "--experimental-json",
-      "--model",
-      DEFAULT_CODEX_MODEL,
-      "--sandbox",
-      "danger-full-access",
-      "--config",
-      'approval_policy="never"',
-      "--cd",
-      "/repo",
-      "resume",
-      "thread-1",
-      "--image",
-      "/tmp/image.png",
-    ]);
+    ).toEqual({
+      model: DEFAULT_CODEX_MODEL,
+      cwd: "/repo",
+      approvalPolicy: "never",
+      sandbox: "read-only",
+      serviceName: "Stella",
+      ephemeral: false,
+      dynamicTools: [
+        {
+          name: "exec_command",
+          description: "Run a command",
+          inputSchema: {
+            type: "object",
+            properties: { cmd: { type: "string" } },
+            required: ["cmd"],
+          },
+        },
+      ],
+      experimentalRawEvents: false,
+      persistExtendedHistory: true,
+    });
+  });
+
+  it("passes model, cwd, and reasoning effort through turn/start", () => {
+    expect(
+      buildCodexTurnStartParams({
+        threadId: "thread-1",
+        model: DEFAULT_CODEX_MODEL,
+        cwd: "/repo",
+        reasoningEffort: "high",
+        input: [{ type: "text", text: "hello", text_elements: [] }],
+      }),
+    ).toEqual({
+      threadId: "thread-1",
+      input: [{ type: "text", text: "hello", text_elements: [] }],
+      cwd: "/repo",
+      approvalPolicy: "never",
+      sandboxPolicy: { type: "readOnly", networkAccess: true },
+      model: DEFAULT_CODEX_MODEL,
+      effort: "high",
+    });
   });
 
   it("decodes file URL image attachment paths before passing them to Codex", () => {
     const filePath = path.join("/tmp", "stella image with spaces.png");
 
     expect(codexImagePathFromFileUrl(pathToFileURL(filePath).href)).toBe(filePath);
+  });
+
+  it("builds localImage inputs for file URL attachments with escaped paths", () => {
+    const filePath = path.join("/tmp", "stella image with spaces.png");
+
+    expect(
+      buildCodexUserInput({
+        runId: "run-attachments",
+        prompt: "inspect this",
+        attachments: [
+          {
+            url: pathToFileURL(filePath).href,
+            mimeType: "image/png",
+          },
+        ],
+      }).input,
+    ).toEqual([
+      { type: "text", text: "inspect this", text_elements: [] },
+      { type: "localImage", path: filePath },
+    ]);
   });
 
   it("fails when the Codex executable cannot be started", async () => {
@@ -114,11 +170,14 @@ describe("Codex agent runtime", () => {
     const changes = fileChangesFromCodexItem(
       {
         id: "patch-1",
-        type: "file_change",
+        type: "fileChange",
         status: "completed",
         changes: [
-          { path: "src/new.ts", kind: "add" },
-          { path: "/repo/src/existing.ts", kind: "update" },
+          { path: "src/new.ts", kind: { type: "add" } },
+          {
+            path: "/repo/src/existing.ts",
+            kind: { type: "update", move_path: null },
+          },
         ],
       },
       "/repo",

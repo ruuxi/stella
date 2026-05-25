@@ -91,6 +91,8 @@ export type LocalPreferences = {
   cursorModel: string;
   /** Codex model id used when the Codex engine is selected. */
   codexModel: string;
+  /** Codex reasoning effort used when the Codex engine is selected. */
+  codexReasoningEffort: ReasoningEffort;
   /** Shared max concurrency across all agent task execution */
   maxAgentConcurrency: number;
   /** Image generation provider/model. Stella is the managed default. */
@@ -147,6 +149,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "agentRuntimeEngine"
   | "cursorModel"
   | "codexModel"
+  | "codexReasoningEffort"
   | "maxAgentConcurrency"
   | "imageGeneration"
   | "realtimeVoice"
@@ -165,6 +168,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   agentRuntimeEngine: "default",
   cursorModel: DEFAULT_CURSOR_MODEL,
   codexModel: DEFAULT_CODEX_MODEL,
+  codexReasoningEffort: "default",
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   imageGeneration: { provider: "stella" },
   realtimeVoice: { provider: "stella" },
@@ -219,6 +223,9 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
       cursorModel: normalizeCursorModel(parsed.cursorModel),
       codexModel: normalizeCodexModel(parsed.codexModel),
+      codexReasoningEffort: normalizeReasoningEffort(
+        parsed.codexReasoningEffort,
+      ),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       imageGeneration: normalizeImageGenerationPreferences(
         parsed.imageGeneration,
@@ -367,6 +374,7 @@ export const getLocalModelPreferences = (
     agentRuntimeEngine: prefs.agentRuntimeEngine,
     cursorModel: prefs.cursorModel,
     codexModel: prefs.codexModel,
+    codexReasoningEffort: prefs.codexReasoningEffort,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
     imageGeneration: { ...prefs.imageGeneration },
     realtimeVoice: { ...prefs.realtimeVoice },
@@ -408,6 +416,10 @@ export const updateLocalModelPreferences = (
       patch.codexModel === undefined
         ? prefs.codexModel
         : normalizeCodexModel(patch.codexModel),
+    codexReasoningEffort:
+      patch.codexReasoningEffort === undefined
+        ? prefs.codexReasoningEffort
+        : normalizeReasoningEffort(patch.codexReasoningEffort),
     maxAgentConcurrency:
       patch.maxAgentConcurrency === undefined
         ? prefs.maxAgentConcurrency

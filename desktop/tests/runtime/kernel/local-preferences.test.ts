@@ -176,6 +176,17 @@ describe("loadLocalPreferences", () => {
     );
   });
 
+  it("preserves the Codex reasoning preference", () => {
+    const stellaHome = makeStellaHome();
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      codexReasoningEffort: "high",
+    });
+
+    expect(saved.codexReasoningEffort).toBe("high");
+    expect(loadLocalPreferences(stellaHome).codexReasoningEffort).toBe("high");
+  });
+
   it("defaults realtime voice to Stella", () => {
     const stellaHome = makeStellaHome();
     writePreferences(stellaHome, {});
