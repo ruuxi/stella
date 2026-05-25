@@ -3,8 +3,9 @@
  * is set by the I18n provider for Arabic and Hebrew.
  *
  * This is a baseline pass — it covers the most-visible direction-
- * sensitive surfaces (sidebar, settings, onboarding) so RTL renders
- * usably out of the gate. A full visual QA pass is still planned.
+ * sensitive surfaces (top-bar nav, settings, onboarding) so RTL
+ * renders usably out of the gate. A full visual QA pass is still
+ * planned.
  *
  * Approach:
  *   - Flip `text-align: left/right` to logical `start/end`.
@@ -16,19 +17,17 @@
  * override beyond a simple flip should live with the component.
  */
 
-[dir="rtl"] .sidebar-page-back,
-[dir="rtl"] .sidebar-nav-item,
-[dir="rtl"] .sidebar-account-signin {
+[dir="rtl"] .shell-topbar-nav-item,
+[dir="rtl"] .shell-topbar-account-signin {
   text-align: start;
 }
 
-[dir="rtl"] .sidebar-nav-badge {
+[dir="rtl"] .shell-topbar-nav-badge {
   /* The unread badge is anchored top-right of its icon. In RTL the
-   * icon column visually flips to the right edge already (because
-   * the parent flex is row-reverse-equivalent under `dir=rtl`), so
-   * the badge needs to live at top-left of the same box. */
+   * icon column visually flips to the right edge, so the badge needs
+   * to live at top-left of the same box. */
   right: auto;
-  left: -8px;
+  left: -6px;
 }
 
 /* Onboarding's prev/next chevron buttons are positioned glyphs

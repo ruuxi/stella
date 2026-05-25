@@ -44,15 +44,6 @@ type DisplaySidebarProps = {
   onOpenChange?: (open: boolean) => void;
 };
 
-const readShellSizeVar = (name: string, fallback: number): number => {
-  const shell = document.querySelector<HTMLElement>(".window-shell.full");
-  const raw = shell
-    ? getComputedStyle(shell).getPropertyValue(name).trim()
-    : "";
-  const parsed = Number.parseFloat(raw);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
 const DISPLAY_PANEL_DEFAULT_MIN_WIDTH = 380;
 const DISPLAY_PANEL_DEFAULT_MAX_WIDTH = 520;
 const DISPLAY_PANEL_DEFAULT_VIEWPORT_RATIO = 0.34;
@@ -73,12 +64,7 @@ const computeDefaultWidth = (): number =>
  * it would squeeze the main content below that floor.
  */
 const computeMaxWidth = (): number => {
-  const viewport = window.innerWidth;
-  const sidebarWidth =
-    document.documentElement.dataset.sidebarHidden === "true"
-      ? 0
-      : readShellSizeVar("--shell-sidebar-width", 180);
-  const available = viewport - sidebarWidth - DISPLAY_MAIN_CONTENT_MIN_WIDTH;
+  const available = window.innerWidth - DISPLAY_MAIN_CONTENT_MIN_WIDTH;
   return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.floor(available));
 };
 
@@ -209,19 +195,10 @@ export const DisplaySidebar = forwardRef<
     syncWidthVarNow();
     const unsubscribe = displayTabs.subscribeLayout(scheduleWidthVarSync);
     window.addEventListener("resize", scheduleWidthVarSync);
-    const sidebarObserver =
-      typeof MutationObserver === "undefined"
-        ? null
-        : new MutationObserver(scheduleWidthVarSync);
-    sidebarObserver?.observe(document.documentElement, {
-      attributeFilter: ["data-sidebar-hidden"],
-      attributes: true,
-    });
     return () => {
       cancelAnimationFrame(frame);
       unsubscribe();
       window.removeEventListener("resize", scheduleWidthVarSync);
-      sidebarObserver?.disconnect();
       clearDisplayPanelWidthCssVar();
     };
   }, []);

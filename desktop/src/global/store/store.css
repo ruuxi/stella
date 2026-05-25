@@ -54,7 +54,7 @@
   margin: 0 auto;
 }
 
-/* The Store nav now lives in the page-sidebar, so the
+/* The Store nav lives in the top shell bar's centered controls, so the
    in-page header / pill row that used to sit at the top of `.store-root`
    is gone. Tab content begins flush with the workspace top edge. */
 

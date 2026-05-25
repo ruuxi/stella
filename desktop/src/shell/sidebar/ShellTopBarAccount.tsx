@@ -1,0 +1,566 @@
+import { useNavigate } from "@tanstack/react-router";
+import { router } from "@/router";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
+import {
+  CreditCard,
+  LogOut,
+  MessageSquare,
+  Palette,
+  Settings as SettingsIcon,
+} from "lucide-react";
+import { ThemePicker } from "@/global/settings/ThemePicker";
+import { useT } from "@/shared/i18n";
+import { api } from "@/convex/api";
+import { usePostOnboardingHint } from "@/global/onboarding/post-onboarding-hints";
+import {
+  preloadAuthDialog,
+  preloadBillingScreen,
+  preloadConnectDialog,
+  preloadSidebarRoute,
+} from "@/shared/lib/sidebar-preloads";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
+import { secureSignOut } from "@/global/auth/services/auth";
+import { Button } from "@/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/ui/dropdown-menu";
+import {
+  CustomDevice as Device,
+  CustomLogIn as LogIn,
+} from "./SidebarIcons";
+import { useFeedbackPrompt } from "./use-feedback-prompt";
+import "./account-dialogs.css";
+
+const FeedbackDialog = lazy(() =>
+  import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })),
+);
+
+type BillingPlanId = "free" | "go" | "pro" | "plus" | "ultra";
+
+type BillingStatusLite = {
+  plan?: BillingPlanId;
+  plans?: Partial<Record<BillingPlanId, { label?: string }>>;
+};
+
+const initialsFromIdentity = (
+  email: string | null | undefined,
+  name: string | null | undefined,
+): string => {
+  const trimmedName = (name ?? "").trim();
+  if (trimmedName) {
+    const parts = trimmedName.split(/\s+/).slice(0, 2);
+    const fromName = parts.map((p) => p.charAt(0)).join("");
+    if (fromName) return fromName.slice(0, 2).toUpperCase();
+  }
+  const local = (email ?? "").split("@")[0] ?? "";
+  return local.slice(0, 2).toUpperCase() || "?";
+};
+
+const AVATAR_HUES = [
+  210, 250, 285, 320, 350, 18, 38, 70, 140, 170, 195,
+] as const;
+
+const avatarSwatchFromIdentity = (
+  identity: string | null | undefined,
+): { background: string; color: string; border: string } => {
+  const seed = (identity ?? "").trim().toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  const hue = AVATAR_HUES[hash % AVATAR_HUES.length] ?? AVATAR_HUES[0];
+  return {
+    background: `oklch(0.88 0.06 ${hue})`,
+    color: `oklch(0.32 0.05 ${hue})`,
+    border: `oklch(0.78 0.05 ${hue} / 0.5)`,
+  };
+};
+
+const planLabel = (
+  plan: BillingPlanId | undefined,
+  status: BillingStatusLite | undefined,
+): string => {
+  if (!plan) return "Free";
+  const live = status?.plans?.[plan]?.label;
+  if (live) return live;
+  switch (plan) {
+    case "free":
+      return "Free";
+    case "go":
+      return "Go";
+    case "pro":
+      return "Pro";
+    case "plus":
+      return "Plus";
+    case "ultra":
+      return "Ultra";
+  }
+};
+
+interface ShellTopBarAccountProps {
+  onSignIn?: () => void;
+  onConnect?: () => void;
+}
+
+export const ShellTopBarAccount = ({
+  onSignIn,
+  onConnect,
+}: ShellTopBarAccountProps) => {
+  const t = useT();
+  const navigate = useNavigate();
+  const { user: convexUser, hasConnectedAccount } = useCurrentUser();
+  const { user: sessionUser } = useAuthSessionState();
+  const user = {
+    email: convexUser?.email ?? sessionUser?.email ?? undefined,
+    name: convexUser?.name ?? sessionUser?.name ?? undefined,
+    isAnonymous:
+      convexUser?.isAnonymous ?? sessionUser?.isAnonymous ?? undefined,
+  };
+
+  const connectHint = usePostOnboardingHint("connect");
+  const handleOpenConnect = useCallback(() => {
+    preloadConnectDialog();
+    if (connectHint.active) connectHint.dismiss();
+    onConnect?.();
+  }, [connectHint, onConnect]);
+
+  const handleOpenSettings = useCallback(() => {
+    void navigate({ to: "/settings" });
+  }, [navigate]);
+
+  const handleUpgrade = useCallback(() => {
+    void navigate({ to: "/billing" });
+  }, [navigate]);
+
+  const {
+    shouldPrompt: shouldAutoPromptFeedback,
+    acknowledge: acknowledgeFeedbackPrompt,
+  } = useFeedbackPrompt();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackVariant, setFeedbackVariant] = useState<"manual" | "auto">(
+    "manual",
+  );
+
+  useEffect(() => {
+    if (!shouldAutoPromptFeedback) return;
+    if (feedbackOpen) return;
+    setFeedbackVariant("auto");
+    setFeedbackOpen(true);
+    acknowledgeFeedbackPrompt();
+  }, [shouldAutoPromptFeedback, feedbackOpen, acknowledgeFeedbackPrompt]);
+
+  const handleOpenFeedback = useCallback(() => {
+    setFeedbackVariant("manual");
+    setFeedbackOpen(true);
+  }, []);
+
+  const [billingQueryReady, setBillingQueryReady] = useState(false);
+  useEffect(() => {
+    const scheduleIdle =
+      window.requestIdleCallback ??
+      ((callback: IdleRequestCallback) =>
+        window.setTimeout(
+          () =>
+            callback({
+              didTimeout: false,
+              timeRemaining: () => 0,
+            } as IdleDeadline),
+          1,
+        ));
+    const cancelIdle =
+      window.cancelIdleCallback ??
+      ((handle: number) => window.clearTimeout(handle));
+    const handle = scheduleIdle(() => setBillingQueryReady(true));
+    return () => cancelIdle(handle);
+  }, []);
+  const [billingRefreshKey, setBillingRefreshKey] = useState(0);
+  useEffect(() => {
+    const handler = () => setBillingRefreshKey((n) => n + 1);
+    window.addEventListener(SUBSCRIPTION_UPGRADED_EVENT, handler);
+    return () =>
+      window.removeEventListener(SUBSCRIPTION_UPGRADED_EVENT, handler);
+  }, []);
+  const billingStatus = useConvexOneShot(
+    api.billing.getSubscriptionStatus,
+    hasConnectedAccount && billingQueryReady ? {} : "skip",
+    billingRefreshKey,
+  ) as BillingStatusLite | undefined;
+
+  const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
+  const pendingSignOutRef = useRef(false);
+  const pendingFeedbackRef = useRef(false);
+  const pendingConnectRef = useRef(false);
+  const pendingSettingsRef = useRef(false);
+  const pendingThemeRef = useRef(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => {
+      void router.navigate({ to: "/settings", search: { tab: "models" } });
+    };
+    window.addEventListener("stella:open-model-picker", handler);
+    return () => {
+      window.removeEventListener("stella:open-model-picker", handler);
+    };
+  }, []);
+
+  const handleDropdownCloseAutoFocus = useCallback(
+    (event: Event) => {
+      if (pendingSignOutRef.current) {
+        pendingSignOutRef.current = false;
+        event.preventDefault();
+        setSignOutConfirmOpen(true);
+        return;
+      }
+      if (pendingFeedbackRef.current) {
+        pendingFeedbackRef.current = false;
+        event.preventDefault();
+        handleOpenFeedback();
+        return;
+      }
+      if (pendingSettingsRef.current) {
+        pendingSettingsRef.current = false;
+        event.preventDefault();
+        handleOpenSettings();
+        return;
+      }
+      if (pendingConnectRef.current) {
+        pendingConnectRef.current = false;
+        event.preventDefault();
+        handleOpenConnect();
+        return;
+      }
+      if (pendingThemeRef.current) {
+        pendingThemeRef.current = false;
+        event.preventDefault();
+        setThemePickerOpen(true);
+      }
+    },
+    [handleOpenFeedback, handleOpenSettings, handleOpenConnect],
+  );
+
+  const handleConfirmSignOut = useCallback(() => {
+    setSignOutConfirmOpen(false);
+    void secureSignOut();
+  }, []);
+
+  const plan = billingStatus?.plan;
+  const isPaidPlan = Boolean(plan) && plan !== "free";
+  const pillLabel = isPaidPlan
+    ? planLabel(plan, billingStatus)
+    : t("sidebar.upgrade");
+
+  const accountMenuItems = (includeAccountActions: boolean) => (
+    <>
+      <DropdownMenuItem
+        onClick={() => {
+          pendingSettingsRef.current = true;
+        }}
+        onMouseEnter={() => preloadSidebarRoute("settings")}
+        onFocus={() => preloadSidebarRoute("settings")}
+      >
+        <span data-slot="dropdown-menu-item-icon">
+          <SettingsIcon size={14} strokeWidth={1.75} />
+        </span>
+        Settings
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        onClick={() => {
+          pendingThemeRef.current = true;
+        }}
+      >
+        <span data-slot="dropdown-menu-item-icon">
+          <Palette size={14} strokeWidth={1.75} />
+        </span>
+        Theme
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        onClick={() => {
+          pendingConnectRef.current = true;
+        }}
+        onMouseEnter={preloadConnectDialog}
+        onFocus={preloadConnectDialog}
+      >
+        <span data-slot="dropdown-menu-item-icon">
+          <Device size={14} />
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>Connect</span>
+        {connectHint.active ? (
+          <span
+            aria-hidden="true"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 999,
+              background: "var(--danger, #ef4444)",
+            }}
+          />
+        ) : null}
+      </DropdownMenuItem>
+      {includeAccountActions ? (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              preloadBillingScreen();
+              handleUpgrade();
+            }}
+            onMouseEnter={preloadBillingScreen}
+            onFocus={preloadBillingScreen}
+            title={
+              isPaidPlan
+                ? `${pillLabel} plan — manage billing`
+                : "Upgrade your plan"
+            }
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <CreditCard size={14} strokeWidth={1.75} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {isPaidPlan ? `${pillLabel} plan` : t("sidebar.upgrade")}
+            </span>
+            {isPaidPlan ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: "var(--text-weak)",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                Manage
+              </span>
+            ) : null}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              pendingFeedbackRef.current = true;
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <MessageSquare size={14} strokeWidth={1.75} />
+            </span>
+            {t("sidebar.feedback")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            data-variant="destructive"
+            onClick={() => {
+              pendingSignOutRef.current = true;
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <LogOut size={14} strokeWidth={1.75} />
+            </span>
+            {t("common.signOut")}
+          </DropdownMenuItem>
+        </>
+      ) : null}
+    </>
+  );
+
+  const themePicker = (
+    <ThemePicker
+      open={themePickerOpen}
+      onOpenChange={setThemePickerOpen}
+      hideTrigger
+      side="bottom"
+      align="end"
+      trigger={
+        <button
+          type="button"
+          className="shell-topbar-account-theme-anchor"
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+      }
+    />
+  );
+
+  const settingsButton = (
+    <button
+      type="button"
+      className="shell-topbar-icon-btn"
+      onClick={handleOpenSettings}
+      onMouseEnter={() => preloadSidebarRoute("settings")}
+      onFocus={() => preloadSidebarRoute("settings")}
+      aria-label="Settings"
+      title="Settings"
+    >
+      <SettingsIcon size={15} strokeWidth={1.75} />
+    </button>
+  );
+
+  if (!hasConnectedAccount) {
+    return (
+      <div className="shell-topbar-account">
+        {settingsButton}
+        <button
+          type="button"
+          className="shell-topbar-account-signin"
+          onClick={() => {
+            preloadAuthDialog();
+            onSignIn?.();
+          }}
+          onFocus={preloadAuthDialog}
+          onMouseEnter={preloadAuthDialog}
+          title={t("sidebar.signIn")}
+          aria-label={t("sidebar.signIn")}
+        >
+          <span className="shell-topbar-account-signin-icon">
+            <LogIn size={14} />
+          </span>
+          <span className="shell-topbar-account-signin-label">
+            {t("sidebar.signIn")}
+          </span>
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="shell-topbar-icon-btn"
+              title="Menu"
+              aria-label="Menu"
+            >
+              <SettingsIcon size={15} strokeWidth={1.75} />
+              {connectHint.active ? (
+                <span
+                  className="shell-topbar-nav-hint-dot"
+                  aria-hidden="true"
+                  style={{ top: 4, right: 4 }}
+                />
+              ) : null}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="bottom"
+            align="end"
+            sideOffset={8}
+            onCloseAutoFocus={handleDropdownCloseAutoFocus}
+          >
+            {accountMenuItems(false)}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {themePicker}
+        {feedbackOpen ? (
+          <Suspense fallback={null}>
+            <FeedbackDialog
+              open
+              onOpenChange={setFeedbackOpen}
+              variant={feedbackVariant}
+              onSubmitted={acknowledgeFeedbackPrompt}
+            />
+          </Suspense>
+        ) : null}
+      </div>
+    );
+  }
+
+  const initials = initialsFromIdentity(user.email, user.name);
+  const swatch = avatarSwatchFromIdentity(user.email ?? user.name);
+  const accountLabel =
+    (user.name ?? user.email ?? t("sidebar.account")).trim() ||
+    t("sidebar.account");
+
+  return (
+    <div className="shell-topbar-account">
+      {settingsButton}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="shell-topbar-account-trigger"
+            title={user.email ?? user.name ?? t("sidebar.account")}
+            aria-label={accountLabel}
+          >
+            <span
+              className="shell-topbar-account-avatar"
+              aria-hidden="true"
+              style={{
+                background: swatch.background,
+                color: swatch.color,
+                borderColor: swatch.border,
+              }}
+            >
+              {initials}
+            </span>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          onCloseAutoFocus={handleDropdownCloseAutoFocus}
+        >
+          {accountMenuItems(true)}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
+        <DialogContent
+          fit
+          className="sidebar-signout-dialog"
+          aria-describedby={undefined}
+        >
+          <DialogHeader>
+            <DialogTitle>Sign out of Stella?</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="sidebar-signout-description">
+            Are you sure?
+          </DialogDescription>
+          <div className="sidebar-confirm-actions">
+            <Button
+              variant="ghost"
+              size="large"
+              className="pill-btn pill-btn--lg"
+              onClick={() => setSignOutConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="large"
+              onClick={handleConfirmSignOut}
+              data-tone="destructive"
+              className="pill-btn pill-btn--danger pill-btn--lg"
+            >
+              Sign out
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {themePicker}
+      {feedbackOpen ? (
+        <Suspense fallback={null}>
+          <FeedbackDialog
+            open
+            onOpenChange={setFeedbackOpen}
+            variant={feedbackVariant}
+            onSubmitted={acknowledgeFeedbackPrompt}
+          />
+        </Suspense>
+      ) : null}
+    </div>
+  );
+};

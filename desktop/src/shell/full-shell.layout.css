@@ -14,11 +14,7 @@
 
 .window-shell.full {
   --shell-topbar-height: 38px;
-  --shell-sidebar-width: 180px;
-  --shell-topbar-left-width: var(--shell-sidebar-width);
-  --shell-topbar-left-width-sidebar-hidden: 112px;
   --shell-topbar-panel-controls-width: 76px;
-  --shell-content-left-radius: 16px;
   --shell-content-edge: color-mix(in oklch, var(--foreground) 11%, transparent);
   padding: 0;
 }
@@ -61,7 +57,6 @@
   transition: none !important;
 }
 
-:root[data-shell-window-resizing="true"] .sidebar-stack,
 :root[data-shell-window-resizing="true"] .chat-workspace-strip__card,
 :root[data-shell-window-resizing="true"] .composer-shell,
 :root[data-shell-window-resizing="true"] .chat-sidebar-shell,
@@ -87,13 +82,11 @@
 }
 
 .shell-topbar-left {
-  width: var(--shell-topbar-left-width);
-  min-width: var(--shell-topbar-left-width);
   flex-shrink: 0;
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   padding: 0 8px;
   box-sizing: border-box;
   overflow: visible;
@@ -104,15 +97,11 @@
   padding-left: 84px;
 }
 
-.shell-topbar-sidebar-btn {
-  margin-left: -10px;
-}
-
-/* Windows: no negative margin — the left padding (8px) gives the
-   button breathing room from the window edge since there's no native
-   traffic-light gutter on this platform. */
-.shell-topbar[data-platform="win"] .shell-topbar-sidebar-btn {
-  margin-left: 0;
+.shell-topbar-spacer {
+  flex: 1;
+  min-width: 8px;
+  height: 100%;
+  -webkit-app-region: drag;
 }
 
 .shell-topbar-icon-btn,
@@ -200,7 +189,7 @@
   color: var(--text-strong);
 }
 
-.shell-topbar-icon-btn[aria-pressed="true"]:not(.shell-topbar-sidebar-btn):not(
+.shell-topbar-icon-btn[aria-pressed="true"]:not(
     .shell-topbar-workspace-strip-btn
   ) {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
@@ -233,7 +222,7 @@
 }
 
 .shell-topbar-tabs {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
   height: 100%;
   display: flex;
@@ -248,20 +237,10 @@
    wide either side gets. */
 .shell-topbar-center {
   position: absolute;
-  /* Center of the *visible* content area, not the full window. The
-     visible area is bracketed on the left by the sidebar/rail and on
-     the right by the display panel (when open), so the strip shifts
-     right by half the left width and left by half the right width.
-     Both inputs default to 0 and are filled in by the rules below. */
-  --shell-topbar-center-left-inset: var(--shell-sidebar-width);
+  /* Center over the visible main-content area. With no left sidebar, the
+     only inset comes from the display panel on the right (when open). */
   --shell-topbar-center-right-inset: 0px;
-  left: calc(
-    50% +
-      (
-          var(--shell-topbar-center-left-inset) -
-            var(--shell-topbar-center-right-inset)
-        ) / 2
-  );
+  left: calc(50% + (0px - var(--shell-topbar-center-right-inset)) / 2);
   top: 0;
   height: 100%;
   transform: translateX(-50%);
@@ -269,20 +248,7 @@
   align-items: center;
   -webkit-app-region: no-drag;
   pointer-events: none;
-  /* Mirror the display panel's open/close timing so the center strip
-     glides with the same easing when the panel toggles. While the user
-     is actively dragging the resize handle, `body[data-display-resizing]`
-     turns this off so the strip tracks the pointer 1:1. */
   transition: left 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
-}
-
-/* Sidebar hidden — collapse the left chrome and center inset. */
-:root[data-sidebar-hidden="true"] {
-  --shell-topbar-left-width: var(--shell-topbar-left-width-sidebar-hidden);
-}
-
-:root[data-sidebar-hidden="true"] .shell-topbar-center {
-  --shell-topbar-center-left-inset: 0px;
 }
 
 /* Display panel is open → reserve its width on the right. */
@@ -605,39 +571,6 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   display: none;
 }
 
-/* Compact mode elements — hidden at normal widths */
-.compact-hamburger {
-  display: none;
-  position: absolute;
-  top: 8px;
-  left: 12px;
-  z-index: 60;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--text-weak);
-  cursor: default;
-  -webkit-app-region: no-drag;
-  transition: color 0.15s ease;
-}
-
-.compact-hamburger:hover {
-  color: var(--text-base);
-}
-
-.sidebar-drawer-scrim {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 99;
-  background: transparent;
-}
-
 .onboarding-layout {
   /* Bound the onboarding "stage" so the layout is consistent across every
    * display size — small laptops, normal monitors, 4K, ultrawide, Studio
@@ -747,23 +680,10 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   z-index: 1;
   overflow: hidden;
   background: transparent;
-  border: 1px solid var(--shell-content-edge);
-  border-right: none;
-  border-radius: var(--shell-content-left-radius) 0 0
-    var(--shell-content-left-radius);
+  border: none;
+  border-radius: 0;
   padding-top: var(--shell-topbar-height);
   box-sizing: border-box;
-}
-
-:root[data-sidebar-hidden="true"] .content-area {
-  border-left: none;
-  border-radius: 0;
-}
-
-html[data-stella-window="mini"] .content-area,
-html[data-platform="mobile"] .content-area {
-  border-left: none;
-  border-radius: 0;
 }
 
 /* Drag strip at top of content area for window dragging */
@@ -1097,10 +1017,6 @@ html[data-platform="mobile"] .content-area {
     display: none;
   }
 
-  :root:not([data-sidebar-hidden="true"]) .shell-topbar-center {
-    --shell-topbar-center-left-inset: var(--shell-sidebar-width);
-  }
-
   .shell-topbar[data-display-open="true"] .shell-topbar-tablist {
     flex: 1 1 0;
     max-width: none;
@@ -1123,9 +1039,5 @@ html[data-platform="mobile"] .content-area {
 
   .shell-topbar[data-platform="mac"] .shell-topbar-right {
     transform: translateY(-5px);
-  }
-
-  .compact-hamburger {
-    display: inline-flex;
   }
 }

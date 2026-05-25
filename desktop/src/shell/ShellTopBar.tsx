@@ -7,7 +7,6 @@ import {
   Maximize2,
   Minimize2,
   Minus,
-  PanelLeft,
   PanelRight,
   Pin,
   Square,
@@ -29,13 +28,14 @@ import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
 import { ShellTopBarWebControls } from "@/shell/ShellTopBarStoreControls";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
+import { ShellTopBarPrimaryNav } from "@/shell/sidebar/ShellTopBarNav";
+import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 
 type ShellTopBarProps = {
-  sidebarVisible: boolean;
-  onToggleSidebar: () => void;
-  showSidebarToggle?: boolean;
   /** Show the inline chat workspace strip hide/show control (active chat only). */
   showWorkspaceStripToggle?: boolean;
+  onSignIn?: () => void;
+  onConnect?: () => void;
 };
 
 const MAXIMIZE_STATE_SYNC_DELAY_MS = 50;
@@ -107,10 +107,9 @@ const WindowControls = ({
 };
 
 export const ShellTopBar = ({
-  sidebarVisible,
-  onToggleSidebar,
-  showSidebarToggle = true,
   showWorkspaceStripToggle = false,
+  onSignIn,
+  onConnect,
 }: ShellTopBarProps) => {
   const router = useRouter();
   const platform = getPlatform();
@@ -120,8 +119,6 @@ export const ShellTopBar = ({
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
   const { stripVisible } = useChatWorkspaceStripStore();
-  // Only the Store route adapts the top bar — other routes keep the
-  // default layout (display tab strip on the right).
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isStoreRoute = pathname === "/store" || pathname.startsWith("/store/");
   const isBillingRoute =
@@ -166,18 +163,6 @@ export const ShellTopBar = ({
       }
     >
       <div className="shell-topbar-left">
-        {showSidebarToggle ? (
-          <button
-            type="button"
-            className="shell-topbar-icon-btn shell-topbar-sidebar-btn"
-            onClick={onToggleSidebar}
-            aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-            aria-pressed={sidebarVisible}
-            title={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-          >
-            <PanelLeft size={15} strokeWidth={1.75} />
-          </button>
-        ) : null}
         <button
           type="button"
           className="shell-topbar-icon-btn shell-topbar-history-btn"
@@ -196,20 +181,19 @@ export const ShellTopBar = ({
         >
           <ArrowRight size={15} strokeWidth={1.75} />
         </button>
+        {!isMiniWindow ? <ShellTopBarPrimaryNav /> : null}
         <ShellTopBarUpdatePill />
       </div>
-      {/*
-       * Centered route-specific nav: rendered as an absolutely-positioned
-       * overlay so neither the left nor right cluster shifts when it
-       * appears/disappears. Today only Store uses it; other routes can
-       * mount their own component the same way later.
-       */}
       {webViewSurfaceLabel ? (
         <div className="shell-topbar-center">
           <ShellTopBarWebControls surfaceLabel={webViewSurfaceLabel} />
         </div>
       ) : null}
-      <div className="shell-topbar-tabs" >
+      <div className="shell-topbar-spacer" aria-hidden="true" />
+      {!isMiniWindow ? (
+        <ShellTopBarAccount onSignIn={onSignIn} onConnect={onConnect} />
+      ) : null}
+      <div className="shell-topbar-tabs">
         <DisplayTabBar />
       </div>
       <div className="shell-topbar-right">
@@ -302,8 +286,6 @@ export const ShellTopBar = ({
             </>
           )}
         </div>
-        {/* Windows is frameless — render our own controls on every window.
-            On other non-mac platforms keep them mini-only (legacy behavior). */}
         {renderWindowControls ? (
           <WindowControls useWindowsIcons={isWin} hidden={panelOpen} />
         ) : null}

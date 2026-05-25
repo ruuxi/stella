@@ -26,12 +26,6 @@ import {
 } from "@/shell/display/tab-store";
 import { CHAT_DISPLAY_TAB_ID } from "@/shell/display/default-tabs";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
-import { Sidebar } from "@/shell/sidebar/Sidebar";
-import {
-  readPersistedSidebarVisible,
-  syncSidebarHiddenDataset,
-  writePersistedSidebarVisible,
-} from "@/shell/sidebar/sidebar-visibility";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
@@ -39,7 +33,6 @@ import {
   dispatchOpenWorkspacePanel,
   type StellaOpenPanelChatDetail,
 } from "@/shared/lib/stella-orb-chat";
-import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
   ensureChatDisplayTab,
   openChatDisplayTab,
@@ -54,17 +47,17 @@ import { useLastLocationRestore } from "@/shell/root-chrome/use-last-location-re
 import { useOnboardingMemoryPromotion } from "@/shell/root-chrome/use-onboarding-memory-promotion";
 import { usePersistLastLocation } from "@/shell/root-chrome/use-persist-last-location";
 import { useWorkspacePanelEvents } from "@/shell/root-chrome/use-workspace-panel-events";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
   getShellBreakpointState,
   type ShellBreakpointState,
 } from "@/shell/shell-breakpoints";
 
 /**
- * The root route owns the app chrome — sidebar, workspace panel, dialogs,
- * welcome — plus an `<Outlet />` where the
- * active route renders. Chat runtime state is hoisted into a provider so
- * both the chat route and the workspace panel consume the same hook
- * output.
+ * The root route owns the app chrome — top shell bar, workspace panel,
+ * dialogs, welcome — plus an `<Outlet />` where the active route renders.
+ * Chat runtime state is hoisted into a provider so both the chat route and
+ * the workspace panel consume the same hook output.
  */
 function RootLayout() {
   const { state, setConversationId } = useUiState();
@@ -110,16 +103,10 @@ function RootChrome() {
   const panelExpanded = useDisplayPanelExpanded();
   const { activeTabId } = useDisplayTabList();
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sidebarVisible, setSidebarVisible] = useState(
-    readPersistedSidebarVisible,
-  );
-  const sidebarVisibleRef = useRef(sidebarVisible);
   const [shellBreakpoints, setShellBreakpoints] =
     useState<ShellBreakpointState>(() =>
       getShellBreakpointState(
         typeof window === "undefined" ? 0 : window.innerWidth,
-        sidebarVisible,
       ),
     );
   const shellBreakpointsRef = useRef(shellBreakpoints);
@@ -135,28 +122,13 @@ function RootChrome() {
   const isMobileWebView =
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-platform") === "mobile";
-  const shouldRenderSidebar = !isMiniWindow || isMobileWebView;
   const shouldAutoHideWorkspaceStrip =
     !isMiniWindow && !isMobileWebView && shellBreakpoints.hideWorkspaceStrip;
-  const shouldAutoHideLeftSidebar =
-    !isMiniWindow && !isMobileWebView && shellBreakpoints.hideLeftSidebar;
-  const sidebarVisibleInLayout = sidebarVisible && !shouldAutoHideLeftSidebar;
-  const canToggleSidebar = shouldRenderSidebar && !shouldAutoHideLeftSidebar;
 
-  const setSidebarVisiblePersisted = useCallback((next: boolean) => {
-    sidebarVisibleRef.current = next;
-    setSidebarVisible(next);
-    writePersistedSidebarVisible(next);
-  }, []);
-
-  const hideSidebar = useCallback(() => {
-    setSidebarVisiblePersisted(false);
-  }, [setSidebarVisiblePersisted]);
-
-  const toggleSidebar = useCallback(() => {
-    if (shouldAutoHideLeftSidebar) return;
-    setSidebarVisiblePersisted(!sidebarVisibleRef.current);
-  }, [setSidebarVisiblePersisted, shouldAutoHideLeftSidebar]);
+  useEffect(() => {
+    if (isMiniWindow) return;
+    window.electronAPI?.window.setNativeButtonsVisible?.(true);
+  }, [isMiniWindow]);
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -290,13 +262,9 @@ function RootChrome() {
       if (frame !== 0) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const next = getShellBreakpointState(
-          Math.round(pendingWidth),
-          sidebarVisibleRef.current,
-        );
+        const next = getShellBreakpointState(Math.round(pendingWidth));
         const previous = shellBreakpointsRef.current;
         if (
-          next.hideLeftSidebar === previous.hideLeftSidebar &&
           next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
           next.hideDisplayPanel === previous.hideDisplayPanel
         ) {
@@ -332,42 +300,13 @@ function RootChrome() {
   }, []);
 
   useEffect(() => {
-    const shell = document.querySelector<HTMLElement>(".full-body");
-    if (!shell) return;
-    const next = getShellBreakpointState(
-      Math.round(shell.getBoundingClientRect().width),
-      sidebarVisible,
-    );
-    const previous = shellBreakpointsRef.current;
-    if (
-      next.hideLeftSidebar === previous.hideLeftSidebar &&
-      next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
-      next.hideDisplayPanel === previous.hideDisplayPanel
-    ) {
-      return;
-    }
-    shellBreakpointsRef.current = next;
-    setShellBreakpoints(next);
-  }, [sidebarVisible]);
-
-  useEffect(() => {
     if (isMiniWindow || isMobileWebView) return;
-
     if (shellBreakpoints.hideDisplayPanel) {
       const { panelExpanded, panelOpen } = displayTabs.getSnapshot();
       if (panelExpanded) displayTabs.setPanelExpanded(false);
       if (panelOpen) displayTabs.setPanelOpen(false);
     }
-
-    if (shellBreakpoints.hideLeftSidebar) {
-      setDrawerOpen(false);
-    }
-  }, [
-    isMiniWindow,
-    isMobileWebView,
-    shellBreakpoints.hideDisplayPanel,
-    shellBreakpoints.hideLeftSidebar,
-  ]);
+  }, [isMiniWindow, isMobileWebView, shellBreakpoints.hideDisplayPanel]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -382,32 +321,6 @@ function RootChrome() {
     };
   }, [shouldAutoHideWorkspaceStrip]);
 
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 600px)");
-    const handler = () => {
-      if (!mq.matches) setDrawerOpen(false);
-    };
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-
-  // Close the mobile drawer whenever the route changes. setState-in-effect is
-  // intentional here — the drawer is a UI artifact that should reset on every
-  // navigation; the pathname *is* the external state we are syncing from.
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [pathname]);
-
-  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
-
-  useEffect(() => {
-    sidebarVisibleRef.current = sidebarVisible;
-  }, [sidebarVisible]);
-
-  useEffect(() => {
-    syncSidebarHiddenDataset(sidebarVisibleInLayout);
-  }, [sidebarVisibleInLayout]);
-
   const expandedDisplayPanelChat =
     panelOpen && panelExpanded && activeTabId === CHAT_DISPLAY_TAB_ID;
 
@@ -415,14 +328,9 @@ function RootChrome() {
     <>
       <MobileActivityNotificationsBridge />
 
-      {!isMiniWindow && !isMobileWebView && drawerOpen && (
-        <div className="sidebar-drawer-scrim" onClick={closeDrawer} />
-      )}
-
       <ShellTopBar
-        sidebarVisible={sidebarVisibleInLayout}
-        onToggleSidebar={toggleSidebar}
-        showSidebarToggle={canToggleSidebar}
+        onSignIn={showAuthDialog}
+        onConnect={showConnectDialog}
         showWorkspaceStripToggle={
           isOnChatRoute &&
           !chat.showHomeContent &&
@@ -433,47 +341,12 @@ function RootChrome() {
         }
       />
 
-      {shouldRenderSidebar && (
-        <Sidebar
-          visible={sidebarVisibleInLayout}
-          onHide={hideSidebar}
-          className={
-            !isMobileWebView && drawerOpen ? "sidebar--drawer-open" : undefined
-          }
-          onSignIn={showAuthDialog}
-          onConnect={showConnectDialog}
-        />
-      )}
-
       <StellaContextMenu
         isOpen={isContextMenuPanelOpen}
         onOpen={handleContextMenuOpenPanel}
         onClose={handleContextMenuClosePanel}
       >
         <div className="content-area">
-          {!isMiniWindow && !isMobileWebView && !shouldAutoHideLeftSidebar && (
-            <button
-              type="button"
-              className="compact-hamburger"
-              onClick={() => setDrawerOpen(true)}
-              aria-label="Open menu"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            </button>
-          )}
           <div
             className={`persistent-chat-surface${isOnChatRoute ? " persistent-chat-surface--active" : ""}`}
             aria-hidden={!isOnChatRoute}
