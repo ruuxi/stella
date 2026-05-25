@@ -44,7 +44,7 @@ Start every desktop-app turn with `snapshot` for the target app. It returns a nu
 
 Use numbered element IDs when the visible UI is exposed in the accessibility tree. It is the most precise and resilient option.
 
-Use screenshot pixel coordinates with `click-screenshot` when the element is visible in the screenshot but not addressable through the accessibility tree. `click-screenshot` is a no-raise background click by default; do not add `--allow-hid` or `--raise` unless a prior attempt explicitly says it needs a global fallback. After any point click, run `get-state` and confirm the app changed before assuming the click worked.
+Use screenshot pixel coordinates with `click-screenshot` when the element is visible in the screenshot but not addressable through the accessibility tree. It is a no-raise background click by default; do not add `--allow-hid` or `--raise` unless a prior attempt explicitly says it needs a global fallback. After any point click, run `get-state` and confirm the app changed before assuming the click worked.
 
 Use `drag-screenshot` and `drag-element` for drag operations only. These require `--allow-hid` because they can move the user's real cursor.
 

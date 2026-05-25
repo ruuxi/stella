@@ -21,6 +21,11 @@
 #include <vector>
 
 #pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "advapi32.lib")
+
+#ifndef PW_RENDERFULLCONTENT
+#define PW_RENDERFULLCONTENT 0x00000002
+#endif
 
 struct ComInit {
     bool ok = false;
@@ -303,6 +308,7 @@ struct WindowProcess {
 struct Snapshot {
     std::wstring appName;
     DWORD pid = 0;
+    long long windowId = 0;
     std::wstring windowTitle;
     Frame windowBounds;
     std::string screenshotBase64;
@@ -373,6 +379,79 @@ static std::wstring processNameForPid(DWORD pid) {
     return fallback.empty() ? L"unknown" : fallback;
 }
 
+static long long hwndValue(HWND hwnd) {
+    return (long long)(uintptr_t)hwnd;
+}
+
+static HWND hwndFromValue(long long value) {
+    return (HWND)(uintptr_t)value;
+}
+
+static long long parseHwndTarget(const std::wstring& query) {
+    std::wstring lower = lowerW(query);
+    const std::wstring prefix = L"hwnd:";
+    if (lower.rfind(prefix, 0) != 0) return 0;
+    wchar_t* end = nullptr;
+    unsigned long long value = wcstoull(lower.c_str() + prefix.size(), &end, 10);
+    return value > 0 ? (long long)value : 0;
+}
+
+static DWORD integrityRidForProcess(DWORD pid) {
+    HANDLE process = pid == GetCurrentProcessId()
+        ? GetCurrentProcess()
+        : OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return 0;
+
+    HANDLE token = NULL;
+    DWORD rid = 0;
+    if (OpenProcessToken(process, TOKEN_QUERY, &token)) {
+        DWORD bytes = 0;
+        GetTokenInformation(token, TokenIntegrityLevel, NULL, 0, &bytes);
+        if (bytes > 0) {
+            std::vector<BYTE> buffer(bytes);
+            if (GetTokenInformation(token, TokenIntegrityLevel, buffer.data(), bytes, &bytes)) {
+                TOKEN_MANDATORY_LABEL* label = reinterpret_cast<TOKEN_MANDATORY_LABEL*>(buffer.data());
+                DWORD count = *GetSidSubAuthorityCount(label->Label.Sid);
+                rid = *GetSidSubAuthority(label->Label.Sid, count - 1);
+            }
+        }
+        CloseHandle(token);
+    }
+    if (pid != GetCurrentProcessId()) CloseHandle(process);
+    return rid;
+}
+
+static std::string integrityName(DWORD rid) {
+    if (rid == 0) return "unknown";
+    if (rid < SECURITY_MANDATORY_MEDIUM_RID) return "low";
+    if (rid < SECURITY_MANDATORY_HIGH_RID) return "medium";
+    if (rid < SECURITY_MANDATORY_SYSTEM_RID) return "high";
+    return "system";
+}
+
+static void ensureCanPostMessages(DWORD targetPid) {
+    DWORD currentRid = integrityRidForProcess(GetCurrentProcessId());
+    DWORD targetRid = integrityRidForProcess(targetPid);
+    if (currentRid != 0 && targetRid != 0 && targetRid > currentRid) {
+        throw std::runtime_error(
+            "Windows blocked background input because the target app is running at a higher integrity level (" +
+            integrityName(targetRid) + ") than Stella (" + integrityName(currentRid) + "). Run the target normally or use a matching-integrity Stella helper."
+        );
+    }
+}
+
+static void appendWindowProcess(std::vector<WindowProcess>& windows, const WindowProcess& item) {
+    if (!item.hwnd || !IsWindow(item.hwnd) || item.pid == 0) return;
+    for (WindowProcess& existing : windows) {
+        if (existing.hwnd == item.hwnd) {
+            if (existing.title.empty()) existing.title = item.title;
+            if (existing.processName == L"unknown" && item.processName != L"unknown") existing.processName = item.processName;
+            return;
+        }
+    }
+    windows.push_back(item);
+}
+
 static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM lParam) {
     if (!IsWindowVisible(hwnd)) return TRUE;
     RECT rect = {};
@@ -386,17 +465,92 @@ static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM lParam) {
     item.pid = pid;
     item.title = getWindowText(hwnd);
     item.processName = processNameForPid(pid);
-    out->push_back(item);
+    appendWindowProcess(*out, item);
     return TRUE;
 }
 
-static std::vector<WindowProcess> listWindowProcesses() {
+static void appendUiaWindowElement(IUIAutomationElement* element, std::vector<WindowProcess>& windows) {
+    if (!element) return;
+    UIA_HWND native = NULL;
+    if (FAILED(element->get_CurrentNativeWindowHandle(&native)) || native == 0) return;
+    HWND hwnd = (HWND)(intptr_t)native;
+    if (!IsWindow(hwnd) || !IsWindowVisible(hwnd)) return;
+    RECT rect = {};
+    if (!GetWindowRect(hwnd, &rect) || rect.right <= rect.left || rect.bottom <= rect.top) return;
+    int elementPid = 0;
+    DWORD pid = 0;
+    if (SUCCEEDED(element->get_CurrentProcessId(&elementPid)) && elementPid > 0) pid = (DWORD)elementPid;
+    if (pid == 0) GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == 0) return;
+    WindowProcess item;
+    item.hwnd = hwnd;
+    item.pid = pid;
+    BSTR name = nullptr;
+    if (SUCCEEDED(element->get_CurrentName(&name))) item.title = bstrToWstring(name);
+    if (name) SysFreeString(name);
+    if (item.title.empty()) item.title = getWindowText(hwnd);
+    item.processName = processNameForPid(pid);
+    appendWindowProcess(windows, item);
+}
+
+static void appendUiaWindows(IUIAutomation* uia, std::vector<WindowProcess>& windows) {
+    if (!uia) return;
+    IUIAutomationElement* root = nullptr;
+    if (FAILED(uia->GetRootElement(&root)) || !root) return;
+    VARIANT controlType;
+    VariantInit(&controlType);
+    controlType.vt = VT_I4;
+    controlType.lVal = UIA_WindowControlTypeId;
+    IUIAutomationCondition* condition = nullptr;
+    IUIAutomationElementArray* elements = nullptr;
+    if (SUCCEEDED(uia->CreatePropertyCondition(UIA_ControlTypePropertyId, controlType, &condition)) &&
+        SUCCEEDED(root->FindAll(TreeScope_Children, condition, &elements)) && elements) {
+        int length = 0;
+        elements->get_Length(&length);
+        for (int i = 0; i < length; i++) {
+            IUIAutomationElement* element = nullptr;
+            if (SUCCEEDED(elements->GetElement(i, &element)) && element) {
+                appendUiaWindowElement(element, windows);
+            }
+            safeRelease(element);
+        }
+    }
+    safeRelease(elements);
+    safeRelease(condition);
+    safeRelease(root);
+}
+
+static std::vector<WindowProcess> listWindowProcesses(IUIAutomation* uia = nullptr) {
     std::vector<WindowProcess> windows;
     EnumWindows(enumWindowsProc, reinterpret_cast<LPARAM>(&windows));
+    appendUiaWindows(uia, windows);
     return windows;
 }
 
-static WindowProcess resolveApp(const std::wstring& query) {
+static WindowProcess windowProcessFromHwnd(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        throw std::runtime_error("windowNotFound");
+    }
+    RECT rect = {};
+    if (!GetWindowRect(hwnd, &rect) || rect.right <= rect.left || rect.bottom <= rect.top) {
+        throw std::runtime_error("windowNotFound");
+    }
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == 0) throw std::runtime_error("windowNotFound");
+    WindowProcess item;
+    item.hwnd = hwnd;
+    item.pid = pid;
+    item.title = getWindowText(hwnd);
+    item.processName = processNameForPid(pid);
+    return item;
+}
+
+static WindowProcess resolveApp(IUIAutomation* uia, const std::wstring& query, long long windowId = 0) {
+    if (windowId > 0) return windowProcessFromHwnd(hwndFromValue(windowId));
+    long long targetHwnd = parseHwndTarget(query);
+    if (targetHwnd > 0) return windowProcessFromHwnd(hwndFromValue(targetHwnd));
+
     std::wstring normalized = query;
     std::wstring processQuery = normalized;
     if (processQuery.size() > 4 && lowerW(processQuery.substr(processQuery.size() - 4)) == L".exe") {
@@ -406,7 +560,7 @@ static WindowProcess resolveApp(const std::wstring& query) {
     std::wstring lowerProcessQuery = lowerW(processQuery);
     DWORD pidQuery = (DWORD)_wtoi(normalized.c_str());
 
-    std::vector<WindowProcess> windows = listWindowProcesses();
+    std::vector<WindowProcess> windows = listWindowProcesses(uia);
     for (const auto& win : windows) {
         if (pidQuery > 0 && win.pid == pidQuery) return win;
     }
@@ -420,23 +574,32 @@ static WindowProcess resolveApp(const std::wstring& query) {
     }
 
     if (envFlag("STELLA_COMPUTER_WINDOWS_ALLOW_APP_LAUNCH")) {
+        HWND previousForeground = GetForegroundWindow();
         SHELLEXECUTEINFOW info = {};
         info.cbSize = sizeof(info);
         info.fMask = SEE_MASK_NOCLOSEPROCESS;
         info.lpFile = normalized.c_str();
-        info.nShow = SW_SHOWNORMAL;
+        info.nShow = SW_SHOWNOACTIVATE;
         if (ShellExecuteExW(&info) && info.hProcess) {
             DWORD launchedPid = GetProcessId(info.hProcess);
             for (int i = 0; i < 20; i++) {
                 Sleep(250);
-                for (const auto& win : listWindowProcesses()) {
+                for (const auto& win : listWindowProcesses(uia)) {
                     if (win.pid == launchedPid) {
+                        HWND currentForeground = GetForegroundWindow();
+                        if (previousForeground && currentForeground && previousForeground != currentForeground && IsWindow(previousForeground)) {
+                            SetForegroundWindow(previousForeground);
+                        }
                         CloseHandle(info.hProcess);
                         return win;
                     }
                 }
             }
             CloseHandle(info.hProcess);
+        }
+        HWND currentForeground = GetForegroundWindow();
+        if (previousForeground && currentForeground && previousForeground != currentForeground && IsWindow(previousForeground)) {
+            SetForegroundWindow(previousForeground);
         }
     }
 
@@ -753,7 +916,48 @@ static std::string base64Encode(const std::vector<BYTE>& bytes) {
     return out;
 }
 
-static std::string captureWindowPngBase64(const Frame& bounds) {
+static std::string encodeBitmapPngBase64(HBITMAP bitmap) {
+    std::string out;
+    Gdiplus::Bitmap gdipBitmap(bitmap, NULL);
+    CLSID clsid = {};
+    IStream* stream = nullptr;
+    if (pngEncoderClsid(&clsid) >= 0 && SUCCEEDED(CreateStreamOnHGlobal(NULL, TRUE, &stream))) {
+        if (gdipBitmap.Save(stream, &clsid, NULL) == Gdiplus::Ok) {
+            STATSTG stat = {};
+            if (SUCCEEDED(stream->Stat(&stat, STATFLAG_NONAME))) {
+                LARGE_INTEGER zero = {};
+                stream->Seek(zero, STREAM_SEEK_SET, NULL);
+                std::vector<BYTE> bytes((size_t)stat.cbSize.QuadPart);
+                ULONG read = 0;
+                if (SUCCEEDED(stream->Read(bytes.data(), (ULONG)bytes.size(), &read))) {
+                    bytes.resize(read);
+                    out = base64Encode(bytes);
+                }
+            }
+        }
+    }
+    safeRelease(stream);
+    return out;
+}
+
+static bool sampledBitmapLooksBlack(HDC dc, int width, int height) {
+    int sampleCount = 0;
+    int visibleCount = 0;
+    int xStep = std::max(1, width / 20);
+    int yStep = std::max(1, height / 20);
+    for (int y = 0; y < height; y += yStep) {
+        for (int x = 0; x < width; x += xStep) {
+            COLORREF pixel = GetPixel(dc, x, y);
+            if (pixel == CLR_INVALID) continue;
+            sampleCount++;
+            int brightness = (int)GetRValue(pixel) + (int)GetGValue(pixel) + (int)GetBValue(pixel);
+            if (brightness > 36) visibleCount++;
+        }
+    }
+    return sampleCount > 0 && visibleCount == 0;
+}
+
+static std::string captureScreenRegionPngBase64(const Frame& bounds) {
     if (!bounds.present || bounds.width <= 0 || bounds.height <= 0) return "";
     int width = std::max(1, (int)std::round(bounds.width));
     int height = std::max(1, (int)std::round(bounds.height));
@@ -765,25 +969,7 @@ static std::string captureWindowPngBase64(const Frame& bounds) {
 
     std::string out;
     if (ok) {
-        Gdiplus::Bitmap gdipBitmap(bitmap, NULL);
-        CLSID clsid = {};
-        IStream* stream = nullptr;
-        if (pngEncoderClsid(&clsid) >= 0 && SUCCEEDED(CreateStreamOnHGlobal(NULL, TRUE, &stream))) {
-            if (gdipBitmap.Save(stream, &clsid, NULL) == Gdiplus::Ok) {
-                STATSTG stat = {};
-                if (SUCCEEDED(stream->Stat(&stat, STATFLAG_NONAME))) {
-                    LARGE_INTEGER zero = {};
-                    stream->Seek(zero, STREAM_SEEK_SET, NULL);
-                    std::vector<BYTE> bytes((size_t)stat.cbSize.QuadPart);
-                    ULONG read = 0;
-                    if (SUCCEEDED(stream->Read(bytes.data(), (ULONG)bytes.size(), &read))) {
-                        bytes.resize(read);
-                        out = base64Encode(bytes);
-                    }
-                }
-            }
-        }
-        safeRelease(stream);
+        out = encodeBitmapPngBase64(bitmap);
     }
 
     SelectObject(mem, old);
@@ -791,6 +977,37 @@ static std::string captureWindowPngBase64(const Frame& bounds) {
     DeleteDC(mem);
     ReleaseDC(NULL, screen);
     return out;
+}
+
+static std::string capturePrintWindowPngBase64(HWND hwnd, const Frame& bounds) {
+    if (!hwnd || !bounds.present || bounds.width <= 0 || bounds.height <= 0) return "";
+    int width = std::max(1, (int)std::round(bounds.width));
+    int height = std::max(1, (int)std::round(bounds.height));
+    HDC screen = GetDC(NULL);
+    HDC mem = CreateCompatibleDC(screen);
+    HBITMAP bitmap = CreateCompatibleBitmap(screen, width, height);
+    HGDIOBJ old = SelectObject(mem, bitmap);
+    RECT fill = {0, 0, width, height};
+    FillRect(mem, &fill, (HBRUSH)GetStockObject(BLACK_BRUSH));
+    BOOL ok = PrintWindow(hwnd, mem, PW_RENDERFULLCONTENT);
+    if (!ok) ok = PrintWindow(hwnd, mem, 0);
+
+    std::string out;
+    if (ok && !sampledBitmapLooksBlack(mem, width, height)) {
+        out = encodeBitmapPngBase64(bitmap);
+    }
+
+    SelectObject(mem, old);
+    DeleteObject(bitmap);
+    DeleteDC(mem);
+    ReleaseDC(NULL, screen);
+    return out;
+}
+
+static std::string captureWindowPngBase64(HWND hwnd, const Frame& bounds) {
+    std::string out = capturePrintWindowPngBase64(hwnd, bounds);
+    if (!out.empty()) return out;
+    return captureScreenRegionPngBase64(bounds);
 }
 
 static std::wstring focusedSummary(IUIAutomation* uia, DWORD pid) {
@@ -840,8 +1057,8 @@ static std::wstring selectedText(IUIAutomation* uia, DWORD pid) {
     return out;
 }
 
-static Snapshot buildSnapshot(IUIAutomation* uia, const std::wstring& query) {
-    WindowProcess process = resolveApp(query);
+static Snapshot buildSnapshot(IUIAutomation* uia, const std::wstring& query, long long windowId = 0) {
+    WindowProcess process = resolveApp(uia, query, windowId);
     IUIAutomationElement* root = nullptr;
     HRESULT hr = uia->ElementFromHandle(process.hwnd, &root);
     if (FAILED(hr) || !root) {
@@ -850,11 +1067,12 @@ static Snapshot buildSnapshot(IUIAutomation* uia, const std::wstring& query) {
     Snapshot snapshot;
     snapshot.appName = process.processName;
     snapshot.pid = process.pid;
+    snapshot.windowId = hwndValue(process.hwnd);
     snapshot.windowTitle = process.title;
     snapshot.windowBounds = windowBounds(process.hwnd, root);
     std::set<std::string> visited;
     renderTreeVisit(uia, root, 0, snapshot.windowBounds, visited, snapshot.elements, snapshot.treeLines);
-    snapshot.screenshotBase64 = captureWindowPngBase64(snapshot.windowBounds);
+    snapshot.screenshotBase64 = captureWindowPngBase64(process.hwnd, snapshot.windowBounds);
     snapshot.focusedSummary = focusedSummary(uia, process.pid);
     snapshot.selectedText = selectedText(uia, process.pid);
     safeRelease(root);
@@ -1122,6 +1340,61 @@ static bool invokePreferredClick(IUIAutomationElement* element) {
     return false;
 }
 
+static bool hasPreferredClickPattern(IUIAutomationElement* element) {
+    IUIAutomationInvokePattern* invoke = getPattern<IUIAutomationInvokePattern>(element, UIA_InvokePatternId);
+    if (invoke) {
+        invoke->Release();
+        return true;
+    }
+    IUIAutomationSelectionItemPattern* select = getPattern<IUIAutomationSelectionItemPattern>(element, UIA_SelectionItemPatternId);
+    if (select) {
+        select->Release();
+        return true;
+    }
+    IUIAutomationTogglePattern* toggle = getPattern<IUIAutomationTogglePattern>(element, UIA_TogglePatternId);
+    if (toggle) {
+        toggle->Release();
+        return true;
+    }
+    return false;
+}
+
+static bool elementContainsScreenPoint(IUIAutomationElement* element, DWORD pid, POINT screen, const Frame& windowFrame, double* areaOut) {
+    if (!element) return false;
+    int elementPid = 0;
+    if (FAILED(element->get_CurrentProcessId(&elementPid)) || (DWORD)elementPid != pid) return false;
+    RECT rect = {};
+    if (FAILED(element->get_CurrentBoundingRectangle(&rect))) return false;
+    if (rect.right <= rect.left || rect.bottom <= rect.top) return false;
+    if (screen.x < rect.left || screen.x > rect.right || screen.y < rect.top || screen.y > rect.bottom) return false;
+    if (windowFrame.present) {
+        double windowRight = windowFrame.x + windowFrame.width;
+        double windowBottom = windowFrame.y + windowFrame.height;
+        if (rect.right < windowFrame.x || rect.left > windowRight || rect.bottom < windowFrame.y || rect.top > windowBottom) return false;
+    }
+    if (areaOut) *areaOut = (double)(rect.right - rect.left) * (double)(rect.bottom - rect.top);
+    return true;
+}
+
+static bool invokeClickableElementAtPoint(IUIAutomation* uia, IUIAutomationElement* root, DWORD pid, POINT screen, const Frame& windowFrame) {
+    std::vector<IUIAutomationElement*> all;
+    collectAllElements(uia, root, all);
+    IUIAutomationElement* best = nullptr;
+    double bestArea = 1.0e300;
+    for (IUIAutomationElement* candidate : all) {
+        double area = 0;
+        if (!elementContainsScreenPoint(candidate, pid, screen, windowFrame, &area)) continue;
+        if (!hasPreferredClickPattern(candidate)) continue;
+        if (area < bestArea) {
+            best = candidate;
+            bestArea = area;
+        }
+    }
+    bool handled = best && invokePreferredClick(best);
+    for (IUIAutomationElement* candidate : all) candidate->Release();
+    return handled;
+}
+
 static void invokeSecondaryAction(IUIAutomationElement* element, const std::string& action, int index) {
     std::string lower = action;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -1337,7 +1610,8 @@ static std::string snapshotJson(const Snapshot& snapshot) {
     std::ostringstream out;
     out << "{\"app\":{\"name\":" << jsonString(toUtf8(snapshot.appName))
         << ",\"bundleIdentifier\":" << jsonString(toUtf8(snapshot.appName))
-        << ",\"pid\":" << snapshot.pid << "},\"windowTitle\":" << jsonString(toUtf8(snapshot.windowTitle))
+        << ",\"pid\":" << snapshot.pid << "},\"windowId\":" << snapshot.windowId
+        << ",\"windowTitle\":" << jsonString(toUtf8(snapshot.windowTitle))
         << ",\"windowBounds\":" << frameJson(snapshot.windowBounds)
         << ",\"screenshotPngBase64\":";
     if (snapshot.screenshotBase64.empty()) out << "null";
@@ -1362,8 +1636,8 @@ static std::string snapshotJson(const Snapshot& snapshot) {
     return out.str();
 }
 
-static std::string listAppsText() {
-    std::vector<WindowProcess> windows = listWindowProcesses();
+static std::string listAppsText(IUIAutomation* uia) {
+    std::vector<WindowProcess> windows = listWindowProcesses(uia);
     std::sort(windows.begin(), windows.end(), [](const WindowProcess& a, const WindowProcess& b) {
         if (lowerW(a.processName) == lowerW(b.processName)) return a.pid < b.pid;
         return lowerW(a.processName) < lowerW(b.processName);
@@ -1373,9 +1647,42 @@ static std::string listAppsText() {
         if (i) out << "\n";
         std::string title = toUtf8(windows[i].title.empty() ? L"untitled" : windows[i].title);
         std::string name = toUtf8(windows[i].processName);
-        out << name << " -- " << name << " [running, pid=" << windows[i].pid << ", window=" << title << "]";
+        out << name << " -- " << name << " [running, pid=" << windows[i].pid
+            << ", target=hwnd:" << hwndValue(windows[i].hwnd) << ", window=" << title << "]";
     }
     return out.str();
+}
+
+static std::string doctorText(IUIAutomation* uia) {
+    DWORD sessionId = 0;
+    bool hasSession = !!ProcessIdToSessionId(GetCurrentProcessId(), &sessionId);
+    HDESK inputDesktop = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
+    bool hasInputDesktop = inputDesktop != NULL;
+    if (inputDesktop) CloseDesktop(inputDesktop);
+    std::vector<WindowProcess> windows = listWindowProcesses(uia);
+    DWORD foregroundPid = 0;
+    HWND foreground = GetForegroundWindow();
+    if (foreground) GetWindowThreadProcessId(foreground, &foregroundPid);
+
+    std::ostringstream out;
+    out << "Windows runtime: stella-computer-helper.exe\n";
+    out << "UI Automation: available\n";
+    out << "Process session: " << (hasSession ? std::to_string(sessionId) : "unknown");
+    if (hasSession && sessionId == 0) out << " (not an interactive user desktop)";
+    out << "\n";
+    out << "Interactive desktop: " << (hasInputDesktop ? "available" : "not available") << "\n";
+    out << "Process integrity: " << integrityName(integrityRidForProcess(GetCurrentProcessId())) << "\n";
+    out << "Visible top-level windows: " << windows.size() << "\n";
+    if (foreground) {
+        out << "Foreground window: target=hwnd:" << hwndValue(foreground) << " pid=" << foregroundPid << "\n";
+    }
+    out << "Background input: Win32 messages can be blocked by higher-integrity target apps; Stella reports that instead of pretending the click worked.";
+    return out.str();
+}
+
+static long long operationWindowId(const Json& operation) {
+    const Json* value = operation.get("windowId");
+    return value && value->type == Json::Number ? (long long)value->numberValue : 0;
 }
 
 static std::string failJson(const std::string& error) {
@@ -1394,14 +1701,18 @@ static int operationElementIndex(const Json& operation) {
 static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     std::string tool = operation.str("tool");
     if (tool == "list_apps") {
-        return "{\"ok\":true,\"text\":" + jsonString(listAppsText()) + "}";
+        return "{\"ok\":true,\"text\":" + jsonString(listAppsText(uia)) + "}";
+    }
+    if (tool == "doctor") {
+        return "{\"ok\":true,\"text\":" + jsonString(doctorText(uia)) + "}";
     }
     std::wstring app = toWide(operation.str("app"));
+    long long windowId = operationWindowId(operation);
     if (tool == "get_app_state") {
-        return okSnapshotJson(buildSnapshot(uia, app));
+        return okSnapshotJson(buildSnapshot(uia, app, windowId));
     }
 
-    WindowProcess process = resolveApp(app);
+    WindowProcess process = resolveApp(uia, app, windowId);
     IUIAutomationElement* root = nullptr;
     if (FAILED(uia->ElementFromHandle(process.hwnd, &root)) || !root) {
         throw std::runtime_error("No top-level UI Automation window is available for " + toUtf8(process.processName));
@@ -1438,8 +1749,16 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
                 point.x = (LONG)std::round(windowFrame.x + operation.num("x"));
                 point.y = (LONG)std::round(windowFrame.y + operation.num("y"));
             }
-            sendMouseClick(process.hwnd, point, button, (int)operation.num("click_count", 1));
-            route = "hwnd.postmessage.click";
+            int clickCount = (int)operation.num("click_count", 1);
+            if (button == "left" && clickCount == 1) {
+                handled = invokeClickableElementAtPoint(uia, root, process.pid, point, windowFrame);
+                if (handled) route = "uia.hit_test.click";
+            }
+            if (!handled) {
+                ensureCanPostMessages(process.pid);
+                sendMouseClick(process.hwnd, point, button, clickCount);
+                route = "hwnd.postmessage.click";
+            }
         }
     } else if (tool == "perform_secondary_action") {
         if (!element) throw std::runtime_error("unknown element_index '" + std::to_string(operationElementIndex(operation)) + "'");
@@ -1456,22 +1775,26 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
             Frame elementFrame = parseFrame(elementJsonValue);
             POINT point = elementFrame.present ? screenPointFromFrame(elementFrame, windowFrame)
                                                : POINT{(LONG)std::round(windowFrame.x + windowFrame.width / 2), (LONG)std::round(windowFrame.y + windowFrame.height / 2)};
+            ensureCanPostMessages(process.pid);
             sendScroll(process.hwnd, point, direction, pages);
             route = "hwnd.postmessage.scroll";
         }
     } else if (tool == "drag") {
         POINT from = {(LONG)std::round(windowFrame.x + operation.num("from_x")), (LONG)std::round(windowFrame.y + operation.num("from_y"))};
         POINT to = {(LONG)std::round(windowFrame.x + operation.num("to_x")), (LONG)std::round(windowFrame.y + operation.num("to_y"))};
+        ensureCanPostMessages(process.pid);
         sendDrag(process.hwnd, from, to);
         route = "hwnd.postmessage.drag";
     } else if (tool == "type_text") {
         std::wstring text = toWide(operation.str("text"));
         if (invokeTypeText(uia, root, process, text)) route = "uia_or_hwnd.text_target";
         else {
+            ensureCanPostMessages(process.pid);
             sendText(process.hwnd, text);
             route = "hwnd.postmessage.text";
         }
     } else if (tool == "press_key") {
+        ensureCanPostMessages(process.pid);
         sendKey(process.hwnd, operation.str("key"));
         route = "hwnd.postmessage.key";
     } else if (tool == "set_value") {
@@ -1490,7 +1813,7 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     }
 
     Sleep(120);
-    Snapshot refreshed = buildSnapshot(uia, app);
+    Snapshot refreshed = buildSnapshot(uia, app, hwndValue(process.hwnd));
     std::string response = "{\"ok\":true,\"receipt\":" + receiptJson(probe, route) + ",\"snapshot\":" + snapshotJson(refreshed) + "}";
     safeRelease(element);
     safeRelease(root);

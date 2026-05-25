@@ -47,7 +47,7 @@ cd "$script_dir"
   /libpath:"$xwin/crt/lib/x86_64" \
   /libpath:"$xwin/sdk/lib/um/x86_64" \
   /libpath:"$xwin/sdk/lib/ucrt/x86_64" \
-  "$obj" ole32.lib oleaut32.lib uuid.lib user32.lib gdi32.lib gdiplus.lib shell32.lib \
+  "$obj" ole32.lib oleaut32.lib uuid.lib user32.lib gdi32.lib gdiplus.lib shell32.lib advapi32.lib \
   /out:"$out"
 
 echo "Build successful: $out"
