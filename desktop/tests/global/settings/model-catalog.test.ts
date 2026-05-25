@@ -37,7 +37,7 @@ describe("settings model catalog", () => {
         id: "stella/standard",
         name: "Stella Standard",
         provider: "stella",
-        upstreamModel: "openrouter/google/gemini-3-flash-preview",
+        upstreamModel: "openai/gpt-5.5",
       },
       {
         id: "openrouter/anthropic/claude-opus-4.7",
@@ -80,7 +80,7 @@ describe("settings model catalog", () => {
       {
         agentType: "orchestrator",
         model: "stella/standard",
-        resolvedModel: "openrouter/google/gemini-3-flash-preview",
+        resolvedModel: "openai/gpt-5.5",
       },
       {
         agentType: "chronicle",

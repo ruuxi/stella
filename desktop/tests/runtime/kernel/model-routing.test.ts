@@ -112,7 +112,7 @@ describe("resolveLlmRoute", () => {
 
     expect(resolved.route).toBe("stella");
     expect(resolved.model.id).toBe("stella/standard");
-    expect(resolved.model.provider).toBe("openrouter");
+    expect(resolved.model.provider).toBe("openai");
   });
 
   it("routes explicit `stella/<provider>/<model>` ids through Stella unchanged", async () => {

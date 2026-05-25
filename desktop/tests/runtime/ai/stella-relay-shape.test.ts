@@ -192,12 +192,12 @@ describe("Stella relay route shape", () => {
     expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openrouter/api/v1`);
   });
 
-  it("Stella standard mode resolves to the OpenRouter Standard relay", () => {
+  it("Stella standard mode resolves to the OpenAI Builder relay", () => {
     const route = makeRoute("stella/standard");
     const model = route!.model;
-    expect(model.api).toBe("openai-completions");
-    expect(model.provider).toBe("openrouter");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openrouter/api/v1`);
+    expect(model.api).toBe("openai-responses");
+    expect(model.provider).toBe("openai");
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openai/v1`);
   });
 });
 

@@ -57,6 +57,36 @@ describe("loadLocalPreferences", () => {
     });
   });
 
+  it("drops the legacy Stella default model from saved model preferences", () => {
+    const stellaHome = makeStellaHome();
+    writePreferences(stellaHome, {
+      defaultModels: {
+        orchestrator: "stella/default",
+        chronicle: " stella/light ",
+      },
+      modelOverrides: {
+        orchestrator: "stella/default",
+        general: " stella/standard ",
+        empty: " ",
+      },
+    });
+
+    expect(loadLocalPreferences(stellaHome).defaultModels).toEqual({
+      chronicle: "stella/light",
+    });
+    expect(loadLocalPreferences(stellaHome).modelOverrides).toEqual({
+      general: "stella/standard",
+    });
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      modelOverrides: {
+        orchestrator: "stella/default",
+        general: "stella/standard",
+      },
+    });
+    expect(saved.modelOverrides).toEqual({ general: "stella/standard" });
+  });
+
   it("normalizes direct image provider preferences", () => {
     expect(
       normalizeImageGenerationPreferences({
