@@ -899,7 +899,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         if (pendingApplyBatches.has(transitionId)) {
           const applyResponse = await selfModHmrController
             .apply(applyResult.appliedRuns, {
-              forceClientFullReload: requiresFullReload,
+              forceClientFullReload: true,
             })
             .catch(() => ({ ok: false }));
           if (!applyResponse.ok) {
@@ -918,7 +918,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           }
           pendingApplyBatches.delete(transitionId);
           await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
-            allowDeferredReload: requiresFullReload,
+            allowDeferredReload: true,
           });
           for (const runId of applyResult.restartRelevantRunIds) {
             selfModRunRootIds.delete(runId);
@@ -3069,11 +3069,28 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         return { ok: false, reason: "unknown-transition" as const };
       }
       const controller = state.selfModHmrController;
-      const applyResponse: HmrApplyResponse = controller
+      let applyResponse: HmrApplyResponse = controller
         ? await controller
             .apply(pending.applyResult.appliedRuns, payload?.options)
             .catch(() => ({ ok: false }))
         : { ok: false };
+      if (
+        !applyResponse.ok &&
+        controller &&
+        payload?.options?.forceClientFullReload !== true
+      ) {
+        applyResponse = await controller
+          .apply(pending.applyResult.appliedRuns, {
+            forceClientFullReload: true,
+          })
+          .catch(() => ({ ok: false }));
+        if (applyResponse.ok) {
+          applyResponse = {
+            ...applyResponse,
+            requiresClientFullReload: true,
+          };
+        }
+      }
       if (!applyResponse.ok) {
         console.warn(
           "[self-mod-hmr] Apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
