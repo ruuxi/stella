@@ -151,4 +151,59 @@ describe("LocalAgentManager Exec fs locking", () => {
     });
     expect(maxConcurrentCalls).toBe(1);
   });
+
+  it("serializes native external engine runs through the filesystem lock", async () => {
+    let activeRuns = 0;
+    let maxConcurrentRuns = 0;
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 2,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        agentEngine: "cursor_sdk",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        activeRuns += 1;
+        maxConcurrentRuns = Math.max(maxConcurrentRuns, activeRuns);
+        try {
+          await sleep(75);
+        } finally {
+          activeRuns -= 1;
+        }
+        return {
+          runId: args.runId,
+          result: "ok",
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const first = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "first",
+      prompt: "first prompt",
+      agentType: "general",
+      storageMode: "local",
+    });
+    const second = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "second",
+      prompt: "second prompt",
+      agentType: "general",
+      storageMode: "local",
+    });
+
+    await Promise.all([
+      waitForAgentSettled(manager, first.threadId),
+      waitForAgentSettled(manager, second.threadId),
+    ]);
+
+    expect(maxConcurrentRuns).toBe(1);
+  });
 });
