@@ -261,6 +261,137 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
+  it("resumes after an aborted Claude Code turn once a session id was observed", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-abort-"));
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "abort.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "let buffer = '';",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "function log(payload) {",
+        "  fs.appendFileSync(logPath, JSON.stringify(payload) + '\\n');",
+        "}",
+        "process.on('SIGINT', () => {",
+        "  log({ event: 'sigint', argv: process.argv.slice(2) });",
+        "  process.exit(130);",
+        "});",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (!line) continue;",
+        "    const parsed = JSON.parse(line);",
+        "    const argv = process.argv.slice(2);",
+        "    log({",
+        "      event: 'prompt',",
+        "      argv,",
+        "      payloadSessionId: parsed.session_id,",
+        "      content: parsed.message.content,",
+        "    });",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'system',",
+        "      subtype: 'init',",
+        "      session_id: 'observed-session',",
+        "    }) + '\\n');",
+        "    if (argv.includes('--resume')) {",
+        "      process.stdout.write(JSON.stringify({",
+        "        type: 'result',",
+        "        session_id: 'observed-session',",
+        "        is_error: false,",
+        "        structured_output: { type: 'final', message: 'Resumed after abort.' },",
+        "        usage: { input_tokens: 1, output_tokens: 1 },",
+        "      }) + '\\n');",
+        "    }",
+        "  }",
+        "});",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const sessionKey = `test:abort:${Date.now()}`;
+      const controller = new AbortController();
+      const firstTurn = runClaudeCodeTurn({
+        runId: "run-abort-1",
+        sessionKey,
+        prompt: "Start a long turn.",
+        modelId: "claude-code/default",
+        tools: [],
+        abortSignal: controller.signal,
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const startedAt = Date.now();
+        const poll = () => {
+          if (fs.existsSync(logPath) && fs.readFileSync(logPath, "utf8").includes("prompt")) {
+            resolve();
+            return;
+          }
+          if (Date.now() - startedAt > 2_000) {
+            reject(new Error("Fake Claude did not receive the first prompt."));
+            return;
+          }
+          setTimeout(poll, 10);
+        };
+        poll();
+      });
+      controller.abort();
+      await expect(firstTurn).rejects.toThrow("Claude Code run aborted");
+
+      const result = await runClaudeCodeTurn({
+        runId: "run-abort-2",
+        sessionKey,
+        prompt: "Follow-up after abort.",
+        modelId: "claude-code/default",
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      const records = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as {
+          event: string;
+          argv: string[];
+          payloadSessionId?: string;
+          content?: string;
+        });
+      const prompts = records.filter((record) => record.event === "prompt");
+      expect(result.text).toBe("Resumed after abort.");
+      expect(prompts).toHaveLength(2);
+      expect(prompts[0]?.argv).not.toContain("--resume");
+      expect(prompts[1]?.argv).toContain("--resume");
+      expect(
+        prompts[1]?.argv[prompts[1].argv.indexOf("--resume") + 1],
+      ).toBe("observed-session");
+      expect(prompts[1]?.payloadSessionId).toBe("observed-session");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to a fresh Claude Code session when the stored resume id is missing", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-resume-"));
     const binDir = path.join(dir, "bin");

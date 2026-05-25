@@ -122,6 +122,7 @@ type SessionState = {
   cwd?: string;
   lastUsedAt: number;
   turnCount: number;
+  resumeReady: boolean;
   running: boolean;
   queue: QueueJob[];
   artifactDir?: string;
@@ -574,6 +575,7 @@ const ensureSessionState = (
       if (persistedSessionId && existing.turnCount === 0) {
         existing.sessionId = persistedSessionId;
         existing.turnCount = 1;
+        existing.resumeReady = true;
       }
       return existing;
     }
@@ -584,6 +586,7 @@ const ensureSessionState = (
       cwd: normalizedCwd,
       lastUsedAt: Date.now(),
       turnCount: persistedSessionId ? 1 : 0,
+      resumeReady: Boolean(persistedSessionId),
       running: false,
       queue: [],
     };
@@ -595,6 +598,7 @@ const ensureSessionState = (
     cwd: normalizedCwd,
     lastUsedAt: Date.now(),
     turnCount: persistedSessionId ? 1 : 0,
+    resumeReady: Boolean(persistedSessionId),
     running: false,
     queue: [],
   };
@@ -734,7 +738,7 @@ class ClaudeCodeSessionRuntime {
       request,
       effectiveSystemPrompt,
       prompt,
-      session.turnCount > 0,
+      session.resumeReady,
     );
   }
 
@@ -769,6 +773,7 @@ class ClaudeCodeSessionRuntime {
         this.resetStreamingProcess(request.sessionKey, session);
         session.sessionId = crypto.randomUUID();
         session.turnCount = 0;
+        session.resumeReady = false;
         return await this.executeStructuredStepWithMode(
           session,
           request,
@@ -871,6 +876,7 @@ class ClaudeCodeSessionRuntime {
         ) {
           processState.finalSessionId = parsedLine.session_id.trim();
           session.sessionId = processState.finalSessionId;
+          session.resumeReady = true;
         }
         const current = processState.pending[0];
         if (current) {
