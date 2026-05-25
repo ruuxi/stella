@@ -107,6 +107,15 @@
   transform: translate(-8px, 2px);
 }
 
+.shell-topbar:not([data-display-open="true"]) .shell-topbar-profile-cluster {
+  transform: translateX(12px);
+}
+
+.shell-topbar[data-platform="mac"]:not([data-display-open="true"])
+  .shell-topbar-profile-cluster {
+  transform: translate(12px, 2px);
+}
+
 .shell-topbar-spacer {
   flex: 1;
   min-width: 8px;
