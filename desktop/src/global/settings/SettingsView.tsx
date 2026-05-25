@@ -21,7 +21,6 @@ import { AccountTab } from "./tabs/AccountTab";
 import { BackupTab } from "./tabs/BackupTab";
 import { GeneralTab } from "./tabs/GeneralTab";
 import { MemoryTab } from "./tabs/MemoryTab";
-import { ModelsTab } from "./tabs/ModelsTab";
 import { ShortcutsTab } from "./tabs/ShortcutsTab";
 import type { ScoredSettingsSearchEntry } from "@/global/settings/lib/settings-search-index";
 import { useT } from "@/shared/i18n";
@@ -301,8 +300,6 @@ function SettingsTabContent({
         <BackupTab />
       ) : activeTab === "account" ? (
         <AccountTab onSignOut={onSignOut} onOpenLegal={onOpenLegal} />
-      ) : activeTab === "models" ? (
-        <ModelsTab />
       ) : activeTab === "audio" ? (
         <AudioTab />
       ) : (

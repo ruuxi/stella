@@ -32,6 +32,7 @@ import {
   isRestrictedModelOverrideAudience,
 } from "@/shared/billing/audience";
 import { router } from "@/router";
+import { openEngineDisplayTab } from "@/shell/display/default-tabs";
 import "./AgentModelPicker.css";
 
 type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";
@@ -950,10 +951,11 @@ export function AgentModelPicker({
               type="button"
               className="agent-model-picker-chronicle-link"
               onClick={() => {
-                void router.navigate({
-                  to: "/settings",
-                  search: { tab: "models" },
-                });
+                // Models live in the workspace panel's Engine tab now;
+                // open it alongside /chat so the picker comes into view
+                // immediately.
+                void router.navigate({ to: "/chat" });
+                openEngineDisplayTab();
                 onSelected?.();
               }}
             >

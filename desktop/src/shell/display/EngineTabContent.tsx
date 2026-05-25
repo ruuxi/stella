@@ -1,5 +1,69 @@
+/**
+ * Engine tab — the workspace panel's home for everything model & runtime.
+ *
+ * Replaces the old Settings → Models page. Single surface covers:
+ *
+ *   - Picking the agent runtime engine (Stella / Cursor SDK / Codex /
+ *     Claude Code) and its BYOK setup (Cursor API key + model id, Codex
+ *     model id).
+ *   - Assigning a specific Stella / BYOK model to one or more agents, at
+ *     a chosen reasoning effort, via the inline ProviderModelPanel +
+ *     assignment popover.
+ *   - Choosing the image and realtime-voice provider (and per-voice
+ *     selection for voice).
+ *   - Disconnecting / signing out of providers the user has linked on
+ *     this device.
+ *
+ * The layout is flat by design: a single column with typographic
+ * section headers, no nested cards, no decorative chrome. The panel
+ * fits inside the narrow display sidebar but happily uses the extra
+ * room when the user expands the panel.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { MoreHorizontal, RefreshCw, RotateCcw } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/ui/dropdown-menu";
+import { Button } from "@/ui/button";
+import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
+import {
+  ProviderOnlyPicker,
+  type ProviderOption,
+} from "@/global/settings/ProviderOnlyPicker";
+import { VoiceCatalogPicker } from "@/global/settings/VoiceCatalogPicker";
+import {
+  findApiKey,
+  findOauthCredential,
+  useLlmCredentials,
+} from "@/global/settings/hooks/use-llm-credentials";
+import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
+import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
+import { LLM_PROVIDERS } from "@/global/settings/lib/llm-providers";
+import {
+  buildModelDefaultsMap,
+  getConfigurableAgents,
+  getLocalModelDefaults,
+  normalizeModelOverrides,
+} from "@/global/settings/lib/model-defaults";
+import {
+  getPlanLabel,
+  isRestrictedModelOverrideAudience,
+} from "@/shared/billing/audience";
+import {
+  coerceRealtimeVoiceProvider,
+  type RealtimeVoicePreferences,
+  type RealtimeVoiceUnderlyingProvider,
+} from "../../../../runtime/contracts/local-preferences";
+import { useT } from "@/shared/i18n";
 import "./engine-tab.css";
+
+/* ── types ────────────────────────────────────────────────────── */
 
 type AgentRuntimeEngine =
   | "default"
@@ -7,19 +71,13 @@ type AgentRuntimeEngine =
   | "cursor_sdk"
   | "codex_cli";
 
-type LocalModelPreferences = {
-  agentRuntimeEngine: AgentRuntimeEngine;
-  cursorModel: string;
-  codexModel: string;
-  codexReasoningEffort: CodexReasoningPreference;
-};
-
-type CursorModelOption = {
-  id: string;
-  displayName: string;
-  description?: string;
-  aliases?: string[];
-};
+type ReasoningEffort =
+  | "default"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
 
 type CodexReasoningEffort =
   | "none"
@@ -30,6 +88,34 @@ type CodexReasoningEffort =
   | "xhigh";
 
 type CodexReasoningPreference = Exclude<CodexReasoningEffort, "none"> | "default";
+
+type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";
+
+type ImageGenerationPreferences = {
+  provider: ImageGenerationProvider;
+  model?: string;
+};
+
+type LocalModelPreferences = {
+  defaultModels: Record<string, string>;
+  modelOverrides: Record<string, string>;
+  assistantPropagatedAgents: string[];
+  reasoningEfforts: Record<string, ReasoningEffort>;
+  agentRuntimeEngine: AgentRuntimeEngine;
+  cursorModel: string;
+  codexModel: string;
+  codexReasoningEffort: CodexReasoningPreference;
+  maxAgentConcurrency: number;
+  imageGeneration: ImageGenerationPreferences;
+  realtimeVoice: RealtimeVoicePreferences;
+};
+
+type CursorModelOption = {
+  id: string;
+  displayName: string;
+  description?: string;
+  aliases?: string[];
+};
 
 type CodexModelOption = {
   id: string;
@@ -47,6 +133,27 @@ type CodexModelOption = {
   isDefault: boolean;
 };
 
+type MediaTab = "agents" | "image" | "voice";
+
+type SavingKind =
+  | "engine"
+  | "key"
+  | "cursor-model"
+  | "codex-model"
+  | "overrides"
+  | "image"
+  | "voice"
+  | null;
+
+type StatusKind = "notice" | "error";
+
+interface Status {
+  kind: StatusKind;
+  text: string;
+}
+
+/* ── constants ────────────────────────────────────────────────── */
+
 const ENGINE_OPTIONS: ReadonlyArray<{
   id: AgentRuntimeEngine;
   label: string;
@@ -57,6 +164,71 @@ const ENGINE_OPTIONS: ReadonlyArray<{
   { id: "codex_cli", label: "Codex", hint: "Uses Codex app-server" },
   { id: "claude_code_local", label: "Claude Code", hint: "Uses your Claude CLI" },
 ];
+
+const REASONING_OPTIONS: ReadonlyArray<{
+  id: ReasoningEffort;
+  label: string;
+  title: string;
+}> = [
+  { id: "default", label: "Auto", title: "Default — let the model decide" },
+  { id: "minimal", label: "Min", title: "Minimal reasoning" },
+  { id: "low", label: "Low", title: "Low reasoning" },
+  { id: "medium", label: "Med", title: "Medium reasoning" },
+  { id: "high", label: "High", title: "High reasoning" },
+  { id: "xhigh", label: "Max", title: "Extra reasoning" },
+];
+
+const MEDIA_TABS: ReadonlyArray<{ id: MediaTab; label: string }> = [
+  { id: "agents", label: "Agents" },
+  { id: "image", label: "Image" },
+  { id: "voice", label: "Voice" },
+];
+
+const IMAGE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
+  {
+    key: "stella",
+    label: "Stella",
+    description: "Default. Picks the best image model for you.",
+  },
+  { key: "openai", label: "OpenAI", description: "Uses your OpenAI account." },
+  {
+    key: "openrouter",
+    label: "OpenRouter",
+    description: "Routes image generation through your OpenRouter account.",
+  },
+  { key: "fal", label: "fal", description: "Uses your fal account." },
+];
+
+const VOICE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
+  {
+    key: "stella",
+    label: "Stella",
+    description:
+      "Default. All OpenAI, xAI, and Inworld voices included — no API key needed.",
+  },
+  {
+    key: "openai",
+    label: "OpenAI",
+    description: "Use your own OpenAI account.",
+  },
+  {
+    key: "xai",
+    label: "xAI",
+    description: "Use your own xAI account with Grok's Voice Agent.",
+  },
+  {
+    key: "inworld",
+    label: "Inworld",
+    description: "Use your own Inworld account.",
+  },
+];
+
+const DEFAULT_IMAGE_GENERATION: ImageGenerationPreferences = {
+  provider: "stella",
+};
+const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
+  provider: "stella",
+};
 
 const DEFAULT_CURSOR_MODEL = "composer-latest";
 const DEFAULT_CODEX_MODEL = "gpt-5.5";
@@ -71,18 +243,25 @@ const FALLBACK_CODEX_REASONING_OPTIONS: readonly CodexReasoningPreference[] = [
 const PREFS_EVENT = "stella:local-model-preferences-changed";
 const NOTICE_TTL_MS = 2400;
 
+const CONVERSATION_AGENT_KEYS: ReadonlySet<string> = new Set([
+  "orchestrator",
+  "general",
+]);
+
+const STELLA_PROVIDER_PREFIX = "stella/";
+
+const isStellaModelId = (modelId: string): boolean =>
+  modelId === "" || modelId.startsWith(STELLA_PROVIDER_PREFIX);
+
 const errorText = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message.trim() ? error.message : fallback;
 
-const prefsEqual = (
-  a: LocalModelPreferences,
-  b: LocalModelPreferences,
-): boolean =>
-  a.agentRuntimeEngine === b.agentRuntimeEngine &&
-  a.cursorModel === b.cursorModel &&
-  a.codexModel === b.codexModel &&
-  a.codexReasoningEffort === b.codexReasoningEffort;
-
+// Narrow `CodexReasoningEffort` down to the subset that's also a valid
+// `CodexReasoningPreference`: everything except the upstream-only
+// "none". "default" is a UI-only sentinel produced by the renderer,
+// not the model catalog, so the input never contains it — but the
+// `Exclude<… , "none">` slice IS structurally part of
+// `CodexReasoningPreference`, so the predicate is still valid.
 const isCodexReasoningPreference = (
   value: CodexReasoningEffort,
 ): value is Exclude<CodexReasoningEffort, "none"> & CodexReasoningPreference =>
@@ -115,9 +294,17 @@ const codexReasoningLabel = (effort: CodexReasoningPreference): string => {
   }
 };
 
+/**
+ * Last-known local preferences cached at module scope so reopening the
+ * panel after a remount doesn't flash a loading state.
+ */
+let cachedPreferences: LocalModelPreferences | null = null;
+
+/* ── component ────────────────────────────────────────────────── */
+
 export function EngineTabContent() {
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
-    null,
+    () => cachedPreferences,
   );
   const [hasCursorApiKey, setHasCursorApiKey] = useState(false);
   const [cursorModels, setCursorModels] = useState<CursorModelOption[]>([]);
@@ -125,40 +312,28 @@ export function EngineTabContent() {
   const [codexModels, setCodexModels] = useState<CodexModelOption[]>([]);
   const [codexModelsLoading, setCodexModelsLoading] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
-  const [modelDraft, setModelDraft] = useState(DEFAULT_CURSOR_MODEL);
+  const [cursorModelDraft, setCursorModelDraft] = useState(DEFAULT_CURSOR_MODEL);
   const [codexModelDraft, setCodexModelDraft] = useState(DEFAULT_CODEX_MODEL);
-  const [manualModelOpen, setManualModelOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<"engine" | "key" | "model" | null>(
-    null,
-  );
-  const [status, setStatus] = useState<
-    { kind: "notice" | "error"; text: string } | null
-  >(null);
+  const [loading, setLoading] = useState(() => cachedPreferences === null);
+  const [saving, setSaving] = useState<SavingKind>(null);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [mediaTab, setMediaTab] = useState<MediaTab>("agents");
+
   const selfDispatchRef = useRef(false);
   const noticeTimerRef = useRef<number | null>(null);
+  const cursorModelsLoadedRef = useRef(false);
+  const codexModelsLoadedRef = useRef(false);
 
   const selectedEngine = preferences?.agentRuntimeEngine ?? "default";
-  const cursorReady = selectedEngine === "cursor_sdk" && hasCursorApiKey;
-  const modelChanged =
-    modelDraft.trim() !== (preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL);
-  const codexModelChanged =
-    codexModelDraft.trim() !==
-    (preferences?.codexModel ?? DEFAULT_CODEX_MODEL);
-  const selectedModelId = preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL;
-  const selectedCodexModelId = preferences?.codexModel ?? DEFAULT_CODEX_MODEL;
-  const selectedCodexReasoning =
-    preferences?.codexReasoningEffort ?? DEFAULT_CODEX_REASONING;
-  const inputsDisabled = loading || Boolean(saving);
-  const selectedCodexModel = useMemo(
-    () =>
-      codexModels.find(
-        (model) =>
-          model.id === selectedCodexModelId ||
-          model.model === selectedCodexModelId,
-      ),
-    [codexModels, selectedCodexModelId],
-  );
+  const inputsDisabled = loading || saving !== null;
+  const selectedCodexModel = useMemo(() => {
+    const selectedId = preferences?.codexModel ?? DEFAULT_CODEX_MODEL;
+    return codexModels.find(
+      (model) => model.id === selectedId || model.model === selectedId,
+    );
+  }, [codexModels, preferences?.codexModel]);
+
+  /* ── status helpers ─────────────────────────────────────────── */
 
   const showNotice = useCallback((text: string) => {
     setStatus({ kind: "notice", text });
@@ -180,28 +355,33 @@ export function EngineTabContent() {
     setStatus(null);
   }, []);
 
+  /* ── preferences IO ─────────────────────────────────────────── */
+
   const applySavedPrefs = useCallback(
     (
       saved: LocalModelPreferences | null | undefined,
-      { resetDrafts }: { resetDrafts: boolean },
+      { resetEngineDrafts }: { resetEngineDrafts: boolean },
     ) => {
       if (!saved) return;
       const next: LocalModelPreferences = {
-        agentRuntimeEngine: saved.agentRuntimeEngine,
+        ...saved,
         cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
         codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
         codexReasoningEffort:
           saved.codexReasoningEffort || DEFAULT_CODEX_REASONING,
       };
-      setPreferences((current) =>
-        current && prefsEqual(current, next) ? current : next,
-      );
-      if (resetDrafts) {
-        setModelDraft((current) =>
-          current === next.cursorModel ? current : next.cursorModel,
+      cachedPreferences = next;
+      setPreferences(next);
+      if (resetEngineDrafts) {
+        setCursorModelDraft((current) =>
+          current === next.cursorModel
+            ? current
+            : next.cursorModel,
         );
         setCodexModelDraft((current) =>
-          current === next.codexModel ? current : next.codexModel,
+          current === next.codexModel
+            ? current
+            : next.codexModel,
         );
       }
     },
@@ -213,13 +393,48 @@ export function EngineTabContent() {
     window.dispatchEvent(new CustomEvent(PREFS_EVENT));
   }, []);
 
+  const writePreferences = useCallback(
+    async (
+      patch: Partial<LocalModelPreferences>,
+      kind: SavingKind,
+    ): Promise<LocalModelPreferences | null> => {
+      if (!preferences) return null;
+      const previous = preferences;
+      const optimistic: LocalModelPreferences = { ...previous, ...patch };
+      cachedPreferences = optimistic;
+      setPreferences(optimistic);
+      setSaving(kind);
+      clearStatus();
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
+        const next =
+          (saved as LocalModelPreferences | undefined) ?? optimistic;
+        cachedPreferences = next;
+        setPreferences(next);
+        notifyPrefsChanged();
+        return next;
+      } catch (caught) {
+        cachedPreferences = previous;
+        setPreferences(previous);
+        showError(errorText(caught, "Could not save model setting."));
+        return null;
+      } finally {
+        setSaving(null);
+      }
+    },
+    [clearStatus, notifyPrefsChanged, preferences, showError],
+  );
+
   const loadCursorModels = useCallback(async () => {
     setModelsLoading(true);
     try {
       const result = await window.electronAPI?.system?.listCursorModels?.();
       setCursorModels(result?.models ?? []);
+      if ((result?.models ?? []).length > 0) {
+        cursorModelsLoadedRef.current = true;
+      }
     } catch (caught) {
-      // Keep any previously-loaded models in view; surface failure inline.
       showError(errorText(caught, "Cursor models did not load."));
     } finally {
       setModelsLoading(false);
@@ -239,21 +454,19 @@ export function EngineTabContent() {
     }
   }, [showError]);
 
-  const cursorModelsLoadedRef = useRef(false);
-  const codexModelsLoadedRef = useRef(false);
-  useEffect(() => {
-    if (cursorModels.length > 0) cursorModelsLoadedRef.current = true;
-  }, [cursorModels.length]);
-
   const load = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (!options?.silent) setLoading(true);
+      if (!options?.silent && cachedPreferences === null) {
+        setLoading(true);
+      }
       try {
         const [prefs, keyStatus] = await Promise.all([
           window.electronAPI?.system?.getLocalModelPreferences?.(),
           window.electronAPI?.system?.getCursorApiKeyStatus?.(),
         ]);
-        applySavedPrefs(prefs, { resetDrafts: !options?.silent });
+        applySavedPrefs(prefs as LocalModelPreferences | undefined, {
+          resetEngineDrafts: !options?.silent,
+        });
         if (
           prefs?.agentRuntimeEngine === "codex_cli" &&
           !codexModelsLoadedRef.current
@@ -278,6 +491,12 @@ export function EngineTabContent() {
   );
 
   useEffect(() => {
+    if (selectedEngine === "codex_cli" && !codexModelsLoadedRef.current) {
+      void loadCodexModels();
+    }
+  }, [loadCodexModels, selectedEngine]);
+
+  useEffect(() => {
     void load();
     const onExternalChange = () => {
       if (selfDispatchRef.current) {
@@ -291,55 +510,29 @@ export function EngineTabContent() {
       window.removeEventListener(PREFS_EVENT, onExternalChange);
       if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
     };
-    // `load` is stable for the lifecycle of the panel; avoid re-subscribing.
+    // `load` is stable for the panel's lifetime; avoid re-subscribing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (selectedEngine === "codex_cli" && !codexModelsLoadedRef.current) {
-      void loadCodexModels();
-    }
-  }, [loadCodexModels, selectedEngine]);
+  /* ── engine handlers ────────────────────────────────────────── */
 
   const saveEngine = useCallback(
     async (engine: AgentRuntimeEngine) => {
-      if (!preferences || saving || engine === preferences.agentRuntimeEngine) {
-        return;
-      }
-      const previous = preferences;
-      setPreferences({ ...preferences, agentRuntimeEngine: engine });
-      setSaving("engine");
-      clearStatus();
-      try {
-        const saved =
-          await window.electronAPI?.system?.setLocalModelPreferences?.({
-            agentRuntimeEngine: engine,
-          });
-        applySavedPrefs(saved, { resetDrafts: false });
-        notifyPrefsChanged();
+      if (!preferences || engine === preferences.agentRuntimeEngine) return;
+      const next = await writePreferences(
+        { agentRuntimeEngine: engine },
+        "engine",
+      );
+      if (next) {
         showNotice(
           `${ENGINE_OPTIONS.find((opt) => opt.id === engine)?.label ?? "Engine"} selected`,
         );
-      } catch (caught) {
-        setPreferences(previous);
-        showError(errorText(caught, "Engine was not updated."));
-      } finally {
-        setSaving(null);
       }
     },
-    [
-      applySavedPrefs,
-      clearStatus,
-      notifyPrefsChanged,
-      preferences,
-      saving,
-      showError,
-      showNotice,
-    ],
+    [preferences, showNotice, writePreferences],
   );
 
-  const saveApiKey = useCallback(async () => {
-    if (saving) return;
+  const saveCursorApiKey = useCallback(async () => {
     setSaving("key");
     clearStatus();
     try {
@@ -362,133 +555,95 @@ export function EngineTabContent() {
     } finally {
       setSaving(null);
     }
-  }, [apiKeyDraft, clearStatus, loadCursorModels, saving, showError, showNotice]);
+  }, [apiKeyDraft, clearStatus, loadCursorModels, showError, showNotice]);
 
-  const persistCursorModel = useCallback(
-    async (nextModel: string) => {
+  const saveCursorModel = useCallback(
+    async (modelId?: string) => {
       if (!preferences) return;
+      const nextModel = (modelId ?? cursorModelDraft).trim() || DEFAULT_CURSOR_MODEL;
       if (nextModel === preferences.cursorModel) return;
-      setSaving("model");
-      clearStatus();
-      try {
-        const saved =
-          await window.electronAPI?.system?.setLocalModelPreferences?.({
-            cursorModel: nextModel,
-          });
-        applySavedPrefs(saved, { resetDrafts: true });
-        notifyPrefsChanged();
+      const next = await writePreferences(
+        { cursorModel: nextModel },
+        "cursor-model",
+      );
+      if (next) {
+        setCursorModelDraft(next.cursorModel);
         showNotice("Cursor model saved");
-      } catch (caught) {
-        showError(errorText(caught, "Cursor model was not saved."));
-      } finally {
-        setSaving(null);
       }
     },
-    [
-      applySavedPrefs,
-      clearStatus,
-      notifyPrefsChanged,
-      preferences,
-      showError,
-      showNotice,
-    ],
+    [cursorModelDraft, preferences, showNotice, writePreferences],
   );
 
-  const saveModel = useCallback(() => {
-    if (saving) return;
-    void persistCursorModel(modelDraft.trim() || DEFAULT_CURSOR_MODEL);
-  }, [modelDraft, persistCursorModel, saving]);
-
-  const selectModel = useCallback(
-    (modelId: string) => {
-      if (saving || !preferences) return;
-      setModelDraft(modelId);
-      void persistCursorModel(modelId);
-    },
-    [persistCursorModel, preferences, saving],
-  );
-
-  const saveCodexModel = useCallback(async (modelId?: string) => {
-    if (!preferences || saving) return;
-    const nextModel = (modelId ?? codexModelDraft).trim() || DEFAULT_CODEX_MODEL;
-    const nextModelOption = codexModels.find(
-      (model) => model.id === nextModel || model.model === nextModel,
-    );
-    const resetReasoning =
-      preferences.codexReasoningEffort !== "default" &&
-      !modelSupportsReasoning(nextModelOption, preferences.codexReasoningEffort);
-    if (nextModel === preferences.codexModel && !resetReasoning) return;
-    setSaving("model");
-    clearStatus();
-    try {
-      const saved =
-        await window.electronAPI?.system?.setLocalModelPreferences?.({
+  const saveCodexModel = useCallback(
+    async (modelId?: string) => {
+      if (!preferences) return;
+      const nextModel = (modelId ?? codexModelDraft).trim() || DEFAULT_CODEX_MODEL;
+      const nextModelOption = codexModels.find(
+        (model) => model.id === nextModel || model.model === nextModel,
+      );
+      const resetReasoning =
+        preferences.codexReasoningEffort !== "default" &&
+        !modelSupportsReasoning(
+          nextModelOption,
+          preferences.codexReasoningEffort,
+        );
+      if (
+        nextModel === preferences.codexModel &&
+        (!resetReasoning ||
+          preferences.codexReasoningEffort === DEFAULT_CODEX_REASONING)
+      ) {
+        return;
+      }
+      const next = await writePreferences(
+        {
           codexModel: nextModel,
           ...(resetReasoning
             ? { codexReasoningEffort: DEFAULT_CODEX_REASONING }
             : {}),
-        });
-      applySavedPrefs(saved, { resetDrafts: true });
-      notifyPrefsChanged();
-      showNotice("Codex model saved");
-    } catch (caught) {
-      showError(errorText(caught, "Codex model was not saved."));
-    } finally {
-      setSaving(null);
-    }
-  }, [
-    applySavedPrefs,
-    clearStatus,
-    codexModelDraft,
-    codexModels,
-    notifyPrefsChanged,
-    preferences,
-    saving,
-    showError,
-    showNotice,
-  ]);
-
-  const saveCodexReasoning = useCallback(
-    async (reasoning: CodexReasoningPreference) => {
-      if (!preferences || saving || reasoning === preferences.codexReasoningEffort) {
-        return;
-      }
-      setSaving("model");
-      clearStatus();
-      try {
-        const saved =
-          await window.electronAPI?.system?.setLocalModelPreferences?.({
-            codexReasoningEffort: reasoning,
-          });
-        applySavedPrefs(saved, { resetDrafts: false });
-        notifyPrefsChanged();
-        showNotice("Codex reasoning saved");
-      } catch (caught) {
-        showError(errorText(caught, "Codex reasoning was not saved."));
-      } finally {
-        setSaving(null);
+        },
+        "codex-model",
+      );
+      if (next) {
+        setCodexModelDraft(next.codexModel);
+        showNotice("Codex model saved");
       }
     },
     [
-      applySavedPrefs,
-      clearStatus,
-      notifyPrefsChanged,
+      codexModelDraft,
+      codexModels,
       preferences,
-      saving,
-      showError,
       showNotice,
+      writePreferences,
     ],
   );
 
+  const saveCodexReasoning = useCallback(
+    async (reasoning: CodexReasoningPreference) => {
+      if (!preferences || reasoning === preferences.codexReasoningEffort) {
+        return;
+      }
+      const next = await writePreferences(
+        { codexReasoningEffort: reasoning },
+        "codex-model",
+      );
+      if (next) showNotice("Codex reasoning saved");
+    },
+    [preferences, showNotice, writePreferences],
+  );
+
+  /* ── render ─────────────────────────────────────────────────── */
+
   const subtitle = useMemo(() => {
-    if (loading) return "Loading…";
+    if (loading && !preferences) return "Loading…";
     if (selectedEngine === "cursor_sdk")
-      return cursorReady ? "Cursor ready" : "Add a Cursor key to continue";
+      return hasCursorApiKey
+        ? "Cursor ready"
+        : "Add a Cursor key to continue";
     if (selectedEngine === "codex_cli") return "Runs Codex app-server";
     if (selectedEngine === "claude_code_local")
       return "Runs your local Claude Code CLI";
     return "Stella's built-in runtime";
-  }, [cursorReady, loading, selectedEngine]);
+  }, [hasCursorApiKey, loading, preferences, selectedEngine]);
 
   return (
     <div className="display-sidebar__rich display-sidebar__rich--engine">
@@ -532,268 +687,1189 @@ export function EngineTabContent() {
           })}
         </div>
 
-        <div className="engine-tab__config-slot">
-          {selectedEngine === "cursor_sdk" ? (
-            <div className="engine-tab__config" key="cursor_sdk">
-              <div className="engine-tab__row">
-                <label
-                  className="engine-tab__label"
-                  htmlFor="engine-cursor-key"
-                >
-                  API key
-                </label>
-                <div className="engine-tab__field-row">
-                  <input
-                    id="engine-cursor-key"
-                    type="password"
-                    value={apiKeyDraft}
-                    placeholder={
-                      hasCursorApiKey
-                        ? "Replace saved key"
-                        : "Paste Cursor API key"
-                    }
-                    className="engine-tab__input"
-                    autoComplete="off"
-                    disabled={inputsDisabled}
-                    onChange={(event) => setApiKeyDraft(event.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="pill-btn pill-btn--primary"
-                    disabled={
-                      loading ||
-                      saving === "key" ||
-                      (!apiKeyDraft.trim() && !hasCursorApiKey)
-                    }
-                    onClick={() => void saveApiKey()}
-                  >
-                    {apiKeyDraft.trim()
-                      ? "Save"
-                      : hasCursorApiKey
-                        ? "Clear"
-                        : "Save"}
-                  </button>
-                </div>
-              </div>
+        <EngineByokBlock
+          engine={selectedEngine}
+          loading={loading}
+          saving={saving}
+          hasCursorApiKey={hasCursorApiKey}
+          cursorModels={cursorModels}
+          cursorModelsLoading={modelsLoading}
+          codexModels={codexModels}
+          codexModelsLoading={codexModelsLoading}
+          selectedCursorModelId={
+            preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL
+          }
+          selectedCodexModelId={
+            preferences?.codexModel ?? DEFAULT_CODEX_MODEL
+          }
+          selectedCodexReasoning={
+            preferences?.codexReasoningEffort ?? DEFAULT_CODEX_REASONING
+          }
+          selectedCodexModel={selectedCodexModel}
+          apiKeyDraft={apiKeyDraft}
+          cursorModelDraft={cursorModelDraft}
+          codexModelDraft={codexModelDraft}
+          codexModelSaved={preferences?.codexModel ?? DEFAULT_CODEX_MODEL}
+          onApiKeyDraftChange={setApiKeyDraft}
+          onCursorModelDraftChange={setCursorModelDraft}
+          onCodexModelDraftChange={setCodexModelDraft}
+          onSaveApiKey={() => void saveCursorApiKey()}
+          onPickCursorModel={(id) => void saveCursorModel(id)}
+          onPickCodexModel={(id) => void saveCodexModel(id)}
+          onPickCodexReasoning={(effort) => void saveCodexReasoning(effort)}
+          onSaveCursorManualModel={() => void saveCursorModel()}
+          onSaveCodexModel={() => void saveCodexModel()}
+          onRefreshCursorModels={() => void loadCursorModels()}
+          onRefreshCodexModels={() => void loadCodexModels()}
+        />
 
-              <div className="engine-tab__row">
-                <div className="engine-tab__label-row">
-                  <span className="engine-tab__label">Model</span>
-                  {hasCursorApiKey && cursorModels.length > 0 ? (
-                    <button
-                      type="button"
-                      className="engine-tab__link"
-                      disabled={modelsLoading}
-                      onClick={() => void loadCursorModels()}
-                    >
-                      {modelsLoading ? "Refreshing…" : "Refresh"}
-                    </button>
-                  ) : null}
-                </div>
+        <ModelsSection
+          preferences={preferences}
+          writePreferences={writePreferences}
+          mediaTab={mediaTab}
+          onMediaTabChange={setMediaTab}
+          inputsDisabled={inputsDisabled}
+          showNotice={showNotice}
+        />
 
-                <div
-                  className="engine-tab__model-list"
-                  role="radiogroup"
-                  aria-busy={modelsLoading || undefined}
-                  data-empty={cursorModels.length === 0 || undefined}
-                >
-                  {cursorModels.length > 0 ? (
-                    cursorModels.map((model) => {
-                      const selected =
-                        model.id === selectedModelId ||
-                        model.aliases?.includes(selectedModelId);
-                      return (
-                        <button
-                          key={model.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={Boolean(selected)}
-                          data-selected={selected || undefined}
-                          className="engine-tab__model-option"
-                          disabled={inputsDisabled}
-                          onClick={() => selectModel(model.id)}
-                        >
-                          <span>{model.displayName || model.id}</span>
-                          <small>{model.aliases?.[0] ?? model.id}</small>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="engine-tab__model-empty">
-                      {hasCursorApiKey
-                        ? modelsLoading
-                          ? "Loading Cursor models…"
-                          : "No models available — enter one manually below."
-                        : "Save a Cursor key to load model choices."}
-                    </p>
-                  )}
-                </div>
-
-                {cursorModels.length > 0 ? (
-                  <button
-                    type="button"
-                    className="engine-tab__link"
-                    onClick={() => setManualModelOpen((value) => !value)}
-                  >
-                    {manualModelOpen ? "Hide model id" : "Enter model id"}
-                  </button>
-                ) : null}
-
-                {manualModelOpen || cursorModels.length === 0 ? (
-                  <div className="engine-tab__field-row">
-                    <input
-                      type="text"
-                      value={modelDraft}
-                      placeholder={DEFAULT_CURSOR_MODEL}
-                      className="engine-tab__input"
-                      spellCheck={false}
-                      disabled={inputsDisabled}
-                      onChange={(event) => setModelDraft(event.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="pill-btn pill-btn--primary"
-                      disabled={
-                        loading || saving === "model" || !modelChanged
-                      }
-                      onClick={saveModel}
-                    >
-                      Save
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : selectedEngine === "codex_cli" ? (
-            <div className="engine-tab__config" key="codex_cli">
-              <div className="engine-tab__row">
-                <div className="engine-tab__label-row">
-                  <span className="engine-tab__label">Model</span>
-                  <button
-                    type="button"
-                    className="engine-tab__link"
-                    disabled={codexModelsLoading}
-                    onClick={() => void loadCodexModels()}
-                  >
-                    {codexModelsLoading ? "Refreshing…" : "Refresh"}
-                  </button>
-                </div>
-
-                {codexModels.length > 0 ? (
-                  <div
-                    className="engine-tab__model-list"
-                    role="radiogroup"
-                    aria-busy={codexModelsLoading || undefined}
-                  >
-                    {codexModels.map((model) => {
-                      const selected =
-                        model.id === selectedCodexModelId ||
-                        model.model === selectedCodexModelId;
-                      return (
-                        <button
-                          key={model.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={Boolean(selected)}
-                          data-selected={selected || undefined}
-                          className="engine-tab__model-option"
-                          disabled={inputsDisabled}
-                          onClick={() => void saveCodexModel(model.id)}
-                        >
-                          <span>{model.displayName || model.id}</span>
-                          <small>{model.model}</small>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                {codexModelsLoading && codexModels.length === 0 ? (
-                  <p className="engine-tab__model-empty">Loading Codex models…</p>
-                ) : null}
-
-                {codexModels.length === 0 ? (
-                  <div className="engine-tab__field-row">
-                    <input
-                      id="engine-codex-model"
-                      type="text"
-                      value={codexModelDraft}
-                      placeholder={DEFAULT_CODEX_MODEL}
-                      className="engine-tab__input"
-                      spellCheck={false}
-                      disabled={inputsDisabled}
-                      onChange={(event) =>
-                        setCodexModelDraft(event.target.value)
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="pill-btn pill-btn--primary"
-                      disabled={
-                        loading || saving === "model" || !codexModelChanged
-                      }
-                      onClick={() => void saveCodexModel()}
-                    >
-                      Save
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="engine-tab__row">
-                <div className="engine-tab__label-row">
-                  <span className="engine-tab__label">Reasoning</span>
-                  <small className="engine-tab__meta">
-                    Default {selectedCodexModel
-                      ? codexReasoningLabel(
-                          selectedCodexModel.defaultReasoningEffort === "none"
-                            ? "default"
-                            : selectedCodexModel.defaultReasoningEffort,
-                        )
-                      : "Auto"}
-                  </small>
-                </div>
-                <div className="engine-tab__segmented" role="radiogroup">
-                  {[DEFAULT_CODEX_REASONING, ...(
-                    selectedCodexModel?.supportedReasoningEfforts
-                      .map((option) => option.reasoningEffort)
-                      .filter(isCodexReasoningPreference) ??
-                    FALLBACK_CODEX_REASONING_OPTIONS
-                  )]
-                    .filter(
-                      (effort, index, all): effort is CodexReasoningPreference =>
-                        all.indexOf(effort) === index &&
-                        (effort === selectedCodexReasoning ||
-                          modelSupportsReasoning(selectedCodexModel, effort)),
-                    )
-                    .map((effort) => {
-                      const selected = effort === selectedCodexReasoning;
-                      return (
-                        <button
-                          key={effort}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          data-selected={selected || undefined}
-                          className="engine-tab__segment"
-                          disabled={inputsDisabled}
-                          onClick={() => void saveCodexReasoning(effort)}
-                        >
-                          {codexReasoningLabel(effort)}
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="engine-tab__config engine-tab__config--idle"
-              key="idle"
-            />
-          )}
-        </div>
+        <ConnectedProvidersSection />
       </section>
     </div>
+  );
+}
+
+/* ── Engine BYOK block (Cursor key + Cursor/Codex model) ──────── */
+
+interface EngineByokBlockProps {
+  engine: AgentRuntimeEngine;
+  loading: boolean;
+  saving: SavingKind;
+  hasCursorApiKey: boolean;
+  cursorModels: CursorModelOption[];
+  cursorModelsLoading: boolean;
+  codexModels: CodexModelOption[];
+  codexModelsLoading: boolean;
+  selectedCursorModelId: string;
+  selectedCodexModelId: string;
+  selectedCodexReasoning: CodexReasoningPreference;
+  selectedCodexModel?: CodexModelOption;
+  apiKeyDraft: string;
+  cursorModelDraft: string;
+  codexModelDraft: string;
+  codexModelSaved: string;
+  onApiKeyDraftChange: (value: string) => void;
+  onCursorModelDraftChange: (value: string) => void;
+  onCodexModelDraftChange: (value: string) => void;
+  onSaveApiKey: () => void;
+  onPickCursorModel: (id: string) => void;
+  onPickCodexModel: (id: string) => void;
+  onPickCodexReasoning: (effort: CodexReasoningPreference) => void;
+  onSaveCursorManualModel: () => void;
+  onSaveCodexModel: () => void;
+  onRefreshCursorModels: () => void;
+  onRefreshCodexModels: () => void;
+}
+
+function EngineByokBlock({
+  engine,
+  loading,
+  saving,
+  hasCursorApiKey,
+  cursorModels,
+  cursorModelsLoading,
+  codexModels,
+  codexModelsLoading,
+  selectedCursorModelId,
+  selectedCodexModelId,
+  selectedCodexReasoning,
+  selectedCodexModel,
+  apiKeyDraft,
+  cursorModelDraft,
+  codexModelDraft,
+  codexModelSaved,
+  onApiKeyDraftChange,
+  onCursorModelDraftChange,
+  onCodexModelDraftChange,
+  onSaveApiKey,
+  onPickCursorModel,
+  onPickCodexModel,
+  onPickCodexReasoning,
+  onSaveCursorManualModel,
+  onSaveCodexModel,
+  onRefreshCursorModels,
+  onRefreshCodexModels,
+}: EngineByokBlockProps) {
+  const inputsDisabled = loading || saving !== null;
+  const cursorModelChanged =
+    cursorModelDraft.trim() !== selectedCursorModelId;
+  const codexModelChanged = codexModelDraft.trim() !== codexModelSaved;
+  const apiKeyButtonLabel = apiKeyDraft.trim()
+    ? "Save"
+    : hasCursorApiKey
+      ? "Clear"
+      : "Save";
+  const codexReasoningOptions = [
+    DEFAULT_CODEX_REASONING,
+    ...(
+      selectedCodexModel?.supportedReasoningEfforts
+        .map((option) => option.reasoningEffort)
+        .filter(isCodexReasoningPreference) ?? FALLBACK_CODEX_REASONING_OPTIONS
+    ),
+  ].filter(
+    (effort, index, all): effort is CodexReasoningPreference =>
+      all.indexOf(effort) === index &&
+      (effort === selectedCodexReasoning ||
+        modelSupportsReasoning(selectedCodexModel, effort)),
+  );
+  const codexReasoningDefaultLabel = selectedCodexModel
+    ? codexReasoningLabel(
+        selectedCodexModel.defaultReasoningEffort === "none"
+          ? "default"
+          : selectedCodexModel.defaultReasoningEffort,
+      )
+    : "Auto";
+
+  if (engine === "cursor_sdk") {
+    return (
+      <div className="engine-tab__byok" key="cursor_sdk">
+        <div className="engine-tab__row">
+          <label
+            className="engine-tab__label"
+            htmlFor="engine-cursor-key"
+          >
+            API key
+          </label>
+          <div className="engine-tab__field-row">
+            <input
+              id="engine-cursor-key"
+              type="password"
+              value={apiKeyDraft}
+              placeholder={
+                hasCursorApiKey ? "Replace saved key" : "Paste Cursor API key"
+              }
+              className="engine-tab__input"
+              autoComplete="off"
+              disabled={inputsDisabled}
+              onChange={(event) => onApiKeyDraftChange(event.target.value)}
+            />
+            <button
+              type="button"
+              className="pill-btn pill-btn--primary"
+              disabled={
+                loading ||
+                saving === "key" ||
+                (!apiKeyDraft.trim() && !hasCursorApiKey)
+              }
+              onClick={onSaveApiKey}
+            >
+              {apiKeyButtonLabel}
+            </button>
+          </div>
+        </div>
+
+        <div className="engine-tab__row">
+          <div className="engine-tab__label-row">
+            <span className="engine-tab__label">Cursor model</span>
+            {hasCursorApiKey && cursorModels.length > 0 ? (
+              <button
+                type="button"
+                className="engine-tab__link"
+                disabled={cursorModelsLoading}
+                onClick={onRefreshCursorModels}
+              >
+                {cursorModelsLoading ? "Refreshing…" : "Refresh"}
+              </button>
+            ) : null}
+          </div>
+
+          {hasCursorApiKey && cursorModels.length > 0 ? (
+            <div
+              className="engine-tab__cursor-model-list"
+              role="radiogroup"
+              aria-busy={cursorModelsLoading || undefined}
+            >
+              {cursorModels.map((model) => {
+                const selected =
+                  model.id === selectedCursorModelId ||
+                  model.aliases?.includes(selectedCursorModelId);
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={Boolean(selected)}
+                    data-selected={selected || undefined}
+                    className="engine-tab__cursor-model-option"
+                    disabled={inputsDisabled}
+                    onClick={() => onPickCursorModel(model.id)}
+                  >
+                    <span>{model.displayName || model.id}</span>
+                    <small>{model.aliases?.[0] ?? model.id}</small>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="engine-tab__field-row">
+              <input
+                type="text"
+                value={cursorModelDraft}
+                placeholder={DEFAULT_CURSOR_MODEL}
+                className="engine-tab__input"
+                spellCheck={false}
+                disabled={inputsDisabled}
+                onChange={(event) =>
+                  onCursorModelDraftChange(event.target.value)
+                }
+              />
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary"
+                disabled={
+                  loading ||
+                  saving === "cursor-model" ||
+                  !cursorModelChanged
+                }
+                onClick={onSaveCursorManualModel}
+              >
+                Save
+              </button>
+            </div>
+          )}
+          {hasCursorApiKey && cursorModels.length === 0 ? (
+            <p className="engine-tab__hint">
+              {cursorModelsLoading
+                ? "Loading Cursor models…"
+                : "No models available — enter one manually."}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (engine === "codex_cli") {
+    return (
+      <div className="engine-tab__byok" key="codex_cli">
+        <div className="engine-tab__row">
+          <div className="engine-tab__label-row">
+            <span className="engine-tab__label">Codex model</span>
+            <button
+              type="button"
+              className="engine-tab__link"
+              disabled={codexModelsLoading}
+              onClick={onRefreshCodexModels}
+            >
+              {codexModelsLoading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+
+          {codexModels.length > 0 ? (
+            <div
+              className="engine-tab__cursor-model-list"
+              role="radiogroup"
+              aria-busy={codexModelsLoading || undefined}
+            >
+              {codexModels.map((model) => {
+                const selected =
+                  model.id === selectedCodexModelId ||
+                  model.model === selectedCodexModelId;
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={Boolean(selected)}
+                    data-selected={selected || undefined}
+                    className="engine-tab__cursor-model-option"
+                    disabled={inputsDisabled}
+                    onClick={() => onPickCodexModel(model.id)}
+                  >
+                    <span>{model.displayName || model.id}</span>
+                    <small>{model.model}</small>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {codexModelsLoading && codexModels.length === 0 ? (
+            <p className="engine-tab__hint">Loading Codex models…</p>
+          ) : null}
+
+          {codexModels.length === 0 ? (
+            <div className="engine-tab__field-row">
+              <input
+                id="engine-codex-model"
+                type="text"
+                value={codexModelDraft}
+                placeholder={DEFAULT_CODEX_MODEL}
+                className="engine-tab__input"
+                spellCheck={false}
+                disabled={inputsDisabled}
+                onChange={(event) =>
+                  onCodexModelDraftChange(event.target.value)
+                }
+              />
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary"
+                disabled={
+                  loading ||
+                  saving === "codex-model" ||
+                  !codexModelChanged
+                }
+                onClick={onSaveCodexModel}
+              >
+                Save
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="engine-tab__row">
+          <div className="engine-tab__label-row">
+            <span className="engine-tab__label">Reasoning</span>
+            <small className="engine-tab__meta">
+              Default {codexReasoningDefaultLabel}
+            </small>
+          </div>
+          <div className="engine-tab__segmented" role="radiogroup">
+            {codexReasoningOptions.map((effort) => {
+              const selected = effort === selectedCodexReasoning;
+              return (
+                <button
+                  key={effort}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  data-selected={selected || undefined}
+                  className="engine-tab__segment"
+                  disabled={inputsDisabled}
+                  onClick={() => onPickCodexReasoning(effort)}
+                >
+                  {codexReasoningLabel(effort)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/* ── Models section ───────────────────────────────────────────── */
+
+interface ModelsSectionProps {
+  preferences: LocalModelPreferences | null;
+  writePreferences: (
+    patch: Partial<LocalModelPreferences>,
+    kind: SavingKind,
+  ) => Promise<LocalModelPreferences | null>;
+  mediaTab: MediaTab;
+  onMediaTabChange: (tab: MediaTab) => void;
+  inputsDisabled: boolean;
+  showNotice: (text: string) => void;
+}
+
+function ModelsSection({
+  preferences,
+  writePreferences,
+  mediaTab,
+  onMediaTabChange,
+  inputsDisabled,
+  showNotice,
+}: ModelsSectionProps) {
+  const {
+    models: stellaModels,
+    defaults: stellaDefaultModels,
+    groups,
+    refresh,
+    refreshing,
+    audience,
+  } = useModelCatalog();
+
+  const modelDefaults = useMemo(
+    () =>
+      preferences
+        ? getLocalModelDefaults(preferences.defaultModels, stellaDefaultModels)
+        : undefined,
+    [preferences, stellaDefaultModels],
+  );
+  const defaultModelMap = useMemo(
+    () => buildModelDefaultsMap(modelDefaults),
+    [modelDefaults],
+  );
+  const overrides = useMemo(
+    () =>
+      preferences
+        ? normalizeModelOverrides(preferences.modelOverrides, defaultModelMap)
+        : {},
+    [preferences, defaultModelMap],
+  );
+  const configurableAgents = useMemo(
+    () => getConfigurableAgents(modelDefaults),
+    [modelDefaults],
+  );
+
+  const modelNamesById = useMemo(() => {
+    const next = new Map<string, string>();
+    for (const model of stellaModels) {
+      const label =
+        model.provider === "stella" ? getStellaDisplayName(model) : model.name;
+      next.set(model.id, label);
+      if (model.upstreamModel) next.set(model.upstreamModel, label);
+    }
+    return next;
+  }, [stellaModels]);
+
+  const restricted = isRestrictedModelOverrideAudience(audience);
+  const restrictedPlanLabel = audience ? getPlanLabel(audience) : null;
+
+  /* ── assignment popover ───────────────────────────────────── */
+
+  type AssignmentState = {
+    modelId: string;
+    rect: DOMRect;
+    initialReasoning: ReasoningEffort;
+    initialAgents: string[];
+  };
+  const [assignment, setAssignment] = useState<AssignmentState | null>(null);
+  const pendingRectRef = useRef<DOMRect | null>(null);
+
+  const closeAssignment = useCallback(() => {
+    setAssignment(null);
+    pendingRectRef.current = null;
+  }, []);
+
+  const agentsByModel = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const entry of configurableAgents) {
+      const current = overrides[entry.key];
+      if (!current) continue;
+      const list = map.get(current);
+      if (list) list.push(entry.key);
+      else map.set(current, [entry.key]);
+    }
+    return map;
+  }, [configurableAgents, overrides]);
+
+  const handlePanelClickCapture = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = (event.target as HTMLElement | null)?.closest(
+        ".model-picker-model",
+      );
+      if (target instanceof HTMLElement) {
+        pendingRectRef.current = target.getBoundingClientRect();
+      } else {
+        pendingRectRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const handleOpenAssignment = useCallback(
+    (modelId: string) => {
+      if (!modelId) return;
+      const rect = pendingRectRef.current;
+      if (!rect) return;
+      const initialAgents = agentsByModel.get(modelId) ?? [];
+      const reasoningCandidates = new Set<ReasoningEffort>();
+      for (const key of initialAgents) {
+        reasoningCandidates.add(
+          preferences?.reasoningEfforts?.[key] ?? "default",
+        );
+      }
+      const initialReasoning: ReasoningEffort =
+        reasoningCandidates.size === 1
+          ? Array.from(reasoningCandidates)[0]
+          : "default";
+      setAssignment({
+        modelId,
+        rect,
+        initialReasoning,
+        initialAgents,
+      });
+    },
+    [agentsByModel, preferences],
+  );
+
+  /* ── mutation handlers ─────────────────────────────────────── */
+
+  const assignTo = useCallback(
+    async (modelId: string, agentKeys: string[], effort: ReasoningEffort) => {
+      if (!preferences || agentKeys.length === 0) return;
+      const nextOverrides = { ...preferences.modelOverrides };
+      const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
+      const nextPropagated = new Set(
+        preferences.assistantPropagatedAgents ?? [],
+      );
+      const nonStella = !isStellaModelId(modelId);
+      for (const key of agentKeys) {
+        nextOverrides[key] = modelId;
+        if (effort === "default") delete nextReasoning[key];
+        else nextReasoning[key] = effort;
+        if (nonStella && !CONVERSATION_AGENT_KEYS.has(key)) {
+          nextPropagated.add(key);
+        } else {
+          nextPropagated.delete(key);
+        }
+      }
+      await writePreferences(
+        {
+          modelOverrides: nextOverrides,
+          reasoningEfforts: nextReasoning,
+          assistantPropagatedAgents: Array.from(nextPropagated),
+        },
+        "overrides",
+      );
+    },
+    [preferences, writePreferences],
+  );
+
+  const clearAgents = useCallback(
+    async (agentKeys: string[]) => {
+      if (!preferences || agentKeys.length === 0) return;
+      const nextOverrides = { ...preferences.modelOverrides };
+      const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
+      const nextPropagated = (
+        preferences.assistantPropagatedAgents ?? []
+      ).filter((key) => !agentKeys.includes(key));
+      for (const key of agentKeys) {
+        delete nextOverrides[key];
+        delete nextReasoning[key];
+      }
+      await writePreferences(
+        {
+          modelOverrides: nextOverrides,
+          reasoningEfforts: nextReasoning,
+          assistantPropagatedAgents: nextPropagated,
+        },
+        "overrides",
+      );
+    },
+    [preferences, writePreferences],
+  );
+
+  const applyAssignment = useCallback(
+    async (modelId: string, agentKeys: string[], effort: ReasoningEffort) => {
+      if (!preferences) {
+        closeAssignment();
+        return;
+      }
+      const previouslyAssigned = agentsByModel.get(modelId) ?? [];
+      const toClear = previouslyAssigned.filter(
+        (key) => !agentKeys.includes(key),
+      );
+      if (toClear.length > 0) await clearAgents(toClear);
+      if (agentKeys.length > 0) await assignTo(modelId, agentKeys, effort);
+      closeAssignment();
+      showNotice("Models updated");
+    },
+    [
+      agentsByModel,
+      assignTo,
+      clearAgents,
+      closeAssignment,
+      preferences,
+      showNotice,
+    ],
+  );
+
+  const applyToAll = useCallback(
+    async (modelId: string, effort: ReasoningEffort) => {
+      if (!preferences) {
+        closeAssignment();
+        return;
+      }
+      const allKeys = configurableAgents.map((entry) => entry.key);
+      await assignTo(modelId, allKeys, effort);
+      closeAssignment();
+      showNotice("Applied to every agent");
+    },
+    [assignTo, closeAssignment, configurableAgents, preferences, showNotice],
+  );
+
+  const handleResetAll = useCallback(async () => {
+    if (!preferences) return;
+    const next = await writePreferences(
+      {
+        modelOverrides: {},
+        assistantPropagatedAgents: [],
+        reasoningEfforts: {},
+      },
+      "overrides",
+    );
+    if (next) showNotice("Reset every agent");
+  }, [preferences, showNotice, writePreferences]);
+
+  /* ── image / voice handlers ──────────────────────────────── */
+
+  const imagePreferences =
+    preferences?.imageGeneration ?? DEFAULT_IMAGE_GENERATION;
+  const voicePreferences = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+
+  const onImageProviderSelect = useCallback(
+    async (providerKey: string) => {
+      const next: ImageGenerationPreferences =
+        providerKey === "openai"
+          ? { provider: "openai" }
+          : providerKey === "openrouter"
+            ? { provider: "openrouter" }
+            : providerKey === "fal"
+              ? { provider: "fal" }
+              : { provider: "stella" };
+      await writePreferences({ imageGeneration: next }, "image");
+    },
+    [writePreferences],
+  );
+
+  const onVoiceProviderSelect = useCallback(
+    async (providerKey: string) => {
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      const next: RealtimeVoicePreferences = {
+        provider: coerceRealtimeVoiceProvider(providerKey),
+        ...(previous.voices ? { voices: previous.voices } : {}),
+        ...(previous.stellaSubProvider
+          ? { stellaSubProvider: previous.stellaSubProvider }
+          : {}),
+        ...(typeof previous.inworldSpeed === "number"
+          ? { inworldSpeed: previous.inworldSpeed }
+          : {}),
+      };
+      await writePreferences({ realtimeVoice: next }, "voice");
+    },
+    [preferences, writePreferences],
+  );
+
+  const onVoiceSelect = useCallback(
+    async (
+      underlyingProvider: RealtimeVoiceUnderlyingProvider,
+      voiceId: string,
+    ) => {
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      await writePreferences(
+        {
+          realtimeVoice: {
+            ...previous,
+            voices: {
+              ...(previous.voices ?? {}),
+              [underlyingProvider]: voiceId,
+            },
+          },
+        },
+        "voice",
+      );
+    },
+    [preferences, writePreferences],
+  );
+
+  const onVoiceSubProviderSelect = useCallback(
+    async (sub: RealtimeVoiceUnderlyingProvider) => {
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      if (previous.stellaSubProvider === sub) return;
+      await writePreferences(
+        { realtimeVoice: { ...previous, stellaSubProvider: sub } },
+        "voice",
+      );
+    },
+    [preferences, writePreferences],
+  );
+
+  const onInworldSpeedSelect = useCallback(
+    async (speed: number) => {
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      const clamped = Math.min(2.0, Math.max(0.5, speed));
+      if (
+        typeof previous.inworldSpeed === "number" &&
+        Math.abs(previous.inworldSpeed - clamped) < 0.001
+      ) {
+        return;
+      }
+      await writePreferences(
+        { realtimeVoice: { ...previous, inworldSpeed: clamped } },
+        "voice",
+      );
+    },
+    [preferences, writePreferences],
+  );
+
+  /* ── render ──────────────────────────────────────────────── */
+
+  const orchestratorCurrent =
+    overrides.orchestrator ?? overrides.general ?? "";
+
+  const claudeCodeNotice =
+    preferences?.agentRuntimeEngine === "claude_code_local" &&
+    mediaTab === "agents";
+
+  return (
+    <div className="engine-tab__models">
+      <div className="engine-tab__models-head">
+        <h4 className="engine-tab__section-title">Models</h4>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="engine-tab__kebab"
+              title="More model actions"
+              aria-label="More model actions"
+            >
+              <MoreHorizontal size={15} strokeWidth={1.75} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
+            <DropdownMenuItem
+              disabled={refreshing}
+              onSelect={() => void refresh()}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <RefreshCw
+                  size={14}
+                  strokeWidth={1.75}
+                  data-spinning={refreshing || undefined}
+                />
+              </span>
+              Refresh model catalog
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={!orchestratorCurrent || inputsDisabled}
+              onSelect={() =>
+                void assignTo(
+                  orchestratorCurrent,
+                  configurableAgents.map((entry) => entry.key),
+                  preferences?.reasoningEfforts?.orchestrator ?? "default",
+                )
+              }
+            >
+              Apply orchestrator's model to all
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={inputsDisabled}
+              onSelect={() => void handleResetAll()}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <RotateCcw size={14} strokeWidth={1.75} />
+              </span>
+              Reset every agent to default
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <nav
+        className="engine-tab__media-tabs"
+        role="tablist"
+        aria-label="Media kind"
+      >
+        {MEDIA_TABS.map((tab) => {
+          const selected = tab.id === mediaTab;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              data-selected={selected || undefined}
+              className="engine-tab__media-tab"
+              onClick={() => onMediaTabChange(tab.id)}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="engine-tab__models-pane" role="tabpanel">
+        {mediaTab === "agents" ? (
+          claudeCodeNotice ? (
+            <p className="engine-tab__empty">
+              Claude Code handles local agents. Stella model choices apply
+              when Engine is Stella, Cursor, or Codex.
+            </p>
+          ) : (
+            <div
+              className="engine-tab__models-agents"
+              onClickCapture={handlePanelClickCapture}
+            >
+              <ProviderModelPanel
+                value=""
+                defaultLabel=""
+                currentLabel="Click a model to assign"
+                groups={groups}
+                disabled={inputsDisabled}
+                restrictStellaPicks={restricted}
+                restrictedPlanLabel={restrictedPlanLabel}
+                ariaLabel="Provider and model picker"
+                hideDefaultRow
+                selectedHeaderKicker="Tap a model"
+                hideSelectedTitle
+                onSelect={(modelId) => handleOpenAssignment(modelId)}
+              />
+            </div>
+          )
+        ) : mediaTab === "image" ? (
+          <ProviderOnlyPicker
+            providers={IMAGE_PROVIDER_OPTIONS}
+            value={imagePreferences.provider ?? "stella"}
+            onSelect={(key) => void onImageProviderSelect(key)}
+            disabled={inputsDisabled}
+            ariaLabel="Image provider"
+          />
+        ) : (
+          <div className="engine-tab__models-voice">
+            <ProviderOnlyPicker
+              providers={VOICE_PROVIDER_OPTIONS}
+              value={voicePreferences.provider ?? "stella"}
+              onSelect={(key) => void onVoiceProviderSelect(key)}
+              disabled={inputsDisabled}
+              ariaLabel="Voice provider"
+            />
+            <VoiceCatalogPicker
+              voiceProvider={voicePreferences.provider}
+              stellaSubProvider={voicePreferences.stellaSubProvider}
+              selectedVoices={voicePreferences.voices}
+              inworldSpeed={voicePreferences.inworldSpeed}
+              onSelectVoice={(underlying, voiceId) =>
+                void onVoiceSelect(underlying, voiceId)
+              }
+              onSelectStellaSubProvider={(sub) =>
+                void onVoiceSubProviderSelect(sub)
+              }
+              onSelectInworldSpeed={(speed) =>
+                void onInworldSpeedSelect(speed)
+              }
+              disabled={inputsDisabled}
+            />
+          </div>
+        )}
+      </div>
+
+      {assignment ? (
+        <AssignmentPopover
+          assignment={assignment}
+          configurableAgents={configurableAgents}
+          overrides={overrides}
+          reasoningEfforts={preferences?.reasoningEfforts ?? {}}
+          modelNamesById={modelNamesById}
+          pending={inputsDisabled}
+          onApply={(agents, effort) =>
+            void applyAssignment(assignment.modelId, agents, effort)
+          }
+          onApplyToAll={(effort) =>
+            void applyToAll(assignment.modelId, effort)
+          }
+          onClose={closeAssignment}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/* ── Connected providers section ─────────────────────────────── */
+
+function ConnectedProvidersSection() {
+  const t = useT();
+  const credentials = useLlmCredentials();
+  const [removingProvider, setRemovingProvider] = useState<string | null>(null);
+
+  const connectedProviders = useMemo(() => {
+    return LLM_PROVIDERS.map((entry) => {
+      const apiKey = findApiKey(credentials.apiKeys, entry.key);
+      const oauth = findOauthCredential(
+        credentials.oauthCredentials,
+        entry.key,
+      );
+      if (!apiKey && !oauth) return null;
+      return { ...entry, apiKey, oauth };
+    }).filter(Boolean) as Array<
+      (typeof LLM_PROVIDERS)[number] & {
+        apiKey: ReturnType<typeof findApiKey>;
+        oauth: ReturnType<typeof findOauthCredential>;
+      }
+    >;
+  }, [credentials.apiKeys, credentials.oauthCredentials]);
+
+  const handleRemove = useCallback(
+    async (providerKey: string, kind: "key" | "oauth") => {
+      setRemovingProvider(providerKey);
+      try {
+        if (kind === "key") {
+          await credentials.removeApiKey(providerKey);
+        } else {
+          await credentials.logoutOAuth(providerKey);
+        }
+      } catch {
+        // Failures surface via the credentials hook's `error` state on the
+        // next reload; nothing useful to do inline here.
+      } finally {
+        setRemovingProvider(null);
+      }
+    },
+    [credentials],
+  );
+
+  if (connectedProviders.length === 0 && !credentials.error) return null;
+
+  return (
+    <div className="engine-tab__connected">
+      <h4 className="engine-tab__section-title">
+        {t("settings.connectedProviders.title")}
+      </h4>
+      {credentials.error ? (
+        <p className="engine-tab__error" role="alert">
+          {credentials.error}
+        </p>
+      ) : null}
+      <ul className="engine-tab__connected-list">
+        {connectedProviders.map((provider) => {
+          const isRemoving = removingProvider === provider.key;
+          return (
+            <li
+              key={provider.key}
+              className="engine-tab__connected-row"
+            >
+              <div className="engine-tab__connected-info">
+                <span className="engine-tab__connected-label">
+                  {provider.label}
+                </span>
+                <span className="engine-tab__connected-sublabel">
+                  {provider.apiKey
+                    ? t("settings.connectedProviders.apiKey")
+                    : null}
+                  {provider.apiKey && provider.oauth ? " · " : null}
+                  {provider.oauth
+                    ? t("settings.connectedProviders.signedIn")
+                    : null}
+                </span>
+              </div>
+              <div className="engine-tab__connected-actions">
+                {provider.apiKey ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="engine-tab__connected-btn"
+                    onClick={() => void handleRemove(provider.key, "key")}
+                    disabled={isRemoving}
+                  >
+                    {isRemoving
+                      ? t("settings.connectedProviders.removingKey")
+                      : t("settings.connectedProviders.removeKey")}
+                  </Button>
+                ) : null}
+                {provider.oauth ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="engine-tab__connected-btn"
+                    onClick={() => void handleRemove(provider.key, "oauth")}
+                    disabled={isRemoving}
+                  >
+                    {isRemoving
+                      ? t("settings.connectedProviders.signingOut")
+                      : t("settings.connectedProviders.signOut")}
+                  </Button>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/* ── Assignment popover ─────────────────────────────────────── */
+
+interface AssignmentPopoverProps {
+  assignment: {
+    modelId: string;
+    rect: DOMRect;
+    initialReasoning: ReasoningEffort;
+    initialAgents: string[];
+  };
+  configurableAgents: ReadonlyArray<{
+    key: string;
+    label: string;
+    desc: string;
+  }>;
+  overrides: Record<string, string>;
+  reasoningEfforts: Record<string, ReasoningEffort>;
+  modelNamesById: ReadonlyMap<string, string>;
+  pending: boolean;
+  onApply: (agentKeys: string[], effort: ReasoningEffort) => void;
+  onApplyToAll: (effort: ReasoningEffort) => void;
+  onClose: () => void;
+}
+
+function AssignmentPopover({
+  assignment,
+  configurableAgents,
+  overrides,
+  reasoningEfforts,
+  modelNamesById,
+  pending,
+  onApply,
+  onApplyToAll,
+  onClose,
+}: AssignmentPopoverProps) {
+  const [reasoning, setReasoning] = useState<ReasoningEffort>(
+    assignment.initialReasoning,
+  );
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    () => new Set(assignment.initialAgents),
+  );
+
+  const modelDisplayName =
+    modelNamesById.get(assignment.modelId) ?? assignment.modelId;
+
+  const anchorStyle: React.CSSProperties = {
+    position: "fixed",
+    left: assignment.rect.left,
+    top: assignment.rect.top,
+    width: assignment.rect.width,
+    height: assignment.rect.height,
+    pointerEvents: "none",
+    visibility: "hidden",
+  };
+
+  const toggleAgent = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <PopoverPrimitive.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <PopoverPrimitive.Anchor asChild>
+        <span style={anchorStyle} aria-hidden />
+      </PopoverPrimitive.Anchor>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          data-component="popover-content"
+          className="engine-tab__assign-popover"
+          side="left"
+          align="start"
+          sideOffset={10}
+          collisionPadding={16}
+          style={{ zIndex: 9999 }}
+        >
+          <header className="engine-tab__assign-head">
+            <span className="engine-tab__assign-kicker">Apply</span>
+            <span
+              className="engine-tab__assign-title"
+              title={modelDisplayName}
+            >
+              {modelDisplayName}
+            </span>
+          </header>
+
+          <section
+            className="engine-tab__assign-reasoning"
+            role="radiogroup"
+            aria-label="Reasoning effort"
+          >
+            {REASONING_OPTIONS.map((option) => {
+              const isSelected = option.id === reasoning;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  data-selected={isSelected || undefined}
+                  className="engine-tab__assign-reasoning-btn"
+                  title={option.title}
+                  onClick={() => setReasoning(option.id)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </section>
+
+          <section
+            className="engine-tab__assign-agents"
+            role="group"
+            aria-label="Agents"
+          >
+            {configurableAgents.map((entry) => {
+              const isChecked = selected.has(entry.key);
+              const current = overrides[entry.key];
+              const sameModel = current === assignment.modelId;
+              const currentEffort = reasoningEfforts[entry.key] ?? "default";
+              const effortLabel =
+                REASONING_OPTIONS.find((opt) => opt.id === currentEffort)
+                  ?.label ?? "Auto";
+              const title = sameModel
+                ? `Currently using this model${
+                    currentEffort !== "default" ? ` · ${effortLabel}` : ""
+                  }`
+                : current
+                  ? `Currently: ${modelNamesById.get(current) ?? current}${
+                      currentEffort !== "default" ? ` · ${effortLabel}` : ""
+                    }`
+                  : "Currently default";
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={isChecked}
+                  className="engine-tab__assign-agent-pill"
+                  data-checked={isChecked || undefined}
+                  data-current={sameModel || undefined}
+                  title={title}
+                  onClick={() => toggleAgent(entry.key)}
+                >
+                  {entry.label}
+                </button>
+              );
+            })}
+          </section>
+
+          <footer className="engine-tab__assign-footer">
+            <button
+              type="button"
+              className="engine-tab__assign-apply-all"
+              disabled={pending}
+              onClick={() => onApplyToAll(reasoning)}
+              title="Apply this model to every configurable agent"
+            >
+              Apply to all
+            </button>
+            <div className="engine-tab__assign-footer-actions">
+              <button
+                type="button"
+                className="engine-tab__assign-cancel"
+                onClick={onClose}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="engine-tab__assign-apply"
+                disabled={pending}
+                onClick={() => onApply(Array.from(selected), reasoning)}
+              >
+                Apply
+              </button>
+            </div>
+          </footer>
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
   );
 }

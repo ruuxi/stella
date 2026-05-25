@@ -1,3 +1,8 @@
+/* Engine tab — single column for engine selection, BYOK setup, model
+ * assignment, image / voice providers, and connected accounts. Flat
+ * by design (no nested cards). The provider/model picker is reused
+ * from the settings page with a narrow-mode override here. */
+
 .display-sidebar__rich--engine {
   padding: 0;
 }
@@ -8,10 +13,12 @@
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px 14px 18px;
+  gap: 18px;
+  padding: 16px 14px 22px;
   color: var(--text-base);
 }
+
+/* ── header ───────────────────────────────────────────────────── */
 
 .engine-tab__header {
   display: flex;
@@ -38,8 +45,8 @@
   min-height: calc(12px * 1.35);
 }
 
-/* Reserved single-line status slot: messages fade in/out in place
-   instead of pushing the rest of the panel down. */
+/* Reserved single-line status slot: messages fade in / out without
+ * pushing surrounding content. */
 .engine-tab__status-slot {
   height: 22px;
   padding: 0 2px;
@@ -54,6 +61,7 @@
     transform 160ms cubic-bezier(0.22, 0.61, 0.36, 1),
     color 120ms ease;
   pointer-events: none;
+  margin-top: -10px;
 }
 
 .engine-tab__status-slot[data-kind="notice"],
@@ -65,6 +73,8 @@
 .engine-tab__status-slot[data-kind="error"] {
   color: var(--danger, #b42318);
 }
+
+/* ── engine cards ─────────────────────────────────────────────── */
 
 .engine-tab__engine-list {
   display: grid;
@@ -126,24 +136,15 @@
   min-height: calc(11px * 1.25);
 }
 
-/* Stable height so toggling between Stella / Cursor / Codex / Claude Code
-   doesn't shove the panel around. Tall enough for the Cursor config
-   (key + model list); shorter configs render inside this slot. */
-.engine-tab__config-slot {
-  position: relative;
-  min-height: 280px;
-}
+/* ── BYOK block (Cursor key + Cursor / Codex model) ───────────── */
 
-.engine-tab__config {
+.engine-tab__byok {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   padding: 2px;
+  margin-top: -4px;
   animation: engine-tab-fade-in 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-.engine-tab__config--idle {
-  animation: none;
 }
 
 @keyframes engine-tab-fade-in {
@@ -248,7 +249,14 @@
   font-size: 12px;
 }
 
-.engine-tab__model-list {
+.engine-tab__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-weak);
+  line-height: 1.35;
+}
+
+.engine-tab__cursor-model-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -257,27 +265,9 @@
   overflow: auto;
   padding-right: 2px;
   scrollbar-width: thin;
-  transition: opacity 120ms ease;
 }
 
-.engine-tab__model-list[aria-busy="true"] {
-  opacity: 0.6;
-}
-
-.engine-tab__model-list[data-empty] {
-  align-items: stretch;
-  justify-content: center;
-}
-
-.engine-tab__model-empty {
-  margin: 0;
-  padding: 12px 4px;
-  font-size: 12px;
-  color: var(--text-weak);
-  text-align: center;
-}
-
-.engine-tab__model-option {
+.engine-tab__cursor-model-option {
   appearance: none;
   display: flex;
   align-items: baseline;
@@ -297,29 +287,29 @@
     background 120ms ease;
 }
 
-.engine-tab__model-option:hover:not(:disabled),
-.engine-tab__model-option:focus-visible {
+.engine-tab__cursor-model-option:hover:not(:disabled),
+.engine-tab__cursor-model-option:focus-visible {
   outline: none;
   background: color-mix(in oklch, var(--text-strong) 5%, transparent);
 }
 
-.engine-tab__model-option[data-selected] {
+.engine-tab__cursor-model-option[data-selected] {
   border-color: color-mix(in oklch, var(--accent, #2f6df6) 45%, var(--border));
   background: color-mix(in oklch, var(--accent, #2f6df6) 8%, transparent);
 }
 
-.engine-tab__model-option:disabled {
+.engine-tab__cursor-model-option:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.engine-tab__model-option span {
+.engine-tab__cursor-model-option span {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-strong);
 }
 
-.engine-tab__model-option small {
+.engine-tab__cursor-model-option small {
   font-size: 11px;
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
@@ -369,4 +359,451 @@
 .engine-tab__segment:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+/* ── section title (used by Models + Connected) ──────────────── */
+
+.engine-tab__section-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-weaker, var(--text-weak));
+}
+
+/* ── Models section ──────────────────────────────────────────── */
+
+.engine-tab__models {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  position: relative;
+}
+
+.engine-tab__models-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.engine-tab__kebab {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: var(--radius-full, 999px);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  flex-shrink: 0;
+}
+
+.engine-tab__kebab:hover,
+.engine-tab__kebab:focus-visible {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--text-strong) 5%, transparent);
+  border-color: color-mix(in oklch, var(--border) 55%, transparent);
+  outline: none;
+}
+
+.engine-tab__kebab svg[data-spinning] {
+  animation: engine-tab-spin 700ms linear infinite;
+}
+
+@keyframes engine-tab-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Media tabs (Agents / Image / Voice) — thin segmented underline */
+.engine-tab__media-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
+}
+
+.engine-tab__media-tab {
+  appearance: none;
+  position: relative;
+  padding: 8px 12px 9px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-weak);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.engine-tab__media-tab::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  background: transparent;
+  border-radius: 2px;
+  transition: background 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.engine-tab__media-tab:hover {
+  color: var(--text-strong);
+}
+
+.engine-tab__media-tab[data-selected] {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.engine-tab__media-tab[data-selected]::after {
+  background: var(--text-strong);
+}
+
+.engine-tab__models-pane {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.engine-tab__models-agents {
+  min-width: 0;
+}
+
+.engine-tab__models-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.engine-tab__empty {
+  margin: 0;
+  padding: 24px 4px;
+  color: var(--text-weak);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* Narrow-mode override for the embedded ProviderModelPanel: the
+ * settings page version uses a 180px provider rail + 1fr models grid,
+ * which feels cramped in the display sidebar. Trim the rail and let
+ * the picker breathe a bit shorter so a typical 380–520 px sidebar
+ * still shows the full set of agents in the assignment popover. */
+.engine-tab__models-agents .model-picker-shell {
+  grid-template-columns: 130px minmax(0, 1fr);
+  height: clamp(320px, 48vh, 440px);
+  border: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+}
+
+.engine-tab__models-agents .model-picker-rail {
+  padding: 6px;
+}
+
+/* ── Connected providers ─────────────────────────────────────── */
+
+.engine-tab__connected {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.engine-tab__connected-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.engine-tab__connected-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md, 8px);
+  transition: background 120ms ease;
+}
+
+.engine-tab__connected-row:hover {
+  background: color-mix(in oklch, var(--text-strong) 3%, transparent);
+}
+
+.engine-tab__connected-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.engine-tab__connected-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.005em;
+}
+
+.engine-tab__connected-sublabel {
+  font-size: 11.5px;
+  color: var(--text-weak);
+}
+
+.engine-tab__connected-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.engine-tab__connected-btn[data-component="button"] {
+  height: 26px;
+  padding-inline: 10px;
+  font-size: 11.5px;
+  color: var(--text-weak);
+  border: 1px solid transparent;
+}
+
+.engine-tab__connected-btn[data-component="button"]:hover:not(:disabled) {
+  color: var(--danger, #b42318);
+  border-color: color-mix(in oklch, var(--danger, #b42318) 35%, transparent);
+  background: color-mix(in oklch, var(--danger, #b42318) 7%, transparent);
+}
+
+.engine-tab__error {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger, #b42318);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--danger, #b42318) 8%, transparent);
+}
+
+/* ── Assignment popover ──────────────────────────────────────── */
+
+.engine-tab__assign-popover {
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border-weak, color-mix(in oklch, var(--border) 55%, transparent));
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 8px 28px rgba(0, 0, 0, 0.18);
+  color: var(--text-base);
+  font-family: inherit;
+}
+
+.engine-tab__assign-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.engine-tab__assign-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-weaker, var(--text-weak));
+}
+
+.engine-tab__assign-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engine-tab__assign-reasoning {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  align-self: stretch;
+}
+
+.engine-tab__assign-reasoning-btn {
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-sm, 5px);
+  background: transparent;
+  color: var(--text-weak);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition:
+    background 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.engine-tab__assign-reasoning-btn:hover,
+.engine-tab__assign-reasoning-btn:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+  outline: none;
+}
+
+.engine-tab__assign-reasoning-btn[data-selected] {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.engine-tab__assign-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 2px 0;
+}
+
+.engine-tab__assign-agent-pill {
+  appearance: none;
+  position: relative;
+  padding: 5px 11px;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  background: transparent;
+  color: var(--text-weak);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition:
+    background 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.engine-tab__assign-agent-pill:hover,
+.engine-tab__assign-agent-pill:focus-visible {
+  border-color: var(--border);
+  color: var(--text-strong);
+  outline: none;
+}
+
+.engine-tab__assign-agent-pill[data-current]::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--text-weak) 70%, transparent);
+  transform: translateY(-50%);
+}
+
+.engine-tab__assign-agent-pill[data-current] {
+  padding-left: 14px;
+}
+
+.engine-tab__assign-agent-pill[data-checked] {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+  color: var(--background);
+  font-weight: 600;
+}
+
+.engine-tab__assign-agent-pill[data-checked]::before {
+  background: var(--background);
+}
+
+.engine-tab__assign-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.engine-tab__assign-footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.engine-tab__assign-apply-all,
+.engine-tab__assign-cancel,
+.engine-tab__assign-apply {
+  appearance: none;
+  padding: 5px 10px;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  background: transparent;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  transition:
+    background 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.engine-tab__assign-apply-all:hover:not(:disabled),
+.engine-tab__assign-cancel:hover:not(:disabled),
+.engine-tab__assign-apply:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-color: var(--border);
+}
+
+.engine-tab__assign-cancel {
+  color: var(--text-weak);
+  border-color: transparent;
+}
+
+.engine-tab__assign-cancel:hover {
+  color: var(--text-strong);
+}
+
+.engine-tab__assign-apply {
+  background: var(--text-strong);
+  color: var(--background);
+  border-color: transparent;
+}
+
+.engine-tab__assign-apply:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--text-strong) 92%, transparent);
+  border-color: transparent;
+}
+
+.engine-tab__assign-apply:disabled,
+.engine-tab__assign-apply-all:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }

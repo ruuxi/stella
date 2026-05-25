@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { router } from "@/router";
+import { openEngineDisplayTab } from "@/shell/display/default-tabs";
 import {
   lazy,
   Suspense,
@@ -217,7 +218,10 @@ export const ShellTopBarAccount = ({
 
   useEffect(() => {
     const handler = () => {
-      void router.navigate({ to: "/settings", search: { tab: "models" } });
+      // Models settings moved into the workspace panel's Engine tab.
+      // Navigate to /chat so the panel is visible, then activate it.
+      void router.navigate({ to: "/chat" });
+      openEngineDisplayTab();
     };
     window.addEventListener("stella:open-model-picker", handler);
     return () => {

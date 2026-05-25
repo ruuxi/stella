@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, Cpu, Sliders } from "lucide-react";
 import { router } from "@/router";
+import { openEngineDisplayTab } from "@/shell/display/default-tabs";
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -398,11 +399,15 @@ export function ComposerModelMenuItem() {
   );
 
   const handleAdvanced = useCallback(() => {
-    void router.navigate({ to: "/settings", search: { tab: "models" } });
+    // Advanced model settings now live in the workspace panel's
+    // Engine tab. Make sure the user lands on /chat so the panel
+    // actually shows when the tab is activated.
+    void router.navigate({ to: "/chat" });
+    openEngineDisplayTab();
   }, []);
 
   // Engine is a global runtime choice (Stella's own runner vs the
-  // local external engines). Mirrors the toggle in Settings → Models.
+  // local external engines). Mirrors the toggle in the Engine tab.
   const currentEngine: VisibleAgentRuntimeEngine =
     preferences?.agentRuntimeEngine ?? "default";
 
