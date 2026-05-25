@@ -87,8 +87,11 @@ export const bootstrapMainProcess = () => {
   // Stella ships its own chrome (custom top bar, custom window controls on
   // Windows). Electron's default application menu otherwise renders an
   // in-window File/Edit/View/Window/Help bar on Windows/Linux directly below
-  // the native title bar, doubling up with our top bar.
-  Menu.setApplicationMenu(null)
+  // the native title bar, doubling up with our top bar. Keep macOS' native
+  // app menu so standard Edit roles continue to provide Cmd+C/Cmd+V/etc.
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null)
+  }
   if (process.platform === 'win32') {
     app.setAppUserModelId(STELLA_WINDOWS_APP_USER_MODEL_ID)
   }
