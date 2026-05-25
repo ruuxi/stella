@@ -496,6 +496,7 @@ export const runChronicleSummary = async (args: {
           await runClaudeCodeAgentTextCompletion({
             stellaRoot: args.stellaHome,
             agentType: AGENT_IDS.CHRONICLE,
+            stellaModel: args.resolvedLlm.model.id,
             context,
           })
         ).trim();

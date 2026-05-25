@@ -410,6 +410,7 @@ const generateReport = async (args: {
       const finalText = await runClaudeCodeAgentTextCompletion({
         stellaRoot: args.stellaRoot,
         agentType: AGENT_IDS.OPEN_PANEL_REPORTS,
+        stellaModel: args.resolvedLlm.model.id,
         context,
         executeTool: async (_toolCallId, toolName, toolArgs) => {
           if (toolName !== EMIT_REPORT_TOOL.name) {

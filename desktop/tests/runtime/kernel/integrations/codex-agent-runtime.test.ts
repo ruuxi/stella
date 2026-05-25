@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -9,10 +11,14 @@ import {
   buildCodexPromptFromMessages,
   codexImagePathFromFileUrl,
   fileChangesFromCodexItem,
+  getCodexRuntimePreferences,
   runCodexAgentTurn,
   shouldUseCodexAgentRuntime,
 } from "../../../../../runtime/kernel/integrations/codex-agent-runtime.js";
-import { DEFAULT_CODEX_MODEL } from "../../../../../runtime/kernel/preferences/local-preferences.js";
+import {
+  DEFAULT_CODEX_MODEL,
+  updateLocalModelPreferences,
+} from "../../../../../runtime/kernel/preferences/local-preferences.js";
 
 describe("Codex agent runtime", () => {
   it("routes every spawned agent type to Codex when the shared engine is selected", () => {
@@ -115,6 +121,54 @@ describe("Codex agent runtime", () => {
       model: DEFAULT_CODEX_MODEL,
       effort: "high",
     });
+  });
+
+  it("uses the Codex mini model for agents that default to Stella Light", () => {
+    const previousModel = process.env.STELLA_CODEX_MODEL;
+    delete process.env.STELLA_CODEX_MODEL;
+    try {
+      expect(
+        getCodexRuntimePreferences(undefined, "stella/light").model,
+      ).toBe("gpt-5.4-mini");
+      expect(
+        getCodexRuntimePreferences(undefined, "stella/standard").model,
+      ).toBe(DEFAULT_CODEX_MODEL);
+    } finally {
+      if (previousModel === undefined) {
+        delete process.env.STELLA_CODEX_MODEL;
+      } else {
+        process.env.STELLA_CODEX_MODEL = previousModel;
+      }
+    }
+  });
+
+  it("keeps an explicit Codex model preference for Stella Light agents", () => {
+    const previousModel = process.env.STELLA_CODEX_MODEL;
+    delete process.env.STELLA_CODEX_MODEL;
+    const stellaHome = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-codex-light-model-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaHome, {
+        codexModel: "gpt-5.5",
+      });
+      expect(getCodexRuntimePreferences(stellaHome, "stella/light").model).toBe(
+        "gpt-5.4-mini",
+      );
+      updateLocalModelPreferences(stellaHome, {
+        codexModel: "custom-codex-model",
+      });
+      expect(getCodexRuntimePreferences(stellaHome, "stella/light").model).toBe(
+        "custom-codex-model",
+      );
+    } finally {
+      fs.rmSync(stellaHome, { recursive: true, force: true });
+      if (previousModel === undefined) {
+        delete process.env.STELLA_CODEX_MODEL;
+      } else {
+        process.env.STELLA_CODEX_MODEL = previousModel;
+      }
+    }
   });
 
   it("decodes file URL image attachment paths before passing them to Codex", () => {

@@ -516,7 +516,11 @@ const runClaudeHostedTurn = async (args: {
     runId,
     sessionKey,
     persistedSessionId,
-    modelId: getClaudeCodeAgentModelId(args.opts.stellaRoot),
+    modelId: getClaudeCodeAgentModelId(
+      args.opts.stellaRoot,
+      args.opts.agentContext.model,
+      args.opts.agentType,
+    ),
     prompt,
     ...(resumeFallbackPrompt ? { resumeFallbackPrompt } : {}),
     systemPrompt: args.systemPrompt,
@@ -564,7 +568,11 @@ const runClaudeHostedTurn = async (args: {
       runId,
       sessionKey,
       persistedSessionId: finalResult.sessionId,
-      modelId: getClaudeCodeAgentModelId(args.opts.stellaRoot),
+      modelId: getClaudeCodeAgentModelId(
+        args.opts.stellaRoot,
+        args.opts.agentContext.model,
+        args.opts.agentType,
+      ),
       prompt: queuedPrompt,
       ...(queuedResumeFallbackPrompt
         ? { resumeFallbackPrompt: queuedResumeFallbackPrompt }
@@ -818,6 +826,7 @@ const runCodexHostedTurn = async (args: {
     cwd: localCliCwd,
     stellaHome: args.opts.stellaHome,
     stellaRoot: args.opts.stellaRoot,
+    stellaModel: args.opts.agentContext.model,
     attachments: args.opts.attachments,
     tools: toolMetadata,
     abortSignal: args.opts.abortSignal,

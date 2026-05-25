@@ -259,6 +259,7 @@ export const runContextLookup = async (args: {
     const text = await runClaudeCodeAgentTextCompletion({
       stellaRoot: args.stellaRoot,
       agentType: AGENT_IDS.ORCHESTRATOR,
+      stellaModel: args.resolvedLlm.model.id,
       context,
       abortSignal: args.signal,
     });
