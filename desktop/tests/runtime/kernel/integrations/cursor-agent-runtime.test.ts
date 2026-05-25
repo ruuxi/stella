@@ -1,13 +1,20 @@
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import {
   buildCursorPromptFromMessages,
   diffCursorWorktreeSnapshots,
   parseCursorGitStatus,
+  snapshotCursorWorktree,
   shouldUseCursorAgentRuntime,
   type CursorWorktreeSnapshot,
 } from "../../../../../runtime/kernel/integrations/cursor-agent-runtime.js";
+
+const execFileAsync = promisify(execFile);
 
 const snapshot = (
   status: string,
@@ -80,6 +87,28 @@ describe("Cursor agent runtime", () => {
         kind: { type: "add" },
       },
     ]);
+  });
+
+  it("snapshots files inside newly-created directories", async () => {
+    const repoRoot = await mkdtemp(path.join(os.tmpdir(), "stella-cursor-snap-"));
+    try {
+      await execFileAsync("git", ["init"], { cwd: repoRoot });
+      await mkdir(path.join(repoRoot, "src", "new-dir"), { recursive: true });
+      await writeFile(
+        path.join(repoRoot, "src", "new-dir", "created.ts"),
+        "export const created = true;\n",
+        "utf8",
+      );
+
+      const tree = await snapshotCursorWorktree(repoRoot);
+      expect(tree?.entries.has("src/new-dir/")).toBe(false);
+      expect(tree?.entries.get("src/new-dir/created.ts")).toMatchObject({
+        path: "src/new-dir/created.ts",
+        status: "??",
+      });
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
   });
 
   it("preserves rename destinations from git porcelain status", () => {

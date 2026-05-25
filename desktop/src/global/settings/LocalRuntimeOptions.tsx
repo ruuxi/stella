@@ -4,11 +4,12 @@ import "./LocalRuntimeOptions.css";
 
 const ENGINE_OPTIONS = [
   { id: "default", label: "Stella" },
+  { id: "cursor_sdk", label: "Cursor" },
+  { id: "codex_cli", label: "Codex" },
   { id: "claude_code_local", label: "Claude Code" },
 ] as const;
 
 type EngineId = (typeof ENGINE_OPTIONS)[number]["id"];
-type StoredEngineId = EngineId | "cursor_sdk" | "codex_cli";
 
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
@@ -17,7 +18,7 @@ type LocalModelPreferences = {
     string,
     "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >;
-  agentRuntimeEngine: StoredEngineId;
+  agentRuntimeEngine: EngineId;
   cursorModel: string;
   codexModel: string;
 };
@@ -60,9 +61,7 @@ export function LocalRuntimeOptions() {
 
   const ready = preferences !== null;
   const engine: EngineId =
-    preferences?.agentRuntimeEngine === "claude_code_local"
-      ? "claude_code_local"
-      : "default";
+    preferences?.agentRuntimeEngine ?? "default";
 
   const handleEngineChange = useCallback(
     async (next: EngineId) => {
@@ -102,7 +101,7 @@ export function LocalRuntimeOptions() {
         <div className="local-runtime-options-row-info">
           <div className="local-runtime-options-row-label">Engine</div>
           <div className="local-runtime-options-row-sublabel">
-            Optionally use Claude Code for all agents.
+            Choose the engine for spawned agents.
           </div>
         </div>
         <div

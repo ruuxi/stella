@@ -131,6 +131,7 @@ export const snapshotCursorWorktree = async (
     "core.quotepath=false",
     "status",
     "--porcelain",
+    "--untracked-files=all",
   ]);
   if (!status.ok) return null;
   const entries = parseCursorGitStatus(status.stdout);

@@ -83,6 +83,7 @@ type LocalModelPreferencesShape = {
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
 };
+type AgentRuntimeEngine = LocalModelPreferencesShape["agentRuntimeEngine"];
 
 const REASONING_OPTIONS: ReadonlyArray<{
   id: ReasoningEffort;
@@ -160,10 +161,12 @@ const MEDIA_TABS: ReadonlyArray<{ id: MediaTab; label: string }> = [
 ];
 
 const ENGINE_OPTIONS: ReadonlyArray<{
-  id: "default" | "claude_code_local";
+  id: AgentRuntimeEngine;
   label: string;
 }> = [
   { id: "default", label: "Stella" },
+  { id: "cursor_sdk", label: "Cursor" },
+  { id: "codex_cli", label: "Codex" },
   { id: "claude_code_local", label: "Claude Code" },
 ];
 
@@ -497,14 +500,12 @@ export function SettingsModelsView() {
 
   /* ── global engine ───────────────────────────────────────────── */
 
-  const engine: "default" | "claude_code_local" =
-    preferences?.agentRuntimeEngine === "claude_code_local"
-      ? "claude_code_local"
-      : "default";
+  const engine: AgentRuntimeEngine =
+    preferences?.agentRuntimeEngine ?? "default";
   const engineLabel =
     ENGINE_OPTIONS.find((opt) => opt.id === engine)?.label ?? "Stella";
   const handleEngineChange = useCallback(
-    async (next: "default" | "claude_code_local") => {
+    async (next: AgentRuntimeEngine) => {
       if (!preferences || preferences.agentRuntimeEngine === next) return;
       await write({ agentRuntimeEngine: next });
     },
@@ -610,6 +611,14 @@ export function SettingsModelsView() {
     const loading = configurableAgents.length === 0;
     if (loading && !preferences) {
       return <div className="models-detail--empty">Loading…</div>;
+    }
+    if (engine !== "default") {
+      return (
+        <div className="models-detail--empty">
+          {engineLabel} handles spawned agents. Stella model choices apply when
+          Engine is Stella.
+        </div>
+      );
     }
     return (
       <div
@@ -723,9 +732,7 @@ export function SettingsModelsView() {
               <DropdownMenuRadioGroup
                 value={engine}
                 onValueChange={(next) =>
-                  void handleEngineChange(
-                    (next as "default" | "claude_code_local") ?? "default",
-                  )
+                  void handleEngineChange((next as AgentRuntimeEngine) ?? "default")
                 }
               >
                 {ENGINE_OPTIONS.map((option) => (
