@@ -34,6 +34,7 @@ import {
 
 type AgentEngine = AgentRuntimeEngine;
 export const DEFAULT_CURSOR_MODEL = "composer-latest";
+export const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
 export type ReasoningEffort =
   | "default"
   | "minimal"
@@ -88,6 +89,8 @@ export type LocalPreferences = {
   agentRuntimeEngine: AgentEngine;
   /** Cursor model id used when the Cursor engine is selected. */
   cursorModel: string;
+  /** Codex model id used when the Codex engine is selected. */
+  codexModel: string;
   /** Shared max concurrency across all agent task execution */
   maxAgentConcurrency: number;
   /** Image generation provider/model. Stella is the managed default. */
@@ -143,6 +146,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "reasoningEfforts"
   | "agentRuntimeEngine"
   | "cursorModel"
+  | "codexModel"
   | "maxAgentConcurrency"
   | "imageGeneration"
   | "realtimeVoice"
@@ -160,6 +164,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   personalityVoiceId: undefined,
   agentRuntimeEngine: "default",
   cursorModel: DEFAULT_CURSOR_MODEL,
+  codexModel: DEFAULT_CODEX_MODEL,
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   imageGeneration: { provider: "stella" },
   realtimeVoice: { provider: "stella" },
@@ -213,6 +218,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
           : DEFAULT_PREFERENCES.personalityVoiceId,
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
       cursorModel: normalizeCursorModel(parsed.cursorModel),
+      codexModel: normalizeCodexModel(parsed.codexModel),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       imageGeneration: normalizeImageGenerationPreferences(
         parsed.imageGeneration,
@@ -360,6 +366,7 @@ export const getLocalModelPreferences = (
     reasoningEfforts: { ...prefs.reasoningEfforts },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
     cursorModel: prefs.cursorModel,
+    codexModel: prefs.codexModel,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
     imageGeneration: { ...prefs.imageGeneration },
     realtimeVoice: { ...prefs.realtimeVoice },
@@ -397,6 +404,10 @@ export const updateLocalModelPreferences = (
       patch.cursorModel === undefined
         ? prefs.cursorModel
         : normalizeCursorModel(patch.cursorModel),
+    codexModel:
+      patch.codexModel === undefined
+        ? prefs.codexModel
+        : normalizeCodexModel(patch.codexModel),
     maxAgentConcurrency:
       patch.maxAgentConcurrency === undefined
         ? prefs.maxAgentConcurrency
@@ -486,6 +497,12 @@ const normalizeCursorModel = (value: unknown): string => {
   if (typeof value !== "string") return DEFAULT_CURSOR_MODEL;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : DEFAULT_CURSOR_MODEL;
+};
+
+const normalizeCodexModel = (value: unknown): string => {
+  if (typeof value !== "string") return DEFAULT_CODEX_MODEL;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : DEFAULT_CODEX_MODEL;
 };
 
 const normalizeReasoningEffort = (value: unknown): ReasoningEffort => {

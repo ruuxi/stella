@@ -62,8 +62,15 @@ const REASONING_OPTIONS: ReadonlyArray<{
 
 const ASSISTANT_WRITE_KEYS = ["orchestrator", "general"] as const;
 
-type AgentRuntimeEngine = "default" | "claude_code_local" | "cursor_sdk";
-type VisibleAgentRuntimeEngine = Exclude<AgentRuntimeEngine, "cursor_sdk">;
+type AgentRuntimeEngine =
+  | "default"
+  | "claude_code_local"
+  | "cursor_sdk"
+  | "codex_cli";
+type VisibleAgentRuntimeEngine = Exclude<
+  AgentRuntimeEngine,
+  "cursor_sdk" | "codex_cli"
+>;
 
 const ENGINE_OPTIONS: ReadonlyArray<{
   id: VisibleAgentRuntimeEngine;
@@ -80,6 +87,7 @@ type LocalModelPreferencesShape = {
   reasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: AgentRuntimeEngine;
   cursorModel: string;
+  codexModel: string;
 };
 
 // Module-scope snapshot so re-opening the menu doesn't flash a loading
@@ -109,6 +117,7 @@ function localModelPreferencesEqual(
   return (
     left.agentRuntimeEngine === right.agentRuntimeEngine &&
     left.cursorModel === right.cursorModel &&
+    left.codexModel === right.codexModel &&
     recordsEqual(left.defaultModels, right.defaultModels) &&
     recordsEqual(left.modelOverrides, right.modelOverrides) &&
     recordsEqual(left.reasoningEfforts, right.reasoningEfforts) &&

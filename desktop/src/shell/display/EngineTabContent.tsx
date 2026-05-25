@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./engine-tab.css";
 
-type AgentRuntimeEngine = "default" | "claude_code_local" | "cursor_sdk";
+type AgentRuntimeEngine =
+  | "default"
+  | "claude_code_local"
+  | "cursor_sdk"
+  | "codex_cli";
 
 type LocalModelPreferences = {
   agentRuntimeEngine: AgentRuntimeEngine;
   cursorModel: string;
+  codexModel: string;
 };
 
 type CursorModelOption = {
@@ -31,6 +36,11 @@ const ENGINE_OPTIONS: ReadonlyArray<{
     detail: "Use Cursor for spawned general agents.",
   },
   {
+    id: "codex_cli",
+    label: "Codex",
+    detail: "Use the local Codex runner for spawned general agents.",
+  },
+  {
     id: "claude_code_local",
     label: "Claude Code",
     detail: "Use the local Claude Code runner.",
@@ -38,6 +48,7 @@ const ENGINE_OPTIONS: ReadonlyArray<{
 ];
 
 const DEFAULT_CURSOR_MODEL = "composer-latest";
+const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
 
 const errorText = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message.trim() ? error.message : fallback;
@@ -51,6 +62,7 @@ export function EngineTabContent() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [modelDraft, setModelDraft] = useState(DEFAULT_CURSOR_MODEL);
+  const [codexModelDraft, setCodexModelDraft] = useState(DEFAULT_CODEX_MODEL);
   const [manualModelOpen, setManualModelOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<"engine" | "key" | "model" | null>(
@@ -63,6 +75,9 @@ export function EngineTabContent() {
   const cursorReady = selectedEngine === "cursor_sdk" && hasCursorApiKey;
   const modelChanged =
     modelDraft.trim() !== (preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL);
+  const codexModelChanged =
+    codexModelDraft.trim() !==
+    (preferences?.codexModel ?? DEFAULT_CODEX_MODEL);
   const selectedModelId = preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL;
 
   const loadCursorModels = useCallback(async () => {
@@ -90,8 +105,10 @@ export function EngineTabContent() {
         setPreferences({
           agentRuntimeEngine: prefs.agentRuntimeEngine,
           cursorModel: prefs.cursorModel || DEFAULT_CURSOR_MODEL,
+          codexModel: prefs.codexModel || DEFAULT_CODEX_MODEL,
         });
         setModelDraft(prefs.cursorModel || DEFAULT_CURSOR_MODEL);
+        setCodexModelDraft(prefs.codexModel || DEFAULT_CODEX_MODEL);
       }
       const nextHasKey = Boolean(keyStatus?.hasApiKey);
       setHasCursorApiKey(nextHasKey);
@@ -130,6 +147,7 @@ export function EngineTabContent() {
           setPreferences({
             agentRuntimeEngine: saved.agentRuntimeEngine,
             cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
+            codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
           });
         }
         setNotice(`${ENGINE_OPTIONS.find((opt) => opt.id === engine)?.label ?? "Engine"} selected.`);
@@ -182,6 +200,7 @@ export function EngineTabContent() {
         setPreferences({
           agentRuntimeEngine: saved.agentRuntimeEngine,
           cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
+          codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
         });
         setModelDraft(saved.cursorModel || DEFAULT_CURSOR_MODEL);
       }
@@ -209,6 +228,7 @@ export function EngineTabContent() {
           setPreferences({
             agentRuntimeEngine: saved.agentRuntimeEngine,
             cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
+            codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
           });
           setModelDraft(saved.cursorModel || DEFAULT_CURSOR_MODEL);
         }
@@ -222,11 +242,39 @@ export function EngineTabContent() {
     [preferences, saving],
   );
 
+  const saveCodexModel = useCallback(async () => {
+    if (!preferences || saving) return;
+    const nextModel = codexModelDraft.trim() || DEFAULT_CODEX_MODEL;
+    setSaving("model");
+    setNotice(null);
+    setError(null);
+    try {
+      const saved =
+        await window.electronAPI?.system?.setLocalModelPreferences?.({
+          codexModel: nextModel,
+        });
+      if (saved) {
+        setPreferences({
+          agentRuntimeEngine: saved.agentRuntimeEngine,
+          cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
+          codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
+        });
+        setCodexModelDraft(saved.codexModel || DEFAULT_CODEX_MODEL);
+      }
+      setNotice("Codex model saved.");
+    } catch (caught) {
+      setError(errorText(caught, "Codex model was not saved."));
+    } finally {
+      setSaving(null);
+    }
+  }, [codexModelDraft, preferences, saving]);
+
   const statusLabel = useMemo(() => {
     if (loading) return "Loading";
     if (cursorReady) return "Cursor ready";
     if (selectedEngine === "cursor_sdk") return "Cursor needs a key";
-    return "Cursor available";
+    if (selectedEngine === "codex_cli") return "Codex ready";
+    return "Engines available";
   }, [cursorReady, loading, selectedEngine]);
 
   return (
@@ -376,6 +424,32 @@ export function EngineTabContent() {
               Refresh models
             </button>
           ) : null}
+        </div>
+
+        <div className="engine-tab__section">
+          <div className="engine-tab__section-copy">
+            <h3>Codex model</h3>
+            <p>Use the model id Codex should run for spawned agents.</p>
+          </div>
+          <div className="engine-tab__field-row">
+            <input
+              type="text"
+              value={codexModelDraft}
+              placeholder={DEFAULT_CODEX_MODEL}
+              className="engine-tab__input"
+              spellCheck={false}
+              disabled={loading || Boolean(saving)}
+              onChange={(event) => setCodexModelDraft(event.target.value)}
+            />
+            <button
+              type="button"
+              className="pill-btn pill-btn--primary"
+              disabled={loading || saving === "model" || !codexModelChanged}
+              onClick={() => void saveCodexModel()}
+            >
+              Save
+            </button>
+          </div>
         </div>
       </section>
     </div>

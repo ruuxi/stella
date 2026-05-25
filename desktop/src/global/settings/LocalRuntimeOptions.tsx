@@ -8,7 +8,7 @@ const ENGINE_OPTIONS = [
 ] as const;
 
 type EngineId = (typeof ENGINE_OPTIONS)[number]["id"];
-type StoredEngineId = EngineId | "cursor_sdk";
+type StoredEngineId = EngineId | "cursor_sdk" | "codex_cli";
 
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
@@ -19,6 +19,7 @@ type LocalModelPreferences = {
   >;
   agentRuntimeEngine: StoredEngineId;
   cursorModel: string;
+  codexModel: string;
 };
 
 /**

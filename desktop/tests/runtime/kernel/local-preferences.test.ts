@@ -137,6 +137,19 @@ describe("loadLocalPreferences", () => {
     );
   });
 
+  it("preserves the Codex runtime engine preference", () => {
+    const stellaHome = makeStellaHome();
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      agentRuntimeEngine: "codex_cli",
+    });
+
+    expect(saved.agentRuntimeEngine).toBe("codex_cli");
+    expect(loadLocalPreferences(stellaHome).agentRuntimeEngine).toBe(
+      "codex_cli",
+    );
+  });
+
   it("preserves the Cursor model preference", () => {
     const stellaHome = makeStellaHome();
 
@@ -147,6 +160,19 @@ describe("loadLocalPreferences", () => {
     expect(saved.cursorModel).toBe("custom-cursor-model");
     expect(loadLocalPreferences(stellaHome).cursorModel).toBe(
       "custom-cursor-model",
+    );
+  });
+
+  it("preserves the Codex model preference", () => {
+    const stellaHome = makeStellaHome();
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      codexModel: "custom-codex-model",
+    });
+
+    expect(saved.codexModel).toBe("custom-codex-model");
+    expect(loadLocalPreferences(stellaHome).codexModel).toBe(
+      "custom-codex-model",
     );
   });
 

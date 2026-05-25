@@ -324,16 +324,12 @@ export const runCursorAgentTurn = async (request: {
         apiKey,
         model,
         local,
-        mcpServers: {},
-        agents: {},
       })
     : await Agent.create({
         apiKey,
         name: "Stella General",
         model,
         local,
-        mcpServers: {},
-        agents: {},
         idempotencyKey: request.sessionKey,
       });
 
