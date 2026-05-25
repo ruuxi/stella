@@ -927,6 +927,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }
     };
 
+    const externalSelfModPathsByRun = new Map<string, string[]>();
+
     state.beginExternalSelfModWithMorph = async ({ runId, paths }) => {
       if (!state.selfModHmrController) {
         throw new Error("Self-mod HMR controller is not initialized.");
@@ -948,7 +950,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             : path.join(init.stellaRoot, filePath),
         );
         if (absolutePaths.length > 0) {
-          await state.selfModHmrController.recordWrite(runId, absolutePaths);
+          externalSelfModPathsByRun.set(runId, absolutePaths);
+          // Match agent self-mod pre-write tracking: own/pin the paths now,
+          // but capture the morph payload only after the external mutation.
+          await state.selfModHmrController.recordWrite(runId, absolutePaths, {
+            captureSnapshot: false,
+          });
         }
         return { ok: true };
       } catch (error) {
@@ -957,6 +964,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         }
         await releaseRuntimeReloadFor([runId]);
         selfModRunRootIds.delete(runId);
+        externalSelfModPathsByRun.delete(runId);
         throw error;
       }
     };
@@ -975,6 +983,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         });
         await releaseRuntimeReloadFor([runId]);
         selfModRunRootIds.delete(runId);
+        externalSelfModPathsByRun.delete(runId);
         return { ok: true };
       }
 
@@ -982,11 +991,19 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         const cancelResult = await controller.cancel(runId);
         await releaseRuntimeReloadFor([runId]);
         selfModRunRootIds.delete(runId);
+        externalSelfModPathsByRun.delete(runId);
         await dispatchApplyBatch(cancelResult);
         return { ok: true };
       }
 
+      const absolutePaths = externalSelfModPathsByRun.get(runId) ?? [];
+      if (absolutePaths.length > 0) {
+        // Capture the post-merge contents so the morph overlay cannot replay
+        // stale pre-update files over the freshly merged checkout.
+        await controller.recordWrite(runId, absolutePaths);
+      }
       const decision = controller.finalize(runId);
+      externalSelfModPathsByRun.delete(runId);
       if (decision.appliedRuns.length === 0) {
         if (!controller.hasRun(runId)) {
           await controller.releaseRuns([runId]).catch((error) => {
