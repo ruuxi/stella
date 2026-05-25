@@ -599,6 +599,36 @@
   border: 1px solid var(--border-weak);
 }
 
+[data-slot="dialog-content"].settings-migration-dialog {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+}
+
+[data-component="dialog"][data-fit]:has(
+    [data-slot="dialog-content"].settings-migration-dialog
+  )
+  [data-slot="dialog-container"] {
+  --dialog-width: 520px;
+}
+
+.settings-migration-dialog [data-slot="dialog-header"] {
+  padding: 20px 20px 8px 24px;
+}
+
+.settings-migration-dialog [data-slot="dialog-title"] {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-strong);
+  letter-spacing: 0;
+}
+
+.settings-migration-dialog [data-slot="dialog-body"] {
+  padding: 8px 24px 24px;
+}
+
 .settings-confirm-dialog [data-slot="dialog-header"] {
   padding: 20px 20px 12px 28px;
 }

@@ -54,6 +54,12 @@ If you want to bring your own keys, you can. Use your Claude Code subscription, 
 
 If you'd rather not set anything up, an optional Stella subscription covers media generation, text messaging, and voice. Nothing is gated behind it. The subscription only exists so you don't have to think about API keys.
 
+## Import from Hermes or OpenClaw
+
+Stella can import local data from [Hermes Agent](https://github.com/NousResearch/hermes-agent) and [OpenClaw](https://github.com/openclaw/openclaw). The import is one-time and read-only on the old install. Stella brings over memory, skills, sessions, personalities, model choices, and compatible schedules where possible, then writes a markdown report covering what came over and what needs review.
+
+Channel pairings are skipped because Stella channels are zero-setup. Re-enable them from Stella settings if you want them.
+
 ## Self-modifying
 
 Stella's UI, behavior, prompts, and skills are all just code in this repo, and Stella can edit them. Ask for a new sidebar app, a new shortcut, a new look, a new workflow, and she builds it into herself.
@@ -76,10 +82,11 @@ Stella stands on the shoulders of a lot of great open-source work. Special thank
 - [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser)
 - [anomalyco/opencode](https://github.com/anomalyco/opencode)
 - [earendil-works/pi](https://github.com/earendil-works/pi)
+- [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)
+- [openclaw/openclaw](https://github.com/openclaw/openclaw)
 - [iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)
 - [Codex](https://github.com/openai/codex)
 
 ## License
 
 Stella is licensed under the [Apache License 2.0](./LICENSE).
-

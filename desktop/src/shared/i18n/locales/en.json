@@ -144,6 +144,7 @@
       "secondary": "Stella isn't for everyone. Stella is for you."
     },
     "stepTitles": {
+      "import": "Bring your setup into Stella.",
       "engine": "Pick what powers Stella.",
       "extension": "Add Stella to your browser.",
       "browser": "Let Stella get to know you.",

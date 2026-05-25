@@ -22,6 +22,7 @@ import "./Onboarding.css";
  * `Onboarding.css` so any future async content (data fetches, etc.)
  * can't reproduce the jump. */
 import { OnboardingCapabilitiesPhase } from "./OnboardingCapabilitiesPhase";
+import { OnboardingMigrationPhase } from "./OnboardingMigrationPhase";
 import { OnboardingEnginePhase } from "./OnboardingEnginePhase";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 import { OnboardingExtensionPhase } from "./OnboardingExtensionPhase";
@@ -54,6 +55,7 @@ const STEP_TITLE_KEYS: Partial<Record<Phase, string>> = {
   "double-tap": "onboarding.stepTitles.doubleTap",
   voice: "onboarding.stepTitles.voice",
   memory: "onboarding.stepTitles.memory",
+  import: "onboarding.stepTitles.import",
   enter: "onboarding.stepTitles.enter",
 };
 
@@ -95,6 +97,7 @@ export const OnboardingStep1 = ({
   // user can click Continue, so the result is always known by the time
   // navigation reaches `engine`.
   const [showEnginePhase, setShowEnginePhase] = useState(false);
+  const [showMigrationPhase, setShowMigrationPhase] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const probe = async () => {
@@ -113,12 +116,30 @@ export const OnboardingStep1 = ({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const result = await window.electronAPI?.migration?.detectSources?.();
+        if (cancelled) return;
+        setShowMigrationPhase(Boolean(result?.some((preview) => preview.found)));
+      } catch {
+        // Best-effort; users can still import later from Settings.
+      }
+    };
+    void probe();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const skippedPhases = useMemo(() => {
     const skipped = new Set<Phase>();
     if (!discoveryWelcomeExpected) skipped.add("enter");
     if (!showEnginePhase) skipped.add("engine");
+    if (!showMigrationPhase) skipped.add("import");
     return skipped.size > 0 ? skipped : undefined;
-  }, [discoveryWelcomeExpected, showEnginePhase]);
+  }, [discoveryWelcomeExpected, showEnginePhase, showMigrationPhase]);
   const {
     phase,
     leaving,
@@ -215,6 +236,13 @@ export const OnboardingStep1 = ({
       case "engine":
         return (
           <OnboardingEnginePhase
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
+        );
+      case "import":
+        return (
+          <OnboardingMigrationPhase
             splitTransitionActive={leaving}
             onContinue={nextSplitStep}
           />

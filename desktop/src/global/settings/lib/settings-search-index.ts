@@ -156,6 +156,23 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
+    title: "Import from Hermes or OpenClaw",
+    description:
+      "Bring memory, skills, sessions, and model choices into Stella.",
+    keywords: [
+      "migration",
+      "migrate",
+      "import",
+      "hermes",
+      "openclaw",
+      "skills",
+      "session history",
+      "model config",
+      "assistant",
+    ],
+  },
+  {
+    tab: "general",
     title: "Permissions",
     description:
       "Grant accessibility, screen capture, and microphone access on macOS.",

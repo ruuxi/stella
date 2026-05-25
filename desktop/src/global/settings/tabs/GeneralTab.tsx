@@ -3,6 +3,7 @@ import { Button } from "@/ui/button";
 import { Select } from "@/ui/select";
 import { Switch } from "@/ui/switch";
 import { LanguageSettingsRow } from "@/global/settings/LanguageSettingsRow";
+import { ThirdPartyMigrationWizard } from "@/global/migration/ThirdPartyMigrationWizard";
 import {
   useDesktopPermissions,
   type DesktopPermissionStatus,
@@ -19,6 +20,14 @@ import {
 import { openExternalUrl } from "@/platform/electron/open-external";
 import { useT } from "@/shared/i18n";
 import type { LockedComputerUseStatus } from "@/shared/types/electron";
+import {
+  Dialog,
+  DialogBody,
+  DialogCloseButton,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/ui/dialog";
 import {
   DEFAULT_PERSONALITY_VOICE_ID,
   PERSONALITY_VOICES,
@@ -76,6 +85,7 @@ export function GeneralTab() {
   const [personalityVoiceLoaded, setPersonalityVoiceLoaded] = useState(false);
   const [isSavingPersonalityVoice, setIsSavingPersonalityVoice] =
     useState(false);
+  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
   const [personalityVoiceError, setPersonalityVoiceError] = useState<
     string | null
   >(null);
@@ -647,123 +657,155 @@ export function GeneralTab() {
     ) : null;
 
   return (
-    <div className="settings-tab-content">
-      <LanguageSettingsRow />
-      {permissionsCard}
-      <div className="settings-card">
-        <div className="settings-card-header">
-          <h3 className="settings-card-title">
-            {t("settings.developerPreviews.title")}
-          </h3>
-          <Switch
-            checked={developerResourcePreviewsEnabled}
-            onCheckedChange={(checked) =>
-              setDeveloperResourcePreviewsEnabled(Boolean(checked))
-            }
-            hideLabel
-          />
-        </div>
-        <p className="settings-card-desc">
-          {t("settings.developerPreviews.description")}
-        </p>
-      </div>
-      {platform === "darwin"
-        ? renderToggleCard({
-            title: t("settings.nativeFontSmoothing.title"),
-            description: t("settings.nativeFontSmoothing.description"),
-            error: null,
-            checked: nativeFontSmoothingEnabled,
-            disabled: false,
-            onChange: (checked) => setNativeFontSmoothingEnabled(checked),
-          })
-        : null}
-      {renderToggleCard({
-        title: t("settings.notifications.title"),
-        description: t("settings.notifications.description"),
-        error: soundNotificationsError,
-        checked: soundNotificationsEnabled,
-        disabled: !soundNotificationsLoaded || isSavingSoundNotifications,
-        onChange: (checked) => void handleSoundNotificationsChange(checked),
-      })}
-      {renderToggleCard({
-        title: t("settings.power.title"),
-        description: t("settings.power.description"),
-        error: preventSleepError,
-        checked: preventComputerSleep,
-        disabled: !preventSleepLoaded || isSavingPreventSleep,
-        onChange: (checked) => void handlePreventSleepChange(checked),
-      })}
-      {renderToggleCard({
-        title: t("settings.lockedComputerUse.title"),
-        description:
-          platform === "darwin"
-            ? t("settings.lockedComputerUse.description")
-            : t("settings.lockedComputerUse.unsupported"),
-        error: lockedComputerUseError,
-        checked: lockedComputerUseStatus?.enabled === true,
-        disabled:
-          platform !== "darwin" ||
-          !lockedComputerUseLoaded ||
-          isSavingLockedComputerUse,
-        onChange: (checked) => void handleLockedComputerUseChange(checked),
-      })}
-      <div className="settings-card">
-        <h3 className="settings-card-title">{t("settings.voice.title")}</h3>
-        {personalityVoiceError ? (
-          <p
-            className="settings-card-desc settings-card-desc--error"
-            role="alert"
-          >
-            {personalityVoiceError}
-          </p>
-        ) : null}
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <div className="settings-row-label">
-              {t("settings.voice.personality.label")}
-            </div>
-            <div className="settings-row-sublabel">
-              {PERSONALITY_VOICES.find(
-                (voice) => voice.id === personalityVoiceId,
-              )?.description ?? ""}
-            </div>
-          </div>
-          <div className="settings-row-control">
-            <Select
-              className="settings-runtime-select"
-              value={personalityVoiceId}
-              disabled={!personalityVoiceLoaded || isSavingPersonalityVoice}
-              aria-label={t("settings.voice.personality.label")}
-              onValueChange={(value) =>
-                void handlePersonalityVoiceChange(value)
+    <>
+      <div className="settings-tab-content">
+        <LanguageSettingsRow />
+        {permissionsCard}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <h3 className="settings-card-title">
+              {t("settings.developerPreviews.title")}
+            </h3>
+            <Switch
+              checked={developerResourcePreviewsEnabled}
+              onCheckedChange={(checked) =>
+                setDeveloperResourcePreviewsEnabled(Boolean(checked))
               }
-              options={PERSONALITY_VOICES.map((voice) => ({
-                value: voice.id,
-                label: voice.label,
-              }))}
+              hideLabel
             />
           </div>
+          <p className="settings-card-desc">
+            {t("settings.developerPreviews.description")}
+          </p>
+        </div>
+        {platform === "darwin"
+          ? renderToggleCard({
+              title: t("settings.nativeFontSmoothing.title"),
+              description: t("settings.nativeFontSmoothing.description"),
+              error: null,
+              checked: nativeFontSmoothingEnabled,
+              disabled: false,
+              onChange: (checked) => setNativeFontSmoothingEnabled(checked),
+            })
+          : null}
+        {renderToggleCard({
+          title: t("settings.notifications.title"),
+          description: t("settings.notifications.description"),
+          error: soundNotificationsError,
+          checked: soundNotificationsEnabled,
+          disabled: !soundNotificationsLoaded || isSavingSoundNotifications,
+          onChange: (checked) => void handleSoundNotificationsChange(checked),
+        })}
+        {renderToggleCard({
+          title: t("settings.power.title"),
+          description: t("settings.power.description"),
+          error: preventSleepError,
+          checked: preventComputerSleep,
+          disabled: !preventSleepLoaded || isSavingPreventSleep,
+          onChange: (checked) => void handlePreventSleepChange(checked),
+        })}
+        {renderToggleCard({
+          title: t("settings.lockedComputerUse.title"),
+          description:
+            platform === "darwin"
+              ? t("settings.lockedComputerUse.description")
+              : t("settings.lockedComputerUse.unsupported"),
+          error: lockedComputerUseError,
+          checked: lockedComputerUseStatus?.enabled === true,
+          disabled:
+            platform !== "darwin" ||
+            !lockedComputerUseLoaded ||
+            isSavingLockedComputerUse,
+          onChange: (checked) => void handleLockedComputerUseChange(checked),
+        })}
+        <div className="settings-card">
+          <h3 className="settings-card-title">{t("settings.voice.title")}</h3>
+          {personalityVoiceError ? (
+            <p
+              className="settings-card-desc settings-card-desc--error"
+              role="alert"
+            >
+              {personalityVoiceError}
+            </p>
+          ) : null}
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">
+                {t("settings.voice.personality.label")}
+              </div>
+              <div className="settings-row-sublabel">
+                {PERSONALITY_VOICES.find(
+                  (voice) => voice.id === personalityVoiceId,
+                )?.description ?? ""}
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Select
+                className="settings-runtime-select"
+                value={personalityVoiceId}
+                disabled={!personalityVoiceLoaded || isSavingPersonalityVoice}
+                aria-label={t("settings.voice.personality.label")}
+                onValueChange={(value) =>
+                  void handlePersonalityVoiceChange(value)
+                }
+                options={PERSONALITY_VOICES.map((voice) => ({
+                  value: voice.id,
+                  label: voice.label,
+                }))}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <h3 className="settings-card-title">
+              Import from Hermes or OpenClaw
+            </h3>
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              onClick={() => setMigrationDialogOpen(true)}
+            >
+              Import
+            </Button>
+          </div>
+          <p className="settings-card-desc">
+            Bring over memory, skills, sessions, and model choices from another
+            local assistant install.
+          </p>
+        </div>
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <h3 className="settings-card-title">
+              {t("settings.browserExtension.title")}
+            </h3>
+            <Button
+              type="button"
+              variant="ghost"
+              className="settings-btn"
+              onClick={() => openExternalUrl(STELLA_CHROME_EXTENSION_URL)}
+            >
+              {t("settings.browserExtension.action")}
+            </Button>
+          </div>
+          <p className="settings-card-desc">
+            {t("settings.browserExtension.description")}
+          </p>
         </div>
       </div>
-      <div className="settings-card">
-        <div className="settings-card-header">
-          <h3 className="settings-card-title">
-            {t("settings.browserExtension.title")}
-          </h3>
-          <Button
-            type="button"
-            variant="ghost"
-            className="settings-btn"
-            onClick={() => openExternalUrl(STELLA_CHROME_EXTENSION_URL)}
-          >
-            {t("settings.browserExtension.action")}
-          </Button>
-        </div>
-        <p className="settings-card-desc">
-          {t("settings.browserExtension.description")}
-        </p>
-      </div>
-    </div>
+      <Dialog open={migrationDialogOpen} onOpenChange={setMigrationDialogOpen}>
+        <DialogContent fit className="settings-migration-dialog">
+          <DialogHeader>
+            <DialogTitle>Import from Hermes or OpenClaw</DialogTitle>
+            <DialogCloseButton aria-label="Close import" />
+          </DialogHeader>
+          <DialogBody>
+            <ThirdPartyMigrationWizard />
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
