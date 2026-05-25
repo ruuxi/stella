@@ -1,5 +1,5 @@
 .display-sidebar__rich--engine {
-  padding: 12px;
+  padding: 0;
 }
 
 .engine-tab {
@@ -9,104 +9,84 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 8px;
+  padding: 16px 14px 18px;
   color: var(--text-base);
 }
 
 .engine-tab__header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 4px 2px 2px;
-}
-
-.engine-tab__eyebrow {
-  margin: 0 0 4px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-weak);
-}
-
-.engine-tab__header h2 {
-  margin: 0;
-  font-size: 20px;
-  line-height: 1.15;
-  font-weight: 650;
-  color: var(--text-strong);
-}
-
-.engine-tab__status {
-  flex-shrink: 0;
-  padding: 5px 9px;
-  border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
-  border-radius: var(--radius-md, 8px);
-  color: var(--text-weak);
-  background: color-mix(in oklch, var(--surface-base) 78%, transparent);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.engine-tab__message {
-  margin: 0;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in oklch, var(--border) 58%, transparent);
-  border-radius: var(--radius-md, 8px);
-  color: var(--text-base);
-  background: color-mix(in oklch, var(--surface-base) 78%, transparent);
-  font-size: 12px;
-}
-
-.engine-tab__message--error {
-  color: var(--danger, #b42318);
-  border-color: color-mix(in oklch, var(--danger, #b42318) 30%, var(--border));
-}
-
-.engine-tab__section {
-  display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid color-mix(in oklch, var(--border) 62%, transparent);
-  border-radius: var(--radius-md, 8px);
-  background: color-mix(in oklch, var(--surface-base) 72%, transparent);
+  gap: 2px;
+  padding: 0 2px;
 }
 
-.engine-tab__section-copy h3 {
+.engine-tab__title {
   margin: 0;
-  color: var(--text-strong);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+  color: var(--text-strong);
 }
 
-.engine-tab__section-copy p {
-  margin: 3px 0 0;
-  color: var(--text-weak);
+.engine-tab__subtitle {
+  margin: 0;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.35;
+  color: var(--text-weak);
+  /* Reserve one line so swapping label text never shifts neighbors. */
+  min-height: calc(12px * 1.35);
+}
+
+/* Reserved single-line status slot: messages fade in/out in place
+   instead of pushing the rest of the panel down. */
+.engine-tab__status-slot {
+  height: 22px;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--text-weak);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 160ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 160ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    color 120ms ease;
+  pointer-events: none;
+}
+
+.engine-tab__status-slot[data-kind="notice"],
+.engine-tab__status-slot[data-kind="error"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.engine-tab__status-slot[data-kind="error"] {
+  color: var(--danger, #b42318);
 }
 
 .engine-tab__engine-list {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
 
-.engine-tab__engine-option,
-.engine-tab__model-option {
+.engine-tab__engine-option {
   appearance: none;
-  display: grid;
-  gap: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   width: 100%;
-  padding: 10px 11px;
+  min-width: 0;
+  padding: 9px 11px;
   text-align: left;
   font: inherit;
   color: var(--text-base);
-  border: 1px solid color-mix(in oklch, var(--border) 68%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
   border-radius: var(--radius-md, 8px);
-  background: color-mix(in oklch, var(--background) 72%, transparent);
+  background: transparent;
   cursor: pointer;
   transition:
     border-color 120ms ease,
@@ -115,89 +95,123 @@
 }
 
 .engine-tab__engine-option:hover:not(:disabled),
-.engine-tab__engine-option:focus-visible,
-.engine-tab__model-option:hover:not(:disabled),
-.engine-tab__model-option:focus-visible {
+.engine-tab__engine-option:focus-visible {
   outline: none;
-  border-color: color-mix(in oklch, var(--text-strong) 24%, var(--border));
-  background: color-mix(in oklch, var(--background) 90%, transparent);
+  border-color: color-mix(in oklch, var(--text-strong) 22%, var(--border));
+  background: color-mix(in oklch, var(--text-strong) 4%, transparent);
 }
 
-.engine-tab__engine-option[data-selected],
-.engine-tab__model-option[data-selected] {
+.engine-tab__engine-option[data-selected] {
   border-color: color-mix(in oklch, var(--accent, #2f6df6) 55%, var(--border));
-  background: color-mix(in oklch, var(--accent, #2f6df6) 10%, var(--background));
+  background: color-mix(in oklch, var(--accent, #2f6df6) 9%, transparent);
 }
 
-.engine-tab__engine-option:disabled,
-.engine-tab__model-option:disabled {
+.engine-tab__engine-option:disabled {
   cursor: not-allowed;
-  opacity: 0.62;
+  opacity: 0.55;
 }
 
-.engine-tab__engine-option span,
-.engine-tab__model-option span {
-  font-size: 13px;
-  font-weight: 650;
+.engine-tab__engine-label {
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--text-strong);
+  line-height: 1.2;
 }
 
-.engine-tab__engine-option small,
-.engine-tab__model-option small {
-  font-size: 11.5px;
+.engine-tab__engine-hint {
+  font-size: 11px;
+  color: var(--text-weak);
+  line-height: 1.25;
+  /* Reserve a line so the four cards stay isometric even when one wraps. */
+  min-height: calc(11px * 1.25);
+}
+
+/* Stable height so toggling between Stella / Cursor / Codex / Claude Code
+   doesn't shove the panel around. Tall enough for the Cursor config
+   (key + model list); shorter configs render inside this slot. */
+.engine-tab__config-slot {
+  position: relative;
+  min-height: 280px;
+}
+
+.engine-tab__config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px;
+  animation: engine-tab-fade-in 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.engine-tab__config--idle {
+  animation: none;
+}
+
+@keyframes engine-tab-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.engine-tab__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engine-tab__label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.engine-tab__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--text-weak);
 }
 
-.engine-tab__model-list {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-  max-height: 240px;
-  overflow: auto;
-  padding-right: 2px;
-}
-
-.engine-tab__manual-toggle {
+.engine-tab__link {
   appearance: none;
-  align-self: flex-start;
   border: none;
   background: transparent;
   padding: 0;
   font: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 500;
   color: var(--text-weak);
   cursor: pointer;
+  transition: color 120ms ease;
 }
 
-.engine-tab__manual-toggle:hover:not(:disabled),
-.engine-tab__manual-toggle:focus-visible {
+.engine-tab__link:hover:not(:disabled),
+.engine-tab__link:focus-visible {
   color: var(--text-strong);
   outline: none;
 }
 
-.engine-tab__manual-toggle:disabled {
-  opacity: 0.55;
+.engine-tab__link:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .engine-tab__field-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .engine-tab__input {
   flex: 1;
   min-width: 0;
-  height: 34px;
+  height: 30px;
   padding: 0 10px;
   font: inherit;
   font-size: 12.5px;
   color: var(--text-strong);
-  border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
   border-radius: var(--radius-md, 8px);
-  background: color-mix(in oklch, var(--background) 82%, transparent);
+  background: color-mix(in oklch, var(--text-strong) 3%, transparent);
   outline: none;
   transition:
     border-color 120ms ease,
@@ -214,16 +228,93 @@
 }
 
 .engine-tab__input:focus {
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent, #2f6df6) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent, #2f6df6) 16%, transparent);
 }
 
 .engine-tab__input:disabled {
-  opacity: 0.58;
+  opacity: 0.55;
 }
 
 .engine-tab .pill-btn {
   flex-shrink: 0;
-  height: 34px;
-  padding-inline: 13px;
+  height: 30px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+.engine-tab__model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  min-height: 96px;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  transition: opacity 120ms ease;
+}
+
+.engine-tab__model-list[aria-busy="true"] {
+  opacity: 0.6;
+}
+
+.engine-tab__model-list[data-empty] {
+  align-items: stretch;
+  justify-content: center;
+}
+
+.engine-tab__model-empty {
+  margin: 0;
+  padding: 12px 4px;
+  font-size: 12px;
+  color: var(--text-weak);
+  text-align: center;
+}
+
+.engine-tab__model-option {
+  appearance: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  text-align: left;
+  font: inherit;
+  color: var(--text-base);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.engine-tab__model-option:hover:not(:disabled),
+.engine-tab__model-option:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--text-strong) 5%, transparent);
+}
+
+.engine-tab__model-option[data-selected] {
+  border-color: color-mix(in oklch, var(--accent, #2f6df6) 45%, var(--border));
+  background: color-mix(in oklch, var(--accent, #2f6df6) 8%, transparent);
+}
+
+.engine-tab__model-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.engine-tab__model-option span {
   font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.engine-tab__model-option small {
+  font-size: 11px;
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
 }

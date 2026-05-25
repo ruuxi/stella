@@ -470,6 +470,11 @@ const TrashIcon = ({ size = 18, style }: IconProps) => (
   </svg>
 );
 
+/**
+ * Engine tab icon — a chip silhouette (rounded square body, inner
+ * core, four pins per side). Reads as "the compute doing the work"
+ * at thumbnail size, without leaning on cog / starburst clichés.
+ */
 const EngineIcon = ({ size = 18, style }: IconProps) => (
   <svg
     width={size}
@@ -479,24 +484,37 @@ const EngineIcon = ({ size = 18, style }: IconProps) => (
     xmlns="http://www.w3.org/2000/svg"
     style={style}
   >
-    <circle
-      cx="12"
-      cy="12"
-      r="8.2"
+    <path
+      d="M9 4v2M12 4v2M15 4v2M9 18v2M12 18v2M15 18v2M4 9h2M4 12h2M4 15h2M18 9h2M18 12h2M18 15h2"
       stroke="currentColor"
-      strokeOpacity="0.72"
+      strokeOpacity="0.65"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+    <rect
+      x="6"
+      y="6"
+      width="12"
+      height="12"
+      rx="2.4"
+      stroke="currentColor"
+      strokeOpacity="0.75"
       strokeWidth="1.5"
       fill="currentColor"
       fillOpacity="0.08"
     />
-    <path
-      d="M12 6.5v3M12 14.5v3M6.5 12h3M14.5 12h3M8.1 8.1l2.1 2.1M13.8 13.8l2.1 2.1M15.9 8.1l-2.1 2.1M10.2 13.8l-2.1 2.1"
+    <rect
+      x="9.5"
+      y="9.5"
+      width="5"
+      height="5"
+      rx="1"
       stroke="currentColor"
       strokeOpacity="0.7"
-      strokeWidth="1.35"
-      strokeLinecap="round"
+      strokeWidth="1.2"
+      fill="currentColor"
+      fillOpacity="0.18"
     />
-    <circle cx="12" cy="12" r="2.15" fill="currentColor" fillOpacity="0.62" />
   </svg>
 );
 
