@@ -28,6 +28,7 @@ import {
 const MAX_STDERR_CAPTURE = 8_000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
+export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
 
 type JsonRpcId = number | string;
 type JsonValue =
@@ -351,13 +352,23 @@ const normalizeCodexRuntimeReasoningEffort = (
   return undefined;
 };
 
-const getCodexRuntimePreferences = (
+export const getCodexRuntimePreferences = (
   stellaHome?: string,
+  stellaModel?: string,
 ): { model: string; reasoningEffort?: CodexReasoningEffort } => {
   const prefs = stellaHome ? loadLocalPreferences(stellaHome) : null;
+  const lightDefault =
+    stellaModel?.trim() === "stella/light" ? CODEX_LIGHT_MODEL : undefined;
+  const preferredModel = prefs?.codexModel;
+  const userSelectedModel =
+    preferredModel && preferredModel !== DEFAULT_CODEX_MODEL
+      ? preferredModel
+      : undefined;
   const model =
     process.env.STELLA_CODEX_MODEL?.trim() ||
-    prefs?.codexModel ||
+    userSelectedModel ||
+    lightDefault ||
+    preferredModel ||
     DEFAULT_CODEX_MODEL;
   const envReasoning = normalizeCodexRuntimeReasoningEffort(
     process.env.STELLA_CODEX_REASONING_EFFORT?.trim(),
@@ -914,6 +925,7 @@ export const runCodexAgentTurn = async (request: {
   cwd?: string;
   stellaHome?: string;
   stellaRoot?: string;
+  stellaModel?: string;
   attachments?: RuntimeAttachmentRef[];
   tools?: ToolMetadata[];
   abortSignal?: AbortSignal;
@@ -936,6 +948,7 @@ export const runCodexAgentTurn = async (request: {
 
   const { model, reasoningEffort } = getCodexRuntimePreferences(
     request.stellaHome,
+    request.stellaModel,
   );
   const { input, cleanupDir } = buildCodexUserInput({
     runId: request.runId,

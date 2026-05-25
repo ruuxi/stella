@@ -206,6 +206,7 @@ const runReview = async (args: {
       const finalText = await runClaudeCodeAgentTextCompletion({
         stellaRoot: args.stellaRoot,
         agentType: "memory_review",
+        stellaModel: args.resolvedLlm.model.id,
         context: {
           systemPrompt: reviewSystemPrompt,
           messages,

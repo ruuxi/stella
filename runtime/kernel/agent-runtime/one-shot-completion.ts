@@ -81,13 +81,14 @@ export const runOneShotCompletion = async (args: {
     return { text: "" };
   }
 
+  const modelName = resolveModelName(
+    runtime.stellaHome,
+    request.agentType,
+    request.fallbackAgentTypes,
+  );
   const route = resolveLlmRoute({
     stellaRoot: runtime.stellaHome,
-    modelName: resolveModelName(
-      runtime.stellaHome,
-      request.agentType,
-      request.fallbackAgentTypes,
-    ),
+    modelName,
     agentType: request.agentType,
     site: {
       baseUrl: runtime.siteBaseUrl,
@@ -131,6 +132,7 @@ export const runOneShotCompletion = async (args: {
       const text = await runClaudeCodeAgentTextCompletion({
         stellaRoot: runtime.stellaRoot,
         agentType: request.agentType,
+        stellaModel: modelName ?? route.model.id,
         context,
       });
       return { text: text.trim() };

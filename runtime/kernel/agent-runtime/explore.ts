@@ -254,6 +254,8 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
     return FALLBACK_FINDINGS;
   }
 
+  const modelName = getExploreModel(context.stellaHome);
+
   if (
     shouldUseClaudeCodeAgentRuntime({
       stellaRoot: context.stellaRoot,
@@ -278,6 +280,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
         runClaudeCodeAgentTextCompletion({
           stellaRoot: context.stellaRoot,
           agentType: AGENT_IDS.EXPLORE,
+          stellaModel: modelName,
           context: {
             systemPrompt: exploreSystemPrompt,
             messages,
@@ -328,7 +331,6 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
 
   let resolvedLlm;
   try {
-    const modelName = getExploreModel(context.stellaHome);
     resolvedLlm = resolveLlmRoute({
       stellaRoot: context.stellaHome,
       modelName,

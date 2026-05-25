@@ -273,6 +273,7 @@ const runRefresh = async (deps: RefreshDeps): Promise<void> => {
       responseText = await runClaudeCodeAgentTextCompletion({
         stellaRoot: deps.stellaRoot,
         agentType: AGENT_IDS.HOME_SUGGESTIONS,
+        stellaModel: deps.resolvedLlm.model.id,
         context,
       });
     } else {

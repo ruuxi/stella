@@ -10,7 +10,9 @@ import type {
 } from "../../ai/types.js";
 import {
   DEFAULT_CLAUDE_CODE_MODEL,
+  getDefaultModel,
   getAgentRuntimeEngine,
+  getModelOverride,
   loadLocalPreferences,
 } from "../preferences/local-preferences.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
@@ -22,6 +24,7 @@ import {
 } from "./claude-code-session-runtime.js";
 
 export type ClaudeCodeAgentRuntimeEngine = AgentRuntimeEngine;
+export const CLAUDE_CODE_LIGHT_MODEL = "haiku";
 
 export const shouldUseClaudeCodeAgentRuntime = (args: {
   stellaRoot?: string;
@@ -43,10 +46,32 @@ export const shouldUseClaudeCodeAgentRuntime = (args: {
     : false;
 };
 
-export const getClaudeCodeAgentModelId = (stellaRoot?: string): string => {
-  const model = stellaRoot
-    ? loadLocalPreferences(stellaRoot).claudeCodeModel
-    : DEFAULT_CLAUDE_CODE_MODEL;
+export const getClaudeCodeAgentModelId = (
+  stellaRoot?: string,
+  stellaModel?: string,
+  agentType?: string,
+): string => {
+  const configuredStellaModel =
+    stellaModel ??
+    (stellaRoot && agentType
+      ? getModelOverride(stellaRoot, agentType) ??
+        getDefaultModel(stellaRoot, agentType)
+      : undefined);
+  const lightDefault =
+    configuredStellaModel?.trim() === "stella/light"
+      ? CLAUDE_CODE_LIGHT_MODEL
+      : undefined;
+  const prefs = stellaRoot ? loadLocalPreferences(stellaRoot) : null;
+  const preferredModel = prefs?.claudeCodeModel;
+  const userSelectedModel =
+    preferredModel && preferredModel !== DEFAULT_CLAUDE_CODE_MODEL
+      ? preferredModel
+      : undefined;
+  const model =
+    userSelectedModel ??
+    lightDefault ??
+    preferredModel ??
+    DEFAULT_CLAUDE_CODE_MODEL;
   return `claude-code/${model || DEFAULT_CLAUDE_CODE_MODEL}`;
 };
 
@@ -100,6 +125,7 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
   runId?: string;
   sessionKey?: string;
   abortSignal?: AbortSignal;
+  stellaModel?: string;
   executeTool?: (
     toolCallId: string,
     toolName: string,
@@ -108,7 +134,11 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
   ) => Promise<ToolResult>;
 }): Promise<string> => {
   const runId = args.runId ?? `claude-code:${args.agentType}:${crypto.randomUUID()}`;
-  const modelId = getClaudeCodeAgentModelId(args.stellaRoot);
+  const modelId = getClaudeCodeAgentModelId(
+    args.stellaRoot,
+    args.stellaModel,
+    args.agentType,
+  );
   const result = await runClaudeCodeTurn({
     runId,
     sessionKey: args.sessionKey ?? `${args.agentType}:one-shot:${runId}`,

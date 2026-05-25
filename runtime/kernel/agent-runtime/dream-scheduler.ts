@@ -244,6 +244,7 @@ const runDream = async (args: {
       const finalText = await runClaudeCodeAgentTextCompletion({
         stellaRoot: args.stellaHome,
         agentType: AGENT_IDS.DREAM,
+        stellaModel: args.resolvedLlm.model.id,
         context: {
           systemPrompt: buildDreamSystemPrompt(),
           messages,
