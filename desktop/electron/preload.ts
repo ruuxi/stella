@@ -327,6 +327,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
         } | null;
       } | null,
     ) => ipcRenderer.send("region:commitPrepared", result),
+    submitWindowAttachClick: (point: { x: number; y: number }) =>
+      ipcRenderer.send("windowAttach:click", point),
+    cancelWindowAttach: () => ipcRenderer.send("windowAttach:cancel"),
     submitRegionClick: (point: { x: number; y: number }) =>
       ipcRenderer.send("region:click", point),
     getWindowCapture: (point: { x: number; y: number }) =>
@@ -360,6 +363,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
     beginRegionCapture: () =>
       ipcRenderer.invoke("capture:beginRegionCapture") as Promise<
         { ok: true } | { cancelled: true }
+      >,
+    beginWindowAttach: () =>
+      ipcRenderer.invoke("capture:beginWindowAttach") as Promise<
+        | {
+            ok: true;
+            window: {
+              app: string;
+              title: string;
+              bounds: { x: number; y: number; width: number; height: number };
+            };
+            miniBounds: { x: number; y: number; width: number; height: number };
+          }
+        | { cancelled: true }
+        | { ok: false; reason: string; message: string }
       >,
   },
 
@@ -399,7 +416,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     hideWindowHighlight: () => ipcRenderer.send("overlay:hideWindowHighlight"),
     previewWindowHighlightAtPoint: (point: { x: number; y: number }) =>
       ipcRenderer.send("overlay:previewWindowHighlightAtPoint", point),
-    onStartRegionCapture: onIpcSignal("overlay:startRegionCapture"),
+    onStartRegionCapture: onIpc<{
+      mode?: "capture" | "window-attach";
+    }>("overlay:startRegionCapture"),
     onEndRegionCapture: onIpcSignal("overlay:endRegionCapture"),
     onWindowHighlight: onIpc<{
       x: number;

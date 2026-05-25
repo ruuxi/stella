@@ -1,5 +1,5 @@
 // window_info.exe - Returns JSON info about the window at a given screen point
-// Usage: window_info.exe <x> <y> [--exclude-pids=1,2,3] [--screenshot=path.png]
+// Usage: window_info.exe <x> <y> [--exclude-pids=1,2,3] [--screenshot=path.png] [--set-bounds=x,y,w,h]
 // Output: {"title":"...","process":"...","pid":123,"bounds":{"x":0,"y":0,"width":800,"height":600}}
 // Compile: cl /O2 /EHsc window_info.cpp /link user32.lib gdi32.lib gdiplus.lib ole32.lib /OUT:window_info.exe
 
@@ -82,6 +82,45 @@ static void parseExcludePidsArg(const char* arg, std::vector<DWORD>& excluded)
             ++p;
         }
     }
+}
+
+static bool parseSetBoundsArg(const char* arg, RECT& rect)
+{
+    const char* prefix = "--set-bounds=";
+    const size_t prefixLen = strlen(prefix);
+    if (strncmp(arg, prefix, prefixLen) != 0)
+    {
+        return false;
+    }
+
+    const char* p = arg + prefixLen;
+    long values[4] = {};
+    for (int i = 0; i < 4; ++i)
+    {
+        char* end = nullptr;
+        values[i] = strtol(p, &end, 10);
+        if (end == p)
+        {
+            return false;
+        }
+        p = end;
+        if (i < 3)
+        {
+            if (*p != ',') return false;
+            ++p;
+        }
+    }
+
+    if (values[2] <= 0 || values[3] <= 0)
+    {
+        return false;
+    }
+
+    rect.left = values[0];
+    rect.top = values[1];
+    rect.right = values[0] + values[2];
+    rect.bottom = values[1] + values[3];
+    return true;
 }
 
 static HWND findTopLevelWindowAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
@@ -194,10 +233,16 @@ int main(int argc, char* argv[])
 
     std::vector<DWORD> excludedPids;
     const char* screenshotPath = nullptr;
+    RECT setBounds = {};
+    bool hasSetBounds = false;
 
     for (int i = 3; i < argc; ++i)
     {
         parseExcludePidsArg(argv[i], excludedPids);
+        if (parseSetBoundsArg(argv[i], setBounds))
+        {
+            hasSetBounds = true;
+        }
         const char* ssPrefix = "--screenshot=";
         size_t ssPrefixLen = strlen(ssPrefix);
         if (strncmp(argv[i], ssPrefix, ssPrefixLen) == 0)
@@ -278,12 +323,38 @@ int main(int argc, char* argv[])
 
     int w = rect.right - rect.left;
     int h = rect.bottom - rect.top;
+    bool moved = false;
+    RECT outputRect = rect;
 
-    printf("{\"title\":\"%s\",\"process\":\"%s\",\"pid\":%lu,\"bounds\":{\"x\":%ld,\"y\":%ld,\"width\":%d,\"height\":%d}}\n",
+    if (hasSetBounds)
+    {
+        if (IsIconic(hwnd) || IsZoomed(hwnd))
+        {
+            ShowWindow(hwnd, SW_RESTORE);
+        }
+
+        int targetW = static_cast<int>(setBounds.right - setBounds.left);
+        int targetH = static_cast<int>(setBounds.bottom - setBounds.top);
+        moved = SetWindowPos(
+            hwnd,
+            NULL,
+            setBounds.left,
+            setBounds.top,
+            targetW,
+            targetH,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+        ) != 0;
+        GetWindowRect(hwnd, &outputRect);
+        w = outputRect.right - outputRect.left;
+        h = outputRect.bottom - outputRect.top;
+    }
+
+    printf("{\"title\":\"%s\",\"process\":\"%s\",\"pid\":%lu,\"bounds\":{\"x\":%ld,\"y\":%ld,\"width\":%d,\"height\":%d},\"moved\":%s}\n",
            escapeJson(title).c_str(),
            escapeJson(exeName).c_str(),
            pid,
-           rect.left, rect.top, w, h);
+           outputRect.left, outputRect.top, w, h,
+           moved ? "true" : "false");
 
     // Capture screenshot if requested
     if (screenshotPath)

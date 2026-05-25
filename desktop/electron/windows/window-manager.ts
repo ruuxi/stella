@@ -1,5 +1,14 @@
-import { app, BrowserWindow, screen } from 'electron'
-import { MINI_SHELL_SIZE } from '../layout-constants.js'
+import { app, BrowserWindow, screen, type Display } from 'electron'
+import {
+  MINI_SHELL_MIN_SIZE,
+  MINI_SHELL_MAX_SIZE,
+  MINI_SHELL_SIZE,
+} from '../layout-constants.js'
+import {
+  getWindowInfoAtPoint,
+  moveResizeWindowAtPoint,
+  type WindowInfo,
+} from '../window-capture.js'
 import { FullWindowController } from './full-window.js'
 import { MiniWindowController } from './mini-window.js'
 import {
@@ -28,10 +37,39 @@ type WindowManagerOptions = {
 
 const compactSize = MINI_SHELL_SIZE
 const MINI_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
+const MINI_ATTACH_GAP = 8
+const MINI_ATTACH_MIN_TARGET_WIDTH = 320
 
 type Bounds = { x: number; y: number; width: number; height: number }
 type ShellWindowMode = 'full' | 'mini'
 type ShellWindowRef = { mode: ShellWindowMode; window: BrowserWindow }
+type ExternalPickerWindowState = {
+  mode: ShellWindowMode
+  wasVisible: boolean
+  wasFocused: boolean
+  hidden: boolean
+}
+type MiniAttachFailureReason =
+  | 'unsupported'
+  | 'no-window'
+  | 'no-room'
+  | 'move-failed'
+type MiniAttachWindowPayload = {
+  app: string
+  title: string
+  bounds: Bounds
+}
+export type MiniAttachResult =
+  | {
+      ok: true
+      window: MiniAttachWindowPayload
+      miniBounds: Bounds
+    }
+  | {
+      ok: false
+      reason: MiniAttachFailureReason
+      message: string
+    }
 
 /**
  * Chromium net error codes for failures that are usually transient — most
@@ -55,29 +93,17 @@ type ShellWindowRef = { mode: ShellWindowMode; window: BrowserWindow }
  *   -118 CONNECTION_TIMED_OUT
  */
 const TRANSIENT_NET_ERROR_CODES = new Set([
-  -3,
-  -7,
-  -21,
-  -100,
-  -101,
-  -102,
-  -103,
-  -104,
-  -105,
-  -106,
-  -118,
+  -3, -7, -21, -100, -101, -102, -103, -104, -105, -106, -118,
 ])
 
 const isTransientNetError = (errorCode: number) =>
   TRANSIENT_NET_ERROR_CODES.has(errorCode)
 
-const shouldRecoverFromDidFailLoad = (
-  details: {
-    errorCode: number
-    validatedURL: string
-    isMainFrame: boolean
-  },
-) => {
+const shouldRecoverFromDidFailLoad = (details: {
+  errorCode: number
+  validatedURL: string
+  isMainFrame: boolean
+}) => {
   if (!details.isMainFrame) return false
   // Avoid recovery loops if recovery.html itself fails to load.
   if (details.validatedURL.includes('recovery.html')) return false
@@ -460,20 +486,33 @@ export class WindowManager {
     return Boolean(window && !window.isDestroyed() && window.isFocused())
   }
 
+  getShellWindowModeForWindow(
+    window: BrowserWindow | null,
+  ): ShellWindowMode | null {
+    if (!window || window.isDestroyed()) return null
+    if (window === this.getMiniWindow()) return 'mini'
+    if (window === this.getFullWindow()) return 'full'
+    return null
+  }
+
   isFullWindowMacFullscreen() {
     if (process.platform !== 'darwin') {
       return false
     }
 
     const fullWindow = this.getFullWindow()
-    return Boolean(fullWindow && !fullWindow.isDestroyed() && fullWindow.isFullScreen())
+    return Boolean(
+      fullWindow && !fullWindow.isDestroyed() && fullWindow.isFullScreen(),
+    )
   }
 
   minimizeWindow() {
     const target =
       this.getFocusedShellWindow() ??
       this.getVisibleShellWindow(this.lastActiveWindowMode) ??
-      this.getVisibleShellWindow(this.getOtherWindowMode(this.lastActiveWindowMode))
+      this.getVisibleShellWindow(
+        this.getOtherWindowMode(this.lastActiveWindowMode),
+      )
 
     if (!target || target.window.isDestroyed()) return
 
@@ -495,7 +534,9 @@ export class WindowManager {
 
   isMiniShowing() {
     const miniWindow = this.getMiniWindow()
-    return Boolean(miniWindow && !miniWindow.isDestroyed() && miniWindow.isVisible())
+    return Boolean(
+      miniWindow && !miniWindow.isDestroyed() && miniWindow.isVisible(),
+    )
   }
 
   isMiniAlwaysOnTop() {
@@ -720,6 +761,149 @@ export class WindowManager {
     return { x: targetX, y: targetY }
   }
 
+  private getDisplayScaleFactor(display: Display) {
+    return process.platform === 'darwin' ? 1 : (display.scaleFactor ?? 1)
+  }
+
+  private toNativeScreenPoint(point: { x: number; y: number }) {
+    const display = screen.getDisplayNearestPoint(point)
+    const scaleFactor = this.getDisplayScaleFactor(display)
+    return {
+      display,
+      scaleFactor,
+      x: Math.round(point.x * scaleFactor),
+      y: Math.round(point.y * scaleFactor),
+    }
+  }
+
+  private toNativeBounds(bounds: Bounds, display: Display): Bounds {
+    const scaleFactor = this.getDisplayScaleFactor(display)
+    return {
+      x: Math.round(bounds.x * scaleFactor),
+      y: Math.round(bounds.y * scaleFactor),
+      width: Math.round(bounds.width * scaleFactor),
+      height: Math.round(bounds.height * scaleFactor),
+    }
+  }
+
+  private fromNativeBounds(bounds: Bounds, display: Display): Bounds {
+    const scaleFactor = this.getDisplayScaleFactor(display)
+    return {
+      x: Math.round(bounds.x / scaleFactor),
+      y: Math.round(bounds.y / scaleFactor),
+      width: Math.round(bounds.width / scaleFactor),
+      height: Math.round(bounds.height / scaleFactor),
+    }
+  }
+
+  private clamp(value: number, min: number, max: number) {
+    return Math.max(min, Math.min(value, max))
+  }
+
+  private computeMiniAttachLayout(
+    originalBounds: Bounds,
+    display: Display,
+  ): { targetBounds: Bounds; miniBounds: Bounds } | null {
+    const workArea = display.workArea
+    const miniWidth = MINI_SHELL_MIN_SIZE.width
+    const maxTargetWidth = workArea.width - miniWidth - MINI_ATTACH_GAP
+    if (maxTargetWidth < MINI_ATTACH_MIN_TARGET_WIDTH) {
+      return null
+    }
+
+    const maxAttachHeight = Math.min(
+      MINI_SHELL_MAX_SIZE.height,
+      workArea.height,
+    )
+    const minAttachHeight = Math.min(
+      MINI_SHELL_MIN_SIZE.height,
+      maxAttachHeight,
+    )
+    const attachHeight = this.clamp(
+      Math.round(originalBounds.height),
+      minAttachHeight,
+      maxAttachHeight,
+    )
+    const targetWidth = this.clamp(
+      Math.round(originalBounds.width),
+      MINI_ATTACH_MIN_TARGET_WIDTH,
+      maxTargetWidth,
+    )
+    const maxTargetX =
+      workArea.x + workArea.width - targetWidth - MINI_ATTACH_GAP - miniWidth
+    const targetX = this.clamp(
+      Math.round(originalBounds.x),
+      workArea.x,
+      maxTargetX,
+    )
+    const targetCenterY = originalBounds.y + originalBounds.height / 2
+    const targetY = this.clamp(
+      Math.round(targetCenterY - attachHeight / 2),
+      workArea.y,
+      workArea.y + workArea.height - attachHeight,
+    )
+    const targetBounds = {
+      x: targetX,
+      y: targetY,
+      width: targetWidth,
+      height: attachHeight,
+    }
+    const miniBounds = {
+      x: targetBounds.x + targetBounds.width + MINI_ATTACH_GAP,
+      y: targetBounds.y,
+      width: miniWidth,
+      height: attachHeight,
+    }
+
+    return { targetBounds, miniBounds }
+  }
+
+  private computeMiniBoundsForAttachedWindow(
+    targetBounds: Bounds,
+    display: Display,
+  ): Bounds | null {
+    const workArea = display.workArea
+    const miniWidth = MINI_SHELL_MIN_SIZE.width
+    const maxAttachHeight = Math.min(
+      MINI_SHELL_MAX_SIZE.height,
+      workArea.height,
+    )
+    const minAttachHeight = Math.min(
+      MINI_SHELL_MIN_SIZE.height,
+      maxAttachHeight,
+    )
+    const height = this.clamp(
+      Math.round(targetBounds.height),
+      minAttachHeight,
+      maxAttachHeight,
+    )
+    const x = Math.round(targetBounds.x + targetBounds.width + MINI_ATTACH_GAP)
+    if (x + miniWidth > workArea.x + workArea.width) {
+      return null
+    }
+
+    return {
+      x,
+      y: this.clamp(
+        Math.round(targetBounds.y),
+        workArea.y,
+        workArea.y + workArea.height - height,
+      ),
+      width: miniWidth,
+      height,
+    }
+  }
+
+  private toMiniAttachWindowPayload(
+    windowInfo: WindowInfo,
+  ): MiniAttachWindowPayload {
+    return {
+      app: windowInfo.process,
+      title: windowInfo.title,
+      bounds: windowInfo.bounds,
+    }
+  }
+
   private getPreferredMiniBounds(): Bounds {
     if (this.miniWindowBounds) {
       return this.miniWindowBounds
@@ -755,6 +939,117 @@ export class WindowManager {
 
   restoreFullSize() {
     this.showWindow('full')
+  }
+
+  hideShellWindowForExternalPicker(
+    target: ShellWindowMode,
+    options?: { skipMacFullscreenFullWindow?: boolean },
+  ): ExternalPickerWindowState {
+    const window = this.getShellWindow(target)
+    const state: ExternalPickerWindowState = {
+      mode: target,
+      wasVisible: Boolean(
+        window && !window.isDestroyed() && window.isVisible(),
+      ),
+      wasFocused: Boolean(
+        window && !window.isDestroyed() && window.isFocused(),
+      ),
+      hidden: false,
+    }
+    if (!window || window.isDestroyed() || !state.wasVisible) {
+      return state
+    }
+
+    if (
+      target === 'full' &&
+      options?.skipMacFullscreenFullWindow &&
+      this.isFullWindowMacFullscreen()
+    ) {
+      return state
+    }
+
+    this.hideWindow(window, { preserveExternalFocus: true })
+    this.syncLastActiveWindowMode()
+    return { ...state, hidden: true }
+  }
+
+  async attachMiniToExternalWindowAtPoint(point: {
+    x: number
+    y: number
+  }): Promise<MiniAttachResult> {
+    if (process.platform !== 'darwin' && process.platform !== 'win32') {
+      return {
+        ok: false,
+        reason: 'unsupported',
+        message: 'Attach is available on macOS and Windows.',
+      }
+    }
+
+    const nativePoint = this.toNativeScreenPoint(point)
+    const originalInfo = await getWindowInfoAtPoint(
+      nativePoint.x,
+      nativePoint.y,
+      {
+        excludePids: [process.pid],
+      },
+    )
+    if (!originalInfo) {
+      return {
+        ok: false,
+        reason: 'no-window',
+        message: 'Pick a normal app window to attach Stella beside.',
+      }
+    }
+
+    const originalBounds = this.fromNativeBounds(
+      originalInfo.bounds,
+      nativePoint.display,
+    )
+    const layout = this.computeMiniAttachLayout(
+      originalBounds,
+      nativePoint.display,
+    )
+    if (!layout) {
+      return {
+        ok: false,
+        reason: 'no-room',
+        message: 'There is not enough room on this screen to attach Stella.',
+      }
+    }
+
+    const moved = await moveResizeWindowAtPoint(nativePoint.x, nativePoint.y, {
+      excludePids: [process.pid],
+      bounds: this.toNativeBounds(layout.targetBounds, nativePoint.display),
+    })
+    if (!moved?.moved) {
+      return {
+        ok: false,
+        reason: 'move-failed',
+        message: 'Stella could not resize that window.',
+      }
+    }
+
+    const finalTargetBounds = this.fromNativeBounds(
+      moved.windowInfo.bounds,
+      nativePoint.display,
+    )
+    const miniBounds =
+      this.computeMiniBoundsForAttachedWindow(
+        finalTargetBounds,
+        nativePoint.display,
+      ) ?? layout.miniBounds
+
+    this.miniWindowBounds = miniBounds
+    this.showWindow('mini')
+
+    return {
+      ok: true,
+      window: this.toMiniAttachWindowPayload({
+        ...moved.windowInfo,
+        bounds: finalTargetBounds,
+      }),
+      miniBounds,
+    }
   }
 
   restoreWindowVisibility(target: ShellWindowMode) {

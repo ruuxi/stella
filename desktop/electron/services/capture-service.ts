@@ -29,11 +29,16 @@ export type CaptureWindowBridge = {
 }
 
 export type CaptureOverlayBridge = {
-  startRegionCapture: () => void
+  startRegionCapture: (options?: { mode?: 'capture' | 'window-attach' }) => void
   endRegionCapture: () => void
   suspendRegionCaptureForScreenshot: () => void
   restoreRegionCaptureAfterScreenshot: () => void
-  getOverlayBounds: () => { x: number; y: number; width: number; height: number } | null
+  getOverlayBounds: () => {
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null
 }
 
 type CaptureServiceOptions = {
@@ -51,8 +56,18 @@ export class CaptureService {
   private pendingRadialCapturePromise: Promise<void> | null = null
   private stagedRadialChatContext: ChatContext | null = null
   private radialContextShouldCommit = false
-  private pendingRegionCaptureResolve: ((value: RegionCaptureResult | null) => void) | null = null
-  private pendingRegionCapturePromise: Promise<RegionCaptureResult | null> | null = null
+  private pendingRegionCaptureResolve:
+    | ((value: RegionCaptureResult | null) => void)
+    | null = null
+  private pendingRegionCapturePromise: Promise<RegionCaptureResult | null> | null =
+    null
+  private pendingWindowAttachResolve:
+    | ((value: { x: number; y: number } | null) => void)
+    | null = null
+  private pendingWindowAttachPromise: Promise<{
+    x: number
+    y: number
+  } | null> | null = null
   private radialWindowContextEnabled = true
 
   constructor(private readonly options: CaptureServiceOptions) {}
@@ -103,6 +118,7 @@ export class CaptureService {
     this.lastBroadcastChatContextVersion = -1
     this.cancelRadialContextCapture()
     this.cancelRegionCapture()
+    this.cancelWindowAttach()
   }
 
   removeScreenshot(index: number) {
@@ -111,7 +127,10 @@ export class CaptureService {
     }
     const next = [...this.pendingChatContext.regionScreenshots]
     next.splice(index, 1)
-    this.setPendingChatContext({ ...this.pendingChatContext, regionScreenshots: next })
+    this.setPendingChatContext({
+      ...this.pendingChatContext,
+      regionScreenshots: next,
+    })
   }
 
   mergeRegionCaptureResult(result: RegionCaptureResult | null): boolean {
@@ -226,7 +245,11 @@ export class CaptureService {
     this.broadcastChatContext()
   }
 
-  captureRadialContext(x: number, y: number, radialContextBeforeGesture: ChatContext | null) {
+  captureRadialContext(
+    x: number,
+    y: number,
+    radialContextBeforeGesture: ChatContext | null,
+  ) {
     const requestId = ++this.radialCaptureRequestId
     this.lastRadialPoint = { x, y }
     this.stagedRadialChatContext = null
@@ -246,7 +269,8 @@ export class CaptureService {
           return
         }
 
-        const screenshots = this.pendingChatContext?.regionScreenshots ?? existingScreenshots
+        const screenshots =
+          this.pendingChatContext?.regionScreenshots ?? existingScreenshots
         this.stagedRadialChatContext = {
           ...fresh,
           regionScreenshots: screenshots,
@@ -256,7 +280,8 @@ export class CaptureService {
           return
         }
         console.warn('Failed to capture chat context', error)
-        const screenshots = this.pendingChatContext?.regionScreenshots ?? existingScreenshots
+        const screenshots =
+          this.pendingChatContext?.regionScreenshots ?? existingScreenshots
         this.stagedRadialChatContext = {
           window: null,
           browserUrl: null,
@@ -277,7 +302,8 @@ export class CaptureService {
   }
 
   private getDisplayForPoint(point?: { x: number; y: number }) {
-    const targetPoint = point ?? this.lastRadialPoint ?? screen.getCursorScreenPoint()
+    const targetPoint =
+      point ?? this.lastRadialPoint ?? screen.getCursorScreenPoint()
     return screen.getDisplayNearestPoint(targetPoint)
   }
 
@@ -310,7 +336,9 @@ export class CaptureService {
       thumbnailSize,
     })
 
-    const preferred = sources.find((source) => source.display_id === String(display.id))
+    const preferred = sources.find(
+      (source) => source.display_id === String(display.id),
+    )
     const source = preferred ?? sources[0]
     if (!source) {
       return null
@@ -360,7 +388,9 @@ export class CaptureService {
     }
   }
 
-  private async captureDisplayScreenshot(display: Display): Promise<ScreenshotCapture | null> {
+  private async captureDisplayScreenshot(
+    display: Display,
+  ): Promise<ScreenshotCapture | null> {
     const result = await this.getDisplaySource(display)
     if (!result) return null
 
@@ -386,8 +416,14 @@ export class CaptureService {
     const size = image.getSize()
     const cropX = Math.max(0, Math.round(selection.x * result.scaleFactor))
     const cropY = Math.max(0, Math.round(selection.y * result.scaleFactor))
-    const cropWidth = Math.min(size.width - cropX, Math.round(selection.width * result.scaleFactor))
-    const cropHeight = Math.min(size.height - cropY, Math.round(selection.height * result.scaleFactor))
+    const cropWidth = Math.min(
+      size.width - cropX,
+      Math.round(selection.width * result.scaleFactor),
+    )
+    const cropHeight = Math.min(
+      size.height - cropY,
+      Math.round(selection.height * result.scaleFactor),
+    )
 
     if (cropWidth <= 0 || cropHeight <= 0) {
       return null
@@ -415,7 +451,9 @@ export class CaptureService {
     return await fn()
   }
 
-  private async withSuspendedRegionCapture<T>(fn: () => Promise<T>): Promise<T> {
+  private async withSuspendedRegionCapture<T>(
+    fn: () => Promise<T>,
+  ): Promise<T> {
     this.options.overlay.suspendRegionCaptureForScreenshot()
     await new Promise((r) => setTimeout(r, CAPTURE_OVERLAY_HIDE_DELAY_MS))
     try {
@@ -426,7 +464,10 @@ export class CaptureService {
   }
 
   /** Converts an overlay-relative point to native screen coordinates. */
-  private toScreenPoint(overlayRelative: { x: number; y: number }): { x: number; y: number } {
+  private toScreenPoint(overlayRelative: { x: number; y: number }): {
+    x: number
+    y: number
+  } {
     const regionBounds = this.options.overlay.getOverlayBounds()
     if (!regionBounds) return overlayRelative
 
@@ -450,6 +491,17 @@ export class CaptureService {
     this.options.overlay.endRegionCapture()
   }
 
+  private resetWindowAttach() {
+    this.pendingWindowAttachResolve = null
+    this.pendingWindowAttachPromise = null
+    try {
+      globalShortcut.unregister('Escape')
+    } catch {
+      // Shortcut may already be gone if attach mode was interrupted externally.
+    }
+    this.options.overlay.endRegionCapture()
+  }
+
   async startRegionCapture() {
     if (this.pendingRegionCapturePromise) {
       return this.pendingRegionCapturePromise
@@ -459,11 +511,13 @@ export class CaptureService {
       this.cancelRegionCapture()
     })
 
-    this.options.overlay.startRegionCapture()
+    this.options.overlay.startRegionCapture({ mode: 'capture' })
 
-    this.pendingRegionCapturePromise = new Promise<RegionCaptureResult | null>((resolve) => {
-      this.pendingRegionCaptureResolve = resolve
-    })
+    this.pendingRegionCapturePromise = new Promise<RegionCaptureResult | null>(
+      (resolve) => {
+        this.pendingRegionCaptureResolve = resolve
+      },
+    )
 
     return this.pendingRegionCapturePromise
   }
@@ -480,7 +534,9 @@ export class CaptureService {
     this.resetRegionCapture()
   }
 
-  async prepareRegionSelection(selection: RegionSelection): Promise<RegionCaptureResult> {
+  async prepareRegionSelection(
+    selection: RegionSelection,
+  ): Promise<RegionCaptureResult> {
     let screenshot: ScreenshotCapture | null = null
 
     try {
@@ -490,7 +546,10 @@ export class CaptureService {
         const globalY = (regionBounds?.y ?? 0) + selection.y
         const centerX = globalX + selection.width / 2
         const centerY = globalY + selection.height / 2
-        const display = screen.getDisplayNearestPoint({ x: centerX, y: centerY })
+        const display = screen.getDisplayNearestPoint({
+          x: centerX,
+          y: centerY,
+        })
 
         return this.captureRegionScreenshot(display, {
           x: globalX - display.bounds.x,
@@ -500,7 +559,10 @@ export class CaptureService {
         })
       })
     } catch (error) {
-      console.debug('[capture] region capture failed:', (error as Error).message)
+      console.debug(
+        '[capture] region capture failed:',
+        (error as Error).message,
+      )
     }
 
     return { screenshot, window: null }
@@ -522,16 +584,64 @@ export class CaptureService {
     this.resetRegionCapture()
   }
 
+  async startWindowAttach() {
+    if (this.pendingWindowAttachPromise) {
+      return this.pendingWindowAttachPromise
+    }
+
+    globalShortcut.register('Escape', () => {
+      this.cancelWindowAttach()
+    })
+
+    this.options.overlay.startRegionCapture({ mode: 'window-attach' })
+
+    this.pendingWindowAttachPromise = new Promise<{
+      x: number
+      y: number
+    } | null>((resolve) => {
+      this.pendingWindowAttachResolve = resolve
+    })
+
+    return this.pendingWindowAttachPromise
+  }
+
+  commitWindowAttachPoint(point: { x: number; y: number }) {
+    if (!this.pendingWindowAttachResolve) {
+      this.resetWindowAttach()
+      return
+    }
+
+    const resolve = this.pendingWindowAttachResolve
+    const regionBounds = this.options.overlay.getOverlayBounds()
+    resolve({
+      x: (regionBounds?.x ?? 0) + point.x,
+      y: (regionBounds?.y ?? 0) + point.y,
+    })
+    this.resetWindowAttach()
+  }
+
+  cancelWindowAttach() {
+    if (this.pendingWindowAttachResolve) {
+      this.pendingWindowAttachResolve(null)
+    }
+    this.resetWindowAttach()
+  }
+
   async getRegionWindowCapture(point: { x: number; y: number }) {
     const regionBounds = this.options.overlay.getOverlayBounds()
     if (!regionBounds) return null
 
     const dipX = regionBounds.x + point.x
     const dipY = regionBounds.y + point.y
-    const { scaleFactor, x: screenX, y: screenY } =
-      this.toNativeScreenPoint({ x: dipX, y: dipY })
+    const {
+      scaleFactor,
+      x: screenX,
+      y: screenY,
+    } = this.toNativeScreenPoint({ x: dipX, y: dipY })
 
-    const capture = await captureWindowScreenshot(screenX, screenY, { excludePids: [process.pid] })
+    const capture = await captureWindowScreenshot(screenX, screenY, {
+      excludePids: [process.pid],
+    })
     if (!capture) return null
 
     const { bounds } = capture.windowInfo
@@ -563,10 +673,15 @@ export class CaptureService {
     try {
       capture = await this.withCaptureContext(async () => {
         const capturePoint = this.toScreenPoint(point)
-        return captureWindowScreenshot(capturePoint.x, capturePoint.y, { excludePids: [process.pid] })
+        return captureWindowScreenshot(capturePoint.x, capturePoint.y, {
+          excludePids: [process.pid],
+        })
       })
     } catch (error) {
-      console.debug('[capture] window capture at point failed:', (error as Error).message)
+      console.debug(
+        '[capture] window capture at point failed:',
+        (error as Error).message,
+      )
     }
 
     resolve({
@@ -599,7 +714,11 @@ export class CaptureService {
     const primaryDisplay = screen.getDisplayNearestPoint(focusPoint)
     const displays = screen
       .getAllDisplays()
-      .sort((a, b) => Number(b.id === primaryDisplay.id) - Number(a.id === primaryDisplay.id))
+      .sort(
+        (a, b) =>
+          Number(b.id === primaryDisplay.id) -
+          Number(a.id === primaryDisplay.id),
+      )
 
     return this.withCaptureContext(async () => {
       const captures: VisionDisplayCapture[] = []
@@ -614,7 +733,7 @@ export class CaptureService {
         const displayCount = displays.length
         const label =
           displayCount === 1
-            ? "screen 1 of 1 - primary focus"
+            ? 'screen 1 of 1 - primary focus'
             : isPrimaryFocus
               ? `screen ${index + 1} of ${displayCount} - primary focus (cursor is on this screen)`
               : `screen ${index + 1} of ${displayCount} - secondary screen`

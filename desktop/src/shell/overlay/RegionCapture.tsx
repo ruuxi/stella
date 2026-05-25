@@ -31,27 +31,39 @@ type VacuumState = {
 };
 
 const MIN_SELECTION_SIZE = 6;
+type RegionCaptureMode = "capture" | "window-attach";
 
-export function RegionCapture() {
+export function RegionCapture({
+  mode = "capture",
+}: {
+  mode?: RegionCaptureMode;
+}) {
   const api = getElectronApi();
   const captureApi = api?.capture;
   const overlayApi = api?.overlay;
+  const isWindowAttach = mode === "window-attach";
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
   const [vacuum, setVacuum] = useState<VacuumState | null>(null);
   const [isPreparingCapture, setIsPreparingCapture] = useState(false);
   /** After the vacuum animation, keep the dim layer off until the overlay closes (avoids a flash while IPC runs). */
-  const [dimSuppressedAfterVacuum, setDimSuppressedAfterVacuum] = useState(false);
+  const [dimSuppressedAfterVacuum, setDimSuppressedAfterVacuum] =
+    useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hoverPointRef = useRef<Point | null>(null);
-  const hoverPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
-  const selection = startPoint && currentPoint ? {
-    x: Math.min(startPoint.x, currentPoint.x),
-    y: Math.min(startPoint.y, currentPoint.y),
-    width: Math.abs(startPoint.x - currentPoint.x),
-    height: Math.abs(startPoint.y - currentPoint.y),
-  } : null;
+  const selection =
+    startPoint && currentPoint
+      ? {
+          x: Math.min(startPoint.x, currentPoint.x),
+          y: Math.min(startPoint.y, currentPoint.y),
+          width: Math.abs(startPoint.x - currentPoint.x),
+          height: Math.abs(startPoint.y - currentPoint.y),
+        }
+      : null;
 
   const clearSelection = useCallback(() => {
     setStartPoint(null);
@@ -68,37 +80,44 @@ export function RegionCapture() {
     overlayApi?.hideWindowHighlight?.();
   }, [overlayApi]);
 
-  const previewWindowAtPoint = useCallback((point: Point) => {
-    if (
-      hoverPointRef.current &&
-      hoverPointRef.current.x === point.x &&
-      hoverPointRef.current.y === point.y
-    ) {
-      return;
-    }
-    hoverPointRef.current = point;
-    if (hoverPreviewTimerRef.current) {
-      clearTimeout(hoverPreviewTimerRef.current);
-    }
-    hoverPreviewTimerRef.current = setTimeout(() => {
-      hoverPreviewTimerRef.current = null;
-      overlayApi?.previewWindowHighlightAtPoint?.(point);
-    }, 16);
-  }, [overlayApi]);
+  const previewWindowAtPoint = useCallback(
+    (point: Point) => {
+      if (
+        hoverPointRef.current &&
+        hoverPointRef.current.x === point.x &&
+        hoverPointRef.current.y === point.y
+      ) {
+        return;
+      }
+      hoverPointRef.current = point;
+      if (hoverPreviewTimerRef.current) {
+        clearTimeout(hoverPreviewTimerRef.current);
+      }
+      hoverPreviewTimerRef.current = setTimeout(() => {
+        hoverPreviewTimerRef.current = null;
+        overlayApi?.previewWindowHighlightAtPoint?.(point);
+      }, 16);
+    },
+    [overlayApi],
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         setIsPreparingCapture(false);
-        captureApi?.cancelRegion?.();
+        if (isWindowAttach) {
+          captureApi?.cancelWindowAttach?.();
+        } else {
+          captureApi?.cancelRegion?.();
+        }
         clearWindowPreview();
         clearSelection();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [captureApi, clearSelection, clearWindowPreview]);
+  }, [captureApi, clearSelection, clearWindowPreview, isWindowAttach]);
 
   useEffect(() => clearWindowPreview, [clearWindowPreview]);
 
@@ -124,7 +143,11 @@ export function RegionCapture() {
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsPreparingCapture(false);
-    captureApi?.cancelRegion?.();
+    if (isWindowAttach) {
+      captureApi?.cancelWindowAttach?.();
+    } else {
+      captureApi?.cancelRegion?.();
+    }
     clearWindowPreview();
     clearSelection();
   };
@@ -139,6 +162,10 @@ export function RegionCapture() {
   };
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
+    if (isWindowAttach) {
+      previewWindowAtPoint({ x: event.clientX, y: event.clientY });
+      return;
+    }
     if (!startPoint) {
       if (!vacuum) {
         previewWindowAtPoint({ x: event.clientX, y: event.clientY });
@@ -163,6 +190,14 @@ export function RegionCapture() {
     event.preventDefault();
     clearWindowPreview();
     const endPoint = currentPoint ?? { x: event.clientX, y: event.clientY };
+    if (isWindowAttach) {
+      setIsPreparingCapture(true);
+      clearWindowPreview();
+      clearSelection();
+      captureApi?.submitWindowAttachClick?.(endPoint);
+      return;
+    }
+
     const resolvedSelection = {
       x: Math.min(startPoint.x, endPoint.x),
       y: Math.min(startPoint.y, endPoint.y),
@@ -221,9 +256,10 @@ export function RegionCapture() {
       onMouseUp={handleMouseUp}
       onContextMenu={handleContextMenu}
     >
-      {!selection && !vacuum && !isPreparingCapture && !dimSuppressedAfterVacuum && (
-        <div className="region-capture-dim" />
-      )}
+      {!selection &&
+        !vacuum &&
+        !isPreparingCapture &&
+        !dimSuppressedAfterVacuum && <div className="region-capture-dim" />}
       {selection && (
         <div
           className="region-capture-selection"
@@ -247,7 +283,11 @@ export function RegionCapture() {
           }}
         />
       )}
-      <div className="region-capture-hint">Click to capture window - drag to capture region - Right-click or Esc to cancel</div>
+      <div className="region-capture-hint">
+        {isWindowAttach
+          ? "Click a window to attach Stella - Right-click or Esc to cancel"
+          : "Click to capture window - drag to capture region - Right-click or Esc to cancel"}
+      </div>
     </div>
   );
 }

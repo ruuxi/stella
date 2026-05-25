@@ -33,6 +33,7 @@ import "./overlays.css";
 
 type WindowBounds = { x: number; y: number; width: number; height: number };
 type WindowHighlightTone = "default" | "subtle";
+type RegionCaptureMode = "capture" | "window-attach";
 
 type OverlayState = {
   radialVisible: boolean;
@@ -42,6 +43,7 @@ type OverlayState = {
   windowHighlightBounds: WindowBounds | null;
   windowHighlightTone: WindowHighlightTone;
   regionCaptureActive: boolean;
+  regionCaptureMode: RegionCaptureMode;
   dictationVisible: boolean;
   dictationPosition: { x: number; y: number } | null;
   selectionChip: SelectionChipState | null;
@@ -60,7 +62,7 @@ type OverlayAction =
       bounds: WindowBounds | null;
       tone?: WindowHighlightTone;
     }
-  | { type: "region"; active: boolean }
+  | { type: "region"; active: boolean; mode?: RegionCaptureMode }
   | { type: "dictation:show"; position: { x: number; y: number } }
   | { type: "dictation:hide" }
   | { type: "selectionChip:show"; chip: SelectionChipState }
@@ -81,6 +83,7 @@ const initialState: OverlayState = {
   windowHighlightBounds: null,
   windowHighlightTone: "default",
   regionCaptureActive: false,
+  regionCaptureMode: "capture",
   dictationVisible: false,
   dictationPosition: null,
   selectionChip: null,
@@ -125,9 +128,17 @@ function overlayReducer(
           : "default",
       };
     case "region":
-      return state.regionCaptureActive === action.active
+      return state.regionCaptureActive === action.active &&
+        (!action.active ||
+          state.regionCaptureMode === (action.mode ?? "capture"))
         ? state
-        : { ...state, regionCaptureActive: action.active };
+        : {
+            ...state,
+            regionCaptureActive: action.active,
+            regionCaptureMode: action.active
+              ? (action.mode ?? "capture")
+              : "capture",
+          };
     case "dictation:show":
       if (
         state.dictationVisible &&
@@ -263,8 +274,12 @@ function useOverlayIPC(dispatch: Dispatch<OverlayAction>) {
           tone: payload?.tone,
         });
       }),
-      api.overlay.onStartRegionCapture?.(() => {
-        dispatch({ type: "region", active: true });
+      api.overlay.onStartRegionCapture?.((payload) => {
+        dispatch({
+          type: "region",
+          active: true,
+          mode: payload?.mode ?? "capture",
+        });
       }),
       api.overlay.onEndRegionCapture?.(() => {
         dispatch({ type: "region", active: false });
@@ -694,7 +709,7 @@ export function OverlayRoot() {
             pointerEvents: "auto",
           }}
         >
-          <RegionCapture />
+          <RegionCapture mode={state.regionCaptureMode} />
         </div>
       )}
 

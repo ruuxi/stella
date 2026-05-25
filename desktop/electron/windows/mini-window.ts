@@ -1,14 +1,13 @@
 import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
 import { resolveAppIconPath } from '../app-icon.js'
-import { MINI_SHELL_SIZE } from '../layout-constants.js'
+import {
+  MINI_SHELL_MAX_SIZE,
+  MINI_SHELL_MIN_SIZE,
+  MINI_SHELL_SIZE,
+} from '../layout-constants.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
 import type { ShellWindowDidFailLoadDetails } from './shell-window-factory.js'
 import { ShellWindowController } from './shell-window-controller.js'
-
-const MINI_SHELL_MAX_SIZE = {
-  width: 500,
-  height: 900,
-} as const
 
 type MiniWindowControllerOptions = {
   electronDir: string
@@ -59,8 +58,8 @@ export class MiniWindowController {
           y: initial?.y,
           width: initial?.width ?? MINI_SHELL_SIZE.width,
           height: initial?.height ?? MINI_SHELL_SIZE.height,
-          minWidth: 420,
-          minHeight: 560,
+          minWidth: MINI_SHELL_MIN_SIZE.width,
+          minHeight: MINI_SHELL_MIN_SIZE.height,
           maxWidth: MINI_SHELL_MAX_SIZE.width,
           maxHeight: MINI_SHELL_MAX_SIZE.height,
           ...(isMac ? { type: 'panel' as const } : {}),
