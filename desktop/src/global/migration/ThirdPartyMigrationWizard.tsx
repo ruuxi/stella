@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  Check,
   ChevronRight,
-  FileText,
-  FolderInput,
 } from "lucide-react";
 
 import type {
@@ -22,6 +19,8 @@ import "./ThirdPartyMigrationWizard.css";
 
 type ThirdPartyMigrationWizardProps = {
   onImported?: (report: ThirdPartyMigrationReport) => void;
+  hideWhenEmpty?: boolean;
+  onEmpty?: () => void;
 };
 
 const OPTION_ORDER: ThirdPartyMigrationOption[] = [
@@ -47,11 +46,6 @@ const OPTION_COPY: Record<ThirdPartyMigrationOption, string> = {
 const SOURCE_COPY: Record<ThirdPartyMigrationSource, string> = {
   hermes: "Hermes",
   openclaw: "OpenClaw",
-};
-
-const SOURCE_REPOS: Record<ThirdPartyMigrationSource, string> = {
-  hermes: "https://github.com/NousResearch/hermes-agent",
-  openclaw: "https://github.com/openclaw/openclaw",
 };
 
 const previewKey = (preview: ThirdPartyMigrationPreview): string =>
@@ -108,6 +102,8 @@ function MigrationReportList({
 
 export function ThirdPartyMigrationWizard({
   onImported,
+  hideWhenEmpty = false,
+  onEmpty,
 }: ThirdPartyMigrationWizardProps) {
   const [previews, setPreviews] = useState<ThirdPartyMigrationPreview[]>([]);
   const [selectedPreviewKey, setSelectedPreviewKey] = useState<string | null>(
@@ -179,6 +175,11 @@ export function ThirdPartyMigrationWizard({
     setReport(null);
   }, [selectedPreview]);
 
+  useEffect(() => {
+    if (!hideWhenEmpty || loading || foundPreviews.length > 0) return;
+    onEmpty?.();
+  }, [foundPreviews.length, hideWhenEmpty, loading, onEmpty]);
+
   const toggleOption = useCallback((option: ThirdPartyMigrationOption) => {
     setSelection((current) => ({
       ...current,
@@ -232,21 +233,6 @@ export function ThirdPartyMigrationWizard({
 
   return (
     <div className="migration-wizard">
-      <div className="migration-wizard__intro">
-        <div className="migration-wizard__icon" aria-hidden="true">
-          {report ? <FileText size={19} /> : <FolderInput size={20} />}
-        </div>
-        <div>
-          <div className="migration-wizard__title">
-            {report ? "Import report" : "Import from another assistant"}
-          </div>
-          <p className="migration-wizard__desc">
-            Stella reads the old install and writes only to Stella's own files.
-            No live link is kept.
-          </p>
-        </div>
-      </div>
-
       {error ? (
         <div className="migration-wizard__error" role="alert">
           <AlertCircle size={15} />
@@ -257,6 +243,7 @@ export function ThirdPartyMigrationWizard({
       {loading ? (
         <div className="migration-wizard__loading">Checking this computer...</div>
       ) : foundPreviews.length === 0 ? (
+        hideWhenEmpty ? null : (
         <div className="migration-empty">
           <div className="migration-empty__title">
             No Hermes or OpenClaw install found.
@@ -266,6 +253,7 @@ export function ThirdPartyMigrationWizard({
             accounts and set models from Settings.
           </div>
         </div>
+        )
       ) : report ? (
         <div className="migration-report">
           <MigrationReportList title="Imported" items={importedItems} />
@@ -306,54 +294,46 @@ export function ThirdPartyMigrationWizard({
             ))}
           </div>
 
-          <div className="migration-checklist">
+          <div className="migration-options">
             {OPTION_ORDER.map((option) => {
               const finding = getFinding(selectedPreview, option);
               const disabled = !finding?.found;
+              const checked = Boolean(selection[option]);
               return (
-                <label
+                <button
                   key={option}
-                  className="migration-check-row"
+                  type="button"
+                  role="switch"
+                  aria-checked={checked}
+                  aria-label={`${OPTION_COPY[option]}: ${
+                    finding?.found
+                      ? `${finding.count} found`
+                      : "nothing found"
+                  }`}
+                  className="migration-option-row"
                   data-disabled={disabled || undefined}
+                  disabled={disabled || running}
+                  onClick={() => toggleOption(option)}
                 >
-                  <input
-                    type="checkbox"
-                    checked={Boolean(selection[option])}
-                    disabled={disabled || running}
-                    onChange={() => toggleOption(option)}
-                  />
-                  <span className="migration-check-row__box">
-                    <Check size={13} aria-hidden="true" />
-                  </span>
-                  <span className="migration-check-row__text">
-                    <span className="migration-check-row__label">
+                  <span className="migration-option-row__text">
+                    <span className="migration-option-row__label">
                       {OPTION_COPY[option]}
                     </span>
-                    <span className="migration-check-row__meta">
+                    <span className="migration-option-row__meta">
                       {finding?.found
                         ? `${finding.count} found`
                         : "Nothing found"}
                     </span>
                   </span>
-                </label>
+                  <span className="migration-option-row__switch" aria-hidden="true">
+                    <span className="migration-option-row__track">
+                      <span className="migration-option-row__thumb" />
+                    </span>
+                  </span>
+                </button>
               );
             })}
           </div>
-
-          {selectedPreview ? (
-            <a
-              className="migration-wizard__credit"
-              href={SOURCE_REPOS[selectedPreview.source]}
-              onClick={(event) => {
-                event.preventDefault();
-                void window.electronAPI?.system?.openExternal?.(
-                  SOURCE_REPOS[selectedPreview.source],
-                );
-              }}
-            >
-              Source project: {SOURCE_COPY[selectedPreview.source]}
-            </a>
-          ) : null}
 
           <button
             type="button"
@@ -361,7 +341,7 @@ export function ThirdPartyMigrationWizard({
             disabled={!selectedPreview || selectedCount === 0 || running}
             onClick={() => void runImport()}
           >
-            {running ? "Importing..." : "Run import"}
+            {running ? "Importing..." : "Import"}
           </button>
         </>
       )}

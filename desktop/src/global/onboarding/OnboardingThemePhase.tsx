@@ -10,10 +10,10 @@ type ThemePhaseProps = {
   colorMode: "light" | "dark" | "system";
   gradientColor: "relative" | "strong";
   gradientMode: "soft" | "flat";
-  isForcedTheme: boolean;
   sortedThemes: ThemeSummary[];
   splitTransitionActive: boolean;
   themeId: string;
+  continueBlocked?: boolean;
   onContinue: () => void;
   onSelectColorMode: (mode: "light" | "dark" | "system") => void;
   onSelectGradientColor: (color: "relative" | "strong") => void;
@@ -87,10 +87,10 @@ export function OnboardingThemePhase({
   colorMode,
   gradientColor,
   gradientMode,
-  isForcedTheme,
   sortedThemes,
   splitTransitionActive,
   themeId,
+  continueBlocked = false,
   onContinue,
   onSelectColorMode,
   onSelectGradientColor,
@@ -144,13 +144,6 @@ export function OnboardingThemePhase({
     [],
   );
 
-  const revealForcedThemeOptions = useCallback(() => {
-    setShowAppearance(true);
-    setShowGradientStyle(true);
-    setShowGradientColor(true);
-    setHasSelectedGradientColor(true);
-  }, []);
-
   const handleSelectTheme = useCallback(
     (id: string) => {
       const nextTheme = getThemeById(id);
@@ -162,7 +155,6 @@ export function OnboardingThemePhase({
           onSelectGradientMode,
           onSelectGradientColor,
         );
-        revealForcedThemeOptions();
         return;
       }
       // Regular themes: only ensure Appearance is visible on the very
@@ -176,7 +168,6 @@ export function OnboardingThemePhase({
       onSelectColorMode,
       onSelectGradientMode,
       onSelectGradientColor,
-      revealForcedThemeOptions,
     ],
   );
 
@@ -220,12 +211,16 @@ export function OnboardingThemePhase({
   const gradientStyleDisabled = forcedMode ? (["soft"] as const) : [];
   const gradientColorDisabled = forcedMode ? (["relative"] as const) : [];
 
-  // Forced-mode themes (Pearl, Noir) lock Appearance + Gradient to the
-  // values that match the standardized surface — selecting one is enough
-  // to continue once the sub-rows are visible.
-  const canContinue = isForcedTheme
-    ? showAppearance
-    : showAppearance && showGradientStyle && showGradientColor && hasSelectedGradientColor;
+  // Pearl / Noir are single-surface themes — no sub-rows to reveal.
+  // Regular themes use click-to-reveal: Theme → Appearance → Gradient
+  // Style → Gradient Color.
+  const canContinue =
+    (forcedMode
+      ? true
+      : showAppearance &&
+        showGradientStyle &&
+        showGradientColor &&
+        hasSelectedGradientColor) && !continueBlocked;
 
   return (
     <div className="onboarding-step-content">
@@ -250,7 +245,7 @@ export function OnboardingThemePhase({
 
       <div
         className="onboarding-theme-grow-in"
-        data-visible={showAppearance || undefined}
+        data-visible={(!forcedMode && showAppearance) || undefined}
       >
         <div className="onboarding-theme-grow-in-inner">
           {renderThemeOptionRow(
@@ -265,7 +260,7 @@ export function OnboardingThemePhase({
 
       <div
         className="onboarding-theme-grow-in onboarding-theme-grow-in--delayed-1"
-        data-visible={showGradientStyle || undefined}
+        data-visible={(!forcedMode && showGradientStyle) || undefined}
       >
         <div className="onboarding-theme-grow-in-inner">
           {renderThemeOptionRow(
@@ -280,7 +275,7 @@ export function OnboardingThemePhase({
 
       <div
         className="onboarding-theme-grow-in onboarding-theme-grow-in--delayed-2"
-        data-visible={showGradientColor || undefined}
+        data-visible={(!forcedMode && showGradientColor) || undefined}
       >
         <div className="onboarding-theme-grow-in-inner">
           {renderThemeOptionRow(

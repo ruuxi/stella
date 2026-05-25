@@ -660,7 +660,7 @@
 }
 
 .onboarding-migration-step .migration-wizard__primary {
-  align-self: stretch;
+  align-self: center;
 }
 
 .onboarding-step-desc {
@@ -858,6 +858,12 @@
 /* Theme step: each sub-row (Appearance → Gradient Style → Color) grows open
  * via grid 0fr→1fr. No opacity fade and no pill-stagger — content stays
  * visible as height expands so it never reads as a top-down reveal. */
+.onboarding-dialogue[data-phase="theme"] {
+  --onboarding-duration-enter: 480ms;
+  --onboarding-duration-text: 360ms;
+  --onboarding-stagger-step: 40ms;
+}
+
 .onboarding-theme-grow-in {
   display: grid;
   grid-template-rows: 0fr;
@@ -871,11 +877,11 @@
 
 /* Pearl/Noir unlock all three at once — stagger grows so they cascade. */
 .onboarding-theme-grow-in--delayed-1[data-visible] {
-  transition-delay: 140ms;
+  transition-delay: 100ms;
 }
 
 .onboarding-theme-grow-in--delayed-2[data-visible] {
-  transition-delay: 280ms;
+  transition-delay: 200ms;
 }
 
 .onboarding-theme-grow-in-inner {
