@@ -279,55 +279,6 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
     keywords: ["terms of service", "tos", "privacy policy", "license"],
   },
 
-  // ---------- Models ----------
-  {
-    tab: "models",
-    title: "Models",
-    description:
-      "Pick a model for any agent and choose where image generation and voice run.",
-    keywords: [
-      "model picker",
-      "orchestrator",
-      "general agent",
-      "image generation",
-      "voice model",
-      "byok",
-      "api key",
-      "provider",
-      "reasoning",
-      "openai",
-      "anthropic",
-      "openrouter",
-      "fireworks",
-      "kimi",
-      "deepseek",
-      "gemini",
-      "stella best",
-      "stella smart",
-      "stella standard",
-      "llm",
-      "ai",
-      "gpt",
-      "claude",
-      "chatbot",
-    ],
-  },
-  {
-    tab: "models",
-    title: "Connected providers",
-    description:
-      "Disconnect API keys or sign-ins for providers connected on this device.",
-    keywords: [
-      "api keys",
-      "oauth",
-      "disconnect provider",
-      "sign in provider",
-      "anthropic oauth",
-      "token",
-      "credentials",
-    ],
-  },
-
   // ---------- Audio ----------
   {
     tab: "audio",
@@ -434,13 +385,6 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
     cardTitle: "Backups",
     description: "Save an encrypted backup right now.",
     keywords: ["manual backup", "snapshot", "save"],
-  },
-  {
-    tab: "models",
-    title: "API keys",
-    cardTitle: "Connected providers",
-    description: "Bring your own API key for any LLM provider.",
-    keywords: ["byok", "secret", "token", "key"],
   },
 ];
 

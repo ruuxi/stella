@@ -4,7 +4,6 @@ export const SETTINGS_TAB_KEYS = [
   "memory",
   "backup",
   "account",
-  "models",
   "audio",
 ] as const;
 
@@ -22,6 +21,5 @@ export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "memory", labelKey: "settings.tabs.memory" },
   { key: "backup", labelKey: "settings.tabs.backup" },
   { key: "account", labelKey: "settings.tabs.account" },
-  { key: "models", labelKey: "settings.tabs.models" },
   { key: "audio", labelKey: "settings.tabs.audio" },
 ];

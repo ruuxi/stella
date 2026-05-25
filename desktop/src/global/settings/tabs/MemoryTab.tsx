@@ -10,6 +10,7 @@ import {
 } from "@/global/settings/hooks/use-llm-credentials";
 import { api } from "@/convex/api";
 import { router } from "@/router";
+import { openEngineDisplayTab } from "@/shell/display/default-tabs";
 import { getSettingsErrorMessage } from "./shared";
 
 type ChronicleStatus = {
@@ -213,7 +214,11 @@ function ChronicleSettingsCard() {
   }, [refresh]);
 
   const openChronicleModelPicker = () => {
-    void router.navigate({ to: "/settings", search: { tab: "models" } });
+    // Models live in the workspace panel's Engine tab now; open it
+    // alongside /chat so the user lands on the picker without
+    // bouncing through another settings page.
+    void router.navigate({ to: "/chat" });
+    openEngineDisplayTab();
   };
 
   const handleToggle = async (next: boolean) => {
@@ -221,11 +226,11 @@ function ChronicleSettingsCard() {
     if (next && !canEnable) {
       // Two failure modes; pick the most actionable copy. If they're
       // anonymous it's "sign in or BYOK"; if they're on Stella free
-      // it's "upgrade or BYOK". Either way the BYOK link goes to
-      // Settings → Models → Chronicle.
+      // it's "upgrade or BYOK". Either way the BYOK link opens the
+      // workspace panel's Engine tab on the Models section.
       const message = !hasConnectedAccount
-        ? "Sign in to Stella, or pick a small model for Chronicle in Settings → Models."
-        : "Screen memory is included with any Stella plan. Upgrade — or pick a small model for Chronicle in Settings → Models.";
+        ? "Sign in to Stella, or pick a small model for Chronicle in the Engine panel."
+        : "Screen memory is included with any Stella plan. Upgrade — or pick a small model for Chronicle in the Engine panel.";
       setError(message);
       showToast({
         title: !hasConnectedAccount
@@ -355,8 +360,8 @@ function ChronicleSettingsCard() {
     accessLoading || canEnable
       ? "Stella can glance at your screen now and then to remember what you were doing."
       : !hasConnectedAccount
-        ? "Sign in to Stella, or pick a small model for Chronicle in Settings → Models."
-        : "Screen memory is included with any Stella plan. Upgrade, or pick a small model for Chronicle in Settings → Models.";
+        ? "Sign in to Stella, or pick a small model for Chronicle in the Engine panel."
+        : "Screen memory is included with any Stella plan. Upgrade, or pick a small model for Chronicle in the Engine panel.";
 
   return (
     <div className="settings-card">
