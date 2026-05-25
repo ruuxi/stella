@@ -8,6 +8,7 @@ const ENGINE_OPTIONS = [
 ] as const;
 
 type EngineId = (typeof ENGINE_OPTIONS)[number]["id"];
+type StoredEngineId = EngineId | "cursor_sdk";
 
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
@@ -16,7 +17,8 @@ type LocalModelPreferences = {
     string,
     "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >;
-  agentRuntimeEngine: EngineId;
+  agentRuntimeEngine: StoredEngineId;
+  cursorModel: string;
 };
 
 /**
@@ -56,7 +58,10 @@ export function LocalRuntimeOptions() {
   }, []);
 
   const ready = preferences !== null;
-  const engine: EngineId = preferences?.agentRuntimeEngine ?? "default";
+  const engine: EngineId =
+    preferences?.agentRuntimeEngine === "claude_code_local"
+      ? "claude_code_local"
+      : "default";
 
   const handleEngineChange = useCallback(
     async (next: EngineId) => {

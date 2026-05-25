@@ -470,6 +470,36 @@ const TrashIcon = ({ size = 18, style }: IconProps) => (
   </svg>
 );
 
+const EngineIcon = ({ size = 18, style }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={style}
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="8.2"
+      stroke="currentColor"
+      strokeOpacity="0.72"
+      strokeWidth="1.5"
+      fill="currentColor"
+      fillOpacity="0.08"
+    />
+    <path
+      d="M12 6.5v3M12 14.5v3M6.5 12h3M14.5 12h3M8.1 8.1l2.1 2.1M13.8 13.8l2.1 2.1M15.9 8.1l-2.1 2.1M10.2 13.8l-2.1 2.1"
+      stroke="currentColor"
+      strokeOpacity="0.7"
+      strokeWidth="1.35"
+      strokeLinecap="round"
+    />
+    <circle cx="12" cy="12" r="2.15" fill="currentColor" fillOpacity="0.62" />
+  </svg>
+);
+
 const UrlIcon = ({ size = 18, style }: IconProps) => (
   <svg
     width={size}
@@ -547,5 +577,7 @@ export const DisplayTabIcon = ({
       return <StoreIcon size={size} style={style} />;
     case "trash":
       return <TrashIcon size={size} style={style} />;
+    case "engine":
+      return <EngineIcon size={size} style={style} />;
   }
 };

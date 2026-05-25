@@ -4,6 +4,7 @@ import { ChatPanelTab, type ChatPanelOpenRequest } from "@/shell/ChatSidebar";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { StoreSidePanel } from "@/global/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
+import { EngineTabContent } from "./EngineTabContent";
 import { ChatHomeOverview } from "./ChatHomeOverview";
 import { MediaTabContent } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
@@ -19,6 +20,7 @@ import type { OpenTabOptions } from "./types";
 export const CHAT_DISPLAY_TAB_ID = "chat";
 export const STORE_DISPLAY_TAB_ID = "store:side-panel";
 export const TRASH_DISPLAY_TAB_ID = "trash:deferred-delete";
+export const ENGINE_DISPLAY_TAB_ID = "engine:runtime";
 export const MEDIA_DISPLAY_TAB_ID = GENERATED_MEDIA_TAB_ID;
 export const CANVAS_DISPLAY_TAB_ID = CANVAS_HTML_TAB_ID;
 
@@ -113,6 +115,16 @@ export function openTrashDisplayTab(): void {
     kind: "trash",
     title: "Trash",
     render: () => createElement(TrashTabContent),
+  });
+}
+
+export function openEngineDisplayTab(): void {
+  displayTabs.openTab({
+    id: ENGINE_DISPLAY_TAB_ID,
+    kind: "engine",
+    title: "Engine",
+    tooltip: "Agent runtime settings",
+    render: () => createElement(EngineTabContent),
   });
 }
 

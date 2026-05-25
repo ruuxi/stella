@@ -72,7 +72,8 @@ type LocalModelPreferencesShape = {
   modelOverrides: Record<string, string>;
   assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
-  agentRuntimeEngine: "default" | "claude_code_local";
+  agentRuntimeEngine: "default" | "claude_code_local" | "cursor_sdk";
+  cursorModel: string;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
@@ -492,7 +493,9 @@ export function SettingsModelsView() {
   /* ── global engine ───────────────────────────────────────────── */
 
   const engine: "default" | "claude_code_local" =
-    preferences?.agentRuntimeEngine ?? "default";
+    preferences?.agentRuntimeEngine === "claude_code_local"
+      ? "claude_code_local"
+      : "default";
   const engineLabel =
     ENGINE_OPTIONS.find((opt) => opt.id === engine)?.label ?? "Stella";
   const handleEngineChange = useCallback(

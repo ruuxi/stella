@@ -62,10 +62,11 @@ const REASONING_OPTIONS: ReadonlyArray<{
 
 const ASSISTANT_WRITE_KEYS = ["orchestrator", "general"] as const;
 
-type AgentRuntimeEngine = "default" | "claude_code_local";
+type AgentRuntimeEngine = "default" | "claude_code_local" | "cursor_sdk";
+type VisibleAgentRuntimeEngine = Exclude<AgentRuntimeEngine, "cursor_sdk">;
 
 const ENGINE_OPTIONS: ReadonlyArray<{
-  id: AgentRuntimeEngine;
+  id: VisibleAgentRuntimeEngine;
   label: string;
 }> = [
   { id: "default", label: "Stella" },
@@ -78,6 +79,7 @@ type LocalModelPreferencesShape = {
   assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: AgentRuntimeEngine;
+  cursorModel: string;
 };
 
 // Module-scope snapshot so re-opening the menu doesn't flash a loading
@@ -106,6 +108,7 @@ function localModelPreferencesEqual(
   if (!left || !right) return false;
   return (
     left.agentRuntimeEngine === right.agentRuntimeEngine &&
+    left.cursorModel === right.cursorModel &&
     recordsEqual(left.defaultModels, right.defaultModels) &&
     recordsEqual(left.modelOverrides, right.modelOverrides) &&
     recordsEqual(left.reasoningEfforts, right.reasoningEfforts) &&
@@ -388,11 +391,13 @@ export function ComposerModelMenuItem() {
   // bundled Claude Code CLI). Mirrors the toggle in Settings → Models;
   // surfacing it here means the user doesn't have to leave the chat
   // composer to swap runtimes.
-  const currentEngine: AgentRuntimeEngine =
-    preferences?.agentRuntimeEngine ?? "default";
+  const currentEngine: VisibleAgentRuntimeEngine =
+    preferences?.agentRuntimeEngine === "claude_code_local"
+      ? "claude_code_local"
+      : "default";
 
   const handleEngineSelect = useCallback(
-    async (next: AgentRuntimeEngine) => {
+    async (next: VisibleAgentRuntimeEngine) => {
       if (!preferences || pendingRef.current) return;
       if (preferences.agentRuntimeEngine === next) return;
       const previous = preferences;

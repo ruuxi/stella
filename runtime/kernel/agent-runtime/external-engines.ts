@@ -18,6 +18,11 @@ import {
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
 import {
+  buildCursorPromptFromMessages,
+  runCursorAgentTurn,
+  shouldUseCursorAgentRuntime,
+} from "../integrations/cursor-agent-runtime.js";
+import {
   buildRuntimeSystemPrompt,
   buildSubagentSystemPrompt,
   createRuntimePromptAgentMessage,
@@ -121,7 +126,47 @@ const shouldUseClaudeCodeRuntime = (opts: BaseRunOptions): boolean => {
   });
 };
 
-const persistClaudePromptMessages = (
+type ExternalEngineSessionKind = "claude_code_local" | "cursor_sdk";
+
+const EXTERNAL_ENGINE_SESSION_PREFIXES: readonly string[] = [
+  "claude_code_local:",
+  "cursor_sdk:",
+];
+
+const getExternalEngineSessionId = (args: {
+  store: BaseRunOptions["store"];
+  threadKey: string;
+  engine: ExternalEngineSessionKind;
+}): string | undefined => {
+  const raw = args.store.getThreadExternalSessionId(args.threadKey);
+  if (!raw) return undefined;
+  const expectedPrefix = `${args.engine}:`;
+  if (raw.startsWith(expectedPrefix)) {
+    const sessionId = raw.slice(expectedPrefix.length).trim();
+    return sessionId || undefined;
+  }
+  if (
+    EXTERNAL_ENGINE_SESSION_PREFIXES.some((prefix) => raw.startsWith(prefix))
+  ) {
+    return undefined;
+  }
+  // Existing Claude Code sessions were stored before engine namespacing.
+  return args.engine === "claude_code_local" ? raw : undefined;
+};
+
+const setExternalEngineSessionId = (args: {
+  store: BaseRunOptions["store"];
+  threadKey: string;
+  engine: ExternalEngineSessionKind;
+  sessionId: string;
+}) => {
+  args.store.setThreadExternalSessionId(
+    args.threadKey,
+    `${args.engine}:${args.sessionId}`,
+  );
+};
+
+const persistExternalPromptMessages = (
   opts: BaseRunOptions,
   threadKey: string,
   promptMessages: RuntimePromptMessage[],
@@ -339,7 +384,7 @@ const runClaudeHostedTurn = async (args: {
       : undefined;
 
   runEvents.recordRunStart();
-  persistClaudePromptMessages(args.opts, threadKey, args.promptMessages);
+  persistExternalPromptMessages(args.opts, threadKey, args.promptMessages);
 
   if (args.opts.abortSignal?.aborted) {
     throw new Error("Aborted");
@@ -352,8 +397,11 @@ const runClaudeHostedTurn = async (args: {
   const sessionKey = args.opts.agentContext.activeThreadId
     ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
     : `${args.opts.conversationId}:run:${runId}`;
-  const persistedSessionId =
-    args.opts.store.getThreadExternalSessionId(threadKey);
+  const persistedSessionId = getExternalEngineSessionId({
+    store: args.opts.store,
+    threadKey,
+    engine: "claude_code_local",
+  });
   const toolMetadata = getRuntimeToolMetadata({
     toolsAllowlist: args.opts.agentContext.toolsAllowlist,
     toolCatalog: args.opts.toolCatalog,
@@ -541,11 +589,98 @@ const runClaudeHostedTurn = async (args: {
   if (assistantMessageEvent) {
     args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
   }
-  args.opts.store.setThreadExternalSessionId(threadKey, finalResult.sessionId);
+  setExternalEngineSessionId({
+    store: args.opts.store,
+    threadKey,
+    engine: "claude_code_local",
+    sessionId: finalResult.sessionId,
+  });
 
   return {
     finalText: finalResult.text,
     sessionId: finalResult.sessionId,
+  };
+};
+
+const runCursorHostedTurn = async (args: {
+  opts: SubagentRunOptions;
+  session: ExternalSubagentRunSession;
+  systemPrompt: string;
+  promptMessages: RuntimePromptMessage[];
+  callbacks?: Partial<RuntimeRunCallbacks>;
+}): Promise<{
+  finalText: string;
+  sessionId: string;
+  fileChanges?: SubagentRunResult["fileChanges"];
+}> => {
+  const { runId, threadKey, runEvents } = args.session;
+  runEvents.recordRunStart();
+  persistExternalPromptMessages(args.opts, threadKey, args.promptMessages);
+
+  if (args.opts.abortSignal?.aborted) {
+    throw new Error("Aborted");
+  }
+
+  const localCliCwd = resolveLocalCliCwd({
+    agentType: args.opts.agentType,
+    stellaRoot: args.opts.stellaRoot,
+  });
+  const sessionKey = args.opts.agentContext.activeThreadId
+    ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
+    : `${args.opts.conversationId}:run:${runId}`;
+  const persistedSessionId = getExternalEngineSessionId({
+    store: args.opts.store,
+    threadKey,
+    engine: "cursor_sdk",
+  });
+  const prompt = buildCursorPromptFromMessages({
+    systemPrompt: args.systemPrompt,
+    promptMessages: args.promptMessages,
+  });
+  const result = await runCursorAgentTurn({
+    runId,
+    sessionKey,
+    ...(persistedSessionId ? { persistedSessionId } : {}),
+    prompt,
+    cwd: localCliCwd,
+    stellaHome: args.opts.stellaHome,
+    stellaRoot: args.opts.stellaRoot,
+    attachments: args.opts.attachments,
+    abortSignal: args.opts.abortSignal,
+    onStatus: (status) => {
+      args.opts.onProgress?.(status);
+      args.callbacks?.onStatus?.(runEvents.recordStatus(status));
+    },
+    onStream: (chunk) => {
+      args.opts.onProgress?.(chunk);
+      args.callbacks?.onStream?.(runEvents.recordStream(chunk));
+    },
+  });
+
+  await persistAssistantReply({
+    store: args.opts.store,
+    threadKey,
+    resolvedLlm: args.opts.resolvedLlm,
+    agentType: args.opts.agentType,
+    content: result.text,
+  });
+  const assistantMessageEvent = runEvents.recordAssistantTextEnd(result.text);
+  if (assistantMessageEvent) {
+    args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
+  }
+  setExternalEngineSessionId({
+    store: args.opts.store,
+    threadKey,
+    engine: "cursor_sdk",
+    sessionId: result.sessionId,
+  });
+
+  return {
+    finalText: result.text,
+    sessionId: result.sessionId,
+    ...(result.fileChanges?.length
+      ? { fileChanges: result.fileChanges }
+      : {}),
   };
 };
 
@@ -626,7 +761,61 @@ export const runExternalSubagentTurn = async (
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult | null> => {
   if (!shouldUseClaudeCodeRuntime(opts)) {
-    return null;
+    if (
+      !shouldUseCursorAgentRuntime({
+        agentType: opts.agentType,
+        agentEngine: opts.agentContext.agentEngine,
+      })
+    ) {
+      return null;
+    }
+
+    const session = createExternalSubagentRunSession(opts, {
+      runId: opts.runId ?? `local:sub:${crypto.randomUUID()}`,
+    });
+
+    try {
+      const promptMessages = await buildSubagentPromptMessages({
+        context: opts.agentContext,
+        userPrompt: opts.userPrompt,
+        promptMessages: opts.promptMessages,
+        stellaHome: opts.stellaHome,
+        stellaRoot: opts.stellaRoot,
+        agentType: opts.agentType,
+        hookContext: {
+          ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
+          conversationId: opts.conversationId,
+          threadKey: session.threadKey,
+          runId: session.runId,
+          ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
+        },
+      });
+      const systemPrompt = await buildSubagentSystemPrompt({
+        ...opts,
+        runId: session.runId,
+      });
+      const result = await runCursorHostedTurn({
+        opts,
+        session,
+        systemPrompt,
+        promptMessages,
+        callbacks: opts.callbacks,
+      });
+      const finalized = await session.finalizeSuccess(result.finalText);
+      if (result.fileChanges?.length) {
+        finalized.fileChanges = result.fileChanges;
+      }
+      return finalized;
+    } catch (error) {
+      const interruptedReason = resolveInterruptionReason({
+        abortSignal: opts.abortSignal,
+        error,
+      });
+      if (interruptedReason) {
+        return session.finalizeInterrupted(interruptedReason);
+      }
+      return session.finalizeError(error);
+    }
   }
 
   const session = createExternalSubagentRunSession(opts, {

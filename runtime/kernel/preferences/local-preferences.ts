@@ -27,8 +27,13 @@ import {
   type RealtimeVoiceSelections,
   type RealtimeVoiceUnderlyingProvider,
 } from "../../contracts/local-preferences.js";
+import {
+  coerceAgentRuntimeEngine,
+  type AgentRuntimeEngine,
+} from "../../contracts/agent-engine.js";
 
-type AgentEngine = "default" | "claude_code_local";
+type AgentEngine = AgentRuntimeEngine;
+export const DEFAULT_CURSOR_MODEL = "composer-latest";
 export type ReasoningEffort =
   | "default"
   | "minimal"
@@ -81,6 +86,8 @@ export type LocalPreferences = {
   personalityVoiceId?: string;
   /** Runtime engine shared by every local CLI-backed agent. */
   agentRuntimeEngine: AgentEngine;
+  /** Cursor model id used when the Cursor engine is selected. */
+  cursorModel: string;
   /** Shared max concurrency across all agent task execution */
   maxAgentConcurrency: number;
   /** Image generation provider/model. Stella is the managed default. */
@@ -135,6 +142,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "assistantPropagatedAgents"
   | "reasoningEfforts"
   | "agentRuntimeEngine"
+  | "cursorModel"
   | "maxAgentConcurrency"
   | "imageGeneration"
   | "realtimeVoice"
@@ -151,6 +159,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   expressionStyle: undefined,
   personalityVoiceId: undefined,
   agentRuntimeEngine: "default",
+  cursorModel: DEFAULT_CURSOR_MODEL,
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   imageGeneration: { provider: "stella" },
   realtimeVoice: { provider: "stella" },
@@ -203,6 +212,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
           ? parsed.personalityVoiceId.trim()
           : DEFAULT_PREFERENCES.personalityVoiceId,
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
+      cursorModel: normalizeCursorModel(parsed.cursorModel),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       imageGeneration: normalizeImageGenerationPreferences(
         parsed.imageGeneration,
@@ -349,6 +359,7 @@ export const getLocalModelPreferences = (
     assistantPropagatedAgents: [...prefs.assistantPropagatedAgents],
     reasoningEfforts: { ...prefs.reasoningEfforts },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
+    cursorModel: prefs.cursorModel,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
     imageGeneration: { ...prefs.imageGeneration },
     realtimeVoice: { ...prefs.realtimeVoice },
@@ -382,6 +393,10 @@ export const updateLocalModelPreferences = (
       patch.agentRuntimeEngine === undefined
         ? prefs.agentRuntimeEngine
         : normalizeEngine(patch.agentRuntimeEngine),
+    cursorModel:
+      patch.cursorModel === undefined
+        ? prefs.cursorModel
+        : normalizeCursorModel(patch.cursorModel),
     maxAgentConcurrency:
       patch.maxAgentConcurrency === undefined
         ? prefs.maxAgentConcurrency
@@ -464,8 +479,13 @@ export const setOnboardingCompleted = (
 // ── Normalization helpers ─────────────────────────────────────────────────
 
 const normalizeEngine = (value: unknown): AgentEngine => {
-  if (value === "claude_code_local") return "claude_code_local";
-  return "default";
+  return coerceAgentRuntimeEngine(value);
+};
+
+const normalizeCursorModel = (value: unknown): string => {
+  if (typeof value !== "string") return DEFAULT_CURSOR_MODEL;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : DEFAULT_CURSOR_MODEL;
 };
 
 const normalizeReasoningEffort = (value: unknown): ReasoningEffort => {

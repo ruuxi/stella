@@ -9,6 +9,7 @@ import type {
   ToolCall,
 } from "../../ai/types.js";
 import { getAgentRuntimeEngine } from "../preferences/local-preferences.js";
+import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import { resolveLocalCliCwd, textFromUnknown } from "../agent-runtime/shared.js";
 import type { ToolMetadata, ToolResult } from "../tools/types.js";
 import {
@@ -16,7 +17,7 @@ import {
   runClaudeCodeTurn,
 } from "./claude-code-session-runtime.js";
 
-export type ClaudeCodeAgentRuntimeEngine = "default" | "claude_code_local";
+export type ClaudeCodeAgentRuntimeEngine = AgentRuntimeEngine;
 
 export const shouldUseClaudeCodeAgentRuntime = (args: {
   stellaRoot?: string;

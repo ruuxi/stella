@@ -55,6 +55,7 @@ import type {
 } from "../storage/shared.js";
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import type { ReasoningEffort } from "../preferences/local-preferences.js";
+import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import {
   type SubagentSession,
   getOrCreateSubagentSession,
@@ -82,7 +83,7 @@ export type LocalAgentContext = {
     customMessage?: RuntimeThreadMessage["customMessage"];
   }>;
   activeThreadId?: string;
-  agentEngine?: "default" | "claude_code_local";
+  agentEngine?: AgentRuntimeEngine;
   maxAgentConcurrency?: number;
 };
 

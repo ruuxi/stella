@@ -10,7 +10,15 @@ import {
   type IpcMainInvokeEvent,
 } from "electron";
 import { spawn } from "node:child_process";
-import { access, copyFile, stat } from "node:fs/promises";
+import {
+  access,
+  copyFile,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -33,6 +41,7 @@ import {
   type LocalModelPreferencesSnapshot,
   type ReasoningEffort,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
+import { coerceAgentRuntimeEngine } from "../../../runtime/contracts/agent-engine.js";
 import { writePersonalityForVoice } from "../../../runtime/kernel/personality/personality.js";
 import { isKnownPersonalityVoiceId } from "../../../runtime/extensions/stella-runtime/personality/voices.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
@@ -95,6 +104,8 @@ import {
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_MODELS,
+  IPC_PREFERENCES_GET_CURSOR_API_KEY,
+  IPC_PREFERENCES_LIST_CURSOR_MODELS,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
@@ -103,6 +114,7 @@ import {
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_MODELS,
+  IPC_PREFERENCES_SET_CURSOR_API_KEY,
   IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
@@ -1978,6 +1990,92 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return getLocalModelPreferences(stellaRoot);
   });
 
+  const getCursorApiKeyPath = (stellaRoot: string) =>
+    path.join(stellaRoot, "credentials", "cursor-api-key");
+
+  const readCursorApiKey = async (stellaRoot: string): Promise<string> => {
+    const envKey =
+      process.env.CURSOR_API_KEY?.trim() ||
+      process.env.STELLA_CURSOR_API_KEY?.trim();
+    if (envKey) return envKey;
+    try {
+      // Modifying this could break the app. Avoid exposing tokens; confirm with the user before changing credential reads.
+      return (await readFile(getCursorApiKeyPath(stellaRoot), "utf8")).trim();
+    } catch {
+      return "";
+    }
+  };
+
+  ipcMain.handle(IPC_PREFERENCES_GET_CURSOR_API_KEY, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_GET_CURSOR_API_KEY,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted preferences:getCursorApiKeyStatus request.",
+      );
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return { hasApiKey: false };
+    return { hasApiKey: Boolean(await readCursorApiKey(stellaRoot)) };
+  });
+
+  ipcMain.handle(
+    IPC_PREFERENCES_SET_CURSOR_API_KEY,
+    async (event, payload: { apiKey?: unknown }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_PREFERENCES_SET_CURSOR_API_KEY,
+        )
+      ) {
+        throw new Error("Blocked untrusted preferences:setCursorApiKey request.");
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) return { hasApiKey: false };
+      const apiKey =
+        typeof payload?.apiKey === "string" ? payload.apiKey.trim() : "";
+      const keyPath = getCursorApiKeyPath(stellaRoot);
+      if (!apiKey) {
+        await rm(keyPath, { force: true });
+        return { hasApiKey: false };
+      }
+      // Modifying this could break the app. Avoid exposing tokens; confirm with the user before changing credential storage or IPC handling.
+      await mkdir(path.dirname(keyPath), { recursive: true, mode: 0o700 });
+      await writeFile(keyPath, `${apiKey}\n`, { mode: 0o600 });
+      return { hasApiKey: true };
+    },
+  );
+
+  ipcMain.handle(IPC_PREFERENCES_LIST_CURSOR_MODELS, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_LIST_CURSOR_MODELS,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:listCursorModels request.");
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return { models: [] };
+    const apiKey = await readCursorApiKey(stellaRoot);
+    if (!apiKey) {
+      return { models: [] };
+    }
+    const { Cursor } = await import("@cursor/sdk");
+    const models = await Cursor.models.list({ apiKey });
+    return {
+      models: models.map((model) => ({
+        id: model.id,
+        displayName: model.displayName,
+        ...(model.description ? { description: model.description } : {}),
+        ...(model.aliases?.length ? { aliases: model.aliases } : {}),
+      })),
+    };
+  });
+
   ipcMain.handle(
     IPC_PREFERENCES_SET_MODELS,
     (event, payload: Partial<LocalModelPreferencesSnapshot>) => {
@@ -2003,10 +2101,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         payload?.reasoningEfforts,
       );
 
-      const agentRuntimeEngine =
-        payload?.agentRuntimeEngine === "claude_code_local"
-          ? payload.agentRuntimeEngine
-          : "default";
+      const agentRuntimeEngine = coerceAgentRuntimeEngine(
+        payload?.agentRuntimeEngine,
+      );
       const parsedConcurrency = Number(payload?.maxAgentConcurrency);
       const maxAgentConcurrency =
         Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
@@ -2028,6 +2125,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       if (payload?.agentRuntimeEngine !== undefined) {
         patch.agentRuntimeEngine = agentRuntimeEngine;
+      }
+      if (payload?.cursorModel !== undefined) {
+        patch.cursorModel =
+          typeof payload.cursorModel === "string"
+            ? payload.cursorModel.trim()
+            : "";
       }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;

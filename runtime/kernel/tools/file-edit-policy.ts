@@ -1,4 +1,5 @@
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import type { Api, Model } from "../../ai/types.js";
 
 export const APPLY_PATCH_TOOL_NAME = "apply_patch";
@@ -7,7 +8,7 @@ export const EDIT_TOOL_NAME = "Edit";
 export const WRITE_EDIT_TOOL_NAMES = [WRITE_TOOL_NAME, EDIT_TOOL_NAME] as const;
 
 export type FileEditToolFamily = "apply_patch" | "write_edit";
-export type FileEditAgentEngine = "default" | "claude_code_local";
+export type FileEditAgentEngine = AgentRuntimeEngine;
 
 type ModelIdentity = Pick<Model<Api>, "api" | "provider" | "id" | "name">;
 
