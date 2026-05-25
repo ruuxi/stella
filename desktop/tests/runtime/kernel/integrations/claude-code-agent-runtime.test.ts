@@ -51,6 +51,21 @@ describe("Claude Code agent runtime selector", () => {
     ).toBe(false);
   });
 
+  it("lets explicit Cursor and Codex engine selections override stale Claude model ids", () => {
+    expect(
+      shouldUseClaudeCodeAgentRuntime({
+        agentEngine: "cursor_sdk",
+        modelId: "claude-code/default",
+      }),
+    ).toBe(false);
+    expect(
+      shouldUseClaudeCodeAgentRuntime({
+        agentEngine: "codex_cli",
+        modelId: "claude-code/default",
+      }),
+    ).toBe(false);
+  });
+
   it("uses Claude Code's default model instead of a Stella agent type", () => {
     expect(getClaudeCodeAgentModelId()).toBe("claude-code/default");
   });

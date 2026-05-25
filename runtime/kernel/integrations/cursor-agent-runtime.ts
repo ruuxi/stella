@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { setupEnvironment } from "dugite";
-import type { SDKImage, SDKMessage } from "@cursor/sdk";
+import type { AgentOptions, SDKImage, SDKMessage } from "@cursor/sdk";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
@@ -287,6 +287,23 @@ const statusTextFromMessage = (message: SDKMessage): string | null => {
   return null;
 };
 
+export const buildCursorAgentOptions = (args: {
+  apiKey: string;
+  model: AgentOptions["model"];
+  cwd?: string;
+  name?: string;
+  idempotencyKey?: string;
+}): AgentOptions => ({
+  apiKey: args.apiKey,
+  ...(args.name ? { name: args.name } : {}),
+  model: args.model,
+  local: {
+    ...(args.cwd ? { cwd: args.cwd } : {}),
+  },
+  ...(args.cwd ? { platform: { workspaceRef: args.cwd } } : {}),
+  ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
+});
+
 export const runCursorAgentTurn = async (request: {
   runId: string;
   sessionKey: string;
@@ -317,20 +334,16 @@ export const runCursorAgentTurn = async (request: {
         ? loadLocalPreferences(request.stellaHome).cursorModel
         : DEFAULT_CURSOR_MODEL),
   };
-  const local = {
-    ...(request.cwd ? { cwd: request.cwd } : {}),
-  };
+  const agentOptions = buildCursorAgentOptions({
+    apiKey,
+    model,
+    cwd: request.cwd,
+  });
   const agent = request.persistedSessionId
-    ? await Agent.resume(request.persistedSessionId, {
-        apiKey,
-        model,
-        local,
-      })
+    ? await Agent.resume(request.persistedSessionId, agentOptions)
     : await Agent.create({
-        apiKey,
+        ...agentOptions,
         name: "Stella General",
-        model,
-        local,
         idempotencyKey: request.sessionKey,
       });
 

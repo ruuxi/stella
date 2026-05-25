@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
@@ -175,6 +176,14 @@ const mimeExtension = (mimeType: string): string => {
   }
 };
 
+export const codexImagePathFromFileUrl = (url: string): string | null => {
+  try {
+    return fileURLToPath(url);
+  } catch {
+    return null;
+  }
+};
+
 const materializeCodexAttachments = (
   runId: string,
   attachments?: RuntimeAttachmentRef[],
@@ -185,11 +194,8 @@ const materializeCodexAttachments = (
   for (const [index, attachment] of attachments.entries()) {
     if (!attachment.mimeType?.startsWith("image/")) continue;
     if (attachment.url.startsWith("file://")) {
-      try {
-        imagePaths.push(new URL(attachment.url).pathname);
-      } catch {
-        // Ignore invalid file URLs.
-      }
+      const imagePath = codexImagePathFromFileUrl(attachment.url);
+      if (imagePath) imagePaths.push(imagePath);
       continue;
     }
     if (path.isAbsolute(attachment.url)) {
@@ -324,6 +330,20 @@ export const runCodexAgentTurn = async (request: {
   }
 
   try {
+    const childErrorPromise = new Promise<never>((_, reject) => {
+      child.once("error", (error) => {
+        turnFailure = error instanceof Error ? error.message : String(error);
+        child.stdout?.destroy();
+        reject(error);
+      });
+    });
+    const closePromise = new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((resolve) => {
+      child.once("close", (code, signal) => resolve({ code, signal }));
+    });
+
     if (!child.stdin) throw new Error("Codex process has no stdin.");
     child.stdin.write(request.prompt);
     child.stdin.end();
@@ -332,22 +352,13 @@ export const runCodexAgentTurn = async (request: {
     child.stderr?.on("data", (data: Buffer) => {
       stderrChunks.push(data);
     });
-    const closePromise = new Promise<{
-      code: number | null;
-      signal: NodeJS.Signals | null;
-    }>((resolve) => {
-      child.once("error", (error) => {
-        turnFailure = error instanceof Error ? error.message : String(error);
-      });
-      child.once("close", (code, signal) => resolve({ code, signal }));
-    });
 
     const lines = readline.createInterface({
       input: child.stdout,
       crlfDelay: Infinity,
     });
 
-    try {
+    const consumeLines = async () => {
       for await (const line of lines) {
         if (!line.trim()) continue;
         const event = JSON.parse(line) as CodexThreadEvent;
@@ -412,11 +423,14 @@ export const runCodexAgentTurn = async (request: {
           request.onStatus?.(item.message);
         }
       }
+    };
+
+    try {
+      await Promise.race([consumeLines(), childErrorPromise]);
     } finally {
       lines.close();
     }
-
-    const exit = await closePromise;
+    const exit = await Promise.race([closePromise, childErrorPromise]);
     if (aborted) {
       throw new Error("Aborted");
     }
