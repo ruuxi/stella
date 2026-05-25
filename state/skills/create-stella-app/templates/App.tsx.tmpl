@@ -1,23 +1,92 @@
-import { lazy, Suspense } from "react";
-import { Spinner } from "@/ui/spinner";
-import "./{{ID}}.css";
+import { useState } from "react";
 
-const {{COMPONENT}}View = lazy(() =>
-  import("./{{COMPONENT}}View").then((m) => ({ default: m.{{COMPONENT}}View })),
-);
+/**
+ * {{LABEL}} — a Stella app.
+ *
+ * One file by design. When this file feels cramped (well past 1k lines,
+ * not before), split helpers into siblings (e.g. `{{SLUG}}.helpers.ts`,
+ * `{{SLUG}}.css`). Don't preemptively split — it's cheaper to live in
+ * one file until it stops working.
+ *
+ * `meta` is consumed by:
+ *   - `/apps` (label, sort by createdAt)
+ *   - `/apps/{{SLUG}}` (dynamic route that mounts `default`)
+ *
+ * Don't paint a background on the root — the shifting Stella canvas
+ * sits behind everything. Tokens (`var(--foreground)`, `var(--card)`,
+ * `var(--border)`, `var(--font-family-display)`, etc.) handle theming
+ * automatically.
+ */
 
-export function {{COMPONENT}}App() {
+export const meta = {
+  label: "{{LABEL}}",
+  createdAt: "{{CREATED_AT}}",
+};
+
+export default function App() {
+  const [count, setCount] = useState(0);
+
   return (
-    <Suspense
-      fallback={
-        <div className="{{ID}}-placeholder">
-          <Spinner size="md" />
-        </div>
-      }
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        boxSizing: "border-box",
+        padding: "clamp(1.5rem, 3vw, 2.5rem) clamp(1.5rem, 4vw, 3rem)",
+        color: "var(--foreground)",
+        fontFamily: "var(--font-family-sans, 'Manrope', sans-serif)",
+        letterSpacing: "var(--font-family-sans--default-letter-spacing, -0.02em)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "1.5rem",
+        overflow: "auto",
+      }}
     >
-      <{{COMPONENT}}View />
-    </Suspense>
+      <header style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+        <h1
+          style={{
+            margin: 0,
+            fontFamily:
+              "var(--font-family-display, 'Cormorant Garamond', Georgia, serif)",
+            fontSize: "clamp(2.4rem, 4vw, 3rem)",
+            fontWeight: 300,
+            lineHeight: 1,
+            letterSpacing: "-0.04em",
+          }}
+        >
+          {meta.label}
+        </h1>
+        <p
+          style={{
+            margin: 0,
+            maxWidth: "60ch",
+            color: "color-mix(in oklch, var(--foreground) 70%, transparent)",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          Replace this stub with the real surface. Use the full page.
+        </p>
+      </header>
+
+      <section style={{ flex: 1, minHeight: 0 }}>
+        <button
+          type="button"
+          onClick={() => setCount((c) => c + 1)}
+          style={{
+            appearance: "none",
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            padding: "10px 16px",
+            background: "var(--card)",
+            color: "var(--foreground)",
+            font: "inherit",
+            cursor: "default",
+          }}
+        >
+          clicked {count} times
+        </button>
+      </section>
+    </div>
   );
 }
-
-export default {{COMPONENT}}App;
