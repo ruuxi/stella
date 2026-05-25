@@ -48,7 +48,7 @@ const ENGINE_OPTIONS: ReadonlyArray<{
 ];
 
 const DEFAULT_CURSOR_MODEL = "composer-latest";
-const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
+const DEFAULT_CODEX_MODEL = "gpt-5.5";
 
 const errorText = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message.trim() ? error.message : fallback;

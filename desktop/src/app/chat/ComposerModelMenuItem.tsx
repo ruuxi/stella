@@ -67,16 +67,15 @@ type AgentRuntimeEngine =
   | "claude_code_local"
   | "cursor_sdk"
   | "codex_cli";
-type VisibleAgentRuntimeEngine = Exclude<
-  AgentRuntimeEngine,
-  "cursor_sdk" | "codex_cli"
->;
+type VisibleAgentRuntimeEngine = AgentRuntimeEngine;
 
 const ENGINE_OPTIONS: ReadonlyArray<{
   id: VisibleAgentRuntimeEngine;
   label: string;
 }> = [
   { id: "default", label: "Stella" },
+  { id: "cursor_sdk", label: "Cursor" },
+  { id: "codex_cli", label: "Codex" },
   { id: "claude_code_local", label: "Claude Code" },
 ];
 
@@ -266,6 +265,12 @@ export function ComposerModelMenuItem() {
     if (preferences.agentRuntimeEngine === "claude_code_local") {
       return "Claude Opus 4.7";
     }
+    if (preferences.agentRuntimeEngine === "cursor_sdk") {
+      return `Cursor · ${preferences.cursorModel || "composer-latest"}`;
+    }
+    if (preferences.agentRuntimeEngine === "codex_cli") {
+      return `Codex · ${preferences.codexModel || "gpt-5.5"}`;
+    }
     if (isDefaultSelected) {
       // Friendly tier name only — the full default label is too long for an
       // inline trailing label.
@@ -397,13 +402,9 @@ export function ComposerModelMenuItem() {
   }, []);
 
   // Engine is a global runtime choice (Stella's own runner vs the
-  // bundled Claude Code CLI). Mirrors the toggle in Settings → Models;
-  // surfacing it here means the user doesn't have to leave the chat
-  // composer to swap runtimes.
+  // local external engines). Mirrors the toggle in Settings → Models.
   const currentEngine: VisibleAgentRuntimeEngine =
-    preferences?.agentRuntimeEngine === "claude_code_local"
-      ? "claude_code_local"
-      : "default";
+    preferences?.agentRuntimeEngine ?? "default";
 
   const handleEngineSelect = useCallback(
     async (next: VisibleAgentRuntimeEngine) => {
@@ -484,10 +485,7 @@ export function ComposerModelMenuItem() {
 
         <DropdownMenuSeparator />
 
-        {currentEngine === "claude_code_local" ? (
-          // Claude Code ships its own model — surface it as a single
-          // locked row so the user can see what's actually serving the
-          // response without offering tier choices that don't apply.
+        {currentEngine !== "default" ? (
           <div
             className="composer-model-submenu__row composer-model-submenu__row--locked"
             data-selected
@@ -497,7 +495,11 @@ export function ComposerModelMenuItem() {
               <Check size={14} strokeWidth={2} />
             </span>
             <span className="composer-model-submenu__name">
-              Claude Opus 4.7
+              {currentEngine === "claude_code_local"
+                ? "Claude Opus 4.7"
+                : currentEngine === "cursor_sdk"
+                  ? `Cursor · ${preferences?.cursorModel || "composer-latest"}`
+                  : `Codex · ${preferences?.codexModel || "gpt-5.5"}`}
             </span>
           </div>
         ) : null}
