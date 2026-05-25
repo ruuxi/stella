@@ -60,14 +60,14 @@ const fallbackResolvedModelForAlias = (modelId: string): string => {
     case "stella/vision":
       return "google/gemini-3-flash-preview";
     case STELLA_STANDARD_MODEL:
-      return "openrouter/google/gemini-3-flash-preview";
+      return "openai/gpt-5.5";
     default: {
       const prefix = `${STELLA_PROVIDER}/`;
       if (modelId.startsWith(prefix)) {
         const upstream = modelId.slice(prefix.length);
         if (upstream.includes("/")) return upstream;
       }
-      return "openrouter/google/gemini-3-flash-preview";
+      return "openai/gpt-5.5";
     }
   }
 };

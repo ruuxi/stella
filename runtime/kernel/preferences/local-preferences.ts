@@ -169,6 +169,8 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   readAloudEnabled: false,
 };
 
+const LEGACY_STELLA_DEFAULT_MODEL = "stella/default";
+
 let _cached: LocalPreferences | null = null;
 let _cachedMtime: number | null = null;
 
@@ -188,9 +190,8 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
     const parsed = JSON.parse(raw) as Partial<LocalPreferences>;
     const prefs: LocalPreferences = {
       ...DEFAULT_PREFERENCES,
-      defaultModels: parsed.defaultModels ?? DEFAULT_PREFERENCES.defaultModels,
-      modelOverrides:
-        parsed.modelOverrides ?? DEFAULT_PREFERENCES.modelOverrides,
+      defaultModels: normalizeModelPreferenceMap(parsed.defaultModels),
+      modelOverrides: normalizeModelPreferenceMap(parsed.modelOverrides),
       assistantPropagatedAgents: normalizeAssistantPropagatedAgents(
         parsed.assistantPropagatedAgents,
       ),
@@ -361,8 +362,14 @@ export const updateLocalModelPreferences = (
   const prefs = loadLocalPreferences(stellaHome);
   const next: LocalPreferences = {
     ...prefs,
-    defaultModels: patch.defaultModels ?? prefs.defaultModels,
-    modelOverrides: patch.modelOverrides ?? prefs.modelOverrides,
+    defaultModels:
+      patch.defaultModels === undefined
+        ? prefs.defaultModels
+        : normalizeModelPreferenceMap(patch.defaultModels),
+    modelOverrides:
+      patch.modelOverrides === undefined
+        ? prefs.modelOverrides
+        : normalizeModelPreferenceMap(patch.modelOverrides),
     assistantPropagatedAgents:
       patch.assistantPropagatedAgents === undefined
         ? prefs.assistantPropagatedAgents
@@ -487,6 +494,23 @@ const normalizeAssistantPropagatedAgents = (value: unknown): string[] => {
     out.push(trimmed);
   }
   return out;
+};
+
+const normalizeModelPreferenceMap = (
+  value: unknown,
+): Record<string, string> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  const normalized: Record<string, string> = {};
+  for (const [agentType, model] of Object.entries(value)) {
+    const trimmedAgentType = agentType.trim();
+    const trimmedModel = typeof model === "string" ? model.trim() : "";
+    if (!trimmedAgentType || !trimmedModel) continue;
+    if (trimmedModel === LEGACY_STELLA_DEFAULT_MODEL) continue;
+    normalized[trimmedAgentType] = trimmedModel;
+  }
+  return normalized;
 };
 
 const normalizeReasoningEfforts = (
