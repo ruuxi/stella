@@ -43,6 +43,7 @@ import {
 } from "../../../runtime/kernel/preferences/local-preferences.js";
 import { coerceAgentRuntimeEngine } from "../../../runtime/contracts/agent-engine.js";
 import { listCodexAppServerModels } from "../../../runtime/kernel/integrations/codex-agent-runtime.js";
+import { listClaudeCodeModels } from "../../../runtime/kernel/integrations/claude-code-session-runtime.js";
 import { writePersonalityForVoice } from "../../../runtime/kernel/personality/personality.js";
 import { isKnownPersonalityVoiceId } from "../../../runtime/extensions/stella-runtime/personality/voices.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
@@ -51,11 +52,13 @@ import type { BackupService } from "../services/backup-service.js";
 import type { ExternalLinkService } from "../services/external-link-service.js";
 import {
   deleteLocalLlmCredential,
+  getLocalLlmCredential,
   listLocalLlmCredentials,
   saveLocalLlmCredential,
 } from "../../../runtime/kernel/storage/llm-credentials.js";
 import {
   deleteLocalLlmOAuthCredential,
+  getLocalLlmOAuthApiKey,
   listLocalLlmOAuthCredentials,
   saveLocalLlmOAuthCredential,
 } from "../../../runtime/kernel/storage/llm-oauth-credentials.js";
@@ -108,6 +111,7 @@ import {
   IPC_PREFERENCES_GET_CURSOR_API_KEY,
   IPC_PREFERENCES_LIST_CURSOR_MODELS,
   IPC_PREFERENCES_LIST_CODEX_MODELS,
+  IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
@@ -2103,6 +2107,27 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return listCodexAppServerModels();
   });
 
+  ipcMain.handle(IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
+      )
+    ) {
+      throw new Error(
+        "Blocked untrusted preferences:listClaudeCodeModels request.",
+      );
+    }
+    const stellaRoot = options.getStellaRoot();
+    const apiKey = stellaRoot
+      ? getLocalLlmCredential(stellaRoot, "anthropic")
+      : null;
+    const oauthToken = stellaRoot
+      ? await getLocalLlmOAuthApiKey(stellaRoot, "anthropic")
+      : null;
+    return listClaudeCodeModels({ apiKey, oauthToken });
+  });
+
   ipcMain.handle(
     IPC_PREFERENCES_SET_MODELS,
     (event, payload: Partial<LocalModelPreferencesSnapshot>) => {
@@ -2169,6 +2194,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         patch.codexReasoningEffort = sanitizeReasoningEffort(
           payload.codexReasoningEffort,
         );
+      }
+      if (payload?.claudeCodeModel !== undefined) {
+        patch.claudeCodeModel =
+          typeof payload.claudeCodeModel === "string"
+            ? payload.claudeCodeModel.trim()
+            : "";
       }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;

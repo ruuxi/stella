@@ -819,6 +819,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    claudeCodeModel: string;
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -848,6 +849,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    claudeCodeModel?: string;
     maxAgentConcurrency?: number;
     imageGeneration?: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -876,6 +878,7 @@ export type ElectronSystemApi = {
       | "medium"
       | "high"
       | "xhigh";
+    claudeCodeModel: string;
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -910,6 +913,13 @@ export type ElectronSystemApi = {
       inputModalities: string[];
       additionalSpeedTiers: string[];
       isDefault: boolean;
+    }>;
+  }>;
+  listClaudeCodeModels: () => Promise<{
+    models: Array<{
+      id: string;
+      displayName: string;
+      source: "alias" | "anthropic";
     }>;
   }>;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;

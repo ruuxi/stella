@@ -21,6 +21,7 @@ type LocalModelPreferences = {
   agentRuntimeEngine: EngineId;
   cursorModel: string;
   codexModel: string;
+  claudeCodeModel: string;
 };
 
 /**

@@ -35,6 +35,7 @@ import {
 type AgentEngine = AgentRuntimeEngine;
 export const DEFAULT_CURSOR_MODEL = "composer-latest";
 export const DEFAULT_CODEX_MODEL = "gpt-5.5";
+export const DEFAULT_CLAUDE_CODE_MODEL = "default";
 export type ReasoningEffort =
   | "default"
   | "minimal"
@@ -93,6 +94,8 @@ export type LocalPreferences = {
   codexModel: string;
   /** Codex reasoning effort used when the Codex engine is selected. */
   codexReasoningEffort: ReasoningEffort;
+  /** Claude Code model or alias used when the Claude Code engine is selected. */
+  claudeCodeModel: string;
   /** Shared max concurrency across all agent task execution */
   maxAgentConcurrency: number;
   /** Image generation provider/model. Stella is the managed default. */
@@ -150,6 +153,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "cursorModel"
   | "codexModel"
   | "codexReasoningEffort"
+  | "claudeCodeModel"
   | "maxAgentConcurrency"
   | "imageGeneration"
   | "realtimeVoice"
@@ -169,6 +173,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   cursorModel: DEFAULT_CURSOR_MODEL,
   codexModel: DEFAULT_CODEX_MODEL,
   codexReasoningEffort: "default",
+  claudeCodeModel: DEFAULT_CLAUDE_CODE_MODEL,
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   imageGeneration: { provider: "stella" },
   realtimeVoice: { provider: "stella" },
@@ -226,6 +231,7 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       codexReasoningEffort: normalizeReasoningEffort(
         parsed.codexReasoningEffort,
       ),
+      claudeCodeModel: normalizeClaudeCodeModel(parsed.claudeCodeModel),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       imageGeneration: normalizeImageGenerationPreferences(
         parsed.imageGeneration,
@@ -375,6 +381,7 @@ export const getLocalModelPreferences = (
     cursorModel: prefs.cursorModel,
     codexModel: prefs.codexModel,
     codexReasoningEffort: prefs.codexReasoningEffort,
+    claudeCodeModel: prefs.claudeCodeModel,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
     imageGeneration: { ...prefs.imageGeneration },
     realtimeVoice: { ...prefs.realtimeVoice },
@@ -420,6 +427,10 @@ export const updateLocalModelPreferences = (
       patch.codexReasoningEffort === undefined
         ? prefs.codexReasoningEffort
         : normalizeReasoningEffort(patch.codexReasoningEffort),
+    claudeCodeModel:
+      patch.claudeCodeModel === undefined
+        ? prefs.claudeCodeModel
+        : normalizeClaudeCodeModel(patch.claudeCodeModel),
     maxAgentConcurrency:
       patch.maxAgentConcurrency === undefined
         ? prefs.maxAgentConcurrency
@@ -515,6 +526,12 @@ const normalizeCodexModel = (value: unknown): string => {
   if (typeof value !== "string") return DEFAULT_CODEX_MODEL;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : DEFAULT_CODEX_MODEL;
+};
+
+const normalizeClaudeCodeModel = (value: unknown): string => {
+  if (typeof value !== "string") return DEFAULT_CLAUDE_CODE_MODEL;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : DEFAULT_CLAUDE_CODE_MODEL;
 };
 
 const normalizeReasoningEffort = (value: unknown): ReasoningEffort => {

@@ -100,8 +100,7 @@
   padding-bottom: 9px;
 }
 
-/* Locked row — used when an engine pins the model (e.g. Claude Code
-   ships with Claude Opus 4.7). Plain <div> so the font/icon sizing
+/* Locked row — used when an engine pins the model. Plain <div> so the font/icon sizing
    from [data-slot="dropdown-menu-item"] doesn't apply — re-state the
    sizes here so it matches a normal menu row exactly. */
 .composer-model-submenu__row--locked {

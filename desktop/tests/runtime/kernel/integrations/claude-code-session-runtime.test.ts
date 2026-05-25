@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +8,7 @@ import {
   getClaudeCodeStatusChangeFromStreamEvent,
   getClaudeCodeTextDeltaFromStreamEvent,
   isClaudeCodeModel,
+  listClaudeCodeModels,
   parseClaudeCodeDecision,
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
@@ -15,6 +16,24 @@ import {
 import { buildClaudePromptFromMessages } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
 
 describe("claude-code-session-runtime", () => {
+  const originalFetch = globalThis.fetch;
+  const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  const originalAnthropicOauthToken = process.env.ANTHROPIC_OAUTH_TOKEN;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    if (originalAnthropicApiKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY;
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey;
+    }
+    if (originalAnthropicOauthToken === undefined) {
+      delete process.env.ANTHROPIC_OAUTH_TOKEN;
+    } else {
+      process.env.ANTHROPIC_OAUTH_TOKEN = originalAnthropicOauthToken;
+    }
+  });
+
   it("builds a Stella-hosted tool contract prompt", () => {
     const prompt = buildClaudeCodeToolRuntimePrompt("Base system prompt", [
       {
@@ -77,6 +96,52 @@ describe("claude-code-session-runtime", () => {
     expect(isClaudeCodeModel("claude-code/default")).toBe(true);
     expect(isClaudeCodeModel("claude-code/claude-sonnet-4-6")).toBe(true);
     expect(isClaudeCodeModel("anthropic/claude-sonnet-4-6")).toBe(false);
+  });
+
+  it("lists Claude Code aliases without endpoint credentials", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+
+    const { models } = await listClaudeCodeModels({});
+
+    expect(models.map((model) => model.id)).toEqual([
+      "default",
+      "sonnet",
+      "opus",
+      "haiku",
+      "best",
+      "opusplan",
+      "sonnet[1m]",
+      "opus[1m]",
+    ]);
+  });
+
+  it("merges Anthropic endpoint models into Claude Code aliases", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          { id: "claude-sonnet-4-6", display_name: "Claude Sonnet 4.6" },
+        ],
+      }),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const { models } = await listClaudeCodeModels({ apiKey: "sk-ant-test" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.anthropic.com/v1/models",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "x-api-key": "sk-ant-test" }),
+      }),
+    );
+    expect(models).toContainEqual({
+      id: "claude-sonnet-4-6",
+      displayName: "Claude Sonnet 4.6",
+      source: "anthropic",
+    });
   });
 
   it("maps Claude compact hooks into transient status changes", () => {

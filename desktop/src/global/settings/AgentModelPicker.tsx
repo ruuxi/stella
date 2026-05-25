@@ -53,6 +53,7 @@ type LocalModelPreferences = {
     | "codex_cli";
   cursorModel: string;
   codexModel: string;
+  claudeCodeModel: string;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;

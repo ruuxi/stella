@@ -12,6 +12,16 @@ import type {
 import { extractAttachImageBlocks } from "../agent-runtime/tool-adapters.js";
 
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
+const CLAUDE_CODE_ALIASES = [
+  "default",
+  "sonnet",
+  "opus",
+  "haiku",
+  "best",
+  "opusplan",
+  "sonnet[1m]",
+  "opus[1m]",
+] as const;
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
@@ -86,6 +96,12 @@ type ClaudeCodeTurnRequest = {
   onStream?: (chunk: string) => void;
   onStatusChange?: (status: ClaudeCodeStatusChange) => void;
   abortSignal?: AbortSignal;
+};
+
+export type ClaudeCodeModelOption = {
+  id: string;
+  displayName: string;
+  source: "alias" | "anthropic";
 };
 
 type QueueJob = {
@@ -1108,6 +1124,60 @@ export const isClaudeCodeModel = (modelId: string): boolean =>
 
 export const runClaudeCodeTurn = async (request: ClaudeCodeTurnRequest): Promise<ClaudeCodeTurnResult> =>
   await runtime.runTurn(request);
+
+export const listClaudeCodeModels = async (
+  auth?: { apiKey?: string | null; oauthToken?: string | null },
+): Promise<{ models: ClaudeCodeModelOption[] }> => {
+  const models = new Map<string, ClaudeCodeModelOption>();
+  for (const alias of CLAUDE_CODE_ALIASES) {
+    models.set(alias, {
+      id: alias,
+      displayName: alias === "default" ? "Default" : alias,
+      source: "alias",
+    });
+  }
+
+  const apiKey = auth?.apiKey?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
+  const oauthToken =
+    auth?.oauthToken?.trim() || process.env.ANTHROPIC_OAUTH_TOKEN?.trim();
+  if (!apiKey && !oauthToken) return { models: [...models.values()] };
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/models", {
+      headers: {
+        "anthropic-version": "2023-06-01",
+        ...(oauthToken
+          ? {
+              authorization: `Bearer ${oauthToken}`,
+              "anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
+              "anthropic-dangerous-direct-browser-access": "true",
+              "user-agent": "claude-cli/2.1.146",
+            }
+          : { "x-api-key": apiKey ?? "" }),
+      },
+    });
+    if (!response.ok) return { models: [...models.values()] };
+
+    const parsed = (await response.json()) as {
+      data?: Array<{ id?: unknown; display_name?: unknown }>;
+    };
+    for (const model of parsed.data ?? []) {
+      if (typeof model.id !== "string" || !model.id.trim()) continue;
+      const id = model.id.trim();
+      models.set(id, {
+        id,
+        displayName:
+          typeof model.display_name === "string" && model.display_name.trim()
+            ? model.display_name.trim()
+            : id,
+        source: "anthropic",
+      });
+    }
+  } catch {
+    return { models: [...models.values()] };
+  }
+  return { models: [...models.values()] };
+};
 
 export const shutdownClaudeCodeRuntime = (): void => {
   runtime.dispose();

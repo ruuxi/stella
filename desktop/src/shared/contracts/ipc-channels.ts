@@ -216,6 +216,8 @@ export const IPC_PREFERENCES_LIST_CURSOR_MODELS =
   "preferences:listCursorModels" as const;
 export const IPC_PREFERENCES_LIST_CODEX_MODELS =
   "preferences:listCodexModels" as const;
+export const IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS =
+  "preferences:listClaudeCodeModels" as const;
 export const IPC_PREFERENCES_GET_RADIAL_TRIGGER =
   "preferences:getRadialTrigger" as const;
 export const IPC_PREFERENCES_SET_RADIAL_TRIGGER =

@@ -105,6 +105,7 @@ type LocalModelPreferences = {
   cursorModel: string;
   codexModel: string;
   codexReasoningEffort: CodexReasoningPreference;
+  claudeCodeModel: string;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
@@ -133,6 +134,12 @@ type CodexModelOption = {
   isDefault: boolean;
 };
 
+type ClaudeCodeModelOption = {
+  id: string;
+  displayName: string;
+  source: "alias" | "anthropic";
+};
+
 type MediaTab = "agents" | "image" | "voice";
 
 type SavingKind =
@@ -140,6 +147,7 @@ type SavingKind =
   | "key"
   | "cursor-model"
   | "codex-model"
+  | "claude-code-model"
   | "overrides"
   | "image"
   | "voice"
@@ -232,6 +240,7 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
 
 const DEFAULT_CURSOR_MODEL = "composer-latest";
 const DEFAULT_CODEX_MODEL = "gpt-5.5";
+const DEFAULT_CLAUDE_CODE_MODEL = "default";
 const DEFAULT_CODEX_REASONING: CodexReasoningPreference = "default";
 const FALLBACK_CODEX_REASONING_OPTIONS: readonly CodexReasoningPreference[] = [
   "minimal",
@@ -311,9 +320,17 @@ export function EngineTabContent() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [codexModels, setCodexModels] = useState<CodexModelOption[]>([]);
   const [codexModelsLoading, setCodexModelsLoading] = useState(false);
+  const [claudeCodeModels, setClaudeCodeModels] = useState<
+    ClaudeCodeModelOption[]
+  >([]);
+  const [claudeCodeModelsLoading, setClaudeCodeModelsLoading] =
+    useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [cursorModelDraft, setCursorModelDraft] = useState(DEFAULT_CURSOR_MODEL);
   const [codexModelDraft, setCodexModelDraft] = useState(DEFAULT_CODEX_MODEL);
+  const [claudeCodeModelDraft, setClaudeCodeModelDraft] = useState(
+    DEFAULT_CLAUDE_CODE_MODEL,
+  );
   const [loading, setLoading] = useState(() => cachedPreferences === null);
   const [saving, setSaving] = useState<SavingKind>(null);
   const [status, setStatus] = useState<Status | null>(null);
@@ -323,6 +340,7 @@ export function EngineTabContent() {
   const noticeTimerRef = useRef<number | null>(null);
   const cursorModelsLoadedRef = useRef(false);
   const codexModelsLoadedRef = useRef(false);
+  const claudeCodeModelsLoadedRef = useRef(false);
 
   const selectedEngine = preferences?.agentRuntimeEngine ?? "default";
   const inputsDisabled = loading || saving !== null;
@@ -369,6 +387,7 @@ export function EngineTabContent() {
         codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
         codexReasoningEffort:
           saved.codexReasoningEffort || DEFAULT_CODEX_REASONING,
+        claudeCodeModel: saved.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL,
       };
       cachedPreferences = next;
       setPreferences(next);
@@ -382,6 +401,9 @@ export function EngineTabContent() {
           current === next.codexModel
             ? current
             : next.codexModel,
+        );
+        setClaudeCodeModelDraft((current) =>
+          current === next.claudeCodeModel ? current : next.claudeCodeModel,
         );
       }
     },
@@ -454,6 +476,20 @@ export function EngineTabContent() {
     }
   }, [showError]);
 
+  const loadClaudeCodeModels = useCallback(async () => {
+    setClaudeCodeModelsLoading(true);
+    try {
+      const result =
+        await window.electronAPI?.system?.listClaudeCodeModels?.();
+      setClaudeCodeModels(result?.models ?? []);
+      claudeCodeModelsLoadedRef.current = true;
+    } catch (caught) {
+      showError(errorText(caught, "Claude Code models did not load."));
+    } finally {
+      setClaudeCodeModelsLoading(false);
+    }
+  }, [showError]);
+
   const load = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!options?.silent && cachedPreferences === null) {
@@ -473,6 +509,12 @@ export function EngineTabContent() {
         ) {
           void loadCodexModels();
         }
+        if (
+          prefs?.agentRuntimeEngine === "claude_code_local" &&
+          !claudeCodeModelsLoadedRef.current
+        ) {
+          void loadClaudeCodeModels();
+        }
         const nextHasKey = Boolean(keyStatus?.hasApiKey);
         setHasCursorApiKey(nextHasKey);
         if (nextHasKey && !cursorModelsLoadedRef.current) {
@@ -487,14 +529,26 @@ export function EngineTabContent() {
         if (!options?.silent) setLoading(false);
       }
     },
-    [applySavedPrefs, loadCodexModels, loadCursorModels, showError],
+    [
+      applySavedPrefs,
+      loadClaudeCodeModels,
+      loadCodexModels,
+      loadCursorModels,
+      showError,
+    ],
   );
 
   useEffect(() => {
     if (selectedEngine === "codex_cli" && !codexModelsLoadedRef.current) {
       void loadCodexModels();
     }
-  }, [loadCodexModels, selectedEngine]);
+    if (
+      selectedEngine === "claude_code_local" &&
+      !claudeCodeModelsLoadedRef.current
+    ) {
+      void loadClaudeCodeModels();
+    }
+  }, [loadClaudeCodeModels, loadCodexModels, selectedEngine]);
 
   useEffect(() => {
     void load();
@@ -631,6 +685,25 @@ export function EngineTabContent() {
     [preferences, showNotice, writePreferences],
   );
 
+  const saveClaudeCodeModel = useCallback(
+    async (modelId?: string) => {
+      if (!preferences) return;
+      const nextModel =
+        (modelId ?? claudeCodeModelDraft).trim() ||
+        DEFAULT_CLAUDE_CODE_MODEL;
+      if (nextModel === preferences.claudeCodeModel) return;
+      const next = await writePreferences(
+        { claudeCodeModel: nextModel },
+        "claude-code-model",
+      );
+      if (next) {
+        setClaudeCodeModelDraft(next.claudeCodeModel);
+        showNotice("Claude Code model saved");
+      }
+    },
+    [claudeCodeModelDraft, preferences, showNotice, writePreferences],
+  );
+
   /* ── render ─────────────────────────────────────────────────── */
 
   const subtitle = useMemo(() => {
@@ -696,6 +769,8 @@ export function EngineTabContent() {
           cursorModelsLoading={modelsLoading}
           codexModels={codexModels}
           codexModelsLoading={codexModelsLoading}
+          claudeCodeModels={claudeCodeModels}
+          claudeCodeModelsLoading={claudeCodeModelsLoading}
           selectedCursorModelId={
             preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL
           }
@@ -705,22 +780,33 @@ export function EngineTabContent() {
           selectedCodexReasoning={
             preferences?.codexReasoningEffort ?? DEFAULT_CODEX_REASONING
           }
+          selectedClaudeCodeModelId={
+            preferences?.claudeCodeModel ?? DEFAULT_CLAUDE_CODE_MODEL
+          }
           selectedCodexModel={selectedCodexModel}
           apiKeyDraft={apiKeyDraft}
           cursorModelDraft={cursorModelDraft}
           codexModelDraft={codexModelDraft}
+          claudeCodeModelDraft={claudeCodeModelDraft}
           codexModelSaved={preferences?.codexModel ?? DEFAULT_CODEX_MODEL}
+          claudeCodeModelSaved={
+            preferences?.claudeCodeModel ?? DEFAULT_CLAUDE_CODE_MODEL
+          }
           onApiKeyDraftChange={setApiKeyDraft}
           onCursorModelDraftChange={setCursorModelDraft}
           onCodexModelDraftChange={setCodexModelDraft}
+          onClaudeCodeModelDraftChange={setClaudeCodeModelDraft}
           onSaveApiKey={() => void saveCursorApiKey()}
           onPickCursorModel={(id) => void saveCursorModel(id)}
           onPickCodexModel={(id) => void saveCodexModel(id)}
           onPickCodexReasoning={(effort) => void saveCodexReasoning(effort)}
+          onPickClaudeCodeModel={(id) => void saveClaudeCodeModel(id)}
           onSaveCursorManualModel={() => void saveCursorModel()}
           onSaveCodexModel={() => void saveCodexModel()}
+          onSaveClaudeCodeModel={() => void saveClaudeCodeModel()}
           onRefreshCursorModels={() => void loadCursorModels()}
           onRefreshCodexModels={() => void loadCodexModels()}
+          onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
         />
 
         <ModelsSection
@@ -749,25 +835,34 @@ interface EngineByokBlockProps {
   cursorModelsLoading: boolean;
   codexModels: CodexModelOption[];
   codexModelsLoading: boolean;
+  claudeCodeModels: ClaudeCodeModelOption[];
+  claudeCodeModelsLoading: boolean;
   selectedCursorModelId: string;
   selectedCodexModelId: string;
   selectedCodexReasoning: CodexReasoningPreference;
+  selectedClaudeCodeModelId: string;
   selectedCodexModel?: CodexModelOption;
   apiKeyDraft: string;
   cursorModelDraft: string;
   codexModelDraft: string;
+  claudeCodeModelDraft: string;
   codexModelSaved: string;
+  claudeCodeModelSaved: string;
   onApiKeyDraftChange: (value: string) => void;
   onCursorModelDraftChange: (value: string) => void;
   onCodexModelDraftChange: (value: string) => void;
+  onClaudeCodeModelDraftChange: (value: string) => void;
   onSaveApiKey: () => void;
   onPickCursorModel: (id: string) => void;
   onPickCodexModel: (id: string) => void;
   onPickCodexReasoning: (effort: CodexReasoningPreference) => void;
+  onPickClaudeCodeModel: (id: string) => void;
   onSaveCursorManualModel: () => void;
   onSaveCodexModel: () => void;
+  onSaveClaudeCodeModel: () => void;
   onRefreshCursorModels: () => void;
   onRefreshCodexModels: () => void;
+  onRefreshClaudeCodeModels: () => void;
 }
 
 function EngineByokBlock({
@@ -779,30 +874,41 @@ function EngineByokBlock({
   cursorModelsLoading,
   codexModels,
   codexModelsLoading,
+  claudeCodeModels,
+  claudeCodeModelsLoading,
   selectedCursorModelId,
   selectedCodexModelId,
   selectedCodexReasoning,
+  selectedClaudeCodeModelId,
   selectedCodexModel,
   apiKeyDraft,
   cursorModelDraft,
   codexModelDraft,
+  claudeCodeModelDraft,
   codexModelSaved,
+  claudeCodeModelSaved,
   onApiKeyDraftChange,
   onCursorModelDraftChange,
   onCodexModelDraftChange,
+  onClaudeCodeModelDraftChange,
   onSaveApiKey,
   onPickCursorModel,
   onPickCodexModel,
   onPickCodexReasoning,
+  onPickClaudeCodeModel,
   onSaveCursorManualModel,
   onSaveCodexModel,
+  onSaveClaudeCodeModel,
   onRefreshCursorModels,
   onRefreshCodexModels,
+  onRefreshClaudeCodeModels,
 }: EngineByokBlockProps) {
   const inputsDisabled = loading || saving !== null;
   const cursorModelChanged =
     cursorModelDraft.trim() !== selectedCursorModelId;
   const codexModelChanged = codexModelDraft.trim() !== codexModelSaved;
+  const claudeCodeModelChanged =
+    claudeCodeModelDraft.trim() !== claudeCodeModelSaved;
   const apiKeyButtonLabel = apiKeyDraft.trim()
     ? "Save"
     : hasCursorApiKey
@@ -1053,6 +1159,88 @@ function EngineByokBlock({
               );
             })}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (engine === "claude_code_local") {
+    return (
+      <div className="engine-tab__byok" key="claude_code_local">
+        <div className="engine-tab__row">
+          <div className="engine-tab__label-row">
+            <span className="engine-tab__label">Claude Code model</span>
+            <button
+              type="button"
+              className="engine-tab__link"
+              disabled={claudeCodeModelsLoading}
+              onClick={onRefreshClaudeCodeModels}
+            >
+              {claudeCodeModelsLoading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+
+          {claudeCodeModels.length > 0 ? (
+            <div
+              className="engine-tab__cursor-model-list"
+              role="radiogroup"
+              aria-busy={claudeCodeModelsLoading || undefined}
+            >
+              {claudeCodeModels.map((model) => {
+                const selected = model.id === selectedClaudeCodeModelId;
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={Boolean(selected)}
+                    data-selected={selected || undefined}
+                    className="engine-tab__cursor-model-option"
+                    disabled={inputsDisabled}
+                    onClick={() => onPickClaudeCodeModel(model.id)}
+                  >
+                    <span>{model.displayName || model.id}</span>
+                    <small>
+                      {model.source === "alias" ? "Claude Code alias" : model.id}
+                    </small>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {claudeCodeModelsLoading && claudeCodeModels.length === 0 ? (
+            <p className="engine-tab__hint">Loading Claude Code models…</p>
+          ) : null}
+
+          {claudeCodeModels.length === 0 ? (
+            <div className="engine-tab__field-row">
+              <input
+                id="engine-claude-code-model"
+                type="text"
+                value={claudeCodeModelDraft}
+                placeholder={DEFAULT_CLAUDE_CODE_MODEL}
+                className="engine-tab__input"
+                spellCheck={false}
+                disabled={inputsDisabled}
+                onChange={(event) =>
+                  onClaudeCodeModelDraftChange(event.target.value)
+                }
+              />
+              <button
+                type="button"
+                className="pill-btn pill-btn--primary"
+                disabled={
+                  loading ||
+                  saving === "claude-code-model" ||
+                  !claudeCodeModelChanged
+                }
+                onClick={onSaveClaudeCodeModel}
+              >
+                Save
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     );
