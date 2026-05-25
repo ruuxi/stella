@@ -5,8 +5,10 @@ import {
   buildCodexExecArgs,
   buildCodexPromptFromMessages,
   fileChangesFromCodexItem,
+  runCodexAgentTurn,
   shouldUseCodexAgentRuntime,
 } from "../../../../../runtime/kernel/integrations/codex-agent-runtime.js";
+import { DEFAULT_CODEX_MODEL } from "../../../../../runtime/kernel/preferences/local-preferences.js";
 
 describe("Codex agent runtime", () => {
   it("only routes spawned general agents to Codex", () => {
@@ -54,7 +56,7 @@ describe("Codex agent runtime", () => {
   it("passes Codex exec the model, cwd, resume id, and permissive local policy", () => {
     expect(
       buildCodexExecArgs({
-        model: "gpt-5.2-codex",
+        model: DEFAULT_CODEX_MODEL,
         cwd: "/repo",
         persistedSessionId: "thread-1",
         imagePaths: ["/tmp/image.png"],
@@ -63,7 +65,7 @@ describe("Codex agent runtime", () => {
       "exec",
       "--experimental-json",
       "--model",
-      "gpt-5.2-codex",
+      "gpt-5.5",
       "--sandbox",
       "danger-full-access",
       "--config",
@@ -75,6 +77,29 @@ describe("Codex agent runtime", () => {
       "--image",
       "/tmp/image.png",
     ]);
+  });
+
+  it("fails when the Codex executable cannot be started", async () => {
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    process.env.STELLA_CODEX_CLI_PATH = path.join(
+      "/tmp",
+      "missing-stella-codex-binary",
+    );
+    try {
+      await expect(
+        runCodexAgentTurn({
+          runId: "run-missing-codex",
+          sessionKey: "session-missing-codex",
+          prompt: "hello",
+        }),
+      ).rejects.toThrow(/ENOENT|missing-stella-codex-binary/);
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+    }
   });
 
   it("normalizes Codex file_change items to Stella file changes", () => {

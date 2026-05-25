@@ -332,14 +332,14 @@ export const runCodexAgentTurn = async (request: {
     child.stderr?.on("data", (data: Buffer) => {
       stderrChunks.push(data);
     });
-    const exitPromise = new Promise<{
+    const closePromise = new Promise<{
       code: number | null;
       signal: NodeJS.Signals | null;
     }>((resolve) => {
-      child.once("exit", (code, signal) => resolve({ code, signal }));
-    });
-    child.once("error", (error) => {
-      turnFailure = error instanceof Error ? error.message : String(error);
+      child.once("error", (error) => {
+        turnFailure = error instanceof Error ? error.message : String(error);
+      });
+      child.once("close", (code, signal) => resolve({ code, signal }));
     });
 
     const lines = readline.createInterface({
@@ -416,7 +416,7 @@ export const runCodexAgentTurn = async (request: {
       lines.close();
     }
 
-    const exit = await exitPromise;
+    const exit = await closePromise;
     if (aborted) {
       throw new Error("Aborted");
     }
