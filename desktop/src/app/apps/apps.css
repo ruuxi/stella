@@ -1,11 +1,142 @@
 .apps-screen {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   width: 100%;
   height: 100%;
-  padding: 24px;
+  padding: clamp(1.5rem, 3vw, 2.5rem) clamp(1.5rem, 4vw, 3rem);
   box-sizing: border-box;
+  color: var(--foreground);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
+  overflow: auto;
+  gap: 1.5rem;
+}
+
+.apps-screen__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.apps-screen__title {
+  margin: 0;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(2.4rem, 4vw, 3rem);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.apps-screen__title em {
+  font-style: italic;
+  font-weight: 300;
+}
+
+.apps-screen__lead {
+  margin: 0;
+  max-width: 60ch;
+  color: color-mix(in oklch, var(--foreground) 70%, transparent);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Toolbar */
+
+.apps-screen__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.apps-screen__search {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 0;
+  max-width: 360px;
+  display: flex;
+  align-items: center;
+}
+
+.apps-screen__search-icon {
+  position: absolute;
+  left: 12px;
+  color: color-mix(in oklch, var(--foreground) 50%, transparent);
+  pointer-events: none;
+}
+
+.apps-screen__search-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 32px;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  outline: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.apps-screen__search-input::placeholder {
+  color: color-mix(in oklch, var(--foreground) 45%, transparent);
+}
+
+.apps-screen__search-input:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-color: var(--border-strong, var(--border));
+}
+
+.apps-screen__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 36px;
+  padding: 0 8px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.apps-screen__sort-label {
+  font-size: 12px;
+  color: color-mix(in oklch, var(--foreground) 60%, transparent);
+  letter-spacing: -0.01em;
+}
+
+.apps-screen__sort-select {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  padding: 0 18px 0 0;
+  cursor: default;
+  outline: none;
+  background-image: linear-gradient(
+      45deg,
+      transparent 50%,
+      currentColor 50%
+    ),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 8px) 50%,
+    calc(100% - 4px) 50%;
+  background-size:
+    4px 4px,
+    4px 4px;
+  background-repeat: no-repeat;
+}
+
+.apps-screen__sort-select:focus-visible {
+  outline: none;
 }
 
 .apps-screen__cta {
@@ -13,14 +144,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 40px;
-  padding: 0 18px;
+  height: 36px;
+  padding: 0 16px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  color: var(--text-strong);
-  font-family: inherit;
-  font-size: 14px;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.01em;
   cursor: default;
@@ -39,4 +170,157 @@
 
 .apps-screen__cta:active {
   transform: scale(0.985);
+}
+
+.apps-screen__cta--primary {
+  background: var(--accent, var(--foreground));
+  color: var(--accent-foreground, var(--background));
+  border-color: transparent;
+}
+
+.apps-screen__cta--primary:hover,
+.apps-screen__cta--primary:focus-visible {
+  background: color-mix(in oklch, var(--accent, var(--foreground)) 88%, var(--foreground));
+  border-color: transparent;
+}
+
+.apps-screen__cta--lg {
+  height: 44px;
+  padding: 0 22px;
+  font-size: 14px;
+}
+
+/* Grid */
+
+.apps-screen__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.apps-card {
+  display: flex;
+}
+
+.apps-card__link {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 16px 18px;
+  min-height: 124px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl, 14px);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  color: var(--foreground);
+  text-decoration: none;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    transform 0.14s ease;
+}
+
+.apps-card__link:hover,
+.apps-card__link:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-color: var(--border-strong, var(--border));
+  outline: none;
+}
+
+.apps-card__link:active {
+  transform: scale(0.992);
+}
+
+.apps-card__label {
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  /* Truncate gracefully on narrow cards. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.apps-card__meta {
+  font-size: 12px;
+  color: color-mix(in oklch, var(--foreground) 55%, transparent);
+  letter-spacing: -0.01em;
+}
+
+/* No-match state when search/sort filters everything out */
+
+.apps-screen__no-match {
+  padding: 1.5rem 0;
+  font-size: 13px;
+  color: color-mix(in oklch, var(--foreground) 60%, transparent);
+}
+
+.apps-screen__no-match-query {
+  color: var(--foreground);
+}
+
+/* Empty state (no apps at all) */
+
+.apps-screen__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1rem;
+  margin: clamp(2rem, 8vh, 5rem) auto 0;
+  max-width: 560px;
+  padding-bottom: 3rem;
+}
+
+.apps-screen__empty-title {
+  margin: 0;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(2.2rem, 5vw, 3rem);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.apps-screen__empty-body {
+  margin: 0;
+  color: color-mix(in oklch, var(--foreground) 70%, transparent);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.apps-screen__empty .apps-screen__cta {
+  margin-top: 0.75rem;
+}
+
+.apps-screen__empty .apps-screen__cta--lg {
+  height: 48px;
+  padding: 0 24px;
+  font-size: 16px;
+}
+
+.apps-screen__suggestions {
+  list-style: none;
+  margin: 1.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.apps-screen__suggestion {
+  font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  color: color-mix(in oklch, var(--foreground) 55%, transparent);
+  padding: 6px 12px;
+  border: 1px dashed color-mix(in oklch, var(--foreground) 18%, transparent);
+  border-radius: 999px;
 }

@@ -32,8 +32,8 @@ Before editing UI:
 3. Write one sentence for the usage scene: who is using this, where, with
    what urgency, and what state of mind. Let that sentence choose density,
    contrast, motion, and theme, not a category reflex.
-4. If scaffolding a new sidebar app, run the create-app scaffold first, then
-   design inside the generated view.
+4. If scaffolding a new Stella app, run the create-app scaffold first, then
+   design inside the generated single-file `desktop/src/app/_user/<slug>.tsx`.
 
 ## References
 

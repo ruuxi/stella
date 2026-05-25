@@ -34,4 +34,4 @@ bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-
 
 ## Backlinks
 
-- [create-stella-app](../create-stella-app/SKILL.md) — scaffold a new sidebar app (also covers canvas / game surfaces)
+- [create-stella-app](../create-stella-app/SKILL.md) — scaffold a single-file user app on the `/apps` page (also covers canvas / game surfaces)

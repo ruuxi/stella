@@ -404,7 +404,7 @@ export const ShellTopBarAccount = ({
       <div className="shell-topbar-account">
         <button
           type="button"
-          className="pill-btn shell-topbar-account-signin"
+          className="shell-topbar-account-signin"
           onClick={() => {
             preloadAuthDialog();
             onSignIn?.();
