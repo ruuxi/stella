@@ -48,6 +48,34 @@ describe("third-party migration importers", () => {
       recursive: true,
     });
     await mkdir(path.join(hermes, "cron"), { recursive: true });
+    const hermesStateDb = new DatabaseSync(path.join(hermes, "state.db"));
+    try {
+      hermesStateDb.exec(`
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, started_at INTEGER);
+        CREATE TABLE messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT,
+          role TEXT,
+          content TEXT,
+          timestamp INTEGER
+        );
+      `);
+      hermesStateDb
+        .prepare("INSERT INTO sessions (id, started_at) VALUES (?, ?)")
+        .run("session-1", 1_700_000_000);
+      hermesStateDb
+        .prepare(
+          "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+        )
+        .run("session-1", "user", "hello from Hermes", 1_700_000_000_000);
+      hermesStateDb
+        .prepare(
+          "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+        )
+        .run("session-1", "assistant", "hi from Hermes", 1_700_000_001_000);
+    } finally {
+      hermesStateDb.close();
+    }
     await writeFile(
       path.join(hermes, "memories", "MEMORY.md"),
       "# MEMORY.md\n\n- User prefers short answers.\n- User prefers short answers.\n",
@@ -89,6 +117,12 @@ describe("third-party migration importers", () => {
             name: "Daily brief",
             cron: "0 9 * * *",
             prompt: "Send a daily brief.",
+          },
+          {
+            id: "invalid",
+            name: "Invalid schedule",
+            cron: "not a valid cron",
+            prompt: "This should not import.",
           },
         ],
       }),
@@ -133,6 +167,16 @@ describe("third-party migration importers", () => {
         { target: "user", content: "Name: Riley" },
       ]);
 
+      const hermesMessages = db
+        .prepare(
+          "SELECT thread_key AS threadKey, entry_type AS entryType FROM runtime_thread_entries ORDER BY created_at",
+        )
+        .all() as Array<{ threadKey: string; entryType: string }>;
+      expect(hermesMessages).toHaveLength(2);
+      expect(new Set(hermesMessages.map((message) => message.threadKey))).toEqual(
+        new Set(["import:hermes:session-1"]),
+      );
+
       const importedSkill = await readFile(
         path.join(stellaHome, "skills", "hermes-researcher", "SKILL.md"),
         "utf-8",
@@ -155,6 +199,15 @@ describe("third-party migration importers", () => {
       );
       expect(scheduler.cronJobs).toHaveLength(1);
       expect(scheduler.cronJobs[0].payload.prompt).toBe("Send a daily brief.");
+      expect(scheduler.cronJobs[0].nextRunAtMs).toBeGreaterThan(0);
+      expect(
+        report.items.some(
+          (item) =>
+            item.kind === "schedules" &&
+            item.status === "manual" &&
+            item.message.includes("Invalid schedule"),
+        ),
+      ).toBe(true);
 
       const markdown = await readFile(report.markdownPath, "utf-8");
       expect(markdown).toContain("[Hermes](https://github.com/NousResearch/hermes-agent)");
@@ -185,10 +238,15 @@ describe("third-party migration importers", () => {
     const envWorkspace = path.join(openclaw, "workspace-env");
     const stellaHome = path.join(root, ".stella");
     const previousOpenClawWorkspaceDir = process.env.OPENCLAW_WORKSPACE_DIR;
+    const previousOpenClawConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+    process.env.OPENCLAW_CONFIG_PATH = path.join(openclaw, "custom-openclaw.json5");
     process.env.OPENCLAW_WORKSPACE_DIR = envWorkspace;
     await mkdir(path.join(workspace, "skills", "planner"), { recursive: true });
     await mkdir(path.join(workspace, "memory"), { recursive: true });
     await mkdir(envWorkspace, { recursive: true });
+    await mkdir(path.join(openclaw, "session-store", "main"), {
+      recursive: true,
+    });
     await mkdir(path.join(openclaw, "agents", "main", "sessions"), {
       recursive: true,
     });
@@ -196,17 +254,21 @@ describe("third-party migration importers", () => {
       recursive: true,
     });
     await writeFile(
-      path.join(openclaw, "openclaw.json"),
-      JSON.stringify({
+      process.env.OPENCLAW_CONFIG_PATH,
+      `{
+        // OpenClaw accepts JSON5-authored config files.
+        session: { store: 'session-store/{agentId}/sessions.json' },
         agents: {
           defaults: {
-            model: { primary: "Claude Opus 4.6" },
+            workspace: 'workspace-work',
+            model: { primary: 'Claude Opus 4.6' },
             models: {
-              "anthropic/claude-opus-4-6": { alias: "Claude Opus 4.6" },
+              'anthropic/claude-opus-4-6': { alias: 'Claude Opus 4.6' },
             },
           },
+          list: [{ id: 'main' }],
         },
-      }),
+      }`,
       "utf-8",
     );
     await writeFile(
@@ -257,6 +319,11 @@ describe("third-party migration importers", () => {
           content: "hi",
           timestamp: 1_700_000_001,
         }),
+        JSON.stringify({
+          role: "system",
+          content: "internal instructions must stay hidden",
+          timestamp: 1_700_000_001,
+        }),
       ].join("\n"),
       "utf-8",
     );
@@ -272,6 +339,32 @@ describe("third-party migration importers", () => {
           role: "assistant",
           content: "thread",
           timestamp: 1_700_000_003,
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeFile(
+      path.join(openclaw, "session-store", "main", "sessions.json"),
+      JSON.stringify({
+        "agent:main:main": {
+          sessionFile: "stored-main.jsonl",
+          updatedAt: 1_700_000_005,
+        },
+      }),
+      "utf-8",
+    );
+    await writeFile(
+      path.join(openclaw, "session-store", "main", "stored-main.jsonl"),
+      [
+        JSON.stringify({
+          role: "user",
+          content: "stored hello",
+          timestamp: 1_700_000_004,
+        }),
+        JSON.stringify({
+          role: "assistant",
+          content: "stored hi",
+          timestamp: 1_700_000_005,
         }),
       ].join("\n"),
       "utf-8",
@@ -339,13 +432,14 @@ describe("third-party migration importers", () => {
             "SELECT thread_key AS threadKey, entry_type AS entryType FROM runtime_thread_entries ORDER BY thread_key",
           )
           .all() as Array<{ threadKey: string; entryType: string }>;
-        expect(importedMessages).toHaveLength(4);
+        expect(importedMessages).toHaveLength(6);
         expect(
           new Set(importedMessages.map((message) => message.threadKey)),
         ).toEqual(
           new Set([
             "import:openclaw:agents-main-sessions-main",
             "import:openclaw:agents-other-sessions-main",
+            "import:openclaw:session-store-main-stored-main",
           ]),
         );
 
@@ -358,7 +452,7 @@ describe("third-party migration importers", () => {
         const rerunMessages = db
           .prepare("SELECT entry_type AS entryType FROM runtime_thread_entries")
           .all();
-        expect(rerunMessages).toHaveLength(4);
+        expect(rerunMessages).toHaveLength(6);
 
         const markdown = await readFile(report.markdownPath, "utf-8");
         expect(markdown).toContain(
@@ -373,6 +467,11 @@ describe("third-party migration importers", () => {
         delete process.env.OPENCLAW_WORKSPACE_DIR;
       } else {
         process.env.OPENCLAW_WORKSPACE_DIR = previousOpenClawWorkspaceDir;
+      }
+      if (previousOpenClawConfigPath === undefined) {
+        delete process.env.OPENCLAW_CONFIG_PATH;
+      } else {
+        process.env.OPENCLAW_CONFIG_PATH = previousOpenClawConfigPath;
       }
     }
   });
