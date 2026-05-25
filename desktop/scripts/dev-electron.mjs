@@ -32,6 +32,10 @@ const runtimeReloadStateFile = path.join(
   repoRootDir,
   '.stella-runtime-reload-state.json',
 )
+const devRestartRequestFile = path.join(
+  repoRootDir,
+  '.stella-dev-restart-request',
+)
 const devRuntimeRoot = path.join(desktopDir, DEV_MACOS_RUNTIME_DIR_NAME)
 const prebuiltDisclaimBinary = path.join(
   desktopDir,
@@ -519,6 +523,19 @@ const isRuntimeReloadPaused = () => {
   }
 }
 
+const consumeDevRestartRequest = () => {
+  if (!existsSync(devRestartRequestFile)) {
+    return false
+  }
+
+  try {
+    rmSync(devRestartRequestFile, { force: true })
+  } catch {
+    // If cleanup races with process exit, the next restart cycle can consume it.
+  }
+  return true
+}
+
 const flushDeferredRestartIfReady = () => {
   if (!pendingRestartWhilePaused || shuttingDown || isRuntimeReloadPaused()) {
     return
@@ -543,6 +560,7 @@ const startApp = () => {
       ...process.env,
       NODE_ENV: 'development',
       STELLA_DEV_SPLASH_READY_FILE: splashReadyFile,
+      STELLA_DEV_RESTART_REQUEST_FILE: devRestartRequestFile,
       ...(process.env.STELLA_LAUNCHER_PROTECTED_STORAGE_BIN
         ? {}
         : { STELLA_DEV_INSECURE_PROTECTED_STORAGE: '1' }),
@@ -574,6 +592,12 @@ const startApp = () => {
     }
 
     if (restartRequestedByWatcher) {
+      scheduleRestart()
+      return
+    }
+
+    if (consumeDevRestartRequest()) {
+      restartRequestedByWatcher = true
       scheduleRestart()
       return
     }
