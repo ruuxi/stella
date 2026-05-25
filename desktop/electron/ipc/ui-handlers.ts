@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, screen } from "electron";
+import { writeFileSync } from "node:fs";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE } from "../../src/shared/contracts/ipc-channels.js";
 import type { UiState } from "../types.js";
@@ -201,10 +202,20 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
 
   // Used by the static launch splash (`desktop/index.html`) when the renderer
   // has been stuck on the splash long enough that a plain reload is unlikely
-  // to help — re-exec the Electron process entirely. The detached runtime
-  // worker survives this restart, so in-flight runs are not lost.
+  // to help. Packaged builds re-exec Electron; dev builds ask the supervisor
+  // to spawn a fresh Electron process without tearing down Vite.
   ipcMain.on("app:relaunch", (event) => {
     if (!options.assertPrivilegedSender(event, "app:relaunch")) return;
+    const devRestartRequestFile = process.env.STELLA_DEV_RESTART_REQUEST_FILE;
+    if (process.env.NODE_ENV === "development" && devRestartRequestFile) {
+      try {
+        writeFileSync(devRestartRequestFile, String(Date.now()), "utf8");
+      } catch (error) {
+        console.error("Failed to request dev relaunch:", error);
+      }
+      app.quit();
+      return;
+    }
     app.relaunch();
     app.quit();
   });
