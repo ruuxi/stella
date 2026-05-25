@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -12,6 +12,11 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
+import type {
+  ToolMetadata,
+  ToolResult,
+  ToolUpdateCallback,
+} from "../tools/types.js";
 import {
   DEFAULT_CODEX_MODEL,
   loadLocalPreferences,
@@ -25,6 +30,231 @@ const MAX_STDERR_CAPTURE = 8_000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
 
+type JsonRpcId = number | string;
+type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+type JsonRpcError = {
+  code?: number;
+  message?: string;
+  data?: unknown;
+};
+
+type JsonRpcResponseMessage = {
+  jsonrpc: "2.0";
+  id: JsonRpcId;
+  result?: unknown;
+  error?: JsonRpcError;
+};
+
+type JsonRpcRequestMessage = {
+  jsonrpc: "2.0";
+  id: JsonRpcId;
+  method: string;
+  params?: unknown;
+};
+
+type JsonRpcNotificationMessage = {
+  jsonrpc: "2.0";
+  method: string;
+  params?: unknown;
+};
+
+type JsonRpcOutgoingMessage =
+  | JsonRpcRequestMessage
+  | JsonRpcNotificationMessage
+  | JsonRpcResponseMessage;
+
+type CodexReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
+type CodexModel = {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  hidden: boolean;
+  supportedReasoningEfforts: Array<{
+    reasoningEffort: CodexReasoningEffort;
+    description: string;
+  }>;
+  defaultReasoningEffort: CodexReasoningEffort;
+  inputModalities: string[];
+  additionalSpeedTiers: string[];
+  isDefault: boolean;
+};
+
+type CodexModelListResponse = {
+  data: CodexModel[];
+  nextCursor: string | null;
+};
+
+type CodexUserInput =
+  | { type: "text"; text: string; text_elements: [] }
+  | { type: "image"; url: string }
+  | { type: "localImage"; path: string };
+
+type CodexDynamicToolSpec = {
+  namespace?: string;
+  name: string;
+  description: string;
+  inputSchema: JsonValue;
+  deferLoading?: boolean;
+};
+
+type CodexThreadStartParams = {
+  model?: string | null;
+  cwd?: string | null;
+  approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
+  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  serviceName?: string | null;
+  ephemeral?: boolean | null;
+  dynamicTools?: CodexDynamicToolSpec[] | null;
+  experimentalRawEvents: boolean;
+  persistExtendedHistory: boolean;
+};
+
+type CodexThreadResumeParams = {
+  threadId: string;
+  model?: string | null;
+  cwd?: string | null;
+  approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
+  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  excludeTurns?: boolean;
+  persistExtendedHistory: boolean;
+};
+
+type CodexThreadResponse = {
+  thread: {
+    id: string;
+  };
+};
+
+type CodexTurnStartParams = {
+  threadId: string;
+  input: CodexUserInput[];
+  cwd?: string | null;
+  approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
+  sandboxPolicy?: { type: "readOnly"; networkAccess: boolean };
+  model?: string | null;
+  effort?: CodexReasoningEffort | null;
+};
+
+type CodexTurn = {
+  id: string;
+  status: "completed" | "interrupted" | "failed" | "inProgress";
+  error?: { message?: string; additionalDetails?: string | null } | null;
+};
+
+type CodexTurnStartResponse = {
+  turn: CodexTurn;
+};
+
+type CodexPatchChangeKind =
+  | { type: "add" }
+  | { type: "delete" }
+  | { type: "update"; move_path: string | null };
+
+export type CodexThreadItem =
+  | { type: "agentMessage"; id: string; text: string }
+  | { type: "reasoning"; id: string; summary?: string[]; content?: string[] }
+  | {
+      type: "commandExecution";
+      id: string;
+      command: string;
+      cwd?: string;
+      status: "inProgress" | "completed" | "failed" | "declined";
+      aggregatedOutput?: string | null;
+      exitCode?: number | null;
+    }
+  | {
+      type: "fileChange";
+      id: string;
+      changes: Array<{
+        path: string;
+        kind: CodexPatchChangeKind;
+        diff?: string;
+      }>;
+      status: "inProgress" | "completed" | "failed" | "declined";
+    }
+  | {
+      type: "dynamicToolCall";
+      id: string;
+      namespace: string | null;
+      tool: string;
+      status: "inProgress" | "completed" | "failed";
+      success: boolean | null;
+    }
+  | {
+      type: "mcpToolCall";
+      id: string;
+      server: string;
+      tool: string;
+      status: "inProgress" | "completed" | "failed";
+    }
+  | { type: "webSearch"; id: string; query: string }
+  | { type: "plan"; id: string; text: string };
+
+type CodexServerNotification =
+  | {
+      method: "turn/started";
+      params: { threadId: string; turn: CodexTurn };
+    }
+  | {
+      method: "turn/completed";
+      params: { threadId: string; turn: CodexTurn };
+    }
+  | {
+      method: "error";
+      params: {
+        threadId?: string;
+        turnId?: string;
+        error?: { message?: string; additionalDetails?: string | null };
+        willRetry?: boolean;
+      };
+    }
+  | {
+      method: "item/started" | "item/completed";
+      params: { threadId: string; turnId: string; item: CodexThreadItem };
+    }
+  | {
+      method: "item/agentMessage/delta";
+      params: {
+        threadId: string;
+        turnId: string;
+        itemId: string;
+        delta: string;
+      };
+    }
+  | {
+      method: "item/reasoning/textDelta" | "item/reasoning/summaryTextDelta";
+      params: {
+        threadId: string;
+        turnId: string;
+        itemId: string;
+        delta: string;
+      };
+    };
+
+type CodexDynamicToolCallParams = {
+  threadId: string;
+  turnId: string;
+  callId: string;
+  namespace: string | null;
+  tool: string;
+  arguments: unknown;
+};
+
 export type CodexAgentRuntimeEngine = AgentRuntimeEngine;
 
 export type CodexAgentTurnResult = {
@@ -33,41 +263,7 @@ export type CodexAgentTurnResult = {
   fileChanges?: FileChangeRecord[];
 };
 
-type CodexThreadEvent =
-  | { type: "thread.started"; thread_id: string }
-  | { type: "turn.started" }
-  | { type: "turn.completed"; usage?: unknown }
-  | { type: "turn.failed"; error?: { message?: string } }
-  | { type: "item.started" | "item.updated" | "item.completed"; item: CodexItem }
-  | { type: "error"; message?: string };
-
-type CodexItem =
-  | { id: string; type: "agent_message"; text: string }
-  | { id: string; type: "reasoning"; text: string }
-  | {
-      id: string;
-      type: "command_execution";
-      command: string;
-      aggregated_output?: string;
-      exit_code?: number;
-      status: "in_progress" | "completed" | "failed";
-    }
-  | {
-      id: string;
-      type: "file_change";
-      changes: Array<{ path: string; kind: "add" | "delete" | "update" }>;
-      status: "completed" | "failed";
-    }
-  | {
-      id: string;
-      type: "mcp_tool_call";
-      server: string;
-      tool: string;
-      status: "in_progress" | "completed" | "failed";
-    }
-  | { id: string; type: "web_search"; query: string }
-  | { id: string; type: "todo_list"; items: Array<{ text: string; completed: boolean }> }
-  | { id: string; type: "error"; message: string };
+export type CodexAppServerModel = CodexModel;
 
 export const shouldUseCodexAgentRuntime = (args: {
   agentType?: string;
@@ -112,14 +308,27 @@ const absoluteChangePath = (cwd: string | undefined, value: string): string => {
   return path.resolve(cwd ?? process.cwd(), trimmed);
 };
 
+const codexChangeKindToFileChangeKind = (
+  kind: CodexPatchChangeKind,
+  cwd?: string,
+): FileChangeRecord["kind"] => {
+  if (kind.type === "add" || kind.type === "delete") return { type: kind.type };
+  return {
+    type: "update",
+    ...(kind.move_path
+      ? { move_path: absoluteChangePath(cwd, kind.move_path) }
+      : {}),
+  };
+};
+
 export const fileChangesFromCodexItem = (
-  item: CodexItem,
+  item: CodexThreadItem,
   cwd?: string,
 ): FileChangeRecord[] => {
-  if (item.type !== "file_change" || item.status !== "completed") return [];
+  if (item.type !== "fileChange" || item.status !== "completed") return [];
   return item.changes.map((change) => ({
     path: absoluteChangePath(cwd, change.path),
-    kind: { type: change.kind },
+    kind: codexChangeKindToFileChangeKind(change.kind, cwd),
   }));
 };
 
@@ -128,36 +337,41 @@ const codexExecutablePath = (): string =>
   process.env.CODEX_CLI_PATH?.trim() ||
   "codex";
 
-const getCodexModel = (stellaHome?: string): string =>
-  process.env.STELLA_CODEX_MODEL?.trim() ||
-  (stellaHome ? loadLocalPreferences(stellaHome).codexModel : DEFAULT_CODEX_MODEL);
+const normalizeCodexRuntimeReasoningEffort = (
+  value: unknown,
+): CodexReasoningEffort | undefined => {
+  if (
+    value === "none" ||
+    value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+  ) {
+    return value;
+  }
+  return undefined;
+};
 
-export const buildCodexExecArgs = (args: {
-  model: string;
-  cwd?: string;
-  persistedSessionId?: string;
-  imagePaths?: string[];
-}): string[] => {
-  const commandArgs = [
-    "exec",
-    "--experimental-json",
-    "--model",
-    args.model,
-    "--sandbox",
-    "danger-full-access",
-    "--config",
-    'approval_policy="never"',
-  ];
-  if (args.cwd) {
-    commandArgs.push("--cd", args.cwd);
-  }
-  if (args.persistedSessionId) {
-    commandArgs.push("resume", args.persistedSessionId);
-  }
-  for (const imagePath of args.imagePaths ?? []) {
-    commandArgs.push("--image", imagePath);
-  }
-  return commandArgs;
+const getCodexRuntimePreferences = (
+  stellaHome?: string,
+): { model: string; reasoningEffort?: CodexReasoningEffort } => {
+  const prefs = stellaHome ? loadLocalPreferences(stellaHome) : null;
+  const model =
+    process.env.STELLA_CODEX_MODEL?.trim() ||
+    prefs?.codexModel ||
+    DEFAULT_CODEX_MODEL;
+  const envReasoning = normalizeCodexRuntimeReasoningEffort(
+    process.env.STELLA_CODEX_REASONING_EFFORT?.trim(),
+  );
+  const prefReasoning = prefs?.codexReasoningEffort;
+  const reasoningEffort =
+    envReasoning ??
+    (prefReasoning && prefReasoning !== "default" ? prefReasoning : undefined);
+  return {
+    model,
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+  };
 };
 
 const mimeExtension = (mimeType: string): string => {
@@ -187,19 +401,23 @@ export const codexImagePathFromFileUrl = (url: string): string | null => {
 const materializeCodexAttachments = (
   runId: string,
   attachments?: RuntimeAttachmentRef[],
-): { imagePaths: string[]; cleanupDir?: string } => {
-  if (!attachments?.length) return { imagePaths: [] };
-  const imagePaths: string[] = [];
+): { inputs: CodexUserInput[]; cleanupDir?: string } => {
+  if (!attachments?.length) return { inputs: [] };
+  const inputs: CodexUserInput[] = [];
   let cleanupDir: string | undefined;
   for (const [index, attachment] of attachments.entries()) {
     if (!attachment.mimeType?.startsWith("image/")) continue;
     if (attachment.url.startsWith("file://")) {
       const imagePath = codexImagePathFromFileUrl(attachment.url);
-      if (imagePath) imagePaths.push(imagePath);
+      if (imagePath) inputs.push({ type: "localImage", path: imagePath });
       continue;
     }
     if (path.isAbsolute(attachment.url)) {
-      imagePaths.push(attachment.url);
+      inputs.push({ type: "localImage", path: attachment.url });
+      continue;
+    }
+    if (/^https?:\/\//i.test(attachment.url)) {
+      inputs.push({ type: "image", url: attachment.url });
       continue;
     }
     const match = attachment.url.match(/^data:([^;]+);base64,(.*)$/);
@@ -212,9 +430,27 @@ const materializeCodexAttachments = (
       `attachment-${index + 1}-${crypto.randomUUID()}${mimeExtension(match[1] ?? attachment.mimeType)}`,
     );
     fs.writeFileSync(filePath, Buffer.from(match[2] ?? "", "base64"));
-    imagePaths.push(filePath);
+    inputs.push({ type: "localImage", path: filePath });
   }
-  return { imagePaths, cleanupDir };
+  return { inputs, cleanupDir };
+};
+
+export const buildCodexUserInput = (args: {
+  prompt: string;
+  runId: string;
+  attachments?: RuntimeAttachmentRef[];
+}): { input: CodexUserInput[]; cleanupDir?: string } => {
+  const { inputs, cleanupDir } = materializeCodexAttachments(
+    args.runId,
+    args.attachments,
+  );
+  return {
+    input: [
+      { type: "text", text: args.prompt, text_elements: [] },
+      ...inputs,
+    ],
+    ...(cleanupDir ? { cleanupDir } : {}),
+  };
 };
 
 const truncateStderr = (chunks: Buffer[]): string => {
@@ -223,7 +459,7 @@ const truncateStderr = (chunks: Buffer[]): string => {
   return text.slice(text.length - MAX_STDERR_CAPTURE);
 };
 
-const killCodexProcess = (child: ReturnType<typeof spawn>) => {
+const killCodexProcess = (child: ChildProcessWithoutNullStreams) => {
   if (child.killed || child.exitCode !== null) return;
   try {
     child.kill("SIGTERM");
@@ -242,7 +478,7 @@ const killCodexProcess = (child: ReturnType<typeof spawn>) => {
   child.once("exit", () => clearTimeout(sigkillTimer));
 };
 
-const abortCodexProcess = (child: ReturnType<typeof spawn>) => {
+const abortCodexProcess = (child: ChildProcessWithoutNullStreams) => {
   if (child.killed || child.exitCode !== null) return;
   try {
     child.kill("SIGINT");
@@ -258,214 +494,667 @@ const appendUniqueFileChanges = (
 ) => {
   const seen = new Set(
     target.map(
-      (change) =>
-        `${change.kind.type}:${change.path}:${change.kind.type === "update" ? change.kind.move_path ?? "" : ""}`,
+      (change) => `${change.path}\0${JSON.stringify(change.kind)}`,
     ),
   );
   for (const change of changes) {
-    const key = `${change.kind.type}:${change.path}:${change.kind.type === "update" ? change.kind.move_path ?? "" : ""}`;
+    const key = `${change.path}\0${JSON.stringify(change.kind)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     target.push(change);
   }
 };
 
+const textFromUnknown = (value: unknown): string => {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+};
+
+const buildToolResultText = (toolResult: ToolResult): string =>
+  toolResult.error ? `Error: ${toolResult.error}` : textFromUnknown(toolResult.result);
+
+const toolArgsFromCodexValue = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+};
+
+const toJsonValue = (value: unknown): JsonValue => {
+  if (value === null) return null;
+  if (typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (Array.isArray(value)) return value.map(toJsonValue);
+  if (value && typeof value === "object") {
+    const out: Record<string, JsonValue> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      out[key] = toJsonValue(entry);
+    }
+    return out;
+  }
+  return null;
+};
+
+export const buildCodexDynamicToolSpecs = (
+  tools?: ToolMetadata[],
+): CodexDynamicToolSpec[] => {
+  if (!tools?.length) return [];
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: toJsonValue(tool.parameters),
+  }));
+};
+
+export const buildCodexThreadStartParams = (args: {
+  model: string;
+  cwd?: string;
+  tools?: ToolMetadata[];
+}): CodexThreadStartParams => {
+  const dynamicTools = buildCodexDynamicToolSpecs(args.tools);
+  return {
+    model: args.model,
+    ...(args.cwd ? { cwd: args.cwd } : {}),
+    approvalPolicy: "never",
+    sandbox: "read-only",
+    serviceName: "Stella",
+    ephemeral: false,
+    ...(dynamicTools.length > 0 ? { dynamicTools } : {}),
+    experimentalRawEvents: false,
+    persistExtendedHistory: true,
+  };
+};
+
+export const buildCodexThreadResumeParams = (args: {
+  threadId: string;
+  model: string;
+  cwd?: string;
+}): CodexThreadResumeParams => ({
+  threadId: args.threadId,
+  model: args.model,
+  ...(args.cwd ? { cwd: args.cwd } : {}),
+  approvalPolicy: "never",
+  sandbox: "read-only",
+  excludeTurns: true,
+  persistExtendedHistory: true,
+});
+
+export const buildCodexTurnStartParams = (args: {
+  threadId: string;
+  input: CodexUserInput[];
+  model: string;
+  cwd?: string;
+  reasoningEffort?: CodexReasoningEffort;
+}): CodexTurnStartParams => ({
+  threadId: args.threadId,
+  input: args.input,
+  ...(args.cwd ? { cwd: args.cwd } : {}),
+  approvalPolicy: "never",
+  sandboxPolicy: { type: "readOnly", networkAccess: true },
+  model: args.model,
+  ...(args.reasoningEffort ? { effort: args.reasoningEffort } : {}),
+});
+
+type PendingRequest = {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+};
+
+class CodexAppServerClient {
+  private readonly child: ChildProcessWithoutNullStreams;
+  private readonly stderrChunks: Buffer[] = [];
+  private readonly pending = new Map<JsonRpcId, PendingRequest>();
+  private nextId = 1;
+  private closedError: Error | null = null;
+  private notificationHandler?: (notification: CodexServerNotification) => void;
+  private requestHandler?: (
+    request: JsonRpcRequestMessage,
+  ) => Promise<unknown> | unknown;
+  private closeHandler?: (error: Error) => void;
+
+  constructor() {
+    this.child = spawn(
+      codexExecutablePath(),
+      ["app-server", "--listen", "stdio://"],
+      { stdio: "pipe" },
+    );
+    const lines = readline.createInterface({ input: this.child.stdout });
+    lines.on("line", (line) => this.handleLine(line));
+    this.child.stderr.on("data", (chunk: Buffer) => {
+      this.stderrChunks.push(chunk);
+    });
+    this.child.once("error", (error) => {
+      this.rejectAll(
+        new Error(`Codex app-server failed to start: ${error.message}`),
+      );
+    });
+    this.child.once("exit", (code, signal) => {
+      if (this.closedError) return;
+      const detail =
+        signal ?? (code === null ? "without exit code" : `with code ${code}`);
+      const stderr = truncateStderr(this.stderrChunks).trim();
+      this.rejectAll(
+        new Error(
+          `Codex app-server exited ${detail}${stderr ? `: ${stderr}` : ""}`,
+        ),
+      );
+    });
+  }
+
+  onNotification(handler: (notification: CodexServerNotification) => void) {
+    this.notificationHandler = handler;
+  }
+
+  onRequest(
+    handler: (request: JsonRpcRequestMessage) => Promise<unknown> | unknown,
+  ) {
+    this.requestHandler = handler;
+  }
+
+  onClose(handler: (error: Error) => void) {
+    this.closeHandler = handler;
+  }
+
+  async initialize(): Promise<void> {
+    await this.request("initialize", {
+      clientInfo: {
+        name: "stella",
+        title: "Stella",
+        version: "0.0.0",
+      },
+      capabilities: {
+        experimentalApi: true,
+      },
+    });
+    this.notify("initialized");
+  }
+
+  async request<T = unknown>(method: string, params?: unknown): Promise<T> {
+    if (this.closedError) throw this.closedError;
+    const id = this.nextId++;
+    const promise = new Promise<T>((resolve, reject) => {
+      this.pending.set(id, {
+        resolve: (value) => resolve(value as T),
+        reject,
+      });
+    });
+    try {
+      this.write({ jsonrpc: "2.0", id, method, params });
+    } catch (error) {
+      this.pending.delete(id);
+      throw error;
+    }
+    return promise;
+  }
+
+  notify(method: string, params?: unknown): void {
+    if (this.closedError) return;
+    this.write({ jsonrpc: "2.0", method, params });
+  }
+
+  async interrupt(threadId: string, turnId: string): Promise<void> {
+    try {
+      await this.request("turn/interrupt", { threadId, turnId });
+    } catch {
+      // The process may already be shutting down.
+    }
+  }
+
+  close(): void {
+    this.rejectAll(new Error("Codex app-server closed."));
+    killCodexProcess(this.child);
+  }
+
+  abort(): void {
+    this.rejectAll(new Error("Codex app-server aborted."));
+    abortCodexProcess(this.child);
+  }
+
+  private write(message: JsonRpcOutgoingMessage) {
+    const line = `${JSON.stringify(message)}\n`;
+    try {
+      this.child.stdin.write(line);
+    } catch (error) {
+      const messageText =
+        error instanceof Error ? error.message : textFromUnknown(error);
+      throw new Error(`Codex app-server write failed: ${messageText}`);
+    }
+  }
+
+  private handleLine(line: string) {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    let message: unknown;
+    try {
+      message = JSON.parse(trimmed);
+    } catch {
+      return;
+    }
+    if (!message || typeof message !== "object") return;
+    const rpc = message as {
+      id?: unknown;
+      method?: unknown;
+      result?: unknown;
+      error?: JsonRpcError;
+    };
+    if (rpc.id !== undefined && typeof rpc.method !== "string") {
+      this.handleResponse(rpc as JsonRpcResponseMessage);
+      return;
+    }
+    if (rpc.id !== undefined && typeof rpc.method === "string") {
+      void this.handleServerRequest(rpc as JsonRpcRequestMessage);
+      return;
+    }
+    if (typeof rpc.method === "string") {
+      this.notificationHandler?.(rpc as CodexServerNotification);
+    }
+  }
+
+  private handleResponse(message: JsonRpcResponseMessage) {
+    const pending = this.pending.get(message.id);
+    if (!pending) return;
+    this.pending.delete(message.id);
+    if (message.error) {
+      pending.reject(
+        new Error(
+          message.error.message ??
+            `Codex app-server request ${String(message.id)} failed.`,
+        ),
+      );
+      return;
+    }
+    pending.resolve(message.result);
+  }
+
+  private async handleServerRequest(message: JsonRpcRequestMessage) {
+    try {
+      const result = this.requestHandler
+        ? await this.requestHandler(message)
+        : null;
+      this.write({ jsonrpc: "2.0", id: message.id, result });
+    } catch (error) {
+      const messageText =
+        error instanceof Error ? error.message : textFromUnknown(error);
+      this.write({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: { code: -32000, message: messageText },
+      } as JsonRpcResponseMessage);
+    }
+  }
+
+  private rejectAll(error: Error) {
+    this.closedError = error;
+    for (const pending of this.pending.values()) {
+      pending.reject(error);
+    }
+    this.pending.clear();
+    this.closeHandler?.(error);
+  }
+}
+
+const createInitializedCodexClient = async (): Promise<CodexAppServerClient> => {
+  const client = new CodexAppServerClient();
+  try {
+    await client.initialize();
+    return client;
+  } catch (error) {
+    client.close();
+    throw error;
+  }
+};
+
+export const listCodexAppServerModels = async (): Promise<{
+  models: CodexAppServerModel[];
+}> => {
+  const client = await createInitializedCodexClient();
+  const models: CodexAppServerModel[] = [];
+  try {
+    let cursor: string | null = null;
+    do {
+      const response: CodexModelListResponse =
+        await client.request<CodexModelListResponse>("model/list", {
+          cursor,
+          limit: 100,
+          includeHidden: false,
+        });
+      models.push(...response.data);
+      cursor = response.nextCursor;
+    } while (cursor);
+    return { models };
+  } finally {
+    client.close();
+  }
+};
+
+const startOrResumeCodexThread = async (args: {
+  client: CodexAppServerClient;
+  persistedSessionId?: string;
+  model: string;
+  cwd?: string;
+  tools?: ToolMetadata[];
+  onStatus?: (status: string) => void;
+}): Promise<string> => {
+  if (args.persistedSessionId) {
+    try {
+      const response = await args.client.request<CodexThreadResponse>(
+        "thread/resume",
+        buildCodexThreadResumeParams({
+          threadId: args.persistedSessionId,
+          model: args.model,
+          cwd: args.cwd,
+        }),
+      );
+      return response.thread.id;
+    } catch {
+      args.onStatus?.("Starting a new Codex app-server session");
+    }
+  }
+
+  const response = await args.client.request<CodexThreadResponse>(
+    "thread/start",
+    buildCodexThreadStartParams({
+      model: args.model,
+      cwd: args.cwd,
+      tools: args.tools,
+    }),
+  );
+  return response.thread.id;
+};
+
+const isNotificationForTurn = (
+  notification: CodexServerNotification,
+  threadId: string | undefined,
+  turnId: string | undefined,
+): boolean => {
+  const params =
+    notification.params && typeof notification.params === "object"
+      ? (notification.params as { threadId?: unknown; turnId?: unknown })
+      : null;
+  if (!params) return false;
+  if (threadId && params.threadId !== threadId) return false;
+  if (turnId && params.turnId !== turnId) return false;
+  return true;
+};
+
+const statusFromCodexItem = (item: CodexThreadItem): string | null => {
+  switch (item.type) {
+    case "commandExecution":
+      return `Codex command ${item.status}: ${item.command}`;
+    case "fileChange":
+      return item.status === "completed"
+        ? `Codex changed ${item.changes.length} file${item.changes.length === 1 ? "" : "s"}`
+        : `Codex file change ${item.status}`;
+    case "dynamicToolCall":
+      return `${item.tool} ${item.status}`;
+    case "mcpToolCall":
+      return `${item.server}.${item.tool} ${item.status}`;
+    case "webSearch":
+      return `Searching ${item.query}`;
+    default:
+      return null;
+  }
+};
+
 export const runCodexAgentTurn = async (request: {
   runId: string;
-  sessionKey: string;
+  sessionKey?: string;
   persistedSessionId?: string;
   prompt: string;
   cwd?: string;
   stellaHome?: string;
   stellaRoot?: string;
   attachments?: RuntimeAttachmentRef[];
+  tools?: ToolMetadata[];
   abortSignal?: AbortSignal;
-  onStatus?: (text: string) => void;
+  onStatus?: (status: string) => void;
   onStream?: (chunk: string) => void;
+  onToolUpdate?: (args: {
+    toolCallId: string;
+    toolName: string;
+    update: ToolResult;
+  }) => void;
+  executeTool?: (
+    toolCallId: string,
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
+  ) => Promise<ToolResult>;
 }): Promise<CodexAgentTurnResult> => {
-  request.onStatus?.("Starting Codex");
-  const beforeSnapshot = await snapshotCursorWorktree(request.stellaRoot);
-  const model = getCodexModel(request.stellaHome);
-  const { imagePaths, cleanupDir } = materializeCodexAttachments(
-    request.runId,
-    request.attachments,
-  );
-  const child = spawn(
-    codexExecutablePath(),
-    buildCodexExecArgs({
-      model,
-      cwd: request.cwd,
-      persistedSessionId: request.persistedSessionId,
-      imagePaths,
-    }),
-    {
-      cwd: request.cwd,
-      env: {
-        ...process.env,
-        CODEX_INTERNAL_ORIGINATOR_OVERRIDE:
-          process.env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE ?? "stella",
-      },
-      windowsHide: true,
-    },
-  );
+  request.onStatus?.("Starting Codex app-server");
 
-  const stderrChunks: Buffer[] = [];
-  let threadId: string | undefined = request.persistedSessionId;
-  let finalText = "";
-  let streamText = "";
-  let turnFailure: string | null = null;
-  let aborted = false;
-  const messageTextById = new Map<string, string>();
+  const { model, reasoningEffort } = getCodexRuntimePreferences(
+    request.stellaHome,
+  );
+  const { input, cleanupDir } = buildCodexUserInput({
+    runId: request.runId,
+    prompt: request.prompt,
+    attachments: request.attachments,
+  });
+  const snapshotBefore = request.cwd
+    ? await snapshotCursorWorktree(request.cwd)
+    : null;
   const fileChanges: FileChangeRecord[] = [];
+  let finalText = "";
+  let threadId: string | undefined;
+  let turnId: string | undefined;
+  let turnFailure: string | null = null;
+  let completed = false;
+  let waitingForTurnCompletion = false;
 
-  const abort = () => {
-    aborted = true;
-    request.onStatus?.("Stopping Codex");
-    abortCodexProcess(child);
-  };
-  if (request.abortSignal?.aborted) {
-    abort();
-  } else {
-    request.abortSignal?.addEventListener("abort", abort, { once: true });
-  }
+  const client = await createInitializedCodexClient();
 
-  try {
-    const childErrorPromise = new Promise<never>((_, reject) => {
-      child.once("error", (error) => {
-        turnFailure = error instanceof Error ? error.message : String(error);
-        child.stdout?.destroy();
-        reject(error);
-      });
-    });
-    const closePromise = new Promise<{
-      code: number | null;
-      signal: NodeJS.Signals | null;
-    }>((resolve) => {
-      child.once("close", (code, signal) => resolve({ code, signal }));
-    });
-
-    if (!child.stdin) throw new Error("Codex process has no stdin.");
-    child.stdin.write(request.prompt);
-    child.stdin.end();
-
-    if (!child.stdout) throw new Error("Codex process has no stdout.");
-    child.stderr?.on("data", (data: Buffer) => {
-      stderrChunks.push(data);
-    });
-
-    const lines = readline.createInterface({
-      input: child.stdout,
-      crlfDelay: Infinity,
-    });
-
-    const consumeLines = async () => {
-      for await (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line) as CodexThreadEvent;
-        if (event.type === "thread.started") {
-          threadId = event.thread_id;
-          continue;
-        }
-        if (event.type === "turn.failed") {
-          turnFailure = event.error?.message ?? "Codex run failed.";
-          continue;
-        }
-        if (event.type === "error") {
-          turnFailure = event.message ?? "Codex run failed.";
-          continue;
-        }
-        if (
-          event.type !== "item.started" &&
-          event.type !== "item.updated" &&
-          event.type !== "item.completed"
-        ) {
-          continue;
-        }
-        const item = event.item;
-        if (item.type === "agent_message") {
-          const previous = messageTextById.get(item.id) ?? "";
-          const next = item.text ?? "";
-          const delta = next.startsWith(previous) ? next.slice(previous.length) : next;
-          if (delta) {
-            streamText += delta;
-            request.onStream?.(delta);
+  const turnCompleted = new Promise<void>((resolve, reject) => {
+    client.onNotification((notification) => {
+      if (!threadId) return;
+      if (!isNotificationForTurn(notification, threadId, turnId)) return;
+      switch (notification.method) {
+        case "turn/started":
+          turnId = notification.params.turn.id;
+          request.onStatus?.("Codex is working");
+          return;
+        case "turn/completed": {
+          turnId = notification.params.turn.id;
+          completed = true;
+          const turn = notification.params.turn;
+          if (turn.status === "failed" || turn.status === "interrupted") {
+            const message =
+              turn.error?.message ||
+              (turn.status === "interrupted" ? "Codex was interrupted." : null) ||
+              "Codex run failed.";
+            reject(new Error(message));
+            return;
           }
-          messageTextById.set(item.id, next);
-          if (event.type === "item.completed") {
-            finalText = next;
+          resolve();
+          return;
+        }
+        case "error":
+          if (notification.params.willRetry) return;
+          turnFailure =
+            notification.params.error?.message ||
+            notification.params.error?.additionalDetails ||
+            "Codex run failed.";
+          reject(new Error(turnFailure ?? "Codex run failed."));
+          return;
+        case "item/agentMessage/delta":
+          finalText += notification.params.delta;
+          request.onStream?.(notification.params.delta);
+          return;
+        case "item/reasoning/textDelta":
+        case "item/reasoning/summaryTextDelta": {
+          const status = notification.params.delta.trim();
+          if (status) request.onStatus?.(status);
+          return;
+        }
+        case "item/started":
+        case "item/completed": {
+          const item = notification.params.item;
+          const status = statusFromCodexItem(item);
+          if (status) request.onStatus?.(status);
+          if (item.type === "agentMessage" && item.text) {
+            finalText = item.text;
           }
-          continue;
-        }
-        if (item.type === "reasoning" && item.text.trim()) {
-          request.onStatus?.(item.text.trim());
-          continue;
-        }
-        if (item.type === "command_execution") {
-          request.onStatus?.(`${item.command} ${item.status}`.trim());
-          continue;
-        }
-        if (item.type === "file_change") {
           appendUniqueFileChanges(
             fileChanges,
             fileChangesFromCodexItem(item, request.cwd ?? request.stellaRoot),
           );
-          continue;
+          return;
         }
-        if (item.type === "mcp_tool_call") {
-          request.onStatus?.(`${item.server}.${item.tool} ${item.status}`.trim());
-          continue;
-        }
-        if (item.type === "web_search") {
-          request.onStatus?.(`Searching ${item.query}`.trim());
-          continue;
-        }
-        if (item.type === "error") {
-          request.onStatus?.(item.message);
-        }
+        default:
+          return;
       }
-    };
+    });
 
-    try {
-      await Promise.race([consumeLines(), childErrorPromise]);
-    } finally {
-      lines.close();
+    client.onClose((error) => {
+      if (waitingForTurnCompletion && !completed) reject(error);
+    });
+
+    client.onRequest(async (message) => {
+      if (message.method === "item/tool/call") {
+        const params = message.params as CodexDynamicToolCallParams;
+        if (!request.executeTool) {
+          return {
+            contentItems: [
+              {
+                type: "inputText",
+                text: `Error: Stella tool ${params.tool} is not available.`,
+              },
+            ],
+            success: false,
+          };
+        }
+        const toolName = params.tool;
+        const toolArgs = toolArgsFromCodexValue(params.arguments);
+        const toolResult = await request.executeTool(
+          params.callId,
+          toolName,
+          toolArgs,
+          request.abortSignal,
+          (update) => {
+            request.onToolUpdate?.({
+              toolCallId: params.callId,
+              toolName,
+              update,
+            });
+            const statusText = buildToolResultText(update).trim();
+            if (statusText) request.onStatus?.(statusText);
+          },
+        );
+        appendUniqueFileChanges(fileChanges, toolResult.fileChanges ?? []);
+        return {
+          contentItems: [
+            { type: "inputText", text: buildToolResultText(toolResult) },
+          ],
+          success: !toolResult.error,
+        };
+      }
+      if (message.method === "item/commandExecution/requestApproval") {
+        return { decision: "decline" };
+      }
+      if (message.method === "item/fileChange/requestApproval") {
+        return { decision: "decline" };
+      }
+      if (message.method === "item/tool/requestUserInput") {
+        return { answers: {} };
+      }
+      if (message.method === "applyPatchApproval") {
+        return { decision: "denied" };
+      }
+      if (message.method === "execCommandApproval") {
+        return { decision: "denied" };
+      }
+      throw new Error(`Unsupported Codex app-server request: ${message.method}`);
+    });
+  });
+
+  const abortHandler = () => {
+    request.onStatus?.("Stopping Codex app-server");
+    if (threadId && turnId) {
+      void client.interrupt(threadId, turnId);
     }
-    const exit = await Promise.race([closePromise, childErrorPromise]);
-    if (aborted) {
+    client.abort();
+  };
+  request.abortSignal?.addEventListener("abort", abortHandler, { once: true });
+
+  try {
+    if (request.abortSignal?.aborted) {
       throw new Error("Aborted");
     }
+
+    threadId = await startOrResumeCodexThread({
+      client,
+      persistedSessionId: request.persistedSessionId,
+      model,
+      cwd: request.cwd,
+      tools: request.executeTool ? request.tools : undefined,
+      onStatus: request.onStatus,
+    });
+    request.onStatus?.("Codex app-server ready");
+
+    const turn = await client.request<CodexTurnStartResponse>(
+      "turn/start",
+      buildCodexTurnStartParams({
+        threadId,
+        input,
+        model,
+        cwd: request.cwd,
+        reasoningEffort,
+      }),
+    );
+    turnId = turn.turn.id;
+    if (turn.turn.status === "failed" || turn.turn.status === "interrupted") {
+      throw new Error(turn.turn.error?.message ?? "Codex run failed.");
+    }
+
+    waitingForTurnCompletion = true;
+    await turnCompleted;
+
+    const snapshotAfter =
+      request.cwd && snapshotBefore
+        ? await snapshotCursorWorktree(request.cwd)
+        : null;
+    if (snapshotBefore && snapshotAfter) {
+      appendUniqueFileChanges(
+        fileChanges,
+        diffCursorWorktreeSnapshots(snapshotBefore, snapshotAfter),
+      );
+    }
+
+    if (request.abortSignal?.aborted) {
+      throw new Error("Aborted");
+    }
+
     if (turnFailure) {
       throw new Error(turnFailure);
     }
-    if (exit.code !== 0 || exit.signal) {
-      const detail = exit.signal
-        ? `signal ${exit.signal}`
-        : `code ${exit.code ?? 1}`;
-      throw new Error(`Codex Exec exited with ${detail}: ${truncateStderr(stderrChunks)}`);
+    if (!threadId) {
+      throw new Error("Codex app-server did not report a thread id.");
     }
-    const afterSnapshot = await snapshotCursorWorktree(request.stellaRoot);
-    appendUniqueFileChanges(
-      fileChanges,
-      diffCursorWorktreeSnapshots(beforeSnapshot, afterSnapshot),
-    );
-    const sessionId = threadId?.trim();
-    if (!sessionId) {
-      throw new Error("Codex did not report a thread id.");
+    if (!completed) {
+      throw new Error("Codex app-server did not complete the turn.");
     }
+
     return {
-      text: (finalText || streamText).trim(),
-      sessionId,
-      ...(fileChanges.length > 0 ? { fileChanges } : {}),
+      text: finalText.trim(),
+      sessionId: threadId,
+      ...(fileChanges.length ? { fileChanges } : {}),
     };
   } finally {
-    request.abortSignal?.removeEventListener("abort", abort);
-    killCodexProcess(child);
-    if (cleanupDir) {
-      try {
-        fs.rmSync(cleanupDir, { recursive: true, force: true });
-      } catch {
-        // Best effort.
-      }
-    }
+    request.abortSignal?.removeEventListener("abort", abortHandler);
+    client.close();
+    if (cleanupDir) fs.rmSync(cleanupDir, { recursive: true, force: true });
   }
 };

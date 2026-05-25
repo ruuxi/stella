@@ -812,6 +812,13 @@ export type ElectronSystemApi = {
       | "codex_cli";
     cursorModel: string;
     codexModel: string;
+    codexReasoningEffort:
+      | "default"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh";
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -834,6 +841,13 @@ export type ElectronSystemApi = {
       | "codex_cli";
     cursorModel?: string;
     codexModel?: string;
+    codexReasoningEffort?:
+      | "default"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh";
     maxAgentConcurrency?: number;
     imageGeneration?: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -855,6 +869,13 @@ export type ElectronSystemApi = {
       | "codex_cli";
     cursorModel: string;
     codexModel: string;
+    codexReasoningEffort:
+      | "default"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh";
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -872,6 +893,23 @@ export type ElectronSystemApi = {
       displayName: string;
       description?: string;
       aliases?: string[];
+    }>;
+  }>;
+  listCodexModels: () => Promise<{
+    models: Array<{
+      id: string;
+      model: string;
+      displayName: string;
+      description: string;
+      hidden: boolean;
+      supportedReasoningEfforts: Array<{
+        reasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+        description: string;
+      }>;
+      defaultReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+      inputModalities: string[];
+      additionalSpeedTiers: string[];
+      isDefault: boolean;
     }>;
   }>;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;

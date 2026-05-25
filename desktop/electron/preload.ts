@@ -76,6 +76,7 @@ import {
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_GET_CURSOR_API_KEY,
   IPC_PREFERENCES_LIST_CURSOR_MODELS,
+  IPC_PREFERENCES_LIST_CODEX_MODELS,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
@@ -1161,6 +1162,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "codex_cli";
         cursorModel: string;
         codexModel: string;
+        codexReasoningEffort:
+          | "default"
+          | "minimal"
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh";
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1183,6 +1191,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "codex_cli";
       cursorModel?: string;
       codexModel?: string;
+      codexReasoningEffort?:
+        | "default"
+        | "minimal"
+        | "low"
+        | "medium"
+        | "high"
+        | "xhigh";
       maxAgentConcurrency?: number;
       imageGeneration?: {
         provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1205,6 +1220,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "codex_cli";
         cursorModel: string;
         codexModel: string;
+        codexReasoningEffort:
+          | "default"
+          | "minimal"
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh";
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1227,6 +1249,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
           displayName: string;
           description?: string;
           aliases?: string[];
+        }>;
+      }>,
+    listCodexModels: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_LIST_CODEX_MODELS) as Promise<{
+        models: Array<{
+          id: string;
+          model: string;
+          displayName: string;
+          description: string;
+          hidden: boolean;
+          supportedReasoningEfforts: Array<{
+            reasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+            description: string;
+          }>;
+          defaultReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+          inputModalities: string[];
+          additionalSpeedTiers: string[];
+          isDefault: boolean;
         }>;
       }>,
     listLlmCredentials: () =>
