@@ -435,12 +435,7 @@ const collectOpenClawPaths = async (sourceRoot: string): Promise<SourcePaths> =>
   const config = configPath ? await readJsonIfExists(configPath) : null;
   const workspaces = await resolveOpenClawWorkspaceCandidates(root, config);
   return {
-    memoryFiles: await existingFiles(
-      workspaces.flatMap((workspace) => [
-        path.join(workspace, "MEMORY.md"),
-        path.join(workspace, "memory.md"),
-      ]),
-    ),
+    memoryFiles: await collectOpenClawMemoryFiles(workspaces),
     userFiles: await existingFiles(workspaces.map((workspace) => path.join(workspace, "USER.md"))),
     personalityFiles: await existingFiles(
       workspaces.flatMap((workspace) => [
@@ -473,6 +468,46 @@ const existingFiles = async (files: string[]): Promise<string[]> => {
 const firstExistingFile = async (files: string[]): Promise<string | null> => {
   const matches = await existingFiles(files);
   return matches[0] ?? null;
+};
+
+const collectOpenClawMemoryFiles = async (
+  workspaces: string[],
+): Promise<string[]> => {
+  const rootMemoryFiles = await existingFiles(
+    workspaces.flatMap((workspace) => [
+      path.join(workspace, "MEMORY.md"),
+      path.join(workspace, "memory.md"),
+    ]),
+  );
+  const memoryTreeFiles = (
+    await Promise.all(
+      workspaces.map((workspace) =>
+        listMarkdownFiles(path.join(workspace, "memory")),
+      ),
+    )
+  ).flat();
+  return uniqueSorted([...rootMemoryFiles, ...memoryTreeFiles]);
+};
+
+const listMarkdownFiles = async (root: string): Promise<string[]> => {
+  const out: string[] = [];
+  const visit = async (dir: string): Promise<void> => {
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      if (entry.name.startsWith(".")) continue;
+      const nextPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await visit(nextPath);
+      } else if (entry.isFile() && /\.md$/iu.test(entry.name)) {
+        out.push(nextPath);
+      }
+    }
+  };
+  try {
+    await visit(root);
+  } catch {}
+  return uniqueSorted(out);
 };
 
 const listSkillDirs = async (roots: string[]): Promise<string[]> => {
@@ -511,10 +546,12 @@ const resolveOpenClawWorkspaceCandidates = async (
   config: unknown,
 ): Promise<string[]> => {
   const candidates = [
+    ...openClawEnvWorkspaceCandidates(sourceRoot),
     path.join(sourceRoot, "workspace"),
     path.join(sourceRoot, "workspace-main"),
     path.join(sourceRoot, "workspace-assistant"),
     path.join(sourceRoot, "workspace.default"),
+    ...(await openClawProfileWorkspaceCandidates(sourceRoot)),
   ];
   if (isRecord(config)) {
     const agents = config.agents;
@@ -546,6 +583,29 @@ const resolveOpenClawWorkspaceCandidates = async (
     } catch {}
   }
   return existing;
+};
+
+const openClawEnvWorkspaceCandidates = (sourceRoot: string): string[] => {
+  const workspace = asString(process.env.OPENCLAW_WORKSPACE_DIR);
+  return workspace ? [resolveSourceConfiguredPath(sourceRoot, workspace)] : [];
+};
+
+const openClawProfileWorkspaceCandidates = async (
+  sourceRoot: string,
+): Promise<string[]> => {
+  try {
+    const entries = await fsp.readdir(sourceRoot, { withFileTypes: true });
+    return entries
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          !entry.isSymbolicLink() &&
+          /^workspace-[^/\\]+$/u.test(entry.name),
+      )
+      .map((entry) => path.join(sourceRoot, entry.name));
+  } catch {
+    return [];
+  }
 };
 
 const listOpenClawSessionFiles = async (sourceRoot: string): Promise<string[]> => {
