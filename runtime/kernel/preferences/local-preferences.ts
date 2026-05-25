@@ -34,7 +34,7 @@ import {
 
 type AgentEngine = AgentRuntimeEngine;
 export const DEFAULT_CURSOR_MODEL = "composer-latest";
-export const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
+export const DEFAULT_CODEX_MODEL = "gpt-5.5";
 export type ReasoningEffort =
   | "default"
   | "minimal"
