@@ -10,7 +10,6 @@ const metadata: AppMetadata = {
   slot: "top",
   order: 10,
   onActiveClick: dispatchShowHome,
-  suppressActiveState: true,
 };
 
 export default metadata;

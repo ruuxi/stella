@@ -26,7 +26,6 @@ import {
 } from "@/shell/display/tab-store";
 import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
-import { ShellTopBarWebControls } from "@/shell/ShellTopBarStoreControls";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
 import { ShellTopBarPrimaryNav } from "@/shell/sidebar/ShellTopBarNav";
 import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
@@ -123,11 +122,6 @@ export const ShellTopBar = ({
   const isStoreRoute = pathname === "/store" || pathname.startsWith("/store/");
   const isBillingRoute =
     pathname === "/billing" || pathname.startsWith("/billing/");
-  const webViewSurfaceLabel = isStoreRoute
-    ? "Store"
-    : isBillingRoute
-      ? "Billing"
-      : null;
   const [miniAlwaysOnTop, setMiniAlwaysOnTopState] = useState(true);
 
   useEffect(() => {
@@ -157,7 +151,9 @@ export const ShellTopBar = ({
       className="shell-topbar"
       data-platform={isMac ? "mac" : isWin ? "win" : "other"}
       data-display-open={panelOpen ? "true" : "false"}
-      data-display-expanded={panelExpanded ? "true" : "false"}
+      data-display-expanded={
+        panelOpen && panelExpanded ? "true" : "false"
+      }
       data-route={
         isStoreRoute ? "store" : isBillingRoute ? "billing" : undefined
       }
@@ -182,17 +178,14 @@ export const ShellTopBar = ({
           <ArrowRight size={15} strokeWidth={1.75} />
         </button>
         {!isMiniWindow ? <ShellTopBarPrimaryNav /> : null}
+      </div>
+      <div className="shell-topbar-spacer" aria-hidden="true" />
+      <div className="shell-topbar-profile-cluster">
+        {!isMiniWindow ? (
+          <ShellTopBarAccount onSignIn={onSignIn} onConnect={onConnect} />
+        ) : null}
         <ShellTopBarUpdatePill />
       </div>
-      {webViewSurfaceLabel ? (
-        <div className="shell-topbar-center">
-          <ShellTopBarWebControls surfaceLabel={webViewSurfaceLabel} />
-        </div>
-      ) : null}
-      <div className="shell-topbar-spacer" aria-hidden="true" />
-      {!isMiniWindow ? (
-        <ShellTopBarAccount onSignIn={onSignIn} onConnect={onConnect} />
-      ) : null}
       <div className="shell-topbar-tabs">
         <DisplayTabBar />
       </div>

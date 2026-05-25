@@ -3,7 +3,7 @@
    in `SidebarIcons.tsx`; these rules layer hover-driven motion on top
    when the icons appear inside a `.shell-topbar-nav-item` row. */
 
-/* ── Custom icon hover animations (top-bar nav) ─────────────────── */
+/* ── Custom icon hover animations (sign-in pill) ─────────────────── */
 
 .custom-icon {
   overflow: visible;
@@ -15,21 +15,6 @@
   transform-origin: center;
 }
 
-.shell-topbar-nav-item:hover .icon-house .house-roof {
-  transform: translateY(-2px);
-}
-.shell-topbar-nav-item:hover .icon-users .users-p1 {
-  transform: translateX(-1.5px);
-}
-.shell-topbar-nav-item:hover .icon-users .users-p2 {
-  transform: translateX(1.5px);
-}
-.shell-topbar-nav-item:hover .icon-store .store-handle {
-  transform: translateY(-2px);
-}
-.shell-topbar-nav-item:hover .icon-settings .set-p {
-  transform: rotate(45deg);
-}
 .shell-topbar-account-signin:hover .icon-login .li-p2 {
   transform: translateX(3px);
 }

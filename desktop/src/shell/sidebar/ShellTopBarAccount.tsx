@@ -399,27 +399,12 @@ export const ShellTopBarAccount = ({
     />
   );
 
-  const settingsButton = (
-    <button
-      type="button"
-      className="shell-topbar-icon-btn"
-      onClick={handleOpenSettings}
-      onMouseEnter={() => preloadSidebarRoute("settings")}
-      onFocus={() => preloadSidebarRoute("settings")}
-      aria-label="Settings"
-      title="Settings"
-    >
-      <SettingsIcon size={15} strokeWidth={1.75} />
-    </button>
-  );
-
   if (!hasConnectedAccount) {
     return (
       <div className="shell-topbar-account">
-        {settingsButton}
         <button
           type="button"
-          className="shell-topbar-account-signin"
+          className="pill-btn shell-topbar-account-signin"
           onClick={() => {
             preloadAuthDialog();
             onSignIn?.();
@@ -441,8 +426,8 @@ export const ShellTopBarAccount = ({
             <button
               type="button"
               className="shell-topbar-icon-btn"
-              title="Menu"
-              aria-label="Menu"
+              title="Settings"
+              aria-label="Settings"
             >
               <SettingsIcon size={15} strokeWidth={1.75} />
               {connectHint.active ? (
@@ -480,20 +465,20 @@ export const ShellTopBarAccount = ({
 
   const initials = initialsFromIdentity(user.email, user.name);
   const swatch = avatarSwatchFromIdentity(user.email ?? user.name);
-  const accountLabel =
+  const accountName =
     (user.name ?? user.email ?? t("sidebar.account")).trim() ||
     t("sidebar.account");
+  const displayPlanLabel = planLabel(plan ?? "free", billingStatus);
 
   return (
     <div className="shell-topbar-account">
-      {settingsButton}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             className="shell-topbar-account-trigger"
-            title={user.email ?? user.name ?? t("sidebar.account")}
-            aria-label={accountLabel}
+            title={`${accountName} · ${displayPlanLabel}`}
+            aria-label={`${accountName}, ${displayPlanLabel} plan`}
           >
             <span
               className="shell-topbar-account-avatar"
@@ -506,6 +491,7 @@ export const ShellTopBarAccount = ({
             >
               {initials}
             </span>
+            <span className="shell-topbar-account-plan">{displayPlanLabel}</span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent

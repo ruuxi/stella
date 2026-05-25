@@ -82,8 +82,7 @@ const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 260;
 const DISPLAY_PANEL_WIDTH_CSS_VAR = "--display-panel-width";
 
 // Set on `:root` (not on `.display-sidebar`) so siblings outside the panel
-// — most importantly `.shell-topbar-center`, which centers Store/Billing
-// controls over `.content-area` — can inherit the same value.
+// (e.g. the topbar tab strip width calc) can inherit the same value.
 const applyDisplayPanelWidthCssVar = (width: number | null): void => {
   const root = document.documentElement;
   const nextWidth = resolveDisplayPanelWidth(width);
@@ -361,7 +360,7 @@ export const DisplaySidebar = forwardRef<
     <aside
       ref={asideRef}
       className={`display-sidebar${panelOpen ? " display-sidebar--open" : ""}${
-        panelExpanded ? " display-sidebar--expanded" : ""
+        panelOpen && panelExpanded ? " display-sidebar--expanded" : ""
       }`}
       aria-hidden={!panelOpen}
     >

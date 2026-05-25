@@ -9,6 +9,8 @@
   align-items: center;
   gap: 2px;
   height: 100%;
+  flex-shrink: 0;
+  padding-right: 4px;
   -webkit-app-region: no-drag;
 }
 
@@ -16,13 +18,12 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   height: 24px;
-  padding: 0 8px;
+  padding: 0 10px;
   border-radius: var(--radius-sm, 5px);
   color: var(--text-weak);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 500;
   letter-spacing: -0.005em;
   text-decoration: none;
@@ -41,23 +42,13 @@
   outline: none;
 }
 
-.shell-topbar-nav-icon {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  color: currentColor;
+.shell-topbar-nav-item[data-active="true"] {
+  color: var(--text-strong);
+  font-weight: 600;
 }
 
-.shell-topbar-nav-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.shell-topbar-nav-item:hover .shell-topbar-nav-icon {
+.shell-topbar-nav-item[data-active="true"]:hover,
+.shell-topbar-nav-item[data-active="true"]:focus-visible {
   color: var(--text-strong);
 }
 
@@ -69,8 +60,8 @@
 /* Unread / badge pill anchored over the icon. */
 .shell-topbar-nav-badge {
   position: absolute;
-  top: -4px;
-  right: -6px;
+  top: 0;
+  right: -2px;
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
@@ -88,8 +79,8 @@
    badge is also present so the two never stack. */
 .shell-topbar-nav-hint-dot {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: 2px;
+  right: 2px;
   width: 7px;
   height: 7px;
   border-radius: 999px;
@@ -117,33 +108,50 @@
 .shell-topbar-account-trigger {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
+  gap: 8px;
   height: 24px;
-  padding: 0;
+  padding: 0 8px 0 2px;
   border: none;
   background: transparent;
   cursor: default;
-  border-radius: 999px;
-  transition: transform 0.12s ease;
+  border-radius: var(--radius-sm, 5px);
+  color: var(--text-weak);
+  -webkit-app-region: no-drag;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
-.shell-topbar-account-trigger:hover {
-  transform: scale(1.04);
+.shell-topbar-account-trigger:hover,
+.shell-topbar-account-trigger:focus-visible,
+.shell-topbar-account-trigger[data-state="open"] {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+  outline: none;
+}
+
+.shell-topbar-account-plan {
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  pointer-events: none;
+  margin-left: 2px;
 }
 
 .shell-topbar-account-avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 23px;
+  height: 23px;
   border-radius: 50%;
   border: 1px solid var(--border-weak);
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--text-strong);
   font-family: inherit;
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
   pointer-events: none;
@@ -154,26 +162,11 @@
   align-items: center;
   gap: 6px;
   height: 24px;
-  padding: 0 10px;
-  border: none;
-  border-radius: var(--radius-sm, 5px);
-  background: transparent;
-  color: var(--text-weak);
-  font-family: inherit;
-  font-size: 12.5px;
+  min-height: 24px;
+  padding: 0 12px;
+  font-size: 11.5px;
   font-weight: 500;
-  cursor: default;
   -webkit-app-region: no-drag;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-}
-
-.shell-topbar-account-signin:hover,
-.shell-topbar-account-signin:focus-visible {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-strong);
-  outline: none;
 }
 
 .shell-topbar-account-signin-icon {
