@@ -101,6 +101,14 @@ if (!force && existsSync(sentinel)) {
   process.exit(0);
 }
 
+const tarPath = (filePath) => {
+  if (process.platform !== "win32") return filePath;
+  const normalized = path.resolve(filePath).replace(/\\/g, "/");
+  const driveMatch = /^([A-Za-z]):\/(.*)$/.exec(normalized);
+  if (!driveMatch) return normalized;
+  return `/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
+};
+
 process.stdout.write(`Resolving native helpers manifest: ${manifestUrl}\n`);
 const manifestResp = await fetch(manifestUrl, {
   headers: { "User-Agent": "stella-native-download" },
@@ -178,9 +186,17 @@ await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 process.stdout.write(`Extracting into ${outDir}\n`);
+const tarArgs = [
+  ...(process.platform === "win32" ? ["--force-local"] : []),
+  "--zstd",
+  "-xf",
+  tarPath(tmpArchive),
+  "-C",
+  tarPath(outDir),
+];
 const tarResult = spawnSync(
   "tar",
-  ["--zstd", "-xf", tmpArchive, "-C", outDir],
+  tarArgs,
   {
     stdio: "inherit",
   },
