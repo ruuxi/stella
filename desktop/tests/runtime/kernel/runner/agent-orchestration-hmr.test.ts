@@ -31,9 +31,15 @@ type MockRuntimeState = {
     | "shell_suppressed_route_tree"
     | "shell_alias_write"
     | "running_shell"
-    | "parallel_running_shell";
+    | "parallel_running_shell"
+    | "interrupted"
+    | "interrupt_after_apply_patch"
+    | "send_input_then_apply_patch";
   patch: string;
+  firstPatch?: string;
   root: string;
+  runCount: number;
+  onRunStart?: (runCount: number) => void;
 };
 
 const mockRuntime: MockRuntimeState = {
@@ -45,9 +51,13 @@ const mockRuntime: MockRuntimeState = {
     | "shell_suppressed_route_tree"
     | "shell_alias_write"
     | "running_shell"
-    | "parallel_running_shell",
+    | "parallel_running_shell"
+    | "interrupted"
+    | "interrupt_after_apply_patch"
+    | "send_input_then_apply_patch",
   patch: "",
   root: "",
+  runCount: 0,
 };
 
 const getMockRuntime = (): MockRuntimeState =>
@@ -73,16 +83,80 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
         producedFiles?: ToolResult["producedFiles"];
       }) => void;
     };
+    abortSignal?: AbortSignal;
   }) => {
     const runtime = getMockRuntime();
+    const runCount = runtime.runCount + 1;
+    runtime.runCount = runCount;
+    runtime.onRunStart?.(runCount);
     const context: ToolContext = {
       conversationId: "conversation-1",
       deviceId: "device-1",
       requestId: "request-1",
       stellaRoot: runtime.root,
     };
+    if (runtime.mode === "send_input_then_apply_patch" && runCount === 1) {
+      const result = await opts.toolExecutor(
+        "apply_patch",
+        { input: runtime.firstPatch ?? runtime.patch },
+        context,
+      );
+      opts.callbacks?.onToolEnd?.({
+        runId: "subagent-run-1",
+        seq: 1,
+        toolCallId: "tool-1",
+        toolName: "apply_patch",
+        resultPreview: result.error ?? "ok",
+        fileChanges: result.fileChanges,
+        producedFiles: result.producedFiles,
+      });
+      await new Promise<void>((resolve) => {
+        if (opts.abortSignal?.aborted) {
+          resolve();
+          return;
+        }
+        opts.abortSignal?.addEventListener("abort", () => resolve(), {
+          once: true,
+        });
+      });
+      return {
+        runId: "subagent-run-1",
+        result: "",
+        interrupted: true,
+      };
+    }
+    if (runtime.mode === "interrupted") {
+      return {
+        runId: "subagent-run",
+        result: "",
+        interrupted: true,
+      };
+    }
+    if (runtime.mode === "interrupt_after_apply_patch") {
+      const result = await opts.toolExecutor(
+        "apply_patch",
+        { input: runtime.patch },
+        context,
+      );
+      opts.callbacks?.onToolEnd?.({
+        runId: "subagent-run",
+        seq: 1,
+        toolCallId: "tool-1",
+        toolName: "apply_patch",
+        resultPreview: result.error ?? "ok",
+        fileChanges: result.fileChanges,
+        producedFiles: result.producedFiles,
+      });
+      return {
+        runId: "subagent-run",
+        result: "",
+        interrupted: true,
+      };
+    }
+
     const result =
-      runtime.mode === "apply_patch"
+      runtime.mode === "apply_patch" ||
+      runtime.mode === "send_input_then_apply_patch"
         ? await opts.toolExecutor("apply_patch", { input: runtime.patch }, context)
         : runtime.mode === "running_shell"
           ? await opts.toolExecutor(
@@ -176,6 +250,9 @@ afterEach(async () => {
   );
   delete (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
     .__stellaOrchHmrMock;
+  mockRuntime.runCount = 0;
+  mockRuntime.firstPatch = undefined;
+  mockRuntime.onRunStart = undefined;
   vi.clearAllMocks();
 });
 
@@ -603,6 +680,215 @@ describe("agent orchestration self-mod HMR tracking", () => {
     );
     expect(controller.endShellMutationGuard).toHaveBeenCalledTimes(1);
     expect(callOrder).toEqual(["guard-begin", "guard-end", "record-write"]);
+  });
+
+  it("cancels self-mod HMR instead of finalizing when the subagent is interrupted", async () => {
+    const root = await makeTempRoot();
+    mockRuntime.root = root;
+    mockRuntime.mode = "interrupted";
+    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
+      .__stellaOrchHmrMock = mockRuntime;
+    const controller = {
+      beginRun: vi.fn(),
+      recordWrite: vi.fn(),
+      beginShellMutationGuard: vi.fn(async () => true),
+      endShellMutationGuard: vi.fn(async () => true),
+      hasRun: vi.fn(() => true),
+    };
+    const context = createTestContext(root, controller);
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "edit file",
+      prompt: "edit file",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "canceled" });
+    expect(context.selfModLifecycle.finalizeRun).not.toHaveBeenCalled();
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels tracked writes instead of finalizing when interruption is terminal", async () => {
+    const root = await makeTempRoot();
+    const filePath = path.join(root, "desktop/src/foo.tsx");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "export const value = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "interrupt_after_apply_patch";
+    mockRuntime.patch = [
+      "*** Begin Patch",
+      "*** Update File: desktop/src/foo.tsx",
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'after';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
+      .__stellaOrchHmrMock = mockRuntime;
+
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+    const appliedPaths: string[] = [];
+    const context = createTestContext(root, controller);
+    context.selfModLifecycle.finalizeRun = vi.fn(({ runId }) => {
+      const result = controller.finalize(runId);
+      appliedPaths.push(...result.appliedRuns.flatMap((run) => run.paths));
+    });
+    context.selfModLifecycle.cancelRun = vi.fn(async (runId) => {
+      const result = await controller.cancel(runId);
+      appliedPaths.push(...result.appliedRuns.flatMap((run) => run.paths));
+    });
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "edit file",
+      prompt: "edit file",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "canceled" });
+    expect(await readFile(filePath, "utf-8")).toBe(
+      "export const value = 'after';\n",
+    );
+    expect(appliedPaths).toEqual([]);
+    expect(context.selfModLifecycle.finalizeRun).not.toHaveBeenCalled();
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not finalize self-mod HMR for the run interrupted by send_input", async () => {
+    const root = await makeTempRoot();
+    const srcDir = path.join(root, "desktop/src");
+    await mkdir(srcDir, { recursive: true });
+    const fileNames = ["a.tsx", "b.tsx", "c.tsx", "d.tsx", "e.tsx"];
+    await Promise.all(
+      fileNames.map((fileName) =>
+        writeFile(path.join(srcDir, fileName), "export const value = 'before';\n"),
+      ),
+    );
+    mockRuntime.root = root;
+    mockRuntime.mode = "send_input_then_apply_patch";
+    mockRuntime.firstPatch = [
+      "*** Begin Patch",
+      "*** Update File: desktop/src/a.tsx",
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'after';",
+      "*** Update File: desktop/src/b.tsx",
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'after';",
+      "*** Update File: desktop/src/c.tsx",
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'after';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    mockRuntime.patch = [
+      "*** Begin Patch",
+      "*** Update File: desktop/src/d.tsx",
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'after';",
+      "*** Update File: desktop/src/e.tsx",
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'after';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    const firstRunStarted = new Promise<void>((resolve) => {
+      mockRuntime.onRunStart = (runCount) => {
+        if (runCount === 1) resolve();
+      };
+    });
+    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
+      .__stellaOrchHmrMock = mockRuntime;
+
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+    const appliedPaths: string[] = [];
+    const context = createTestContext(root, controller);
+    context.selfModLifecycle.finalizeRun = vi.fn(({ runId }) => {
+      const result = controller.finalize(runId);
+      appliedPaths.push(
+        ...result.appliedRuns.flatMap((run) => run.paths),
+      );
+    });
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "edit file",
+      prompt: "edit file",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    await firstRunStarted;
+    await context.state.localAgentManager.sendAgentMessage(
+      threadId,
+      "finish with the updated requirement",
+      "orchestrator",
+    );
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "completed" });
+    await Promise.all(
+      fileNames.map(async (fileName) => {
+        await expect(readFile(path.join(srcDir, fileName), "utf-8")).resolves.toBe(
+          "export const value = 'after';\n",
+        );
+      }),
+    );
+    expect(appliedPaths.sort()).toEqual(
+      fileNames.map((fileName) => `desktop/src/${fileName}`).sort(),
+    );
+    expect(context.selfModLifecycle.cancelRun).not.toHaveBeenCalled();
+    expect(context.selfModLifecycle.finalizeRun).toHaveBeenCalledTimes(1);
   });
 
   it("kills still-running guarded shell sessions and cancels self-mod finalize", async () => {

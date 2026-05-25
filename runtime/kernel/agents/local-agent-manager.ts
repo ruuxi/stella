@@ -152,8 +152,9 @@ type RuntimeAgentRecord = {
    *
    * Not "restart" — the long-lived `subagentSession` is reused; only
    * the outer `executeTask` invocation re-enters.
-   */
+  */
   interruptedForFollowUp: boolean;
+  activeSelfModRunId?: string;
   terminalEventEmitted: boolean;
   pendingStartStatusText?: string;
 };
@@ -216,6 +217,10 @@ type LocalAgentManagerOpts = {
     enableRemoteTools: boolean;
     abortSignal: AbortSignal;
     selfModMetadata?: AgentToolRequest["selfModMetadata"];
+    selfModRunId?: string;
+    onSelfModRunStarted?: (runId: string) => void;
+    onSelfModRunClosed?: (runId: string) => void;
+    shouldContinueSelfModLifecycleAfterInterrupt?: () => boolean;
     /**
      * Long-lived session bound to the durable subagent threadId. The
      * runner forwards this to `runSubagentTask` so the underlying Pi
@@ -248,6 +253,7 @@ type LocalAgentManagerOpts = {
   }) => Promise<{
     runId: string;
     result: string;
+    interrupted?: boolean;
     error?: string;
     fileChanges?: FileChangeRecord[];
     producedFiles?: ProducedFileRecord[];
@@ -576,6 +582,7 @@ export class LocalAgentManager implements AgentToolApi {
       storageMode: "local",
       parentAgentId: record.parentAgentId,
       selfModMetadata: record.selfModMetadata,
+      activeSelfModRunId: undefined,
       recentActivity: [`Continuing thread: ${truncate(prompt, 200)}`],
       progressBuffer: "",
       toSubagentQueue: [],
@@ -752,6 +759,19 @@ export class LocalAgentManager implements AgentToolApi {
         enableRemoteTools: true,
         abortSignal: task.controller.signal,
         selfModMetadata: task.selfModMetadata,
+        ...(task.activeSelfModRunId
+          ? { selfModRunId: task.activeSelfModRunId }
+          : {}),
+        onSelfModRunStarted: (runId) => {
+          task.activeSelfModRunId = runId;
+        },
+        onSelfModRunClosed: (runId) => {
+          if (task.activeSelfModRunId === runId) {
+            task.activeSelfModRunId = undefined;
+          }
+        },
+        shouldContinueSelfModLifecycleAfterInterrupt: () =>
+          this.shouldDeliverFollowUp(task),
         onProgress: (chunk) => {
           if (task.controller.signal.aborted || task.status === "canceled")
             return;
@@ -844,6 +864,9 @@ export class LocalAgentManager implements AgentToolApi {
       } else if (task.controller.signal.aborted || task.status === "canceled") {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
+      } else if (result.interrupted) {
+        task.status = "canceled";
+        task.error = "Canceled";
       } else if (result.error) {
         task.status = "error";
         task.error = result.error;
@@ -999,6 +1022,7 @@ export class LocalAgentManager implements AgentToolApi {
       storageMode: request.storageMode,
       parentAgentId: request.parentAgentId,
       selfModMetadata: request.selfModMetadata,
+      activeSelfModRunId: undefined,
       recentActivity: [],
       progressBuffer: "",
       toSubagentQueue: [],
