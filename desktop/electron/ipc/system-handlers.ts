@@ -2132,6 +2132,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
             ? payload.cursorModel.trim()
             : "";
       }
+      if (payload?.codexModel !== undefined) {
+        patch.codexModel =
+          typeof payload.codexModel === "string"
+            ? payload.codexModel.trim()
+            : "";
+      }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;
       }

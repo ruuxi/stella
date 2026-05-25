@@ -1123,8 +1123,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
           string,
           "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
         >;
-        agentRuntimeEngine: "default" | "claude_code_local" | "cursor_sdk";
+        agentRuntimeEngine:
+          | "default"
+          | "claude_code_local"
+          | "cursor_sdk"
+          | "codex_cli";
         cursorModel: string;
+        codexModel: string;
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1140,8 +1145,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
         string,
         "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
       >;
-      agentRuntimeEngine?: "default" | "claude_code_local" | "cursor_sdk";
+      agentRuntimeEngine?:
+        | "default"
+        | "claude_code_local"
+        | "cursor_sdk"
+        | "codex_cli";
       cursorModel?: string;
+      codexModel?: string;
       maxAgentConcurrency?: number;
       imageGeneration?: {
         provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1157,8 +1167,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
           string,
           "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
         >;
-        agentRuntimeEngine: "default" | "claude_code_local" | "cursor_sdk";
+        agentRuntimeEngine:
+          | "default"
+          | "claude_code_local"
+          | "cursor_sdk"
+          | "codex_cli";
         cursorModel: string;
+        codexModel: string;
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
