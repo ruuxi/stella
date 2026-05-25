@@ -29,15 +29,11 @@
    explicit expanded state becomes a full content-area replacement. */
 .display-sidebar--open.display-sidebar--expanded {
   position: absolute;
-  inset: 0 0 0 var(--shell-sidebar-width, 170px);
+  inset: 0;
   z-index: 60;
   width: auto;
   flex: none;
   margin-left: 0;
-}
-
-:root[data-sidebar-hidden="true"] .display-sidebar--open.display-sidebar--expanded {
-  left: 0;
 }
 
 /* Expanded mode overlays the content area but `.display-sidebar-inner` is

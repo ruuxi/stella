@@ -1,14 +1,8 @@
 /* ================================================================
    Mobile WebView overrides
    Active when data-platform="mobile" is set on <html> by the
-   mobile bridge shim. Uses the same full sidebar + topbar toggle
-   as desktop rather than a persistent icon-only rail.
+   mobile bridge shim.
    ================================================================ */
-
-[data-platform="mobile"] .sidebar-drawer-scrim,
-[data-platform="mobile"] .compact-hamburger {
-  display: none;
-}
 
 [data-platform="mobile"] .shell-topbar[data-display-open="true"] .shell-topbar-tablist {
   flex: 1 1 0;

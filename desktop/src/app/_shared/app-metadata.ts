@@ -1,12 +1,13 @@
 import type { ComponentType, SVGProps } from "react";
 
 /**
- * Per-app sidebar metadata. Each `desktop/src/app/<id>/metadata.ts` file
- * exports a default of this shape. The Sidebar discovers all metadata files
- * via a relative `import.meta.glob` (see `desktop/src/shell/sidebar/Sidebar.tsx`
- * — the glob pattern lives there) and renders one nav entry per app.
- * Feature folders that omit `metadata.ts` (e.g. `home`, `media`, `workspace`)
- * are skipped by the glob — sidebar presence is opt-in per feature.
+ * Per-app top-bar nav metadata. Each `desktop/src/app/<id>/metadata.ts`
+ * file exports a default of this shape. The top-bar nav discovers all
+ * metadata files via a relative `import.meta.glob` (see
+ * `desktop/src/shell/sidebar/app-registry.ts` — the glob pattern lives
+ * there) and renders one nav entry per app. Feature folders that omit
+ * `metadata.ts` (e.g. `home`, `media`, `workspace`) are skipped by the
+ * glob — nav presence is opt-in per feature.
  *
  * To add a new sidebar app, agents should:
  *   1. Create `desktop/src/app/<id>/metadata.ts` (this shape).
@@ -15,8 +16,8 @@ import type { ComponentType, SVGProps } from "react";
  *      with a zod search-param validator).
  *
  * Vite + the TanStack Router plugin pick the new route up via HMR; the
- * sidebar reflects the new entry on the next render. No edits to the
- * sidebar or any registry are required.
+ * top-bar nav reflects the new entry on the next render. No edits to
+ * the nav or any registry are required.
  */
 type AppSlot = "top" | "bottom";
 
@@ -31,26 +32,30 @@ export type AppMetadata = {
   label: string;
   /** Icon component (e.g. one of `@/shell/sidebar/SidebarIcons`). */
   icon: AppIcon;
-  /** Router path (e.g. `/chat`). Sidebar renders a `<Link to={route} />`. */
+  /** Router path (e.g. `/chat`). Renders a `<Link to={route} />`. */
   route: string;
-  /** Whether the entry sits in the top nav or the bottom footer. */
+  /**
+   * Where the entry lives. `"top"` puts it in the primary top-bar nav
+   * (Home / Store / Social). `"bottom"` apps (e.g. Settings) are reachable
+   * via the top-bar account menu rather than as a dedicated nav button.
+   */
   slot: AppSlot;
   /** Sort order within the slot (lower first). Defaults to 100. */
   order?: number;
   /**
-   * When true, the sidebar omits this app from its rendered list. The route
-   * itself remains reachable (`routes/<id>.tsx` is unaffected) — useful for
-   * apps that should be navigable via deep link / dropdown but not occupy a
-   * permanent slot in the rail. Defaults to `false`.
+   * When true, the top-bar nav omits this app from its rendered list. The
+   * route itself remains reachable (`routes/<id>.tsx` is unaffected) —
+   * useful for apps that should be navigable via deep link / dropdown but
+   * not occupy a permanent slot in the bar. Defaults to `false`.
    */
   hideFromSidebar?: boolean;
   /**
-   * Optional handler invoked when the user clicks the sidebar entry while it
+   * Optional handler invoked when the user clicks the nav entry while it
    * is *already* the active route. Use this to implement "scroll to top",
-   * "show home", or other re-entry behaviors. When provided, the click also
-   * `preventDefault()`s the underlying `<Link>` navigation.
+   * "show home", or other re-entry behaviors. When provided, the click
+   * also `preventDefault()`s the underlying `<Link>` navigation.
    */
   onActiveClick?: () => void;
-  /** When true, the sidebar never paints the active/selected row styling. */
+  /** When true, the nav never paints the active/selected row styling. */
   suppressActiveState?: boolean;
 };

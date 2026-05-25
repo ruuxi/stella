@@ -1,7 +1,7 @@
 /* ─────────────────────────────────────────────────────────────
-   Dropdown menu — glass surface that matches the sidebar / chat
+   Dropdown menu — glass surface that matches the top-bar nav / chat
    composer chrome. Same backdrop-blur + foreground-overlay hover
-   states as `.sidebar-nav-item`, scaled down for menu density.
+   states as `.shell-topbar-nav-item`, scaled down for menu density.
    ───────────────────────────────────────────────────────────── */
 
 [data-component="dropdown-menu-content"] {
