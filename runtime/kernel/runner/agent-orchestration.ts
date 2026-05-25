@@ -412,11 +412,17 @@ export const createAgentOrchestration = (
       taskPrompt,
       abortSignal,
       selfModMetadata,
+      selfModRunId,
+      onSelfModRunStarted,
+      onSelfModRunClosed,
+      shouldContinueSelfModLifecycleAfterInterrupt,
       subagentSession,
       onProgress,
       toolExecutor,
     }) => {
       const runId = `local:sub:${crypto.randomUUID()}`;
+      const lifecycleRunId = selfModRunId ?? runId;
+      const isContinuingSelfModRun = Boolean(selfModRunId);
       const effectiveSelfModMetadata = resolveSelfModMetadata({
         agentType,
         selfModMetadata,
@@ -456,17 +462,20 @@ export const createAgentOrchestration = (
         // Register the run with the contention tracker before any writes can
         // arrive. recordWrite is a no-op on unknown runs to avoid resurrecting
         // already-finalized runs, so beginRun must precede writes.
-        await context.selfModHmrController?.beginRun(runId);
-        await Promise.resolve(
-          context.selfModLifecycle!.beginRun({
-            runId,
-            ...(rootRunId ? { rootRunId } : {}),
-            taskDescription,
-            taskPrompt,
-            conversationId,
-            ...(effectiveSelfModMetadata ?? {}),
-          }),
-        );
+        if (!isContinuingSelfModRun) {
+          await context.selfModHmrController?.beginRun(lifecycleRunId);
+          await Promise.resolve(
+            context.selfModLifecycle!.beginRun({
+              runId: lifecycleRunId,
+              ...(rootRunId ? { rootRunId } : {}),
+              taskDescription,
+              taskPrompt,
+              conversationId,
+              ...(effectiveSelfModMetadata ?? {}),
+            }),
+          );
+          onSelfModRunStarted?.(lifecycleRunId);
+        }
       }
       let exploreFindingsBlock = "";
       if (
@@ -494,6 +503,7 @@ export const createAgentOrchestration = (
       const pendingToolWriteRecords: Promise<void>[] = [];
       const guardedShellSessionLeases = new Map<string, string>();
       const guardedShellLeaseSessions = new Map<string, Set<string>>();
+      let subagentInterrupted = false;
 
       const endShellMutationGuard = async () => {
         const result = await context.selfModHmrController
@@ -576,7 +586,11 @@ export const createAgentOrchestration = (
           return;
         }
         if (paths.length === 0) return;
-        await context.selfModHmrController.recordWrite(runId, paths, options);
+        await context.selfModHmrController.recordWrite(
+          lifecycleRunId,
+          paths,
+          options,
+        );
       };
 
       const recordToolWrites = async (event: {
@@ -810,7 +824,9 @@ export const createAgentOrchestration = (
           },
           hookEmitter: context.hookEmitter,
         });
-        subagentSucceeded = !result.error;
+        subagentSucceeded =
+          !result.error && !result.interrupted && !abortSignal.aborted;
+        subagentInterrupted = Boolean(result.interrupted);
         if (subagentFileChanges.length > 0) {
           result.fileChanges = subagentFileChanges;
         }
@@ -819,6 +835,7 @@ export const createAgentOrchestration = (
         }
         return result;
       } finally {
+        subagentInterrupted = subagentInterrupted || abortSignal.aborted;
         if (pendingToolWriteRecords.length > 0) {
           await Promise.allSettled(pendingToolWriteRecords);
         }
@@ -916,7 +933,7 @@ export const createAgentOrchestration = (
 
             await Promise.resolve(
               context.selfModLifecycle!.finalizeRun({
-                runId,
+                runId: lifecycleRunId,
                 ...(rootRunId ? { rootRunId } : {}),
                 taskDescription,
                 taskPrompt,
@@ -927,10 +944,21 @@ export const createAgentOrchestration = (
                 featureNamerProvider,
               }),
             );
+            onSelfModRunClosed?.(lifecycleRunId);
+          } else if (
+            subagentInterrupted &&
+            shouldContinueSelfModLifecycleAfterInterrupt?.()
+          ) {
+            // This interrupt is a continuation boundary, not terminal
+            // cancellation. Keep the self-mod run open so writes before and
+            // after the boundary apply as one batch when the task finishes.
           } else if (
             typeof context.selfModLifecycle!.cancelRun === "function"
           ) {
-            await Promise.resolve(context.selfModLifecycle!.cancelRun(runId));
+            await Promise.resolve(
+              context.selfModLifecycle!.cancelRun(lifecycleRunId),
+            );
+            onSelfModRunClosed?.(lifecycleRunId);
           }
         }
       }

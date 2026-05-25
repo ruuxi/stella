@@ -286,6 +286,7 @@ export type SubagentRunOptions = BaseRunOptions & {
 export type SubagentRunResult = {
   runId: string;
   result: string;
+  interrupted?: boolean;
   error?: string;
   fileChanges?: FileChangeRecord[];
   producedFiles?: ProducedFileRecord[];

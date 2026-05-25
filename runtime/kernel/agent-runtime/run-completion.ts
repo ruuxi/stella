@@ -583,5 +583,6 @@ export const finalizeSubagentInterrupted = (args: {
   return {
     runId: args.runId,
     result: "",
+    interrupted: true,
   };
 };
