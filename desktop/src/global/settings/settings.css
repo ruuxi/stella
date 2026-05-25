@@ -25,7 +25,7 @@
   padding: 24px 48px 0;
   gap: 18px;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .settings-layout--standalone .settings-tab-rail,
@@ -73,11 +73,13 @@
   color: var(--text-strong);
 }
 
-/* Push the search bar to the right side of the header row and cap its
-   width so it doesn't stretch absurdly on wide layouts. */
+/* Search sits beside the title; let it grow into the remaining header
+   width without stretching past a comfortable reading measure. */
 .settings-tab-rail-header .settings-search {
-  margin-left: auto;
-  max-width: 280px;
+  flex: 1 1 auto;
+  min-width: 280px;
+  max-width: 480px;
+  margin-top: 3px;
 }
 
 .settings-tab-rail-nav {
@@ -162,8 +164,8 @@
   display: flex;
   align-items: center;
   width: 100%;
-  height: 34px;
-  padding: 0 8px 0 32px;
+  height: 30px;
+  padding: 0 8px 0 30px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   border-radius: var(--radius-full, 999px);
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
@@ -185,7 +187,7 @@
 
 .settings-search-icon {
   position: absolute;
-  left: 11px;
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-weak);
@@ -201,7 +203,7 @@
   background: transparent;
   color: inherit;
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   padding: 0;
 }
@@ -223,8 +225,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   margin-left: 4px;
   border: none;
   border-radius: 999px;
@@ -297,10 +299,11 @@
   flex-direction: column;
   gap: 28px;
   max-width: 720px;
-  /* Flush-left within the panel — the panel itself is the anchored
+  /* Centered within the panel — the panel itself is the anchored
      column, so cards line up at the same x-position across tabs. */
-  margin-left: 0;
+  margin-left: auto;
   margin-right: auto;
+  width: 100%;
 }
 
 /* ---- Scroll-target highlight ----

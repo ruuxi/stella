@@ -61,6 +61,20 @@ interface ProviderModelPanelProps {
   restrictStellaPicks?: boolean;
   restrictedPlanLabel?: string | null;
   ariaLabel?: string;
+  /**
+   * When true, the leading "Default …" row on the Stella tab is
+   * suppressed. Used by the global Models settings page, where the
+   * picker has no single-agent context so "default" doesn't apply.
+   */
+  hideDefaultRow?: boolean;
+  /**
+   * When set, replaces the "Selected …" header kicker on the right
+   * pane. The Models settings page uses this to swap the affordance
+   * from "currently selected" to "click a model to assign".
+   */
+  selectedHeaderKicker?: string;
+  /** When true, the "Selected …" title is hidden (badge still shows). */
+  hideSelectedTitle?: boolean;
 }
 
 function buildProviderTabs(
@@ -105,6 +119,9 @@ export function ProviderModelPanel({
   restrictStellaPicks = false,
   restrictedPlanLabel,
   ariaLabel,
+  hideDefaultRow = false,
+  selectedHeaderKicker,
+  hideSelectedTitle = false,
 }: ProviderModelPanelProps) {
   const credentials = useLlmCredentials();
   const tabs = useMemo(
@@ -319,6 +336,9 @@ export function ProviderModelPanel({
             onLocalModelIdChange={setLocalModelId}
             onSubmitLocalModelId={handleSubmitLocal}
             disabled={disabled}
+            hideDefaultRow={hideDefaultRow}
+            selectedHeaderKicker={selectedHeaderKicker}
+            hideSelectedTitle={hideSelectedTitle}
           />
         ) : null}
       </section>
@@ -362,6 +382,9 @@ interface ProviderPaneProps {
   onLocalModelIdChange: (next: string) => void;
   onSubmitLocalModelId: () => void;
   disabled: boolean;
+  hideDefaultRow: boolean;
+  selectedHeaderKicker?: string;
+  hideSelectedTitle: boolean;
 }
 
 type ModelListItem = {
@@ -460,6 +483,9 @@ function ProviderPane({
   onLocalModelIdChange,
   onSubmitLocalModelId,
   disabled,
+  hideDefaultRow,
+  selectedHeaderKicker,
+  hideSelectedTitle,
 }: ProviderPaneProps) {
   const llmEntry =
     tab.llmEntry ??
@@ -527,6 +553,7 @@ function ProviderPane({
     ],
   );
   const modelListHeader = useMemo(() => {
+    if (hideDefaultRow) return undefined;
     if (!isStella || query.trim()) return undefined;
     return (
       <button
@@ -546,17 +573,21 @@ function ProviderPane({
         ) : null}
       </button>
     );
-  }, [defaultLabel, disabled, isDefaultSelected, isStella, onPick, query]);
+  }, [defaultLabel, disabled, hideDefaultRow, isDefaultSelected, isStella, onPick, query]);
 
   return (
     <div className="model-picker-pane-inner">
       <header className="model-picker-pane-header">
-        <div className="model-picker-pane-title">
-          <span className="model-picker-pane-kicker">Selected</span>
-          <span className="model-picker-pane-current" title={currentLabel}>
-            {currentLabel}
-          </span>
-        </div>
+        {hideSelectedTitle ? null : (
+          <div className="model-picker-pane-title">
+            <span className="model-picker-pane-kicker">
+              {selectedHeaderKicker ?? "Selected"}
+            </span>
+            <span className="model-picker-pane-current" title={currentLabel}>
+              {currentLabel}
+            </span>
+          </div>
+        )}
         {isLocal ? (
           <span className="model-picker-pane-badge" data-tone="ok">
             Ready

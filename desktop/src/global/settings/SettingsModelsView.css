@@ -1,17 +1,18 @@
-/* SettingsModelsView — advanced master/detail editor.
-
-   Left rail = every configurable agent + Image / Voice, grouped.
-   Right pane = full ProviderModelPanel (Stella tab + every BYOK
-   provider as siblings) plus reasoning + footer actions.
-
-   Goal: from any agent, switching providers/models is two clicks. No
-   "more options" disclosure, no curated subset, no nested cards.
-*/
+/* SettingsModelsView — advanced provider-first editor.
+ *
+ * Top-level pivot picks the media kind (Agents / Image / Voice). On
+ * the Agents tab the full ProviderModelPanel mounts directly so the
+ * user can see every provider + model in one view; clicking a model
+ * fires a small popover (`.models-assign-popover`) that handles the
+ * "where do I want this?" follow-up — reasoning chips plus the agent
+ * multi-select. Goal: from any starting state, picking a model and
+ * applying it to one or more agents is two clicks plus a tap.
+ */
 
 .models-editor {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 18px;
   min-width: 0;
 }
 
@@ -19,7 +20,7 @@
 
 .models-editor-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
@@ -27,7 +28,7 @@
 .models-editor-title {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -40,82 +41,63 @@
   color: var(--text-strong);
 }
 
-.models-editor-title p {
-  margin: 0;
-  color: var(--text-weak);
-  font-size: 12.5px;
-  font-weight: 500;
-  line-height: 1.45;
-  max-width: 58ch;
-}
-
 .models-editor-header-actions {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-/* Engine selector — process-wide choice (Stella runner vs Claude Code
-   CLI). Lives in the header rather than per-agent so it reads as a
-   global toggle, not as a per-agent setting. Quiet, segmented, sits
-   to the left of the kebab. */
-.models-editor-engine {
+/* Engine pill — single rounded affordance that opens a dropdown with
+   the engine choices. Keeps the global engine toggle visually quiet
+   compared to the earlier segmented control. */
+.models-editor-engine-pill {
+  appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.models-editor-engine-label {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-weak);
-  letter-spacing: -0.005em;
-}
-
-.models-editor-engine-segment {
-  display: inline-flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 3px;
-  border-radius: var(--radius-md, 8px);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 12px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
   border: 1px solid var(--border-weak);
-}
-
-.models-editor-engine-btn {
-  appearance: none;
-  padding: 7px 14px;
-  border: 0;
-  border-radius: var(--radius-sm, 6px);
-  background: transparent;
-  color: var(--text-weak);
+  color: var(--text-strong);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: -0.005em;
   cursor: pointer;
   transition:
     background 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
     color 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.models-editor-engine-btn:hover:not(:disabled),
-.models-editor-engine-btn:focus-visible {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--text-strong);
+.models-editor-engine-pill:hover:not(:disabled),
+.models-editor-engine-pill:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+  border-color: var(--border);
   outline: none;
 }
 
-.models-editor-engine-btn[data-selected] {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+.models-editor-engine-pill:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.models-editor-engine-pill-kicker {
+  color: var(--text-weak);
+  font-weight: 500;
+}
+
+.models-editor-engine-pill-value {
   color: var(--text-strong);
   font-weight: 600;
 }
 
-.models-editor-engine-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.models-editor-engine-pill-chev {
+  margin-left: 1px;
+  color: var(--text-weak);
 }
 
 .models-editor-kebab {
@@ -123,8 +105,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: var(--radius-full);
   background: transparent;
@@ -167,17 +149,6 @@
 
 /* ── content-column widening ──────────────────────────────────── */
 
-/* Settings tabs default to a 720px content column for readability of
-   prose-shaped rows, and the surrounding `.settings-panel-wrap` is
-   itself capped at 760px inside `.settings-layout--standalone`. The
-   Models tab is the advanced surface and pairs a left agent rail with
-   the full ProviderModelPanel (which spends ~180px on its own provider
-   rail), so 760px clips the right pane.
-
-   Use `:has()` to widen the wrap and the inner tab-content column ONLY
-   when the Models tab is mounted; other tabs keep their existing
-   measure. The header tab strip stays at its current width so the
-   nav doesn't reflow when the user switches tabs. */
 .settings-layout--standalone .settings-panel-wrap:has(.settings-tab-content--models) {
   max-width: 1080px;
 }
@@ -186,173 +157,68 @@
   max-width: 100%;
 }
 
-/* ── master/detail layout ─────────────────────────────────────── */
+/* ── media tabs ───────────────────────────────────────────────── */
 
-.models-editor-split {
-  display: grid;
-  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-  min-width: 0;
-}
-
-@media (max-width: 820px) {
-  .models-editor-split {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ── left rail ────────────────────────────────────────────────── */
-
-.models-editor-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-  position: sticky;
-  top: 0;
-}
-
-.models-editor-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-.models-editor-section-label {
-  margin: 0 0 0 2px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: -0.005em;
-  color: var(--text-weaker);
-}
-
-/* Rail items sit on the bare surface with hairlines between them —
-   no surrounding card. The selected item gets a subtle fill so the
-   eye anchors to the active row without competing with the right
-   pane. */
-.models-editor-list {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  border-top: 1px solid var(--border-weak);
-}
-
-.models-editor-list > * {
+.models-editor-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
   border-bottom: 1px solid var(--border-weak);
+  margin: 0;
 }
 
-.models-list-item {
+.models-editor-tab {
   appearance: none;
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 10px 10px 12px;
+  padding: 9px 14px 10px;
   border: 0;
   border-radius: 0;
   background: transparent;
-  text-align: left;
+  color: var(--text-weak);
   font-family: inherit;
-  color: var(--text-base);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
   cursor: pointer;
   transition:
-    background 140ms cubic-bezier(0.22, 1, 0.36, 1),
     color 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.models-list-item:hover:not(:disabled),
-.models-list-item:focus-visible {
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  outline: none;
+.models-editor-tab::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  background: transparent;
+  border-radius: 2px;
+  transition: background 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.models-list-item[data-selected] {
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
-}
-
-.models-list-item[data-selected]:hover {
-  background: color-mix(in oklch, var(--foreground) 11%, transparent);
-}
-
-.models-list-item-main {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.models-list-item-name {
-  font-size: 13px;
-  font-weight: 600;
+.models-editor-tab:hover {
   color: var(--text-strong);
-  letter-spacing: -0.01em;
 }
 
-.models-list-item-desc {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-weak);
-  letter-spacing: -0.005em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.models-list-item-value {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  min-width: 0;
-  max-width: 50%;
-}
-
-.models-list-item-value-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-weak);
-  letter-spacing: -0.005em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 140px;
-}
-
-.models-list-item-value-label[data-overridden] {
+.models-editor-tab[data-selected] {
   color: var(--text-strong);
   font-weight: 600;
 }
 
-/* Small reasoning chip only renders when reasoning is off-default —
-   reads as a deliberate flag in the rail rather than visual noise. */
-.models-list-item-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--text-strong);
+.models-editor-tab[data-selected]::after {
+  background: var(--text-strong);
 }
 
-.models-list-item--skeleton {
-  cursor: progress;
-  opacity: 0.55;
-}
-
-/* ── right pane ───────────────────────────────────────────────── */
+/* ── pane ─────────────────────────────────────────────────────── */
 
 .models-editor-pane {
   min-width: 0;
-  /* `ProviderModelPanel` uses its own grid + overflow scroll; clipping
-     here would defeat that. Keep the pane a strict shrink target. */
   overflow: hidden;
+}
+
+.models-agents-pane {
+  min-width: 0;
 }
 
 .models-detail {
@@ -369,100 +235,51 @@
   text-align: center;
 }
 
-.models-detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-weak);
-}
+/* ── assignment popover ───────────────────────────────────────── */
 
-.models-detail-head-text {
+.models-assign-popover {
+  width: 320px;
+  max-width: calc(100vw - 32px);
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.models-detail-head-title {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text-strong);
-}
-
-.models-detail-head-desc {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-weak);
-  letter-spacing: -0.005em;
-}
-
-.models-detail-reset {
-  appearance: none;
-  flex-shrink: 0;
-  padding: 4px 10px;
-  background: transparent;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--popover, var(--background));
   border: 1px solid var(--border-weak);
-  border-radius: var(--radius-full);
-  color: var(--text-weak);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 8px 28px rgba(0, 0, 0, 0.18);
+  color: var(--text-base);
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  transition:
-    color 140ms cubic-bezier(0.22, 1, 0.36, 1),
-    background 140ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.models-detail-reset:hover:not(:disabled),
-.models-detail-reset:focus-visible {
-  color: var(--text-strong);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  border-color: var(--border);
-  outline: none;
-}
-
-.models-detail-reset:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.models-detail-body {
+.models-assign-head {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 2px;
   min-width: 0;
 }
 
-/* ── footer (reasoning + apply-to-all) ────────────────────────── */
-
-.models-detail-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-weak);
+.models-assign-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-weaker);
 }
 
-.models-detail-reasoning {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+.models-assign-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.models-detail-reasoning-label {
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--text-weak);
-  letter-spacing: -0.005em;
-}
-
-.models-detail-reasoning-segment {
+.models-assign-reasoning {
   display: inline-flex;
   align-items: stretch;
   gap: 2px;
@@ -470,12 +287,14 @@
   border-radius: var(--radius-sm, 6px);
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
   border: 1px solid var(--border-weak);
+  align-self: stretch;
 }
 
-.models-detail-reasoning-btn {
+.models-assign-reasoning-btn {
   appearance: none;
-  min-width: 38px;
-  padding: 4px 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 4px;
   border: 0;
   border-radius: var(--radius-sm, 5px);
   background: transparent;
@@ -490,49 +309,145 @@
     color 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.models-detail-reasoning-btn:hover:not(:disabled),
-.models-detail-reasoning-btn:focus-visible {
+.models-assign-reasoning-btn:hover,
+.models-assign-reasoning-btn:focus-visible {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--text-strong);
   outline: none;
 }
 
-.models-detail-reasoning-btn[data-selected] {
+.models-assign-reasoning-btn[data-selected] {
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
   color: var(--text-strong);
   font-weight: 600;
 }
 
-.models-detail-reasoning-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+/* Agents render as a wrapped row of toggle pills. A small left-edge
+   dot marks pills that already point at this model, so the user can
+   tell at a glance which agents the click would *remove* the model
+   from versus which are getting a fresh assignment. */
+.models-assign-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 2px 0;
 }
 
-.models-detail-apply-all {
+.models-assign-agent-pill {
   appearance: none;
-  padding: 4px 10px;
-  background: transparent;
-  border: 1px solid var(--border-weak);
+  position: relative;
+  padding: 5px 11px;
   border-radius: var(--radius-full);
-  color: var(--text-strong);
+  border: 1px solid var(--border-weak);
+  background: transparent;
+  color: var(--text-weak);
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
   cursor: pointer;
   transition:
     background 140ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.models-detail-apply-all:hover:not(:disabled),
-.models-detail-apply-all:focus-visible {
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+.models-assign-agent-pill:hover,
+.models-assign-agent-pill:focus-visible {
   border-color: var(--border);
+  color: var(--text-strong);
   outline: none;
 }
 
-.models-detail-apply-all:disabled {
+.models-assign-agent-pill[data-current]::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--text-weak) 70%, transparent);
+  transform: translateY(-50%);
+}
+
+.models-assign-agent-pill[data-current] {
+  padding-left: 14px;
+}
+
+.models-assign-agent-pill[data-checked] {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+  color: var(--background);
+  font-weight: 600;
+}
+
+.models-assign-agent-pill[data-checked]::before {
+  background: var(--background);
+}
+
+.models-assign-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.models-assign-footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.models-assign-apply-all,
+.models-assign-cancel,
+.models-assign-apply {
+  appearance: none;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-weak);
+  background: transparent;
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  transition:
+    background 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.models-assign-apply-all:hover:not(:disabled),
+.models-assign-cancel:hover:not(:disabled),
+.models-assign-apply:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-color: var(--border);
+}
+
+.models-assign-cancel {
+  color: var(--text-weak);
+  border-color: transparent;
+}
+
+.models-assign-cancel:hover {
+  color: var(--text-strong);
+}
+
+.models-assign-apply {
+  background: var(--text-strong);
+  color: var(--background);
+  border-color: transparent;
+}
+
+.models-assign-apply:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--text-strong) 92%, transparent);
+  border-color: transparent;
+}
+
+.models-assign-apply:disabled,
+.models-assign-apply-all:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
