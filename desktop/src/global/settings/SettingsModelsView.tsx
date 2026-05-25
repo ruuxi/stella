@@ -1,42 +1,38 @@
 /**
  * SettingsModelsView — Settings → Models (advanced surface).
  *
- * Two-column master/detail. Left rail lists every configurable agent
- * plus the Image and Voice surfaces; right pane shows the full
- * provider/model picker for the selected entry with every provider
- * (Stella + each BYOK provider) one click away — no "more options"
- * disclosure, no curated subset. The composer's model picker stays the
- * one-click "normal" surface; this page is the everything-visible one.
- *
- * Reuses the existing read/write IPC (`getLocalModelPreferences` /
- * `setLocalModelPreferences`), `useModelCatalog`, `ProviderModelPanel`,
- * and `ProviderOnlyPicker`/`VoiceCatalogPicker`.
+ * Top-level switch picks the media surface (Agents / Image / Voice).
+ * On the Agents tab the full provider/model picker mounts directly:
+ * providers on the left, models on the right, every BYOK provider one
+ * click away — no per-agent left rail. Clicking a model opens a small
+ * popover that picks the reasoning level and the target agents (or
+ * "apply to all"). Storage stays unchanged: `(agent → modelId)` in
+ * `modelOverrides` and `(agent → effort)` in `reasoningEfforts`. The
+ * popover surfaces that two-dimension reality directly so the same
+ * model paired with Low reasoning on one agent and Medium on another
+ * reads as two distinct picks.
  */
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { MoreHorizontal, RefreshCw, RotateCcw } from "lucide-react";
+import { ChevronDown, MoreHorizontal, RefreshCw, RotateCcw } from "lucide-react";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import { ProviderOnlyPicker, type ProviderOption } from "@/global/settings/ProviderOnlyPicker";
 import { VoiceCatalogPicker } from "@/global/settings/VoiceCatalogPicker";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
-import {
-  getStellaDisplayName,
-} from "@/global/settings/lib/model-catalog";
+import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
   buildModelDefaultsMap,
-  buildResolvedModelDefaultsMap,
   getConfigurableAgents,
-  getDefaultModelOptionLabel,
   getLocalModelDefaults,
-  getModelDisplayLabel,
   normalizeModelOverrides,
 } from "@/global/settings/lib/model-defaults";
-import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
 import {
   getPlanLabel,
   isRestrictedModelOverrideAudience,
@@ -50,6 +46,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
@@ -141,6 +139,27 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
 
 const isStellaModelId = (modelId: string): boolean =>
   modelId === "" || modelId.startsWith("stella/");
+
+const CONVERSATION_AGENT_KEYS: ReadonlySet<string> = new Set([
+  "orchestrator",
+  "general",
+]);
+
+type MediaTab = "agents" | "image" | "voice";
+
+const MEDIA_TABS: ReadonlyArray<{ id: MediaTab; label: string }> = [
+  { id: "agents", label: "Agents" },
+  { id: "image", label: "Image" },
+  { id: "voice", label: "Voice" },
+];
+
+const ENGINE_OPTIONS: ReadonlyArray<{
+  id: "default" | "claude_code_local";
+  label: string;
+}> = [
+  { id: "default", label: "Stella" },
+  { id: "claude_code_local", label: "Claude Code" },
+];
 
 /**
  * Last-known local preferences cached at module scope so reopening the
@@ -244,86 +263,7 @@ function useLocalModelPreferences(): {
   return { preferences, write, pending, error };
 }
 
-/* ── grouping ─────────────────────────────────────────────────── */
-
-const CONVERSATION_AGENT_KEYS: ReadonlySet<string> = new Set([
-  "orchestrator",
-  "general",
-]);
-
-type AgentEntry = { key: string; label: string; desc: string };
-
-function partitionAgents(agents: readonly AgentEntry[]): {
-  conversation: AgentEntry[];
-  background: AgentEntry[];
-} {
-  const conversation: AgentEntry[] = [];
-  const background: AgentEntry[] = [];
-  for (const entry of agents) {
-    if (CONVERSATION_AGENT_KEYS.has(entry.key)) conversation.push(entry);
-    else background.push(entry);
-  }
-  conversation.sort((a, b) => {
-    if (a.key === b.key) return 0;
-    if (a.key === "orchestrator") return -1;
-    if (b.key === "orchestrator") return 1;
-    return 0;
-  });
-  return { conversation, background };
-}
-
-/* ── list item (left rail) ────────────────────────────────────── */
-
-interface ListItemProps {
-  label: string;
-  desc: string;
-  valueLabel: string;
-  isOverridden: boolean;
-  isSelected: boolean;
-  reasoningChip: string | null;
-  onSelect: () => void;
-}
-
-function ListItem({
-  label,
-  desc,
-  valueLabel,
-  isOverridden,
-  isSelected,
-  reasoningChip,
-  onSelect,
-}: ListItemProps) {
-  return (
-    <button
-      type="button"
-      className="models-list-item"
-      data-selected={isSelected || undefined}
-      aria-pressed={isSelected}
-      onClick={onSelect}
-    >
-      <span className="models-list-item-main">
-        <span className="models-list-item-name">{label}</span>
-        <span className="models-list-item-desc">{desc}</span>
-      </span>
-      <span className="models-list-item-value">
-        <span
-          className="models-list-item-value-label"
-          data-overridden={isOverridden || undefined}
-        >
-          {valueLabel}
-        </span>
-        {reasoningChip ? (
-          <span className="models-list-item-chip">{reasoningChip}</span>
-        ) : null}
-      </span>
-    </button>
-  );
-}
-
 /* ── view ─────────────────────────────────────────────────────── */
-
-const IMAGE_KEY = "__image__";
-const VOICE_KEY = "__voice__";
 
 export function SettingsModelsView() {
   const {
@@ -337,9 +277,7 @@ export function SettingsModelsView() {
 
   const { preferences, write, pending, error } = useLocalModelPreferences();
 
-  // Master/detail: left selection drives the right pane. Orchestrator
-  // is the most common starting point.
-  const [selectedKey, setSelectedKey] = useState<string>("orchestrator");
+  const [mediaTab, setMediaTab] = useState<MediaTab>("agents");
 
   const modelDefaults = useMemo(
     () =>
@@ -350,10 +288,6 @@ export function SettingsModelsView() {
   );
   const defaultModelMap = useMemo(
     () => buildModelDefaultsMap(modelDefaults),
-    [modelDefaults],
-  );
-  const resolvedDefaultModelMap = useMemo(
-    () => buildResolvedModelDefaultsMap(modelDefaults),
     [modelDefaults],
   );
   const overrides = useMemo(
@@ -367,8 +301,6 @@ export function SettingsModelsView() {
     () => getConfigurableAgents(modelDefaults),
     [modelDefaults],
   );
-  const { conversation: conversationAgents, background: backgroundAgents } =
-    useMemo(() => partitionAgents(configurableAgents), [configurableAgents]);
 
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
@@ -384,73 +316,168 @@ export function SettingsModelsView() {
   const restricted = isRestrictedModelOverrideAudience(audience);
   const restrictedPlanLabel = audience ? getPlanLabel(audience) : null;
 
+  /* ── assignment popover state ────────────────────────────────── */
+
+  type AssignmentState = {
+    modelId: string;
+    rect: DOMRect;
+    initialReasoning: ReasoningEffort;
+    initialAgents: string[];
+  };
+  const [assignment, setAssignment] = useState<AssignmentState | null>(null);
+  const pendingRectRef = useRef<DOMRect | null>(null);
+
+  const closeAssignment = useCallback(() => {
+    setAssignment(null);
+    pendingRectRef.current = null;
+  }, []);
+
+  // Bucket existing assignments by modelId so opening the popover can
+  // pre-populate the agent checkboxes and reasoning chip with whatever
+  // the user already has set (so re-opening reads as "edit this" rather
+  // than starting from zero).
+  const agentsByModel = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const entry of configurableAgents) {
+      const current = overrides[entry.key];
+      if (!current) continue;
+      const list = map.get(current);
+      if (list) list.push(entry.key);
+      else map.set(current, [entry.key]);
+    }
+    return map;
+  }, [configurableAgents, overrides]);
+
+  const handleModelPanelClickCapture = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = (event.target as HTMLElement | null)?.closest(
+        ".model-picker-model",
+      );
+      if (target instanceof HTMLElement) {
+        pendingRectRef.current = target.getBoundingClientRect();
+      } else {
+        pendingRectRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const handleOpenAssignment = useCallback(
+    (modelId: string) => {
+      if (!modelId) return;
+      const rect = pendingRectRef.current;
+      if (!rect) return;
+      const initialAgents = agentsByModel.get(modelId) ?? [];
+      const reasoningCandidates = new Set<ReasoningEffort>();
+      for (const key of initialAgents) {
+        reasoningCandidates.add(
+          preferences?.reasoningEfforts?.[key] ?? "default",
+        );
+      }
+      const initialReasoning: ReasoningEffort =
+        reasoningCandidates.size === 1
+          ? Array.from(reasoningCandidates)[0]
+          : "default";
+      setAssignment({
+        modelId,
+        rect,
+        initialReasoning,
+        initialAgents,
+      });
+    },
+    [agentsByModel, preferences],
+  );
+
   /* ── mutation handlers ───────────────────────────────────────── */
 
-  const handleSelectModel = useCallback(
-    async (agentKey: string, value: string) => {
-      if (!preferences) return;
+  const handleAssignTo = useCallback(
+    async (modelId: string, agentKeys: string[], effort: ReasoningEffort) => {
+      if (!preferences || agentKeys.length === 0) return;
       const nextOverrides = { ...preferences.modelOverrides };
-      if (value === "") delete nextOverrides[agentKey];
-      else nextOverrides[agentKey] = value;
-      const nextPropagated = (
-        preferences.assistantPropagatedAgents ?? []
-      ).filter((key) => key !== agentKey);
-      await write({
-        modelOverrides: nextOverrides,
-        assistantPropagatedAgents: nextPropagated,
-      });
-    },
-    [preferences, write],
-  );
-
-  const handleSelectReasoning = useCallback(
-    async (agentKey: string, effort: ReasoningEffort) => {
-      if (!preferences) return;
-      const next = { ...(preferences.reasoningEfforts ?? {}) };
-      if (effort === "default") delete next[agentKey];
-      else next[agentKey] = effort;
-      await write({ reasoningEfforts: next });
-    },
-    [preferences, write],
-  );
-
-  const handleResetAgent = useCallback(
-    async (agentKey: string) => {
-      if (!preferences) return;
-      const nextOverrides = { ...preferences.modelOverrides };
-      delete nextOverrides[agentKey];
       const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
-      delete nextReasoning[agentKey];
-      const nextPropagated = (
-        preferences.assistantPropagatedAgents ?? []
-      ).filter((key) => key !== agentKey);
+      const nextPropagated = new Set(
+        preferences.assistantPropagatedAgents ?? [],
+      );
+      const nonStella = !isStellaModelId(modelId);
+      for (const key of agentKeys) {
+        nextOverrides[key] = modelId;
+        if (effort === "default") delete nextReasoning[key];
+        else nextReasoning[key] = effort;
+        if (nonStella && !CONVERSATION_AGENT_KEYS.has(key)) {
+          nextPropagated.add(key);
+        } else {
+          nextPropagated.delete(key);
+        }
+      }
       await write({
         modelOverrides: nextOverrides,
-        assistantPropagatedAgents: nextPropagated,
         reasoningEfforts: nextReasoning,
+        assistantPropagatedAgents: Array.from(nextPropagated),
       });
     },
     [preferences, write],
   );
 
-  const handleApplyToAll = useCallback(
-    async (value: string) => {
-      if (!preferences || value === "") return;
+  const handleClearAgents = useCallback(
+    async (agentKeys: string[]) => {
+      if (!preferences || agentKeys.length === 0) return;
       const nextOverrides = { ...preferences.modelOverrides };
-      for (const entry of configurableAgents) {
-        nextOverrides[entry.key] = value;
+      const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
+      const nextPropagated = (
+        preferences.assistantPropagatedAgents ?? []
+      ).filter((key) => !agentKeys.includes(key));
+      for (const key of agentKeys) {
+        delete nextOverrides[key];
+        delete nextReasoning[key];
       }
-      const nextPropagated = isStellaModelId(value)
-        ? []
-        : configurableAgents
-            .map((entry) => entry.key)
-            .filter((key) => !CONVERSATION_AGENT_KEYS.has(key));
       await write({
         modelOverrides: nextOverrides,
+        reasoningEfforts: nextReasoning,
         assistantPropagatedAgents: nextPropagated,
       });
     },
-    [preferences, configurableAgents, write],
+    [preferences, write],
+  );
+
+  const handleApplyAssignment = useCallback(
+    async (modelId: string, agentKeys: string[], effort: ReasoningEffort) => {
+      if (!preferences) {
+        closeAssignment();
+        return;
+      }
+      const previouslyAssigned = agentsByModel.get(modelId) ?? [];
+      const toAssign = agentKeys;
+      const toClear = previouslyAssigned.filter(
+        (key) => !toAssign.includes(key),
+      );
+      if (toClear.length > 0) {
+        await handleClearAgents(toClear);
+      }
+      if (toAssign.length > 0) {
+        await handleAssignTo(modelId, toAssign, effort);
+      }
+      closeAssignment();
+    },
+    [
+      agentsByModel,
+      closeAssignment,
+      handleAssignTo,
+      handleClearAgents,
+      preferences,
+    ],
+  );
+
+  const handleApplyToAllAgents = useCallback(
+    async (modelId: string, effort: ReasoningEffort) => {
+      if (!preferences) {
+        closeAssignment();
+        return;
+      }
+      const allKeys = configurableAgents.map((entry) => entry.key);
+      await handleAssignTo(modelId, allKeys, effort);
+      closeAssignment();
+    },
+    [closeAssignment, configurableAgents, handleAssignTo, preferences],
   );
 
   const handleResetAll = useCallback(async () => {
@@ -464,11 +491,10 @@ export function SettingsModelsView() {
 
   /* ── global engine ───────────────────────────────────────────── */
 
-  // Engine is a process-wide choice (Stella's own runner vs the local
-  // Claude Code CLI) — not per-agent. Lives next to the title rather
-  // than buried in each agent's detail pane.
   const engine: "default" | "claude_code_local" =
     preferences?.agentRuntimeEngine ?? "default";
+  const engineLabel =
+    ENGINE_OPTIONS.find((opt) => opt.id === engine)?.label ?? "Stella";
   const handleEngineChange = useCallback(
     async (next: "default" | "claude_code_local") => {
       if (!preferences || preferences.agentRuntimeEngine === next) return;
@@ -476,13 +502,6 @@ export function SettingsModelsView() {
     },
     [preferences, write],
   );
-  const ENGINE_OPTIONS: ReadonlyArray<{
-    id: "default" | "claude_code_local";
-    label: string;
-  }> = [
-    { id: "default", label: "Stella" },
-    { id: "claude_code_local", label: "Claude Code" },
-  ];
 
   /* ── image / voice handlers ──────────────────────────────────── */
 
@@ -574,227 +593,94 @@ export function SettingsModelsView() {
     [preferences, write],
   );
 
-  /* ── row value helpers ───────────────────────────────────────── */
-
-  const agentListValue = (
-    entry: AgentEntry,
-  ): {
-    valueLabel: string;
-    isOverridden: boolean;
-    reasoningChip: string | null;
-  } => {
-    const currentValue = overrides[entry.key] ?? "";
-    const isOverridden = Boolean(currentValue);
-    const valueLabel = currentValue
-      ? getModelDisplayLabel(currentValue, modelNamesById)
-      : modelNamesById.get(
-          resolvedDefaultModelMap[entry.key] ??
-            defaultModelMap[entry.key] ??
-            STELLA_STANDARD_MODEL,
-        ) ?? "Stella";
-    const reasoning = preferences?.reasoningEfforts?.[entry.key] ?? "default";
-    const reasoningOpt = REASONING_OPTIONS.find((opt) => opt.id === reasoning);
-    const reasoningChip =
-      reasoning !== "default" && reasoningOpt ? reasoningOpt.label : null;
-    return { valueLabel, isOverridden, reasoningChip };
-  };
+  /* ── render helpers ──────────────────────────────────────────── */
 
   const orchestratorCurrent =
     overrides.orchestrator ?? overrides.general ?? "";
 
-  /* ── left rail renderers ─────────────────────────────────────── */
-
-  const renderAgentItem = (entry: AgentEntry): ReactNode => {
-    const v = agentListValue(entry);
+  const renderAgentsTab = (): ReactNode => {
+    const loading = configurableAgents.length === 0;
+    if (loading && !preferences) {
+      return <div className="models-detail--empty">Loading…</div>;
+    }
     return (
-      <ListItem
-        key={entry.key}
-        label={entry.label}
-        desc={entry.desc}
-        valueLabel={v.valueLabel}
-        isOverridden={v.isOverridden}
-        reasoningChip={v.reasoningChip}
-        isSelected={selectedKey === entry.key}
-        onSelect={() => setSelectedKey(entry.key)}
-      />
+      <div
+        className="models-agents-pane"
+        onClickCapture={handleModelPanelClickCapture}
+      >
+        <ProviderModelPanel
+          value=""
+          defaultLabel=""
+          currentLabel="Click a model to assign"
+          groups={groups}
+          disabled={pending}
+          restrictStellaPicks={restricted}
+          restrictedPlanLabel={restrictedPlanLabel}
+          ariaLabel="Provider and model picker"
+          hideDefaultRow
+          selectedHeaderKicker="Tap a model"
+          hideSelectedTitle
+          onSelect={(modelId) => handleOpenAssignment(modelId)}
+        />
+      </div>
     );
   };
 
-  /* ── right pane content for the active selection ─────────────── */
-
-  const renderDetail = (): ReactNode => {
-    if (selectedKey === IMAGE_KEY) {
-      const provider = imagePreferences.provider ?? "stella";
-      return (
-        <div className="models-detail">
-          <div className="models-detail-head">
-            <div className="models-detail-head-text">
-              <span className="models-detail-head-title">Image</span>
-              <span className="models-detail-head-desc">
-                Photo and image-edit generation provider
-              </span>
-            </div>
-          </div>
-          <div className="models-detail-body">
-            <ProviderOnlyPicker
-              providers={IMAGE_PROVIDER_OPTIONS}
-              value={provider}
-              onSelect={(key) => void handleImageProviderSelect(key)}
-              disabled={pending}
-              ariaLabel="Image provider"
-            />
-          </div>
-        </div>
-      );
-    }
-    if (selectedKey === VOICE_KEY) {
-      const provider = voicePreferences.provider ?? "stella";
-      return (
-        <div className="models-detail">
-          <div className="models-detail-head">
-            <div className="models-detail-head-text">
-              <span className="models-detail-head-title">Voice</span>
-              <span className="models-detail-head-desc">
-                Realtime voice provider and voice selection
-              </span>
-            </div>
-          </div>
-          <div className="models-detail-body">
-            <ProviderOnlyPicker
-              providers={VOICE_PROVIDER_OPTIONS}
-              value={provider}
-              onSelect={(key) => void handleVoiceProviderSelect(key)}
-              disabled={pending}
-              ariaLabel="Voice provider"
-            />
-            <VoiceCatalogPicker
-              voiceProvider={voicePreferences.provider}
-              stellaSubProvider={voicePreferences.stellaSubProvider}
-              selectedVoices={voicePreferences.voices}
-              inworldSpeed={voicePreferences.inworldSpeed}
-              onSelectVoice={(underlying, voiceId) =>
-                void handleVoiceSelect(underlying, voiceId)
-              }
-              onSelectStellaSubProvider={(sub) =>
-                void handleVoiceSubProviderSelect(sub)
-              }
-              onSelectInworldSpeed={(speed) =>
-                void handleInworldSpeedSelect(speed)
-              }
-              disabled={pending}
-            />
-          </div>
-        </div>
-      );
-    }
-
-    // Agent detail — full provider/model picker with Stella + every
-    // BYOK provider as siblings (no disclosure), reasoning segmented
-    // control beneath, footer with Reset / Apply-to-all.
-    const entry =
-      configurableAgents.find((e) => e.key === selectedKey) ??
-      configurableAgents[0];
-    if (!entry) {
-      return <div className="models-detail models-detail--empty">Loading…</div>;
-    }
-    const currentValue = overrides[entry.key] ?? "";
-    const defaultModel = defaultModelMap[entry.key] ?? STELLA_STANDARD_MODEL;
-    const isOverridden =
-      Boolean(currentValue) && currentValue !== defaultModel;
-    const defaultLabel = preferences
-      ? getDefaultModelOptionLabel(
-          entry.key,
-          defaultModelMap,
-          resolvedDefaultModelMap,
-          modelNamesById,
-        )
-      : "Default";
-    const currentLabel = currentValue ? currentValue : defaultLabel;
-    const reasoning =
-      preferences?.reasoningEfforts?.[entry.key] ?? "default";
-
+  const renderImageTab = (): ReactNode => {
+    const provider = imagePreferences.provider ?? "stella";
     return (
       <div className="models-detail">
-        <div className="models-detail-head">
-          <div className="models-detail-head-text">
-            <span className="models-detail-head-title">{entry.label}</span>
-            <span className="models-detail-head-desc">{entry.desc}</span>
-          </div>
-          {isOverridden ? (
-            <button
-              type="button"
-              className="models-detail-reset"
-              onClick={() => void handleResetAgent(entry.key)}
-              disabled={pending}
-              title="Use the default for this agent"
-            >
-              Reset to default
-            </button>
-          ) : null}
-        </div>
-
-        <div className="models-detail-body">
-          <ProviderModelPanel
-            // Key on the agent id so internal tab + search state reset
-            // cleanly when the user switches agents.
-            key={entry.key}
-            value={currentValue}
-            defaultLabel={defaultLabel}
-            currentLabel={currentLabel}
-            groups={groups}
-            excludeModelId={defaultModel}
-            disabled={pending}
-            restrictStellaPicks={restricted}
-            restrictedPlanLabel={restrictedPlanLabel}
-            ariaLabel={`${entry.label} model picker`}
-            onSelect={(value) => void handleSelectModel(entry.key, value)}
-          />
-        </div>
-
-        <div className="models-detail-footer">
-          <div className="models-detail-reasoning">
-            <span className="models-detail-reasoning-label">Reasoning</span>
-            <div
-              className="models-detail-reasoning-segment"
-              role="radiogroup"
-              aria-label="Reasoning effort"
-            >
-              {REASONING_OPTIONS.map((option) => {
-                const selected = option.id === reasoning;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    data-selected={selected || undefined}
-                    className="models-detail-reasoning-btn"
-                    disabled={pending}
-                    title={option.title}
-                    onClick={() =>
-                      void handleSelectReasoning(entry.key, option.id)
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {currentValue ? (
-            <button
-              type="button"
-              className="models-detail-apply-all"
-              disabled={pending}
-              onClick={() => void handleApplyToAll(currentValue)}
-              title="Apply this model to every configurable agent"
-            >
-              Apply to all agents
-            </button>
-          ) : null}
-        </div>
+        <ProviderOnlyPicker
+          providers={IMAGE_PROVIDER_OPTIONS}
+          value={provider}
+          onSelect={(key) => void handleImageProviderSelect(key)}
+          disabled={pending}
+          ariaLabel="Image provider"
+        />
       </div>
     );
+  };
+
+  const renderVoiceTab = (): ReactNode => {
+    const provider = voicePreferences.provider ?? "stella";
+    return (
+      <div className="models-detail">
+        <ProviderOnlyPicker
+          providers={VOICE_PROVIDER_OPTIONS}
+          value={provider}
+          onSelect={(key) => void handleVoiceProviderSelect(key)}
+          disabled={pending}
+          ariaLabel="Voice provider"
+        />
+        <VoiceCatalogPicker
+          voiceProvider={voicePreferences.provider}
+          stellaSubProvider={voicePreferences.stellaSubProvider}
+          selectedVoices={voicePreferences.voices}
+          inworldSpeed={voicePreferences.inworldSpeed}
+          onSelectVoice={(underlying, voiceId) =>
+            void handleVoiceSelect(underlying, voiceId)
+          }
+          onSelectStellaSubProvider={(sub) =>
+            void handleVoiceSubProviderSelect(sub)
+          }
+          onSelectInworldSpeed={(speed) =>
+            void handleInworldSpeedSelect(speed)
+          }
+          disabled={pending}
+        />
+      </div>
+    );
+  };
+
+  const renderTabContent = (): ReactNode => {
+    switch (mediaTab) {
+      case "agents":
+        return renderAgentsTab();
+      case "image":
+        return renderImageTab();
+      case "voice":
+        return renderVoiceTab();
+    }
   };
 
   return (
@@ -802,77 +688,96 @@ export function SettingsModelsView() {
       <header className="models-editor-header">
         <div className="models-editor-title">
           <h2>Models</h2>
-          <p>
-            Every agent, every provider. Pick the agent on the left, pick the
-            model on the right.
-          </p>
         </div>
         <div className="models-editor-header-actions">
-          <div className="models-editor-engine" role="radiogroup" aria-label="Agent engine">
-            <span className="models-editor-engine-label">Engine</span>
-            <div className="models-editor-engine-segment">
-              {ENGINE_OPTIONS.map((option) => {
-                const selected = option.id === engine;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    data-selected={selected || undefined}
-                    className="models-editor-engine-btn"
-                    disabled={pending || !preferences}
-                    onClick={() => void handleEngineChange(option.id)}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
           <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="models-editor-kebab"
-              title="More"
-              aria-label="More model actions"
-            >
-              <MoreHorizontal size={15} strokeWidth={1.75} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
-            <DropdownMenuItem
-              disabled={refreshing}
-              onSelect={() => void refresh()}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <RefreshCw
-                  size={14}
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="models-editor-engine-pill"
+                title="Agent engine"
+                aria-label="Agent engine"
+                disabled={!preferences}
+              >
+                <span className="models-editor-engine-pill-kicker">Engine</span>
+                <span className="models-editor-engine-pill-value">
+                  {engineLabel}
+                </span>
+                <ChevronDown
+                  size={13}
                   strokeWidth={1.75}
-                  data-spinning={refreshing || undefined}
+                  aria-hidden
+                  className="models-editor-engine-pill-chev"
                 />
-              </span>
-              Refresh model catalog
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled={!orchestratorCurrent || pending}
-              onSelect={() => void handleApplyToAll(orchestratorCurrent)}
-            >
-              Apply orchestrator's model to all
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={pending}
-              onSelect={() => void handleResetAll()}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <RotateCcw size={14} strokeWidth={1.75} />
-              </span>
-              Reset every agent to default
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
+              <DropdownMenuRadioGroup
+                value={engine}
+                onValueChange={(next) =>
+                  void handleEngineChange(
+                    (next as "default" | "claude_code_local") ?? "default",
+                  )
+                }
+              >
+                {ENGINE_OPTIONS.map((option) => (
+                  <DropdownMenuRadioItem key={option.id} value={option.id}>
+                    {option.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="models-editor-kebab"
+                title="More"
+                aria-label="More model actions"
+              >
+                <MoreHorizontal size={15} strokeWidth={1.75} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
+              <DropdownMenuItem
+                disabled={refreshing}
+                onSelect={() => void refresh()}
+              >
+                <span data-slot="dropdown-menu-item-icon">
+                  <RefreshCw
+                    size={14}
+                    strokeWidth={1.75}
+                    data-spinning={refreshing || undefined}
+                  />
+                </span>
+                Refresh model catalog
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={!orchestratorCurrent || pending}
+                onSelect={() =>
+                  void handleAssignTo(
+                    orchestratorCurrent,
+                    configurableAgents.map((entry) => entry.key),
+                    preferences?.reasoningEfforts?.orchestrator ?? "default",
+                  )
+                }
+              >
+                Apply orchestrator's model to all
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={pending}
+                onSelect={() => void handleResetAll()}
+              >
+                <span data-slot="dropdown-menu-item-icon">
+                  <RotateCcw size={14} strokeWidth={1.75} />
+                </span>
+                Reset every agent to default
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -882,89 +787,230 @@ export function SettingsModelsView() {
         </p>
       ) : null}
 
-      <div className="models-editor-split">
-        <aside
-          className="models-editor-rail"
-          role="tablist"
-          aria-label="Agents and media"
-          aria-orientation="vertical"
-        >
-          <section className="models-editor-section">
-            <div className="models-editor-section-label">Conversation</div>
-            <div className="models-editor-list">
-              {conversationAgents.length === 0 ? (
-                <ListItemSkeleton />
-              ) : (
-                conversationAgents.map(renderAgentItem)
-              )}
-            </div>
-          </section>
+      <nav className="models-editor-tabs" role="tablist" aria-label="Media kind">
+        {MEDIA_TABS.map((tab) => {
+          const selected = tab.id === mediaTab;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              data-selected={selected || undefined}
+              className="models-editor-tab"
+              onClick={() => setMediaTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
 
-          <section className="models-editor-section">
-            <div className="models-editor-section-label">Media</div>
-            <div className="models-editor-list">
-              <ListItem
-                label="Image"
-                desc="Photo and image-edit provider"
-                valueLabel={
-                  IMAGE_PROVIDER_OPTIONS.find(
-                    (opt) =>
-                      opt.key === (imagePreferences.provider ?? "stella"),
-                  )?.label ?? "Stella"
-                }
-                isOverridden={
-                  (imagePreferences.provider ?? "stella") !== "stella"
-                }
-                reasoningChip={null}
-                isSelected={selectedKey === IMAGE_KEY}
-                onSelect={() => setSelectedKey(IMAGE_KEY)}
-              />
-              <ListItem
-                label="Voice"
-                desc="Realtime voice provider"
-                valueLabel={
-                  VOICE_PROVIDER_OPTIONS.find(
-                    (opt) =>
-                      opt.key === (voicePreferences.provider ?? "stella"),
-                  )?.label ?? "Stella"
-                }
-                isOverridden={
-                  (voicePreferences.provider ?? "stella") !== "stella"
-                }
-                reasoningChip={null}
-                isSelected={selectedKey === VOICE_KEY}
-                onSelect={() => setSelectedKey(VOICE_KEY)}
-              />
-            </div>
-          </section>
-
-          {backgroundAgents.length > 0 ? (
-            <section className="models-editor-section">
-              <div className="models-editor-section-label">Background</div>
-              <div className="models-editor-list">
-                {backgroundAgents.map(renderAgentItem)}
-              </div>
-            </section>
-          ) : null}
-        </aside>
-
-        <div className="models-editor-pane" role="tabpanel">
-          {renderDetail()}
-        </div>
+      <div className="models-editor-pane" role="tabpanel">
+        {renderTabContent()}
       </div>
+
+      {assignment ? (
+        <AssignmentPopover
+          assignment={assignment}
+          configurableAgents={configurableAgents}
+          overrides={overrides}
+          reasoningEfforts={preferences?.reasoningEfforts ?? {}}
+          modelNamesById={modelNamesById}
+          pending={pending}
+          onApply={(agents, effort) =>
+            void handleApplyAssignment(assignment.modelId, agents, effort)
+          }
+          onApplyToAll={(effort) =>
+            void handleApplyToAllAgents(assignment.modelId, effort)
+          }
+          onClose={closeAssignment}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ListItemSkeleton() {
+/* ── assignment popover ──────────────────────────────────────── */
+
+interface AssignmentPopoverProps {
+  assignment: {
+    modelId: string;
+    rect: DOMRect;
+    initialReasoning: ReasoningEffort;
+    initialAgents: string[];
+  };
+  configurableAgents: ReadonlyArray<{ key: string; label: string; desc: string }>;
+  overrides: Record<string, string>;
+  reasoningEfforts: Record<string, ReasoningEffort>;
+  modelNamesById: ReadonlyMap<string, string>;
+  pending: boolean;
+  onApply: (agentKeys: string[], effort: ReasoningEffort) => void;
+  onApplyToAll: (effort: ReasoningEffort) => void;
+  onClose: () => void;
+}
+
+function AssignmentPopover({
+  assignment,
+  configurableAgents,
+  overrides,
+  reasoningEfforts,
+  modelNamesById,
+  pending,
+  onApply,
+  onApplyToAll,
+  onClose,
+}: AssignmentPopoverProps) {
+  const [reasoning, setReasoning] = useState<ReasoningEffort>(
+    assignment.initialReasoning,
+  );
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    () => new Set(assignment.initialAgents),
+  );
+
+  const modelDisplayName =
+    modelNamesById.get(assignment.modelId) ?? assignment.modelId;
+
+  // Position a hidden anchor at the captured row rect so Radix anchors
+  // the popover to the exact button the user clicked. Using virtualRef
+  // would also work, but the inline anchor keeps the open/close
+  // animation locked to the same element across renders.
+  const anchorStyle: React.CSSProperties = {
+    position: "fixed",
+    left: assignment.rect.left,
+    top: assignment.rect.top,
+    width: assignment.rect.width,
+    height: assignment.rect.height,
+    pointerEvents: "none",
+    visibility: "hidden",
+  };
+
+  const toggleAgent = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
-    <div
-      className="models-list-item models-list-item--skeleton"
-      aria-hidden="true"
+    <PopoverPrimitive.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <span className="models-list-item-main">
-        <span className="models-list-item-name">Loading…</span>
-      </span>
-    </div>
+      <PopoverPrimitive.Anchor asChild>
+        <span style={anchorStyle} aria-hidden />
+      </PopoverPrimitive.Anchor>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          data-component="popover-content"
+          className="models-assign-popover"
+          side="right"
+          align="start"
+          sideOffset={10}
+          collisionPadding={16}
+          style={{ zIndex: 9999 }}
+        >
+          <header className="models-assign-head">
+            <span className="models-assign-kicker">Apply</span>
+            <span className="models-assign-title" title={modelDisplayName}>
+              {modelDisplayName}
+            </span>
+          </header>
+
+          <section
+            className="models-assign-reasoning"
+            role="radiogroup"
+            aria-label="Reasoning effort"
+          >
+            {REASONING_OPTIONS.map((option) => {
+              const isSelected = option.id === reasoning;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  data-selected={isSelected || undefined}
+                  className="models-assign-reasoning-btn"
+                  title={option.title}
+                  onClick={() => setReasoning(option.id)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </section>
+
+          <section className="models-assign-agents" role="group" aria-label="Agents">
+            {configurableAgents.map((entry) => {
+              const isChecked = selected.has(entry.key);
+              const current = overrides[entry.key];
+              const sameModel = current === assignment.modelId;
+              const currentEffort = reasoningEfforts[entry.key] ?? "default";
+              const effortLabel =
+                REASONING_OPTIONS.find((opt) => opt.id === currentEffort)
+                  ?.label ?? "Auto";
+              const title = sameModel
+                ? `Currently using this model${
+                    currentEffort !== "default" ? ` · ${effortLabel}` : ""
+                  }`
+                : current
+                  ? `Currently: ${modelNamesById.get(current) ?? current}${
+                      currentEffort !== "default" ? ` · ${effortLabel}` : ""
+                    }`
+                  : "Currently default";
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={isChecked}
+                  className="models-assign-agent-pill"
+                  data-checked={isChecked || undefined}
+                  data-current={sameModel || undefined}
+                  title={title}
+                  onClick={() => toggleAgent(entry.key)}
+                >
+                  {entry.label}
+                </button>
+              );
+            })}
+          </section>
+
+          <footer className="models-assign-footer">
+            <button
+              type="button"
+              className="models-assign-apply-all"
+              disabled={pending}
+              onClick={() => onApplyToAll(reasoning)}
+              title="Apply this model to every configurable agent"
+            >
+              Apply to all
+            </button>
+            <div className="models-assign-footer-actions">
+              <button
+                type="button"
+                className="models-assign-cancel"
+                onClick={onClose}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="models-assign-apply"
+                disabled={pending}
+                onClick={() => onApply(Array.from(selected), reasoning)}
+              >
+                Apply
+              </button>
+            </div>
+          </footer>
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
   );
 }
