@@ -33,6 +33,7 @@ type WinSnapshot = {
     bundleIdentifier?: string;
     pid: number;
   };
+  windowId?: number;
   windowTitle?: string;
   windowBounds?: WinFrame | null;
   screenshotPngBase64?: string | null;
@@ -60,6 +61,7 @@ type WinHelperRequest = {
   text?: string;
   key?: string;
   value?: string;
+  windowId?: number;
   windowBounds?: WinFrame | null;
 };
 
@@ -105,7 +107,7 @@ Notes:
   - actions reuse the last snapshot for the target app and refresh it after each action
   - Windows uses the bundled stella-computer-helper.exe native helper
   - the helper uses UI Automation patterns first and Win32 window messages as fallback
-  - app launch, SetFocus, and UIA text fallback are opt-in via STELLA_COMPUTER_WINDOWS_ALLOW_* env flags
+  - SetFocus and UIA text fallback are opt-in via STELLA_COMPUTER_WINDOWS_ALLOW_* env flags
 `;
 
 const isTruthyEnv = (value: string | undefined) =>
@@ -155,6 +157,8 @@ const targetStatePath = (sessionId: string, app: string) =>
 const targetScreenshotPath = (sessionId: string, app: string) =>
   path.join(sessionDir(sessionId), normalizeTargetKey(app), "last-screenshot.png");
 
+const windowAlias = (windowId: number) => `hwnd:${Math.trunc(windowId)}`;
+
 const readSnapshot = (sessionId: string, app: string): WinSnapshot | null => {
   try {
     return JSON.parse(fs.readFileSync(targetStatePath(sessionId, app), "utf8")) as WinSnapshot;
@@ -169,6 +173,8 @@ const rememberSnapshot = (sessionId: string, app: string, snapshot: WinSnapshot)
     snapshot.app.name,
     snapshot.app.bundleIdentifier,
     String(snapshot.app.pid),
+    snapshot.windowId ? String(snapshot.windowId) : null,
+    snapshot.windowId ? windowAlias(snapshot.windowId) : null,
   ].filter((value): value is string => Boolean(value)));
 
   const png = snapshot.screenshotPngBase64
@@ -274,7 +280,11 @@ const appFromActionArgs = (sessionId: string, args: string[]) => {
   }
   if (candidates.length === 1) {
     const snapshot = JSON.parse(fs.readFileSync(candidates[0]!, "utf8")) as WinSnapshot;
-    return { app: snapshot.app.bundleIdentifier ?? snapshot.app.name, args: nextArgs };
+    return {
+      app: snapshot.app.bundleIdentifier ?? snapshot.app.name,
+      windowId: snapshot.windowId,
+      args: nextArgs,
+    };
   }
   throw new Error("Action commands require --app on Windows unless the session has exactly one cached snapshot.");
 };
@@ -376,8 +386,13 @@ const emitJson = (value: unknown) => {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 };
 
-const runSnapshot = async (sessionId: string, app: string, jsonMode: boolean) => {
-  const response = await runWindowsHelper({ tool: "get_app_state", app });
+const runSnapshot = async (
+  sessionId: string,
+  app: string,
+  jsonMode: boolean,
+  windowId?: number,
+) => {
+  const response = await runWindowsHelper({ tool: "get_app_state", app, windowId });
   if (!response.ok || !response.snapshot) {
     throw new Error(response.error || "Windows runtime did not return an app snapshot.");
   }
@@ -457,6 +472,7 @@ export const runWindowsStellaComputer = async (
     await runAction(sessionId, target.app, {
       tool: "click",
       app: target.app,
+      windowId: target.windowId ?? snapshot.windowId,
       element: record,
       mouse_button: button,
       click_count: Number.isFinite(countRaw) ? Math.max(1, Math.trunc(countRaw)) : 1,
@@ -480,6 +496,7 @@ export const runWindowsStellaComputer = async (
     await runAction(sessionId, target.app, {
       tool: "click",
       app: target.app,
+      windowId: target.windowId ?? snapshot.windowId,
       x,
       y,
       mouse_button: button,
@@ -503,6 +520,7 @@ export const runWindowsStellaComputer = async (
     await runAction(sessionId, target.app, {
       tool: "drag",
       app: target.app,
+      windowId: target.windowId ?? snapshot.windowId,
       from_x: fromX,
       from_y: fromY,
       to_x: toX,
@@ -521,6 +539,7 @@ export const runWindowsStellaComputer = async (
     await runAction(sessionId, target.app, {
       tool: "set_value",
       app: target.app,
+      windowId: target.windowId ?? snapshot.windowId,
       element: lookupElement(snapshot, element),
       value: textParts.join(" "),
       windowBounds: snapshot.windowBounds ?? null,
@@ -537,6 +556,7 @@ export const runWindowsStellaComputer = async (
     await runAction(sessionId, target.app, {
       tool: "perform_secondary_action",
       app: target.app,
+      windowId: target.windowId ?? snapshot.windowId,
       element: lookupElement(snapshot, element),
       action,
       windowBounds: snapshot.windowBounds ?? null,
@@ -557,6 +577,7 @@ export const runWindowsStellaComputer = async (
     await runAction(sessionId, target.app, {
       tool: "scroll",
       app: target.app,
+      windowId: target.windowId ?? snapshot.windowId,
       element: lookupElement(snapshot, element),
       direction,
       pages: Number.isFinite(pages) && pages > 0 ? pages : 1,
@@ -569,10 +590,11 @@ export const runWindowsStellaComputer = async (
     const target = appFromActionArgs(sessionId, args);
     const text = splitWindowsArgs(target.args).join(" ");
     if (!text) throw new Error("type requires text.");
-    requiredSnapshot(sessionId, target.app);
+    const snapshot = requiredSnapshot(sessionId, target.app);
     await runAction(sessionId, target.app, {
       tool: "type_text",
       app: target.app,
+      windowId: target.windowId ?? snapshot.windowId,
       text,
     }, jsonMode);
     return 0;
@@ -582,19 +604,24 @@ export const runWindowsStellaComputer = async (
     const target = appFromActionArgs(sessionId, args);
     const key = splitWindowsArgs(target.args)[0];
     if (!key) throw new Error("press requires a key.");
-    requiredSnapshot(sessionId, target.app);
+    const snapshot = requiredSnapshot(sessionId, target.app);
     await runAction(sessionId, target.app, {
       tool: "press_key",
       app: target.app,
+      windowId: target.windowId ?? snapshot.windowId,
       key,
     }, jsonMode);
     return 0;
   }
 
   if (command === "doctor") {
+    const response = await runWindowsHelper({ tool: "doctor" });
+    if (!response.ok) {
+      throw new Error(response.error || "Windows runtime doctor failed.");
+    }
     process.stdout.write(
       [
-        "Windows runtime: stella-computer-helper.exe is used when Stella runs in the signed-in desktop session.",
+        response.text?.trimEnd() || "Windows runtime: stella-computer-helper.exe",
         "Action routes: UI Automation patterns first, then Win32 window messages for background-safe fallback.",
         `App launch opt-in: ${isTruthyEnv(process.env.STELLA_COMPUTER_WINDOWS_ALLOW_APP_LAUNCH) ? "enabled" : "disabled"}`,
         `Focus actions opt-in: ${isTruthyEnv(process.env.STELLA_COMPUTER_WINDOWS_ALLOW_FOCUS_ACTIONS) ? "enabled" : "disabled"}`,
