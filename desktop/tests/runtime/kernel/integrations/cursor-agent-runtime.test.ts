@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildCursorAgentOptions,
   buildCursorPromptFromMessages,
   diffCursorWorktreeSnapshots,
   parseCursorGitStatus,
@@ -66,6 +67,21 @@ describe("Cursor agent runtime", () => {
       '<message index="1" type="message" visibility="hidden" customType="runtime.test">',
     );
     expect(prompt).toContain('<message index="2" type="user" visibility="visible">');
+  });
+
+  it("keys the Cursor local platform store to the Stella workspace", () => {
+    expect(
+      buildCursorAgentOptions({
+        apiKey: "cursor-key",
+        model: { id: "composer-latest" },
+        cwd: "/repo",
+      }),
+    ).toMatchObject({
+      apiKey: "cursor-key",
+      model: { id: "composer-latest" },
+      local: { cwd: "/repo" },
+      platform: { workspaceRef: "/repo" },
+    });
   });
 
   it("diffs Cursor-owned worktree changes, including already-dirty files", () => {

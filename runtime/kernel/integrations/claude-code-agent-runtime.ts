@@ -27,6 +27,9 @@ export const shouldUseClaudeCodeAgentRuntime = (args: {
   if (args.agentEngine === "claude_code_local") {
     return true;
   }
+  if (args.agentEngine && args.agentEngine !== "default") {
+    return false;
+  }
   if (args.modelId && isClaudeCodeModel(args.modelId)) {
     return true;
   }

@@ -1,9 +1,11 @@
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
   buildCodexExecArgs,
   buildCodexPromptFromMessages,
+  codexImagePathFromFileUrl,
   fileChangesFromCodexItem,
   runCodexAgentTurn,
   shouldUseCodexAgentRuntime,
@@ -65,7 +67,7 @@ describe("Codex agent runtime", () => {
       "exec",
       "--experimental-json",
       "--model",
-      "gpt-5.5",
+      DEFAULT_CODEX_MODEL,
       "--sandbox",
       "danger-full-access",
       "--config",
@@ -77,6 +79,12 @@ describe("Codex agent runtime", () => {
       "--image",
       "/tmp/image.png",
     ]);
+  });
+
+  it("decodes file URL image attachment paths before passing them to Codex", () => {
+    const filePath = path.join("/tmp", "stella image with spaces.png");
+
+    expect(codexImagePathFromFileUrl(pathToFileURL(filePath).href)).toBe(filePath);
   });
 
   it("fails when the Codex executable cannot be started", async () => {
