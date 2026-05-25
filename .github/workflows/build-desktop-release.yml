@@ -15,202 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  native-macos:
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            desktop/native
-            desktop/scripts
-          fetch-depth: 1
-
-      - name: Install Rust + macOS targets
-        run: |
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
-
-      - name: Build universal native helpers (macOS)
-        env:
-          MACOSX_DEPLOYMENT_TARGET: "14.0"
-        working-directory: desktop/native
-        run: bash build.sh
-
-      - name: Split universal binaries into per-arch tarballs
-        shell: bash
-        run: |
-          set -euo pipefail
-          OUT="desktop/native/out/darwin"
-          if [ ! -d "$OUT" ]; then
-            echo "expected $OUT to exist after build" >&2
-            exit 1
-          fi
-
-          stage_arch() {
-            local arch_label="$1"
-            local stage_dir="$2"
-            mkdir -p "$stage_dir"
-            for entry in "$OUT"/*; do
-              local name
-              name="$(basename "$entry")"
-              if [ -d "$entry" ]; then
-                cp -R "$entry" "$stage_dir/$name"
-                continue
-              fi
-              if [ "$name" = "parakeet_transcriber" ]; then
-                if [ "$arch_label" = "arm64" ]; then
-                  cp "$entry" "$stage_dir/$name"
-                  chmod +x "$stage_dir/$name"
-                fi
-                continue
-              fi
-              if file "$entry" | grep -q "Mach-O"; then
-                if lipo -info "$entry" >/dev/null 2>&1; then
-                  if lipo -info "$entry" | grep -q "$arch_label"; then
-                    lipo -thin "$arch_label" "$entry" -output "$stage_dir/$name"
-                    chmod +x "$stage_dir/$name"
-                    continue
-                  fi
-                fi
-              fi
-              cp "$entry" "$stage_dir/$name"
-              chmod +x "$stage_dir/$name" 2>/dev/null || true
-            done
-          }
-
-          stage_arch arm64 stage-darwin-arm64
-          stage_arch x86_64 stage-darwin-x64
-
-          tar --zstd -cf stella-native-darwin-arm64.tar.zst -C stage-darwin-arm64 .
-          tar --zstd -cf stella-native-darwin-x64.tar.zst -C stage-darwin-x64 .
-
-      - name: Upload macOS arm64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stella-native-darwin-arm64
-          path: stella-native-darwin-arm64.tar.zst
-          retention-days: 30
-
-      - name: Upload macOS x64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stella-native-darwin-x64
-          path: stella-native-darwin-x64.tar.zst
-          retention-days: 30
-
-  native-windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            desktop/native
-          fetch-depth: 1
-
-      - name: Install Rust + Windows MSVC target
-        shell: pwsh
-        run: rustup target add x86_64-pc-windows-msvc
-
-      - name: Disable Windows Defender protections
-        shell: pwsh
-        run: |
-          $opts = @{
-            DisableRealtimeMonitoring  = $true
-            DisableBehaviorMonitoring  = $true
-            DisableBlockAtFirstSeen    = $true
-            DisableIOAVProtection      = $true
-            DisableScriptScanning      = $true
-            DisableArchiveScanning     = $true
-            DisableEmailScanning       = $true
-            DisableRemovableDriveScanning = $true
-            DisableIntrusionPreventionSystem = $true
-            EnableControlledFolderAccess = "Disabled"
-            EnableNetworkProtection    = "Disabled"
-            MAPSReporting              = "Disabled"
-            SubmitSamplesConsent       = "NeverSend"
-          }
-          foreach ($key in $opts.Keys) {
-            try {
-              Set-MpPreference -Force @{ $key = $opts[$key] }
-            } catch {
-            }
-          }
-          try {
-            Set-MpPreference -DisableRealtimeMonitoring $true `
-                             -DisableBehaviorMonitoring $true `
-                             -DisableBlockAtFirstSeen $true `
-                             -DisableIOAVProtection $true `
-                             -DisableScriptScanning $true `
-                             -DisableArchiveScanning $true `
-                             -DisableIntrusionPreventionSystem $true `
-                             -MAPSReporting Disabled `
-                             -SubmitSamplesConsent NeverSend `
-                             -ErrorAction Stop
-            Write-Host "Defender protections disabled"
-          } catch {
-            Write-Warning "Set-MpPreference failed: $_"
-          }
-          Get-MpPreference | Select-Object DisableRealtimeMonitoring,DisableBehaviorMonitoring,DisableIOAVProtection,DisableScriptScanning
-
-      - name: Build native helpers (Windows)
-        shell: pwsh
-        working-directory: desktop/native
-        run: powershell -ExecutionPolicy Bypass -File build.ps1
-
-      - name: Snapshot Defender threat detections
-        if: always()
-        shell: pwsh
-        run: |
-          try {
-            $threats = Get-MpThreatDetection -ErrorAction SilentlyContinue
-            if ($threats) {
-              Write-Host "Defender threat detections during build:"
-              $threats | Format-List Resources, ActionSuccess, AdditionalActionsBitMask, ThreatID, DetectionID
-            } else {
-              Write-Host "No Defender threat detections recorded."
-            }
-          } catch {
-            Write-Host "Get-MpThreatDetection unavailable: $_"
-          }
-
-      - name: Stage and tar Windows artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          OUT="desktop/native/out/win32"
-          if [ ! -d "$OUT" ]; then
-            echo "expected $OUT to exist after build" >&2
-            exit 1
-          fi
-          echo "Contents of $OUT after build:"
-          ls -la "$OUT"
-          required=("window_info.exe" "window_text.exe" "selected_text.exe" "dictation_bridge.exe" "stella-computer-helper.exe" "wakeword_listener.exe")
-          missing=0
-          for name in "${required[@]}"; do
-            if [ ! -f "$OUT/$name" ]; then
-              echo "::error::Missing required Windows helper: $name" >&2
-              missing=1
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
-          mkdir -p stage-win-x64
-          cp -R "$OUT"/. stage-win-x64/
-          tar --zstd -cf stella-native-win-x64.tar.zst -C stage-win-x64 .
-
-      - name: Upload Windows x64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stella-native-win-x64
-          path: stella-native-win-x64.tar.zst
-          retention-days: 30
-
   desktop:
-    needs:
-      - native-macos
-      - native-windows
     strategy:
       matrix:
         include:
@@ -252,11 +57,15 @@ jobs:
           bun install --frozen-lockfile
           bun ./node_modules/electron/install.js
 
-      - name: Download native helper artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: stella-native-${{ matrix.platform }}
-          path: native-assets
+      - name: Download published native helpers
+        shell: bash
+        env:
+          STELLA_NATIVE_HELPERS_MANIFEST_URL: https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers/current.json
+          STELLA_NATIVE_HELPER_PLATFORM_DIR: ${{ matrix.platform == 'win-x64' && 'win32' || 'darwin' }}
+        run: |
+          set -euo pipefail
+          node desktop/scripts/download-native-helpers.mjs --platform "${{ matrix.platform }}" --force
+          test -f "desktop/native/out/${STELLA_NATIVE_HELPER_PLATFORM_DIR}/.stella-native-helpers.json"
 
       - name: Package release tarball
         shell: bash
@@ -277,31 +86,14 @@ jobs:
           tar -cf - node_modules | tar -xf - -C release-root
 
           helper_platform_dir="$STELLA_NATIVE_HELPER_PLATFORM_DIR"
+          helper_source_dir="desktop/native/out/${helper_platform_dir}"
           helper_dir="release-root/desktop/native/out/${helper_platform_dir}"
+          if [ ! -f "$helper_source_dir/.stella-native-helpers.json" ]; then
+            echo "Missing downloaded native helper manifest at $helper_source_dir" >&2
+            exit 1
+          fi
           mkdir -p "$helper_dir"
-          tar --zstd -xf "native-assets/stella-native-${{ matrix.platform }}.tar.zst" -C "$helper_dir"
-
-          node - "$helper_dir" <<'NODE'
-          const { writeFileSync } = require("node:fs");
-          const { join } = require("node:path");
-
-          const [helperDir] = process.argv.slice(2);
-          const builtAt = new Date().toISOString();
-          writeFileSync(
-            join(helperDir, ".stella-native-helpers.json"),
-            `${JSON.stringify({
-              schemaVersion: 1,
-              sourceManifestUrl: null,
-              platform: process.env.STELLA_DESKTOP_PLATFORM,
-              helperPlatformDir: process.env.STELLA_NATIVE_HELPER_PLATFORM_DIR,
-              sha: `desktop-v${process.env.STELLA_DESKTOP_VERSION}`,
-              commit: process.env.STELLA_DESKTOP_COMMIT,
-              builtAt,
-              installedAt: builtAt,
-              bundled: true,
-            }, null, 2)}\n`,
-          );
-          NODE
+          tar -cf - -C "$helper_source_dir" . | tar -xf - -C "$helper_dir"
 
           mkdir -p release-root/state/outputs
 
@@ -442,62 +234,6 @@ jobs:
           aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/${release_dir}/manifest.json" \
             --content-type "application/json" \
             --cache-control "public, max-age=31536000, immutable" \
-            --endpoint-url "$R2_ENDPOINT"
-
-          native_manifest_path="$(mktemp)"
-          node - "$native_manifest_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" release-assets/stella-native-*.tar.zst <<'NODE'
-          const { createHash } = require("node:crypto");
-          const { readFileSync, statSync, writeFileSync } = require("node:fs");
-          const { basename } = require("node:path");
-
-          const [manifestPath, tag, commit, publicBaseUrl, ...archivePaths] = process.argv.slice(2);
-          const assets = {};
-          const expected = new Set(["darwin-arm64", "darwin-x64", "win-x64"]);
-
-          for (const archivePath of archivePaths) {
-            const name = basename(archivePath);
-            const match = name.match(/^stella-native-(.+)\.tar\.zst$/);
-            if (!match) continue;
-            const platform = match[1];
-            if (!expected.has(platform)) {
-              throw new Error(`Unexpected native helpers asset: ${name}`);
-            }
-            const bytes = readFileSync(archivePath);
-            assets[platform] = {
-              url: `${publicBaseUrl.replace(/\/$/, "")}/native-helpers/${tag}/${name}`,
-              sha256: createHash("sha256").update(bytes).digest("hex"),
-              size: statSync(archivePath).size,
-            };
-          }
-          for (const platform of expected) {
-            if (!assets[platform]) {
-              throw new Error(`Missing native helpers asset for ${platform}`);
-            }
-          }
-          writeFileSync(
-            manifestPath,
-            `${JSON.stringify({
-              schemaVersion: 1,
-              sha: tag,
-              commit,
-              builtAt: new Date().toISOString(),
-              assets,
-            }, null, 2)}\n`,
-          );
-          NODE
-
-          aws s3 cp "release-assets/" "s3://${R2_BUCKET}/native-helpers/${tag}/" \
-            --recursive \
-            --exclude "*" \
-            --include "stella-native-*.tar.zst" \
-            --endpoint-url "$R2_ENDPOINT"
-          aws s3 cp "$native_manifest_path" "s3://${R2_BUCKET}/native-helpers/${tag}/manifest.json" \
-            --content-type "application/json" \
-            --cache-control "public, max-age=31536000, immutable" \
-            --endpoint-url "$R2_ENDPOINT"
-          aws s3 cp "$native_manifest_path" "s3://${R2_BUCKET}/native-helpers/current.json" \
-            --content-type "application/json" \
-            --cache-control "no-cache" \
             --endpoint-url "$R2_ENDPOINT"
 
           aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/desktop/current.json" \

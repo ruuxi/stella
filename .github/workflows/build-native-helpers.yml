@@ -1,25 +1,13 @@
 name: Build Native Helpers
 
 # Native helpers (Swift/C/Rust binaries under desktop/native/out/) are built per
-# platform on CI rather than committed to git. Desktop releases bundle the
-# matching helper payload directly; this standalone workflow keeps the R2
-# helper channel available for repair and native-only refreshes.
+# platform on CI rather than committed to git. This workflow is the publishing
+# path for native helper payloads; desktop releases download the current
+# published helper set and bundle it without rebuilding native code.
 #
 # Triggers:
-#   - push to master that touches native sources
 #   - manual dispatch
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - "desktop/native/src/**"
-      - "desktop/native/wakeword/**"
-      - "desktop/native/build.sh"
-      - "desktop/native/build.ps1"
-      - "desktop/native/build.mjs"
-      - "desktop/scripts/disclaim-spawn.c"
-      - ".github/workflows/build-native-helpers.yml"
   workflow_dispatch:
     inputs:
       tag:
