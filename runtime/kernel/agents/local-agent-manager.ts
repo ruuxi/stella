@@ -408,6 +408,13 @@ const getFsLockKey = (
 const isSpawnAgentTool = (toolName: string): boolean =>
   toolName === "spawn_agent";
 
+const shouldLockNativeExternalEngineRun = (
+  task: RuntimeAgentRecord,
+  context: LocalAgentContext,
+): boolean =>
+  task.agentType === "general" &&
+  (context.agentEngine === "cursor_sdk" || context.agentEngine === "codex_cli");
+
 const AGENT_INPUT_INTERRUPT_ERROR = "Interrupted by agent input";
 export const AGENT_SHUTDOWN_CANCEL_REASON =
   "Canceled because Stella closed or restarted.";
@@ -743,7 +750,9 @@ export class LocalAgentManager implements AgentToolApi {
         task.agentType,
       );
 
-      const result = await this.opts.runSubagent({
+      const runSubagentArgs: Parameters<
+        LocalAgentManagerOpts["runSubagent"]
+      >[0] = {
         conversationId: task.conversationId,
         userMessageId: runId,
         agentType: task.agentType,
@@ -853,7 +862,18 @@ export class LocalAgentManager implements AgentToolApi {
             release();
           }
         },
-      });
+      };
+      const runSubagent = () => this.opts.runSubagent(runSubagentArgs);
+      const result = shouldLockNativeExternalEngineRun(task, context)
+        ? await (async () => {
+            const release = await this.acquireFsLock(task.threadId, "*");
+            try {
+              return await runSubagent();
+            } finally {
+              release();
+            }
+          })()
+        : await runSubagent();
 
       task.completedAt = Date.now();
       if (this.shouldDeliverFollowUp(task)) {

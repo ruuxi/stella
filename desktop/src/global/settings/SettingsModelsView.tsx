@@ -612,11 +612,11 @@ export function SettingsModelsView() {
     if (loading && !preferences) {
       return <div className="models-detail--empty">Loading…</div>;
     }
-    if (engine !== "default") {
+    if (engine === "claude_code_local") {
       return (
         <div className="models-detail--empty">
-          {engineLabel} handles spawned agents. Stella model choices apply when
-          Engine is Stella.
+          {engineLabel} handles local agents. Stella model choices apply when
+          Engine is Stella, Cursor, or Codex.
         </div>
       );
     }

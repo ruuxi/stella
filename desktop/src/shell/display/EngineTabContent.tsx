@@ -53,6 +53,12 @@ const DEFAULT_CODEX_MODEL = "gpt-5.5";
 const errorText = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message.trim() ? error.message : fallback;
 
+const notifyLocalModelPreferencesChanged = () => {
+  window.dispatchEvent(
+    new CustomEvent("stella:local-model-preferences-changed"),
+  );
+};
+
 export function EngineTabContent() {
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
     null,
@@ -126,6 +132,19 @@ export function EngineTabContent() {
 
   useEffect(() => {
     void load();
+    const onExternalChange = () => {
+      void load();
+    };
+    window.addEventListener(
+      "stella:local-model-preferences-changed",
+      onExternalChange,
+    );
+    return () => {
+      window.removeEventListener(
+        "stella:local-model-preferences-changed",
+        onExternalChange,
+      );
+    };
   }, [load]);
 
   const saveEngine = useCallback(
@@ -149,6 +168,7 @@ export function EngineTabContent() {
             cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
             codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
           });
+          notifyLocalModelPreferencesChanged();
         }
         setNotice(`${ENGINE_OPTIONS.find((opt) => opt.id === engine)?.label ?? "Engine"} selected.`);
       } catch (caught) {
@@ -203,6 +223,7 @@ export function EngineTabContent() {
           codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
         });
         setModelDraft(saved.cursorModel || DEFAULT_CURSOR_MODEL);
+        notifyLocalModelPreferencesChanged();
       }
       setNotice("Cursor model saved.");
     } catch (caught) {
@@ -231,6 +252,7 @@ export function EngineTabContent() {
             codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
           });
           setModelDraft(saved.cursorModel || DEFAULT_CURSOR_MODEL);
+          notifyLocalModelPreferencesChanged();
         }
         setNotice("Cursor model saved.");
       } catch (caught) {
@@ -260,6 +282,7 @@ export function EngineTabContent() {
           codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
         });
         setCodexModelDraft(saved.codexModel || DEFAULT_CODEX_MODEL);
+        notifyLocalModelPreferencesChanged();
       }
       setNotice("Codex model saved.");
     } catch (caught) {
