@@ -39,7 +39,7 @@ describe("pumpOpenAICompatibleChatCompletionsResponse", () => {
     const output = createAssistantMessageShell({
       api: "openai-completions",
       provider: "stella",
-      id: "stella/default",
+      id: "stella/standard",
     });
 
     await pumpOpenAICompatibleChatCompletionsResponse({

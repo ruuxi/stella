@@ -13,7 +13,6 @@ import {
   type CatalogModel,
   type ProviderGroup,
 } from "@/global/settings/lib/model-catalog";
-import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 import {
   LLM_PROVIDERS,
   isApiKeyOnlyPlaceholder,
@@ -49,7 +48,7 @@ interface ProviderModelPanelProps {
   currentLabel: string;
   /** Provider-grouped catalog. */
   groups: ProviderGroup[];
-  /** Hide a specific model id from the list (e.g. STELLA_DEFAULT_MODEL). */
+  /** Hide a specific model id from the list (usually the default mode). */
   excludeModelId?: string;
   /** Empty string ⇒ default. Any other value ⇒ that model id. */
   onSelect: (value: string) => void;
@@ -281,6 +280,7 @@ export function ProviderModelPanel({
             query={query}
             onQueryChange={setQuery}
             selectedModelId={value}
+            excludeModelId={excludeModelId}
             filteredModels={filteredModels}
             onPick={handlePick}
             isStella={activeTab.key === STELLA_PROVIDER_KEY}
@@ -335,6 +335,7 @@ interface ProviderPaneProps {
   query: string;
   onQueryChange: (next: string) => void;
   selectedModelId: string;
+  excludeModelId: string | undefined;
   filteredModels: CatalogModel[];
   onPick: (modelId: string) => void;
   isStella: boolean;
@@ -432,6 +433,7 @@ function ProviderPane({
   query,
   onQueryChange,
   selectedModelId,
+  excludeModelId,
   filteredModels,
   onPick,
   isStella,
@@ -489,7 +491,8 @@ function ProviderPane({
   }
 
   const isDefaultSelected =
-    !selectedModelId || selectedModelId === STELLA_DEFAULT_MODEL;
+    !selectedModelId ||
+    (excludeModelId !== undefined && selectedModelId === excludeModelId);
   const modelItems = useMemo<ModelListItem[]>(
     () => filteredModels.map((model) => ({ id: model.id, model })),
     [filteredModels],

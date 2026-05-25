@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import type { Api, Model } from "../ai/types.js";
 import {
-  STELLA_DEFAULT_MODEL,
   STELLA_MODELS_PATH,
   normalizeStellaSiteUrl,
 } from "../contracts/stella-api.js";
@@ -220,13 +219,6 @@ const resolveStellaModelAlias = async (args: {
   });
   if (!catalog) {
     return null;
-  }
-
-  if (modelId === STELLA_DEFAULT_MODEL) {
-    return (
-      catalog.defaults.find((entry) => entry.agentType === args.agentType)
-        ?.resolvedModel ?? null
-    );
   }
 
   return catalog.models.find((model) => model.id === modelId)?.upstreamModel ?? null;

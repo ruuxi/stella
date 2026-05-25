@@ -191,6 +191,14 @@ describe("Stella relay route shape", () => {
     expect(model.provider).toBe("openrouter");
     expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openrouter/api/v1`);
   });
+
+  it("Stella standard mode resolves to the OpenRouter Standard relay", () => {
+    const route = makeRoute("stella/standard");
+    const model = route!.model;
+    expect(model.api).toBe("openai-completions");
+    expect(model.provider).toBe("openrouter");
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openrouter/api/v1`);
+  });
 });
 
 describe("Stella relay auth (baseUrl-based detection)", () => {

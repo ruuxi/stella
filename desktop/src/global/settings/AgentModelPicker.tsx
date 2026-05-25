@@ -26,7 +26,7 @@ import {
   normalizeModelOverrides,
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
-import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
+import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
 import {
   getPlanLabel,
   isRestrictedModelOverrideAudience,
@@ -720,6 +720,8 @@ export function AgentModelPicker({
       : activeVoice
         ? voicePreferences.provider
         : overrides[activeAgent] ?? "";
+  const activeDefaultModel =
+    defaultModelMap[canonicalAgentKey] ?? STELLA_STANDARD_MODEL;
   const defaultLabel =
     activeProviderSetting
       ? "Stella"
@@ -909,7 +911,7 @@ export function AgentModelPicker({
               defaultLabel={defaultLabel}
               currentLabel={currentLabel}
               groups={groups}
-              excludeModelId={STELLA_DEFAULT_MODEL}
+              excludeModelId={activeDefaultModel}
               disabled={!ready || pendingAgent !== null}
               restrictStellaPicks={restrictedStellaPicks}
               restrictedPlanLabel={restrictedPlanLabel}
@@ -922,6 +924,7 @@ export function AgentModelPicker({
           <CompactStellaModelList
             stellaModels={stellaModels}
             value={current}
+            defaultModelId={activeDefaultModel}
             defaultLabel={defaultLabel}
             onSelect={handleSelect}
             disabled={!ready || pendingAgent !== null}

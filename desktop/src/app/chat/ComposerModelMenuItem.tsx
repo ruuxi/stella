@@ -33,7 +33,7 @@ import {
   getLocalModelDefaults,
   normalizeModelOverrides,
 } from "@/global/settings/lib/model-defaults";
-import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
+import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
 import {
   getPlanLabel,
   isRestrictedModelOverrideAudience,
@@ -236,7 +236,7 @@ export function ComposerModelMenuItem() {
           m.provider === "stella" &&
           m.id.startsWith("stella/") &&
           !m.modelId.includes("/") &&
-          m.id !== STELLA_DEFAULT_MODEL,
+          m.id !== STELLA_STANDARD_MODEL,
       ),
     [stellaModels],
   );
@@ -244,7 +244,7 @@ export function ComposerModelMenuItem() {
   const currentValue =
     overrides.orchestrator ?? overrides.general ?? "";
   const isDefaultSelected =
-    !currentValue || currentValue === STELLA_DEFAULT_MODEL;
+    !currentValue || currentValue === STELLA_STANDARD_MODEL;
 
   const trailingLabel = useMemo(() => {
     if (!preferences) return "Stella";
@@ -255,12 +255,12 @@ export function ComposerModelMenuItem() {
       return "Claude Opus 4.7";
     }
     if (isDefaultSelected) {
-      // Friendly tier name only — "Stella Recommended (currently …)" is
-      // too long for an inline trailing label.
+      // Friendly tier name only — the full default label is too long for an
+      // inline trailing label.
       const resolved =
         resolvedDefaultModelMap.orchestrator ??
         defaultModelMap.orchestrator ??
-        STELLA_DEFAULT_MODEL;
+        STELLA_STANDARD_MODEL;
       return modelNamesById.get(resolved) ?? "Stella";
     }
     return modelNamesById.get(currentValue) ?? currentValue;
@@ -275,13 +275,13 @@ export function ComposerModelMenuItem() {
 
   // The resolved tier name behind "Default" today — used as a trailing
   // chip on the Default row so users know what they're getting without
-  // the "Stella Recommended (currently …)" mouthful.
+  // the longer default label.
   const defaultTierName = useMemo(() => {
     if (!preferences) return "Stella";
     const resolved =
       resolvedDefaultModelMap.orchestrator ??
       defaultModelMap.orchestrator ??
-      STELLA_DEFAULT_MODEL;
+      STELLA_STANDARD_MODEL;
     return modelNamesById.get(resolved) ?? "Stella";
   }, [preferences, defaultModelMap, resolvedDefaultModelMap, modelNamesById]);
 

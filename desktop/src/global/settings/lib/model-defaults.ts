@@ -1,5 +1,5 @@
 import { MODEL_SETTINGS_AGENTS } from "../../../../../runtime/contracts/agent-runtime.js";
-import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
+import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
 
 export type ModelDefaultEntry = {
   agentType: string;
@@ -20,7 +20,7 @@ export function getLocalModelDefaults(
     const model =
       defaultModels?.[agent.key] ??
       serverDefault?.model ??
-      STELLA_DEFAULT_MODEL;
+      STELLA_STANDARD_MODEL;
     return {
       agentType: agent.key,
       model,
@@ -120,9 +120,5 @@ export function getDefaultModelOptionLabel(
 
   const resolvedModel = resolvedDefaultModels[agentType] ?? defaultModel;
   const resolvedLabel = getModelDisplayLabel(resolvedModel, modelNamesById);
-  if (defaultModel === "stella/default") {
-    return `Stella Recommended (currently ${resolvedLabel})`;
-  }
-
   return `Default (${resolvedLabel})`;
 }
