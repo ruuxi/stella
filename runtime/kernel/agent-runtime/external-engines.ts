@@ -516,7 +516,7 @@ const runClaudeHostedTurn = async (args: {
     runId,
     sessionKey,
     persistedSessionId,
-    modelId: getClaudeCodeAgentModelId(),
+    modelId: getClaudeCodeAgentModelId(args.opts.stellaRoot),
     prompt,
     ...(resumeFallbackPrompt ? { resumeFallbackPrompt } : {}),
     systemPrompt: args.systemPrompt,
@@ -564,7 +564,7 @@ const runClaudeHostedTurn = async (args: {
       runId,
       sessionKey,
       persistedSessionId: finalResult.sessionId,
-      modelId: getClaudeCodeAgentModelId(),
+      modelId: getClaudeCodeAgentModelId(args.opts.stellaRoot),
       prompt: queuedPrompt,
       ...(queuedResumeFallbackPrompt
         ? { resumeFallbackPrompt: queuedResumeFallbackPrompt }

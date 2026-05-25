@@ -77,6 +77,7 @@ import {
   IPC_PREFERENCES_GET_CURSOR_API_KEY,
   IPC_PREFERENCES_LIST_CURSOR_MODELS,
   IPC_PREFERENCES_LIST_CODEX_MODELS,
+  IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
@@ -1169,6 +1170,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "medium"
           | "high"
           | "xhigh";
+        claudeCodeModel: string;
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1198,6 +1200,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "medium"
         | "high"
         | "xhigh";
+      claudeCodeModel?: string;
       maxAgentConcurrency?: number;
       imageGeneration?: {
         provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1227,6 +1230,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "medium"
           | "high"
           | "xhigh";
+        claudeCodeModel: string;
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1267,6 +1271,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
           inputModalities: string[];
           additionalSpeedTiers: string[];
           isDefault: boolean;
+        }>;
+      }>,
+    listClaudeCodeModels: () =>
+      ipcRenderer.invoke(IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS) as Promise<{
+        models: Array<{
+          id: string;
+          displayName: string;
+          source: "alias" | "anthropic";
         }>;
       }>,
     listLlmCredentials: () =>

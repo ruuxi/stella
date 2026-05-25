@@ -88,6 +88,7 @@ type LocalModelPreferencesShape = {
   agentRuntimeEngine: AgentRuntimeEngine;
   cursorModel: string;
   codexModel: string;
+  claudeCodeModel: string;
 };
 
 // Module-scope snapshot so re-opening the menu doesn't flash a loading
@@ -260,11 +261,10 @@ export function ComposerModelMenuItem() {
 
   const trailingLabel = useMemo(() => {
     if (!preferences) return "Stella";
-    // Claude Code engine ignores the Stella tier pick — surface the
-    // actual model the bundled CLI runs (Opus 4.7) so the trigger row
-    // reflects what's serving the response, not the engine name.
+    // Claude Code engine ignores the Stella tier pick, so show the saved
+    // Claude Code model instead of the Stella model row.
     if (preferences.agentRuntimeEngine === "claude_code_local") {
-      return "Claude Opus 4.7";
+      return `Claude · ${preferences.claudeCodeModel || "default"}`;
     }
     if (preferences.agentRuntimeEngine === "cursor_sdk") {
       return `Cursor · ${preferences.cursorModel || "composer-latest"}`;
@@ -501,7 +501,7 @@ export function ComposerModelMenuItem() {
             </span>
             <span className="composer-model-submenu__name">
               {currentEngine === "claude_code_local"
-                ? "Claude Opus 4.7"
+                ? `Claude · ${preferences?.claudeCodeModel || "default"}`
                 : currentEngine === "cursor_sdk"
                   ? `Cursor · ${preferences?.cursorModel || "composer-latest"}`
                   : `Codex · ${preferences?.codexModel || "gpt-5.5"}`}

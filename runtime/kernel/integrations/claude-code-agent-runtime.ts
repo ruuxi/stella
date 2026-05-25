@@ -8,7 +8,11 @@ import type {
   Tool,
   ToolCall,
 } from "../../ai/types.js";
-import { getAgentRuntimeEngine } from "../preferences/local-preferences.js";
+import {
+  DEFAULT_CLAUDE_CODE_MODEL,
+  getAgentRuntimeEngine,
+  loadLocalPreferences,
+} from "../preferences/local-preferences.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import { resolveLocalCliCwd, textFromUnknown } from "../agent-runtime/shared.js";
 import type { ToolMetadata, ToolResult } from "../tools/types.js";
@@ -39,7 +43,12 @@ export const shouldUseClaudeCodeAgentRuntime = (args: {
     : false;
 };
 
-export const getClaudeCodeAgentModelId = (): string => "claude-code/default";
+export const getClaudeCodeAgentModelId = (stellaRoot?: string): string => {
+  const model = stellaRoot
+    ? loadLocalPreferences(stellaRoot).claudeCodeModel
+    : DEFAULT_CLAUDE_CODE_MODEL;
+  return `claude-code/${model || DEFAULT_CLAUDE_CODE_MODEL}`;
+};
 
 type PromptContentPart = TextContent | ImageContent | ThinkingContent | ToolCall;
 
@@ -99,7 +108,7 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
   ) => Promise<ToolResult>;
 }): Promise<string> => {
   const runId = args.runId ?? `claude-code:${args.agentType}:${crypto.randomUUID()}`;
-  const modelId = getClaudeCodeAgentModelId();
+  const modelId = getClaudeCodeAgentModelId(args.stellaRoot);
   const result = await runClaudeCodeTurn({
     runId,
     sessionKey: args.sessionKey ?? `${args.agentType}:one-shot:${runId}`,

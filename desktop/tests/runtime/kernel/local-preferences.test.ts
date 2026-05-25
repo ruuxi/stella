@@ -187,6 +187,19 @@ describe("loadLocalPreferences", () => {
     expect(loadLocalPreferences(stellaHome).codexReasoningEffort).toBe("high");
   });
 
+  it("preserves the Claude Code model preference", () => {
+    const stellaHome = makeStellaHome();
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      claudeCodeModel: "sonnet[1m]",
+    });
+
+    expect(saved.claudeCodeModel).toBe("sonnet[1m]");
+    expect(loadLocalPreferences(stellaHome).claudeCodeModel).toBe(
+      "sonnet[1m]",
+    );
+  });
+
   it("defaults realtime voice to Stella", () => {
     const stellaHome = makeStellaHome();
     writePreferences(stellaHome, {});
