@@ -7,7 +7,7 @@ const metadata: AppMetadata = {
   icon: CustomStore,
   route: "/store",
   slot: "top",
-  order: 20,
+  order: 30,
 };
 
 export default metadata;

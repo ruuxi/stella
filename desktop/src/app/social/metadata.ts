@@ -7,7 +7,7 @@ const metadata: AppMetadata = {
   icon: CustomUsers,
   route: "/social",
   slot: "top",
-  order: 30,
+  order: 40,
 };
 
 export default metadata;

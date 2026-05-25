@@ -37,8 +37,8 @@ const NavItem = ({
   onHintDismiss,
 }: NavItemProps) => {
   const matchRoute = useMatchRoute();
-  const isActive = Boolean(matchRoute({ to: app.route }));
-  const Icon = app.icon;
+  const isActive = Boolean(matchRoute({ to: app.route, fuzzy: true }));
+  const showActiveState = isActive && !app.suppressActiveState;
 
   const showBadge = badgeCount > 0;
   const badgeLabel = badgeCount > 99 ? "99+" : String(badgeCount);
@@ -60,24 +60,23 @@ const NavItem = ({
     <Link
       to={app.route}
       className="shell-topbar-nav-item"
+      data-active={showActiveState ? "true" : undefined}
+      aria-current={showActiveState ? "page" : undefined}
       onClick={handleClick}
       onFocus={() => preloadSidebarRoute(app.id)}
       onMouseEnter={() => preloadSidebarRoute(app.id)}
       title={showBadge ? `${app.label} (${badgeCount} unread)` : app.label}
       aria-label={showBadge ? `${app.label}, ${badgeCount} unread` : app.label}
     >
-      <span className="shell-topbar-nav-icon">
-        <Icon size={16} />
-        {showBadge && (
-          <span className="shell-topbar-nav-badge" aria-hidden="true">
-            {badgeLabel}
-          </span>
-        )}
-        {showHint && (
-          <span className="shell-topbar-nav-hint-dot" aria-hidden="true" />
-        )}
-      </span>
       <span className="shell-topbar-nav-label">{app.label}</span>
+      {showBadge && (
+        <span className="shell-topbar-nav-badge" aria-hidden="true">
+          {badgeLabel}
+        </span>
+      )}
+      {showHint && (
+        <span className="shell-topbar-nav-hint-dot" aria-hidden="true" />
+      )}
     </Link>
   );
 };
