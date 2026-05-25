@@ -78,6 +78,12 @@ import type {
 } from "../contracts/backup";
 import type { RadialTriggerCode as SharedRadialTriggerCode } from "@/shared/lib/radial-trigger";
 import type { MiniDoubleTapModifier as SharedMiniDoubleTapModifier } from "@/shared/lib/mini-double-tap";
+import type {
+  ThirdPartyMigrationPreview,
+  ThirdPartyMigrationReport,
+  ThirdPartyMigrationSelection,
+  ThirdPartyMigrationSource,
+} from "../contracts/migration";
 
 export type ChatContext = SharedChatContext;
 export type ChatContextFile = SharedChatContextFile;
@@ -1512,11 +1518,25 @@ export type ElectronOfficePreviewApi = {
   onUpdate: (callback: (snapshot: OfficePreviewSnapshot) => void) => () => void;
 };
 
+export type ElectronMigrationApi = {
+  detectSources: () => Promise<ThirdPartyMigrationPreview[]>;
+  preview: (payload: {
+    source: ThirdPartyMigrationSource;
+    sourceRoot?: string;
+  }) => Promise<ThirdPartyMigrationPreview>;
+  run: (payload: {
+    source: ThirdPartyMigrationSource;
+    sourceRoot?: string;
+    selection?: ThirdPartyMigrationSelection;
+  }) => Promise<ThirdPartyMigrationReport>;
+};
+
 export type ElectronApi = {
   platform: string;
   arch: string;
   display: ElectronDisplayApi;
   officePreview: ElectronOfficePreviewApi;
+  migration: ElectronMigrationApi;
   window: ElectronWindowApi;
   ui: ElectronUiApi;
   capture: ElectronCaptureApi;

@@ -1,0 +1,290 @@
+.migration-wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  color: var(--text-base);
+}
+
+.migration-wizard__intro {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.migration-wizard__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+}
+
+.migration-wizard__title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-strong);
+  letter-spacing: 0;
+}
+
+.migration-wizard__desc {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: color-mix(in oklch, var(--text-base) 70%, var(--text-weak));
+}
+
+.migration-wizard__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklch, var(--destructive) 28%, transparent);
+  border-radius: 8px;
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 7%, transparent);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.migration-wizard__loading,
+.migration-empty {
+  padding: 18px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.migration-wizard__loading {
+  font-size: 13px;
+  color: var(--text-base);
+}
+
+.migration-empty__title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.migration-empty__body {
+  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: color-mix(in oklch, var(--text-base) 70%, var(--text-weak));
+}
+
+.migration-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.migration-source-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 12px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  color: var(--text-base);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.migration-source-card:hover,
+.migration-source-card[data-active] {
+  border-color: color-mix(in oklch, var(--interactive) 44%, transparent);
+  background: color-mix(in oklch, var(--interactive) 7%, transparent);
+}
+
+.migration-source-card__name {
+  grid-column: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migration-source-card__path {
+  grid-column: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-weak);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migration-source-card svg {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--text-weak);
+}
+
+.migration-checklist {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.migration-check-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  cursor: default;
+}
+
+.migration-check-row + .migration-check-row {
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.migration-check-row[data-disabled] {
+  opacity: 0.48;
+}
+
+.migration-check-row input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.migration-check-row__box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  border-radius: 5px;
+  color: transparent;
+  background: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.migration-check-row input:checked + .migration-check-row__box {
+  border-color: color-mix(in oklch, var(--interactive) 70%, transparent);
+  background: color-mix(in oklch, var(--interactive) 82%, transparent);
+  color: var(--primary-foreground);
+}
+
+.migration-check-row__text {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.migration-check-row__label {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migration-check-row__meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-weak);
+}
+
+.migration-wizard__credit {
+  width: fit-content;
+  border: none;
+  color: color-mix(in oklch, var(--text-base) 72%, var(--text-weak));
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.migration-wizard__credit:hover {
+  color: var(--text-strong);
+}
+
+.migration-wizard__primary {
+  align-self: flex-end;
+}
+
+.migration-report {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.migration-report-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.migration-report-section__title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--text-base) 64%, var(--text-weak));
+}
+
+.migration-report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.migration-report-list li,
+.migration-report-empty,
+.migration-report__note {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: color-mix(in oklch, var(--text-base) 78%, var(--text-weak));
+}
+
+.migration-report-list__kind {
+  margin-right: 6px;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.migration-report__note {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+@media (max-width: 640px) {
+  .migration-check-row__text {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .migration-wizard__primary {
+    align-self: stretch;
+  }
+}

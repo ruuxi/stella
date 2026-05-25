@@ -641,6 +641,28 @@
   min-width: 0;
 }
 
+.onboarding-migration-step {
+  align-items: stretch;
+}
+
+.onboarding-migration-step > .onboarding-step-desc {
+  align-self: center;
+  max-width: 520px;
+}
+
+.onboarding-migration-shell {
+  width: min(520px, 100%);
+  align-self: center;
+  padding: 18px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.onboarding-migration-step .migration-wizard__primary {
+  align-self: stretch;
+}
+
 .onboarding-step-desc {
   font-size: 15px;
   font-weight: 300;
