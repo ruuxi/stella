@@ -412,8 +412,8 @@ const shouldLockNativeExternalEngineRun = (
   task: RuntimeAgentRecord,
   context: LocalAgentContext,
 ): boolean =>
-  task.agentType === "general" &&
-  (context.agentEngine === "cursor_sdk" || context.agentEngine === "codex_cli");
+  context.agentEngine === "codex_cli" ||
+  (task.agentType === "general" && context.agentEngine === "cursor_sdk");
 
 const AGENT_INPUT_INTERRUPT_ERROR = "Interrupted by agent input";
 export const AGENT_SHUTDOWN_CANCEL_REASON =
