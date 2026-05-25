@@ -907,6 +907,8 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
  * entirely via `stellaHiddenByPhase` in FullShell. */
 .new-session-view:has(.onboarding-dialogue[data-phase="engine"])
   .onboarding-stella-animation[data-split="true"],
+.new-session-view:has(.onboarding-dialogue[data-phase="import"])
+  .onboarding-stella-animation[data-split="true"],
 .new-session-view:has(.onboarding-dialogue[data-phase="permissions"])
   .onboarding-stella-animation[data-split="true"],
 .new-session-view:has(.onboarding-dialogue[data-phase="browser"])

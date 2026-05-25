@@ -98,6 +98,8 @@ export const OnboardingStep1 = ({
   // navigation reaches `engine`.
   const [showEnginePhase, setShowEnginePhase] = useState(false);
   const [showMigrationPhase, setShowMigrationPhase] = useState(false);
+  const [migrationDetectionResolved, setMigrationDetectionResolved] =
+    useState(false);
   useEffect(() => {
     let cancelled = false;
     const probe = async () => {
@@ -125,6 +127,8 @@ export const OnboardingStep1 = ({
         setShowMigrationPhase(Boolean(result?.some((preview) => preview.found)));
       } catch {
         // Best-effort; users can still import later from Settings.
+      } finally {
+        if (!cancelled) setMigrationDetectionResolved(true);
       }
     };
     void probe();
@@ -137,9 +141,14 @@ export const OnboardingStep1 = ({
     const skipped = new Set<Phase>();
     if (!discoveryWelcomeExpected) skipped.add("enter");
     if (!showEnginePhase) skipped.add("engine");
-    if (!showMigrationPhase) skipped.add("import");
+    if (!migrationDetectionResolved || !showMigrationPhase) skipped.add("import");
     return skipped.size > 0 ? skipped : undefined;
-  }, [discoveryWelcomeExpected, showEnginePhase, showMigrationPhase]);
+  }, [
+    discoveryWelcomeExpected,
+    migrationDetectionResolved,
+    showEnginePhase,
+    showMigrationPhase,
+  ]);
   const {
     phase,
     leaving,
@@ -292,10 +301,10 @@ export const OnboardingStep1 = ({
             colorMode={appearance.colorMode}
             gradientColor={appearance.gradientColor}
             gradientMode={appearance.gradientMode}
-            isForcedTheme={appearance.isForcedTheme}
             sortedThemes={appearance.sortedThemes}
             splitTransitionActive={leaving}
             themeId={appearance.themeId}
+            continueBlocked={!migrationDetectionResolved}
             onContinue={nextSplitStep}
             onSelectColorMode={appearance.setColorMode}
             onSelectGradientColor={appearance.setGradientColor}

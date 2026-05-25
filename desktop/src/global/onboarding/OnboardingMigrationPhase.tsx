@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ThirdPartyMigrationWizard } from "@/global/migration/ThirdPartyMigrationWizard";
 
 type OnboardingMigrationPhaseProps = {
@@ -9,6 +10,8 @@ export function OnboardingMigrationPhase({
   splitTransitionActive,
   onContinue,
 }: OnboardingMigrationPhaseProps) {
+  const [imported, setImported] = useState(false);
+
   return (
     <div className="onboarding-step-content onboarding-migration-step">
       <p className="onboarding-step-desc">
@@ -17,7 +20,11 @@ export function OnboardingMigrationPhase({
       </p>
 
       <div className="onboarding-migration-shell">
-        <ThirdPartyMigrationWizard />
+        <ThirdPartyMigrationWizard
+          hideWhenEmpty
+          onEmpty={onContinue}
+          onImported={() => setImported(true)}
+        />
       </div>
 
       <button
@@ -26,7 +33,7 @@ export function OnboardingMigrationPhase({
         disabled={splitTransitionActive}
         onClick={onContinue}
       >
-        Continue
+        {imported ? "Continue" : "Skip"}
       </button>
     </div>
   );
