@@ -54,6 +54,9 @@ const SOURCE_REPOS: Record<ThirdPartyMigrationSource, string> = {
   openclaw: "https://github.com/openclaw/openclaw",
 };
 
+const previewKey = (preview: ThirdPartyMigrationPreview): string =>
+  `${preview.source}:${preview.sourceRoot}`;
+
 const createSelection = (
   preview: ThirdPartyMigrationPreview | null,
 ): ThirdPartyMigrationSelection =>
@@ -107,8 +110,9 @@ export function ThirdPartyMigrationWizard({
   onImported,
 }: ThirdPartyMigrationWizardProps) {
   const [previews, setPreviews] = useState<ThirdPartyMigrationPreview[]>([]);
-  const [selectedSource, setSelectedSource] =
-    useState<ThirdPartyMigrationSource | null>(null);
+  const [selectedPreviewKey, setSelectedPreviewKey] = useState<string | null>(
+    null,
+  );
   const [selection, setSelection] = useState<ThirdPartyMigrationSelection>({});
   const [report, setReport] = useState<ThirdPartyMigrationReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,8 +120,10 @@ export function ThirdPartyMigrationWizard({
   const [error, setError] = useState<string | null>(null);
 
   const selectedPreview = useMemo(
-    () => previews.find((preview) => preview.source === selectedSource) ?? null,
-    [previews, selectedSource],
+    () =>
+      previews.find((preview) => previewKey(preview) === selectedPreviewKey) ??
+      null,
+    [previews, selectedPreviewKey],
   );
   const foundPreviews = useMemo(
     () => previews.filter((preview) => preview.found),
@@ -144,11 +150,14 @@ export function ThirdPartyMigrationWizard({
       const nextPreviews = await migrationApi.detectSources();
       setPreviews(nextPreviews);
       const firstFound = nextPreviews.find((preview) => preview.found) ?? null;
-      setSelectedSource((current) => {
-        if (current && nextPreviews.some((preview) => preview.source === current)) {
+      setSelectedPreviewKey((current) => {
+        if (
+          current &&
+          nextPreviews.some((preview) => previewKey(preview) === current)
+        ) {
           return current;
         }
-        return firstFound?.source ?? null;
+        return firstFound ? previewKey(firstFound) : null;
       });
     } catch (nextError) {
       setError(
@@ -278,11 +287,13 @@ export function ThirdPartyMigrationWizard({
           <div className="migration-source-list" role="tablist">
             {foundPreviews.map((preview) => (
               <button
-                key={preview.source}
+                key={previewKey(preview)}
                 type="button"
                 className="migration-source-card"
-                data-active={selectedSource === preview.source || undefined}
-                onClick={() => setSelectedSource(preview.source)}
+                data-active={
+                  selectedPreviewKey === previewKey(preview) || undefined
+                }
+                onClick={() => setSelectedPreviewKey(previewKey(preview))}
               >
                 <span className="migration-source-card__name">
                   Import from {SOURCE_COPY[preview.source]}
