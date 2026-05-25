@@ -15,7 +15,7 @@ import {
 import { DEFAULT_CODEX_MODEL } from "../../../../../runtime/kernel/preferences/local-preferences.js";
 
 describe("Codex agent runtime", () => {
-  it("only routes spawned general agents to Codex", () => {
+  it("routes every spawned agent type to Codex when the shared engine is selected", () => {
     expect(
       shouldUseCodexAgentRuntime({
         agentType: "general",
@@ -24,10 +24,10 @@ describe("Codex agent runtime", () => {
     ).toBe(true);
     expect(
       shouldUseCodexAgentRuntime({
-        agentType: "orchestrator",
+        agentType: "install_update",
         agentEngine: "codex_cli",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldUseCodexAgentRuntime({
         agentType: "general",

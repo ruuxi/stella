@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
-import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
 import type {
@@ -268,8 +267,7 @@ export type CodexAppServerModel = CodexModel;
 export const shouldUseCodexAgentRuntime = (args: {
   agentType?: string;
   agentEngine?: CodexAgentRuntimeEngine;
-}): boolean =>
-  args.agentType === AGENT_IDS.GENERAL && args.agentEngine === "codex_cli";
+}): boolean => args.agentEngine === "codex_cli";
 
 const formatCodexPromptMessage = (
   message: RuntimePromptMessage,
