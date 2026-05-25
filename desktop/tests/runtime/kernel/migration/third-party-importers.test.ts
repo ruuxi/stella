@@ -43,14 +43,21 @@ describe("third-party migration importers", () => {
     const home = await createTempRoot("stella-hermes-import-home");
     const hermes = path.join(home, ".hermes");
     const stellaHome = path.join(home, ".stella");
-    await mkdir(path.join(hermes, "skills", "researcher"), { recursive: true });
+    await mkdir(path.join(hermes, "memories"), { recursive: true });
+    await mkdir(path.join(hermes, "skills", "research", "researcher"), {
+      recursive: true,
+    });
     await mkdir(path.join(hermes, "cron"), { recursive: true });
     await writeFile(
-      path.join(hermes, "MEMORY.md"),
+      path.join(hermes, "memories", "MEMORY.md"),
       "# MEMORY.md\n\n- User prefers short answers.\n- User prefers short answers.\n",
       "utf-8",
     );
-    await writeFile(path.join(hermes, "USER.md"), "Name: Riley\n", "utf-8");
+    await writeFile(
+      path.join(hermes, "memories", "USER.md"),
+      "Name: Riley\n",
+      "utf-8",
+    );
     await writeFile(path.join(hermes, "SOUL.md"), "Speak plainly.\n", "utf-8");
     await writeFile(
       path.join(hermes, "config.yaml"),
@@ -58,8 +65,19 @@ describe("third-party migration importers", () => {
       "utf-8",
     );
     await writeFile(
-      path.join(hermes, "skills", "researcher", "SKILL.md"),
-      "# Researcher\n\nUse for research tasks.\n",
+      path.join(hermes, "skills", "research", "researcher", "SKILL.md"),
+      [
+        "---",
+        "name: Researcher",
+        "description: Finds and summarizes sources.",
+        "version: 2",
+        "author: Hermes",
+        "---",
+        "",
+        "# Researcher",
+        "",
+        "Use for research tasks.",
+      ].join("\n"),
       "utf-8",
     );
     await writeFile(
@@ -77,8 +95,24 @@ describe("third-party migration importers", () => {
       "utf-8",
     );
 
-    const detected = await detectThirdPartyMigrationSources({ homeDir: home, env: {} });
+    const detected = await detectThirdPartyMigrationSources({
+      homeDir: home,
+      env: {},
+    });
     expect(detected.map((entry) => entry.source)).toContain("hermes");
+    const hermesPreview = detected.find((entry) => entry.source === "hermes");
+    expect(
+      hermesPreview?.findings.find((finding) => finding.option === "memory")
+        ?.found,
+    ).toBe(true);
+    expect(
+      hermesPreview?.findings.find((finding) => finding.option === "user")
+        ?.found,
+    ).toBe(true);
+    expect(
+      hermesPreview?.findings.find((finding) => finding.option === "skills")
+        ?.count,
+    ).toBe(1);
 
     const db = createDb(stellaHome);
     try {
@@ -104,6 +138,11 @@ describe("third-party migration importers", () => {
         "utf-8",
       );
       expect(importedSkill).toContain("name: Researcher");
+      expect(importedSkill).toContain(
+        "description: Finds and summarizes sources.",
+      );
+      expect(importedSkill).not.toContain("version:");
+      expect(importedSkill).not.toContain("author:");
 
       const prefs = JSON.parse(
         await readFile(path.join(stellaHome, "preferences.json"), "utf-8"),
@@ -183,7 +222,17 @@ describe("third-party migration importers", () => {
     );
     await writeFile(
       path.join(workspace, "skills", "planner", "SKILL.md"),
-      "---\nname: Planner\ndescription: Plans things.\n---\n\n# Planner\n",
+      [
+        "---",
+        "name: Planner",
+        "description: Plans things.",
+        "metadata:",
+        "  platforms:",
+        "    - openclaw",
+        "---",
+        "",
+        "# Planner",
+      ].join("\n"),
       "utf-8",
     );
     await writeFile(
@@ -252,6 +301,9 @@ describe("third-party migration importers", () => {
         "utf-8",
       );
       expect(skill).toContain("name: Planner");
+      expect(skill).toContain("description: Plans things.");
+      expect(skill).not.toContain("metadata:");
+      expect(skill).not.toContain("platforms:");
 
       const importedMessages = db
         .prepare(

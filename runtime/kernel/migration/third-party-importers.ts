@@ -405,9 +405,18 @@ const collectHermesPaths = async (sourceRoot: string): Promise<SourcePaths> => {
   const schedulePath = path.join(root, "cron", "jobs.json");
   const stateDb = path.join(root, "state.db");
   return {
-    memoryFiles: (await existingFiles([path.join(root, "MEMORY.md")])) ,
-    userFiles: await existingFiles([path.join(root, "USER.md")]),
-    personalityFiles: await existingFiles([path.join(root, "SOUL.md")]),
+    memoryFiles: await existingFiles([
+      path.join(root, "memories", "MEMORY.md"),
+      path.join(root, "MEMORY.md"),
+    ]),
+    userFiles: await existingFiles([
+      path.join(root, "memories", "USER.md"),
+      path.join(root, "USER.md"),
+    ]),
+    personalityFiles: await existingFiles([
+      path.join(root, "memories", "SOUL.md"),
+      path.join(root, "SOUL.md"),
+    ]),
     skillDirs: await listSkillDirs([skillRoot]),
     modelConfigFiles: await existingFiles([path.join(root, "config.yaml")]),
     hermesStateDb: (await pathExists(stateDb)) ? stateDb : undefined,
@@ -470,13 +479,27 @@ const listSkillDirs = async (roots: string[]): Promise<string[]> => {
   const out: string[] = [];
   for (const root of uniqueSorted(roots)) {
     try {
+      const visit = async (dir: string): Promise<void> => {
+        const entries = await fsp.readdir(dir, { withFileTypes: true });
+        if (await pathExists(path.join(dir, "SKILL.md"))) {
+          out.push(dir);
+          return;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+          if ([".git", "node_modules", "__pycache__"].includes(entry.name)) {
+            continue;
+          }
+          await visit(path.join(dir, entry.name));
+        }
+      };
       const entries = await fsp.readdir(root, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-        const dir = path.join(root, entry.name);
-        if (await pathExists(path.join(dir, "SKILL.md"))) {
-          out.push(dir);
+        if ([".git", "node_modules", "__pycache__"].includes(entry.name)) {
+          continue;
         }
+        await visit(path.join(root, entry.name));
       }
     } catch {}
   }
@@ -919,17 +942,41 @@ const ensureImportedSkillHeader = async (
   const skillPath = path.join(skillDir, "SKILL.md");
   const content = await readTextIfExists(skillPath);
   if (!content) return;
-  if (/^---\s*\n[\s\S]*?\n---/u.test(content)) return;
-  const title = content.match(/^\s*#\s+(.+)$/mu)?.[1]?.trim() ?? path.basename(skillDir);
+  const frontmatter = content.match(/^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/u);
+  const body = frontmatter ? content.slice(frontmatter[0].length) : content;
+  const parsed = frontmatter ? parseYamlSafely(frontmatter[1] ?? "") : null;
+  const title =
+    asString(isRecord(parsed) ? parsed.name : null) ??
+    body.match(/^\s*#\s+(.+)$/mu)?.[1]?.trim() ??
+    path.basename(skillDir);
+  const description =
+    asString(isRecord(parsed) ? parsed.description : null) ??
+    `Imported ${sourceLabel} skill.`;
   const next = [
     "---",
-    `name: ${title.replace(/:/g, " -")}`,
-    `description: Imported ${sourceLabel} skill.`,
+    `name: ${formatSkillFrontmatterValue(title)}`,
+    `description: ${formatSkillFrontmatterValue(description)}`,
     "---",
     "",
-    content.trimStart(),
+    body.trimStart(),
   ].join("\n");
   await fsp.writeFile(skillPath, next, "utf-8");
+};
+
+const parseYamlSafely = (text: string): unknown => {
+  try {
+    return parseYaml(text);
+  } catch {
+    return null;
+  }
+};
+
+const formatSkillFrontmatterValue = (value: string): string => {
+  const normalized = value.trim().replace(/\r?\n/gu, " ");
+  if (/^[A-Za-z0-9][A-Za-z0-9 ._()/-]*$/u.test(normalized)) {
+    return normalized;
+  }
+  return JSON.stringify(normalized);
 };
 
 const importPersonalityFiles = async (args: {
