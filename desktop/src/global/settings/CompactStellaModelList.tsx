@@ -5,7 +5,6 @@ import {
   getStellaSubtitle,
   type CatalogModel,
 } from "@/global/settings/lib/model-catalog";
-import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 import "./CompactStellaModelList.css";
 
 interface CompactStellaModelListProps {
@@ -13,7 +12,9 @@ interface CompactStellaModelListProps {
   stellaModels: readonly CatalogModel[];
   /** Currently selected override id ("" means default). */
   value: string;
-  /** Label rendered for the "default" entry (e.g. "Stella Recommended (currently …)"). */
+  /** Concrete model id represented by the Default row. */
+  defaultModelId: string;
+  /** Label rendered for the default-mode entry. */
   defaultLabel: string;
   /** Selection callback. Empty string ⇒ revert to default. */
   onSelect: (value: string) => void;
@@ -31,13 +32,14 @@ interface CompactStellaModelListProps {
 
 /**
  * Collapsed model picker used by both the sidebar popover and the Settings
- * page. Shows just the curated Stella preset modes (Stella Recommended,
- * Stella Designer, Stella Builder, …) so the common case is one click — every
+ * page. Shows just the curated Stella preset modes (Stella Designer,
+ * Stella Builder, …) so the common case is one click — every
  * other provider/model lives behind the "More options" expansion.
  */
 export function CompactStellaModelList({
   stellaModels,
   value,
+  defaultModelId,
   defaultLabel,
   onSelect,
   disabled = false,
@@ -52,12 +54,12 @@ export function CompactStellaModelList({
           model.provider === "stella" &&
           model.id.startsWith("stella/") &&
           !model.modelId.includes("/") &&
-          model.id !== STELLA_DEFAULT_MODEL,
+          model.id !== defaultModelId,
       ),
-    [stellaModels],
+    [defaultModelId, stellaModels],
   );
 
-  const isDefaultSelected = !value || value === STELLA_DEFAULT_MODEL;
+  const isDefaultSelected = !value || value === defaultModelId;
 
   return (
     <div

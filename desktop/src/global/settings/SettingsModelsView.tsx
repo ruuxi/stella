@@ -36,7 +36,7 @@ import {
   getModelDisplayLabel,
   normalizeModelOverrides,
 } from "@/global/settings/lib/model-defaults";
-import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
+import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
 import {
   getPlanLabel,
   isRestrictedModelOverrideAudience,
@@ -590,7 +590,7 @@ export function SettingsModelsView() {
       : modelNamesById.get(
           resolvedDefaultModelMap[entry.key] ??
             defaultModelMap[entry.key] ??
-            STELLA_DEFAULT_MODEL,
+            STELLA_STANDARD_MODEL,
         ) ?? "Stella";
     const reasoning = preferences?.reasoningEfforts?.[entry.key] ?? "default";
     const reasoningOpt = REASONING_OPTIONS.find((opt) => opt.id === reasoning);
@@ -698,8 +698,9 @@ export function SettingsModelsView() {
       return <div className="models-detail models-detail--empty">Loading…</div>;
     }
     const currentValue = overrides[entry.key] ?? "";
+    const defaultModel = defaultModelMap[entry.key] ?? STELLA_STANDARD_MODEL;
     const isOverridden =
-      Boolean(currentValue) && currentValue !== STELLA_DEFAULT_MODEL;
+      Boolean(currentValue) && currentValue !== defaultModel;
     const defaultLabel = preferences
       ? getDefaultModelOptionLabel(
           entry.key,
@@ -741,7 +742,7 @@ export function SettingsModelsView() {
             defaultLabel={defaultLabel}
             currentLabel={currentLabel}
             groups={groups}
-            excludeModelId={STELLA_DEFAULT_MODEL}
+            excludeModelId={defaultModel}
             disabled={pending}
             restrictStellaPicks={restricted}
             restrictedPlanLabel={restrictedPlanLabel}

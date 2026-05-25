@@ -17,18 +17,19 @@ describe("Stella model catalog metadata", () => {
     vi.restoreAllMocks();
   });
 
-  it("resolves stella/default through backend defaults for tool policy", async () => {
+  it("resolves stella/standard through the catalog mode model for tool policy", async () => {
     globalThis.fetch = vi.fn(async () => {
       return new Response(
         JSON.stringify({
-          data: [],
-          defaults: [
+          data: [
             {
-              agentType: "general",
-              model: "stella/default",
-              resolvedModel: "openai/gpt-5.5",
+              id: "stella/standard",
+              name: "Stella Standard",
+              provider: "stella",
+              upstreamModel: "openai/gpt-5.5",
             },
           ],
+          defaults: [],
         }),
         { status: 200 },
       );
@@ -47,7 +48,7 @@ describe("Stella model catalog metadata", () => {
       deviceId: "device-a",
     });
 
-    expect(enriched.model.id).toBe("stella/default");
+    expect(enriched.model.id).toBe("stella/standard");
     expect(enriched.toolPolicyModel).toMatchObject({
       id: "openai/gpt-5.5",
       provider: "openai",
@@ -139,14 +140,15 @@ describe("Stella model catalog metadata", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            data: [],
-            defaults: [
+            data: [
               {
-                agentType: "general",
-                model: "stella/default",
-                resolvedModel: "anthropic/claude-opus-4.6",
+                id: "stella/standard",
+                name: "Stella Standard",
+                provider: "stella",
+                upstreamModel: "anthropic/claude-opus-4.6",
               },
             ],
+            defaults: [],
           }),
           { status: 200 },
         ),
@@ -154,14 +156,15 @@ describe("Stella model catalog metadata", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            data: [],
-            defaults: [
+            data: [
               {
-                agentType: "general",
-                model: "stella/default",
-                resolvedModel: "openai/gpt-5.5",
+                id: "stella/standard",
+                name: "Stella Standard",
+                provider: "stella",
+                upstreamModel: "openai/gpt-5.5",
               },
             ],
+            defaults: [],
           }),
           { status: 200 },
         ),

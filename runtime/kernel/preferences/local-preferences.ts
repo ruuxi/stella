@@ -396,7 +396,7 @@ export const updateLocalModelPreferences = (
  * Resolve the model name for the Explore agent. Prefers an explicit override
  * (modelOverrides["explore"]), then a local default
  * (defaultModels["explore"]), then returns undefined to let resolveLlmRoute
- * fall back to STELLA_DEFAULT_MODEL.
+ * fall back to Stella's standard mode.
  *
  * Explore is meant to be a fast cheap pass over ~/.stella/. Users who want to
  * spend more should set modelOverrides["explore"] explicitly.

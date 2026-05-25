@@ -9,6 +9,11 @@ import {
   normalizeStellaCatalogModels,
   searchCatalogModels,
 } from "../../../src/global/settings/lib/model-catalog";
+import {
+  buildModelDefaultsMap,
+  getLocalModelDefaults,
+  normalizeModelOverrides,
+} from "../../../src/global/settings/lib/model-defaults";
 
 describe("settings model catalog", () => {
   it("lists runtime local-provider models separately from Stella models", () => {
@@ -29,10 +34,10 @@ describe("settings model catalog", () => {
   it("normalizes Stella backend rows and keeps Stella-specific models first when merging", () => {
     const stellaModels = normalizeStellaCatalogModels([
       {
-        id: "stella/default",
-        name: "Stella Recommended",
+        id: "stella/standard",
+        name: "Stella Standard",
         provider: "stella",
-        upstreamModel: "",
+        upstreamModel: "openrouter/google/gemini-3-flash-preview",
       },
       {
         id: "openrouter/anthropic/claude-opus-4.7",
@@ -63,11 +68,36 @@ describe("settings model catalog", () => {
     const merged = mergeCatalogModels(stellaModels, localModels);
 
     expect(merged.map((model) => model.id)).toEqual([
-      "stella/default",
+      "stella/standard",
       "openai/gpt-5.4",
       "openrouter/anthropic/claude-opus-4.7",
       "openrouter/openai/gpt-5.5",
     ]);
+  });
+
+  it("preserves per-agent Stella mode defaults from the backend", () => {
+    const defaults = getLocalModelDefaults(undefined, [
+      {
+        agentType: "orchestrator",
+        model: "stella/standard",
+        resolvedModel: "openrouter/google/gemini-3-flash-preview",
+      },
+      {
+        agentType: "chronicle",
+        model: "stella/light",
+        resolvedModel: "deepseek/deepseek-v4-flash",
+      },
+    ]);
+    const defaultMap = buildModelDefaultsMap(defaults);
+
+    expect(defaultMap.orchestrator).toBe("stella/standard");
+    expect(defaultMap.chronicle).toBe("stella/light");
+    expect(
+      normalizeModelOverrides(
+        { chronicle: "stella/light", schedule: "stella/standard" },
+        defaultMap,
+      ),
+    ).toEqual({});
   });
 
   it("groups by provider and supports provider/model search", () => {

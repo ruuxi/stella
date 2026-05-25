@@ -6,7 +6,7 @@ import {
   getLocalLlmOAuthApiKey,
   hasLocalLlmOAuthCredential,
 } from "./storage/llm-oauth-credentials.js";
-import { STELLA_DEFAULT_MODEL } from "../contracts/stella-api.js";
+import { STELLA_STANDARD_MODEL } from "../contracts/stella-api.js";
 import {
   findRegistryModel,
   parseModelReference,
@@ -275,12 +275,12 @@ const resolveMaybeLlmRoute = (args: {
 }): ResolvedLlmRoute | null => {
   const parsed = parseModelReference(args.modelName);
 
-  // No model specified → Stella's recommended default.
+  // No model specified → Stella's default mode.
   if (!parsed) {
     return createStellaRoute({
       site: args.site,
       agentType: args.agentType,
-      modelId: STELLA_DEFAULT_MODEL,
+      modelId: STELLA_STANDARD_MODEL,
     });
   }
 

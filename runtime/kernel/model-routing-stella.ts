@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import type { Api, Model } from "../ai/types.js";
 import { findRegistryModel, uniqueModelCandidates } from "./model-routing-matching.js";
 import {
-  STELLA_DEFAULT_MODEL,
+  STELLA_STANDARD_MODEL,
   stellaRelayBaseUrlFromSiteUrl,
   type StellaRelayProvider,
 } from "../contracts/stella-api.js";
@@ -47,10 +47,7 @@ export const inferManagedGatewayProviderFromModel = (
   return "openrouter";
 };
 
-const fallbackResolvedModelForAlias = (
-  modelId: string,
-  agentType: string,
-): string => {
+const fallbackResolvedModelForAlias = (modelId: string): string => {
   switch (modelId) {
     case "stella/light":
       return "deepseek/deepseek-v4-flash";
@@ -62,19 +59,15 @@ const fallbackResolvedModelForAlias = (
       return "anthropic/claude-opus-4.7";
     case "stella/vision":
       return "google/gemini-3-flash-preview";
-    case "stella/standard":
-      return "accounts/fireworks/models/kimi-k2p6";
-    case STELLA_DEFAULT_MODEL:
-      return agentType === "chronicle"
-        ? "deepseek/deepseek-v4-flash"
-        : "accounts/fireworks/models/kimi-k2p6";
+    case STELLA_STANDARD_MODEL:
+      return "openrouter/google/gemini-3-flash-preview";
     default: {
       const prefix = `${STELLA_PROVIDER}/`;
       if (modelId.startsWith(prefix)) {
         const upstream = modelId.slice(prefix.length);
         if (upstream.includes("/")) return upstream;
       }
-      return "accounts/fireworks/models/kimi-k2p6";
+      return "openrouter/google/gemini-3-flash-preview";
     }
   }
 };
@@ -97,10 +90,7 @@ const shouldRefreshToken = (token: string): boolean => {
   return expiresAtMs !== null && expiresAtMs <= Date.now() + STELLA_AUTH_REFRESH_SKEW_MS;
 };
 
-const modelName = (modelId: string): string =>
-  modelId === STELLA_DEFAULT_MODEL
-    ? "Stella Recommended"
-    : modelId.replace(/^stella\//, "");
+const modelName = (modelId: string): string => modelId.replace(/^stella\//, "");
 
 const providerNativeModelId = (
   resolvedModelId: string,
@@ -219,7 +209,7 @@ export const createStellaRoute = (args: {
 
   const resolvedModelId =
     args.resolvedModelId ??
-    fallbackResolvedModelForAlias(args.modelId, args.agentType);
+    fallbackResolvedModelForAlias(args.modelId);
   const relayProvider = inferManagedGatewayProviderFromModel(resolvedModelId);
 
   const refreshApiKey = async (): Promise<string | undefined> => {
