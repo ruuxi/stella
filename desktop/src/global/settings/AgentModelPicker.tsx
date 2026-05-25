@@ -45,7 +45,8 @@ type LocalModelPreferences = {
   modelOverrides: Record<string, string>;
   assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
-  agentRuntimeEngine: "default" | "claude_code_local";
+  agentRuntimeEngine: "default" | "claude_code_local" | "cursor_sdk";
+  cursorModel: string;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;

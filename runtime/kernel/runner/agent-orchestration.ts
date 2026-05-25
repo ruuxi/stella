@@ -833,6 +833,22 @@ export const createAgentOrchestration = (
         if (subagentProducedFiles.length > 0) {
           result.producedFiles = subagentProducedFiles;
         }
+        const hasCollectedToolWrites =
+          subagentFileChanges.length > 0 || subagentProducedFiles.length > 0;
+        if (
+          !hasCollectedToolWrites &&
+          (result.fileChanges?.length || result.producedFiles?.length)
+        ) {
+          // External engines report writes on the final run result instead of
+          // emitting Stella tool-end events, so bridge those deltas into the
+          // self-mod lifecycle here.
+          pendingToolWriteRecords.push(
+            recordToolWrites({
+              fileChanges: result.fileChanges,
+              producedFiles: result.producedFiles,
+            }),
+          );
+        }
         return result;
       } finally {
         subagentInterrupted = subagentInterrupted || abortSignal.aborted;

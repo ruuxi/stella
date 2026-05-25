@@ -124,6 +124,32 @@ describe("loadLocalPreferences", () => {
     );
   });
 
+  it("preserves the Cursor runtime engine preference", () => {
+    const stellaHome = makeStellaHome();
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      agentRuntimeEngine: "cursor_sdk",
+    });
+
+    expect(saved.agentRuntimeEngine).toBe("cursor_sdk");
+    expect(loadLocalPreferences(stellaHome).agentRuntimeEngine).toBe(
+      "cursor_sdk",
+    );
+  });
+
+  it("preserves the Cursor model preference", () => {
+    const stellaHome = makeStellaHome();
+
+    const saved = updateLocalModelPreferences(stellaHome, {
+      cursorModel: "custom-cursor-model",
+    });
+
+    expect(saved.cursorModel).toBe("custom-cursor-model");
+    expect(loadLocalPreferences(stellaHome).cursorModel).toBe(
+      "custom-cursor-model",
+    );
+  });
+
   it("defaults realtime voice to Stella", () => {
     const stellaHome = makeStellaHome();
     writePreferences(stellaHome, {});

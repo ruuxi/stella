@@ -208,6 +208,12 @@ export const IPC_PREFERENCES_GET_MODELS =
   "preferences:getLocalModelPreferences" as const;
 export const IPC_PREFERENCES_SET_MODELS =
   "preferences:setLocalModelPreferences" as const;
+export const IPC_PREFERENCES_GET_CURSOR_API_KEY =
+  "preferences:getCursorApiKeyStatus" as const;
+export const IPC_PREFERENCES_SET_CURSOR_API_KEY =
+  "preferences:setCursorApiKey" as const;
+export const IPC_PREFERENCES_LIST_CURSOR_MODELS =
+  "preferences:listCursorModels" as const;
 export const IPC_PREFERENCES_GET_RADIAL_TRIGGER =
   "preferences:getRadialTrigger" as const;
 export const IPC_PREFERENCES_SET_RADIAL_TRIGGER =

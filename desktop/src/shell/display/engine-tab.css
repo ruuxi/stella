@@ -1,0 +1,229 @@
+.display-sidebar__rich--engine {
+  padding: 12px;
+}
+
+.engine-tab {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 8px;
+  color: var(--text-base);
+}
+
+.engine-tab__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 2px 2px;
+}
+
+.engine-tab__eyebrow {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+}
+
+.engine-tab__header h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.15;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.engine-tab__status {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text-weak);
+  background: color-mix(in oklch, var(--surface-base) 78%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.engine-tab__message {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklch, var(--border) 58%, transparent);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--surface-base) 78%, transparent);
+  font-size: 12px;
+}
+
+.engine-tab__message--error {
+  color: var(--danger, #b42318);
+  border-color: color-mix(in oklch, var(--danger, #b42318) 30%, var(--border));
+}
+
+.engine-tab__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in oklch, var(--border) 62%, transparent);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--surface-base) 72%, transparent);
+}
+
+.engine-tab__section-copy h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.engine-tab__section-copy p {
+  margin: 3px 0 0;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.engine-tab__engine-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.engine-tab__engine-option,
+.engine-tab__model-option {
+  appearance: none;
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 11px;
+  text-align: left;
+  font: inherit;
+  color: var(--text-base);
+  border: 1px solid color-mix(in oklch, var(--border) 68%, transparent);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.engine-tab__engine-option:hover:not(:disabled),
+.engine-tab__engine-option:focus-visible,
+.engine-tab__model-option:hover:not(:disabled),
+.engine-tab__model-option:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklch, var(--text-strong) 24%, var(--border));
+  background: color-mix(in oklch, var(--background) 90%, transparent);
+}
+
+.engine-tab__engine-option[data-selected],
+.engine-tab__model-option[data-selected] {
+  border-color: color-mix(in oklch, var(--accent, #2f6df6) 55%, var(--border));
+  background: color-mix(in oklch, var(--accent, #2f6df6) 10%, var(--background));
+}
+
+.engine-tab__engine-option:disabled,
+.engine-tab__model-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.engine-tab__engine-option span,
+.engine-tab__model-option span {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.engine-tab__engine-option small,
+.engine-tab__model-option small {
+  font-size: 11.5px;
+  color: var(--text-weak);
+}
+
+.engine-tab__model-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.engine-tab__manual-toggle {
+  appearance: none;
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-weak);
+  cursor: pointer;
+}
+
+.engine-tab__manual-toggle:hover:not(:disabled),
+.engine-tab__manual-toggle:focus-visible {
+  color: var(--text-strong);
+  outline: none;
+}
+
+.engine-tab__manual-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.engine-tab__field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.engine-tab__input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-strong);
+  border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--background) 82%, transparent);
+  outline: none;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.engine-tab__input::placeholder {
+  color: var(--text-muted, var(--text-weak));
+}
+
+.engine-tab__input:hover:not(:disabled),
+.engine-tab__input:focus {
+  border-color: color-mix(in oklch, var(--text-strong) 22%, var(--border));
+}
+
+.engine-tab__input:focus {
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent, #2f6df6) 18%, transparent);
+}
+
+.engine-tab__input:disabled {
+  opacity: 0.58;
+}
+
+.engine-tab .pill-btn {
+  flex-shrink: 0;
+  height: 34px;
+  padding-inline: 13px;
+  font-size: 12.5px;
+}

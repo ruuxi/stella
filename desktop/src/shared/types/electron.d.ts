@@ -799,7 +799,8 @@ export type ElectronSystemApi = {
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    agentRuntimeEngine: "default" | "claude_code_local";
+    agentRuntimeEngine: "default" | "claude_code_local" | "cursor_sdk";
+    cursorModel: string;
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -815,7 +816,8 @@ export type ElectronSystemApi = {
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    agentRuntimeEngine?: "default" | "claude_code_local";
+    agentRuntimeEngine?: "default" | "claude_code_local" | "cursor_sdk";
+    cursorModel?: string;
     maxAgentConcurrency?: number;
     imageGeneration?: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -830,7 +832,8 @@ export type ElectronSystemApi = {
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    agentRuntimeEngine: "default" | "claude_code_local";
+    agentRuntimeEngine: "default" | "claude_code_local" | "cursor_sdk";
+    cursorModel: string;
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -838,6 +841,18 @@ export type ElectronSystemApi = {
     };
     realtimeVoice: RealtimeVoicePreferences;
   } | null>;
+  getCursorApiKeyStatus: () => Promise<{ hasApiKey: boolean }>;
+  setCursorApiKey: (payload: { apiKey: string }) => Promise<{
+    hasApiKey: boolean;
+  }>;
+  listCursorModels: () => Promise<{
+    models: Array<{
+      id: string;
+      displayName: string;
+      description?: string;
+      aliases?: string[];
+    }>;
+  }>;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;
   listLlmOAuthProviders: () => Promise<LocalLlmOAuthProviderSummary[]>;
   listLlmOAuthCredentials: () => Promise<LocalLlmCredentialSummary[]>;

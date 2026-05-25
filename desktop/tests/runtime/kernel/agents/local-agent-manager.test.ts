@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { LocalAgentManager } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
+import type { AgentLifecycleEvent } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type {
   ToolContext,
   ToolResult,
@@ -11,6 +12,63 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 describe("LocalAgentManager Exec fs locking", () => {
+  it("emits completed terminal events with the agent result and file changes", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => ({
+        runId: args.runId,
+        result: "Cursor finished the delegated work.",
+        fileChanges: [
+          {
+            path: "/repo/src/cursor-change.ts",
+            kind: { type: "update" },
+          },
+        ],
+      }),
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        events.push(event);
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "cursor task",
+      prompt: "do cursor work",
+      agentType: "general",
+      storageMode: "local",
+    });
+
+    await waitForAgentSettled(manager, task.threadId);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "agent-completed",
+        conversationId: "conv-1",
+        agentId: task.threadId,
+        agentType: "general",
+        description: "cursor task",
+        result: "Cursor finished the delegated work.",
+        fileChanges: [
+          {
+            path: "/repo/src/cursor-change.ts",
+            kind: { type: "update" },
+          },
+        ],
+      }),
+    );
+  });
+
   it("serializes mutating Exec calls across concurrent tasks", async () => {
     let activeCalls = 0;
     let maxConcurrentCalls = 0;

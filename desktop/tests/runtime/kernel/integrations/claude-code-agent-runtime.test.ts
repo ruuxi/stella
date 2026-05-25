@@ -33,6 +33,15 @@ describe("Claude Code agent runtime selector", () => {
     ).toBe(false);
   });
 
+  it("does not treat Cursor as the Claude Code runtime", () => {
+    expect(
+      shouldUseClaudeCodeAgentRuntime({
+        agentEngine: "cursor_sdk",
+        modelId: "openai/gpt-5",
+      }),
+    ).toBe(false);
+  });
+
   it("uses Claude Code's default model instead of a Stella agent type", () => {
     expect(getClaudeCodeAgentModelId()).toBe("claude-code/default");
   });
