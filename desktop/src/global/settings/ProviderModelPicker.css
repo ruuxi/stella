@@ -428,6 +428,65 @@
   flex-shrink: 0;
 }
 
+.model-picker-model-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.model-picker-model-row .model-picker-model {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-picker-model-star {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 2px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: color-mix(in oklch, var(--text-weak) 70%, transparent);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.model-picker-model-row:hover .model-picker-model-star,
+.model-picker-model-row:focus-within .model-picker-model-star,
+.model-picker-model-star:focus-visible {
+  opacity: 1;
+}
+
+.model-picker-model-row:hover .model-picker-model-star[data-favorite],
+.model-picker-model-row:focus-within .model-picker-model-star[data-favorite] {
+  color: #eab308;
+}
+
+.model-picker-model-star:hover:not(:disabled),
+.model-picker-model-star:focus-visible {
+  outline: none;
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--text-strong) 7%, transparent);
+}
+
+.model-picker-model-star:hover:not(:disabled)[data-favorite],
+.model-picker-model-star:focus-visible[data-favorite] {
+  color: #eab308;
+}
+
+.model-picker-model-star:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
 .model-picker-model {
   display: flex;
   align-items: center;
