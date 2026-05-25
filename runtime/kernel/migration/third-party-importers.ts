@@ -5,12 +5,18 @@ import os from "node:os";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
+import { LocalSchedulerService } from "../local-scheduler-service.js";
 import { getPersonalityFilePath } from "../personality/personality.js";
 import {
   loadLocalPreferences,
   saveLocalPreferences,
 } from "../preferences/local-preferences.js";
+import type { StellaHostRunnerTarget } from "../lifecycle-targets.js";
 import { ensurePrivateDirSync } from "../shared/private-fs.js";
+import type {
+  LocalCronJobCreateInput,
+  LocalCronSchedule,
+} from "../shared/scheduling.js";
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
@@ -87,7 +93,7 @@ type SourcePaths = {
 };
 
 type SourceSessionMessage = {
-  role: "user" | "assistant" | "toolResult" | "runtimeInternal";
+  role: "user" | "assistant" | "toolResult";
   content: string;
   timestamp: number;
 };
@@ -171,6 +177,30 @@ const readJsonIfExists = async (filePath: string): Promise<unknown> => {
   }
 };
 
+const readJsonLikeIfExists = async (filePath: string): Promise<unknown> => {
+  const text = await readTextIfExists(filePath);
+  if (!text) return null;
+  return parseJsonLikeText(text);
+};
+
+const parseJsonLikeText = async (text: string): Promise<unknown> => {
+  try {
+    return JSON.parse(text);
+  } catch {}
+  try {
+    const json5 = await dynamicImport("json5");
+    const parser = isRecord(json5.default) ? json5.default : json5;
+    if (typeof parser.parse === "function") {
+      return parser.parse(text) as unknown;
+    }
+  } catch {}
+  try {
+    return parseYaml(text);
+  } catch {
+    return null;
+  }
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -200,9 +230,8 @@ const hashPath = async (filePath: string): Promise<string> => {
   return hashText(await fsp.readFile(filePath, "utf-8").catch(() => ""));
 };
 
-const dynamicImport = new Function("specifier", "return import(specifier)") as (
-  specifier: string,
-) => Promise<Record<string, unknown>>;
+const dynamicImport = (specifier: string): Promise<Record<string, unknown>> =>
+  import(/* @vite-ignore */ specifier) as Promise<Record<string, unknown>>;
 
 const loadSqliteDatabaseCtor = async (): Promise<SqliteDatabaseCtor> => {
   try {
@@ -271,6 +300,18 @@ const resolveSourceConfiguredPath = (
     return path.resolve(value);
   }
   return path.resolve(sourceRoot, value);
+};
+
+const resolveSourceConfiguredPathCandidates = (
+  sourceRoot: string,
+  configRoot: string,
+  value: string,
+): string[] => {
+  const primary = resolveSourceConfiguredPath(sourceRoot, value);
+  if (value === "~" || value.startsWith("~/") || path.isAbsolute(value)) {
+    return [primary];
+  }
+  return uniqueSorted([primary, path.resolve(configRoot, value)]);
 };
 
 export const resolveDefaultMigrationSourceRoot = (
@@ -427,13 +468,14 @@ const collectHermesPaths = async (sourceRoot: string): Promise<SourcePaths> => {
 
 const collectOpenClawPaths = async (sourceRoot: string): Promise<SourcePaths> => {
   const root = path.resolve(sourceRoot);
-  const configPath = await firstExistingFile([
-    path.join(root, "openclaw.json"),
-    path.join(root, "clawdbot.json"),
-    path.join(root, "moltbot.json"),
-  ]);
-  const config = configPath ? await readJsonIfExists(configPath) : null;
-  const workspaces = await resolveOpenClawWorkspaceCandidates(root, config);
+  const configPath = await resolveOpenClawConfigPath(root);
+  const config = configPath ? await readJsonLikeIfExists(configPath) : null;
+  const configRoot = configPath ? path.dirname(configPath) : root;
+  const workspaces = await resolveOpenClawWorkspaceCandidates(
+    root,
+    config,
+    configRoot,
+  );
   return {
     memoryFiles: await collectOpenClawMemoryFiles(workspaces),
     userFiles: await existingFiles(workspaces.map((workspace) => path.join(workspace, "USER.md"))),
@@ -449,9 +491,29 @@ const collectOpenClawPaths = async (sourceRoot: string): Promise<SourcePaths> =>
       path.join(root, "skills"),
     ]),
     modelConfigFiles: configPath ? [configPath] : [],
-    openClawSessionFiles: await listOpenClawSessionFiles(root),
+    openClawSessionFiles: await listOpenClawSessionFiles(
+      root,
+      config,
+      configRoot,
+    ),
     scheduleFiles: [],
   };
+};
+
+const resolveOpenClawConfigPath = async (
+  sourceRoot: string,
+): Promise<string | null> => {
+  const envPath = asString(process.env.OPENCLAW_CONFIG_PATH);
+  if (envPath) {
+    const resolved = resolveSourceConfiguredPath(sourceRoot, envPath);
+    return (await pathExists(resolved)) ? resolved : null;
+  }
+  return firstExistingFile([
+    path.join(sourceRoot, "openclaw.json"),
+    path.join(sourceRoot, "openclaw.json5"),
+    path.join(sourceRoot, "clawdbot.json"),
+    path.join(sourceRoot, "moltbot.json"),
+  ]);
 };
 
 const existingFiles = async (files: string[]): Promise<string[]> => {
@@ -544,6 +606,7 @@ const listSkillDirs = async (roots: string[]): Promise<string[]> => {
 const resolveOpenClawWorkspaceCandidates = async (
   sourceRoot: string,
   config: unknown,
+  configRoot: string,
 ): Promise<string[]> => {
   const candidates = [
     ...openClawEnvWorkspaceCandidates(sourceRoot),
@@ -560,7 +623,13 @@ const resolveOpenClawWorkspaceCandidates = async (
       if (isRecord(defaults)) {
         const workspace = asString(defaults.workspace);
         if (workspace) {
-          candidates.unshift(resolveSourceConfiguredPath(sourceRoot, workspace));
+          candidates.unshift(
+            ...resolveSourceConfiguredPathCandidates(
+              sourceRoot,
+              configRoot,
+              workspace,
+            ),
+          );
         }
       }
       const list = agents.list;
@@ -569,7 +638,13 @@ const resolveOpenClawWorkspaceCandidates = async (
           if (!isRecord(agent)) continue;
           const workspace = asString(agent.workspace);
           if (workspace) {
-            candidates.push(resolveSourceConfiguredPath(sourceRoot, workspace));
+            candidates.push(
+              ...resolveSourceConfiguredPathCandidates(
+                sourceRoot,
+                configRoot,
+                workspace,
+              ),
+            );
           }
         }
       }
@@ -608,7 +683,11 @@ const openClawProfileWorkspaceCandidates = async (
   }
 };
 
-const listOpenClawSessionFiles = async (sourceRoot: string): Promise<string[]> => {
+const listOpenClawSessionFiles = async (
+  sourceRoot: string,
+  config: unknown,
+  configRoot: string,
+): Promise<string[]> => {
   const agentsRoot = path.join(sourceRoot, "agents");
   const out: string[] = [];
   try {
@@ -626,7 +705,142 @@ const listOpenClawSessionFiles = async (sourceRoot: string): Promise<string[]> =
       } catch {}
     }
   } catch {}
+  out.push(
+    ...(await listOpenClawSessionStoreFiles(sourceRoot, config, configRoot)),
+  );
+  const configuredSessionFiles = collectOpenClawSessionFileRefs(config).flatMap(
+    (file) =>
+      resolveSourceConfiguredPathCandidates(sourceRoot, configRoot, file),
+  );
+  out.push(...(await existingFiles(configuredSessionFiles)));
+  return uniqueSorted(out.filter((file) => file.endsWith(".jsonl")));
+};
+
+const listOpenClawSessionStoreFiles = async (
+  sourceRoot: string,
+  config: unknown,
+  configRoot: string,
+): Promise<string[]> => {
+  const out: string[] = [];
+  const storePaths = await listOpenClawSessionStorePaths(
+    sourceRoot,
+    config,
+    configRoot,
+  );
+  for (const storePath of storePaths) {
+    const store = await readJsonLikeIfExists(storePath);
+    if (!isRecord(store)) continue;
+    const sessionsDir = path.dirname(storePath);
+    const candidates = Object.values(store).flatMap((entry) =>
+      resolveOpenClawSessionStoreEntryFiles(sessionsDir, entry),
+    );
+    out.push(...await existingFiles(candidates));
+  }
   return uniqueSorted(out);
+};
+
+const listOpenClawSessionStorePaths = async (
+  sourceRoot: string,
+  config: unknown,
+  configRoot: string,
+): Promise<string[]> => {
+  const agentIds = await listOpenClawAgentIds(sourceRoot, config);
+  const configuredStore = isRecord(config) && isRecord(config.session)
+    ? asString(config.session.store)
+    : null;
+  const candidates = new Set<string>();
+  for (const agentId of agentIds) {
+    for (const candidate of resolveOpenClawSessionStorePaths(
+      sourceRoot,
+      configRoot,
+      configuredStore,
+      agentId,
+    )) {
+      candidates.add(candidate);
+    }
+    candidates.add(
+      path.join(sourceRoot, "agents", agentId, "sessions", "sessions.json"),
+    );
+  }
+  candidates.add(path.join(sourceRoot, "sessions.json"));
+  return existingFiles([...candidates]);
+};
+
+const listOpenClawAgentIds = async (
+  sourceRoot: string,
+  config: unknown,
+): Promise<string[]> => {
+  const ids = new Set<string>(["main"]);
+  if (isRecord(config) && isRecord(config.agents)) {
+    const list = config.agents.list;
+    if (Array.isArray(list)) {
+      for (const agent of list) {
+        if (!isRecord(agent)) continue;
+        const id = asString(agent.id);
+        if (id) ids.add(sanitizeOpenClawAgentId(id));
+      }
+    }
+  }
+  try {
+    const entries = await fsp.readdir(path.join(sourceRoot, "agents"), {
+      withFileTypes: true,
+    });
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        ids.add(sanitizeOpenClawAgentId(entry.name));
+      }
+    }
+  } catch {}
+  return [...ids].sort((a, b) => a.localeCompare(b));
+};
+
+const sanitizeOpenClawAgentId = (value: string): string =>
+  value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-") || "main";
+
+const resolveOpenClawSessionStorePaths = (
+  sourceRoot: string,
+  configRoot: string,
+  configuredStore: string | null,
+  agentId: string,
+): string[] => {
+  if (!configuredStore) {
+    return [
+      path.join(sourceRoot, "agents", agentId, "sessions", "sessions.json"),
+    ];
+  }
+  const expanded = configuredStore.replaceAll("{agentId}", agentId);
+  return resolveSourceConfiguredPathCandidates(sourceRoot, configRoot, expanded);
+};
+
+const resolveOpenClawSessionStoreEntryFiles = (
+  sessionsDir: string,
+  entry: unknown,
+): string[] => {
+  if (!isRecord(entry)) return [];
+  const sessionFile = asString(entry.sessionFile);
+  if (sessionFile) {
+    return [
+      path.isAbsolute(sessionFile)
+        ? path.resolve(sessionFile)
+        : path.resolve(sessionsDir, sessionFile),
+    ];
+  }
+  const sessionId = asString(entry.sessionId);
+  return sessionId ? [path.join(sessionsDir, `${sessionId}.jsonl`)] : [];
+};
+
+const collectOpenClawSessionFileRefs = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectOpenClawSessionFileRefs(entry));
+  }
+  if (!isRecord(value)) return [];
+  const out: string[] = [];
+  const sessionFile = asString(value.sessionFile);
+  if (sessionFile) out.push(sessionFile);
+  for (const child of Object.values(value)) {
+    if (child !== value) out.push(...collectOpenClawSessionFileRefs(child));
+  }
+  return out;
 };
 
 export const runThirdPartyMigration = async (opts: {
@@ -1136,7 +1350,7 @@ const importModelConfig = async (args: {
 
   const model = args.source === "hermes"
     ? extractHermesModelConfig(text)
-    : extractOpenClawModelConfig(text);
+    : await extractOpenClawModelConfig(text);
   if (!model) {
     args.items.push({
       kind: "modelConfig",
@@ -1186,13 +1400,8 @@ const extractHermesModelConfig = (text: string): string | null => {
   return asString(parsed.default_model) ?? asString(parsed.model_default);
 };
 
-const extractOpenClawModelConfig = (text: string): string | null => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return null;
-  }
+const extractOpenClawModelConfig = async (text: string): Promise<string | null> => {
+  const parsed = await parseJsonLikeText(text);
   if (!isRecord(parsed)) return null;
   const defaults = isRecord(parsed.agents) && isRecord(parsed.agents.defaults)
     ? parsed.agents.defaults
@@ -1239,11 +1448,19 @@ const importSessionHistory = async (args: {
 
   let imported = 0;
   for (const session of sessions.slice(0, MAX_IMPORTED_SESSIONS)) {
-    const fingerprint = hashText(JSON.stringify(session));
+    const visibleMessages = session.messages.filter((message) =>
+      message.role === "user" ||
+      message.role === "assistant" ||
+      message.role === "toolResult",
+    );
+    if (visibleMessages.length === 0) continue;
+    const fingerprint = hashText(
+      JSON.stringify({ ...session, messages: visibleMessages }),
+    );
     const itemId = `session:${session.id}`;
     if (alreadyImported(args.state, args.stateKey, itemId, fingerprint)) continue;
     const threadKey = `import:${args.source}:${session.id}`;
-    for (const message of session.messages.slice(0, MAX_IMPORTED_SESSION_MESSAGES)) {
+    for (const message of visibleMessages.slice(0, MAX_IMPORTED_SESSION_MESSAGES)) {
       sessionStore.appendThreadMessage({
         threadKey,
         role: message.role,
@@ -1350,7 +1567,8 @@ const normalizeSourceMessage = (value: unknown): SourceSessionMessage[] => {
     rawRole === "assistant" ? "assistant" :
     rawRole === "user" ? "user" :
     rawRole === "tool" || rawRole === "toolResult" ? "toolResult" :
-    "runtimeInternal";
+    null;
+  if (!role) return [];
   const timestampRaw = Number(nested.timestamp ?? value.timestamp ?? value.createdAt);
   return [{
     role,
@@ -1382,7 +1600,7 @@ const importSchedules = async (args: {
   }
   const target = path.join(args.stellaHome, "local-scheduler.json");
   const sourceFile = args.files[0]!;
-  const parsed = await readJsonIfExists(sourceFile);
+  const parsed = await readJsonLikeIfExists(sourceFile);
   const jobs = isRecord(parsed) && Array.isArray(parsed.jobs) ? parsed.jobs : [];
   if (jobs.length === 0) {
     args.items.push({
@@ -1393,53 +1611,135 @@ const importSchedules = async (args: {
     });
     return;
   }
-  const existing = isRecord(await readJsonIfExists(target))
-    ? (await readJsonIfExists(target)) as Record<string, unknown>
-    : { version: 1, cronJobs: [], heartbeats: [], generatedEvents: {} };
-  const cronJobs = Array.isArray(existing.cronJobs) ? existing.cronJobs : [];
+  const scheduler = new LocalSchedulerService({
+    stellaHome: args.stellaHome,
+    runnerTarget: migrationSchedulerRunnerTarget,
+  });
+  scheduler.start();
+  scheduler.stop();
   let imported = 0;
+  let invalid = 0;
   for (const job of jobs) {
     if (!isRecord(job)) continue;
     const id = asString(job.id) ?? hashText(JSON.stringify(job)).slice(0, 12);
+    const label = asString(job.name) ?? id;
     const fingerprint = hashText(JSON.stringify(job));
     const itemId = `schedule:${id}`;
     if (alreadyImported(args.state, args.stateKey, itemId, fingerprint)) continue;
-    const cron = asString(job.cron) ?? asString(job.schedule);
-    const prompt = asString(job.prompt) ?? asString(job.message) ?? asString(job.command);
-    if (!cron || !prompt) continue;
-    cronJobs.push({
-      id: `import:${args.source}:${id}`,
-      conversationId: "imported-schedules",
-      name: asString(job.name) ?? `Imported ${PRODUCT_LABELS[args.source]} schedule`,
-      description: `Imported from ${PRODUCT_LABELS[args.source]}.`,
-      enabled: job.enabled !== false,
-      schedule: { kind: "cron", expr: cron },
-      payload: { kind: "agent", prompt },
-      nextRunAtMs: Date.now(),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    const input = createImportedCronJobInput(args.source, job);
+    if (!input) {
+      invalid += 1;
+      args.items.push({
+        kind: "schedules",
+        status: "manual",
+        source: sourceFile,
+        message: `Skipped schedule "${label}" because it did not include a compatible schedule and payload.`,
+      });
+      continue;
+    }
+    try {
+      scheduler.addCronJob(input);
+    } catch (error) {
+      invalid += 1;
+      args.items.push({
+        kind: "schedules",
+        status: "manual",
+        source: sourceFile,
+        message: `Skipped schedule "${label}" because Stella could not validate it: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      continue;
+    }
     markImported(args.state, args.stateKey, itemId, fingerprint);
     imported += 1;
   }
-  if (imported > 0) {
-    await fsp.mkdir(path.dirname(target), { recursive: true });
-    await fsp.writeFile(
-      target,
-      JSON.stringify({ ...existing, version: 1, cronJobs }, null, 2) + "\n",
-      "utf-8",
-    );
-  }
   args.items.push({
     kind: "schedules",
-    status: imported > 0 ? "imported" : "manual",
+    status: imported > 0 ? "imported" : invalid > 0 ? "manual" : "skipped",
     source: sourceFile,
     target,
     count: imported,
     message: imported > 0
-      ? `Imported ${imported} schedule${imported === 1 ? "" : "s"}.`
-      : "Schedules were found but need manual review because their shape was not Stella-compatible.",
+      ? invalid > 0
+        ? `Imported ${imported} validated schedule${imported === 1 ? "" : "s"}. Need review: ${invalid}.`
+        : `Imported ${imported} validated schedule${imported === 1 ? "" : "s"}.`
+      : invalid > 0
+        ? "Schedules need manual review before Stella can import them."
+        : "Schedules were already imported.",
   });
+};
+
+const migrationSchedulerRunnerTarget: StellaHostRunnerTarget = {
+  getRunner: () => null,
+};
+
+const createImportedCronJobInput = (
+  source: ThirdPartyMigrationSource,
+  job: Record<string, unknown>,
+): LocalCronJobCreateInput | null => {
+  const schedule = parseImportedSchedule(job);
+  const payload = parseImportedSchedulePayload(job);
+  if (!schedule || !payload) return null;
+  return {
+    conversationId: "imported-schedules",
+    name: asString(job.name) ?? `Imported ${PRODUCT_LABELS[source]} schedule`,
+    description: `Imported from ${PRODUCT_LABELS[source]}.`,
+    enabled: job.enabled !== false,
+    schedule,
+    payload,
+  };
+};
+
+const parseImportedSchedule = (
+  job: Record<string, unknown>,
+): LocalCronSchedule | null => {
+  const schedule = job.schedule;
+  if (isRecord(schedule)) {
+    const kind = asString(schedule.kind);
+    if (kind === "cron") {
+      const expr = asString(schedule.expr);
+      if (!expr) return null;
+      const tz = asString(schedule.tz);
+      return tz ? { kind: "cron", expr, tz } : { kind: "cron", expr };
+    }
+    if (kind === "every" && typeof schedule.everyMs === "number") {
+      const anchorMs = typeof schedule.anchorMs === "number"
+        ? schedule.anchorMs
+        : undefined;
+      return anchorMs === undefined
+        ? { kind: "every", everyMs: schedule.everyMs }
+        : { kind: "every", everyMs: schedule.everyMs, anchorMs };
+    }
+    if (kind === "at") {
+      const atMs = typeof schedule.atMs === "number"
+        ? schedule.atMs
+        : Date.parse(asString(schedule.at) ?? "");
+      return Number.isFinite(atMs) ? { kind: "at", atMs } : null;
+    }
+    return null;
+  }
+  const cron = asString(job.cron) ?? asString(schedule);
+  return cron ? { kind: "cron", expr: cron } : null;
+};
+
+const parseImportedSchedulePayload = (
+  job: Record<string, unknown>,
+): LocalCronJobCreateInput["payload"] | null => {
+  const prompt =
+    asString(job.prompt) ??
+    asString(job.message) ??
+    asString(job.command);
+  if (prompt) return { kind: "agent", prompt };
+  if (isRecord(job.payload)) {
+    if (job.payload.kind === "agentTurn") {
+      const message = asString(job.payload.message);
+      return message ? { kind: "agent", prompt: message } : null;
+    }
+    if (job.payload.kind === "systemEvent") {
+      const text = asString(job.payload.text) ?? asString(job.payload.message);
+      return text ? { kind: "notify", text } : null;
+    }
+  }
+  return null;
 };
 
 const writeMarkdownReport = async (args: {
