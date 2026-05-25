@@ -37,6 +37,7 @@ import type { StellaHostRunner } from "../stella-host-runner.js";
 const INSTALL_MANIFEST_BASENAME = "stella-install.json";
 const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers";
+const DEFAULT_NATIVE_HELPERS_MANIFEST_URL = `${DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL}/current.json`;
 
 export type InstallManifestSnapshot = {
   version: string;
@@ -145,25 +146,23 @@ const candidateBunCommands = (): string[] => {
   return [...seen];
 };
 
-const getNativeHelpersBaseUrl = (): string =>
-  (
+const getNativeHelpersManifestUrl = (): string => {
+  const explicit = process.env.STELLA_NATIVE_HELPERS_MANIFEST_URL?.trim();
+  if (explicit) return explicit;
+  const baseUrl = (
     process.env.STELLA_NATIVE_HELPERS_BASE_URL ??
     DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL
   ).replace(/\/+$/, "");
-
-const manifestUrlForReleaseTag = (releaseTag: string): string => {
-  const tag = releaseTag.trim();
-  if (!/^desktop-v[0-9A-Za-z._-]+$/.test(tag)) {
-    throw new Error(`Invalid desktop release tag: ${releaseTag}`);
-  }
-  return `${getNativeHelpersBaseUrl()}/${tag}/manifest.json`;
+  return baseUrl === DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL
+    ? DEFAULT_NATIVE_HELPERS_MANIFEST_URL
+    : `${baseUrl}/current.json`;
 };
 
 const refreshNativeHelpers = async (
   stellaRoot: string,
-  releaseTag: string,
+  _releaseTag?: string,
 ): Promise<{ manifestUrl: string; stdout: string; stderr: string }> => {
-  const manifestUrl = manifestUrlForReleaseTag(releaseTag);
+  const manifestUrl = getNativeHelpersManifestUrl();
   const scriptPath = path.join(
     stellaRoot,
     "desktop",
