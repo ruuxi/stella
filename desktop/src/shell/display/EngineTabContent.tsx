@@ -20,8 +20,8 @@
  * room when the user expands the panel.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MoreHorizontal, RefreshCw, RotateCcw } from "lucide-react";
 import {
   DropdownMenu,
@@ -61,6 +61,7 @@ import {
   type RealtimeVoiceUnderlyingProvider,
 } from "../../../../runtime/contracts/local-preferences";
 import { useT } from "@/shared/i18n";
+import { EngineRuntimeModelPanel } from "./EngineRuntimeModelPanel";
 import "./engine-tab.css";
 
 /* ── types ────────────────────────────────────────────────────── */
@@ -258,9 +259,55 @@ const CONVERSATION_AGENT_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const STELLA_PROVIDER_PREFIX = "stella/";
+const CODEX_MODEL_PREFIX = "codex-cli/";
+const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
+const GENERAL_AGENT_KEY = "general";
+
+type RuntimeModelEngine = Extract<
+  AgentRuntimeEngine,
+  "codex_cli" | "claude_code_local"
+>;
+
+const usesRuntimeModelPicker = (
+  engine: AgentRuntimeEngine,
+): engine is RuntimeModelEngine =>
+  engine === "codex_cli" || engine === "claude_code_local";
 
 const isStellaModelId = (modelId: string): boolean =>
   modelId === "" || modelId.startsWith(STELLA_PROVIDER_PREFIX);
+
+const toRuntimeOverrideId = (
+  engine: RuntimeModelEngine,
+  modelId: string,
+): string => {
+  const prefix =
+    engine === "codex_cli" ? CODEX_MODEL_PREFIX : CLAUDE_CODE_MODEL_PREFIX;
+  return modelId.startsWith(prefix) ? modelId : `${prefix}${modelId}`;
+};
+
+const fromRuntimeOverrideId = (modelId: string): string => {
+  if (modelId.startsWith(CODEX_MODEL_PREFIX)) {
+    return modelId.slice(CODEX_MODEL_PREFIX.length);
+  }
+  if (modelId.startsWith(CLAUDE_CODE_MODEL_PREFIX)) {
+    return modelId.slice(CLAUDE_CODE_MODEL_PREFIX.length);
+  }
+  return modelId;
+};
+
+const getPopoverAgents = (
+  engine: AgentRuntimeEngine,
+  configurableAgents: ReadonlyArray<{
+    key: string;
+    label: string;
+    desc: string;
+  }>,
+): ReadonlyArray<{ key: string; label: string; desc: string }> => {
+  if (engine === "cursor_sdk") {
+    return configurableAgents.filter((entry) => entry.key !== GENERAL_AGENT_KEY);
+  }
+  return configurableAgents;
+};
 
 const errorText = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message.trim() ? error.message : fallback;
@@ -816,6 +863,13 @@ export function EngineTabContent() {
           onMediaTabChange={setMediaTab}
           inputsDisabled={inputsDisabled}
           showNotice={showNotice}
+          selectedEngine={selectedEngine}
+          codexModels={codexModels}
+          codexModelsLoading={codexModelsLoading}
+          onRefreshCodexModels={() => void loadCodexModels()}
+          claudeCodeModels={claudeCodeModels}
+          claudeCodeModelsLoading={claudeCodeModelsLoading}
+          onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
         />
 
         <ConnectedProvidersSection />
@@ -1059,82 +1113,6 @@ function EngineByokBlock({
       <div className="engine-tab__byok" key="codex_cli">
         <div className="engine-tab__row">
           <div className="engine-tab__label-row">
-            <span className="engine-tab__label">Codex model</span>
-            <button
-              type="button"
-              className="engine-tab__link"
-              disabled={codexModelsLoading}
-              onClick={onRefreshCodexModels}
-            >
-              {codexModelsLoading ? "Refreshing…" : "Refresh"}
-            </button>
-          </div>
-
-          {codexModels.length > 0 ? (
-            <div
-              className="engine-tab__cursor-model-list"
-              role="radiogroup"
-              aria-busy={codexModelsLoading || undefined}
-            >
-              {codexModels.map((model) => {
-                const selected =
-                  model.id === selectedCodexModelId ||
-                  model.model === selectedCodexModelId;
-                return (
-                  <button
-                    key={model.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={Boolean(selected)}
-                    data-selected={selected || undefined}
-                    className="engine-tab__cursor-model-option"
-                    disabled={inputsDisabled}
-                    onClick={() => onPickCodexModel(model.id)}
-                  >
-                    <span>{model.displayName || model.id}</span>
-                    <small>{model.model}</small>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {codexModelsLoading && codexModels.length === 0 ? (
-            <p className="engine-tab__hint">Loading Codex models…</p>
-          ) : null}
-
-          {codexModels.length === 0 ? (
-            <div className="engine-tab__field-row">
-              <input
-                id="engine-codex-model"
-                type="text"
-                value={codexModelDraft}
-                placeholder={DEFAULT_CODEX_MODEL}
-                className="engine-tab__input"
-                spellCheck={false}
-                disabled={inputsDisabled}
-                onChange={(event) =>
-                  onCodexModelDraftChange(event.target.value)
-                }
-              />
-              <button
-                type="button"
-                className="pill-btn pill-btn--primary"
-                disabled={
-                  loading ||
-                  saving === "codex-model" ||
-                  !codexModelChanged
-                }
-                onClick={onSaveCodexModel}
-              >
-                Save
-              </button>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="engine-tab__row">
-          <div className="engine-tab__label-row">
             <span className="engine-tab__label">Reasoning</span>
             <small className="engine-tab__meta">
               Default {codexReasoningDefaultLabel}
@@ -1164,88 +1142,6 @@ function EngineByokBlock({
     );
   }
 
-  if (engine === "claude_code_local") {
-    return (
-      <div className="engine-tab__byok" key="claude_code_local">
-        <div className="engine-tab__row">
-          <div className="engine-tab__label-row">
-            <span className="engine-tab__label">Claude Code model</span>
-            <button
-              type="button"
-              className="engine-tab__link"
-              disabled={claudeCodeModelsLoading}
-              onClick={onRefreshClaudeCodeModels}
-            >
-              {claudeCodeModelsLoading ? "Refreshing…" : "Refresh"}
-            </button>
-          </div>
-
-          {claudeCodeModels.length > 0 ? (
-            <div
-              className="engine-tab__cursor-model-list"
-              role="radiogroup"
-              aria-busy={claudeCodeModelsLoading || undefined}
-            >
-              {claudeCodeModels.map((model) => {
-                const selected = model.id === selectedClaudeCodeModelId;
-                return (
-                  <button
-                    key={model.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={Boolean(selected)}
-                    data-selected={selected || undefined}
-                    className="engine-tab__cursor-model-option"
-                    disabled={inputsDisabled}
-                    onClick={() => onPickClaudeCodeModel(model.id)}
-                  >
-                    <span>{model.displayName || model.id}</span>
-                    <small>
-                      {model.source === "alias" ? "Claude Code alias" : model.id}
-                    </small>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {claudeCodeModelsLoading && claudeCodeModels.length === 0 ? (
-            <p className="engine-tab__hint">Loading Claude Code models…</p>
-          ) : null}
-
-          {claudeCodeModels.length === 0 ? (
-            <div className="engine-tab__field-row">
-              <input
-                id="engine-claude-code-model"
-                type="text"
-                value={claudeCodeModelDraft}
-                placeholder={DEFAULT_CLAUDE_CODE_MODEL}
-                className="engine-tab__input"
-                spellCheck={false}
-                disabled={inputsDisabled}
-                onChange={(event) =>
-                  onClaudeCodeModelDraftChange(event.target.value)
-                }
-              />
-              <button
-                type="button"
-                className="pill-btn pill-btn--primary"
-                disabled={
-                  loading ||
-                  saving === "claude-code-model" ||
-                  !claudeCodeModelChanged
-                }
-                onClick={onSaveClaudeCodeModel}
-              >
-                Save
-              </button>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
-
   return null;
 }
 
@@ -1261,6 +1157,13 @@ interface ModelsSectionProps {
   onMediaTabChange: (tab: MediaTab) => void;
   inputsDisabled: boolean;
   showNotice: (text: string) => void;
+  selectedEngine: AgentRuntimeEngine;
+  codexModels: CodexModelOption[];
+  codexModelsLoading: boolean;
+  onRefreshCodexModels: () => void;
+  claudeCodeModels: ClaudeCodeModelOption[];
+  claudeCodeModelsLoading: boolean;
+  onRefreshClaudeCodeModels: () => void;
 }
 
 function ModelsSection({
@@ -1270,6 +1173,13 @@ function ModelsSection({
   onMediaTabChange,
   inputsDisabled,
   showNotice,
+  selectedEngine,
+  codexModels,
+  codexModelsLoading,
+  onRefreshCodexModels,
+  claudeCodeModels,
+  claudeCodeModelsLoading,
+  onRefreshClaudeCodeModels,
 }: ModelsSectionProps) {
   const {
     models: stellaModels,
@@ -1302,6 +1212,41 @@ function ModelsSection({
     () => getConfigurableAgents(modelDefaults),
     [modelDefaults],
   );
+  const runtimeModelEngine = usesRuntimeModelPicker(selectedEngine)
+    ? selectedEngine
+    : null;
+  const popoverAgents = useMemo(
+    () => getPopoverAgents(selectedEngine, configurableAgents),
+    [configurableAgents, selectedEngine],
+  );
+
+  const codexRuntimeModels = useMemo(
+    () =>
+      codexModels.map((model) => ({
+        id: model.id,
+        label: model.displayName || model.id,
+        subtitle: model.model,
+      })),
+    [codexModels],
+  );
+
+  const claudeRuntimeModels = useMemo(
+    () =>
+      claudeCodeModels.map((model) => ({
+        id: model.id,
+        label: model.displayName || model.id,
+        subtitle:
+          model.source === "alias" ? "Claude Code alias" : model.id,
+      })),
+    [claudeCodeModels],
+  );
+
+  const activeRuntimeModels =
+    runtimeModelEngine === "codex_cli"
+      ? codexRuntimeModels
+      : runtimeModelEngine === "claude_code_local"
+        ? claudeRuntimeModels
+        : [];
 
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
@@ -1311,8 +1256,13 @@ function ModelsSection({
       next.set(model.id, label);
       if (model.upstreamModel) next.set(model.upstreamModel, label);
     }
+    for (const model of activeRuntimeModels) {
+      if (!runtimeModelEngine) continue;
+      next.set(toRuntimeOverrideId(runtimeModelEngine, model.id), model.label);
+      next.set(model.id, model.label);
+    }
     return next;
-  }, [stellaModels]);
+  }, [activeRuntimeModels, runtimeModelEngine, stellaModels]);
 
   const restricted = isRestrictedModelOverrideAudience(audience);
   const restrictedPlanLabel = audience ? getPlanLabel(audience) : null;
@@ -1324,18 +1274,17 @@ function ModelsSection({
     rect: DOMRect;
     initialReasoning: ReasoningEffort;
     initialAgents: string[];
+    runtimeEngine: RuntimeModelEngine | null;
   };
   const [assignment, setAssignment] = useState<AssignmentState | null>(null);
-  const pendingRectRef = useRef<DOMRect | null>(null);
 
   const closeAssignment = useCallback(() => {
     setAssignment(null);
-    pendingRectRef.current = null;
   }, []);
 
   const agentsByModel = useMemo(() => {
     const map = new Map<string, string[]>();
-    for (const entry of configurableAgents) {
+    for (const entry of popoverAgents) {
       const current = overrides[entry.key];
       if (!current) continue;
       const list = map.get(current);
@@ -1343,28 +1292,21 @@ function ModelsSection({
       else map.set(current, [entry.key]);
     }
     return map;
-  }, [configurableAgents, overrides]);
-
-  const handlePanelClickCapture = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      const target = (event.target as HTMLElement | null)?.closest(
-        ".model-picker-model",
-      );
-      if (target instanceof HTMLElement) {
-        pendingRectRef.current = target.getBoundingClientRect();
-      } else {
-        pendingRectRef.current = null;
-      }
-    },
-    [],
-  );
+  }, [overrides, popoverAgents]);
 
   const handleOpenAssignment = useCallback(
-    (modelId: string) => {
+    (
+      modelId: string,
+      anchorEl?: HTMLElement | null,
+      runtimeEngine: RuntimeModelEngine | null = null,
+    ) => {
       if (!modelId) return;
-      const rect = pendingRectRef.current;
-      if (!rect) return;
-      const initialAgents = agentsByModel.get(modelId) ?? [];
+      const normalizedId = runtimeEngine
+        ? toRuntimeOverrideId(runtimeEngine, modelId)
+        : modelId;
+      const rect = anchorEl?.getBoundingClientRect();
+      if (!rect || (rect.width === 0 && rect.height === 0)) return;
+      const initialAgents = agentsByModel.get(normalizedId) ?? [];
       const reasoningCandidates = new Set<ReasoningEffort>();
       for (const key of initialAgents) {
         reasoningCandidates.add(
@@ -1375,11 +1317,16 @@ function ModelsSection({
         reasoningCandidates.size === 1
           ? Array.from(reasoningCandidates)[0]
           : "default";
-      setAssignment({
-        modelId,
-        rect,
-        initialReasoning,
-        initialAgents,
+      // Defer one frame so the opening click doesn't immediately dismiss
+      // the overlay/backdrop listener on the same event turn.
+      window.requestAnimationFrame(() => {
+        setAssignment({
+          modelId: normalizedId,
+          rect,
+          initialReasoning,
+          initialAgents,
+          runtimeEngine,
+        });
       });
     },
     [agentsByModel, preferences],
@@ -1406,14 +1353,30 @@ function ModelsSection({
           nextPropagated.delete(key);
         }
       }
-      await writePreferences(
-        {
-          modelOverrides: nextOverrides,
-          reasoningEfforts: nextReasoning,
-          assistantPropagatedAgents: Array.from(nextPropagated),
-        },
-        "overrides",
-      );
+      const patch: Partial<LocalModelPreferences> = {
+        modelOverrides: nextOverrides,
+        reasoningEfforts: nextReasoning,
+        assistantPropagatedAgents: Array.from(nextPropagated),
+      };
+      if (modelId.startsWith(CODEX_MODEL_PREFIX)) {
+        const codexModel = fromRuntimeOverrideId(modelId);
+        if (
+          agentKeys.includes("orchestrator") ||
+          agentKeys.includes(GENERAL_AGENT_KEY)
+        ) {
+          patch.codexModel = codexModel;
+        }
+      }
+      if (modelId.startsWith(CLAUDE_CODE_MODEL_PREFIX)) {
+        const claudeCodeModel = fromRuntimeOverrideId(modelId);
+        if (
+          agentKeys.includes("orchestrator") ||
+          agentKeys.includes(GENERAL_AGENT_KEY)
+        ) {
+          patch.claudeCodeModel = claudeCodeModel;
+        }
+      }
+      await writePreferences(patch, "overrides");
     },
     [preferences, writePreferences],
   );
@@ -1473,12 +1436,12 @@ function ModelsSection({
         closeAssignment();
         return;
       }
-      const allKeys = configurableAgents.map((entry) => entry.key);
+      const allKeys = popoverAgents.map((entry) => entry.key);
       await assignTo(modelId, allKeys, effort);
       closeAssignment();
       showNotice("Applied to every agent");
     },
-    [assignTo, closeAssignment, configurableAgents, preferences, showNotice],
+    [assignTo, closeAssignment, popoverAgents, preferences, showNotice],
   );
 
   const handleResetAll = useCallback(async () => {
@@ -1590,9 +1553,23 @@ function ModelsSection({
   const orchestratorCurrent =
     overrides.orchestrator ?? overrides.general ?? "";
 
-  const claudeCodeNotice =
-    preferences?.agentRuntimeEngine === "claude_code_local" &&
-    mediaTab === "agents";
+  const engineScopeNote =
+    selectedEngine === "cursor_sdk"
+      ? "Cursor runs the General agent. Pick Stella models below for every other agent."
+      : null;
+
+  const runtimePanelLabel =
+    runtimeModelEngine === "codex_cli" ? "Codex" : "Claude Code";
+  const runtimePanelFavoriteScope =
+    runtimeModelEngine === "codex_cli" ? "engine:codex" : "engine:claude-code";
+  const runtimePanelLoading =
+    runtimeModelEngine === "codex_cli"
+      ? codexModelsLoading
+      : claudeCodeModelsLoading;
+  const runtimePanelRefresh =
+    runtimeModelEngine === "codex_cli"
+      ? onRefreshCodexModels
+      : onRefreshClaudeCodeModels;
 
   return (
     <div className="engine-tab__models">
@@ -1674,16 +1651,23 @@ function ModelsSection({
 
       <div className="engine-tab__models-pane" role="tabpanel">
         {mediaTab === "agents" ? (
-          claudeCodeNotice ? (
-            <p className="engine-tab__empty">
-              Claude Code handles local agents. Stella model choices apply
-              when Engine is Stella, Cursor, or Codex.
-            </p>
-          ) : (
-            <div
-              className="engine-tab__models-agents"
-              onClickCapture={handlePanelClickCapture}
-            >
+          <div className="engine-tab__models-agents">
+            {engineScopeNote ? (
+              <p className="engine-tab__scope-note">{engineScopeNote}</p>
+            ) : null}
+            {runtimeModelEngine ? (
+              <EngineRuntimeModelPanel
+                providerLabel={runtimePanelLabel}
+                models={activeRuntimeModels}
+                loading={runtimePanelLoading}
+                disabled={inputsDisabled}
+                favoriteScope={runtimePanelFavoriteScope}
+                onRefresh={runtimePanelRefresh}
+                onSelectModel={(modelId, anchor) =>
+                  handleOpenAssignment(modelId, anchor, runtimeModelEngine)
+                }
+              />
+            ) : (
               <ProviderModelPanel
                 value=""
                 defaultLabel=""
@@ -1696,10 +1680,13 @@ function ModelsSection({
                 hideDefaultRow
                 selectedHeaderKicker="Tap a model"
                 hideSelectedTitle
-                onSelect={(modelId) => handleOpenAssignment(modelId)}
+                favoriteScope={`engine:stella:${selectedEngine}`}
+                onSelect={(modelId, anchor) =>
+                  handleOpenAssignment(modelId, anchor ?? null, null)
+                }
               />
-            </div>
-          )
+            )}
+          </div>
         ) : mediaTab === "image" ? (
           <ProviderOnlyPicker
             providers={IMAGE_PROVIDER_OPTIONS}
@@ -1740,7 +1727,7 @@ function ModelsSection({
       {assignment ? (
         <AssignmentPopover
           assignment={assignment}
-          configurableAgents={configurableAgents}
+          configurableAgents={popoverAgents}
           overrides={overrides}
           reasoningEfforts={preferences?.reasoningEfforts ?? {}}
           modelNamesById={modelNamesById}
@@ -1911,19 +1898,52 @@ function AssignmentPopover({
   const [selected, setSelected] = useState<ReadonlySet<string>>(
     () => new Set(assignment.initialAgents),
   );
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number }>(
+    () => ({
+      left: Math.max(16, assignment.rect.left - 310),
+      top: Math.max(16, assignment.rect.top),
+    }),
+  );
+  const [backdropReady, setBackdropReady] = useState(false);
 
   const modelDisplayName =
     modelNamesById.get(assignment.modelId) ?? assignment.modelId;
 
-  const anchorStyle: React.CSSProperties = {
-    position: "fixed",
-    left: assignment.rect.left,
-    top: assignment.rect.top,
-    width: assignment.rect.width,
-    height: assignment.rect.height,
-    pointerEvents: "none",
-    visibility: "hidden",
-  };
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const panelRect = panel.getBoundingClientRect();
+    const margin = 16;
+    const gap = 10;
+    let left = assignment.rect.left - panelRect.width - gap;
+    if (left < margin) {
+      left = assignment.rect.right + gap;
+    }
+    left = Math.max(
+      margin,
+      Math.min(left, window.innerWidth - panelRect.width - margin),
+    );
+    let top = assignment.rect.top;
+    top = Math.max(
+      margin,
+      Math.min(top, window.innerHeight - panelRect.height - margin),
+    );
+    setPosition({ left, top });
+  }, [assignment.modelId, assignment.rect]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setBackdropReady(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   const toggleAgent = (key: string) => {
     setSelected((prev) => {
@@ -1934,130 +1954,135 @@ function AssignmentPopover({
     });
   };
 
-  return (
-    <PopoverPrimitive.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <PopoverPrimitive.Anchor asChild>
-        <span style={anchorStyle} aria-hidden />
-      </PopoverPrimitive.Anchor>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content
-          data-component="popover-content"
-          className="engine-tab__assign-popover"
-          side="left"
-          align="start"
-          sideOffset={10}
-          collisionPadding={16}
-          style={{ zIndex: 9999 }}
+  return createPortal(
+    <>
+      <button
+        type="button"
+        className="engine-tab__assign-backdrop"
+        aria-label="Close model assignment"
+        tabIndex={-1}
+        onClick={() => {
+          if (backdropReady) onClose();
+        }}
+      />
+      <div
+        ref={panelRef}
+        className="engine-tab__assign-popover"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Apply model to agents"
+        style={{
+          position: "fixed",
+          left: position.left,
+          top: position.top,
+          zIndex: 10000,
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="engine-tab__assign-head">
+          <span className="engine-tab__assign-kicker">Apply</span>
+          <span
+            className="engine-tab__assign-title"
+            title={modelDisplayName}
+          >
+            {modelDisplayName}
+          </span>
+        </header>
+
+        <section
+          className="engine-tab__assign-reasoning"
+          role="radiogroup"
+          aria-label="Reasoning effort"
         >
-          <header className="engine-tab__assign-head">
-            <span className="engine-tab__assign-kicker">Apply</span>
-            <span
-              className="engine-tab__assign-title"
-              title={modelDisplayName}
-            >
-              {modelDisplayName}
-            </span>
-          </header>
+          {REASONING_OPTIONS.map((option) => {
+            const isSelected = option.id === reasoning;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                data-selected={isSelected || undefined}
+                className="engine-tab__assign-reasoning-btn"
+                title={option.title}
+                onClick={() => setReasoning(option.id)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </section>
 
-          <section
-            className="engine-tab__assign-reasoning"
-            role="radiogroup"
-            aria-label="Reasoning effort"
-          >
-            {REASONING_OPTIONS.map((option) => {
-              const isSelected = option.id === reasoning;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={isSelected}
-                  data-selected={isSelected || undefined}
-                  className="engine-tab__assign-reasoning-btn"
-                  title={option.title}
-                  onClick={() => setReasoning(option.id)}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </section>
-
-          <section
-            className="engine-tab__assign-agents"
-            role="group"
-            aria-label="Agents"
-          >
-            {configurableAgents.map((entry) => {
-              const isChecked = selected.has(entry.key);
-              const current = overrides[entry.key];
-              const sameModel = current === assignment.modelId;
-              const currentEffort = reasoningEfforts[entry.key] ?? "default";
-              const effortLabel =
-                REASONING_OPTIONS.find((opt) => opt.id === currentEffort)
-                  ?.label ?? "Auto";
-              const title = sameModel
-                ? `Currently using this model${
+        <section
+          className="engine-tab__assign-agents"
+          role="group"
+          aria-label="Agents"
+        >
+          {configurableAgents.map((entry) => {
+            const isChecked = selected.has(entry.key);
+            const current = overrides[entry.key];
+            const sameModel = current === assignment.modelId;
+            const currentEffort = reasoningEfforts[entry.key] ?? "default";
+            const effortLabel =
+              REASONING_OPTIONS.find((opt) => opt.id === currentEffort)
+                ?.label ?? "Auto";
+            const title = sameModel
+              ? `Currently using this model${
+                  currentEffort !== "default" ? ` · ${effortLabel}` : ""
+                }`
+              : current
+                ? `Currently: ${modelNamesById.get(current) ?? current}${
                     currentEffort !== "default" ? ` · ${effortLabel}` : ""
                   }`
-                : current
-                  ? `Currently: ${modelNamesById.get(current) ?? current}${
-                      currentEffort !== "default" ? ` · ${effortLabel}` : ""
-                    }`
-                  : "Currently default";
-              return (
-                <button
-                  key={entry.key}
-                  type="button"
-                  role="checkbox"
-                  aria-checked={isChecked}
-                  className="engine-tab__assign-agent-pill"
-                  data-checked={isChecked || undefined}
-                  data-current={sameModel || undefined}
-                  title={title}
-                  onClick={() => toggleAgent(entry.key)}
-                >
-                  {entry.label}
-                </button>
-              );
-            })}
-          </section>
+                : "Currently default";
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                role="checkbox"
+                aria-checked={isChecked}
+                className="engine-tab__assign-agent-pill"
+                data-checked={isChecked || undefined}
+                data-current={sameModel || undefined}
+                title={title}
+                onClick={() => toggleAgent(entry.key)}
+              >
+                {entry.label}
+              </button>
+            );
+          })}
+        </section>
 
-          <footer className="engine-tab__assign-footer">
+        <footer className="engine-tab__assign-footer">
+          <button
+            type="button"
+            className="engine-tab__assign-apply-all"
+            disabled={pending}
+            onClick={() => onApplyToAll(reasoning)}
+            title="Apply this model to every configurable agent"
+          >
+            Apply to all
+          </button>
+          <div className="engine-tab__assign-footer-actions">
             <button
               type="button"
-              className="engine-tab__assign-apply-all"
-              disabled={pending}
-              onClick={() => onApplyToAll(reasoning)}
-              title="Apply this model to every configurable agent"
+              className="engine-tab__assign-cancel"
+              onClick={onClose}
             >
-              Apply to all
+              Cancel
             </button>
-            <div className="engine-tab__assign-footer-actions">
-              <button
-                type="button"
-                className="engine-tab__assign-cancel"
-                onClick={onClose}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="engine-tab__assign-apply"
-                disabled={pending}
-                onClick={() => onApply(Array.from(selected), reasoning)}
-              >
-                Apply
-              </button>
-            </div>
-          </footer>
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
-    </PopoverPrimitive.Root>
+            <button
+              type="button"
+              className="engine-tab__assign-apply"
+              disabled={pending}
+              onClick={() => onApply(Array.from(selected), reasoning)}
+            >
+              Apply
+            </button>
+          </div>
+        </footer>
+      </div>
+    </>,
+    document.body,
   );
 }

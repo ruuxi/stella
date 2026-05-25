@@ -3,7 +3,12 @@ import {
   LegendList,
   type LegendListRenderItemProps,
 } from "@legendapp/list/react";
-import { Check, KeyRound, LogIn, Search } from "lucide-react";
+import { Check, KeyRound, LogIn, Search, Star } from "lucide-react";
+import {
+  readEngineModelFavorites,
+  sortByFavorites,
+  toggleEngineModelFavorite,
+} from "@/shell/display/engine-model-favorites";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import {
@@ -51,8 +56,12 @@ interface ProviderModelPanelProps {
   /** Hide a specific model id from the list (usually the default mode). */
   excludeModelId?: string;
   /** Empty string ⇒ default. Any other value ⇒ that model id. */
-  onSelect: (value: string) => void;
+  onSelect: (value: string, anchor?: HTMLElement) => void;
   disabled?: boolean;
+  /** When set, only these provider keys appear in the rail. */
+  visibleProviders?: readonly string[];
+  /** When set, enables per-model favorites pinned to the top of each pane. */
+  favoriteScope?: string;
   /**
    * When true, the user's plan can't override the default Stella model
    * (anonymous / free / Go). Non-default rows on the Stella tab are
@@ -80,9 +89,16 @@ interface ProviderModelPanelProps {
 function buildProviderTabs(
   groups: readonly ProviderGroup[],
   excludeModelId: string | undefined,
+  visibleProviders: readonly string[] | undefined,
 ): ProviderTab[] {
   const tabs = new Map<string, ProviderTab>();
   for (const group of groups) {
+    if (
+      visibleProviders &&
+      !visibleProviders.includes(group.provider)
+    ) {
+      continue;
+    }
     const models = group.models.filter(
       (model) => !excludeModelId || model.id !== excludeModelId,
     );
@@ -122,11 +138,16 @@ export function ProviderModelPanel({
   hideDefaultRow = false,
   selectedHeaderKicker,
   hideSelectedTitle = false,
+  visibleProviders,
+  favoriteScope,
 }: ProviderModelPanelProps) {
   const credentials = useLlmCredentials();
   const tabs = useMemo(
-    () => buildProviderTabs(groups, excludeModelId),
-    [groups, excludeModelId],
+    () => buildProviderTabs(groups, excludeModelId, visibleProviders),
+    [groups, excludeModelId, visibleProviders],
+  );
+  const [favorites, setFavorites] = useState<string[]>(() =>
+    favoriteScope ? readEngineModelFavorites(favoriteScope) : [],
   );
 
   const fallbackTab = tabs[0]?.key ?? STELLA_PROVIDER_KEY;
@@ -171,9 +192,19 @@ export function ProviderModelPanel({
   const filteredModels = useMemo(() => {
     if (!activeTab) return [];
     const trimmed = query.trim();
-    if (!trimmed) return activeTab.models;
-    return searchCatalogModels(activeTab.models, trimmed);
-  }, [activeTab, query]);
+    const searched = trimmed
+      ? searchCatalogModels(activeTab.models, trimmed)
+      : activeTab.models;
+    return favoriteScope ? sortByFavorites(searched, favorites) : searched;
+  }, [activeTab, favoriteScope, favorites, query]);
+
+  const toggleFavorite = useCallback(
+    (modelId: string) => {
+      if (!favoriteScope) return;
+      setFavorites(toggleEngineModelFavorite(favoriteScope, modelId));
+    },
+    [favoriteScope],
+  );
 
   const isProviderConnected = useCallback(
     (providerKey: string) => {
@@ -187,9 +218,9 @@ export function ProviderModelPanel({
   );
 
   const handlePick = useCallback(
-    (modelId: string) => {
+    (modelId: string, anchor?: HTMLElement) => {
       if (disabled) return;
-      onSelect(modelId === DEFAULT_TARGET ? "" : modelId);
+      onSelect(modelId === DEFAULT_TARGET ? "" : modelId, anchor);
     },
     [disabled, onSelect],
   );
@@ -339,6 +370,9 @@ export function ProviderModelPanel({
             hideDefaultRow={hideDefaultRow}
             selectedHeaderKicker={selectedHeaderKicker}
             hideSelectedTitle={hideSelectedTitle}
+            favoriteScope={favoriteScope}
+            favorites={favorites}
+            onToggleFavorite={toggleFavorite}
           />
         ) : null}
       </section>
@@ -357,7 +391,7 @@ interface ProviderPaneProps {
   selectedModelId: string;
   excludeModelId: string | undefined;
   filteredModels: CatalogModel[];
-  onPick: (modelId: string) => void;
+  onPick: (modelId: string, anchor?: HTMLElement) => void;
   isStella: boolean;
   restrictStellaPicks: boolean;
   restrictedPlanLabel: string | null;
@@ -385,6 +419,9 @@ interface ProviderPaneProps {
   hideDefaultRow: boolean;
   selectedHeaderKicker?: string;
   hideSelectedTitle: boolean;
+  favoriteScope?: string;
+  favorites: readonly string[];
+  onToggleFavorite: (modelId: string) => void;
 }
 
 type ModelListItem = {
@@ -399,8 +436,11 @@ type ModelRowProps = {
   selected: boolean;
   rowRestricted: boolean;
   restrictedPlanLabel: string | null;
-  onPick: (modelId: string) => void;
+  onPick: (modelId: string, anchor?: HTMLElement) => void;
   disabled: boolean;
+  favorite: boolean;
+  showFavorite: boolean;
+  onToggleFavorite: (modelId: string) => void;
 };
 
 const ModelRow = memo(function ModelRow({
@@ -410,6 +450,9 @@ const ModelRow = memo(function ModelRow({
   restrictedPlanLabel,
   onPick,
   disabled,
+  favorite,
+  showFavorite,
+  onToggleFavorite,
 }: ModelRowProps) {
   const isStellaModel = model.provider === STELLA_PROVIDER_KEY;
   const displayName = isStellaModel ? getStellaDisplayName(model) : model.name;
@@ -422,30 +465,49 @@ const ModelRow = memo(function ModelRow({
         : null;
 
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      aria-disabled={rowRestricted || undefined}
-      className="model-picker-model"
-      data-selected={selected || undefined}
-      data-restricted={rowRestricted || undefined}
-      title={
-        rowRestricted && restrictedPlanLabel
-          ? `Not available on the ${restrictedPlanLabel} plan`
-          : undefined
-      }
-      onClick={() => onPick(model.id)}
-      disabled={disabled || rowRestricted}
-    >
-      <span className="model-picker-model-text">
-        <span className="model-picker-model-name">{displayName}</span>
-        {subtitle ? (
-          <span className="model-picker-model-sub">{subtitle}</span>
-        ) : null}
-      </span>
-      {selected ? <Check size={13} className="model-picker-model-check" /> : null}
-    </button>
+    <div className="model-picker-model-row">
+      <button
+        type="button"
+        role="option"
+        aria-selected={selected}
+        aria-disabled={rowRestricted || undefined}
+        className="model-picker-model"
+        data-selected={selected || undefined}
+        data-restricted={rowRestricted || undefined}
+        title={
+          rowRestricted && restrictedPlanLabel
+            ? `Not available on the ${restrictedPlanLabel} plan`
+            : undefined
+        }
+        onClick={(event) => onPick(model.id, event.currentTarget)}
+        disabled={disabled || rowRestricted}
+      >
+        <span className="model-picker-model-text">
+          <span className="model-picker-model-name">{displayName}</span>
+          {subtitle ? (
+            <span className="model-picker-model-sub">{subtitle}</span>
+          ) : null}
+        </span>
+        {selected ? <Check size={13} className="model-picker-model-check" /> : null}
+      </button>
+      {showFavorite ? (
+        <button
+          type="button"
+          className="model-picker-model-star"
+          data-favorite={favorite || undefined}
+          aria-pressed={favorite}
+          aria-label={favorite ? "Remove favorite" : "Add favorite"}
+          title={favorite ? "Remove favorite" : "Favorite — pin to top"}
+          disabled={disabled || rowRestricted}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleFavorite(model.id);
+          }}
+        >
+          <Star size={14} strokeWidth={1.75} />
+        </button>
+      ) : null}
+    </div>
   );
 });
 
@@ -486,6 +548,9 @@ function ProviderPane({
   hideDefaultRow,
   selectedHeaderKicker,
   hideSelectedTitle,
+  favoriteScope,
+  favorites,
+  onToggleFavorite,
 }: ProviderPaneProps) {
   const llmEntry =
     tab.llmEntry ??
@@ -540,13 +605,19 @@ function ProviderPane({
           restrictedPlanLabel={restrictedPlanLabel}
           onPick={onPick}
           disabled={disabled}
+          favorite={favorites.includes(item.model.id)}
+          showFavorite={Boolean(favoriteScope)}
+          onToggleFavorite={onToggleFavorite}
         />
       );
     },
     [
       disabled,
+      favoriteScope,
+      favorites,
       isDefaultSelected,
       onPick,
+      onToggleFavorite,
       restrictedPlanLabel,
       restrictStellaPicks,
       selectedModelId,
@@ -562,7 +633,7 @@ function ProviderPane({
         aria-selected={isDefaultSelected}
         className="model-picker-model model-picker-model--default"
         data-selected={isDefaultSelected || undefined}
-        onClick={() => onPick(DEFAULT_TARGET)}
+        onClick={(event) => onPick(DEFAULT_TARGET, event.currentTarget)}
         disabled={disabled}
       >
         <span className="model-picker-model-text">
