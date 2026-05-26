@@ -6,7 +6,7 @@
   --chat-workspace-strip-width: 320px;
   --chat-workspace-strip-inset-top: 10px;
   --chat-workspace-strip-inset-right: 10px;
-  --chat-workspace-strip-inset-left: 4px;
+  --chat-workspace-strip-inset-left: 0;
   --chat-workspace-strip-inset-bottom: 10px;
   /* iOS-canonical decelerate. (0.32, 0.72, 0, 1) starts moving on frame
      one (no leading flat region) and settles smoothly — the same family
@@ -89,7 +89,7 @@
   flex-direction: column;
   /* No `gap` — section reveals manage their own margin so hidden panels
      don't leave a gap-shaped void in the stack. */
-  padding: 3px 4px 2px 2px;
+  padding: 3px 4px 2px 0;
   mask-image: none;
   -webkit-mask-image: none;
 }
