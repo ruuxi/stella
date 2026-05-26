@@ -177,13 +177,13 @@ export const ShellTopBar = ({
         >
           <ArrowRight size={15} strokeWidth={1.75} />
         </button>
-        {!isMiniWindow ? <ShellTopBarPrimaryNav /> : null}
+        {!isMiniWindow ? (
+          <ShellTopBarPrimaryNav onConnect={onConnect} />
+        ) : null}
       </div>
       <div className="shell-topbar-spacer" aria-hidden="true" />
       <div className="shell-topbar-profile-cluster">
-        {!isMiniWindow ? (
-          <ShellTopBarAccount onSignIn={onSignIn} onConnect={onConnect} />
-        ) : null}
+        {!isMiniWindow ? <ShellTopBarAccount onSignIn={onSignIn} /> : null}
         <ShellTopBarUpdatePill />
       </div>
       <div className="shell-topbar-tabs">

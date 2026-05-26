@@ -12,6 +12,7 @@ import { ChatRuntimeProvider } from "@/context/chat-runtime";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
+import { NicknameDialog } from "@/global/auth/NicknameDialog";
 import { ChatColumn } from "@/app/chat/ChatColumn";
 import {
   DisplaySidebar,
@@ -383,6 +384,8 @@ function RootChrome() {
         onConnect={showConnectDialog}
         onSignIn={showAuthDialog}
       />
+
+      <NicknameDialog />
 
       <ProviderConnectedDialog />
 
