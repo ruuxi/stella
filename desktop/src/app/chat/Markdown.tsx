@@ -6,7 +6,10 @@ import {
   defaultRemarkPlugins,
 } from "streamdown";
 import { cn } from "@/shared/lib/utils";
-import { useActiveEmojiPack } from "./emoji-sprites/active-emoji-pack";
+import {
+  hasCompleteEmojiSpritePack,
+  useActiveEmojiPack,
+} from "./emoji-sprites/active-emoji-pack";
 import { remarkEmojiSprites } from "./emoji-sprites/remark-emoji-sprites";
 import {
   cellToRowCol,
@@ -35,14 +38,12 @@ type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
  * `defaultRemarkPlugins` is exported as a `Record<string, Pluggable>`
  * map; the prop wants an array, so unwrap with `Object.values`.
  *
- * `REMARK_PLUGINS` is the single stable array shape we ever hand
- * Streamdown — including `remarkEmojiSprites` unconditionally. Emoji
- * lookup is bundled locally in the desktop app, while the selected pack's
- * sheet URLs live in localStorage; chat rendering must not depend on a
- * Convex query after the pack is installed.
+ * `BASE_REMARK_PLUGINS` is the default Streamdown set. The emoji sprite
+ * plugin is added only when a complete active pack is present; otherwise
+ * native Unicode emoji must remain visible.
  */
 const DEFAULT_REMARK_PLUGINS = Object.values(defaultRemarkPlugins);
-const REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS, remarkEmojiSprites];
+const BASE_REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS];
 
 /*
  * Streamdown's `rehypePlugins` prop, like `remarkPlugins`, *replaces*
@@ -147,6 +148,14 @@ export const Markdown = memo(function Markdown({
     [hideHorizontalRules],
   );
   const [activeEmojiPack] = useActiveEmojiPack();
+  const emojiSpritesEnabled = hasCompleteEmojiSpritePack(activeEmojiPack);
+  const remarkPlugins = useMemo(
+    () =>
+      emojiSpritesEnabled
+        ? [...BASE_REMARK_PLUGINS, remarkEmojiSprites]
+        : BASE_REMARK_PLUGINS,
+    [emojiSpritesEnabled],
+  );
   /*
    * `emojiVars` is memoized so the outer `<div>`'s `style` reference is
    * stable across renders when the active emoji pack hasn't changed.
@@ -156,20 +165,21 @@ export const Markdown = memo(function Markdown({
    * during debugging.
    */
   const emojiVars = useMemo<CSSProperties | undefined>(() => {
-    if (!activeEmojiPack) return undefined;
+    if (!emojiSpritesEnabled || !activeEmojiPack) return undefined;
     return Object.fromEntries(
       activeEmojiPack.sheetUrls.map((url, index) => [
         `--ai-emoji-sheet-${index}-url`,
         `url("${url}")`,
       ]),
     ) as CSSProperties;
-  }, [activeEmojiPack]);
+  }, [activeEmojiPack, emojiSpritesEnabled]);
+  const streamdownKey = `${effectiveCacheKey}:${emojiSpritesEnabled ? "emoji" : "plain"}`;
   return (
     <div style={emojiVars}>
       <Streamdown
-        key={effectiveCacheKey}
+        key={streamdownKey}
         className={cn("markdown", className)}
-        remarkPlugins={REMARK_PLUGINS}
+        remarkPlugins={remarkPlugins}
         rehypePlugins={DEFAULT_REHYPE_PLUGINS}
         components={components}
         linkSafety={LINK_SAFETY}
