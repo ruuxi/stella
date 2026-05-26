@@ -9,10 +9,12 @@ import {
   buildCursorAgentOptions,
   buildCursorPromptFromMessages,
   diffCursorWorktreeSnapshots,
+  isCursorSdkStreamError,
   parseCursorGitStatus,
   snapshotCursorWorktree,
   shouldUseCursorAgentRuntime,
   type CursorWorktreeSnapshot,
+  withCursorSdkStreamErrorGuard,
 } from "../../../../../runtime/kernel/integrations/cursor-agent-runtime.js";
 
 const execFileAsync = promisify(execFile);
@@ -66,7 +68,9 @@ describe("Cursor agent runtime", () => {
     expect(prompt).toContain(
       '<message index="1" type="message" visibility="hidden" customType="runtime.test">',
     );
-    expect(prompt).toContain('<message index="2" type="user" visibility="visible">');
+    expect(prompt).toContain(
+      '<message index="2" type="user" visibility="visible">',
+    );
   });
 
   it("keys the Cursor local platform store to the Stella workspace", () => {
@@ -82,6 +86,36 @@ describe("Cursor agent runtime", () => {
       local: { cwd: "/repo" },
       platform: { workspaceRef: "/repo" },
     });
+  });
+
+  it("recognizes Cursor SDK stream failures that can surface as background rejections", () => {
+    expect(
+      isCursorSdkStreamError(
+        new Error("Stream closed with error code NGHTTP2_FRAME_SIZE_ERROR"),
+      ),
+    ).toBe(true);
+    expect(
+      isCursorSdkStreamError(
+        Object.assign(new Error("Stream closed"), {
+          code: "ERR_HTTP2_STREAM_ERROR",
+        }),
+      ),
+    ).toBe(true);
+    expect(isCursorSdkStreamError(new Error("regular failure"))).toBe(false);
+  });
+
+  it("suppresses Cursor SDK stream failures emitted as uncaught exceptions", async () => {
+    const error = Object.assign(
+      new Error("Stream closed with error code NGHTTP2_FRAME_SIZE_ERROR"),
+      { code: "ERR_HTTP2_STREAM_ERROR" },
+    );
+
+    await expect(
+      withCursorSdkStreamErrorGuard(async () => {
+        process.emit("uncaughtException", error, "uncaughtException");
+        return "ok";
+      }),
+    ).resolves.toBe("ok");
   });
 
   it("diffs Cursor-owned worktree changes, including already-dirty files", () => {
@@ -106,7 +140,9 @@ describe("Cursor agent runtime", () => {
   });
 
   it("snapshots files inside newly-created directories", async () => {
-    const repoRoot = await mkdtemp(path.join(os.tmpdir(), "stella-cursor-snap-"));
+    const repoRoot = await mkdtemp(
+      path.join(os.tmpdir(), "stella-cursor-snap-"),
+    );
     try {
       await execFileAsync("git", ["init"], { cwd: repoRoot });
       await mkdir(path.join(repoRoot, "src", "new-dir"), { recursive: true });

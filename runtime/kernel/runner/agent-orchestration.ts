@@ -25,10 +25,7 @@ import type {
   LocalAgentContext,
   AgentLifecycleEvent,
 } from "../agents/local-agent-manager.js";
-import {
-  AGENT_IDS,
-  isLocalCliAgentId,
-} from "../../contracts/agent-runtime.js";
+import { AGENT_IDS, isLocalCliAgentId } from "../../contracts/agent-runtime.js";
 import { TASK_LIFECYCLE_WAKE_PROMPT } from "../../contracts/system-reminders.js";
 import {
   isFileChangeRecordArray,
@@ -996,6 +993,8 @@ export const createAgentOrchestration = (
     saveAgentRecord: (record) => context.runtimeStore.saveAgentRecord?.(record),
     getAgentRecord: (threadId) =>
       context.runtimeStore.getAgentRecord?.(threadId) ?? null,
+    listAgentRecordsByStatus: (status) =>
+      context.runtimeStore.listAgentRecordsByStatus?.(status) ?? [],
   });
 
   const runBlockingLocalAgent = async (

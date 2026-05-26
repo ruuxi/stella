@@ -112,6 +112,27 @@ describe("extractTasksFromEvents", () => {
     expect(task.outputPreview).toBe("Done");
   });
 
+  it("marks running tasks from a previous app session as stopped", () => {
+    const events = [
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Inspect settings",
+        agentType: "general",
+      }),
+      event("2", 150, "agent-progress", {
+        agentId: "task-1",
+        statusText: "Reading files",
+      }),
+    ];
+
+    const [task] = extractTasksFromEvents(events, {
+      appSessionStartedAtMs: 1_000,
+    });
+
+    expect(task.status).toBe("canceled");
+    expect(task.outputPreview).toBe("Stopped when Stella restarted.");
+  });
+
   it("preserves progress text when a later started event has no status", () => {
     const events = [
       event("1", 100, "agent-progress", {

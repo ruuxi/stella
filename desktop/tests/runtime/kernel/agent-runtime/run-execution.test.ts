@@ -117,4 +117,44 @@ describe("executeRuntimeAgentPrompt", () => {
       }),
     );
   });
+
+  it("fails a silent native agent prompt instead of hanging", async () => {
+    const previousTimeout = process.env.STELLA_AGENT_IDLE_TIMEOUT_MS;
+    process.env.STELLA_AGENT_IDLE_TIMEOUT_MS = "25";
+    const listeners = new Set<(event: never) => void>();
+    const agent = {
+      state: {
+        messages: [] as Array<ReturnType<typeof createAssistantMessage>>,
+      },
+      subscribe: vi.fn((listener: (event: never) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      prompt: vi.fn(() => new Promise<void>(() => {})),
+      followUp: vi.fn(),
+      continue: vi.fn(),
+      abort: vi.fn(),
+    };
+
+    try {
+      await expect(
+        executeRuntimeAgentPrompt({
+          agent,
+          promptText: "silent",
+          runId: "run-3",
+          agentType: "general",
+          userMessageId: "msg-3",
+          recorder: {} as never,
+        }),
+      ).rejects.toThrow("Agent did not produce activity");
+      expect(agent.abort).toHaveBeenCalledOnce();
+      expect(listeners.size).toBe(0);
+    } finally {
+      if (previousTimeout === undefined) {
+        delete process.env.STELLA_AGENT_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_AGENT_IDLE_TIMEOUT_MS = previousTimeout;
+      }
+    }
+  });
 });

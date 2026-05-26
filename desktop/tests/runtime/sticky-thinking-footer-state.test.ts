@@ -334,6 +334,34 @@ describe("scripted agent/orchestrator footer scenarios", () => {
     expect(state.activeTask).toBeNull();
   });
 
+  it("does not keep showing a stale completed task as Done", () => {
+    const state = getStickyThinkingFooterState({
+      tasks: [
+        {
+          id: "agent-1",
+          description: "Inspect settings",
+          agentType: "general",
+          status: "completed",
+          startedAtMs: 100,
+          completedAtMs: 200,
+          lastUpdatedAtMs: 200,
+          outputPreview: "Done",
+        },
+      ],
+      activeIndex: 0,
+      isStreaming: false,
+      nowMs: 3_500,
+      completionIndicatorMs: 3_000,
+    });
+
+    expect(state.shouldRender).toBe(false);
+    expect(
+      getStickyThinkingFooterDisplayText({
+        state,
+      }),
+    ).toBeNull();
+  });
+
   it("preserves persisted status text when live state only has a generic placeholder", () => {
     const persistedTasks = extractTasksFromEvents([
       event("1", 100, "agent-started", {

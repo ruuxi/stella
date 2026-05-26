@@ -62,9 +62,8 @@ import {
 } from "@/shell/display/payload-to-tab-spec";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
-import {
-  useChatWorkspaceStripStore,
-} from "./chat-workspace-strip-store";
+import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
+import { useChatWorkspaceStripStore } from "./chat-workspace-strip-store";
 import {
   areWorkspaceStripOpenPanelsEqual,
   DEFAULT_WORKSPACE_STRIP_OPEN_PANELS,
@@ -266,6 +265,7 @@ export function ChatWorkspaceStrip({
 
   const conversationId = state.conversationId;
   const activity = chat.conversation.activity;
+  const appSessionStartedAtMs = useAgentSessionStartedAt();
   const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
   const filesFeed = chat.conversation.files;
   const schedules = useConversationSchedules(conversationId);
@@ -281,10 +281,16 @@ export function ChatWorkspaceStrip({
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
+      appSessionStartedAtMs,
       latestMessageTimestampMs: activity.latestMessageTimestampMs,
     });
     return mergeFooterTasks(persisted, liveTasks);
-  }, [activity.activities, activity.latestMessageTimestampMs, liveTasks]);
+  }, [
+    activity.activities,
+    activity.latestMessageTimestampMs,
+    appSessionStartedAtMs,
+    liveTasks,
+  ]);
 
   const runningTasks = useMemo(
     () =>
