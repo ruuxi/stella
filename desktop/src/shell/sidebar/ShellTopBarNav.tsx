@@ -20,7 +20,12 @@ import {
   getSnapshot as getAppRegistrySnapshot,
   subscribe as subscribeToAppRegistry,
 } from "./app-registry";
+import { ShellTopBarSettingsMenu } from "./ShellTopBarSettingsMenu";
 import "./topbar-nav.css";
+
+interface ShellTopBarPrimaryNavProps {
+  onConnect?: () => void;
+}
 
 // App discovery happens in `./app-registry`, which owns the glob over
 // `desktop/src/app/<id>/metadata.ts` and exposes a subscribable snapshot.
@@ -85,7 +90,9 @@ const NavItem = ({
   );
 };
 
-export const ShellTopBarPrimaryNav = () => {
+export const ShellTopBarPrimaryNav = ({
+  onConnect,
+}: ShellTopBarPrimaryNavProps) => {
   const allApps = useRegisteredApps();
   const navApps = useMemo(
     () => allApps.filter((a) => !a.hideFromSidebar && a.slot === "top"),
@@ -138,6 +145,7 @@ export const ShellTopBarPrimaryNav = () => {
           }}
         />
       ))}
+      <ShellTopBarSettingsMenu onConnect={onConnect} />
     </nav>
   );
 };

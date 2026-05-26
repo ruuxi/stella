@@ -22,7 +22,8 @@
 /* ── Sign-out + feedback dialogs ───────────────────────────────── */
 
 [data-slot="dialog-content"].sidebar-feedback-dialog,
-[data-slot="dialog-content"].sidebar-signout-dialog {
+[data-slot="dialog-content"].sidebar-signout-dialog,
+[data-slot="dialog-content"].sidebar-nickname-dialog {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -32,12 +33,14 @@
 }
 
 .sidebar-feedback-dialog [data-slot="dialog-header"],
-.sidebar-signout-dialog [data-slot="dialog-header"] {
+.sidebar-signout-dialog [data-slot="dialog-header"],
+.sidebar-nickname-dialog [data-slot="dialog-header"] {
   padding: 20px 20px 12px 28px;
 }
 
 .sidebar-feedback-dialog [data-slot="dialog-title"],
-.sidebar-signout-dialog [data-slot="dialog-title"] {
+.sidebar-signout-dialog [data-slot="dialog-title"],
+.sidebar-nickname-dialog [data-slot="dialog-title"] {
   color: var(--text-strong, var(--foreground));
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: clamp(1.45rem, 2.6vw, 1.8rem);
@@ -48,7 +51,8 @@
 }
 
 .sidebar-feedback-description,
-.sidebar-signout-description {
+.sidebar-signout-description,
+.sidebar-nickname-description {
   padding: 0 28px;
   margin: 0;
   color: var(--text-base);
@@ -57,6 +61,21 @@
   font-weight: 400;
   line-height: 1.5;
   letter-spacing: -0.01em;
+}
+
+.sidebar-nickname-body {
+  padding: 16px 28px 4px;
+  align-self: stretch;
+}
+
+.sidebar-nickname-body [data-slot="input-wrapper"] {
+  background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
+  border-color: var(--border);
+}
+
+.sidebar-nickname-body input {
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .sidebar-confirm-actions {
