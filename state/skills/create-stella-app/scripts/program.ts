@@ -129,7 +129,7 @@ function main(): void {
   console.log("next steps:");
   console.log(`  1. replace the stub body of ${args.slug}.tsx with the real surface`);
   console.log("  2. validate (run from the Stella install root):");
-  console.log("     bunx tsgo -p desktop/tsconfig.app.json --noEmit");
+  console.log("     tsgo -p desktop/tsconfig.app.json --noEmit");
 }
 
 main();
