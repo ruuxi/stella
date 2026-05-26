@@ -30,6 +30,7 @@ import {
 import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
 import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
 import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";
+import { showToast, type ToastOptions } from "@/ui/toast";
 
 // Persist the last-active Store tab so clicking the global sidebar's Store
 // icon reopens to wherever the user was last (Discover by default). The URL
@@ -77,6 +78,28 @@ const handleStoreWebLocalAction = async (
     }
     case "openSignIn": {
       handlers.openSignIn();
+      return { ok: true };
+    }
+    case "showToast": {
+      const title = typeof payload.title === "string" ? payload.title : "";
+      const description =
+        typeof payload.description === "string" ? payload.description : "";
+      const variant =
+        payload.variant === "success" ||
+        payload.variant === "error" ||
+        payload.variant === "loading"
+          ? payload.variant
+          : undefined;
+      const duration =
+        typeof payload.duration === "number" && Number.isFinite(payload.duration)
+          ? payload.duration
+          : undefined;
+      showToast({
+        ...(title ? { title } : {}),
+        ...(description ? { description } : {}),
+        ...(variant ? { variant } : {}),
+        ...(duration ? { duration } : {}),
+      } satisfies ToastOptions);
       return { ok: true };
     }
     case "listNativeIntegrations":
