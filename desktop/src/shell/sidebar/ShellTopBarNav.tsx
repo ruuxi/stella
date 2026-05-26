@@ -11,6 +11,10 @@ import {
   usePostOnboardingHint,
 } from "@/global/onboarding/post-onboarding-hints";
 import { useSocialBadges } from "@/app/social/hooks/use-social-badges";
+import {
+  markAllUserAppsSeen,
+  useNewUserAppsHint,
+} from "@/app/_user/new-user-apps-hint";
 import { preloadSidebarRoute } from "@/shared/lib/sidebar-preloads";
 import {
   getSnapshot as getAppRegistrySnapshot,
@@ -90,8 +94,10 @@ export const ShellTopBarPrimaryNav = () => {
 
   const { totalBadge: socialBadge } = useSocialBadges();
   const storeHint = usePostOnboardingHint("store");
+  const newAppsHint = useNewUserAppsHint();
   const matchRoute = useMatchRoute();
   const onStoreRoute = Boolean(matchRoute({ to: "/store", fuzzy: true }));
+  const onAppsRoute = Boolean(matchRoute({ to: "/apps", fuzzy: true }));
 
   useEffect(() => {
     if (storeHint.active && onStoreRoute) {
@@ -99,13 +105,23 @@ export const ShellTopBarPrimaryNav = () => {
     }
   }, [onStoreRoute, storeHint.active]);
 
+  useEffect(() => {
+    if (newAppsHint.active && onAppsRoute) {
+      markAllUserAppsSeen();
+    }
+  }, [newAppsHint.active, onAppsRoute]);
+
   const badgeFor = useCallback(
     (app: AppMetadata) => (app.id === "social" ? socialBadge : 0),
     [socialBadge],
   );
   const hintFor = useCallback(
-    (app: AppMetadata) => app.id === "store" && storeHint.active,
-    [storeHint.active],
+    (app: AppMetadata) => {
+      if (app.id === "store") return storeHint.active;
+      if (app.id === "apps") return newAppsHint.active;
+      return false;
+    },
+    [storeHint.active, newAppsHint.active],
   );
 
   return (
@@ -118,6 +134,7 @@ export const ShellTopBarPrimaryNav = () => {
           showHintDot={hintFor(app)}
           onHintDismiss={() => {
             if (app.id === "store") dismissPostOnboardingHint("store");
+            if (app.id === "apps") markAllUserAppsSeen();
           }}
         />
       ))}
