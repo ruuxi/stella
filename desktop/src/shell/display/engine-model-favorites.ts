@@ -12,7 +12,8 @@ const readAll = (): Record<FavoriteScope, string[]> => {
     for (const [scope, value] of Object.entries(parsed)) {
       if (!Array.isArray(value)) continue;
       next[scope] = value.filter(
-        (entry): entry is string => typeof entry === "string" && entry.trim(),
+        (entry): entry is string =>
+          typeof entry === "string" && entry.trim().length > 0,
       );
     }
     return next;
