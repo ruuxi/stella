@@ -351,6 +351,7 @@ export function useFullShellChat({
       setSelectedText,
       canSubmit,
       focusRequestId: composerFocusRequestId,
+      requestFocus: () => setComposerFocusRequestId((id) => id + 1),
       onSend: handleSend,
       onStop: cancelCurrentStream,
       onNewChat: startNewChat,

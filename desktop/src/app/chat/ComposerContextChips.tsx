@@ -112,7 +112,7 @@ export function SelectedTextChip({
   className,
   textClassName,
 }: SelectedTextChipProps) {
-  const displayText = truncateChipLabel(selectedText);
+  const displayText = truncateChipLabel(selectedText, 36);
   return (
     <button
       type="button"

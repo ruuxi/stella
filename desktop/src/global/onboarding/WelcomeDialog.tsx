@@ -11,7 +11,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { listLocalEvents } from "@/app/chat/services/local-chat-store";
 import { Compass, LogIn, Smartphone } from "lucide-react";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
-import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
+import { openCanvasDisplayTab } from "@/shell/display/default-tabs";
 import "./welcome-dialog.css";
 
 const WELCOME_DIALOG_SEEN_KEY = "stella-welcome-dialog-seen";
@@ -91,7 +91,7 @@ export function WelcomeDialog({
 
   const handleOpenWorkspacePanel = useCallback(() => {
     handleClose();
-    dispatchOpenWorkspacePanel();
+    openCanvasDisplayTab();
   }, [handleClose]);
 
   if (!open) return null;
@@ -131,8 +131,8 @@ export function WelcomeDialog({
                 <h3>Personalized for you</h3>
                 <p>
                   <strong>Right-click</strong> anywhere on the home screen to
-                  open the workspace panel and browse Ideas — tailored to you
-                  based on what you shared during setup.
+                  open the workspace panel. Your first report is in Canvas,
+                  with ideas Stella can help turn into workflows.
                 </p>
               </div>
               <span className="welcome-dialog-card-arrow">&rsaquo;</span>

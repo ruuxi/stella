@@ -32,7 +32,9 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
   dispatchClosePanel,
   dispatchOpenWorkspacePanel,
+  STELLA_COMPOSE_TEXT_EVENT,
   type StellaOpenPanelChatDetail,
+  type StellaComposeTextDetail,
 } from "@/shared/lib/stella-orb-chat";
 import {
   ensureChatDisplayTab,
@@ -176,6 +178,45 @@ function RootChrome() {
     },
     [],
   );
+
+  useEffect(() => {
+    const handleComposeText = (event: Event) => {
+      const detail = (event as CustomEvent<StellaComposeTextDetail>).detail;
+      const text = typeof detail?.text === "string" ? detail.text : "";
+      if (!text.trim()) return;
+      const hasChatContext = Object.prototype.hasOwnProperty.call(
+        detail,
+        "chatContext",
+      );
+      const hasSelectedText = Object.prototype.hasOwnProperty.call(
+        detail,
+        "selectedText",
+      );
+
+      if (isOnChatRoute) {
+        chat.composer.setMessage(text);
+        if (hasChatContext) {
+          chat.composer.setChatContext(detail.chatContext ?? null);
+        }
+        if (hasSelectedText) {
+          chat.composer.setSelectedText(detail.selectedText ?? null);
+        }
+        chat.composer.requestFocus?.();
+        return;
+      }
+
+      openChatDisplayTab({
+        id: Date.now(),
+        chatContext: detail.chatContext ?? null,
+        prefillText: text,
+      });
+    };
+
+    window.addEventListener(STELLA_COMPOSE_TEXT_EVENT, handleComposeText);
+    return () => {
+      window.removeEventListener(STELLA_COMPOSE_TEXT_EVENT, handleComposeText);
+    };
+  }, [chat.composer, isOnChatRoute]);
 
   // Display tab rule: Chat is always present in the strip; its body
   // adapts to the route inside `ChatDisplayTab` (home shows the activity

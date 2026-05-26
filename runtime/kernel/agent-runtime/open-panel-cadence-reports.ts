@@ -87,26 +87,34 @@ const MAX_THREAD_SUMMARIES = 40;
 const MAX_THREAD_SUMMARY_CHARS = 2_000;
 const MAX_ACTIVITY_EVENTS = 80;
 const MAX_ACTIVITY_TEXT_CHARS = 700;
+const MIN_4H_USER_TURNS = 1;
 const inFlightCadences = new Set<OpenPanelReportCadence>();
 
 const SYSTEM_PROMPT = [
   "You generate compact, polished HTML reports for Stella.",
   "",
   "Use the supplied recent Stella activity, thread summaries, and browser activity for exactly the requested window.",
-  "Do not make this primarily a summary. Extract reusable workflow patterns and concrete things Stella could make durable for the user.",
-  "Prioritize: reusable workflows, Stella skills to create/update, small app ideas, automations/schedules, and useful connected-app or browser workflows.",
+  "The report is not a diary and not a status summary. Its job is to surface useful ideas Stella could help with next.",
+  "Only include something when it is actually worth suggesting. Prefer a short report over padding.",
+  "Write for a normal non-technical user. Hide implementation details, commands, file paths, source modules, and internal tool names unless the user explicitly asked about them in the activity.",
+  "Translate technical evidence into everyday outcomes. For example, say \"save a checklist for code changes\" instead of naming validation commands or source files.",
+  "Look for real repeated patterns or durable needs. Do not promote one-off actions into patterns just because they happened once.",
+  "Good outputs are suggestions for reusable workflows, Stella skills, small apps, reminders, schedules, or connected-app/browser workflows.",
+  "Each idea should be phrased as something the user could ask Stella to do, in plain language.",
   "The output is rendered directly in Stella's trusted Canvas viewer. You may use inline scripts, external scripts, external stylesheets, CDN imports, charts, tables, and interactive controls when helpful.",
+  "If an idea is a good next chat prompt, put it in a selectable/actionable element with data-stella-compose=\"the exact plain-language prompt Stella should place in chat\". Stella will add the hover button; do not build your own chat button.",
   "",
   "You MUST deliver the report by calling the `emit_report` tool exactly once with the complete HTML document in the `html` parameter. Do NOT include the HTML in your text response. Do NOT skip the tool call.",
   "",
   "Rules:",
   "  1. Pass one complete <!doctype html> document in the `html` argument. No markdown fences. No commentary outside the tool call.",
   "  2. Ground every claim in the supplied activity. Do not invent private details.",
-  "  3. Make it useful at a glance: short sections, concrete workflow/app/skill ideas, and selectable text the user can highlight.",
-  "  4. For 4h reports, focus on immediate reusable workflows from the latest work. For Daily reports, focus on patterns worth saving as skills, apps, or schedules.",
-  "  5. If there is little activity, say that plainly and still provide broadly useful reusable workflow ideas grounded in what is available.",
+  "  3. Make it useful at a glance: a few sections, short cards, and direct next-step language.",
+  "  4. For 4h reports, include only timely ideas from recent Stella use. For Daily reports, include only patterns or opportunities worth saving.",
+  "  5. If there is little signal, say there is nothing standout yet and keep the report short. Do not fill space with generic ideas.",
   "  6. Keep the visual style quiet, native-feeling, and readable in a side panel. Cormorant for display type and Manrope for body when convenient.",
-  "  7. Do not build custom chat buttons. Stella already lets the user select text in the report and choose Ask Stella; write each idea as clean selectable text.",
+  "  7. Use friendly labels like Skill, Workflow, App idea, Reminder, or Schedule. Avoid developer vocabulary.",
+  "  8. Avoid headings like \"patterns worth making durable\". Use plain headings such as \"Ideas worth saving\", \"Useful reminders\", or \"Small apps Stella could make\".",
 ].join("\n");
 
 const EMIT_REPORT_TOOL: Tool = {
@@ -292,6 +300,12 @@ const formatRecentActivity = (
     .join("\n");
 };
 
+const countUserTurnsInActivity = (activity: string): number =>
+  activity
+    .split("\n")
+    .filter((line) => /\]\s+user_message(?:\s|-|$)/.test(line))
+    .length;
+
 const formatDomainList = (
   domains: ReadonlyArray<{ domain: string; visits: number }>,
 ): string => domains.map((domain) => `${domain.domain} (${domain.visits})`).join("\n");
@@ -338,10 +352,10 @@ const buildUserPrompt = (args: {
   const browserText = formatBrowserWindow(args.browserWindow);
   const reportGoal =
     args.cadence.id === "4h"
-      ? "Find immediate patterns from the last few hours that could become reusable workflows, skills, app ideas, or next automations."
+      ? "Suggest only timely next-step ideas from recent Stella use. Skip weak or one-off observations."
       : args.cadence.id === "daily"
-        ? "Find the day's repeated patterns and propose durable skills, reusable workflows, small Stella apps, and schedules worth saving."
-        : "Find broader weekly patterns and propose durable skills, reusable workflows, small Stella apps, and schedules worth saving.";
+        ? "Suggest only durable workflows, skills, app ideas, reminders, or schedules that seem genuinely useful from the day."
+        : "Suggest only broader workflows, skills, app ideas, reminders, or schedules that seem genuinely useful from the week.";
   return [
     `Report cadence: ${args.cadence.label}`,
     `Report goal: ${reportGoal}`,
@@ -391,6 +405,15 @@ const generateReport = async (args: {
 
   const sinceMs = args.nowMs - args.cadence.windowMs;
   const activity = formatRecentActivity(args.store, sinceMs);
+  if (
+    args.cadence.id === "4h" &&
+    countUserTurnsInActivity(activity) < MIN_4H_USER_TURNS
+  ) {
+    logger.debug("open-panel-report.skipped.low-stella-activity", {
+      cadence: args.cadence.id,
+    });
+    return null;
+  }
   const userMessage: Message = {
     role: "user",
     content: [

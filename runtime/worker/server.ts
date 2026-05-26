@@ -3212,7 +3212,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         typeof firstReport?.title === "string" ? firstReport.title.trim() : "";
       const reportHtml =
         typeof firstReport?.html === "string" ? firstReport.html : "";
-      if (reportTitle && reportHtml.trim() && state.init?.stellaRoot) {
+      if (reportTitle && reportHtml.trim() && state.init?.stellaHomePath) {
         const rawSlug =
           typeof firstReport?.slug === "string" ? firstReport.slug : "";
         const slug =
@@ -3223,7 +3223,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             .slice(0, 64) || "report-welcome";
         const timestamp = Date.now();
         const filePath = path.join(
-          state.init.stellaRoot,
+          state.init.stellaHomePath,
           "outputs",
           "html",
           `${slug}.html`,

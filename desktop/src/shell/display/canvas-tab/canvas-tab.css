@@ -42,49 +42,6 @@
   display: flex;
 }
 
-.canvas-tab__selection-tutorial {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 2;
-  width: min(280px, calc(100% - 28px));
-  border: 1px solid var(--connect-dialog-border, var(--border));
-  border-radius: 8px;
-  background: var(--connect-dialog-bg, var(--panel-surface-bg));
-  box-shadow: var(--connect-dialog-shadow, 0 18px 60px rgba(0, 0, 0, 0.22));
-  padding: 12px;
-  color: var(--text-base);
-}
-
-.canvas-tab__selection-tutorial-label {
-  margin-bottom: 5px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-weak);
-}
-
-.canvas-tab__selection-tutorial p {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.canvas-tab__selection-tutorial button {
-  appearance: none;
-  margin-top: 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--foreground);
-  color: var(--background);
-  padding: 5px 10px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: default;
-}
-
 .canvas-tab__frame-state {
   flex: 1;
   display: grid;
