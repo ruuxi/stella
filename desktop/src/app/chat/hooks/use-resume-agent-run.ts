@@ -50,7 +50,7 @@ type TaskSnapshot = {
 };
 
 interface ResumeRefs {
-  lastSeqByConversationRef: MutableRefObject<Map<string, number>>;
+  resumeSeqByConversationRef: MutableRefObject<Map<string, number>>;
 }
 
 interface ResumeActions {
@@ -60,7 +60,7 @@ interface ResumeActions {
     activeRun: ActiveRunSnapshot;
     tasks: TaskSnapshot[];
   }) => void;
-  handleAgentEvent: (event: AgentStreamEvent) => void;
+  handleAgentEvent: (event: AgentStreamEvent, source?: "live" | "replay") => void;
   /** Drop replay-hydrated stream buffers for turns that already finished. */
   clearReplayedStreamingState?: () => void;
 }
@@ -85,7 +85,7 @@ export function useResumeAgentRun({
   refs,
   actions,
 }: UseResumeAgentRunOptions) {
-  const { lastSeqByConversationRef } = refs;
+  const { resumeSeqByConversationRef } = refs;
   const {
     ensureAgentStreamSubscription,
     applyResumeSnapshot,
@@ -120,7 +120,7 @@ export function useResumeAgentRun({
         // overlapping root runs in the same conversation, this should become
         // a per-run cursor.
         const lastSeq =
-          lastSeqByConversationRef.current.get(activeConversationId) ?? 0;
+          resumeSeqByConversationRef.current.get(activeConversationId) ?? 0;
         const replay = await window.electronAPI!.agent.resumeConversationExecution({
           conversationId: activeConversationId,
           lastSeq,
@@ -135,7 +135,7 @@ export function useResumeAgentRun({
 
         for (const replayEvent of replay.events) {
           if (cancelled) return;
-          handleAgentEvent(replayEvent);
+          handleAgentEvent(replayEvent, "replay");
         }
 
         const resumedRunId = replay.activeRun?.runId ?? null;
@@ -184,6 +184,6 @@ export function useResumeAgentRun({
     clearReplayedStreamingState,
     ensureAgentStreamSubscription,
     handleAgentEvent,
-    lastSeqByConversationRef,
+    resumeSeqByConversationRef,
   ]);
 }

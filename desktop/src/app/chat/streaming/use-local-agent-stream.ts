@@ -94,6 +94,7 @@ export function useLocalAgentStream({
     storeState.activeRunIdByConversation,
   )
   const lastSeqByConversationRef = useRef(new Map<string, number>())
+  const resumeSeqByConversationRef = useRef(new Map<string, number>())
   const terminalRunIdsRef = useRef(new Set<string>())
   // Tracks per-run agent IDs that have reached a terminal lifecycle state.
   // Mirrors the persisted-event guard in `extractTasksFromEvents` so that
@@ -320,6 +321,7 @@ export function useLocalAgentStream({
    * conversation-switch effect below and by `resetStreamingState`.
    */
   const dropOverlaysForRun = useCallback((runId: string | null) => {
+    resetSmoothingBuffer()
     if (runId === null) {
       clearAssistantScrollFollow()
       setStreamingAssistants([])
@@ -328,7 +330,7 @@ export function useLocalAgentStream({
     setStreamingAssistants((current) =>
       current.filter((slot) => slot.runId !== runId),
     )
-  }, [])
+  }, [resetSmoothingBuffer])
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId
@@ -389,6 +391,7 @@ export function useLocalAgentStream({
       activeConversationIdRef,
       activeRunIdByConversationRef,
       lastSeqByConversationRef,
+      resumeSeqByConversationRef,
       terminalRunIdsRef,
       terminalTaskKeysRef,
       pendingRequestIdsRef,
@@ -433,7 +436,7 @@ export function useLocalAgentStream({
   useResumeAgentRun({
     activeConversationId,
     refs: {
-      lastSeqByConversationRef,
+      resumeSeqByConversationRef,
     },
     actions: {
       ensureAgentStreamSubscription,
