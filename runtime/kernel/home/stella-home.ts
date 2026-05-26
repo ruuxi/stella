@@ -4,6 +4,11 @@ import { promises as fs } from "fs";
 import { fileURLToPath } from "url";
 import type { App } from "electron";
 import { ensurePrivateDir } from "../shared/private-fs.js";
+import {
+  reconcileBundledSkills,
+  summarizeSkillsSync,
+  type SkillsSyncReport,
+} from "./skills-sync.js";
 
 export type StellaHome = {
   stellaRoot: string;
@@ -47,10 +52,12 @@ const copyPathIfMissing = async (sourcePath: string, targetPath: string) => {
   await fs.copyFile(sourcePath, targetPath);
 };
 
+// `skills/` is intentionally NOT a one-shot seed entry — it goes through
+// hash-history reconciliation in `skills-sync.ts` so shipped skill updates
+// reach existing users without trampling local edits.
 const STELLA_HOME_SEED_ENTRIES = [
   "DREAM.md",
   "registry.md",
-  "skills",
   path.join("outputs", "README.md"),
 ] as const;
 
@@ -84,7 +91,7 @@ export const resolveRuntimeStatePath = (
 export const ensureStellaHomeSeeded = async (
   stellaRoot: string,
   stellaHome: string,
-) => {
+): Promise<{ skillsSync: SkillsSyncReport }> => {
   await ensureDir(stellaHome);
   const seedPath = resolveBundledStellaHomeSeedPath(stellaRoot);
   for (const entry of STELLA_HOME_SEED_ENTRIES) {
@@ -94,6 +101,19 @@ export const ensureStellaHomeSeeded = async (
     }
     await copyPathIfMissing(sourcePath, path.join(stellaHome, entry));
   }
+
+  const bundledSkillsDir = path.join(seedPath, "skills");
+  const homeSkillsDir = path.join(stellaHome, "skills");
+  const skillsSync = await reconcileBundledSkills(
+    bundledSkillsDir,
+    homeSkillsDir,
+  );
+  const summary = summarizeSkillsSync(skillsSync);
+  if (summary !== "no-op") {
+    console.log(`[stella-home] skills sync: ${summary}`);
+  }
+
+  return { skillsSync };
 };
 
 export const resolveStellaHome = async (
