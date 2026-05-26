@@ -1,6 +1,9 @@
-import { createLazyFileRoute } from "@tanstack/react-router";
-import { AppsApp } from "@/app/apps/App";
+import { createLazyFileRoute, Outlet } from "@tanstack/react-router";
+
+function AppsLayout() {
+  return <Outlet />;
+}
 
 export const Route = createLazyFileRoute("/apps")({
-  component: AppsApp,
+  component: AppsLayout,
 });
