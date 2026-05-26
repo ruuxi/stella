@@ -153,7 +153,7 @@ type RuntimeAgentRecord = {
    *
    * Not "restart" — the long-lived `subagentSession` is reused; only
    * the outer `executeTask` invocation re-enters.
-  */
+   */
   interruptedForFollowUp: boolean;
   activeSelfModRunId?: string;
   terminalEventEmitted: boolean;
@@ -287,6 +287,9 @@ type LocalAgentManagerOpts = {
   ) => Promise<{ canceled: boolean }>;
   saveAgentRecord?: (record: PersistedAgentRecord) => void;
   getAgentRecord?: (threadId: string) => PersistedAgentRecord | null;
+  listAgentRecordsByStatus?: (
+    status: TaskLifecycleStatus,
+  ) => PersistedAgentRecord[];
   listActiveThreads?: (conversationId: string) => RuntimeThreadRecord[];
 };
 
@@ -418,6 +421,8 @@ const shouldLockNativeExternalEngineRun = (
 const AGENT_INPUT_INTERRUPT_ERROR = "Interrupted by agent input";
 export const AGENT_SHUTDOWN_CANCEL_REASON =
   "Canceled because Stella closed or restarted.";
+export const AGENT_ORPHANED_RESTART_CANCEL_REASON =
+  "Canceled because Stella restarted before the agent finished.";
 // Sentinel set by the orchestrator's pause_agent tool so the runner
 // can suppress the hidden `[Task canceled]` follow-up turn that would
 // otherwise replace the user-facing reply with an empty silence.
@@ -452,6 +457,22 @@ export class LocalAgentManager implements AgentToolApi {
   constructor(opts: LocalAgentManagerOpts) {
     this.opts = opts;
     this.defaultMaxConcurrent = Math.max(1, opts.maxConcurrent ?? 3);
+    this.cancelOrphanedPersistedAgents();
+  }
+
+  private cancelOrphanedPersistedAgents(): void {
+    const now = Date.now();
+    const runningRecords =
+      this.opts.listAgentRecordsByStatus?.("running") ?? [];
+    for (const record of runningRecords) {
+      this.opts.saveAgentRecord?.({
+        ...record,
+        status: "canceled",
+        completedAt: now,
+        error: AGENT_ORPHANED_RESTART_CANCEL_REASON,
+        updatedAt: now,
+      });
+    }
   }
 
   private consumeTaskMessages(
@@ -1326,10 +1347,7 @@ export class LocalAgentManager implements AgentToolApi {
         statusText: "Updating",
       });
 
-      if (
-        task.status === "running" &&
-        !task.controller.signal.aborted
-      ) {
+      if (task.status === "running" && !task.controller.signal.aborted) {
         // The follow-up is already in `toSubagentQueue` above. Aborting the
         // in-flight `runSubagent` ends the current assistant turn early so
         // `executeTask`'s post-run dispatch can re-enter via

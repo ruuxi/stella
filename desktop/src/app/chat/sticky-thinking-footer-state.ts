@@ -1,4 +1,5 @@
 import type { TaskItem } from "@/app/chat/lib/event-transforms";
+import { TASK_COMPLETION_INDICATOR_MS } from "@/app/chat/lib/event-transforms";
 import { getWorkingIndicatorDisplayStatus } from "./working-indicator-state";
 
 export const TASK_ROTATE_MS = 3000;
@@ -34,9 +35,19 @@ export function getStickyThinkingFooterState(args: {
   activeIndex: number;
   isStreaming?: boolean;
   status?: string | null;
+  nowMs?: number;
+  completionIndicatorMs?: number;
 }): StickyThinkingFooterState {
   const runningTasks = args.tasks.filter((task) => task.status === "running");
-  const completedTasks = args.tasks.filter((task) => task.status === "completed");
+  const nowMs = args.nowMs ?? Date.now();
+  const completionIndicatorMs =
+    args.completionIndicatorMs ?? TASK_COMPLETION_INDICATOR_MS;
+  const completedTasks = args.tasks.filter(
+    (task) =>
+      task.status === "completed" &&
+      typeof task.completedAtMs === "number" &&
+      nowMs - task.completedAtMs <= completionIndicatorMs,
+  );
   const displayTasks = runningTasks.length > 0 ? runningTasks : completedTasks;
   const activeTask =
     displayTasks.length > 0

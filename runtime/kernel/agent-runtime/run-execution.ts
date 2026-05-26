@@ -30,6 +30,18 @@ type RuntimeExecutableAgent = {
   abort: () => void;
 };
 
+const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 15 * 1000;
+
+const configuredTimeoutMs = (
+  envName: string,
+  fallbackMs: number,
+): number => {
+  const raw = process.env[envName]?.trim();
+  if (!raw) return fallbackMs;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
+};
+
 export const executeRuntimeAgentPrompt = async (args: {
   agent: RuntimeExecutableAgent;
   promptText?: string;
@@ -57,6 +69,37 @@ export const executeRuntimeAgentPrompt = async (args: {
 }): Promise<{ finalText: string; errorMessage?: string }> => {
   const abortHandler = () => args.agent.abort();
   args.abortSignal?.addEventListener("abort", abortHandler);
+
+  const idleTimeoutMs = configuredTimeoutMs(
+    "STELLA_AGENT_IDLE_TIMEOUT_MS",
+    DEFAULT_AGENT_IDLE_TIMEOUT_MS,
+  );
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let idleSettled = false;
+  let rejectIdle: (error: Error) => void = () => {};
+  const idleFailure = new Promise<never>((_, reject) => {
+    rejectIdle = reject;
+  });
+  const refreshIdleTimer = () => {
+    if (idleSettled) return;
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleSettled = true;
+      try {
+        args.agent.abort();
+      } catch {
+        // Best effort; the prompt race below owns surfacing the timeout.
+      }
+      rejectIdle(
+        new Error(
+          `Agent did not produce activity for ${Math.round(idleTimeoutMs / 1000)}s.`,
+        ),
+      );
+    }, idleTimeoutMs);
+    idleTimer.unref?.();
+  };
+  refreshIdleTimer();
+  const unsubscribeIdle = args.agent.subscribe(() => refreshIdleTimer());
 
   const unsubscribe = subscribeRuntimeAgentEvents({
     agent: args.agent,
@@ -128,7 +171,11 @@ export const executeRuntimeAgentPrompt = async (args: {
         });
       }
     }
-    await args.agent.prompt(promptMessages.map((message) => message.message));
+    const promptPromise = args.agent.prompt(
+      promptMessages.map((message) => message.message),
+    );
+    promptPromise.catch(() => undefined);
+    await Promise.race([promptPromise, idleFailure]);
     await args.onAfterPrompt?.();
     const completion = getAgentCompletion(args.agent);
 
@@ -137,9 +184,12 @@ export const executeRuntimeAgentPrompt = async (args: {
       finalText: completion.finalText.trim(),
     };
   } finally {
+    idleSettled = true;
+    if (idleTimer) clearTimeout(idleTimer);
     try {
       await args.onCleanup?.();
     } finally {
+      unsubscribeIdle();
       unsubscribe();
       args.abortSignal?.removeEventListener("abort", abortHandler);
     }

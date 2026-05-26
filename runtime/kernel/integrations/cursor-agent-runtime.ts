@@ -19,6 +19,7 @@ import type {
 } from "../../protocol/index.js";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_CURSOR_IDLE_TIMEOUT_MS = 15 * 1000;
 
 export type CursorAgentRuntimeEngine = AgentRuntimeEngine;
 
@@ -137,7 +138,10 @@ export const snapshotCursorWorktree = async (
   const entries = parseCursorGitStatus(status.stdout);
   const fingerprints = new Map<string, string | null>();
   for (const [key, entry] of entries) {
-    fingerprints.set(key, await fingerprintFile(root, statusKeyForEntry(entry)));
+    fingerprints.set(
+      key,
+      await fingerprintFile(root, statusKeyForEntry(entry)),
+    );
   }
   return { repoRoot: root, entries, fingerprints };
 };
@@ -192,7 +196,9 @@ export const diffCursorWorktreeSnapshots = (
       );
       changes.push({
         path: absolutePath,
-        kind: existsSync(absolutePath) ? { type: "update" } : { type: "delete" },
+        kind: existsSync(absolutePath)
+          ? { type: "update" }
+          : { type: "delete" },
       });
       continue;
     }
@@ -287,6 +293,117 @@ const statusTextFromMessage = (message: SDKMessage): string | null => {
   return null;
 };
 
+const cursorErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim()
+  ) {
+    return error.message.trim();
+  }
+  return String(error);
+};
+
+const configuredTimeoutMs = (
+  envName: string,
+  fallbackMs: number,
+): number => {
+  const raw = process.env[envName]?.trim();
+  if (!raw) return fallbackMs;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
+};
+
+export const isCursorSdkStreamError = (error: unknown): boolean => {
+  const message = cursorErrorMessage(error);
+  const code =
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+      ? error.code
+      : "";
+  if (
+    message.includes("NGHTTP2_FRAME_SIZE_ERROR") ||
+    message.includes("ERR_HTTP2_STREAM_ERROR") ||
+    code === "ERR_HTTP2_STREAM_ERROR" ||
+    message.includes("Stream closed with error code")
+  ) {
+    return true;
+  }
+  if (error instanceof Error && error.stack?.includes("@cursor/sdk")) {
+    return message.includes("stream") || message.includes("Stream");
+  }
+  return false;
+};
+
+const normalizeCursorAgentError = (error: unknown): Error => {
+  if (error instanceof Error && error.message === "Aborted") {
+    return error;
+  }
+  if (isCursorSdkStreamError(error)) {
+    return new Error(`Cursor stream failed: ${cursorErrorMessage(error)}`);
+  }
+  return error instanceof Error ? error : new Error(cursorErrorMessage(error));
+};
+
+let cursorSdkProcessGuardInstalled = false;
+let activeCursorSdkRuns = 0;
+let cursorSdkStreamErrorGraceUntil = 0;
+
+const shouldSuppressCursorSdkProcessError = (error: unknown): boolean =>
+  isCursorSdkStreamError(error) &&
+  (activeCursorSdkRuns > 0 || Date.now() < cursorSdkStreamErrorGraceUntil);
+
+const forwardFatalProcessError = (reason: unknown) => {
+  setImmediate(() => {
+    throw reason instanceof Error ? reason : new Error(cursorErrorMessage(reason));
+  });
+};
+
+const installCursorSdkProcessErrorGuard = () => {
+  if (cursorSdkProcessGuardInstalled) return;
+  cursorSdkProcessGuardInstalled = true;
+
+  process.prependListener("unhandledRejection", (reason) => {
+    if (shouldSuppressCursorSdkProcessError(reason)) {
+      process.stderr.write(
+        `[stella:cursor-sdk] suppressed background stream rejection: ${cursorErrorMessage(reason)}\n`,
+      );
+      return;
+    }
+    forwardFatalProcessError(reason);
+  });
+
+  process.prependListener("uncaughtException", (error) => {
+    if (shouldSuppressCursorSdkProcessError(error)) {
+      process.stderr.write(
+        `[stella:cursor-sdk] suppressed background stream exception: ${cursorErrorMessage(error)}\n`,
+      );
+      return;
+    }
+    forwardFatalProcessError(error);
+  });
+};
+
+export const withCursorSdkStreamErrorGuard = async <T>(
+  callback: () => Promise<T>,
+): Promise<T> => {
+  installCursorSdkProcessErrorGuard();
+  activeCursorSdkRuns += 1;
+  try {
+    return await callback();
+  } finally {
+    activeCursorSdkRuns = Math.max(0, activeCursorSdkRuns - 1);
+    cursorSdkStreamErrorGraceUntil = Date.now() + 5_000;
+  }
+};
+
 export const buildCursorAgentOptions = (args: {
   apiKey: string;
   model: AgentOptions["model"];
@@ -325,94 +442,145 @@ export const runCursorAgentTurn = async (request: {
     );
   }
 
-  const beforeSnapshot = await snapshotCursorWorktree(request.stellaRoot);
-  const { Agent } = await import("@cursor/sdk");
-  const model = {
-    id:
-      process.env.STELLA_CURSOR_MODEL?.trim() ||
-      (request.stellaHome
-        ? loadLocalPreferences(request.stellaHome).cursorModel
-        : DEFAULT_CURSOR_MODEL),
-  };
-  const agentOptions = buildCursorAgentOptions({
-    apiKey,
-    model,
-    cwd: request.cwd,
-  });
-  const agent = request.persistedSessionId
-    ? await Agent.resume(request.persistedSessionId, agentOptions)
-    : await Agent.create({
-        ...agentOptions,
-        name: "Stella General",
-        idempotencyKey: request.sessionKey,
+  return await withCursorSdkStreamErrorGuard(async () => {
+    const beforeSnapshot = await snapshotCursorWorktree(request.stellaRoot);
+    const idleTimeoutMs = configuredTimeoutMs(
+      "STELLA_CURSOR_IDLE_TIMEOUT_MS",
+      DEFAULT_CURSOR_IDLE_TIMEOUT_MS,
+    );
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let idleSettled = false;
+    let cancelCurrentRun: (() => void) | undefined;
+    let rejectIdle: (error: Error) => void = () => {};
+    const idleFailure = new Promise<never>((_, reject) => {
+      rejectIdle = reject;
+    });
+    const refreshCursorIdleTimer = () => {
+      if (idleSettled) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        idleSettled = true;
+        cancelCurrentRun?.();
+        rejectIdle(
+          new Error(
+            `Cursor did not produce activity for ${Math.round(idleTimeoutMs / 1000)}s.`,
+          ),
+        );
+      }, idleTimeoutMs);
+      idleTimer.unref?.();
+    };
+    const waitForCursorActivity = async <T>(promise: Promise<T>): Promise<T> => {
+      refreshCursorIdleTimer();
+      promise.catch(() => undefined);
+      return await Promise.race([promise, idleFailure]);
+    };
+
+    const { Agent } = await import("@cursor/sdk");
+    const model = {
+      id:
+        process.env.STELLA_CURSOR_MODEL?.trim() ||
+        (request.stellaHome
+          ? loadLocalPreferences(request.stellaHome).cursorModel
+          : DEFAULT_CURSOR_MODEL),
+    };
+    const agentOptions = buildCursorAgentOptions({
+      apiKey,
+      model,
+      cwd: request.cwd,
+    });
+    let agent: Awaited<ReturnType<typeof Agent.create>> | undefined;
+
+    try {
+      agent = request.persistedSessionId
+        ? await waitForCursorActivity(
+            Agent.resume(request.persistedSessionId, agentOptions),
+          )
+        : await waitForCursorActivity(
+            Agent.create({
+              ...agentOptions,
+              name: "Stella General",
+              idempotencyKey: request.sessionKey,
+            }),
+          );
+
+      const images = (request.attachments ?? [])
+        .map(cursorImageFromAttachment)
+        .filter((image): image is SDKImage => image !== null);
+      const run = await waitForCursorActivity(
+        agent.send(
+          images.length > 0 ? { text: request.prompt, images } : request.prompt,
+          { idempotencyKey: request.runId },
+        ),
+      );
+      const cancelOnAbort = () => {
+        void run.cancel().catch(() => undefined);
+      };
+      cancelCurrentRun = cancelOnAbort;
+      if (request.abortSignal?.aborted) {
+        cancelOnAbort();
+        throw new Error("Aborted");
+      }
+      request.abortSignal?.addEventListener("abort", cancelOnAbort, {
+        once: true,
       });
 
-  try {
-    const images = (request.attachments ?? [])
-      .map(cursorImageFromAttachment)
-      .filter((image): image is SDKImage => image !== null);
-    const run = await agent.send(
-      images.length > 0 ? { text: request.prompt, images } : request.prompt,
-      { idempotencyKey: request.runId },
-    );
-    const cancelOnAbort = () => {
-      void run.cancel().catch(() => undefined);
-    };
-    if (request.abortSignal?.aborted) {
-      cancelOnAbort();
-      throw new Error("Aborted");
-    }
-    request.abortSignal?.addEventListener("abort", cancelOnAbort, {
-      once: true,
-    });
-
-    let collected = "";
-    try {
-      for await (const message of run.stream()) {
-        if (request.abortSignal?.aborted) {
-          throw new Error("Aborted");
-        }
-        if (message.type === "assistant") {
-          for (const block of message.message.content) {
-            if (block.type !== "text") continue;
-            collected += block.text;
-            request.onStream?.(block.text);
-          }
-          continue;
-        }
-        const statusText = statusTextFromMessage(message);
-        if (statusText) {
-          request.onStatus?.(statusText);
-        }
-      }
-    } finally {
-      request.abortSignal?.removeEventListener("abort", cancelOnAbort);
-    }
-
-    const result = await run.wait();
-    if (result.status === "cancelled") {
-      throw new Error("Aborted");
-    }
-    if (result.status === "error") {
-      throw new Error(result.result || "Cursor run failed.");
-    }
-    const afterSnapshot = await snapshotCursorWorktree(request.stellaRoot);
-    const fileChanges = diffCursorWorktreeSnapshots(
-      beforeSnapshot,
-      afterSnapshot,
-    );
-    return {
-      text: (result.result ?? collected).trim(),
-      sessionId: agent.agentId,
-      ...(fileChanges.length > 0 ? { fileChanges } : {}),
-    };
-  } finally {
-    await agent[Symbol.asyncDispose]().catch(() => {
+      let collected = "";
       try {
-        agent.close();
-      } catch {
-        // Best effort.
+        const streamIterator = run.stream()[Symbol.asyncIterator]();
+        while (true) {
+          const next = await waitForCursorActivity(streamIterator.next());
+          if (next.done) break;
+          const message = next.value;
+          if (request.abortSignal?.aborted) {
+            throw new Error("Aborted");
+          }
+          if (message.type === "assistant") {
+            for (const block of message.message.content) {
+              if (block.type !== "text") continue;
+              collected += block.text;
+              request.onStream?.(block.text);
+            }
+            continue;
+          }
+          const statusText = statusTextFromMessage(message);
+          if (statusText) {
+            request.onStatus?.(statusText);
+          }
+        }
+      } finally {
+        request.abortSignal?.removeEventListener("abort", cancelOnAbort);
       }
-    });
-  }
+
+      const result = await waitForCursorActivity(run.wait());
+      if (result.status === "cancelled") {
+        throw new Error("Aborted");
+      }
+      if (result.status === "error") {
+        throw new Error(result.result || "Cursor run failed.");
+      }
+      const afterSnapshot = await snapshotCursorWorktree(request.stellaRoot);
+      const fileChanges = diffCursorWorktreeSnapshots(
+        beforeSnapshot,
+        afterSnapshot,
+      );
+      return {
+        text: (result.result ?? collected).trim(),
+        sessionId: agent.agentId,
+        ...(fileChanges.length > 0 ? { fileChanges } : {}),
+      };
+    } catch (error) {
+      throw normalizeCursorAgentError(error);
+    } finally {
+      idleSettled = true;
+      if (idleTimer) clearTimeout(idleTimer);
+      cancelCurrentRun = undefined;
+      await agent?.[Symbol.asyncDispose]().catch(() => {
+        try {
+          agent?.close();
+        } catch {
+          // Best effort.
+        }
+      });
+    }
+  });
 };

@@ -28,6 +28,8 @@ import {
 const MAX_STDERR_CAPTURE = 8_000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
+const DEFAULT_CODEX_REQUEST_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 15 * 1000;
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
 
 type JsonRpcId = number | string;
@@ -619,6 +621,17 @@ export const buildCodexTurnStartParams = (args: {
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
+  timeout?: ReturnType<typeof setTimeout>;
+};
+
+const configuredTimeoutMs = (
+  envName: string,
+  fallbackMs: number,
+): number => {
+  const raw = process.env[envName]?.trim();
+  if (!raw) return fallbackMs;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
 };
 
 class CodexAppServerClient {
@@ -694,14 +707,38 @@ class CodexAppServerClient {
     if (this.closedError) throw this.closedError;
     const id = this.nextId++;
     const promise = new Promise<T>((resolve, reject) => {
+      const timeoutMs = configuredTimeoutMs(
+        "STELLA_CODEX_REQUEST_TIMEOUT_MS",
+        DEFAULT_CODEX_REQUEST_TIMEOUT_MS,
+      );
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(
+          new Error(
+            `Codex app-server request ${method} timed out after ${Math.round(timeoutMs / 1000)}s.`,
+          ),
+        );
+      }, timeoutMs);
+      timeout.unref?.();
       this.pending.set(id, {
-        resolve: (value) => resolve(value as T),
-        reject,
+        resolve: (value) => {
+          clearTimeout(timeout);
+          resolve(value as T);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        timeout,
       });
     });
     try {
       this.write({ jsonrpc: "2.0", id, method, params });
     } catch (error) {
+      const pending = this.pending.get(id);
+      if (pending?.timeout) {
+        clearTimeout(pending.timeout);
+      }
       this.pending.delete(id);
       throw error;
     }
@@ -775,6 +812,9 @@ class CodexAppServerClient {
     const pending = this.pending.get(message.id);
     if (!pending) return;
     this.pending.delete(message.id);
+    if (pending.timeout) {
+      clearTimeout(pending.timeout);
+    }
     if (message.error) {
       pending.reject(
         new Error(
@@ -807,6 +847,9 @@ class CodexAppServerClient {
   private rejectAll(error: Error) {
     this.closedError = error;
     for (const pending of this.pending.values()) {
+      if (pending.timeout) {
+        clearTimeout(pending.timeout);
+      }
       pending.reject(error);
     }
     this.pending.clear();
@@ -965,13 +1008,33 @@ export const runCodexAgentTurn = async (request: {
   let turnFailure: string | null = null;
   let completed = false;
   let waitingForTurnCompletion = false;
+  let turnIdleTimer: ReturnType<typeof setTimeout> | undefined;
+  let refreshTurnIdleTimer: (() => void) | undefined;
 
   const client = await createInitializedCodexClient();
 
   const turnCompleted = new Promise<void>((resolve, reject) => {
+    refreshTurnIdleTimer = () => {
+      if (!waitingForTurnCompletion || completed) return;
+      if (turnIdleTimer) clearTimeout(turnIdleTimer);
+      const timeoutMs = configuredTimeoutMs(
+        "STELLA_CODEX_TURN_IDLE_TIMEOUT_MS",
+        DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS,
+      );
+      turnIdleTimer = setTimeout(() => {
+        reject(
+          new Error(
+            `Codex app-server did not report turn progress for ${Math.round(timeoutMs / 1000)}s.`,
+          ),
+        );
+        client.abort();
+      }, timeoutMs);
+      turnIdleTimer.unref?.();
+    };
     client.onNotification((notification) => {
       if (!threadId) return;
       if (!isNotificationForTurn(notification, threadId, turnId)) return;
+      refreshTurnIdleTimer?.();
       switch (notification.method) {
         case "turn/started":
           turnId = notification.params.turn.id;
@@ -1034,6 +1097,7 @@ export const runCodexAgentTurn = async (request: {
     });
 
     client.onRequest(async (message) => {
+      refreshTurnIdleTimer?.();
       if (message.method === "item/tool/call") {
         const params = message.params as CodexDynamicToolCallParams;
         if (!request.executeTool) {
@@ -1055,6 +1119,7 @@ export const runCodexAgentTurn = async (request: {
           toolArgs,
           request.abortSignal,
           (update) => {
+            refreshTurnIdleTimer?.();
             request.onToolUpdate?.({
               toolCallId: params.callId,
               toolName,
@@ -1064,6 +1129,7 @@ export const runCodexAgentTurn = async (request: {
             if (statusText) request.onStatus?.(statusText);
           },
         );
+        refreshTurnIdleTimer?.();
         appendUniqueFileChanges(fileChanges, toolResult.fileChanges ?? []);
         return {
           contentItems: [
@@ -1131,6 +1197,7 @@ export const runCodexAgentTurn = async (request: {
     }
 
     waitingForTurnCompletion = true;
+    refreshTurnIdleTimer?.();
     await turnCompleted;
 
     const snapshotAfter =
@@ -1164,6 +1231,7 @@ export const runCodexAgentTurn = async (request: {
       ...(fileChanges.length ? { fileChanges } : {}),
     };
   } finally {
+    if (turnIdleTimer) clearTimeout(turnIdleTimer);
     request.abortSignal?.removeEventListener("abort", abortHandler);
     client.close();
     if (cleanupDir) fs.rmSync(cleanupDir, { recursive: true, force: true });

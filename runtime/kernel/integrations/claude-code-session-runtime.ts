@@ -28,6 +28,7 @@ const SIGKILL_TIMEOUT_MS = 4_000;
 const MAX_STDERR_CAPTURE = 4_000;
 const MAX_TOOL_STEPS = 64;
 const MAX_TOOL_RESULT_CHARS = 80_000;
+const DEFAULT_STEP_IDLE_TIMEOUT_MS = 15 * 1000;
 const CLAUDE_CODE_COMPACTING_TEXT = "Compacting context";
 const CLAUDE_CODE_RUNNING_TEXT = "Working";
 
@@ -122,6 +123,7 @@ type PendingStructuredPrompt = {
   reject: (reason?: unknown) => void;
   emitStreamDelta: (event: Record<string, unknown>) => void;
   abortListener?: () => void;
+  idleTimer?: ReturnType<typeof setTimeout>;
 };
 
 type ClaudeCodeStreamingProcess = {
@@ -169,6 +171,16 @@ const isSessionAlreadyInUseError = (message: string): boolean =>
 
 const isMissingResumeSessionError = (message: string): boolean =>
   /No conversation found with session ID:/i.test(message);
+
+const configuredTimeoutMs = (
+  envName: string,
+  fallbackMs: number,
+): number => {
+  const raw = process.env[envName]?.trim();
+  if (!raw) return fallbackMs;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
+};
 
 const killProcess = (child: ChildProcessWithoutNullStreams) => {
   if (child.killed || child.exitCode !== null) return;
@@ -873,6 +885,12 @@ class ClaudeCodeSessionRuntime {
     session.process = processState;
     this.activeProcesses.set(request.sessionKey, child);
 
+    const refreshPendingIdleTimers = () => {
+      for (const pending of processState.pending) {
+        this.refreshPendingIdleTimer(processState, pending);
+      }
+    };
+
     const consumeStdout = (flush = false) => {
       const segments = flush ? [processState.stdoutBuffer] : processState.stdoutBuffer.split("\n");
       const completeSegments = flush ? segments : segments.slice(0, -1);
@@ -925,10 +943,12 @@ class ClaudeCodeSessionRuntime {
 
     child.stdout.on("data", (chunk: Buffer) => {
       processState.stdoutBuffer += chunk.toString("utf8");
+      refreshPendingIdleTimers();
       consumeStdout(false);
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
+      refreshPendingIdleTimers();
       if (processState.stderrText.length >= MAX_STDERR_CAPTURE) return;
       processState.stderrText += chunk.toString("utf8");
       if (processState.stderrText.length > MAX_STDERR_CAPTURE) {
@@ -993,6 +1013,7 @@ class ClaudeCodeSessionRuntime {
         reject,
         emitStreamDelta: createClaudeCodeStreamEmitter(request.onStream),
       };
+      this.refreshPendingIdleTimer(processState, pending);
       if (request.abortSignal) {
         pending.abortListener = () => abortProcess(processState.child);
         if (request.abortSignal.aborted) {
@@ -1030,12 +1051,43 @@ class ClaudeCodeSessionRuntime {
   }
 
   private detachAbortListener(pending: PendingStructuredPrompt): void {
+    if (pending.idleTimer) {
+      clearTimeout(pending.idleTimer);
+      pending.idleTimer = undefined;
+    }
     if (pending.abortListener && pending.request.abortSignal) {
       pending.request.abortSignal.removeEventListener(
         "abort",
         pending.abortListener,
       );
     }
+  }
+
+  private refreshPendingIdleTimer(
+    processState: ClaudeCodeStreamingProcess,
+    pending: PendingStructuredPrompt,
+  ): void {
+    if (pending.idleTimer) {
+      clearTimeout(pending.idleTimer);
+    }
+    const timeoutMs = configuredTimeoutMs(
+      "STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS",
+      DEFAULT_STEP_IDLE_TIMEOUT_MS,
+    );
+    pending.idleTimer = setTimeout(() => {
+      const index = processState.pending.indexOf(pending);
+      if (index >= 0) {
+        processState.pending.splice(index, 1);
+      }
+      this.detachAbortListener(pending);
+      abortProcess(processState.child);
+      pending.reject(
+        new Error(
+          `Claude Code did not produce output for ${Math.round(timeoutMs / 1000)}s.`,
+        ),
+      );
+    }, timeoutMs);
+    pending.idleTimer.unref?.();
   }
 
   private parseStructuredResultPayload(

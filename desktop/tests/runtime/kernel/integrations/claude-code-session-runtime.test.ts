@@ -457,6 +457,47 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
+  it("fails a silent Claude Code process instead of hanging", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-silent-"));
+    const binDir = path.join(dir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "process.stdin.resume();",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousTimeout = process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS = "25";
+    try {
+      await expect(
+        runClaudeCodeTurn({
+          runId: "run-silent",
+          sessionKey: `test:silent:${Date.now()}`,
+          prompt: "Hello.",
+          modelId: "claude-code/default",
+          tools: [],
+          executeTool: async () => ({ result: "unused" }),
+        }),
+      ).rejects.toThrow("Claude Code did not produce output");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousTimeout === undefined) {
+        delete process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS = previousTimeout;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to a fresh Claude Code session when the stored resume id is missing", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-resume-"));
     const binDir = path.join(dir, "bin");

@@ -220,6 +220,45 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("fails when Codex app-server starts but never responds", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-codex-silent-"));
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        "process.stdin.resume();",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const previousTimeout = process.env.STELLA_CODEX_REQUEST_TIMEOUT_MS;
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    process.env.STELLA_CODEX_REQUEST_TIMEOUT_MS = "25";
+    try {
+      await expect(
+        runCodexAgentTurn({
+          runId: "run-silent-codex",
+          sessionKey: "session-silent-codex",
+          prompt: "hello",
+        }),
+      ).rejects.toThrow("Codex app-server request initialize timed out");
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      if (previousTimeout === undefined) {
+        delete process.env.STELLA_CODEX_REQUEST_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_CODEX_REQUEST_TIMEOUT_MS = previousTimeout;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("normalizes Codex file_change items to Stella file changes", () => {
     const changes = fileChangesFromCodexItem(
       {

@@ -2625,6 +2625,68 @@ export class SessionStore {
     };
   }
 
+  listAgentRecordsByStatus(
+    status: PersistedAgentRecord["status"],
+  ): PersistedAgentRecord[] {
+    const rows = this.db.prepare(`
+      SELECT
+        thread_id,
+        conversation_id,
+        agent_type,
+        description,
+        agent_depth,
+        max_agent_depth,
+        parent_agent_id,
+        self_mod_metadata_json,
+        status,
+        started_at,
+        completed_at,
+        result,
+        error,
+        updated_at
+      FROM runtime_agents
+      WHERE status = ?
+      ORDER BY updated_at DESC, thread_id ASC
+    `).all(status) as Array<{
+      thread_id: string;
+      conversation_id: string;
+      agent_type: string;
+      description: string;
+      agent_depth: number;
+      max_agent_depth: number | null;
+      parent_agent_id: string | null;
+      self_mod_metadata_json: string | null;
+      status: PersistedAgentRecord["status"];
+      started_at: number;
+      completed_at: number | null;
+      result: string | null;
+      error: string | null;
+      updated_at: number;
+    }>;
+
+    return rows.map((row) => {
+      const selfModMetadata = parseJsonValue<PersistedAgentRecord["selfModMetadata"]>(
+        row.self_mod_metadata_json,
+      );
+      return {
+        threadId: row.thread_id,
+        conversationId: row.conversation_id,
+        agentType: row.agent_type,
+        description: row.description,
+        agentDepth: row.agent_depth,
+        ...(row.max_agent_depth == null ? {} : { maxAgentDepth: row.max_agent_depth }),
+        ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+        ...(selfModMetadata ? { selfModMetadata } : {}),
+        status: row.status,
+        startedAt: row.started_at,
+        completedAt: row.completed_at,
+        ...(row.result ? { result: row.result } : {}),
+        ...(row.error ? { error: row.error } : {}),
+        updatedAt: row.updated_at,
+      };
+    });
+  }
+
   getOrchestratorReminderState(conversationId: string): {
     shouldInjectDynamicReminder: boolean;
     reminderTokensSinceLastInjection: number;

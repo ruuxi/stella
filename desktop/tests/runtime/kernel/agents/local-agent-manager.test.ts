@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { LocalAgentManager } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
+import {
+  AGENT_ORPHANED_RESTART_CANCEL_REASON,
+  LocalAgentManager,
+} from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { AgentLifecycleEvent } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type {
   ToolContext,
@@ -12,6 +15,59 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 describe("LocalAgentManager Exec fs locking", () => {
+  it("cancels persisted running agents left behind by a previous worker", () => {
+    const savedRecords: Parameters<
+      NonNullable<
+        ConstructorParameters<typeof LocalAgentManager>[0]["saveAgentRecord"]
+      >
+    >[0][] = [];
+
+    new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => ({
+        runId: args.runId,
+        result: "unused",
+      }),
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+      listAgentRecordsByStatus: (status) =>
+        status === "running"
+          ? [
+              {
+                threadId: "task-8",
+                conversationId: "conv-1",
+                agentType: "general",
+                description: "stale cursor task",
+                agentDepth: 0,
+                status: "running",
+                startedAt: 123,
+                completedAt: null,
+                updatedAt: 456,
+              },
+            ]
+          : [],
+      saveAgentRecord: (record) => {
+        savedRecords.push(record);
+      },
+    });
+
+    expect(savedRecords).toHaveLength(1);
+    expect(savedRecords[0]).toMatchObject({
+      threadId: "task-8",
+      status: "canceled",
+      completedAt: expect.any(Number),
+      error: AGENT_ORPHANED_RESTART_CANCEL_REASON,
+    });
+  });
+
   it("emits completed terminal events with the agent result and file changes", async () => {
     const events: AgentLifecycleEvent[] = [];
     const manager = new LocalAgentManager({
@@ -65,6 +121,53 @@ describe("LocalAgentManager Exec fs locking", () => {
             kind: { type: "update" },
           },
         ],
+      }),
+    );
+  });
+
+  it("emits failed terminal events when an engine turn throws", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async () => {
+        throw new Error("engine transport failed");
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        events.push(event);
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "broken engine task",
+      prompt: "do work",
+      agentType: "general",
+      storageMode: "local",
+    });
+
+    await waitForAgentSettled(manager, task.threadId);
+
+    await expect(manager.getAgent(task.threadId)).resolves.toMatchObject({
+      status: "error",
+      error: "engine transport failed",
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "agent-failed",
+        conversationId: "conv-1",
+        agentId: task.threadId,
+        agentType: "general",
+        error: "engine transport failed",
       }),
     );
   });
