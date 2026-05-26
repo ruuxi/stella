@@ -20,7 +20,14 @@
  * room when the user expands the panel.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { MoreHorizontal, RefreshCw, RotateCcw } from "lucide-react";
 import {
@@ -88,7 +95,9 @@ type CodexReasoningEffort =
   | "high"
   | "xhigh";
 
-type CodexReasoningPreference = Exclude<CodexReasoningEffort, "none"> | "default";
+type CodexReasoningPreference =
+  | Exclude<CodexReasoningEffort, "none">
+  | "default";
 
 type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";
 
@@ -171,7 +180,11 @@ const ENGINE_OPTIONS: ReadonlyArray<{
   { id: "default", label: "Stella", hint: "Built-in runtime" },
   { id: "cursor_sdk", label: "Cursor", hint: "Bring your API key" },
   { id: "codex_cli", label: "Codex", hint: "Uses Codex app-server" },
-  { id: "claude_code_local", label: "Claude Code", hint: "Uses your Claude CLI" },
+  {
+    id: "claude_code_local",
+    label: "Claude Code",
+    hint: "Uses your Claude CLI",
+  },
 ];
 
 const REASONING_OPTIONS: ReadonlyArray<{
@@ -304,7 +317,9 @@ const getPopoverAgents = (
   }>,
 ): ReadonlyArray<{ key: string; label: string; desc: string }> => {
   if (engine === "cursor_sdk") {
-    return configurableAgents.filter((entry) => entry.key !== GENERAL_AGENT_KEY);
+    return configurableAgents.filter(
+      (entry) => entry.key !== GENERAL_AGENT_KEY,
+    );
   }
   return configurableAgents;
 };
@@ -370,14 +385,10 @@ export function EngineTabContent() {
   const [claudeCodeModels, setClaudeCodeModels] = useState<
     ClaudeCodeModelOption[]
   >([]);
-  const [claudeCodeModelsLoading, setClaudeCodeModelsLoading] =
-    useState(false);
+  const [claudeCodeModelsLoading, setClaudeCodeModelsLoading] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
-  const [cursorModelDraft, setCursorModelDraft] = useState(DEFAULT_CURSOR_MODEL);
-  const [codexModelDraft, setCodexModelDraft] = useState(DEFAULT_CODEX_MODEL);
-  const [claudeCodeModelDraft, setClaudeCodeModelDraft] = useState(
-    DEFAULT_CLAUDE_CODE_MODEL,
-  );
+  const [cursorModelDraft, setCursorModelDraft] =
+    useState(DEFAULT_CURSOR_MODEL);
   const [loading, setLoading] = useState(() => cachedPreferences === null);
   const [saving, setSaving] = useState<SavingKind>(null);
   const [status, setStatus] = useState<Status | null>(null);
@@ -440,17 +451,7 @@ export function EngineTabContent() {
       setPreferences(next);
       if (resetEngineDrafts) {
         setCursorModelDraft((current) =>
-          current === next.cursorModel
-            ? current
-            : next.cursorModel,
-        );
-        setCodexModelDraft((current) =>
-          current === next.codexModel
-            ? current
-            : next.codexModel,
-        );
-        setClaudeCodeModelDraft((current) =>
-          current === next.claudeCodeModel ? current : next.claudeCodeModel,
+          current === next.cursorModel ? current : next.cursorModel,
         );
       }
     },
@@ -477,8 +478,7 @@ export function EngineTabContent() {
       try {
         const saved =
           await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
-        const next =
-          (saved as LocalModelPreferences | undefined) ?? optimistic;
+        const next = (saved as LocalModelPreferences | undefined) ?? optimistic;
         cachedPreferences = next;
         setPreferences(next);
         notifyPrefsChanged();
@@ -526,8 +526,7 @@ export function EngineTabContent() {
   const loadClaudeCodeModels = useCallback(async () => {
     setClaudeCodeModelsLoading(true);
     try {
-      const result =
-        await window.electronAPI?.system?.listClaudeCodeModels?.();
+      const result = await window.electronAPI?.system?.listClaudeCodeModels?.();
       setClaudeCodeModels(result?.models ?? []);
       claudeCodeModelsLoadedRef.current = true;
     } catch (caught) {
@@ -661,7 +660,8 @@ export function EngineTabContent() {
   const saveCursorModel = useCallback(
     async (modelId?: string) => {
       if (!preferences) return;
-      const nextModel = (modelId ?? cursorModelDraft).trim() || DEFAULT_CURSOR_MODEL;
+      const nextModel =
+        (modelId ?? cursorModelDraft).trim() || DEFAULT_CURSOR_MODEL;
       if (nextModel === preferences.cursorModel) return;
       const next = await writePreferences(
         { cursorModel: nextModel },
@@ -673,49 +673,6 @@ export function EngineTabContent() {
       }
     },
     [cursorModelDraft, preferences, showNotice, writePreferences],
-  );
-
-  const saveCodexModel = useCallback(
-    async (modelId?: string) => {
-      if (!preferences) return;
-      const nextModel = (modelId ?? codexModelDraft).trim() || DEFAULT_CODEX_MODEL;
-      const nextModelOption = codexModels.find(
-        (model) => model.id === nextModel || model.model === nextModel,
-      );
-      const resetReasoning =
-        preferences.codexReasoningEffort !== "default" &&
-        !modelSupportsReasoning(
-          nextModelOption,
-          preferences.codexReasoningEffort,
-        );
-      if (
-        nextModel === preferences.codexModel &&
-        (!resetReasoning ||
-          preferences.codexReasoningEffort === DEFAULT_CODEX_REASONING)
-      ) {
-        return;
-      }
-      const next = await writePreferences(
-        {
-          codexModel: nextModel,
-          ...(resetReasoning
-            ? { codexReasoningEffort: DEFAULT_CODEX_REASONING }
-            : {}),
-        },
-        "codex-model",
-      );
-      if (next) {
-        setCodexModelDraft(next.codexModel);
-        showNotice("Codex model saved");
-      }
-    },
-    [
-      codexModelDraft,
-      codexModels,
-      preferences,
-      showNotice,
-      writePreferences,
-    ],
   );
 
   const saveCodexReasoning = useCallback(
@@ -732,33 +689,12 @@ export function EngineTabContent() {
     [preferences, showNotice, writePreferences],
   );
 
-  const saveClaudeCodeModel = useCallback(
-    async (modelId?: string) => {
-      if (!preferences) return;
-      const nextModel =
-        (modelId ?? claudeCodeModelDraft).trim() ||
-        DEFAULT_CLAUDE_CODE_MODEL;
-      if (nextModel === preferences.claudeCodeModel) return;
-      const next = await writePreferences(
-        { claudeCodeModel: nextModel },
-        "claude-code-model",
-      );
-      if (next) {
-        setClaudeCodeModelDraft(next.claudeCodeModel);
-        showNotice("Claude Code model saved");
-      }
-    },
-    [claudeCodeModelDraft, preferences, showNotice, writePreferences],
-  );
-
   /* ── render ─────────────────────────────────────────────────── */
 
   const subtitle = useMemo(() => {
     if (loading && !preferences) return "Loading…";
     if (selectedEngine === "cursor_sdk")
-      return hasCursorApiKey
-        ? "Cursor ready"
-        : "Add a Cursor key to continue";
+      return hasCursorApiKey ? "Cursor ready" : "Add a Cursor key to continue";
     if (selectedEngine === "codex_cli") return "Runs Codex app-server";
     if (selectedEngine === "claude_code_local")
       return "Runs your local Claude Code CLI";
@@ -814,46 +750,22 @@ export function EngineTabContent() {
           hasCursorApiKey={hasCursorApiKey}
           cursorModels={cursorModels}
           cursorModelsLoading={modelsLoading}
-          codexModels={codexModels}
-          codexModelsLoading={codexModelsLoading}
-          claudeCodeModels={claudeCodeModels}
-          claudeCodeModelsLoading={claudeCodeModelsLoading}
           selectedCursorModelId={
             preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL
-          }
-          selectedCodexModelId={
-            preferences?.codexModel ?? DEFAULT_CODEX_MODEL
           }
           selectedCodexReasoning={
             preferences?.codexReasoningEffort ?? DEFAULT_CODEX_REASONING
           }
-          selectedClaudeCodeModelId={
-            preferences?.claudeCodeModel ?? DEFAULT_CLAUDE_CODE_MODEL
-          }
           selectedCodexModel={selectedCodexModel}
           apiKeyDraft={apiKeyDraft}
           cursorModelDraft={cursorModelDraft}
-          codexModelDraft={codexModelDraft}
-          claudeCodeModelDraft={claudeCodeModelDraft}
-          codexModelSaved={preferences?.codexModel ?? DEFAULT_CODEX_MODEL}
-          claudeCodeModelSaved={
-            preferences?.claudeCodeModel ?? DEFAULT_CLAUDE_CODE_MODEL
-          }
           onApiKeyDraftChange={setApiKeyDraft}
           onCursorModelDraftChange={setCursorModelDraft}
-          onCodexModelDraftChange={setCodexModelDraft}
-          onClaudeCodeModelDraftChange={setClaudeCodeModelDraft}
           onSaveApiKey={() => void saveCursorApiKey()}
           onPickCursorModel={(id) => void saveCursorModel(id)}
-          onPickCodexModel={(id) => void saveCodexModel(id)}
           onPickCodexReasoning={(effort) => void saveCodexReasoning(effort)}
-          onPickClaudeCodeModel={(id) => void saveClaudeCodeModel(id)}
           onSaveCursorManualModel={() => void saveCursorModel()}
-          onSaveCodexModel={() => void saveCodexModel()}
-          onSaveClaudeCodeModel={() => void saveClaudeCodeModel()}
           onRefreshCursorModels={() => void loadCursorModels()}
-          onRefreshCodexModels={() => void loadCodexModels()}
-          onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
         />
 
         <ModelsSection
@@ -887,36 +799,18 @@ interface EngineByokBlockProps {
   hasCursorApiKey: boolean;
   cursorModels: CursorModelOption[];
   cursorModelsLoading: boolean;
-  codexModels: CodexModelOption[];
-  codexModelsLoading: boolean;
-  claudeCodeModels: ClaudeCodeModelOption[];
-  claudeCodeModelsLoading: boolean;
   selectedCursorModelId: string;
-  selectedCodexModelId: string;
   selectedCodexReasoning: CodexReasoningPreference;
-  selectedClaudeCodeModelId: string;
   selectedCodexModel?: CodexModelOption;
   apiKeyDraft: string;
   cursorModelDraft: string;
-  codexModelDraft: string;
-  claudeCodeModelDraft: string;
-  codexModelSaved: string;
-  claudeCodeModelSaved: string;
   onApiKeyDraftChange: (value: string) => void;
   onCursorModelDraftChange: (value: string) => void;
-  onCodexModelDraftChange: (value: string) => void;
-  onClaudeCodeModelDraftChange: (value: string) => void;
   onSaveApiKey: () => void;
   onPickCursorModel: (id: string) => void;
-  onPickCodexModel: (id: string) => void;
   onPickCodexReasoning: (effort: CodexReasoningPreference) => void;
-  onPickClaudeCodeModel: (id: string) => void;
   onSaveCursorManualModel: () => void;
-  onSaveCodexModel: () => void;
-  onSaveClaudeCodeModel: () => void;
   onRefreshCursorModels: () => void;
-  onRefreshCodexModels: () => void;
-  onRefreshClaudeCodeModels: () => void;
 }
 
 function EngineByokBlock({
@@ -926,43 +820,21 @@ function EngineByokBlock({
   hasCursorApiKey,
   cursorModels,
   cursorModelsLoading,
-  codexModels,
-  codexModelsLoading,
-  claudeCodeModels,
-  claudeCodeModelsLoading,
   selectedCursorModelId,
-  selectedCodexModelId,
   selectedCodexReasoning,
-  selectedClaudeCodeModelId,
   selectedCodexModel,
   apiKeyDraft,
   cursorModelDraft,
-  codexModelDraft,
-  claudeCodeModelDraft,
-  codexModelSaved,
-  claudeCodeModelSaved,
   onApiKeyDraftChange,
   onCursorModelDraftChange,
-  onCodexModelDraftChange,
-  onClaudeCodeModelDraftChange,
   onSaveApiKey,
   onPickCursorModel,
-  onPickCodexModel,
   onPickCodexReasoning,
-  onPickClaudeCodeModel,
   onSaveCursorManualModel,
-  onSaveCodexModel,
-  onSaveClaudeCodeModel,
   onRefreshCursorModels,
-  onRefreshCodexModels,
-  onRefreshClaudeCodeModels,
 }: EngineByokBlockProps) {
   const inputsDisabled = loading || saving !== null;
-  const cursorModelChanged =
-    cursorModelDraft.trim() !== selectedCursorModelId;
-  const codexModelChanged = codexModelDraft.trim() !== codexModelSaved;
-  const claudeCodeModelChanged =
-    claudeCodeModelDraft.trim() !== claudeCodeModelSaved;
+  const cursorModelChanged = cursorModelDraft.trim() !== selectedCursorModelId;
   const apiKeyButtonLabel = apiKeyDraft.trim()
     ? "Save"
     : hasCursorApiKey
@@ -970,11 +842,9 @@ function EngineByokBlock({
       : "Save";
   const codexReasoningOptions = [
     DEFAULT_CODEX_REASONING,
-    ...(
-      selectedCodexModel?.supportedReasoningEfforts
-        .map((option) => option.reasoningEffort)
-        .filter(isCodexReasoningPreference) ?? FALLBACK_CODEX_REASONING_OPTIONS
-    ),
+    ...(selectedCodexModel?.supportedReasoningEfforts
+      .map((option) => option.reasoningEffort)
+      .filter(isCodexReasoningPreference) ?? FALLBACK_CODEX_REASONING_OPTIONS),
   ].filter(
     (effort, index, all): effort is CodexReasoningPreference =>
       all.indexOf(effort) === index &&
@@ -993,10 +863,7 @@ function EngineByokBlock({
     return (
       <div className="engine-tab__byok" key="cursor_sdk">
         <div className="engine-tab__row">
-          <label
-            className="engine-tab__label"
-            htmlFor="engine-cursor-key"
-          >
+          <label className="engine-tab__label" htmlFor="engine-cursor-key">
             API key
           </label>
           <div className="engine-tab__field-row">
@@ -1086,9 +953,7 @@ function EngineByokBlock({
                 type="button"
                 className="pill-btn pill-btn--primary"
                 disabled={
-                  loading ||
-                  saving === "cursor-model" ||
-                  !cursorModelChanged
+                  loading || saving === "cursor-model" || !cursorModelChanged
                 }
                 onClick={onSaveCursorManualModel}
               >
@@ -1235,8 +1100,7 @@ function ModelsSection({
       claudeCodeModels.map((model) => ({
         id: model.id,
         label: model.displayName || model.id,
-        subtitle:
-          model.source === "alias" ? "Claude Code alias" : model.id,
+        subtitle: model.source === "alias" ? "Claude Code alias" : model.id,
       })),
     [claudeCodeModels],
   );
@@ -1550,8 +1414,7 @@ function ModelsSection({
 
   /* ── render ──────────────────────────────────────────────── */
 
-  const orchestratorCurrent =
-    overrides.orchestrator ?? overrides.general ?? "";
+  const orchestratorCurrent = overrides.orchestrator ?? overrides.general ?? "";
 
   const engineScopeNote =
     selectedEngine === "cursor_sdk"
@@ -1715,9 +1578,7 @@ function ModelsSection({
               onSelectStellaSubProvider={(sub) =>
                 void onVoiceSubProviderSelect(sub)
               }
-              onSelectInworldSpeed={(speed) =>
-                void onInworldSpeedSelect(speed)
-              }
+              onSelectInworldSpeed={(speed) => void onInworldSpeedSelect(speed)}
               disabled={inputsDisabled}
             />
           </div>
@@ -1735,9 +1596,7 @@ function ModelsSection({
           onApply={(agents, effort) =>
             void applyAssignment(assignment.modelId, agents, effort)
           }
-          onApplyToAll={(effort) =>
-            void applyToAll(assignment.modelId, effort)
-          }
+          onApplyToAll={(effort) => void applyToAll(assignment.modelId, effort)}
           onClose={closeAssignment}
         />
       ) : null}
@@ -1804,10 +1663,7 @@ function ConnectedProvidersSection() {
         {connectedProviders.map((provider) => {
           const isRemoving = removingProvider === provider.key;
           return (
-            <li
-              key={provider.key}
-              className="engine-tab__connected-row"
-            >
+            <li key={provider.key} className="engine-tab__connected-row">
               <div className="engine-tab__connected-info">
                 <span className="engine-tab__connected-label">
                   {provider.label}
@@ -1981,10 +1837,7 @@ function AssignmentPopover({
       >
         <header className="engine-tab__assign-head">
           <span className="engine-tab__assign-kicker">Apply</span>
-          <span
-            className="engine-tab__assign-title"
-            title={modelDisplayName}
-          >
+          <span className="engine-tab__assign-title" title={modelDisplayName}>
             {modelDisplayName}
           </span>
         </header>
