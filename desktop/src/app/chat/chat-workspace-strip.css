@@ -1,6 +1,7 @@
 /* Right-side workspace strip rendered next to the active chat surface.
-   Each section uses the shared tint-only panel surface (no
-   backdrop-filter). No divider between the strip and main content. */
+   One outlined panel that houses every section; sections inside are
+   separated by thin horizontal dividers (no per-section border). No
+   divider between the strip and main content. */
 
 .chat-workspace-strip {
   --chat-workspace-strip-width: 320px;
@@ -8,15 +9,6 @@
   --chat-workspace-strip-inset-right: 10px;
   --chat-workspace-strip-inset-left: 0;
   --chat-workspace-strip-inset-bottom: 10px;
-  /* iOS-canonical decelerate. (0.32, 0.72, 0, 1) starts moving on frame
-     one (no leading flat region) and settles smoothly — the same family
-     of curves SwiftUI uses for sheet presentations. */
-  --chat-workspace-strip-panel-ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --chat-workspace-strip-panel-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
-  /* Asymmetric durations: opens slower (settling motion), closes faster
-     (decisive dismiss). Matches macOS sidebar / Finder disclosure feel. */
-  --chat-workspace-strip-panel-duration-open: 420ms;
-  --chat-workspace-strip-panel-duration-close: 300ms;
   flex: 0 0 auto;
   align-self: stretch;
   width: var(--chat-workspace-strip-width);
@@ -49,6 +41,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   padding: var(--chat-workspace-strip-inset-top)
     var(--chat-workspace-strip-inset-right)
     var(--chat-workspace-strip-inset-bottom)
@@ -80,29 +74,9 @@
   padding-top: 20px;
 }
 
-.chat-workspace-strip__scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: hidden;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  /* No `gap` — section reveals manage their own margin so hidden panels
-     don't leave a gap-shaped void in the stack. */
-  padding: 3px 4px 2px 0;
-  mask-image: none;
-  -webkit-mask-image: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace-strip,
-  .chat-workspace-strip__inner,
-  .chat-workspace-strip__scroll,
-  .chat-workspace-strip__card-body-grow,
-  .chat-workspace-strip__card-body,
-  .chat-workspace-strip__card-chevron,
-  .chat-workspace-strip__section-reveal,
-  .chat-workspace-strip__section-reveal-inner {
+  .chat-workspace-strip__inner {
     transition: none;
   }
 
@@ -129,189 +103,171 @@
   }
 }
 
-/* ── Section reveal (toggled via Open card toolbar) ───────────────── */
+/* ── Single outer panel ───────────────────────────────────────────── */
 
-.chat-workspace-strip__section-reveal {
-  display: grid;
-  grid-template-rows: 0fr;
-  margin-top: 0;
-  transition:
-    grid-template-rows var(--chat-workspace-strip-panel-duration-close)
-      var(--chat-workspace-strip-panel-ease-out),
-    margin-top var(--chat-workspace-strip-panel-duration-close)
-      var(--chat-workspace-strip-panel-ease-out);
-}
-
-.chat-workspace-strip__section-reveal[data-visible] {
-  grid-template-rows: 1fr;
-  margin-top: 16px;
-  transition:
-    grid-template-rows var(--chat-workspace-strip-panel-duration-open)
-      var(--chat-workspace-strip-panel-ease),
-    margin-top var(--chat-workspace-strip-panel-duration-open)
-      var(--chat-workspace-strip-panel-ease);
-}
-
-.chat-workspace-strip__section-reveal-inner {
+/* Shadow on the frame so the panel lifts; the panel itself keeps
+   overflow:hidden for rounded content without clipping the halo.
+   Both the frame and panel size to their content — they only grow
+   tall enough to wrap the sections inside, never to fill the
+   available vertical space. */
+.chat-workspace-strip__panel-frame {
+  flex: 0 0 auto;
   min-height: 0;
-  overflow: hidden;
-  contain: layout paint;
-}
-
-/* ── Card ─────────────────────────────────────────────────────────── */
-
-/* Shadow on the frame so each panel lifts independently; the card
-   keeps overflow:hidden for rounded content without clipping the halo. */
-.chat-workspace-strip__card-frame {
-  flex-shrink: 0;
+  max-height: 100%;
   border-radius: 12px;
   box-shadow: var(--panel-elevated-shadow);
   contain: layout paint;
 }
 
-.chat-workspace-strip__card {
+.chat-workspace-strip__panel {
   display: flex;
   flex-direction: column;
+  max-height: 100%;
+  min-height: 0;
   background: var(--panel-surface-bg-gradient);
   border: 1px solid var(--panel-surface-border);
   box-shadow: var(--panel-surface-highlight);
   border-radius: 12px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-.chat-workspace-strip__card-header {
+.chat-workspace-strip__divider {
+  flex-shrink: 0;
+  height: 1px;
+  margin: 0 12px;
+  background: var(--panel-surface-border);
+}
+
+/* ── Section ──────────────────────────────────────────────────────── */
+
+.chat-workspace-strip__section {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px 12px;
+}
+
+.chat-workspace-strip__section-header {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 8px 8px 8px 12px;
-  box-sizing: border-box;
+  min-height: 18px;
+  margin-bottom: 6px;
 }
 
-.chat-workspace-strip__card-header-main,
-.chat-workspace-strip__card-header-history,
-.chat-workspace-strip__card-header-chevron {
-  appearance: none;
-  background: transparent;
-  border: none;
-  padding: 0;
+.chat-workspace-strip__section-title {
+  flex: 1;
+  min-width: 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0;
   color: var(--text-strong);
-  cursor: default;
-  text-align: left;
 }
 
-.chat-workspace-strip__card-header-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.chat-workspace-strip__card-header-history,
-.chat-workspace-strip__card-header-chevron {
+.chat-workspace-strip__section-history {
+  appearance: none;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 2px;
+  background: transparent;
+  border: none;
   color: var(--text-weak);
+  cursor: default;
   transition: color 120ms ease;
 }
 
-.chat-workspace-strip__card-header-history:hover,
-.chat-workspace-strip__card-header-history:focus-visible,
-.chat-workspace-strip__card-header-chevron:hover,
-.chat-workspace-strip__card-header-chevron:focus-visible {
+.chat-workspace-strip__section-history:hover,
+.chat-workspace-strip__section-history:focus-visible {
   outline: none;
   color: var(--text-base);
 }
 
-.chat-workspace-strip__card-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.chat-workspace-strip__card-title-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-weak);
-}
-
-/* Chevron is decoupled from body grow — runs on a quicker, snappier
-   curve so the affordance reads instantly while the panel itself
-   settles in over its slower duration. */
-.chat-workspace-strip__card-chevron {
-  color: var(--text-weak);
-  flex-shrink: 0;
-  transition: transform 220ms var(--chat-workspace-strip-panel-ease-out);
-}
-
-.chat-workspace-strip__card--collapsed .chat-workspace-strip__card-chevron {
-  transform: rotate(-90deg);
-}
-
-/* Per-card body grow (chevron toggle). Height clip reveals the body;
-   inner content fades in so lists/tabs don't pop fully formed. */
-.chat-workspace-strip__card-body-grow {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows
-    var(--chat-workspace-strip-panel-duration-close)
-    var(--chat-workspace-strip-panel-ease-out);
-}
-
-.chat-workspace-strip__card-body-grow[data-expanded] {
-  grid-template-rows: 1fr;
-  transition: grid-template-rows var(--chat-workspace-strip-panel-duration-open)
-    var(--chat-workspace-strip-panel-ease);
-}
-
-.chat-workspace-strip__card-body-inner {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.chat-workspace-strip__card-body {
+.chat-workspace-strip__section-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 4px 12px 12px;
-  opacity: 0;
-  transition: opacity 220ms var(--chat-workspace-strip-panel-ease-out);
 }
 
-.chat-workspace-strip__card-body-grow[data-expanded]
-  > .chat-workspace-strip__card-body-inner
-  > .chat-workspace-strip__card-body {
-  opacity: 1;
-  transition: opacity 280ms var(--chat-workspace-strip-panel-ease-out)
-    calc(var(--chat-workspace-strip-panel-duration-open) * 0.12);
+/* ── Activity rows ────────────────────────────────────────────────── */
+
+.chat-workspace-strip__list--tasks {
+  gap: 10px;
 }
 
-/* ── Activity: running vs done ────────────────────────────────────── */
-
-.chat-workspace-strip__activity-done-label {
-  margin: 8px 0 4px;
-}
-
-.chat-workspace-strip__activity-done-label .chat-workspace-strip__card-title {
+.chat-workspace-strip__task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 1px 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 13px;
   font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-strong);
+  line-height: 1.4;
+  color: var(--text-base);
 }
 
-/* Actions card body: compact command list; geometry lives in
-   workspace-actions-list.css. This wrapper exists only so the body can
-   match the card's content inset. */
+.chat-workspace-strip__task-icon-wrap {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Align the glyph optically with the first text line. */
+  height: calc(1em * 1.4);
+}
+
+.chat-workspace-strip__task-icon {
+  color: var(--text-weak);
+}
+
+.chat-workspace-strip__task-icon--running {
+  color: var(--text-weak);
+  animation: chat-workspace-strip__spin 1.1s linear infinite;
+}
+
+.chat-workspace-strip__task-icon--done {
+  color: var(--text-base);
+}
+
+.chat-workspace-strip__task-icon--error {
+  color: var(--text-error, oklch(0.62 0.18 25));
+}
+
+.chat-workspace-strip__task-icon--canceled {
+  color: var(--text-weak);
+  opacity: 0.7;
+}
+
+.chat-workspace-strip__task-label {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@keyframes chat-workspace-strip__spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-strip__task-icon--running {
+    animation: none;
+  }
+}
+
+/* Actions section body: compact command list; geometry lives in
+   workspace-actions-list.css. This wrapper exists only so the body
+   can match the section's content inset. */
 .chat-workspace-strip__actions-body {
   display: flex;
   width: 100%;
@@ -340,10 +296,6 @@
   font-weight: 400;
   line-height: 1.35;
   color: var(--text-base);
-}
-
-.chat-workspace-strip__row[data-status="done"] {
-  color: var(--text-weak);
 }
 
 .chat-workspace-strip__row-label,
