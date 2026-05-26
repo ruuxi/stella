@@ -51,6 +51,7 @@ type UseAgentEventHandlerOptions = {
     terminalRunIdsRef: MutableRefObject<Set<string>>
     terminalTaskKeysRef: MutableRefObject<Set<string>>
     pendingRequestIdsRef: MutableRefObject<Set<string>>
+    resumeSeqByConversationRef: MutableRefObject<Map<string, number>>
   }
   streaming: {
     setPendingUserMessageId: Dispatch<React.SetStateAction<string | null>>
@@ -112,6 +113,8 @@ type UseAgentEventHandlerOptions = {
   }
 }
 
+type AgentEventSource = 'live' | 'replay'
+
 export function useAgentEventHandler({
   dispatch,
   refs,
@@ -124,6 +127,7 @@ export function useAgentEventHandler({
     activeConversationIdRef,
     activeRunIdByConversationRef,
     lastSeqByConversationRef,
+    resumeSeqByConversationRef,
     terminalRunIdsRef,
     terminalTaskKeysRef,
     pendingRequestIdsRef,
@@ -145,7 +149,7 @@ export function useAgentEventHandler({
   } = reasoning
 
   return useCallback(
-    (event: AgentStreamEvent) => {
+    (event: AgentStreamEvent, source: AgentEventSource = 'live') => {
       const conversationId =
         event.conversationId ?? activeConversationIdRef.current ?? null
       if (!conversationId) {
@@ -153,6 +157,13 @@ export function useAgentEventHandler({
       }
 
       const seq = Number.isFinite(event.seq) ? event.seq : 0
+      if (seq > 0) {
+        const previousResumeSeq =
+          resumeSeqByConversationRef.current.get(conversationId) ?? 0
+        if (seq > previousResumeSeq) {
+          resumeSeqByConversationRef.current.set(conversationId, seq)
+        }
+      }
       // Synthetic seqs (used by sub-agent lifecycle events and hidden
       // → visible mirror events on the worker, generated as
       // `Date.now() + n`) are orders of magnitude larger than the
@@ -222,7 +233,8 @@ export function useAgentEventHandler({
         })
         if (
           conversationId === activeConversationIdRef.current &&
-          args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR
+          args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR &&
+          source === 'live'
         ) {
           showToast(resolveStellaProviderErrorToast(args.reason || event.error))
         }
@@ -232,11 +244,14 @@ export function useAgentEventHandler({
             args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR ||
             args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED)
         ) {
-          if (args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED) {
-            // Hard cancel: the runtime may not persist an
-            // assistant_message for the in-flight slot, so leaving the
-            // overlay around would linger forever. Drop everything
-            // tied to this run.
+          if (
+            args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED ||
+            args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR
+          ) {
+            // Hard cancel/error: the runtime may not persist an
+            // assistant_message for the in-flight slot. Drop the live
+            // overlay so a failed turn does not leave a partial assistant
+            // message in chat.
             dropOverlaysForRun(event.runId)
           } else {
             // Finalize the current overlay slot so its text equals the
@@ -525,6 +540,7 @@ export function useAgentEventHandler({
       pendingRequestIdsRef,
       queueAgentReasoningChunk,
       resetReasoningText,
+      resumeSeqByConversationRef,
       scheduleTaskRemoval,
       setPendingUserMessageId,
       terminalRunIdsRef,
