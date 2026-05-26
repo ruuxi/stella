@@ -559,7 +559,6 @@ const startApp = () => {
     env: {
       ...process.env,
       NODE_ENV: 'development',
-      STELLA_DEV_SPLASH_READY_FILE: splashReadyFile,
       STELLA_DEV_RESTART_REQUEST_FILE: devRestartRequestFile,
       ...(process.env.STELLA_LAUNCHER_PROTECTED_STORAGE_BIN
         ? {}
@@ -664,199 +663,6 @@ const stopApp = async () => {
   })
 }
 
-/**
- * Pre-restart splash window. Shown briefly between killing the current
- * Electron and spawning the next one so the user sees "Restarting to
- * apply change..." instead of a stretch of blank desktop. With the
- * detached worker, in-flight runs survive across this restart, so the
- * splash is honest — no work is being lost behind it.
- *
- * Implemented via a tiny standalone Electron process loading an inline
- * data: URL. Killed automatically once the new Electron emits its
- * first ready signal (it touches a sentinel file), or after a 10s
- * fallback so a startup hang doesn't leave the splash stranded.
- */
-let splashChild = null
-const splashSentinelFile = path.join(repoRootDir, '.stella-dev-splash.lock')
-const splashReadyFile = path.join(repoRootDir, '.stella-dev-splash.ready')
-const splashMainFile = path.join(repoRootDir, '.stella-dev-splash-main.cjs')
-const splashFallbackTimeoutMs = 10_000
-
-const writeSplashHtml = () => {
-  const tmpHtml = path.join(repoRootDir, '.stella-dev-splash.html')
-  // Resolve assets via file:// URLs so the splash works without Vite.
-  // Use the same Stella logo + Cormorant Garamond italic the launcher uses
-  // so the dev restart reads as a polished "Stella is reloading" moment
-  // rather than a debug overlay.
-  const logoUrl = `file://${path.join(repoRootDir, 'desktop/public/stella-logo.svg')}`
-  const fontUrl = `file://${path.join(repoRootDir, 'launcher/src/assets/fonts/cormorant-garamond-italic.ttf')}`
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>Stella</title>
-<style>
-  @font-face {
-    font-family: "Cormorant Garamond";
-    src: url("${fontUrl}") format("truetype");
-    font-display: block;
-    font-style: italic;
-    font-weight: 400;
-  }
-  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body {
-    height: 100%;
-    background: transparent;
-    color: #1d1d1f;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    user-select: none;
-  }
-  body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-  }
-  .card {
-    width: 100%;
-    height: 100%;
-    background: #ffffff;
-    border-radius: 14px;
-    /* Intentionally no box-shadow: Chromium can't composite a real
-       drop-shadow past a transparent window's bounds, so the shadow
-       renders as a dark square inside the window frame. The 1px
-       border below gives the card a clean edge instead. */
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 22px 24px;
-    animation: cardIn 220ms cubic-bezier(0.32, 0.72, 0, 1) both;
-  }
-  .logo {
-    width: 48px;
-    height: 48px;
-  }
-  .status {
-    font-size: 11.5px;
-    color: #86868b;
-    letter-spacing: 0.005em;
-    text-align: center;
-  }
-  @keyframes cardIn {
-    from { opacity: 0; transform: translateY(4px) scale(0.98); }
-    to   { opacity: 1; transform: translateY(0)    scale(1); }
-  }
-</style>
-</head>
-<body>
-  <div class="card">
-    <img class="logo" src="${logoUrl}" alt="Stella" />
-    <div class="status">Reloading to apply changes</div>
-  </div>
-</body>
-</html>`
-  writeFileSync(tmpHtml, html, 'utf8')
-  return tmpHtml
-}
-
-const showRestartSplash = () => {
-  if (splashChild || shuttingDown) return
-  try {
-    const splashHtml = writeSplashHtml()
-    const splashScript = `
-      const { app, BrowserWindow } = require('electron')
-      const path = require('path')
-      const fs = require('fs')
-      // The splash is a separate Electron process spawned outside of our
-      // main bootstrap. Without these switches Chromium initializes its
-      // OSCrypt cookie store on startup, which on macOS reads the
-      // "Electron Safe Storage" Keychain entry -- triggering the macOS
-      // permission prompt every restart. The main app already sets these
-      // in bootstrap.ts; the splash needs the same defense because it
-      // never loads our bootstrap.
-      app.commandLine.appendSwitch('use-mock-keychain')
-      app.commandLine.appendSwitch('password-store', 'basic')
-      app.dock?.hide()
-      app.whenReady().then(() => {
-        const win = new BrowserWindow({
-          width: 280,
-          height: 200,
-          frame: false,
-          transparent: true,
-          backgroundColor: '#00000000',
-          hasShadow: false,
-          alwaysOnTop: true,
-          resizable: false,
-          movable: false,
-          show: false,
-          skipTaskbar: true,
-          webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
-        })
-        win.loadFile(${JSON.stringify(splashHtml)}).then(() => win.show())
-        const sentinel = ${JSON.stringify(splashSentinelFile)}
-        const ready = ${JSON.stringify(splashReadyFile)}
-        const interval = setInterval(() => {
-          if (!fs.existsSync(sentinel) || fs.existsSync(ready)) {
-            clearInterval(interval)
-            try { fs.unlinkSync(sentinel) } catch {}
-            try { fs.unlinkSync(ready) } catch {}
-            try { fs.unlinkSync(__filename) } catch {}
-            try { win.close() } catch {}
-            app.quit()
-          }
-        }, 100)
-        const fallback = setTimeout(() => {
-          try { fs.unlinkSync(sentinel) } catch {}
-          try { fs.unlinkSync(__filename) } catch {}
-          try { win.close() } catch {}
-          app.quit()
-        }, ${splashFallbackTimeoutMs})
-        fallback.unref?.()
-      })
-    `
-    rmSync(splashReadyFile, { force: true })
-    writeFileSync(splashSentinelFile, String(Date.now()), 'utf8')
-    writeFileSync(splashMainFile, splashScript, 'utf8')
-    splashChild = spawn(electronBinary, [splashMainFile], {
-      cwd: repoRootDir,
-      stdio: 'ignore',
-      detached: true,
-      env: {
-        ...process.env,
-        ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
-      },
-    })
-    splashChild.unref?.()
-    splashChild.once('exit', () => {
-      splashChild = null
-    })
-  } catch {
-    splashChild = null
-  }
-}
-
-const dismissRestartSplash = () => {
-  try {
-    if (existsSync(splashSentinelFile)) {
-      rmSync(splashSentinelFile, { force: true })
-    }
-    if (existsSync(splashReadyFile)) {
-      rmSync(splashReadyFile, { force: true })
-    }
-    if (existsSync(splashMainFile)) {
-      rmSync(splashMainFile, { force: true })
-    }
-  } catch {
-    // The splash also has its own fallback timeout, so a failed unlink
-    // just means the splash stays for ~10s longer.
-  }
-}
-
 const scheduleRestart = () => {
   if (shuttingDown) {
     return
@@ -871,14 +677,11 @@ const scheduleRestart = () => {
     restartQueue = restartQueue
       .catch(() => undefined)
       .then(async () => {
-        showRestartSplash()
         await stopApp()
         await waitForBuildOutputsToSettle()
         if (!shuttingDown) {
           restartRequestedByWatcher = false
           startApp()
-        } else {
-          dismissRestartSplash()
         }
       })
   }, restartDebounceMs)
@@ -914,7 +717,6 @@ const shutdown = async (exitCode) => {
 
   watcher?.close()
   rootWatcher?.close()
-  dismissRestartSplash()
   await stopApp()
   process.exit(exitCode)
 }
