@@ -10,9 +10,25 @@
   <img src="https://img.shields.io/badge/status-research%20preview-orange" alt="Research preview" />
 </p>
 
-The world's first personal software.
+## The world's first personal software.
 
 Everything can change. UI, functionality, runtime, prompts, skills. No restrictions, no plugin sandbox, no extension store gatekeeping. If Stella is missing something you want, you just ask her to add it.
+
+### Install
+
+macOS:
+
+```bash
+curl -fsSL https://stella.sh/install.sh | bash
+```
+
+Windows:
+
+```powershell
+irm https://stella.sh/install.ps1 | iex
+```
+
+Or [download from stella.sh](https://stella.sh).
 
 ## One ongoing conversation
 
