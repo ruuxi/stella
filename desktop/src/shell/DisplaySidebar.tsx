@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -23,6 +24,10 @@ import {
   useDisplayPanelOpen,
 } from "./display/tab-store";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
+import {
+  dispatchClosePanel,
+  dispatchOpenWorkspacePanel,
+} from "@/shared/lib/stella-orb-chat";
 import "./display-sidebar.css";
 
 export interface DisplaySidebarHandle {
@@ -354,6 +359,19 @@ export const DisplaySidebar = forwardRef<
     displayTabs.setPanelWidth(null);
   }, []);
 
+  const handleContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLElement>) => {
+      event.preventDefault();
+
+      if (panelOpen) {
+        dispatchClosePanel();
+      } else {
+        dispatchOpenWorkspacePanel();
+      }
+    },
+    [panelOpen],
+  );
+
   const portalTarget = document.querySelector(".full-body") ?? document.body;
 
   return createPortal(
@@ -363,6 +381,7 @@ export const DisplaySidebar = forwardRef<
         panelOpen && panelExpanded ? " display-sidebar--expanded" : ""
       }`}
       aria-hidden={!panelOpen}
+      onContextMenu={handleContextMenu}
     >
       <div
         className="display-sidebar__resize-handle"
