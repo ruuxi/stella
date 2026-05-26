@@ -82,6 +82,8 @@ export const getEmojiSpriteCell = (emoji: string): EmojiSpriteCell | null =>
 export const getEmojiSpriteGridSize = (): number =>
   Math.max(1, getEmojiSheetGridSize());
 
+export const getEmojiSpriteSheetCount = (): number => getEmojiSheets().length;
+
 /**
  * Sentinel URL for an emoji sprite cell, encoded as a fragment on the
  * actual sprite asset path so the URL stays valid (and the asset

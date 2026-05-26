@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { getEmojiSpriteSheetCount } from "./sprite-map";
 
 const ACTIVE_EMOJI_PACK_KEY = "stella:emoji-pack:active";
 
@@ -6,6 +7,11 @@ export type ActiveEmojiPack = {
   packId: string;
   sheetUrls: string[];
 };
+
+export const hasCompleteEmojiSpritePack = (
+  pack: ActiveEmojiPack | null,
+): pack is ActiveEmojiPack =>
+  (pack?.sheetUrls.length ?? 0) >= getEmojiSpriteSheetCount();
 
 const isActiveEmojiPack = (value: unknown): value is ActiveEmojiPack => {
   if (!value || typeof value !== "object") return false;
