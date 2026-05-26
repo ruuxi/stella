@@ -256,6 +256,95 @@ export const ShellTopBarAccount = ({
             {t("sidebar.signIn")}
           </span>
         </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="shell-topbar-account-settings"
+              title="Settings"
+              aria-label="Settings"
+            >
+              <SettingsIcon size={14} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="bottom"
+            align="end"
+            sideOffset={8}
+            onCloseAutoFocus={handleDropdownCloseAutoFocus}
+          >
+            <DropdownMenuItem
+              onClick={() => {
+                pendingSettingsRef.current = true;
+              }}
+              onMouseEnter={() => preloadSidebarRoute("settings")}
+              onFocus={() => preloadSidebarRoute("settings")}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <SettingsIcon size={14} strokeWidth={1.75} />
+              </span>
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                pendingThemeRef.current = true;
+              }}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <Palette size={14} strokeWidth={1.75} />
+              </span>
+              Theme
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                pendingConnectRef.current = true;
+              }}
+              onMouseEnter={preloadConnectDialog}
+              onFocus={preloadConnectDialog}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <Device size={14} />
+              </span>
+              Connect
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                pendingFeedbackRef.current = true;
+              }}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <MessageSquare size={14} strokeWidth={1.75} />
+              </span>
+              {t("sidebar.feedback")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ThemePicker
+          open={themePickerOpen}
+          onOpenChange={setThemePickerOpen}
+          hideTrigger
+          side="bottom"
+          align="end"
+          trigger={
+            <button
+              type="button"
+              className="shell-topbar-account-theme-anchor"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+          }
+        />
+        {feedbackOpen ? (
+          <Suspense fallback={null}>
+            <FeedbackDialog
+              open
+              onOpenChange={setFeedbackOpen}
+              variant={feedbackVariant}
+              onSubmitted={acknowledgeFeedbackPrompt}
+            />
+          </Suspense>
+        ) : null}
       </div>
     );
   }

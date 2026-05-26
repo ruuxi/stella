@@ -204,6 +204,31 @@
   height: 14px;
 }
 
+.shell-topbar-account-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 5px);
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.shell-topbar-account-settings:hover,
+.shell-topbar-account-settings:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+  outline: none;
+}
+
 .shell-topbar-account-theme-anchor {
   position: absolute;
   inset: 0;
