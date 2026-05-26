@@ -1,7 +1,33 @@
-import { useCallback, useRef, useState } from "react";
-import { LogOut } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { router } from "@/router";
+import { openEngineDisplayTab } from "@/shell/display/default-tabs";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  CreditCard,
+  LogOut,
+  MessageSquare,
+  Palette,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { useT } from "@/shared/i18n";
-import { preloadAuthDialog } from "@/shared/lib/sidebar-preloads";
+import {
+  preloadAuthDialog,
+  preloadBillingScreen,
+  preloadConnectDialog,
+  preloadSidebarRoute,
+} from "@/shared/lib/sidebar-preloads";
+import { ThemePicker } from "@/global/settings/ThemePicker";
+import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
+import { api } from "@/convex/api";
+import { usePostOnboardingHint } from "@/global/onboarding/post-onboarding-hints";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { useCurrentUser } from "@/global/auth/hooks/use-current-user";
 import { useNickname } from "@/global/auth/hooks/use-nickname";
@@ -18,51 +44,56 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { CustomLogIn as LogIn } from "./SidebarIcons";
+import { CustomDevice as Device, CustomLogIn as LogIn } from "./SidebarIcons";
+import { useFeedbackPrompt } from "./use-feedback-prompt";
 import "./account-dialogs.css";
 
-const initialsFromIdentity = (
-  email: string | null | undefined,
-  name: string | null | undefined,
-): string => {
-  const trimmedName = (name ?? "").trim();
-  if (trimmedName) {
-    const parts = trimmedName.split(/\s+/).slice(0, 2);
-    const fromName = parts.map((p) => p.charAt(0)).join("");
-    if (fromName) return fromName.slice(0, 2).toUpperCase();
-  }
-  const local = (email ?? "").split("@")[0] ?? "";
-  return local.slice(0, 2).toUpperCase() || "?";
+const FeedbackDialog = lazy(() =>
+  import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })),
+);
+
+type BillingPlanId = "free" | "go" | "pro" | "plus" | "ultra";
+
+type BillingStatusLite = {
+  plan?: BillingPlanId;
+  plans?: Partial<Record<BillingPlanId, { label?: string }>>;
 };
 
-const AVATAR_HUES = [
-  210, 250, 285, 320, 350, 18, 38, 70, 140, 170, 195,
-] as const;
-
-const avatarSwatchFromIdentity = (
-  identity: string | null | undefined,
-): { background: string; color: string; border: string } => {
-  const seed = (identity ?? "").trim().toLowerCase();
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+const planLabel = (
+  plan: BillingPlanId | undefined,
+  status: BillingStatusLite | undefined,
+): string => {
+  if (!plan) return "Free";
+  const live = status?.plans?.[plan]?.label;
+  if (live) return live;
+  switch (plan) {
+    case "free":
+      return "Free";
+    case "go":
+      return "Go";
+    case "pro":
+      return "Pro";
+    case "plus":
+      return "Plus";
+    case "ultra":
+      return "Ultra";
   }
-  const hue = AVATAR_HUES[hash % AVATAR_HUES.length] ?? AVATAR_HUES[0];
-  return {
-    background: `oklch(0.88 0.06 ${hue})`,
-    color: `oklch(0.32 0.05 ${hue})`,
-    border: `oklch(0.78 0.05 ${hue} / 0.5)`,
-  };
 };
 
 interface ShellTopBarAccountProps {
   onSignIn?: () => void;
+  onConnect?: () => void;
 }
 
-export const ShellTopBarAccount = ({ onSignIn }: ShellTopBarAccountProps) => {
+export const ShellTopBarAccount = ({
+  onSignIn,
+  onConnect,
+}: ShellTopBarAccountProps) => {
   const t = useT();
+  const navigate = useNavigate();
   const { user: convexUser, hasConnectedAccount } = useCurrentUser();
   const { user: sessionUser } = useAuthSessionState();
   const { nickname } = useNickname();
@@ -73,16 +104,130 @@ export const ShellTopBarAccount = ({ onSignIn }: ShellTopBarAccountProps) => {
       convexUser?.isAnonymous ?? sessionUser?.isAnonymous ?? undefined,
   };
 
+  const connectHint = usePostOnboardingHint("connect");
+  const handleOpenConnect = useCallback(() => {
+    preloadConnectDialog();
+    if (connectHint.active) connectHint.dismiss();
+    onConnect?.();
+  }, [connectHint, onConnect]);
+
+  const handleOpenSettings = useCallback(() => {
+    void navigate({ to: "/settings" });
+  }, [navigate]);
+
+  const handleUpgrade = useCallback(() => {
+    void navigate({ to: "/billing" });
+  }, [navigate]);
+
+  const {
+    shouldPrompt: shouldAutoPromptFeedback,
+    acknowledge: acknowledgeFeedbackPrompt,
+  } = useFeedbackPrompt();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackVariant, setFeedbackVariant] = useState<"manual" | "auto">(
+    "manual",
+  );
+
+  useEffect(() => {
+    if (!shouldAutoPromptFeedback) return;
+    if (feedbackOpen) return;
+    setFeedbackVariant("auto");
+    setFeedbackOpen(true);
+    acknowledgeFeedbackPrompt();
+  }, [shouldAutoPromptFeedback, feedbackOpen, acknowledgeFeedbackPrompt]);
+
+  const handleOpenFeedback = useCallback(() => {
+    setFeedbackVariant("manual");
+    setFeedbackOpen(true);
+  }, []);
+
+  const [billingQueryReady, setBillingQueryReady] = useState(false);
+  useEffect(() => {
+    const scheduleIdle =
+      window.requestIdleCallback ??
+      ((callback: IdleRequestCallback) =>
+        window.setTimeout(
+          () =>
+            callback({
+              didTimeout: false,
+              timeRemaining: () => 0,
+            } as IdleDeadline),
+          1,
+        ));
+    const cancelIdle =
+      window.cancelIdleCallback ??
+      ((handle: number) => window.clearTimeout(handle));
+    const handle = scheduleIdle(() => setBillingQueryReady(true));
+    return () => cancelIdle(handle);
+  }, []);
+
+  const [billingRefreshKey, setBillingRefreshKey] = useState(0);
+  useEffect(() => {
+    const handler = () => setBillingRefreshKey((n) => n + 1);
+    window.addEventListener(SUBSCRIPTION_UPGRADED_EVENT, handler);
+    return () =>
+      window.removeEventListener(SUBSCRIPTION_UPGRADED_EVENT, handler);
+  }, []);
+
+  const billingStatus = useConvexOneShot(
+    api.billing.getSubscriptionStatus,
+    hasConnectedAccount && billingQueryReady ? {} : "skip",
+    billingRefreshKey,
+  ) as BillingStatusLite | undefined;
+
+  useEffect(() => {
+    const handler = () => {
+      void router.navigate({ to: "/chat" });
+      openEngineDisplayTab();
+    };
+    window.addEventListener("stella:open-model-picker", handler);
+    return () => {
+      window.removeEventListener("stella:open-model-picker", handler);
+    };
+  }, []);
+
+  const pendingFeedbackRef = useRef(false);
+  const pendingConnectRef = useRef(false);
+  const pendingSettingsRef = useRef(false);
+  const pendingThemeRef = useRef(false);
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const pendingSignOutRef = useRef(false);
 
-  const handleDropdownCloseAutoFocus = useCallback((event: Event) => {
-    if (pendingSignOutRef.current) {
-      pendingSignOutRef.current = false;
-      event.preventDefault();
-      setSignOutConfirmOpen(true);
-    }
-  }, []);
+  const handleDropdownCloseAutoFocus = useCallback(
+    (event: Event) => {
+      if (pendingFeedbackRef.current) {
+        pendingFeedbackRef.current = false;
+        event.preventDefault();
+        handleOpenFeedback();
+        return;
+      }
+      if (pendingSettingsRef.current) {
+        pendingSettingsRef.current = false;
+        event.preventDefault();
+        handleOpenSettings();
+        return;
+      }
+      if (pendingConnectRef.current) {
+        pendingConnectRef.current = false;
+        event.preventDefault();
+        handleOpenConnect();
+        return;
+      }
+      if (pendingThemeRef.current) {
+        pendingThemeRef.current = false;
+        event.preventDefault();
+        setThemePickerOpen(true);
+        return;
+      }
+      if (pendingSignOutRef.current) {
+        pendingSignOutRef.current = false;
+        event.preventDefault();
+        setSignOutConfirmOpen(true);
+      }
+    },
+    [handleOpenFeedback, handleOpenSettings, handleOpenConnect],
+  );
 
   const handleConfirmSignOut = useCallback(() => {
     setSignOutConfirmOpen(false);
@@ -115,12 +260,15 @@ export const ShellTopBarAccount = ({ onSignIn }: ShellTopBarAccountProps) => {
     );
   }
 
-  const initials = initialsFromIdentity(user.email, user.name);
-  const swatch = avatarSwatchFromIdentity(user.email ?? user.name);
   const accountName =
     (user.name ?? user.email ?? t("sidebar.account")).trim() ||
     t("sidebar.account");
-  const displayLabel = nickname.trim();
+  const displayLabel = nickname.trim() || accountName;
+  const plan = billingStatus?.plan;
+  const isPaidPlan = Boolean(plan) && plan !== "free";
+  const pillLabel = isPaidPlan
+    ? planLabel(plan, billingStatus)
+    : t("sidebar.upgrade");
 
   return (
     <div className="shell-topbar-account">
@@ -129,24 +277,23 @@ export const ShellTopBarAccount = ({ onSignIn }: ShellTopBarAccountProps) => {
           <button
             type="button"
             className="shell-topbar-account-trigger"
-            title={displayLabel ? `${displayLabel} · ${accountName}` : accountName}
+            title={
+              displayLabel === accountName
+                ? accountName
+                : `${displayLabel} · ${accountName}`
+            }
             aria-label={accountName}
           >
-            <span
-              className="shell-topbar-account-avatar"
-              aria-hidden="true"
-              style={{
-                background: swatch.background,
-                color: swatch.color,
-                borderColor: swatch.border,
-              }}
-            >
-              {initials}
+            <SettingsIcon size={15} strokeWidth={1.75} aria-hidden="true" />
+            <span className="shell-topbar-account-nickname">
+              {displayLabel}
             </span>
-            {displayLabel ? (
-              <span className="shell-topbar-account-nickname">
-                {displayLabel}
-              </span>
+            {connectHint.active ? (
+              <span
+                className="shell-topbar-nav-hint-dot"
+                aria-hidden="true"
+                style={{ top: 4, right: 4 }}
+              />
             ) : null}
           </button>
         </DropdownMenuTrigger>
@@ -156,6 +303,96 @@ export const ShellTopBarAccount = ({ onSignIn }: ShellTopBarAccountProps) => {
           sideOffset={8}
           onCloseAutoFocus={handleDropdownCloseAutoFocus}
         >
+          <DropdownMenuItem
+            onClick={() => {
+              pendingSettingsRef.current = true;
+            }}
+            onMouseEnter={() => preloadSidebarRoute("settings")}
+            onFocus={() => preloadSidebarRoute("settings")}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <SettingsIcon size={14} strokeWidth={1.75} />
+            </span>
+            Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              pendingThemeRef.current = true;
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <Palette size={14} strokeWidth={1.75} />
+            </span>
+            Theme
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              pendingConnectRef.current = true;
+            }}
+            onMouseEnter={preloadConnectDialog}
+            onFocus={preloadConnectDialog}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <Device size={14} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>Connect</span>
+            {connectHint.active ? (
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  background: "var(--danger, #ef4444)",
+                }}
+              />
+            ) : null}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              preloadBillingScreen();
+              handleUpgrade();
+            }}
+            onMouseEnter={preloadBillingScreen}
+            onFocus={preloadBillingScreen}
+            title={
+              isPaidPlan
+                ? `${pillLabel} plan — manage billing`
+                : "Upgrade your plan"
+            }
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <CreditCard size={14} strokeWidth={1.75} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {isPaidPlan ? `${pillLabel} plan` : t("sidebar.upgrade")}
+            </span>
+            {isPaidPlan ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: "var(--text-weak)",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                Manage
+              </span>
+            ) : null}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              pendingFeedbackRef.current = true;
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <MessageSquare size={14} strokeWidth={1.75} />
+            </span>
+            {t("sidebar.feedback")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             data-variant="destructive"
             onClick={() => {
@@ -169,6 +406,31 @@ export const ShellTopBarAccount = ({ onSignIn }: ShellTopBarAccountProps) => {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ThemePicker
+        open={themePickerOpen}
+        onOpenChange={setThemePickerOpen}
+        hideTrigger
+        side="bottom"
+        align="end"
+        trigger={
+          <button
+            type="button"
+            className="shell-topbar-account-theme-anchor"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        }
+      />
+      {feedbackOpen ? (
+        <Suspense fallback={null}>
+          <FeedbackDialog
+            open
+            onOpenChange={setFeedbackOpen}
+            variant={feedbackVariant}
+            onSubmitted={acknowledgeFeedbackPrompt}
+          />
+        </Suspense>
+      ) : null}
       <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
         <DialogContent
           fit
