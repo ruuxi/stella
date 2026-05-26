@@ -41,6 +41,7 @@ import {
   openChatDisplayTab,
 } from "@/shell/display/default-tabs";
 import { ModelCatalogUpdatedAtProvider } from "@/global/settings/hooks/model-catalog-updated-at";
+import { useRestrictedStellaModelReset } from "@/global/settings/hooks/use-restricted-stella-model-reset";
 import { ProviderConnectedDialog } from "@/global/settings/ProviderConnectedDialog";
 import { SubscriptionUpgradeDialog } from "@/global/billing/SubscriptionUpgradeDialog";
 import { MobileActivityNotificationsBridge } from "@/global/mobile/MobileActivityNotificationsBridge";
@@ -97,6 +98,8 @@ function RootLayout() {
 }
 
 function RootChrome() {
+  useRestrictedStellaModelReset();
+
   const navigate = useNavigate();
   const { dialog: activeDialog } = Route.useSearch();
   const { state } = useUiState();
