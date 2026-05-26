@@ -154,8 +154,8 @@ export class ThreadSummariesStore {
 
   /**
    * Return the most recent rows by source_updated_at, regardless of dream
-   * processing state. Used by background passes (e.g. home-suggestions
-   * refresh) that want a "what has the user been doing lately" snapshot.
+   * processing state. Used by background passes that want a "what has the
+   * user been doing lately" snapshot.
    */
   listRecent(args?: { limit?: number }): ThreadSummaryRow[] {
     const limit = Math.max(1, Math.min(args?.limit ?? 20, 200));

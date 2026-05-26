@@ -4,33 +4,19 @@
  * Attachment actions backed by chatContext or the desktop mini-window:
  *   1. Attach files…   → image-aware file picker (matches drag-and-drop).
  *   2. Capture         → radial-dial-style region/window capture.
- *   3. Select area     → region select overlay.
- *   4. Attach Stella   → pick a window and dock the mini beside it.
+ *   3. Attach Stella   → pick a window and dock the mini beside it.
  *
- * Menu order (top → bottom): read-aloud, model, optional recent files,
- * then new chat → select area → capture → attach files at the bottom
- * (nearest the + button). No dividers between rows.
+ * Menu order (top → bottom): model, optional recent files, then capture,
+ * attach Stella, and attach files at the bottom (nearest the + button).
+ * No dividers between rows.
  *
  * The menu owns its own state (file input ref + recent-files store), so
  * both the home full-chat composer and the sidebar composer can reuse it
  * without threading a `onAdd` callback through the chat-column types.
  */
-import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ChangeEvent, Dispatch, SetStateAction } from "react";
-import {
-  Camera,
-  MessageSquarePlus,
-  PanelRight,
-  Paperclip,
-  Scan,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
-import {
-  readAloudPrefStore,
-  setReadAloudEnabled as persistReadAloudEnabled,
-} from "@/features/voice/services/read-aloud/read-aloud-pref";
-import { stopReadAloud } from "@/features/voice/services/read-aloud/read-aloud-player";
+import { Camera, PanelRight, Paperclip } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,8 +38,6 @@ import "./composer-add-menu.css";
 
 type ComposerAddMenuProps = {
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
-  onSelectArea: () => void;
-  onNewChat?: () => void | Promise<void>;
   className?: string;
   title?: string;
 };
@@ -79,15 +63,11 @@ function truncateFileName(
 
 export function ComposerAddMenu({
   setChatContext,
-  onSelectArea,
-  onNewChat,
   className,
   title,
 }: ComposerAddMenuProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [newChatArmed, setNewChatArmed] = useState(false);
-  const [newChatPending, setNewChatPending] = useState(false);
   const { recentFiles, recordRecentFiles } = useRecentFiles();
 
   const handleAttachFiles = useCallback(() => {
@@ -149,57 +129,6 @@ export function ComposerAddMenu({
     }
   }, []);
 
-  const handleMenuOpenChange = useCallback(
-    (open: boolean) => {
-      if (newChatPending) return;
-      setMenuOpen(open);
-      if (!open) setNewChatArmed(false);
-    },
-    [newChatPending],
-  );
-
-  const handleNewChatSelect = useCallback(
-    async (event: Event) => {
-      if (!onNewChat) return;
-      if (!newChatArmed) {
-        event.preventDefault();
-        setNewChatArmed(true);
-        return;
-      }
-      setNewChatPending(true);
-      try {
-        await onNewChat();
-        setMenuOpen(false);
-        setNewChatArmed(false);
-      } catch (error) {
-        console.warn("[composer-add-menu] new chat failed:", error);
-        showToast({
-          title: "Couldn’t start a new chat",
-          description:
-            error instanceof Error && error.message
-              ? error.message
-              : "Stella will keep this chat open.",
-          variant: "error",
-        });
-      } finally {
-        setNewChatPending(false);
-      }
-    },
-    [newChatArmed, onNewChat],
-  );
-
-  const readAloudEnabled = useSyncExternalStore(
-    readAloudPrefStore.subscribe,
-    readAloudPrefStore.getSnapshot,
-    readAloudPrefStore.getServerSnapshot,
-  );
-
-  const handleToggleReadAloud = useCallback(() => {
-    const next = !readAloudEnabled;
-    void persistReadAloudEnabled(next);
-    if (!next) stopReadAloud();
-  }, [readAloudEnabled]);
-
   const handleRecentClick = useCallback(
     (file: ChatContextFile) => {
       applyProcessedAttachments(
@@ -212,7 +141,7 @@ export function ComposerAddMenu({
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <ComposerAddButton className={className} title={title ?? "Add"} />
         </DropdownMenuTrigger>
@@ -222,16 +151,6 @@ export function ComposerAddMenu({
           sideOffset={6}
           className="composer-add-menu"
         >
-          <DropdownMenuItem onSelect={handleToggleReadAloud}>
-            <span data-slot="dropdown-menu-item-icon">
-              {readAloudEnabled ? (
-                <Volume2 size={14} strokeWidth={1.75} />
-              ) : (
-                <VolumeX size={14} strokeWidth={1.75} />
-              )}
-            </span>
-            {readAloudEnabled ? "Stop reading aloud" : "Read replies aloud"}
-          </DropdownMenuItem>
           <ComposerModelMenuItem />
           {recentFiles.length > 0 && (
             <>
@@ -255,24 +174,6 @@ export function ComposerAddMenu({
               ))}
             </>
           )}
-          {onNewChat ? (
-            <DropdownMenuItem
-              onSelect={(event) => {
-                void handleNewChatSelect(event);
-              }}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <MessageSquarePlus size={14} strokeWidth={1.75} />
-              </span>
-              {newChatArmed ? "Confirm new chat" : "New chat"}
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem onSelect={onSelectArea}>
-            <span data-slot="dropdown-menu-item-icon">
-              <Scan size={14} strokeWidth={1.75} />
-            </span>
-            Select area
-          </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleCapture}>
             <span data-slot="dropdown-menu-item-icon">
               <Camera size={14} strokeWidth={1.75} />

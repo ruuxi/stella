@@ -30,8 +30,7 @@ import {
   Check,
   FolderClosed,
   CalendarClock,
-  Compass,
-  Shuffle,
+  Sparkles,
 } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -64,10 +63,7 @@ import {
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import {
-  chatWorkspaceStripStore,
   useChatWorkspaceStripStore,
-  type WorkspaceStripSection,
-  type WorkspaceStripSections,
 } from "./chat-workspace-strip-store";
 import {
   areWorkspaceStripOpenPanelsEqual,
@@ -78,7 +74,7 @@ import {
   type WorkspaceStripPanelMeasurements,
 } from "./chat-workspace-strip-layout";
 import { TextShimmer } from "./TextShimmer";
-import { DiscoverList, useDiscoverItems } from "./DiscoverList";
+import { WorkspaceActionsList } from "./WorkspaceActionsList";
 import "./chat-workspace-strip.css";
 
 const NOW_VISIBLE = 4;
@@ -86,58 +82,6 @@ const DONE_VISIBLE = 4;
 const FILES_VISIBLE = 5;
 const UPNEXT_VISIBLE = 4;
 const EMPTY_TASKS: TaskItem[] = [];
-
-const SECTION_TOGGLES: ReadonlyArray<{
-  id: WorkspaceStripSection;
-  label: string;
-  icon: ReactNode;
-}> = [
-  {
-    id: "activity",
-    label: "Activity",
-    icon: <ActivityIcon size={14} strokeWidth={2.25} />,
-  },
-  {
-    id: "files",
-    label: "Files",
-    icon: <FolderClosed size={14} strokeWidth={2.25} />,
-  },
-  {
-    id: "schedule",
-    label: "Schedule",
-    icon: <CalendarClock size={14} strokeWidth={2.25} />,
-  },
-];
-
-function SectionToggles({
-  sections,
-  onToggleSection,
-}: {
-  sections: WorkspaceStripSections;
-  onToggleSection: (section: WorkspaceStripSection) => void;
-}) {
-  return (
-    <div
-      className="chat-workspace-strip__section-toggles"
-      role="toolbar"
-      aria-label="Show or hide workspace sections"
-    >
-      {SECTION_TOGGLES.map((toggle) => (
-        <button
-          key={toggle.id}
-          type="button"
-          className="chat-workspace-strip__section-toggle"
-          aria-label={`${sections[toggle.id] ? "Hide" : "Show"} ${toggle.label}`}
-          aria-pressed={sections[toggle.id]}
-          title={`${sections[toggle.id] ? "Hide" : "Show"} ${toggle.label}`}
-          onClick={() => onToggleSection(toggle.id)}
-        >
-          {toggle.icon}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function WorkspaceCard({
   id,
@@ -280,7 +224,8 @@ type ChatWorkspaceStripProps = {
   forceHidden?: boolean;
   /** Rendered beside expanded display-panel chat; not clipped by panelOpen. */
   embeddedInDisplayPanel?: boolean;
-  onSuggestionClick?: (prompt: string) => void;
+  onNewChat?: () => void | Promise<void>;
+  onSelectArea?: () => void;
 };
 
 const scheduleEntryToAffectedRef = (
@@ -303,10 +248,11 @@ const parseCssPx = (value: string): number => {
 export function ChatWorkspaceStrip({
   forceHidden = false,
   embeddedInDisplayPanel = false,
-  onSuggestionClick,
+  onNewChat,
+  onSelectArea,
 }: ChatWorkspaceStripProps) {
   const panelOpen = useDisplayPanelOpen();
-  const { stripVisible, sections } = useChatWorkspaceStripStore();
+  const { stripVisible } = useChatWorkspaceStripStore();
   const chat = useChatRuntime();
   const { state } = useUiState();
   const panelFrameRefs = useRef<
@@ -323,7 +269,6 @@ export function ChatWorkspaceStrip({
   const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
   const filesFeed = chat.conversation.files;
   const schedules = useConversationSchedules(conversationId);
-  const discover = useDiscoverItems(conversationId);
   const [historySection, setHistorySection] =
     useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
@@ -394,18 +339,11 @@ export function ChatWorkspaceStrip({
   latestOpenPanelsRef.current = openPanels;
   const availablePanelIds = useMemo<WorkspaceStripPanelId[]>(() => {
     const ids: WorkspaceStripPanelId[] = ["open"];
-    if (sections.activity && hasActivity) ids.push("activity");
-    if (sections.files && hasFiles) ids.push("files");
-    if (sections.schedule && hasSchedule) ids.push("schedule");
+    if (hasActivity) ids.push("activity");
+    if (hasFiles) ids.push("files");
+    if (hasSchedule) ids.push("schedule");
     return ids;
-  }, [
-    hasActivity,
-    hasFiles,
-    hasSchedule,
-    sections.activity,
-    sections.files,
-    sections.schedule,
-  ]);
+  }, [hasActivity, hasFiles, hasSchedule]);
 
   const setPanelFrameRef = useCallback(
     (panelId: WorkspaceStripPanelId, node: HTMLDivElement | null) => {
@@ -515,18 +453,6 @@ export function ChatWorkspaceStrip({
     [applyOpenPanels, resolvePanelsForAvailableHeight],
   );
 
-  const handleToggleSection = useCallback((section: WorkspaceStripSection) => {
-    const visible = chatWorkspaceStripStore.getSnapshot().sections[section];
-    if (visible) {
-      chatWorkspaceStripStore.setSectionVisible(section, false);
-      return;
-    }
-
-    pendingJustOpenedPanelRef.current = section;
-    setOpenPanels((current) => ({ ...current, [section]: true }));
-    chatWorkspaceStripStore.setSectionVisible(section, true);
-  }, []);
-
   useLayoutEffect(() => {
     const justOpened = pendingJustOpenedPanelRef.current;
     pendingJustOpenedPanelRef.current = null;
@@ -585,55 +511,23 @@ export function ChatWorkspaceStrip({
         <div className="chat-workspace-strip__scroll" ref={stripStackRef}>
           <WorkspaceCard
             id="open"
-            title="Discover"
-            icon={<Compass size={12} strokeWidth={2.25} />}
+            title="Actions"
+            icon={<Sparkles size={12} strokeWidth={2.25} />}
             open={openPanels.open}
             onToggle={handleTogglePanel}
             measureRef={(node) => setPanelFrameRef("open", node)}
-            headerTrailing={
-              <div className="chat-workspace-strip__discover-actions">
-                {onSuggestionClick && discover.canShuffle ? (
-                  <button
-                    type="button"
-                    className="chat-workspace-strip__discover-shuffle"
-                    onClick={discover.shuffle}
-                    aria-label="Shuffle suggestions"
-                    title="Shuffle suggestions"
-                  >
-                    <Shuffle
-                      size={13}
-                      strokeWidth={2.25}
-                      aria-hidden="true"
-                    />
-                    {discover.shuffleSeen ? null : (
-                      <span
-                        className="chat-workspace-strip__discover-shuffle-dot"
-                        aria-hidden="true"
-                      />
-                    )}
-                  </button>
-                ) : null}
-                <SectionToggles
-                  sections={sections}
-                  onToggleSection={handleToggleSection}
-                />
-              </div>
-            }
-            headerOnly={!onSuggestionClick}
           >
-            {onSuggestionClick ? (
-              <div className="chat-workspace-strip__discover-body">
-                <DiscoverList
-                  items={discover.items}
-                  onSuggestionClick={onSuggestionClick}
-                />
-              </div>
-            ) : null}
+            <div className="chat-workspace-strip__actions-body">
+              <WorkspaceActionsList
+                onNewChat={onNewChat}
+                onSelectArea={onSelectArea}
+              />
+            </div>
           </WorkspaceCard>
 
           {hasActivity &&
             renderReveal(
-              sections.activity,
+              true,
               <WorkspaceCard
                 id="activity"
                 title="Activity"
@@ -668,7 +562,7 @@ export function ChatWorkspaceStrip({
 
           {hasFiles &&
             renderReveal(
-              sections.files,
+              true,
               <WorkspaceCard
                 id="files"
                 title="Files"
@@ -711,7 +605,7 @@ export function ChatWorkspaceStrip({
 
           {hasSchedule &&
             renderReveal(
-              sections.schedule,
+              true,
               <WorkspaceCard
                 id="schedule"
                 title="Schedule"

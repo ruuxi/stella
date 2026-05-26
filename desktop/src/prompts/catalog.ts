@@ -341,62 +341,6 @@ Say a brief greeting. Use the person's name only if you are confident you know i
 Write ONLY the greeting.`,
     render: (template, values) => interpolateTemplate(template, values),
   },
-  "synthesis.home_suggestions.user": {
-    id: "synthesis.home_suggestions.user",
-    module: "synthesis",
-    title: "Home Suggestions User Prompt",
-    defaultText: `You are generating personalized home page suggestions for Stella, an AI desktop assistant. Based on the user's profile, generate suggestions across 4 categories.
-
-{{coreMemory}}
-
-## What Stella Can Do
-
-Stella is a desktop AI assistant with these capabilities:
-
-**stella** — Things about Stella herself:
-- Build apps that live inside Stella — trackers, dashboards, games, planners, calculators, anything interactive
-- Add widgets to her home page — weather, calendar, clock, notes, quick actions, dashboards
-- Change her visual theme — dark mode, custom colors, different styles
-- Change how she talks — more casual, more formal, different tone or personality
-- Media Studio — generate images from text, create videos, sound effects, dialogue audio, 3D models
-- Include one Stella suggestion that improves her home page when it fits the user's profile.
-
-**task** — Things Stella does for you in the outside world:
-- Browser control — go to any website, fill out forms, click buttons, log into accounts, place orders, scrape information, download files
-- Work with local files — read, write, and edit files on the computer; run terminal commands; fix bugs in code projects
-- Create documents — Word docs, PowerPoint slide decks, Excel spreadsheets, PDFs (create, merge, split, watermark, OCR)
-- Connected apps — Slack, Gmail, Outlook, Notion, Linear, Jira, Salesforce, Google Drive, and more
-
-**skill** — Reusable patterns Stella can save:
-- Create or update Stella skills under ~/.stella/skills/<name>/SKILL.md
-- Turn repeated workflows, repo conventions, tool recipes, or recurring preferences into reusable agent instructions
-- Add focused scripts, references, templates, or assets when a pattern needs them
-- Keep skills for durable behavior the user will likely need again, not one-off research or lookup
-
-**schedule** — Things that happen on a schedule:
-- One-time reminders ("remind me at 3pm to call the dentist")
-- Recurring routines with flexible schedules ("every morning at 9am, summarize my unread emails")
-- Daily or weekly briefings pulled from connected sources
-- Monitor websites for changes, periodic check-ins
-
-Return exactly one JSON object with a single key "suggestions" whose value is an array of exactly 16 objects (4 per category). Each suggestion object must have:
-- "category": one of "stella", "task", "skill", "schedule" (lowercase)
-- "label": short action label (3-8 words)
-- "prompt": the complete instruction the user would send to Stella
-
-Rules:
-1. Personalize suggestions to the user's profile — reference their job, interests, tools, and workflows when possible.
-2. Suggestions should be specific and immediately actionable, not generic.
-3. Do not hallucinate details not present in the profile.
-4. The first "stella" suggestion should improve Stella itself and may personalize the home page, theme, voice, or an in-app surface.
-5. Keep labels concise and natural — how a normal person would say it, not a developer. Say "Order groceries online" not "Automate grocery procurement via browser". Say "Make me a budget tracker" not "Build a React budget tracking application".
-6. If the user IS a developer/engineer (based on their profile), you may use technical language in suggestions relevant to their work (e.g. "Fix a bug in my project", "Set up a CI pipeline"). Otherwise, keep everything plain and friendly.
-7. Skill suggestions must be about making future Stella runs better by creating or improving a reusable skill. They should not be generic "research this" prompts.
-8. If the profile is empty or minimal, use broadly useful defaults that showcase Stella's capabilities.
-
-Output ONLY valid JSON for that object. No markdown fences, no commentary.`,
-    render: (template, values) => interpolateTemplate(template, values),
-  },
 } satisfies PromptCatalog;
 
 export const isPromptId = (value: string): value is PromptId =>

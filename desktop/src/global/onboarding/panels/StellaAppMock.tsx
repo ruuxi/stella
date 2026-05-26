@@ -230,14 +230,11 @@ const ICON_PLUS = (
   </svg>
 );
 
-
-/* Default suggestions (rendered when `messages` toggle is OFF). Mirror the
- * `Stella` category from `HomeContent.DEFAULT_CATEGORIES`. */
-const HOME_SUGGESTIONS: string[] = [
-  "Add a music player to home",
-  "Change my theme to dark",
-  "Build me a budget tracker app",
-  "Make me sound more casual",
+const HOME_REPORT_IDEAS: string[] = [
+  "Skill: remember project review steps",
+  "Workflow: package weekly updates",
+  "App: track budgets and follow-ups",
+  "Automation: prepare a morning brief",
 ];
 
 /* Cards rendered when `messages` toggle is ON. */
@@ -607,11 +604,11 @@ const STUDIO_KNOBS = [
 ] as const;
 const STUDIO_METER_LEVELS = [6, 7, 8, 7, 6, 5, 4, 3] as const;
 const MOCHI_CHIPS = ["Home", "Store", "Social", "Memories"] as const;
-const COZY_HOME_SUGGESTIONS: string[] = [
-  "Set a quiet hour while Mochi naps",
-  "Schedule Mochi's next vet visit",
-  "Play soft rainfall sounds tonight",
-  "Remind me to refill Mochi's water",
+const COZY_HOME_REPORT_IDEAS: string[] = [
+  "Skill: save pet-care routines",
+  "Workflow: plan a calm evening",
+  "App: track supplies and visits",
+  "Automation: daily care reminders",
 ];
 
 /* Tiny cat avatar used in the cozy sidebar footer — a simple tuxedo
@@ -1053,9 +1050,9 @@ function StellaAppMockImpl({
                 </button>
               ))}
             </div>
-            <div className="sam-home-suggestions">
-              {HOME_SUGGESTIONS.map((text) => (
-                <span key={text} className="sam-home-suggestion">
+            <div className="sam-home-report-ideas">
+              {HOME_REPORT_IDEAS.map((text) => (
+                <span key={text} className="sam-home-report-idea">
                   {text}
                 </span>
               ))}
@@ -1323,9 +1320,9 @@ function StellaAppMockImpl({
                 </button>
               ))}
             </div>
-            <div className="sam-cozy-home-suggestions">
-              {COZY_HOME_SUGGESTIONS.map((text) => (
-                <span key={text} className="sam-cozy-home-suggestion">
+            <div className="sam-cozy-home-report-ideas">
+              {COZY_HOME_REPORT_IDEAS.map((text) => (
+                <span key={text} className="sam-cozy-home-report-idea">
                   {text}
                 </span>
               ))}

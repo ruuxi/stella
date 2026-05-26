@@ -19,6 +19,74 @@ import { CanvasIllustration } from "../illustrations/CanvasIllustration";
 import "./canvas-tab.css";
 
 const decoder = new TextDecoder("utf-8");
+const CANVAS_SELECTION_TUTORIAL_KEY = "stella.canvasSelectionTutorialSeen";
+
+const readCanvasSelectionTutorialSeen = (): boolean => {
+  try {
+    return window.localStorage.getItem(CANVAS_SELECTION_TUTORIAL_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const markCanvasSelectionTutorialSeen = (): void => {
+  try {
+    window.localStorage.setItem(CANVAS_SELECTION_TUTORIAL_KEY, "1");
+  } catch {
+    // Ignore storage failures; the hint is nonessential.
+  }
+};
+
+const CANVAS_SELECTION_BRIDGE_SCRIPT = String.raw`
+(() => {
+  const post = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      parent.postMessage({ type: "stella:canvas-selection", selected: false }, "*");
+      return;
+    }
+    const text = selection.toString();
+    const trimmed = text.trim();
+    if (trimmed.length < 2) {
+      parent.postMessage({ type: "stella:canvas-selection", selected: false }, "*");
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if ((rect.width === 0 && rect.height === 0) || !Number.isFinite(rect.left)) {
+      parent.postMessage({ type: "stella:canvas-selection", selected: false }, "*");
+      return;
+    }
+    parent.postMessage({
+      type: "stella:canvas-selection",
+      selected: true,
+      text,
+      rect: {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      },
+    }, "*");
+  };
+  window.addEventListener("mouseup", () => setTimeout(post, 0), true);
+  document.addEventListener("selectionchange", () => setTimeout(post, 0));
+  window.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "stella:canvas-selection-clear") {
+      window.getSelection()?.removeAllRanges();
+      post();
+    }
+  });
+})();
+`;
+
+const injectCanvasSelectionBridge = (html: string): string => {
+  const script = `<script>${CANVAS_SELECTION_BRIDGE_SCRIPT}<\/script>`;
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${script}</body>`);
+  }
+  return `${html}${script}`;
+};
 
 const expandPanel = () => displayTabs.setPanelExpanded(true);
 
@@ -49,6 +117,18 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
     "Canvas preview requires the Stella desktop app.",
   );
   const html = useMemo(() => (bytes ? decoder.decode(bytes) : ""), [bytes]);
+  const srcDoc = useMemo(
+    () => (html ? injectCanvasSelectionBridge(html) : ""),
+    [html],
+  );
+  const [showSelectionTutorial, setShowSelectionTutorial] = useState(
+    () => !readCanvasSelectionTutorialSeen(),
+  );
+
+  const dismissSelectionTutorial = () => {
+    markCanvasSelectionTutorialSeen();
+    setShowSelectionTutorial(false);
+  };
 
   if (error) {
     return (
@@ -71,14 +151,30 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
   }
 
   return (
-    <iframe
-      key={`${item.id}:${item.createdAt}`}
-      title={item.title}
-      className="canvas-tab__iframe"
-      srcDoc={html}
-      sandbox="allow-scripts allow-popups allow-modals allow-forms"
-      referrerPolicy="no-referrer"
-    />
+    <div className="canvas-tab__frame-wrap">
+      <iframe
+        key={`${item.id}:${item.createdAt}`}
+        title={item.title}
+        className="canvas-tab__iframe"
+        srcDoc={srcDoc}
+        sandbox="allow-scripts allow-popups allow-modals allow-forms"
+        referrerPolicy="no-referrer"
+      />
+      {showSelectionTutorial ? (
+        <div className="canvas-tab__selection-tutorial" role="dialog">
+          <div className="canvas-tab__selection-tutorial-label">
+            Ask Stella from reports
+          </div>
+          <p>
+            Select any text in this report, then choose Ask Stella to place it
+            into chat.
+          </p>
+          <button type="button" onClick={dismissSelectionTutorial}>
+            Got it
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 };
 

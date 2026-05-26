@@ -32,6 +32,7 @@ import {
   type AgentRunFinishOutcome,
   type AgentStreamEventType,
 } from "../contracts/agent-runtime.js";
+import { fileChange } from "../contracts/file-changes.js";
 import { prepareStoredLocalChatPayload } from "../kernel/storage/local-chat-payload.js";
 import { collectAllSignals } from "../discovery/collect-all.js";
 import { sweepStaleConnectorBridgeProcesses } from "../kernel/connectors/process-registry.js";
@@ -3184,7 +3185,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const payload = params as {
         conversationId?: string;
         message?: string;
-        suggestions?: unknown[];
+        firstReport?: unknown;
       };
       const conversationId = payload.conversationId ?? "";
       const message =
@@ -3201,14 +3202,66 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           }),
         });
       }
-      const suggestions = Array.isArray(payload.suggestions)
-        ? payload.suggestions
-        : [];
-      if (suggestions.length > 0) {
+      const firstReport =
+        payload.firstReport &&
+        typeof payload.firstReport === "object" &&
+        !Array.isArray(payload.firstReport)
+          ? (payload.firstReport as Record<string, unknown>)
+          : null;
+      const reportTitle =
+        typeof firstReport?.title === "string" ? firstReport.title.trim() : "";
+      const reportHtml =
+        typeof firstReport?.html === "string" ? firstReport.html : "";
+      if (reportTitle && reportHtml.trim() && state.init?.stellaRoot) {
+        const rawSlug =
+          typeof firstReport?.slug === "string" ? firstReport.slug : "";
+        const slug =
+          rawSlug
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 64) || "report-welcome";
+        const timestamp = Date.now();
+        const filePath = path.join(
+          state.init.stellaRoot,
+          "outputs",
+          "html",
+          `${slug}.html`,
+        );
+        let kind: "add" | "update" = "add";
+        try {
+          await fsPromises.access(filePath);
+          kind = "update";
+        } catch {
+          kind = "add";
+        }
+        await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
+        await fsPromises.writeFile(filePath, reportHtml, "utf8");
+        const bytes = Buffer.byteLength(reportHtml, "utf8");
         latestEvent = ensureChatStore().appendEvent({
           conversationId,
-          type: "home_suggestions",
-          payload: { suggestions },
+          type: "tool_result",
+          requestId: `onboarding-first-report-${timestamp}`,
+          timestamp: timestamp + 1,
+          payload: {
+            toolName: "html",
+            result: `Canvas "${reportTitle}" saved to ${filePath} and opened in the panel.`,
+            resultPreview: `Canvas "${reportTitle}" saved to ${filePath} and opened in the panel.`,
+            details: {
+              filePath,
+              slug,
+              title: reportTitle,
+              createdAt: timestamp,
+              bytes,
+            },
+            filePath,
+            slug,
+            title: reportTitle,
+            createdAt: timestamp,
+            bytes,
+            fileChanges: [fileChange(filePath, { type: kind })],
+            agentType: AGENT_IDS.ORCHESTRATOR,
+          },
         });
       }
       notifyLocalChatUpdated(peer, conversationId, latestEvent);

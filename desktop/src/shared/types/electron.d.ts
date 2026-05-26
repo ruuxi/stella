@@ -1311,8 +1311,8 @@ export type ElectronLocalChatApi = {
   /**
    * Raw event-stream read kept for the few non-timeline consumers that
    * look for specific auxiliary event types (the welcome dialog reads
-   * `assistant_message`, home categories reads `home_suggestions`), and
-   * for the mobile bridge which proxies the channel to phone clients.
+   * `assistant_message`), and for the mobile bridge which proxies the
+   * channel to phone clients.
    * Renderer chat surfaces use `listMessages` / `listActivity` /
    * `listFiles` instead.
    */
@@ -1348,7 +1348,7 @@ export type ElectronLocalChatApi = {
   persistDiscoveryWelcome: (payload: {
     conversationId: string;
     message: string;
-    suggestions?: unknown[];
+    firstReport?: unknown;
   }) => Promise<{ ok: true }>;
   listSyncMessages: (payload: {
     conversationId: string;

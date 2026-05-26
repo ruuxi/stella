@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
+import { buildOnboardingFirstReport } from "@/global/onboarding/services/first-report";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { showToast } from "@/ui/toast";
 import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
@@ -210,12 +211,11 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
 
         if (synthesisResult.welcomeMessage) {
           try {
+            const firstReport = buildOnboardingFirstReport(synthesisResult);
             await window.electronAPI?.localChat.persistDiscoveryWelcome?.({
               conversationId: activeConversationId,
               message: synthesisResult.welcomeMessage,
-              ...(synthesisResult.suggestions?.length
-                ? { suggestions: synthesisResult.suggestions }
-                : {}),
+              firstReport,
             });
           } catch (error) {
             console.error(

@@ -309,10 +309,10 @@
   color: var(--text-strong);
 }
 
-/* Discover card body: one mixed stream of fresh reports + suggestion
-   prompts; geometry lives in discover-list.css. This wrapper exists
-   only so the body can match the card's content inset. */
-.chat-workspace-strip__discover-body {
+/* Actions card body: compact command list; geometry lives in
+   workspace-actions-list.css. This wrapper exists only so the body can
+   match the card's content inset. */
+.chat-workspace-strip__actions-body {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -401,108 +401,4 @@
   color: var(--text-weak);
   font-weight: 500;
   letter-spacing: 0;
-}
-
-/* ── Discover card header trailing controls ─────────────────────── */
-
-/* Two clusters share this row: the (optional) shuffle button — this
-   card's own action, so it sits adjacent to the title — followed by
-   the sibling-section visibility toolbar. Spacing only, no divider:
-   the gap (×2 the toolbar's internal gap) lets them read as related
-   but separate. */
-.chat-workspace-strip__discover-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.chat-workspace-strip__discover-shuffle {
-  appearance: none;
-  position: relative;
-  border: none;
-  background: transparent;
-  border-radius: 7px;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-base);
-  cursor: default;
-  transition:
-    background-color 180ms var(--chat-workspace-strip-panel-ease-out),
-    color 120ms ease,
-    transform 140ms var(--chat-workspace-strip-panel-ease-out);
-}
-
-/* First-run hint dot. Sits in the top-right corner with a ring of
-   panel background so it stays clean over both the resting panel
-   and the button's hover fill. Removed permanently after the first
-   shuffle invocation (see useDiscoverItems). */
-.chat-workspace-strip__discover-shuffle-dot {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: var(--primary);
-  box-shadow: 0 0 0 2px var(--panel-surface-bg);
-  pointer-events: none;
-}
-
-.chat-workspace-strip__discover-shuffle:hover,
-.chat-workspace-strip__discover-shuffle:focus-visible {
-  outline: none;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-strong);
-}
-
-/* Tactile press — the rotate doubles as a "shuffled" affordance. */
-.chat-workspace-strip__discover-shuffle:active {
-  transform: rotate(45deg) scale(0.94);
-  transition-duration: 80ms;
-}
-
-/* ── Section visibility toggles (Discover card header) ──────────── */
-
-.chat-workspace-strip__section-toggles {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.chat-workspace-strip__section-toggle {
-  appearance: none;
-  border: none;
-  background: transparent;
-  border-radius: 7px;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-base);
-  cursor: default;
-  transition:
-    background-color 180ms var(--chat-workspace-strip-panel-ease-out),
-    opacity 180ms var(--chat-workspace-strip-panel-ease-out),
-    transform 140ms var(--chat-workspace-strip-panel-ease-out);
-}
-
-.chat-workspace-strip__section-toggle:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-}
-
-/* Tactile press — subtle scale on mousedown, like an iOS toolbar icon. */
-.chat-workspace-strip__section-toggle:active {
-  transform: scale(0.92);
-  transition-duration: 80ms;
-}
-
-.chat-workspace-strip__section-toggle[aria-pressed="false"] {
-  opacity: 0.32;
 }

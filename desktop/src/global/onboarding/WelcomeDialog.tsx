@@ -104,8 +104,8 @@ export function WelcomeDialog({
         </VisuallyHidden>
         <VisuallyHidden asChild>
           <DialogDescription>
-            Get started with personalized suggestions and pair your phone to
-            message Stella anywhere.
+            Get started with Stella and pair your phone to message Stella
+            anywhere.
           </DialogDescription>
         </VisuallyHidden>
         <DialogCloseButton className="welcome-dialog-close" />

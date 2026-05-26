@@ -35,9 +35,7 @@ export const createOpenPanelCadenceReportsHook = (opts: {
   event: "agent_end",
   async handler(payload) {
     if (payload.outcome !== "success") return;
-    if (
-      !agentHasCapability(payload.agentType, "triggersHomeSuggestionsRefresh")
-    ) {
+    if (!agentHasCapability(payload.agentType, "recordsThreadSummary")) {
       return;
     }
     const services = payload.services;

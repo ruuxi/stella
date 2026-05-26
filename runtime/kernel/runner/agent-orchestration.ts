@@ -755,9 +755,9 @@ export const createAgentOrchestration = (
             resolveLlmRoute({
               stellaRoot: context.stellaHome,
               // Honor any per-agent override the user set for this
-              // subsidiary agent (or our Assistant-tab propagation —
-              // home_suggestions etc. otherwise silently hit Stella even
-              // when the user moved Assistant onto BYOK).
+              // subsidiary agent (or our Assistant-tab propagation would
+              // silently hit Stella even when the user moved Assistant
+              // onto BYOK).
               modelName:
                 getModelOverride(context.stellaHome, subsidiaryAgentType) ??
                 getDefaultModel(context.stellaHome, subsidiaryAgentType),

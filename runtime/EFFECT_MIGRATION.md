@@ -92,7 +92,7 @@ the same surface.
   log call-sites still emit to the same files.
 - **Hooks** become two layered things: a "bundled hooks" `Layer` (what opencode
   would call the orchestrator-personality / self-mod / memory-review /
-  dream-notify / home-suggestions services), and a "user extension hooks"
+  dream-notify / cadence-report services), and a "user extension hooks"
   runtime registry the F1 reload swaps. The existing `HookEmitter`'s
   last-write-wins / `emitAll` / merge-on-`agent_end` semantics are preserved
   exactly.

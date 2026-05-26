@@ -12,7 +12,6 @@ import {
   type AssistantReplyPeekProps,
 } from "./AssistantReplyPeek";
 import { ComposerAddMenu } from "./ComposerAddMenu";
-import { ComposerAreaSelectOverlay } from "./ComposerAreaSelectOverlay";
 import {
   ComposerMicButton,
   ComposerStopButton,
@@ -45,7 +44,6 @@ type ComposerProps = {
   conversationId: string | null;
   onSend: () => void;
   onStop: () => void;
-  onNewChat: () => void | Promise<void>;
   indicator?: InlineWorkingIndicatorMountProps;
   replyPeek?: AssistantReplyPeekProps | null;
 };
@@ -63,7 +61,6 @@ export function Composer({
   conversationId,
   onSend,
   onStop,
-  onNewChat,
   indicator,
   replyPeek,
 }: ComposerProps) {
@@ -72,7 +69,6 @@ export function Composer({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const shellContentRef = useRef<HTMLDivElement | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
-  const [areaSelectActive, setAreaSelectActive] = useState(false);
   const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
     useScreenshotPreview(chatContext);
 
@@ -173,8 +169,6 @@ export function Composer({
               className="composer-add-button"
               title="Add"
               setChatContext={setChatContext}
-              onSelectArea={() => setAreaSelectActive(true)}
-              onNewChat={onNewChat}
             />
 
             {dictationInline ? (
@@ -218,8 +212,6 @@ export function Composer({
                       className="composer-add-button composer-add-button--toolbar"
                       title="Add"
                       setChatContext={setChatContext}
-                      onSelectArea={() => setAreaSelectActive(true)}
-                      onNewChat={onNewChat}
                     />
                   </div>
 
@@ -274,11 +266,6 @@ export function Composer({
           onClose={() => setPreviewScreenshotIndex(null)}
         />
       )}
-      <ComposerAreaSelectOverlay
-        active={areaSelectActive}
-        setChatContext={setChatContext}
-        onCancel={() => setAreaSelectActive(false)}
-      />
     </div>
   );
 }

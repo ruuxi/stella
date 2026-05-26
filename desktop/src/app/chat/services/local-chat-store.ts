@@ -7,8 +7,7 @@
  *   - `getOrCreateLocalConversationId` — bootstrap helper used before
  *     any conversation context exists.
  *   - `listLocalEvents` — used by onboarding (`WelcomeDialog` reads the
- *     welcome `assistant_message`; `home/categories` reads
- *     `home_suggestions`). Both look up auxiliary event types that
+ *     welcome `assistant_message`) and a few auxiliary event readers that
  *     aren't part of the message/activity/files streams.
  *   - `subscribeToLocalChatUpdates` — push notifications backing both
  *     of the above so they refresh when the runtime persists a new

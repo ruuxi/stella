@@ -6,7 +6,6 @@ import type {
 import { createConnectorFormatReminderHook } from "./hooks/connector-format-reminder.hook.js";
 import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.hook.js";
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
-import { createHomeSuggestionsRefreshHook } from "./hooks/home-suggestions-refresh.hook.js";
 import { createMemoryReviewHook } from "./hooks/memory-review.hook.js";
 import { createOpenPanelCadenceReportsHook } from "./hooks/open-panel-cadence-reports.hook.js";
 import { createPersonalityHook } from "./hooks/personality.hook.js";
@@ -30,7 +29,6 @@ const AGENTS_DIR = new URL("./agents/", import.meta.url);
  *   - Dynamic memory reminder
  *   - Memory review spawn (post-orchestrator finalize)
  *   - Dream scheduler notify (post-subagent finalize)
- *   - Home-suggestions refresh tick (post-subagent finalize)
  *   - Thread-summaries record (post-subagent finalize, capability-gated)
  *
  * Lives in `runtime/extensions/stella-runtime/` so power users can fork
@@ -84,12 +82,6 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   register(
     createDreamSchedulerNotifyHook({
       stellaHome: services.stellaHome,
-      store: services.store,
-    }),
-  );
-  register(
-    createHomeSuggestionsRefreshHook({
-      stellaRoot: services.stellaRoot,
       store: services.store,
     }),
   );

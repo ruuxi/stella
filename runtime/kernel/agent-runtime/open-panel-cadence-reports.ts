@@ -1,8 +1,8 @@
 /**
  * Background Open-panel cadence reports.
  *
- * The "Now" pill keeps using home_suggestions. The slower cadence reports
- * (4h / Daily / Weekly) are generated as normal inline chat HTML artifacts.
+ * Cadence reports (4h / Daily / Weekly) are generated as normal inline
+ * chat HTML artifacts.
  */
 
 import { promises as fs } from "node:fs";
@@ -90,9 +90,11 @@ const MAX_ACTIVITY_TEXT_CHARS = 700;
 const inFlightCadences = new Set<OpenPanelReportCadence>();
 
 const SYSTEM_PROMPT = [
-  "You generate a compact, polished HTML report for Stella's Open panel.",
+  "You generate compact, polished HTML reports for Stella.",
   "",
   "Use the supplied recent Stella activity, thread summaries, and browser activity for exactly the requested window.",
+  "Do not make this primarily a summary. Extract reusable workflow patterns and concrete things Stella could make durable for the user.",
+  "Prioritize: reusable workflows, Stella skills to create/update, small app ideas, automations/schedules, and useful connected-app or browser workflows.",
   "The output is rendered directly in Stella's trusted Canvas viewer. You may use inline scripts, external scripts, external stylesheets, CDN imports, charts, tables, and interactive controls when helpful.",
   "",
   "You MUST deliver the report by calling the `emit_report` tool exactly once with the complete HTML document in the `html` parameter. Do NOT include the HTML in your text response. Do NOT skip the tool call.",
@@ -100,9 +102,11 @@ const SYSTEM_PROMPT = [
   "Rules:",
   "  1. Pass one complete <!doctype html> document in the `html` argument. No markdown fences. No commentary outside the tool call.",
   "  2. Ground every claim in the supplied activity. Do not invent private details.",
-  "  3. Make it useful at a glance: short sections, concrete links/domains/tasks, and next-step suggestions.",
-  "  4. If there is little activity, say that plainly and still provide a clean status report.",
-  "  5. Keep the visual style quiet, native-feeling, and readable in a side panel. Cormorant for display type and Manrope for body when convenient.",
+  "  3. Make it useful at a glance: short sections, concrete workflow/app/skill ideas, and selectable text the user can highlight.",
+  "  4. For 4h reports, focus on immediate reusable workflows from the latest work. For Daily reports, focus on patterns worth saving as skills, apps, or schedules.",
+  "  5. If there is little activity, say that plainly and still provide broadly useful reusable workflow ideas grounded in what is available.",
+  "  6. Keep the visual style quiet, native-feeling, and readable in a side panel. Cormorant for display type and Manrope for body when convenient.",
+  "  7. Do not build custom chat buttons. Stella already lets the user select text in the report and choose Ask Stella; write each idea as clean selectable text.",
 ].join("\n");
 
 const EMIT_REPORT_TOOL: Tool = {
@@ -332,8 +336,15 @@ const buildUserPrompt = (args: {
   browserWindow: BrowserActivityWindow | null;
 }): string => {
   const browserText = formatBrowserWindow(args.browserWindow);
+  const reportGoal =
+    args.cadence.id === "4h"
+      ? "Find immediate patterns from the last few hours that could become reusable workflows, skills, app ideas, or next automations."
+      : args.cadence.id === "daily"
+        ? "Find the day's repeated patterns and propose durable skills, reusable workflows, small Stella apps, and schedules worth saving."
+        : "Find broader weekly patterns and propose durable skills, reusable workflows, small Stella apps, and schedules worth saving.";
   return [
     `Report cadence: ${args.cadence.label}`,
+    `Report goal: ${reportGoal}`,
     `Window start: ${new Date(args.sinceMs).toISOString()}`,
     `Window end: ${new Date(args.nowMs).toISOString()}`,
     "",

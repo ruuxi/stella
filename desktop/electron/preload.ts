@@ -1858,7 +1858,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     persistDiscoveryWelcome: (payload: {
       conversationId: string;
       message: string;
-      suggestions?: unknown[];
+      firstReport?: unknown;
     }) => ipcRenderer.invoke("localChat:persistDiscoveryWelcome", payload),
     listSyncMessages: (payload: {
       conversationId: string;

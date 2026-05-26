@@ -196,7 +196,7 @@ export const registerLocalChatHandlers = (
       payload: {
         conversationId?: string;
         message?: string;
-        suggestions?: unknown[];
+        firstReport?: unknown;
       },
     ) =>
       await withLocalChatClient(
@@ -207,7 +207,7 @@ export const registerLocalChatHandlers = (
           client.persistDiscoveryWelcome({
             conversationId: payload?.conversationId ?? "",
             message: payload?.message ?? "",
-            suggestions: payload?.suggestions,
+            firstReport: payload?.firstReport,
           }),
       ),
   );

@@ -1718,7 +1718,7 @@ export class StellaRuntimeHost {
   async persistDiscoveryWelcome(payload: {
     conversationId: string;
     message: string;
-    suggestions?: unknown[];
+    firstReport?: unknown;
   }) {
     return await this.requestWorker<{ ok: true }>(
       METHOD_NAMES.INTERNAL_WORKER_LOCAL_CHAT_PERSIST_DISCOVERY_WELCOME,

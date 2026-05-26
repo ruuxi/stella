@@ -117,6 +117,5 @@ export type ChatColumnProps = {
   conversationId: string | null
   hideRightContextPanel?: boolean
   showHomeContent?: boolean
-  onSuggestionClick?: (prompt: string) => void
   onDismissHome?: () => void
 }
