@@ -87,6 +87,19 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
+    title: "Motion",
+    description: "Minimize interface animations.",
+    keywords: [
+      "reduce motion",
+      "reduced motion",
+      "animation",
+      "animations",
+      "motion",
+      "accessibility",
+    ],
+  },
+  {
+    tab: "general",
     title: "Voice",
     description: "Pick Stella's speaking style and personality voice.",
     keywords: ["personality", "tone", "stella voice", "accent"],

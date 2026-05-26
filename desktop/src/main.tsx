@@ -7,6 +7,7 @@ import "./shared/styles/app-components.css";
 import "./shared/i18n/rtl.css";
 
 import "./platform/dev/vite-error-recovery";
+import "./shared/lib/interface-preferences";
 import "./shared/lib/native-font-smoothing";
 import { App } from "./App.tsx";
 import { AppProviders } from "./context/AppProviders";

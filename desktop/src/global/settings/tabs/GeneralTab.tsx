@@ -17,6 +17,11 @@ import {
   setNativeFontSmoothingEnabled,
   useNativeFontSmoothingEnabled,
 } from "@/shared/lib/native-font-smoothing";
+import {
+  setReduceMotionPreference,
+  useInterfacePreferences,
+  type ReduceMotionPreference,
+} from "@/shared/lib/interface-preferences";
 import { openExternalUrl } from "@/platform/electron/open-external";
 import { useT } from "@/shared/i18n";
 import type { LockedComputerUseStatus } from "@/shared/types/electron";
@@ -56,6 +61,7 @@ export function GeneralTab() {
   const developerResourcePreviewsEnabled =
     useDeveloperResourcePreviewsEnabled();
   const nativeFontSmoothingEnabled = useNativeFontSmoothingEnabled();
+  const { reduceMotion } = useInterfacePreferences();
   const [preventComputerSleep, setPreventComputerSleep] = useState(false);
   const [preventSleepLoaded, setPreventSleepLoaded] = useState(false);
   const [isSavingPreventSleep, setIsSavingPreventSleep] = useState(false);
@@ -661,6 +667,45 @@ export function GeneralTab() {
       <div className="settings-tab-content">
         <LanguageSettingsRow />
         {permissionsCard}
+        <div className="settings-card">
+          <h3 className="settings-card-title">
+            {t("settings.motion.title")}
+          </h3>
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">
+                {t("settings.motion.reduceMotion.label")}
+              </div>
+              <div className="settings-row-sublabel">
+                {t("settings.motion.reduceMotion.description")}
+              </div>
+            </div>
+            <div className="settings-row-control">
+              <Select
+                className="settings-runtime-select"
+                value={reduceMotion}
+                aria-label={t("settings.motion.reduceMotion.label")}
+                onValueChange={(value) =>
+                  setReduceMotionPreference(value as ReduceMotionPreference)
+                }
+                options={[
+                  {
+                    value: "system",
+                    label: t("settings.motion.reduceMotion.system"),
+                  },
+                  {
+                    value: "on",
+                    label: t("settings.motion.reduceMotion.on"),
+                  },
+                  {
+                    value: "off",
+                    label: t("settings.motion.reduceMotion.off"),
+                  },
+                ]}
+              />
+            </div>
+          </div>
+        </div>
         <div className="settings-card">
           <div className="settings-card-header">
             <h3 className="settings-card-title">

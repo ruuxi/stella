@@ -422,6 +422,14 @@ html[data-stella-window="mini"] #stella-mini-boot {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  html[data-reduce-motion="reduce"] *,
+  html[data-reduce-motion="reduce"] *::before,
+  html[data-reduce-motion="reduce"] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
   /* Tailwind v4 preflight resets `button { cursor: default }` to mimic the
    * native macOS convention. We want pointer affordance on real buttons
    * across the app - settings, onboarding, dialogs, etc. - so put it back. */
