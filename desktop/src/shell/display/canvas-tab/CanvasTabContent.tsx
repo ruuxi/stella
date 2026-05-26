@@ -19,26 +19,79 @@ import { CanvasIllustration } from "../illustrations/CanvasIllustration";
 import "./canvas-tab.css";
 
 const decoder = new TextDecoder("utf-8");
-const CANVAS_SELECTION_TUTORIAL_KEY = "stella.canvasSelectionTutorialSeen";
-
-const readCanvasSelectionTutorialSeen = (): boolean => {
-  try {
-    return window.localStorage.getItem(CANVAS_SELECTION_TUTORIAL_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
-
-const markCanvasSelectionTutorialSeen = (): void => {
-  try {
-    window.localStorage.setItem(CANVAS_SELECTION_TUTORIAL_KEY, "1");
-  } catch {
-    // Ignore storage failures; the hint is nonessential.
-  }
-};
 
 const CANVAS_SELECTION_BRIDGE_SCRIPT = String.raw`
 (() => {
+  const composeButton = document.createElement("button");
+  composeButton.type = "button";
+  composeButton.textContent = "Ask Stella";
+  composeButton.setAttribute("aria-label", "Ask Stella about this");
+  Object.assign(composeButton.style, {
+    position: "fixed",
+    zIndex: "2147483647",
+    display: "none",
+    alignItems: "center",
+    border: "1px solid rgba(255,255,255,0.18)",
+    borderRadius: "999px",
+    background: "rgba(20,20,22,0.92)",
+    color: "white",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.24)",
+    padding: "5px 9px",
+    font: "600 12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+    cursor: "default",
+  });
+  (document.body || document.documentElement).appendChild(composeButton);
+  let activeComposeText = "";
+  let hideTimer = 0;
+
+  const findComposeTarget = (target) => {
+    if (!target || typeof target.closest !== "function") return null;
+    return target.closest("[data-stella-compose]");
+  };
+
+  const readComposeText = (target) => {
+    const raw = target.getAttribute("data-stella-compose") || target.textContent || "";
+    return raw.replace(/\s+/g, " ").trim();
+  };
+
+  const showComposeButton = (target) => {
+    window.clearTimeout(hideTimer);
+    const text = readComposeText(target);
+    if (!text) return;
+    activeComposeText = text;
+    const rect = target.getBoundingClientRect();
+    composeButton.style.left = Math.max(8, Math.min(window.innerWidth - 104, rect.right - 96)) + "px";
+    composeButton.style.top = Math.max(8, rect.top + 8) + "px";
+    composeButton.style.display = "inline-flex";
+  };
+
+  const hideComposeButtonSoon = () => {
+    window.clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(() => {
+      composeButton.style.display = "none";
+      activeComposeText = "";
+    }, 180);
+  };
+
+  document.addEventListener("mouseover", (event) => {
+    const target = findComposeTarget(event.target);
+    if (target) showComposeButton(target);
+  }, true);
+  document.addEventListener("mouseout", (event) => {
+    const target = findComposeTarget(event.target);
+    if (target) hideComposeButtonSoon();
+  }, true);
+  composeButton.addEventListener("mouseover", () => window.clearTimeout(hideTimer));
+  composeButton.addEventListener("mouseout", hideComposeButtonSoon);
+  composeButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (activeComposeText) {
+      parent.postMessage({ type: "stella:canvas-compose", text: activeComposeText }, "*");
+    }
+    composeButton.style.display = "none";
+  });
+
   const post = () => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -121,14 +174,6 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
     () => (html ? injectCanvasSelectionBridge(html) : ""),
     [html],
   );
-  const [showSelectionTutorial, setShowSelectionTutorial] = useState(
-    () => !readCanvasSelectionTutorialSeen(),
-  );
-
-  const dismissSelectionTutorial = () => {
-    markCanvasSelectionTutorialSeen();
-    setShowSelectionTutorial(false);
-  };
 
   if (error) {
     return (
@@ -160,20 +205,6 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
         sandbox="allow-scripts allow-popups allow-modals allow-forms"
         referrerPolicy="no-referrer"
       />
-      {showSelectionTutorial ? (
-        <div className="canvas-tab__selection-tutorial" role="dialog">
-          <div className="canvas-tab__selection-tutorial-label">
-            Ask Stella from reports
-          </div>
-          <p>
-            Select any text in this report, then choose Ask Stella to place it
-            into chat.
-          </p>
-          <button type="button" onClick={dismissSelectionTutorial}>
-            Got it
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 };

@@ -21,10 +21,10 @@ const splitLines = (value: string | undefined): string[] =>
     .slice(0, 10);
 
 const fallbackIdeas = [
-  "Create a Stella skill for recurring project conventions and verification commands.",
-  "Build a small Stella app that tracks repeated work, current projects, and open follow-ups.",
-  "Set up a daily report that turns recent activity into reusable workflows and next actions.",
-  "Save a workflow for packaging repeated deliverables into docs, decks, spreadsheets, or canvases.",
+  "Save a routine for the work you ask Stella to do often.",
+  "Make a small app for tracking open follow-ups and current projects.",
+  "Set up a daily report with only the ideas and reminders worth acting on.",
+  "Create a reusable workflow for turning notes into documents, decks, or spreadsheets.",
 ];
 
 export function buildOnboardingFirstReport(
@@ -42,7 +42,7 @@ export function buildOnboardingFirstReport(
   const cards = ideas
     .map((idea) => {
       const text = escapeHtml(idea);
-      return `<article class="card"><p>${text}</p></article>`;
+      return `<article class="card" data-stella-compose="${text}"><p>${text}</p></article>`;
     })
     .join("\n");
 
@@ -121,11 +121,11 @@ export function buildOnboardingFirstReport(
 <body>
   <main>
     <h1>Report - Welcome</h1>
-    <p class="dek">A first pass at reusable workflows, skills, and app ideas Stella can help turn into repeatable systems.</p>
-    <section class="grid" aria-label="Suggested reusable workflows">
+    <p class="dek">A first pass at workflows, small apps, reminders, and saved routines Stella can help make useful.</p>
+    <section class="grid" aria-label="Ideas Stella can help with">
       ${cards}
     </section>
-    <p class="hint"><strong>Tip:</strong> Select any workflow text and choose Ask Stella to place it into chat.</p>
+    <p class="hint"><strong>Tip:</strong> Hover an idea and choose Ask Stella, or select any text in the report.</p>
   </main>
 </body>
 </html>`,

@@ -485,6 +485,10 @@ button.mini-context-chip:hover {
   max-width: min(320px, 45vw);
 }
 
+.composer-context-chip--text {
+  max-width: min(520px, 70vw);
+}
+
 /* Window chip with an inline screenshot thumbnail: combine the screenshot
  * thumb stack with the app/title label as one card-shaped chip. The
  * wrapper's pill shape is overridden to a rounded card so the column

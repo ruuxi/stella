@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { dispatchOpenPanelChat } from "@/shared/lib/stella-orb-chat";
+import { dispatchComposeText } from "@/shared/lib/stella-orb-chat";
 import "./ask-stella-selection-chip.css";
 
 const PILL_HEIGHT = 28;
@@ -40,6 +40,11 @@ type CanvasSelectionMessage = {
   selected?: boolean;
   text?: unknown;
   rect?: unknown;
+};
+
+type CanvasComposeMessage = {
+  type: "stella:canvas-compose";
+  text?: unknown;
 };
 
 const SELECTION_HIDE_SELECTORS = [
@@ -118,6 +123,11 @@ const isCanvasSelectionMessage = (
   value: unknown,
 ): value is CanvasSelectionMessage =>
   Boolean(value && typeof value === "object" && (value as { type?: unknown }).type === "stella:canvas-selection");
+
+const isCanvasComposeMessage = (
+  value: unknown,
+): value is CanvasComposeMessage =>
+  Boolean(value && typeof value === "object" && (value as { type?: unknown }).type === "stella:canvas-compose");
 
 const findCanvasIframe = (source: MessageEventSource | null): HTMLIFrameElement | null => {
   if (!source) return null;
@@ -210,6 +220,15 @@ export function AskStellaSelectionChip() {
     const onScroll = () => setChip(null);
     const onMessage = (event: MessageEvent) => {
       if (pendingClickRef.current) return;
+      if (isCanvasComposeMessage(event.data)) {
+        const iframe = findCanvasIframe(event.source);
+        const text = typeof event.data.text === "string" ? event.data.text.trim() : "";
+        if (iframe && text.length > 0) {
+          setChip(null);
+          dispatchComposeText({ text, selectedText: null });
+        }
+        return;
+      }
       const next = readCanvasSelectionState(event);
       if (next !== undefined) setChip(next);
     };
@@ -266,7 +285,7 @@ export function AskStellaSelectionChip() {
         capture.setContext(chatContext);
       }
 
-      dispatchOpenPanelChat({ chatContext, prefillText: text });
+      dispatchComposeText({ text, chatContext, selectedText: text });
 
       window.setTimeout(() => {
         pendingClickRef.current = false;
