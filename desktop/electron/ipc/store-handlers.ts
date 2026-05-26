@@ -395,6 +395,14 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     });
   });
 
+  ipcMain.handle("storeWeb:showToast", async (event, payload: unknown) => {
+    assertStoreWebRequest(event, "storeWeb:showToast");
+    return await handleStoreWebLocalAction({
+      type: "showToast",
+      payload,
+    });
+  });
+
   ipcMain.handle("storeWeb:listNativeIntegrations", async (event) => {
     assertStoreWebRequest(event, "storeWeb:listNativeIntegrations");
     return await handleStoreWebLocalAction({
