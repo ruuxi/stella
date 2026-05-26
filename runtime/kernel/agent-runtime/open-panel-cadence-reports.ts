@@ -1,14 +1,13 @@
 /**
  * Background Open-panel cadence reports.
  *
- * The "Now" pill keeps using home_suggestions. The slower cadence pills
- * (4h / Daily / Weekly) are global per-user HTML reports persisted under
- * ~/.stella/open-panel-reports so the renderer can show last-generated time
- * and an unseen dot until the user opens the latest report.
+ * The "Now" pill keeps using home_suggestions. The slower cadence reports
+ * (4h / Daily / Weekly) are generated as normal inline chat HTML artifacts.
  */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileChange } from "../../contracts/file-changes.js";
 import { completeSimple, readAssistantText } from "../../ai/stream.js";
 import type {
   AssistantMessage,
@@ -25,6 +24,7 @@ import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
+import type { LocalChatAppendEventArgs } from "../storage/shared.js";
 import { eventTextFromPayload } from "../storage/shared.js";
 import type { ThreadSummaryRow } from "../memory/thread-summaries-store.js";
 import {
@@ -65,21 +65,21 @@ const CADENCES: CadenceConfig[] = [
     label: "4h",
     intervalMs: 4 * 60 * 60 * 1000,
     windowMs: 4 * 60 * 60 * 1000,
-    title: "Last 4 Hours",
+    title: "Report - 4h",
   },
   {
     id: "daily",
     label: "Daily",
     intervalMs: 24 * 60 * 60 * 1000,
     windowMs: 24 * 60 * 60 * 1000,
-    title: "Daily Brief",
+    title: "Report - Daily",
   },
   {
     id: "weekly",
     label: "Weekly",
     intervalMs: 7 * 24 * 60 * 60 * 1000,
     windowMs: 7 * 24 * 60 * 60 * 1000,
-    title: "Weekly Review",
+    title: "Report - Weekly",
   },
 ];
 
@@ -353,7 +353,7 @@ const buildUserPrompt = (args: {
 const outputPathForCadence = (
   stellaRoot: string,
   cadence: OpenPanelReportCadence,
-): string => path.join(reportsDir(stellaRoot), `${cadence}.html`);
+): string => path.join(stellaRoot, "outputs", "html", `report-${cadence}.html`);
 
 const generateReport = async (args: {
   stellaRoot: string;
@@ -454,7 +454,7 @@ const generateReport = async (args: {
   }
 
   const filePath = outputPathForCadence(args.stellaRoot, args.cadence.id);
-  await fs.mkdir(reportsDir(args.stellaRoot), { recursive: true });
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, html, "utf-8");
 
   return {
@@ -468,9 +468,11 @@ const generateReport = async (args: {
 };
 
 export const spawnOpenPanelCadenceReports = (deps: {
+  conversationId: string;
   stellaRoot: string;
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
+  appendLocalChatEvent: (args: LocalChatAppendEventArgs) => void;
 }): void => {
   void (async () => {
     const nowMs = Date.now();
@@ -497,7 +499,7 @@ export const spawnOpenPanelCadenceReports = (deps: {
       );
       const browserById = new Map(browserWindows.map((entry) => [entry.id, entry]));
 
-      for (const cadence of due) {
+      for (const [reportIndex, cadence] of due.entries()) {
         try {
           const report = await generateReport({
             ...deps,
@@ -507,6 +509,46 @@ export const spawnOpenPanelCadenceReports = (deps: {
             nowMs,
           });
           if (!report) continue;
+          const bytes = Buffer.byteLength(
+            await fs.readFile(report.filePath, "utf-8"),
+            "utf-8",
+          );
+          const slug = `report-${cadence.id}`;
+          const rowTimestamp = report.generatedAt + reportIndex * 2;
+          deps.appendLocalChatEvent({
+            conversationId: deps.conversationId,
+            type: "assistant_message",
+            timestamp: rowTimestamp,
+            payload: {
+              text: report.title,
+              agentType: AGENT_IDS.ORCHESTRATOR,
+            },
+          });
+          deps.appendLocalChatEvent({
+            conversationId: deps.conversationId,
+            type: "tool_result",
+            requestId: `open-panel-report-${cadence.id}-${report.generatedAt}`,
+            timestamp: rowTimestamp + 1,
+            payload: {
+              toolName: "html",
+              result: `Canvas "${report.title}" saved to ${report.filePath} and opened in the panel.`,
+              resultPreview: `Canvas "${report.title}" saved to ${report.filePath} and opened in the panel.`,
+              details: {
+                filePath: report.filePath,
+                slug,
+                title: report.title,
+                createdAt: report.generatedAt,
+                bytes,
+              },
+              filePath: report.filePath,
+              slug,
+              title: report.title,
+              createdAt: report.generatedAt,
+              bytes,
+              fileChanges: [fileChange(report.filePath, { type: "update" })],
+              agentType: AGENT_IDS.ORCHESTRATOR,
+            },
+          });
           const latestIndex = await readOpenPanelReportIndex(deps.stellaRoot);
           latestIndex.reports[cadence.id] = {
             ...report,

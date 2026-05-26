@@ -61,10 +61,14 @@ export const createOpenPanelCadenceReportsHook = (opts: {
         }
       }
 
+      if (!payload.conversationId || !services.appendLocalChatEvent) return;
+
       spawnOpenPanelCadenceReports({
+        conversationId: payload.conversationId,
         stellaRoot: opts.stellaHome,
         resolvedLlm,
         store: opts.store,
+        appendLocalChatEvent: services.appendLocalChatEvent,
       });
     } catch (error) {
       logger.debug("open-panel-reports.tick-failed", {
