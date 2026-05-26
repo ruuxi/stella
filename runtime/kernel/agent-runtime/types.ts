@@ -215,17 +215,16 @@ export type BaseRunOptions = {
   appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
   /**
    * Read recent local-chat events for the conversation. Used by post-run
-   * background passes (e.g. home-suggestions refresh) that need a
-   * snapshot of the persisted event log.
+   * background passes that need a snapshot of the persisted event log.
    */
   listLocalChatEvents?: (
     conversationId: string,
     maxItems: number,
   ) => LocalContextEvent[];
   /**
-   * Resolve the LLM route for a sibling agent type (e.g. "home_suggestions")
-   * so post-run background passes can run on a different model mode than
-   * the agent that just finalized. Lazy: only invoked when actually needed.
+   * Resolve the LLM route for a sibling agent type so post-run background
+   * passes can run on a different model mode than the agent that just
+   * finalized. Lazy: only invoked when actually needed.
    */
   resolveSubsidiaryLlmRoute?: (agentType: string) => ResolvedLlmRoute;
   /**

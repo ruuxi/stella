@@ -417,8 +417,6 @@ export function ChatPanelTab(
                       className="composer-add-button"
                       title="Add"
                       setChatContext={setChatContext}
-                      onSelectArea={() => setAreaSelectActive(true)}
-                      onNewChat={onNewChat}
                     />
 
                     {dictationInline ? (
@@ -462,8 +460,6 @@ export function ChatPanelTab(
                               className="composer-add-button composer-add-button--toolbar"
                               title="Add"
                               setChatContext={setChatContext}
-                              onSelectArea={() => setAreaSelectActive(true)}
-                              onNewChat={onNewChat}
                             />
                           </div>
 
@@ -513,7 +509,13 @@ export function ChatPanelTab(
             </div>
           </div>
         </div>
-        {wideLayout ? <ChatWorkspaceStrip embeddedInDisplayPanel /> : null}
+        {wideLayout ? (
+          <ChatWorkspaceStrip
+            embeddedInDisplayPanel
+            onNewChat={onNewChat}
+            onSelectArea={() => setAreaSelectActive(true)}
+          />
+        ) : null}
         </div>
         {previewScreenshot && previewScreenshotIndex !== null && (
           <ScreenshotPreviewOverlay

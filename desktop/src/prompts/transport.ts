@@ -15,6 +15,4 @@ export const getSynthesisPromptConfig = () => ({
   coreMemorySystemPrompt: getPromptTemplateText("synthesis.core_memory.system").trim(),
   coreMemoryUserPromptTemplate: getPromptTemplateText("synthesis.core_memory.user").trim(),
   welcomeMessagePromptTemplate: getPromptTemplateText("synthesis.welcome_message.user").trim(),
-  homeSuggestionsPromptTemplate: getPromptTemplateText("synthesis.home_suggestions.user").trim(),
 })
-

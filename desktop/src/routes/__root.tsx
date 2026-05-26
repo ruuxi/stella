@@ -359,7 +359,6 @@ function RootChrome() {
               conversationId={conversationId}
               hideRightContextPanel={shouldAutoHideWorkspaceStrip}
               showHomeContent={chat.showHomeContent}
-              onSuggestionClick={chat.onSuggestionClick}
               onDismissHome={chat.dismissHome}
             />
           </div>

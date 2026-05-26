@@ -9,7 +9,6 @@ export const AGENT_IDS = {
   STORE: "store",
   DREAM: "dream",
   CHRONICLE: "chronicle",
-  HOME_SUGGESTIONS: "home_suggestions",
   OPEN_PANEL_REPORTS: "open_panel_reports",
   INSTALL_UPDATE: "install_update",
 } as const;
@@ -47,10 +46,6 @@ export type AgentCapabilities = {
   recordsThreadSummary?: boolean;
   /** Notify the Dream scheduler on successful run completion. */
   triggersDreamScheduler?: boolean;
-  /**
-   * Refresh home suggestions on successful run completion (count-based cadence).
-   */
-  triggersHomeSuggestionsRefresh?: boolean;
   /** Trigger the orchestrator memory-review pass on successful real user turns. */
   triggersMemoryReview?: boolean;
   /** Run self-mod baseline capture and detect-applied around the run. */
@@ -160,7 +155,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
       injectsSkillCatalog: true,
       recordsThreadSummary: true,
       triggersDreamScheduler: true,
-      triggersHomeSuggestionsRefresh: true,
     },
   },
   {

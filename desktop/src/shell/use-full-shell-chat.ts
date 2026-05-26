@@ -217,14 +217,6 @@ export function useFullShellChat({
     el?.scrollTo({ top: el.scrollHeight, behavior: 'instant' })
   }, [activeConversationId, listRef])
 
-  const onSuggestionClick = useCallback(
-    (prompt: string) => {
-      resetIdleTimer()
-      setMessage(prompt)
-    },
-    [resetIdleTimer],
-  )
-
   const handleSend = useCallback(() => {
     // `getIsFollowing()` reads the follow latch (intent), not the
     // physical scroll position. After a short assistant reply, the
@@ -427,7 +419,6 @@ export function useFullShellChat({
     },
     scroll: chatColumnScroll,
     showHomeContent,
-    onSuggestionClick,
     dismissHome,
     showHome,
   }

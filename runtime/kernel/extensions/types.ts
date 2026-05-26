@@ -161,8 +161,8 @@ export type AgentEndPayload = HookRuntimeContext & {
    * wired (the orchestrator and subagent finalize paths); undefined
    * for synthetic emit sites (cleanup-only emissions on
    * error/interrupted, test fixtures without a runtime). Stella-runtime
-   * post-finalize hooks (memory review, dream notify, home suggestions
-   * refresh, thread summaries record) read from here.
+   * post-finalize hooks (memory review, dream notify, cadence reports,
+   * thread summaries record) read from here.
    */
   services?: import("./services.js").RuntimeRunServices;
 };

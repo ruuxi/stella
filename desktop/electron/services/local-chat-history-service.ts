@@ -1,4 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileChange } from "../../../runtime/contracts/file-changes.js";
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
@@ -19,6 +22,36 @@ import type { LocalChatUpdatedPayload } from "../../../runtime/contracts/local-c
 type LocalChatHistoryServiceOptions = {
   stellaRoot: string;
   onUpdated?: (payload: LocalChatUpdatedPayload | null) => void;
+};
+
+type FirstReportPayload = {
+  slug: string;
+  title: string;
+  html: string;
+};
+
+const REPORT_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+const normalizeReportSlug = (value: unknown): string => {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  const slug = raw
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+  return REPORT_SLUG_RE.test(slug) ? slug : "report-welcome";
+};
+
+const normalizeFirstReport = (value: unknown): FirstReportPayload | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const title = typeof record.title === "string" ? record.title.trim() : "";
+  const html = typeof record.html === "string" ? record.html : "";
+  if (!title || !html.trim()) return null;
+  return {
+    slug: normalizeReportSlug(record.slug),
+    title,
+    html,
+  };
 };
 
 const openNodeSqliteDatabase = (dbPath: string): SqliteDatabase =>
@@ -154,7 +187,7 @@ export class LocalChatHistoryService {
   persistDiscoveryWelcome(args: {
     conversationId: string;
     message: string;
-    suggestions?: unknown[];
+    firstReport?: unknown;
   }): { ok: true } {
     const message = args.message.trim();
     const store = this.getStore();
@@ -171,12 +204,57 @@ export class LocalChatHistoryService {
       });
     }
 
-    const suggestions = Array.isArray(args.suggestions) ? args.suggestions : [];
-    if (suggestions.length > 0) {
-      latestEvent = store.appendEvent({
-        conversationId: args.conversationId,
-        type: "home_suggestions",
-        payload: { suggestions },
+    const firstReport = normalizeFirstReport(args.firstReport);
+    if (firstReport) {
+      const timestamp = Date.now();
+      const filePath = path.join(
+        this.stellaRoot,
+        "outputs",
+        "html",
+        `${firstReport.slug}.html`,
+      );
+      void (async () => {
+        let kind: "add" | "update" = "add";
+        try {
+          await fs.access(filePath);
+          kind = "update";
+        } catch {
+          kind = "add";
+        }
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, firstReport.html, "utf8");
+        const bytes = Buffer.byteLength(firstReport.html, "utf8");
+        const event = store.appendEvent({
+          conversationId: args.conversationId,
+          type: "tool_result",
+          requestId: `onboarding-first-report-${timestamp}`,
+          timestamp: timestamp + 1,
+          payload: {
+            toolName: "html",
+            result: `Canvas "${firstReport.title}" saved to ${filePath} and opened in the panel.`,
+            resultPreview: `Canvas "${firstReport.title}" saved to ${filePath} and opened in the panel.`,
+            details: {
+              filePath,
+              slug: firstReport.slug,
+              title: firstReport.title,
+              createdAt: timestamp,
+              bytes,
+            },
+            filePath,
+            slug: firstReport.slug,
+            title: firstReport.title,
+            createdAt: timestamp,
+            bytes,
+            fileChanges: [fileChange(filePath, { type: kind })],
+            agentType: "orchestrator",
+          },
+        });
+        this.onUpdated?.({
+          conversationId: args.conversationId,
+          event: event as unknown as LocalChatUpdatedPayload["event"],
+        });
+      })().catch((error) => {
+        console.warn("[local-chat] Failed to persist first report:", error);
       });
     }
 

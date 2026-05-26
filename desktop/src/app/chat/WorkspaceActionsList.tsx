@@ -1,0 +1,130 @@
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { MessageSquarePlus, Scan, Volume2, VolumeX } from "lucide-react";
+import {
+  readAloudPrefStore,
+  setReadAloudEnabled as persistReadAloudEnabled,
+} from "@/features/voice/services/read-aloud/read-aloud-pref";
+import { stopReadAloud } from "@/features/voice/services/read-aloud/read-aloud-player";
+import { showToast } from "@/ui/toast";
+import "./workspace-actions-list.css";
+
+const NEW_CHAT_CONFIRM_TIMEOUT_MS = 3000;
+
+type WorkspaceActionsListProps = {
+  onNewChat?: () => void | Promise<void>;
+  onSelectArea?: () => void;
+};
+
+export function WorkspaceActionsList({
+  onNewChat,
+  onSelectArea,
+}: WorkspaceActionsListProps) {
+  const [newChatArmed, setNewChatArmed] = useState(false);
+  const [newChatPending, setNewChatPending] = useState(false);
+  const readAloudEnabled = useSyncExternalStore(
+    readAloudPrefStore.subscribe,
+    readAloudPrefStore.getSnapshot,
+    readAloudPrefStore.getServerSnapshot,
+  );
+
+  const handleToggleReadAloud = useCallback(() => {
+    setNewChatArmed(false);
+    const next = !readAloudEnabled;
+    void persistReadAloudEnabled(next);
+    if (!next) stopReadAloud();
+  }, [readAloudEnabled]);
+
+  const handleNewChat = useCallback(async () => {
+    if (!onNewChat || newChatPending) return;
+    if (!newChatArmed) {
+      setNewChatArmed(true);
+      return;
+    }
+    setNewChatPending(true);
+    try {
+      await onNewChat();
+      setNewChatArmed(false);
+    } catch (error) {
+      console.warn("[workspace-actions] new chat failed:", error);
+      showToast({
+        title: "Couldn’t start a new chat",
+        description:
+          error instanceof Error && error.message
+            ? error.message
+            : "Stella will keep this chat open.",
+        variant: "error",
+      });
+    } finally {
+      setNewChatPending(false);
+    }
+  }, [newChatArmed, newChatPending, onNewChat]);
+
+  useEffect(() => {
+    if (!newChatArmed || newChatPending) return;
+    const timeout = window.setTimeout(() => {
+      setNewChatArmed(false);
+    }, NEW_CHAT_CONFIRM_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [newChatArmed, newChatPending]);
+
+  const handleSelectArea = useCallback(() => {
+    setNewChatArmed(false);
+    onSelectArea?.();
+  }, [onSelectArea]);
+
+  return (
+    <ul className="workspace-actions-list">
+      <li className="workspace-actions-list__item">
+        <button
+          type="button"
+          className="workspace-actions-list__row"
+          onClick={handleToggleReadAloud}
+        >
+          <span className="workspace-actions-list__icon" aria-hidden="true">
+            {readAloudEnabled ? (
+              <Volume2 size={14} strokeWidth={1.85} />
+            ) : (
+              <VolumeX size={14} strokeWidth={1.85} />
+            )}
+          </span>
+          <span className="workspace-actions-list__label">
+            {readAloudEnabled ? "Stop reading aloud" : "Read replies aloud"}
+          </span>
+        </button>
+      </li>
+      {onNewChat ? (
+        <li className="workspace-actions-list__item">
+          <button
+            type="button"
+            className="workspace-actions-list__row"
+            onClick={() => {
+              void handleNewChat();
+            }}
+            disabled={newChatPending}
+          >
+            <span className="workspace-actions-list__icon" aria-hidden="true">
+              <MessageSquarePlus size={14} strokeWidth={1.85} />
+            </span>
+            <span className="workspace-actions-list__label">
+              {newChatArmed ? "Confirm new chat" : "New chat"}
+            </span>
+          </button>
+        </li>
+      ) : null}
+      {onSelectArea ? (
+        <li className="workspace-actions-list__item">
+          <button
+            type="button"
+            className="workspace-actions-list__row"
+            onClick={handleSelectArea}
+          >
+            <span className="workspace-actions-list__icon" aria-hidden="true">
+              <Scan size={14} strokeWidth={1.85} />
+            </span>
+            <span className="workspace-actions-list__label">Select area</span>
+          </button>
+        </li>
+      ) : null}
+    </ul>
+  );
+}

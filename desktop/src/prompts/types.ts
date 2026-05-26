@@ -15,9 +15,6 @@ type PromptTemplateValues = {
   "synthesis.welcome_message.user": {
     coreMemory: string
   }
-  "synthesis.home_suggestions.user": {
-    coreMemory: string
-  }
 }
 
 export type PromptId = keyof PromptTemplateValues

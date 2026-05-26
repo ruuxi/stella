@@ -19,7 +19,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { router } from "@/router";
 import { dispatchOpenPanelChat } from "@/shared/lib/stella-orb-chat";
 import "./ask-stella-selection-chip.css";
 
@@ -33,6 +32,14 @@ type ChipState = {
   text: string;
   left: number;
   top: number;
+  source?: Window | null;
+};
+
+type CanvasSelectionMessage = {
+  type: "stella:canvas-selection";
+  selected?: boolean;
+  text?: unknown;
+  rect?: unknown;
 };
 
 const SELECTION_HIDE_SELECTORS = [
@@ -107,6 +114,52 @@ const readSelectionState = (): ChipState | null => {
   return { text, left, top };
 };
 
+const isCanvasSelectionMessage = (
+  value: unknown,
+): value is CanvasSelectionMessage =>
+  Boolean(value && typeof value === "object" && (value as { type?: unknown }).type === "stella:canvas-selection");
+
+const findCanvasIframe = (source: MessageEventSource | null): HTMLIFrameElement | null => {
+  if (!source) return null;
+  for (const iframe of document.querySelectorAll<HTMLIFrameElement>(
+    ".canvas-tab__iframe",
+  )) {
+    if (iframe.contentWindow === source) return iframe;
+  }
+  return null;
+};
+
+const readCanvasSelectionState = (
+  event: MessageEvent,
+): ChipState | null | undefined => {
+  if (!isCanvasSelectionMessage(event.data)) return undefined;
+  if (!event.data.selected) return null;
+  const iframe = findCanvasIframe(event.source);
+  if (!iframe) return null;
+  const text = typeof event.data.text === "string" ? event.data.text : "";
+  if (text.trim().length < MIN_CHARS) return null;
+  const rect =
+    event.data.rect && typeof event.data.rect === "object"
+      ? (event.data.rect as Record<string, unknown>)
+      : null;
+  const left = typeof rect?.left === "number" ? rect.left : null;
+  const top = typeof rect?.top === "number" ? rect.top : null;
+  const width = typeof rect?.width === "number" ? rect.width : null;
+  const height = typeof rect?.height === "number" ? rect.height : null;
+  if (left === null || top === null || width === null || height === null) {
+    return null;
+  }
+  const iframeRect = iframe.getBoundingClientRect();
+  const selectionRect = new DOMRect(
+    iframeRect.left + left,
+    iframeRect.top + top,
+    width,
+    height,
+  );
+  const position = computePillPosition(selectionRect);
+  return { text, ...position, source: iframe.contentWindow };
+};
+
 export function AskStellaSelectionChip() {
   const [chip, setChip] = useState<ChipState | null>(null);
   const chipRef = useRef<HTMLButtonElement | null>(null);
@@ -155,6 +208,11 @@ export function AskStellaSelectionChip() {
     };
 
     const onScroll = () => setChip(null);
+    const onMessage = (event: MessageEvent) => {
+      if (pendingClickRef.current) return;
+      const next = readCanvasSelectionState(event);
+      if (next !== undefined) setChip(next);
+    };
 
     document.addEventListener("mouseup", onMouseUp, true);
     document.addEventListener("mousedown", onMouseDown, true);
@@ -162,6 +220,7 @@ export function AskStellaSelectionChip() {
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
+    window.addEventListener("message", onMessage);
 
     return () => {
       document.removeEventListener("mouseup", onMouseUp, true);
@@ -170,6 +229,7 @@ export function AskStellaSelectionChip() {
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
+      window.removeEventListener("message", onMessage);
     };
   }, [refreshFromSelection]);
 
@@ -189,30 +249,30 @@ export function AskStellaSelectionChip() {
 
       try {
         window.getSelection()?.removeAllRanges();
+        chip.source?.postMessage({ type: "stella:canvas-selection-clear" }, "*");
       } catch {
         /* selection may not be removable in some hosts */
       }
 
       const electronApi = window.electronAPI;
       const capture = electronApi?.capture;
+      const chatContext = {
+        window: null,
+        browserUrl: null,
+        selectedText: text,
+        regionScreenshots: [],
+      };
       if (capture?.setContext) {
-        capture.setContext({
-          window: null,
-          browserUrl: null,
-          selectedText: text,
-          regionScreenshots: [],
-        });
+        capture.setContext(chatContext);
       }
 
-      if (router.state.location.pathname !== "/chat") {
-        dispatchOpenPanelChat();
-      }
+      dispatchOpenPanelChat({ chatContext, prefillText: text });
 
       window.setTimeout(() => {
         pendingClickRef.current = false;
       }, 0);
     },
-    [chip?.text],
+    [chip],
   );
 
   if (!chip) return null;

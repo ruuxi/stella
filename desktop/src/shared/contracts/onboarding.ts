@@ -1,9 +1,3 @@
-export type OnboardingHomeSuggestion = {
-  category: "stella" | "task" | "skill" | "schedule";
-  label: string;
-  prompt: string;
-};
-
 export type OnboardingSynthesisRequest = {
   formattedSections?: Record<string, string>;
   promptConfig?: Record<string, unknown>;
@@ -13,6 +7,5 @@ export type OnboardingSynthesisRequest = {
 export type OnboardingSynthesisResponse = {
   coreMemory: string;
   welcomeMessage: string;
-  suggestions?: OnboardingHomeSuggestion[];
   categoryAnalyses?: Record<string, string>;
 };
