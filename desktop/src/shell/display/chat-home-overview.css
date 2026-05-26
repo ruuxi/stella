@@ -85,7 +85,7 @@
 
 .chat-home-launcher__entry-description {
   font-size: 12px;
-  color: var(--text-weak);
+  color: var(--text-base);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
