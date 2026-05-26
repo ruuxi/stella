@@ -47,6 +47,16 @@
       "title": "Native font smoothing",
       "description": "Render text the way macOS apps do, with grayscale anti-aliasing."
     },
+    "motion": {
+      "title": "Motion",
+      "reduceMotion": {
+        "label": "Reduce motion",
+        "description": "Minimize interface animations.",
+        "system": "System",
+        "on": "On",
+        "off": "Off"
+      }
+    },
     "voice": {
       "title": "Voice",
       "personality": {
