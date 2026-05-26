@@ -4,10 +4,9 @@
  * sidebar opens, this stays mounted as a clipped zero-width slot so
  * the chat column can resize smoothly.
  *
- * Each section is its own outlined card (rounded corners, 1px subtle
- * border, no painted fill) with a header row that carries the title +
- * a chevron collapse affordance. Cards stack vertically; empty cards
- * are omitted entirely.
+ * Everything lives inside a single outlined panel (rounded corners,
+ * 1px subtle border, no painted fill); sections inside are separated
+ * by thin horizontal dividers. Empty sections are omitted entirely.
  *
  * Shares its data sources with the display sidebar's Chat tab
  * (`ChatHomeOverview`) — same `useChatRuntime` + `useConversationSchedules`
@@ -15,22 +14,16 @@
  * against the other.
  */
 import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
-  ChevronDown,
   History,
-  Activity as ActivityIcon,
-  Check,
-  FolderClosed,
-  CalendarClock,
-  Command,
+  CheckCircle2,
+  Circle,
+  LoaderCircle,
+  AlertCircle,
 } from "lucide-react";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -64,14 +57,6 @@ import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
 import { useChatWorkspaceStripStore } from "./chat-workspace-strip-store";
-import {
-  areWorkspaceStripOpenPanelsEqual,
-  DEFAULT_WORKSPACE_STRIP_OPEN_PANELS,
-  resolveWorkspaceStripOpenPanels,
-  type WorkspaceStripOpenPanels,
-  type WorkspaceStripPanelId,
-  type WorkspaceStripPanelMeasurements,
-} from "./chat-workspace-strip-layout";
 import { TextShimmer } from "./TextShimmer";
 import { WorkspaceActionsList } from "./WorkspaceActionsList";
 import "./chat-workspace-strip.css";
@@ -82,132 +67,99 @@ const FILES_VISIBLE = 5;
 const UPNEXT_VISIBLE = 4;
 const EMPTY_TASKS: TaskItem[] = [];
 
-function WorkspaceCard({
-  id,
+function WorkspaceSection({
   title,
-  icon,
   children,
-  open,
-  onToggle,
-  measureRef,
-  headerTrailing,
   onOpenHistory,
   historyLabel,
-  headerOnly = false,
 }: {
-  id: WorkspaceStripPanelId;
   title: string;
-  icon: ReactNode;
   children?: ReactNode;
-  open: boolean;
-  onToggle: (panelId: WorkspaceStripPanelId) => void;
-  measureRef: (node: HTMLDivElement | null) => void;
-  headerTrailing?: ReactNode;
   onOpenHistory?: () => void;
   historyLabel?: string;
-  headerOnly?: boolean;
 }) {
-  const toggleOpen = () => onToggle(id);
-  const titleContent = (
-    <span className="chat-workspace-strip__card-title">
-      <span
-        className="chat-workspace-strip__card-title-icon"
-        aria-hidden="true"
-      >
-        {icon}
-      </span>
-      {title}
-    </span>
-  );
   return (
-    <div className="chat-workspace-strip__card-frame" ref={measureRef}>
-      <section
-        data-workspace-strip-card
-        className={`chat-workspace-strip__card${open && !headerOnly ? "" : " chat-workspace-strip__card--collapsed"}`}
-      >
-        <div
-          className="chat-workspace-strip__card-header"
-          data-workspace-strip-card-header
-        >
-          {headerOnly ? (
-            <div className="chat-workspace-strip__card-header-main">
-              {titleContent}
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="chat-workspace-strip__card-header-main"
-              onClick={toggleOpen}
-              aria-expanded={open}
-            >
-              {titleContent}
-            </button>
-          )}
-          {headerTrailing}
-          {onOpenHistory ? (
-            <button
-              type="button"
-              className="chat-workspace-strip__card-header-history"
-              onClick={onOpenHistory}
-              aria-label={historyLabel ?? `View ${title} history`}
-              title={historyLabel ?? `View ${title} history`}
-            >
-              <History size={14} strokeWidth={2} aria-hidden="true" />
-            </button>
-          ) : null}
-          {!headerOnly ? (
-            <button
-              type="button"
-              className="chat-workspace-strip__card-header-chevron"
-              onClick={toggleOpen}
-              tabIndex={-1}
-              aria-hidden="true"
-            >
-              <ChevronDown
-                className="chat-workspace-strip__card-chevron"
-                size={14}
-                strokeWidth={2}
-              />
-            </button>
-          ) : null}
-        </div>
-        {!headerOnly ? (
-          <div
-            className="chat-workspace-strip__card-body-grow"
-            data-expanded={open || undefined}
-            aria-hidden={!open}
+    <section className="chat-workspace-strip__section">
+      <header className="chat-workspace-strip__section-header">
+        <span className="chat-workspace-strip__section-title">{title}</span>
+        {onOpenHistory ? (
+          <button
+            type="button"
+            className="chat-workspace-strip__section-history"
+            onClick={onOpenHistory}
+            aria-label={historyLabel ?? `View ${title} history`}
+            title={historyLabel ?? `View ${title} history`}
           >
-            <div
-              className="chat-workspace-strip__card-body-inner"
-              data-workspace-strip-card-body-inner
-            >
-              <div className="chat-workspace-strip__card-body">{children}</div>
-            </div>
-          </div>
+            <History size={14} strokeWidth={2} aria-hidden="true" />
+          </button>
         ) : null}
-      </section>
-    </div>
+      </header>
+      <div className="chat-workspace-strip__section-body">{children}</div>
+    </section>
   );
+}
+
+function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
+  switch (status) {
+    case "running":
+      return (
+        <LoaderCircle
+          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--running"
+          size={15}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+      );
+    case "completed":
+      return (
+        <CheckCircle2
+          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--done"
+          size={15}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+      );
+    case "error":
+      return (
+        <AlertCircle
+          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--error"
+          size={15}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+      );
+    case "canceled":
+      return (
+        <Circle
+          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--canceled"
+          size={15}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+      );
+  }
 }
 
 function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
   return (
-    <ul className="chat-workspace-strip__list">
+    <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks">
       {tasks.map((task) => {
         const label = (getTaskDisplayText(task) || task.description).trim();
         return (
           <li
             key={task.id}
-            className="chat-workspace-strip__row"
-            data-status={task.status === "running" ? "now" : "done"}
+            className="chat-workspace-strip__task-row"
+            data-status={task.status}
           >
-            <span className="chat-workspace-strip__row-label">
+            <span
+              className="chat-workspace-strip__task-icon-wrap"
+              aria-hidden="true"
+            >
+              <TaskStatusIcon status={task.status} />
+            </span>
+            <span className="chat-workspace-strip__task-label">
               {task.status === "running" ? (
-                <TextShimmer
-                  text={label}
-                  durationMs={2000}
-                  className="text-shimmer--base chat-workspace-strip__row-label-shimmer"
-                />
+                <TextShimmer text={label} durationMs={2000} />
               ) : (
                 label
               )}
@@ -239,11 +191,6 @@ const scheduleEntryToAffectedRef = (
   nextRunAtMs: entry.nextRunAtMs,
 });
 
-const parseCssPx = (value: string): number => {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
 export function ChatWorkspaceStrip({
   forceHidden = false,
   embeddedInDisplayPanel = false,
@@ -254,14 +201,6 @@ export function ChatWorkspaceStrip({
   const { stripVisible } = useChatWorkspaceStripStore();
   const chat = useChatRuntime();
   const { state } = useUiState();
-  const panelFrameRefs = useRef<
-    Record<WorkspaceStripPanelId, HTMLDivElement | null>
-  >({
-    open: null,
-    activity: null,
-    files: null,
-    schedule: null,
-  });
 
   const conversationId = state.conversationId;
   const activity = chat.conversation.activity;
@@ -273,11 +212,6 @@ export function ChatWorkspaceStrip({
     useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
     useState<ScheduleEntry | null>(null);
-  const [openPanels, setOpenPanels] = useState<WorkspaceStripOpenPanels>(
-    DEFAULT_WORKSPACE_STRIP_OPEN_PANELS,
-  );
-  const stripStackRef = useRef<HTMLDivElement | null>(null);
-  const pendingJustOpenedPanelRef = useRef<WorkspaceStripPanelId | null>(null);
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
@@ -321,6 +255,10 @@ export function ChatWorkspaceStrip({
 
   const visibleDoneTasks = doneTasks.slice(0, DONE_VISIBLE);
   const hiddenDoneCount = doneTasks.length - visibleDoneTasks.length;
+  const visibleActivityTasks = useMemo(
+    () => [...runningTasks, ...visibleDoneTasks],
+    [runningTasks, visibleDoneTasks],
+  );
   const visibleFiles = allFiles.slice(0, FILES_VISIBLE);
   const hiddenFilesCount = allFiles.length - visibleFiles.length;
   const upNext = useMemo(
@@ -329,7 +267,7 @@ export function ChatWorkspaceStrip({
   );
   const hiddenScheduleCount = schedules.length - upNext.length;
 
-  const hasActivity = runningTasks.length > 0 || visibleDoneTasks.length > 0;
+  const hasActivity = visibleActivityTasks.length > 0;
   const hasFiles = allFiles.length > 0;
   const hasSchedule = upNext.length > 0;
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
@@ -341,169 +279,6 @@ export function ChatWorkspaceStrip({
   };
   const hidden =
     forceHidden || !stripVisible || (panelOpen && !embeddedInDisplayPanel);
-  const latestOpenPanelsRef = useRef(openPanels);
-  latestOpenPanelsRef.current = openPanels;
-  const availablePanelIds = useMemo<WorkspaceStripPanelId[]>(() => {
-    const ids: WorkspaceStripPanelId[] = ["open"];
-    if (hasActivity) ids.push("activity");
-    if (hasFiles) ids.push("files");
-    if (hasSchedule) ids.push("schedule");
-    return ids;
-  }, [hasActivity, hasFiles, hasSchedule]);
-
-  const setPanelFrameRef = useCallback(
-    (panelId: WorkspaceStripPanelId, node: HTMLDivElement | null) => {
-      panelFrameRefs.current[panelId] = node;
-    },
-    [],
-  );
-
-  const measurePanelHeights =
-    useCallback((): WorkspaceStripPanelMeasurements | null => {
-      const measurements: WorkspaceStripPanelMeasurements = {};
-
-      for (const panelId of availablePanelIds) {
-        const frame = panelFrameRefs.current[panelId];
-        const card = frame?.querySelector<HTMLElement>(
-          "[data-workspace-strip-card]",
-        );
-        const header = frame?.querySelector<HTMLElement>(
-          "[data-workspace-strip-card-header]",
-        );
-        const bodyInner = frame?.querySelector<HTMLElement>(
-          "[data-workspace-strip-card-body-inner]",
-        );
-
-        if (!card || !header) return null;
-
-        const cardStyle = window.getComputedStyle(card);
-        const borderHeight =
-          parseCssPx(cardStyle.borderTopWidth) +
-          parseCssPx(cardStyle.borderBottomWidth);
-        const collapsedHeight = Math.ceil(
-          header.getBoundingClientRect().height + borderHeight,
-        );
-
-        if (!bodyInner) {
-          measurements[panelId] = {
-            collapsedHeight,
-            expandedHeight: collapsedHeight,
-          };
-          continue;
-        }
-
-        measurements[panelId] = {
-          collapsedHeight,
-          expandedHeight: Math.ceil(collapsedHeight + bodyInner.scrollHeight),
-        };
-      }
-
-      return measurements;
-    }, [availablePanelIds]);
-
-  const resolvePanelsForAvailableHeight = useCallback(
-    (
-      requestedOpenPanels: WorkspaceStripOpenPanels,
-      justOpened: WorkspaceStripPanelId | null = null,
-    ): WorkspaceStripOpenPanels => {
-      const stack = stripStackRef.current;
-      if (hidden || !stack) return requestedOpenPanels;
-
-      const measurements = measurePanelHeights();
-      if (!measurements) return requestedOpenPanels;
-
-      return resolveWorkspaceStripOpenPanels({
-        availableHeight: stack.clientHeight,
-        availablePanels: availablePanelIds,
-        justOpened,
-        measurements,
-        openPanels: requestedOpenPanels,
-      });
-    },
-    [availablePanelIds, hidden, measurePanelHeights],
-  );
-
-  const applyOpenPanels = useCallback((next: WorkspaceStripOpenPanels) => {
-    setOpenPanels((current) =>
-      areWorkspaceStripOpenPanelsEqual(current, next) ? current : next,
-    );
-  }, []);
-
-  const fitCurrentPanels = useCallback(
-    (justOpened: WorkspaceStripPanelId | null = null) => {
-      const currentOpenPanels = latestOpenPanelsRef.current;
-      const resolved = resolvePanelsForAvailableHeight(
-        currentOpenPanels,
-        justOpened,
-      );
-      if (!areWorkspaceStripOpenPanelsEqual(currentOpenPanels, resolved)) {
-        applyOpenPanels(resolved);
-      }
-    },
-    [applyOpenPanels, resolvePanelsForAvailableHeight],
-  );
-
-  const handleTogglePanel = useCallback(
-    (panelId: WorkspaceStripPanelId) => {
-      const requestedOpenPanels = {
-        ...latestOpenPanelsRef.current,
-        [panelId]: !latestOpenPanelsRef.current[panelId],
-      };
-      const justOpened = requestedOpenPanels[panelId] ? panelId : null;
-      const resolved = resolvePanelsForAvailableHeight(
-        requestedOpenPanels,
-        justOpened,
-      );
-      applyOpenPanels(resolved);
-    },
-    [applyOpenPanels, resolvePanelsForAvailableHeight],
-  );
-
-  useLayoutEffect(() => {
-    const justOpened = pendingJustOpenedPanelRef.current;
-    pendingJustOpenedPanelRef.current = null;
-    fitCurrentPanels(justOpened);
-  });
-
-  useEffect(() => {
-    const stack = stripStackRef.current;
-    if (!stack || typeof ResizeObserver === "undefined") return;
-
-    let frame = 0;
-    const scheduleFit = () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        fitCurrentPanels();
-      });
-    };
-
-    const observer = new ResizeObserver(scheduleFit);
-    observer.observe(stack);
-    for (const panelId of availablePanelIds) {
-      const frameNode = panelFrameRefs.current[panelId];
-      if (frameNode) observer.observe(frameNode);
-    }
-
-    scheduleFit();
-
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [availablePanelIds, fitCurrentPanels]);
-
-  const renderReveal = (visible: boolean, content: ReactNode) => (
-    <div
-      className="chat-workspace-strip__section-reveal"
-      data-visible={visible || undefined}
-      aria-hidden={!visible}
-    >
-      <div className="chat-workspace-strip__section-reveal-inner">
-        {content}
-      </div>
-    </div>
-  );
 
   return (
     <aside
@@ -514,135 +289,113 @@ export function ChatWorkspaceStrip({
       aria-hidden={hidden}
     >
       <div className="chat-workspace-strip__inner">
-        <div className="chat-workspace-strip__scroll" ref={stripStackRef}>
-          <WorkspaceCard
-            id="open"
-            title="Actions"
-            icon={<Command size={12} strokeWidth={2.25} />}
-            open={openPanels.open}
-            onToggle={handleTogglePanel}
-            measureRef={(node) => setPanelFrameRef("open", node)}
-          >
-            <div className="chat-workspace-strip__actions-body">
-              <WorkspaceActionsList
-                onNewChat={onNewChat}
-                onSelectArea={onSelectArea}
-              />
-            </div>
-          </WorkspaceCard>
+        <div className="chat-workspace-strip__panel-frame">
+          <div className="chat-workspace-strip__panel">
+            <WorkspaceSection title="Actions">
+              <div className="chat-workspace-strip__actions-body">
+                <WorkspaceActionsList
+                  onNewChat={onNewChat}
+                  onSelectArea={onSelectArea}
+                />
+              </div>
+            </WorkspaceSection>
 
-          {hasActivity &&
-            renderReveal(
-              true,
-              <WorkspaceCard
-                id="activity"
-                title="Activity"
-                icon={<ActivityIcon size={12} strokeWidth={2.25} />}
-                open={openPanels.activity}
-                onToggle={handleTogglePanel}
-                measureRef={(node) => setPanelFrameRef("activity", node)}
-                onOpenHistory={
-                  hiddenDoneCount > 0 ? () => setHistorySection("done") : undefined
-                }
-                historyLabel={`View all activity (${doneTasks.length})`}
-              >
-                {runningTasks.length > 0 && <TasksList tasks={runningTasks} />}
-                {runningTasks.length > 0 && visibleDoneTasks.length > 0 && (
-                    <div className="chat-workspace-strip__activity-done-label">
-                      <span className="chat-workspace-strip__card-title">
-                        <span
-                          className="chat-workspace-strip__card-title-icon"
-                          aria-hidden="true"
-                        >
-                          <Check size={12} strokeWidth={2.25} />
-                        </span>
-                        Done
-                      </span>
-                    </div>
-                  )}
-                {visibleDoneTasks.length > 0 && (
-                  <TasksList tasks={visibleDoneTasks} />
-                )}
-              </WorkspaceCard>,
+            {hasActivity && (
+              <>
+                <div
+                  className="chat-workspace-strip__divider"
+                  aria-hidden="true"
+                />
+                <WorkspaceSection
+                  title="Activity"
+                  onOpenHistory={
+                    hiddenDoneCount > 0
+                      ? () => setHistorySection("done")
+                      : undefined
+                  }
+                  historyLabel={`View all activity (${doneTasks.length})`}
+                >
+                  <TasksList tasks={visibleActivityTasks} />
+                </WorkspaceSection>
+              </>
             )}
 
-          {hasFiles &&
-            renderReveal(
-              true,
-              <WorkspaceCard
-                id="files"
-                title="Files"
-                icon={<FolderClosed size={12} strokeWidth={2.25} />}
-                open={openPanels.files}
-                onToggle={handleTogglePanel}
-                measureRef={(node) => setPanelFrameRef("files", node)}
-                onOpenHistory={
-                  hiddenFilesCount > 0
-                    ? () => setHistorySection("files")
-                    : undefined
-                }
-                historyLabel={`View all files (${allFiles.length})`}
-              >
-                <ul className="chat-workspace-strip__list">
-                  {visibleFiles.map((file) => (
-                    <li
-                      key={file.path}
-                      className="chat-workspace-strip__row"
-                      title={file.path}
-                    >
-                      <button
-                        type="button"
-                        className="chat-workspace-strip__file-button"
-                        onClick={() => handleOpenFile(file)}
+            {hasFiles && (
+              <>
+                <div
+                  className="chat-workspace-strip__divider"
+                  aria-hidden="true"
+                />
+                <WorkspaceSection
+                  title="Files"
+                  onOpenHistory={
+                    hiddenFilesCount > 0
+                      ? () => setHistorySection("files")
+                      : undefined
+                  }
+                  historyLabel={`View all files (${allFiles.length})`}
+                >
+                  <ul className="chat-workspace-strip__list">
+                    {visibleFiles.map((file) => (
+                      <li
+                        key={file.path}
+                        className="chat-workspace-strip__row"
+                        title={file.path}
                       >
-                        <DisplayTabIcon
-                          kind={displayTabKindForPayload(file.payload)}
-                          size={15}
-                        />
-                        <span className="chat-workspace-strip__file-name">
-                          {basenameOf(file.path)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </WorkspaceCard>,
+                        <button
+                          type="button"
+                          className="chat-workspace-strip__file-button"
+                          onClick={() => handleOpenFile(file)}
+                        >
+                          <DisplayTabIcon
+                            kind={displayTabKindForPayload(file.payload)}
+                            size={15}
+                          />
+                          <span className="chat-workspace-strip__file-name">
+                            {basenameOf(file.path)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </WorkspaceSection>
+              </>
             )}
 
-          {hasSchedule &&
-            renderReveal(
-              true,
-              <WorkspaceCard
-                id="schedule"
-                title="Schedule"
-                icon={<CalendarClock size={12} strokeWidth={2.25} />}
-                open={openPanels.schedule}
-                onToggle={handleTogglePanel}
-                measureRef={(node) => setPanelFrameRef("schedule", node)}
-                onOpenHistory={
-                  hiddenScheduleCount > 0
-                    ? () => setHistorySection("upNext")
-                    : undefined
-                }
-                historyLabel={`View all schedules (${schedules.length})`}
-              >
-                <ul className="chat-workspace-strip__list">
-                  {upNext.map((entry) => (
-                    <li
-                      key={`${entry.kind}:${entry.id}`}
-                      className="chat-workspace-strip__row"
-                    >
-                      <span className="chat-workspace-strip__row-label">
-                        {entry.name.trim()}
-                      </span>
-                      <span className="chat-workspace-strip__row-meta">
-                        {formatNextRun(entry.nextRunAtMs, nowMs)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </WorkspaceCard>,
+            {hasSchedule && (
+              <>
+                <div
+                  className="chat-workspace-strip__divider"
+                  aria-hidden="true"
+                />
+                <WorkspaceSection
+                  title="Schedule"
+                  onOpenHistory={
+                    hiddenScheduleCount > 0
+                      ? () => setHistorySection("upNext")
+                      : undefined
+                  }
+                  historyLabel={`View all schedules (${schedules.length})`}
+                >
+                  <ul className="chat-workspace-strip__list">
+                    {upNext.map((entry) => (
+                      <li
+                        key={`${entry.kind}:${entry.id}`}
+                        className="chat-workspace-strip__row"
+                      >
+                        <span className="chat-workspace-strip__row-label">
+                          {entry.name.trim()}
+                        </span>
+                        <span className="chat-workspace-strip__row-meta">
+                          {formatNextRun(entry.nextRunAtMs, nowMs)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </WorkspaceSection>
+              </>
             )}
+          </div>
         </div>
       </div>
       <ScheduleDetailsDialog
