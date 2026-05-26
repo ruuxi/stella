@@ -182,6 +182,7 @@
   width: fit-content;
   border-bottom-right-radius: 4px;
   scroll-margin-top: 2px;
+  padding: 5px 12px;
 }
 
 /* Freshly-sent user bubble grows/fades in once. Tagged from

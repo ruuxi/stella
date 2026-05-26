@@ -26,6 +26,7 @@
   --chat-text-color: var(--text-strong);
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
+  --compact-chat-user-padding: 5px 12px;
   --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
   --compact-chat-user-radius: 12px;
   --compact-chat-user-tail-radius: var(--compact-chat-user-radius);
@@ -111,6 +112,7 @@
   max-width: var(--compact-chat-user-max-width);
   width: fit-content;
   color: var(--compact-chat-user-color);
+  padding: var(--compact-chat-user-padding);
 }
 
 .chat-conversation-surface .event-item.assistant {
