@@ -173,6 +173,37 @@
   color: inherit;
 }
 
+/*
+ * Disable Streamdown's per-code-block `content-visibility: auto` /
+ * `contain-intrinsic-size: auto 200px` inline-style optimization
+ * inside virtualized chat rows.
+ *
+ * Inside a chat bubble the optimization actively *causes* scroll
+ * jitter: each code block sits at the 200px placeholder while
+ * off-screen, then expands to its real (often 500–1500px) height
+ * the moment it crosses into the viewport. That intrinsic-size
+ * change resizes the assistant row, which fires
+ * `@legendapp/list`'s `maintainVisibleContentPosition` and writes
+ * a compensating `scrollBy` into the scroll element — visible to
+ * the user as a tiny "jump back" while slowly scrolling through a
+ * single long assistant message that contains many code blocks.
+ *
+ * The row itself is already virtualized by Legend (off-screen
+ * rows are fully unmounted via `drawDistance`), so the per-block
+ * `content-visibility: auto` is redundant inside chat AND it
+ * fights the row-level virtualization. `!important` is required
+ * because Streamdown sets these as inline styles via
+ * `data-streamdown="code-block"`.
+ *
+ * Non-chat hosts (display viewer, blueprint dialog) keep
+ * Streamdown's default behavior — they are not virtualized and
+ * the lazy paint is a pure win there.
+ */
+.event-item .markdown [data-streamdown="code-block"] {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+}
+
 /* Inline code */
 .markdown :not(pre) > code {
   font-family: var(--font-family-mono, ui-monospace, monospace);
