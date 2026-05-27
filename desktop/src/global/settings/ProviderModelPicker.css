@@ -101,6 +101,11 @@
   color: var(--text-strong);
 }
 
+.model-picker-rail-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .model-picker-rail-item--default {
   font-weight: 600;
   color: var(--text-strong);
@@ -391,6 +396,14 @@
 
 .model-picker-search input::placeholder {
   color: var(--text-weak);
+}
+
+.model-picker-search [data-component="button"] {
+  flex-shrink: 0;
+}
+
+.model-picker-auth-row--end {
+  justify-content: flex-end;
 }
 
 .model-picker-models {

@@ -25,11 +25,9 @@ import type { DisplayTabKind } from "./types";
 import {
   CANVAS_DISPLAY_TAB_ID,
   CHAT_DISPLAY_TAB_ID,
-  ENGINE_DISPLAY_TAB_ID,
   MEDIA_DISPLAY_TAB_ID,
   openCanvasDisplayTab,
   openChatDisplayTab,
-  openEngineDisplayTab,
   openMediaDisplayTab,
   openStoreDisplayTab,
   openTrashDisplayTab,
@@ -79,13 +77,8 @@ export const DisplayTabAddMenu = () => {
     openOrActivate(TRASH_DISPLAY_TAB_ID, openTrashDisplayTab);
   }, [openOrActivate]);
 
-  const openEngine = useCallback(() => {
-    openOrActivate(ENGINE_DISPLAY_TAB_ID, openEngineDisplayTab);
-  }, [openOrActivate]);
-
   const options: AddMenuOption[] = [
     { id: "chat", label: "Chat", kind: "chat", onSelect: openChat },
-    { id: "engine", label: "Engine", kind: "engine", onSelect: openEngine },
     { id: "canvas", label: "Canvas", kind: "canvas", onSelect: openCanvas },
     { id: "media", label: "Media", kind: "media", onSelect: openMedia },
     { id: "store", label: "Store", kind: "store", onSelect: openStore },

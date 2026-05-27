@@ -134,10 +134,15 @@
 
 /* ── BYOK block (Codex reasoning when Codex is selected) ───────── */
 
-
 @keyframes engine-tab-fade-in {
-  from { opacity: 0; transform: translateY(2px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .engine-tab__row {
@@ -223,7 +228,8 @@
 }
 
 .engine-tab__input:focus {
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent, #2f6df6) 16%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(in oklch, var(--accent, #2f6df6) 16%, transparent);
 }
 
 .engine-tab__input:disabled {
@@ -410,7 +416,9 @@
 }
 
 @keyframes engine-tab-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Row that holds the media-kind tabs plus the model-actions kebab so
@@ -694,11 +702,17 @@
   color: var(--text-strong);
 }
 
+.engine-runtime-model-panel__model[data-selected] {
+  background: color-mix(in oklch, var(--text-strong) 11%, transparent);
+  color: var(--text-strong);
+}
+
 .engine-runtime-model-panel__model-text {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
 .engine-runtime-model-panel__model-name {
@@ -714,6 +728,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.engine-runtime-model-panel__check {
+  flex-shrink: 0;
+  color: var(--text-strong);
 }
 
 .engine-runtime-model-panel__star {
@@ -742,8 +761,10 @@
   opacity: 1;
 }
 
-.engine-runtime-model-panel__row:hover .engine-runtime-model-panel__star[data-favorite],
-.engine-runtime-model-panel__row:focus-within .engine-runtime-model-panel__star[data-favorite] {
+.engine-runtime-model-panel__row:hover
+  .engine-runtime-model-panel__star[data-favorite],
+.engine-runtime-model-panel__row:focus-within
+  .engine-runtime-model-panel__star[data-favorite] {
   color: #eab308;
 }
 
@@ -867,7 +888,8 @@
   padding: 14px;
   border-radius: var(--radius-lg, 12px);
   background: var(--popover, var(--background));
-  border: 1px solid var(--border-weak, color-mix(in oklch, var(--border) 55%, transparent));
+  border: 1px solid
+    var(--border-weak, color-mix(in oklch, var(--border) 55%, transparent));
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.06),
     0 8px 28px rgba(0, 0, 0, 0.18);
