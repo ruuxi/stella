@@ -55,7 +55,10 @@ import type {
 } from "../storage/shared.js";
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import type { ReasoningEffort } from "../preferences/local-preferences.js";
-import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
+import {
+  type AgentRuntimeEngine,
+  isCursorModelOverride,
+} from "../../contracts/agent-engine.js";
 import {
   type SubagentSession,
   getOrCreateSubagentSession,
@@ -416,7 +419,9 @@ const shouldLockNativeExternalEngineRun = (
   context: LocalAgentContext,
 ): boolean =>
   context.agentEngine === "codex_cli" ||
-  (task.agentType === "general" && context.agentEngine === "cursor_sdk");
+  (task.agentType === "general" &&
+    (context.agentEngine === "cursor_sdk" ||
+      isCursorModelOverride(context.model)));
 
 const AGENT_INPUT_INTERRUPT_ERROR = "Interrupted by agent input";
 export const AGENT_SHUTDOWN_CANCEL_REASON =

@@ -1041,6 +1041,7 @@ export const runExternalSubagentTurn = async (
     const useCursor = shouldUseCursorAgentRuntime({
       agentType: opts.agentType,
       agentEngine: opts.agentContext.agentEngine,
+      model: opts.agentContext.model,
     });
     const useCodex = shouldUseCodexAgentRuntime({
       agentType: opts.agentType,

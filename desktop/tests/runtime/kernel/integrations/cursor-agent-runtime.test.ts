@@ -48,6 +48,13 @@ describe("Cursor agent runtime", () => {
         agentEngine: "claude_code_local",
       }),
     ).toBe(false);
+    expect(
+      shouldUseCursorAgentRuntime({
+        agentType: "general",
+        agentEngine: "default",
+        model: "cursor/composer-latest",
+      }),
+    ).toBe(true);
   });
 
   it("builds a Cursor prompt from Stella system and ordered prompt messages", () => {

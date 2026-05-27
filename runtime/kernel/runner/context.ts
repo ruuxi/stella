@@ -9,6 +9,7 @@ import {
   getModelOverride,
   getReasoningEffort,
 } from "../preferences/local-preferences.js";
+import { isCursorModelOverride } from "../../contracts/agent-engine.js";
 import {
   type LocalContextEvent,
   buildLocalHistoryFromEvents,
@@ -776,7 +777,11 @@ export const buildAgentContext = async (
           shouldInjectDynamicReminder: false,
           reminderTokensSinceLastInjection: 0,
         };
-  const agentEngine = getAgentRuntimeEngine(context.stellaHome);
+  const storedEngine = getAgentRuntimeEngine(context.stellaHome);
+  const agentEngine =
+    args.agentType === AGENT_IDS.GENERAL && isCursorModelOverride(model)
+      ? "cursor_sdk"
+      : storedEngine;
 
   const fileEditToolFamily = getFileEditToolFamily({
     agentType: args.agentType,
