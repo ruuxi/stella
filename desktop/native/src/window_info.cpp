@@ -1,10 +1,11 @@
 // window_info.exe - Returns JSON info about the window at a given screen point
 // Usage: window_info.exe <x> <y> [--exclude-pids=1,2,3] [--screenshot=path.png] [--set-bounds=x,y,w,h]
 // Output: {"title":"...","process":"...","pid":123,"bounds":{"x":0,"y":0,"width":800,"height":600}}
-// Compile: cl /O2 /EHsc window_info.cpp /link user32.lib gdi32.lib gdiplus.lib ole32.lib /OUT:window_info.exe
+// Compile: cl /O2 /EHsc window_info.cpp /link user32.lib gdi32.lib gdiplus.lib ole32.lib dwmapi.lib /OUT:window_info.exe
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <dwmapi.h>
 #include <objidl.h>
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +15,7 @@
 #include <gdiplus.h>
 
 #pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "dwmapi.lib")
 
 static std::string escapeJson(const char* s)
 {
@@ -43,6 +45,13 @@ static bool isPidExcluded(DWORD pid, const std::vector<DWORD>& excluded)
         }
     }
     return false;
+}
+
+static bool isWindowCloaked(HWND hwnd)
+{
+    BOOL cloaked = FALSE;
+    HRESULT result = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
+    return SUCCEEDED(result) && cloaked;
 }
 
 static void parseExcludePidsArg(const char* arg, std::vector<DWORD>& excluded)
@@ -128,6 +137,10 @@ static HWND findTopLevelWindowAtPoint(POINT pt, const std::vector<DWORD>& exclud
     for (HWND hwnd = GetTopWindow(NULL); hwnd; hwnd = GetWindow(hwnd, GW_HWNDNEXT))
     {
         if (!IsWindowVisible(hwnd))
+        {
+            continue;
+        }
+        if (IsIconic(hwnd) || isWindowCloaked(hwnd))
         {
             continue;
         }
@@ -270,11 +283,19 @@ int main(int argc, char* argv[])
             HWND fallbackRoot = GetAncestor(hwnd, GA_ROOT);
             if (fallbackRoot) hwnd = fallbackRoot;
 
-            DWORD fallbackPid = 0;
-            GetWindowThreadProcessId(hwnd, &fallbackPid);
-            if (isPidExcluded(fallbackPid, excludedPids))
+            if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || isWindowCloaked(hwnd))
             {
                 hwnd = NULL;
+            }
+
+            DWORD fallbackPid = 0;
+            if (hwnd)
+            {
+                GetWindowThreadProcessId(hwnd, &fallbackPid);
+                if (isPidExcluded(fallbackPid, excludedPids))
+                {
+                    hwnd = NULL;
+                }
             }
         }
     }
