@@ -106,7 +106,7 @@ Use the strongest practical verification for the scope:
 - Renderer typecheck:
 
 ```sh
-tsgo -p desktop/tsconfig.app.json --noEmit
+bunx tsgo -p desktop/tsconfig.app.json --noEmit
 ```
 
 - Broader desktop change: also use the checks in
