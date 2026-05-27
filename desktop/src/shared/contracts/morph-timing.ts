@@ -33,9 +33,6 @@ export const MORPH_DONE_TIMEOUT_MS = 5000;
 export type MorphVisualTiming = {
   coverRampMs: number;
   handoffFadeMs: number;
-  glimmCoverSweepMs: number;
-  glimmRevealSweepMs: number;
-  glimmOutroFadeMs: number;
 };
 
 export type MorphTimingTierSettings = MorphVisualTiming & {
@@ -52,16 +49,10 @@ export const DEFAULT_MORPH_TIMING_SETTINGS: MorphTimingSettings = {
     settleDelayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
     coverRampMs: MORPH_RENDERER_COVER_RAMP_MS,
     handoffFadeMs: MORPH_HANDOFF_FADE_MS,
-    glimmCoverSweepMs: 360,
-    glimmRevealSweepMs: 520,
-    glimmOutroFadeMs: 220,
   },
   reload: {
     settleDelayMs: MORPH_RELOAD_SETTLE_DELAY_MS,
     coverRampMs: MORPH_RELOAD_COVER_RAMP_MS,
     handoffFadeMs: MORPH_HANDOFF_FADE_MS,
-    glimmCoverSweepMs: 360,
-    glimmRevealSweepMs: 520,
-    glimmOutroFadeMs: 220,
   },
 };
