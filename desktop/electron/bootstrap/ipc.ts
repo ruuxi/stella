@@ -10,6 +10,7 @@ import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
 import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
 import { registerMigrationHandlers } from "../ipc/migration-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
+import { registerMorphTestHandlers } from "../ipc/morph-test-handlers.js";
 import { registerNativeIntegrationHandlers } from "../ipc/native-integration-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerPetHandlers } from "../ipc/pet-handlers.js";
@@ -357,6 +358,14 @@ export const registerBootstrapIpcHandlers = (
   registerMorphHandlers({
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController,
+  });
+
+  registerMorphTestHandlers({
+    getStellaRoot: lifecycle.getStellaRoot,
+    getOverlayController: () => state.overlayController ?? null,
+    getStellaHostRunner: lifecycle.getRunner,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
   registerStoreHandlers({

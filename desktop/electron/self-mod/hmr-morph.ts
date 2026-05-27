@@ -6,7 +6,7 @@
  * 2. Wait until the overlay confirms the first frame is painted.
  * 3. Resume HMR behind the covered main window.
  * 4. Wait for load to settle, then capture the new page state.
- * 5. Immediately tell the overlay to reverse with the new screenshot.
+ * 5. Immediately hand the overlay the new screenshot.
  * 6. Wait for the overlay to signal completion, then clean up.
  */
 
@@ -15,10 +15,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { BrowserWindow } from "electron";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import {
+  DEFAULT_MORPH_TIMING_SETTINGS,
   MORPH_DONE_TIMEOUT_MS,
   MORPH_OVERLAY_READY_TIMEOUT_MS,
   MORPH_RELOAD_SETTLE_DELAY_MS,
   MORPH_RENDERER_SETTLE_DELAY_MS,
+  type MorphTimingSettings,
+  type MorphTimingTierSettings,
 } from "../../src/shared/contracts/morph-timing.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
 import {
@@ -49,6 +52,8 @@ export type HmrTransitionController = {
     ) => Promise<{ requiresClientFullReload?: boolean } | void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
+    requiresRuntimeRestart?: boolean;
+    requiresProcessRestart?: boolean;
   }) => Promise<void>;
 };
 
@@ -71,21 +76,33 @@ export function createHmrTransitionController(deps: {
 
   /**
    * Quiet HMR uses the short baseline wait. Covered reloads use a fixed
-   * longer wait so the morph reverse never depends on Electron load events
+   * longer wait so the morph handoff never depends on Electron load events
    * that can be skipped during dev-server/runtime reinitialization.
    */
   const createRendererSettle = (
-    options?: { expectReload?: boolean },
+    options?: { expectReload?: boolean; settleDelayMs?: number },
   ): { wait: () => Promise<void> } => {
     const settleDelayMs =
-      options?.expectReload === true
+      options?.settleDelayMs ??
+      (options?.expectReload === true
         ? MORPH_RELOAD_SETTLE_DELAY_MS
-        : MORPH_RENDERER_SETTLE_DELAY_MS;
+        : MORPH_RENDERER_SETTLE_DELAY_MS);
     return {
       wait: async () => {
         await delay(settleDelayMs);
       },
     };
+  };
+
+  const getTimingSettings = (): MorphTimingSettings =>
+    deps.getOverlayController()?.getHmrTimingOverride() ??
+    DEFAULT_MORPH_TIMING_SETTINGS;
+
+  const selectTierTiming = (
+    requiresFullReload: boolean,
+  ): MorphTimingTierSettings => {
+    const settings = getTimingSettings();
+    return requiresFullReload ? settings.reload : settings.hmr;
   };
 
   const runTransition = async (opts: {
@@ -99,10 +116,13 @@ export function createHmrTransitionController(deps: {
     ) => Promise<{ requiresClientFullReload?: boolean } | void>;
     reportState?: (state: SelfModHmrState) => void;
     requiresFullReload: boolean;
+    requiresRuntimeRestart?: boolean;
+    requiresProcessRestart?: boolean;
   }): Promise<void> => {
     const fullWindow = deps.getFullWindow();
     const overlayController = deps.getOverlayController();
     const transitionId = randomUUID();
+    const tierTiming = selectTierTiming(opts.requiresFullReload);
     const emitState = (state: SelfModHmrState) => {
       overlayController?.setMorphState(transitionId, state);
       opts.reportState?.(state);
@@ -114,6 +134,10 @@ export function createHmrTransitionController(deps: {
     const applyWithoutMorph = async (
       windowForReload: BrowserWindow | null,
     ) => {
+      const suppressClientFullReload =
+        opts.requiresFullReload ||
+        opts.requiresRuntimeRestart === true ||
+        opts.requiresProcessRestart === true;
       opts.reportState?.({
         phase: opts.requiresFullReload ? "reloading" : "applying",
         paused: false,
@@ -125,12 +149,17 @@ export function createHmrTransitionController(deps: {
         !windowForReload.isDestroyed();
       try {
         const applyResult = await opts.applyBatch({
-          suppressClientFullReload: canReload,
+          suppressClientFullReload,
         });
         const shouldReload =
-          canReload || applyResult?.requiresClientFullReload === true;
+          canReload ||
+          (!suppressClientFullReload &&
+            applyResult?.requiresClientFullReload === true);
         const settle = createRendererSettle({
           expectReload: shouldReload,
+          settleDelayMs: shouldReload
+            ? tierTiming.settleDelayMs
+            : getTimingSettings().hmr.settleDelayMs,
         });
         if (
           shouldReload &&
@@ -144,6 +173,20 @@ export function createHmrTransitionController(deps: {
         opts.reportState?.(IDLE_HMR_STATE);
       }
     };
+
+    if (opts.requiresProcessRestart === true) {
+      opts.reportState?.({
+        phase: "applying",
+        paused: false,
+        requiresFullReload: false,
+      });
+      try {
+        await opts.applyBatch({ suppressClientFullReload: true });
+      } finally {
+        opts.reportState?.(IDLE_HMR_STATE);
+      }
+      return;
+    }
 
     if (!fullWindow || fullWindow.isDestroyed() || !overlayController) {
       console.warn("[self-mod-hmr] Applying without morph cover:", {
@@ -199,6 +242,8 @@ export function createHmrTransitionController(deps: {
       oldScreenshot,
       bounds,
       fullWindow,
+          "hmr",
+          tierTiming,
     );
 
     // Once the forward morph starts the overlay is visible — finish() MUST run
@@ -213,13 +258,18 @@ export function createHmrTransitionController(deps: {
           requiresFullReload: opts.requiresFullReload,
         });
 
+        const suppressClientFullReload =
+          opts.requiresFullReload ||
+          opts.requiresRuntimeRestart === true ||
+          opts.requiresProcessRestart === true;
         const applyResult = await opts.applyBatch({
-          suppressClientFullReload: opts.requiresFullReload,
+          suppressClientFullReload,
         });
 
         const requiresClientFullReload =
           opts.requiresFullReload ||
-          applyResult?.requiresClientFullReload === true;
+          (!suppressClientFullReload &&
+            applyResult?.requiresClientFullReload === true);
 
         if (requiresClientFullReload) {
           emitState({
@@ -229,13 +279,16 @@ export function createHmrTransitionController(deps: {
           });
           const settle = createRendererSettle({
             expectReload: true,
+            settleDelayMs: tierTiming.settleDelayMs,
           });
           fullWindow.webContents.reloadIgnoringCache();
           await settle.wait();
           return true;
         }
 
-        const settle = createRendererSettle();
+        const settle = createRendererSettle({
+          settleDelayMs: tierTiming.settleDelayMs,
+        });
         await settle.wait();
         return false;
       })();
@@ -248,7 +301,7 @@ export function createHmrTransitionController(deps: {
 
       const newScreenshot = await captureWindowDataUrl(fullWindow);
       if (!newScreenshot) {
-        console.warn("[self-mod-hmr] Morph reverse skipped:", {
+        console.warn("[self-mod-hmr] Morph handoff skipped:", {
           reason: "post-capture-failed",
           runIds: opts.runIds,
           requiresFullReload,
@@ -257,11 +310,11 @@ export function createHmrTransitionController(deps: {
       }
 
       emitState({
-        phase: "morph-reverse",
+        phase: "morph-handoff",
         paused: false,
         requiresFullReload,
       });
-      overlayController.startMorphReverse(
+      overlayController.startMorphHandoff(
         transitionId,
         newScreenshot,
         requiresFullReload,

@@ -1,0 +1,387 @@
+.morph-test {
+  margin: 0 auto;
+  padding: 56px 32px 96px;
+  max-width: 720px;
+  width: 100%;
+  min-height: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  color: var(--text-base, var(--foreground));
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+}
+
+.morph-test__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.morph-test__title {
+  margin: 0;
+  font-family: var(--font-family-serif, "Cormorant Garamond", serif);
+  font-size: 38px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text-base, var(--foreground));
+}
+
+.morph-test__title em {
+  font-style: italic;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__lede {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-weak, var(--muted-foreground));
+  max-width: 56ch;
+}
+
+.morph-test__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.morph-test__section-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.morph-test__feature-stage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.morph-test__feature-card {
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in oklch, var(--foreground) 5%, transparent),
+      color-mix(in oklch, var(--foreground) 1.5%, transparent)
+    );
+  color: var(--text-weak, var(--muted-foreground));
+  overflow: hidden;
+  position: relative;
+}
+
+.morph-test__feature-card::before {
+  content: "";
+  position: absolute;
+  inset: 12px 12px auto auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  opacity: 0.7;
+}
+
+.morph-test__feature-card.is-active {
+  border-color: color-mix(in oklch, var(--accent, var(--foreground)) 42%, var(--border));
+  background:
+    radial-gradient(
+      circle at 82% 18%,
+      color-mix(in oklch, var(--accent, var(--foreground)) 28%, transparent),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      color-mix(in oklch, var(--accent, var(--foreground)) 12%, transparent),
+      color-mix(in oklch, var(--foreground) 2%, transparent)
+    );
+  color: var(--text-base, var(--foreground));
+}
+
+.morph-test__feature-card--reload.is-active {
+  border-style: dashed;
+}
+
+.morph-test__feature-card--restart.is-active {
+  box-shadow: inset 4px 0 0 color-mix(in oklch, var(--accent, var(--foreground)) 55%, transparent);
+}
+
+.morph-test__feature-kicker {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint, var(--muted-foreground));
+}
+
+.morph-test__feature-card strong {
+  font-size: 14px;
+  color: var(--text-base, var(--foreground));
+}
+
+.morph-test__feature-card span:not(.morph-test__feature-kicker),
+.morph-test__feature-card small {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.morph-test__feature-card small {
+  color: var(--text-faint, var(--muted-foreground));
+}
+
+.morph-test__section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__section-body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__timing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.morph-test__timing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+}
+
+.morph-test__timing-tier {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__timing-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__timing-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.morph-test__timing-field-value {
+  font-family: var(--font-family-mono, "JetBrains Mono", ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-faint, var(--muted-foreground));
+  white-space: nowrap;
+}
+
+.morph-test__timing-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  margin: 10px 0 2px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--text-strong) 12%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.morph-test__timing-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-strong);
+  border: 2px solid var(--background, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.morph-test__timing-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+.morph-test__timing-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.morph-test__flavor-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.morph-test__scenario-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.morph-test__scenario {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+}
+
+.morph-test__scenario-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.morph-test__scenario-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-base, var(--foreground));
+}
+
+.morph-test__scenario-description {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__scenario-hint {
+  margin-top: 2px;
+  font-family: var(--font-family-mono, "JetBrains Mono", ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-faint, var(--muted-foreground));
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-radius: 6px;
+  padding: 2px 6px;
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.morph-test__capture-card {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.morph-test__capture-stat {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.morph-test__capture-stat span {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint, var(--muted-foreground));
+}
+
+.morph-test__capture-stat strong {
+  font-size: 16px;
+  color: var(--text-base, var(--foreground));
+}
+
+.morph-test__capture-stat small {
+  font-family: var(--font-family-mono, "JetBrains Mono", ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: var(--font-family-mono, "JetBrains Mono", ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text-weak, var(--muted-foreground));
+}
+
+.morph-test__log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+}
+
+.morph-test__log-row:last-child {
+  border-bottom: none;
+}
+
+.morph-test__log-time {
+  flex-shrink: 0;
+  color: var(--text-faint, var(--muted-foreground));
+  width: 72px;
+}
+
+.morph-test__log-text {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.morph-test__log-row--ok .morph-test__log-text {
+  color: var(--text-base, var(--foreground));
+}
+
+.morph-test__log-row--err .morph-test__log-text {
+  color: var(--destructive, oklch(0.65 0.18 25));
+}
+
+.morph-test__log-row--info .morph-test__log-text {
+  color: var(--text-weak, var(--muted-foreground));
+}

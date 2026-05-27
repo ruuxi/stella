@@ -8,6 +8,7 @@ import type { TaskLifecycleStatus } from "../../runtime/contracts/agent-runtime.
 import type { LocalChatUpdatedPayload } from "../../runtime/contracts/local-chat.js";
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type { MiniDoubleTapModifier } from "../src/shared/lib/mini-double-tap.js";
+import type { MorphTimingSettings } from "../src/shared/contracts/morph-timing.js";
 import type { OfficePreviewSnapshot } from "../../runtime/contracts/office-preview.js";
 import type { RealtimeVoicePreferences } from "../../runtime/contracts/local-preferences.js";
 import type {
@@ -107,6 +108,12 @@ import {
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
+  IPC_MORPH_TEST_GET_TIMING_SETTINGS,
+  IPC_MORPH_TEST_MEASURE_CAPTURE,
+  IPC_MORPH_TEST_RESET_TIMING_SETTINGS,
+  IPC_MORPH_TEST_SET_PREFERRED_FLAVOR,
+  IPC_MORPH_TEST_SET_TIMING_SETTINGS,
+  IPC_MORPH_TEST_TRIGGER_SELF_MOD,
   IPC_STORE_BLUEPRINT_NOTIFICATION_ACTIVATED,
   IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
   IPC_UPDATES_GET_INSTALL_MANIFEST,
@@ -495,7 +502,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       y: number;
       width: number;
       height: number;
-      flavor?: "hmr" | "onboarding";
+      flavor?: "hmr" | "onboarding" | "glimm";
+      timing?: MorphTimingSettings["hmr"] | null;
     }>("overlay:morphForward"),
     onMorphBounds: onIpc<{
       transitionId: string;
@@ -504,12 +512,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       width: number;
       height: number;
     }>("overlay:morphBounds"),
-    onMorphReverse: onIpc<{
+    onMorphHandoff: onIpc<{
       transitionId: string;
       screenshotDataUrl: string;
       requiresFullReload: boolean;
-      flavor?: "hmr" | "onboarding";
-    }>("overlay:morphReverse"),
+      flavor?: "hmr" | "onboarding" | "glimm";
+      timing?: MorphTimingSettings["hmr"] | null;
+    }>("overlay:morphHandoff"),
     onMorphEnd: onIpc<{ transitionId: string }>("overlay:morphEnd"),
     onMorphState: onIpc<{ transitionId: string; state: SelfModHmrState }>(
       "overlay:morphState",
@@ -1448,6 +1457,62 @@ contextBridge.exposeInMainWorld("electronAPI", {
         desktopReleaseCommit: string | null;
         desktopInstallBaseCommit: string | null;
       } | null>,
+  },
+
+  morphTest: {
+    setPreferredFlavor: (flavor: "ripple" | "glimm" | null) =>
+      ipcRenderer.invoke(IPC_MORPH_TEST_SET_PREFERRED_FLAVOR, {
+        flavor,
+      }) as Promise<{ ok: boolean; flavor: "ripple" | "glimm" | null }>,
+    getTimingSettings: () =>
+      ipcRenderer.invoke(IPC_MORPH_TEST_GET_TIMING_SETTINGS) as Promise<{
+        ok: boolean;
+        timing: MorphTimingSettings;
+      }>,
+    setTimingSettings: (timing: MorphTimingSettings) =>
+      ipcRenderer.invoke(IPC_MORPH_TEST_SET_TIMING_SETTINGS, {
+        timing,
+      }) as Promise<{
+        ok: boolean;
+        timing: MorphTimingSettings;
+      }>,
+    resetTimingSettings: () =>
+      ipcRenderer.invoke(IPC_MORPH_TEST_RESET_TIMING_SETTINGS) as Promise<{
+        ok: boolean;
+        timing: MorphTimingSettings;
+      }>,
+    measureCapture: (samples = 8) =>
+      ipcRenderer.invoke(IPC_MORPH_TEST_MEASURE_CAPTURE, {
+        samples,
+      }) as Promise<{
+        ok: boolean;
+        samples: Array<{
+          index: number;
+          ok: boolean;
+          capturePageMs: number;
+          totalDataUrlMs: number;
+          dataUrlBytes: number;
+        }>;
+        summary: {
+          count: number;
+          capturePageAvgMs: number;
+          capturePageMinMs: number;
+          capturePageMaxMs: number;
+          totalDataUrlAvgMs: number;
+          totalDataUrlMinMs: number;
+          totalDataUrlMaxMs: number;
+          avgDataUrlBytes: number;
+        };
+      }>,
+    triggerSelfMod: (scenario: "hmr" | "reload" | "restart") =>
+      ipcRenderer.invoke(IPC_MORPH_TEST_TRIGGER_SELF_MOD, {
+        scenario,
+      }) as Promise<{
+        ok: boolean;
+        scenario: "hmr" | "reload" | "restart";
+        filePath: string;
+        runId: string;
+      }>,
   },
 
   onboarding: {

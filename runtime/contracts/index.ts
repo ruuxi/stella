@@ -381,7 +381,7 @@ export type SelfModHmrPhase =
   | "morph-forward"
   | "applying"
   | "reloading"
-  | "morph-reverse";
+  | "morph-handoff";
 
 export type SelfModHmrState = {
   phase: SelfModHmrPhase;

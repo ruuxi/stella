@@ -1,17 +1,60 @@
 import { useEffect, useRef, useState } from "react";
 import type { SelfModHmrState } from "../../../../runtime/contracts/index.js";
 import {
-  MORPH_FORWARD_RAMP_MS,
-  MORPH_REVERSE_CROSSFADE_MS,
+  DEFAULT_MORPH_TIMING_SETTINGS,
   MORPH_STEADY_STRENGTH,
+  type MorphVisualTiming,
 } from "../../shared/contracts/morph-timing";
 
 /** Onboarding demo morph — stronger distortion + slower timing (see `flavor` IPC). */
 const ONBOARDING_MORPH_STEADY_STRENGTH = 0.65;
 const ONBOARDING_MORPH_COVER_RAMP_MS = 600;
-const ONBOARDING_MORPH_REVERSE_MS = 800;
+const ONBOARDING_MORPH_HANDOFF_FADE_MS = 800;
 
-type MorphFlavor = "hmr" | "onboarding";
+/**
+ * Glimm sweep timings — a colored gradient band passes across the screen as
+ * the cover, then the second capture is revealed underneath when the band
+ * continues after HMR/reload work finishes.
+ */
+const DEFAULT_HMR_VISUAL_TIMING: MorphVisualTiming =
+  DEFAULT_MORPH_TIMING_SETTINGS.hmr;
+
+const coerceTimingMs = (
+  value: unknown,
+  fallback: number,
+  min = 0,
+  max = 10_000,
+): number =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
+
+const normalizeVisualTiming = (
+  timing: MorphVisualTiming | null | undefined,
+): MorphVisualTiming => ({
+  coverRampMs: coerceTimingMs(
+    timing?.coverRampMs,
+    DEFAULT_HMR_VISUAL_TIMING.coverRampMs,
+  ),
+  handoffFadeMs: coerceTimingMs(
+    timing?.handoffFadeMs,
+    DEFAULT_HMR_VISUAL_TIMING.handoffFadeMs,
+  ),
+  glimmCoverSweepMs: coerceTimingMs(
+    timing?.glimmCoverSweepMs,
+    DEFAULT_HMR_VISUAL_TIMING.glimmCoverSweepMs,
+  ),
+  glimmRevealSweepMs: coerceTimingMs(
+    timing?.glimmRevealSweepMs,
+    DEFAULT_HMR_VISUAL_TIMING.glimmRevealSweepMs,
+  ),
+  glimmOutroFadeMs: coerceTimingMs(
+    timing?.glimmOutroFadeMs,
+    DEFAULT_HMR_VISUAL_TIMING.glimmOutroFadeMs,
+  ),
+});
+
+type MorphFlavor = "hmr" | "onboarding" | "glimm";
 
 type MorphPhase = "idle" | "rippling" | "crossfading";
 
@@ -111,7 +154,8 @@ void main() {
   gl_FragColor = vec4(col, u_alpha);
 }`;
 
-type GLContext = {
+type RippleGLContext = {
+  kind: "ripple";
   gl: WebGLRenderingContext;
   prog: WebGLProgram;
   vs: WebGLShader;
@@ -124,6 +168,76 @@ type GLContext = {
   mixLoc: WebGLUniformLocation | null;
   alphaLoc: WebGLUniformLocation | null;
 };
+
+type GlimmGLContext = {
+  kind: "glimm";
+  gl: WebGLRenderingContext;
+  prog: WebGLProgram;
+  vs: WebGLShader;
+  fs: WebGLShader;
+  buf: WebGLBuffer;
+  texOld: WebGLTexture;
+  texNew: WebGLTexture;
+  progressLoc: WebGLUniformLocation | null;
+  bandTightLoc: WebGLUniformLocation | null;
+  alphaLoc: WebGLUniformLocation | null;
+  swapLoc: WebGLUniformLocation | null;
+};
+
+type GLContext = RippleGLContext | GlimmGLContext;
+
+/**
+ * Glimm-style sweep shader. A soft Gaussian band of cosine-palette color
+ * (the `prism` palette from glimm.dev) sweeps along an axis; on each side of
+ * the band the screen samples a different texture — the old screenshot until
+ * the band passes, then the new screenshot after. `u_swap` toggles which
+ * texture is on which side so the cover sweep can stay covered with the old
+ * screen and the reveal sweep can show the new screen behind the band.
+ */
+const GLIMM_FRAG = `
+precision highp float;
+uniform sampler2D u_tex_old;
+uniform sampler2D u_tex_new;
+uniform float u_alpha;
+uniform float u_progress;
+uniform float u_band_tight;
+uniform float u_swap;
+varying vec2 v_uv;
+
+vec3 cosinePalette(float t) {
+  // prism preset from glimm — a warm-to-cool spectrum sweep
+  vec3 a = vec3(0.50, 0.50, 0.50);
+  vec3 b = vec3(0.50, 0.50, 0.50);
+  vec3 c = vec3(1.00, 1.00, 1.00);
+  vec3 d = vec3(0.00, 0.33, 0.67);
+  return clamp(a + b * cos(6.28318 * (c * t + d)), 0.0, 1.0);
+}
+
+void main() {
+  // Sweep axis is left-to-right; v_uv.x runs 0 (left) → 1 (right).
+  float axis = v_uv.x;
+
+  // Texture choice: pre-sweep (axis < progress) is the "revealed" side;
+  // post-sweep (axis > progress) is the "covered" side. Which screenshot
+  // sits on each side depends on phase (cover vs handoff) via u_swap.
+  vec3 colA = texture2D(u_tex_old, v_uv).rgb;
+  vec3 colB = texture2D(u_tex_new, v_uv).rgb;
+  float side = smoothstep(u_progress - 0.004, u_progress + 0.004, axis);
+  // side ≈ 0 left of band, ≈ 1 right of band.
+  vec3 base = mix(colA, colB, side);
+  if (u_swap > 0.5) {
+    base = mix(colB, colA, side);
+  }
+
+  // Gaussian band intensity centered on u_progress.
+  float d = axis - u_progress;
+  float intensity = exp(-u_band_tight * d * d);
+
+  vec3 bandColor = cosinePalette(axis);
+
+  vec3 col = mix(base, bandColor, intensity);
+  gl_FragColor = vec4(col, u_alpha);
+}`;
 
 /**
  * Decode a screenshot data URL to an `ImageBitmap`. Image decode runs off
@@ -151,7 +265,47 @@ async function loadImage(src: string): Promise<ImageBitmap> {
   return createImageBitmap(new Blob([bytes], { type: mime }));
 }
 
-function initGL(canvas: HTMLCanvasElement, img: ImageBitmap): GLContext | null {
+function compileProgram(
+  gl: WebGLRenderingContext,
+  vertSrc: string,
+  fragSrc: string,
+): { prog: WebGLProgram; vs: WebGLShader; fs: WebGLShader } {
+  const createShader = (type: number, src: string) => {
+    const shader = gl.createShader(type)!;
+    gl.shaderSource(shader, src);
+    gl.compileShader(shader);
+    return shader;
+  };
+  const vs = createShader(gl.VERTEX_SHADER, vertSrc);
+  const fs = createShader(gl.FRAGMENT_SHADER, fragSrc);
+  const prog = gl.createProgram()!;
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+  return { prog, vs, fs };
+}
+
+function uploadTexture(
+  gl: WebGLRenderingContext,
+  unit: number,
+  img: ImageBitmap,
+): WebGLTexture {
+  const texture = gl.createTexture()!;
+  gl.activeTexture(unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  return texture;
+}
+
+function initRippleGL(
+  canvas: HTMLCanvasElement,
+  img: ImageBitmap,
+): RippleGLContext | null {
   const gl = canvas.getContext("webgl", {
     alpha: true,
     premultipliedAlpha: false,
@@ -162,20 +316,7 @@ function initGL(canvas: HTMLCanvasElement, img: ImageBitmap): GLContext | null {
   canvas.height = img.height;
   gl.viewport(0, 0, img.width, img.height);
 
-  const createShader = (type: number, src: string) => {
-    const shader = gl.createShader(type)!;
-    gl.shaderSource(shader, src);
-    gl.compileShader(shader);
-    return shader;
-  };
-
-  const vs = createShader(gl.VERTEX_SHADER, VERT);
-  const fs = createShader(gl.FRAGMENT_SHADER, FRAG);
-  const prog = gl.createProgram()!;
-  gl.attachShader(prog, vs);
-  gl.attachShader(prog, fs);
-  gl.linkProgram(prog);
-  gl.useProgram(prog);
+  const { prog, vs, fs } = compileProgram(gl, VERT, FRAG);
 
   const buf = gl.createBuffer()!;
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -188,20 +329,8 @@ function initGL(canvas: HTMLCanvasElement, img: ImageBitmap): GLContext | null {
   gl.enableVertexAttribArray(pos);
   gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
 
-  const setupTexture = (unit: number) => {
-    const texture = gl.createTexture()!;
-    gl.activeTexture(unit);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    return texture;
-  };
-
-  const tex = setupTexture(gl.TEXTURE0);
-  const tex2 = setupTexture(gl.TEXTURE1);
+  const tex = uploadTexture(gl, gl.TEXTURE0, img);
+  const tex2 = uploadTexture(gl, gl.TEXTURE1, img);
 
   gl.uniform1i(gl.getUniformLocation(prog, "u_tex"), 0);
   gl.uniform1i(gl.getUniformLocation(prog, "u_tex2"), 1);
@@ -214,6 +343,7 @@ function initGL(canvas: HTMLCanvasElement, img: ImageBitmap): GLContext | null {
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   return {
+    kind: "ripple",
     gl,
     prog,
     vs,
@@ -228,32 +358,110 @@ function initGL(canvas: HTMLCanvasElement, img: ImageBitmap): GLContext | null {
   };
 }
 
+function initGlimmGL(
+  canvas: HTMLCanvasElement,
+  img: ImageBitmap,
+): GlimmGLContext | null {
+  const gl = canvas.getContext("webgl", {
+    alpha: true,
+    premultipliedAlpha: false,
+  });
+  if (!gl) return null;
+
+  canvas.width = img.width;
+  canvas.height = img.height;
+  gl.viewport(0, 0, img.width, img.height);
+
+  const { prog, vs, fs } = compileProgram(gl, VERT, GLIMM_FRAG);
+
+  const buf = gl.createBuffer()!;
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+    gl.STATIC_DRAW,
+  );
+  const pos = gl.getAttribLocation(prog, "a_pos");
+  gl.enableVertexAttribArray(pos);
+  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+  // tex0 = old screenshot, tex1 = new screenshot (initially seeded with old).
+  const texOld = uploadTexture(gl, gl.TEXTURE0, img);
+  const texNew = uploadTexture(gl, gl.TEXTURE1, img);
+
+  gl.uniform1i(gl.getUniformLocation(prog, "u_tex_old"), 0);
+  gl.uniform1i(gl.getUniformLocation(prog, "u_tex_new"), 1);
+  gl.uniform1f(gl.getUniformLocation(prog, "u_alpha"), 1.0);
+  gl.uniform1f(gl.getUniformLocation(prog, "u_progress"), -0.2);
+  gl.uniform1f(gl.getUniformLocation(prog, "u_band_tight"), 14.0);
+  gl.uniform1f(gl.getUniformLocation(prog, "u_swap"), 0.0);
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  return {
+    kind: "glimm",
+    gl,
+    prog,
+    vs,
+    fs,
+    buf,
+    texOld,
+    texNew,
+    progressLoc: gl.getUniformLocation(prog, "u_progress"),
+    bandTightLoc: gl.getUniformLocation(prog, "u_band_tight"),
+    alphaLoc: gl.getUniformLocation(prog, "u_alpha"),
+    swapLoc: gl.getUniformLocation(prog, "u_swap"),
+  };
+}
+
 function loadSecondTexture(ctx: GLContext, img: ImageBitmap) {
-  const { gl, tex2, prog } = ctx;
+  if (ctx.kind === "ripple") {
+    const { gl, tex2, prog } = ctx;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, tex2);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    if (img.width !== gl.canvas.width || img.height !== gl.canvas.height) {
+      (gl.canvas as HTMLCanvasElement).width = img.width;
+      (gl.canvas as HTMLCanvasElement).height = img.height;
+      gl.viewport(0, 0, img.width, img.height);
+      gl.uniform1f(
+        gl.getUniformLocation(prog, "u_aspect"),
+        img.width / img.height,
+      );
+    }
+    gl.activeTexture(gl.TEXTURE0);
+    return;
+  }
+  const { gl, texNew } = ctx;
   gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D, tex2);
+  gl.bindTexture(gl.TEXTURE_2D, texNew);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
   if (img.width !== gl.canvas.width || img.height !== gl.canvas.height) {
     (gl.canvas as HTMLCanvasElement).width = img.width;
     (gl.canvas as HTMLCanvasElement).height = img.height;
     gl.viewport(0, 0, img.width, img.height);
-    gl.uniform1f(gl.getUniformLocation(prog, "u_aspect"), img.width / img.height);
   }
   gl.activeTexture(gl.TEXTURE0);
 }
 
 function cleanupGL(ctx: GLContext) {
-  const { gl, tex, tex2, buf, prog, vs, fs } = ctx;
-  gl.deleteTexture(tex);
-  gl.deleteTexture(tex2);
+  const { gl, buf, prog, vs, fs } = ctx;
+  if (ctx.kind === "ripple") {
+    gl.deleteTexture(ctx.tex);
+    gl.deleteTexture(ctx.tex2);
+  } else {
+    gl.deleteTexture(ctx.texOld);
+    gl.deleteTexture(ctx.texNew);
+  }
   gl.deleteBuffer(buf);
   gl.deleteProgram(prog);
   gl.deleteShader(vs);
   gl.deleteShader(fs);
 }
 
-function startRenderLoop(
-  ctx: GLContext,
+function startRippleRenderLoop(
+  ctx: RippleGLContext,
   strengthRef: { current: number },
   mixRef: { current: number },
   alphaRef: { current: number },
@@ -268,7 +476,7 @@ function startRenderLoop(
   // When no tween is in flight the visual is the steady ripple cover. The
   // ripple still advances via `u_time`, but humans don't notice a 30Hz cap on
   // continuous concentric rings — so we halve GPU load by skipping every
-  // other frame. Tweens (forward ramp, reverse crossfade) snap back to 60Hz
+  // other frame. Tweens (cover ramp, handoff fade) snap back to 60Hz
   // because that's where motion smoothness actually matters.
   let skipNextFrame = false;
   let lastTimestamp = startTime;
@@ -327,6 +535,49 @@ function startRenderLoop(
   };
 }
 
+function startGlimmRenderLoop(
+  ctx: GlimmGLContext,
+  progressRef: { current: number },
+  bandTightRef: { current: number },
+  alphaRef: { current: number },
+  swapRef: { current: number },
+  onFirstFrame?: () => void,
+): () => void {
+  let running = true;
+  let firstFramePainted = false;
+  const { gl, progressLoc, bandTightLoc, alphaLoc, swapLoc } = ctx;
+
+  const frame = () => {
+    if (!running) return;
+
+    // Once the band is fully off-screen and faded out, nothing meaningful
+    // is rendered — skip GPU work but keep the loop alive in case the
+    // handoff phase wires up more tweens.
+    if (firstFramePainted && alphaRef.current < 0.005) {
+      requestAnimationFrame(frame);
+      return;
+    }
+
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform1f(progressLoc, progressRef.current);
+    gl.uniform1f(bandTightLoc, bandTightRef.current);
+    gl.uniform1f(alphaLoc, alphaRef.current);
+    gl.uniform1f(swapLoc, swapRef.current);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (!firstFramePainted) {
+      firstFramePainted = true;
+      onFirstFrame?.();
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+
+  return () => {
+    running = false;
+  };
+}
+
 function tweenRef(
   ref: { current: number },
   to: number,
@@ -365,9 +616,18 @@ export function MorphTransition() {
   const loopStartTimeRef = useRef(0);
   const morphReadySentRef = useRef(false);
   const activeMorphFlavorRef = useRef<MorphFlavor>("hmr");
+  const activeVisualTimingRef = useRef<MorphVisualTiming>(
+    DEFAULT_HMR_VISUAL_TIMING,
+  );
   const activeTweensRef = useRef(0);
   const steadyStrengthRef = useRef(MORPH_STEADY_STRENGTH);
   const timePhaseRef = useRef(0);
+  // Glimm-only animation state. `swap=0` keeps the old screenshot on the
+  // post-band side during cover; `swap=1` flips so the new screenshot sits
+  // there once the handoff swaps textures.
+  const glimmProgressRef = useRef(-0.2);
+  const glimmBandTightRef = useRef(14);
+  const glimmSwapRef = useRef(0);
 
   useEffect(() => {
     const api = window.electronAPI?.overlay;
@@ -376,7 +636,7 @@ export function MorphTransition() {
     if (
       typeof api.onMorphForward !== "function" ||
       typeof api.onMorphBounds !== "function" ||
-      typeof api.onMorphReverse !== "function" ||
+      typeof api.onMorphHandoff !== "function" ||
       typeof api.onMorphEnd !== "function" ||
       typeof api.onMorphState !== "function"
     ) {
@@ -411,8 +671,60 @@ export function MorphTransition() {
         activeTransitionIdRef.current = data.transitionId;
         morphReadySentRef.current = false;
         const flavor: MorphFlavor =
-          data.flavor === "onboarding" ? "onboarding" : "hmr";
+          data.flavor === "onboarding"
+            ? "onboarding"
+            : data.flavor === "glimm"
+              ? "glimm"
+              : "hmr";
         activeMorphFlavorRef.current = flavor;
+        activeVisualTimingRef.current = normalizeVisualTiming(data.timing);
+        setHmrState(IDLE_HMR_STATE);
+        setState({
+          phase: "rippling",
+          x: data.x,
+          y: data.y,
+          width: data.width,
+          height: data.height,
+        });
+
+        if (flavor === "glimm") {
+          alphaRef.current = 1;
+          glimmProgressRef.current = -0.2;
+          // Wide-ish band on the cover sweep so the underlying texture
+          // gets visually disrupted as the band crosses, even before handoff
+          // swaps the second texture in.
+          glimmBandTightRef.current = 18;
+          glimmSwapRef.current = 0;
+          void loadImage(data.screenshotDataUrl).then((img) => {
+            if (
+              !canvasRef.current ||
+              activeTransitionIdRef.current !== data.transitionId
+            ) {
+              return;
+            }
+            const ctx = initGlimmGL(canvasRef.current, img);
+            if (!ctx) return;
+            glCtxRef.current = ctx;
+            stopLoopRef.current = startGlimmRenderLoop(
+              ctx,
+              glimmProgressRef,
+              glimmBandTightRef,
+              alphaRef,
+              glimmSwapRef,
+              () => signalMorphReady(data.transitionId),
+            );
+            // Sweep the band from off-screen-left to the midpoint and park
+            // there until the second capture arrives — the wait is the
+            // HMR/reload/restart work happening behind the cover.
+            void tweenRef(
+              glimmProgressRef,
+              0.5,
+              activeVisualTimingRef.current.glimmCoverSweepMs,
+            );
+          });
+          return;
+        }
+
         const steadyStrength =
           flavor === "onboarding"
             ? ONBOARDING_MORPH_STEADY_STRENGTH
@@ -425,14 +737,6 @@ export function MorphTransition() {
         alphaRef.current = 1;
         steadyStrengthRef.current = steadyStrength;
         timePhaseRef.current = 0;
-        setHmrState(IDLE_HMR_STATE);
-        setState({
-          phase: "rippling",
-          x: data.x,
-          y: data.y,
-          width: data.width,
-          height: data.height,
-        });
 
         void loadImage(data.screenshotDataUrl).then((img) => {
           if (
@@ -441,13 +745,13 @@ export function MorphTransition() {
           ) {
             return;
           }
-          const ctx = initGL(canvasRef.current, img);
+          const ctx = initRippleGL(canvasRef.current, img);
           if (!ctx) return;
           glCtxRef.current = ctx;
 
           loopStartTimeRef.current = performance.now();
           activeTweensRef.current = 0;
-          stopLoopRef.current = startRenderLoop(
+          stopLoopRef.current = startRippleRenderLoop(
             ctx,
             strengthRef,
             mixRef,
@@ -464,7 +768,7 @@ export function MorphTransition() {
             steadyStrength,
             flavor === "onboarding"
               ? ONBOARDING_MORPH_COVER_RAMP_MS
-              : MORPH_FORWARD_RAMP_MS,
+              : activeVisualTimingRef.current.coverRampMs,
             activeTweensRef,
           );
         });
@@ -491,20 +795,18 @@ export function MorphTransition() {
     );
 
     unsubs.push(
-      api.onMorphReverse((data) => {
+      api.onMorphHandoff((data) => {
         if (data.transitionId !== activeTransitionIdRef.current) {
           return;
         }
         const flavor: MorphFlavor =
           data.flavor === "onboarding"
             ? "onboarding"
-            : data.flavor === "hmr"
-              ? "hmr"
-              : activeMorphFlavorRef.current;
-        const reverseMs =
-          flavor === "onboarding"
-            ? ONBOARDING_MORPH_REVERSE_MS
-            : MORPH_REVERSE_CROSSFADE_MS;
+            : data.flavor === "glimm"
+              ? "glimm"
+              : data.flavor === "hmr"
+                ? "hmr"
+                : activeMorphFlavorRef.current;
         void loadImage(data.screenshotDataUrl)
           .then((img) => {
             if (data.transitionId !== activeTransitionIdRef.current) {
@@ -519,13 +821,48 @@ export function MorphTransition() {
               return;
             }
 
+            if (ctx.kind === "glimm") {
+              loadSecondTexture(ctx, img);
+              // The band has been parked at 0.5 covering the old content.
+              // Swap so the new screenshot now sits on the *post-band* side,
+              // then sweep the band through to 1.0 to reveal the new view.
+              glimmSwapRef.current = 1;
+              setState((prev) => ({ ...prev, phase: "crossfading" }));
+              return tweenRef(
+                glimmProgressRef,
+                1.2,
+                normalizeVisualTiming(data.timing).glimmRevealSweepMs,
+              )
+                .then(() =>
+                  tweenRef(
+                    alphaRef,
+                    0,
+                    normalizeVisualTiming(data.timing).glimmOutroFadeMs,
+                  ),
+                )
+                .then(() => {
+                  if (data.transitionId !== activeTransitionIdRef.current) {
+                    return;
+                  }
+                  morphReadySentRef.current = false;
+                  window.electronAPI?.overlay.morphDone(data.transitionId);
+                  disposeMorph();
+                  activeTransitionIdRef.current = null;
+                  setState(IDLE_STATE);
+                });
+            }
+
+            const handoffMs =
+              flavor === "onboarding"
+                ? ONBOARDING_MORPH_HANDOFF_FADE_MS
+                : normalizeVisualTiming(data.timing).handoffFadeMs;
             loadSecondTexture(ctx, img);
             alphaRef.current = 1;
             setState((prev) => ({ ...prev, phase: "crossfading" }));
 
             return Promise.all([
-              tweenRef(mixRef, 1.0, reverseMs, activeTweensRef),
-              tweenRef(strengthRef, 0, reverseMs, activeTweensRef),
+              tweenRef(mixRef, 1.0, handoffMs, activeTweensRef),
+              tweenRef(strengthRef, 0, handoffMs, activeTweensRef),
             ])
               .then(() => {
                 if (data.transitionId !== activeTransitionIdRef.current) {

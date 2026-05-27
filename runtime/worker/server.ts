@@ -64,6 +64,7 @@ import {
 } from "../kernel/self-mod/git.js";
 import {
   createSelfModHmrController,
+  deriveApplyTransitionRequirements,
   type ApplyOptions,
   type ApplyResult,
   type HmrApplyResponse,
@@ -235,6 +236,8 @@ type WorkerState = {
 type PendingApplyBatch = {
   applyResult: ApplyResult;
   requiresFullReload: boolean;
+  requiresRuntimeRestart: boolean;
+  requiresProcessRestart: boolean;
 };
 
 // Resolve a runtime CLI bundled into desktop/dist-electron/runtime/kernel/cli/.
@@ -871,12 +874,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           ),
         ),
       ];
-      const requiresFullReload =
-        applyResult.hasRestartRelevantPaths ||
-        applyResult.hasFullReloadRelevantPaths;
+      const {
+        requiresFullReload,
+        requiresRuntimeRestart,
+        requiresProcessRestart,
+      } = deriveApplyTransitionRequirements(applyResult);
       pendingApplyBatches.set(transitionId, {
         applyResult,
         requiresFullReload,
+        requiresRuntimeRestart,
+        requiresProcessRestart,
       });
       try {
         await peer.request(
@@ -886,6 +893,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             runIds: applyResult.restartRelevantRunIds,
             stateRunIds,
             requiresFullReload,
+            requiresRuntimeRestart,
+            requiresProcessRestart,
           },
           { retryOnDisconnect: true },
         );
@@ -910,7 +919,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             await discardFailedApplyState(applyResult, "direct apply failure");
             pendingApplyBatches.delete(transitionId);
             await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
-              allowDeferredReload: requiresFullReload,
+              allowDeferredReload: requiresRuntimeRestart,
             });
             for (const runId of applyResult.restartRelevantRunIds) {
               selfModRunRootIds.delete(runId);
@@ -919,7 +928,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           }
           pendingApplyBatches.delete(transitionId);
           await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
-            allowDeferredReload: true,
+            allowDeferredReload: requiresRuntimeRestart,
           });
           for (const runId of applyResult.restartRelevantRunIds) {
             selfModRunRootIds.delete(runId);
@@ -3070,6 +3079,26 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         return { ok: false, reason: "unknown-transition" as const };
       }
       const controller = state.selfModHmrController;
+      if (pending.requiresProcessRestart) {
+        const discarded = controller
+          ? await controller.discard(pending.applyResult.appliedRuns)
+          : false;
+        if (!discarded) {
+          console.warn(
+            "[self-mod-hmr] Failed to discard Vite state before process restart.",
+          );
+        }
+        pendingApplyBatches.delete(transitionId);
+        await releaseRuntimeReloadFor(
+          pending.applyResult.restartRelevantRunIds,
+          { allowDeferredReload: false },
+        );
+        for (const runId of pending.applyResult.restartRelevantRunIds) {
+          selfModRunRootIds.delete(runId);
+        }
+        return { ok: true, requiresClientFullReload: false };
+      }
+
       let applyResponse: HmrApplyResponse = controller
         ? await controller
             .apply(pending.applyResult.appliedRuns, payload?.options)
@@ -3100,7 +3129,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         pendingApplyBatches.delete(transitionId);
         await releaseRuntimeReloadFor(
           pending.applyResult.restartRelevantRunIds,
-          { allowDeferredReload: pending.requiresFullReload },
+          { allowDeferredReload: pending.requiresRuntimeRestart },
         );
         for (const runId of pending.applyResult.restartRelevantRunIds) {
           selfModRunRootIds.delete(runId);
@@ -3109,7 +3138,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }
       pendingApplyBatches.delete(transitionId);
       await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds, {
-        allowDeferredReload: pending.requiresFullReload,
+        allowDeferredReload: pending.requiresRuntimeRestart,
       });
       for (const runId of pending.applyResult.restartRelevantRunIds) {
         selfModRunRootIds.delete(runId);
