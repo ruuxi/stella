@@ -19,7 +19,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { ComposerAreaSelectOverlay } from "./ComposerAreaSelectOverlay";
-import { DropOverlay } from "./DropOverlay";
 import { HomeContent } from "@/app/home/HomeContent";
 import { ChatWorkspaceStrip } from "./ChatWorkspaceStrip";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
@@ -195,6 +194,7 @@ export const ChatColumn = memo(function ChatColumn({
       conversationId={conversationId}
       onSend={composer.onSend}
       onStop={composer.onStop}
+      isDragOver={isDragOver}
       indicator={indicatorProps}
       replyPeek={
         assistantReplyPeek.visible
@@ -214,7 +214,6 @@ export const ChatColumn = memo(function ChatColumn({
         className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
         {...dropHandlers}
       >
-        <DropOverlay visible={isDragOver} variant="surface" />
         <HomeContent onDismissHome={onDismissHome}>
           <div
             className={
@@ -233,7 +232,6 @@ export const ChatColumn = memo(function ChatColumn({
   return (
     <div className="full-body-row">
       <div className="full-body-main" {...dropHandlers}>
-        <DropOverlay visible={isDragOver} variant="surface" />
         {/* Viewport region: list + overlay scroll-to-bottom.
             The custom scrollbar deliberately hangs off the row (sibling
             below) rather than the viewport region so it pins to the

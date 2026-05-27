@@ -44,6 +44,7 @@ type ComposerProps = {
   conversationId: string | null;
   onSend: () => void;
   onStop: () => void;
+  isDragOver?: boolean;
   indicator?: InlineWorkingIndicatorMountProps;
   replyPeek?: AssistantReplyPeekProps | null;
 };
@@ -61,6 +62,7 @@ export function Composer({
   conversationId,
   onSend,
   onStop,
+  isDragOver = false,
   indicator,
   replyPeek,
 }: ComposerProps) {
@@ -142,7 +144,10 @@ export function Composer({
           indicator={indicator}
         />
       </div>
-      <div ref={shellRef} className="composer-shell">
+      <div
+        ref={shellRef}
+        className={`composer-shell${isDragOver ? " composer-shell--drag-over" : ""}`}
+      >
         <div ref={shellContentRef} className="composer-shell-content">
           {hasAttachedChips && (
             <div className="composer-attached-strip">
