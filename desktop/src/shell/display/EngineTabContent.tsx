@@ -3,9 +3,9 @@
  *
  * Replaces the old Settings → Models page. Single surface covers:
  *
- *   - Picking the agent runtime engine (Stella / Cursor SDK / Codex /
- *     Claude Code) and its BYOK setup (Cursor API key + model id, Codex
- *     model id).
+ *   - Picking the agent runtime engine (Stella / Codex / Claude Code) and
+ *     Codex reasoning when Codex is selected.
+ *   - Cursor is a provider under Agents (API key + model), not an engine.
  *   - Assigning a specific Stella / BYOK model to one or more agents, at
  *     a chosen reasoning effort, via the inline ProviderModelPanel +
  *     assignment popover.
@@ -51,7 +51,12 @@ import {
 } from "@/global/settings/hooks/use-llm-credentials";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
-import { LLM_PROVIDERS } from "@/global/settings/lib/llm-providers";
+import {
+  compareProviderRailOrder,
+  CURSOR_MODEL_PREFIX,
+  LLM_PROVIDERS,
+} from "@/global/settings/lib/llm-providers";
+import { DEFAULT_CURSOR_MODEL } from "@/shell/display/engine-tab-constants";
 import {
   buildModelDefaultsMap,
   getConfigurableAgents,
@@ -175,16 +180,10 @@ interface Status {
 const ENGINE_OPTIONS: ReadonlyArray<{
   id: AgentRuntimeEngine;
   label: string;
-  hint: string;
 }> = [
-  { id: "default", label: "Stella", hint: "Built-in runtime" },
-  { id: "cursor_sdk", label: "Cursor", hint: "Bring your API key" },
-  { id: "codex_cli", label: "Codex", hint: "Uses Codex app-server" },
-  {
-    id: "claude_code_local",
-    label: "Claude Code",
-    hint: "Uses your Claude CLI",
-  },
+  { id: "default", label: "Stella" },
+  { id: "codex_cli", label: "Codex" },
+  { id: "claude_code_local", label: "Claude Code" },
 ];
 
 const REASONING_OPTIONS: ReadonlyArray<{
@@ -252,17 +251,9 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
   provider: "stella",
 };
 
-const DEFAULT_CURSOR_MODEL = "composer-latest";
 const DEFAULT_CODEX_MODEL = "gpt-5.5";
 const DEFAULT_CLAUDE_CODE_MODEL = "default";
 const DEFAULT_CODEX_REASONING: CodexReasoningPreference = "default";
-const FALLBACK_CODEX_REASONING_OPTIONS: readonly CodexReasoningPreference[] = [
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-];
 const PREFS_EVENT = "stella:local-model-preferences-changed";
 const NOTICE_TTL_MS = 2400;
 
@@ -298,6 +289,9 @@ const toRuntimeOverrideId = (
   return modelId.startsWith(prefix) ? modelId : `${prefix}${modelId}`;
 };
 
+const isCursorModelId = (modelId: string): boolean =>
+  modelId.startsWith(CURSOR_MODEL_PREFIX);
+
 const fromRuntimeOverrideId = (modelId: string): string => {
   if (modelId.startsWith(CODEX_MODEL_PREFIX)) {
     return modelId.slice(CODEX_MODEL_PREFIX.length);
@@ -308,62 +302,8 @@ const fromRuntimeOverrideId = (modelId: string): string => {
   return modelId;
 };
 
-const getPopoverAgents = (
-  engine: AgentRuntimeEngine,
-  configurableAgents: ReadonlyArray<{
-    key: string;
-    label: string;
-    desc: string;
-  }>,
-): ReadonlyArray<{ key: string; label: string; desc: string }> => {
-  if (engine === "cursor_sdk") {
-    return configurableAgents.filter(
-      (entry) => entry.key !== GENERAL_AGENT_KEY,
-    );
-  }
-  return configurableAgents;
-};
-
 const errorText = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message.trim() ? error.message : fallback;
-
-// Narrow `CodexReasoningEffort` down to the subset that's also a valid
-// `CodexReasoningPreference`: everything except the upstream-only
-// "none". "default" is a UI-only sentinel produced by the renderer,
-// not the model catalog, so the input never contains it — but the
-// `Exclude<… , "none">` slice IS structurally part of
-// `CodexReasoningPreference`, so the predicate is still valid.
-const isCodexReasoningPreference = (
-  value: CodexReasoningEffort,
-): value is Exclude<CodexReasoningEffort, "none"> & CodexReasoningPreference =>
-  value !== "none";
-
-const modelSupportsReasoning = (
-  model: CodexModelOption | undefined,
-  effort: CodexReasoningPreference,
-): boolean => {
-  if (effort === "default" || !model) return true;
-  return model.supportedReasoningEfforts.some(
-    (option) => option.reasoningEffort === effort,
-  );
-};
-
-const codexReasoningLabel = (effort: CodexReasoningPreference): string => {
-  switch (effort) {
-    case "default":
-      return "Auto";
-    case "minimal":
-      return "Min";
-    case "low":
-      return "Low";
-    case "medium":
-      return "Med";
-    case "high":
-      return "High";
-    case "xhigh":
-      return "Max";
-  }
-};
 
 /**
  * Last-known local preferences cached at module scope so reopening the
@@ -402,12 +342,6 @@ export function EngineTabContent() {
 
   const selectedEngine = preferences?.agentRuntimeEngine ?? "default";
   const inputsDisabled = loading || saving !== null;
-  const selectedCodexModel = useMemo(() => {
-    const selectedId = preferences?.codexModel ?? DEFAULT_CODEX_MODEL;
-    return codexModels.find(
-      (model) => model.id === selectedId || model.model === selectedId,
-    );
-  }, [codexModels, preferences?.codexModel]);
 
   /* ── status helpers ─────────────────────────────────────────── */
 
@@ -439,7 +373,7 @@ export function EngineTabContent() {
       { resetEngineDrafts }: { resetEngineDrafts: boolean },
     ) => {
       if (!saved) return;
-      const next: LocalModelPreferences = {
+      let next: LocalModelPreferences = {
         ...saved,
         cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
         codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
@@ -447,6 +381,25 @@ export function EngineTabContent() {
           saved.codexReasoningEffort || DEFAULT_CODEX_REASONING,
         claudeCodeModel: saved.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL,
       };
+      if (next.agentRuntimeEngine === "cursor_sdk") {
+        const generalOverride = next.modelOverrides[GENERAL_AGENT_KEY];
+        next = {
+          ...next,
+          agentRuntimeEngine: "default",
+          modelOverrides: {
+            ...next.modelOverrides,
+            ...(generalOverride?.startsWith(CURSOR_MODEL_PREFIX)
+              ? {}
+              : {
+                  [GENERAL_AGENT_KEY]: `${CURSOR_MODEL_PREFIX}${next.cursorModel}`,
+                }),
+          },
+        };
+        void window.electronAPI?.system?.setLocalModelPreferences?.({
+          agentRuntimeEngine: "default",
+          modelOverrides: next.modelOverrides,
+        });
+      }
       cachedPreferences = next;
       setPreferences(next);
       if (resetEngineDrafts) {
@@ -619,17 +572,9 @@ export function EngineTabContent() {
   const saveEngine = useCallback(
     async (engine: AgentRuntimeEngine) => {
       if (!preferences || engine === preferences.agentRuntimeEngine) return;
-      const next = await writePreferences(
-        { agentRuntimeEngine: engine },
-        "engine",
-      );
-      if (next) {
-        showNotice(
-          `${ENGINE_OPTIONS.find((opt) => opt.id === engine)?.label ?? "Engine"} selected`,
-        );
-      }
+      await writePreferences({ agentRuntimeEngine: engine }, "engine");
     },
-    [preferences, showNotice, writePreferences],
+    [preferences, writePreferences],
   );
 
   const saveCursorApiKey = useCallback(async () => {
@@ -662,9 +607,33 @@ export function EngineTabContent() {
       if (!preferences) return;
       const nextModel =
         (modelId ?? cursorModelDraft).trim() || DEFAULT_CURSOR_MODEL;
-      if (nextModel === preferences.cursorModel) return;
+      const overrideId = `${CURSOR_MODEL_PREFIX}${nextModel}`;
+      if (
+        nextModel === preferences.cursorModel &&
+        preferences.modelOverrides[GENERAL_AGENT_KEY] === overrideId
+      ) {
+        return;
+      }
+      const nextOverrides = { ...preferences.modelOverrides };
+      const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
+      const nextPropagated = new Set(
+        preferences.assistantPropagatedAgents ?? [],
+      );
+      for (const [key, value] of Object.entries(nextOverrides)) {
+        if (key !== GENERAL_AGENT_KEY && isCursorModelId(value)) {
+          delete nextOverrides[key];
+          delete nextReasoning[key];
+          nextPropagated.delete(key);
+        }
+      }
+      nextOverrides[GENERAL_AGENT_KEY] = overrideId;
       const next = await writePreferences(
-        { cursorModel: nextModel },
+        {
+          cursorModel: nextModel,
+          modelOverrides: nextOverrides,
+          reasoningEfforts: nextReasoning,
+          assistantPropagatedAgents: Array.from(nextPropagated),
+        },
         "cursor-model",
       );
       if (next) {
@@ -675,98 +644,49 @@ export function EngineTabContent() {
     [cursorModelDraft, preferences, showNotice, writePreferences],
   );
 
-  const saveCodexReasoning = useCallback(
-    async (reasoning: CodexReasoningPreference) => {
-      if (!preferences || reasoning === preferences.codexReasoningEffort) {
-        return;
-      }
-      const next = await writePreferences(
-        { codexReasoningEffort: reasoning },
-        "codex-model",
-      );
-      if (next) showNotice("Codex reasoning saved");
-    },
-    [preferences, showNotice, writePreferences],
-  );
-
   /* ── render ─────────────────────────────────────────────────── */
-
-  const subtitle = useMemo(() => {
-    if (loading && !preferences) return "Loading…";
-    if (selectedEngine === "cursor_sdk")
-      return hasCursorApiKey ? "Cursor ready" : "Add a Cursor key to continue";
-    if (selectedEngine === "codex_cli") return "Runs Codex app-server";
-    if (selectedEngine === "claude_code_local")
-      return "Runs your local Claude Code CLI";
-    return "Stella's built-in runtime";
-  }, [hasCursorApiKey, loading, preferences, selectedEngine]);
 
   return (
     <div className="display-sidebar__rich display-sidebar__rich--engine">
-      <section className="engine-tab" aria-label="Engine settings">
-        <header className="engine-tab__header">
-          <h3 className="engine-tab__title">Engine</h3>
-          <p className="engine-tab__subtitle">{subtitle}</p>
-        </header>
+      <section className="engine-tab" aria-label="Model settings">
+        <div className="engine-tab__engine-block">
+          <header className="engine-tab__header">
+            <h3 className="engine-tab__title">Model</h3>
+          </header>
 
-        <div
-          className="engine-tab__status-slot"
-          role="status"
-          aria-live="polite"
-          data-kind={status?.kind ?? "idle"}
-        >
-          {status ? <span>{status.text}</span> : null}
+          <div
+            className="engine-tab__status-slot"
+            role="status"
+            aria-live="polite"
+            data-kind={status?.kind ?? "idle"}
+          >
+            {status ? <span>{status.text}</span> : null}
+          </div>
+
+          <div
+            className="engine-tab__engine-list"
+            role="radiogroup"
+            aria-label="Model engine"
+          >
+            {ENGINE_OPTIONS.map((option) => {
+              const selected = option.id === selectedEngine;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  data-selected={selected || undefined}
+                  className="engine-tab__engine-option"
+                  disabled={inputsDisabled}
+                  onClick={() => void saveEngine(option.id)}
+                >
+                  <span className="engine-tab__engine-label">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-
-        <div
-          className="engine-tab__engine-list"
-          role="radiogroup"
-          aria-label="Agent runtime"
-        >
-          {ENGINE_OPTIONS.map((option) => {
-            const selected = option.id === selectedEngine;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                data-selected={selected || undefined}
-                className="engine-tab__engine-option"
-                disabled={inputsDisabled}
-                onClick={() => void saveEngine(option.id)}
-              >
-                <span className="engine-tab__engine-label">{option.label}</span>
-                <small className="engine-tab__engine-hint">{option.hint}</small>
-              </button>
-            );
-          })}
-        </div>
-
-        <EngineByokBlock
-          engine={selectedEngine}
-          loading={loading}
-          saving={saving}
-          hasCursorApiKey={hasCursorApiKey}
-          cursorModels={cursorModels}
-          cursorModelsLoading={modelsLoading}
-          selectedCursorModelId={
-            preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL
-          }
-          selectedCodexReasoning={
-            preferences?.codexReasoningEffort ?? DEFAULT_CODEX_REASONING
-          }
-          selectedCodexModel={selectedCodexModel}
-          apiKeyDraft={apiKeyDraft}
-          cursorModelDraft={cursorModelDraft}
-          onApiKeyDraftChange={setApiKeyDraft}
-          onCursorModelDraftChange={setCursorModelDraft}
-          onSaveApiKey={() => void saveCursorApiKey()}
-          onPickCursorModel={(id) => void saveCursorModel(id)}
-          onPickCodexReasoning={(effort) => void saveCodexReasoning(effort)}
-          onSaveCursorManualModel={() => void saveCursorModel()}
-          onRefreshCursorModels={() => void loadCursorModels()}
-        />
 
         <ModelsSection
           preferences={preferences}
@@ -782,6 +702,17 @@ export function EngineTabContent() {
           claudeCodeModels={claudeCodeModels}
           claudeCodeModelsLoading={claudeCodeModelsLoading}
           onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
+          hasCursorApiKey={hasCursorApiKey}
+          cursorModels={cursorModels}
+          cursorModelsLoading={modelsLoading}
+          cursorModelDraft={cursorModelDraft}
+          apiKeyDraft={apiKeyDraft}
+          saving={saving}
+          onApiKeyDraftChange={setApiKeyDraft}
+          onCursorModelDraftChange={setCursorModelDraft}
+          onSaveCursorApiKey={() => void saveCursorApiKey()}
+          onSaveCursorModel={(id) => void saveCursorModel(id)}
+          onRefreshCursorModels={() => void loadCursorModels()}
         />
 
         <ConnectedProvidersSection />
@@ -790,225 +721,6 @@ export function EngineTabContent() {
   );
 }
 
-/* ── Engine BYOK block (Cursor key + Cursor/Codex model) ──────── */
-
-interface EngineByokBlockProps {
-  engine: AgentRuntimeEngine;
-  loading: boolean;
-  saving: SavingKind;
-  hasCursorApiKey: boolean;
-  cursorModels: CursorModelOption[];
-  cursorModelsLoading: boolean;
-  selectedCursorModelId: string;
-  selectedCodexReasoning: CodexReasoningPreference;
-  selectedCodexModel?: CodexModelOption;
-  apiKeyDraft: string;
-  cursorModelDraft: string;
-  onApiKeyDraftChange: (value: string) => void;
-  onCursorModelDraftChange: (value: string) => void;
-  onSaveApiKey: () => void;
-  onPickCursorModel: (id: string) => void;
-  onPickCodexReasoning: (effort: CodexReasoningPreference) => void;
-  onSaveCursorManualModel: () => void;
-  onRefreshCursorModels: () => void;
-}
-
-function EngineByokBlock({
-  engine,
-  loading,
-  saving,
-  hasCursorApiKey,
-  cursorModels,
-  cursorModelsLoading,
-  selectedCursorModelId,
-  selectedCodexReasoning,
-  selectedCodexModel,
-  apiKeyDraft,
-  cursorModelDraft,
-  onApiKeyDraftChange,
-  onCursorModelDraftChange,
-  onSaveApiKey,
-  onPickCursorModel,
-  onPickCodexReasoning,
-  onSaveCursorManualModel,
-  onRefreshCursorModels,
-}: EngineByokBlockProps) {
-  const inputsDisabled = loading || saving !== null;
-  const cursorModelChanged = cursorModelDraft.trim() !== selectedCursorModelId;
-  const apiKeyButtonLabel = apiKeyDraft.trim()
-    ? "Save"
-    : hasCursorApiKey
-      ? "Clear"
-      : "Save";
-  const codexReasoningOptions = [
-    DEFAULT_CODEX_REASONING,
-    ...(selectedCodexModel?.supportedReasoningEfforts
-      .map((option) => option.reasoningEffort)
-      .filter(isCodexReasoningPreference) ?? FALLBACK_CODEX_REASONING_OPTIONS),
-  ].filter(
-    (effort, index, all): effort is CodexReasoningPreference =>
-      all.indexOf(effort) === index &&
-      (effort === selectedCodexReasoning ||
-        modelSupportsReasoning(selectedCodexModel, effort)),
-  );
-  const codexReasoningDefaultLabel = selectedCodexModel
-    ? codexReasoningLabel(
-        selectedCodexModel.defaultReasoningEffort === "none"
-          ? "default"
-          : selectedCodexModel.defaultReasoningEffort,
-      )
-    : "Auto";
-
-  if (engine === "cursor_sdk") {
-    return (
-      <div className="engine-tab__byok" key="cursor_sdk">
-        <div className="engine-tab__row">
-          <label className="engine-tab__label" htmlFor="engine-cursor-key">
-            API key
-          </label>
-          <div className="engine-tab__field-row">
-            <input
-              id="engine-cursor-key"
-              type="password"
-              value={apiKeyDraft}
-              placeholder={
-                hasCursorApiKey ? "Replace saved key" : "Paste Cursor API key"
-              }
-              className="engine-tab__input"
-              autoComplete="off"
-              disabled={inputsDisabled}
-              onChange={(event) => onApiKeyDraftChange(event.target.value)}
-            />
-            <button
-              type="button"
-              className="pill-btn pill-btn--primary"
-              disabled={
-                loading ||
-                saving === "key" ||
-                (!apiKeyDraft.trim() && !hasCursorApiKey)
-              }
-              onClick={onSaveApiKey}
-            >
-              {apiKeyButtonLabel}
-            </button>
-          </div>
-        </div>
-
-        <div className="engine-tab__row">
-          <div className="engine-tab__label-row">
-            <span className="engine-tab__label">Cursor model</span>
-            {hasCursorApiKey && cursorModels.length > 0 ? (
-              <button
-                type="button"
-                className="engine-tab__link"
-                disabled={cursorModelsLoading}
-                onClick={onRefreshCursorModels}
-              >
-                {cursorModelsLoading ? "Refreshing…" : "Refresh"}
-              </button>
-            ) : null}
-          </div>
-
-          {hasCursorApiKey && cursorModels.length > 0 ? (
-            <div
-              className="engine-tab__cursor-model-list"
-              role="radiogroup"
-              aria-busy={cursorModelsLoading || undefined}
-            >
-              {cursorModels.map((model) => {
-                const selected =
-                  model.id === selectedCursorModelId ||
-                  model.aliases?.includes(selectedCursorModelId);
-                return (
-                  <button
-                    key={model.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={Boolean(selected)}
-                    data-selected={selected || undefined}
-                    className="engine-tab__cursor-model-option"
-                    disabled={inputsDisabled}
-                    onClick={() => onPickCursorModel(model.id)}
-                  >
-                    <span>{model.displayName || model.id}</span>
-                    <small>{model.aliases?.[0] ?? model.id}</small>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="engine-tab__field-row">
-              <input
-                type="text"
-                value={cursorModelDraft}
-                placeholder={DEFAULT_CURSOR_MODEL}
-                className="engine-tab__input"
-                spellCheck={false}
-                disabled={inputsDisabled}
-                onChange={(event) =>
-                  onCursorModelDraftChange(event.target.value)
-                }
-              />
-              <button
-                type="button"
-                className="pill-btn pill-btn--primary"
-                disabled={
-                  loading || saving === "cursor-model" || !cursorModelChanged
-                }
-                onClick={onSaveCursorManualModel}
-              >
-                Save
-              </button>
-            </div>
-          )}
-          {hasCursorApiKey && cursorModels.length === 0 ? (
-            <p className="engine-tab__hint">
-              {cursorModelsLoading
-                ? "Loading Cursor models…"
-                : "No models available — enter one manually."}
-            </p>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
-
-  if (engine === "codex_cli") {
-    return (
-      <div className="engine-tab__byok" key="codex_cli">
-        <div className="engine-tab__row">
-          <div className="engine-tab__label-row">
-            <span className="engine-tab__label">Reasoning</span>
-            <small className="engine-tab__meta">
-              Default {codexReasoningDefaultLabel}
-            </small>
-          </div>
-          <div className="engine-tab__segmented" role="radiogroup">
-            {codexReasoningOptions.map((effort) => {
-              const selected = effort === selectedCodexReasoning;
-              return (
-                <button
-                  key={effort}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  data-selected={selected || undefined}
-                  className="engine-tab__segment"
-                  disabled={inputsDisabled}
-                  onClick={() => onPickCodexReasoning(effort)}
-                >
-                  {codexReasoningLabel(effort)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
-}
 
 /* ── Models section ───────────────────────────────────────────── */
 
@@ -1029,6 +741,17 @@ interface ModelsSectionProps {
   claudeCodeModels: ClaudeCodeModelOption[];
   claudeCodeModelsLoading: boolean;
   onRefreshClaudeCodeModels: () => void;
+  hasCursorApiKey: boolean;
+  cursorModels: CursorModelOption[];
+  cursorModelsLoading: boolean;
+  cursorModelDraft: string;
+  apiKeyDraft: string;
+  saving: SavingKind;
+  onApiKeyDraftChange: (value: string) => void;
+  onCursorModelDraftChange: (value: string) => void;
+  onSaveCursorApiKey: () => void;
+  onSaveCursorModel: (modelId?: string) => void;
+  onRefreshCursorModels: () => void;
 }
 
 function ModelsSection({
@@ -1045,6 +768,17 @@ function ModelsSection({
   claudeCodeModels,
   claudeCodeModelsLoading,
   onRefreshClaudeCodeModels,
+  hasCursorApiKey,
+  cursorModels,
+  cursorModelsLoading,
+  cursorModelDraft,
+  apiKeyDraft,
+  saving,
+  onApiKeyDraftChange,
+  onCursorModelDraftChange,
+  onSaveCursorApiKey,
+  onSaveCursorModel,
+  onRefreshCursorModels,
 }: ModelsSectionProps) {
   const {
     models: stellaModels,
@@ -1080,10 +814,9 @@ function ModelsSection({
   const runtimeModelEngine = usesRuntimeModelPicker(selectedEngine)
     ? selectedEngine
     : null;
-  const popoverAgents = useMemo(
-    () => getPopoverAgents(selectedEngine, configurableAgents),
-    [configurableAgents, selectedEngine],
-  );
+  const popoverAgents = configurableAgents;
+  const selectedCursorModelId =
+    preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL;
 
   const codexRuntimeModels = useMemo(
     () =>
@@ -1100,7 +833,7 @@ function ModelsSection({
       claudeCodeModels.map((model) => ({
         id: model.id,
         label: model.displayName || model.id,
-        subtitle: model.source === "alias" ? "Claude Code alias" : model.id,
+        subtitle: model.source === "alias" ? undefined : model.id,
       })),
     [claudeCodeModels],
   );
@@ -1125,8 +858,13 @@ function ModelsSection({
       next.set(toRuntimeOverrideId(runtimeModelEngine, model.id), model.label);
       next.set(model.id, model.label);
     }
+    for (const model of cursorModels) {
+      const overrideId = `${CURSOR_MODEL_PREFIX}${model.id}`;
+      next.set(overrideId, model.displayName || model.id);
+      next.set(model.id, model.displayName || model.id);
+    }
     return next;
-  }, [activeRuntimeModels, runtimeModelEngine, stellaModels]);
+  }, [activeRuntimeModels, cursorModels, runtimeModelEngine, stellaModels]);
 
   const restricted = isRestrictedModelOverrideAudience(audience);
   const restrictedPlanLabel = audience ? getPlanLabel(audience) : null;
@@ -1170,7 +908,9 @@ function ModelsSection({
         : modelId;
       const rect = anchorEl?.getBoundingClientRect();
       if (!rect || (rect.width === 0 && rect.height === 0)) return;
-      const initialAgents = agentsByModel.get(normalizedId) ?? [];
+      const initialAgents = isCursorModelId(normalizedId)
+        ? [GENERAL_AGENT_KEY]
+        : (agentsByModel.get(normalizedId) ?? []);
       const reasoningCandidates = new Set<ReasoningEffort>();
       for (const key of initialAgents) {
         reasoningCandidates.add(
@@ -1201,13 +941,26 @@ function ModelsSection({
   const assignTo = useCallback(
     async (modelId: string, agentKeys: string[], effort: ReasoningEffort) => {
       if (!preferences || agentKeys.length === 0) return;
+      const targetAgentKeys = isCursorModelId(modelId)
+        ? agentKeys.filter((key) => key === GENERAL_AGENT_KEY)
+        : agentKeys;
+      if (targetAgentKeys.length === 0) return;
       const nextOverrides = { ...preferences.modelOverrides };
       const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
       const nextPropagated = new Set(
         preferences.assistantPropagatedAgents ?? [],
       );
+      if (isCursorModelId(modelId)) {
+        for (const [key, value] of Object.entries(nextOverrides)) {
+          if (key !== GENERAL_AGENT_KEY && isCursorModelId(value)) {
+            delete nextOverrides[key];
+            delete nextReasoning[key];
+            nextPropagated.delete(key);
+          }
+        }
+      }
       const nonStella = !isStellaModelId(modelId);
-      for (const key of agentKeys) {
+      for (const key of targetAgentKeys) {
         nextOverrides[key] = modelId;
         if (effort === "default") delete nextReasoning[key];
         else nextReasoning[key] = effort;
@@ -1239,6 +992,10 @@ function ModelsSection({
         ) {
           patch.claudeCodeModel = claudeCodeModel;
         }
+      }
+      if (isCursorModelId(modelId)) {
+        const cursorModel = modelId.slice(CURSOR_MODEL_PREFIX.length);
+        patch.cursorModel = cursorModel || DEFAULT_CURSOR_MODEL;
       }
       await writePreferences(patch, "overrides");
     },
@@ -1296,7 +1053,7 @@ function ModelsSection({
 
   const applyToAll = useCallback(
     async (modelId: string, effort: ReasoningEffort) => {
-      if (!preferences) {
+      if (!preferences || isCursorModelId(modelId)) {
         closeAssignment();
         return;
       }
@@ -1416,11 +1173,6 @@ function ModelsSection({
 
   const orchestratorCurrent = overrides.orchestrator ?? overrides.general ?? "";
 
-  const engineScopeNote =
-    selectedEngine === "cursor_sdk"
-      ? "Cursor runs the General agent. Pick Stella models below for every other agent."
-      : null;
-
   const runtimePanelLabel =
     runtimeModelEngine === "codex_cli" ? "Codex" : "Claude Code";
   const runtimePanelFavoriteScope =
@@ -1436,8 +1188,29 @@ function ModelsSection({
 
   return (
     <div className="engine-tab__models">
-      <div className="engine-tab__models-head">
-        <h4 className="engine-tab__section-title">Models</h4>
+      <div className="engine-tab__media-tabs-row">
+        <nav
+          className="engine-tab__media-tabs"
+          role="tablist"
+          aria-label="Media kind"
+        >
+          {MEDIA_TABS.map((tab) => {
+            const selected = tab.id === mediaTab;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                data-selected={selected || undefined}
+                className="engine-tab__media-tab"
+                onClick={() => onMediaTabChange(tab.id)}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -1489,36 +1262,17 @@ function ModelsSection({
         </DropdownMenu>
       </div>
 
-      <nav
-        className="engine-tab__media-tabs"
-        role="tablist"
-        aria-label="Media kind"
-      >
-        {MEDIA_TABS.map((tab) => {
-          const selected = tab.id === mediaTab;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              data-selected={selected || undefined}
-              className="engine-tab__media-tab"
-              onClick={() => onMediaTabChange(tab.id)}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </nav>
-
       <div className="engine-tab__models-pane" role="tabpanel">
         {mediaTab === "agents" ? (
           <div className="engine-tab__models-agents">
-            {engineScopeNote ? (
-              <p className="engine-tab__scope-note">{engineScopeNote}</p>
-            ) : null}
-            {runtimeModelEngine ? (
+            {/* Keep both panels mounted and toggle visibility — flipping
+             * the conditional unmounts/remounts the picker and visibly
+             * jolts the surface every time the user switches engines.
+             */}
+            <div
+              className="engine-tab__models-slot"
+              data-active={runtimeModelEngine ? "runtime" : "default"}
+            >
               <EngineRuntimeModelPanel
                 providerLabel={runtimePanelLabel}
                 models={activeRuntimeModels}
@@ -1527,10 +1281,13 @@ function ModelsSection({
                 favoriteScope={runtimePanelFavoriteScope}
                 onRefresh={runtimePanelRefresh}
                 onSelectModel={(modelId, anchor) =>
-                  handleOpenAssignment(modelId, anchor, runtimeModelEngine)
+                  handleOpenAssignment(
+                    modelId,
+                    anchor,
+                    runtimeModelEngine ?? "codex_cli",
+                  )
                 }
               />
-            ) : (
               <ProviderModelPanel
                 value=""
                 defaultLabel=""
@@ -1543,12 +1300,35 @@ function ModelsSection({
                 hideDefaultRow
                 selectedHeaderKicker="Tap a model"
                 hideSelectedTitle
-                favoriteScope={`engine:stella:${selectedEngine}`}
+                favoriteScope="engine:stella"
+                cursorProvider={{
+                  hasApiKey: hasCursorApiKey,
+                  models: cursorModels,
+                  modelsLoading: cursorModelsLoading,
+                  selectedModelId: selectedCursorModelId,
+                  apiKeyDraft,
+                  modelDraft: cursorModelDraft,
+                  savingKey: saving === "key",
+                  savingModel: saving === "cursor-model",
+                  onApiKeyDraftChange,
+                  onModelDraftChange: onCursorModelDraftChange,
+                  onSaveApiKey: onSaveCursorApiKey,
+                  onRefreshModels: onRefreshCursorModels,
+                  onPickModel: (modelId, anchor) =>
+                    handleOpenAssignment(
+                      modelId.startsWith(CURSOR_MODEL_PREFIX)
+                        ? modelId
+                        : `${CURSOR_MODEL_PREFIX}${modelId}`,
+                      anchor ?? null,
+                      null,
+                    ),
+                  onSaveManualModel: () => onSaveCursorModel(),
+                }}
                 onSelect={(modelId, anchor) =>
                   handleOpenAssignment(modelId, anchor ?? null, null)
                 }
               />
-            )}
+            </div>
           </div>
         ) : mediaTab === "image" ? (
           <ProviderOnlyPicker
@@ -1588,13 +1368,25 @@ function ModelsSection({
       {assignment ? (
         <AssignmentPopover
           assignment={assignment}
-          configurableAgents={popoverAgents}
+          configurableAgents={
+            isCursorModelId(assignment.modelId)
+              ? popoverAgents.filter(
+                  (entry) => entry.key === GENERAL_AGENT_KEY,
+                )
+              : popoverAgents
+          }
           overrides={overrides}
           reasoningEfforts={preferences?.reasoningEfforts ?? {}}
           modelNamesById={modelNamesById}
           pending={inputsDisabled}
           onApply={(agents, effort) =>
-            void applyAssignment(assignment.modelId, agents, effort)
+            void applyAssignment(
+              assignment.modelId,
+              isCursorModelId(assignment.modelId)
+                ? [GENERAL_AGENT_KEY]
+                : agents,
+              effort,
+            )
           }
           onApplyToAll={(effort) => void applyToAll(assignment.modelId, effort)}
           onClose={closeAssignment}
@@ -1612,7 +1404,7 @@ function ConnectedProvidersSection() {
   const [removingProvider, setRemovingProvider] = useState<string | null>(null);
 
   const connectedProviders = useMemo(() => {
-    return LLM_PROVIDERS.map((entry) => {
+    const rows = LLM_PROVIDERS.map((entry) => {
       const apiKey = findApiKey(credentials.apiKeys, entry.key);
       const oauth = findOauthCredential(
         credentials.oauthCredentials,
@@ -1626,6 +1418,9 @@ function ConnectedProvidersSection() {
         oauth: ReturnType<typeof findOauthCredential>;
       }
     >;
+    return rows.sort((a, b) =>
+      compareProviderRailOrder(a.key, b.key, a.label, b.label),
+    );
   }, [credentials.apiKeys, credentials.oauthCredentials]);
 
   const handleRemove = useCallback(
@@ -1748,12 +1543,21 @@ function AssignmentPopover({
   onApplyToAll,
   onClose,
 }: AssignmentPopoverProps) {
+  const generalAgentOnly = assignment.modelId.startsWith(CURSOR_MODEL_PREFIX);
   const [reasoning, setReasoning] = useState<ReasoningEffort>(
     assignment.initialReasoning,
   );
-  const [selected, setSelected] = useState<ReadonlySet<string>>(
-    () => new Set(assignment.initialAgents),
-  );
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => {
+    const initial = new Set(assignment.initialAgents);
+    if (generalAgentOnly) {
+      return new Set(
+        configurableAgents.some((entry) => entry.key === GENERAL_AGENT_KEY)
+          ? [GENERAL_AGENT_KEY]
+          : [],
+      );
+    }
+    return initial;
+  });
   const panelRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ left: number; top: number }>(
     () => ({
@@ -1802,6 +1606,7 @@ function AssignmentPopover({
   }, [onClose]);
 
   const toggleAgent = (key: string) => {
+    if (generalAgentOnly) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -1842,29 +1647,31 @@ function AssignmentPopover({
           </span>
         </header>
 
-        <section
-          className="engine-tab__assign-reasoning"
-          role="radiogroup"
-          aria-label="Reasoning effort"
-        >
-          {REASONING_OPTIONS.map((option) => {
-            const isSelected = option.id === reasoning;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                role="radio"
-                aria-checked={isSelected}
-                data-selected={isSelected || undefined}
-                className="engine-tab__assign-reasoning-btn"
-                title={option.title}
-                onClick={() => setReasoning(option.id)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </section>
+        {generalAgentOnly ? null : (
+          <section
+            className="engine-tab__assign-reasoning"
+            role="radiogroup"
+            aria-label="Reasoning effort"
+          >
+            {REASONING_OPTIONS.map((option) => {
+              const isSelected = option.id === reasoning;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  data-selected={isSelected || undefined}
+                  className="engine-tab__assign-reasoning-btn"
+                  title={option.title}
+                  onClick={() => setReasoning(option.id)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </section>
+        )}
 
         <section
           className="engine-tab__assign-agents"
@@ -1872,7 +1679,9 @@ function AssignmentPopover({
           aria-label="Agents"
         >
           {configurableAgents.map((entry) => {
-            const isChecked = selected.has(entry.key);
+            const isChecked = generalAgentOnly
+              ? entry.key === GENERAL_AGENT_KEY
+              : selected.has(entry.key);
             const current = overrides[entry.key];
             const sameModel = current === assignment.modelId;
             const currentEffort = reasoningEfforts[entry.key] ?? "default";
@@ -1899,6 +1708,7 @@ function AssignmentPopover({
                 data-current={sameModel || undefined}
                 title={title}
                 onClick={() => toggleAgent(entry.key)}
+                disabled={generalAgentOnly && entry.key !== GENERAL_AGENT_KEY}
               >
                 {entry.label}
               </button>
@@ -1907,15 +1717,17 @@ function AssignmentPopover({
         </section>
 
         <footer className="engine-tab__assign-footer">
-          <button
-            type="button"
-            className="engine-tab__assign-apply-all"
-            disabled={pending}
-            onClick={() => onApplyToAll(reasoning)}
-            title="Apply this model to every configurable agent"
-          >
-            Apply to all
-          </button>
+          {generalAgentOnly ? null : (
+            <button
+              type="button"
+              className="engine-tab__assign-apply-all"
+              disabled={pending}
+              onClick={() => onApplyToAll(reasoning)}
+              title="Apply this model to every configurable agent"
+            >
+              Apply to all
+            </button>
+          )}
           <div className="engine-tab__assign-footer-actions">
             <button
               type="button"
