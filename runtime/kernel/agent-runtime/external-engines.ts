@@ -25,6 +25,7 @@ import {
 import {
   buildCodexPromptFromMessages,
   runCodexAgentTurn,
+  shutdownCodexAppServerRuntime,
   shouldUseCodexAgentRuntime,
 } from "../integrations/codex-agent-runtime.js";
 import {
@@ -105,8 +106,13 @@ const buildToolCallPayload = (args: {
   timestamp: now(),
 });
 
-const buildToolResultText = (toolResult: { result?: unknown; error?: string }): string =>
-  toolResult.error ? `Error: ${toolResult.error}` : textFromUnknown(toolResult.result);
+const buildToolResultText = (toolResult: {
+  result?: unknown;
+  error?: string;
+}): string =>
+  toolResult.error
+    ? `Error: ${toolResult.error}`
+    : textFromUnknown(toolResult.result);
 
 const buildToolResultContent = async (toolResult: {
   result?: unknown;
@@ -122,6 +128,13 @@ const buildToolResultContent = async (toolResult: {
   return content;
 };
 
+type ExternalEngineSessionKind =
+  | "claude_code_local"
+  | "cursor_sdk"
+  | "codex_cli";
+
+type ExternalOrchestratorEngine = "claude_code_local" | "codex_cli";
+
 const shouldUseClaudeCodeRuntime = (opts: BaseRunOptions): boolean => {
   const primaryModelId = opts.agentContext.model ?? opts.resolvedLlm.model.id;
   return shouldUseClaudeCodeAgentRuntime({
@@ -131,10 +144,22 @@ const shouldUseClaudeCodeRuntime = (opts: BaseRunOptions): boolean => {
   });
 };
 
-type ExternalEngineSessionKind =
-  | "claude_code_local"
-  | "cursor_sdk"
-  | "codex_cli";
+export const selectExternalOrchestratorEngine = (
+  opts: BaseRunOptions,
+): ExternalOrchestratorEngine | null => {
+  if (shouldUseClaudeCodeRuntime(opts)) {
+    return "claude_code_local";
+  }
+  if (
+    shouldUseCodexAgentRuntime({
+      agentType: opts.agentType,
+      agentEngine: opts.agentContext.agentEngine,
+    })
+  ) {
+    return "codex_cli";
+  }
+  return null;
+};
 
 const EXTERNAL_ENGINE_SESSION_PREFIXES: readonly string[] = [
   "claude_code_local:",
@@ -185,10 +210,12 @@ const persistExternalPromptMessages = (
   > =
     promptMessages.length > 0
       ? promptMessages
-      : [{
-          text: opts.userPrompt,
-          attachments: opts.attachments,
-        }];
+      : [
+          {
+            text: opts.userPrompt,
+            attachments: opts.attachments,
+          },
+        ];
   const promptTimestamp = now();
   for (const [index, promptInput] of promptInputs.entries()) {
     const promptMessage = createRuntimePromptAgentMessage(
@@ -346,10 +373,12 @@ const attachmentsFromQueuedMessages = (
     return entry.message.content.flatMap(
       (block: TextContent | ImageContent | ThinkingContent | ToolCall) =>
         block.type === "image"
-          ? [{
-              url: `data:${block.mimeType};base64,${block.data}`,
-              mimeType: block.mimeType,
-            }]
+          ? [
+              {
+                url: `data:${block.mimeType};base64,${block.data}`,
+                mimeType: block.mimeType,
+              },
+            ]
           : [],
     );
   });
@@ -602,7 +631,9 @@ const runClaudeHostedTurn = async (args: {
     agentType: args.opts.agentType,
     content: finalResult.text,
   });
-  const assistantMessageEvent = runEvents.recordAssistantTextEnd(finalResult.text);
+  const assistantMessageEvent = runEvents.recordAssistantTextEnd(
+    finalResult.text,
+  );
   if (assistantMessageEvent) {
     args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
   }
@@ -695,24 +726,28 @@ const runCursorHostedTurn = async (args: {
   return {
     finalText: result.text,
     sessionId: result.sessionId,
-    ...(result.fileChanges?.length
-      ? { fileChanges: result.fileChanges }
-      : {}),
+    ...(result.fileChanges?.length ? { fileChanges: result.fileChanges } : {}),
   };
 };
 
 const runCodexHostedTurn = async (args: {
-  opts: SubagentRunOptions;
-  session: ExternalSubagentRunSession;
+  opts: BaseRunOptions & { onProgress?: (chunk: string) => void };
+  session: ExternalOrchestratorRunSession | ExternalSubagentRunSession;
   systemPrompt: string;
   promptMessages: RuntimePromptMessage[];
   callbacks?: Partial<RuntimeRunCallbacks>;
+  liveAgent?: ReturnType<typeof createExternalLiveAgent>;
 }): Promise<{
   finalText: string;
   sessionId: string;
   fileChanges?: SubagentRunResult["fileChanges"];
 }> => {
   const { runId, threadKey, runEvents } = args.session;
+  const responseTargetTracker =
+    args.session.kind === "orchestrator"
+      ? args.session.responseTargetTracker
+      : undefined;
+
   runEvents.recordRunStart();
   persistExternalPromptMessages(args.opts, threadKey, args.promptMessages);
 
@@ -756,6 +791,7 @@ const runCodexHostedTurn = async (args: {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => {
+    responseTargetTracker?.noteToolStart(toolName, toolArgs);
     args.callbacks?.onToolStart?.(
       runEvents.recordToolStart({
         toolCallId,
@@ -793,6 +829,7 @@ const runCodexHostedTurn = async (args: {
       signal,
       onUpdate,
     });
+    responseTargetTracker?.noteToolEnd(toolName, toolResult.details);
     args.callbacks?.onToolEnd?.(
       runEvents.recordToolEnd({
         toolCallId,
@@ -815,14 +852,14 @@ const runCodexHostedTurn = async (args: {
     return toolResult;
   };
   const prompt = buildCodexPromptFromMessages({
-    systemPrompt: args.systemPrompt,
     promptMessages: args.promptMessages,
   });
-  const result = await runCodexAgentTurn({
+  let finalResult = await runCodexAgentTurn({
     runId,
     sessionKey,
     ...(persistedSessionId ? { persistedSessionId } : {}),
     prompt,
+    systemPrompt: args.systemPrompt,
     cwd: localCliCwd,
     stellaHome: args.opts.stellaHome,
     stellaRoot: args.opts.stellaRoot,
@@ -840,16 +877,60 @@ const runCodexHostedTurn = async (args: {
     },
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     executeTool: executeCodexTool,
+    reuseAppServer: true,
   });
+
+  for (;;) {
+    const queued = args.liveAgent?.drain() ?? [];
+    if (queued.length === 0) {
+      break;
+    }
+    const queuedStarted = runEvents.recordQueuedUserMessageStart();
+    if (queuedStarted) {
+      args.callbacks?.onRunStarted?.(queuedStarted);
+    }
+    const queuedPromptMessages = queued.map(formatQueuedClaudeMessage);
+    const queuedAttachments = attachmentsFromQueuedMessages(queued);
+    const queuedPrompt = buildCodexPromptFromMessages({
+      promptMessages: queuedPromptMessages,
+    });
+    finalResult = await runCodexAgentTurn({
+      runId,
+      sessionKey,
+      persistedSessionId: finalResult.sessionId,
+      prompt: queuedPrompt,
+      systemPrompt: args.systemPrompt,
+      cwd: localCliCwd,
+      stellaHome: args.opts.stellaHome,
+      stellaRoot: args.opts.stellaRoot,
+      stellaModel: args.opts.agentContext.model,
+      attachments: queuedAttachments,
+      tools: toolMetadata,
+      abortSignal: args.opts.abortSignal,
+      onStatus: (status) => {
+        args.opts.onProgress?.(status);
+        args.callbacks?.onStatus?.(runEvents.recordStatus(status));
+      },
+      onStream: (chunk) => {
+        args.opts.onProgress?.(chunk);
+        args.callbacks?.onStream?.(runEvents.recordStream(chunk));
+      },
+      onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
+      executeTool: executeCodexTool,
+      reuseAppServer: true,
+    });
+  }
 
   await persistAssistantReply({
     store: args.opts.store,
     threadKey,
     resolvedLlm: args.opts.resolvedLlm,
     agentType: args.opts.agentType,
-    content: result.text,
+    content: finalResult.text,
   });
-  const assistantMessageEvent = runEvents.recordAssistantTextEnd(result.text);
+  const assistantMessageEvent = runEvents.recordAssistantTextEnd(
+    finalResult.text,
+  );
   if (assistantMessageEvent) {
     args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
   }
@@ -857,14 +938,14 @@ const runCodexHostedTurn = async (args: {
     store: args.opts.store,
     threadKey,
     engine: "codex_cli",
-    sessionId: result.sessionId,
+    sessionId: finalResult.sessionId,
   });
 
   return {
-    finalText: result.text,
-    sessionId: result.sessionId,
-    ...(result.fileChanges?.length
-      ? { fileChanges: result.fileChanges }
+    finalText: finalResult.text,
+    sessionId: finalResult.sessionId,
+    ...(finalResult.fileChanges?.length
+      ? { fileChanges: finalResult.fileChanges }
       : {}),
   };
 };
@@ -872,7 +953,8 @@ const runCodexHostedTurn = async (args: {
 export const runExternalOrchestratorTurn = async (
   opts: OrchestratorRunOptions,
 ): Promise<string | null> => {
-  if (!shouldUseClaudeCodeRuntime(opts)) {
+  const engine = selectExternalOrchestratorEngine(opts);
+  if (!engine) {
     return null;
   }
 
@@ -918,14 +1000,24 @@ export const runExternalOrchestratorTurn = async (
       queueUserMessageId: session.runEvents.queueUserMessageId,
       agent: liveAgent.agent,
     });
-    const result = await runClaudeHostedTurn({
-      opts,
-      session,
-      systemPrompt,
-      promptMessages,
-      callbacks: opts.callbacks,
-      liveAgent,
-    });
+    const result =
+      engine === "codex_cli"
+        ? await runCodexHostedTurn({
+            opts,
+            session,
+            systemPrompt,
+            promptMessages,
+            callbacks: opts.callbacks,
+            liveAgent,
+          })
+        : await runClaudeHostedTurn({
+            opts,
+            session,
+            systemPrompt,
+            promptMessages,
+            callbacks: opts.callbacks,
+            liveAgent,
+          });
     return await session.finalizeSuccess(result.finalText);
   } catch (error) {
     const interruptedReason = resolveInterruptionReason({
@@ -1063,4 +1155,5 @@ export const runExternalSubagentTurn = async (
 
 export const shutdownExternalEngineIntegrations = (): void => {
   shutdownClaudeCodeRuntime();
+  shutdownCodexAppServerRuntime();
 };
