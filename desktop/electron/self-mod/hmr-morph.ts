@@ -27,6 +27,7 @@ import {
   captureWindowDataUrl,
   waitForOverlayMorphSignal,
 } from "../windows/morph-transition-helpers.js";
+import { shouldShowMorphForWindow } from "../windows/morph-visibility.js";
 
 export type HmrTransitionController = {
   runTransition: (opts: {
@@ -195,6 +196,18 @@ export function createHmrTransitionController(deps: {
       await applyWithoutMorph(
         fullWindow && !fullWindow.isDestroyed() ? fullWindow : null,
       );
+      return;
+    }
+
+    const visibilityDecision = await shouldShowMorphForWindow(fullWindow);
+    if (!visibilityDecision.showMorph) {
+      console.info("[self-mod-hmr] Applying without morph cover:", {
+        reason: "target-window-not-visible",
+        visibility: visibilityDecision,
+        runIds: opts.runIds,
+        requiresFullReload: opts.requiresFullReload,
+      });
+      await applyWithoutMorph(fullWindow);
       return;
     }
 
