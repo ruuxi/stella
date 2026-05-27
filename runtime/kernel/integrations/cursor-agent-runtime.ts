@@ -7,7 +7,12 @@ import { promisify } from "node:util";
 import { setupEnvironment } from "dugite";
 import type { AgentOptions, SDKImage, SDKMessage } from "@cursor/sdk";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
-import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
+import {
+  type AgentRuntimeEngine,
+  fromCursorModelOverrideId,
+  isCursorModelOverride,
+} from "../../contracts/agent-engine.js";
+import { getModelOverride } from "../preferences/local-preferences.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
 import {
   DEFAULT_CURSOR_MODEL,
@@ -44,8 +49,12 @@ export type CursorAgentTurnResult = {
 export const shouldUseCursorAgentRuntime = (args: {
   agentType?: string;
   agentEngine?: CursorAgentRuntimeEngine;
-}): boolean =>
-  args.agentType === AGENT_IDS.GENERAL && args.agentEngine === "cursor_sdk";
+  model?: string;
+}): boolean => {
+  if (args.agentType !== AGENT_IDS.GENERAL) return false;
+  if (args.agentEngine === "cursor_sdk") return true;
+  return isCursorModelOverride(args.model);
+};
 
 const normalizeGitPath = (value: string): string =>
   value.trim().replace(/\\/g, "/");
@@ -476,12 +485,18 @@ export const runCursorAgentTurn = async (request: {
     };
 
     const { Agent } = await import("@cursor/sdk");
+    const envModel = process.env.STELLA_CURSOR_MODEL?.trim();
+    const generalOverride = request.stellaHome
+      ? getModelOverride(request.stellaHome, AGENT_IDS.GENERAL)
+      : undefined;
     const model = {
       id:
-        process.env.STELLA_CURSOR_MODEL?.trim() ||
-        (request.stellaHome
-          ? loadLocalPreferences(request.stellaHome).cursorModel
-          : DEFAULT_CURSOR_MODEL),
+        envModel ||
+        (isCursorModelOverride(generalOverride)
+          ? fromCursorModelOverrideId(generalOverride)
+          : request.stellaHome
+            ? loadLocalPreferences(request.stellaHome).cursorModel
+            : DEFAULT_CURSOR_MODEL),
     };
     const agentOptions = buildCursorAgentOptions({
       apiKey,
