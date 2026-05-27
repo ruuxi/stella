@@ -156,6 +156,15 @@
   border-color: color-mix(in oklch, var(--primary) 18%, var(--panel-surface-border));
 }
 
+.chat-sidebar-shell--drag-over {
+  border-color: color-mix(in oklch, var(--primary) 42%, var(--panel-surface-border));
+  box-shadow:
+    var(--shadow-md),
+    var(--panel-surface-highlight),
+    0 0 0 2px color-mix(in oklch, var(--primary) 38%, transparent),
+    0 0 0 6px color-mix(in oklch, var(--primary) 10%, transparent);
+}
+
 /* Form: layout only, mirrors composer-form */
 .chat-sidebar-form {
   display: flex;

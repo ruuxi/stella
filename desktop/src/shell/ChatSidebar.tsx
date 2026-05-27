@@ -32,7 +32,6 @@ import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-sta
 import { useFooterTasks } from "@/app/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
-import { DropOverlay } from "@/app/chat/DropOverlay";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
 import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
@@ -349,7 +348,6 @@ export function ChatPanelTab(
           }
         >
         <div className="chat-sidebar-inner">
-          <DropOverlay visible={isDragOver} variant="sidebar" />
           <div className="chat-sidebar-main">
             <CompactConversationSurface
               className="chat-sidebar-messages"
@@ -388,7 +386,10 @@ export function ChatPanelTab(
                 />
               </div>
 
-              <div ref={shellRef} className="chat-sidebar-shell">
+              <div
+                ref={shellRef}
+                className={`chat-sidebar-shell${isDragOver ? " chat-sidebar-shell--drag-over" : ""}`}
+              >
                 <div ref={shellContentRef} className="chat-sidebar-shell-content">
                   {hasAttachedComposerChips(chatContext, selectedText) && (
                     <div className="composer-attached-strip composer-attached-strip--mini">
