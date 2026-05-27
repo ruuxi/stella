@@ -7,7 +7,7 @@ const COVERED_PHASES: ReadonlySet<SelfModHmrState["phase"]> = new Set([
   "morph-forward",
   "applying",
   "reloading",
-  "morph-reverse",
+  "morph-handoff",
 ]);
 
 /**

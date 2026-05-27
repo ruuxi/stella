@@ -8,23 +8,60 @@
  */
 
 /**
- * Forward: strength 0→steady with cosine easing (matches `tweenRef` in
+ * Cover: strength 0→steady with cosine easing (matches `tweenRef` in
  * MorphTransition). This gives the HMR cover an S-curve start instead of
  * popping straight into the ripple.
  */
-export const MORPH_FORWARD_RAMP_MS = 240;
+export const MORPH_RENDERER_COVER_RAMP_MS = 200;
+export const MORPH_RELOAD_COVER_RAMP_MS = 400;
 
-/** Reverse: `u_mix` 0→1 and strength →0 with the same cosine easing. */
-export const MORPH_REVERSE_CROSSFADE_MS = 240;
+/** Handoff: `u_mix` 0→1 and strength →0 once the second capture is ready. */
+export const MORPH_HANDOFF_FADE_MS = 500;
 
 /** Plateau strength during forward cover (fragment shader `u_strength`). */
 export const MORPH_STEADY_STRENGTH = 0.65;
 
 /** Baseline wait after Vite HMR/reload is triggered before capturing the new UI. */
-export const MORPH_RENDERER_SETTLE_DELAY_MS = 800;
+export const MORPH_RENDERER_SETTLE_DELAY_MS = 250;
 
 /** Fixed wait for covered renderer reloads before capturing the new UI. */
-export const MORPH_RELOAD_SETTLE_DELAY_MS = 2_500;
+export const MORPH_RELOAD_SETTLE_DELAY_MS = 1_250;
 
 export const MORPH_OVERLAY_READY_TIMEOUT_MS = 500;
 export const MORPH_DONE_TIMEOUT_MS = 5000;
+
+export type MorphVisualTiming = {
+  coverRampMs: number;
+  handoffFadeMs: number;
+  glimmCoverSweepMs: number;
+  glimmRevealSweepMs: number;
+  glimmOutroFadeMs: number;
+};
+
+export type MorphTimingTierSettings = MorphVisualTiming & {
+  settleDelayMs: number;
+};
+
+export type MorphTimingSettings = {
+  hmr: MorphTimingTierSettings;
+  reload: MorphTimingTierSettings;
+};
+
+export const DEFAULT_MORPH_TIMING_SETTINGS: MorphTimingSettings = {
+  hmr: {
+    settleDelayMs: MORPH_RENDERER_SETTLE_DELAY_MS,
+    coverRampMs: MORPH_RENDERER_COVER_RAMP_MS,
+    handoffFadeMs: MORPH_HANDOFF_FADE_MS,
+    glimmCoverSweepMs: 360,
+    glimmRevealSweepMs: 520,
+    glimmOutroFadeMs: 220,
+  },
+  reload: {
+    settleDelayMs: MORPH_RELOAD_SETTLE_DELAY_MS,
+    coverRampMs: MORPH_RELOAD_COVER_RAMP_MS,
+    handoffFadeMs: MORPH_HANDOFF_FADE_MS,
+    glimmCoverSweepMs: 360,
+    glimmRevealSweepMs: 520,
+    glimmOutroFadeMs: 220,
+  },
+};

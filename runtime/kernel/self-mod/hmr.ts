@@ -61,6 +61,8 @@ export type AppliedRun = {
   runId: string;
   paths: string[];
   files: Array<{ path: string; content?: string; deleted?: boolean }>;
+  runtimeRestartRelevantPaths: string[];
+  processRestartRelevantPaths: string[];
   restartRelevantPaths: string[];
   fullReloadRelevantPaths: string[];
 };
@@ -80,6 +82,8 @@ export type ApplyResult = {
    * dev-watcher debouncer coalesces no-op cases on its own).
    */
   hasRestartRelevantPaths: boolean;
+  hasRuntimeRestartRelevantPaths: boolean;
+  hasProcessRestartRelevantPaths: boolean;
   hasFullReloadRelevantPaths: boolean;
 };
 
@@ -104,6 +108,32 @@ export type RecordWriteOptions = {
 
 export type CancelResult = ApplyResult & {
   releasedPaths: string[];
+};
+
+export type ApplyTransitionRequirements = {
+  requiresFullReload: boolean;
+  requiresRuntimeRestart: boolean;
+  requiresProcessRestart: boolean;
+};
+
+export const deriveApplyTransitionRequirements = (
+  applyResult: Pick<
+    ApplyResult,
+    | "hasFullReloadRelevantPaths"
+    | "hasRuntimeRestartRelevantPaths"
+    | "hasProcessRestartRelevantPaths"
+  >,
+): ApplyTransitionRequirements => {
+  const requiresRuntimeRestart = applyResult.hasRuntimeRestartRelevantPaths;
+  const requiresProcessRestart = applyResult.hasProcessRestartRelevantPaths;
+  return {
+    requiresRuntimeRestart,
+    requiresProcessRestart,
+    requiresFullReload:
+      applyResult.hasFullReloadRelevantPaths &&
+      !requiresRuntimeRestart &&
+      !requiresProcessRestart,
+  };
 };
 
 const withTimeoutSignal = (timeoutMs: number): AbortSignal => {
@@ -212,6 +242,16 @@ const partitionRestartPaths = (paths: string[]): string[] =>
       isRestartRequiredNonHmrPath(repoRelativePath),
   );
 
+const partitionRuntimeRestartPaths = (paths: string[]): string[] =>
+  paths.filter(isRestartRelevantPath);
+
+const partitionProcessRestartPaths = (paths: string[]): string[] =>
+  paths.filter(
+    (repoRelativePath) =>
+      isRestartRequiredNonHmrPath(repoRelativePath) &&
+      !isRestartRelevantPath(repoRelativePath),
+  );
+
 const partitionFullReloadPaths = (paths: string[]): string[] =>
   paths.filter(isFullReloadRelevantPath);
 
@@ -273,6 +313,8 @@ const buildAppliedRuns = (
         }
         return { path: filePath, ...readSnapshotContent(repoRoot, filePath) };
       }),
+      runtimeRestartRelevantPaths: partitionRuntimeRestartPaths(paths),
+      processRestartRelevantPaths: partitionProcessRestartPaths(paths),
       restartRelevantPaths: partitionRestartPaths(paths),
       fullReloadRelevantPaths: partitionFullReloadPaths(paths),
     };
@@ -292,6 +334,12 @@ const buildApplyResult = (
   const hasRestartRelevantPaths = appliedRuns.some(
     (run) => run.restartRelevantPaths.length > 0,
   );
+  const hasRuntimeRestartRelevantPaths = appliedRuns.some(
+    (run) => run.runtimeRestartRelevantPaths.length > 0,
+  );
+  const hasProcessRestartRelevantPaths = appliedRuns.some(
+    (run) => run.processRestartRelevantPaths.length > 0,
+  );
   const hasFullReloadRelevantPaths = appliedRuns.some(
     (run) => run.fullReloadRelevantPaths.length > 0,
   );
@@ -299,6 +347,8 @@ const buildApplyResult = (
     appliedRuns,
     restartRelevantRunIds,
     hasRestartRelevantPaths,
+    hasRuntimeRestartRelevantPaths,
+    hasProcessRestartRelevantPaths,
     hasFullReloadRelevantPaths,
   };
 };

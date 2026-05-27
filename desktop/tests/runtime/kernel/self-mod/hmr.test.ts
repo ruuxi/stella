@@ -2,7 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createSelfModHmrController } from "../../../../../runtime/kernel/self-mod/hmr.js";
+import {
+  createSelfModHmrController,
+  deriveApplyTransitionRequirements,
+} from "../../../../../runtime/kernel/self-mod/hmr.js";
 
 const tempRoots: string[] = [];
 
@@ -39,6 +42,8 @@ describe("self-mod HMR controller", () => {
             runId: "run-a",
             paths: ["desktop/src/foo.tsx"],
             files: [{ path: "desktop/src/foo.tsx", content: "export const a = 1" }],
+            runtimeRestartRelevantPaths: [],
+            processRestartRelevantPaths: [],
             restartRelevantPaths: [],
             fullReloadRelevantPaths: [],
           },
@@ -132,13 +137,107 @@ describe("self-mod HMR controller", () => {
       );
       expect(result.appliedRuns).toHaveLength(1);
       expect(result.appliedRuns[0]!.paths).toEqual(["package.json"]);
+      expect(result.appliedRuns[0]!.runtimeRestartRelevantPaths).toEqual([]);
+      expect(result.appliedRuns[0]!.processRestartRelevantPaths).toEqual([
+        "package.json",
+      ]);
       expect(result.appliedRuns[0]!.restartRelevantPaths).toEqual([
         "package.json",
       ]);
       expect(result.hasRestartRelevantPaths).toBe(true);
+      expect(result.hasRuntimeRestartRelevantPaths).toBe(false);
+      expect(result.hasProcessRestartRelevantPaths).toBe(true);
+      expect(result.hasFullReloadRelevantPaths).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("separates runtime restarts, process restarts, and browser reloads", async () => {
+    const root = makeTempRoot();
+    const runtimePath = path.join(root, "runtime/worker/server.ts");
+    const electronPath = path.join(root, "desktop/electron/main.ts");
+    const metadataPath = path.join(root, "desktop/src/app/example/metadata.ts");
+    mkdirSync(path.dirname(runtimePath), { recursive: true });
+    mkdirSync(path.dirname(electronPath), { recursive: true });
+    mkdirSync(path.dirname(metadataPath), { recursive: true });
+    writeFileSync(runtimePath, "export const runtime = 1;\n");
+    writeFileSync(electronPath, "export const electron = 1;\n");
+    writeFileSync(metadataPath, "export default { id: 'example' };\n");
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+
+    await controller.beginRun("run-a");
+    await controller.recordWrite("run-a", [
+      runtimePath,
+      electronPath,
+      metadataPath,
+    ]);
+    const result = controller.finalize("run-a");
+
+    expect(result.appliedRuns).toHaveLength(1);
+    expect(result.appliedRuns[0]!.runtimeRestartRelevantPaths).toEqual([
+      "runtime/worker/server.ts",
+    ]);
+    expect(result.appliedRuns[0]!.processRestartRelevantPaths).toEqual([
+      "desktop/electron/main.ts",
+    ]);
+    expect(result.appliedRuns[0]!.fullReloadRelevantPaths).toEqual([
+      "desktop/src/app/example/metadata.ts",
+    ]);
+    expect(result.hasRuntimeRestartRelevantPaths).toBe(true);
+    expect(result.hasProcessRestartRelevantPaths).toBe(true);
+    expect(result.hasFullReloadRelevantPaths).toBe(true);
+  });
+
+  it("escalates mixed changes to the highest restart tier", () => {
+    expect(
+      deriveApplyTransitionRequirements({
+        hasFullReloadRelevantPaths: false,
+        hasRuntimeRestartRelevantPaths: false,
+        hasProcessRestartRelevantPaths: false,
+      }),
+    ).toEqual({
+      requiresFullReload: false,
+      requiresRuntimeRestart: false,
+      requiresProcessRestart: false,
+    });
+    expect(
+      deriveApplyTransitionRequirements({
+        hasFullReloadRelevantPaths: true,
+        hasRuntimeRestartRelevantPaths: false,
+        hasProcessRestartRelevantPaths: false,
+      }),
+    ).toEqual({
+      requiresFullReload: true,
+      requiresRuntimeRestart: false,
+      requiresProcessRestart: false,
+    });
+    expect(
+      deriveApplyTransitionRequirements({
+        hasFullReloadRelevantPaths: true,
+        hasRuntimeRestartRelevantPaths: false,
+        hasProcessRestartRelevantPaths: true,
+      }),
+    ).toEqual({
+      requiresFullReload: false,
+      requiresRuntimeRestart: false,
+      requiresProcessRestart: true,
+    });
+    expect(
+      deriveApplyTransitionRequirements({
+        hasFullReloadRelevantPaths: true,
+        hasRuntimeRestartRelevantPaths: true,
+        hasProcessRestartRelevantPaths: false,
+      }),
+    ).toEqual({
+      requiresFullReload: false,
+      requiresRuntimeRestart: true,
+      requiresProcessRestart: false,
+    });
   });
 
   it("includes the generated route tree when a route file changes", async () => {
@@ -287,6 +386,8 @@ describe("self-mod HMR controller", () => {
               files: [
                 { path: "desktop/src/foo.tsx", content: "export const a = 1" },
               ],
+              runtimeRestartRelevantPaths: [],
+              processRestartRelevantPaths: [],
               restartRelevantPaths: [],
               fullReloadRelevantPaths: ["desktop/src/foo.tsx"],
             },
@@ -325,6 +426,8 @@ describe("self-mod HMR controller", () => {
               files: [
                 { path: "desktop/index.html", content: "<html></html>\n" },
               ],
+              runtimeRestartRelevantPaths: [],
+              processRestartRelevantPaths: [],
               restartRelevantPaths: [],
               fullReloadRelevantPaths: ["desktop/index.html"],
             },
@@ -394,6 +497,8 @@ describe("self-mod HMR controller", () => {
               { path: "desktop/src/foo.tsx", content: "export const a = 1" },
               { path: "package.json", content: '{"name":"x"}\n' },
             ],
+            runtimeRestartRelevantPaths: [],
+            processRestartRelevantPaths: ["package.json"],
             restartRelevantPaths: ["package.json"],
             fullReloadRelevantPaths: [],
           },

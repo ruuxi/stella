@@ -140,6 +140,8 @@ export const createHostRunnerHandlers = (
     runIds,
     stateRunIds,
     requiresFullReload,
+    requiresRuntimeRestart,
+    requiresProcessRestart,
     applyBatch,
     reportState,
   }) => {
@@ -150,6 +152,8 @@ export const createHostRunnerHandlers = (
         applyBatch,
         reportState,
         requiresFullReload,
+        requiresRuntimeRestart,
+        requiresProcessRestart,
       });
       return;
     }
@@ -161,12 +165,18 @@ export const createHostRunnerHandlers = (
     const fullWindow = context.state.windowManager?.getFullWindow() ?? null;
     const canReload =
       requiresFullReload && fullWindow != null && !fullWindow.isDestroyed();
+    const suppressClientFullReload =
+      requiresFullReload ||
+      requiresRuntimeRestart === true ||
+      requiresProcessRestart === true;
     try {
       const applyResult = await applyBatch({
-        suppressClientFullReload: canReload,
+        suppressClientFullReload,
       });
       if (
-        (canReload || applyResult?.requiresClientFullReload === true) &&
+        (canReload ||
+          (!suppressClientFullReload &&
+            applyResult?.requiresClientFullReload === true)) &&
         fullWindow != null &&
         !fullWindow.isDestroyed()
       ) {

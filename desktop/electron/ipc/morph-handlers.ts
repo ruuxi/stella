@@ -161,12 +161,12 @@ export const registerMorphHandlers = (options: MorphHandlersOptions) => {
         transitionId,
         ONBOARDING_MORPH_DONE_TIMEOUT_MS,
       );
-      const reverseStarted = overlay.startMorphReverse(
+      const handoffStarted = overlay.startMorphHandoff(
         transitionId,
         screenshot,
         false,
       );
-      if (!reverseStarted) {
+      if (!handoffStarted) {
         activeOnboardingTransitionId = null;
         activeOnboardingCaptureRect = null;
         return { ok: false };

@@ -6,6 +6,10 @@ import {
 } from 'electron'
 import { RADIAL_SIZE } from '../layout-constants.js'
 import type { SelfModHmrState } from '../../../runtime/contracts/index.js'
+import type {
+  MorphTimingSettings,
+  MorphVisualTiming,
+} from '../../src/shared/contracts/morph-timing.js'
 import { loadWindow } from './window-load.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
 import { getWindowInfoAtPoint } from '../window-capture.js'
@@ -363,7 +367,7 @@ class OverlayWindow {
  * Guide, Window Highlight, Morph Transition) within the overlay window.
  * Delegates window lifecycle to OverlayWindow.
  */
-export type MorphTransitionFlavor = 'hmr' | 'onboarding'
+export type MorphTransitionFlavor = 'hmr' | 'onboarding' | 'glimm'
 
 export type SelectionChipPayload = {
   text: string
@@ -377,6 +381,15 @@ export class OverlayWindowController {
   private morphTrackedWindow: BrowserWindow | null = null
   private activeMorphTransitionId: string | null = null
   private morphFlavor: MorphTransitionFlavor = 'hmr'
+  private morphTiming: MorphVisualTiming | null = null
+  /**
+   * Test/debug-only override applied by the morph-test app: when set, every
+   * incoming `startMorphForward` call that uses the default `'hmr'` flavor
+   * (i.e. the real self-mod path) is rewritten to this flavor instead.
+   * Explicit non-default flavors (e.g. `'onboarding'`) are passed through.
+   */
+  private hmrFlavorOverride: MorphTransitionFlavor | null = null
+  private hmrTimingOverride: MorphTimingSettings | null = null
   private readonly handleMorphWindowBoundsChanged = () => {
     this.syncMorphBounds()
   }
@@ -855,16 +868,38 @@ export class OverlayWindowController {
     return this.activeMorphTransitionId
   }
 
+  setHmrFlavorOverride(flavor: MorphTransitionFlavor | null) {
+    this.hmrFlavorOverride = flavor
+  }
+
+  getHmrFlavorOverride(): MorphTransitionFlavor | null {
+    return this.hmrFlavorOverride
+  }
+
+  setHmrTimingOverride(timing: MorphTimingSettings | null) {
+    this.hmrTimingOverride = timing
+  }
+
+  getHmrTimingOverride(): MorphTimingSettings | null {
+    return this.hmrTimingOverride
+  }
+
   startMorphForward(
     transitionId: string,
     screenshotDataUrl: string,
     bounds: { x: number; y: number; width: number; height: number },
     trackedWindow?: BrowserWindow | null,
     flavor: MorphTransitionFlavor = 'hmr',
+    timing?: MorphVisualTiming | null,
   ) {
+    const effectiveFlavor: MorphTransitionFlavor =
+      flavor === 'hmr' && this.hmrFlavorOverride
+        ? this.hmrFlavorOverride
+        : flavor
     this.activeMorph = true
     this.activeMorphTransitionId = transitionId
-    this.morphFlavor = flavor
+    this.morphFlavor = effectiveFlavor
+    this.morphTiming = timing ?? null
     this.currentMorphBounds = bounds
     this.stopTrackingMorphWindow()
     if (trackedWindow && !trackedWindow.isDestroyed()) {
@@ -881,11 +916,12 @@ export class OverlayWindowController {
       y: bounds.y - origin.y,
       width: bounds.width,
       height: bounds.height,
-      flavor,
+      flavor: effectiveFlavor,
+      timing: this.morphTiming,
     })
   }
 
-  startMorphReverse(
+  startMorphHandoff(
     transitionId: string,
     screenshotDataUrl: string,
     requiresFullReload: boolean,
@@ -893,11 +929,12 @@ export class OverlayWindowController {
     if (this.activeMorphTransitionId !== transitionId) {
       return false
     }
-    this.overlayWindow.send('overlay:morphReverse', {
+    this.overlayWindow.send('overlay:morphHandoff', {
       transitionId,
       screenshotDataUrl,
       requiresFullReload,
       flavor: this.morphFlavor,
+      timing: this.morphTiming,
     })
     return true
   }
@@ -917,6 +954,7 @@ export class OverlayWindowController {
     this.activeMorph = false
     this.activeMorphTransitionId = null
     this.morphFlavor = 'hmr'
+    this.morphTiming = null
     this.currentMorphBounds = null
     this.stopTrackingMorphWindow()
     this.overlayWindow.send('overlay:morphState', {

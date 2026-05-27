@@ -203,6 +203,8 @@ export type RuntimeHostHandlers = {
      */
     stateRunIds?: string[];
     requiresFullReload: boolean;
+    requiresRuntimeRestart?: boolean;
+    requiresProcessRestart?: boolean;
     /**
      * Triggers the worker-side overlay apply for this batch (POSTs `/apply`
      * to the Vite plugin). Called by the host once the morph cover is on
@@ -2609,6 +2611,8 @@ export class StellaRuntimeHost {
           runIds?: string[];
           stateRunIds?: string[];
           requiresFullReload?: boolean;
+          requiresRuntimeRestart?: boolean;
+          requiresProcessRestart?: boolean;
         };
         if (!payload.transitionId) {
           throw new Error("HOST_HMR_RUN_TRANSITION requires a transitionId.");
@@ -2629,6 +2633,8 @@ export class StellaRuntimeHost {
             ? payload.stateRunIds.filter((runId) => typeof runId === "string")
             : runIds,
           requiresFullReload: Boolean(payload.requiresFullReload),
+          requiresRuntimeRestart: Boolean(payload.requiresRuntimeRestart),
+          requiresProcessRestart: Boolean(payload.requiresProcessRestart),
           applyBatch: async (options) => {
             const result = await this.requestWorker<{
               ok?: boolean;

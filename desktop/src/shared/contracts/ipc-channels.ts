@@ -84,7 +84,7 @@ export const IPC_OVERLAY_RESTORE_MINI = "overlay:restoreMini" as const;
 export const IPC_OVERLAY_DISPLAY_CHANGE = "overlay:displayChange" as const;
 export const IPC_OVERLAY_MORPH_FORWARD = "overlay:morphForward" as const;
 export const IPC_OVERLAY_MORPH_BOUNDS = "overlay:morphBounds" as const;
-export const IPC_OVERLAY_MORPH_REVERSE = "overlay:morphReverse" as const;
+export const IPC_OVERLAY_MORPH_HANDOFF = "overlay:morphHandoff" as const;
 export const IPC_OVERLAY_MORPH_END = "overlay:morphEnd" as const;
 export const IPC_OVERLAY_MORPH_STATE = "overlay:morphState" as const;
 export const IPC_OVERLAY_MORPH_READY = "overlay:morphReady" as const;
@@ -288,6 +288,21 @@ export const IPC_UPDATES_RECORD_APPLIED_COMMIT =
   "updates:recordAppliedCommit" as const;
 export const IPC_UPDATES_REFRESH_NATIVE_HELPERS =
   "updates:refreshNativeHelpers" as const;
+
+// ── Morph test (developer scratch app) ─────────────────────────────────────
+
+export const IPC_MORPH_TEST_SET_PREFERRED_FLAVOR =
+  "morphTest:setPreferredFlavor" as const;
+export const IPC_MORPH_TEST_GET_TIMING_SETTINGS =
+  "morphTest:getTimingSettings" as const;
+export const IPC_MORPH_TEST_SET_TIMING_SETTINGS =
+  "morphTest:setTimingSettings" as const;
+export const IPC_MORPH_TEST_RESET_TIMING_SETTINGS =
+  "morphTest:resetTimingSettings" as const;
+export const IPC_MORPH_TEST_MEASURE_CAPTURE =
+  "morphTest:measureCapture" as const;
+export const IPC_MORPH_TEST_TRIGGER_SELF_MOD =
+  "morphTest:triggerSelfMod" as const;
 
 // ── Onboarding ──────────────────────────────────────────────────────────────
 

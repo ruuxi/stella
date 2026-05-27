@@ -1,3 +1,7 @@
+import {
+  WorkerLifecycleServer,
+  removeStaleRuntimeArtifacts,
+} from "./lifecycle-server.js";
 import { WorkerPeerBroker } from "./peer-broker.js";
 import { createRuntimeWorkerServer } from "./server.js";
 import {
@@ -6,10 +10,6 @@ import {
   startWorkerTransport,
   type WorkerTransport,
 } from "./transport.js";
-import {
-  WorkerLifecycleServer,
-  removeStaleRuntimeArtifacts,
-} from "./lifecycle-server.js";
 
 /**
  * Worker entrypoint. Two execution modes:
