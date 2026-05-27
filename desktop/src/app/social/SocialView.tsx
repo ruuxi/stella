@@ -233,7 +233,7 @@ export function SocialView({ onSignIn }: SocialViewProps) {
           </div>
           <button
             type="button"
-            className="social-signin-button"
+            className="pill-btn pill-btn--primary pill-btn--lg"
             onClick={onSignIn}
           >
             Sign in

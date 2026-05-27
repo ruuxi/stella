@@ -1024,11 +1024,18 @@
 }
 
 .social-signin-subtitle {
-  font-size: 14px;
+  font-size: 17px;
+  font-weight: 500;
   color: var(--social-muted);
   text-align: center;
-  max-width: 300px;
+  max-width: 340px;
   line-height: 1.55;
+}
+
+.social-signin-gate .pill-btn {
+  min-height: 44px;
+  padding: 10px 22px;
+  font-size: 15px;
 }
 
 .social-signin-button {
@@ -1036,21 +1043,36 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 28px;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--social-fg);
-  border: 1px solid var(--social-border);
+  height: 48px;
+  padding: 0 24px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  color: #111111;
+  border: 1px solid color-mix(in oklch, var(--primary) 22%, transparent);
+  box-shadow: none;
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 400;
   cursor: default;
-  transition: opacity 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
 }
 
-.social-signin-button:hover {
-  opacity: 0.7;
-  border-color: color-mix(in oklch, var(--social-fg) 30%, transparent);
+.social-signin-button:hover,
+.social-signin-button:focus-visible {
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 28%, transparent);
+  outline: none;
+}
+
+.social-signin-button:active {
+  transform: scale(0.985);
+}
+
+.dark .social-signin-button {
+  color: #ffffff;
 }
 
 /* ============================================
