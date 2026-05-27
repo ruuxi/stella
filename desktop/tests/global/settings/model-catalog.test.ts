@@ -20,7 +20,10 @@ describe("settings model catalog", () => {
     const models = listLocalCatalogModels();
 
     expect(models.some((model) => model.provider === "anthropic")).toBe(true);
-    expect(models.some((model) => model.provider === "openai")).toBe(true);
+    expect(models.some((model) => model.provider === "openai")).toBe(false);
+    expect(models.some((model) => model.provider === "openai-codex")).toBe(
+      true,
+    );
     expect(models.some((model) => model.provider === "amazon-bedrock")).toBe(
       false,
     );
@@ -173,7 +176,7 @@ describe("settings model catalog", () => {
     ]);
   });
 
-  it("adds live models.dev direct-provider rows for supported text models", () => {
+  it("does not add live models.dev OpenAI rows because OpenAI uses the Codex OAuth provider", () => {
     const models = normalizeDirectProviderCatalogModels({
       openai: {
         models: {
@@ -210,17 +213,6 @@ describe("settings model catalog", () => {
       },
     });
 
-    expect(models).toHaveLength(1);
-    expect(models[0]).toMatchObject({
-      id: "openai/gpt-5.5",
-      modelId: "gpt-5.5",
-      name: "GPT-5.5",
-      provider: "openai",
-      source: "local",
-      reasoning: true,
-      input: ["text", "image"],
-      contextWindow: 1_050_000,
-      maxTokens: 128_000,
-    });
+    expect(models).toEqual([]);
   });
 });

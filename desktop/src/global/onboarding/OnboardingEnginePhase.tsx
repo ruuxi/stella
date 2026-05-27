@@ -30,7 +30,7 @@ type EngineChoice = "stella" | "claude_code" | "byok";
  * sign in / paste a key inline, or skip and configure later.
  */
 const BYOK_PROVIDER_KEYS: readonly string[] = [
-  "openai",
+  "openai-codex",
   "anthropic",
   "openrouter",
   "google",
@@ -38,7 +38,6 @@ const BYOK_PROVIDER_KEYS: readonly string[] = [
   "groq",
   "cerebras",
   "mistral",
-  "openai-codex",
   "github-copilot",
   "google-gemini-cli",
   "fal",
