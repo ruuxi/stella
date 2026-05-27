@@ -284,6 +284,8 @@ export const IPC_UPDATES_GET_INSTALL_MANIFEST =
   "updates:getInstallManifest" as const;
 export const IPC_UPDATES_TRY_APPLY_CLEAN =
   "updates:tryApplyCleanUpdate" as const;
+export const IPC_UPDATES_RECORD_SOURCE_HISTORY =
+  "updates:recordSourceHistory" as const;
 export const IPC_UPDATES_RECORD_APPLIED_COMMIT =
   "updates:recordAppliedCommit" as const;
 export const IPC_UPDATES_REFRESH_NATIVE_HELPERS =
@@ -296,8 +298,7 @@ export const IPC_ONBOARDING_SYNTHESIZE =
 
 // ── Migration ───────────────────────────────────────────────────────────────
 
-export const IPC_MIGRATION_DETECT_SOURCES =
-  "migration:detectSources" as const;
+export const IPC_MIGRATION_DETECT_SOURCES = "migration:detectSources" as const;
 export const IPC_MIGRATION_PREVIEW = "migration:preview" as const;
 export const IPC_MIGRATION_RUN = "migration:run" as const;
 

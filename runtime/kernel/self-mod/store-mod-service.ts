@@ -8,12 +8,18 @@ import type {
 import { StoreModStore } from "../storage/store-mod-store.js";
 import {
   commitGitMessage,
+  getGitCommitParent,
   getGitHeadCommitSequence,
   getStagedDiffPreview,
   listGitDirtyFiles,
   listRecentGitCommits,
   revertGitCommits,
 } from "./git.js";
+import { buildStellaSourceChangeSetForGitCommit } from "./stella-source-history.js";
+import type {
+  StellaSourceRevisionOrigin,
+  StellaSourceHistoryStore,
+} from "../storage/stella-source-history-store.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -58,13 +64,14 @@ type ActiveSelfModRun = {
   taskDescription: string;
   packageId?: string;
   releaseNumber?: number;
-  applyMode: "author" | "install" | "update" | "uninstall";
+  applyMode: "author" | "install" | "update" | "uninstall" | "desktop-update";
 };
 
 export type FinalizedSelfModCommit = {
   commitHash: string;
   files: string[];
   blockedFiles: string[];
+  sourceRevisionId?: string;
 };
 
 const ROLLING_WINDOW_SIZE = 10;
@@ -112,6 +119,7 @@ export class StoreModService {
   constructor(
     private readonly repoRoot: string,
     private readonly store: StoreModStore,
+    private readonly sourceHistory?: StellaSourceHistoryStore,
   ) {}
 
   async beginSelfModRun(args: {
@@ -119,7 +127,12 @@ export class StoreModService {
     taskDescription: string;
     packageId?: string;
     releaseNumber?: number;
-    applyMode?: "author" | "install" | "update" | "uninstall";
+    applyMode?:
+      | "author"
+      | "install"
+      | "update"
+      | "uninstall"
+      | "desktop-update";
   }): Promise<void> {
     const taskDescription = args.taskDescription.trim() || "Self mod update";
     const packageId = trimOrUndefined(args.packageId);
@@ -236,6 +249,19 @@ export class StoreModService {
       return null;
     }
 
+    const sourceRevisionId = await this.recordSourceRevisionForCommit({
+      activeRun,
+      commitHash,
+      subject,
+      conversationTrailer,
+    }).catch((error) => {
+      console.warn(
+        "[self-mod] source history recording failed (continuing):",
+        (error as Error).message,
+      );
+      return null;
+    });
+
     if (activeRun.applyMode === "author" && args.featureNamerProvider) {
       await this.regenerateFeatureSnapshot(args.featureNamerProvider).catch(
         (error) => {
@@ -251,7 +277,60 @@ export class StoreModService {
       commitHash,
       files: safeFiles,
       blockedFiles,
+      ...(sourceRevisionId ? { sourceRevisionId } : {}),
     };
+  }
+
+  private async recordSourceRevisionForCommit(args: {
+    activeRun: ActiveSelfModRun;
+    commitHash: string;
+    subject: string;
+    conversationTrailer: string | undefined;
+  }): Promise<string | null> {
+    if (!this.sourceHistory) return null;
+    const parentCommitHash = await getGitCommitParent(
+      this.repoRoot,
+      args.commitHash,
+    );
+    const parentRevision = parentCommitHash
+      ? this.sourceHistory.findRevisionByCommit(parentCommitHash)
+      : null;
+    const featureId = args.activeRun.packageId
+      ? `store:${args.activeRun.packageId}`
+      : args.conversationTrailer
+        ? `self-mod:${args.conversationTrailer}`
+        : `self-mod:${args.commitHash}`;
+    const origin: StellaSourceRevisionOrigin =
+      args.activeRun.applyMode === "install"
+        ? "store-install"
+        : args.activeRun.applyMode === "update"
+          ? "store-update"
+          : args.activeRun.applyMode === "uninstall"
+            ? "store-uninstall"
+            : args.activeRun.applyMode === "desktop-update"
+              ? "desktop-update"
+              : "self-mod";
+    const { changeSet } = await buildStellaSourceChangeSetForGitCommit({
+      repoRoot: this.repoRoot,
+      commitHash: args.commitHash,
+      parentRevisionId: parentRevision?.revisionId,
+      featureId,
+      description: args.subject,
+    });
+    const record = this.sourceHistory.recordRevision({
+      changeSet,
+      origin,
+      commitHash: args.commitHash,
+      ...(args.activeRun.packageId
+        ? { packageId: args.activeRun.packageId }
+        : {}),
+      ...(args.activeRun.releaseNumber != null
+        ? { releaseNumber: args.activeRun.releaseNumber }
+        : {}),
+      featureId,
+      description: args.subject,
+    });
+    return record.revisionId;
   }
 
   private async deriveCommitSubject(args: {
@@ -295,7 +374,9 @@ export class StoreModService {
         ? "Store uninstall"
         : activeRun.applyMode === "update"
           ? "Store update"
-          : "Store install";
+          : activeRun.applyMode === "desktop-update"
+            ? "Desktop update"
+            : "Store install";
     return activeRun.packageId
       ? `${subjectPrefix}: ${activeRun.packageId}`
       : subjectPrefix;
@@ -369,6 +450,8 @@ export class StoreModService {
     packageId: string;
     releaseNumber: number;
     installCommitHash: string | null;
+    sourceRevisionId?: string | null;
+    sourceRevisionIds?: string[];
   }): StoreInstallRecord {
     return this.store.recordInstall(args);
   }
@@ -413,7 +496,9 @@ export class StoreModService {
       );
       const canDirectRevert =
         actualHeadStack.length === expectedHeadStack.length &&
-        expectedHeadStack.every((hash, index) => actualHeadStack[index] === hash);
+        expectedHeadStack.every(
+          (hash, index) => actualHeadStack[index] === hash,
+        );
       if (!canDirectRevert) {
         return {
           revertedCommits: [],

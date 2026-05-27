@@ -13,6 +13,8 @@ type InstallRow = {
   releaseNumber: number;
   installCommitHash: string | null;
   installCommitHashesJson: string;
+  sourceRevisionId: string | null;
+  sourceRevisionIdsJson: string;
   installedAt: number;
 };
 
@@ -77,6 +79,9 @@ const parseCommitHashes = (raw: string | null | undefined): string[] => {
 const uniqueCommitHashes = (hashes: string[]): string[] =>
   Array.from(new Set(hashes.map((hash) => hash.trim()).filter(Boolean)));
 
+const uniqueStringIds = (ids: string[]): string[] =>
+  Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+
 const parseStringArray = (raw: string | null | undefined): string[] => {
   if (!raw) return [];
   try {
@@ -96,6 +101,10 @@ const toInstallRecord = (row: InstallRow): StoreInstallRecord => {
     ...parseCommitHashes(row.installCommitHashesJson),
     ...(row.installCommitHash ? [row.installCommitHash] : []),
   ]);
+  const sourceRevisionIds = uniqueStringIds([
+    ...parseStringArray(row.sourceRevisionIdsJson),
+    ...(row.sourceRevisionId ? [row.sourceRevisionId] : []),
+  ]);
   return {
     packageId: row.packageId,
     releaseNumber: row.releaseNumber,
@@ -104,6 +113,11 @@ const toInstallRecord = (row: InstallRow): StoreInstallRecord => {
       installCommitHashes[installCommitHashes.length - 1] ??
       null,
     installCommitHashes,
+    sourceRevisionId:
+      row.sourceRevisionId ??
+      sourceRevisionIds[sourceRevisionIds.length - 1] ??
+      null,
+    sourceRevisionIds,
     installedAt: row.installedAt,
   };
 };
@@ -164,6 +178,8 @@ export class StoreModStore {
     packageId: string;
     releaseNumber: number;
     installCommitHash: string | null;
+    sourceRevisionId?: string | null;
+    sourceRevisionIds?: string[];
     installedAt?: number;
   }): StoreInstallRecord {
     const installedAt = args.installedAt ?? Date.now();
@@ -172,6 +188,18 @@ export class StoreModStore {
       ...(existing?.installCommitHashes ?? []),
       ...(args.installCommitHash ? [args.installCommitHash] : []),
     ]);
+    const latestInstallCommitHash =
+      args.installCommitHash ?? existing?.installCommitHash ?? null;
+    const sourceRevisionIds = uniqueStringIds([
+      ...(existing?.sourceRevisionIds ?? []),
+      ...(args.sourceRevisionIds ?? []),
+      ...(args.sourceRevisionId ? [args.sourceRevisionId] : []),
+    ]);
+    const latestSourceRevisionId =
+      args.sourceRevisionId ??
+      args.sourceRevisionIds?.[args.sourceRevisionIds.length - 1] ??
+      existing?.sourceRevisionId ??
+      null;
     this.db
       .prepare(
         `
@@ -180,28 +208,36 @@ export class StoreModStore {
         release_number,
         install_commit_hash,
         install_commit_hashes_json,
+        source_revision_id,
+        source_revision_ids_json,
         installed_at
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(package_id) DO UPDATE SET
         release_number = excluded.release_number,
         install_commit_hash = excluded.install_commit_hash,
         install_commit_hashes_json = excluded.install_commit_hashes_json,
+        source_revision_id = excluded.source_revision_id,
+        source_revision_ids_json = excluded.source_revision_ids_json,
         installed_at = excluded.installed_at
     `,
       )
       .run(
         args.packageId,
         args.releaseNumber,
-        args.installCommitHash,
+        latestInstallCommitHash,
         JSON.stringify(installCommitHashes),
+        latestSourceRevisionId,
+        JSON.stringify(sourceRevisionIds),
         installedAt,
       );
     return {
       packageId: args.packageId,
       releaseNumber: args.releaseNumber,
-      installCommitHash: args.installCommitHash,
+      installCommitHash: latestInstallCommitHash,
       installCommitHashes,
+      sourceRevisionId: latestSourceRevisionId,
+      sourceRevisionIds,
       installedAt,
     };
   }
@@ -215,6 +251,8 @@ export class StoreModStore {
         release_number AS releaseNumber,
         install_commit_hash AS installCommitHash,
         install_commit_hashes_json AS installCommitHashesJson,
+        source_revision_id AS sourceRevisionId,
+        source_revision_ids_json AS sourceRevisionIdsJson,
         installed_at AS installedAt
       FROM store_installs
       WHERE package_id = ?
@@ -234,6 +272,8 @@ export class StoreModStore {
         release_number AS releaseNumber,
         install_commit_hash AS installCommitHash,
         install_commit_hashes_json AS installCommitHashesJson,
+        source_revision_id AS sourceRevisionId,
+        source_revision_ids_json AS sourceRevisionIdsJson,
         installed_at AS installedAt
       FROM store_installs
       ORDER BY installed_at DESC, package_id ASC
@@ -442,11 +482,15 @@ export class StoreModStore {
   }
 
   deleteStoreThreadMessages(ids: string[]): void {
-    const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+    const uniqueIds = Array.from(
+      new Set(ids.map((id) => id.trim()).filter(Boolean)),
+    );
     if (uniqueIds.length === 0) return;
     const placeholders = uniqueIds.map(() => "?").join(", ");
     this.db
-      .prepare(`DELETE FROM store_thread_messages WHERE id IN (${placeholders})`)
+      .prepare(
+        `DELETE FROM store_thread_messages WHERE id IN (${placeholders})`,
+      )
       .run(...uniqueIds);
     this.notifyThreadUpdated();
   }
@@ -493,7 +537,9 @@ export class StoreModStore {
   }): StoreThreadMessage {
     const latest = this.findLatestPublishableBlueprint();
     if (!latest || latest._id !== args.messageId) {
-      throw new Error("Only the latest publishable blueprint can be marked published.");
+      throw new Error(
+        "Only the latest publishable blueprint can be marked published.",
+      );
     }
     this.patchStoreThreadMessage(args.messageId, {
       published: true,

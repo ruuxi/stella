@@ -20,7 +20,23 @@ import os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { setupEnvironment } from "dugite";
-import type { StoreReleaseCommit } from "../contracts/index.js";
+import type {
+  StoreReleaseCommit,
+  StoreReleaseSourcePack,
+} from "../contracts/index.js";
+import {
+  createStellaSourceChangeSet,
+  createStellaSourcePack,
+  hashSourceBlob,
+  type StellaSourceBlob,
+  type StellaSourceChange,
+  type StellaSourceChangeSet,
+} from "../kernel/self-mod/stella-source-control.js";
+import { orderCommitHashesChronologically } from "../kernel/self-mod/git.js";
+import type {
+  StellaSourceHistoryStore,
+  StellaSourceRevisionRecord,
+} from "../kernel/storage/stella-source-history-store.js";
 import type { StoreModStore } from "../kernel/storage/store-mod-store.js";
 
 export const STORE_THREAD_CONVERSATION_ID = "store-agent-local";
@@ -88,11 +104,6 @@ export const extractBlueprintMarkdown = (
 // routinely dwarf real changes. Excluded from `git show` via pathspec
 // so both the patch and the --stat header skip them.
 const STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS = [
-  ":(exclude,glob)**/bun.lock",
-  ":(exclude,glob)**/package-lock.json",
-  ":(exclude,glob)**/pnpm-lock.yaml",
-  ":(exclude,glob)**/yarn.lock",
-  ":(exclude,glob)**/Cargo.lock",
   ":(exclude,glob)**/*.min.js",
   ":(exclude,glob)**/*.min.css",
   ":(exclude,glob)**/dist/**",
@@ -104,6 +115,11 @@ const STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS = [
 ];
 
 const STORE_RELEASE_PER_COMMIT_DIFF_LIMIT = 200_000;
+const STORE_RELEASE_SOURCE_PACK_COMMIT_LIMIT = 32;
+const STORE_RELEASE_SOURCE_PACK_TEXT_FILE_LIMIT = 500_000;
+const STORE_RELEASE_SOURCE_PACK_BINARY_FILE_LIMIT = 1_500_000;
+
+const gitPathspecArgs = ["--", ...STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS];
 
 const runStoreReleaseGitShow = async (
   repoRoot: string,
@@ -135,8 +151,7 @@ const runStoreReleaseGitShow = async (
       "--find-renames",
       "--no-color",
       commitHash,
-      "--",
-      ...STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS,
+      ...gitPathspecArgs,
     ],
     {
       cwd: repoRoot,
@@ -153,6 +168,179 @@ const runStoreReleaseGitShow = async (
       ? trimmed
       : `${trimmed.slice(0, STORE_RELEASE_PER_COMMIT_DIFF_LIMIT)}\n... [truncated]`;
   return { subject, diff };
+};
+
+const runStoreReleaseGit = async (
+  repoRoot: string,
+  args: string[],
+  options?: { encoding?: "utf8" | "buffer"; maxBuffer?: number },
+): Promise<{
+  status: number;
+  stdout: string | Buffer;
+  stderr: string | Buffer;
+}> => {
+  const { env, gitLocation } = setupEnvironment({});
+  const encoding = options?.encoding === "buffer" ? "buffer" : "utf8";
+  try {
+    const result = await execFileAsync(gitLocation, args, {
+      cwd: repoRoot,
+      env,
+      encoding,
+      maxBuffer: options?.maxBuffer ?? 10 * 1024 * 1024,
+      windowsHide: true,
+    });
+    return {
+      status: 0,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  } catch (error) {
+    const err = error as {
+      code?: unknown;
+      stdout?: string | Buffer;
+      stderr?: string | Buffer;
+    };
+    return {
+      status: typeof err.code === "number" ? err.code : 1,
+      stdout: err.stdout ?? (encoding === "buffer" ? Buffer.alloc(0) : ""),
+      stderr: err.stderr ?? (encoding === "buffer" ? Buffer.alloc(0) : ""),
+    };
+  }
+};
+
+const bufferLooksText = (buffer: Buffer): boolean => {
+  if (buffer.includes(0)) return false;
+  const decoded = buffer.toString("utf8");
+  if (decoded.includes("\uFFFD")) return false;
+  return true;
+};
+
+const blobFromGitBuffer = (
+  buffer: Buffer,
+  redactor: (input: string) => string,
+): { blob: StellaSourceBlob; redacted: boolean } => {
+  if (bufferLooksText(buffer)) {
+    const decoded = buffer.toString("utf8");
+    const redacted = redactor(decoded);
+    return {
+      blob: { kind: "text", content: redacted },
+      redacted: redacted !== decoded,
+    };
+  }
+  return {
+    blob: { kind: "binary", contentBase64: buffer.toString("base64") },
+    redacted: false,
+  };
+};
+
+type StoreReleaseGitBlobRead = {
+  blob?: StellaSourceBlob;
+  redacted: boolean;
+  contentOmitted: boolean;
+};
+
+const gitStdoutText = (value: string | Buffer): string =>
+  typeof value === "string" ? value : value.toString("utf8");
+
+const readStoreReleaseGitBlob = async (args: {
+  repoRoot: string;
+  revision: string;
+  filePath: string;
+  redactor: (input: string) => string;
+}): Promise<StoreReleaseGitBlobRead> => {
+  const objectResult = await runStoreReleaseGit(args.repoRoot, [
+    "rev-parse",
+    `${args.revision}:${args.filePath}`,
+  ]);
+  if (objectResult.status !== 0) {
+    return { redacted: false, contentOmitted: false };
+  }
+  const objectId = gitStdoutText(objectResult.stdout).trim();
+  if (!objectId) {
+    return { redacted: false, contentOmitted: true };
+  }
+  const sizeResult = await runStoreReleaseGit(args.repoRoot, [
+    "cat-file",
+    "-s",
+    objectId,
+  ]);
+  if (sizeResult.status !== 0) {
+    return { redacted: false, contentOmitted: true };
+  }
+  const size = Number(gitStdoutText(sizeResult.stdout).trim());
+  if (
+    !Number.isFinite(size) ||
+    size < 0 ||
+    size > STORE_RELEASE_SOURCE_PACK_BINARY_FILE_LIMIT
+  ) {
+    return { redacted: false, contentOmitted: true };
+  }
+  const result = await runStoreReleaseGit(
+    args.repoRoot,
+    ["show", `${args.revision}:${args.filePath}`],
+    {
+      encoding: "buffer",
+      maxBuffer: STORE_RELEASE_SOURCE_PACK_BINARY_FILE_LIMIT + 1024,
+    },
+  );
+  if (result.status !== 0) {
+    return { redacted: false, contentOmitted: true };
+  }
+  const buffer = Buffer.isBuffer(result.stdout)
+    ? result.stdout
+    : Buffer.from(result.stdout);
+  if (
+    bufferLooksText(buffer) &&
+    buffer.length > STORE_RELEASE_SOURCE_PACK_TEXT_FILE_LIMIT
+  ) {
+    return { redacted: false, contentOmitted: true };
+  }
+  if (
+    !bufferLooksText(buffer) &&
+    buffer.length > STORE_RELEASE_SOURCE_PACK_BINARY_FILE_LIMIT
+  ) {
+    return { redacted: false, contentOmitted: true };
+  }
+  return { ...blobFromGitBuffer(buffer, args.redactor), contentOmitted: false };
+};
+
+const listStoreReleaseCommitFiles = async (
+  repoRoot: string,
+  commitHash: string,
+): Promise<string[]> => {
+  const result = await runStoreReleaseGit(repoRoot, [
+    "show",
+    "--name-only",
+    "--pretty=format:",
+    "--no-renames",
+    commitHash,
+    ...gitPathspecArgs,
+  ]);
+  if (result.status !== 0) {
+    const detail =
+      (typeof result.stderr === "string"
+        ? result.stderr
+        : result.stderr.toString("utf8")
+      ).trim() ||
+      (typeof result.stdout === "string"
+        ? result.stdout
+        : result.stdout.toString("utf8")
+      ).trim() ||
+      `exit code ${result.status}`;
+    throw new Error(`Could not list files for ${commitHash}: ${detail}`);
+  }
+  const stdout =
+    typeof result.stdout === "string"
+      ? result.stdout
+      : result.stdout.toString("utf8");
+  return Array.from(
+    new Set(
+      stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim().replace(/\\/g, "/"))
+        .filter(Boolean),
+    ),
+  ).sort();
 };
 
 /**
@@ -231,23 +419,36 @@ export const buildStoreReleaseRedactor = (): ((input: string) => string) => {
   };
 };
 
-export const collectStoreReleaseCommits = async (args: {
+const collectStoreReleaseCommitHashes = async (args: {
   repoRoot: string;
   attachedFeatureNames: string[];
   snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
-}): Promise<StoreReleaseCommit[]> => {
+}): Promise<string[]> => {
   if (args.attachedFeatureNames.length === 0) return [];
   const seen = new Set<string>();
-  const ordered: string[] = [];
+  const selected: string[] = [];
   for (const name of args.attachedFeatureNames) {
     const item = args.snapshot?.items.find((entry) => entry.name === name);
     for (const rawHash of item?.commitHashes ?? []) {
       const hash = rawHash.trim();
       if (!hash || seen.has(hash)) continue;
       seen.add(hash);
-      ordered.push(hash);
+      selected.push(hash);
     }
   }
+  if (selected.length === 0) return [];
+  return await orderCommitHashesChronologically({
+    repoRoot: args.repoRoot,
+    commitHashes: selected,
+  });
+};
+
+export const collectStoreReleaseCommits = async (args: {
+  repoRoot: string;
+  attachedFeatureNames: string[];
+  snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
+}): Promise<StoreReleaseCommit[]> => {
+  const ordered = await collectStoreReleaseCommitHashes(args);
   if (ordered.length === 0) return [];
   const redact = buildStoreReleaseRedactor();
   const commits: StoreReleaseCommit[] = [];
@@ -260,6 +461,195 @@ export const collectStoreReleaseCommits = async (args: {
     });
   }
   return commits;
+};
+
+export const collectStoreReleaseSourcePack = async (args: {
+  repoRoot: string;
+  attachedFeatureNames: string[];
+  snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
+  sourceHistory?: StellaSourceHistoryStore | null;
+}): Promise<StoreReleaseSourcePack | undefined> => {
+  const ordered = await collectStoreReleaseCommitHashes(args);
+  if (ordered.length === 0) return undefined;
+  if (ordered.length > STORE_RELEASE_SOURCE_PACK_COMMIT_LIMIT) {
+    return undefined;
+  }
+
+  const historyBacked = args.sourceHistory
+    ? await collectStoreReleaseSourcePackFromHistory({
+        repoRoot: args.repoRoot,
+        attachedFeatureNames: args.attachedFeatureNames,
+        orderedCommitHashes: ordered,
+        sourceHistory: args.sourceHistory,
+      })
+    : undefined;
+  if (historyBacked) {
+    return historyBacked;
+  }
+
+  const redact = buildStoreReleaseRedactor();
+  let baseRevisionId: string | null = null;
+  let parentRevisionId: string | null = null;
+  const changeSets: StellaSourceChangeSet[] = [];
+
+  for (const hash of ordered) {
+    const parentResult = await runStoreReleaseGit(args.repoRoot, [
+      "rev-parse",
+      `${hash}^`,
+    ]);
+    if (parentResult.status !== 0) {
+      return undefined;
+    }
+    const parentHash =
+      typeof parentResult.stdout === "string"
+        ? parentResult.stdout.trim()
+        : parentResult.stdout.toString("utf8").trim();
+    if (!parentHash) return undefined;
+    if (!baseRevisionId) {
+      baseRevisionId = `git:${parentHash}`;
+      parentRevisionId = baseRevisionId;
+    }
+
+    const { subject } = await runStoreReleaseGitShow(args.repoRoot, hash);
+    const files = await listStoreReleaseCommitFiles(args.repoRoot, hash);
+    const changes: StellaSourceChange[] = [];
+    for (const filePath of files) {
+      const base = await readStoreReleaseGitBlob({
+        repoRoot: args.repoRoot,
+        revision: `${hash}^`,
+        filePath,
+        redactor: redact,
+      });
+      const next = await readStoreReleaseGitBlob({
+        repoRoot: args.repoRoot,
+        revision: hash,
+        filePath,
+        redactor: redact,
+      });
+      if (
+        base.redacted ||
+        next.redacted ||
+        base.contentOmitted ||
+        next.contentOmitted
+      ) {
+        return undefined;
+      }
+      const baseHash = hashSourceBlob(base.blob);
+      const nextHash = hashSourceBlob(next.blob);
+      if (baseHash === nextHash) continue;
+      changes.push({
+        path: filePath,
+        baseHash,
+        nextHash,
+        ...(base.blob ? { base: base.blob } : {}),
+        ...(next.blob ? { next: next.blob } : {}),
+      });
+    }
+    const changeSet = createStellaSourceChangeSet({
+      baseRevisionId: parentRevisionId ?? `git:${parentHash}`,
+      parentRevisionIds: [parentRevisionId ?? `git:${parentHash}`],
+      description: redact(subject),
+      changes,
+    });
+    changeSets.push(changeSet);
+    parentRevisionId = changeSet.revisionId;
+  }
+
+  if (!baseRevisionId || changeSets.length === 0) return undefined;
+  return createStellaSourcePack({
+    baseRevisionId,
+    description: args.attachedFeatureNames.join(", "),
+    changeSets,
+  }) as StoreReleaseSourcePack;
+};
+
+const collectStoreReleaseSourcePackFromHistory = async (args: {
+  repoRoot: string;
+  attachedFeatureNames: string[];
+  orderedCommitHashes: string[];
+  sourceHistory: StellaSourceHistoryStore;
+}): Promise<StoreReleaseSourcePack | undefined> => {
+  const records: StellaSourceRevisionRecord[] = [];
+  for (const hash of args.orderedCommitHashes) {
+    const record = args.sourceHistory.findRevisionByCommit(hash);
+    if (!record) return undefined;
+    records.push(record);
+  }
+  if (records.length === 0) return undefined;
+
+  const redact = buildStoreReleaseRedactor();
+  const changeSets: StellaSourceChangeSet[] = [];
+  for (const record of records) {
+    if (!record.commitHash) return undefined;
+    const parentResult = await runStoreReleaseGit(args.repoRoot, [
+      "rev-parse",
+      `${record.commitHash}^`,
+    ]);
+    if (parentResult.status !== 0) return undefined;
+    const parentHash =
+      typeof parentResult.stdout === "string"
+        ? parentResult.stdout.trim()
+        : parentResult.stdout.toString("utf8").trim();
+    if (!parentHash) return undefined;
+
+    const changes: StellaSourceChange[] = [];
+    for (const change of record.changeSet.changes) {
+      const base = await readStoreReleaseGitBlob({
+        repoRoot: args.repoRoot,
+        revision: `${record.commitHash}^`,
+        filePath: change.path,
+        redactor: redact,
+      });
+      const next = await readStoreReleaseGitBlob({
+        repoRoot: args.repoRoot,
+        revision: record.commitHash,
+        filePath: change.path,
+        redactor: redact,
+      });
+      if (
+        base.redacted ||
+        next.redacted ||
+        base.contentOmitted ||
+        next.contentOmitted
+      ) {
+        return undefined;
+      }
+      const baseHash = hashSourceBlob(base.blob);
+      const nextHash = hashSourceBlob(next.blob);
+      if (baseHash !== change.baseHash || nextHash !== change.nextHash) {
+        return undefined;
+      }
+      changes.push({
+        path: change.path,
+        baseHash,
+        nextHash,
+        ...(base.blob ? { base: base.blob } : {}),
+        ...(next.blob ? { next: next.blob } : {}),
+      });
+    }
+
+    const changeSet = createStellaSourceChangeSet({
+      baseRevisionId: record.changeSet.baseRevisionId,
+      parentRevisionIds: record.changeSet.parentRevisionIds,
+      ...(record.changeSet.featureId
+        ? { featureId: record.changeSet.featureId }
+        : {}),
+      ...(record.changeSet.description
+        ? { description: record.changeSet.description }
+        : {}),
+      changes,
+    });
+    if (changeSet.revisionId !== record.revisionId) {
+      return undefined;
+    }
+    changeSets.push(changeSet);
+  }
+
+  return createStellaSourcePack({
+    baseRevisionId: records[0]!.baseRevisionId,
+    description: args.attachedFeatureNames.join(", "),
+    changeSets,
+  }) as StoreReleaseSourcePack;
 };
 
 export const buildStoreThreadAgentPrompt = (args: {
@@ -311,7 +701,7 @@ export const buildStoreThreadAgentPrompt = (args: {
     "The user is non-technical. They picked one or more named features above (or wrote a prompt) to describe what they want to publish. Treat each name as a scope hint pointing at a feature that already exists on this tree. Use `Read` and `Grep` to find the surfaces — components, modules, prompts, tools, schemas, configs — that implement each named feature, and ground your spec in what you actually find. If you cannot locate a feature from its name, ask one concise question rather than inventing surfaces.",
     "",
     "## Divergence model",
-    "The installer's tree starts at the same root commit as this tree but may have diverged anywhere — partial refactors, alternate implementations of the same feature, missing files, renamed surfaces. Write the spec so an install agent reading it on a divergent tree can still produce the same observable behaviour. Functional parity, not byte parity. The publish pipeline ships per-commit reference diffs alongside your spec; you do not produce them, you do not reference them in the spec body, and you do not list `Files touched` / `Implementation` sections — that is the install agent's job.",
+    "The installer's tree starts at the same root commit as this tree but may have diverged anywhere — partial refactors, alternate implementations of the same feature, missing files, renamed surfaces. Write the spec so an install agent reading it on a divergent tree can still produce the same observable behaviour. Functional parity, not byte parity. The publish pipeline ships a Stella source pack and per-commit reference diffs alongside your spec; you do not produce them, you do not reference them in the spec body, and you do not list `Files touched` / `Implementation` sections — that is the install agent's job.",
     "",
     args.editingBlueprint
       ? "## Mode\nEditing the existing draft. Revise it in place, preserve the `# Title` line unless the user asks to rename, and keep the section skeleton from the system prompt."

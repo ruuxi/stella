@@ -315,6 +315,8 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       release_number INTEGER NOT NULL,
       install_commit_hash TEXT,
       install_commit_hashes_json TEXT NOT NULL DEFAULT '[]',
+      source_revision_id TEXT,
+      source_revision_ids_json TEXT NOT NULL DEFAULT '[]',
       installed_at INTEGER NOT NULL
     );
   `);
@@ -326,9 +328,78 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   } catch {
     // Column already exists.
   }
+  try {
+    db.exec(`
+      ALTER TABLE store_installs
+      ADD COLUMN source_revision_id TEXT;
+    `);
+  } catch {
+    // Column already exists.
+  }
+  try {
+    db.exec(`
+      ALTER TABLE store_installs
+      ADD COLUMN source_revision_ids_json TEXT NOT NULL DEFAULT '[]';
+    `);
+  } catch {
+    // Column already exists.
+  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_store_installs_installed_at
     ON store_installs(installed_at);
+  `);
+
+  // Local Stella source-history graph. The rows store revision identity,
+  // parent links, feature/package attribution, and changed-path hashes only.
+  // Full source content stays in the working tree or in explicit share packs.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stella_source_revisions (
+      revision_id TEXT PRIMARY KEY,
+      base_revision_id TEXT NOT NULL,
+      parent_revision_ids_json TEXT NOT NULL,
+      feature_id TEXT,
+      description TEXT,
+      origin TEXT NOT NULL,
+      commit_hash TEXT UNIQUE,
+      package_id TEXT,
+      release_number INTEGER,
+      change_set_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stella_source_revision_commits (
+      commit_hash TEXT PRIMARY KEY,
+      revision_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(revision_id) REFERENCES stella_source_revisions(revision_id) ON DELETE CASCADE
+    );
+  `);
+  db.exec(`
+    INSERT OR IGNORE INTO stella_source_revision_commits (
+      commit_hash,
+      revision_id,
+      created_at
+    )
+    SELECT commit_hash, revision_id, created_at
+    FROM stella_source_revisions
+    WHERE commit_hash IS NOT NULL AND commit_hash != '';
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_stella_source_revisions_commit
+    ON stella_source_revisions(commit_hash);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_stella_source_revision_commits_revision
+    ON stella_source_revision_commits(revision_id, created_at);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_stella_source_revisions_feature_created
+    ON stella_source_revisions(feature_id, created_at);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_stella_source_revisions_package_created
+    ON stella_source_revisions(package_id, created_at);
   `);
 
   // Local Store agent thread. Publishing is backend-validated, but the

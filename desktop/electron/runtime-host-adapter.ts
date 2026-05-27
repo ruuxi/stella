@@ -14,6 +14,8 @@ import type {
   RuntimeVoiceActionCompletedPayload,
   RuntimeVoiceChatPayload,
   SelfModFeatureSummary,
+  StellaReleaseArtifactRef,
+  StoreReleaseSourcePack,
   StorePublishArgs,
   StorePublishBlueprintArgs,
 } from "../../runtime/protocol/index.js";
@@ -678,7 +680,7 @@ export class RuntimeHostAdapter {
     selfModMetadata?: {
       packageId?: string;
       releaseNumber?: number;
-      mode?: "author" | "install" | "update" | "uninstall";
+      mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
     };
   }) {
     return this.host.runBlockingLocalAgent(payload);
@@ -692,7 +694,7 @@ export class RuntimeHostAdapter {
     selfModMetadata?: {
       packageId?: string;
       releaseNumber?: number;
-      mode?: "author" | "install" | "update" | "uninstall";
+      mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
     };
   }) {
     return this.host.createBackgroundAgent(payload);
@@ -893,6 +895,24 @@ export class RuntimeHostAdapter {
     return this.host.finishExternalSelfMod(payload);
   }
 
+  recordSourcePackHistory(payload: {
+    sourcePack: StoreReleaseSourcePack;
+    origin?:
+      | "self-mod"
+      | "store-install"
+      | "store-update"
+      | "store-uninstall"
+      | "desktop-update"
+      | "official";
+    packageId?: string;
+    releaseNumber?: number;
+    featureId?: string;
+    description?: string;
+    commitHash?: string | null;
+  }) {
+    return this.host.recordSourcePackHistory(payload);
+  }
+
   getStorePackage(packageId: string) {
     return this.host.getStorePackage(packageId);
   }
@@ -926,6 +946,8 @@ export class RuntimeHostAdapter {
     releaseNumber: number;
     displayName: string;
     blueprintMarkdown: string;
+    sourcePack?: StoreReleaseSourcePack;
+    artifactRefs?: StellaReleaseArtifactRef[];
     commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) {
     return this.host.installFromBlueprint(payload);

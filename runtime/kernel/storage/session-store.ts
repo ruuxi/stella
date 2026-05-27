@@ -125,7 +125,7 @@ export type PersistedAgentRecord = {
   selfModMetadata?: {
     packageId?: string;
     releaseNumber?: number;
-    mode?: "author" | "install" | "update" | "uninstall";
+    mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
   };
   status: TaskLifecycleStatus;
   startedAt: number;

@@ -66,6 +66,7 @@ import {
   type StorePackageReleaseRecord,
   type StorePublishArgs,
   type StorePublishBlueprintArgs,
+  type StoreReleaseSourcePack,
   type StoreThreadSendInput,
   type StoreThreadSnapshot,
   type RuntimeInitializeParams,
@@ -1791,6 +1792,22 @@ export class StellaRuntimeHost {
     );
   }
 
+  async recordSourcePackHistory(payload: {
+    sourcePack: StoreReleaseSourcePack;
+    origin?: "self-mod" | "store-install" | "store-update" | "store-uninstall" | "desktop-update" | "official";
+    packageId?: string;
+    releaseNumber?: number;
+    featureId?: string;
+    description?: string;
+    commitHash?: string | null;
+  }) {
+    return await this.requestWorker<{ ok: true }>(
+      METHOD_NAMES.INTERNAL_WORKER_SOURCE_PACK_HISTORY_RECORD,
+      payload,
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
   async listStorePackages() {
     return await this.requestWorker<StorePackageRecord[]>(
       METHOD_NAMES.INTERNAL_WORKER_LIST_STORE_PACKAGES,
@@ -1875,6 +1892,7 @@ export class StellaRuntimeHost {
     releaseNumber: number;
     displayName: string;
     blueprintMarkdown: string;
+    sourcePack?: StoreReleaseSourcePack;
     commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) {
     return await this.requestWorker<StoreInstallRecord>(
