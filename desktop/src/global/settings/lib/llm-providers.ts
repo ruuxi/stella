@@ -23,8 +23,8 @@ const PROVIDER_RAIL_PRIORITY: readonly string[] = [
   "stella",
   "openrouter",
   "anthropic",
-  "openai",
   "openai-codex",
+  "openai",
   CURSOR_PROVIDER_KEY,
   "xai",
   "local",
@@ -53,7 +53,7 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
   },
   { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
   { key: "openai", label: "OpenAI", placeholder: "sk-..." },
-  { key: "openai-codex", label: "OpenAI Codex", placeholder: "eyJ..." },
+  { key: "openai-codex", label: "OpenAI", placeholder: "eyJ..." },
   { key: "google", label: "Google", placeholder: "AIza..." },
   { key: "kimi-coding", label: "Kimi (Moonshot AI)", placeholder: "sk-..." },
   { key: "zai", label: "Z.AI", placeholder: "..." },
@@ -75,7 +75,7 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
 ];
 
 export const LOCAL_MODEL_PROVIDER_KEYS = new Set(
-  LLM_PROVIDERS.map((entry) => entry.key),
+  LLM_PROVIDERS.map((entry) => entry.key).filter((key) => key !== "openai"),
 );
 
 const byKey = new Map(LLM_PROVIDERS.map((entry) => [entry.key, entry]));
