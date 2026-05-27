@@ -16,10 +16,7 @@ import type {
 } from "../../../../runtime/contracts/local-chat.js";
 import type { TaskLifecycleStatus } from "../../../../runtime/contracts/agent-runtime.js";
 import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
-import type {
-  MorphTimingSettings,
-  MorphVisualTiming,
-} from "../contracts/morph-timing";
+import type { MorphVisualTiming } from "../contracts/morph-timing";
 import type {
   ChatContext as SharedChatContext,
   ChatContextFile as SharedChatContextFile,
@@ -393,7 +390,7 @@ export type ElectronOverlayApi = {
       y: number;
       width: number;
       height: number;
-      flavor?: "hmr" | "onboarding" | "glimm";
+      flavor?: "hmr" | "onboarding";
       timing?: MorphVisualTiming | null;
     }) => void,
   ) => () => void;
@@ -411,7 +408,7 @@ export type ElectronOverlayApi = {
       transitionId: string;
       screenshotDataUrl: string;
       requiresFullReload: boolean;
-      flavor?: "hmr" | "onboarding" | "glimm";
+      flavor?: "hmr" | "onboarding";
       timing?: MorphVisualTiming | null;
     }) => void,
   ) => () => void;
@@ -1056,50 +1053,6 @@ export type ElectronUpdatesApi = {
   ) => Promise<InstallManifestSnapshot | null>;
 };
 
-export type ElectronMorphTestApi = {
-  setPreferredFlavor: (
-    flavor: "ripple" | "glimm" | null,
-  ) => Promise<{ ok: boolean; flavor: "ripple" | "glimm" | null }>;
-  getTimingSettings: () => Promise<{
-    ok: boolean;
-    timing: MorphTimingSettings;
-  }>;
-  setTimingSettings: (timing: MorphTimingSettings) => Promise<{
-    ok: boolean;
-    timing: MorphTimingSettings;
-  }>;
-  resetTimingSettings: () => Promise<{
-    ok: boolean;
-    timing: MorphTimingSettings;
-  }>;
-  measureCapture: (samples?: number) => Promise<{
-    ok: boolean;
-    samples: Array<{
-      index: number;
-      ok: boolean;
-      capturePageMs: number;
-      totalDataUrlMs: number;
-      dataUrlBytes: number;
-    }>;
-    summary: {
-      count: number;
-      capturePageAvgMs: number;
-      capturePageMinMs: number;
-      capturePageMaxMs: number;
-      totalDataUrlAvgMs: number;
-      totalDataUrlMinMs: number;
-      totalDataUrlMaxMs: number;
-      avgDataUrlBytes: number;
-    };
-  }>;
-  triggerSelfMod: (scenario: "hmr" | "reload" | "restart") => Promise<{
-    ok: boolean;
-    scenario: "hmr" | "reload" | "restart";
-    filePath: string;
-    runId: string;
-  }>;
-};
-
 export type ElectronOnboardingApi = {
   synthesizeCoreMemory: (
     payload: OnboardingSynthesisRequest,
@@ -1647,7 +1600,6 @@ export type ElectronApi = {
   agent: ElectronAgentApi;
   system: ElectronSystemApi;
   updates: ElectronUpdatesApi;
-  morphTest: ElectronMorphTestApi;
   onboarding: ElectronOnboardingApi;
   discovery: ElectronDiscoveryApi;
   browser: ElectronBrowserApi;

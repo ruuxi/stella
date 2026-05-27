@@ -20,7 +20,6 @@ import {
   MORPH_OVERLAY_READY_TIMEOUT_MS,
   MORPH_RELOAD_SETTLE_DELAY_MS,
   MORPH_RENDERER_SETTLE_DELAY_MS,
-  type MorphTimingSettings,
   type MorphTimingTierSettings,
 } from "../../src/shared/contracts/morph-timing.js";
 import type { OverlayWindowController } from "../windows/overlay-window.js";
@@ -94,15 +93,12 @@ export function createHmrTransitionController(deps: {
     };
   };
 
-  const getTimingSettings = (): MorphTimingSettings =>
-    deps.getOverlayController()?.getHmrTimingOverride() ??
-    DEFAULT_MORPH_TIMING_SETTINGS;
-
   const selectTierTiming = (
     requiresFullReload: boolean,
   ): MorphTimingTierSettings => {
-    const settings = getTimingSettings();
-    return requiresFullReload ? settings.reload : settings.hmr;
+    return requiresFullReload
+      ? DEFAULT_MORPH_TIMING_SETTINGS.reload
+      : DEFAULT_MORPH_TIMING_SETTINGS.hmr;
   };
 
   const runTransition = async (opts: {
@@ -159,7 +155,7 @@ export function createHmrTransitionController(deps: {
           expectReload: shouldReload,
           settleDelayMs: shouldReload
             ? tierTiming.settleDelayMs
-            : getTimingSettings().hmr.settleDelayMs,
+            : DEFAULT_MORPH_TIMING_SETTINGS.hmr.settleDelayMs,
         });
         if (
           shouldReload &&
