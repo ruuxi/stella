@@ -30,6 +30,9 @@ const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
 const DEFAULT_CODEX_REQUEST_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 15 * 1000;
+const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
+const CODEX_STELLA_DEVELOPER_INSTRUCTIONS =
+  "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact.";
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
 
 type JsonRpcId = number | string;
@@ -120,10 +123,11 @@ type CodexThreadStartParams = {
   approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   serviceName?: string | null;
+  baseInstructions?: string | null;
+  developerInstructions?: string | null;
   ephemeral?: boolean | null;
   dynamicTools?: CodexDynamicToolSpec[] | null;
   experimentalRawEvents: boolean;
-  persistExtendedHistory: boolean;
 };
 
 type CodexThreadResumeParams = {
@@ -132,8 +136,9 @@ type CodexThreadResumeParams = {
   cwd?: string | null;
   approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  baseInstructions?: string | null;
+  developerInstructions?: string | null;
   excludeTurns?: boolean;
-  persistExtendedHistory: boolean;
 };
 
 type CodexThreadResponse = {
@@ -291,15 +296,10 @@ const formatCodexPromptMessage = (
 };
 
 export const buildCodexPromptFromMessages = (args: {
-  systemPrompt: string;
   promptMessages: RuntimePromptMessage[];
 }): string =>
-  [
-    "Stella is delegating this spawned agent turn to Codex.",
-    "Follow the Stella system instructions and complete the user's delegated goal. Hidden messages are runtime context for you only; do not quote or reveal them unless the user explicitly asks about the relevant fact.",
-    `<stella_system_prompt>\n${args.systemPrompt.trim()}\n</stella_system_prompt>`,
-    ...args.promptMessages.map(formatCodexPromptMessage),
-  ]
+  args.promptMessages
+    .map(formatCodexPromptMessage)
     .filter((section) => section.trim().length > 0)
     .join("\n\n");
 
@@ -434,7 +434,10 @@ const materializeCodexAttachments = (
     const match = attachment.url.match(/^data:([^;]+);base64,(.*)$/);
     if (!match) continue;
     cleanupDir ??= fs.mkdtempSync(
-      path.join(os.tmpdir(), `stella-codex-${runId.replace(/[^a-zA-Z0-9_-]/g, "-")}-`),
+      path.join(
+        os.tmpdir(),
+        `stella-codex-${runId.replace(/[^a-zA-Z0-9_-]/g, "-")}-`,
+      ),
     );
     const filePath = path.join(
       cleanupDir,
@@ -456,10 +459,7 @@ export const buildCodexUserInput = (args: {
     args.attachments,
   );
   return {
-    input: [
-      { type: "text", text: args.prompt, text_elements: [] },
-      ...inputs,
-    ],
+    input: [{ type: "text", text: args.prompt, text_elements: [] }, ...inputs],
     ...(cleanupDir ? { cleanupDir } : {}),
   };
 };
@@ -504,9 +504,7 @@ const appendUniqueFileChanges = (
   changes: FileChangeRecord[],
 ) => {
   const seen = new Set(
-    target.map(
-      (change) => `${change.path}\0${JSON.stringify(change.kind)}`,
-    ),
+    target.map((change) => `${change.path}\0${JSON.stringify(change.kind)}`),
   );
   for (const change of changes) {
     const key = `${change.path}\0${JSON.stringify(change.kind)}`;
@@ -534,7 +532,9 @@ const textFromUnknown = (value: unknown): string => {
 };
 
 const buildToolResultText = (toolResult: ToolResult): string =>
-  toolResult.error ? `Error: ${toolResult.error}` : textFromUnknown(toolResult.result);
+  toolResult.error
+    ? `Error: ${toolResult.error}`
+    : textFromUnknown(toolResult.result);
 
 const toolArgsFromCodexValue = (value: unknown): Record<string, unknown> => {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -573,18 +573,25 @@ export const buildCodexThreadStartParams = (args: {
   model: string;
   cwd?: string;
   tools?: ToolMetadata[];
+  systemPrompt?: string;
 }): CodexThreadStartParams => {
   const dynamicTools = buildCodexDynamicToolSpecs(args.tools);
+  const baseInstructions = args.systemPrompt?.trim();
   return {
     model: args.model,
     ...(args.cwd ? { cwd: args.cwd } : {}),
     approvalPolicy: "never",
     sandbox: "read-only",
     serviceName: "Stella",
+    ...(baseInstructions
+      ? {
+          baseInstructions,
+          developerInstructions: CODEX_STELLA_DEVELOPER_INSTRUCTIONS,
+        }
+      : {}),
     ephemeral: false,
     ...(dynamicTools.length > 0 ? { dynamicTools } : {}),
     experimentalRawEvents: false,
-    persistExtendedHistory: true,
   };
 };
 
@@ -592,15 +599,24 @@ export const buildCodexThreadResumeParams = (args: {
   threadId: string;
   model: string;
   cwd?: string;
-}): CodexThreadResumeParams => ({
-  threadId: args.threadId,
-  model: args.model,
-  ...(args.cwd ? { cwd: args.cwd } : {}),
-  approvalPolicy: "never",
-  sandbox: "read-only",
-  excludeTurns: true,
-  persistExtendedHistory: true,
-});
+  systemPrompt?: string;
+}): CodexThreadResumeParams => {
+  const baseInstructions = args.systemPrompt?.trim();
+  return {
+    threadId: args.threadId,
+    model: args.model,
+    ...(args.cwd ? { cwd: args.cwd } : {}),
+    approvalPolicy: "never",
+    sandbox: "read-only",
+    ...(baseInstructions
+      ? {
+          baseInstructions,
+          developerInstructions: CODEX_STELLA_DEVELOPER_INSTRUCTIONS,
+        }
+      : {}),
+    excludeTurns: true,
+  };
+};
 
 export const buildCodexTurnStartParams = (args: {
   threadId: string;
@@ -624,10 +640,11 @@ type PendingRequest = {
   timeout?: ReturnType<typeof setTimeout>;
 };
 
-const configuredTimeoutMs = (
-  envName: string,
-  fallbackMs: number,
-): number => {
+type CodexServerRequestHandler = (
+  request: JsonRpcRequestMessage,
+) => Promise<unknown | undefined> | unknown | undefined;
+
+const configuredTimeoutMs = (envName: string, fallbackMs: number): number => {
   const raw = process.env[envName]?.trim();
   if (!raw) return fallbackMs;
   const parsed = Number(raw);
@@ -640,11 +657,11 @@ class CodexAppServerClient {
   private readonly pending = new Map<JsonRpcId, PendingRequest>();
   private nextId = 1;
   private closedError: Error | null = null;
-  private notificationHandler?: (notification: CodexServerNotification) => void;
-  private requestHandler?: (
-    request: JsonRpcRequestMessage,
-  ) => Promise<unknown> | unknown;
-  private closeHandler?: (error: Error) => void;
+  private readonly notificationHandlers = new Set<
+    (notification: CodexServerNotification) => void
+  >();
+  private readonly requestHandlers = new Set<CodexServerRequestHandler>();
+  private readonly closeHandlers = new Set<(error: Error) => void>();
 
   constructor() {
     this.child = spawn(
@@ -676,17 +693,22 @@ class CodexAppServerClient {
   }
 
   onNotification(handler: (notification: CodexServerNotification) => void) {
-    this.notificationHandler = handler;
+    this.notificationHandlers.add(handler);
+    return () => this.notificationHandlers.delete(handler);
   }
 
-  onRequest(
-    handler: (request: JsonRpcRequestMessage) => Promise<unknown> | unknown,
-  ) {
-    this.requestHandler = handler;
+  onRequest(handler: CodexServerRequestHandler) {
+    this.requestHandlers.add(handler);
+    return () => this.requestHandlers.delete(handler);
   }
 
   onClose(handler: (error: Error) => void) {
-    this.closeHandler = handler;
+    this.closeHandlers.add(handler);
+    return () => this.closeHandlers.delete(handler);
+  }
+
+  isClosed(): boolean {
+    return Boolean(this.closedError);
   }
 
   async initialize(): Promise<void> {
@@ -804,7 +826,9 @@ class CodexAppServerClient {
       return;
     }
     if (typeof rpc.method === "string") {
-      this.notificationHandler?.(rpc as CodexServerNotification);
+      for (const handler of this.notificationHandlers) {
+        handler(rpc as CodexServerNotification);
+      }
     }
   }
 
@@ -829,10 +853,21 @@ class CodexAppServerClient {
 
   private async handleServerRequest(message: JsonRpcRequestMessage) {
     try {
-      const result = this.requestHandler
-        ? await this.requestHandler(message)
-        : null;
-      this.write({ jsonrpc: "2.0", id: message.id, result });
+      for (const handler of this.requestHandlers) {
+        const result = await handler(message);
+        if (result !== undefined) {
+          this.write({ jsonrpc: "2.0", id: message.id, result });
+          return;
+        }
+      }
+      this.write({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: {
+          code: -32000,
+          message: `Unsupported Codex app-server request: ${message.method}`,
+        },
+      } as JsonRpcResponseMessage);
     } catch (error) {
       const messageText =
         error instanceof Error ? error.message : textFromUnknown(error);
@@ -853,19 +888,59 @@ class CodexAppServerClient {
       pending.reject(error);
     }
     this.pending.clear();
-    this.closeHandler?.(error);
+    for (const handler of this.closeHandlers) {
+      handler(error);
+    }
   }
 }
 
-const createInitializedCodexClient = async (): Promise<CodexAppServerClient> => {
-  const client = new CodexAppServerClient();
-  try {
-    await client.initialize();
-    return client;
-  } catch (error) {
-    client.close();
-    throw error;
+const createInitializedCodexClient =
+  async (): Promise<CodexAppServerClient> => {
+    const client = new CodexAppServerClient();
+    try {
+      await client.initialize();
+      return client;
+    } catch (error) {
+      client.close();
+      throw error;
+    }
+  };
+
+let sharedCodexClientPromise: Promise<CodexAppServerClient> | null = null;
+let sharedCodexClient: CodexAppServerClient | null = null;
+
+const getSharedCodexClient = async (): Promise<CodexAppServerClient> => {
+  if (sharedCodexClient && !sharedCodexClient.isClosed()) {
+    return sharedCodexClient;
   }
+  if (sharedCodexClientPromise) {
+    return sharedCodexClientPromise;
+  }
+
+  sharedCodexClientPromise = createInitializedCodexClient()
+    .then((client) => {
+      sharedCodexClient = client;
+      client.onClose(() => {
+        if (sharedCodexClient === client) {
+          sharedCodexClient = null;
+          sharedCodexClientPromise = null;
+        }
+      });
+      return client;
+    })
+    .catch((error) => {
+      sharedCodexClientPromise = null;
+      throw error;
+    });
+
+  return sharedCodexClientPromise;
+};
+
+export const shutdownCodexAppServerRuntime = (): void => {
+  const client = sharedCodexClient;
+  sharedCodexClient = null;
+  sharedCodexClientPromise = null;
+  client?.close();
 };
 
 export const listCodexAppServerModels = async (): Promise<{
@@ -896,6 +971,7 @@ const startOrResumeCodexThread = async (args: {
   persistedSessionId?: string;
   model: string;
   cwd?: string;
+  systemPrompt?: string;
   tools?: ToolMetadata[];
   onStatus?: (status: string) => void;
 }): Promise<string> => {
@@ -907,11 +983,12 @@ const startOrResumeCodexThread = async (args: {
           threadId: args.persistedSessionId,
           model: args.model,
           cwd: args.cwd,
+          systemPrompt: args.systemPrompt,
         }),
       );
       return response.thread.id;
     } catch {
-      args.onStatus?.("Starting a new Codex app-server session");
+      // Fall through to a fresh Codex thread when the persisted id is stale.
     }
   }
 
@@ -920,6 +997,7 @@ const startOrResumeCodexThread = async (args: {
     buildCodexThreadStartParams({
       model: args.model,
       cwd: args.cwd,
+      systemPrompt: args.systemPrompt,
       tools: args.tools,
     }),
   );
@@ -938,6 +1016,25 @@ const isNotificationForTurn = (
   if (!params) return false;
   if (threadId && params.threadId !== threadId) return false;
   if (turnId && params.turnId !== turnId) return false;
+  return true;
+};
+
+const isRequestForTurn = (
+  message: JsonRpcRequestMessage,
+  threadId: string | undefined,
+  turnId: string | undefined,
+): boolean => {
+  const params =
+    message.params && typeof message.params === "object"
+      ? (message.params as { threadId?: unknown; turnId?: unknown })
+      : null;
+  if (!params) return true;
+  if (threadId && params.threadId && params.threadId !== threadId) {
+    return false;
+  }
+  if (turnId && params.turnId && params.turnId !== turnId) {
+    return false;
+  }
   return true;
 };
 
@@ -965,6 +1062,7 @@ export const runCodexAgentTurn = async (request: {
   sessionKey?: string;
   persistedSessionId?: string;
   prompt: string;
+  systemPrompt?: string;
   cwd?: string;
   stellaHome?: string;
   stellaRoot?: string;
@@ -986,9 +1084,8 @@ export const runCodexAgentTurn = async (request: {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
+  reuseAppServer?: boolean;
 }): Promise<CodexAgentTurnResult> => {
-  request.onStatus?.("Starting Codex app-server");
-
   const { model, reasoningEffort } = getCodexRuntimePreferences(
     request.stellaHome,
     request.stellaModel,
@@ -1007,13 +1104,41 @@ export const runCodexAgentTurn = async (request: {
   let turnId: string | undefined;
   let turnFailure: string | null = null;
   let completed = false;
+  let finalAgentMessageCompleted = false;
   let waitingForTurnCompletion = false;
   let turnIdleTimer: ReturnType<typeof setTimeout> | undefined;
+  let agentMessageCompletionTimer: ReturnType<typeof setTimeout> | undefined;
   let refreshTurnIdleTimer: (() => void) | undefined;
 
-  const client = await createInitializedCodexClient();
+  const client = request.reuseAppServer
+    ? await getSharedCodexClient()
+    : await createInitializedCodexClient();
+  let removeNotificationHandler: (() => void) | undefined;
+  let removeRequestHandler: (() => void) | undefined;
+  let removeCloseHandler: (() => void) | undefined;
 
   const turnCompleted = new Promise<void>((resolve, reject) => {
+    const resolveCompleted = () => {
+      if (completed) return;
+      completed = true;
+      resolve();
+    };
+    const scheduleAgentMessageCompletion = () => {
+      if (
+        !waitingForTurnCompletion ||
+        completed ||
+        !finalAgentMessageCompleted
+      ) {
+        return;
+      }
+      if (agentMessageCompletionTimer) {
+        clearTimeout(agentMessageCompletionTimer);
+      }
+      agentMessageCompletionTimer = setTimeout(() => {
+        resolveCompleted();
+      }, CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS);
+      agentMessageCompletionTimer.unref?.();
+    };
     refreshTurnIdleTimer = () => {
       if (!waitingForTurnCompletion || completed) return;
       if (turnIdleTimer) clearTimeout(turnIdleTimer);
@@ -1022,6 +1147,10 @@ export const runCodexAgentTurn = async (request: {
         DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS,
       );
       turnIdleTimer = setTimeout(() => {
+        if (finalAgentMessageCompleted && finalText.trim()) {
+          resolveCompleted();
+          return;
+        }
         reject(
           new Error(
             `Codex app-server did not report turn progress for ${Math.round(timeoutMs / 1000)}s.`,
@@ -1031,28 +1160,28 @@ export const runCodexAgentTurn = async (request: {
       }, timeoutMs);
       turnIdleTimer.unref?.();
     };
-    client.onNotification((notification) => {
+    removeNotificationHandler = client.onNotification((notification) => {
       if (!threadId) return;
       if (!isNotificationForTurn(notification, threadId, turnId)) return;
       refreshTurnIdleTimer?.();
       switch (notification.method) {
         case "turn/started":
           turnId = notification.params.turn.id;
-          request.onStatus?.("Codex is working");
           return;
         case "turn/completed": {
           turnId = notification.params.turn.id;
-          completed = true;
           const turn = notification.params.turn;
           if (turn.status === "failed" || turn.status === "interrupted") {
             const message =
               turn.error?.message ||
-              (turn.status === "interrupted" ? "Codex was interrupted." : null) ||
+              (turn.status === "interrupted"
+                ? "Codex was interrupted."
+                : null) ||
               "Codex run failed.";
             reject(new Error(message));
             return;
           }
-          resolve();
+          resolveCompleted();
           return;
         }
         case "error":
@@ -1080,6 +1209,10 @@ export const runCodexAgentTurn = async (request: {
           if (status) request.onStatus?.(status);
           if (item.type === "agentMessage" && item.text) {
             finalText = item.text;
+            if (notification.method === "item/completed") {
+              finalAgentMessageCompleted = true;
+              scheduleAgentMessageCompletion();
+            }
           }
           appendUniqueFileChanges(
             fileChanges,
@@ -1092,11 +1225,14 @@ export const runCodexAgentTurn = async (request: {
       }
     });
 
-    client.onClose((error) => {
+    removeCloseHandler = client.onClose((error) => {
       if (waitingForTurnCompletion && !completed) reject(error);
     });
 
-    client.onRequest(async (message) => {
+    removeRequestHandler = client.onRequest(async (message) => {
+      if (!isRequestForTurn(message, threadId, turnId)) {
+        return undefined;
+      }
       refreshTurnIdleTimer?.();
       if (message.method === "item/tool/call") {
         const params = message.params as CodexDynamicToolCallParams;
@@ -1153,16 +1289,17 @@ export const runCodexAgentTurn = async (request: {
       if (message.method === "execCommandApproval") {
         return { decision: "denied" };
       }
-      throw new Error(`Unsupported Codex app-server request: ${message.method}`);
+      return undefined;
     });
   });
 
   const abortHandler = () => {
-    request.onStatus?.("Stopping Codex app-server");
     if (threadId && turnId) {
       void client.interrupt(threadId, turnId);
     }
-    client.abort();
+    if (!request.reuseAppServer) {
+      client.abort();
+    }
   };
   request.abortSignal?.addEventListener("abort", abortHandler, { once: true });
 
@@ -1176,10 +1313,10 @@ export const runCodexAgentTurn = async (request: {
       persistedSessionId: request.persistedSessionId,
       model,
       cwd: request.cwd,
+      systemPrompt: request.systemPrompt,
       tools: request.executeTool ? request.tools : undefined,
       onStatus: request.onStatus,
     });
-    request.onStatus?.("Codex app-server ready");
 
     const turn = await client.request<CodexTurnStartResponse>(
       "turn/start",
@@ -1232,8 +1369,14 @@ export const runCodexAgentTurn = async (request: {
     };
   } finally {
     if (turnIdleTimer) clearTimeout(turnIdleTimer);
+    if (agentMessageCompletionTimer) clearTimeout(agentMessageCompletionTimer);
     request.abortSignal?.removeEventListener("abort", abortHandler);
-    client.close();
+    removeNotificationHandler?.();
+    removeRequestHandler?.();
+    removeCloseHandler?.();
+    if (!request.reuseAppServer) {
+      client.close();
+    }
     if (cleanupDir) fs.rmSync(cleanupDir, { recursive: true, force: true });
   }
 };
