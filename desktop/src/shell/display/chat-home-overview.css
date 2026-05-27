@@ -91,6 +91,73 @@
   overflow: hidden;
 }
 
+@media (max-height: 700px) {
+  .chat-home-launcher[data-engine-open] {
+    padding-top: 16px;
+  }
+
+  .chat-home-launcher[data-engine-open] .chat-home-launcher__entry {
+    padding-block: 7px;
+  }
+
+  .chat-home-launcher[data-engine-open] .chat-home-launcher__models-row {
+    padding-top: 2px;
+  }
+
+  .chat-home-launcher__engine .engine-tab {
+    gap: 10px;
+  }
+}
+
+@media (max-height: 580px) {
+  .chat-home-launcher[data-engine-open] {
+    padding-top: 10px;
+  }
+
+  .chat-home-launcher[data-engine-open] .chat-home-launcher__list {
+    gap: 1px;
+  }
+
+  .chat-home-launcher[data-engine-open] .chat-home-launcher__entry {
+    gap: 8px;
+    padding-block: 5px;
+  }
+
+  .chat-home-launcher[data-engine-open]
+    .chat-home-launcher__entry-description {
+    display: none;
+  }
+
+  .chat-home-launcher__engine {
+    margin-top: 2px;
+  }
+
+  .chat-home-launcher__engine .engine-tab {
+    padding-top: 6px;
+    gap: 8px;
+  }
+}
+
+@media (max-height: 520px) {
+  .chat-home-launcher[data-engine-open] .chat-home-launcher__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chat-home-launcher[data-engine-open] .chat-home-launcher__entry-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .chat-home-launcher[data-engine-open] .chat-home-launcher__entry-label {
+    font-size: 12.5px;
+  }
+
+  .chat-home-launcher[data-engine-open] .chat-home-launcher__models-row {
+    grid-column: 1 / -1;
+  }
+}
+
 .chat-home-launcher__entry {
   width: 100%;
   display: flex;
