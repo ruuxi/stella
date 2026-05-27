@@ -13,6 +13,7 @@ import {
   subscribe,
   type UserApp,
 } from "@/app/_user/user-apps-registry";
+import { AppCreationIllustration } from "./AppCreationIllustration";
 import "./apps.css";
 
 type SortOption = "recent" | "name";
@@ -55,13 +56,6 @@ function useUserApps(): readonly UserApp[] {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-const EMPTY_PROMPTS: ReadonlyArray<string> = [
-  "a kanban board for my week",
-  "a notes app that groups by topic",
-  "a tiny synth with a few keys",
-  "a recipe box for what I cook",
-];
-
 export function AppsApp() {
   const apps = useUserApps();
   const navigate = useNavigate();
@@ -102,11 +96,13 @@ export function AppsApp() {
 
   return (
     <main className="apps-screen">
-      <header className="apps-screen__hero">
-        <h1 className="apps-screen__title">
-          <em>Your</em> apps
-        </h1>
-      </header>
+      {hasApps ? (
+        <header className="apps-screen__hero">
+          <h1 className="apps-screen__title">
+            <em>Your</em> apps
+          </h1>
+        </header>
+      ) : null}
 
       {hasApps ? (
         <>
@@ -144,7 +140,7 @@ export function AppsApp() {
             </div>
             <button
               type="button"
-              className="apps-screen__cta apps-screen__cta--primary"
+              className="pill-btn pill-btn--lg"
               onClick={handleCreateApp}
             >
               Create an app
@@ -176,28 +172,22 @@ export function AppsApp() {
         </>
       ) : (
         <section className="apps-screen__empty" aria-labelledby="apps-empty-title">
+          <div className="apps-screen__empty-illustration">
+            <AppCreationIllustration />
+          </div>
           <h2 id="apps-empty-title" className="apps-screen__empty-title">
             Nothing here yet.
           </h2>
           <p className="apps-screen__empty-body">
-            Stella can build you anything that lives inside Stella — a
-            kanban, a notes app, a small game, a synth, a dashboard. Made
-            apps will show up here.
+            Ask Stella to build a small app. It will show up here.
           </p>
           <button
             type="button"
-            className="apps-screen__cta apps-screen__cta--primary apps-screen__cta--lg"
+            className="pill-btn pill-btn--primary pill-btn--lg"
             onClick={handleCreateApp}
           >
             Ask Stella to create an app
           </button>
-          <ul className="apps-screen__suggestions" aria-label="For inspiration">
-            {EMPTY_PROMPTS.map((prompt) => (
-              <li key={prompt} className="apps-screen__suggestion">
-                {prompt}
-              </li>
-            ))}
-          </ul>
         </section>
       )}
     </main>
