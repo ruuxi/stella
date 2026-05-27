@@ -79,9 +79,8 @@ export type AssistantRowViewModel = {
   cacheKey: string;
   /**
    * Set when this row is sourced from a live `StreamingAssistantOverlay`
-   * (text still growing). Drives the `event-row--streaming` class for
-   * styling; scroll follow uses `data-scroll-follow-key` + runtime
-   * signals from `useLocalAgentStream`.
+   * (text still growing). Scroll follow uses `data-scroll-follow-key`
+   * + runtime signals from `useLocalAgentStream`.
    */
   isStreaming?: boolean;
   responseTarget?: AgentResponseTarget;
@@ -336,7 +335,6 @@ export const AssistantMessageRow = memo(
               text={text}
               cacheKey={row.cacheKey}
               hideHorizontalRules
-              isStreaming={row.isStreaming}
             />
           )}
           {row.officePreviewRef && (

@@ -39,8 +39,7 @@ import {
 /**
  * Synthetic `_id` prefix carried by `StreamingAssistantOverlay` rows
  * merged into `displayMessages` by `useConversationDisplayMessages`.
- * The row builder uses this prefix to tag rows as `isStreaming: true`
- * for styling (`event-row--streaming`).
+ * The row builder uses this prefix to tag rows as `isStreaming: true`.
  */
 const STREAMING_OVERLAY_ID_PREFIX = 'stream-overlay:'
 import {

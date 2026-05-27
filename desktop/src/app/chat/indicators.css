@@ -222,15 +222,6 @@
   }
 }
 
-/* Streaming assistant messages render without entrance animations:
- * the prior fade-in + per-child stagger (paragraph 1 at 0ms, paragraph
- * 2 at 80ms, etc.) made multi-block streams feel jumpy because each
- * new block element Streamdown emitted on a fresh chunk re-fired its
- * staggered animation. The `event-row--streaming` class still gets
- * applied (in `MessageRow.tsx`) to mark in-flight overlay rows so
- * `use-chat-scroll-management` can find them via querySelector; it no
- * longer carries any visual styling here. */
-
 /* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .working-indicator {

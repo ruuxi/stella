@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { showToast } from '@/ui/toast'
-import { useStreamBuffer } from '@/shared/hooks/use-stream-buffer'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
 import {
   attachmentsForStartChat,
@@ -122,57 +121,12 @@ export function useLocalAgentStream({
   const isStreaming = Boolean(activeRun && !activeRun.terminal)
   const runtimeStatusText = activeRun?.statusText ?? null
 
-  // Smoothing buffer for the assistant text. The buffer's `text` is
-  // mirrored into the LAST entry of `streamingAssistants` via an
-  // effect, so chunky upstream bursts get visually spread word-by-word
-  // even though the slot itself is a regular `MessageRecord`.
-  //
-  // The buffer object itself is a fresh literal every render — its
-  // method props (`append`/`reset`/`flushAll`) are stable useCallback
-  // references though. Destructure once so the rest of this hook can
-  // pin its `useCallback`/`useEffect` deps on the stable methods
-  // instead of the object reference, otherwise everything downstream
-  // (the slot-management callbacks, the conversation-switch reset
-  // effect, the persisted-vs-pending effect that consumes
-  // `resetStreamingState`) re-creates every smoothing tick and the
-  // resulting setState cascade trips React's max-update-depth guard.
-  const streamingBuffer = useStreamBuffer(isStreaming)
-  const reasoningBuffer = useStreamBuffer(isStreaming)
-  const {
-    append: appendSmoothingChunk,
-    reset: resetSmoothingBuffer,
-    flushAll: flushSmoothingBuffer,
-  } = streamingBuffer
-  const reasoningText = reasoningBuffer.text
-  const resetReasoningText = reasoningBuffer.reset
-
-  // Mirror smoothing.text → currently-active streaming-assistant slot.
-  // The slot lifecycle (push on chunk / flush+increment on boundary)
-  // ensures the buffer text always belongs to the latest slot in
-  // `streamingAssistants`. Equality short-circuit avoids a re-render
-  // when nothing changed. `locked` slots are immune (their text was
-  // committed by `finalizeMessageBoundary` / `finalizeRunOnFinish`
-  // and must not be wiped by a subsequent `streamBuffer.reset()`).
-  const smoothingText = streamingBuffer.text
-  useEffect(() => {
-    setStreamingAssistants((current) => {
-      if (current.length === 0) return current
-      const last = current[current.length - 1]
-      if (last.locked) return current
-      if (last.text === smoothingText) return current
-      const next = current.slice()
-      next[next.length - 1] = { ...last, text: smoothingText }
-      return next
-    })
-    if (smoothingText) {
-      notifyAssistantScrollFollowLayoutChange()
-    }
-  }, [smoothingText])
+  const reasoningText = ''
 
   /**
    * RUN_STARTED for a visible run: clear any leftover overlays scoped
-   * to other runs, reset the per-turn slot index, and drain both
-   * smoothing buffers so the next chunk lands on a fresh slot.
+   * to other runs and reset the per-turn slot index so the next chunk
+   * lands on a fresh slot.
    */
   const beginStreamingRun = useCallback(
     (args: { runId: string; userMessageId: string | null }) => {
@@ -183,18 +137,15 @@ export function useLocalAgentStream({
       if (args.userMessageId) {
         nextSlotIndexByUserMessageIdRef.current.set(args.userMessageId, 1)
       }
-      resetSmoothingBuffer()
-      resetReasoningText()
     },
-    [resetReasoningText, resetSmoothingBuffer],
+    [],
   )
 
   /**
    * STREAM chunk: ensure the current overlay slot for
-   * `(userMessageId, currentIndex)` exists and append the chunk into
-   * the smoothing buffer. The mirror effect propagates smoothed text
-   * into the slot. Hidden runs and runs without a `userMessageId`
-   * never produce overlays.
+   * `(userMessageId, currentIndex)` exists and append the chunk to it
+   * immediately. Hidden runs and runs without a `userMessageId` never
+   * produce overlays.
    */
   const acceptStreamChunk = useCallback(
     (args: {
@@ -205,10 +156,6 @@ export function useLocalAgentStream({
     }) => {
       if (!args.chunk) return
       if (!args.userMessageId) {
-        // Nothing to anchor the overlay against; skip the slot and
-        // let the smoothing buffer still consume the chunk so future
-        // reads stay consistent.
-        appendSmoothingChunk(args.chunk)
         return
       }
       const userMessageId = args.userMessageId
@@ -217,14 +164,22 @@ export function useLocalAgentStream({
       nextSlotIndexByUserMessageIdRef.current.set(userMessageId, expectedIndex)
       const slotId = streamingAssistantOverlayId(userMessageId, expectedIndex)
       setStreamingAssistants((current) => {
-        if (current.some((slot) => slot._id === slotId)) {
-          return current
+        const existingIndex = current.findIndex((slot) => slot._id === slotId)
+        if (existingIndex >= 0) {
+          const existing = current[existingIndex]
+          if (!existing) return current
+          const next = current.slice()
+          next[existingIndex] = {
+            ...existing,
+            text: `${existing.text}${args.chunk}`,
+          }
+          return next
         }
         const newSlot: StreamingAssistantOverlay = {
           _id: slotId,
           userMessageId,
           indexInTurn: expectedIndex,
-          text: '',
+          text: args.chunk,
           ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
           timestamp: Date.now(),
           runId: args.runId,
@@ -234,27 +189,17 @@ export function useLocalAgentStream({
         )
         return [...current, newSlot]
       })
-      appendSmoothingChunk(args.chunk)
+      notifyAssistantScrollFollowLayoutChange()
     },
-    [appendSmoothingChunk],
+    [],
   )
 
   /**
-   * `ASSISTANT_MESSAGE` boundary: flush smoothing so the current slot
-   * carries the full received text for the just-finished message,
-   * lock it, increment the slot index, and reset smoothing for the
-   * next message. The newly-pushed (next) slot is empty until the
-   * first post-boundary chunk arrives.
+   * `ASSISTANT_MESSAGE` boundary: lock the current slot, increment the
+   * slot index, and let the next chunk create the next slot.
    */
   const finalizeMessageBoundary = useCallback(
     (args: { runId: string; userMessageId: string | null }) => {
-      // Trim to match the worker's persisted form. The smoothing
-      // buffer holds raw stream chunks (may carry a trailing newline
-      // mid-burst); the worker `.trim()`s the same text before
-      // persisting. Matching here means the live row and its persisted
-      // twin carry byte-for-byte identical text, so later handoff to
-      // the SQLite row has no markdown re-flow or perceptible settle.
-      const fullText = flushSmoothingBuffer().trim()
       if (args.userMessageId) {
         const current =
           nextSlotIndexByUserMessageIdRef.current.get(args.userMessageId) ?? 1
@@ -273,47 +218,36 @@ export function useLocalAgentStream({
         if (last.runId !== args.runId) return current
         const lockedLast: StreamingAssistantOverlay = {
           ...last,
-          text: fullText,
+          text: last.text.trim(),
           locked: true,
         }
         return [...current.slice(0, -1), lockedLast]
       })
-      // Reset smoothing so the next chunk drips into the next slot from
-      // a clean state. The mirror effect won't touch `lockedLast`
-      // (locked=true short-circuit), so the wiped smoothing text
-      // won't bleed back into the previous slot.
-      resetSmoothingBuffer()
     },
-    [flushSmoothingBuffer, resetSmoothingBuffer],
+    [],
   )
 
   /**
-   * `RUN_FINISHED` (any outcome): drain smoothing into the current
-   * slot, lock it, and stop expecting more chunks. The remaining
-   * overlay entries stay in the array so the active UI does not swap
-   * from the streamed text to SQLite just because persistence
-   * completed.
+   * `RUN_FINISHED` (any outcome): lock the current slot and stop
+   * expecting more chunks. The remaining overlay entries stay in the
+   * array so the active UI does not swap from streamed text to SQLite
+   * just because persistence completed.
    */
   const finalizeRunOnFinish = useCallback(
     (args: { runId: string }) => {
-      // Same trim invariant as `finalizeMessageBoundary` — see comment
-      // there. Matters most at run-end because that's the swap the
-      // user actually sees settle.
-      const fullText = flushSmoothingBuffer().trim()
       setStreamingAssistants((current) => {
         if (current.length === 0) return current
         const last = current[current.length - 1]
         if (last.runId !== args.runId || last.locked) return current
         const lockedLast: StreamingAssistantOverlay = {
           ...last,
-          text: fullText,
+          text: last.text.trim(),
           locked: true,
         }
         return [...current.slice(0, -1), lockedLast]
       })
-      resetSmoothingBuffer()
     },
-    [flushSmoothingBuffer, resetSmoothingBuffer],
+    [],
   )
 
   /**
@@ -321,7 +255,6 @@ export function useLocalAgentStream({
    * conversation-switch effect below and by `resetStreamingState`.
    */
   const dropOverlaysForRun = useCallback((runId: string | null) => {
-    resetSmoothingBuffer()
     if (runId === null) {
       clearAssistantScrollFollow()
       setStreamingAssistants([])
@@ -330,7 +263,7 @@ export function useLocalAgentStream({
     setStreamingAssistants((current) =>
       current.filter((slot) => slot.runId !== runId),
     )
-  }, [resetSmoothingBuffer])
+  }, [])
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId
@@ -362,8 +295,6 @@ export function useLocalAgentStream({
 
   const resetStreamingState = useCallback(() => {
     clearAssistantScrollFollow()
-    resetSmoothingBuffer()
-    resetReasoningText()
     setPendingUserMessageId(null)
     setStreamingAssistants([])
     nextSlotIndexByUserMessageIdRef.current.clear()
@@ -381,8 +312,6 @@ export function useLocalAgentStream({
   }, [
     activeConversationId,
     activeRunId,
-    resetReasoningText,
-    resetSmoothingBuffer,
   ])
 
   const handleAgentEvent = useAgentEventHandler({
@@ -403,7 +332,6 @@ export function useLocalAgentStream({
       finalizeMessageBoundary,
       finalizeRunOnFinish,
       dropOverlaysForRun,
-      resetReasoningText,
     },
     timers,
     reasoning,
@@ -448,15 +376,13 @@ export function useLocalAgentStream({
 
   useEffect(() => {
     clearAssistantScrollFollow()
-    resetSmoothingBuffer()
-    resetReasoningText()
     setStreamingAssistants([])
     nextSlotIndexByUserMessageIdRef.current.clear()
     const timeoutId = window.setTimeout(() => {
       setPendingUserMessageId(null)
     }, 0)
     return () => window.clearTimeout(timeoutId)
-  }, [activeConversationId, resetReasoningText, resetSmoothingBuffer])
+  }, [activeConversationId])
 
   const startStream = useCallback(
     (args: StartStreamArgs) => {
