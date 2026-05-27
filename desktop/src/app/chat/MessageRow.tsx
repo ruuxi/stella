@@ -336,6 +336,7 @@ export const AssistantMessageRow = memo(
               text={text}
               cacheKey={row.cacheKey}
               hideHorizontalRules
+              isStreaming={row.isStreaming}
             />
           )}
           {row.officePreviewRef && (
