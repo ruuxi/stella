@@ -13,8 +13,44 @@ export type LlmProviderEntry = {
   placeholder: string;
 };
 
+/** Provider keys always listed in the Agents model rail (even with no catalog models). */
+export const CURSOR_PROVIDER_KEY = "cursor";
+
+/** Model override prefix for the Cursor SDK general-agent runtime. */
+export const CURSOR_MODEL_PREFIX = "cursor/";
+
+const PROVIDER_RAIL_PRIORITY: readonly string[] = [
+  "stella",
+  "openrouter",
+  "anthropic",
+  "openai",
+  "openai-codex",
+  CURSOR_PROVIDER_KEY,
+  "xai",
+  "local",
+];
+
+export const compareProviderRailOrder = (
+  aKey: string,
+  bKey: string,
+  aLabel: string,
+  bLabel: string,
+): number => {
+  const aIndex = PROVIDER_RAIL_PRIORITY.indexOf(aKey);
+  const bIndex = PROVIDER_RAIL_PRIORITY.indexOf(bKey);
+  const aRank = aIndex >= 0 ? aIndex : PROVIDER_RAIL_PRIORITY.length;
+  const bRank = bIndex >= 0 ? bIndex : PROVIDER_RAIL_PRIORITY.length;
+  if (aRank !== bRank) return aRank - bRank;
+  return aLabel.localeCompare(bLabel, undefined, { sensitivity: "base" });
+};
+
 export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
   { key: "local", label: "Local", placeholder: "No API key needed" },
+  {
+    key: CURSOR_PROVIDER_KEY,
+    label: "Cursor",
+    placeholder: "Cursor API key",
+  },
   { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
   { key: "openai", label: "OpenAI", placeholder: "sk-..." },
   { key: "openai-codex", label: "OpenAI Codex", placeholder: "eyJ..." },

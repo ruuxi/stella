@@ -6,8 +6,8 @@
  *   2. Capture         → radial-dial-style region/window capture.
  *   3. Attach Stella   → pick a window and dock the mini beside it.
  *
- * Menu order (top → bottom): model, optional recent files, then capture,
- * attach Stella, and attach files at the bottom (nearest the + button).
+ * Menu order (top → bottom): optional recent files, then capture, attach
+ * Stella, and attach files at the bottom (nearest the + button).
  * No dividers between rows.
  *
  * The menu owns its own state (file input ref + recent-files store), so
@@ -26,7 +26,6 @@ import {
 } from "@/ui/dropdown-menu";
 import { showToast } from "@/ui/toast";
 import { ComposerAddButton } from "./ComposerPrimitives";
-import { ComposerModelMenuItem } from "./ComposerModelMenuItem";
 import { getElectronApi } from "@/platform/electron/electron";
 import {
   applyProcessedAttachments,
@@ -151,7 +150,6 @@ export function ComposerAddMenu({
           sideOffset={6}
           className="composer-add-menu"
         >
-          <ComposerModelMenuItem />
           {recentFiles.length > 0 && (
             <>
               <DropdownMenuLabel>Recent</DropdownMenuLabel>

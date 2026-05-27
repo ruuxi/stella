@@ -4,12 +4,12 @@ import "./LocalRuntimeOptions.css";
 
 const ENGINE_OPTIONS = [
   { id: "default", label: "Stella" },
-  { id: "cursor_sdk", label: "Cursor" },
   { id: "codex_cli", label: "Codex" },
   { id: "claude_code_local", label: "Claude Code" },
 ] as const;
 
 type EngineId = (typeof ENGINE_OPTIONS)[number]["id"];
+type StoredEngineId = EngineId | "cursor_sdk";
 
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
@@ -18,7 +18,7 @@ type LocalModelPreferences = {
     string,
     "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >;
-  agentRuntimeEngine: EngineId;
+  agentRuntimeEngine: StoredEngineId;
   cursorModel: string;
   codexModel: string;
   claudeCodeModel: string;
@@ -62,7 +62,9 @@ export function LocalRuntimeOptions() {
 
   const ready = preferences !== null;
   const engine: EngineId =
-    preferences?.agentRuntimeEngine ?? "default";
+    preferences?.agentRuntimeEngine === "cursor_sdk"
+      ? "default"
+      : (preferences?.agentRuntimeEngine ?? "default");
 
   const handleEngineChange = useCallback(
     async (next: EngineId) => {

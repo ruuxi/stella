@@ -6,9 +6,8 @@
  *   - Picking the agent runtime engine (Stella / Codex / Claude Code) and
  *     Codex reasoning when Codex is selected.
  *   - Cursor is a provider under Agents (API key + model), not an engine.
- *   - Assigning a specific Stella / BYOK model to one or more agents, at
- *     a chosen reasoning effort, via the inline ProviderModelPanel +
- *     assignment popover.
+ *   - Assigning a Stella / Codex / Claude Code model across the agent set
+ *     with Chronicle left on its cheap default.
  *   - Choosing the image and realtime-voice provider (and per-voice
  *     selection for voice).
  *   - Disconnecting / signing out of providers the user has linked on
@@ -20,15 +19,7 @@
  * room when the user expands the panel.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MoreHorizontal, RefreshCw, RotateCcw } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,12 +41,12 @@ import {
   useLlmCredentials,
 } from "@/global/settings/hooks/use-llm-credentials";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
-import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
   compareProviderRailOrder,
   CURSOR_MODEL_PREFIX,
   LLM_PROVIDERS,
 } from "@/global/settings/lib/llm-providers";
+import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
 import { DEFAULT_CURSOR_MODEL } from "@/shell/display/engine-tab-constants";
 import {
   buildModelDefaultsMap,
@@ -186,19 +177,6 @@ const ENGINE_OPTIONS: ReadonlyArray<{
   { id: "claude_code_local", label: "Claude Code" },
 ];
 
-const REASONING_OPTIONS: ReadonlyArray<{
-  id: ReasoningEffort;
-  label: string;
-  title: string;
-}> = [
-  { id: "default", label: "Auto", title: "Default — let the model decide" },
-  { id: "minimal", label: "Min", title: "Minimal reasoning" },
-  { id: "low", label: "Low", title: "Low reasoning" },
-  { id: "medium", label: "Med", title: "Medium reasoning" },
-  { id: "high", label: "High", title: "High reasoning" },
-  { id: "xhigh", label: "Max", title: "Extra reasoning" },
-];
-
 const MEDIA_TABS: ReadonlyArray<{ id: MediaTab; label: string }> = [
   { id: "agents", label: "Agents" },
   { id: "image", label: "Image" },
@@ -266,6 +244,7 @@ const STELLA_PROVIDER_PREFIX = "stella/";
 const CODEX_MODEL_PREFIX = "codex-cli/";
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
 const GENERAL_AGENT_KEY = "general";
+const CHRONICLE_AGENT_KEY = "chronicle";
 
 type RuntimeModelEngine = Extract<
   AgentRuntimeEngine,
@@ -424,16 +403,21 @@ export function EngineTabContent() {
       if (!preferences) return null;
       const previous = preferences;
       const optimistic: LocalModelPreferences = { ...previous, ...patch };
+      const markSaving = kind !== "overrides" && kind !== "engine";
       cachedPreferences = optimistic;
       setPreferences(optimistic);
-      setSaving(kind);
-      clearStatus();
+      if (markSaving) {
+        setSaving(kind);
+        clearStatus();
+      }
       try {
         const saved =
           await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
         const next = (saved as LocalModelPreferences | undefined) ?? optimistic;
         cachedPreferences = next;
-        setPreferences(next);
+        if (markSaving) {
+          setPreferences(next);
+        }
         notifyPrefsChanged();
         return next;
       } catch (caught) {
@@ -442,7 +426,9 @@ export function EngineTabContent() {
         showError(errorText(caught, "Could not save model setting."));
         return null;
       } finally {
-        setSaving(null);
+        if (markSaving) {
+          setSaving(null);
+        }
       }
     },
     [clearStatus, notifyPrefsChanged, preferences, showError],
@@ -650,10 +636,6 @@ export function EngineTabContent() {
     <div className="display-sidebar__rich display-sidebar__rich--engine">
       <section className="engine-tab" aria-label="Model settings">
         <div className="engine-tab__engine-block">
-          <header className="engine-tab__header">
-            <h3 className="engine-tab__title">Model</h3>
-          </header>
-
           <div
             className="engine-tab__status-slot"
             role="status"
@@ -681,7 +663,9 @@ export function EngineTabContent() {
                   disabled={inputsDisabled}
                   onClick={() => void saveEngine(option.id)}
                 >
-                  <span className="engine-tab__engine-label">{option.label}</span>
+                  <span className="engine-tab__engine-label">
+                    {option.label}
+                  </span>
                 </button>
               );
             })}
@@ -720,7 +704,6 @@ export function EngineTabContent() {
     </div>
   );
 }
-
 
 /* ── Models section ───────────────────────────────────────────── */
 
@@ -781,7 +764,6 @@ function ModelsSection({
   onRefreshCursorModels,
 }: ModelsSectionProps) {
   const {
-    models: stellaModels,
     defaults: stellaDefaultModels,
     groups,
     refresh,
@@ -814,9 +796,25 @@ function ModelsSection({
   const runtimeModelEngine = usesRuntimeModelPicker(selectedEngine)
     ? selectedEngine
     : null;
-  const popoverAgents = configurableAgents;
+  const batchAssignableAgents = useMemo(
+    () =>
+      configurableAgents.filter((entry) => entry.key !== CHRONICLE_AGENT_KEY),
+    [configurableAgents],
+  );
   const selectedCursorModelId =
     preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL;
+  const selectedStellaModelId =
+    preferences?.modelOverrides[GENERAL_AGENT_KEY] ??
+    preferences?.modelOverrides.orchestrator ??
+    defaultModelMap[GENERAL_AGENT_KEY] ??
+    defaultModelMap.orchestrator ??
+    STELLA_STANDARD_MODEL;
+  const selectedRuntimeModelId =
+    runtimeModelEngine === "codex_cli"
+      ? (preferences?.codexModel ?? DEFAULT_CODEX_MODEL)
+      : runtimeModelEngine === "claude_code_local"
+        ? (preferences?.claudeCodeModel ?? DEFAULT_CLAUDE_CODE_MODEL)
+        : undefined;
 
   const codexRuntimeModels = useMemo(
     () =>
@@ -845,96 +843,8 @@ function ModelsSection({
         ? claudeRuntimeModels
         : [];
 
-  const modelNamesById = useMemo(() => {
-    const next = new Map<string, string>();
-    for (const model of stellaModels) {
-      const label =
-        model.provider === "stella" ? getStellaDisplayName(model) : model.name;
-      next.set(model.id, label);
-      if (model.upstreamModel) next.set(model.upstreamModel, label);
-    }
-    for (const model of activeRuntimeModels) {
-      if (!runtimeModelEngine) continue;
-      next.set(toRuntimeOverrideId(runtimeModelEngine, model.id), model.label);
-      next.set(model.id, model.label);
-    }
-    for (const model of cursorModels) {
-      const overrideId = `${CURSOR_MODEL_PREFIX}${model.id}`;
-      next.set(overrideId, model.displayName || model.id);
-      next.set(model.id, model.displayName || model.id);
-    }
-    return next;
-  }, [activeRuntimeModels, cursorModels, runtimeModelEngine, stellaModels]);
-
   const restricted = isRestrictedModelOverrideAudience(audience);
   const restrictedPlanLabel = audience ? getPlanLabel(audience) : null;
-
-  /* ── assignment popover ───────────────────────────────────── */
-
-  type AssignmentState = {
-    modelId: string;
-    rect: DOMRect;
-    initialReasoning: ReasoningEffort;
-    initialAgents: string[];
-    runtimeEngine: RuntimeModelEngine | null;
-  };
-  const [assignment, setAssignment] = useState<AssignmentState | null>(null);
-
-  const closeAssignment = useCallback(() => {
-    setAssignment(null);
-  }, []);
-
-  const agentsByModel = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const entry of popoverAgents) {
-      const current = overrides[entry.key];
-      if (!current) continue;
-      const list = map.get(current);
-      if (list) list.push(entry.key);
-      else map.set(current, [entry.key]);
-    }
-    return map;
-  }, [overrides, popoverAgents]);
-
-  const handleOpenAssignment = useCallback(
-    (
-      modelId: string,
-      anchorEl?: HTMLElement | null,
-      runtimeEngine: RuntimeModelEngine | null = null,
-    ) => {
-      if (!modelId) return;
-      const normalizedId = runtimeEngine
-        ? toRuntimeOverrideId(runtimeEngine, modelId)
-        : modelId;
-      const rect = anchorEl?.getBoundingClientRect();
-      if (!rect || (rect.width === 0 && rect.height === 0)) return;
-      const initialAgents = isCursorModelId(normalizedId)
-        ? [GENERAL_AGENT_KEY]
-        : (agentsByModel.get(normalizedId) ?? []);
-      const reasoningCandidates = new Set<ReasoningEffort>();
-      for (const key of initialAgents) {
-        reasoningCandidates.add(
-          preferences?.reasoningEfforts?.[key] ?? "default",
-        );
-      }
-      const initialReasoning: ReasoningEffort =
-        reasoningCandidates.size === 1
-          ? Array.from(reasoningCandidates)[0]
-          : "default";
-      // Defer one frame so the opening click doesn't immediately dismiss
-      // the overlay/backdrop listener on the same event turn.
-      window.requestAnimationFrame(() => {
-        setAssignment({
-          modelId: normalizedId,
-          rect,
-          initialReasoning,
-          initialAgents,
-          runtimeEngine,
-        });
-      });
-    },
-    [agentsByModel, preferences],
-  );
 
   /* ── mutation handlers ─────────────────────────────────────── */
 
@@ -1002,67 +912,23 @@ function ModelsSection({
     [preferences, writePreferences],
   );
 
-  const clearAgents = useCallback(
-    async (agentKeys: string[]) => {
-      if (!preferences || agentKeys.length === 0) return;
-      const nextOverrides = { ...preferences.modelOverrides };
-      const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
-      const nextPropagated = (
-        preferences.assistantPropagatedAgents ?? []
-      ).filter((key) => !agentKeys.includes(key));
-      for (const key of agentKeys) {
-        delete nextOverrides[key];
-        delete nextReasoning[key];
-      }
-      await writePreferences(
-        {
-          modelOverrides: nextOverrides,
-          reasoningEfforts: nextReasoning,
-          assistantPropagatedAgents: nextPropagated,
-        },
-        "overrides",
-      );
-    },
-    [preferences, writePreferences],
-  );
-
-  const applyAssignment = useCallback(
-    async (modelId: string, agentKeys: string[], effort: ReasoningEffort) => {
-      if (!preferences) {
-        closeAssignment();
+  const autoApplyModel = useCallback(
+    async (
+      modelId: string,
+      runtimeEngine: RuntimeModelEngine | null = null,
+    ) => {
+      if (!preferences || !modelId) return;
+      const normalizedId = runtimeEngine
+        ? toRuntimeOverrideId(runtimeEngine, modelId)
+        : modelId;
+      if (selectedEngine === "default" && !isStellaModelId(normalizedId)) {
         return;
       }
-      const previouslyAssigned = agentsByModel.get(modelId) ?? [];
-      const toClear = previouslyAssigned.filter(
-        (key) => !agentKeys.includes(key),
-      );
-      if (toClear.length > 0) await clearAgents(toClear);
-      if (agentKeys.length > 0) await assignTo(modelId, agentKeys, effort);
-      closeAssignment();
-      showNotice("Models updated");
+      const agentKeys = batchAssignableAgents.map((entry) => entry.key);
+      if (agentKeys.length === 0) return;
+      await assignTo(normalizedId, agentKeys, "default");
     },
-    [
-      agentsByModel,
-      assignTo,
-      clearAgents,
-      closeAssignment,
-      preferences,
-      showNotice,
-    ],
-  );
-
-  const applyToAll = useCallback(
-    async (modelId: string, effort: ReasoningEffort) => {
-      if (!preferences || isCursorModelId(modelId)) {
-        closeAssignment();
-        return;
-      }
-      const allKeys = popoverAgents.map((entry) => entry.key);
-      await assignTo(modelId, allKeys, effort);
-      closeAssignment();
-      showNotice("Applied to every agent");
-    },
-    [assignTo, closeAssignment, popoverAgents, preferences, showNotice],
+    [assignTo, batchAssignableAgents, preferences, selectedEngine],
   );
 
   const handleResetAll = useCallback(async () => {
@@ -1239,15 +1105,9 @@ function ModelsSection({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               disabled={!orchestratorCurrent || inputsDisabled}
-              onSelect={() =>
-                void assignTo(
-                  orchestratorCurrent,
-                  configurableAgents.map((entry) => entry.key),
-                  preferences?.reasoningEfforts?.orchestrator ?? "default",
-                )
-              }
+              onSelect={() => void autoApplyModel(orchestratorCurrent, null)}
             >
-              Apply orchestrator's model to all
+              Apply orchestrator's model
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={inputsDisabled}
@@ -1276,22 +1136,22 @@ function ModelsSection({
               <EngineRuntimeModelPanel
                 providerLabel={runtimePanelLabel}
                 models={activeRuntimeModels}
+                selectedModelId={selectedRuntimeModelId}
                 loading={runtimePanelLoading}
                 disabled={inputsDisabled}
                 favoriteScope={runtimePanelFavoriteScope}
                 onRefresh={runtimePanelRefresh}
-                onSelectModel={(modelId, anchor) =>
-                  handleOpenAssignment(
+                onSelectModel={(modelId) =>
+                  void autoApplyModel(
                     modelId,
-                    anchor,
                     runtimeModelEngine ?? "codex_cli",
                   )
                 }
               />
               <ProviderModelPanel
-                value=""
+                value={selectedStellaModelId}
                 defaultLabel=""
-                currentLabel="Click a model to assign"
+                currentLabel="Click a model to apply"
                 groups={groups}
                 disabled={inputsDisabled}
                 restrictStellaPicks={restricted}
@@ -1314,19 +1174,16 @@ function ModelsSection({
                   onModelDraftChange: onCursorModelDraftChange,
                   onSaveApiKey: onSaveCursorApiKey,
                   onRefreshModels: onRefreshCursorModels,
-                  onPickModel: (modelId, anchor) =>
-                    handleOpenAssignment(
+                  onPickModel: (modelId) =>
+                    void autoApplyModel(
                       modelId.startsWith(CURSOR_MODEL_PREFIX)
                         ? modelId
                         : `${CURSOR_MODEL_PREFIX}${modelId}`,
-                      anchor ?? null,
                       null,
                     ),
                   onSaveManualModel: () => onSaveCursorModel(),
                 }}
-                onSelect={(modelId, anchor) =>
-                  handleOpenAssignment(modelId, anchor ?? null, null)
-                }
+                onSelect={(modelId) => void autoApplyModel(modelId, null)}
               />
             </div>
           </div>
@@ -1364,34 +1221,6 @@ function ModelsSection({
           </div>
         )}
       </div>
-
-      {assignment ? (
-        <AssignmentPopover
-          assignment={assignment}
-          configurableAgents={
-            isCursorModelId(assignment.modelId)
-              ? popoverAgents.filter(
-                  (entry) => entry.key === GENERAL_AGENT_KEY,
-                )
-              : popoverAgents
-          }
-          overrides={overrides}
-          reasoningEfforts={preferences?.reasoningEfforts ?? {}}
-          modelNamesById={modelNamesById}
-          pending={inputsDisabled}
-          onApply={(agents, effort) =>
-            void applyAssignment(
-              assignment.modelId,
-              isCursorModelId(assignment.modelId)
-                ? [GENERAL_AGENT_KEY]
-                : agents,
-              effort,
-            )
-          }
-          onApplyToAll={(effort) => void applyToAll(assignment.modelId, effort)}
-          onClose={closeAssignment}
-        />
-      ) : null}
     </div>
   );
 }
@@ -1506,248 +1335,5 @@ function ConnectedProvidersSection() {
         })}
       </ul>
     </div>
-  );
-}
-
-/* ── Assignment popover ─────────────────────────────────────── */
-
-interface AssignmentPopoverProps {
-  assignment: {
-    modelId: string;
-    rect: DOMRect;
-    initialReasoning: ReasoningEffort;
-    initialAgents: string[];
-  };
-  configurableAgents: ReadonlyArray<{
-    key: string;
-    label: string;
-    desc: string;
-  }>;
-  overrides: Record<string, string>;
-  reasoningEfforts: Record<string, ReasoningEffort>;
-  modelNamesById: ReadonlyMap<string, string>;
-  pending: boolean;
-  onApply: (agentKeys: string[], effort: ReasoningEffort) => void;
-  onApplyToAll: (effort: ReasoningEffort) => void;
-  onClose: () => void;
-}
-
-function AssignmentPopover({
-  assignment,
-  configurableAgents,
-  overrides,
-  reasoningEfforts,
-  modelNamesById,
-  pending,
-  onApply,
-  onApplyToAll,
-  onClose,
-}: AssignmentPopoverProps) {
-  const generalAgentOnly = assignment.modelId.startsWith(CURSOR_MODEL_PREFIX);
-  const [reasoning, setReasoning] = useState<ReasoningEffort>(
-    assignment.initialReasoning,
-  );
-  const [selected, setSelected] = useState<ReadonlySet<string>>(() => {
-    const initial = new Set(assignment.initialAgents);
-    if (generalAgentOnly) {
-      return new Set(
-        configurableAgents.some((entry) => entry.key === GENERAL_AGENT_KEY)
-          ? [GENERAL_AGENT_KEY]
-          : [],
-      );
-    }
-    return initial;
-  });
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ left: number; top: number }>(
-    () => ({
-      left: Math.max(16, assignment.rect.left - 310),
-      top: Math.max(16, assignment.rect.top),
-    }),
-  );
-  const [backdropReady, setBackdropReady] = useState(false);
-
-  const modelDisplayName =
-    modelNamesById.get(assignment.modelId) ?? assignment.modelId;
-
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-    const panelRect = panel.getBoundingClientRect();
-    const margin = 16;
-    const gap = 10;
-    let left = assignment.rect.left - panelRect.width - gap;
-    if (left < margin) {
-      left = assignment.rect.right + gap;
-    }
-    left = Math.max(
-      margin,
-      Math.min(left, window.innerWidth - panelRect.width - margin),
-    );
-    let top = assignment.rect.top;
-    top = Math.max(
-      margin,
-      Math.min(top, window.innerHeight - panelRect.height - margin),
-    );
-    setPosition({ left, top });
-  }, [assignment.modelId, assignment.rect]);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setBackdropReady(true));
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  const toggleAgent = (key: string) => {
-    if (generalAgentOnly) return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  return createPortal(
-    <>
-      <button
-        type="button"
-        className="engine-tab__assign-backdrop"
-        aria-label="Close model assignment"
-        tabIndex={-1}
-        onClick={() => {
-          if (backdropReady) onClose();
-        }}
-      />
-      <div
-        ref={panelRef}
-        className="engine-tab__assign-popover"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Apply model to agents"
-        style={{
-          position: "fixed",
-          left: position.left,
-          top: position.top,
-          zIndex: 10000,
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="engine-tab__assign-head">
-          <span className="engine-tab__assign-kicker">Apply</span>
-          <span className="engine-tab__assign-title" title={modelDisplayName}>
-            {modelDisplayName}
-          </span>
-        </header>
-
-        {generalAgentOnly ? null : (
-          <section
-            className="engine-tab__assign-reasoning"
-            role="radiogroup"
-            aria-label="Reasoning effort"
-          >
-            {REASONING_OPTIONS.map((option) => {
-              const isSelected = option.id === reasoning;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={isSelected}
-                  data-selected={isSelected || undefined}
-                  className="engine-tab__assign-reasoning-btn"
-                  title={option.title}
-                  onClick={() => setReasoning(option.id)}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </section>
-        )}
-
-        <section
-          className="engine-tab__assign-agents"
-          role="group"
-          aria-label="Agents"
-        >
-          {configurableAgents.map((entry) => {
-            const isChecked = generalAgentOnly
-              ? entry.key === GENERAL_AGENT_KEY
-              : selected.has(entry.key);
-            const current = overrides[entry.key];
-            const sameModel = current === assignment.modelId;
-            const currentEffort = reasoningEfforts[entry.key] ?? "default";
-            const effortLabel =
-              REASONING_OPTIONS.find((opt) => opt.id === currentEffort)
-                ?.label ?? "Auto";
-            const title = sameModel
-              ? `Currently using this model${
-                  currentEffort !== "default" ? ` · ${effortLabel}` : ""
-                }`
-              : current
-                ? `Currently: ${modelNamesById.get(current) ?? current}${
-                    currentEffort !== "default" ? ` · ${effortLabel}` : ""
-                  }`
-                : "Currently default";
-            return (
-              <button
-                key={entry.key}
-                type="button"
-                role="checkbox"
-                aria-checked={isChecked}
-                className="engine-tab__assign-agent-pill"
-                data-checked={isChecked || undefined}
-                data-current={sameModel || undefined}
-                title={title}
-                onClick={() => toggleAgent(entry.key)}
-                disabled={generalAgentOnly && entry.key !== GENERAL_AGENT_KEY}
-              >
-                {entry.label}
-              </button>
-            );
-          })}
-        </section>
-
-        <footer className="engine-tab__assign-footer">
-          {generalAgentOnly ? null : (
-            <button
-              type="button"
-              className="engine-tab__assign-apply-all"
-              disabled={pending}
-              onClick={() => onApplyToAll(reasoning)}
-              title="Apply this model to every configurable agent"
-            >
-              Apply to all
-            </button>
-          )}
-          <div className="engine-tab__assign-footer-actions">
-            <button
-              type="button"
-              className="engine-tab__assign-cancel"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="engine-tab__assign-apply"
-              disabled={pending}
-              onClick={() => onApply(Array.from(selected), reasoning)}
-            >
-              Apply
-            </button>
-          </div>
-        </footer>
-      </div>
-    </>,
-    document.body,
   );
 }

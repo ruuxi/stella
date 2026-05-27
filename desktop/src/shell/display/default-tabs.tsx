@@ -4,12 +4,12 @@ import { ChatPanelTab, type ChatPanelOpenRequest } from "@/shell/ChatSidebar";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { StoreSidePanel } from "@/global/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
-import { EngineTabContent } from "./EngineTabContent";
 import { ChatHomeOverview } from "./ChatHomeOverview";
 import { MediaTabContent } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { getCanvasHtmlItems } from "./canvas-tab/canvas-items";
 import { displayTabs, useDisplayPanelExpanded } from "./tab-store";
+import { engineOverlay } from "./engine-overlay-store";
 import {
   CANVAS_HTML_TAB_ID,
   GENERATED_MEDIA_TAB_ID,
@@ -20,7 +20,6 @@ import type { OpenTabOptions } from "./types";
 export const CHAT_DISPLAY_TAB_ID = "chat";
 export const STORE_DISPLAY_TAB_ID = "store:side-panel";
 export const TRASH_DISPLAY_TAB_ID = "trash:deferred-delete";
-export const ENGINE_DISPLAY_TAB_ID = "engine:runtime";
 export const MEDIA_DISPLAY_TAB_ID = GENERATED_MEDIA_TAB_ID;
 export const CANVAS_DISPLAY_TAB_ID = CANVAS_HTML_TAB_ID;
 
@@ -118,14 +117,16 @@ export function openTrashDisplayTab(): void {
   });
 }
 
+/**
+ * Open the engine / models surface. It now lives as an inline overlay
+ * at the bottom of the Chat home overview, not as its own display tab.
+ * Callers that previously navigated to `/chat` before invoking this
+ * function continue to work — we just activate the Chat display tab
+ * and flip the overlay on.
+ */
 export function openEngineDisplayTab(): void {
-  displayTabs.openTab({
-    id: ENGINE_DISPLAY_TAB_ID,
-    kind: "engine",
-    title: "Engine",
-    tooltip: "Agent runtime settings",
-    render: () => createElement(EngineTabContent),
-  });
+  openChatDisplayTab(null);
+  engineOverlay.setOpen(true);
 }
 
 export function openMediaDisplayTab(): void {

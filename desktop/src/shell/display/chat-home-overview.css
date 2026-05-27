@@ -16,8 +16,22 @@
   scrollbar-width: none;
 }
 
+/* When the engine pane is open, drop the bottom padding so the model
+ * surface can extend to the panel floor. Keep top padding stable so
+ * the launcher entries don't shift on toggle. */
+.chat-home-launcher[data-engine-open] {
+  padding-bottom: 0;
+}
+
 .chat-home-launcher::-webkit-scrollbar {
   display: none;
+}
+
+/* With the engine overlay open, the inner EngineTabContent owns its
+ * own scroll — disable scrolling on the outer launcher so we don't
+ * stack two scroll containers. */
+.chat-home-launcher[data-engine-open] {
+  overflow: hidden;
 }
 
 .chat-home-launcher__list {
@@ -27,6 +41,54 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Compact Models pill — right-aligned below the launcher entries. */
+.chat-home-launcher__models-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px 0;
+  list-style: none;
+}
+
+/* When the inline engine overlay is open it fills the remaining
+ * vertical space below the launcher entries; the launcher list itself
+ * stops trying to consume the page. */
+.chat-home-launcher__engine {
+  flex: 1;
+  min-height: 0;
+  /* Cancel the launcher's 18px horizontal padding so the engine pane
+   * starts flush with the launcher icons (which sit ~10px inset via
+   * the entry button's own padding). */
+  margin: 6px -18px 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.chat-home-launcher__engine[data-visible] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.chat-home-launcher__engine > * {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Pull the engine surface left so its title sits closer to the
+ * launcher entries rather than getting nested behind two layers of
+ * padding. */
+.chat-home-launcher__engine .engine-tab {
+  padding: 8px 10px 4px;
+  gap: 14px;
+  /* The provider/model list inside has its own scroll — don't let
+   * the whole model panel double-scroll. */
+  overflow: hidden;
 }
 
 .chat-home-launcher__entry {

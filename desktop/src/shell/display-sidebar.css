@@ -301,6 +301,34 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   }
 }
 
+.display-sidebar__models-btn {
+  gap: 6px;
+  min-height: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--text-base);
+  border-color: transparent;
+  background: transparent;
+}
+
+.display-sidebar__models-btn-icon {
+  color: currentColor;
+  opacity: 0.85;
+}
+
+.display-sidebar__models-btn:hover:not(:disabled) {
+  color: var(--text-strong);
+  border-color: transparent;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.display-sidebar__models-btn[aria-pressed="true"] {
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
 .display-sidebar__active {
   flex: 1;
   min-height: 0;

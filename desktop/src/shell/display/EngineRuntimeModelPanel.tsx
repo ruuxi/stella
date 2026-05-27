@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from "react";
-import { RefreshCw, Search, Star } from "lucide-react";
+import { Check, RefreshCw, Search, Star } from "lucide-react";
 import {
   readEngineModelFavorites,
   sortByFavorites,
@@ -17,9 +17,10 @@ interface EngineRuntimeModelPanelProps {
   models: readonly EngineRuntimeModelOption[];
   loading?: boolean;
   disabled?: boolean;
+  selectedModelId?: string;
   favoriteScope: string;
   onRefresh?: () => void;
-  onSelectModel: (modelId: string, anchor: HTMLElement) => void;
+  onSelectModel: (modelId: string) => void;
 }
 
 export function EngineRuntimeModelPanel({
@@ -27,6 +28,7 @@ export function EngineRuntimeModelPanel({
   models,
   loading = false,
   disabled = false,
+  selectedModelId,
   favoriteScope,
   onRefresh,
   onSelectModel,
@@ -40,7 +42,8 @@ export function EngineRuntimeModelPanel({
     const trimmed = query.trim().toLowerCase();
     const base = trimmed
       ? models.filter((model) => {
-          const haystack = `${model.label} ${model.subtitle ?? ""} ${model.id}`.toLowerCase();
+          const haystack =
+            `${model.label} ${model.subtitle ?? ""} ${model.id}`.toLowerCase();
           return haystack.includes(trimmed);
         })
       : models;
@@ -61,15 +64,6 @@ export function EngineRuntimeModelPanel({
       role="group"
       aria-label={`${providerLabel} models`}
     >
-      <aside className="engine-runtime-model-panel__rail" aria-hidden>
-        <div className="engine-runtime-model-panel__rail-item" data-active>
-          <span className="engine-runtime-model-panel__rail-bar" data-on />
-          <span className="engine-runtime-model-panel__rail-label">
-            {providerLabel}
-          </span>
-        </div>
-      </aside>
-
       <section className="engine-runtime-model-panel__pane">
         <header className="engine-runtime-model-panel__head">
           <span className="engine-runtime-model-panel__kicker">
@@ -122,6 +116,7 @@ export function EngineRuntimeModelPanel({
               <EngineRuntimeModelRow
                 key={model.id}
                 model={model}
+                selected={model.id === selectedModelId}
                 favorite={favorites.includes(model.id)}
                 disabled={disabled}
                 onSelect={onSelectModel}
@@ -137,14 +132,16 @@ export function EngineRuntimeModelPanel({
 
 type EngineRuntimeModelRowProps = {
   model: EngineRuntimeModelOption;
+  selected: boolean;
   favorite: boolean;
   disabled: boolean;
-  onSelect: (modelId: string, anchor: HTMLElement) => void;
+  onSelect: (modelId: string) => void;
   onToggleFavorite: (modelId: string) => void;
 };
 
 const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
   model,
+  selected,
   favorite,
   disabled,
   onSelect,
@@ -155,9 +152,11 @@ const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
       <button
         type="button"
         role="option"
+        aria-selected={selected}
         className="engine-runtime-model-panel__model"
+        data-selected={selected || undefined}
         disabled={disabled}
-        onClick={(event) => onSelect(model.id, event.currentTarget)}
+        onClick={() => onSelect(model.id)}
       >
         <span className="engine-runtime-model-panel__model-text">
           <span className="engine-runtime-model-panel__model-name">
@@ -169,6 +168,9 @@ const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
             </span>
           ) : null}
         </span>
+        {selected ? (
+          <Check size={13} className="engine-runtime-model-panel__check" />
+        ) : null}
       </button>
       <button
         type="button"
