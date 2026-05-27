@@ -46,9 +46,7 @@ export type StreamingAssistantOverlay = {
   /**
    * Marked true once this slot's text equals the full upstream-received
    * text for its message (set on `ASSISTANT_MESSAGE` boundary or
-   * `RUN_FINISHED`). The smoothing-to-overlay mirror effect skips
-   * `locked` slots so a subsequent `streamBuffer.reset()` for the next
-   * message can't wipe a finalized slot's text.
+   * `RUN_FINISHED`).
    */
   locked?: boolean;
 };

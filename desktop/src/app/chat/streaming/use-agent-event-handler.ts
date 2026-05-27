@@ -83,7 +83,6 @@ type UseAgentEventHandlerOptions = {
     }) => void
     finalizeRunOnFinish: (args: { runId: string }) => void
     dropOverlaysForRun: (runId: string | null) => void
-    resetReasoningText: () => void
   }
   timers: {
     scheduleTaskRemoval: (
@@ -139,7 +138,6 @@ export function useAgentEventHandler({
     finalizeMessageBoundary,
     finalizeRunOnFinish,
     dropOverlaysForRun,
-    resetReasoningText,
   } = streaming
   const { scheduleTaskRemoval, clearScheduledTaskRemoval } = timers
   const {
@@ -254,14 +252,12 @@ export function useAgentEventHandler({
             // message in chat.
             dropOverlaysForRun(event.runId)
           } else {
-            // Finalize the current overlay slot so its text equals the
-            // full received text (smoothing drain). Overlay entries
-            // stay in the array until their persisted counterparts
-            // land via `chat:localUpdated` (see the dedupe in
+            // Finalize the current overlay slot. Overlay entries stay
+            // in the array until their persisted counterparts land via
+            // `chat:localUpdated` (see the dedupe in
             // `useConversationDisplayMessages`).
             finalizeRunOnFinish({ runId: event.runId })
           }
-          resetReasoningText()
           setPendingUserMessageId(null)
         }
         // `selfModApplied` is patched onto the persisted assistant
@@ -304,7 +300,6 @@ export function useAgentEventHandler({
               runId: event.runId,
               userMessageId: anchorUserMessageId,
             })
-            resetReasoningText()
             setPendingUserMessageId(anchorUserMessageId)
           }
           break
@@ -326,7 +321,6 @@ export function useAgentEventHandler({
               runId: event.runId,
               userMessageId: event.userMessageId ?? null,
             })
-            resetReasoningText()
           }
           dispatch({
             type: 'run-status',
@@ -352,11 +346,11 @@ export function useAgentEventHandler({
         case AGENT_STREAM_EVENT_TYPES.ASSISTANT_MESSAGE: {
           // Boundary between two assistant messages within the same run
           // (e.g. preamble finalized → post-tool answer about to stream).
-          // Lock the current overlay slot's text (smoothing drain) and
-          // advance the per-turn slot index so the next chunk lands on
-          // a fresh slot. The locked slot stays visible in the chat
-          // even after its persisted counterpart lands; the display
-          // merge masks the persisted twin and borrows its metadata.
+          // Lock the current overlay slot's text and advance the
+          // per-turn slot index so the next chunk lands on a fresh
+          // slot. The locked slot stays visible in the chat even after
+          // its persisted counterpart lands; the display merge masks
+          // the persisted twin and borrows its metadata.
           if (
             (isPrimaryRun || isOrchestratorEvent) &&
             conversationId === activeConversationIdRef.current
@@ -539,7 +533,6 @@ export function useAgentEventHandler({
       lifecycle,
       pendingRequestIdsRef,
       queueAgentReasoningChunk,
-      resetReasoningText,
       resumeSeqByConversationRef,
       scheduleTaskRemoval,
       setPendingUserMessageId,
