@@ -274,18 +274,93 @@ export type StoreReleaseCommit = {
   diff: string;
 };
 
+export type StoreReleaseSourceBlob =
+  | { kind: "text"; content: string }
+  | { kind: "binary"; contentBase64: string };
+
+export type StoreReleaseSourceChange = {
+  path: string;
+  baseHash: string | null;
+  nextHash: string | null;
+  /** Touched-path base content; never the full original source tree. */
+  base?: StoreReleaseSourceBlob;
+  /** Touched-path incoming content; omitted only for deletes/history-only packs. */
+  next?: StoreReleaseSourceBlob;
+};
+
+export type StoreReleaseSourceChangeSet = {
+  schemaVersion: 1;
+  baseRevisionId: string;
+  parentRevisionIds: string[];
+  revisionId: string;
+  featureId?: string;
+  description?: string;
+  changes: StoreReleaseSourceChange[];
+};
+
+export type StoreReleaseSourcePack = {
+  kind: "stella-source-pack";
+  schemaVersion: 1;
+  baseRevisionId: string;
+  revisionId: string;
+  featureId?: string;
+  description?: string;
+  changeSets: StoreReleaseSourceChangeSet[];
+};
+
+export type StoreReleaseSourcePackRef = {
+  kind: "r2";
+  r2Key: string;
+  sha256: string;
+  sizeBytes: number;
+};
+
+export type DesktopReleaseSourcePackRef = {
+  kind: "url";
+  url: string;
+  sha256: string;
+  sizeBytes: number;
+};
+
+export type DesktopReleaseSourceHistoryRef = {
+  kind: "url";
+  url: string;
+  sha256: string;
+  sizeBytes: number;
+};
+
+export type StellaReleaseArtifactRef = {
+  kind: "native-helpers";
+  platform: string;
+  /** Pinned manifest for this helper build; avoids drifting to latest. */
+  manifestUrl: string;
+  manifestSha?: string;
+  commit?: string;
+  builtAt?: string;
+  sourceRevisionId?: string;
+  asset: {
+    url: string;
+    sha256: string;
+    sizeBytes: number;
+  };
+};
+
 /**
  * A published Store release is a behaviour-spec markdown blueprint
- * plus the per-commit reference diffs that produced it on the
- * author's tree. The install agent reads both — the spec for intent,
- * the diffs as a concrete-but-divergence-aware reference — and writes
- * functionally equivalent code on the installer's tree.
+ * plus Stella source packs and per-commit reference diffs that produced it on
+ * the author's tree. Store installs always go through the local install agent:
+ * the spec is the intent, while source packs and diffs are exact reference
+ * material that the agent adapts to the installer's divergent tree.
  */
 export type StoreReleaseArtifact = {
   kind: "blueprint";
   schemaVersion: 2;
   manifest: StoreReleaseManifest;
   blueprintMarkdown: string;
+  /** Content-addressed changed-file pack for direct Stella-native installs. */
+  sourcePack?: StoreReleaseSourcePack;
+  /** Pre-uploaded R2 reference for large source packs. */
+  sourcePackRef?: StoreReleaseSourcePackRef;
   /** Per-commit reference diffs. Optional only for legacy spec-only releases. */
   commits?: StoreReleaseCommit[];
 };
@@ -331,6 +406,10 @@ export type StorePackageReleaseRecord = {
   releaseNumber: number;
   manifest: StoreReleaseManifest;
   blueprintMarkdown: string;
+  /** Source pack passed to the install agent as exact changed-file context. */
+  sourcePack?: StoreReleaseSourcePack;
+  /** R2 reference for large source packs; resolved before agent install. */
+  sourcePackRef?: StoreReleaseSourcePackRef;
   /** Reference diffs the install agent uses; absent on legacy releases. */
   commits?: StoreReleaseCommit[];
   createdAt: number;
@@ -338,15 +417,16 @@ export type StorePackageReleaseRecord = {
 
 /**
  * Persisted record of an installed Store add-on. The install flow
- * spawns a general agent with the blueprint as its prompt; that agent's
- * run produces a normal self-mod commit whose hash is captured here so
- * uninstall can revert it.
+ * records both the local Git commit(s) used for undo and the Stella source
+ * revision(s) used to understand which source graph state was installed.
  */
 export type StoreInstallRecord = {
   packageId: string;
   releaseNumber: number;
   installCommitHash: string | null;
   installCommitHashes: string[];
+  sourceRevisionId: string | null;
+  sourceRevisionIds: string[];
   installedAt: number;
 };
 

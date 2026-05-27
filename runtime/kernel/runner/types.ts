@@ -75,7 +75,7 @@ export type StellaHostRunnerOptions = {
       conversationId: string;
       packageId?: string;
       releaseNumber?: number;
-      mode?: "author" | "install" | "update" | "uninstall";
+      mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
     }) => Promise<void> | void;
     finalizeRun: (args: {
       runId: string;
@@ -165,6 +165,11 @@ export type ChatPayload = {
   attachments?: RuntimeAttachmentRef[];
   agentType?: string;
   storageMode?: "cloud" | "local";
+  selfModMetadata?: {
+    packageId?: string;
+    releaseNumber?: number;
+    mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+  };
 };
 
 export type RuntimeSendMessageInput = {

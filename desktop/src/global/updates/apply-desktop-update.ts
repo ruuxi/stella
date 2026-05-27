@@ -2,7 +2,10 @@ import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
 import { getDeviceIdOrNull } from "@/platform/electron/device";
 import type {
   AgentStreamIpcEvent,
+  DesktopReleaseSourceHistoryRef,
+  ElectronUpdatesApi,
   InstallManifestSnapshot,
+  StellaReleaseArtifactRef,
 } from "@/shared/types/electron";
 
 const DEFAULT_REPO_OWNER = "ruuxi";
@@ -53,6 +56,14 @@ type ApplyDesktopUpdateOptions = {
   publishedCommit: string;
   publishedTag: string;
   publishedAt: number;
+  sourcePackRef?: {
+    kind: "url";
+    url: string;
+    sha256: string;
+    sizeBytes: number;
+  };
+  sourceHistoryRef?: DesktopReleaseSourceHistoryRef;
+  artifactRefs?: StellaReleaseArtifactRef[];
   onAppliedCommit?: (
     manifest: InstallManifestSnapshot | null,
   ) => void | Promise<void>;
@@ -64,6 +75,111 @@ type ApplyDesktopUpdateResult = {
   conversationId: string;
   mode: "auto" | "agent";
   cancel: () => boolean;
+};
+
+export type UpdateAgentFallback = {
+  reason: string;
+  headCommit?: string;
+  changedFiles?: string[];
+  sourcePackFile?: string;
+  sourcePackConflictFile?: string;
+  sourcePackConflictJson?: string;
+};
+
+export const recordOfficialDesktopUpdateSourceHistory = async (args: {
+  updatesApi:
+    | Pick<ElectronUpdatesApi, "recordSourceHistory">
+    | null
+    | undefined;
+  targetCommit: string;
+  releaseTag: string;
+  sourceHistoryRef?: DesktopReleaseSourceHistoryRef;
+}): Promise<void> => {
+  const recordSourceHistory = args.updatesApi?.recordSourceHistory;
+  if (!recordSourceHistory) return;
+  try {
+    await recordSourceHistory({
+      targetCommit: args.targetCommit,
+      releaseTag: args.releaseTag,
+      ...(args.sourceHistoryRef
+        ? { sourceHistoryRef: args.sourceHistoryRef }
+        : {}),
+    });
+  } catch (error) {
+    console.warn(
+      "[updates] Failed to record official desktop source history:",
+      error,
+    );
+  }
+};
+
+export const buildInstallUpdatePrompt = (args: {
+  repoOwner: string;
+  repoName: string;
+  baseCommit: string;
+  targetCommit: string;
+  releaseTag: string;
+  installRoot: string;
+  fallback: UpdateAgentFallback | null;
+}) => {
+  const conflictLines = args.fallback?.sourcePackConflictFile
+    ? [
+        "Fast update path: Stella source-pack merge needs agent resolution.",
+        `Fast path reason: ${args.fallback.reason}`,
+        ...(args.fallback.sourcePackFile
+          ? [
+              `Full source pack: ${args.fallback.sourcePackFile} (relative to the install root)`,
+            ]
+          : []),
+        `Conflict file: ${args.fallback.sourcePackConflictFile} (relative to the install root, kept for audit)`,
+        ...(args.fallback.headCommit
+          ? [
+              `Starting HEAD before agent resolution: ${args.fallback.headCommit}`,
+            ]
+          : []),
+        "The conflict file lists compatible appliedPaths and appliedChanges. Apply each appliedChanges entry exactly as its content field specifies, then resolve the conflicts, stage, and commit the complete result.",
+        ...(args.fallback.changedFiles?.length
+          ? [
+              "Source-pack touched paths:",
+              ...args.fallback.changedFiles.map((file) => `- ${file}`),
+            ]
+          : []),
+        "",
+        ...(args.fallback.sourcePackConflictJson
+          ? [
+              "Source-pack conflict JSON:",
+              "```json",
+              args.fallback.sourcePackConflictJson.trimEnd(),
+              "```",
+              "",
+              "Use the embedded conflict JSON first. It contains base, local, and next content for conflicted paths, plus appliedChanges with exact final content for compatible paths. Apply the compatible text changes from appliedChanges, resolve the conflicted files directly in the install root, preserve local edits, stage and commit the result, and install dependencies only if package manifests or lockfiles changed. If appliedChanges contains binary content that cannot be written with your tools, use the Git fallback instead.",
+            ]
+          : [
+              "The conflict JSON was too large to embed in this prompt. Use the Git fallback instead of trying to read state files from disk.",
+              "Fetch the target commit, merge it, resolve conflicts only if Git reports them, and install dependencies only if package manifests or lockfiles changed.",
+            ]),
+      ]
+    : [
+        ...(args.fallback
+          ? [
+              `Fast update path could not apply automatically: ${args.fallback.reason}`,
+              "",
+            ]
+          : []),
+        "Run the normal update merge from the install root: fetch the target commit, merge it, resolve conflicts only if Git reports them, and install dependencies only if package manifests or lockfiles changed.",
+      ];
+  return [
+    "You are the install-update agent. Apply the upstream change set below.",
+    "",
+    `Repository: ${args.repoOwner}/${args.repoName}`,
+    `Base commit (currently installed): ${args.baseCommit}`,
+    `Target commit (latest published): ${args.targetCommit}`,
+    `Release tag: ${args.releaseTag}`,
+    `Install root: ${args.installRoot}`,
+    "",
+    ...conflictLines,
+    "When finished, report which files updated cleanly, which were merged with local edits, and which were skipped.",
+  ].join("\n");
 };
 
 const buildSyntheticCompletedEvent = (
@@ -124,19 +240,6 @@ export const applyDesktopUpdate = async (
     targetTag: options.publishedTag,
   });
 
-  const prompt = [
-    "You are the install-update agent. Apply the upstream change set below.",
-    "",
-    `Repository: ${repoOwner}/${repoName}`,
-    `Base commit (currently installed): ${baseCommit}`,
-    `Target commit (latest published): ${options.publishedCommit}`,
-    `Release tag: ${options.publishedTag}`,
-    `Install root: ${options.installManifest.installPath}`,
-    "",
-    "Run the normal update merge from the install root: fetch the target commit, merge it, resolve conflicts only if Git reports them, and install dependencies only if package manifests or lockfiles changed.",
-    "When finished, report which files updated cleanly, which were merged with local edits, and which were skipped.",
-  ].join("\n");
-
   const platform = electronApi.platform ?? "darwin";
   const timezone =
     typeof Intl !== "undefined"
@@ -150,13 +253,26 @@ export const applyDesktopUpdate = async (
     targetCommit: options.publishedCommit,
     targetTag: options.publishedTag,
   });
+  let fastApplyFallback: UpdateAgentFallback | null = null;
   try {
     const fastApply = await electronApi.updates.tryApplyCleanUpdate({
       baseCommit,
       targetCommit: options.publishedCommit,
       releaseTag: options.publishedTag,
+      ...(options.sourcePackRef
+        ? { sourcePackRef: options.sourcePackRef }
+        : {}),
+      ...(options.artifactRefs ? { artifactRefs: options.artifactRefs } : {}),
     });
     if (fastApply.status === "applied") {
+      await recordOfficialDesktopUpdateSourceHistory({
+        updatesApi: electronApi.updates,
+        targetCommit: options.publishedCommit,
+        releaseTag: options.publishedTag,
+        ...(options.sourceHistoryRef
+          ? { sourceHistoryRef: options.sourceHistoryRef }
+          : {}),
+      });
       await options.onAppliedCommit?.(fastApply.manifest);
       options.onFinished?.(
         buildSyntheticCompletedEvent(
@@ -174,12 +290,42 @@ export const applyDesktopUpdate = async (
         cancel: () => false,
       };
     }
+    fastApplyFallback = {
+      reason: fastApply.reason,
+      ...(fastApply.headCommit ? { headCommit: fastApply.headCommit } : {}),
+      ...(fastApply.changedFiles
+        ? { changedFiles: fastApply.changedFiles }
+        : {}),
+      ...(fastApply.sourcePackFile
+        ? { sourcePackFile: fastApply.sourcePackFile }
+        : {}),
+      ...(fastApply.sourcePackConflictFile
+        ? { sourcePackConflictFile: fastApply.sourcePackConflictFile }
+        : {}),
+      ...(fastApply.sourcePackConflictJson
+        ? { sourcePackConflictJson: fastApply.sourcePackConflictJson }
+        : {}),
+    };
   } catch (error) {
     if (getActiveDesktopUpdate()?.conversationId === conversationId) {
       setActiveDesktopUpdate(null);
     }
     throw error;
   }
+
+  const prompt = buildInstallUpdatePrompt({
+    repoOwner,
+    repoName,
+    baseCommit,
+    targetCommit: options.publishedCommit,
+    releaseTag: options.publishedTag,
+    installRoot: options.installManifest.installPath,
+    fallback: fastApplyFallback,
+  });
+  const sourcePackStartingHeadCommit =
+    fastApplyFallback?.sourcePackConflictFile && fastApplyFallback.headCommit
+      ? fastApplyFallback.headCommit
+      : null;
 
   setActiveDesktopUpdate({
     status: "starting",
@@ -217,18 +363,34 @@ export const applyDesktopUpdate = async (
     }
     void (async () => {
       // The agent's "completed" outcome only means the agent thread finished
-      // without crashing — it does NOT prove the merge actually landed.
-      // `recordAppliedCommit` verifies HEAD against the target commit using
-      // git itself; on failure we synthesize an "error" event so the UI
-      // surfaces the real outcome instead of silently bumping the manifest.
+      // without crashing — it does NOT prove the update actually landed.
+      // `recordAppliedCommit` verifies Git ancestry for normal merges, or a
+      // clean new local commit for source-pack conflict resolution.
       let effectiveEvent: AgentStreamIpcEvent = event;
       try {
         if (event.outcome === "completed") {
-          await electronApi.updates.refreshNativeHelpers(options.publishedTag);
+          await electronApi.updates.refreshNativeHelpers(
+            options.publishedTag,
+            options.artifactRefs,
+          );
           const manifest = await electronApi.updates.recordAppliedCommit(
             options.publishedCommit,
             options.publishedTag,
+            sourcePackStartingHeadCommit
+              ? {
+                  mode: "release-pointer",
+                  startingHeadCommit: sourcePackStartingHeadCommit,
+                }
+              : undefined,
           );
+          await recordOfficialDesktopUpdateSourceHistory({
+            updatesApi: electronApi.updates,
+            targetCommit: options.publishedCommit,
+            releaseTag: options.publishedTag,
+            ...(options.sourceHistoryRef
+              ? { sourceHistoryRef: options.sourceHistoryRef }
+              : {}),
+          });
           await options.onAppliedCommit?.(manifest);
         }
       } catch (err) {
@@ -262,6 +424,9 @@ export const applyDesktopUpdate = async (
       timezone,
       agentType: AGENT_IDS.INSTALL_UPDATE,
       storageMode: "local",
+      selfModMetadata: {
+        mode: "desktop-update",
+      },
       messageMetadata: {
         installUpdate: {
           baseCommit,
@@ -271,6 +436,15 @@ export const applyDesktopUpdate = async (
           installRoot: options.installManifest.installPath,
           repoOwner,
           repoName,
+          ...(fastApplyFallback
+            ? { fastApplyReason: fastApplyFallback.reason }
+            : {}),
+          ...(fastApplyFallback?.sourcePackConflictFile
+            ? {
+                sourcePackConflictFile:
+                  fastApplyFallback.sourcePackConflictFile,
+              }
+            : {}),
         },
       },
     });

@@ -23,16 +23,43 @@
 
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { setupEnvironment } from "dugite";
 import {
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
+  IPC_UPDATES_RECORD_SOURCE_HISTORY,
   IPC_UPDATES_REFRESH_NATIVE_HELPERS,
   IPC_UPDATES_TRY_APPLY_CLEAN,
 } from "../../src/shared/contracts/ipc-channels.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
+import type {
+  DesktopReleaseSourceHistoryRef,
+  DesktopReleaseSourcePackRef,
+  StellaReleaseArtifactRef,
+  StoreReleaseSourcePack,
+} from "../../../runtime/contracts/index.js";
+import {
+  applyStellaSourcePack,
+  type StellaSourceApplyResult,
+  type StellaSourceApplyConflict,
+  type StellaSourceBlob,
+} from "../../../runtime/kernel/self-mod/stella-source-control.js";
+import {
+  collectSourcePackPaths,
+  findStoreSourcePackApplyObstruction,
+  readLocalSourceTree,
+  writeSourcePackApplyResult,
+} from "../../../runtime/worker/store-source-pack-install.js";
+import {
+  desktopSourcePackCanApplyLocally,
+  desktopSourcePackMatchesBaseCommit,
+  desktopReleaseManifestUrl,
+  recordDesktopUpdateSourceHistory,
+  sourceHistoryRefFromDesktopReleaseManifest,
+} from "./desktop-source-history.js";
 
 const INSTALL_MANIFEST_BASENAME = "stella-install.json";
 const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
@@ -161,6 +188,7 @@ const getNativeHelpersManifestUrl = (): string => {
 const refreshNativeHelpers = async (
   stellaRoot: string,
   _releaseTag?: string,
+  _artifactRefs?: StellaReleaseArtifactRef[],
 ): Promise<{ manifestUrl: string; stdout: string; stderr: string }> => {
   const manifestUrl = getNativeHelpersManifestUrl();
   const scriptPath = path.join(
@@ -235,8 +263,16 @@ type DesktopUpdateFastApplyResult =
   | {
       status: "needs-agent";
       reason: string;
+      headCommit?: string;
       changedFiles?: string[];
+      sourcePackFile?: string;
+      sourcePackConflictFile?: string;
+      sourcePackConflictJson?: string;
     };
+
+const MAX_DESKTOP_SOURCE_PACK_BYTES = 10 * 1024 * 1024;
+const MAX_DESKTOP_SOURCE_HISTORY_BYTES = 10 * 1024 * 1024;
+const MAX_DESKTOP_SOURCE_PACK_CONFLICT_PROMPT_BYTES = 200 * 1024;
 
 const DEPENDENCY_FILE_NAMES = new Set([
   "package.json",
@@ -340,6 +376,44 @@ const writeAppliedCommit = async (
   // `version` is intentionally left alone: it's set by the launcher to
   // its own CARGO_PKG_VERSION at install time and represents the
   // launcher binary's identity, not the desktop release.
+  if (tag) {
+    parsed.desktopReleaseTag = tag;
+  }
+  const next = `${JSON.stringify(parsed, null, 2)}\n`;
+  parseManifest(next);
+  await writeFileAtomic(manifestPath, next);
+  return parseManifest(next);
+};
+
+const writeAppliedReleasePointer = async (
+  stellaRoot: string,
+  commit: string,
+  tag: string | null,
+): Promise<InstallManifestSnapshot | null> => {
+  const manifestPath = manifestPathFromRoot(stellaRoot);
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const raw = await fs.readFile(manifestPath, "utf-8");
+    parseManifest(raw);
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    const recovered = await readManifestWithRecovery(stellaRoot);
+    if (recovered) {
+      parsed = {
+        version: recovered.version,
+        platform: recovered.platform,
+        installPath: recovered.installPath,
+        installedAt: recovered.installedAt,
+        desktopReleaseTag: recovered.desktopReleaseTag,
+        desktopReleaseCommit: recovered.desktopReleaseCommit,
+        desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
+      };
+    }
+  }
+  if (!parsed) {
+    throw new Error("Install manifest is unavailable.");
+  }
+  parsed.desktopReleaseCommit = commit;
   if (tag) {
     parsed.desktopReleaseTag = tag;
   }
@@ -506,6 +580,81 @@ const readManifestWithRecovery = async (
   return await recoverManifest(stellaRoot);
 };
 
+const hashBytes = (bytes: Uint8Array): string =>
+  `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+
+const fetchDesktopSourcePackRef = async (
+  ref: DesktopReleaseSourcePackRef | DesktopReleaseSourceHistoryRef,
+  args: { label: string; maxBytes: number },
+): Promise<StoreReleaseSourcePack> => {
+  if (ref.kind !== "url" || !/^https:\/\//i.test(ref.url)) {
+    throw new Error(`${args.label} reference is invalid.`);
+  }
+  if (!/^sha256:[0-9a-f]{64}$/i.test(ref.sha256)) {
+    throw new Error(`${args.label} hash is invalid.`);
+  }
+  if (
+    !Number.isInteger(ref.sizeBytes) ||
+    ref.sizeBytes <= 0 ||
+    ref.sizeBytes > args.maxBytes
+  ) {
+    throw new Error(`${args.label} size is invalid.`);
+  }
+  const response = await fetch(ref.url);
+  if (!response.ok) {
+    throw new Error(`${args.label} download failed (${response.status}).`);
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength !== ref.sizeBytes) {
+    throw new Error(`${args.label} size did not match the release.`);
+  }
+  if (hashBytes(bytes).toLowerCase() !== ref.sha256.toLowerCase()) {
+    throw new Error(`${args.label} hash did not match the release.`);
+  }
+  return JSON.parse(new TextDecoder().decode(bytes)) as StoreReleaseSourcePack;
+};
+
+const fetchDesktopUpdateSourcePack = async (
+  ref: DesktopReleaseSourcePackRef,
+): Promise<StoreReleaseSourcePack> =>
+  fetchDesktopSourcePackRef(ref, {
+    label: "Desktop source pack",
+    maxBytes: MAX_DESKTOP_SOURCE_PACK_BYTES,
+  });
+
+const sourcePackEmbedsContent = (pack: StoreReleaseSourcePack): boolean =>
+  pack.changeSets.some((changeSet) =>
+    changeSet.changes.some((change) => "base" in change || "next" in change),
+  );
+
+const fetchDesktopSourceHistoryPack = async (
+  ref: DesktopReleaseSourceHistoryRef,
+): Promise<StoreReleaseSourcePack> => {
+  const pack = await fetchDesktopSourcePackRef(ref, {
+    label: "Desktop source history",
+    maxBytes: MAX_DESKTOP_SOURCE_HISTORY_BYTES,
+  });
+  if (sourcePackEmbedsContent(pack)) {
+    throw new Error("Desktop source history must not include source content.");
+  }
+  return pack;
+};
+
+const fetchDesktopReleaseSourceHistoryRef = async (args: {
+  releaseTag: string;
+  targetCommit: string;
+}): Promise<DesktopReleaseSourceHistoryRef | null> => {
+  const url = desktopReleaseManifestUrl(args.releaseTag);
+  const response = await fetch(url);
+  if (!response.ok) {
+    return null;
+  }
+  const manifest = (await response.json()) as unknown;
+  return sourceHistoryRefFromDesktopReleaseManifest(manifest, {
+    targetCommit: args.targetCommit,
+  });
+};
+
 const writeFileAtomic = async (filePath: string, content: string) => {
   const tempPath = path.join(
     path.dirname(filePath),
@@ -526,6 +675,279 @@ const writeFileAtomic = async (filePath: string, content: string) => {
   }
 };
 
+type SourcePackAppliedChangeForAgent = {
+  path: string;
+  content: StellaSourceBlob | null;
+};
+
+const buildSourcePackAppliedChangesForAgent = (
+  sourceApply: StellaSourceApplyResult,
+): SourcePackAppliedChangeForAgent[] =>
+  sourceApply.appliedPaths.map((filePath) => ({
+    path: filePath,
+    content: sourceApply.tree[filePath] ?? null,
+  }));
+
+const tryApplySourcePackDesktopUpdate = async (
+  stellaRoot: string,
+  runner: StellaHostRunner | null,
+  args: {
+    baseCommit: string;
+    targetCommit: string;
+    releaseTag: string;
+    sourcePackRef: DesktopReleaseSourcePackRef;
+    artifactRefs?: StellaReleaseArtifactRef[];
+  },
+): Promise<DesktopUpdateFastApplyResult> => {
+  if (await hasMergeInProgress(stellaRoot)) {
+    return {
+      status: "needs-agent",
+      reason: "A merge is already in progress in the install tree.",
+    };
+  }
+
+  if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
+    return {
+      status: "needs-agent",
+      reason: "The install tree has tracked local changes.",
+    };
+  }
+
+  const sourcePack = await fetchDesktopUpdateSourcePack(args.sourcePackRef);
+  if (!desktopSourcePackMatchesBaseCommit(sourcePack, args.baseCommit)) {
+    return {
+      status: "needs-agent",
+      reason: `Desktop source pack starts at ${sourcePack.baseRevisionId}, but this install is based on git:${args.baseCommit}.`,
+      changedFiles: [],
+    };
+  }
+  const sourcePaths = collectSourcePackPaths(sourcePack);
+  if (!desktopSourcePackCanApplyLocally(sourcePack)) {
+    return {
+      status: "needs-agent",
+      reason:
+        "Desktop source pack omits content needed for local apply; falling back to Git update.",
+      changedFiles: sourcePaths,
+    };
+  }
+  const obstruction = await findStoreSourcePackApplyObstruction({
+    repoRoot: stellaRoot,
+    paths: sourcePaths,
+    isPathTracked: async (sourcePath) => {
+      const result = await runGit(stellaRoot, [
+        "ls-files",
+        "--error-unmatch",
+        "--",
+        sourcePath,
+      ]);
+      return result.exitCode === 0;
+    },
+  });
+  if (obstruction) {
+    return {
+      status: "needs-agent",
+      reason: `${obstruction.reason} Falling back to Git update.`,
+      changedFiles: sourcePaths,
+    };
+  }
+  const recordSourceHistory = async (commitHash = args.targetCommit) => {
+    if (!runner) return;
+    await recordDesktopUpdateSourceHistory(runner, {
+      sourcePack,
+      releaseTag: args.releaseTag,
+      targetCommit: commitHash,
+    }).catch((error) => {
+      console.warn("[updates] Failed to record desktop source history:", error);
+    });
+  };
+  const localTree = await readLocalSourceTree(stellaRoot, sourcePaths);
+  const sourceApply = applyStellaSourcePack({
+    pack: sourcePack,
+    localTree,
+  });
+
+  if (sourceApply.status === "conflicts") {
+    const conflictRoot = path.join(
+      stellaRoot,
+      "state",
+      "raw",
+      "desktop-updates",
+      args.releaseTag.replace(/[^a-z0-9_.-]/gi, "_"),
+    );
+    const sourcePackFile = path.join(conflictRoot, "SOURCE_PACK.json");
+    const conflictFile = path.join(conflictRoot, "SOURCE_PACK_CONFLICTS.json");
+    const sourcePackFileRelative = path.relative(stellaRoot, sourcePackFile);
+    const conflictPayload = {
+      status: sourceApply.status,
+      revisionId: sourceApply.revisionId,
+      sourcePackFile: sourcePackFileRelative,
+      appliedPaths: sourceApply.appliedPaths,
+      appliedChanges: buildSourcePackAppliedChangesForAgent(sourceApply),
+      noopPaths: sourceApply.noopPaths,
+      conflicts: sourceApply.conflicts satisfies StellaSourceApplyConflict[],
+    };
+    const sourcePackConflictJson = `${JSON.stringify(conflictPayload, null, 2)}\n`;
+    const shouldInlineConflictJson =
+      new TextEncoder().encode(sourcePackConflictJson).byteLength <=
+      MAX_DESKTOP_SOURCE_PACK_CONFLICT_PROMPT_BYTES;
+    if (!shouldInlineConflictJson) {
+      return {
+        status: "needs-agent",
+        reason:
+          "Stella source-pack merge reported conflicts, but the handoff was too large for the install-update agent. Falling back to Git update.",
+        headCommit: await readHeadCommit(stellaRoot),
+        changedFiles: sourcePaths,
+      };
+    }
+    await fs.rm(conflictRoot, { recursive: true, force: true });
+    await fs.mkdir(conflictRoot, { recursive: true });
+    await fs.writeFile(
+      sourcePackFile,
+      `${JSON.stringify(sourcePack, null, 2)}\n`,
+      "utf8",
+    );
+    await fs.writeFile(conflictFile, sourcePackConflictJson, "utf8");
+    const sourcePackConflictFile = path.relative(stellaRoot, conflictFile);
+    return {
+      status: "needs-agent",
+      reason: `Stella source-pack merge reported conflicts. Conflict details were written to ${sourcePackConflictFile}.`,
+      headCommit: await readHeadCommit(stellaRoot),
+      changedFiles: sourcePaths,
+      sourcePackFile: sourcePackFileRelative,
+      sourcePackConflictFile,
+      ...(shouldInlineConflictJson ? { sourcePackConflictJson } : {}),
+    };
+  }
+
+  if (sourceApply.appliedPaths.length === 0) {
+    await recordSourceHistory();
+    await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
+    const manifest = await writeAppliedReleasePointer(
+      stellaRoot,
+      args.targetCommit,
+      args.releaseTag,
+    );
+    return {
+      status: "applied",
+      manifest,
+      headCommit: await readHeadCommit(stellaRoot),
+      changedFiles: [],
+      dependencyInstallRan: false,
+      nativeHelpersRefreshed: true,
+    };
+  }
+
+  if (!runner) {
+    return {
+      status: "needs-agent",
+      reason: "Stella runtime is not available for the update morph.",
+      changedFiles: sourceApply.appliedPaths,
+    };
+  }
+
+  const runId = `desktop-update-source-pack:${Date.now()}:${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  let hmrRunStarted = false;
+  try {
+    await runner.beginExternalSelfMod({
+      runId,
+      paths: sourceApply.appliedPaths,
+    });
+    hmrRunStarted = true;
+    await writeSourcePackApplyResult({
+      repoRoot: stellaRoot,
+      paths: sourcePaths,
+      tree: sourceApply.tree,
+      appliedPaths: sourceApply.appliedPaths,
+    });
+
+    const addResult = await runGit(stellaRoot, [
+      "add",
+      "-A",
+      "--",
+      ...sourceApply.appliedPaths,
+    ]);
+    if (addResult.exitCode !== 0) {
+      throw new Error(
+        gitFailureDetail(addResult, "Could not stage source-pack update."),
+      );
+    }
+    const commitResult = await runGit(stellaRoot, [
+      "commit",
+      "-m",
+      `Update to ${args.releaseTag}`,
+    ]);
+    if (commitResult.exitCode !== 0) {
+      throw new Error(
+        gitFailureDetail(commitResult, "Could not commit source-pack update."),
+      );
+    }
+
+    const dependencyInstallRan =
+      sourceApply.appliedPaths.some(isDependencyChange);
+    if (dependencyInstallRan) {
+      let installResult: ProcessRunResult | null = null;
+      let lastMissingBunError: Error | null = null;
+      for (const bunCommand of candidateBunCommands()) {
+        try {
+          installResult = await runProcess(stellaRoot, bunCommand, [
+            "install",
+            "--frozen-lockfile",
+          ]);
+          break;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            lastMissingBunError = error as Error;
+            continue;
+          }
+          throw error;
+        }
+      }
+      if (!installResult) {
+        throw new Error(
+          lastMissingBunError
+            ? "Dependency install failed because Bun is not available."
+            : "Dependency install failed because no Bun command was configured.",
+        );
+      }
+      if (installResult.exitCode !== 0) {
+        const detail = (installResult.stderr || installResult.stdout).trim();
+        throw new Error(
+          detail
+            ? `Dependency install failed: ${detail}`
+            : `Dependency install failed with exit code ${installResult.exitCode}.`,
+        );
+      }
+    }
+
+    await runner.finishExternalSelfMod({ runId, succeeded: true });
+    hmrRunStarted = false;
+    await recordSourceHistory(await readHeadCommit(stellaRoot));
+    await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
+    const manifest = await writeAppliedReleasePointer(
+      stellaRoot,
+      args.targetCommit,
+      args.releaseTag,
+    );
+    return {
+      status: "applied",
+      manifest,
+      headCommit: await readHeadCommit(stellaRoot),
+      changedFiles: sourceApply.appliedPaths,
+      dependencyInstallRan,
+      nativeHelpersRefreshed: true,
+    };
+  } catch (error) {
+    if (hmrRunStarted) {
+      await runner
+        .finishExternalSelfMod({ runId, succeeded: false })
+        .catch(() => undefined);
+    }
+    throw error;
+  }
+};
+
 const tryApplyCleanDesktopUpdate = async (
   stellaRoot: string,
   runner: StellaHostRunner | null,
@@ -533,8 +955,37 @@ const tryApplyCleanDesktopUpdate = async (
     baseCommit: string;
     targetCommit: string;
     releaseTag: string;
+    sourcePackRef?: DesktopReleaseSourcePackRef;
+    artifactRefs?: StellaReleaseArtifactRef[];
   },
 ): Promise<DesktopUpdateFastApplyResult> => {
+  if (args.sourcePackRef) {
+    try {
+      const sourcePackResult = await tryApplySourcePackDesktopUpdate(
+        stellaRoot,
+        runner,
+        {
+          targetCommit: args.targetCommit,
+          releaseTag: args.releaseTag,
+          baseCommit: args.baseCommit,
+          sourcePackRef: args.sourcePackRef,
+          ...(args.artifactRefs ? { artifactRefs: args.artifactRefs } : {}),
+        },
+      );
+      if (
+        sourcePackResult.status === "applied" ||
+        Boolean(sourcePackResult.sourcePackConflictFile)
+      ) {
+        return sourcePackResult;
+      }
+    } catch (error) {
+      console.warn(
+        "[updates] Source-pack update path failed; falling back to git:",
+        error,
+      );
+    }
+  }
+
   if (await hasMergeInProgress(stellaRoot)) {
     return {
       status: "needs-agent",
@@ -569,7 +1020,7 @@ const tryApplyCleanDesktopUpdate = async (
     "HEAD",
   ]);
   if (alreadyApplied.exitCode === 0) {
-    await refreshNativeHelpers(stellaRoot, args.releaseTag);
+    await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedCommit(
       stellaRoot,
       args.targetCommit,
@@ -704,7 +1155,7 @@ const tryApplyCleanDesktopUpdate = async (
       hmrRunStarted = false;
     }
 
-    await refreshNativeHelpers(stellaRoot, args.releaseTag);
+    await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedCommit(
       stellaRoot,
       args.targetCommit,
@@ -758,6 +1209,8 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         baseCommit?: string;
         targetCommit?: string;
         releaseTag?: string;
+        sourcePackRef?: DesktopReleaseSourcePackRef;
+        artifactRefs?: StellaReleaseArtifactRef[];
       },
     ): Promise<DesktopUpdateFastApplyResult> => {
       if (!options.assertPrivilegedSender(event, IPC_UPDATES_TRY_APPLY_CLEAN)) {
@@ -784,7 +1237,17 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       return await tryApplyCleanDesktopUpdate(
         stellaRoot,
         options.getStellaHostRunner?.() ?? null,
-        { baseCommit, targetCommit, releaseTag },
+        {
+          baseCommit,
+          targetCommit,
+          releaseTag,
+          ...(payload.sourcePackRef
+            ? { sourcePackRef: payload.sourcePackRef }
+            : {}),
+          ...(Array.isArray(payload.artifactRefs)
+            ? { artifactRefs: payload.artifactRefs }
+            : {}),
+        },
       );
     },
   );
@@ -793,7 +1256,10 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
     IPC_UPDATES_REFRESH_NATIVE_HELPERS,
     async (
       event,
-      payload: { releaseTag?: string },
+      payload: {
+        releaseTag?: string;
+        artifactRefs?: StellaReleaseArtifactRef[];
+      },
     ): Promise<{
       ok: boolean;
       manifestUrl: string;
@@ -818,8 +1284,67 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!stellaRoot) {
         throw new Error("Stella install directory is unavailable.");
       }
-      const result = await refreshNativeHelpers(stellaRoot, releaseTag);
+      const result = await refreshNativeHelpers(
+        stellaRoot,
+        releaseTag,
+        Array.isArray(payload.artifactRefs) ? payload.artifactRefs : undefined,
+      );
       return { ok: true, ...result };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_UPDATES_RECORD_SOURCE_HISTORY,
+    async (
+      event,
+      payload: {
+        targetCommit?: string;
+        releaseTag?: string;
+        sourceHistoryRef?: DesktopReleaseSourceHistoryRef;
+      },
+    ): Promise<
+      { ok: true; revisionId: string } | { ok: false; reason: string }
+    > => {
+      if (
+        !options.assertPrivilegedSender(
+          event,
+          IPC_UPDATES_RECORD_SOURCE_HISTORY,
+        )
+      ) {
+        throw new Error(
+          "Blocked untrusted updates:recordSourceHistory request.",
+        );
+      }
+      const targetCommit = asString(payload?.targetCommit);
+      if (!targetCommit) {
+        throw new Error("targetCommit is required.");
+      }
+      const releaseTag = asString(payload?.releaseTag);
+      if (!releaseTag) {
+        throw new Error("releaseTag is required.");
+      }
+      let sourceHistoryRef = payload?.sourceHistoryRef ?? null;
+      if (!sourceHistoryRef) {
+        sourceHistoryRef = await fetchDesktopReleaseSourceHistoryRef({
+          releaseTag,
+          targetCommit,
+        });
+      }
+      if (!sourceHistoryRef) {
+        return { ok: false, reason: "source-history-unavailable" };
+      }
+      const runner = options.getStellaHostRunner?.() ?? null;
+      if (!runner) {
+        return { ok: false, reason: "runtime-unavailable" };
+      }
+      const sourcePack = await fetchDesktopSourceHistoryPack(sourceHistoryRef);
+      await recordDesktopUpdateSourceHistory(runner, {
+        sourcePack,
+        releaseTag,
+        targetCommit,
+        origin: "official",
+      });
+      return { ok: true, revisionId: sourcePack.revisionId };
     },
   );
 
@@ -827,7 +1352,12 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
     IPC_UPDATES_RECORD_APPLIED_COMMIT,
     async (
       event,
-      payload: { commit?: string; tag?: string },
+      payload: {
+        commit?: string;
+        tag?: string;
+        mode?: "git-ancestry" | "release-pointer";
+        startingHeadCommit?: string;
+      },
     ): Promise<InstallManifestSnapshot | null> => {
       if (
         !options.assertPrivilegedSender(
@@ -847,6 +1377,25 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       const stellaRoot = options.getStellaRoot();
       if (!stellaRoot) {
         throw new Error("Stella install directory is unavailable.");
+      }
+      if (payload?.mode === "release-pointer") {
+        const startingHeadCommit = asString(payload.startingHeadCommit);
+        if (!startingHeadCommit) {
+          throw new Error("startingHeadCommit is required.");
+        }
+        if (await hasMergeInProgress(stellaRoot)) {
+          throw new Error("A merge is still in progress in the install tree.");
+        }
+        if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
+          throw new Error("The install tree still has tracked local changes.");
+        }
+        const currentHead = await readHeadCommit(stellaRoot);
+        if (currentHead === startingHeadCommit) {
+          throw new Error(
+            "The install-update agent did not create an update commit.",
+          );
+        }
+        return await writeAppliedReleasePointer(stellaRoot, commit, tag);
       }
       return await writeAppliedCommit(stellaRoot, commit, tag);
     },

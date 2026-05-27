@@ -12,6 +12,9 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
+  StoreReleaseSourcePackRef,
+  StoreReleaseSourcePack,
+  StellaReleaseArtifactRef,
   StoreThreadSendInput,
   StoreThreadSnapshot,
 } from "../contracts/index.js";
@@ -34,6 +37,9 @@ export type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
+  StoreReleaseSourcePackRef,
+  StoreReleaseSourcePack,
+  StellaReleaseArtifactRef,
   StoreThreadSendInput,
   StoreThreadSnapshot,
 };
@@ -222,6 +228,8 @@ export const METHOD_NAMES = {
     "internal.worker.selfMod.externalBegin",
   INTERNAL_WORKER_SELF_MOD_EXTERNAL_FINISH:
     "internal.worker.selfMod.externalFinish",
+  INTERNAL_WORKER_SOURCE_PACK_HISTORY_RECORD:
+    "internal.worker.sourcePackHistory.record",
   INTERNAL_WORKER_KILL_ALL_SHELLS: "internal.worker.killAllShells",
   INTERNAL_WORKER_KILL_SHELL_BY_PORT: "internal.worker.killShellByPort",
   INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT:
@@ -434,6 +442,11 @@ export type RuntimeChatPayload = {
   userMessageEventId?: string;
   agentType?: string;
   storageMode?: "cloud" | "local";
+  selfModMetadata?: {
+    packageId?: string;
+    releaseNumber?: number;
+    mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+  };
 };
 
 export type RuntimeVoiceTranscriptPayload = {
@@ -547,7 +560,7 @@ export type RuntimeLocalAgentRequest = {
   selfModMetadata?: {
     packageId?: string;
     releaseNumber?: number;
-    mode?: "author" | "install" | "update" | "uninstall";
+    mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
   };
 };
 

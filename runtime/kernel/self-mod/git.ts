@@ -371,6 +371,21 @@ export const getGitHeadCommitSequence = async (
     .filter(Boolean);
 };
 
+export const getGitCommitParent = async (
+  repoRoot: string,
+  commitHash: string,
+): Promise<string | null> => {
+  await assertGitRepository(repoRoot);
+  const result = await runGitStatus(repoRoot, [
+    "rev-parse",
+    `${commitHash.trim()}^`,
+  ]);
+  if (result.exitCode === 0) {
+    return toTrimmedString(result.stdout) || null;
+  }
+  return null;
+};
+
 const getChangedFilesForCommit = async (
   repoRoot: string,
   commitHash: string,
@@ -1341,7 +1356,30 @@ export const orderCommitHashesChronologically = async (args: {
       `Could not resolve ${missing.length} commit hash(es): ${missing.join(", ")}`,
     );
   }
-  entries.sort((left, right) => left.timestampMs - right.timestampMs);
+  const topoIndex = new Map<string, number>();
+  try {
+    const topoOutput = await runGit(args.repoRoot, [
+      "rev-list",
+      "--reverse",
+      "--topo-order",
+      "--all",
+    ]);
+    topoOutput
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((hash, index) => topoIndex.set(hash, index));
+  } catch {
+    // Fall back to timestamp ordering below.
+  }
+  entries.sort((left, right) => {
+    const leftIndex = topoIndex.get(left.hash);
+    const rightIndex = topoIndex.get(right.hash);
+    if (leftIndex != null && rightIndex != null && leftIndex !== rightIndex) {
+      return leftIndex - rightIndex;
+    }
+    return left.timestampMs - right.timestampMs;
+  });
   return entries.map((entry) => entry.hash);
 };
 

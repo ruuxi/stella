@@ -39,6 +39,8 @@ import type {
   StorePackageRecord as SharedStorePackageRecord,
   StorePackageReleaseRecord as SharedStorePackageReleaseRecord,
   StoreInstallRecord as SharedStoreInstallRecord,
+  DesktopReleaseSourceHistoryRef as SharedDesktopReleaseSourceHistoryRef,
+  StellaReleaseArtifactRef as SharedStellaReleaseArtifactRef,
   StoreThreadMessage as SharedStoreThreadMessage,
   StoreThreadSnapshot as SharedStoreThreadSnapshot,
   SelfModFeatureSnapshot as SharedSelfModFeatureSnapshot,
@@ -108,6 +110,9 @@ export type StoreReleaseManifest = SharedStoreReleaseManifest;
 export type StorePackageRecord = SharedStorePackageRecord;
 export type StorePackageReleaseRecord = SharedStorePackageReleaseRecord;
 export type StoreInstallRecord = SharedStoreInstallRecord;
+export type DesktopReleaseSourceHistoryRef =
+  SharedDesktopReleaseSourceHistoryRef;
+export type StellaReleaseArtifactRef = SharedStellaReleaseArtifactRef;
 export type StoreThreadMessage = SharedStoreThreadMessage;
 export type StoreThreadSnapshot = SharedStoreThreadSnapshot;
 export type SelfModFeatureSnapshot = SharedSelfModFeatureSnapshot;
@@ -587,6 +592,11 @@ export type ElectronAgentApi = {
     userMessageEventId?: string;
     agentType?: string;
     storageMode?: "cloud" | "local";
+    selfModMetadata?: {
+      packageId?: string;
+      releaseNumber?: number;
+      mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+    };
   }) => Promise<{ requestId: string }>;
   sendInput: (payload: {
     conversationId: string;
@@ -909,10 +919,22 @@ export type ElectronSystemApi = {
       description: string;
       hidden: boolean;
       supportedReasoningEfforts: Array<{
-        reasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+        reasoningEffort:
+          | "none"
+          | "minimal"
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh";
         description: string;
       }>;
-      defaultReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+      defaultReasoningEffort:
+        | "none"
+        | "minimal"
+        | "low"
+        | "medium"
+        | "high"
+        | "xhigh";
       inputModalities: string[];
       additionalSpeedTiers: string[];
       isDefault: boolean;
@@ -1031,7 +1053,11 @@ export type DesktopUpdateFastApplyResult =
   | {
       status: "needs-agent";
       reason: string;
+      headCommit?: string;
       changedFiles?: string[];
+      sourcePackFile?: string;
+      sourcePackConflictFile?: string;
+      sourcePackConflictJson?: string;
     };
 
 export type ElectronUpdatesApi = {
@@ -1040,8 +1066,25 @@ export type ElectronUpdatesApi = {
     baseCommit: string;
     targetCommit: string;
     releaseTag: string;
+    sourcePackRef?: {
+      kind: "url";
+      url: string;
+      sha256: string;
+      sizeBytes: number;
+    };
+    artifactRefs?: StellaReleaseArtifactRef[];
   }) => Promise<DesktopUpdateFastApplyResult>;
-  refreshNativeHelpers: (releaseTag: string) => Promise<{
+  recordSourceHistory: (payload: {
+    targetCommit: string;
+    releaseTag: string;
+    sourceHistoryRef?: DesktopReleaseSourceHistoryRef;
+  }) => Promise<
+    { ok: true; revisionId: string } | { ok: false; reason: string }
+  >;
+  refreshNativeHelpers: (
+    releaseTag: string,
+    artifactRefs?: StellaReleaseArtifactRef[],
+  ) => Promise<{
     ok: boolean;
     manifestUrl: string;
     stdout: string;
@@ -1050,6 +1093,10 @@ export type ElectronUpdatesApi = {
   recordAppliedCommit: (
     commit: string,
     tag?: string,
+    options?: {
+      mode?: "git-ancestry" | "release-pointer";
+      startingHeadCommit?: string;
+    },
   ) => Promise<InstallManifestSnapshot | null>;
 };
 

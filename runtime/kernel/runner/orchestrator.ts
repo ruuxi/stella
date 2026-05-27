@@ -109,6 +109,7 @@ export const createOrchestratorController = (
     attachments: StartPreparedRunArgs["attachments"];
     userMessageId: string;
     responseTarget?: StartPreparedRunArgs["responseTarget"];
+    selfModMetadata?: StartPreparedRunArgs["selfModMetadata"];
     callbacks: AgentCallbacks;
     createRunCallbacks: (
       args: Parameters<StartPreparedRunArgs["createRuntimeCallbacks"]>[0],
@@ -154,6 +155,9 @@ export const createOrchestratorController = (
         attachments: args.attachments,
         userMessageId: args.userMessageId,
         ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
+        ...(args.selfModMetadata
+          ? { selfModMetadata: args.selfModMetadata }
+          : {}),
         createRuntimeCallbacks: (runArgs) =>
           args.createRunCallbacks(runArgs, steerableCallbacks.callbackProxy),
         cleanupRun,
@@ -424,9 +428,7 @@ export const createOrchestratorController = (
             text,
             messageType: "message",
             customType: input.customType ?? "runtime.send_message",
-            ...(input.display !== undefined
-              ? { display: input.display }
-              : {}),
+            ...(input.display !== undefined ? { display: input.display } : {}),
           },
         ];
         if (wakePrompt) {
@@ -577,6 +579,7 @@ export const createOrchestratorController = (
       userPrompt,
       ...(promptMessages?.length ? { promptMessages } : {}),
       attachments,
+      selfModMetadata: payload.selfModMetadata,
       userMessageId: payload.userMessageId,
       callbacks,
       createRunCallbacks: ({ runId }, callbacks) =>
@@ -644,8 +647,7 @@ export const createOrchestratorController = (
       toolWorkspaceRoot,
       attachments,
       connectorDeliveryTarget,
-    } =
-      normalizeAutomationRunInput(payload);
+    } = normalizeAutomationRunInput(payload);
     if (!conversationId) {
       resolveResult(createAutomationErrorResult("Missing conversationId"));
       return { runId: "" };
@@ -759,8 +761,7 @@ export const createOrchestratorController = (
    * Returns `true` if a run was cancelled, `false` if none matched.
    */
   const cancelLocalChatByConversation = (conversationId: string): boolean => {
-    const activeConversationId =
-      context.state.activeOrchestratorConversationId;
+    const activeConversationId = context.state.activeOrchestratorConversationId;
     const activeRunId = context.state.activeOrchestratorRunId;
     if (!activeRunId || activeConversationId !== conversationId) {
       return false;

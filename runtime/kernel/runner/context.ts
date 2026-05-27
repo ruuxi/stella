@@ -674,7 +674,7 @@ export const buildAgentContext = async (
     selfModMetadata?: {
       packageId?: string;
       releaseNumber?: number;
-      mode?: "author" | "install" | "update" | "uninstall";
+      mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
     };
   },
 ): Promise<LocalAgentContext> => {

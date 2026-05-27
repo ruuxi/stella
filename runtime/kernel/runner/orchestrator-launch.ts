@@ -34,7 +34,16 @@ type BuildAgentContext = (args: {
   runId: string;
   threadId?: string;
   toolWorkspaceRoot?: string;
+  selfModMetadata?: {
+    packageId?: string;
+    releaseNumber?: number;
+    mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+  };
 }) => Promise<LocalAgentContext>;
+
+type OrchestratorSelfModMetadata = NonNullable<
+  Parameters<BuildAgentContext>[0]["selfModMetadata"]
+>;
 
 const collectWrittenPaths = (
   records: ReadonlyArray<FileChangeRecord | ProducedFileRecord> | undefined,
@@ -190,6 +199,7 @@ export type PreparedOrchestratorRun = {
     conversationId: string;
   };
   toolWorkspaceRoot?: string;
+  selfModMetadata?: OrchestratorSelfModMetadata;
   agentContext: LocalAgentContext;
   resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
   abortController: AbortController;
@@ -217,6 +227,7 @@ export const prepareOrchestratorRun = async (args: {
     requestId: string;
     conversationId: string;
   };
+  selfModMetadata?: Parameters<BuildAgentContext>[0]["selfModMetadata"];
   toolWorkspaceRoot?: string;
 }): Promise<PreparedOrchestratorRun> => {
   const isUserTurn = args.uiVisibility !== "hidden";
@@ -234,6 +245,9 @@ export const prepareOrchestratorRun = async (args: {
       conversationId: args.conversationId,
       agentType: args.agentType,
       runId: args.runId,
+      ...(args.selfModMetadata
+        ? { selfModMetadata: args.selfModMetadata }
+        : {}),
       ...(args.toolWorkspaceRoot
         ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
         : {}),
@@ -287,6 +301,9 @@ export const prepareOrchestratorRun = async (args: {
         : {}),
       ...(args.toolWorkspaceRoot
         ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
+        : {}),
+      ...(args.selfModMetadata
+        ? { selfModMetadata: args.selfModMetadata }
         : {}),
       agentContext,
       resolvedLlm,
@@ -423,117 +440,117 @@ export const launchPreparedOrchestratorRun = (args: {
     }
   };
 
-  const toolExecutor: Parameters<typeof runOrchestratorTurn>[0]["toolExecutor"] =
-    async (toolName, toolArgs, toolContext, signal, onUpdate) => {
-      const isShellCommand = toolName === "exec_command";
-      const shouldGuardShellCommand =
-        isShellCommand && !isReadOnlyShellCommand(toolArgs);
-      const isShellPoll = toolName === "write_stdin";
-      const isParallelWithShellCommands =
-        toolName === "multi_tool_use_parallel" &&
-        parallelContainsShellCommand(toolArgs);
-      const isParallelWithGuardedShellCommands =
-        toolName === "multi_tool_use_parallel" &&
-        parallelContainsGuardedShellCommand(toolArgs);
-      const shellSessionId =
-        typeof toolArgs.session_id === "string" ? toolArgs.session_id : null;
-      const isGuardedShellPoll =
-        isShellPoll && shellSessionId
-          ? guardedShellLeaseSessions.has(shellSessionId)
-          : false;
-      let shellGuardActive = false;
-      if (
-        (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
-        shouldAttachSelfModLifecycle
-      ) {
-        shellGuardActive = Boolean(
-          await context.selfModHmrController
-            ?.beginShellMutationGuard()
-            .catch((error) => {
-              console.warn(
-                "[self-mod-hmr] failed to begin shell mutation guard:",
-                (error as Error).message,
-              );
-              return false;
-            }),
-        );
-        if (!shellGuardActive) {
+  const toolExecutor: Parameters<
+    typeof runOrchestratorTurn
+  >[0]["toolExecutor"] = async (
+    toolName,
+    toolArgs,
+    toolContext,
+    signal,
+    onUpdate,
+  ) => {
+    const isShellCommand = toolName === "exec_command";
+    const shouldGuardShellCommand =
+      isShellCommand && !isReadOnlyShellCommand(toolArgs);
+    const isShellPoll = toolName === "write_stdin";
+    const isParallelWithShellCommands =
+      toolName === "multi_tool_use_parallel" &&
+      parallelContainsShellCommand(toolArgs);
+    const isParallelWithGuardedShellCommands =
+      toolName === "multi_tool_use_parallel" &&
+      parallelContainsGuardedShellCommand(toolArgs);
+    const shellSessionId =
+      typeof toolArgs.session_id === "string" ? toolArgs.session_id : null;
+    const isGuardedShellPoll =
+      isShellPoll && shellSessionId
+        ? guardedShellLeaseSessions.has(shellSessionId)
+        : false;
+    let shellGuardActive = false;
+    if (
+      (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
+      shouldAttachSelfModLifecycle
+    ) {
+      shellGuardActive = Boolean(
+        await context.selfModHmrController
+          ?.beginShellMutationGuard()
+          .catch((error) => {
+            console.warn(
+              "[self-mod-hmr] failed to begin shell mutation guard:",
+              (error as Error).message,
+            );
+            return false;
+          }),
+      );
+      if (!shellGuardActive) {
+        return {
+          error:
+            "Self-mod HMR shell guard failed before running a mutating shell command.",
+        };
+      }
+    }
+
+    try {
+      const preWritePaths = inferPreWritePaths(toolName, toolArgs, toolContext);
+      if (preWritePaths.length > 0) {
+        try {
+          await recordWritePaths(preWritePaths, { captureSnapshot: false });
+        } catch (error) {
+          console.warn(
+            "[self-mod-hmr] pre-write recordWrite failed:",
+            (error as Error).message,
+          );
           return {
-            error:
-              "Self-mod HMR shell guard failed before running a mutating shell command.",
+            error: `Self-mod HMR tracking failed before write: ${(error as Error).message}`,
           };
         }
       }
 
-      try {
-        const preWritePaths = inferPreWritePaths(
-          toolName,
-          toolArgs,
-          toolContext,
-        );
-        if (preWritePaths.length > 0) {
-          try {
-            await recordWritePaths(preWritePaths, { captureSnapshot: false });
-          } catch (error) {
-            console.warn(
-              "[self-mod-hmr] pre-write recordWrite failed:",
-              (error as Error).message,
-            );
-            return {
-              error: `Self-mod HMR tracking failed before write: ${(error as Error).message}`,
-            };
-          }
-        }
-
-        const result = await context.toolHost.executeTool(
-          toolName,
-          toolArgs,
-          toolContext,
-          signal,
-          onUpdate,
-        );
-        if (
-          isShellCommand ||
-          isParallelWithShellCommands ||
-          isGuardedShellPoll
-        ) {
-          await recordToolWrites({
-            fileChanges: result.fileChanges,
-            producedFiles: result.producedFiles,
-          });
-        }
-        const shellState = getShellExecutionState(result);
-        if (
-          isShellCommand &&
-          shellGuardActive &&
-          shellState?.running &&
-          shellState.sessionId
-        ) {
-          if (retainShellGuardLease([shellState.sessionId])) {
-            shellGuardActive = false;
-          }
-        } else if (isParallelWithShellCommands && shellGuardActive) {
-          const runningSessionIds = getParallelRunningShellSessions(result);
-          if (retainShellGuardLease(runningSessionIds)) {
-            shellGuardActive = false;
-          }
-        } else if (
-          isGuardedShellPoll &&
-          shellSessionId &&
-          (shellState?.running === false || shellState == null)
-        ) {
-          await releaseShellSessionGuard(shellSessionId);
-        }
-        return result;
-      } finally {
-        if (shellGuardActive) {
-          await endShellMutationGuard();
-        }
+      const result = await context.toolHost.executeTool(
+        toolName,
+        toolArgs,
+        toolContext,
+        signal,
+        onUpdate,
+      );
+      if (isShellCommand || isParallelWithShellCommands || isGuardedShellPoll) {
+        await recordToolWrites({
+          fileChanges: result.fileChanges,
+          producedFiles: result.producedFiles,
+        });
       }
-    };
+      const shellState = getShellExecutionState(result);
+      if (
+        isShellCommand &&
+        shellGuardActive &&
+        shellState?.running &&
+        shellState.sessionId
+      ) {
+        if (retainShellGuardLease([shellState.sessionId])) {
+          shellGuardActive = false;
+        }
+      } else if (isParallelWithShellCommands && shellGuardActive) {
+        const runningSessionIds = getParallelRunningShellSessions(result);
+        if (retainShellGuardLease(runningSessionIds)) {
+          shellGuardActive = false;
+        }
+      } else if (
+        isGuardedShellPoll &&
+        shellSessionId &&
+        (shellState?.running === false || shellState == null)
+      ) {
+        await releaseShellSessionGuard(shellSessionId);
+      }
+      return result;
+    } finally {
+      if (shellGuardActive) {
+        await endShellMutationGuard();
+      }
+    }
+  };
 
   void (async () => {
     if (shouldAttachSelfModLifecycle) {
+      const selfModMetadata = prepared.selfModMetadata ?? { mode: "update" };
       await context.selfModHmrController?.beginRun(prepared.runId);
       await Promise.resolve(
         context.selfModLifecycle!.beginRun({
@@ -541,7 +558,7 @@ export const launchPreparedOrchestratorRun = (args: {
           taskDescription: "Install Stella update",
           taskPrompt: prepared.userPrompt,
           conversationId: prepared.conversationId,
-          mode: "update",
+          ...selfModMetadata,
         }),
       );
     }
@@ -648,6 +665,7 @@ export const startPreparedOrchestratorRun = async (args: {
     requestId: string;
     conversationId: string;
   };
+  selfModMetadata?: Parameters<BuildAgentContext>[0]["selfModMetadata"];
   userMessageId: string;
   cleanupRun: (runId: string, onCleanup?: () => void) => void;
   onFatalError: (error: unknown) => void;
@@ -671,6 +689,7 @@ export const startPreparedOrchestratorRun = async (args: {
     ...(args.connectorDeliveryTarget
       ? { connectorDeliveryTarget: args.connectorDeliveryTarget }
       : {}),
+    ...(args.selfModMetadata ? { selfModMetadata: args.selfModMetadata } : {}),
   });
 
   args.onPrepared?.(prepared);

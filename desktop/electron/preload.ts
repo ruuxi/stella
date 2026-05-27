@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { IpcRendererEvent } from "electron";
 import type {
   ChatContext,
+  DesktopReleaseSourceHistoryRef,
   SelfModHmrState,
+  StellaReleaseArtifactRef,
 } from "../../runtime/contracts/index.js";
 import type { TaskLifecycleStatus } from "../../runtime/contracts/agent-runtime.js";
 import type { LocalChatUpdatedPayload } from "../../runtime/contracts/local-chat.js";
@@ -112,6 +114,7 @@ import {
   IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
+  IPC_UPDATES_RECORD_SOURCE_HISTORY,
   IPC_UPDATES_REFRESH_NATIVE_HELPERS,
   IPC_UPDATES_TRY_APPLY_CLEAN,
   IPC_VOICE_CREATE_OPENAI_SESSION,
@@ -258,17 +261,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
       source: ThirdPartyMigrationSource;
       sourceRoot?: string;
     }) =>
-      ipcRenderer.invoke(IPC_MIGRATION_PREVIEW, payload) as Promise<
-        ThirdPartyMigrationPreview
-      >,
+      ipcRenderer.invoke(
+        IPC_MIGRATION_PREVIEW,
+        payload,
+      ) as Promise<ThirdPartyMigrationPreview>,
     run: (payload: {
       source: ThirdPartyMigrationSource;
       sourceRoot?: string;
       selection?: ThirdPartyMigrationSelection;
     }) =>
-      ipcRenderer.invoke(IPC_MIGRATION_RUN, payload) as Promise<
-        ThirdPartyMigrationReport
-      >,
+      ipcRenderer.invoke(
+        IPC_MIGRATION_RUN,
+        payload,
+      ) as Promise<ThirdPartyMigrationReport>,
   },
 
   ui: {
@@ -746,6 +751,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>;
       agentType?: string;
       storageMode?: "cloud" | "local";
+      selfModMetadata?: {
+        packageId?: string;
+        releaseNumber?: number;
+        mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+      };
     }) =>
       ipcRenderer.invoke("agent:startChat", payload) as Promise<{
         requestId: string;
@@ -1246,7 +1256,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
         hasApiKey: boolean;
       }>,
     setCursorApiKey: (payload: { apiKey: string }) =>
-      ipcRenderer.invoke(IPC_PREFERENCES_SET_CURSOR_API_KEY, payload) as Promise<{
+      ipcRenderer.invoke(
+        IPC_PREFERENCES_SET_CURSOR_API_KEY,
+        payload,
+      ) as Promise<{
         hasApiKey: boolean;
       }>,
     listCursorModels: () =>
@@ -1267,10 +1280,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
           description: string;
           hidden: boolean;
           supportedReasoningEfforts: Array<{
-            reasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+            reasoningEffort:
+              | "none"
+              | "minimal"
+              | "low"
+              | "medium"
+              | "high"
+              | "xhigh";
             description: string;
           }>;
-          defaultReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+          defaultReasoningEffort:
+            | "none"
+            | "minimal"
+            | "low"
+            | "medium"
+            | "high"
+            | "xhigh";
           inputModalities: string[];
           additionalSpeedTiers: string[];
           isDefault: boolean;
@@ -1405,6 +1430,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
       baseCommit: string;
       targetCommit: string;
       releaseTag: string;
+      sourcePackRef?: {
+        kind: "url";
+        url: string;
+        sha256: string;
+        sizeBytes: number;
+      };
+      artifactRefs?: StellaReleaseArtifactRef[];
     }) =>
       ipcRenderer.invoke(IPC_UPDATES_TRY_APPLY_CLEAN, payload) as Promise<
         | {
@@ -1426,22 +1458,49 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | {
             status: "needs-agent";
             reason: string;
+            headCommit?: string;
             changedFiles?: string[];
+            sourcePackFile?: string;
+            sourcePackConflictFile?: string;
+            sourcePackConflictJson?: string;
           }
       >,
-    refreshNativeHelpers: (releaseTag: string) =>
+    recordSourceHistory: (payload: {
+      targetCommit: string;
+      releaseTag: string;
+      sourceHistoryRef?: DesktopReleaseSourceHistoryRef;
+    }) =>
+      ipcRenderer.invoke(IPC_UPDATES_RECORD_SOURCE_HISTORY, payload) as Promise<
+        { ok: true; revisionId: string } | { ok: false; reason: string }
+      >,
+    refreshNativeHelpers: (
+      releaseTag: string,
+      artifactRefs?: StellaReleaseArtifactRef[],
+    ) =>
       ipcRenderer.invoke(IPC_UPDATES_REFRESH_NATIVE_HELPERS, {
         releaseTag,
+        ...(artifactRefs ? { artifactRefs } : {}),
       }) as Promise<{
         ok: boolean;
         manifestUrl: string;
         stdout: string;
         stderr: string;
       }>,
-    recordAppliedCommit: (commit: string, tag?: string) =>
+    recordAppliedCommit: (
+      commit: string,
+      tag?: string,
+      options?: {
+        mode?: "git-ancestry" | "release-pointer";
+        startingHeadCommit?: string;
+      },
+    ) =>
       ipcRenderer.invoke(IPC_UPDATES_RECORD_APPLIED_COMMIT, {
         commit,
         tag,
+        ...(options?.mode ? { mode: options.mode } : {}),
+        ...(options?.startingHeadCommit
+          ? { startingHeadCommit: options.startingHeadCommit }
+          : {}),
       }) as Promise<{
         version: string;
         platform: string;

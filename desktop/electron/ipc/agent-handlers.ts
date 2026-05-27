@@ -18,9 +18,7 @@ import {
   type TaskLifecycleStatus,
 } from "../../../runtime/contracts/agent-runtime.js";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
-import {
-  IPC_AGENT_ONE_SHOT_COMPLETION,
-} from "../../src/shared/contracts/ipc-channels.js";
+import { IPC_AGENT_ONE_SHOT_COMPLETION } from "../../src/shared/contracts/ipc-channels.js";
 import type {
   RuntimeOneShotCompletionRequest,
   RuntimeOneShotCompletionResult,
@@ -37,7 +35,9 @@ type AgentHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
-  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
+  getBroadcastToMobile?: () =>
+    | ((channel: string, data: unknown) => void)
+    | null;
 };
 
 type AgentEventPayload = {
@@ -203,7 +203,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     if (
       shouldIgnoreTerminalTaskFeedEvent({
         currentStatus: current?.status,
-        eventType: event.type as Parameters<typeof shouldIgnoreTerminalTaskFeedEvent>[0]["eventType"],
+        eventType: event.type as Parameters<
+          typeof shouldIgnoreTerminalTaskFeedEvent
+        >[0]["eventType"],
       })
     ) {
       return;
@@ -288,7 +290,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     }
 
     if (normalizedEvent.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED) {
-      const activeRun = activeRunByConversation.get(normalizedEvent.conversationId);
+      const activeRun = activeRunByConversation.get(
+        normalizedEvent.conversationId,
+      );
       if (activeRun?.runId === normalizedEvent.runId) {
         activeRunByConversation.delete(normalizedEvent.conversationId);
       }
@@ -474,7 +478,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         conversationId: string;
         userPrompt: string;
         selectedText?: string | null;
-        chatContext?: import("../../../runtime/contracts/index.js").ChatContext | null;
+        chatContext?:
+          | import("../../../runtime/contracts/index.js").ChatContext
+          | null;
         deviceId?: string;
         platform?: string;
         timezone?: string;
@@ -488,6 +494,16 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         userMessageEventId?: string;
         agentType?: string;
         storageMode?: "cloud" | "local";
+        selfModMetadata?: {
+          packageId?: string;
+          releaseNumber?: number;
+          mode?:
+            | "author"
+            | "install"
+            | "update"
+            | "uninstall"
+            | "desktop-update";
+        };
       },
     ) => {
       if (!options.assertPrivilegedSender(event, "agent:startChat")) {
@@ -530,7 +546,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         userMessageId?: string;
         finalText?: string;
         persisted?: boolean;
-        selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
+        selfModApplied?: {
+          featureId: string;
+          files: string[];
+          batchIndex: number;
+        };
         error?: string;
         reason?: string;
       }) => {
@@ -587,7 +607,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   runId: ev.runId,
                   conversationId: payload.conversationId,
                   requestId,
-                  ...(ev.userMessageId ? { userMessageId: ev.userMessageId } : {}),
+                  ...(ev.userMessageId
+                    ? { userMessageId: ev.userMessageId }
+                    : {}),
                   ...(ev.uiVisibility ? { uiVisibility: ev.uiVisibility } : {}),
                   ...(ev.agentType ? { agentType: ev.agentType } : {}),
                 },
@@ -705,7 +727,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                 senderWebContentsId,
               );
             },
-            onSelfModHmrState: (ev) => emitSelfModHmrState(ev, senderWebContentsId),
+            onSelfModHmrState: (ev) =>
+              emitSelfModHmrState(ev, senderWebContentsId),
           },
         )
         .catch((error) => {
@@ -722,7 +745,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             return;
           }
 
-          console.error("[chat] Local chat failed before runtime run start:", message);
+          console.error(
+            "[chat] Local chat failed before runtime run start:",
+            message,
+          );
           requestOwners.delete(requestId);
           throw error;
         });
