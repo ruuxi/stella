@@ -80,12 +80,12 @@ describe("Codex agent runtime", () => {
     expect(prompt).not.toContain("Stella is delegating");
     expect(prompt).not.toContain("<stella_system_prompt>");
     expect(prompt).not.toContain("You are Stella.");
+    expect(prompt).not.toContain("<message");
+    expect(prompt).not.toContain("</message>");
     expect(prompt).toContain(
-      '<message index="1" type="message" visibility="hidden" customType="runtime.test">',
+      "[Hidden Stella context 1 (runtime.test)]\nhidden context",
     );
-    expect(prompt).toContain(
-      '<message index="2" type="user" visibility="visible">',
-    );
+    expect(prompt.trim().endsWith("Do the work.")).toBe(true);
   });
 
   it("starts Codex app-server threads with Stella tools and read-only native writes", () => {

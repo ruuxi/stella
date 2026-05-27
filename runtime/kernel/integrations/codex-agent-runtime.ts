@@ -281,18 +281,22 @@ const formatCodexPromptMessage = (
   message: RuntimePromptMessage,
   index: number,
 ): string => {
+  const text = message.text.trim();
+  if (!text) return "";
   const messageType = message.messageType ?? "user";
   const visibility = message.uiVisibility ?? "visible";
   const customType = message.customType?.trim();
-  const attrs = [
-    `index="${index + 1}"`,
-    `type="${messageType}"`,
-    `visibility="${visibility}"`,
-    ...(customType
-      ? [`customType="${customType.replaceAll('"', "&quot;")}"`]
-      : []),
-  ].join(" ");
-  return `<message ${attrs}>\n${message.text.trim()}\n</message>`;
+  if (messageType === "user" && visibility === "visible" && !customType) {
+    return text;
+  }
+  const contextLabel =
+    visibility === "hidden"
+      ? "Hidden Stella context"
+      : messageType === "user"
+        ? "User context"
+        : "Stella context";
+  const suffix = customType ? ` (${customType})` : "";
+  return `[${contextLabel} ${index + 1}${suffix}]\n${text}`;
 };
 
 export const buildCodexPromptFromMessages = (args: {
