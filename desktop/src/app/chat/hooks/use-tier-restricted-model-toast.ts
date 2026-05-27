@@ -20,6 +20,7 @@ import { router } from '@/router'
 import {
   getModelRestrictionActionLabel,
   getModelRestrictionDescription,
+  isRestrictedAudienceAllowedStellaModelId,
   isRestrictedModelOverrideAudience,
   resolveBillingAudience,
   type ManagedModelAudience,
@@ -68,7 +69,9 @@ const getModelToastLabel = (model: string): string => {
     : model
   const lastSlash = withoutStellaPrefix.lastIndexOf('/')
   const displayId =
-    lastSlash >= 0 ? withoutStellaPrefix.slice(lastSlash + 1) : withoutStellaPrefix
+    lastSlash >= 0
+      ? withoutStellaPrefix.slice(lastSlash + 1)
+      : withoutStellaPrefix
   return displayId || 'That model'
 }
 
@@ -120,6 +123,7 @@ export function useTierRestrictedModelToast() {
       // runtime, …) run on the user's own key and are unaffected by
       // Stella plan limits, so don't toast on them.
       if (!override.startsWith('stella/')) continue
+      if (isRestrictedAudienceAllowedStellaModelId(override)) continue
       const dedupeKey = buildToastDedupeKey(audience, agent, override)
       if (seenRef.current.has(dedupeKey)) continue
       seenRef.current.add(dedupeKey)

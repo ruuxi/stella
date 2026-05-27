@@ -82,18 +82,13 @@ export function CompactStellaModelList({
         ) : null}
       </button>
       {presets.length === 0 ? (
-        <div className="compact-stella-list-empty">
-          Loading Stella models…
-        </div>
+        <div className="compact-stella-list-empty">Loading Stella models…</div>
       ) : (
         presets.map((model) => {
           const selected = !isDefaultSelected && model.id === value;
           const subtitle = getStellaSubtitle(model);
-          // `allowedForAudience` is the backend's per-audience
-          // truth (undefined ⇒ allowed; only Stella-provider rows
-          // ever carry the flag). The `restricted` prop is just a
-          // local fast-path so we don't disable anything when the
-          // audience hasn't been resolved yet.
+          // `allowedForAudience` is the backend's per-audience truth
+          // exposed through the Stella catalog endpoint.
           const rowRestricted =
             restricted && !selected && model.allowedForAudience === false;
           return (
