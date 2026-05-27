@@ -57,7 +57,6 @@ const copyPathIfMissing = async (sourcePath: string, targetPath: string) => {
 // reach existing users without trampling local edits.
 const STELLA_HOME_SEED_ENTRIES = [
   "DREAM.md",
-  "registry.md",
   path.join("outputs", "README.md"),
 ] as const;
 
@@ -83,8 +82,7 @@ export const resolveRuntimeStatePath = (
   explicitStatePath?: string,
 ): string => {
   const configuredStatePath =
-    explicitStatePath?.trim() ||
-    process.env.STELLA_HOME?.trim();
+    explicitStatePath?.trim() || process.env.STELLA_HOME?.trim();
   return path.resolve(configuredStatePath || resolveDefaultStellaHomePath());
 };
 

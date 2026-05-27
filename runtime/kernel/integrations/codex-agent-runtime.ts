@@ -6,16 +6,13 @@ import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
-import type {
-  ToolMetadata,
-  ToolResult,
-  ToolUpdateCallback,
-} from "../tools/types.js";
+import type { ToolResult, ToolUpdateCallback } from "../tools/types.js";
 import {
   DEFAULT_CODEX_MODEL,
   loadLocalPreferences,
@@ -28,22 +25,14 @@ import {
 const MAX_STDERR_CAPTURE = 8_000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
-const DEFAULT_CODEX_REQUEST_TIMEOUT_MS = 15 * 1000;
-const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_CODEX_REQUEST_TIMEOUT_MS = 60 * 1000;
+const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
 const CODEX_STELLA_DEVELOPER_INSTRUCTIONS =
-  "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact.";
+  "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact. Stella skills are listed in the system prompt; when a skill matches, inspect its ~/.stella/skills/<name>/SKILL.md file with your normal Codex tools.";
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
 
 type JsonRpcId = number | string;
-type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
 type JsonRpcError = {
   code?: number;
   message?: string;
@@ -109,14 +98,6 @@ type CodexUserInput =
   | { type: "image"; url: string }
   | { type: "localImage"; path: string };
 
-type CodexDynamicToolSpec = {
-  namespace?: string;
-  name: string;
-  description: string;
-  inputSchema: JsonValue;
-  deferLoading?: boolean;
-};
-
 type CodexThreadStartParams = {
   model?: string | null;
   cwd?: string | null;
@@ -126,7 +107,6 @@ type CodexThreadStartParams = {
   baseInstructions?: string | null;
   developerInstructions?: string | null;
   ephemeral?: boolean | null;
-  dynamicTools?: CodexDynamicToolSpec[] | null;
   experimentalRawEvents: boolean;
 };
 
@@ -152,7 +132,7 @@ type CodexTurnStartParams = {
   input: CodexUserInput[];
   cwd?: string | null;
   approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
-  sandboxPolicy?: { type: "readOnly"; networkAccess: boolean };
+  sandboxPolicy?: { type: "dangerFullAccess" };
   model?: string | null;
   effort?: CodexReasoningEffort | null;
 };
@@ -173,7 +153,12 @@ type CodexPatchChangeKind =
   | { type: "update"; move_path: string | null };
 
 export type CodexThreadItem =
-  | { type: "agentMessage"; id: string; text: string }
+  | {
+      type: "agentMessage";
+      id: string;
+      text: string;
+      phase?: "commentary" | "final_answer" | null;
+    }
   | { type: "reasoning"; id: string; summary?: string[]; content?: string[] }
   | {
       type: "commandExecution";
@@ -275,7 +260,8 @@ export type CodexAppServerModel = CodexModel;
 export const shouldUseCodexAgentRuntime = (args: {
   agentType?: string;
   agentEngine?: CodexAgentRuntimeEngine;
-}): boolean => args.agentEngine === "codex_cli";
+}): boolean =>
+  args.agentEngine === "codex_cli" && args.agentType === AGENT_IDS.GENERAL;
 
 const formatCodexPromptMessage = (
   message: RuntimePromptMessage,
@@ -547,45 +533,17 @@ const toolArgsFromCodexValue = (value: unknown): Record<string, unknown> => {
   return {};
 };
 
-const toJsonValue = (value: unknown): JsonValue => {
-  if (value === null) return null;
-  if (typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (Array.isArray(value)) return value.map(toJsonValue);
-  if (value && typeof value === "object") {
-    const out: Record<string, JsonValue> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      out[key] = toJsonValue(entry);
-    }
-    return out;
-  }
-  return null;
-};
-
-export const buildCodexDynamicToolSpecs = (
-  tools?: ToolMetadata[],
-): CodexDynamicToolSpec[] => {
-  if (!tools?.length) return [];
-  return tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: toJsonValue(tool.parameters),
-  }));
-};
-
 export const buildCodexThreadStartParams = (args: {
   model: string;
   cwd?: string;
-  tools?: ToolMetadata[];
   systemPrompt?: string;
 }): CodexThreadStartParams => {
-  const dynamicTools = buildCodexDynamicToolSpecs(args.tools);
   const baseInstructions = args.systemPrompt?.trim();
   return {
     model: args.model,
     ...(args.cwd ? { cwd: args.cwd } : {}),
     approvalPolicy: "never",
-    sandbox: "read-only",
+    sandbox: "danger-full-access",
     serviceName: "Stella",
     ...(baseInstructions
       ? {
@@ -594,7 +552,6 @@ export const buildCodexThreadStartParams = (args: {
         }
       : {}),
     ephemeral: false,
-    ...(dynamicTools.length > 0 ? { dynamicTools } : {}),
     experimentalRawEvents: false,
   };
 };
@@ -611,7 +568,7 @@ export const buildCodexThreadResumeParams = (args: {
     model: args.model,
     ...(args.cwd ? { cwd: args.cwd } : {}),
     approvalPolicy: "never",
-    sandbox: "read-only",
+    sandbox: "danger-full-access",
     ...(baseInstructions
       ? {
           baseInstructions,
@@ -633,7 +590,7 @@ export const buildCodexTurnStartParams = (args: {
   input: args.input,
   ...(args.cwd ? { cwd: args.cwd } : {}),
   approvalPolicy: "never",
-  sandboxPolicy: { type: "readOnly", networkAccess: true },
+  sandboxPolicy: { type: "dangerFullAccess" },
   model: args.model,
   ...(args.reasoningEffort ? { effort: args.reasoningEffort } : {}),
 });
@@ -976,7 +933,6 @@ const startOrResumeCodexThread = async (args: {
   model: string;
   cwd?: string;
   systemPrompt?: string;
-  tools?: ToolMetadata[];
   onStatus?: (status: string) => void;
 }): Promise<string> => {
   if (args.persistedSessionId) {
@@ -1002,7 +958,6 @@ const startOrResumeCodexThread = async (args: {
       model: args.model,
       cwd: args.cwd,
       systemPrompt: args.systemPrompt,
-      tools: args.tools,
     }),
   );
   return response.thread.id;
@@ -1018,8 +973,9 @@ const isNotificationForTurn = (
       ? (notification.params as { threadId?: unknown; turnId?: unknown })
       : null;
   if (!params) return false;
+  if (!params.threadId) return false;
   if (threadId && params.threadId !== threadId) return false;
-  if (turnId && params.turnId !== turnId) return false;
+  if (turnId && params.turnId && params.turnId !== turnId) return false;
   return true;
 };
 
@@ -1033,6 +989,9 @@ const isRequestForTurn = (
       ? (message.params as { threadId?: unknown; turnId?: unknown })
       : null;
   if (!params) return true;
+  if (params.threadId && !threadId) {
+    return false;
+  }
   if (threadId && params.threadId && params.threadId !== threadId) {
     return false;
   }
@@ -1045,21 +1004,24 @@ const isRequestForTurn = (
 const statusFromCodexItem = (item: CodexThreadItem): string | null => {
   switch (item.type) {
     case "commandExecution":
-      return `Codex command ${item.status}: ${item.command}`;
+      return null;
     case "fileChange":
       return item.status === "completed"
         ? `Codex changed ${item.changes.length} file${item.changes.length === 1 ? "" : "s"}`
         : `Codex file change ${item.status}`;
     case "dynamicToolCall":
-      return `${item.tool} ${item.status}`;
+      return null;
     case "mcpToolCall":
-      return `${item.server}.${item.tool} ${item.status}`;
+      return null;
     case "webSearch":
       return `Searching ${item.query}`;
     default:
       return null;
   }
 };
+
+const isFinalCodexAgentMessage = (item: CodexThreadItem): boolean =>
+  item.type === "agentMessage" && item.phase !== "commentary";
 
 export const runCodexAgentTurn = async (request: {
   runId: string;
@@ -1072,7 +1034,6 @@ export const runCodexAgentTurn = async (request: {
   stellaRoot?: string;
   stellaModel?: string;
   attachments?: RuntimeAttachmentRef[];
-  tools?: ToolMetadata[];
   abortSignal?: AbortSignal;
   onStatus?: (status: string) => void;
   onStream?: (chunk: string) => void;
@@ -1109,10 +1070,12 @@ export const runCodexAgentTurn = async (request: {
   let turnFailure: string | null = null;
   let completed = false;
   let finalAgentMessageCompleted = false;
+  let turnCompletionReported = false;
   let waitingForTurnCompletion = false;
   let turnIdleTimer: ReturnType<typeof setTimeout> | undefined;
   let agentMessageCompletionTimer: ReturnType<typeof setTimeout> | undefined;
   let refreshTurnIdleTimer: (() => void) | undefined;
+  let scheduleCompletionGrace: (() => void) | undefined;
 
   const client = request.reuseAppServer
     ? await getSharedCodexClient()
@@ -1127,10 +1090,11 @@ export const runCodexAgentTurn = async (request: {
       completed = true;
       resolve();
     };
-    const scheduleAgentMessageCompletion = () => {
+    scheduleCompletionGrace = () => {
       if (
         !waitingForTurnCompletion ||
         completed ||
+        !turnCompletionReported ||
         !finalAgentMessageCompleted
       ) {
         return;
@@ -1141,7 +1105,6 @@ export const runCodexAgentTurn = async (request: {
       agentMessageCompletionTimer = setTimeout(() => {
         resolveCompleted();
       }, CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS);
-      agentMessageCompletionTimer.unref?.();
     };
     refreshTurnIdleTimer = () => {
       if (!waitingForTurnCompletion || completed) return;
@@ -1151,7 +1114,11 @@ export const runCodexAgentTurn = async (request: {
         DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS,
       );
       turnIdleTimer = setTimeout(() => {
-        if (finalAgentMessageCompleted && finalText.trim()) {
+        if (
+          turnCompletionReported &&
+          finalAgentMessageCompleted &&
+          finalText.trim()
+        ) {
           resolveCompleted();
           return;
         }
@@ -1185,7 +1152,8 @@ export const runCodexAgentTurn = async (request: {
             reject(new Error(message));
             return;
           }
-          resolveCompleted();
+          turnCompletionReported = true;
+          scheduleCompletionGrace?.();
           return;
         }
         case "error":
@@ -1211,11 +1179,15 @@ export const runCodexAgentTurn = async (request: {
           const item = notification.params.item;
           const status = statusFromCodexItem(item);
           if (status) request.onStatus?.(status);
-          if (item.type === "agentMessage" && item.text) {
+          if (
+            item.type === "agentMessage" &&
+            item.text &&
+            isFinalCodexAgentMessage(item)
+          ) {
             finalText = item.text;
             if (notification.method === "item/completed") {
               finalAgentMessageCompleted = true;
-              scheduleAgentMessageCompletion();
+              scheduleCompletionGrace?.();
             }
           }
           appendUniqueFileChanges(
@@ -1318,7 +1290,6 @@ export const runCodexAgentTurn = async (request: {
       model,
       cwd: request.cwd,
       systemPrompt: request.systemPrompt,
-      tools: request.executeTool ? request.tools : undefined,
       onStatus: request.onStatus,
     });
 
@@ -1338,6 +1309,7 @@ export const runCodexAgentTurn = async (request: {
     }
 
     waitingForTurnCompletion = true;
+    scheduleCompletionGrace?.();
     refreshTurnIdleTimer?.();
     await turnCompleted;
 

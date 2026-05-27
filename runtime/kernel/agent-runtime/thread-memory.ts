@@ -130,7 +130,10 @@ export const buildHistorySource = (
             { type: "text", text: trimmed } satisfies TextContent,
           ]);
         }
-        if (entry.role === "runtimeInternal" && typeof entry.content === "string") {
+        if (
+          entry.role === "runtimeInternal" &&
+          typeof entry.content === "string"
+        ) {
           const trimmed = entry.content.trim();
           if (!trimmed) return null;
           return {
@@ -212,9 +215,7 @@ const contentPreviewFromTextAndImages = (
 ): string =>
   content
     .map((block) =>
-      block.type === "text"
-        ? block.text
-        : `[Image: ${block.mimeType}]`,
+      block.type === "text" ? block.text : `[Image: ${block.mimeType}]`,
     )
     .join("\n")
     .trim();
@@ -245,10 +246,9 @@ export const buildThreadMessagePreview = (
       .trim();
   }
   const body = contentPreviewFromTextAndImages(payload.content);
-  return [
-    `[Tool result] ${payload.toolName}`,
-    ...(body ? [body] : []),
-  ].join("\n").trim();
+  return [`[Tool result] ${payload.toolName}`, ...(body ? [body] : [])]
+    .join("\n")
+    .trim();
 };
 
 export const persistThreadPayloadMessage = (
@@ -310,15 +310,11 @@ const hasToolGuidance = (
   return toolNames.some((toolName) => toolsAllowlist.includes(toolName));
 };
 
-const hasShellToolGuidance = (
-  context: LocalAgentContext,
-): boolean => {
+const hasShellToolGuidance = (context: LocalAgentContext): boolean => {
   return hasToolGuidance(context, ["Bash", "exec_command"]);
 };
 
-const buildFileEditingPrompt = (
-  context: LocalAgentContext,
-): string | null => {
+const buildFileEditingPrompt = (context: LocalAgentContext): string | null => {
   const explicitlyHasWriteEdit =
     Array.isArray(context.toolsAllowlist) &&
     context.toolsAllowlist.length > 0 &&
@@ -346,9 +342,7 @@ const buildFileEditingPrompt = (
   ].join("\n");
 };
 
-export const buildSystemPrompt = (
-  context: LocalAgentContext,
-): string => {
+export const buildSystemPrompt = (context: LocalAgentContext): string => {
   const sections = [context.systemPrompt.trim()];
 
   if (context.dynamicContext?.trim()) {
@@ -406,22 +400,26 @@ export const buildStartupPromptMessages = async (args: {
   context: LocalAgentContext;
   stellaHome?: string;
   stellaRoot?: string;
+  includeRegistry?: boolean;
 }): Promise<RuntimePromptMessage[]> => {
   const messages: RuntimePromptMessage[] = [];
-  const shouldIncludeStartupDocs = !(args.context.threadHistory?.length);
+  const shouldIncludeStartupDocs = !args.context.threadHistory?.length;
+  const shouldIncludeRegistry = args.includeRegistry ?? false;
 
   if (shouldIncludeStartupDocs) {
-    const registryContent = await readRegistryContent({
-      stellaHome: args.stellaHome,
-    });
-    if (registryContent) {
-      messages.push(
-        createInternalPromptMessage(
-          buildStartupDocMessage(LIFE_REGISTRY_DISPLAY_PATH, registryContent),
-          "hidden",
-          "bootstrap.startup_doc",
-        ),
-      );
+    if (shouldIncludeRegistry) {
+      const registryContent = await readRegistryContent({
+        stellaHome: args.stellaHome,
+      });
+      if (registryContent) {
+        messages.push(
+          createInternalPromptMessage(
+            buildStartupDocMessage(LIFE_REGISTRY_DISPLAY_PATH, registryContent),
+            "hidden",
+            "bootstrap.startup_doc",
+          ),
+        );
+      }
     }
 
     const coreMemory = args.context.coreMemory?.trim();
@@ -698,8 +696,12 @@ export const compactRuntimeThreadHistory = async (args: {
       threadKey: args.threadKey,
       resolvedLlm: args.resolvedLlm,
       agentType: args.agentType,
-      ...(args.overrideSummary ? { overrideSummary: args.overrideSummary } : {}),
-      ...(args.preserveLastN !== undefined ? { preserveLastN: args.preserveLastN } : {}),
+      ...(args.overrideSummary
+        ? { overrideSummary: args.overrideSummary }
+        : {}),
+      ...(args.preserveLastN !== undefined
+        ? { preserveLastN: args.preserveLastN }
+        : {}),
     });
   } catch (error) {
     logger.warn("thread.compaction.failed", {

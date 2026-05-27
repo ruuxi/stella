@@ -11,34 +11,11 @@ import type { DiscoveryKnowledgeSeedPayload } from "../../../../runtime/contract
 const tempDirs: string[] = [];
 
 const createTempHome = async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "stella-life-knowledge-"));
+  const dir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "stella-life-knowledge-"),
+  );
   tempDirs.push(dir);
   await fs.mkdir(path.join(dir, "skills"), { recursive: true });
-  await fs.writeFile(
-    path.join(dir, "registry.md"),
-    [
-      "# Life Registry",
-      "",
-      "## Entry Points",
-      "",
-      "- [Skills Index](skills/index.md)",
-      "",
-      "## Fast Paths",
-      "",
-      "- Browser automation: [stella-browser](skills/stella-browser/SKILL.md)",
-      "- User profile and context: [user-profile](skills/user-profile/SKILL.md)",
-      "",
-      "## Reference Docs",
-      "",
-      "- [stella-browser command reference](skills/stella-browser/references/commands.md)",
-      "",
-      "## Notes",
-      "",
-      "- Prefer a direct read when you already know the likely document.",
-      "",
-    ].join("\n"),
-    "utf-8",
-  );
   await fs.writeFile(
     path.join(dir, "skills", "index.md"),
     [
@@ -55,7 +32,7 @@ const createTempHome = async () => {
       "",
       "## Backlinks",
       "",
-      "- [Life Registry](../registry.md)",
+      "- [Skills Index](index.md)",
       "",
     ].join("\n"),
     "utf-8",
@@ -65,7 +42,9 @@ const createTempHome = async () => {
 
 afterEach(async () => {
   await Promise.all(
-    tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })),
+    tempDirs
+      .splice(0)
+      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
 });
 
@@ -134,8 +113,12 @@ describe("life knowledge discovery writer", () => {
 
     // SKILL.md links to both summary pages and raw
     expect(skillFile).toContain("## Summary Pages");
-    expect(skillFile).toContain("[Browsing & Bookmarks](browsing-bookmarks.md)");
-    expect(skillFile).toContain("[Development Environment](dev-environment.md)");
+    expect(skillFile).toContain(
+      "[Browsing & Bookmarks](browsing-bookmarks.md)",
+    );
+    expect(skillFile).toContain(
+      "[Development Environment](dev-environment.md)",
+    );
     expect(skillFile).toContain("## Raw Discovery Data");
     expect(skillFile).toContain("../../raw/discovery/browsing-bookmarks.md");
 
@@ -156,7 +139,7 @@ describe("life knowledge discovery writer", () => {
     expect(rawDev).toContain("/Users/rahulnanda/projects/stella");
     expect(rawDev).toContain("847 files");
 
-    // Index and registry already include the static user-profile entry.
+    // Index already includes the static user-profile entry.
     const skillsIndex = await fs.readFile(
       path.join(stellaHome, "skills", "index.md"),
       "utf-8",
@@ -192,12 +175,17 @@ describe("life knowledge discovery writer", () => {
     // No summary page for browsing since no analysis was provided
     await expect(
       fs.access(
-        path.join(stellaHome, "skills", "user-profile", "browsing-bookmarks.md"),
+        path.join(
+          stellaHome,
+          "skills",
+          "user-profile",
+          "browsing-bookmarks.md",
+        ),
       ),
     ).rejects.toThrow();
   });
 
-  it("does not modify static registry or skills index entries on repeated writes", async () => {
+  it("does not modify static skills index entries on repeated writes", async () => {
     const stellaHome = await createTempHome();
     const payload: DiscoveryKnowledgeSeedPayload = {
       coreMemory: "[who]\n- Test user.\n",
@@ -205,10 +193,6 @@ describe("life knowledge discovery writer", () => {
     };
     const initialSkillsIndex = await fs.readFile(
       path.join(stellaHome, "skills", "index.md"),
-      "utf-8",
-    );
-    const initialRegistry = await fs.readFile(
-      path.join(stellaHome, "registry.md"),
       "utf-8",
     );
 
@@ -219,20 +203,10 @@ describe("life knowledge discovery writer", () => {
       path.join(stellaHome, "skills", "index.md"),
       "utf-8",
     );
-    const registry = await fs.readFile(
-      path.join(stellaHome, "registry.md"),
-      "utf-8",
-    );
 
     expect(skillsIndex).toBe(initialSkillsIndex);
-    expect(registry).toBe(initialRegistry);
     expect(
       skillsIndex.match(/\[user-profile\]\(user-profile\/SKILL\.md\)/g)?.length,
-    ).toBe(1);
-    expect(
-      registry.match(
-        /User profile and context: \[user-profile\]\(skills\/user-profile\/SKILL\.md\)/g,
-      )?.length,
     ).toBe(1);
   });
 });

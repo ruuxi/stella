@@ -19,10 +19,22 @@ type RawSignalPage = {
 };
 
 const rawSignalPages: RawSignalPage[] = [
-  { key: "browsing_bookmarks", title: "Browsing & Bookmarks", fileName: "browsing-bookmarks.md" },
-  { key: "dev_environment", title: "Development Environment", fileName: "dev-environment.md" },
+  {
+    key: "browsing_bookmarks",
+    title: "Browsing & Bookmarks",
+    fileName: "browsing-bookmarks.md",
+  },
+  {
+    key: "dev_environment",
+    title: "Development Environment",
+    fileName: "dev-environment.md",
+  },
   { key: "apps_system", title: "Apps & System", fileName: "apps-system.md" },
-  { key: "messages_notes", title: "Messages & Notes", fileName: "messages-notes.md" },
+  {
+    key: "messages_notes",
+    title: "Messages & Notes",
+    fileName: "messages-notes.md",
+  },
 ];
 
 type KnowledgePageDef = {
@@ -32,13 +44,26 @@ type KnowledgePageDef = {
 };
 
 const knowledgePages: KnowledgePageDef[] = [
-  { key: "browsing_bookmarks", fileName: "browsing-bookmarks.md", title: "Browsing & Bookmarks" },
-  { key: "dev_environment", fileName: "dev-environment.md", title: "Development Environment" },
+  {
+    key: "browsing_bookmarks",
+    fileName: "browsing-bookmarks.md",
+    title: "Browsing & Bookmarks",
+  },
+  {
+    key: "dev_environment",
+    fileName: "dev-environment.md",
+    title: "Development Environment",
+  },
   { key: "apps_system", fileName: "apps-system.md", title: "Apps & System" },
-  { key: "messages_notes", fileName: "messages-notes.md", title: "Messages & Notes" },
+  {
+    key: "messages_notes",
+    fileName: "messages-notes.md",
+    title: "Messages & Notes",
+  },
 ];
 
-const normalizeContent = (value: string): string => value.trim().replace(/\n{3,}/g, "\n\n");
+const normalizeContent = (value: string): string =>
+  value.trim().replace(/\n{3,}/g, "\n\n");
 
 const topicDir = (stellaHome: string) =>
   path.join(stellaHome, "skills", USER_PROFILE_SLUG);
@@ -64,11 +89,7 @@ const buildKnowledgePage = (
   analysis: string,
   hasRaw: boolean,
 ): string => {
-  const lines = [
-    `# ${page.title}`,
-    "",
-    normalizeContent(analysis),
-  ];
+  const lines = [`# ${page.title}`, "", normalizeContent(analysis)];
 
   if (hasRaw) {
     const rawPage = rawSignalPages.find((r) => r.key === page.key);
@@ -126,7 +147,9 @@ const buildSkillFile = (
     "",
     "## Summary Pages",
     "",
-    ...(pageLinks.length > 0 ? pageLinks : ["- No summary pages are populated yet."]),
+    ...(pageLinks.length > 0
+      ? pageLinks
+      : ["- No summary pages are populated yet."]),
     "",
     "## Raw Discovery Data",
     "",
@@ -137,7 +160,6 @@ const buildSkillFile = (
     "## Backlinks",
     "",
     "- [Skills Index](../index.md)",
-    "- [Life Registry](../../registry.md)",
   ].join("\n");
 };
 
@@ -185,7 +207,11 @@ export const writeDiscoveryKnowledge = async (
     ...availableKnowledgePages.map((page) =>
       fs.writeFile(
         path.join(skillRoot, page.fileName),
-        buildKnowledgePage(page, analyses[page.key]!, availableRawKeys.has(page.key)),
+        buildKnowledgePage(
+          page,
+          analyses[page.key]!,
+          availableRawKeys.has(page.key),
+        ),
         "utf-8",
       ),
     ),
@@ -199,5 +225,4 @@ export const writeDiscoveryKnowledge = async (
       ),
     ),
   ]);
-
 };

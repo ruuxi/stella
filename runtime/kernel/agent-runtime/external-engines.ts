@@ -133,7 +133,7 @@ type ExternalEngineSessionKind =
   | "cursor_sdk"
   | "codex_cli";
 
-type ExternalOrchestratorEngine = "claude_code_local" | "codex_cli";
+type ExternalOrchestratorEngine = "claude_code_local";
 
 const shouldUseClaudeCodeRuntime = (opts: BaseRunOptions): boolean => {
   const primaryModelId = opts.agentContext.model ?? opts.resolvedLlm.model.id;
@@ -149,14 +149,6 @@ export const selectExternalOrchestratorEngine = (
 ): ExternalOrchestratorEngine | null => {
   if (shouldUseClaudeCodeRuntime(opts)) {
     return "claude_code_local";
-  }
-  if (
-    shouldUseCodexAgentRuntime({
-      agentType: opts.agentType,
-      agentEngine: opts.agentContext.agentEngine,
-    })
-  ) {
-    return "codex_cli";
   }
   return null;
 };
@@ -298,7 +290,7 @@ const contentToText = (content: AgentMessage["content"]): string => {
     .trim();
 };
 
-const buildClaudeHistoryPromptMessage = (args: {
+export const buildExternalStellaHistoryPromptMessage = (args: {
   opts: BaseRunOptions;
   promptMessages: RuntimePromptMessage[];
 }): RuntimePromptMessage | null => {
@@ -334,7 +326,7 @@ const buildClaudeHistoryPromptMessage = (args: {
     uiVisibility: "hidden",
     customType: "runtime.stella_thread_history",
     text: [
-      '<stella_thread_history source="stella" note="Stella chat/runtime history is the source of truth for recall. Use it to answer questions about prior Stella messages, even when Claude Code session state is unavailable or incomplete.">',
+      '<stella_thread_history source="stella" note="Stella chat/runtime history is the source of truth for recall. Use it to answer questions about prior Stella messages, even when external engine session state is unavailable or incomplete.">',
       ...lines,
       "</stella_thread_history>",
     ].join("\n"),
@@ -529,7 +521,7 @@ const runClaudeHostedTurn = async (args: {
     return toolResult;
   };
 
-  const historyPromptMessage = buildClaudeHistoryPromptMessage({
+  const historyPromptMessage = buildExternalStellaHistoryPromptMessage({
     opts: args.opts,
     promptMessages: args.promptMessages,
   });
@@ -580,7 +572,7 @@ const runClaudeHostedTurn = async (args: {
     }
     const queuedPromptMessages = queued.map(formatQueuedClaudeMessage);
     const queuedAttachments = attachmentsFromQueuedMessages(queued);
-    const queuedHistoryPromptMessage = buildClaudeHistoryPromptMessage({
+    const queuedHistoryPromptMessage = buildExternalStellaHistoryPromptMessage({
       opts: args.opts,
       promptMessages: queuedPromptMessages,
     });
@@ -767,10 +759,6 @@ const runCodexHostedTurn = async (args: {
     threadKey,
     engine: "codex_cli",
   });
-  const toolMetadata = getRuntimeToolMetadata({
-    toolsAllowlist: args.opts.agentContext.toolsAllowlist,
-    toolCatalog: args.opts.toolCatalog,
-  });
   const emitToolUpdateStatus = (update: ToolResult) => {
     const details =
       update.details && typeof update.details === "object"
@@ -865,7 +853,6 @@ const runCodexHostedTurn = async (args: {
     stellaRoot: args.opts.stellaRoot,
     stellaModel: args.opts.agentContext.model,
     attachments: args.opts.attachments,
-    tools: toolMetadata,
     abortSignal: args.opts.abortSignal,
     onStatus: (status) => {
       args.opts.onProgress?.(status);
@@ -905,7 +892,6 @@ const runCodexHostedTurn = async (args: {
       stellaRoot: args.opts.stellaRoot,
       stellaModel: args.opts.agentContext.model,
       attachments: queuedAttachments,
-      tools: toolMetadata,
       abortSignal: args.opts.abortSignal,
       onStatus: (status) => {
         args.opts.onProgress?.(status);
@@ -1000,24 +986,14 @@ export const runExternalOrchestratorTurn = async (
       queueUserMessageId: session.runEvents.queueUserMessageId,
       agent: liveAgent.agent,
     });
-    const result =
-      engine === "codex_cli"
-        ? await runCodexHostedTurn({
-            opts,
-            session,
-            systemPrompt,
-            promptMessages,
-            callbacks: opts.callbacks,
-            liveAgent,
-          })
-        : await runClaudeHostedTurn({
-            opts,
-            session,
-            systemPrompt,
-            promptMessages,
-            callbacks: opts.callbacks,
-            liveAgent,
-          });
+    const result = await runClaudeHostedTurn({
+      opts,
+      session,
+      systemPrompt,
+      promptMessages,
+      callbacks: opts.callbacks,
+      liveAgent,
+    });
     return await session.finalizeSuccess(result.finalText);
   } catch (error) {
     const interruptedReason = resolveInterruptionReason({

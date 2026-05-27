@@ -116,15 +116,13 @@ stella-office validate <file>
 
 ### view modes
 
-
-| Mode        | Description                           | Useful flags                                        |
-| ----------- | ------------------------------------- | --------------------------------------------------- |
-| `outline`   | Document structure                    |                                                     |
-| `stats`     | Statistics (pages, words, shapes)     |                                                     |
-| `issues`    | Formatting/content/structure problems | `--type format\|content\|structure`, `--limit N`    |
-| `text`      | Plain text extraction                 | `--start N --end N`, `--max-lines N`                |
-| `annotated` | Text with formatting annotations      |                                                     |
-
+| Mode        | Description                           | Useful flags                                     |
+| ----------- | ------------------------------------- | ------------------------------------------------ |
+| `outline`   | Document structure                    |                                                  |
+| `stats`     | Statistics (pages, words, shapes)     |                                                  |
+| `issues`    | Formatting/content/structure problems | `--type format\|content\|structure`, `--limit N` |
+| `text`      | Plain text extraction                 | `--start N --end N`, `--max-lines N`             |
+| `annotated` | Text with formatting annotations      |                                                  |
 
 ### get
 
@@ -195,13 +193,11 @@ Run `stella-office <format> set` for all settable elements. Run `stella-office <
 
 **Value formats:**
 
-
 | Type       | Format                 | Examples                                              |
 | ---------- | ---------------------- | ----------------------------------------------------- |
 | Colors     | Hex, named, RGB, theme | `FF0000`, `red`, `rgb(255,0,0)`, `accent1`..`accent6` |
 | Spacing    | Unit-qualified         | `12pt`, `0.5cm`, `1.5x`, `150%`                       |
 | Dimensions | EMU or suffixed        | `914400`, `2.54cm`, `1in`, `72pt`, `96px`             |
-
 
 ### find — format or replace matched text
 
@@ -254,13 +250,11 @@ stella-office add <file> <parent> --from <path>
 
 **Element types (with aliases):**
 
-
 | Format   | Types                                                                                                                                                                                                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **pptx** | slide, shape (textbox), picture (image/img), chart, table, row (tr), connector (connection/line), group, video (audio/media), equation (formula/math), notes, paragraph (para), run, zoom (slidezoom)                                                                          |
 | **docx** | paragraph (para), run, table, row (tr), cell (td), image (picture/img), header, footer, section, bookmark, comment, footnote, endnote, formfield, sdt (contentcontrol), chart, equation (formula/math), field, hyperlink, style, toc, watermark, break (pagebreak/columnbreak) |
 | **xlsx** | sheet, row, cell, chart, image (picture), comment, table (listobject), namedrange (definedname), pivottable (pivot), sparkline, validation (datavalidation), autofilter, shape, textbox, databar/colorscale/iconset/formulacf (conditional formatting), csv (tsv)              |
-
 
 **Text-anchored insert** (`--after find:X` / `--before find:X`):
 
@@ -326,7 +320,6 @@ Run `stella-office <format> raw` for available parts per format.
 
 ## Common Pitfalls
 
-
 | Pitfall                              | Correct Approach                                                                  |
 | ------------------------------------ | --------------------------------------------------------------------------------- |
 | `--name "foo"`                       | Use `--prop name="foo"` — all attributes go through `--prop`                      |
@@ -337,7 +330,6 @@ Run `stella-office <format> raw` for available parts per format.
 | Modifying an open file               | Close the file in PowerPoint, Word, Excel, or WPS first                           |
 | `\n` in shell strings                | Use `\\n` for newlines inside `--prop text="..."`                                 |
 | `stella-office set f.pptx /slide[1]` | Always single-quote paths with brackets: `'/slide[1]'`                            |
-
 
 ---
 
@@ -368,5 +360,3 @@ stella-office pptx help
 ## Backlinks
 
 - [Skills Index](state/skills/index.md)
-- [Life Registry](state/registry.md)
-
