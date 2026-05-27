@@ -31,7 +31,6 @@ describe("ensureStellaHomeSeeded", () => {
     });
     await mkdir(path.join(seedRoot, "outputs"), { recursive: true });
     await mkdir(path.join(seedRoot, "memories"), { recursive: true });
-    await writeFile(path.join(seedRoot, "registry.md"), "seed registry");
     await writeFile(path.join(seedRoot, "DREAM.md"), "seed dream");
     await writeFile(
       path.join(seedRoot, "skills", "stella-desktop", "SKILL.md"),
@@ -43,16 +42,18 @@ describe("ensureStellaHomeSeeded", () => {
 
     await ensureStellaHomeSeeded(stellaRoot, stellaHome);
 
-    await expect(readFile(path.join(stellaHome, "registry.md"), "utf-8"))
-      .resolves.toBe("seed registry");
+    await expect(
+      readFile(path.join(stellaHome, "registry.md"), "utf-8"),
+    ).rejects.toThrow();
     await expect(
       readFile(
         path.join(stellaHome, "skills", "stella-desktop", "SKILL.md"),
         "utf-8",
       ),
     ).resolves.toBe("desktop skill");
-    await expect(readFile(path.join(stellaHome, "preferences.json"), "utf-8"))
-      .rejects.toThrow();
+    await expect(
+      readFile(path.join(stellaHome, "preferences.json"), "utf-8"),
+    ).rejects.toThrow();
     await expect(
       readFile(path.join(stellaHome, "memories", "MEMORY.md"), "utf-8"),
     ).rejects.toThrow();

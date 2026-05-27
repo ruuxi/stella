@@ -1,6 +1,6 @@
 # Dream — Manual Skill Consolidation Protocol
 
-Run this protocol periodically or on demand to review skill health and prune stale entries. This is a *manual* protocol the General agent can execute on request — it is separate from the background Dream agent that consolidates `thread_summaries` into `state/memories/MEMORY.md` automatically.
+Run this protocol periodically or on demand to review skill health and prune stale entries. This is a _manual_ protocol the General agent can execute on request — it is separate from the background Dream agent that consolidates `thread_summaries` into `state/memories/MEMORY.md` automatically.
 
 ## When to Dream
 
@@ -47,11 +47,10 @@ Tighten memory for the next cold start:
 - Add references to newly important skills
 - Delete skill folders that are unused or derivable in seconds from live sources
 - Verify the index matches actual folders on disk
-- Verify `registry.md` fast paths are current
 
 ## Boundaries
 
-- This protocol touches `skills/`, `skills/index.md`, and `registry.md`
+- This protocol touches `skills/` and `skills/index.md`
 - Never modify `state/memories/` — that's owned by the background Dream agent
 - Never modify `raw/` — it is an immutable record
 - Never touch project code, tests, or config

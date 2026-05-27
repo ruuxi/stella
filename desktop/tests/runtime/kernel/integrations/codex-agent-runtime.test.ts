@@ -17,7 +17,11 @@ import {
   shutdownCodexAppServerRuntime,
   shouldUseCodexAgentRuntime,
 } from "../../../../../runtime/kernel/integrations/codex-agent-runtime.js";
-import { selectExternalOrchestratorEngine } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
+import {
+  buildClaudePromptFromMessages,
+  buildExternalStellaHistoryPromptMessage,
+  selectExternalOrchestratorEngine,
+} from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
 import {
   DEFAULT_CODEX_MODEL,
   updateLocalModelPreferences,
@@ -28,7 +32,7 @@ describe("Codex agent runtime", () => {
     shutdownCodexAppServerRuntime();
   });
 
-  it("routes every spawned agent type to Codex when the shared engine is selected", () => {
+  it("routes only the General spawned agent to Codex when the shared engine is selected", () => {
     expect(
       shouldUseCodexAgentRuntime({
         agentType: "general",
@@ -40,7 +44,7 @@ describe("Codex agent runtime", () => {
         agentType: "install_update",
         agentEngine: "codex_cli",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldUseCodexAgentRuntime({
         agentType: "general",
@@ -49,7 +53,7 @@ describe("Codex agent runtime", () => {
     ).toBe(false);
   });
 
-  it("routes orchestrator turns to Codex when the shared engine is selected", () => {
+  it("keeps orchestrator turns on Stella when Codex is the shared engine", () => {
     const opts = {
       agentType: "orchestrator",
       agentContext: {
@@ -61,7 +65,7 @@ describe("Codex agent runtime", () => {
       },
     } as unknown as Parameters<typeof selectExternalOrchestratorEngine>[0];
 
-    expect(selectExternalOrchestratorEngine(opts)).toBe("codex_cli");
+    expect(selectExternalOrchestratorEngine(opts)).toBe(null);
   });
 
   it("builds a Codex prompt from ordered prompt messages only", () => {
@@ -88,45 +92,66 @@ describe("Codex agent runtime", () => {
     expect(prompt.trim().endsWith("Do the work.")).toBe(true);
   });
 
-  it("starts Codex app-server threads with Stella tools and read-only native writes", () => {
+  it("can build Stella thread history for external engine resume fallback prompts", () => {
+    const historyPrompt = buildExternalStellaHistoryPromptMessage({
+      opts: {
+        agentContext: {
+          threadHistory: [
+            { role: "user", content: "old user question", timestamp: 1 },
+            {
+              role: "assistant",
+              content: "old assistant answer",
+              timestamp: 2,
+            },
+            { role: "user", content: "current question", timestamp: 3 },
+          ],
+        },
+      } as unknown as Parameters<
+        typeof buildExternalStellaHistoryPromptMessage
+      >[0]["opts"],
+      promptMessages: [{ text: "current question" }],
+    });
+
+    expect(historyPrompt?.customType).toBe("runtime.stella_thread_history");
+    const prompt = buildClaudePromptFromMessages([
+      historyPrompt!,
+      {
+        text: "current question",
+        messageType: "user",
+        uiVisibility: "visible",
+      },
+    ]);
+
+    expect(prompt).toContain('<stella_thread_history source="stella"');
+    expect(prompt).toContain("old user question");
+    expect(prompt).toContain("old assistant answer");
+    expect(prompt).not.toContain(
+      '<history_message index="3" role="user">\ncurrent question',
+    );
+    expect(prompt).toContain(
+      '<message index="2" type="user" visibility="visible">\ncurrent question\n</message>',
+    );
+  });
+
+  it("starts Codex app-server threads with Stella skills in the system prompt and native Codex tools", () => {
     expect(
       buildCodexThreadStartParams({
         model: DEFAULT_CODEX_MODEL,
         cwd: "/repo",
-        systemPrompt: "You are Stella.",
-        tools: [
-          {
-            name: "exec_command",
-            description: "Run a command",
-            parameters: {
-              type: "object",
-              properties: { cmd: { type: "string" } },
-              required: ["cmd"],
-            },
-          },
-        ],
+        systemPrompt:
+          "You are Stella.\n\n<skills>\n- `stella-browser` — Browser automation.\n</skills>",
       }),
     ).toEqual({
       model: DEFAULT_CODEX_MODEL,
       cwd: "/repo",
       approvalPolicy: "never",
-      sandbox: "read-only",
+      sandbox: "danger-full-access",
       serviceName: "Stella",
-      baseInstructions: "You are Stella.",
+      baseInstructions:
+        "You are Stella.\n\n<skills>\n- `stella-browser` — Browser automation.\n</skills>",
       developerInstructions:
-        "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact.",
+        "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact. Stella skills are listed in the system prompt; when a skill matches, inspect its ~/.stella/skills/<name>/SKILL.md file with your normal Codex tools.",
       ephemeral: false,
-      dynamicTools: [
-        {
-          name: "exec_command",
-          description: "Run a command",
-          inputSchema: {
-            type: "object",
-            properties: { cmd: { type: "string" } },
-            required: ["cmd"],
-          },
-        },
-      ],
       experimentalRawEvents: false,
     });
   });
@@ -144,10 +169,10 @@ describe("Codex agent runtime", () => {
       model: DEFAULT_CODEX_MODEL,
       cwd: "/repo",
       approvalPolicy: "never",
-      sandbox: "read-only",
+      sandbox: "danger-full-access",
       baseInstructions: "You are Stella.",
       developerInstructions:
-        "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact.",
+        "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact. Stella skills are listed in the system prompt; when a skill matches, inspect its ~/.stella/skills/<name>/SKILL.md file with your normal Codex tools.",
       excludeTurns: true,
     });
   });
@@ -166,7 +191,7 @@ describe("Codex agent runtime", () => {
       input: [{ type: "text", text: "hello", text_elements: [] }],
       cwd: "/repo",
       approvalPolicy: "never",
-      sandboxPolicy: { type: "readOnly", networkAccess: true },
+      sandboxPolicy: { type: "dangerFullAccess" },
       model: DEFAULT_CODEX_MODEL,
       effort: "high",
     });
@@ -333,7 +358,13 @@ describe("Codex agent runtime", () => {
         "    const turn = { id: 'turn-final', status: 'inProgress' };",
         "    send({ id: message.id, result: { turn } });",
         "    send({ method: 'turn/started', params: { threadId, turn } });",
-        "    setTimeout(() => send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-final', text: 'done' } } }), 5);",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-final', command: 'zsh -lc echo noisy', status: 'inProgress' } } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'dynamicToolCall', id: 'tool-final', namespace: null, tool: 'spawn_agent', status: 'completed', success: true } } });",
+        "    setTimeout(() => {",
+        "      const completedTurn = { id: turn.id, status: 'completed' };",
+        "      send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-final', text: 'done' } } });",
+        "      send({ method: 'turn/completed', params: { threadId, turn: completedTurn } });",
+        "    }, 5);",
         "  }",
         "});",
         "process.stdin.resume();",
@@ -354,6 +385,113 @@ describe("Codex agent runtime", () => {
       expect(statuses).not.toContain("Starting Codex app-server");
       expect(statuses).not.toContain("Codex app-server ready");
       expect(statuses).not.toContain("Codex is working");
+      expect(statuses).not.toContain(
+        "Codex command inProgress: zsh -lc echo noisy",
+      );
+      expect(statuses).not.toContain("spawn_agent completed");
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for a final Codex assistant item sent after turn completion", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-late-final-item-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-late-final' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-late-final', status: 'inProgress' };",
+        "    const completedTurn = { id: turn.id, status: 'completed' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    send({ method: 'turn/completed', params: { threadId, turn: completedTurn } });",
+        "    setTimeout(() => send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-late-final', text: 'late done' } } }), 25);",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    try {
+      const result = await runCodexAgentTurn({
+        runId: "run-late-final-item",
+        prompt: "hello",
+      });
+
+      expect(result.text).toBe("late done");
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not finish on a commentary assistant message before Codex keeps working", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-commentary-before-tool-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-commentary' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-commentary', status: 'inProgress' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-commentary', text: 'I will check that now.', phase: 'commentary' } } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-commentary', command: 'sleep 1', status: 'inProgress' } } });",
+        "    setTimeout(() => {",
+        "      const completedTurn = { id: turn.id, status: 'completed' };",
+        "      send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-commentary', command: 'sleep 1', status: 'completed' } } });",
+        "      send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-final', text: 'actual final answer', phase: 'final_answer' } } });",
+        "      send({ method: 'turn/completed', params: { threadId, turn: completedTurn } });",
+        "    }, 900);",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    try {
+      const result = await runCodexAgentTurn({
+        runId: "run-commentary-before-tool",
+        prompt: "hello",
+      });
+
+      expect(result.text).toBe("actual final answer");
     } finally {
       if (previousPath === undefined) {
         delete process.env.STELLA_CODEX_CLI_PATH;
@@ -517,6 +655,118 @@ describe("Codex agent runtime", () => {
         "done beta",
       ]);
       expect(toolCalls.sort()).toEqual(["test_tool:alpha", "test_tool:beta"]);
+      expect(fs.readFileSync(startsFile, "utf8").trim().split("\n")).toEqual([
+        "start",
+      ]);
+    } finally {
+      shutdownCodexAppServerRuntime();
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      if (previousStartsFile === undefined) {
+        delete process.env.STELLA_FAKE_CODEX_STARTS_FILE;
+      } else {
+        process.env.STELLA_FAKE_CODEX_STARTS_FILE = previousStartsFile;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not route a shared Codex tool request to a turn still awaiting thread start", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-delayed-thread-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    const startsFile = path.join(dir, "starts.txt");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        'const readline = require("node:readline");',
+        "fs.appendFileSync(process.env.STELLA_FAKE_CODEX_STARTS_FILE, 'start\\n');",
+        "let threadCount = 0;",
+        "let requestId = 100;",
+        "const pending = new Map();",
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "const startTurn = (message) => {",
+        "  const threadId = message.params.threadId;",
+        "  const label = threadId === 'thread-alpha' ? 'alpha' : 'beta';",
+        "  const turn = { id: `turn-${label}`, status: 'inProgress' };",
+        "  send({ id: message.id, result: { turn } });",
+        "  send({ method: 'turn/started', params: { threadId, turn } });",
+        "  const id = requestId++;",
+        "  pending.set(id, { threadId, turnId: turn.id, label });",
+        "  send({ id, method: 'item/tool/call', params: { threadId, turnId: turn.id, callId: `call-${label}`, namespace: null, tool: 'test_tool', arguments: { label } } });",
+        "};",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') {",
+        "    threadCount += 1;",
+        "    if (threadCount === 1) {",
+        "      setTimeout(() => send({ id: message.id, result: { thread: { id: 'thread-alpha' } } }), 80);",
+        "      return;",
+        "    }",
+        "    send({ id: message.id, result: { thread: { id: 'thread-beta' } } });",
+        "    return;",
+        "  }",
+        "  if (message.method === 'turn/start') { startTurn(message); return; }",
+        "  if (message.id !== undefined && pending.has(message.id)) {",
+        "    const pendingTurn = pending.get(message.id);",
+        "    pending.delete(message.id);",
+        "    const turn = { id: pendingTurn.turnId, status: 'completed' };",
+        "    send({ method: 'item/completed', params: { threadId: pendingTurn.threadId, turnId: pendingTurn.turnId, item: { type: 'agentMessage', id: `msg-${pendingTurn.label}`, text: `done ${pendingTurn.label}` } } });",
+        "    send({ method: 'turn/completed', params: { threadId: pendingTurn.threadId, turn } });",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const previousStartsFile = process.env.STELLA_FAKE_CODEX_STARTS_FILE;
+    const firstCalls: string[] = [];
+    const secondCalls: string[] = [];
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    process.env.STELLA_FAKE_CODEX_STARTS_FILE = startsFile;
+    try {
+      const [first, second] = await Promise.all([
+        runCodexAgentTurn({
+          runId: "run-delayed-thread-a",
+          prompt: "first",
+          reuseAppServer: true,
+          executeTool: async (
+            _toolCallId,
+            toolName,
+            toolArgs: Record<string, unknown>,
+          ) => {
+            firstCalls.push(`${toolName}:${String(toolArgs.label)}`);
+            return { result: `first ${String(toolArgs.label)}` };
+          },
+        }),
+        runCodexAgentTurn({
+          runId: "run-delayed-thread-b",
+          prompt: "second",
+          reuseAppServer: true,
+          executeTool: async (
+            _toolCallId,
+            toolName,
+            toolArgs: Record<string, unknown>,
+          ) => {
+            secondCalls.push(`${toolName}:${String(toolArgs.label)}`);
+            return { result: `second ${String(toolArgs.label)}` };
+          },
+        }),
+      ]);
+
+      expect(first.text).toBe("done alpha");
+      expect(second.text).toBe("done beta");
+      expect(firstCalls).toEqual(["test_tool:alpha"]);
+      expect(secondCalls).toEqual(["test_tool:beta"]);
       expect(fs.readFileSync(startsFile, "utf8").trim().split("\n")).toEqual([
         "start",
       ]);
