@@ -32,3 +32,21 @@ export const coerceAgentRuntimeEngine = (value: unknown): AgentRuntimeEngine =>
 export const getAgentRuntimeEngineLabel = (
   engine: AgentRuntimeEngine,
 ): string => AGENT_RUNTIME_ENGINE_LABELS[engine];
+
+/** General-agent model override prefix for the Cursor SDK provider. */
+export const CURSOR_MODEL_PREFIX = "cursor/";
+
+export const isCursorModelOverride = (
+  modelId: string | undefined,
+): modelId is string =>
+  typeof modelId === "string" && modelId.startsWith(CURSOR_MODEL_PREFIX);
+
+export const toCursorModelOverrideId = (modelId: string): string =>
+  modelId.startsWith(CURSOR_MODEL_PREFIX)
+    ? modelId
+    : `${CURSOR_MODEL_PREFIX}${modelId}`;
+
+export const fromCursorModelOverrideId = (modelId: string): string =>
+  modelId.startsWith(CURSOR_MODEL_PREFIX)
+    ? modelId.slice(CURSOR_MODEL_PREFIX.length)
+    : modelId;
