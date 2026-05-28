@@ -491,21 +491,6 @@
   line-height: 1;
 }
 
-.thread-placeholder {
-  display: grid;
-  gap: 8px;
-}
-
-.thread-line {
-  height: 12px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(28, 23, 18, 0.12), rgba(28, 23, 18, 0.04));
-}
-
-.thread-line.short {
-  width: 60%;
-}
-
 /* Scroll to bottom button */
 .scroll-to-bottom {
   position: absolute;
