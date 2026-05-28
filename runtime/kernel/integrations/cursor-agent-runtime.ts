@@ -1,8 +1,13 @@
 import crypto from "node:crypto";
-import { execFile } from "node:child_process";
+import {
+  execFile,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { setupEnvironment } from "dugite";
 import type { AgentOptions, SDKImage, SDKMessage } from "@cursor/sdk";
@@ -28,6 +33,7 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_CURSOR_STARTUP_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CURSOR_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const CURSOR_CREDENTIAL_PROVIDER = "cursor";
+const CURSOR_NODE_RUNNER_FILENAME = "cursor-agent-node-runner.js";
 
 export type CursorAgentRuntimeEngine = AgentRuntimeEngine;
 
@@ -314,10 +320,7 @@ const cursorErrorMessage = (error: unknown): string => {
   return String(error);
 };
 
-const configuredTimeoutMs = (
-  envName: string,
-  fallbackMs: number,
-): number => {
+const configuredTimeoutMs = (envName: string, fallbackMs: number): number => {
   const raw = process.env[envName]?.trim();
   if (!raw) return fallbackMs;
   const parsed = Number(raw);
@@ -367,7 +370,9 @@ const shouldSuppressCursorSdkProcessError = (error: unknown): boolean =>
 
 const forwardFatalProcessError = (reason: unknown) => {
   setImmediate(() => {
-    throw reason instanceof Error ? reason : new Error(cursorErrorMessage(reason));
+    throw reason instanceof Error
+      ? reason
+      : new Error(cursorErrorMessage(reason));
   });
 };
 
@@ -428,6 +433,244 @@ export const buildCursorAgentOptions = (args: {
   ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
 });
 
+type CursorNodeRunnerRequest = {
+  agentOptions: AgentOptions;
+  prompt: string | { text: string; images: SDKImage[] };
+  runId: string;
+  sessionKey: string;
+  persistedSessionId?: string;
+};
+
+type CursorNodeRunnerEvent =
+  | { type: "status"; text: string }
+  | { type: "stream"; text: string }
+  | { type: "result"; text: string; sessionId: string }
+  | { type: "error"; message: string; stack?: string };
+
+export const shouldRunCursorSdkInNodeRunner = (): boolean =>
+  process.env.STELLA_CURSOR_SDK_IN_PROCESS !== "1" &&
+  Boolean((process.versions as { bun?: string }).bun);
+
+const resolveCursorNodeRunnerPath = (): string =>
+  path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    CURSOR_NODE_RUNNER_FILENAME,
+  );
+
+export const buildCursorNodeRunnerSpawnSpec = (
+  runnerPath = resolveCursorNodeRunnerPath(),
+): {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+} => {
+  const explicitNode = process.env.STELLA_CURSOR_SDK_NODE_BINARY?.trim();
+  if (explicitNode) {
+    return {
+      command: explicitNode,
+      args: [runnerPath],
+      env: {},
+    };
+  }
+
+  const hostExecutable = process.env.STELLA_HOST_EXECUTABLE_PATH?.trim();
+  const hostExecutableName = hostExecutable
+    ? path.basename(hostExecutable).toLowerCase()
+    : "";
+  const hostLooksLikeElectron =
+    hostExecutableName === "electron" ||
+    hostExecutable?.toLowerCase().includes("/electron.app/");
+  if (hostExecutable && hostLooksLikeElectron) {
+    return {
+      command: hostExecutable,
+      args: [runnerPath],
+      env: { ELECTRON_RUN_AS_NODE: "1" },
+    };
+  }
+
+  if (process.env.STELLA_CURSOR_SDK_DISABLE_PATH_NODE !== "1") {
+    return {
+      command: "node",
+      args: [runnerPath],
+      env: {},
+    };
+  }
+
+  if (hostExecutable) {
+    return {
+      command: hostExecutable,
+      args: [runnerPath],
+      env: { ELECTRON_RUN_AS_NODE: "1" },
+    };
+  }
+
+  return {
+    command: "node",
+    args: [runnerPath],
+    env: {},
+  };
+};
+
+const parseCursorNodeRunnerLine = (
+  line: string,
+): CursorNodeRunnerEvent | null => {
+  try {
+    const parsed = JSON.parse(line) as Partial<CursorNodeRunnerEvent>;
+    if (
+      parsed.type === "status" &&
+      typeof (parsed as { text?: unknown }).text === "string"
+    ) {
+      return parsed as CursorNodeRunnerEvent;
+    }
+    if (
+      parsed.type === "stream" &&
+      typeof (parsed as { text?: unknown }).text === "string"
+    ) {
+      return parsed as CursorNodeRunnerEvent;
+    }
+    if (
+      parsed.type === "result" &&
+      typeof (parsed as { text?: unknown }).text === "string" &&
+      typeof (parsed as { sessionId?: unknown }).sessionId === "string"
+    ) {
+      return parsed as CursorNodeRunnerEvent;
+    }
+    if (
+      parsed.type === "error" &&
+      typeof (parsed as { message?: unknown }).message === "string"
+    ) {
+      return parsed as CursorNodeRunnerEvent;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const cursorNodeRunnerCwd = (agentOptions: AgentOptions): string => {
+  const cwd = agentOptions.local?.cwd;
+  if (Array.isArray(cwd)) {
+    return cwd[0] ?? process.cwd();
+  }
+  return cwd ?? process.cwd();
+};
+
+const runCursorAgentTurnInNodeRunner = async (args: {
+  request: CursorNodeRunnerRequest;
+  abortSignal?: AbortSignal;
+  onStatus?: (text: string) => void;
+  onStream?: (chunk: string) => void;
+}): Promise<CursorAgentTurnResult> => {
+  const spec = buildCursorNodeRunnerSpawnSpec();
+  const child = spawn(spec.command, spec.args, {
+    cwd: cursorNodeRunnerCwd(args.request.agentOptions),
+    env: {
+      ...process.env,
+      ...spec.env,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  }) as ChildProcessWithoutNullStreams;
+
+  return await new Promise<CursorAgentTurnResult>((resolve, reject) => {
+    let settled = false;
+    let stdoutBuffer = "";
+    let stderrBuffer = "";
+
+    const finish = (): boolean => {
+      if (settled) return false;
+      settled = true;
+      args.abortSignal?.removeEventListener("abort", onAbort);
+      return true;
+    };
+
+    const resolveWith = (result: CursorAgentTurnResult) => {
+      if (finish()) resolve(result);
+    };
+
+    const rejectWith = (error: Error) => {
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        // Best effort.
+      }
+      if (finish()) reject(error);
+    };
+
+    const onAbort = () => {
+      rejectWith(new Error("Aborted"));
+    };
+
+    const handleLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      const event = parseCursorNodeRunnerLine(trimmed);
+      if (!event) return;
+      if (event.type === "status") {
+        args.onStatus?.(event.text);
+        return;
+      }
+      if (event.type === "stream") {
+        args.onStream?.(event.text);
+        return;
+      }
+      if (event.type === "error") {
+        const error = new Error(event.message);
+        if (event.stack) error.stack = event.stack;
+        rejectWith(error);
+        return;
+      }
+      resolveWith({
+        text: event.text,
+        sessionId: event.sessionId,
+      });
+    };
+
+    child.stdout.on("data", (chunk) => {
+      stdoutBuffer += chunk.toString("utf8");
+      for (;;) {
+        const newlineIndex = stdoutBuffer.indexOf("\n");
+        if (newlineIndex < 0) break;
+        const line = stdoutBuffer.slice(0, newlineIndex);
+        stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+        handleLine(line);
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderrBuffer += chunk.toString("utf8");
+      if (stderrBuffer.length > 16_000) {
+        stderrBuffer = stderrBuffer.slice(-16_000);
+      }
+    });
+
+    child.once("error", (error) => {
+      rejectWith(error instanceof Error ? error : new Error(String(error)));
+    });
+
+    child.once("exit", (code, signal) => {
+      if (settled) return;
+      if (stdoutBuffer.trim()) {
+        handleLine(stdoutBuffer);
+      }
+      if (settled) return;
+      rejectWith(
+        new Error(
+          `Cursor Node runner exited before returning a result (code=${code ?? "null"}, signal=${signal ?? "null"}).${stderrBuffer.trim() ? ` ${stderrBuffer.trim()}` : ""}`,
+        ),
+      );
+    });
+
+    if (args.abortSignal?.aborted) {
+      onAbort();
+      return;
+    }
+    args.abortSignal?.addEventListener("abort", onAbort, { once: true });
+
+    child.stdin.end(`${JSON.stringify(args.request)}\n`);
+  });
+};
+
 export const runCursorAgentTurn = async (request: {
   runId: string;
   sessionKey: string;
@@ -486,13 +729,14 @@ export const runCursorAgentTurn = async (request: {
       hasCursorActivity = true;
       refreshCursorIdleTimer();
     };
-    const waitForCursorActivity = async <T>(promise: Promise<T>): Promise<T> => {
+    const waitForCursorActivity = async <T>(
+      promise: Promise<T>,
+    ): Promise<T> => {
       refreshCursorIdleTimer();
       promise.catch(() => undefined);
       return await Promise.race([promise, idleFailure]);
     };
 
-    const { Agent } = await import("@cursor/sdk");
     const envModel = process.env.STELLA_CURSOR_MODEL?.trim();
     const generalOverride = request.stellaHome
       ? getModelOverride(request.stellaHome, AGENT_IDS.GENERAL)
@@ -511,6 +755,46 @@ export const runCursorAgentTurn = async (request: {
       model,
       cwd: request.cwd,
     });
+    if (shouldRunCursorSdkInNodeRunner()) {
+      const images = (request.attachments ?? [])
+        .map(cursorImageFromAttachment)
+        .filter((image): image is SDKImage => image !== null);
+      const result = await waitForCursorActivity(
+        runCursorAgentTurnInNodeRunner({
+          request: {
+            agentOptions,
+            prompt:
+              images.length > 0
+                ? { text: request.prompt, images }
+                : request.prompt,
+            runId: request.runId,
+            sessionKey: request.sessionKey,
+            ...(request.persistedSessionId
+              ? { persistedSessionId: request.persistedSessionId }
+              : {}),
+          },
+          abortSignal: request.abortSignal,
+          onStatus: (status) => {
+            markCursorActivity();
+            request.onStatus?.(status);
+          },
+          onStream: (chunk) => {
+            markCursorActivity();
+            request.onStream?.(chunk);
+          },
+        }),
+      );
+      const afterSnapshot = await snapshotCursorWorktree(request.stellaRoot);
+      const fileChanges = diffCursorWorktreeSnapshots(
+        beforeSnapshot,
+        afterSnapshot,
+      );
+      return {
+        ...result,
+        ...(fileChanges.length > 0 ? { fileChanges } : {}),
+      };
+    }
+    const { Agent } = await import("@cursor/sdk");
     let agent: Awaited<ReturnType<typeof Agent.create>> | undefined;
 
     try {

@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildCursorNodeRunnerSpawnSpec,
   buildCursorAgentOptions,
   buildCursorPromptFromMessages,
   diffCursorWorktreeSnapshots,
@@ -14,12 +15,16 @@ import {
   runCursorAgentTurn,
   snapshotCursorWorktree,
   shouldUseCursorAgentRuntime,
+  shouldRunCursorSdkInNodeRunner,
   type CursorWorktreeSnapshot,
   withCursorSdkStreamErrorGuard,
 } from "../../../../../runtime/kernel/integrations/cursor-agent-runtime.js";
 
 const execFileAsync = promisify(execFile);
 const originalCursorApiKey = process.env.CURSOR_API_KEY;
+const originalCursorSdkInProcess = process.env.STELLA_CURSOR_SDK_IN_PROCESS;
+const originalCursorSdkNodeBinary = process.env.STELLA_CURSOR_SDK_NODE_BINARY;
+const originalHostExecutablePath = process.env.STELLA_HOST_EXECUTABLE_PATH;
 const cursorSdkCreate = vi.fn();
 const cursorSdkResume = vi.fn();
 const cursorSdkSend = vi.fn();
@@ -37,6 +42,21 @@ afterEach(() => {
     delete process.env.CURSOR_API_KEY;
   } else {
     process.env.CURSOR_API_KEY = originalCursorApiKey;
+  }
+  if (originalCursorSdkInProcess == null) {
+    delete process.env.STELLA_CURSOR_SDK_IN_PROCESS;
+  } else {
+    process.env.STELLA_CURSOR_SDK_IN_PROCESS = originalCursorSdkInProcess;
+  }
+  if (originalCursorSdkNodeBinary == null) {
+    delete process.env.STELLA_CURSOR_SDK_NODE_BINARY;
+  } else {
+    process.env.STELLA_CURSOR_SDK_NODE_BINARY = originalCursorSdkNodeBinary;
+  }
+  if (originalHostExecutablePath == null) {
+    delete process.env.STELLA_HOST_EXECUTABLE_PATH;
+  } else {
+    process.env.STELLA_HOST_EXECUTABLE_PATH = originalHostExecutablePath;
   }
 });
 
@@ -122,6 +142,7 @@ describe("Cursor agent runtime", () => {
 
   it("forces stale local Cursor runs before sending a new turn", async () => {
     process.env.CURSOR_API_KEY = "cursor-key";
+    process.env.STELLA_CURSOR_SDK_IN_PROCESS = "1";
     const run = {
       cancel: vi.fn().mockResolvedValue(undefined),
       wait: vi.fn().mockResolvedValue({ status: "finished", result: "done" }),
@@ -161,6 +182,49 @@ describe("Cursor agent runtime", () => {
     expect(cursorSdkSend).toHaveBeenCalledWith("Do the work.", {
       idempotencyKey: "run-id",
       local: { force: true },
+    });
+  });
+
+  it("runs the Cursor SDK in a Node runner under Bun unless explicitly disabled", () => {
+    expect(shouldRunCursorSdkInNodeRunner()).toBe(
+      Boolean((process.versions as { bun?: string }).bun),
+    );
+    process.env.STELLA_CURSOR_SDK_IN_PROCESS = "1";
+    expect(shouldRunCursorSdkInNodeRunner()).toBe(false);
+  });
+
+  it("uses Electron as Node for the Cursor SDK runner when the host is Electron", () => {
+    delete process.env.STELLA_CURSOR_SDK_NODE_BINARY;
+    process.env.STELLA_HOST_EXECUTABLE_PATH =
+      "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron";
+
+    expect(buildCursorNodeRunnerSpawnSpec("/runner.js")).toEqual({
+      command:
+        "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+      args: ["/runner.js"],
+      env: { ELECTRON_RUN_AS_NODE: "1" },
+    });
+  });
+
+  it("prefers PATH node over a non-Electron host executable", () => {
+    delete process.env.STELLA_CURSOR_SDK_NODE_BINARY;
+    process.env.STELLA_HOST_EXECUTABLE_PATH = "/Applications/Stella.app";
+
+    expect(buildCursorNodeRunnerSpawnSpec("/runner.js")).toEqual({
+      command: "node",
+      args: ["/runner.js"],
+      env: {},
+    });
+  });
+
+  it("allows an explicit Node binary override for the Cursor SDK runner", () => {
+    process.env.STELLA_CURSOR_SDK_NODE_BINARY = "/usr/local/bin/node";
+    process.env.STELLA_HOST_EXECUTABLE_PATH = "/Applications/Stella.app";
+
+    expect(buildCursorNodeRunnerSpawnSpec("/runner.js")).toEqual({
+      command: "/usr/local/bin/node",
+      args: ["/runner.js"],
+      env: {},
     });
   });
 
