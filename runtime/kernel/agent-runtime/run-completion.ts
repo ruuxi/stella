@@ -6,6 +6,7 @@ import {
   compactRuntimeThreadHistory,
   updateOrchestratorReminderState,
 } from "./thread-memory.js";
+import { getThreadTokenEstimate } from "../thread-runtime.js";
 import type {
   OrchestratorRunOptions,
   SelfModAppliedPayload,
@@ -88,6 +89,7 @@ const emitAgentEndHook = async (
     runId: string;
     threadKey: string;
     messagesSnapshot: AgentMessage[];
+    orchestratorTokenEstimate?: number;
   },
 ): Promise<SelfModAppliedPayload | null> => {
   if (!opts.hookEmitter) {
@@ -122,6 +124,9 @@ const emitAgentEndHook = async (
             : {}),
           ...(opts.userTurnsSinceMemoryReview != null
             ? { userTurnsSinceMemoryReview: opts.userTurnsSinceMemoryReview }
+            : {}),
+          ...(args.orchestratorTokenEstimate != null
+            ? { orchestratorTokenEstimate: args.orchestratorTokenEstimate }
             : {}),
         },
       },
@@ -366,6 +371,25 @@ export const finalizeOrchestratorSuccess = async (args: {
     }),
   );
 
+  // Estimated orchestrator thread size on the same basis the compaction
+  // trigger uses, so post-finalize hooks can drive the token-interval Dream
+  // cadence and detect when a compaction is imminent (flush boundary).
+  let orchestratorTokenEstimate: number | undefined;
+  try {
+    orchestratorTokenEstimate = getThreadTokenEstimate(
+      args.opts.store.loadThreadMessages(args.threadKey),
+    );
+  } catch (error) {
+    // The token-interval / pre-compaction Dream cadence keys off this number;
+    // without it the orchestrator-driven cadence stalls until restart, so warn
+    // (don't silently swallow) to keep the stall diagnosable.
+    orchestratorTokenEstimate = undefined;
+    logger.warn("orchestrator.token-estimate-failed", {
+      threadKey: args.threadKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   const selfModApplied = await emitAgentEndHook(args.opts, {
     finalText: args.finalText,
     runId: args.runId,
@@ -375,6 +399,9 @@ export const finalizeOrchestratorSuccess = async (args: {
     // mutated state if a follow-up turn lands before the hook handler
     // runs.
     messagesSnapshot: [...args.agent.state.messages],
+    ...(orchestratorTokenEstimate != null
+      ? { orchestratorTokenEstimate }
+      : {}),
   });
 
   // Finish the visible turn before scheduling compaction.

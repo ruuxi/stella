@@ -4,7 +4,6 @@ import type { RuntimeStore } from "../storage/runtime-store.js";
 import type { LocalContextEvent } from "../local-history.js";
 import type { LocalChatAppendEventArgs } from "../storage/shared.js";
 import type { AgentMessage } from "../agent-core/types.js";
-import type { MemoryStore } from "../memory/memory-store.js";
 
 /**
  * Runtime services exposed to extension factories.
@@ -33,8 +32,6 @@ export type ExtensionServices = {
   selfModMonitor: SelfModMonitor | null;
   /** Runtime SQLite store. Hooks that need to read/write per-conversation counters or thread summaries reach in here. */
   store: RuntimeStore;
-  /** Shared memory store, exposed directly so hooks don't have to reach through RuntimeStore internals. */
-  memoryStore: MemoryStore;
 };
 
 /**
@@ -80,4 +77,11 @@ export type RuntimeRunServices = {
    * this finalize.
    */
   userTurnsSinceMemoryReview?: number;
+  /**
+   * Estimated token size of the orchestrator thread at finalize time
+   * (same basis the compaction trigger uses). Drives the token-interval
+   * Dream cadence and the pre-compaction capture/consolidation flush.
+   * Orchestrator turns only.
+   */
+  orchestratorTokenEstimate?: number;
 };

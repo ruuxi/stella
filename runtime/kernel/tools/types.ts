@@ -204,6 +204,7 @@ export type ToolHostOptions = {
     conversationId: string;
     requestId: string;
     prompt: string;
+    memorySearchTerms?: string[];
     agentType?: string;
     signal?: AbortSignal;
   }) => Promise<string>;

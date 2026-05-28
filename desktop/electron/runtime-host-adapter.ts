@@ -1152,13 +1152,7 @@ export class RuntimeHostAdapter {
     return this.host.googleWorkspaceDisconnect();
   }
 
-  triggerDreamNow(
-    trigger?:
-      | "manual"
-      | "subagent_finalize"
-      | "chronicle_summary"
-      | "startup_catchup",
-  ) {
+  triggerDreamNow(trigger?: "manual" | "startup_catchup") {
     return this.host.triggerDreamNow(trigger);
   }
 

@@ -117,7 +117,6 @@ describe("maybeSpawnDreamRun", () => {
     const result = await maybeSpawnDreamRun({
       stellaHome: rootPath,
       store: {
-        memoryStore: {},
         threadSummariesStore: {
           countUnprocessed: () => 1,
         },
@@ -141,5 +140,94 @@ describe("maybeSpawnDreamRun", () => {
     await waitFor(() => providerCalls > 0);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(providerCalls).toBe(1);
+  });
+
+  const pendingStore = (): RuntimeStore =>
+    ({
+      threadSummariesStore: { countUnprocessed: () => 1 },
+    }) as RuntimeStore;
+
+  it("skips token_interval runs below the growth threshold", async () => {
+    const rootPath = createRoot();
+    let providerCalls = 0;
+    const result = await maybeSpawnDreamRun({
+      stellaHome: rootPath,
+      store: pendingStore(),
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("noop"),
+        onRequest: () => {
+          providerCalls += 1;
+        },
+      }),
+      trigger: "token_interval",
+      orchestratorTokenEstimate: 5_000,
+    });
+
+    expect(result.scheduled).toBe(false);
+    expect(result.reason).toBe("below_threshold");
+    expect(providerCalls).toBe(0);
+  });
+
+  it("runs token_interval once growth crosses the interval", async () => {
+    const rootPath = createRoot();
+    let providerCalls = 0;
+    const result = await maybeSpawnDreamRun({
+      stellaHome: rootPath,
+      store: pendingStore(),
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("- folded the interval batch"),
+        onRequest: () => {
+          providerCalls += 1;
+        },
+      }),
+      trigger: "token_interval",
+      orchestratorTokenEstimate: 25_000,
+    });
+
+    expect(result.scheduled).toBe(true);
+    await waitFor(() => providerCalls > 0);
+  });
+
+  it("flushes on pre_compaction regardless of growth", async () => {
+    const rootPath = createRoot();
+    let providerCalls = 0;
+    const result = await maybeSpawnDreamRun({
+      stellaHome: rootPath,
+      store: pendingStore(),
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("- flushed before compaction"),
+        onRequest: () => {
+          providerCalls += 1;
+        },
+      }),
+      trigger: "pre_compaction",
+      orchestratorTokenEstimate: 1_000,
+    });
+
+    expect(result.scheduled).toBe(true);
+    await waitFor(() => providerCalls > 0);
+  });
+
+  it("returns no_inputs when nothing is pending, even at the compaction boundary", async () => {
+    const rootPath = createRoot();
+    let providerCalls = 0;
+    const result = await maybeSpawnDreamRun({
+      stellaHome: rootPath,
+      store: {
+        threadSummariesStore: { countUnprocessed: () => 0 },
+      } as RuntimeStore,
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("noop"),
+        onRequest: () => {
+          providerCalls += 1;
+        },
+      }),
+      trigger: "pre_compaction",
+      orchestratorTokenEstimate: 100_000,
+    });
+
+    expect(result.scheduled).toBe(false);
+    expect(result.reason).toBe("no_inputs");
+    expect(providerCalls).toBe(0);
   });
 });

@@ -106,6 +106,7 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("image_gen")).toBe(true);
     expect(orchestratorTools.has("web")).toBe(true);
     expect(orchestratorTools.has("Memory")).toBe(false);
+    expect(orchestratorTools.has("MemoryNote")).toBe(false);
     expect(orchestratorTools.has("askQuestion")).toBe(true);
     expect(orchestratorTools.has("Fashion")).toBe(false);
 
@@ -126,6 +127,7 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("Display")).toBe(false);
     expect(generalTools.has("DisplayGuidelines")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
+    expect(generalTools.has("MemoryNote")).toBe(false);
     expect(generalTools.has("Context")).toBe(false);
     expect(generalTools.has("askQuestion")).toBe(false);
     expect(generalTools.has("exec_command")).toBe(true);
@@ -248,7 +250,10 @@ describe("orchestrator direct tool surface", () => {
 
     const orchestratorResult = await host.executeTool(
       "Context",
-      { prompt: "Find context for what the user means by yesterday's tab." },
+      {
+        prompt: "Find context for what the user means by yesterday's tab.",
+        memorySearchTerms: ["yesterday", "tab"],
+      },
       makeToolContext("orchestrator"),
     );
 
@@ -259,6 +264,7 @@ describe("orchestrator direct tool surface", () => {
       conversationId: "conv-1",
       requestId: "req-1",
       prompt: "Find context for what the user means by yesterday's tab.",
+      memorySearchTerms: ["yesterday", "tab"],
       agentType: "orchestrator",
     });
 

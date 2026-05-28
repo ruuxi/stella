@@ -3763,17 +3763,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     METHOD_NAMES.INTERNAL_WORKER_DREAM_TRIGGER_NOW,
     async (params) => {
       const trigger =
-        (
-          params as
-            | {
-                trigger?:
-                  | "manual"
-                  | "subagent_finalize"
-                  | "chronicle_summary"
-                  | "startup_catchup";
-              }
-            | undefined
-        )?.trigger ?? "manual";
+        (params as { trigger?: "manual" | "startup_catchup" } | undefined)
+          ?.trigger ?? "manual";
       return await ensureRunner().triggerDreamNow(trigger);
     },
   );

@@ -159,13 +159,14 @@ describe("third-party migration importers", () => {
       });
       expect(report.items.some((item) => item.kind === "channels")).toBe(true);
 
-      const memoryRows = db
-        .prepare("SELECT target, content FROM memory_entries ORDER BY target, content")
-        .all() as Array<{ target: string; content: string }>;
-      expect(memoryRows).toEqual([
-        { target: "memory", content: "User prefers short answers." },
-        { target: "user", content: "Name: Riley" },
-      ]);
+      const coreMemory = await readFile(
+        path.join(stellaHome, "core-memory.md"),
+        "utf-8",
+      );
+      expect(coreMemory).toContain("## Imported Hermes memory");
+      expect(coreMemory).toContain("User prefers short answers.");
+      expect(coreMemory).toContain("## Imported Hermes user profile");
+      expect(coreMemory).toContain("Name: Riley");
 
       const hermesMessages = db
         .prepare(
@@ -222,10 +223,11 @@ describe("third-party migration importers", () => {
         db,
         now: new Date("2026-05-25T10:05:00Z"),
       });
-      const rerunRows = db
-        .prepare("SELECT target, content FROM memory_entries ORDER BY target, content")
-        .all();
-      expect(rerunRows).toEqual(memoryRows);
+      const coreMemoryAfterRerun = await readFile(
+        path.join(stellaHome, "core-memory.md"),
+        "utf-8",
+      );
+      expect(coreMemoryAfterRerun).toEqual(coreMemory);
     } finally {
       db.close();
     }
@@ -269,6 +271,11 @@ describe("third-party migration importers", () => {
           list: [{ id: 'main' }],
         },
       }`,
+      "utf-8",
+    );
+    await writeFile(
+      path.join(workspace, "MEMORY.md"),
+      "# MEMORY\n\n- Likes concise summaries.\n",
       "utf-8",
     );
     await writeFile(
@@ -375,9 +382,13 @@ describe("third-party migration importers", () => {
         source: "openclaw",
         sourceRoot: openclaw,
       });
-      expect(
-        preview.findings.find((finding) => finding.option === "memory")?.paths,
-      ).toContain(path.join(workspace, "memory", "2026-05-24.md"));
+      const memoryPaths =
+        preview.findings.find((finding) => finding.option === "memory")?.paths ??
+        [];
+      expect(memoryPaths).toContain(path.join(workspace, "MEMORY.md"));
+      expect(memoryPaths).not.toContain(
+        path.join(workspace, "memory", "2026-05-24.md"),
+      );
       expect(
         preview.findings.find((finding) => finding.option === "user")?.paths,
       ).toEqual(
@@ -409,14 +420,14 @@ describe("third-party migration importers", () => {
           "anthropic/claude-opus-4-6",
         );
 
-        const memoryRows = db
-          .prepare("SELECT target, content FROM memory_entries ORDER BY target, content")
-          .all() as Array<{ target: string; content: string }>;
-        expect(memoryRows).toEqual([
-          { target: "memory", content: "Likes morning updates." },
-          { target: "user", content: "Env workspace user note." },
-          { target: "user", content: "User is Taylor." },
-        ]);
+        const coreMemory = await readFile(
+          path.join(stellaHome, "core-memory.md"),
+          "utf-8",
+        );
+        expect(coreMemory).toContain("Likes concise summaries.");
+        expect(coreMemory).toContain("User is Taylor.");
+        expect(coreMemory).toContain("Env workspace user note.");
+        expect(coreMemory).not.toContain("Likes morning updates.");
 
         const skill = await readFile(
           path.join(stellaHome, "skills", "openclaw-planner", "SKILL.md"),

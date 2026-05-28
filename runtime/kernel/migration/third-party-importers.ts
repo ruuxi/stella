@@ -129,14 +129,10 @@ const DEFAULT_OPTIONS: Record<ThirdPartyMigrationOption, boolean> = {
   schedules: true,
 };
 
-const ENTRY_DELIMITER = "\n§\n";
 const IMPORT_STATE_FILE = path.join("migrations", "third-party-imports.json");
 const REPORTS_DIR = path.join("migrations", "reports");
 const MAX_IMPORTED_SESSIONS = 100;
 const MAX_IMPORTED_SESSION_MESSAGES = 200;
-
-const normalizeText = (value: string): string =>
-  value.trim().replace(/\s+/g, " ").toLowerCase();
 
 const asString = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -532,45 +528,19 @@ const firstExistingFile = async (files: string[]): Promise<string | null> => {
   return matches[0] ?? null;
 };
 
+// Only the curated root memory file is imported. OpenClaw's daily working
+// notes (`memory/YYYY-MM-DD.md`) are search/prelude material on their side, not
+// always-injected bootstrap context, so they are intentionally left out of
+// Stella's core memory.
 const collectOpenClawMemoryFiles = async (
   workspaces: string[],
-): Promise<string[]> => {
-  const rootMemoryFiles = await existingFiles(
+): Promise<string[]> =>
+  existingFiles(
     workspaces.flatMap((workspace) => [
       path.join(workspace, "MEMORY.md"),
       path.join(workspace, "memory.md"),
     ]),
   );
-  const memoryTreeFiles = (
-    await Promise.all(
-      workspaces.map((workspace) =>
-        listMarkdownFiles(path.join(workspace, "memory")),
-      ),
-    )
-  ).flat();
-  return uniqueSorted([...rootMemoryFiles, ...memoryTreeFiles]);
-};
-
-const listMarkdownFiles = async (root: string): Promise<string[]> => {
-  const out: string[] = [];
-  const visit = async (dir: string): Promise<void> => {
-    const entries = await fsp.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      if (entry.name.startsWith(".")) continue;
-      const nextPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await visit(nextPath);
-      } else if (entry.isFile() && /\.md$/iu.test(entry.name)) {
-        out.push(nextPath);
-      }
-    }
-  };
-  try {
-    await visit(root);
-  } catch {}
-  return uniqueSorted(out);
-};
 
 const listSkillDirs = async (roots: string[]): Promise<string[]> => {
   const out: string[] = [];
@@ -878,7 +848,7 @@ export const runThirdPartyMigration = async (opts: {
           source: opts.source,
           target: "memory",
           files: paths.memoryFiles,
-          db,
+          stellaHome,
           state: importState,
           stateKey: key,
           items,
@@ -889,7 +859,7 @@ export const runThirdPartyMigration = async (opts: {
           source: opts.source,
           target: "user",
           files: paths.userFiles,
-          db,
+          stellaHome,
           state: importState,
           stateKey: key,
           items,
@@ -982,62 +952,67 @@ const createMigrationDatabase = async (
   return db;
 };
 
+/**
+ * Seed imported curated memory into Stella's always-injected core memory.
+ *
+ * Both Hermes (`MEMORY.md`/`USER.md` → system prompt) and OpenClaw
+ * (`MEMORY.md` → bootstrap "Project Context") inject their curated memory on
+ * every turn rather than recalling it via search. Stella's matching lane is
+ * `~/.stella/core-memory.md`, read by `readCoreMemory` and injected as a hidden
+ * bootstrap doc — not the discovery-grepped `memories/MEMORY.md`. The source
+ * memory is already complete, so it is dropped in verbatim under a marked
+ * section (no Dream consolidation). Re-imports are idempotent via the section
+ * marker plus the per-file import-state fingerprint.
+ */
 const importMemoryFiles = async (args: {
   source: ThirdPartyMigrationSource;
   target: "memory" | "user";
   files: string[];
-  db: SqliteDatabase;
+  stellaHome: string;
   state: ImportedState;
   stateKey: string;
   items: ThirdPartyMigrationReportItem[];
 }): Promise<void> => {
+  const label = args.target === "user" ? "user profile" : "memory";
   if (args.files.length === 0) {
     args.items.push({
       kind: args.target,
       status: "skipped",
-      message: `No ${args.target === "memory" ? "memory" : "user profile"} file found.`,
+      message: `No ${label} file found.`,
     });
     return;
   }
 
-  const existingRows = args.db
-    .prepare("SELECT content FROM memory_entries WHERE target = ? ORDER BY rowid ASC")
-    .all(args.target) as Array<{ content?: string }>;
-  const existing = new Set(
-    existingRows
-      .map((row) => row.content)
-      .filter((value): value is string => typeof value === "string")
-      .map(normalizeText),
-  );
+  const coreMemoryPath = path.join(args.stellaHome, "core-memory.md");
+  const existing = (await readTextIfExists(coreMemoryPath)) ?? "";
+  const blocks: string[] = [];
   let added = 0;
-  let duplicates = 0;
-  const now = Date.now();
-  const insert = args.db.prepare(`
-    INSERT INTO memory_entries (id, target, content, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?)
-  `);
 
   for (const file of args.files) {
     const text = await readTextIfExists(file);
-    if (!text) continue;
+    if (!text?.trim()) continue;
     const fingerprint = hashText(text);
     const itemId = `${args.target}:${file}`;
-    if (alreadyImported(args.state, args.stateKey, itemId, fingerprint)) {
-      duplicates += 1;
-      continue;
-    }
-    const entries = extractMarkdownEntries(text);
-    for (const entry of entries) {
-      const normalized = normalizeText(entry);
-      if (!normalized || existing.has(normalized)) {
-        duplicates += 1;
-        continue;
-      }
-      insert.run(generateLocalId(), args.target, entry, now, now);
-      existing.add(normalized);
-      added += 1;
-    }
+    if (alreadyImported(args.state, args.stateKey, itemId, fingerprint)) continue;
+    const marker = `third-party-import:${args.source}:${args.target}:${hashText(file).slice(0, 12)}`;
+    if (existing.includes(marker)) continue;
+    blocks.push(
+      [
+        `<!-- ${marker} -->`,
+        `## Imported ${PRODUCT_LABELS[args.source]} ${label}`,
+        "",
+        text.trim(),
+        `<!-- /${marker} -->`,
+      ].join("\n"),
+    );
     markImported(args.state, args.stateKey, itemId, fingerprint);
+    added += 1;
+  }
+
+  if (blocks.length > 0) {
+    await fsp.mkdir(path.dirname(coreMemoryPath), { recursive: true });
+    const next = [existing.trim(), ...blocks].filter(Boolean).join("\n\n") + "\n";
+    await fsp.writeFile(coreMemoryPath, next, "utf-8");
   }
 
   args.items.push({
@@ -1045,86 +1020,11 @@ const importMemoryFiles = async (args: {
     status: added > 0 ? "imported" : "skipped",
     count: added,
     source: args.files.join(", "),
-    target: "stella.sqlite:memory_entries",
+    target: coreMemoryPath,
     message:
       added > 0
-        ? `Imported ${added} ${args.target} entr${added === 1 ? "y" : "ies"} (${duplicates} already present).`
-        : `No new ${args.target} entries to import.`,
-  });
-};
-
-const extractMarkdownEntries = (text: string): string[] => {
-  if (text.includes(ENTRY_DELIMITER)) {
-    return text
-      .split(ENTRY_DELIMITER)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-  }
-
-  const entries: string[] = [];
-  const headings: string[] = [];
-  let paragraphLines: string[] = [];
-  let inCodeBlock = false;
-
-  const contextPrefix = () =>
-    headings
-      .filter((heading) => !/\b(MEMORY|USER|SOUL|AGENTS|TOOLS|IDENTITY)\.md\b/i.test(heading))
-      .join(" > ");
-
-  const pushEntry = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    const prefix = contextPrefix();
-    entries.push(prefix ? `${prefix}: ${trimmed}` : trimmed);
-  };
-
-  const flushParagraph = () => {
-    if (paragraphLines.length === 0) return;
-    pushEntry(paragraphLines.map((line) => line.trim()).join(" "));
-    paragraphLines = [];
-  };
-
-  for (const rawLine of text.split(/\r?\n/u)) {
-    const line = rawLine.replace(/\s+$/u, "");
-    const stripped = line.trim();
-    if (stripped.startsWith("```")) {
-      flushParagraph();
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-    if (inCodeBlock) continue;
-    const heading = stripped.match(/^(#{1,6})\s+(.*\S)\s*$/u);
-    if (heading) {
-      flushParagraph();
-      const level = heading[1]?.length ?? 1;
-      while (headings.length >= level) headings.pop();
-      headings.push(heading[2]?.trim() ?? "");
-      continue;
-    }
-    const bullet = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*\S)\s*$/u);
-    if (bullet) {
-      flushParagraph();
-      pushEntry(bullet[1] ?? "");
-      continue;
-    }
-    if (!stripped) {
-      flushParagraph();
-      continue;
-    }
-    if (stripped.startsWith("|") && stripped.endsWith("|")) {
-      flushParagraph();
-      continue;
-    }
-    paragraphLines.push(stripped);
-  }
-  flushParagraph();
-
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const normalized = normalizeText(entry);
-    if (!normalized || seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
+        ? `Imported ${added} ${label} file${added === 1 ? "" : "s"} into core memory.`
+        : `No new ${label} content to import.`,
   });
 };
 

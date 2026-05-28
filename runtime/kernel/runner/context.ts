@@ -523,6 +523,9 @@ export const createRunnerContext = ({
       return await runContextLookup({
         conversationId: payload.conversationId,
         lookupPrompt: payload.prompt,
+        ...(payload.memorySearchTerms?.length
+          ? { memorySearchTerms: payload.memorySearchTerms }
+          : {}),
         stellaRoot,
         stellaHome,
         store: context.runtimeStore,

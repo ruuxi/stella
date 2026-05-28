@@ -5,7 +5,6 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildContextLookupUserPrompt } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
-import { MemoryStore } from "../../../../../runtime/kernel/memory/memory-store.js";
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
@@ -17,7 +16,6 @@ const roots = new Set<string>();
 const createRoot = async (): Promise<{
   rootPath: string;
   db: SqliteDatabase;
-  memoryStore: MemoryStore;
 }> => {
   const rootPath = path.join(
     os.tmpdir(),
@@ -33,7 +31,7 @@ const createRoot = async (): Promise<{
     timeout: 5000,
   }) as unknown as SqliteDatabase;
   initializeDesktopDatabase(db);
-  return { rootPath, db, memoryStore: new MemoryStore(db) };
+  return { rootPath, db };
 };
 
 afterEach(async () => {
@@ -44,9 +42,8 @@ afterEach(async () => {
 });
 
 describe("buildContextLookupUserPrompt", () => {
-  it("builds a relevance prompt with stable memory first and Chronicle last", async () => {
-    const { rootPath, db, memoryStore } = await createRoot();
-    memoryStore.add("user", "User prefers concise answers.");
+  it("builds a relevance prompt with memory files before Chronicle", async () => {
+    const { rootPath, db } = await createRoot();
     await writeFile(
       path.join(rootPath, "memories", "memory_summary.md"),
       "Working on Stella memory routing.",
@@ -62,7 +59,6 @@ describe("buildContextLookupUserPrompt", () => {
     );
 
     const store: Parameters<typeof buildContextLookupUserPrompt>[0]["store"] = {
-      memoryStore,
       listActiveThreads: () => [
         {
           conversationId: "conv-1",
@@ -144,15 +140,63 @@ describe("buildContextLookupUserPrompt", () => {
     expect(prompt).toContain(
       '<memory_file path="~/.stella/memories/memory_summary.md">',
     );
-    expect(prompt).toContain('<memory_snapshot target="user">');
     expect(prompt).toContain("Safari - Context docs");
     expect(prompt).toContain("https://example.com/live-context");
     expect(prompt).toContain("https://example.com/context-tools");
     expect(prompt).toContain("Selected Stella panel");
     expect(prompt).toContain("thread-1");
     expect(prompt).toContain('<chronicle_snapshot window="last ~10 minutes"');
-    expect(prompt.indexOf("# Durable Memory")).toBeLessThan(
+    expect(prompt.indexOf("# Memory Files")).toBeLessThan(
       prompt.indexOf("# Chronicle Context"),
     );
+  });
+
+  it("adds matched memory lines when search terms are provided", async () => {
+    const { rootPath, db } = await createRoot();
+    await writeFile(
+      path.join(rootPath, "memories", "memory_summary.md"),
+      "Working on Stella memory routing.",
+    );
+    await writeFile(
+      path.join(rootPath, "memories", "MEMORY.md"),
+      [
+        "# MEMORY",
+        "",
+        "## 2026-05-28 — Mini window spaces",
+        "Outcome: Mini window follows spaces only when pinned.",
+        "Recall hooks: mini window, pinned, macOS spaces",
+        "",
+        "## 2026-05-27 — Unrelated release",
+        "Outcome: Built launcher release assets.",
+      ].join("\n"),
+    );
+
+    const store: Parameters<typeof buildContextLookupUserPrompt>[0]["store"] = {
+      listActiveThreads: () => [],
+    };
+
+    const prompt = await buildContextLookupUserPrompt({
+      conversationId: "conv-1",
+      lookupPrompt: "What did we decide about the mini window?",
+      memorySearchTerms: ["mini window", "pinned"],
+      stellaHome: rootPath,
+      store,
+      localEvents: [],
+    });
+
+    db.close();
+
+    expect(prompt).toContain("# Memory Search Results");
+    expect(prompt).toContain(
+      '<memory_search terms="mini window, pinned">',
+    );
+    expect(prompt).toContain(
+      '<match path="~/.stella/memories/MEMORY.md" lines="2-6">',
+    );
+    expect(prompt).toContain(
+      "4: Outcome: Mini window follows spaces only when pinned.",
+    );
+    expect(prompt).not.toContain("Built launcher release assets.");
+    expect(prompt).toContain("Full ~/.stella/memories/MEMORY.md omitted");
   });
 });

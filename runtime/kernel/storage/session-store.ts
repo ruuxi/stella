@@ -46,7 +46,6 @@ import {
   toJsonValueString,
 } from "./shared.js";
 import { isUiHiddenChatMessagePayload } from "../../chat-event-visibility.js";
-import { MemoryStore } from "../memory/memory-store.js";
 import { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
 
 /**
@@ -731,22 +730,9 @@ const buildThreadMessagesFromEntries = (
 };
 
 export class SessionStore {
-  private memoryStoreInstance: MemoryStore | null = null;
   private threadSummariesStoreInstance: ThreadSummariesStore | null = null;
 
   constructor(private readonly db: SqliteDatabase) {}
-
-  /**
-   * Lazily-constructed singleton MemoryStore wrapping this store's database.
-   * Snapshot capture is intentionally NOT performed here; callers decide when
-   * to freeze a snapshot boundary for their own run/session.
-   */
-  get memoryStore(): MemoryStore {
-    if (!this.memoryStoreInstance) {
-      this.memoryStoreInstance = new MemoryStore(this.db);
-    }
-    return this.memoryStoreInstance;
-  }
 
   /**
    * Lazily-constructed singleton ThreadSummariesStore. Stage 1 of the
@@ -2808,23 +2794,104 @@ export class SessionStore {
   }
 
   /**
+   * Current memory-review state for a conversation. `lastReviewedMessageTs`
+   * is the timestamp of the newest message the last review consumed; the
+   * review pass slices the transcript to messages newer than this so each
+   * pass only sees the delta since the previous review. It is a message
+   * timestamp (a value), not an array index, so it stays valid across
+   * compaction rebuilds and worker restarts.
+   */
+  getMemoryReviewState(conversationId: string): {
+    userTurnsSinceReview: number;
+    lastReviewedMessageTs: number;
+  } {
+    const row = this.db.prepare(`
+      SELECT user_turns_since_review AS userTurnsSinceReview,
+             last_reviewed_message_ts AS lastReviewedMessageTs
+      FROM runtime_memory_review_state
+      WHERE conversation_id = ?
+      LIMIT 1
+    `).get(conversationId) as
+      | { userTurnsSinceReview?: unknown; lastReviewedMessageTs?: unknown }
+      | undefined;
+    return {
+      userTurnsSinceReview:
+        typeof row?.userTurnsSinceReview === "number"
+          ? Math.max(0, Math.floor(row.userTurnsSinceReview))
+          : 0,
+      lastReviewedMessageTs:
+        typeof row?.lastReviewedMessageTs === "number"
+          ? Math.max(0, Math.floor(row.lastReviewedMessageTs))
+          : 0,
+    };
+  }
+
+  /**
    * Reset the memory-review user-turn counter to zero and stamp the time of
    * the review. Call after a memory review fires so a quick second turn does
-   * not double-trigger.
+   * not double-trigger. When `lastReviewedMessageTs` is provided it advances
+   * the review watermark so the next pass only reviews newer messages; when
+   * omitted the existing watermark is preserved (never silently cleared).
    */
-  resetUserTurnsSinceMemoryReview(conversationId: string): void {
+  resetUserTurnsSinceMemoryReview(
+    conversationId: string,
+    lastReviewedMessageTs?: number,
+  ): void {
     const now = Date.now();
+    const reviewedTs =
+      typeof lastReviewedMessageTs === "number" &&
+      Number.isFinite(lastReviewedMessageTs) &&
+      lastReviewedMessageTs > 0
+        ? Math.floor(lastReviewedMessageTs)
+        : null;
     this.db.prepare(`
       INSERT INTO runtime_memory_review_state (
         conversation_id,
         user_turns_since_review,
-        last_review_at
+        last_review_at,
+        last_reviewed_message_ts
+      )
+      VALUES (?, 0, ?, ?)
+      ON CONFLICT(conversation_id) DO UPDATE SET
+        user_turns_since_review = 0,
+        last_review_at = excluded.last_review_at,
+        last_reviewed_message_ts = COALESCE(
+          excluded.last_reviewed_message_ts,
+          runtime_memory_review_state.last_reviewed_message_ts
+        )
+    `).run(conversationId, now, reviewedTs);
+  }
+
+  /**
+   * Advance only the review watermark, without touching the user-turn counter.
+   * Called after a review actually completes so a transient review failure does
+   * not permanently skip the messages it failed on. Never regresses an existing
+   * watermark.
+   */
+  advanceMemoryReviewWatermark(
+    conversationId: string,
+    lastReviewedMessageTs: number,
+  ): void {
+    if (
+      !Number.isFinite(lastReviewedMessageTs) ||
+      lastReviewedMessageTs <= 0
+    ) {
+      return;
+    }
+    const reviewedTs = Math.floor(lastReviewedMessageTs);
+    this.db.prepare(`
+      INSERT INTO runtime_memory_review_state (
+        conversation_id,
+        user_turns_since_review,
+        last_reviewed_message_ts
       )
       VALUES (?, 0, ?)
       ON CONFLICT(conversation_id) DO UPDATE SET
-        user_turns_since_review = 0,
-        last_review_at = excluded.last_review_at
-    `).run(conversationId, now);
+        last_reviewed_message_ts = MAX(
+          COALESCE(runtime_memory_review_state.last_reviewed_message_ts, 0),
+          excluded.last_reviewed_message_ts
+        )
+    `).run(conversationId, reviewedTs);
   }
 
   /**

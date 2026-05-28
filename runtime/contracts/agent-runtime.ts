@@ -95,6 +95,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       injectsRuntimeReminders: true,
       injectsSkillCatalog: true,
       injectsSubagentRoster: true,
+      triggersDreamScheduler: true,
       triggersMemoryReview: true,
       triggersSelfModDetection: true,
     },
@@ -153,8 +154,10 @@ const BUILTIN_AGENT_DEFINITIONS = [
     },
     capabilities: {
       injectsSkillCatalog: true,
+      // Subagents record thread_summaries rows for Dream to consume, but they
+      // do not trigger Dream — consolidation is driven by orchestrator context
+      // growth, so these rows are folded on the next orchestrator-driven run.
       recordsThreadSummary: true,
-      triggersDreamScheduler: true,
     },
   },
   {
@@ -528,7 +531,6 @@ export const RUNTIME_RUN_EVENT_TYPES = {
 
 export const TOOL_IDS = {
   NO_RESPONSE: "NoResponse",
-  MEMORY: "Memory",
   DREAM: "Dream",
   READ: "Read",
   STR_REPLACE: "StrReplace",

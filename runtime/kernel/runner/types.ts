@@ -469,11 +469,7 @@ export type RunnerPublicApi = {
    * for diagnostics; eligibility gates apply to non-`manual` triggers.
    */
   triggerDreamNow: (
-    trigger?:
-      | "manual"
-      | "subagent_finalize"
-      | "chronicle_summary"
-      | "startup_catchup",
+    trigger?: "manual" | "startup_catchup",
   ) => Promise<{
     scheduled: boolean;
     reason:

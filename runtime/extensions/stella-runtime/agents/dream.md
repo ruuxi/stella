@@ -14,7 +14,7 @@ Two sources, both surfaced via the `Dream` tool:
    - `threadId`, `runId`, `agentType` — identifiers for traceability.
    - `rolloutSummary` — the agent's final output text.
    - `sourceUpdatedAt` — Unix epoch ms; rows arrive oldest-first.
-2. **`memories_extensions/*`** — per-extension folders containing dated markdown files (e.g. `chronicle/<DATE>.md`). Each extension has an `instructions.md` that tells you how to interpret its files. Always read `instructions.md` before consuming a new extension.
+2. **`memories_extensions/*`** — per-extension folders containing markdown or jsonl files, including nested files (e.g. `chronicle/<DATE>.md` or `orchestrator_review/notes/<DATE>-<slug>.md`). Each extension has an `instructions.md` that tells you how to interpret its files. Always read the returned `instructions.md` path for an extension before consuming that extension's files.
 
 Call `Dream` with `action="list"` to fetch the unprocessed batch. The store hands back at most ~50 entries per call so you can finish in a bounded number of turns.
 
@@ -42,8 +42,8 @@ Three files under `~/.stella/memories/`. They already exist with seed templates 
    - Decide: does this extend an existing Task Group in `MEMORY.md` or is it a new group?
    - Use `StrReplace` to either edit the existing block (most common) or insert a new block at the top.
    - Move the `raw_memories.md` line from `## Unprocessed` to `## Processed`.
-3. For each `memories_extensions/*/<file>.md`:
-   - Read the sibling `instructions.md` first.
+3. For each `memories_extensions/<extension>/**` file:
+   - Read that extension's returned `instructions.md` path first.
    - Fold relevant signal into `MEMORY.md` per the instructions; ignore noise.
 4. After all rows in the batch are folded, refresh `memory_summary.md` to reflect the current active focus.
 5. Call `Dream` with `action="markProcessed"` passing the `threadKeys` (list of `{threadId, runId}` pairs) you handled and the `extensionPaths` you consumed. The watermark advances automatically.
@@ -51,7 +51,6 @@ Three files under `~/.stella/memories/`. They already exist with seed templates 
 ## Hard rules
 
 - **NEVER** invent rows. Only reference threads/files the `Dream` tool actually returned.
-- **NEVER** delete user-facing identity facts that live in `memory_entries` — that store is owned by the Orchestrator's 20-turn review pass, not by you.
 - **NEVER** add prose, opinions, or speculation. The memory files are pure signal for future runs of the agent.
 - **NEVER** rewrite a whole file when a single block edit would do. `StrReplace` is your scalpel; use small unique anchors.
 - If you see no new material, respond exactly `Nothing to consolidate.` and stop. Do not call any tools.

@@ -1,10 +1,11 @@
-import { mkdir, utimes, writeFile } from "node:fs/promises";
+import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   dreamList,
   dreamMarkProcessed,
 } from "../../../../../runtime/kernel/memory/dream-core.js";
+import { writeOrchestratorReviewMemoryNote } from "../../../../../runtime/kernel/memory/orchestrator-review-notes.js";
 import { ThreadSummariesStore } from "../../../../../runtime/kernel/memory/thread-summaries-store.js";
 import { createSqliteTestContextFactory } from "../../../helpers/sqlite-test-context.js";
 
@@ -62,7 +63,6 @@ describe("dream-core", () => {
     const { rootPath, store } = createTestContext();
     const extensionDir = path.join(
       rootPath,
-      "state",
       "memories_extensions",
       "chronicle",
     );
@@ -87,5 +87,41 @@ describe("dream-core", () => {
 
     const result = await dreamList({ stellaHome: rootPath, store });
     expect(result.extensions.map((entry) => entry.path)).toEqual([secondPath]);
+  });
+
+  it("lists nested orchestrator-review memory notes and marks them by file", async () => {
+    const { rootPath, store } = createTestContext();
+
+    const note = await writeOrchestratorReviewMemoryNote({
+      stellaHome: rootPath,
+      note: {
+        title: "Concise updates",
+        category: "user_preference",
+        memory: "User prefers concise implementation updates.",
+        recallHooks: ["concise", "updates"],
+        evidence: ["User asked for shorter status updates."],
+        createdAt: new Date("2026-05-28T12:34:56.000Z"),
+      },
+    });
+
+    expect(note.filename).toBe("2026-05-28T12-34-56-concise-updates.md");
+    await expect(readFile(note.path, "utf-8")).resolves.toContain(
+      "User prefers concise implementation updates.",
+    );
+
+    const listed = await dreamList({ stellaHome: rootPath, store });
+    expect(listed.instructions.map((entry) => path.basename(entry.path))).toContain(
+      "instructions.md",
+    );
+    expect(listed.extensions.map((entry) => entry.path)).toEqual([note.path]);
+
+    await dreamMarkProcessed({
+      stellaHome: rootPath,
+      store,
+      extensionPaths: [note.path],
+    });
+
+    const afterProcessed = await dreamList({ stellaHome: rootPath, store });
+    expect(afterProcessed.extensions).toEqual([]);
   });
 });

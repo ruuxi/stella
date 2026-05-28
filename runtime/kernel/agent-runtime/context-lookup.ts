@@ -14,15 +14,17 @@ import {
 } from "../integrations/claude-code-agent-runtime.js";
 
 const MAX_CONTEXT_OUTPUT_TOKENS = 900;
+const MAX_MEMORY_SEARCH_TERMS = 12;
+const MAX_MEMORY_SEARCH_TERM_CHARS = 120;
+const MAX_MEMORY_SEARCH_MATCHES = 40;
+const MAX_MEMORY_SEARCH_CONTEXT_LINES = 1;
+const MAX_MEMORY_SEARCH_RESULTS_CHARS = 16_000;
 const CHRONICLE_DIR_SEGMENTS = [
   "memories_extensions",
   "chronicle",
 ] as const;
 
-type ContextLookupStore = Pick<
-  RuntimeStore,
-  "memoryStore" | "listActiveThreads"
->;
+type ContextLookupStore = Pick<RuntimeStore, "listActiveThreads">;
 
 const CONTEXT_LOOKUP_SYSTEM_PROMPT = [
   "Provide relevant matching information for the lookup request.",
@@ -37,6 +39,13 @@ const truncate = (value: string, maxChars: number): string =>
   value.length <= maxChars
     ? value
     : `${value.slice(0, maxChars)}\n...[truncated]`;
+
+const escapeAttribute = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -115,31 +124,57 @@ const formatLiveAppBrowserContext = (
     : "No live app or browser-tab snapshot is available.";
 };
 
-const formatMemorySnapshot = (
-  store: Pick<ContextLookupStore, "memoryStore">,
-): string => {
-  store.memoryStore.loadSnapshot();
-  const user = store.memoryStore.formatForSystemPrompt("user")?.trim();
-  const memory = store.memoryStore.formatForSystemPrompt("memory")?.trim();
-  const parts = [
-    user ? `<memory_snapshot target="user">\n${user}\n</memory_snapshot>` : "",
-    memory
-      ? `<memory_snapshot target="memory">\n${memory}\n</memory_snapshot>`
-      : "",
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join("\n\n") : "No durable memory entries.";
+const normalizeMemorySearchTerms = (terms?: readonly string[]): string[] => {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const term of terms ?? []) {
+    const trimmed = term.trim().replace(/\s+/g, " ");
+    if (!trimmed) continue;
+    const capped = trimmed.slice(0, MAX_MEMORY_SEARCH_TERM_CHARS);
+    const key = capped.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(capped);
+    if (normalized.length >= MAX_MEMORY_SEARCH_TERMS) break;
+  }
+  return normalized;
 };
 
-const readMemoryFiles = async (stellaHome: string): Promise<string> => {
+type MemoryFileSource = {
+  displayPath: string;
+  path: string;
+  includeByDefault: boolean;
+};
+
+const MEMORY_FILE_SOURCES = (stellaHome: string): MemoryFileSource[] => [
+  {
+    displayPath: "~/.stella/memories/memory_summary.md",
+    path: path.join(stellaHome, "memories", "memory_summary.md"),
+    includeByDefault: true,
+  },
+  {
+    displayPath: "~/.stella/memories/MEMORY.md",
+    path: path.join(stellaHome, "memories", "MEMORY.md"),
+    includeByDefault: true,
+  },
+  {
+    displayPath: "~/.stella/memories/raw_memories.md",
+    path: path.join(stellaHome, "memories", "raw_memories.md"),
+    includeByDefault: false,
+  },
+];
+
+const readMemoryFiles = async (
+  stellaHome: string,
+  opts?: { hasSearchTerms?: boolean },
+): Promise<string> => {
   const files = [
-    {
-      displayPath: "~/.stella/memories/memory_summary.md",
-      path: path.join(stellaHome, "memories", "memory_summary.md"),
-    },
-    {
-      displayPath: "~/.stella/memories/MEMORY.md",
-      path: path.join(stellaHome, "memories", "MEMORY.md"),
-    },
+    ...MEMORY_FILE_SOURCES(stellaHome).filter(
+      (file) =>
+        file.includeByDefault &&
+        (!opts?.hasSearchTerms ||
+          file.displayPath !== "~/.stella/memories/MEMORY.md"),
+    ),
   ];
   const blocks: string[] = [];
   for (const file of files) {
@@ -149,7 +184,102 @@ const readMemoryFiles = async (stellaHome: string): Promise<string> => {
       `<memory_file path="${file.displayPath}">\n${content}\n</memory_file>`,
     );
   }
-  return blocks.length > 0 ? blocks.join("\n\n") : "No memory files found.";
+  if (blocks.length === 0) return "No memory files found.";
+  if (opts?.hasSearchTerms) {
+    blocks.push(
+      "Full ~/.stella/memories/MEMORY.md omitted because memorySearchTerms were provided. Use # Memory Search Results for matched lines.",
+    );
+  }
+  return blocks.join("\n\n");
+};
+
+const lineMatchesTerms = (
+  line: string,
+  normalizedTerms: string[],
+): string[] => {
+  const lower = line.toLocaleLowerCase();
+  return normalizedTerms.filter((term) =>
+    lower.includes(term.toLocaleLowerCase()),
+  );
+};
+
+const formatLineRange = (start: number, end: number): string =>
+  start === end ? String(start) : `${start}-${end}`;
+
+const readMemorySearchResults = async (
+  stellaHome: string,
+  searchTerms?: readonly string[],
+): Promise<string> => {
+  const terms = normalizeMemorySearchTerms(searchTerms);
+  if (terms.length === 0) {
+    return "No memory search terms provided.";
+  }
+
+  const blocks: string[] = [
+    `<memory_search terms="${escapeAttribute(terms.join(", "))}">`,
+  ];
+  let matchCount = 0;
+  let truncated = false;
+
+  for (const file of MEMORY_FILE_SOURCES(stellaHome)) {
+    const content = await readOptionalTextFile(file.path);
+    if (!content) continue;
+    const lines = content.split(/\r?\n/);
+    const usedRanges: Array<{ start: number; end: number }> = [];
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const matchedTerms = lineMatchesTerms(lines[index] ?? "", terms);
+      if (matchedTerms.length === 0) continue;
+
+      const start = Math.max(0, index - MAX_MEMORY_SEARCH_CONTEXT_LINES);
+      const end = Math.min(
+        lines.length - 1,
+        index + MAX_MEMORY_SEARCH_CONTEXT_LINES,
+      );
+      const previous = usedRanges[usedRanges.length - 1];
+      if (previous && start <= previous.end) {
+        previous.end = Math.max(previous.end, end);
+        continue;
+      }
+      usedRanges.push({ start, end });
+    }
+
+    for (const range of usedRanges) {
+      if (matchCount >= MAX_MEMORY_SEARCH_MATCHES) {
+        truncated = true;
+        break;
+      }
+      const numbered = lines
+        .slice(range.start, range.end + 1)
+        .map((line, offset) => `${range.start + offset + 1}: ${line}`)
+        .join("\n");
+      const rangeText = formatLineRange(range.start + 1, range.end + 1);
+      blocks.push(
+        [
+          `<match path="${escapeAttribute(file.displayPath)}" lines="${rangeText}">`,
+          numbered,
+          "</match>",
+        ].join("\n"),
+      );
+      matchCount += 1;
+      if (blocks.join("\n\n").length > MAX_MEMORY_SEARCH_RESULTS_CHARS) {
+        truncated = true;
+        break;
+      }
+    }
+    if (truncated) break;
+  }
+
+  if (matchCount === 0) {
+    blocks.push("No matching memory lines found.");
+  }
+  if (truncated) {
+    blocks.push(
+      `[truncated after ${matchCount} matches; narrow or change memorySearchTerms for more precise recall]`,
+    );
+  }
+  blocks.push("</memory_search>");
+  return blocks.join("\n\n");
 };
 
 const readChronicleFiles = async (stellaHome: string): Promise<string> => {
@@ -194,22 +324,29 @@ const formatActiveThreads = (
 export const buildContextLookupUserPrompt = async (args: {
   conversationId: string;
   lookupPrompt: string;
+  memorySearchTerms?: readonly string[];
   stellaHome: string;
   store: ContextLookupStore;
   localEvents: LocalContextEvent[];
   appBrowserContext?: HostAppBrowserContextSnapshot;
 }): Promise<string> => {
-  const [memoryFiles, chronicleFiles] = await Promise.all([
-    readMemoryFiles(args.stellaHome),
+  const normalizedSearchTerms = normalizeMemorySearchTerms(
+    args.memorySearchTerms,
+  );
+  const hasSearchTerms = normalizedSearchTerms.length > 0;
+  const [memoryFiles, memorySearchResults, chronicleFiles] = await Promise.all([
+    readMemoryFiles(args.stellaHome, {
+      hasSearchTerms,
+    }),
+    hasSearchTerms
+      ? readMemorySearchResults(args.stellaHome, normalizedSearchTerms)
+      : Promise.resolve(""),
     readChronicleFiles(args.stellaHome),
   ]);
 
-  return [
+  const sections = [
     "# Lookup Request",
     truncate(args.lookupPrompt.trim(), 2_000),
-    "",
-    "# Durable Memory",
-    formatMemorySnapshot(args.store),
     "",
     "# Memory Files",
     memoryFiles,
@@ -225,12 +362,17 @@ export const buildContextLookupUserPrompt = async (args: {
     "",
     "# Chronicle Context",
     chronicleFiles,
-  ].join("\n");
+  ];
+  if (hasSearchTerms) {
+    sections.push("", "# Memory Search Results", memorySearchResults);
+  }
+  return sections.join("\n");
 };
 
 export const runContextLookup = async (args: {
   conversationId: string;
   lookupPrompt: string;
+  memorySearchTerms?: readonly string[];
   stellaRoot: string;
   stellaHome: string;
   store: RuntimeStore;

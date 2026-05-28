@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { TOOL_IDS } from "../../contracts/agent-runtime.js";
 import { dreamList, dreamMarkProcessed } from "../memory/dream-core.js";
-import type { MemoryStore, MemoryTarget } from "../memory/memory-store.js";
 import {
   memoryFilePath,
   memorySummaryPath,
@@ -13,7 +12,6 @@ import type { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
 import { localNoResponse } from "./local-tool-overrides.js";
 
 export type LocalToolStore = {
-  memoryStore: MemoryStore;
   threadSummariesStore?: ThreadSummariesStore;
 };
 
@@ -100,14 +98,6 @@ const isThreadKeyArray = (
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
 
-const isMemoryTarget = (value: unknown): value is MemoryTarget =>
-  value === "memory" || value === "user";
-
-const isMemoryAction = (
-  value: unknown,
-): value is "add" | "replace" | "remove" =>
-  value === "add" || value === "replace" || value === "remove";
-
 export type LocalToolDeps = {
   conversationId: string;
   store?: LocalToolStore | null;
@@ -131,50 +121,6 @@ export async function dispatchLocalTool(
   if (toolName === TOOL_IDS.NO_RESPONSE) {
     const text = await localNoResponse();
     return { handled: true, text };
-  }
-
-  if (toolName === TOOL_IDS.MEMORY) {
-    if (!deps.store) {
-      return {
-        handled: true,
-        text: JSON.stringify({
-          success: false,
-          error: "Memory store not available.",
-        }),
-      };
-    }
-    const action = isMemoryAction(args.action) ? args.action : null;
-    const target = isMemoryTarget(args.target) ? args.target : null;
-    if (!action) {
-      return {
-        handled: true,
-        text: JSON.stringify({
-          success: false,
-          error: "action must be one of: add, replace, remove.",
-        }),
-      };
-    }
-    if (!target) {
-      return {
-        handled: true,
-        text: JSON.stringify({
-          success: false,
-          error: "target must be one of: memory, user.",
-        }),
-      };
-    }
-    const content = typeof args.content === "string" ? args.content : "";
-    const oldText = typeof args.oldText === "string" ? args.oldText : "";
-
-    let result;
-    if (action === "add") {
-      result = deps.store.memoryStore.add(target, content);
-    } else if (action === "replace") {
-      result = deps.store.memoryStore.replace(target, oldText, content);
-    } else {
-      result = deps.store.memoryStore.remove(target, oldText);
-    }
-    return { handled: true, text: JSON.stringify(result) };
   }
 
   if (toolName === TOOL_IDS.READ) {
