@@ -323,7 +323,18 @@ button.mini-context-chip:hover {
 
 .chat-composer-context-chip--text,
 .composer-context-chip--text,
-.mini-context-chip--text,
+.mini-context-chip--text {
+  background: color-mix(in oklch, var(--primary) 12%, var(--background));
+  border-color: color-mix(in oklch, var(--primary) 28%, var(--background));
+}
+
+.dark .chat-composer-context-chip--text,
+.dark .composer-context-chip--text,
+.dark .mini-context-chip--text {
+  background: color-mix(in oklch, var(--primary) 18%, var(--background));
+  border-color: color-mix(in oklch, var(--primary) 42%, var(--background));
+}
+
 .chat-composer-context-chip--app-selection,
 .composer-context-chip--app-selection,
 .mini-context-chip--app-selection {
