@@ -868,6 +868,7 @@ const runCodexHostedTurn = async (args: {
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     executeTool: executeCodexTool,
     reuseAppServer: true,
+    streamFinalAnswer: args.session.kind === "orchestrator",
   });
 
   for (;;) {
@@ -907,6 +908,7 @@ const runCodexHostedTurn = async (args: {
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
       executeTool: executeCodexTool,
       reuseAppServer: true,
+      streamFinalAnswer: args.session.kind === "orchestrator",
     });
   }
 

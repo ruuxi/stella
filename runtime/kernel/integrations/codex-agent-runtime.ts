@@ -1037,6 +1037,7 @@ export const runCodexAgentTurn = async (request: {
   abortSignal?: AbortSignal;
   onStatus?: (status: string) => void;
   onStream?: (chunk: string) => void;
+  streamFinalAnswer?: boolean;
   onToolUpdate?: (args: {
     toolCallId: string;
     toolName: string;
@@ -1166,7 +1167,9 @@ export const runCodexAgentTurn = async (request: {
           return;
         case "item/agentMessage/delta":
           finalText += notification.params.delta;
-          request.onStream?.(notification.params.delta);
+          if (request.streamFinalAnswer !== false) {
+            request.onStream?.(notification.params.delta);
+          }
           return;
         case "item/reasoning/textDelta":
         case "item/reasoning/summaryTextDelta": {
