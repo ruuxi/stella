@@ -6,10 +6,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { AppMetadata } from "@/app/_shared/app-metadata";
-import {
-  dismissPostOnboardingHint,
-  usePostOnboardingHint,
-} from "@/global/onboarding/post-onboarding-hints";
 import { useSocialBadges } from "@/app/social/hooks/use-social-badges";
 import {
   markAllUserAppsSeen,
@@ -93,17 +89,9 @@ export const ShellTopBarPrimaryNav = () => {
   );
 
   const { totalBadge: socialBadge } = useSocialBadges();
-  const storeHint = usePostOnboardingHint("store");
   const newAppsHint = useNewUserAppsHint();
   const matchRoute = useMatchRoute();
-  const onStoreRoute = Boolean(matchRoute({ to: "/store", fuzzy: true }));
   const onAppsRoute = Boolean(matchRoute({ to: "/apps", fuzzy: true }));
-
-  useEffect(() => {
-    if (storeHint.active && onStoreRoute) {
-      dismissPostOnboardingHint("store");
-    }
-  }, [onStoreRoute, storeHint.active]);
 
   useEffect(() => {
     if (newAppsHint.active && onAppsRoute) {
@@ -117,11 +105,10 @@ export const ShellTopBarPrimaryNav = () => {
   );
   const hintFor = useCallback(
     (app: AppMetadata) => {
-      if (app.id === "store") return storeHint.active;
       if (app.id === "apps") return newAppsHint.active;
       return false;
     },
-    [storeHint.active, newAppsHint.active],
+    [newAppsHint.active],
   );
 
   return (
@@ -133,7 +120,6 @@ export const ShellTopBarPrimaryNav = () => {
           badgeCount={badgeFor(app)}
           showHintDot={hintFor(app)}
           onHintDismiss={() => {
-            if (app.id === "store") dismissPostOnboardingHint("store");
             if (app.id === "apps") markAllUserAppsSeen();
           }}
         />

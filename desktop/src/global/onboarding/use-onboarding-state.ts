@@ -197,7 +197,7 @@ export function useOnboardingState() {
     durableHydrated = true;
     writeLocalOnboardingCompleted(true);
     writeOnboardingPhase(null);
-    // Seed the one-time post-onboarding sidebar hints (Connect / Store).
+    // Seed the one-time post-onboarding sidebar hints.
     // Idempotent — re-completing onboarding without a reset is a no-op.
     seedPostOnboardingHints();
     window.dispatchEvent(new Event(ONBOARDING_COMPLETE_EVENT));

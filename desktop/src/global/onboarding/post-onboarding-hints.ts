@@ -3,8 +3,8 @@ import { useCallback, useSyncExternalStore } from "react";
 /**
  * Tiny one-shot "look here" markers shown on the sidebar after a fresh
  * onboarding finishes. The user sees a small red dot on the surfaces
- * we want to highlight (Connect, Store) until they actually visit
- * each one — at which point the dot is dismissed and never returns.
+ * we want to highlight until they actually visit each one — at which
+ * point the dot is dismissed and never returns.
  *
  * Storage shape (single localStorage key):
  *   {
@@ -20,9 +20,9 @@ import { useCallback, useSyncExternalStore } from "react";
 const STORAGE_KEY = "stella:post-onboarding-hints";
 const CHANGE_EVENT = "stella:post-onboarding-hints-changed";
 
-export type PostOnboardingHintId = "connect" | "store";
+export type PostOnboardingHintId = "connect";
 
-const ALL_HINT_IDS: readonly PostOnboardingHintId[] = ["connect", "store"];
+const ALL_HINT_IDS: readonly PostOnboardingHintId[] = ["connect"];
 
 type StoredState = {
   seededAt: number;
