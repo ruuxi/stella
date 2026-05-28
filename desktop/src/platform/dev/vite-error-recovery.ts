@@ -1,153 +1,105 @@
 /**
- * Watches for Vite's error overlay and injects Git-backed recovery controls.
+ * Bridges Vite's HMR error stream into Stella's renderer `ErrorBoundary` /
+ * `CrashSurface`. Vite's built-in red overlay is disabled in `vite.config.ts`
+ * (`server.hmr.overlay: false`); we forward the `vite:error` payload through
+ * `window` CustomEvents so build / parse errors get the same Reload / Ask
+ * Stella to repair / Undo latest update controls as runtime crashes.
  */
 
-type SelfModFeatureSummary = {
-  featureId: string;
-  name: string;
-  tainted?: boolean;
+type ViteErrorLoc = {
+  file?: string;
+  line?: number;
+  column?: number;
 };
 
-const createButton = (label: string, style: string) => {
-  const button = document.createElement("button");
-  button.textContent = label;
-  button.style.cssText = style;
-  return button;
+type ViteErrorPayloadErr = {
+  message?: string;
+  stack?: string;
+  id?: string;
+  plugin?: string;
+  frame?: string;
+  loc?: ViteErrorLoc;
 };
 
-const loadRecentFeatures = async (): Promise<SelfModFeatureSummary[]> => {
-  try {
-    const rows = await window.electronAPI?.agent.listSelfModFeatures(4);
-    return rows ?? [];
-  } catch {
-    return [];
+type ViteErrorPayload = {
+  type: "error";
+  err: ViteErrorPayloadErr;
+};
+
+export type StellaBuildErrorDetail = {
+  error: Error;
+  plugin: string | null;
+  file: string | null;
+  loc: ViteErrorLoc | null;
+  frame: string | null;
+};
+
+export const STELLA_BUILD_ERROR_EVENT = "stella:build-error";
+export const STELLA_BUILD_ERROR_CLEARED_EVENT = "stella:build-error-cleared";
+
+const formatLocation = (
+  id: string | undefined,
+  loc: ViteErrorLoc | undefined,
+): string | null => {
+  const file = loc?.file ?? id;
+  if (!file) return null;
+  if (loc?.line != null) {
+    const column = loc.column != null ? `:${loc.column}` : "";
+    return `${file}:${loc.line}${column}`;
   }
+  return file;
 };
 
-const toErrorMessage = (error: unknown, fallback: string): string =>
-  error instanceof Error && error.message ? error.message : fallback;
+const buildErrorFromPayload = (err: ViteErrorPayloadErr): Error => {
+  const location = formatLocation(err.id, err.loc);
+  const pluginPrefix = err.plugin ? `[${err.plugin}] ` : "";
+  const baseMessage = err.message?.trim() || "Build error";
+  const message = location
+    ? `${pluginPrefix}${baseMessage}\n  at ${location}`
+    : `${pluginPrefix}${baseMessage}`;
+  const built = new Error(message);
+  built.name = err.plugin ? `BuildError(${err.plugin})` : "BuildError";
+  if (err.stack) built.stack = err.stack;
+  return built;
+};
 
-async function injectRevertButton(overlay: Element) {
-  if (overlay.querySelector("[data-selfmod-revert]")) return;
-
-  const container = document.createElement("div");
-  container.setAttribute("data-selfmod-revert", "true");
-  container.style.cssText =
-    "display:flex;flex-direction:column;gap:8px;justify-content:center;margin-top:16px;padding:12px;";
-
-  const row = document.createElement("div");
-  row.style.cssText = "display:flex;gap:8px;justify-content:center;flex-wrap:wrap;";
-
-  const status = document.createElement("div");
-  status.style.cssText = "text-align:center;font-size:12px;opacity:0.8;";
-
-  const allButtons: HTMLButtonElement[] = [];
-  const disableButtons = (disabled: boolean) => {
-    allButtons.forEach((button) => {
-      button.disabled = disabled;
-    });
+const dispatchBuildError = (payload: ViteErrorPayload) => {
+  const detail: StellaBuildErrorDetail = {
+    error: buildErrorFromPayload(payload.err ?? {}),
+    plugin: payload.err?.plugin ?? null,
+    file: payload.err?.loc?.file ?? payload.err?.id ?? null,
+    loc: payload.err?.loc ?? null,
+    frame: payload.err?.frame ?? null,
   };
-
-  const runRevert = async (featureId?: string) => {
-    disableButtons(true);
-    status.textContent = "Reverting...";
-    try {
-      const selfModRevert = window.electronAPI?.agent.selfModRevert;
-      if (!selfModRevert) {
-        throw new Error("Revert is unavailable in this renderer context.");
-      }
-      await selfModRevert(featureId, 1);
-      status.textContent = "Revert complete. Reloading...";
-      window.location.reload();
-    } catch (error) {
-      status.textContent = `Revert failed: ${toErrorMessage(
-        error,
-        "Unknown error.",
-      )}`;
-      disableButtons(false);
-    }
-  };
-
-  const features = await loadRecentFeatures();
-  if (features.length > 0) {
-    for (const feature of features) {
-      const btn = createButton(
-        feature.tainted
-          ? `Undo ${feature.name} (external edits)`
-          : `Undo ${feature.name}`,
-        "padding:8px 14px;font-size:12px;border-radius:8px;border:1px solid #555;background:#333;color:#fff;cursor:pointer;",
-      );
-      btn.addEventListener("click", () => {
-        void runRevert(feature.featureId);
-      });
-      allButtons.push(btn);
-      row.appendChild(btn);
-    }
-  } else {
-    const revertBtn = createButton(
-      "Undo latest update",
-      "padding:8px 14px;font-size:12px;border-radius:8px;border:1px solid #555;background:#333;color:#fff;cursor:pointer;",
-    );
-    revertBtn.addEventListener("click", () => {
-      void runRevert();
-    });
-    allButtons.push(revertBtn);
-    row.appendChild(revertBtn);
-  }
-
-  const reloadBtn = createButton(
-    "Reload",
-    "padding:8px 14px;font-size:12px;border-radius:8px;border:1px solid #555;background:transparent;color:#fff;cursor:pointer;",
+  window.dispatchEvent(
+    new CustomEvent<StellaBuildErrorDetail>(STELLA_BUILD_ERROR_EVENT, {
+      detail,
+    }),
   );
-  reloadBtn.addEventListener("click", () => window.location.reload());
-  allButtons.push(reloadBtn);
-  row.appendChild(reloadBtn);
-
-  container.appendChild(row);
-  container.appendChild(status);
-
-  const shadowRoot = overlay.shadowRoot;
-  if (shadowRoot) {
-    const messageBody =
-      shadowRoot.querySelector(".message-body") ??
-      shadowRoot.querySelector(".window") ??
-      shadowRoot.querySelector("div");
-    if (messageBody) {
-      messageBody.appendChild(container);
-      return;
-    }
-  }
-
-  overlay.after(container);
-}
-
-const scheduledInjectTimers = new Set<number>();
-const scheduleOverlayInjection = (overlay: HTMLElement) => {
-  const timer = window.setTimeout(() => {
-    scheduledInjectTimers.delete(timer);
-    void injectRevertButton(overlay);
-  }, 100);
-  scheduledInjectTimers.add(timer);
 };
 
-const observer = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    for (const node of mutation.addedNodes) {
-      if (node instanceof HTMLElement && node.tagName === "VITE-ERROR-OVERLAY") {
-        scheduleOverlayInjection(node);
-      }
-    }
-  }
-});
-
-observer.observe(document.documentElement, { childList: true, subtree: true });
+const dispatchCleared = () => {
+  window.dispatchEvent(new CustomEvent(STELLA_BUILD_ERROR_CLEARED_EVENT));
+};
 
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    observer.disconnect();
-    for (const timer of scheduledInjectTimers) {
-      window.clearTimeout(timer);
+  import.meta.hot.on("vite:error", (payload: ViteErrorPayload) => {
+    try {
+      dispatchBuildError(payload);
+    } catch (dispatchError) {
+      console.error(
+        "[vite-error-recovery] dispatch failed:",
+        dispatchError,
+        payload,
+      );
     }
-    scheduledInjectTimers.clear();
+  });
+
+  import.meta.hot.on("vite:beforeUpdate", () => {
+    dispatchCleared();
+  });
+
+  import.meta.hot.on("vite:beforeFullReload", () => {
+    dispatchCleared();
   });
 }
