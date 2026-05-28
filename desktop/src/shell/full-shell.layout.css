@@ -421,11 +421,18 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   background: transparent;
   color: var(--text-weak);
   cursor: pointer;
-  opacity: 0.55;
+  opacity: 0;
+  pointer-events: none;
   transition:
     opacity 120ms ease,
     background 120ms ease,
     color 120ms ease;
+}
+
+.shell-topbar-tab:hover .shell-topbar-tab__close,
+.shell-topbar-tab:focus-within .shell-topbar-tab__close {
+  opacity: 0.55;
+  pointer-events: auto;
 }
 
 .shell-topbar-tab__close:hover {
