@@ -62,6 +62,7 @@ import type { Attachment } from "@/app/chat/lib/event-transforms";
 import type { AskQuestionState } from "@/app/chat/AskQuestionBubble";
 import { ComposerQueuedMessages } from "./ComposerQueuedMessages";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
+import { Spinner } from "@/ui/spinner";
 
 type ChatTimelineProps = {
   rows: EventRowViewModel[];
@@ -218,18 +219,14 @@ export const ChatTimeline = memo(function ChatTimeline({
 
   if (isLoadingHistory && rows.length === 0) {
     return (
-      <div className="event-list-fallback" data-loading-history="true">
-        <div className="event-history-status" role="status" aria-live="polite">
-          Loading conversation...
-        </div>
-        <div className="thread-placeholder" aria-hidden="true">
-          <div className="thread-line" />
-          <div className="thread-line short" />
-        </div>
-        <div className="thread-placeholder" aria-hidden="true">
-          <div className="thread-line short" />
-          <div className="thread-line" />
-        </div>
+      <div
+        className="event-list-fallback"
+        data-loading-history="true"
+        role="status"
+        aria-live="polite"
+        aria-label="Loading conversation"
+      >
+        <Spinner size="md" />
       </div>
     );
   }
