@@ -27,14 +27,16 @@ import "../media-tab.css";
 
 export const MediaTabContent = ({
   items: incomingItems,
+  selectedItemId,
 }: {
   items: ReadonlyArray<MediaTabItem>;
+  selectedItemId?: string;
 }) => {
   const items = incomingItems;
   const railItems = useMemo(() => [...items].reverse(), [items]);
 
   const [selectedId, setSelectedId] = useState<string | null>(
-    items.at(-1)?.id ?? null,
+    selectedItemId ?? items.at(-1)?.id ?? null,
   );
   const [prompt, setPrompt] = useState("");
   const [actionId, setActionId] = useState<MediaActionId>("text_to_image");
@@ -51,10 +53,14 @@ export const MediaTabContent = ({
       setSelectedId(null);
       return;
     }
+    if (selectedItemId && items.some((item) => item.id === selectedItemId)) {
+      setSelectedId(selectedItemId);
+      return;
+    }
     if (selectedId != null && !items.some((item) => item.id === selectedId)) {
       setSelectedId(items.at(-1)?.id ?? null);
     }
-  }, [items, selectedId]);
+  }, [items, selectedId, selectedItemId]);
 
   useEffect(() => {
     if (prompt === "") {

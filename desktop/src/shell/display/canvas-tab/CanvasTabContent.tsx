@@ -289,17 +289,25 @@ const CanvasHistoryTile = ({
 
 export const CanvasTabContent = ({
   items: initialItems,
+  selectedItemId,
 }: {
   items: ReadonlyArray<CanvasHtmlItem>;
+  selectedItemId?: string;
 }) => {
   const items = useCanvasItems(initialItems);
   const [selectedId, setSelectedId] = useState<string | null>(
-    items.at(-1)?.id ?? null,
+    selectedItemId ?? items.at(-1)?.id ?? null,
   );
 
   useEffect(() => {
     void loadCanvasHtmlHistory();
   }, []);
+
+  useEffect(() => {
+    if (selectedItemId && items.some((item) => item.id === selectedItemId)) {
+      setSelectedId(selectedItemId);
+    }
+  }, [items, selectedItemId]);
 
   useEffect(() => {
     if (items.length === 0) {

@@ -15,6 +15,7 @@ vi.mock("../../../src/shell/display/tab-content", () => ({
   DownloadTabContent: () => null,
   TextTabContent: () => null,
   TrashTabContent: () => null,
+  MediaTabContent: () => null,
 }));
 vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
   UrlTabContent: () => null,
@@ -31,6 +32,7 @@ vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
   DownloadTabContent: () => null,
   TextTabContent: () => null,
   TrashTabContent: () => null,
+  MediaTabContent: () => null,
 }));
 
 const { payloadToTabSpec } = await import(
@@ -163,9 +165,34 @@ describe("payloadToTabSpec", () => {
           asset: { kind: "image", filePaths: ["/out/a.png"] },
         }),
         expect.objectContaining({
-          asset: { kind: "image", filePaths: ["/out/b.png", "/out/a.png"] },
+          asset: { kind: "image", filePaths: ["/out/b.png"] },
         }),
       ]),
     );
+  });
+
+  it("passes the clicked canvas id to the singleton Canvas tab", () => {
+    const spec = payloadToTabSpec({
+      kind: "canvas-html",
+      filePath: "/tmp/flow.html",
+      title: "Flow",
+      createdAt: 3,
+    });
+
+    const element = spec.render() as { props: { selectedItemId?: string } };
+    expect(spec.id).toBe("canvas:html");
+    expect(element.props.selectedItemId).toBe("/tmp/flow.html");
+  });
+
+  it("passes the clicked media id to the singleton Media tab", () => {
+    const spec = payloadToTabSpec({
+      kind: "media",
+      asset: { kind: "image", filePaths: ["/out/selected.png"] },
+      createdAt: 3,
+    });
+
+    const element = spec.render() as { props: { selectedItemId?: string } };
+    expect(spec.id).toBe("media:generated");
+    expect(element.props.selectedItemId).toBe("image:/out/selected.png");
   });
 });
