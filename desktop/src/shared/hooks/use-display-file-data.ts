@@ -207,10 +207,6 @@ export function useDisplayFileBlobs(
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setMissing(filePaths.map(() => false));
-    setFiles(filePaths.map(() => null));
 
     const acquired: { filePath: string; entry: CacheEntry }[] = filePaths.map(
       (filePath) => ({
@@ -218,6 +214,40 @@ export function useDisplayFileBlobs(
         entry: acquire(filePath, unavailableMessage),
       }),
     );
+
+    // Synchronous fast-path: when every requested file is already
+    // resolved in the cache, seed state directly instead of blanking to
+    // null first. Blanking would unmount the consuming media element
+    // (e.g. <audio>/<video>/<img>) on every selection change and force a
+    // visible remount/flash; seeding keeps it mounted and just swaps src.
+    const seeded = acquired.map(({ entry }) => {
+      const resolved = entry.resolved;
+      if (!resolved) return undefined;
+      if (resolved.missing)
+        return { blob: null as DisplayFileBlob | null, missing: true };
+      const url = objectUrlFor(entry);
+      const blob = entry.blob;
+      if (!url || !blob) return { blob: null, missing: true };
+      return {
+        blob: {
+          url,
+          mimeType: resolved.mimeType || "application/octet-stream",
+          blob,
+        },
+        missing: false,
+      };
+    });
+    if (seeded.every((result) => result !== undefined)) {
+      setFiles(seeded.map((result) => result!.blob));
+      setMissing(seeded.map((result) => result!.missing));
+      setError(null);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setError(null);
+      setMissing(filePaths.map(() => false));
+      setFiles(filePaths.map(() => null));
+    }
 
     void Promise.all(
       acquired.map(async ({ entry }) => {

@@ -13,6 +13,7 @@ import {
 } from "@/shared/hooks/use-display-file-data";
 import { copyImageBlob } from "@/shell/media-clipboard";
 import { displayTabs } from "@/shell/display/tab-store";
+import { AudioPlayer } from "@/shell/AudioPlayer";
 
 type MediaPreviewCardProps = {
   asset: MediaAsset;
@@ -292,41 +293,28 @@ const AudioCard = ({
       <PromptHeader prompt={prompt} capability={capability} />
       {error && <p className="display-media__error">{error}</p>}
       <div className="display-media__audio-card">
-        <div className="display-media__audio-icon" aria-hidden>
-          ♪
-        </div>
-        <div className="display-media__audio-body">
-          <div className="display-media__filename">{filenameOf(filePath)}</div>
-          {file ? (
-            <audio
-              src={file.url}
-              controls
-              className="display-media__audio"
-            />
-          ) : isMissing ? (
-            <div className="display-media__missing">
-              File no longer available.
-            </div>
-          ) : (
-            !error && <div className="display-media__loading">Loading…</div>
-          )}
-          <MediaActions
-            filePath={filePath}
-            copyText={filePath}
-            extraAction={
-              !inDialog && file ? (
-                <button
-                  type="button"
-                  className="display-media__action-btn"
-                  onClick={expandDisplayPanel}
-                >
-                  Expand
-                </button>
-              ) : undefined
-            }
-          />
-        </div>
+        {isMissing ? (
+          <div className="display-media__missing">File no longer available.</div>
+        ) : (
+          <AudioPlayer src={file?.url ?? null} />
+        )}
+        <div className="display-media__audio-name">{filenameOf(filePath)}</div>
       </div>
+      <MediaActions
+        filePath={filePath}
+        copyText={filePath}
+        extraAction={
+          !inDialog && file ? (
+            <button
+              type="button"
+              className="display-media__action-btn"
+              onClick={expandDisplayPanel}
+            >
+              Expand
+            </button>
+          ) : undefined
+        }
+      />
     </div>
   );
 };

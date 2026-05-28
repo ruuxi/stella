@@ -4,6 +4,7 @@ import { DropOverlay } from "@/app/chat/DropOverlay";
 import { updateComposerTextareaExpansion } from "@/shared/hooks/use-animated-composer-shell";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { displayTabs } from "../tab-store";
+import { removeGeneratedMediaItem } from "../payload-to-tab-spec";
 import {
   MEDIA_ACTIONS,
   type MediaActionId,
@@ -26,6 +27,7 @@ import { HeroPrompt } from "./HeroPrompt";
 import "../media-tab.css";
 
 const RAIL_VISIBLE = 4;
+const TRAY_INITIAL = 14;
 const TRAY_PAGE = 24;
 
 export const MediaTabContent = ({
@@ -35,7 +37,10 @@ export const MediaTabContent = ({
   items: ReadonlyArray<MediaTabItem>;
   selectedItemId?: string;
 }) => {
-  const items = incomingItems;
+  const [items, setItems] = useState<ReadonlyArray<MediaTabItem>>(incomingItems);
+  useEffect(() => {
+    setItems(incomingItems);
+  }, [incomingItems]);
   const railItems = useMemo(() => [...items].reverse(), [items]);
 
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -46,8 +51,8 @@ export const MediaTabContent = ({
   const [attachedItemId, setAttachedItemId] = useState<string | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [draggingMedia, setDraggingMedia] = useState(false);
-  const [trayOpen, setTrayOpen] = useState(false);
-  const [trayVisible, setTrayVisible] = useState(TRAY_PAGE);
+  const [expanded, setExpanded] = useState(false);
+  const [trayVisible, setTrayVisible] = useState(TRAY_INITIAL);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const dragCounterRef = useRef(0);
@@ -87,10 +92,11 @@ export const MediaTabContent = ({
       ? items.find((item) => item.id === selectedId) ?? null
       : null;
 
-  const handleClosePreview = useCallback(() => {
-    setSelectedId(null);
-    if (attachedItemId === selectedItem?.id) setAttachedItemId(null);
-  }, [attachedItemId, selectedItem?.id]);
+  const handleDeleteItem = useCallback((id: string) => {
+    setItems(removeGeneratedMediaItem(id));
+    setSelectedId((current) => (current === id ? null : current));
+    setAttachedItemId((current) => (current === id ? null : current));
+  }, []);
 
   const handlePickFile = useCallback(() => {
     fileInputRef.current?.click();
@@ -256,18 +262,18 @@ export const MediaTabContent = ({
   );
 
   useEffect(() => {
-    if (!hasOverflowItems && trayOpen) setTrayOpen(false);
-  }, [hasOverflowItems, trayOpen]);
+    if (!hasOverflowItems && expanded) setExpanded(false);
+  }, [hasOverflowItems, expanded]);
 
-  const handleToggleTray = useCallback(() => {
-    setTrayOpen((open) => {
+  const handleToggleExpand = useCallback(() => {
+    setExpanded((open) => {
       const next = !open;
-      if (next) setTrayVisible(TRAY_PAGE);
+      if (next) setTrayVisible(TRAY_INITIAL);
       return next;
     });
   }, []);
 
-  const handleTrayScroll = useCallback(
+  const handleHistoryScroll = useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
       const el = event.currentTarget;
       if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
@@ -279,9 +285,9 @@ export const MediaTabContent = ({
     [railItems.length],
   );
 
-  const handleSelectFromTray = useCallback((id: string) => {
+  const handleSelectExpanded = useCallback((id: string) => {
     setSelectedId(id);
-    setTrayOpen(false);
+    setExpanded(false);
   }, []);
 
   return (
@@ -293,29 +299,6 @@ export const MediaTabContent = ({
       onDrop={handleDrop}
     >
       <DropOverlay visible={draggingMedia} variant="sidebar" />
-
-      {trayOpen ? (
-        <div
-          className="media-tab__tray"
-          role="region"
-          aria-label="All generated media"
-        >
-          <div className="media-tab__tray-scroll" onScroll={handleTrayScroll}>
-            <div className="media-tab__tray-grid">
-              {trayItems.map((item) => (
-                <MediaTile
-                  key={item.id}
-                  item={item}
-                  active={item.id === selectedItem?.id}
-                  onSelect={() => handleSelectFromTray(item.id)}
-                  onAttach={() => setAttachedItemId(item.id)}
-                  onOpen={expandPanel}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       <div className="media-tab__surface">
       <div className="media-tab__main">
@@ -339,7 +322,7 @@ export const MediaTabContent = ({
                 >
                   <MediaActionBar
                     item={selectedItem}
-                    onClose={handleClosePreview}
+                    onDelete={() => handleDeleteItem(selectedItem.id)}
                   />
                 </div>
               </div>
@@ -347,12 +330,7 @@ export const MediaTabContent = ({
                 <HeroPrompt text={selectedItem.prompt} />
               ) : null}
             </div>
-            <div
-              className="media-tab__hero-preview"
-              onClick={expandPanel}
-              role="button"
-              title="Open"
-            >
+            <div className="media-tab__hero-preview">
               <MediaPreviewCard
                 asset={selectedItem.asset}
                 inDialog
@@ -376,47 +354,89 @@ export const MediaTabContent = ({
       </div>
 
       <div className="media-tab__footer">
-      {hasOverflowItems ? (
-        <button
-          type="button"
-          className={`media-tab__rail-toggle${
-            trayOpen ? " media-tab__rail-toggle--open" : ""
-          }`}
-          onClick={handleToggleTray}
-          aria-expanded={trayOpen}
-          aria-label={trayOpen ? "Hide all media" : "Show all media"}
-          title={trayOpen ? "Hide all media" : "Show all media"}
-        >
-          <ChevronUp size={14} strokeWidth={2.2} />
-        </button>
-      ) : null}
-      <div className="media-tab__rail" aria-label="Generated media">
-        <button
-          type="button"
-          className="media-tab__rail-import"
-          onClick={handlePickFile}
-          aria-label="Add a file from your computer"
-          title="Add a file from your computer"
-        >
-          <Folder size={18} strokeWidth={1.85} />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={SUPPORTED_MEDIA_ACCEPT}
-          className="media-tab__file-input"
-          onChange={handleFileChange}
-        />
-        {visibleRailItems.map((item) => (
-          <MediaTile
-            key={item.id}
-            item={item}
-            active={item.id === selectedItem?.id}
-            onSelect={() => setSelectedId(item.id)}
-            onAttach={() => setAttachedItemId(item.id)}
-            onOpen={expandPanel}
-          />
-        ))}
+      <div
+        className={`media-tab__history${
+          expanded ? " media-tab__history--expanded" : ""
+        }`}
+      >
+        {expanded ? (
+          <div
+            className="media-tab__history-scroll"
+            onScroll={handleHistoryScroll}
+          >
+            <div className="media-tab__history-grid">
+              <button
+                type="button"
+                className="media-tab__rail-import"
+                onClick={handlePickFile}
+                aria-label="Add a file from your computer"
+                title="Add a file from your computer"
+              >
+                <Folder size={18} strokeWidth={1.85} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={SUPPORTED_MEDIA_ACCEPT}
+                className="media-tab__file-input"
+                onChange={handleFileChange}
+              />
+              {trayItems.map((item) => (
+                <MediaTile
+                  key={item.id}
+                  item={item}
+                  active={item.id === selectedItem?.id}
+                  onSelect={() => handleSelectExpanded(item.id)}
+                  onAttach={() => setAttachedItemId(item.id)}
+                  onOpen={expandPanel}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="media-tab__rail" aria-label="Generated media">
+            <button
+              type="button"
+              className="media-tab__rail-import"
+              onClick={handlePickFile}
+              aria-label="Add a file from your computer"
+              title="Add a file from your computer"
+            >
+              <Folder size={18} strokeWidth={1.85} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={SUPPORTED_MEDIA_ACCEPT}
+              className="media-tab__file-input"
+              onChange={handleFileChange}
+            />
+            {visibleRailItems.map((item) => (
+              <MediaTile
+                key={item.id}
+                item={item}
+                active={item.id === selectedItem?.id}
+                onSelect={() => setSelectedId(item.id)}
+                onAttach={() => setAttachedItemId(item.id)}
+                onOpen={expandPanel}
+              />
+            ))}
+          </div>
+        )}
+        {hasOverflowItems ? (
+          <button
+            type="button"
+            className={`media-tab__history-toggle${
+              expanded ? " media-tab__history-toggle--open" : ""
+            }`}
+            onClick={handleToggleExpand}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Hide all media" : "Show all media"}
+            title={expanded ? "Hide all media" : "Show all media"}
+          >
+            <ChevronUp size={16} strokeWidth={2.2} />
+          </button>
+        ) : null}
       </div>
 
       <form
