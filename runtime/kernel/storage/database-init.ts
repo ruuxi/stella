@@ -219,26 +219,20 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   `);
 
   db.exec(`
-    CREATE TABLE IF NOT EXISTS memory_entries (
-      id TEXT PRIMARY KEY,
-      target TEXT NOT NULL CHECK(target IN ('memory', 'user')),
-      content TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_memory_entries_target_created
-    ON memory_entries(target, created_at);
-  `);
-
-  db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_memory_review_state (
       conversation_id TEXT PRIMARY KEY,
       user_turns_since_review INTEGER NOT NULL DEFAULT 0,
-      last_review_at INTEGER
+      last_review_at INTEGER,
+      last_reviewed_message_ts INTEGER
     );
   `);
+  try {
+    db.exec(
+      "ALTER TABLE runtime_memory_review_state ADD COLUMN last_reviewed_message_ts INTEGER;",
+    );
+  } catch {
+    // Column already exists.
+  }
 
   // Rolling-window snapshot of recent self-mod commits, named by a cheap
   // LLM. Single row, regenerated on every successful self-mod commit. The

@@ -6,6 +6,7 @@
  */
 
 import { promises as fs } from "node:fs";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 import type { ThreadSummariesStore } from "./thread-summaries-store.js";
 
@@ -112,7 +113,10 @@ export const writeDreamWatermark = async (
 const listExtensionFiles = async (
   stellaHome: string,
   watermark: DreamWatermark,
-): Promise<{ entries: DreamExtensionEntry[]; instructions: Array<{ extension: string; path: string }> }> => {
+): Promise<{
+  entries: DreamExtensionEntry[];
+  instructions: Array<{ extension: string; path: string }>;
+}> => {
   const root = extensionsDir(stellaHome);
   let extensions: string[];
   try {
@@ -136,11 +140,20 @@ const listExtensionFiles = async (
       ? 0
       : (watermark.extensions[extension] ?? 0);
 
-    try {
-      const files = await fs.readdir(extDir, { withFileTypes: true });
+    const visit = async (dir: string): Promise<void> => {
+      let files: Dirent[];
+      try {
+        files = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
       for (const f of files) {
+        const filePath = path.join(dir, f.name);
+        if (f.isDirectory()) {
+          await visit(filePath);
+          continue;
+        }
         if (!f.isFile()) continue;
-        const filePath = path.join(extDir, f.name);
         if (f.name === "instructions.md") {
           instructions.push({ extension, path: filePath });
           continue;
@@ -162,9 +175,9 @@ const listExtensionFiles = async (
           continue;
         }
       }
-    } catch {
-      continue;
-    }
+    };
+
+    await visit(extDir);
   }
 
   entries.sort((a, b) => a.mtimeMs - b.mtimeMs);

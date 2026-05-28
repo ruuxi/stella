@@ -9,7 +9,12 @@ import type { ResolvedLlmRoute } from "./model-routing.js";
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 const THREAD_COMPACTION_SYSTEM_PROMPT = "Output ONLY the summary content.";
 const THREAD_COMPACTION_RESERVE_TOKENS = 16_384;
-const THREAD_COMPACTION_TRIGGER_TOKENS = 60_000;
+/**
+ * Orchestrator compaction trigger. Exported so the Dream scheduler / memory
+ * review can detect when a compaction is imminent and flush a capture +
+ * consolidation pass at that boundary (before the middle is summarized).
+ */
+export const THREAD_COMPACTION_TRIGGER_TOKENS = 60_000;
 const THREAD_COMPACTION_PROTECT_HEAD_MESSAGES = 3;
 const THREAD_COMPACTION_KEEP_RECENT_TOKENS = 20_000;
 const THREAD_COMPACTION_MIN_TAIL_MESSAGES = 2;

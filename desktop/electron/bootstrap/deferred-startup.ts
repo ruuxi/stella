@@ -41,7 +41,7 @@ const runDeferredStartupTask = async (
 
 const triggerDreamWhenAgentReady = (
   context: BootstrapContext,
-  trigger: "startup_catchup" | "chronicle_summary",
+  trigger: "startup_catchup",
 ): void => {
   const runner = context.lifecycle.getRunner();
   if (!runner) {
@@ -115,9 +115,9 @@ const createDeferredStartupTasks = (
     },
     {
       // Chronicle 10-minute rolling summary: distill the last ~10 min of OCR
-      // deltas every minute, then poke Dream so the new file is folded into
-      // MEMORY.md right away rather than waiting for the next subagent
-      // finalize or the 15-min idle gate.
+      // deltas every minute and write the file. Dream is not poked here — the
+      // refreshed file just accumulates and is folded on the next
+      // orchestrator-driven Dream run (token-interval / pre-compaction).
       label: "chronicle-10m-tick",
       delayMs: CHRONICLE_FIRST_TICK_DELAY_MS,
       run: () => {
@@ -125,18 +125,13 @@ const createDeferredStartupTasks = (
           if (!(await isChronicleEnabled())) return;
           const runner = context.lifecycle.getRunner();
           if (!runner) return;
-          let result;
           try {
-            result = await runner.runChronicleSummaryTick("10m");
+            await runner.runChronicleSummaryTick("10m");
           } catch (error) {
             console.debug(
               "[chronicle] 10m tick failed:",
               error instanceof Error ? error.message : String(error),
             );
-            return;
-          }
-          if (result.wrote) {
-            triggerDreamWhenAgentReady(context, "chronicle_summary");
           }
         };
         void runOnce();
@@ -148,7 +143,7 @@ const createDeferredStartupTasks = (
     {
       // Chronicle 6-hour rolling summary: hourly distillation of the last
       // ~6 h of activity. Same pattern as the 10m tick but at a slower
-      // cadence and a longer window.
+      // cadence and a longer window. Also does not poke Dream.
       label: "chronicle-6h-tick",
       delayMs: CHRONICLE_FIRST_TICK_DELAY_MS,
       run: () => {
@@ -156,18 +151,13 @@ const createDeferredStartupTasks = (
           if (!(await isChronicleEnabled())) return;
           const runner = context.lifecycle.getRunner();
           if (!runner) return;
-          let result;
           try {
-            result = await runner.runChronicleSummaryTick("6h");
+            await runner.runChronicleSummaryTick("6h");
           } catch (error) {
             console.debug(
               "[chronicle] 6h tick failed:",
               error instanceof Error ? error.message : String(error),
             );
-            return;
-          }
-          if (result.wrote) {
-            triggerDreamWhenAgentReady(context, "chronicle_summary");
           }
         };
         void runOnce();

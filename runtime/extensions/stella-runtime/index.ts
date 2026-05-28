@@ -75,6 +75,7 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   register(createRevertNoticeHook({ store: services.store }));
   register(
     createMemoryReviewHook({
+      stellaHome: services.stellaHome,
       stellaRoot: services.stellaRoot,
       store: services.store,
     }),

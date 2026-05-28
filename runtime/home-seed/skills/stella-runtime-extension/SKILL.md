@@ -52,7 +52,7 @@ The loader also imports extension folders that have `index.ts`. Those factories 
 - `registerPrompt(prompt)`
 - `on(event, handler, filter?)`
 
-The factory's second argument is `ExtensionServices`. Use it for runtime-owned services such as `stellaHome`, `stellaRoot`, `store`, `memoryStore`, and `selfModMonitor` instead of reaching through runner internals.
+The factory's second argument is `ExtensionServices`. Use it for runtime-owned services such as `stellaHome`, `stellaRoot`, `store`, and `selfModMonitor` instead of reaching through runner internals.
 
 ## Built-In Stella Runtime
 

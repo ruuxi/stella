@@ -1,28 +1,30 @@
 /**
  * Dream Protocol scheduler.
  *
- * Triggered by explicit events, not by a wall-clock interval:
- *   - `subagent_finalize`        — a General-agent task just produced a fresh
- *                                  thread_summaries row.
- *   - `chronicle_summary`        — Chronicle just rolled a new 10m/6h
- *                                  distilled summary into
- *                                  `.stella/memories_extensions/chronicle/`.
- *   - `startup_catchup`          — app just started; sweep anything left over
- *                                  from the previous session.
- *   - `manual`                   — user clicked "Run Dream now".
+ * Dream consolidation is driven by orchestrator context growth, not by
+ * per-event pings:
+ *   - `token_interval`  — the orchestrator thread has grown ~`tokenInterval`
+ *                         tokens since the last run (default 20k). Keeps
+ *                         durable memory reasonably fresh during normal use.
+ *   - `pre_compaction`  — the orchestrator thread is about to compact; flush a
+ *                         consolidation so anything accumulated since the last
+ *                         interval is folded before the middle is summarized.
+ *   - `startup_catchup` — app just started; drain anything left over from a
+ *                         previous session that ended before consolidating.
+ *   - `manual`          — user clicked "Run Dream now".
  *
- * The eligibility gate is unchanged: total pending inputs (thread_summaries +
- * memories_extensions files) must clear `triggerRowCount`, OR the last run
- * must be older than `idleTriggerMs`, OR this must be the first run with at
- * least one pending input. `manual` bypasses the gate entirely.
+ * Eligibility: there must be pending inputs (thread_summaries +
+ * memories_extensions files). `token_interval` additionally requires the
+ * ~`tokenInterval` growth; `pre_compaction`, `startup_catchup`, and `manual`
+ * run whenever anything is pending. Dream reads durable queues (not the live
+ * transcript), so its cadence is independent of compaction — the orchestrator
+ * already holds recent context in-window, so nothing needs to be forced into
+ * durable memory until it grows past the interval or is about to compact.
  *
- * Single-flight: only one Dream run may execute at a time. We use a mkdir
- * lock under `.stella/locks/dream/`, mirroring the desktop_automation lock
- * pattern in `runtime/kernel/cli/stella-computer.ts`.
+ * Single-flight: only one Dream run may execute at a time, via a mkdir lock
+ * under `.stella/locks/dream/`.
  *
- * Fire-and-forget: callers `void maybeSpawnDreamRun(...)` from finalize
- * paths and never await it, exactly like `spawnMemoryReview` in
- * `memory-review.ts`.
+ * Fire-and-forget: callers `void maybeSpawnDreamRun(...)` and never await it.
  */
 
 import fs from "node:fs";
@@ -60,20 +62,19 @@ import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 
 const logger = createRuntimeLogger("agent-runtime.dream-scheduler");
 
-const DEFAULT_TRIGGER_ROW_COUNT = 5;
-const DEFAULT_IDLE_TRIGGER_MS = 15 * 60 * 1000;
+const DEFAULT_TOKEN_INTERVAL = 20_000;
 const MAX_ITERATIONS = 12;
 
 type DreamConfig = {
   enabled: boolean;
-  triggerRowCount: number;
-  idleTriggerMs: number;
+  tokenInterval: number;
 };
 
 type DreamRuntimeState = {
   inFlight: boolean;
   lastRunAt: number;
-  lastNotifyAt: number;
+  /** Orchestrator token estimate captured at the last Dream run. */
+  tokensAtLastRun: number;
 };
 
 const RUNTIME_STATE = new Map<string, DreamRuntimeState>();
@@ -81,7 +82,7 @@ const RUNTIME_STATE = new Map<string, DreamRuntimeState>();
 const stateFor = (stellaHome: string): DreamRuntimeState => {
   let state = RUNTIME_STATE.get(stellaHome);
   if (!state) {
-    state = { inFlight: false, lastRunAt: 0, lastNotifyAt: 0 };
+    state = { inFlight: false, lastRunAt: 0, tokensAtLastRun: 0 };
     RUNTIME_STATE.set(stellaHome, state);
   }
   return state;
@@ -140,20 +141,15 @@ const readDreamConfig = (stellaHome: string): DreamConfig => {
       // (Chronicle screen capture); the only way it stays off is if the
       // user explicitly sets `dream.enabled: false` in `.stella/config.json`.
       enabled: dream.enabled !== false,
-      triggerRowCount:
-        typeof dream.triggerRowCount === "number" && dream.triggerRowCount > 0
-          ? Math.floor(dream.triggerRowCount)
-          : DEFAULT_TRIGGER_ROW_COUNT,
-      idleTriggerMs:
-        typeof dream.idleTriggerMs === "number" && dream.idleTriggerMs > 0
-          ? Math.floor(dream.idleTriggerMs)
-          : DEFAULT_IDLE_TRIGGER_MS,
+      tokenInterval:
+        typeof dream.tokenInterval === "number" && dream.tokenInterval > 0
+          ? Math.floor(dream.tokenInterval)
+          : DEFAULT_TOKEN_INTERVAL,
     };
   } catch {
     return {
       enabled: true,
-      triggerRowCount: DEFAULT_TRIGGER_ROW_COUNT,
-      idleTriggerMs: DEFAULT_IDLE_TRIGGER_MS,
+      tokenInterval: DEFAULT_TOKEN_INTERVAL,
     };
   }
 };
@@ -166,13 +162,12 @@ const buildDreamSystemPrompt = (): string =>
     "Workflow:",
     "  1. Call Dream with action=\"list\" to see unprocessed thread_summaries and memories_extensions/* paths.",
     "  2. For each thread_summaries row: append a one-liner under raw_memories.md '## Unprocessed', then either insert a new task-group block at the top of MEMORY.md or extend an existing block. Move the raw_memories line to '## Processed'.",
-    "  3. For each memories_extensions/<extension>/<file> path: read the sibling instructions.md first, then fold the relevant signal into MEMORY.md.",
+    "  3. For each memories_extensions/<extension>/** path: read that extension's instructions.md path returned by Dream first, then fold the relevant signal into MEMORY.md.",
     "  4. After all rows are folded, refresh memory_summary.md to reflect the user's current active focus (~10-20 lines max).",
     "  5. Call Dream with action=\"markProcessed\" passing the threadKeys you handled and extensionPaths you consumed.",
     "",
     "Hard rules:",
     "  - Never invent rows. Only reference content the Dream tool actually returned.",
-    "  - Never delete user-facing identity facts in memory_entries (owned by the orchestrator memory-review pass).",
     "  - Never add prose, opinions, or speculation. Pure signal only.",
     "  - Never rewrite a whole file when a single block edit would do. StrReplace is your scalpel.",
     "  - If the list is empty, respond exactly 'Nothing to consolidate.' and stop. Do not call any tools.",
@@ -255,7 +250,6 @@ const runDream = async (args: {
           const dispatch = await dispatchLocalTool(toolName, toolArgs, {
             conversationId: "dream",
             store: {
-              memoryStore: args.store.memoryStore,
               threadSummariesStore: args.store.threadSummariesStore,
             },
             dream: { stellaHome: args.stellaHome },
@@ -329,7 +323,6 @@ const runDream = async (args: {
           {
             conversationId: "dream",
             store: {
-              memoryStore: args.store.memoryStore,
               threadSummariesStore: args.store.threadSummariesStore,
             },
             dream: { stellaHome: args.stellaHome },
@@ -371,8 +364,8 @@ const runDream = async (args: {
 };
 
 export type SpawnDreamTrigger =
-  | "subagent_finalize"
-  | "chronicle_summary"
+  | "token_interval"
+  | "pre_compaction"
   | "startup_catchup"
   | "manual";
 
@@ -380,8 +373,13 @@ export type SpawnDreamArgs = {
   stellaHome: string;
   store: RuntimeStore;
   resolvedLlm: ResolvedLlmRoute;
-  /** "manual" forces the run regardless of trigger thresholds. */
   trigger: SpawnDreamTrigger;
+  /**
+   * Orchestrator thread token estimate for this finalize. Required for
+   * `token_interval` gating (growth since the last run); ignored by other
+   * triggers, which run whenever anything is pending.
+   */
+  orchestratorTokenEstimate?: number;
 };
 
 export type SpawnDreamResultReason =
@@ -422,7 +420,6 @@ export const maybeSpawnDreamRun = async (
 
   const state = stateFor(args.stellaHome);
   if (state.inFlight) {
-    state.lastNotifyAt = Date.now();
     return {
       scheduled: false,
       reason: "in_flight",
@@ -458,16 +455,20 @@ export const maybeSpawnDreamRun = async (
     };
   }
 
-  if (args.trigger !== "manual") {
-    const sinceLast = Date.now() - state.lastRunAt;
-    // Chronicle-only updates (no fresh thread summaries) need to be able to
-    // trip the row gate too, otherwise they would have to wait for the idle
-    // gate (15 min default) just because thread_summaries==0.
-    const meetsRowThreshold = totalPending >= config.triggerRowCount;
-    const meetsIdleThreshold =
-      state.lastRunAt > 0 && sinceLast >= config.idleTriggerMs;
-    const firstRun = state.lastRunAt === 0 && totalPending > 0;
-    if (!meetsRowThreshold && !meetsIdleThreshold && !firstRun) {
+  // `token_interval` is the only gated trigger; `pre_compaction`,
+  // `startup_catchup`, and `manual` run whenever there is pending material.
+  // The interval baseline follows compaction down: if the estimate dropped
+  // below the last baseline (a compaction shrank the thread), reset the
+  // baseline so growth is measured from the new floor rather than never
+  // re-arming.
+  if (args.trigger === "token_interval") {
+    const estimate = args.orchestratorTokenEstimate;
+    if (typeof estimate === "number" && estimate < state.tokensAtLastRun) {
+      state.tokensAtLastRun = estimate;
+    }
+    const growth =
+      typeof estimate === "number" ? estimate - state.tokensAtLastRun : 0;
+    if (growth < config.tokenInterval) {
       return {
         scheduled: false,
         reason: "below_threshold",
@@ -499,7 +500,6 @@ export const maybeSpawnDreamRun = async (
     };
   }
   state.inFlight = true;
-  state.lastNotifyAt = Date.now();
 
   void runDream({
     stellaHome: args.stellaHome,
@@ -514,6 +514,9 @@ export const maybeSpawnDreamRun = async (
     .finally(() => {
       state.inFlight = false;
       state.lastRunAt = Date.now();
+      if (typeof args.orchestratorTokenEstimate === "number") {
+        state.tokensAtLastRun = args.orchestratorTokenEstimate;
+      }
       release();
     });
 

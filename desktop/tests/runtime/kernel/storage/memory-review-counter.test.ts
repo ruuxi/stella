@@ -93,3 +93,90 @@ describe("memory-review user-turn counter", () => {
     expect(last).toBe(20);
   });
 });
+
+describe("memory-review watermark (last reviewed message timestamp)", () => {
+  it("defaults to zero before any review", () => {
+    const { store } = createTestContext();
+    expect(store.getMemoryReviewState("conv-fresh")).toEqual({
+      userTurnsSinceReview: 0,
+      lastReviewedMessageTs: 0,
+    });
+  });
+
+  it("advances the watermark on reset and resets the counter", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-watermark";
+    store.incrementUserTurnsSinceMemoryReview(conversationId);
+    store.incrementUserTurnsSinceMemoryReview(conversationId);
+
+    store.resetUserTurnsSinceMemoryReview(conversationId, 1734_000_000_000);
+
+    expect(store.getMemoryReviewState(conversationId)).toEqual({
+      userTurnsSinceReview: 0,
+      lastReviewedMessageTs: 1734_000_000_000,
+    });
+  });
+
+  it("preserves the existing watermark when reset is called without one", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-preserve";
+    store.resetUserTurnsSinceMemoryReview(conversationId, 500);
+    store.incrementUserTurnsSinceMemoryReview(conversationId);
+
+    store.resetUserTurnsSinceMemoryReview(conversationId);
+
+    expect(store.getMemoryReviewState(conversationId)).toEqual({
+      userTurnsSinceReview: 0,
+      lastReviewedMessageTs: 500,
+    });
+  });
+
+  it("does not regress the watermark when increments happen between reviews", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-advance";
+    store.resetUserTurnsSinceMemoryReview(conversationId, 100);
+    store.incrementUserTurnsSinceMemoryReview(conversationId);
+    expect(store.getMemoryReviewState(conversationId).lastReviewedMessageTs).toBe(
+      100,
+    );
+    store.resetUserTurnsSinceMemoryReview(conversationId, 250);
+    expect(store.getMemoryReviewState(conversationId).lastReviewedMessageTs).toBe(
+      250,
+    );
+  });
+});
+
+describe("memory-review watermark advance (post-completion)", () => {
+  it("advances the watermark without resetting the user-turn counter", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-advance-only";
+    store.incrementUserTurnsSinceMemoryReview(conversationId);
+    store.incrementUserTurnsSinceMemoryReview(conversationId);
+
+    store.advanceMemoryReviewWatermark(conversationId, 1734_000_000_000);
+
+    expect(store.getMemoryReviewState(conversationId)).toEqual({
+      userTurnsSinceReview: 2,
+      lastReviewedMessageTs: 1734_000_000_000,
+    });
+  });
+
+  it("never regresses an existing watermark", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-advance-noregress";
+    store.advanceMemoryReviewWatermark(conversationId, 500);
+    store.advanceMemoryReviewWatermark(conversationId, 250);
+    expect(
+      store.getMemoryReviewState(conversationId).lastReviewedMessageTs,
+    ).toBe(500);
+  });
+
+  it("ignores non-positive timestamps", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-advance-zero";
+    store.advanceMemoryReviewWatermark(conversationId, 0);
+    expect(
+      store.getMemoryReviewState(conversationId).lastReviewedMessageTs,
+    ).toBe(0);
+  });
+});

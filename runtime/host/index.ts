@@ -2320,11 +2320,7 @@ export class StellaRuntimeHost {
   }
 
   async triggerDreamNow(
-    trigger:
-      | "manual"
-      | "subagent_finalize"
-      | "chronicle_summary"
-      | "startup_catchup" = "manual",
+    trigger: "manual" | "startup_catchup" = "manual",
   ): Promise<{
     scheduled: boolean;
     reason:
