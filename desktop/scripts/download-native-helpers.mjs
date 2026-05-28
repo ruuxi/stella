@@ -15,7 +15,9 @@ import {
   chmodSync,
   createWriteStream,
   existsSync,
+  readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -109,6 +111,62 @@ const tarPath = (filePath) => {
   return `/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
 };
 
+const nativeToolPath = () => {
+  const separator = process.platform === "win32" ? ";" : ":";
+  const paths = [
+    process.env.PATH,
+    process.platform === "darwin" ? "/opt/homebrew/bin" : "",
+    process.platform === "darwin" ? "/usr/local/bin" : "",
+    process.platform === "darwin" ? "/usr/bin" : "",
+    process.platform === "darwin" ? "/bin" : "",
+    process.platform === "darwin" ? "/usr/sbin" : "",
+    process.platform === "darwin" ? "/sbin" : "",
+    process.platform === "win32" ? "C:\\Program Files\\zstd" : "",
+    process.platform === "win32" ? "C:\\Program Files (x86)\\zstd" : "",
+    process.platform === "win32" ? "C:\\ProgramData\\chocolatey\\bin" : "",
+    process.platform === "win32" ? "C:\\msys64\\usr\\bin" : "",
+    process.platform === "win32" ? "C:\\Program Files\\Git\\usr\\bin" : "",
+    process.platform === "win32" ? "C:\\Windows\\System32" : "",
+  ]
+    .flatMap((entry) => (entry ? entry.split(separator) : []))
+    .filter(Boolean);
+  return [...new Set(paths)].join(separator);
+};
+
+const readInstalledManifest = () => {
+  try {
+    return JSON.parse(readFileSync(installManifestPath, "utf8"));
+  } catch {
+    return null;
+  }
+};
+
+const existingHelpersMatch = (manifest, asset) => {
+  if (!existsSync(sentinel)) return false;
+  const installed = readInstalledManifest();
+  if (!installed || installed.schemaVersion !== 1) return false;
+  if (installed.platform && installed.platform !== platformKey) return false;
+
+  const expectedAssetSha = String(asset.sha256 ?? "").toLowerCase();
+  const installedAssetSha = String(installed.asset?.sha256 ?? "").toLowerCase();
+  const installedManifestAssetSha = String(
+    installed.assets?.[platformKey]?.sha256 ?? "",
+  ).toLowerCase();
+  if (
+    expectedAssetSha &&
+    (installedAssetSha === expectedAssetSha ||
+      installedManifestAssetSha === expectedAssetSha)
+  ) {
+    return true;
+  }
+
+  return Boolean(
+    manifest.sha &&
+      installed.sha &&
+      String(installed.sha).toLowerCase() === String(manifest.sha).toLowerCase(),
+  );
+};
+
 process.stdout.write(`Resolving native helpers manifest: ${manifestUrl}\n`);
 const manifestResp = await fetch(manifestUrl, {
   headers: { "User-Agent": "stella-native-download" },
@@ -132,6 +190,13 @@ if (!asset) {
   process.exit(1);
 }
 
+if (existingHelpersMatch(manifest, asset)) {
+  process.stdout.write(
+    `Native helpers for ${platformKey} already match the current manifest at ${outDir}.\n`,
+  );
+  process.exit(0);
+}
+
 process.stdout.write(
   `Downloading native helpers for ${platformKey} from ${asset.url}\n`,
 );
@@ -146,6 +211,10 @@ if (!archiveResp.ok || !archiveResp.body) {
 const tmpArchive = path.join(
   repoRoot,
   ".stella-native-helpers-download.tar.zst",
+);
+const tmpExtractDir = path.join(
+  repoRoot,
+  `.stella-native-helpers-extract-${platformKey}-${process.pid}`,
 );
 const hash = createHash("sha256");
 const writeStream = createWriteStream(tmpArchive);
@@ -182,30 +251,49 @@ if (actualSha.toLowerCase() !== String(asset.sha256).toLowerCase()) {
   process.exit(1);
 }
 
-await rm(outDir, { recursive: true, force: true });
-await mkdir(outDir, { recursive: true });
+await rm(tmpExtractDir, { recursive: true, force: true });
+await mkdir(tmpExtractDir, { recursive: true });
 
-process.stdout.write(`Extracting into ${outDir}\n`);
+process.stdout.write(`Extracting into ${tmpExtractDir}\n`);
 const tarArgs = [
   ...(process.platform === "win32" ? ["--force-local"] : []),
   "--zstd",
   "-xf",
   tarPath(tmpArchive),
   "-C",
-  tarPath(outDir),
+  tarPath(tmpExtractDir),
 ];
 const tarResult = spawnSync(
   "tar",
   tarArgs,
   {
+    env: {
+      ...process.env,
+      PATH: nativeToolPath(),
+    },
     stdio: "inherit",
   },
 );
 if (tarResult.status !== 0) {
+  rmSync(tmpArchive, { force: true });
+  await rm(tmpExtractDir, { recursive: true, force: true });
+  if (existsSync(sentinel)) {
+    process.stderr.write(
+      `tar extraction failed; keeping existing native helpers at ${outDir}.\n`,
+    );
+    process.exit(0);
+  }
   process.stderr.write("tar extraction failed.\n");
   process.exit(tarResult.status ?? 1);
 }
 rmSync(tmpArchive, { force: true });
+
+await rm(outDir, { recursive: true, force: true });
+await mkdir(outDir, { recursive: true });
+for (const entry of readdirSync(tmpExtractDir)) {
+  renameSync(path.join(tmpExtractDir, entry), path.join(outDir, entry));
+}
+await rm(tmpExtractDir, { recursive: true, force: true });
 
 if (process.platform !== "win32") {
   const setExec = (dir) => {
