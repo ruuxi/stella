@@ -1,7 +1,7 @@
 /**
  * HTML rendered on the local-loopback OAuth callback page (e.g. Anthropic
  * OAuth lands here after the user authorizes Stella). Matches Stella's
- * splash + recovery aesthetic — white card, Cormorant Garamond italic
+ * splash + recovery aesthetic — white card, Cormorant Garamond
  * wordmark, muted status line. The fonts pull from Google Fonts because
  * this page runs in the user's regular browser, not the Electron shell,
  * so we can't use the bundled font files.
@@ -37,7 +37,7 @@ function renderPage(options: {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,400;1,500&family=Manrope:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Manrope:wght@400;500&display=swap"
   />
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -76,7 +76,6 @@ function renderPage(options: {
     .name {
       font-family: "Cormorant Garamond", Georgia, serif;
       font-size: 32px;
-      font-style: italic;
       font-weight: 500;
       letter-spacing: -0.03em;
       line-height: 1;
@@ -85,7 +84,6 @@ function renderPage(options: {
     h1 {
       font-family: "Cormorant Garamond", Georgia, serif;
       font-size: 22px;
-      font-style: italic;
       font-weight: 400;
       letter-spacing: -0.02em;
       line-height: 1.2;

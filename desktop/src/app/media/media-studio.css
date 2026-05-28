@@ -46,7 +46,7 @@
 
 .ms-title em {
   font-weight: 300;
-  font-style: italic;
+  font-style: normal;
 }
 
 .ms-lead {
@@ -535,7 +535,7 @@
   font-family: var(--ms-serif);
   font-size: 1.4rem;
   font-weight: 400;
-  font-style: italic;
+  font-style: normal;
   letter-spacing: -0.02em;
   opacity: 0.25;
   margin: 0 0 0.4rem;

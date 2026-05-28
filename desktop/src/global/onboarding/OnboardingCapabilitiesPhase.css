@@ -449,7 +449,6 @@
 .onboarding-cap-shell__wordmark {
   font-family: "Cormorant Garamond", Georgia, serif;
   font-size: 30px;
-  font-style: italic;
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--foreground);
@@ -1604,7 +1603,6 @@
 .onboarding-cap-actions__rest-name {
   font-family: "Cormorant Garamond", Georgia, serif;
   font-size: 22px;
-  font-style: italic;
   font-weight: 500;
   color: var(--foreground);
   opacity: 0.85;
