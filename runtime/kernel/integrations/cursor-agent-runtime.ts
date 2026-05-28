@@ -32,6 +32,8 @@ import type {
 const execFileAsync = promisify(execFile);
 const DEFAULT_CURSOR_STARTUP_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CURSOR_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const CURSOR_NODE_RUNNER_SIGTERM_TIMEOUT_MS = 1_500;
+const CURSOR_NODE_RUNNER_SIGKILL_TIMEOUT_MS = 4_000;
 const CURSOR_CREDENTIAL_PROVIDER = "cursor";
 const CURSOR_NODE_RUNNER_FILENAME = "cursor-agent-node-runner.js";
 
@@ -566,9 +568,49 @@ const cursorNodeRunnerCwd = (agentOptions: AgentOptions): string => {
   return cwd ?? process.cwd();
 };
 
+export const terminateCursorNodeRunnerProcess = (
+  child: ChildProcessWithoutNullStreams,
+) => {
+  if (child.killed || child.exitCode !== null) return;
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // Process may have already exited.
+  }
+  const sigkillTimer = setTimeout(() => {
+    if (!child.killed && child.exitCode === null) {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Process may have already exited.
+      }
+    }
+  }, CURSOR_NODE_RUNNER_SIGKILL_TIMEOUT_MS);
+  sigkillTimer.unref?.();
+  child.once("exit", () => clearTimeout(sigkillTimer));
+};
+
+export const abortCursorNodeRunnerProcess = (
+  child: ChildProcessWithoutNullStreams,
+) => {
+  if (child.killed || child.exitCode !== null) return;
+  try {
+    child.kill("SIGINT");
+  } catch {
+    // Fall through to the harder kill path.
+  }
+  const sigtermTimer = setTimeout(
+    () => terminateCursorNodeRunnerProcess(child),
+    CURSOR_NODE_RUNNER_SIGTERM_TIMEOUT_MS,
+  );
+  sigtermTimer.unref?.();
+  child.once("exit", () => clearTimeout(sigtermTimer));
+};
+
 const runCursorAgentTurnInNodeRunner = async (args: {
   request: CursorNodeRunnerRequest;
   abortSignal?: AbortSignal;
+  onCancelReady?: (cancel: () => void) => void;
   onStatus?: (text: string) => void;
   onStream?: (chunk: string) => void;
 }): Promise<CursorAgentTurnResult> => {
@@ -582,6 +624,7 @@ const runCursorAgentTurnInNodeRunner = async (args: {
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   }) as ChildProcessWithoutNullStreams;
+  args.onCancelReady?.(() => abortCursorNodeRunnerProcess(child));
 
   return await new Promise<CursorAgentTurnResult>((resolve, reject) => {
     let settled = false;
@@ -592,6 +635,7 @@ const runCursorAgentTurnInNodeRunner = async (args: {
       if (settled) return false;
       settled = true;
       args.abortSignal?.removeEventListener("abort", onAbort);
+      args.onCancelReady?.(() => undefined);
       return true;
     };
 
@@ -600,16 +644,13 @@ const runCursorAgentTurnInNodeRunner = async (args: {
     };
 
     const rejectWith = (error: Error) => {
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        // Best effort.
-      }
+      terminateCursorNodeRunnerProcess(child);
       if (finish()) reject(error);
     };
 
     const onAbort = () => {
-      rejectWith(new Error("Aborted"));
+      abortCursorNodeRunnerProcess(child);
+      if (finish()) reject(new Error("Aborted"));
     };
 
     const handleLine = (line: string) => {
@@ -785,6 +826,9 @@ export const runCursorAgentTurn = async (request: {
               : {}),
           },
           abortSignal: request.abortSignal,
+          onCancelReady: (cancel) => {
+            cancelCurrentRun = cancel;
+          },
           onStatus: (status) => {
             markCursorActivity();
             request.onStatus?.(status);
