@@ -45,9 +45,42 @@ export function deriveConversationFiles(
 
   for (const event of events) {
     const payload = event.payload as
-      | { fileChanges?: unknown; producedFiles?: unknown }
+      | {
+          toolName?: unknown;
+          error?: unknown;
+          filePath?: unknown;
+          slug?: unknown;
+          title?: unknown;
+          createdAt?: unknown;
+          fileChanges?: unknown;
+          producedFiles?: unknown;
+        }
       | undefined;
     if (!payload || typeof payload !== "object") continue;
+
+    if (
+      payload.toolName === "html" &&
+      !payload.error &&
+      typeof payload.filePath === "string" &&
+      payload.filePath.startsWith("/")
+    ) {
+      seen.set(payload.filePath, {
+        path: payload.filePath,
+        timestamp: event.timestamp,
+        payload: {
+          kind: "canvas-html",
+          filePath: payload.filePath,
+          ...(typeof payload.title === "string" ? { title: payload.title } : {}),
+          ...(typeof payload.slug === "string" ? { slug: payload.slug } : {}),
+          createdAt:
+            typeof payload.createdAt === "number" &&
+            Number.isFinite(payload.createdAt)
+              ? payload.createdAt
+              : event.timestamp,
+        },
+      });
+      continue;
+    }
 
     const fileChanges = isFileChangeRecordArray(payload.fileChanges)
       ? payload.fileChanges

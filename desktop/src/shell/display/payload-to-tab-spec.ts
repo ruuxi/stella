@@ -169,6 +169,13 @@ const addGeneratedMediaItem = (
   return generatedMediaSnapshot;
 };
 
+const selectedIdForMediaPayload = (
+  payload: Extract<DisplayPayload, { kind: "media" }>,
+): string =>
+  payload.asset.kind === "image" && payload.asset.filePaths.length > 1
+    ? `image:${payload.asset.filePaths[0] ?? ""}`
+    : idForMediaPayload(payload);
+
 export const getGeneratedMediaItems = (): ReadonlyArray<GeneratedMediaItem> =>
   generatedMediaSnapshot;
 
@@ -252,7 +259,11 @@ export const payloadToTabSpec = (
         title: "Canvas",
         tooltip: payload.title ?? "HTML canvas",
         metadata: { kind: "canvas-html", items, latest: payload.filePath },
-        render: () => createElement(CanvasTabContent, { items }),
+        render: () =>
+          createElement(CanvasTabContent, {
+            items,
+            selectedItemId: payload.filePath,
+          }),
       };
     }
 
@@ -365,6 +376,7 @@ export const payloadToTabSpec = (
         ...(payload.prompt ? { prompt: payload.prompt } : {}),
       };
       const mediaItems = addGeneratedMediaItem(payload);
+      const selectedItemId = selectedIdForMediaPayload(payload);
       return {
         id: GENERATED_MEDIA_TAB_ID,
         kind: "media",
@@ -375,7 +387,8 @@ export const payloadToTabSpec = (
           items: mediaItems,
           ...baseMeta,
         },
-        render: () => createElement(MediaTabContent, { items: mediaItems }),
+        render: () =>
+          createElement(MediaTabContent, { items: mediaItems, selectedItemId }),
       };
     }
   }
