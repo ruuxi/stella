@@ -119,8 +119,8 @@ describe("executeRuntimeAgentPrompt", () => {
   });
 
   it("fails a silent native agent prompt instead of hanging", async () => {
-    const previousTimeout = process.env.STELLA_AGENT_IDLE_TIMEOUT_MS;
-    process.env.STELLA_AGENT_IDLE_TIMEOUT_MS = "25";
+    const previousTimeout = process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS;
+    process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS = "25";
     const listeners = new Set<(event: never) => void>();
     const agent = {
       state: {
@@ -151,9 +151,9 @@ describe("executeRuntimeAgentPrompt", () => {
       expect(listeners.size).toBe(0);
     } finally {
       if (previousTimeout === undefined) {
-        delete process.env.STELLA_AGENT_IDLE_TIMEOUT_MS;
+        delete process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS;
       } else {
-        process.env.STELLA_AGENT_IDLE_TIMEOUT_MS = previousTimeout;
+        process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS = previousTimeout;
       }
     }
   });

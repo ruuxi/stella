@@ -24,7 +24,8 @@ import type {
 } from "../../protocol/index.js";
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_CURSOR_IDLE_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_CURSOR_STARTUP_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_CURSOR_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type CursorAgentRuntimeEngine = AgentRuntimeEngine;
 
@@ -453,12 +454,17 @@ export const runCursorAgentTurn = async (request: {
 
   return await withCursorSdkStreamErrorGuard(async () => {
     const beforeSnapshot = await snapshotCursorWorktree(request.stellaRoot);
+    const startupTimeoutMs = configuredTimeoutMs(
+      "STELLA_CURSOR_STARTUP_TIMEOUT_MS",
+      DEFAULT_CURSOR_STARTUP_TIMEOUT_MS,
+    );
     const idleTimeoutMs = configuredTimeoutMs(
       "STELLA_CURSOR_IDLE_TIMEOUT_MS",
       DEFAULT_CURSOR_IDLE_TIMEOUT_MS,
     );
     let idleTimer: ReturnType<typeof setTimeout> | undefined;
     let idleSettled = false;
+    let hasCursorActivity = false;
     let cancelCurrentRun: (() => void) | undefined;
     let rejectIdle: (error: Error) => void = () => {};
     const idleFailure = new Promise<never>((_, reject) => {
@@ -467,16 +473,21 @@ export const runCursorAgentTurn = async (request: {
     const refreshCursorIdleTimer = () => {
       if (idleSettled) return;
       if (idleTimer) clearTimeout(idleTimer);
+      const timeoutMs = hasCursorActivity ? idleTimeoutMs : startupTimeoutMs;
       idleTimer = setTimeout(() => {
         idleSettled = true;
         cancelCurrentRun?.();
         rejectIdle(
           new Error(
-            `Cursor did not produce activity for ${Math.round(idleTimeoutMs / 1000)}s.`,
+            `Cursor did not produce activity for ${Math.round(timeoutMs / 1000)}s.`,
           ),
         );
-      }, idleTimeoutMs);
+      }, timeoutMs);
       idleTimer.unref?.();
+    };
+    const markCursorActivity = () => {
+      hasCursorActivity = true;
+      refreshCursorIdleTimer();
     };
     const waitForCursorActivity = async <T>(promise: Promise<T>): Promise<T> => {
       refreshCursorIdleTimer();
@@ -550,6 +561,7 @@ export const runCursorAgentTurn = async (request: {
             throw new Error("Aborted");
           }
           if (message.type === "assistant") {
+            markCursorActivity();
             for (const block of message.message.content) {
               if (block.type !== "text") continue;
               collected += block.text;
@@ -559,6 +571,7 @@ export const runCursorAgentTurn = async (request: {
           }
           const statusText = statusTextFromMessage(message);
           if (statusText) {
+            markCursorActivity();
             request.onStatus?.(statusText);
           }
         }
