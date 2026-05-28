@@ -20,8 +20,27 @@ type CrashRecoveryStatus =
       latestFeature: SelfModFeatureSummary | null;
     };
 
+const isBuildError = (error: Error) => error.name.startsWith("BuildError");
+
 const buildAutoRepairPrompt = (error: Error, componentStack: string) => {
   const stack = componentStack.trim() || "(no component stack)";
+  if (isBuildError(error)) {
+    return `A frontend build error happened in Stella.
+
+Please perform an automatic self-repair now:
+1. Find and fix the syntax, import, or transform error in the frontend code.
+2. Keep behavior changes minimal and safe.
+3. Validate with the frontend build or typecheck when possible.
+4. If you make code changes, commit them with a stable [feature:auto-repair] tag.
+
+Build details:
+- Error: ${error.name}: ${error.message}
+- Source frame:
+${stack}
+
+After fixing, return a concise summary of what you changed.`;
+  }
+
   return `A render crash happened in Stella's frontend.
 
 Please perform an automatic self-repair now:

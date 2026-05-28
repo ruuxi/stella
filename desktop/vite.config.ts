@@ -1292,6 +1292,12 @@ export default defineConfig({
     port: 57314,
     strictPort: false,
     forwardConsole: true,
+    // Vite's red overlay is replaced by the renderer-side CrashSurface (see
+    // `src/platform/dev/vite-error-recovery.ts` + `src/shell/ErrorBoundary.tsx`).
+    // We forward `vite:error` events to the same boundary that catches React
+    // render crashes so build / parse errors get Reload / Ask-Stella-to-repair
+    // / Undo-update affordances instead of a raw oxc stack.
+    hmr: { overlay: false },
     fs: {
       allow: [VITE_WORKSPACE_ROOT],
     },
