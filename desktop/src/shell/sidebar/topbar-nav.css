@@ -9,15 +9,26 @@
   align-items: center;
   gap: 2px;
   height: 100%;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
   padding-right: 4px;
   -webkit-app-region: no-drag;
+  /* When the window narrows, the nav collapses and scrolls instead of
+     pushing the account / sidebar controls off the right edge. */
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+}
+
+.shell-topbar-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .shell-topbar-nav-item {
   position: relative;
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   height: 24px;
   padding: 0 10px;
   border-radius: var(--radius-sm, 5px);
