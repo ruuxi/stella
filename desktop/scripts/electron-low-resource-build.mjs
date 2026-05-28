@@ -19,7 +19,6 @@ const cacheFilePath = path.join(desktopDir, ".low-resource-build-cache.json");
 const inputRoots = [
   "desktop",
   "runtime",
-  "state",
   "package.json",
   "bun.lock",
   "tsconfig.json",

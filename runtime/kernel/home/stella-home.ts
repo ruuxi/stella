@@ -74,7 +74,7 @@ export const resolveDefaultStellaHomePath = (): string =>
   path.join(os.homedir(), ".stella");
 
 export const resolveBundledStellaHomeSeedPath = (stellaRoot: string): string =>
-  path.join(stellaRoot, "state");
+  path.join(stellaRoot, "runtime", "home-seed");
 
 export const resolveRuntimeStatePath = (
   _app?: App,

@@ -24,8 +24,8 @@ Everything else (chat route, sidebars) reads it via
 streaming subscription.
 ## Validation
 
-Run from the Stella install root (the directory containing `desktop/`,
-`runtime/`, `state/`):
+Run from the Stella install root (the directory containing `desktop/` and
+`runtime/`):
 
 ```bash
 bunx tsgo -p desktop/tsconfig.app.json --noEmit   # renderer (workspace-local TS 7)

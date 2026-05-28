@@ -78,6 +78,7 @@ export type InstallManifestSnapshot = {
 
 export type UpdatesHandlersOptions = {
   getStellaRoot: () => string | null;
+  getStellaHome: () => string | null;
   getStellaHostRunner?: () => StellaHostRunner | null;
   assertPrivilegedSender: (
     event: IpcMainInvokeEvent,
@@ -690,6 +691,7 @@ const buildSourcePackAppliedChangesForAgent = (
 
 const tryApplySourcePackDesktopUpdate = async (
   stellaRoot: string,
+  stellaHome: string,
   runner: StellaHostRunner | null,
   args: {
     baseCommit: string;
@@ -768,19 +770,17 @@ const tryApplySourcePackDesktopUpdate = async (
 
   if (sourceApply.status === "conflicts") {
     const conflictRoot = path.join(
-      stellaRoot,
-      "state",
+      stellaHome,
       "raw",
       "desktop-updates",
       args.releaseTag.replace(/[^a-z0-9_.-]/gi, "_"),
     );
     const sourcePackFile = path.join(conflictRoot, "SOURCE_PACK.json");
     const conflictFile = path.join(conflictRoot, "SOURCE_PACK_CONFLICTS.json");
-    const sourcePackFileRelative = path.relative(stellaRoot, sourcePackFile);
     const conflictPayload = {
       status: sourceApply.status,
       revisionId: sourceApply.revisionId,
-      sourcePackFile: sourcePackFileRelative,
+      sourcePackFile,
       appliedPaths: sourceApply.appliedPaths,
       appliedChanges: buildSourcePackAppliedChangesForAgent(sourceApply),
       noopPaths: sourceApply.noopPaths,
@@ -807,14 +807,13 @@ const tryApplySourcePackDesktopUpdate = async (
       "utf8",
     );
     await fs.writeFile(conflictFile, sourcePackConflictJson, "utf8");
-    const sourcePackConflictFile = path.relative(stellaRoot, conflictFile);
     return {
       status: "needs-agent",
-      reason: `Stella source-pack merge reported conflicts. Conflict details were written to ${sourcePackConflictFile}.`,
+      reason: `Stella source-pack merge reported conflicts. Conflict details were written to ${conflictFile}.`,
       headCommit: await readHeadCommit(stellaRoot),
       changedFiles: sourcePaths,
-      sourcePackFile: sourcePackFileRelative,
-      sourcePackConflictFile,
+      sourcePackFile,
+      sourcePackConflictFile: conflictFile,
       ...(shouldInlineConflictJson ? { sourcePackConflictJson } : {}),
     };
   }
@@ -950,6 +949,7 @@ const tryApplySourcePackDesktopUpdate = async (
 
 const tryApplyCleanDesktopUpdate = async (
   stellaRoot: string,
+  stellaHome: string,
   runner: StellaHostRunner | null,
   args: {
     baseCommit: string;
@@ -963,6 +963,7 @@ const tryApplyCleanDesktopUpdate = async (
     try {
       const sourcePackResult = await tryApplySourcePackDesktopUpdate(
         stellaRoot,
+        stellaHome,
         runner,
         {
           targetCommit: args.targetCommit,
@@ -1234,8 +1235,13 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!stellaRoot) {
         throw new Error("Stella install directory is unavailable.");
       }
+      const stellaHome = options.getStellaHome();
+      if (!stellaHome) {
+        throw new Error("Stella home directory is unavailable.");
+      }
       return await tryApplyCleanDesktopUpdate(
         stellaRoot,
+        stellaHome,
         options.getStellaHostRunner?.() ?? null,
         {
           baseCommit,

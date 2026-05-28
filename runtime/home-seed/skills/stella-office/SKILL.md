@@ -359,4 +359,4 @@ stella-office pptx help
 
 ## Backlinks
 
-- [Skills Index](state/skills/index.md)
+- [Skills Index](../index.md)

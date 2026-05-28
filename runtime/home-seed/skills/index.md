@@ -1,6 +1,6 @@
 ---
 name: skills-index
-description: Index of Stella's skills under state/skills. Each skill is a folder with SKILL.md plus optional scripts, references, and assets.
+description: Index of Stella's bundled skills. Each skill is a folder with SKILL.md plus optional scripts, references, and assets.
 ---
 
 # Skills Index
@@ -18,7 +18,7 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 - [stella-office](stella-office/SKILL.md) — office document creation and editing
 - [stella-media](stella-media/SKILL.md) — image, video, audio, music, and 3D generation through Stella's managed media gateway
 - [pdf](pdf/SKILL.md) — PDF reading, generation, page operations, and render-based quality checks
-- [skill-creator](skill-creator/SKILL.md) — create and update Stella skills under `state/skills`
+- [skill-creator](skill-creator/SKILL.md) — create and update Stella skills
 - [stella-computer-macos](stella-computer-macos/SKILL.md) — macOS desktop-app automation through the `stella-computer` CLI
 - [stella-computer-windows](stella-computer-windows/SKILL.md) — Windows desktop-app automation through the `stella-computer` CLI
 - [stella-connect](stella-connect-mcp/SKILL.md) — use Store integrations and imported MCP/API connectors through the `stella-connect` CLI

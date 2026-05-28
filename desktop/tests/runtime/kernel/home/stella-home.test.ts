@@ -24,7 +24,7 @@ describe("ensureStellaHomeSeeded", () => {
   it("seeds only bundled defaults into Stella home", async () => {
     const stellaRoot = await createTempDir("stella-seed-root-");
     const stellaHome = await createTempDir("stella-home-");
-    const seedRoot = path.join(stellaRoot, "state");
+    const seedRoot = path.join(stellaRoot, "runtime", "home-seed");
 
     await mkdir(path.join(seedRoot, "skills", "stella-desktop"), {
       recursive: true,

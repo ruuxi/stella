@@ -22,7 +22,7 @@ Use this skill for PDF work where the final file, visual layout, or extracted co
    - Check for clipped text, broken fonts, overlap, table alignment, image quality, and page numbering.
 4. Keep intermediate files organized.
    - Use a task-specific folder under `tmp/pdfs/` for scratch output.
-   - Put final PDF artifacts where the user requested; if unspecified, use `state/outputs/`.
+   - Put final PDF artifacts where the user requested; if unspecified, use `~/.stella/outputs/`.
 
 ## Commands
 

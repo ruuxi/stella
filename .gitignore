@@ -32,36 +32,4 @@ DEV-CONTEXT.md
 # Exec worker fallback CJS cache (Node-test runtime only; Bun loads .ts directly).
 runtime/kernel/exec/.exec-worker-cache/
 
-# Stella runtime state (mutable, user-specific, never commit).
-# Seed content under state/ stays tracked via the allowlist below.
-state/*
-state/electron-user-data/
-!state/DREAM.md
-!state/registry.md
-!state/skills/
-state/skills/*
-!state/skills/create-stella-app/
-!state/skills/electron/
-!state/skills/index.md
-!state/skills/pdf/
-!state/skills/skill-creator/
-!state/skills/stella-browser/
-!state/skills/stella-computer/
-!state/skills/stella-connect-mcp/
-!state/skills/stella-design/
-!state/skills/stella-desktop/
-!state/skills/stella-media/
-!state/skills/stella-office/
-!state/skills/stella-runtime-extension/
-state/stella-computer/sessions/
-state/skills/user-profile/
-!state/notes/
-state/notes/*
-!state/notes/README.md
-!state/outputs/
-state/outputs/*
-!state/outputs/README.md
-state/core-memory.md
-state/raw/
-
 .env.local

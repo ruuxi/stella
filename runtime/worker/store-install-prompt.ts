@@ -1,9 +1,9 @@
 export type StoreInstallPromptArgs = {
   displayName: string;
   packageId: string;
-  installRootRelativePath: string;
-  specRelativePath: string;
-  sourcePackRelativePath: string | null;
+  installRootPath: string;
+  specPath: string;
+  sourcePackPath: string | null;
   referencePaths: string[];
   blueprintMarkdown: string;
 };
@@ -15,8 +15,8 @@ export const buildStoreInstallPrompt = (
     args.referencePaths.length > 0
       ? args.referencePaths.map((p) => `- ${p}`).join("\n")
       : "_(none — implement from the spec alone.)_";
-  const sourcePackListing = args.sourcePackRelativePath
-    ? `- ${args.sourcePackRelativePath}`
+  const sourcePackListing = args.sourcePackPath
+    ? `- ${args.sourcePackPath}`
     : "- none";
 
   return [
@@ -26,11 +26,11 @@ export const buildStoreInstallPrompt = (
     "",
     "Stella is self-modifying. Every install starts from the same root commit, but each tree may have diverged anywhere — partial refactors, alternate implementations of the same feature, missing files, renamed surfaces. Aim for **functional parity, not byte parity**: produce code that behaves the same as the author's release on this tree, even if the actual changes you write are not identical to the reference diffs.",
     "",
-    `Working directory for this install: \`${args.installRootRelativePath}\``,
+    `Working directory for this install: \`${args.installRootPath}\``,
     "",
     "## Inputs you've been given",
     "",
-    `- **Behaviour spec** at \`${args.specRelativePath}\`. Read this first. It is the author's description of what the release does for the user; it is the north star for your work.`,
+    `- **Behaviour spec** at \`${args.specPath}\`. Read this first. It is the author's description of what the release does for the user; it is the north star for your work.`,
     "- **Stella source pack** (when present) is the exact changed-file package material for this install/update. It may contain only the new revisions since the user's installed version. Read it as source context; do not apply it mechanically.",
     "- **Reference diffs** (one per commit on the author's tree). These are `git show -U10` outputs, post-redaction (home-dir paths, usernames, and obvious credential shapes are scrubbed). Use them as a **strong default** for how the change was implemented on the author's tree — but adapt to local divergence.",
     "",
