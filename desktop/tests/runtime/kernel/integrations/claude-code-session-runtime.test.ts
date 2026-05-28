@@ -472,9 +472,10 @@ describe("claude-code-session-runtime", () => {
     );
     fs.chmodSync(fakeClaude, 0o755);
     const previousPath = process.env.PATH;
-    const previousTimeout = process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS;
+    const previousTimeout =
+      process.env.STELLA_CLAUDE_CODE_STARTUP_IDLE_TIMEOUT_MS;
     process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
-    process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS = "25";
+    process.env.STELLA_CLAUDE_CODE_STARTUP_IDLE_TIMEOUT_MS = "25";
     try {
       await expect(
         runClaudeCodeTurn({
@@ -490,9 +491,10 @@ describe("claude-code-session-runtime", () => {
       shutdownClaudeCodeRuntime();
       process.env.PATH = previousPath;
       if (previousTimeout === undefined) {
-        delete process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS;
+        delete process.env.STELLA_CLAUDE_CODE_STARTUP_IDLE_TIMEOUT_MS;
       } else {
-        process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS = previousTimeout;
+        process.env.STELLA_CLAUDE_CODE_STARTUP_IDLE_TIMEOUT_MS =
+          previousTimeout;
       }
       fs.rmSync(dir, { recursive: true, force: true });
     }

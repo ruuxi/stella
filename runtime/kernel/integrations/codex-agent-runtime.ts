@@ -26,7 +26,8 @@ const MAX_STDERR_CAPTURE = 8_000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
 const DEFAULT_CODEX_REQUEST_TIMEOUT_MS = 60 * 1000;
-const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
 const CODEX_STELLA_DEVELOPER_INSTRUCTIONS =
   "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact. Stella skills are listed in the system prompt; when a skill matches, inspect its ~/.stella/skills/<name>/SKILL.md file with your normal Codex tools.";
@@ -1073,6 +1074,7 @@ export const runCodexAgentTurn = async (request: {
   let finalAgentMessageCompleted = false;
   let turnCompletionReported = false;
   let waitingForTurnCompletion = false;
+  let hasTurnProgress = false;
   let turnIdleTimer: ReturnType<typeof setTimeout> | undefined;
   let agentMessageCompletionTimer: ReturnType<typeof setTimeout> | undefined;
   let refreshTurnIdleTimer: (() => void) | undefined;
@@ -1110,10 +1112,15 @@ export const runCodexAgentTurn = async (request: {
     refreshTurnIdleTimer = () => {
       if (!waitingForTurnCompletion || completed) return;
       if (turnIdleTimer) clearTimeout(turnIdleTimer);
-      const timeoutMs = configuredTimeoutMs(
-        "STELLA_CODEX_TURN_IDLE_TIMEOUT_MS",
-        DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS,
-      );
+      const timeoutMs = hasTurnProgress
+        ? configuredTimeoutMs(
+            "STELLA_CODEX_TURN_IDLE_TIMEOUT_MS",
+            DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS,
+          )
+        : configuredTimeoutMs(
+            "STELLA_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS",
+            DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS,
+          );
       turnIdleTimer = setTimeout(() => {
         if (
           turnCompletionReported &&
@@ -1132,10 +1139,14 @@ export const runCodexAgentTurn = async (request: {
       }, timeoutMs);
       turnIdleTimer.unref?.();
     };
+    const markTurnProgress = () => {
+      hasTurnProgress = true;
+      refreshTurnIdleTimer?.();
+    };
     removeNotificationHandler = client.onNotification((notification) => {
       if (!threadId) return;
       if (!isNotificationForTurn(notification, threadId, turnId)) return;
-      refreshTurnIdleTimer?.();
+      markTurnProgress();
       switch (notification.method) {
         case "turn/started":
           turnId = notification.params.turn.id;
@@ -1212,7 +1223,7 @@ export const runCodexAgentTurn = async (request: {
       if (!isRequestForTurn(message, threadId, turnId)) {
         return undefined;
       }
-      refreshTurnIdleTimer?.();
+      markTurnProgress();
       if (message.method === "item/tool/call") {
         const params = message.params as CodexDynamicToolCallParams;
         if (!request.executeTool) {

@@ -28,7 +28,8 @@ const SIGKILL_TIMEOUT_MS = 4_000;
 const MAX_STDERR_CAPTURE = 4_000;
 const MAX_TOOL_STEPS = 64;
 const MAX_TOOL_RESULT_CHARS = 80_000;
-const DEFAULT_STEP_IDLE_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_STEP_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_STEP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const CLAUDE_CODE_COMPACTING_TEXT = "Compacting context";
 const CLAUDE_CODE_RUNNING_TEXT = "Working";
 
@@ -124,6 +125,7 @@ type PendingStructuredPrompt = {
   emitStreamDelta: (event: Record<string, unknown>) => void;
   abortListener?: () => void;
   idleTimer?: ReturnType<typeof setTimeout>;
+  hasOutput?: boolean;
 };
 
 type ClaudeCodeStreamingProcess = {
@@ -885,8 +887,9 @@ class ClaudeCodeSessionRuntime {
     session.process = processState;
     this.activeProcesses.set(request.sessionKey, child);
 
-    const refreshPendingIdleTimers = () => {
+    const refreshPendingIdleTimers = (hasOutput = false) => {
       for (const pending of processState.pending) {
+        if (hasOutput) pending.hasOutput = true;
         this.refreshPendingIdleTimer(processState, pending);
       }
     };
@@ -943,12 +946,12 @@ class ClaudeCodeSessionRuntime {
 
     child.stdout.on("data", (chunk: Buffer) => {
       processState.stdoutBuffer += chunk.toString("utf8");
-      refreshPendingIdleTimers();
+      refreshPendingIdleTimers(true);
       consumeStdout(false);
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
-      refreshPendingIdleTimers();
+      refreshPendingIdleTimers(true);
       if (processState.stderrText.length >= MAX_STDERR_CAPTURE) return;
       processState.stderrText += chunk.toString("utf8");
       if (processState.stderrText.length > MAX_STDERR_CAPTURE) {
@@ -1070,10 +1073,15 @@ class ClaudeCodeSessionRuntime {
     if (pending.idleTimer) {
       clearTimeout(pending.idleTimer);
     }
-    const timeoutMs = configuredTimeoutMs(
-      "STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS",
-      DEFAULT_STEP_IDLE_TIMEOUT_MS,
-    );
+    const timeoutMs = pending.hasOutput
+      ? configuredTimeoutMs(
+          "STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS",
+          DEFAULT_STEP_IDLE_TIMEOUT_MS,
+        )
+      : configuredTimeoutMs(
+          "STELLA_CLAUDE_CODE_STARTUP_IDLE_TIMEOUT_MS",
+          DEFAULT_STEP_STARTUP_IDLE_TIMEOUT_MS,
+        );
     pending.idleTimer = setTimeout(() => {
       const index = processState.pending.indexOf(pending);
       if (index >= 0) {

@@ -30,7 +30,8 @@ type RuntimeExecutableAgent = {
   abort: () => void;
 };
 
-const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_AGENT_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 const configuredTimeoutMs = (
   envName: string,
@@ -70,12 +71,17 @@ export const executeRuntimeAgentPrompt = async (args: {
   const abortHandler = () => args.agent.abort();
   args.abortSignal?.addEventListener("abort", abortHandler);
 
+  const startupIdleTimeoutMs = configuredTimeoutMs(
+    "STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS",
+    DEFAULT_AGENT_STARTUP_IDLE_TIMEOUT_MS,
+  );
   const idleTimeoutMs = configuredTimeoutMs(
     "STELLA_AGENT_IDLE_TIMEOUT_MS",
     DEFAULT_AGENT_IDLE_TIMEOUT_MS,
   );
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let idleSettled = false;
+  let hasAgentActivity = false;
   let rejectIdle: (error: Error) => void = () => {};
   const idleFailure = new Promise<never>((_, reject) => {
     rejectIdle = reject;
@@ -83,6 +89,7 @@ export const executeRuntimeAgentPrompt = async (args: {
   const refreshIdleTimer = () => {
     if (idleSettled) return;
     if (idleTimer) clearTimeout(idleTimer);
+    const timeoutMs = hasAgentActivity ? idleTimeoutMs : startupIdleTimeoutMs;
     idleTimer = setTimeout(() => {
       idleSettled = true;
       try {
@@ -92,14 +99,18 @@ export const executeRuntimeAgentPrompt = async (args: {
       }
       rejectIdle(
         new Error(
-          `Agent did not produce activity for ${Math.round(idleTimeoutMs / 1000)}s.`,
+          `Agent did not produce activity for ${Math.round(timeoutMs / 1000)}s.`,
         ),
       );
-    }, idleTimeoutMs);
+    }, timeoutMs);
     idleTimer.unref?.();
   };
+  const markAgentActivity = () => {
+    hasAgentActivity = true;
+    refreshIdleTimer();
+  };
   refreshIdleTimer();
-  const unsubscribeIdle = args.agent.subscribe(() => refreshIdleTimer());
+  const unsubscribeIdle = args.agent.subscribe(() => markAgentActivity());
 
   const unsubscribe = subscribeRuntimeAgentEvents({
     agent: args.agent,
