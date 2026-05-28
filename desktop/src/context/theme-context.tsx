@@ -64,10 +64,11 @@ function getSystemColorMode(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
+function applyThemeToDocument(colors: ThemeColors, isDark: boolean, themeId: string) {
   const root = document.documentElement;
 
   root.classList.toggle("dark", isDark);
+  root.dataset.theme = themeId;
   root.style.setProperty("color-scheme", isDark ? "dark" : "light");
   root.style.setProperty("--text-mix-blend-mode", isDark ? "plus-lighter" : "multiply");
 
@@ -89,6 +90,7 @@ function applyThemeToDocument(colors: ThemeColors, isDark: boolean) {
   root.style.setProperty("--accent", colors.accent);
   root.style.setProperty("--accent-foreground", colors.accentForeground);
   root.style.setProperty("--destructive", colors.error);
+  root.style.setProperty("--info", colors.info);
   root.style.setProperty("--border", colors.border);
   root.style.setProperty("--input", colors.border);
   root.style.setProperty("--ring", colors.interactive);
@@ -263,8 +265,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const effectiveGradientColor = preview.previewGradientColor ?? persisted.gradientColor;
 
   useEffect(() => {
-    applyThemeToDocument(colors, resolvedColorMode === "dark");
-  }, [colors, resolvedColorMode]);
+    applyThemeToDocument(colors, resolvedColorMode === "dark", theme.id);
+  }, [colors, resolvedColorMode, theme.id]);
 
   const readValue = useMemo<ThemeReadValue>(
     () => ({

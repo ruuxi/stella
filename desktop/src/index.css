@@ -402,6 +402,48 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --sidebar-ring: var(--ring);
 }
 
+:root[data-theme="pearl"] {
+  --border-strong: color-mix(in srgb, var(--foreground) 14%, var(--background));
+  --border-base: color-mix(in srgb, var(--foreground) 9%, var(--background));
+  --border-weak: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --glass-bg: color-mix(in srgb, var(--foreground) 4%, var(--background));
+  --panel-glass-bg: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  --panel-surface-bg: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  --panel-surface-bg-gradient: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--foreground) 2%, var(--background)),
+    color-mix(in srgb, var(--foreground) 4%, var(--background))
+  );
+  --panel-surface-border: color-mix(in srgb, var(--foreground) 9%, var(--background));
+  --panel-surface-highlight: inset 0 1px 0
+    color-mix(in srgb, white 70%, transparent);
+  --surface-inset: color-mix(in srgb, var(--foreground) 2%, var(--background));
+  --surface-raised: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  --surface-raised-hover: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --surface-overlay: color-mix(in srgb, var(--foreground) 4%, var(--background));
+}
+
+:root[data-theme="noir"] {
+  --border-strong: color-mix(in srgb, var(--foreground) 18%, var(--background));
+  --border-base: color-mix(in srgb, var(--foreground) 11%, var(--background));
+  --border-weak: color-mix(in srgb, var(--foreground) 7%, var(--background));
+  --glass-bg: color-mix(in srgb, var(--foreground) 7%, var(--background));
+  --panel-glass-bg: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --panel-surface-bg: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --panel-surface-bg-gradient: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--foreground) 4%, var(--background)),
+    color-mix(in srgb, var(--foreground) 7%, var(--background))
+  );
+  --panel-surface-border: color-mix(in srgb, var(--foreground) 13%, var(--background));
+  --panel-surface-highlight: inset 0 1px 0
+    color-mix(in srgb, var(--foreground) 9%, transparent);
+  --surface-inset: color-mix(in srgb, var(--foreground) 4%, var(--background));
+  --surface-raised: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  --surface-raised-hover: color-mix(in srgb, var(--foreground) 9%, var(--background));
+  --surface-overlay: color-mix(in srgb, var(--foreground) 8%, var(--background));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
