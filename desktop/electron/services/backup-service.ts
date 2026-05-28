@@ -44,13 +44,14 @@ const REMOTE_BACKUP_FINALIZE_UPLOAD_PATH = "/api/backups/finalize-upload";
 const REMOTE_BACKUP_RESTORE_MANIFEST_PATH = "/api/backups/restore-manifest";
 const REMOTE_BACKUP_OBJECT_DOWNLOADS_PATH = "/api/backups/object-downloads";
 const REMOTE_BACKUP_MAX_OBJECT_BATCH = 1_000;
+const HOME_BACKUP_SCOPE = "home";
 
-const PRESERVED_STATE_FILES = new Set([
+const PRESERVED_HOME_FILES = new Set([
   "device.json",
   "llm_credentials.json",
   "security_policy.json",
 ]);
-const STATE_DIRECTORY_SKIP_PREFIXES = new Set([
+const HOME_DIRECTORY_SKIP_PREFIXES = new Set([
   "backups",
   "cache",
   "logs",
@@ -86,7 +87,7 @@ type BackupManifestEntry = {
     | "repo-worktree"
     | "repo-git-bundle"
     | "sqlite"
-    | "state"
+    | typeof HOME_BACKUP_SCOPE
     | "workspace";
   path: string;
   sha256: string;
@@ -358,13 +359,29 @@ const removeFileIfExists = async (targetPath: string) => {
   await fs.rm(targetPath, { force: true }).catch(() => undefined);
 };
 
-const isPreservedStatePath = (relativePath: string) =>
-  PRESERVED_STATE_FILES.has(normalizePath(relativePath));
+const isPreservedHomePath = (relativePath: string) =>
+  PRESERVED_HOME_FILES.has(normalizePath(relativePath));
 
-const shouldSkipStatePath = (relativePath: string, isDirectory: boolean) => {
+const scopedManifestRelativePath = (
+  entry: Pick<BackupManifestEntry, "path">,
+  prefixes: readonly string[],
+) => {
+  const normalizedPath = normalizePath(entry.path);
+  for (const prefix of prefixes) {
+    const normalizedPrefix = normalizePath(prefix);
+    const prefixWithSlash = `${normalizedPrefix}/`;
+    if (normalizedPath === normalizedPrefix) return "";
+    if (normalizedPath.startsWith(prefixWithSlash)) {
+      return normalizedPath.slice(prefixWithSlash.length);
+    }
+  }
+  return normalizedPath;
+};
+
+const shouldSkipHomePath = (relativePath: string, isDirectory: boolean) => {
   if (!relativePath) return false;
   const topLevel = normalizePath(relativePath).split("/")[0];
-  if (STATE_DIRECTORY_SKIP_PREFIXES.has(topLevel)) {
+  if (HOME_DIRECTORY_SKIP_PREFIXES.has(topLevel)) {
     return true;
   }
   if (
@@ -374,7 +391,7 @@ const shouldSkipStatePath = (relativePath: string, isDirectory: boolean) => {
   ) {
     return true;
   }
-  if (isPreservedStatePath(relativePath)) {
+  if (isPreservedHomePath(relativePath)) {
     return true;
   }
   return topLevel === "tmp" && isDirectory;
@@ -926,10 +943,10 @@ export class BackupService {
     const repoEntries = await this.collectRepoEntries(args);
     const gitBundleEntry = await this.collectGitBundleEntry(args);
     const sqliteEntry = await this.collectSqliteEntry(args);
-    const stateEntries = await this.collectDirectoryEntries({
+    const homeEntries = await this.collectDirectoryEntries({
       ...args,
       rootPath: args.stellaHomePath,
-      scope: "state",
+      scope: HOME_BACKUP_SCOPE,
       shouldSkip: (relativePath, isDirectory) => {
         if (!relativePath) return false;
         const topLevel = relativePath.split("/")[0];
@@ -963,7 +980,7 @@ export class BackupService {
       ...repoEntries,
       ...(gitBundleEntry ? [gitBundleEntry] : []),
       ...(sqliteEntry ? [sqliteEntry] : []),
-      ...stateEntries,
+      ...homeEntries,
       ...workspaceEntries,
     ].sort(
       (left, right) =>
@@ -1055,7 +1072,7 @@ export class BackupService {
     }
     return await this.captureFile({
       absolutePath: snapshotPath,
-      manifestPath: "state/stella.sqlite",
+      manifestPath: `${HOME_BACKUP_SCOPE}/stella.sqlite`,
       scope: "sqlite",
       stellaHomePath: args.stellaHomePath,
       encryptionKey: args.encryptionKey,
@@ -1065,7 +1082,7 @@ export class BackupService {
   private async collectDirectoryEntries(args: {
     stellaHomePath: string;
     rootPath: string;
-    scope: "state" | "workspace";
+    scope: typeof HOME_BACKUP_SCOPE | "workspace";
     shouldSkip: (relativePath: string, isDirectory: boolean) => boolean;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry[]> {
@@ -1526,8 +1543,8 @@ export class BackupService {
     const repoEntries = args.manifest.entries.filter(
       (entry) => entry.scope === "repo-worktree",
     );
-    const stateEntries = args.manifest.entries.filter(
-      (entry) => entry.scope === "state",
+    const homeEntries = args.manifest.entries.filter(
+      (entry) => entry.scope === HOME_BACKUP_SCOPE,
     );
     const workspaceEntries = args.manifest.entries.filter(
       (entry) => entry.scope === "workspace",
@@ -1545,17 +1562,22 @@ export class BackupService {
     );
     await this.restoreScopedDirectory({
       rootPath: this.getWorkspaceRoot(),
-      scope: "workspace",
+      manifestPrefixes: ["workspace"],
       entries: workspaceEntries,
       stagedObjectsDir: args.stagedObjectsDir,
       shouldSkip: () => false,
     });
     await this.restoreScopedDirectory({
       rootPath: args.stellaHomePath,
-      scope: "state",
-      entries: stateEntries.filter((entry) => !isPreservedStatePath(entry.path.slice("state/".length))),
+      manifestPrefixes: [HOME_BACKUP_SCOPE],
+      entries: homeEntries.filter(
+        (entry) =>
+          !isPreservedHomePath(
+            scopedManifestRelativePath(entry, [HOME_BACKUP_SCOPE]),
+          ),
+      ),
       stagedObjectsDir: args.stagedObjectsDir,
-      shouldSkip: shouldSkipStatePath,
+      shouldSkip: shouldSkipHomePath,
     });
 
     if (repoBundleEntry) {
@@ -1613,7 +1635,7 @@ export class BackupService {
 
   private async restoreScopedDirectory(args: {
     rootPath: string;
-    scope: "state" | "workspace";
+    manifestPrefixes: readonly string[];
     entries: BackupManifestEntry[];
     stagedObjectsDir: string;
     shouldSkip: (relativePath: string, isDirectory: boolean) => boolean;
@@ -1621,7 +1643,7 @@ export class BackupService {
     await ensurePrivateDir(args.rootPath);
     const snapshotEntries = args.entries.map((entry) => ({
       ...entry,
-      relativePath: normalizePath(entry.path.slice(`${args.scope}/`.length)),
+      relativePath: scopedManifestRelativePath(entry, args.manifestPrefixes),
     }));
     const snapshotPaths = new Set(snapshotEntries.map((entry) => entry.relativePath));
     const currentFiles = await walkFiles(args.rootPath, args.shouldSkip);
