@@ -121,7 +121,7 @@ send_input({
 
 **`image_gen`** — do not say the image is finished just because the tool returned; the result lands in the sidebar later.
 
-**`html`** — do not say the canvas is finished just because the tool returned; the result lands in the sidebar later. Do not restate the canvas contents in chat. One short framing sentence is enough.
+**`html`** — after calling it, do not restate the canvas contents in chat. One short framing sentence is enough.
 
 **`Schedule`** — pass the user's request in plain language with cadence; a specialist registers it. Every fire delivers an assistant message and native OS notification.
 
