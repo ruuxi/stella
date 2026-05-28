@@ -5,7 +5,6 @@ import {
   listLocalCatalogModels,
   mergeCatalogModels,
   normalizeDirectProviderCatalogModels,
-  normalizeManagedGatewayCatalogModels,
   normalizeStellaCatalogModels,
   searchCatalogModels,
 } from "../../../src/global/settings/lib/model-catalog";
@@ -79,7 +78,7 @@ describe("settings model catalog", () => {
   });
 
   it("preserves per-agent Stella mode defaults from the backend", () => {
-    const defaults = getLocalModelDefaults(undefined, [
+    const defaults = getLocalModelDefaults({ orchestrator: "stella/light" }, [
       {
         agentType: "orchestrator",
         model: "stella/standard",
@@ -96,11 +95,14 @@ describe("settings model catalog", () => {
     expect(defaultMap.orchestrator).toBe("stella/standard");
     expect(defaultMap.chronicle).toBe("stella/light");
     expect(
-      normalizeModelOverrides(
-        { chronicle: "stella/light", schedule: "stella/standard" },
-        defaultMap,
-      ),
-    ).toEqual({});
+      normalizeModelOverrides({
+        chronicle: "stella/light",
+        schedule: "stella/standard",
+      }),
+    ).toEqual({
+      chronicle: "stella/light",
+      schedule: "stella/standard",
+    });
   });
 
   it("groups by provider and supports provider/model search", () => {
@@ -143,37 +145,6 @@ describe("settings model catalog", () => {
     expect(
       searchCatalogModels(models, "anthropic").map((model) => model.id),
     ).toEqual(["anthropic/claude-opus-4.7"]);
-  });
-
-  it("adds managed gateway models as Stella-routed catalog entries", () => {
-    const models = normalizeManagedGatewayCatalogModels({
-      openrouter: {
-        models: {
-          "meta-llama/llama-3.3-70b-instruct": {
-            id: "meta-llama/llama-3.3-70b-instruct",
-            name: "Llama 3.3 70B Instruct",
-          },
-        },
-      },
-      "fireworks-ai": {
-        models: {
-          "accounts/fireworks/models/kimi-k2p6": {
-            id: "accounts/fireworks/models/kimi-k2p6",
-            name: "Kimi K2P6",
-          },
-        },
-      },
-    });
-
-    expect(models.map((model) => model.id)).toEqual([
-      "stella/accounts/fireworks/models/kimi-k2p6",
-      "stella/meta-llama/llama-3.3-70b-instruct",
-    ]);
-    expect(models.every((model) => model.provider === "stella")).toBe(true);
-    expect(models.map((model) => model.upstreamModel)).toEqual([
-      "accounts/fireworks/models/kimi-k2p6",
-      "meta-llama/llama-3.3-70b-instruct",
-    ]);
   });
 
   it("does not add live models.dev OpenAI rows because OpenAI uses the Codex OAuth provider", () => {

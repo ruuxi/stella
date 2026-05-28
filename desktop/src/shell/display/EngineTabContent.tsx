@@ -41,16 +41,18 @@ import {
   useLlmCredentials,
 } from "@/global/settings/hooks/use-llm-credentials";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
+import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
   compareProviderRailOrder,
   CURSOR_MODEL_PREFIX,
   LLM_PROVIDERS,
 } from "@/global/settings/lib/llm-providers";
-import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
 import { DEFAULT_CURSOR_MODEL } from "@/shell/display/engine-tab-constants";
 import {
   buildModelDefaultsMap,
+  buildResolvedModelDefaultsMap,
   getConfigurableAgents,
+  getDefaultModelOptionLabel,
   getLocalModelDefaults,
   normalizeModelOverrides,
 } from "@/global/settings/lib/model-defaults";
@@ -764,6 +766,7 @@ function ModelsSection({
   onRefreshCursorModels,
 }: ModelsSectionProps) {
   const {
+    models: stellaModels,
     defaults: stellaDefaultModels,
     groups,
     refresh,
@@ -778,21 +781,35 @@ function ModelsSection({
         : undefined,
     [preferences, stellaDefaultModels],
   );
-  const defaultModelMap = useMemo(
-    () => buildModelDefaultsMap(modelDefaults),
-    [modelDefaults],
-  );
   const overrides = useMemo(
     () =>
       preferences
-        ? normalizeModelOverrides(preferences.modelOverrides, defaultModelMap)
+        ? normalizeModelOverrides(preferences.modelOverrides)
         : {},
-    [preferences, defaultModelMap],
+    [preferences],
   );
   const configurableAgents = useMemo(
     () => getConfigurableAgents(modelDefaults),
     [modelDefaults],
   );
+  const defaultModelMap = useMemo(
+    () => buildModelDefaultsMap(modelDefaults),
+    [modelDefaults],
+  );
+  const resolvedDefaultModelMap = useMemo(
+    () => buildResolvedModelDefaultsMap(modelDefaults),
+    [modelDefaults],
+  );
+  const modelNamesById = useMemo(() => {
+    const next = new Map<string, string>();
+    for (const model of stellaModels) {
+      const label =
+        model.provider === "stella" ? getStellaDisplayName(model) : model.name;
+      next.set(model.id, label);
+      if (model.upstreamModel) next.set(model.upstreamModel, label);
+    }
+    return next;
+  }, [stellaModels]);
   const runtimeModelEngine = usesRuntimeModelPicker(selectedEngine)
     ? selectedEngine
     : null;
@@ -806,9 +823,16 @@ function ModelsSection({
   const selectedStellaModelId =
     preferences?.modelOverrides[GENERAL_AGENT_KEY] ??
     preferences?.modelOverrides.orchestrator ??
-    defaultModelMap[GENERAL_AGENT_KEY] ??
-    defaultModelMap.orchestrator ??
-    STELLA_STANDARD_MODEL;
+    "";
+  const stellaDefaultLabel =
+    modelDefaults === undefined
+      ? "Stella Default"
+      : getDefaultModelOptionLabel(
+          GENERAL_AGENT_KEY,
+          defaultModelMap,
+          resolvedDefaultModelMap,
+          modelNamesById,
+        );
   const selectedRuntimeModelId =
     runtimeModelEngine === "codex_cli"
       ? (preferences?.codexModel ?? DEFAULT_CODEX_MODEL)
@@ -930,6 +954,28 @@ function ModelsSection({
     },
     [assignTo, batchAssignableAgents, preferences, selectedEngine],
   );
+
+  const clearStellaModelOverrides = useCallback(async () => {
+    if (!preferences) return;
+    const targetAgentKeys = batchAssignableAgents.map((entry) => entry.key);
+    if (targetAgentKeys.length === 0) return;
+    const nextOverrides = { ...preferences.modelOverrides };
+    const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
+    const nextPropagated = new Set(preferences.assistantPropagatedAgents ?? []);
+    for (const key of targetAgentKeys) {
+      delete nextOverrides[key];
+      delete nextReasoning[key];
+      nextPropagated.delete(key);
+    }
+    await writePreferences(
+      {
+        modelOverrides: nextOverrides,
+        reasoningEfforts: nextReasoning,
+        assistantPropagatedAgents: Array.from(nextPropagated),
+      },
+      "overrides",
+    );
+  }, [batchAssignableAgents, preferences, writePreferences]);
 
   const handleResetAll = useCallback(async () => {
     if (!preferences) return;
@@ -1150,14 +1196,17 @@ function ModelsSection({
               />
               <ProviderModelPanel
                 value={selectedStellaModelId}
-                defaultLabel=""
-                currentLabel="Click a model to apply"
+                defaultLabel={stellaDefaultLabel}
+                currentLabel={
+                  selectedStellaModelId
+                    ? "Click a model to apply"
+                    : stellaDefaultLabel
+                }
                 groups={groups}
                 disabled={inputsDisabled}
                 restrictStellaPicks={restricted}
                 restrictedPlanLabel={restrictedPlanLabel}
                 ariaLabel="Provider and model picker"
-                hideDefaultRow
                 selectedHeaderKicker="Tap a model"
                 hideSelectedTitle
                 favoriteScope="engine:stella"
@@ -1183,7 +1232,11 @@ function ModelsSection({
                     ),
                   onSaveManualModel: () => onSaveCursorModel(),
                 }}
-                onSelect={(modelId) => void autoApplyModel(modelId, null)}
+                onSelect={(modelId) =>
+                  modelId
+                    ? void autoApplyModel(modelId, null)
+                    : void clearStellaModelOverrides()
+                }
               />
             </div>
           </div>

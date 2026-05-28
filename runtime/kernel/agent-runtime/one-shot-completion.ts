@@ -9,11 +9,10 @@
  * Resolution order for `agentType`:
  *   1. Explicit `modelOverrides[agentType]` (e.g. user picked a model for
  *      this agent specifically).
- *   2. `defaultModels[agentType]` (filled in by Settings → Models defaults).
- *   3. Any `fallbackAgentTypes` (in order) — lets internal helpers like
+ *   2. Any `fallbackAgentTypes` (in order) — lets internal helpers like
  *      `task_summary` and `music_prompt` ride the user's Assistant-tab BYOK
  *      pick without being listed as user-configurable agents themselves.
- *   4. Stella's recommended default (managed gateway).
+ *   3. Stella's backend-owned default for the agent/audience.
  *
  * Falls through to the Stella managed gateway whenever a non-Stella model
  * id has no matching local credential — same fallback semantics as
@@ -23,10 +22,7 @@
 import { completeSimple, readAssistantText } from "../../ai/stream.js";
 import type { Context, Message } from "../../ai/types.js";
 import { resolveLlmRoute } from "../model-routing.js";
-import {
-  getDefaultModel,
-  getModelOverride,
-} from "../preferences/local-preferences.js";
+import { getModelOverride } from "../preferences/local-preferences.js";
 import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
@@ -57,15 +53,11 @@ const resolveModelName = (
   agentType: string,
   fallbackAgentTypes: readonly string[] | undefined,
 ): string | undefined => {
-  const direct =
-    getModelOverride(stellaHome, agentType) ??
-    getDefaultModel(stellaHome, agentType);
+  const direct = getModelOverride(stellaHome, agentType);
   if (direct) return direct;
   if (!fallbackAgentTypes) return undefined;
   for (const fallback of fallbackAgentTypes) {
-    const override =
-      getModelOverride(stellaHome, fallback) ??
-      getDefaultModel(stellaHome, fallback);
+    const override = getModelOverride(stellaHome, fallback);
     if (override) return override;
   }
   return undefined;

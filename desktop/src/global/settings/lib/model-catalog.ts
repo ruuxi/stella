@@ -203,15 +203,6 @@ export function normalizeStellaCatalogModels(
     });
 }
 
-const MANAGED_GATEWAY_MODEL_SOURCES = [
-  {
-    provider: "fireworks-ai",
-  },
-  {
-    provider: "openrouter",
-  },
-] as const;
-
 const MODELS_DEV_DIRECT_PROVIDER_KEYS = new Set([
   "anthropic",
   "cerebras",
@@ -233,29 +224,6 @@ function toCatalogInput(
     next.push("image");
   }
   return next;
-}
-
-export function normalizeManagedGatewayCatalogModels(
-  data: ModelsDevApi,
-): CatalogModel[] {
-  const models: CatalogModel[] = [];
-  for (const source of MANAGED_GATEWAY_MODEL_SOURCES) {
-    const sourceModels = data[source.provider]?.models ?? {};
-    for (const [modelId, entry] of Object.entries(sourceModels)) {
-      const upstreamModel = (entry.id ?? modelId).trim();
-      if (!upstreamModel) continue;
-      models.push({
-        id: `stella/${upstreamModel}`,
-        modelId: upstreamModel,
-        name: entry.name?.trim() || getProviderDisplayName(upstreamModel),
-        provider: "stella",
-        providerName: getProviderDisplayName("stella"),
-        source: "stella",
-        upstreamModel,
-      });
-    }
-  }
-  return models.sort(compareCatalogModels);
 }
 
 export function normalizeDirectProviderCatalogModels(

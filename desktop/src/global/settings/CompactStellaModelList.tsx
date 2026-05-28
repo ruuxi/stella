@@ -12,8 +12,6 @@ interface CompactStellaModelListProps {
   stellaModels: readonly CatalogModel[];
   /** Currently selected override id ("" means default). */
   value: string;
-  /** Concrete model id represented by the Default row. */
-  defaultModelId: string;
   /** Label rendered for the default-mode entry. */
   defaultLabel: string;
   /** Selection callback. Empty string ⇒ revert to default. */
@@ -39,7 +37,6 @@ interface CompactStellaModelListProps {
 export function CompactStellaModelList({
   stellaModels,
   value,
-  defaultModelId,
   defaultLabel,
   onSelect,
   disabled = false,
@@ -53,13 +50,12 @@ export function CompactStellaModelList({
         (model) =>
           model.provider === "stella" &&
           model.id.startsWith("stella/") &&
-          !model.modelId.includes("/") &&
-          model.id !== defaultModelId,
+          !model.modelId.includes("/"),
       ),
-    [defaultModelId, stellaModels],
+    [stellaModels],
   );
 
-  const isDefaultSelected = !value || value === defaultModelId;
+  const isDefaultSelected = !value;
 
   return (
     <div

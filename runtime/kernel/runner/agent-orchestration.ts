@@ -2,7 +2,6 @@ import crypto from "crypto";
 import { resolveLlmRoute } from "../model-routing.js";
 import { withStellaModelCatalogMetadata } from "../stella-model-catalog.js";
 import {
-  getDefaultModel,
   getMaxAgentConcurrency,
   getModelOverride,
 } from "../preferences/local-preferences.js";
@@ -755,9 +754,10 @@ export const createAgentOrchestration = (
               // subsidiary agent (or our Assistant-tab propagation would
               // silently hit Stella even when the user moved Assistant
               // onto BYOK).
-              modelName:
-                getModelOverride(context.stellaHome, subsidiaryAgentType) ??
-                getDefaultModel(context.stellaHome, subsidiaryAgentType),
+              modelName: getModelOverride(
+                context.stellaHome,
+                subsidiaryAgentType,
+              ),
               agentType: subsidiaryAgentType,
               site: {
                 baseUrl: context.state.convexSiteUrl,

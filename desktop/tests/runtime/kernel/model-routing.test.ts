@@ -94,11 +94,11 @@ describe("resolveLlmRoute", () => {
     expect(resolved.model.provider).toBe("openai");
     expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
     expect(resolved.model.baseUrl).toBe(
-      "https://stella.example.test/api/stella/openai/v1",
+      "https://stella.example.test/api/stella/relay",
     );
   });
 
-  it("uses Stella's standard mode when no model is specified", async () => {
+  it("uses Stella's backend default sentinel when no model is specified", async () => {
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
     );
@@ -111,7 +111,7 @@ describe("resolveLlmRoute", () => {
     });
 
     expect(resolved.route).toBe("stella");
-    expect(resolved.model.id).toBe("stella/standard");
+    expect(resolved.model.id).toBe("stella/default");
     expect(resolved.model.provider).toBe("openai");
   });
 
@@ -132,7 +132,7 @@ describe("resolveLlmRoute", () => {
     expect(resolved.model.provider).toBe("anthropic");
     expect(resolved.model.id).toBe("stella/anthropic/claude-opus-4.6");
     expect(resolved.model.baseUrl).toBe(
-      "https://stella.example.test/api/stella/anthropic",
+      "https://stella.example.test/api/stella/relay",
     );
   });
 
@@ -298,7 +298,7 @@ describe("resolveLlmRoute", () => {
     expect(resolved.model.provider).toBe("openai");
     expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
     expect(resolved.model.baseUrl).toBe(
-      "https://stella.example.test/api/stella/openai/v1",
+      "https://stella.example.test/api/stella/relay",
     );
   });
 

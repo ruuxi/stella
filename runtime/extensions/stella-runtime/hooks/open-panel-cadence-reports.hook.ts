@@ -7,10 +7,7 @@ import {
 } from "../../../kernel/agent-runtime/open-panel-cadence-reports.js";
 import { createRuntimeLogger } from "../../../kernel/debug.js";
 import type { HookDefinition } from "../../../kernel/extensions/types.js";
-import {
-  getDefaultModel,
-  getModelOverride,
-} from "../../../kernel/preferences/local-preferences.js";
+import { getModelOverride } from "../../../kernel/preferences/local-preferences.js";
 import type { RuntimeStore } from "../../../kernel/storage/runtime-store.js";
 
 const logger = createRuntimeLogger("stella-runtime.open-panel-cadence-reports");
@@ -23,10 +20,7 @@ const hasExplicitPreference = (
   stellaRoot: string,
   agentType: string,
 ): boolean =>
-  Boolean(
-    getModelOverride(stellaRoot, agentType) ??
-      getDefaultModel(stellaRoot, agentType),
-  );
+  Boolean(getModelOverride(stellaRoot, agentType));
 
 export const createOpenPanelCadenceReportsHook = (opts: {
   stellaHome: string;

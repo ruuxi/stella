@@ -10,7 +10,6 @@ import type {
 } from "../../ai/types.js";
 import {
   DEFAULT_CLAUDE_CODE_MODEL,
-  getDefaultModel,
   getAgentRuntimeEngine,
   getModelOverride,
   loadLocalPreferences,
@@ -54,8 +53,7 @@ export const getClaudeCodeAgentModelId = (
   const configuredStellaModel =
     stellaModel ??
     (stellaRoot && agentType
-      ? getModelOverride(stellaRoot, agentType) ??
-        getDefaultModel(stellaRoot, agentType)
+      ? getModelOverride(stellaRoot, agentType)
       : undefined);
   const lightDefault =
     configuredStellaModel?.trim() === "stella/light"

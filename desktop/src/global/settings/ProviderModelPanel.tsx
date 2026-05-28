@@ -79,8 +79,6 @@ interface ProviderModelPanelProps {
   currentLabel: string;
   /** Provider-grouped catalog. */
   groups: ProviderGroup[];
-  /** Hide a specific model id from the list (usually the default mode). */
-  excludeModelId?: string;
   /** Empty string ⇒ default. Any other value ⇒ that model id. */
   onSelect: (value: string, anchor?: HTMLElement) => void;
   disabled?: boolean;
@@ -119,7 +117,6 @@ interface ProviderModelPanelProps {
 
 function buildProviderTabs(
   groups: readonly ProviderGroup[],
-  excludeModelId: string | undefined,
   visibleProviders: readonly string[] | undefined,
   includeCursorProvider: boolean,
 ): ProviderTab[] {
@@ -128,9 +125,7 @@ function buildProviderTabs(
     if (visibleProviders && !visibleProviders.includes(group.provider)) {
       continue;
     }
-    const models = group.models.filter(
-      (model) => !excludeModelId || model.id !== excludeModelId,
-    );
+    const models = group.models;
     if (models.length === 0) continue;
     tabs.set(group.provider, {
       key: group.provider,
@@ -165,7 +160,6 @@ export function ProviderModelPanel({
   defaultLabel,
   currentLabel,
   groups,
-  excludeModelId,
   onSelect,
   disabled = false,
   restrictStellaPicks = false,
@@ -185,11 +179,10 @@ export function ProviderModelPanel({
     () =>
       buildProviderTabs(
         groups,
-        excludeModelId,
         visibleProviders,
         Boolean(cursorProvider),
       ),
-    [cursorProvider, groups, excludeModelId, visibleProviders],
+    [cursorProvider, groups, visibleProviders],
   );
   const [favorites, setFavorites] = useState<string[]>(() =>
     favoriteScope ? readEngineModelFavorites(favoriteScope) : [],
@@ -406,7 +399,6 @@ export function ProviderModelPanel({
             query={query}
             onQueryChange={setQuery}
             selectedModelId={value}
-            excludeModelId={excludeModelId}
             filteredModels={filteredModels}
             onPick={handlePick}
             isStella={activeTab.key === STELLA_PROVIDER_KEY}
@@ -471,7 +463,6 @@ interface ProviderPaneProps {
   query: string;
   onQueryChange: (next: string) => void;
   selectedModelId: string;
-  excludeModelId: string | undefined;
   filteredModels: CatalogModel[];
   onPick: (modelId: string, anchor?: HTMLElement) => void;
   isStella: boolean;
@@ -608,7 +599,6 @@ function ProviderPane({
   query,
   onQueryChange,
   selectedModelId,
-  excludeModelId,
   filteredModels,
   onPick,
   isStella,
@@ -680,9 +670,7 @@ function ProviderPane({
     authDescription = `The key stays on this device.`;
   }
 
-  const isDefaultSelected =
-    !selectedModelId ||
-    (excludeModelId !== undefined && selectedModelId === excludeModelId);
+  const isDefaultSelected = !selectedModelId;
   const cursorFilteredModels = useMemo(() => {
     if (!isCursor) return [];
     const trimmed = query.trim().toLowerCase();
@@ -750,7 +738,7 @@ function ProviderPane({
   );
   const modelListHeader = useMemo(() => {
     if (hideDefaultRow) return undefined;
-    if (!isStella || query.trim()) return undefined;
+    if (!isStella) return undefined;
     return (
       <button
         type="button"
@@ -776,7 +764,6 @@ function ProviderPane({
     isDefaultSelected,
     isStella,
     onPick,
-    query,
   ]);
 
   return (
