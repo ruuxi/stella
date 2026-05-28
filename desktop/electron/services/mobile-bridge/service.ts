@@ -371,7 +371,9 @@ export class MobileBridgeService {
     });
 
     this.wss = new WebSocketServer({ server: this.server });
-    this.wss.on("connection", (ws, req) => this.handleWebSocket(ws, req));
+    this.wss.on("connection", (ws, req) => {
+      void this.handleWebSocket(ws, req);
+    });
 
     this.server.listen(0, "127.0.0.1", () => {
       const address = this.server?.address();
@@ -623,7 +625,7 @@ export class MobileBridgeService {
 
   // ── WebSocket handling ────────────────────────────────────────────────
 
-  private handleWebSocket(ws: WebSocket, req: IncomingMessage) {
+  private async handleWebSocket(ws: WebSocket, req: IncomingMessage) {
     const requestOrigin = this.getRequestOrigin(req);
     if (!this.isAllowedRequestOrigin(requestOrigin)) {
       ws.close(1008, "Forbidden");
@@ -635,9 +637,16 @@ export class MobileBridgeService {
       return;
     }
 
-    if (!this.getValidSession(req)) {
-      ws.close(4001, "Unauthorized");
-      return;
+    const existingSession = this.getValidSession(req);
+    if (!existingSession) {
+      const authorization = req.headers.authorization?.trim();
+      if (
+        !authorization?.startsWith("Bearer ") ||
+        !(await this.authorizeBearer(authorization, req.headers))
+      ) {
+        ws.close(4001, "Unauthorized");
+        return;
+      }
     }
 
     const client = {

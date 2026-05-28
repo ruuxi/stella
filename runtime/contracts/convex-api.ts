@@ -206,10 +206,6 @@ export type PublicApiType = {
   "mobile_push": {
     "sendActivityNotification": FunctionReference<'action', 'public', { kind: 'completed' | 'failed' | 'started'; }, any, string | undefined>;
   };
-  "mobile_replies": {
-    "watchDesktopReply": FunctionReference<'query', 'public', { requestId: string; }, any, string | undefined>;
-    "acknowledgeDesktopReply": FunctionReference<'mutation', 'public', { requestId: string; }, any, string | undefined>;
-  };
   "r2_files": {
     "generateUploadUrl": FunctionReference<'mutation', 'public', {}, any, string | undefined>;
     "syncMetadata": FunctionReference<'mutation', 'public', { key: string; }, any, string | undefined>;

@@ -1,4 +1,7 @@
-import { formatTimestampForHistory, TEN_MINUTES_MS } from "./message-timestamp.js";
+import {
+  formatTimestampForHistory,
+  THIRTY_MINUTES_MS,
+} from "./message-timestamp.js";
 
 // Internal sub-agent management tool names. Tool calls/results for these are
 // runtime coordination details; model-visible task updates are delivered as
@@ -460,7 +463,7 @@ const formatTextEvent = (
   const isAssistant = event.type === "assistant_message";
   const skipTs = !isAssistant &&
     tsState.prevUserTs != null &&
-    event.timestamp - tsState.prevUserTs < TEN_MINUTES_MS;
+    event.timestamp - tsState.prevUserTs < THIRTY_MINUTES_MS;
   if (!isAssistant) tsState.prevUserTs = event.timestamp;
   const { tag, dateStr } = formatTimestampForHistory(
     event.timestamp,

@@ -1,7 +1,6 @@
 import {
   LEADING_TIME_TAG_RE,
   TRAILING_TIME_TAG_RE,
-  formatTimestampTag,
 } from "../message-timestamp.js";
 
 const isMessageEventType = (type: string) =>
@@ -12,14 +11,6 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
     return null;
   }
   return value as Record<string, unknown>;
-};
-
-const getSourceTimestamp = (channelEnvelope: unknown): number | undefined => {
-  const record = asRecord(channelEnvelope);
-  const sourceTimestamp = record?.sourceTimestamp;
-  return typeof sourceTimestamp === "number" && Number.isFinite(sourceTimestamp)
-    ? sourceTimestamp
-    : undefined;
 };
 
 const isChannelMessage = (
@@ -61,17 +52,8 @@ export const prepareStoredLocalChatPayload = (args: {
     return nextPayload;
   }
 
-  let normalizedText = rawText;
   if (isChannelMessage(nextPayload, args.channelEnvelope)) {
-    normalizedText = normalizedText.replace(LEADING_TIME_TAG_RE, "");
+    nextPayload.text = rawText.replace(LEADING_TIME_TAG_RE, "").trimEnd();
   }
-  normalizedText = normalizedText.trimEnd();
-
-  const effectiveTimestamp =
-    getSourceTimestamp(args.channelEnvelope) ?? args.timestamp;
-  nextPayload.contextText = `${normalizedText}\n\n${formatTimestampTag(
-    effectiveTimestamp,
-    args.timezone,
-  )}`;
   return nextPayload;
 };
