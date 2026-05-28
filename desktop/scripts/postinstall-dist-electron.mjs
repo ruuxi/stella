@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { ensureElectronBinary } from "./ensure-electron-binary.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..");
@@ -16,6 +17,17 @@ const workerEntry = path.join(
 
 if (process.env.STELLA_SKIP_POSTINSTALL_DIST_ELECTRON === "1") {
   process.exit(0);
+}
+
+// Self-heal a broken Electron binary install before anything else; cheap when
+// healthy, re-extracts the cached zip natively when `extract-zip` left it
+// half-written.
+try {
+  await ensureElectronBinary();
+} catch (error) {
+  console.error(
+    `[postinstall-dist-electron] Failed to repair Electron binary: ${error instanceof Error ? error.message : String(error)}`,
+  );
 }
 
 const shouldBuild =
