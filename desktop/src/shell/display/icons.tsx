@@ -559,6 +559,7 @@ export const DisplayTabIcon = ({
   style?: CSSProperties;
 }) => {
   switch (kind) {
+    case "home":
     case "chat":
       return <ChatIcon size={size} style={style} />;
     case "canvas":

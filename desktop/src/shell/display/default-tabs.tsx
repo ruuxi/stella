@@ -18,6 +18,7 @@ import {
 import type { OpenTabOptions } from "./types";
 
 export const CHAT_DISPLAY_TAB_ID = "chat";
+export const HOME_DISPLAY_TAB_ID = "home";
 export const STORE_DISPLAY_TAB_ID = "store:side-panel";
 export const TRASH_DISPLAY_TAB_ID = "trash:deferred-delete";
 export const MEDIA_DISPLAY_TAB_ID = GENERATED_MEDIA_TAB_ID;
@@ -86,6 +87,16 @@ export function openChatDisplayTab(
     },
     opts,
   );
+}
+
+export function openHomeDisplayTab(): void {
+  displayTabs.openTab({
+    id: HOME_DISPLAY_TAB_ID,
+    kind: "home",
+    title: "Home",
+    tooltip: "Display sidebar home",
+    render: () => createElement(ChatHomeOverview),
+  });
 }
 
 /**
