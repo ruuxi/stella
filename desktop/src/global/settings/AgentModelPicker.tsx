@@ -26,7 +26,6 @@ import {
   normalizeModelOverrides,
   type ModelDefaultEntry,
 } from "@/global/settings/lib/model-defaults";
-import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
 import {
   getPlanLabel,
   isRestrictedModelOverrideAudience,
@@ -318,8 +317,8 @@ export function AgentModelPicker({
 
   const overrides = useMemo<Record<string, string>>(() => {
     if (!preferences) return {};
-    return normalizeModelOverrides(preferences.modelOverrides, defaultModelMap);
-  }, [defaultModelMap, preferences]);
+    return normalizeModelOverrides(preferences.modelOverrides);
+  }, [preferences]);
 
   /**
    * Sidebar: only Assistant/Image/Voice tabs render (Assistant dual-writes
@@ -728,8 +727,6 @@ export function AgentModelPicker({
       : activeVoice
         ? voicePreferences.provider
         : overrides[activeAgent] ?? "";
-  const activeDefaultModel =
-    defaultModelMap[canonicalAgentKey] ?? STELLA_STANDARD_MODEL;
   const defaultLabel =
     activeProviderSetting
       ? "Stella"
@@ -871,7 +868,6 @@ export function AgentModelPicker({
       </div>
 
       <div className="agent-model-picker-body">
-      <div className="agent-model-picker-body">
         {error ? (
           <p className="agent-model-picker-error" role="alert">
             {error}
@@ -919,7 +915,6 @@ export function AgentModelPicker({
               defaultLabel={defaultLabel}
               currentLabel={currentLabel}
               groups={groups}
-              excludeModelId={activeDefaultModel}
               disabled={!ready || pendingAgent !== null}
               restrictStellaPicks={restrictedStellaPicks}
               restrictedPlanLabel={restrictedPlanLabel}
@@ -932,7 +927,6 @@ export function AgentModelPicker({
           <CompactStellaModelList
             stellaModels={stellaModels}
             value={current}
-            defaultModelId={activeDefaultModel}
             defaultLabel={defaultLabel}
             onSelect={handleSelect}
             disabled={!ready || pendingAgent !== null}
@@ -965,7 +959,6 @@ export function AgentModelPicker({
             to switch.
           </p>
         ) : null}
-      </div>
       </div>
 
       {activeProviderSetting ? null : (

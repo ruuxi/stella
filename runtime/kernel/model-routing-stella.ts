@@ -2,8 +2,9 @@ import { Buffer } from "node:buffer";
 import type { Api, Model } from "../ai/types.js";
 import { findRegistryModel, uniqueModelCandidates } from "./model-routing-matching.js";
 import {
+  STELLA_DEFAULT_MODEL,
   STELLA_STANDARD_MODEL,
-  stellaRelayBaseUrlFromSiteUrl,
+  stellaManagedRelayBaseUrlFromSiteUrl,
   type StellaRelayProvider,
 } from "../contracts/stella-api.js";
 import { readConfiguredStellaSiteUrl } from "./convex-urls.js";
@@ -59,6 +60,7 @@ const fallbackResolvedModelForAlias = (modelId: string): string => {
       return "anthropic/claude-opus-4.7";
     case "stella/vision":
       return "google/gemini-3-flash-preview";
+    case STELLA_DEFAULT_MODEL:
     case STELLA_STANDARD_MODEL:
       return "openai/gpt-5.5";
     default: {
@@ -167,7 +169,7 @@ const createRelayModel = (args: {
     name: modelName(args.requestedModelId),
     provider: registryModel?.provider ?? args.provider,
     api: apiForRelay(args.provider, registryModel),
-    baseUrl: stellaRelayBaseUrlFromSiteUrl(args.siteBaseUrl, args.provider),
+    baseUrl: stellaManagedRelayBaseUrlFromSiteUrl(args.siteBaseUrl),
     headers: {
       ...(registryModel?.headers ?? {}),
       // `X-Stella-Agent-Type` lets the relay attribute usage to the

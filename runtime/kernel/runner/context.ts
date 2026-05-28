@@ -3,7 +3,6 @@ import { createFashionApi } from "./fashion-api.js";
 import { createToolHost } from "../tools/host.js";
 import { HookEmitter } from "../extensions/hook-emitter.js";
 import {
-  getDefaultModel,
   getAgentRuntimeEngine,
   getMaxAgentConcurrency,
   getModelOverride,
@@ -660,8 +659,7 @@ export const getConfiguredModel = (
   agent?: ParsedAgentLike,
 ): string | undefined => {
   const modelFromPrefs = getModelOverride(context.stellaHome, agentType);
-  const defaultModel = getDefaultModel(context.stellaHome, agentType);
-  return modelFromPrefs ?? defaultModel ?? agent?.model;
+  return modelFromPrefs ?? agent?.model;
 };
 
 export const buildAgentContext = async (

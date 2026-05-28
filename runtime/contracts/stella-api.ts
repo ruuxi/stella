@@ -1,7 +1,9 @@
 const STELLA_API_BASE_PATH = "/api/stella";
 export const STELLA_MODELS_PATH = `${STELLA_API_BASE_PATH}/models`;
+export const STELLA_RELAY_PATH_PREFIX = `${STELLA_API_BASE_PATH}/relay`;
 export const STELLA_OPENROUTER_CHAT_COMPLETIONS_PATH =
   `${STELLA_API_BASE_PATH}/openrouter/api/v1/chat/completions`;
+export const STELLA_DEFAULT_MODEL = "stella/default";
 export const STELLA_STANDARD_MODEL = "stella/standard";
 export type StellaRelayProvider =
   | "anthropic"
@@ -18,6 +20,7 @@ export const normalizeStellaSiteUrl = (value: string): string =>
     .replace(/\/runtime\/?$/i, "")
     .replace(/\/models\/?$/i, "")
     .replace(/\/api\/stella\/v1\/?$/i, "")
+    .replace(/\/api\/stella\/relay(?:\/.*)?$/i, "")
     .replace(/\/api\/stella\/(?:anthropic|openai|fireworks)(?:\/v1)?\/?$/i, "")
     .replace(/\/api\/stella\/google\/v1beta\/?$/i, "")
     .replace(/\/api\/stella\/openrouter\/api\/v1\/?$/i, "")
@@ -30,28 +33,8 @@ const stellaUrlFromSiteUrl = (siteUrl: string, path: string): string =>
 export const stellaApiBaseUrlFromSiteUrl = (siteUrl: string): string =>
   stellaUrlFromSiteUrl(siteUrl, STELLA_API_BASE_PATH);
 
-export const stellaRelayBaseUrlFromSiteUrl = (
-  siteUrl: string,
-  provider: StellaRelayProvider,
-): string => {
-  const base = normalizeStellaSiteUrl(siteUrl);
-  switch (provider) {
-    case "anthropic":
-      return `${base}${STELLA_API_BASE_PATH}/anthropic`;
-    case "openai":
-      return `${base}${STELLA_API_BASE_PATH}/openai/v1`;
-    case "google":
-      return `${base}${STELLA_API_BASE_PATH}/google/v1beta`;
-    case "fireworks":
-      return `${base}${STELLA_API_BASE_PATH}/fireworks/v1`;
-    case "openrouter":
-      return `${base}${STELLA_API_BASE_PATH}/openrouter/api/v1`;
-    default: {
-      const _exhaustive: never = provider;
-      return _exhaustive;
-    }
-  }
-};
+export const stellaManagedRelayBaseUrlFromSiteUrl = (siteUrl: string): string =>
+  stellaUrlFromSiteUrl(siteUrl, STELLA_RELAY_PATH_PREFIX);
 
 type ChatContentPart =
   | { type?: string; text?: string }

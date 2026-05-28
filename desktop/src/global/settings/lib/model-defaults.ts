@@ -18,8 +18,8 @@ export function getLocalModelDefaults(
   return MODEL_SETTINGS_AGENTS.map((agent) => {
     const serverDefault = serverDefaultByAgent.get(agent.key);
     const model =
-      defaultModels?.[agent.key] ??
       serverDefault?.model ??
+      defaultModels?.[agent.key] ??
       STELLA_STANDARD_MODEL;
     return {
       agentType: agent.key,
@@ -79,18 +79,12 @@ export function getConfigurableAgents(
 
 export function normalizeModelOverrides(
   overrides: Record<string, string>,
-  defaultModels: Record<string, string>,
 ): Record<string, string> {
   const normalized: Record<string, string> = {};
 
   for (const [agentType, value] of Object.entries(overrides)) {
     const trimmed = value.trim();
     if (!trimmed) {
-      continue;
-    }
-
-    const defaultModel = defaultModels[agentType];
-    if (defaultModel && trimmed === defaultModel) {
       continue;
     }
 
@@ -115,10 +109,10 @@ export function getDefaultModelOptionLabel(
 ): string {
   const defaultModel = defaultModels[agentType];
   if (!defaultModel) {
-    return "Default";
+    return "Stella Default";
   }
 
   const resolvedModel = resolvedDefaultModels[agentType] ?? defaultModel;
   const resolvedLabel = getModelDisplayLabel(resolvedModel, modelNamesById);
-  return `Default (${resolvedLabel})`;
+  return `Stella Default (${resolvedLabel})`;
 }

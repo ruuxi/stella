@@ -17,19 +17,18 @@ describe("Stella model catalog metadata", () => {
     vi.restoreAllMocks();
   });
 
-  it("resolves stella/standard through the catalog mode model for tool policy", async () => {
+  it("resolves backend default selections through catalog defaults", async () => {
     globalThis.fetch = vi.fn(async () => {
       return new Response(
         JSON.stringify({
-          data: [
+          data: [],
+          defaults: [
             {
-              id: "stella/standard",
-              name: "Stella Standard",
-              provider: "stella",
-              upstreamModel: "openai/gpt-5.5",
+              agentType: "general",
+              model: "stella/standard",
+              resolvedModel: "openai/gpt-5.5",
             },
           ],
-          defaults: [],
         }),
         { status: 200 },
       );
@@ -48,7 +47,7 @@ describe("Stella model catalog metadata", () => {
       deviceId: "device-a",
     });
 
-    expect(enriched.model.id).toBe("stella/standard");
+    expect(enriched.model.id).toBe("stella/default");
     expect(enriched.toolPolicyModel).toMatchObject({
       id: "openai/gpt-5.5",
       provider: "openai",
@@ -148,7 +147,13 @@ describe("Stella model catalog metadata", () => {
                 upstreamModel: "anthropic/claude-opus-4.6",
               },
             ],
-            defaults: [],
+            defaults: [
+              {
+                agentType: "general",
+                model: "stella/standard",
+                resolvedModel: "anthropic/claude-opus-4.6",
+              },
+            ],
           }),
           { status: 200 },
         ),
@@ -164,7 +169,13 @@ describe("Stella model catalog metadata", () => {
                 upstreamModel: "openai/gpt-5.5",
               },
             ],
-            defaults: [],
+            defaults: [
+              {
+                agentType: "general",
+                model: "stella/standard",
+                resolvedModel: "openai/gpt-5.5",
+              },
+            ],
           }),
           { status: 200 },
         ),

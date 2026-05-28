@@ -9,7 +9,6 @@ import {
   listLocalCatalogModels,
   mergeCatalogModels,
   normalizeDirectProviderCatalogModels,
-  normalizeManagedGatewayCatalogModels,
   normalizeStellaCatalogModels,
   searchCatalogModels,
   type CatalogApiResponse,
@@ -35,7 +34,6 @@ type StellaCatalogPayload = {
 
 type ManagedGatewayPayload = {
   directModels: CatalogModel[];
-  stellaModels: CatalogModel[];
 };
 
 type AuthSessionData =
@@ -70,7 +68,6 @@ const MODELS_DEV_API_URL = "https://models.dev/api.json";
 const EMPTY_STELLA: StellaCatalogPayload = { models: [], defaults: [] };
 const EMPTY_MANAGED: ManagedGatewayPayload = {
   directModels: [],
-  stellaModels: [],
 };
 
 /**
@@ -96,8 +93,7 @@ const stellaCatalogStore = createResourceStore<string, StellaCatalogPayload>({
 
 /**
  * Single-key (audience-independent) cache for the public models.dev catalog
- * that powers the Direct Provider rows and any managed-gateway models we
- * surface alongside Stella's own catalog.
+ * that powers the Direct Provider rows.
  */
 const managedGatewayStore = createResourceStore<"default", ManagedGatewayPayload>({
   staleMs: MODEL_CATALOG_REFRESH_INTERVAL_MS,
@@ -107,7 +103,6 @@ const managedGatewayStore = createResourceStore<"default", ManagedGatewayPayload
     const data = (await res.json()) as ModelsDevApi;
     return {
       directModels: normalizeDirectProviderCatalogModels(data),
-      stellaModels: normalizeManagedGatewayCatalogModels(data),
     };
   },
 });
@@ -179,10 +174,7 @@ export function useModelCatalog() {
   const managedPayload = managedQuery.data ?? EMPTY_MANAGED;
 
   const localModels = useMemo(() => listLocalCatalogModels(), []);
-  const stellaModels = useMemo(
-    () => mergeCatalogModels(stellaPayload.models, managedPayload.stellaModels),
-    [managedPayload.stellaModels, stellaPayload.models],
-  );
+  const stellaModels = stellaPayload.models;
   const directModels = useMemo(
     () => mergeCatalogModels(localModels, managedPayload.directModels),
     [managedPayload.directModels, localModels],

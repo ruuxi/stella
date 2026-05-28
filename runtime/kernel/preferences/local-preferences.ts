@@ -303,14 +303,6 @@ export const getModelOverride = (
   return prefs.modelOverrides[agentType];
 };
 
-export const getDefaultModel = (
-  stellaHome: string,
-  agentType: string,
-): string | undefined => {
-  const prefs = loadLocalPreferences(stellaHome);
-  return prefs.defaultModels[agentType];
-};
-
 export const getReasoningEffort = (
   stellaHome: string,
   agentType: string,
@@ -450,16 +442,15 @@ export const updateLocalModelPreferences = (
 
 /**
  * Resolve the model name for the Explore agent. Prefers an explicit override
- * (modelOverrides["explore"]), then a local default
- * (defaultModels["explore"]), then returns undefined to let resolveLlmRoute
- * fall back to Stella's standard mode.
+ * (modelOverrides["explore"]), then returns undefined to let resolveLlmRoute
+ * fall back to Stella's backend-owned default.
  *
  * Explore is meant to be a fast cheap pass over ~/.stella/. Users who want to
  * spend more should set modelOverrides["explore"] explicitly.
  */
 export const getExploreModel = (stellaHome: string): string | undefined => {
   const prefs = loadLocalPreferences(stellaHome);
-  return prefs.modelOverrides["explore"] ?? prefs.defaultModels["explore"];
+  return prefs.modelOverrides["explore"];
 };
 
 export const getSyncMode = (stellaHome: string): "on" | "off" => {

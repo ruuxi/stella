@@ -94,7 +94,7 @@ describe("Stella relay route shape", () => {
     expect(model.api).toBe("anthropic-messages");
     expect(model.provider).toBe("anthropic");
     expect(model.id).toBe("stella/anthropic/claude-opus-4.7");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/anthropic`);
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
     expect(model.headers).toMatchObject({ "X-Stella-Agent-Type": "general" });
     expect(model.headers).not.toHaveProperty("X-Stella-Relay");
   });
@@ -104,7 +104,7 @@ describe("Stella relay route shape", () => {
     const model = route!.model;
     expect(model.api).toBe("openai-responses");
     expect(model.provider).toBe("openai");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openai/v1`);
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
   it("Google relay: baseUrl, api, provider", () => {
@@ -112,7 +112,7 @@ describe("Stella relay route shape", () => {
     const model = route!.model;
     expect(model.api).toBe("google-generative-ai");
     expect(model.provider).toBe("google");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/google/v1beta`);
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
   it("Fireworks relay: baseUrl, api, provider", () => {
@@ -120,7 +120,7 @@ describe("Stella relay route shape", () => {
     const model = route!.model;
     expect(model.api).toBe("openai-responses");
     expect(model.provider).toBe("fireworks");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/fireworks/v1`);
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
   it("creates a Stella route when auth is refreshable but not loaded yet", async () => {
@@ -173,7 +173,7 @@ describe("Stella relay route shape", () => {
     const model = route!.model;
     expect(model.api).toBe("openai-completions");
     expect(model.provider).toBe("openrouter");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openrouter/api/v1`);
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
   it("Stella alias (designer) resolves to Anthropic relay", () => {
@@ -181,7 +181,7 @@ describe("Stella relay route shape", () => {
     const model = route!.model;
     expect(model.api).toBe("anthropic-messages");
     expect(model.provider).toBe("anthropic");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/anthropic`);
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
   it("Stella alias (light) resolves to OpenRouter relay", () => {
@@ -189,7 +189,7 @@ describe("Stella relay route shape", () => {
     const model = route!.model;
     expect(model.api).toBe("openai-completions");
     expect(model.provider).toBe("openrouter");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openrouter/api/v1`);
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
   it("Stella standard mode resolves to the OpenAI Builder relay", () => {
@@ -197,7 +197,7 @@ describe("Stella relay route shape", () => {
     const model = route!.model;
     expect(model.api).toBe("openai-responses");
     expect(model.provider).toBe("openai");
-    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/openai/v1`);
+    expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 });
 
@@ -243,11 +243,11 @@ describe("Stella relay auth (baseUrl-based detection)", () => {
     expect(calls.length).toBeGreaterThan(0);
     const messagesCall = calls.find((c) => c.url.endsWith("/messages"));
     expect(messagesCall, `expected POST to /messages, got URLs: ${calls.map((c) => c.url).join(", ")}`).toBeDefined();
-    // The Anthropic SDK appends `/v1/messages` to whatever baseURL was
-    // configured, so the wire URL must match the backend's registered
-    // route at `STELLA_ANTHROPIC_MESSAGES_PATH`.
+    // The Anthropic SDK appends `/v1/messages` to the neutral Stella
+    // relay prefix. The backend resolves the upstream provider from the
+    // model instead of from the URL.
     expect(messagesCall!.url).toBe(
-      `${STELLA_SITE}/api/stella/anthropic/v1/messages`,
+      `${STELLA_SITE}/api/stella/relay/v1/messages`,
     );
     expect(messagesCall!.headers.get("authorization")).toBe(
       `Bearer ${STELLA_TOKEN}`,
@@ -283,11 +283,11 @@ describe("Stella relay auth (baseUrl-based detection)", () => {
     // to the Stella relay base and the Authorization Bearer header was
     // present.
     const relayCall = calls.find((c) =>
-      c.url.startsWith(`${STELLA_SITE}/api/stella/google/`),
+      c.url.startsWith(`${STELLA_SITE}/api/stella/relay/`),
     );
     expect(
       relayCall,
-      `expected POST to the Stella google relay, got URLs: ${calls
+      `expected POST to the Stella relay, got URLs: ${calls
         .map((c) => c.url)
         .join(", ")}`,
     ).toBeDefined();
