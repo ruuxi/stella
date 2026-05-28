@@ -27,6 +27,7 @@ export const MediaTile = ({
     item.asset.kind === "image" && item.asset.filePaths.length === 0;
   const isMissing = (missing[0] ?? false) && !isPending;
   const { glyph, badge } = glyphForMediaItem(item);
+  const canAttach = item.asset.kind === "image" && !isPending && !isMissing;
 
   return (
     <div
@@ -58,18 +59,20 @@ export const MediaTile = ({
         <span className="media-tab__tile-glyph">{glyph}</span>
       )}
       {badge ? <span className="media-tab__tile-badge">{badge}</span> : null}
-      <button
-        type="button"
-        className="media-tab__tile-attach"
-        onClick={(event) => {
-          event.stopPropagation();
-          onAttach();
-        }}
-        aria-label="Use this media"
-        title="Use this media"
-      >
-        <Plus size={12} strokeWidth={2.4} />
-      </button>
+      {canAttach ? (
+        <button
+          type="button"
+          className="media-tab__tile-attach"
+          onClick={(event) => {
+            event.stopPropagation();
+            onAttach();
+          }}
+          aria-label="Use this media"
+          title="Use this media"
+        >
+          <Plus size={12} strokeWidth={2.4} />
+        </button>
+      ) : null}
     </div>
   );
 };

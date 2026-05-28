@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Folder } from "lucide-react";
+import { ArrowUp, ChevronUp, Folder } from "lucide-react";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import { updateComposerTextareaExpansion } from "@/shared/hooks/use-animated-composer-shell";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
@@ -25,6 +25,9 @@ import { MediaActionBar } from "./MediaActionBar";
 import { HeroPrompt } from "./HeroPrompt";
 import "../media-tab.css";
 
+const RAIL_VISIBLE = 4;
+const TRAY_PAGE = 24;
+
 export const MediaTabContent = ({
   items: incomingItems,
   selectedItemId,
@@ -43,24 +46,28 @@ export const MediaTabContent = ({
   const [attachedItemId, setAttachedItemId] = useState<string | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [draggingMedia, setDraggingMedia] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false);
+  const [trayVisible, setTrayVisible] = useState(TRAY_PAGE);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const dragCounterRef = useRef(0);
   const { submitting, submit } = useMediaGeneration();
 
   useEffect(() => {
+    if (selectedItemId && items.some((item) => item.id === selectedItemId)) {
+      setSelectedId(selectedItemId);
+    }
+  }, [items, selectedItemId]);
+
+  useEffect(() => {
     if (items.length === 0) {
       setSelectedId(null);
       return;
     }
-    if (selectedItemId && items.some((item) => item.id === selectedItemId)) {
-      setSelectedId(selectedItemId);
-      return;
-    }
-    if (selectedId != null && !items.some((item) => item.id === selectedId)) {
+    if (selectedId == null || !items.some((item) => item.id === selectedId)) {
       setSelectedId(items.at(-1)?.id ?? null);
     }
-  }, [items, selectedId, selectedItemId]);
+  }, [items, selectedId]);
 
   useEffect(() => {
     if (prompt === "") {
@@ -238,6 +245,45 @@ export const MediaTabContent = ({
     displayTabs.setPanelExpanded(true);
   }, []);
 
+  const visibleRailItems = useMemo(
+    () => railItems.slice(0, RAIL_VISIBLE),
+    [railItems],
+  );
+  const hasOverflowItems = railItems.length > RAIL_VISIBLE;
+  const trayItems = useMemo(
+    () => railItems.slice(0, trayVisible),
+    [railItems, trayVisible],
+  );
+
+  useEffect(() => {
+    if (!hasOverflowItems && trayOpen) setTrayOpen(false);
+  }, [hasOverflowItems, trayOpen]);
+
+  const handleToggleTray = useCallback(() => {
+    setTrayOpen((open) => {
+      const next = !open;
+      if (next) setTrayVisible(TRAY_PAGE);
+      return next;
+    });
+  }, []);
+
+  const handleTrayScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const el = event.currentTarget;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+        setTrayVisible((count) =>
+          count < railItems.length ? count + TRAY_PAGE : count,
+        );
+      }
+    },
+    [railItems.length],
+  );
+
+  const handleSelectFromTray = useCallback((id: string) => {
+    setSelectedId(id);
+    setTrayOpen(false);
+  }, []);
+
   return (
     <div
       className="media-tab"
@@ -247,6 +293,29 @@ export const MediaTabContent = ({
       onDrop={handleDrop}
     >
       <DropOverlay visible={draggingMedia} variant="sidebar" />
+
+      {trayOpen ? (
+        <div
+          className="media-tab__tray"
+          role="region"
+          aria-label="All generated media"
+        >
+          <div className="media-tab__tray-scroll" onScroll={handleTrayScroll}>
+            <div className="media-tab__tray-grid">
+              {trayItems.map((item) => (
+                <MediaTile
+                  key={item.id}
+                  item={item}
+                  active={item.id === selectedItem?.id}
+                  onSelect={() => handleSelectFromTray(item.id)}
+                  onAttach={() => setAttachedItemId(item.id)}
+                  onOpen={expandPanel}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="media-tab__surface">
       <div className="media-tab__main">
@@ -307,6 +376,20 @@ export const MediaTabContent = ({
       </div>
 
       <div className="media-tab__footer">
+      {hasOverflowItems ? (
+        <button
+          type="button"
+          className={`media-tab__rail-toggle${
+            trayOpen ? " media-tab__rail-toggle--open" : ""
+          }`}
+          onClick={handleToggleTray}
+          aria-expanded={trayOpen}
+          aria-label={trayOpen ? "Hide all media" : "Show all media"}
+          title={trayOpen ? "Hide all media" : "Show all media"}
+        >
+          <ChevronUp size={14} strokeWidth={2.2} />
+        </button>
+      ) : null}
       <div className="media-tab__rail" aria-label="Generated media">
         <button
           type="button"
@@ -324,7 +407,7 @@ export const MediaTabContent = ({
           className="media-tab__file-input"
           onChange={handleFileChange}
         />
-        {railItems.map((item) => (
+        {visibleRailItems.map((item) => (
           <MediaTile
             key={item.id}
             item={item}
