@@ -945,14 +945,11 @@ function ModelsSection({
       const normalizedId = runtimeEngine
         ? toRuntimeOverrideId(runtimeEngine, modelId)
         : modelId;
-      if (selectedEngine === "default" && !isStellaModelId(normalizedId)) {
-        return;
-      }
       const agentKeys = batchAssignableAgents.map((entry) => entry.key);
       if (agentKeys.length === 0) return;
       await assignTo(normalizedId, agentKeys, "default");
     },
-    [assignTo, batchAssignableAgents, preferences, selectedEngine],
+    [assignTo, batchAssignableAgents, preferences],
   );
 
   const clearStellaModelOverrides = useCallback(async () => {
