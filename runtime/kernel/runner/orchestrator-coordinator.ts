@@ -6,6 +6,17 @@ import type {
 } from "./types.js";
 
 export const createOrchestratorCoordinator = (context: RunnerContext) => {
+  const clearActiveSessionQueues = (runId: string) => {
+    const activeSession = context.state.activeOrchestratorSession;
+    if (
+      context.state.activeOrchestratorRunId !== runId ||
+      activeSession?.runId !== runId
+    ) {
+      return;
+    }
+    activeSession.agent.clearAllQueues();
+  };
+
   const clearActiveOrchestratorRun = (runId: string) => {
     if (context.state.activeOrchestratorRunId !== runId) {
       return;
@@ -86,10 +97,12 @@ export const createOrchestratorCoordinator = (context: RunnerContext) => {
     onError: (event) => {
       callbacks.onError(event);
       if (event.fatal) {
+        clearActiveSessionQueues(runId);
         cleanupRun(runId, options?.onCleanup);
       }
     },
     onInterrupted: (event) => {
+      clearActiveSessionQueues(runId);
       cleanupRun(runId, options?.onCleanup);
       callbacks.onInterrupted?.({
         runId,
