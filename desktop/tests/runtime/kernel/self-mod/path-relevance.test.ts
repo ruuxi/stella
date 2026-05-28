@@ -242,7 +242,7 @@ describe("isSelfModRelevantPath", () => {
 
   it("rejects unrelated docs and artifact paths", () => {
     expect(isSelfModRelevantPath("README.md")).toBe(false);
-    expect(isSelfModRelevantPath("state/exports/report.csv")).toBe(false);
+    expect(isSelfModRelevantPath("outputs/exports/report.csv")).toBe(false);
   });
 });
 

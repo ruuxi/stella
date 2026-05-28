@@ -257,7 +257,7 @@ Notes:
   - successful actions refresh the numbered snapshot state and the attached screenshot automatically
   - screenshots are auto-attached inline (base64 PNG); pass --no-inline-screenshot to keep only the file path
   - the agent runtime detects "[stella-attach-image]" markers in output and attaches the image as vision input on the next turn
-  - Stella isolates default state/screenshot files by session; agent runs set that session automatically
+  - Stella isolates default snapshot and screenshot files by session; agent runs set that session automatically
   - non-snapshot commands may also use --app/--bundle-id/--pid to select a cached target snapshot inside the current session
   - Global HID fallbacks require --allow-hid (or STELLA_COMPUTER_ALLOW_HID=1) because they can interfere with active user input
   - element actions accept the numbered IDs shown in snapshot output (and still accept legacy @d refs); macOS Accessibility is tried first so Stella avoids taking over the physical cursor
