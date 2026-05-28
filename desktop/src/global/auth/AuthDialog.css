@@ -106,7 +106,6 @@
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: clamp(1.6rem, 3vw, 2rem);
   font-weight: 450;
-  font-style: italic;
   line-height: 1.2;
   letter-spacing: -0.03em;
   max-width: 360px;

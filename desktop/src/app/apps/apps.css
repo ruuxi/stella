@@ -39,7 +39,7 @@
 }
 
 .apps-screen__title em {
-  font-style: italic;
+  font-style: normal;
   font-weight: 300;
 }
 
@@ -303,7 +303,7 @@
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: clamp(2rem, 5vw, 2.4rem);
   font-weight: 300;
-  font-style: italic;
+  font-style: normal;
   line-height: 1;
   letter-spacing: -0.03em;
 }

@@ -441,7 +441,6 @@
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
     font-size: clamp(1.4rem, 2.6vw, 2rem);
     font-weight: 450;
-    font-style: italic;
     letter-spacing: -0.03em;
     line-height: 1.2;
     color: var(--text-strong);
@@ -632,7 +631,6 @@
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
     font-size: 17px;
     font-weight: 600;
-    font-style: italic;
     letter-spacing: 0.06em;
     line-height: 1;
   }
@@ -755,7 +753,6 @@
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
     font-size: clamp(1.4rem, 2.6vw, 2rem);
     font-weight: 450;
-    font-style: italic;
     letter-spacing: -0.03em;
     line-height: 1.2;
     color: #5c3d2e;
@@ -799,7 +796,6 @@
   .sam-cozy-home-report-idea {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
     font-size: 16px;
-    font-style: italic;
     font-weight: 500;
     color: #5c3d2e;
     line-height: 1.4;
@@ -887,7 +883,6 @@
   .sam-studio-name {
     margin: 0;
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-style: italic;
     font-size: 28px;
     font-weight: 500;
     letter-spacing: -0.025em;
@@ -1154,7 +1149,6 @@
   }
   .sam-studio-card-prompt {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-style: italic;
     font-size: 13px;
     color: var(--text-weak);
     line-height: 1.35;
@@ -1445,7 +1439,6 @@
   .sam-cozy-zzz {
     position: absolute;
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-style: italic;
     font-weight: 600;
     color: #b08560;
     pointer-events: none;
@@ -1481,7 +1474,6 @@
   .sam-cozy-line {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
     font-size: 17px;
-    font-style: italic;
     font-weight: 500;
     color: #5c3d2e;
     white-space: nowrap;
@@ -1600,7 +1592,6 @@
   }
   .sam-mochi__brand {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-style: italic;
     font-size: 22px;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -1637,7 +1628,6 @@
   .sam-mochi__headline {
     margin: 0;
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-style: italic;
     font-weight: 300;
     font-size: clamp(2.6rem, 5.4vw, 4.4rem);
     line-height: 0.95;

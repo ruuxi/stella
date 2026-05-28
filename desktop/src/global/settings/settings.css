@@ -67,7 +67,6 @@
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: 26px;
   font-weight: 450;
-  font-style: italic;
   letter-spacing: -0.02em;
   line-height: 1;
   color: var(--text-strong);
@@ -900,7 +899,6 @@
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: 22px;
   font-weight: 450;
-  font-style: italic;
   letter-spacing: -0.02em;
   color: var(--text-strong);
 }

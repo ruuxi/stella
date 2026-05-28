@@ -271,7 +271,7 @@
 }
 
 /* ----------------------------------------------------------- Auth panel
- * Canonical Stella card: glass background, weak border, Cormorant-italic
+ * Canonical Stella card: glass background, weak border, Cormorant
  * headline tying the panel to the rest of the dialog/Settings family. */
 
 .model-picker-auth {
@@ -290,7 +290,6 @@
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: 1.15rem;
   font-weight: 450;
-  font-style: italic;
   letter-spacing: -0.03em;
   line-height: 1.2;
   color: var(--text-strong);
