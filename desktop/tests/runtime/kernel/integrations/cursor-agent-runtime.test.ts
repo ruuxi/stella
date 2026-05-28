@@ -13,6 +13,7 @@ import {
   isCursorSdkStreamError,
   parseCursorGitStatus,
   runCursorAgentTurn,
+  resolveCursorNodeRunnerPath,
   snapshotCursorWorktree,
   shouldUseCursorAgentRuntime,
   shouldRunCursorSdkInNodeRunner,
@@ -226,6 +227,28 @@ describe("Cursor agent runtime", () => {
       args: ["/runner.js"],
       env: {},
     });
+  });
+
+  it("resolves the Node runner from the bundled worker entry layout", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "stella-cursor-runner-"));
+    try {
+      const workerEntry = path.join(root, "runtime", "worker", "entry.js");
+      const runner = path.join(
+        root,
+        "runtime",
+        "kernel",
+        "integrations",
+        "cursor-agent-node-runner.js",
+      );
+      await mkdir(path.dirname(workerEntry), { recursive: true });
+      await mkdir(path.dirname(runner), { recursive: true });
+      await writeFile(workerEntry, "", "utf8");
+      await writeFile(runner, "", "utf8");
+
+      expect(resolveCursorNodeRunnerPath(workerEntry)).toBe(runner);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("recognizes Cursor SDK stream failures that can surface as background rejections", () => {
