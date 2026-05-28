@@ -155,6 +155,7 @@ export type RuntimeExecutionSessionHandle = {
     };
     steer: (message: AgentMessage) => void;
     followUp: (message: AgentMessage) => void;
+    clearAllQueues: () => void;
   };
 };
 

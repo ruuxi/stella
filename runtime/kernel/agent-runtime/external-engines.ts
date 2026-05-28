@@ -387,6 +387,9 @@ const createExternalLiveAgent = () => {
       followUp: (message: AgentMessage) => {
         queued.push({ message, delivery: "followUp" });
       },
+      clearAllQueues: () => {
+        queued.splice(0, queued.length);
+      },
     },
     drain(): ExternalQueuedMessage[] {
       return queued.splice(0, queued.length);
