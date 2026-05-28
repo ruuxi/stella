@@ -5,6 +5,7 @@ import type { ExtensionServices } from "../extensions/services.js";
 import { fetchAndRegisterModelsDevDirectProviderModels } from "../../ai/models-dev.js";
 import { registerModel, unregisterModel } from "../../ai/models.js";
 import type { Api, Model } from "../../ai/types.js";
+import { sweepOrphanedBrowserDbClones } from "../../discovery/browser-data.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RunnerContext } from "./types.js";
 
@@ -107,7 +108,6 @@ export const createRuntimeInitialization = (
     stellaRoot: context.stellaRoot,
     selfModMonitor: context.selfModMonitor ?? null,
     store: context.runtimeStore,
-    memoryStore: context.runtimeStore.memoryStore,
   });
 
   /**
@@ -349,10 +349,31 @@ export const createRuntimeInitialization = (
     }
   };
 
+  /**
+   * Best-effort cleanup of browser history clones orphaned by a process
+   * that died mid-collection. Clones land under `<base>/cache`, where the
+   * base is `stellaRoot` (cadence reports) or `stellaHome` (discovery), so
+   * sweep both. Age-gated, so it never races an in-flight collection.
+   */
+  const sweepOrphanedBrowserClones = () => {
+    const bases = Array.from(
+      new Set([context.stellaRoot, context.stellaHome].filter(Boolean)),
+    );
+    for (const base of bases) {
+      void sweepOrphanedBrowserDbClones(base).catch((error) => {
+        logger.warn("browser-clone-sweep.failed", {
+          base,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+  };
+
   const start = () => {
     if (context.state.isRunning) return;
     context.state.isRunning = true;
     context.state.isInitialized = false;
+    sweepOrphanedBrowserClones();
     void initializeRuntime().finally(() => {
       // Start the extensions watcher only after initial load completes,
       // so we don't race with the first registration.
