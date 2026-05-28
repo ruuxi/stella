@@ -19,6 +19,7 @@ const runtimeStaticAssetRoots = [
 const electronRuntimeEntryPoints = [
   "desktop/electron/main.ts",
   "runtime/worker/entry.ts",
+  "runtime/kernel/integrations/cursor-agent-node-runner.ts",
   "runtime/kernel/cli/stella-computer.ts",
   "runtime/kernel/cli/stella-connect.ts",
   "runtime/kernel/tools/deferred-delete-cli.ts",
