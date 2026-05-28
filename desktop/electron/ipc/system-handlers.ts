@@ -13,11 +13,7 @@ import { spawn } from "node:child_process";
 import {
   access,
   copyFile,
-  mkdir,
-  readFile,
-  rm,
   stat,
-  writeFile,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
@@ -152,6 +148,8 @@ import {
 } from "./global-shortcuts.js";
 
 import { createRequire } from "node:module";
+
+const CURSOR_CREDENTIAL_PROVIDER = "cursor";
 
 type ScreenCapturePermissionsModule = {
   hasPromptedForPermission: () => boolean;
@@ -2009,20 +2007,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return getLocalModelPreferences(stellaRoot);
   });
 
-  const getCursorApiKeyPath = (stellaRoot: string) =>
-    path.join(stellaRoot, "credentials", "cursor-api-key");
-
   const readCursorApiKey = async (stellaRoot: string): Promise<string> => {
     const envKey =
       process.env.CURSOR_API_KEY?.trim() ||
       process.env.STELLA_CURSOR_API_KEY?.trim();
     if (envKey) return envKey;
-    try {
-      // Modifying this could break the app. Avoid exposing tokens; confirm with the user before changing credential reads.
-      return (await readFile(getCursorApiKeyPath(stellaRoot), "utf8")).trim();
-    } catch {
-      return "";
-    }
+    return getLocalLlmCredential(stellaRoot, CURSOR_CREDENTIAL_PROVIDER) ?? "";
   };
 
   ipcMain.handle(IPC_PREFERENCES_GET_CURSOR_API_KEY, async (event) => {
@@ -2056,14 +2046,15 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (!stellaRoot) return { hasApiKey: false };
       const apiKey =
         typeof payload?.apiKey === "string" ? payload.apiKey.trim() : "";
-      const keyPath = getCursorApiKeyPath(stellaRoot);
       if (!apiKey) {
-        await rm(keyPath, { force: true });
+        await deleteLocalLlmCredential(stellaRoot, CURSOR_CREDENTIAL_PROVIDER);
         return { hasApiKey: false };
       }
-      // Modifying this could break the app. Avoid exposing tokens; confirm with the user before changing credential storage or IPC handling.
-      await mkdir(path.dirname(keyPath), { recursive: true, mode: 0o700 });
-      await writeFile(keyPath, `${apiKey}\n`, { mode: 0o600 });
+      await saveLocalLlmCredential(stellaRoot, {
+        provider: CURSOR_CREDENTIAL_PROVIDER,
+        label: "Cursor",
+        plaintext: apiKey,
+      });
       return { hasApiKey: true };
     },
   );

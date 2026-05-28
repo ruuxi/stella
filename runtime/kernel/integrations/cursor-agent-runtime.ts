@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -18,6 +18,7 @@ import {
   DEFAULT_CURSOR_MODEL,
   loadLocalPreferences,
 } from "../preferences/local-preferences.js";
+import { getLocalLlmCredential } from "../storage/llm-credentials.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -26,6 +27,7 @@ import type {
 const execFileAsync = promisify(execFile);
 const DEFAULT_CURSOR_STARTUP_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CURSOR_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const CURSOR_CREDENTIAL_PROVIDER = "cursor";
 
 export type CursorAgentRuntimeEngine = AgentRuntimeEngine;
 
@@ -225,21 +227,14 @@ export const diffCursorWorktreeSnapshots = (
   return changes;
 };
 
-const readCursorApiKey = (stellaHome?: string): string =>
-  process.env.CURSOR_API_KEY?.trim() ||
-  process.env.STELLA_CURSOR_API_KEY?.trim() ||
-  (() => {
-    if (!stellaHome?.trim()) return "";
-    try {
-      // Modifying this could break the app. Avoid exposing tokens; confirm with the user before changing credential handling.
-      return readFileSync(
-        path.join(stellaHome, "credentials", "cursor-api-key"),
-        "utf8",
-      ).trim();
-    } catch {
-      return "";
-    }
-  })();
+const readCursorApiKey = (stellaHome?: string): string => {
+  const envKey =
+    process.env.CURSOR_API_KEY?.trim() ||
+    process.env.STELLA_CURSOR_API_KEY?.trim();
+  if (envKey) return envKey;
+  if (!stellaHome?.trim()) return "";
+  return getLocalLlmCredential(stellaHome, CURSOR_CREDENTIAL_PROVIDER) ?? "";
+};
 
 const cursorImageFromAttachment = (
   attachment: RuntimeAttachmentRef,
