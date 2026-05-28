@@ -570,9 +570,36 @@ export function useChatScrollManagement({
         scheduleFollowActiveAssistantRow()
       })
 
+      // Keep the viewport glued to the end across container *width*
+      // changes while the user is pinned to the bottom. The display
+      // panel slides open/closed over 460ms, resizing the scroll
+      // container's width frame-by-frame. While the list is still
+      // settling its initial scroll-to-end (right after reload), that
+      // width churn makes Legend re-evaluate its end position and the
+      // content bounces vertically. Re-pinning to the end on each
+      // width change absorbs the bounce. Gated on `followRef` so a user
+      // scrolled up in history is left untouched (Legend's
+      // `maintainVisibleContentPosition` keeps their anchor), and gated
+      // on width-only so composer/height changes don't trigger it.
+      let lastContainerWidth = attached.clientWidth
+      const handleContainerResize = () => {
+        if (!attached) return
+        const width = attached.clientWidth
+        if (width === lastContainerWidth) return
+        lastContainerWidth = width
+        if (!followRef.current) return
+        void listRef.current?.scrollToEnd({ animated: false })
+      }
+      const containerResizeObserver =
+        typeof ResizeObserver === 'undefined'
+          ? null
+          : new ResizeObserver(handleContainerResize)
+      containerResizeObserver?.observe(attached)
+
       cleanup = () => {
         if (!attached) return
         unsubscribeFollow()
+        containerResizeObserver?.disconnect()
         attached.removeEventListener('wheel', handleWheel)
         attached.removeEventListener('touchstart', handleTouchStart)
         attached.removeEventListener('keydown', handleKeyDown)
