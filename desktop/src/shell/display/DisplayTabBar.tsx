@@ -6,8 +6,10 @@
  */
 
 import type { CSSProperties } from "react";
+import { useMatchRoute } from "@tanstack/react-router";
 import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import { displayTabs, useDisplayTabList } from "./tab-store";
+import { CHAT_DISPLAY_TAB_ID } from "./default-tabs";
 import { DisplayTabIcon } from "./icons";
 import { DisplayTabAddMenu } from "./DisplayTabAddMenu";
 
@@ -19,11 +21,17 @@ const closeIconStyle: CSSProperties = {
 export const DisplayTabBar = () => {
   const { tabs, activeTabId } = useDisplayTabList();
   const tablistRef = useEdgeFadeRef<HTMLDivElement>();
+  const matchRoute = useMatchRoute();
+  const isOnHomeChatRoute = Boolean(matchRoute({ to: "/chat" }));
 
   return (
     <div ref={tablistRef} className="shell-topbar-tablist" role="tablist">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
+        const title =
+          tab.id === CHAT_DISPLAY_TAB_ID && isOnHomeChatRoute
+            ? "Home"
+            : tab.title;
         return (
           <div
             key={tab.id}
@@ -32,7 +40,7 @@ export const DisplayTabBar = () => {
             }`}
             role="tab"
             aria-selected={isActive}
-            title={tab.tooltip ?? tab.title}
+            title={tab.tooltip ?? title}
           >
             <button
               type="button"
@@ -40,12 +48,12 @@ export const DisplayTabBar = () => {
               onClick={() => displayTabs.activateTab(tab.id)}
             >
               <DisplayTabIcon kind={tab.kind} size={20} />
-              <span className="shell-topbar-tab__title">{tab.title}</span>
+              <span className="shell-topbar-tab__title">{title}</span>
             </button>
             <button
               type="button"
               className="shell-topbar-tab__close"
-              aria-label={`Close ${tab.title}`}
+              aria-label={`Close ${title}`}
               onClick={(e) => {
                 e.stopPropagation();
                 displayTabs.closeTab(tab.id);

@@ -12,6 +12,7 @@
  */
 
 import { Plus } from "lucide-react";
+import { useMatchRoute } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 import {
   DropdownMenu,
@@ -44,6 +45,8 @@ type AddMenuOption = {
 
 export const DisplayTabAddMenu = () => {
   const { tabs } = useDisplayTabList();
+  const matchRoute = useMatchRoute();
+  const isOnHomeChatRoute = Boolean(matchRoute({ to: "/chat" }));
   const knownIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
 
   const openOrActivate = useCallback(
@@ -84,6 +87,20 @@ export const DisplayTabAddMenu = () => {
     { id: "store", label: "Store", kind: "store", onSelect: openStore },
     { id: "trash", label: "Trash", kind: "trash", onSelect: openTrash },
   ];
+
+  if (isOnHomeChatRoute) {
+    return (
+      <button
+        type="button"
+        className="shell-topbar-tab__add"
+        aria-label="Open home tab"
+        title="Open home tab"
+        onClick={openChat}
+      >
+        <Plus size={14} strokeWidth={1.85} />
+      </button>
+    );
+  }
 
   return (
     <DropdownMenu>
