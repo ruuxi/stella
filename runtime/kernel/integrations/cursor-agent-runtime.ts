@@ -421,6 +421,8 @@ export const buildCursorAgentOptions = (args: {
   model: args.model,
   local: {
     ...(args.cwd ? { cwd: args.cwd } : {}),
+    settingSources: [],
+    sandboxOptions: { enabled: false },
   },
   ...(args.cwd ? { platform: { workspaceRef: args.cwd } } : {}),
   ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
@@ -530,7 +532,10 @@ export const runCursorAgentTurn = async (request: {
       const run = await waitForCursorActivity(
         agent.send(
           images.length > 0 ? { text: request.prompt, images } : request.prompt,
-          { idempotencyKey: request.runId },
+          {
+            idempotencyKey: request.runId,
+            local: { force: true },
+          },
         ),
       );
       const cancelOnAbort = () => {
