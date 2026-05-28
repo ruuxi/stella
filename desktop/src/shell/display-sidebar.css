@@ -39,9 +39,9 @@
      chrome so the halo only reads on the left), plus a wider
      left-biased cast for floating depth. */
   box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.06),
-    -1px 0 2px rgba(15, 23, 42, 0.03),
-    -6px 0 18px rgba(15, 23, 42, 0.04);
+    0 0 0 1px rgba(15, 23, 42, 0.04),
+    -1px 0 2px rgba(15, 23, 42, 0.02),
+    -6px 0 18px rgba(15, 23, 42, 0.025);
 }
 
 /* Expanded mode overlays the content area instead of participating in the
