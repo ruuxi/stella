@@ -259,9 +259,89 @@
   flex: 0 0 auto;
   display: flex;
   gap: 6px;
-  overflow-x: auto;
+  overflow: hidden;
   padding: 0 12px 2px;
+}
+
+/* ── History tray (chevron-opened, paginated grid) ─────────────── */
+
+.media-tab__rail-toggle {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 34px;
+  height: 18px;
+  margin-bottom: 2px;
+  padding: 0;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--background) 70%, var(--foreground));
+  color: var(--text-weak);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.media-tab__rail-toggle:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+}
+
+.media-tab__rail-toggle svg {
+  transition: transform 0.2s ease;
+}
+
+.media-tab__rail-toggle--open svg {
+  transform: rotate(180deg);
+}
+
+.media-tab__tray {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: var(--media-tab-footer-slot);
+  height: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--background) 88%, var(--foreground));
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 24px color-mix(in oklch, var(--background) 60%, transparent);
+  overflow: hidden;
+}
+
+.media-tab__tray-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
   scrollbar-width: thin;
+}
+
+.media-tab__tray-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.media-tab__tray-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  border-radius: 3px;
+}
+
+.media-tab__tray-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 6px;
+}
+
+.media-tab__tray-grid .media-tab__tile {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  height: auto;
 }
 
 .media-tab__rail-import {
