@@ -2,6 +2,10 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  ensureElectronBinary,
+  isElectronBinaryHealthy,
+} from "./ensure-electron-binary.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, "..");
@@ -26,6 +30,20 @@ if (!existsSync(viteBinPath)) {
     `[electron:dev] Missing Vite binary at ${viteBinPath}. Run \`bun install\` at the repo root first.`,
   );
   process.exit(1);
+}
+
+// Repair a half-extracted Electron binary before launching electron-main, so a
+// broken install self-heals on `bun run electron:dev` without a fresh install.
+// The check is cheap (a couple file reads) and only re-extracts when broken.
+if (!isElectronBinaryHealthy()) {
+  try {
+    await ensureElectronBinary();
+  } catch (error) {
+    console.error(
+      `[electron:dev] Failed to repair Electron binary: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
 }
 
 try {
