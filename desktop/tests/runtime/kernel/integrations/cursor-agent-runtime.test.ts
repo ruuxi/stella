@@ -1,11 +1,13 @@
 import path from "node:path";
 import { execFile } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  abortCursorNodeRunnerProcess,
   buildCursorNodeRunnerSpawnSpec,
   buildCursorAgentOptions,
   buildCursorPromptFromMessages,
@@ -17,6 +19,7 @@ import {
   snapshotCursorWorktree,
   shouldUseCursorAgentRuntime,
   shouldRunCursorSdkInNodeRunner,
+  terminateCursorNodeRunnerProcess,
   type CursorWorktreeSnapshot,
   withCursorSdkStreamErrorGuard,
 } from "../../../../../runtime/kernel/integrations/cursor-agent-runtime.js";
@@ -38,6 +41,7 @@ vi.mock("@cursor/sdk", () => ({
 }));
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   if (originalCursorApiKey == null) {
     delete process.env.CURSOR_API_KEY;
@@ -69,6 +73,18 @@ const snapshot = (
   entries: parseCursorGitStatus(status),
   fingerprints: new Map(Object.entries(fingerprints)),
 });
+
+const createMockChildProcess = () => {
+  const child = new EventEmitter() as EventEmitter & {
+    killed: boolean;
+    exitCode: number | null;
+    kill: ReturnType<typeof vi.fn>;
+  };
+  child.killed = false;
+  child.exitCode = null;
+  child.kill = vi.fn();
+  return child;
+};
 
 describe("Cursor agent runtime", () => {
   it("only routes spawned general agents to Cursor", () => {
@@ -227,6 +243,34 @@ describe("Cursor agent runtime", () => {
       args: ["/runner.js"],
       env: {},
     });
+  });
+
+  it("terminates the Cursor Node runner with SIGTERM and SIGKILL escalation", () => {
+    vi.useFakeTimers();
+    const child = createMockChildProcess();
+
+    terminateCursorNodeRunnerProcess(child as never);
+
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    vi.advanceTimersByTime(3_999);
+    expect(child.kill).not.toHaveBeenCalledWith("SIGKILL");
+    vi.advanceTimersByTime(1);
+    expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+  });
+
+  it("aborts the Cursor Node runner with SIGINT before hard termination", () => {
+    vi.useFakeTimers();
+    const child = createMockChildProcess();
+
+    abortCursorNodeRunnerProcess(child as never);
+
+    expect(child.kill).toHaveBeenCalledWith("SIGINT");
+    vi.advanceTimersByTime(1_499);
+    expect(child.kill).not.toHaveBeenCalledWith("SIGTERM");
+    vi.advanceTimersByTime(1);
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    vi.advanceTimersByTime(4_000);
+    expect(child.kill).toHaveBeenCalledWith("SIGKILL");
   });
 
   it("resolves the Node runner from the bundled worker entry layout", async () => {

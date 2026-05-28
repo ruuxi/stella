@@ -5,6 +5,8 @@ import {
   type SDKMessage,
 } from "@cursor/sdk";
 
+const FORCE_EXIT_AFTER_SIGNAL_MS = 4_000;
+
 type CursorNodeRunnerRequest = {
   agentOptions: AgentOptions;
   prompt: string | { text: string; images: SDKImage[] };
@@ -48,9 +50,19 @@ const main = async () => {
   let run:
     | Awaited<ReturnType<Awaited<ReturnType<typeof Agent.create>>["send"]>>
     | undefined;
+  let cancelRequested = false;
+  let forceExitTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const cancelRun = () => {
+  const cancelRun = (signal: NodeJS.Signals) => {
+    cancelRequested = true;
+    process.exitCode = signal === "SIGINT" ? 130 : 143;
     void run?.cancel().catch(() => undefined);
+    if (!forceExitTimer) {
+      forceExitTimer = setTimeout(() => {
+        process.exit(process.exitCode || 1);
+      }, FORCE_EXIT_AFTER_SIGNAL_MS);
+      forceExitTimer.unref?.();
+    }
   };
   process.once("SIGTERM", cancelRun);
   process.once("SIGINT", cancelRun);
@@ -63,11 +75,18 @@ const main = async () => {
           name: "Stella General",
           idempotencyKey: request.sessionKey,
         });
+    if (cancelRequested) {
+      throw new Error("Aborted");
+    }
 
     run = await agent.send(request.prompt, {
       idempotencyKey: request.runId,
       local: { force: true },
     });
+    if (cancelRequested) {
+      await run.cancel().catch(() => undefined);
+      throw new Error("Aborted");
+    }
 
     let collected = "";
     for await (const message of run.stream()) {
@@ -100,6 +119,7 @@ const main = async () => {
   } finally {
     process.off("SIGTERM", cancelRun);
     process.off("SIGINT", cancelRun);
+    if (forceExitTimer) clearTimeout(forceExitTimer);
     await agent?.[Symbol.asyncDispose]().catch(() => {
       try {
         agent?.close();
