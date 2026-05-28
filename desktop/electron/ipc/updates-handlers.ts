@@ -66,6 +66,19 @@ const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers";
 const DEFAULT_NATIVE_HELPERS_MANIFEST_URL = `${DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL}/current.json`;
 
+const nativeHelperPlatformKey = (): string => {
+  if (process.platform === "win32" && process.arch === "x64") {
+    return "win-x64";
+  }
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    return "darwin-arm64";
+  }
+  if (process.platform === "darwin" && process.arch === "x64") {
+    return "darwin-x64";
+  }
+  return "";
+};
+
 export type InstallManifestSnapshot = {
   version: string;
   platform: string;
@@ -189,9 +202,14 @@ const getNativeHelpersManifestUrl = (): string => {
 const refreshNativeHelpers = async (
   stellaRoot: string,
   _releaseTag?: string,
-  _artifactRefs?: StellaReleaseArtifactRef[],
+  artifactRefs?: StellaReleaseArtifactRef[],
 ): Promise<{ manifestUrl: string; stdout: string; stderr: string }> => {
-  const manifestUrl = getNativeHelpersManifestUrl();
+  const platformKey = nativeHelperPlatformKey();
+  const releaseNativeRef = artifactRefs?.find(
+    (ref) => ref.kind === "native-helpers" && ref.platform === platformKey,
+  );
+  const manifestUrl =
+    releaseNativeRef?.manifestUrl ?? getNativeHelpersManifestUrl();
   const scriptPath = path.join(
     stellaRoot,
     "desktop",
