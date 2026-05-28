@@ -215,28 +215,30 @@ export const ShellTopBar = ({
         <div className="shell-topbar-display-controls">
           {panelOpen ? (
             <>
-              <button
-                type="button"
-                className="shell-topbar-icon-btn"
-                onClick={() => displayTabs.togglePanelExpanded()}
-                aria-label={
-                  panelExpanded ? "Restore panel size" : "Expand panel"
-                }
-                aria-pressed={panelExpanded}
-                title={panelExpanded ? "Restore panel size" : "Expand panel"}
-              >
-                {isWin ? (
-                  panelExpanded ? (
-                    <WindowsRestoreIcon />
+              {!isMiniWindow ? (
+                <button
+                  type="button"
+                  className="shell-topbar-icon-btn"
+                  onClick={() => displayTabs.togglePanelExpanded()}
+                  aria-label={
+                    panelExpanded ? "Restore panel size" : "Expand panel"
+                  }
+                  aria-pressed={panelExpanded}
+                  title={panelExpanded ? "Restore panel size" : "Expand panel"}
+                >
+                  {isWin ? (
+                    panelExpanded ? (
+                      <WindowsRestoreIcon />
+                    ) : (
+                      <WindowsMaximizeIcon />
+                    )
+                  ) : panelExpanded ? (
+                    <Minimize2 size={14} strokeWidth={1.75} />
                   ) : (
-                    <WindowsMaximizeIcon />
-                  )
-                ) : panelExpanded ? (
-                  <Minimize2 size={14} strokeWidth={1.75} />
-                ) : (
-                  <Maximize2 size={14} strokeWidth={1.75} />
-                )}
-              </button>
+                    <Maximize2 size={14} strokeWidth={1.75} />
+                  )}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="shell-topbar-icon-btn"
