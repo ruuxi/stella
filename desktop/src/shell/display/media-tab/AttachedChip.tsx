@@ -17,7 +17,7 @@ export const AttachedChip = ({
   );
   const { files } = useDisplayFileBlobs(filePaths);
   const thumbUrl = files[0]?.url ?? null;
-  const { glyph } = glyphForMediaItem(item);
+  const { Icon, label } = glyphForMediaItem(item);
 
   return (
     <span className="media-tab__attached" role="group">
@@ -25,7 +25,9 @@ export const AttachedChip = ({
         {thumbUrl ? (
           <img className="media-tab__attached-thumb" src={thumbUrl} alt="" />
         ) : (
-          <span className="media-tab__attached-glyph">{glyph}</span>
+          <span className="media-tab__attached-glyph" aria-label={label}>
+            <Icon size={13} strokeWidth={1.7} />
+          </span>
         )}
       </span>
       <button

@@ -1,5 +1,12 @@
-import { Fragment, useCallback, useMemo, useState } from "react";
-import { Copy, Download, X } from "lucide-react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Copy, Download, Trash2 } from "lucide-react";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
 import { copyImageBlob } from "@/shell/media-clipboard";
 import type { MediaTabItem } from "./media-actions";
@@ -20,13 +27,39 @@ const filePathsForItem = (item: MediaTabItem): string[] => {
 
 export const MediaActionBar = ({
   item,
-  onClose,
+  onDelete,
 }: {
   item: MediaTabItem;
-  onClose: () => void;
+  onDelete: () => void;
 }) => {
   const [message, setMessage] = useState<string | null>(null);
+  const [armed, setArmed] = useState(false);
+  const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filePath = useMemo(() => filePathsForItem(item)[0] ?? null, [item]);
+
+  useEffect(() => {
+    setArmed(false);
+    if (disarmTimer.current) clearTimeout(disarmTimer.current);
+  }, [item.id]);
+
+  useEffect(
+    () => () => {
+      if (disarmTimer.current) clearTimeout(disarmTimer.current);
+    },
+    [],
+  );
+
+  const handleTrash = useCallback(() => {
+    if (armed) {
+      if (disarmTimer.current) clearTimeout(disarmTimer.current);
+      setArmed(false);
+      onDelete();
+      return;
+    }
+    setArmed(true);
+    if (disarmTimer.current) clearTimeout(disarmTimer.current);
+    disarmTimer.current = setTimeout(() => setArmed(false), 2500);
+  }, [armed, onDelete]);
   const { files } = useDisplayFileBlobs(filePath ? [filePath] : []);
   const blob = files[0] ?? null;
 
@@ -83,12 +116,14 @@ export const MediaActionBar = ({
       </button>
       <button
         type="button"
-        className="media-tab__action-btn"
-        onClick={onClose}
-        aria-label="Close preview"
-        title="Close"
+        className={`media-tab__action-btn${
+          armed ? " media-tab__action-btn--armed" : ""
+        }`}
+        onClick={handleTrash}
+        aria-label={armed ? "Click again to delete" : "Delete"}
+        title={armed ? "Click again to delete" : "Delete"}
       >
-        <X size={14} strokeWidth={1.85} />
+        <Trash2 size={14} strokeWidth={1.85} />
       </button>
       {message ? (
         <span className="media-tab__action-status">{message}</span>

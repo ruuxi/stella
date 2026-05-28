@@ -26,7 +26,7 @@ export const MediaTile = ({
   const isPending =
     item.asset.kind === "image" && item.asset.filePaths.length === 0;
   const isMissing = (missing[0] ?? false) && !isPending;
-  const { glyph, badge } = glyphForMediaItem(item);
+  const { Icon, label, badge } = glyphForMediaItem(item);
   const canAttach = item.asset.kind === "image" && !isPending && !isMissing;
 
   return (
@@ -41,7 +41,7 @@ export const MediaTile = ({
       ]
         .filter(Boolean)
         .join(" ")}
-      title={isMissing ? "File moved or deleted" : undefined}
+      title={isMissing ? "File moved or deleted" : label}
       onClick={onSelect}
       onDoubleClick={onOpen}
       onKeyDown={(event) => {
@@ -50,13 +50,15 @@ export const MediaTile = ({
           onSelect();
         }
       }}
-      aria-label={glyph}
+      aria-label={label}
       aria-pressed={active}
     >
       {thumbUrl ? (
         <img className="media-tab__tile-img" src={thumbUrl} alt="" />
       ) : (
-        <span className="media-tab__tile-glyph">{glyph}</span>
+        <span className="media-tab__tile-glyph">
+          <Icon size={20} strokeWidth={1.6} />
+        </span>
       )}
       {badge ? <span className="media-tab__tile-badge">{badge}</span> : null}
       {canAttach ? (
