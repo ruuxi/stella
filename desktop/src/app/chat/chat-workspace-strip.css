@@ -20,8 +20,13 @@
   /* Explicitly no divider against the main content. */
   border: none;
   pointer-events: auto;
-  overflow: hidden;
-  contain: layout paint;
+  /* `overflow: clip` (instead of `hidden`) lets paint extend beyond the
+     clip box via `overflow-clip-margin`, so the panel-frame's soft
+     left-edge shadow isn't sliced at the strip boundary while the
+     slide-close animation still gets its content clip. */
+  overflow: clip;
+  overflow-clip-margin: 40px;
+  contain: layout;
   transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
 }
 
@@ -48,8 +53,9 @@
     var(--chat-workspace-strip-inset-bottom)
     var(--chat-workspace-strip-inset-left);
   box-sizing: border-box;
-  overflow: hidden;
-  contain: layout paint;
+  overflow: clip;
+  overflow-clip-margin: 40px;
+  contain: layout;
   transform: translate3d(0, 0, 0);
   opacity: 1;
   transition:
@@ -115,7 +121,13 @@
   min-height: 0;
   max-height: 100%;
   border-radius: 12px;
-  box-shadow: var(--panel-elevated-shadow);
+  /* No real border. A tight, all-around 1px halo acts as the visible
+     edge (reads as a hairline border but is actually shadow), and a
+     wider downward cast supplies the floating depth. */
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.06),
+    0 1px 2px rgba(15, 23, 42, 0.03),
+    0 6px 18px rgba(15, 23, 42, 0.04);
   contain: layout paint;
 }
 
