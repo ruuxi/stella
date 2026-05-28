@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildCursorAgentOptions,
@@ -11,6 +11,7 @@ import {
   diffCursorWorktreeSnapshots,
   isCursorSdkStreamError,
   parseCursorGitStatus,
+  runCursorAgentTurn,
   snapshotCursorWorktree,
   shouldUseCursorAgentRuntime,
   type CursorWorktreeSnapshot,
@@ -18,6 +19,26 @@ import {
 } from "../../../../../runtime/kernel/integrations/cursor-agent-runtime.js";
 
 const execFileAsync = promisify(execFile);
+const originalCursorApiKey = process.env.CURSOR_API_KEY;
+const cursorSdkCreate = vi.fn();
+const cursorSdkResume = vi.fn();
+const cursorSdkSend = vi.fn();
+
+vi.mock("@cursor/sdk", () => ({
+  Agent: {
+    create: (...args: unknown[]) => cursorSdkCreate(...args),
+    resume: (...args: unknown[]) => cursorSdkResume(...args),
+  },
+}));
+
+afterEach(() => {
+  vi.clearAllMocks();
+  if (originalCursorApiKey == null) {
+    delete process.env.CURSOR_API_KEY;
+  } else {
+    process.env.CURSOR_API_KEY = originalCursorApiKey;
+  }
+});
 
 const snapshot = (
   status: string,
@@ -80,7 +101,7 @@ describe("Cursor agent runtime", () => {
     );
   });
 
-  it("keys the Cursor local platform store to the Stella workspace", () => {
+  it("uses documented Cursor local runtime recovery options", () => {
     expect(
       buildCursorAgentOptions({
         apiKey: "cursor-key",
@@ -90,8 +111,56 @@ describe("Cursor agent runtime", () => {
     ).toMatchObject({
       apiKey: "cursor-key",
       model: { id: "composer-latest" },
-      local: { cwd: "/repo" },
+      local: {
+        cwd: "/repo",
+        settingSources: [],
+        sandboxOptions: { enabled: false },
+      },
       platform: { workspaceRef: "/repo" },
+    });
+  });
+
+  it("forces stale local Cursor runs before sending a new turn", async () => {
+    process.env.CURSOR_API_KEY = "cursor-key";
+    const run = {
+      cancel: vi.fn().mockResolvedValue(undefined),
+      wait: vi.fn().mockResolvedValue({ status: "finished", result: "done" }),
+      async *stream() {
+        yield {
+          type: "assistant",
+          message: { content: [{ type: "text", text: "done" }] },
+        };
+      },
+    };
+    const agent = {
+      agentId: "agent-id",
+      close: vi.fn(),
+      send: cursorSdkSend.mockResolvedValue(run),
+      [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+    };
+    cursorSdkCreate.mockResolvedValue(agent);
+
+    await expect(
+      runCursorAgentTurn({
+        runId: "run-id",
+        sessionKey: "session-key",
+        prompt: "Do the work.",
+        cwd: "/repo",
+      }),
+    ).resolves.toMatchObject({ sessionId: "agent-id", text: "done" });
+
+    expect(cursorSdkCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        local: {
+          cwd: "/repo",
+          settingSources: [],
+          sandboxOptions: { enabled: false },
+        },
+      }),
+    );
+    expect(cursorSdkSend).toHaveBeenCalledWith("Do the work.", {
+      idempotencyKey: "run-id",
+      local: { force: true },
     });
   });
 
