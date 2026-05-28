@@ -1827,24 +1827,20 @@ export class SessionStore {
     const normalizedLimit = Math.max(1, Math.floor(maxMessages));
     const rows = this.db.prepare(`
       SELECT
-        recent.id AS _id,
-        recent.created_at AS timestamp,
-        recent.type AS type,
-        recent.device_id AS deviceId,
+        message.id AS _id,
+        message.created_at AS timestamp,
+        message.type AS type,
+        message.device_id AS deviceId,
         part.data_json AS payloadJson
-      FROM (
-        SELECT *
-        FROM message
-        WHERE session_id = ?
-          AND type IN ('user_message', 'assistant_message')
-        ORDER BY created_at DESC, id DESC
-        LIMIT ?
-      ) recent
+      FROM message
       LEFT JOIN part
-        ON part.message_id = recent.id
+        ON part.message_id = message.id
        AND part.ord = 0
-      ORDER BY recent.created_at ASC, recent.id ASC
-    `).all(conversationId, normalizedLimit) as Array<{
+      WHERE message.session_id = ?
+        AND message.type IN ('user_message', 'assistant_message')
+      ORDER BY message.created_at DESC, message.id DESC
+      LIMIT ?
+    `).all(conversationId, CUTOFF_SCAN_CEILING) as Array<{
       _id: string;
       timestamp: number;
       type: string;
@@ -1855,6 +1851,7 @@ export class SessionStore {
     const messages: LocalChatSyncMessage[] = [];
     for (const row of rows) {
       const payload = parseJsonRecord(row.payloadJson);
+      if (isUiHiddenChatMessagePayload(payload ?? null)) continue;
       const text = eventTextFromPayload(payload);
       if (!text) continue;
       const role = row.type === "user_message" ? "user" : "assistant";
@@ -1865,8 +1862,9 @@ export class SessionStore {
         timestamp: row.timestamp,
         ...(role === "user" && row.deviceId ? { deviceId: row.deviceId } : {}),
       });
+      if (messages.length >= normalizedLimit) break;
     }
-    return messages;
+    return messages.reverse();
   }
 
   getSyncCheckpoint(conversationIdInput: string): string | null {
