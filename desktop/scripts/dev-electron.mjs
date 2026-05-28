@@ -1,5 +1,6 @@
 import { execFileSync, execSync, spawn } from 'node:child_process'
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -23,6 +24,8 @@ const require = createRequire(import.meta.url)
 const DEV_MACOS_APP_NAME = 'Stella'
 const DEV_MACOS_BUNDLE_ID = 'com.stella.app'
 const DEV_MACOS_RUNTIME_DIR_NAME = '.stella-dev-runtime'
+const DEV_BARE_RELAUNCH_EXECUTABLE = 'StellaDevRelaunch'
+const LEGACY_DEV_PROTOCOL_APP_NAME = 'stella-dev-protocol-app'
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const desktopDir = resolve(scriptDir, '..')
 const repoRootDir = resolve(desktopDir, '..')
@@ -57,6 +60,7 @@ const requiredFiles = [
   path.join(watchedDir, 'desktop', 'electron', 'preload.js'),
 ]
 const restartDebounceMs = 150
+const devRestartRequestGraceMs = 2_000
 const buildOutputSettleQuietMs = 350
 const buildOutputSettleTimeoutMs = 5_000
 const forcedShutdownTimeoutMs = 1_500
@@ -192,13 +196,13 @@ const patchDevIcon = () => {
   const electronIcon = path.join(appBundle, 'Resources', 'electron.icns')
   const infoPlist = path.join(appBundle, 'Info.plist')
   if (!existsSync(appIcon) || !existsSync(electronIcon)) {
-    return
+    return false
   }
 
   const srcHash = readHash(appIcon)
   const dstHash = readHash(electronIcon)
   if (srcHash === dstHash) {
-    return
+    return false
   }
 
   try {
@@ -206,12 +210,15 @@ const patchDevIcon = () => {
     if (existsSync(infoPlist)) {
       execSync(`touch "${path.join(appBundle, '..')}"`, { stdio: 'ignore' })
     }
+    return true
   } catch {
     // Best-effort; may fail if node_modules is read-only.
   }
+  return false
 }
 
 const patchDevAppName = () => {
+  let changed = false
   const distDir = path.resolve(path.dirname(electronBinary), '..', '..', '..')
   const oldBundle = path.join(distDir, 'Electron.app')
   const newBundle = path.join(distDir, 'Stella.app')
@@ -220,12 +227,13 @@ const patchDevAppName = () => {
   const hasNewBundle = existsSync(newBundle)
 
   if (!hasOldBundle && !hasNewBundle) {
-    return
+    return false
   }
 
   try {
     if (hasOldBundle && !hasNewBundle) {
       renameSync(oldBundle, newBundle)
+      changed = true
     }
     electronBinary = electronBinary.replace('Electron.app', 'Stella.app')
 
@@ -234,13 +242,14 @@ const patchDevAppName = () => {
       const nextPathTxt = pathTxt.replace('Electron.app', 'Stella.app')
       if (nextPathTxt !== pathTxt) {
         writeFileSync(pathTxtFile, nextPathTxt)
+        changed = true
       }
     }
 
     const infoPlist = path.join(newBundle, 'Contents', 'Info.plist')
     if (existsSync(infoPlist)) {
       let plist = readFileSync(infoPlist, 'utf8')
-      let changed = false
+      let plistChanged = false
 
       const replaceStringValue = (key, nextValue) => {
         const pattern = new RegExp(
@@ -249,7 +258,7 @@ const patchDevAppName = () => {
         const match = plist.match(pattern)
         if (match && match[2] !== nextValue) {
           plist = plist.replace(pattern, `$1${nextValue}$3`)
-          changed = true
+          plistChanged = true
         }
       }
 
@@ -259,26 +268,43 @@ const patchDevAppName = () => {
       replaceStringValue('CFBundleDisplayName', DEV_MACOS_APP_NAME)
       replaceStringValue('CFBundleIdentifier', DEV_MACOS_BUNDLE_ID)
 
-      if (changed) {
+      if (plistChanged) {
         writeFileSync(infoPlist, plist)
+        changed = true
       }
     }
 
-    execSync(`touch "${distDir}"`, { stdio: 'ignore' })
+    if (changed) {
+      execSync(`touch "${distDir}"`, { stdio: 'ignore' })
+    }
   } catch {
     // Best-effort; may fail if node_modules is read-only.
   }
+  return changed
 }
 
 const patchDevMicrophoneUsageDescription = () => {
   if (process.platform !== 'darwin') {
-    return
+    return false
   }
 
   const contentsDir = path.resolve(path.dirname(electronBinary), '..')
   const infoPlist = path.join(contentsDir, 'Info.plist')
   if (!existsSync(infoPlist)) {
-    return
+    return false
+  }
+
+  try {
+    const existing = execFileSync(
+      'plutil',
+      ['-extract', 'NSMicrophoneUsageDescription', 'raw', infoPlist],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim()
+    if (existing === MIC_USAGE_DESCRIPTION) {
+      return false
+    }
+  } catch {
+    // Missing key or unexpected plist; fall through to set it.
   }
 
   try {
@@ -286,39 +312,142 @@ const patchDevMicrophoneUsageDescription = () => {
       `plutil -replace NSMicrophoneUsageDescription -string ${JSON.stringify(MIC_USAGE_DESCRIPTION)} "${infoPlist}"`,
       { stdio: 'ignore' },
     )
+    return true
   } catch {
     try {
       execSync(
         `plutil -insert NSMicrophoneUsageDescription -string ${JSON.stringify(MIC_USAGE_DESCRIPTION)} "${infoPlist}"`,
         { stdio: 'ignore' },
       )
+      return true
     } catch {
       // Best-effort; read-only node_modules or unexpected plist shape.
     }
   }
+  return false
 }
 
-const cleanupDevProtocolApp = () => {
+const ensureDevBareRelaunchExecutable = () => {
   if (process.platform !== 'darwin') {
-    return
+    return false
   }
 
-  const resourcesDir = path.resolve(path.dirname(electronBinary), '..', 'Resources')
-  const appDir = path.join(resourcesDir, 'app')
-  const packageJsonPath = path.join(appDir, 'package.json')
+  let changed = false
+  const contentsDir = path.resolve(path.dirname(electronBinary), '..')
+  const infoPlist = path.join(contentsDir, 'Info.plist')
+  const macosDir = path.join(contentsDir, 'MacOS')
+  const relaunchExecutablePath = path.join(macosDir, DEV_BARE_RELAUNCH_EXECUTABLE)
+  const resourcesAppDir = path.join(contentsDir, 'Resources', 'app')
+  const resourcesAppPackageJson = path.join(resourcesAppDir, 'package.json')
 
   try {
-    if (!existsSync(packageJsonPath)) {
-      return
+    if (existsSync(resourcesAppPackageJson)) {
+      const packageJson = JSON.parse(
+        readFileSync(resourcesAppPackageJson, 'utf8'),
+      )
+      const knownShimNames = new Set([
+        LEGACY_DEV_PROTOCOL_APP_NAME,
+        'stella-dev-bare-relaunch-app',
+      ])
+      if (knownShimNames.has(packageJson?.name)) {
+        rmSync(resourcesAppDir, { force: true, recursive: true })
+        changed = true
+      }
     }
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'))
-    if (packageJson?.name !== 'stella-dev-protocol-app') {
-      return
+
+    const relaunchScript = `#!/bin/zsh
+set -e
+
+repo_root=${JSON.stringify(repoRootDir)}
+electron_bin="$(cd "$(dirname "$0")" && pwd)/Electron"
+restart_file=${JSON.stringify(devRestartRequestFile)}
+runner_pid_file=${JSON.stringify(path.join(desktopDir, '.electron-dev-runner.pid'))}
+runner_script=${JSON.stringify(path.join(desktopDir, 'scripts', 'electron-dev-runner.mjs'))}
+node_bin=${JSON.stringify(process.execPath)}
+
+non_launch_args=()
+for arg in "$@"; do
+  case "$arg" in
+    -psn_*) ;;
+    *) non_launch_args+=("$arg") ;;
+  esac
+done
+
+if [ "\${#non_launch_args[@]}" -eq 0 ]; then
+  runner_pid=""
+  if [ -f "$runner_pid_file" ]; then
+    runner_pid="$(sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' "$runner_pid_file" | head -n 1)"
+  fi
+
+  if [ -n "$runner_pid" ] && kill -0 "$runner_pid" 2>/dev/null; then
+    date +%s > "$restart_file"
+    exit 0
+  fi
+
+  cd "$repo_root"
+  exec "$node_bin" "$runner_script"
+fi
+
+cd "$repo_root"
+if [ "\${non_launch_args[1]-}" != "." ]; then
+  non_launch_args=("." "\${non_launch_args[@]}")
+fi
+export NODE_ENV=development
+export STELLA_DEV_RESTART_REQUEST_FILE="$restart_file"
+if [ -z "$STELLA_LAUNCHER_PROTECTED_STORAGE_BIN" ]; then
+  export STELLA_DEV_INSECURE_PROTECTED_STORAGE=1
+fi
+exec "$electron_bin" "\${non_launch_args[@]}"
+`
+
+    if (
+      !existsSync(relaunchExecutablePath) ||
+      readFileSync(relaunchExecutablePath, 'utf8') !== relaunchScript
+    ) {
+      writeFileSync(relaunchExecutablePath, relaunchScript, 'utf8')
+      changed = true
     }
-    rmSync(appDir, { force: true, recursive: true })
+    try {
+      const mode = statSync(relaunchExecutablePath).mode & 0o777
+      if (mode !== 0o755) {
+        chmodSync(relaunchExecutablePath, 0o755)
+        changed = true
+      }
+    } catch {
+      chmodSync(relaunchExecutablePath, 0o755)
+      changed = true
+    }
+
+    if (existsSync(infoPlist)) {
+      let currentExecutable = ''
+      try {
+        currentExecutable = execFileSync(
+          'plutil',
+          ['-extract', 'CFBundleExecutable', 'raw', infoPlist],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+        ).trim()
+      } catch {
+        // Missing key or unexpected plist; fall through to replace it.
+      }
+      if (currentExecutable !== DEV_BARE_RELAUNCH_EXECUTABLE) {
+        execFileSync(
+          'plutil',
+          [
+            '-replace',
+            'CFBundleExecutable',
+            '-string',
+            DEV_BARE_RELAUNCH_EXECUTABLE,
+            infoPlist,
+          ],
+          { stdio: 'ignore' },
+        )
+        changed = true
+      }
+    }
   } catch {
     // Best-effort; may fail if node_modules is read-only.
   }
+  return changed
 }
 
 /**
@@ -336,7 +465,7 @@ const cleanupDevProtocolApp = () => {
  * id), it's just internally consistent again. Same idiom as the wake-word
  * helper (`desktop/native/build.sh`).
  */
-const resignDevAppBundle = () => {
+const resignDevAppBundle = (force = false) => {
   if (process.platform !== 'darwin') {
     return
   }
@@ -344,17 +473,19 @@ const resignDevAppBundle = () => {
   if (!existsSync(appBundle) || !appBundle.endsWith('.app')) {
     return
   }
-  try {
-    execFileSync('codesign', ['--verify', '--no-strict', appBundle], {
-      stdio: 'ignore',
-    })
-    return
-  } catch (verifyError) {
-    if (verifyError?.code === 'ENOENT') {
-      // codesign missing — no-op rather than fail dev startup.
+  if (!force) {
+    try {
+      execFileSync('codesign', ['--verify', '--no-strict', appBundle], {
+        stdio: 'ignore',
+      })
       return
+    } catch (verifyError) {
+      if (verifyError?.code === 'ENOENT') {
+        // codesign missing — no-op rather than fail dev startup.
+        return
+      }
+      // Signature broken or missing; fall through to re-sign.
     }
-    // Signature broken or missing; fall through to re-sign.
   }
   try {
     execFileSync(
@@ -368,11 +499,13 @@ const resignDevAppBundle = () => {
 }
 
 if (process.platform === 'darwin') {
-  patchDevIcon()
-  patchDevAppName()
-  patchDevMicrophoneUsageDescription()
-  cleanupDevProtocolApp()
-  resignDevAppBundle()
+  const bundleChanged = [
+    patchDevIcon(),
+    patchDevAppName(),
+    patchDevMicrophoneUsageDescription(),
+    ensureDevBareRelaunchExecutable(),
+  ].some(Boolean)
+  resignDevAppBundle(bundleChanged)
 }
 let disclaimBinary = null
 
@@ -536,6 +669,17 @@ const consumeDevRestartRequest = () => {
   return true
 }
 
+const waitForDevRestartRequest = async () => {
+  const deadline = Date.now() + devRestartRequestGraceMs
+  while (!shuttingDown && Date.now() < deadline) {
+    if (consumeDevRestartRequest()) {
+      return true
+    }
+    await wait(100)
+  }
+  return false
+}
+
 const flushDeferredRestartIfReady = () => {
   if (!pendingRestartWhilePaused || shuttingDown || isRuntimeReloadPaused()) {
     return
@@ -581,7 +725,7 @@ const startApp = () => {
     }
   })
 
-  child.once('exit', (code, signal) => {
+  child.once('exit', async (code, signal) => {
     if (currentApp === child) {
       currentApp = null
     }
@@ -596,6 +740,12 @@ const startApp = () => {
     }
 
     if (consumeDevRestartRequest()) {
+      restartRequestedByWatcher = true
+      scheduleRestart()
+      return
+    }
+
+    if (await waitForDevRestartRequest()) {
       restartRequestedByWatcher = true
       scheduleRestart()
       return
