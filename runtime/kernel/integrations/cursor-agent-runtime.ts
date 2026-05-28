@@ -451,11 +451,22 @@ export const shouldRunCursorSdkInNodeRunner = (): boolean =>
   process.env.STELLA_CURSOR_SDK_IN_PROCESS !== "1" &&
   Boolean((process.versions as { bun?: string }).bun);
 
-const resolveCursorNodeRunnerPath = (): string =>
-  path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    CURSOR_NODE_RUNNER_FILENAME,
-  );
+export const resolveCursorNodeRunnerPath = (
+  currentModulePath = fileURLToPath(import.meta.url),
+): string => {
+  const currentModuleDir = path.dirname(currentModulePath);
+  const candidates = [
+    path.join(currentModuleDir, CURSOR_NODE_RUNNER_FILENAME),
+    // Release builds bundle this module into runtime/worker/entry.js while
+    // leaving the Node runner emitted under runtime/kernel/integrations.
+    path.resolve(
+      currentModuleDir,
+      "../kernel/integrations",
+      CURSOR_NODE_RUNNER_FILENAME,
+    ),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+};
 
 export const buildCursorNodeRunnerSpawnSpec = (
   runnerPath = resolveCursorNodeRunnerPath(),

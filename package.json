@@ -29,6 +29,7 @@
     "electron:build": "bun run native:build && cd desktop && tsgo --build && vite build && node scripts/check-renderer-bundle-budget.mjs && tsgo -p tsconfig.electron.json && tsgo -p tsconfig.preload.json && cd .. && electron-builder",
     "electron:preview": "bun run electron:dev:low-resource",
     "electron:dev:low-resource": "node desktop/scripts/electron-low-resource-build.mjs && node desktop/scripts/electron-static-preview.mjs",
+    "postinstall": "node desktop/scripts/postinstall-dist-electron.mjs",
     "check:boundary": "node runtime/scripts/check-boundary.mjs",
     "tsc6": "bunx --package typescript@6.0.3 tsc"
   },
