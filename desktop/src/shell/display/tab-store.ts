@@ -64,7 +64,7 @@ type TabStoreSnapshot = DisplayTabListSnapshot & DisplayPanelLayoutSnapshot;
  * sidebar/rail and `DISPLAY_MAIN_CONTENT_MIN_WIDTH` for the main outlet.
  * Use the expand toggle for the "fully take over" case.
  */
-export const DISPLAY_PANEL_MIN_WIDTH = 320;
+export const DISPLAY_PANEL_MIN_WIDTH = 360;
 export const DISPLAY_MAIN_CONTENT_MIN_WIDTH = 450;
 
 const STORAGE_KEY_WIDTH = "stella.displayPanel.width";

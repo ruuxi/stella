@@ -84,7 +84,7 @@
  * launcher entries rather than getting nested behind two layers of
  * padding. */
 .chat-home-launcher__engine .engine-tab {
-  padding: 8px 10px 4px;
+  padding: 8px 2px 4px;
   gap: 14px;
   /* The provider/model list inside has its own scroll — don't let
    * the whole model panel double-scroll. */
