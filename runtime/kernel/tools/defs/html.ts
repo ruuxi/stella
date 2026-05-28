@@ -2,8 +2,8 @@
  * `html` tool — write a self-contained HTML document under
  * `~/.stella/outputs/html/<slug>.html` and surface it inline in the chat as a
  * canvas artifact. The completed file is opened in the workspace panel's
- * Canvas tab; the model should not say "rendered" or describe what's on
- * screen — the user already sees the canvas.
+ * Canvas tab. You should not describe the canvas contents in chat, because
+ * the user can view the artifact directly.
  *
  * Orchestrator-only. The general agent builds real apps via Vite/HMR;
  * this tool exists so the orchestrator can answer with a richer-than-
