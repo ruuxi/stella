@@ -238,9 +238,7 @@ const VideoCard = ({
         <video
           src={file.url}
           controls
-          autoPlay
           loop
-          muted
           playsInline
           className="display-media__video"
         />
@@ -303,7 +301,6 @@ const AudioCard = ({
             <audio
               src={file.url}
               controls
-              autoPlay
               className="display-media__audio"
             />
           ) : isMissing ? (

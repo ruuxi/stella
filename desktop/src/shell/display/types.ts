@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
  * wider.
  */
 export type DisplayTabKind =
+  | "home"
   | "chat"
   | "canvas"
   | "url"
