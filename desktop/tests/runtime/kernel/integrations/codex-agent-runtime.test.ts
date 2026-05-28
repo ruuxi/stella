@@ -448,6 +448,61 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("can suppress final-answer streaming while still returning the Codex result", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-suppressed-stream-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-suppressed-stream' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-suppressed-stream', status: 'inProgress' };",
+        "    const completedTurn = { id: turn.id, status: 'completed' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'msg-suppressed-stream', delta: 'task ' } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'msg-suppressed-stream', delta: 'done' } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-suppressed-stream', text: 'task done', phase: 'final_answer' } } });",
+        "    send({ method: 'turn/completed', params: { threadId, turn: completedTurn } });",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const streamed: string[] = [];
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    try {
+      const result = await runCodexAgentTurn({
+        runId: "run-suppressed-stream",
+        prompt: "hello",
+        streamFinalAnswer: false,
+        onStream: (chunk) => streamed.push(chunk),
+      });
+
+      expect(result.text).toBe("task done");
+      expect(streamed).toEqual([]);
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("does not finish on a commentary assistant message before Codex keeps working", async () => {
     const dir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-fake-codex-commentary-before-tool-"),
