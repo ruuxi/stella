@@ -1,5 +1,5 @@
 .home-content {
-  --home-scale-title: clamp(1.9rem, 4vw, 2.8rem);
+  --home-scale-title: 42px;
   --home-scale-category-text: 14px;
   --home-scale-option-text: 17px;
   --home-scale-option-gap: 8px;
@@ -80,6 +80,14 @@
   text-align: center;
   margin: 0 0 32px;
   width: 100%;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (max-width: 640px) {
+  .home-content {
+    --home-scale-title: 34px;
+  }
 }
 
 /* "Back to chat" — plain text link shown when home overlays existing chat */

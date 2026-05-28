@@ -10,10 +10,13 @@
  * parallel variables.
  * ============================================================ */
 .chat-viewport-region {
+  --chat-text-font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui,
+    sans-serif;
   --chat-text-size: 15px;
   --chat-text-weight: 400;
   --chat-text-strong-weight: 500;
-  --chat-text-tracking: 0.032em;
+  --chat-text-tracking: 0;
   --chat-text-line-height: 1.75;
   --chat-text-color: var(--text-strong);
 }
@@ -116,6 +119,7 @@
   padding: 7px 11px;
   max-width: 78%;
   width: fit-content;
+  font-family: var(--chat-text-font-family);
   font-size: 13px;
   line-height: 1.35;
   font-weight: var(--chat-text-weight);
@@ -253,6 +257,9 @@
 }
 
 .event-body {
+  font-family: var(--chat-text-font-family);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   font-size: var(--chat-text-size);
   line-height: var(--chat-text-line-height);
   font-weight: var(--chat-text-weight);
@@ -311,6 +318,9 @@
 }
 
 .event-item.assistant .markdown {
+  font-family: var(--chat-text-font-family);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   color: var(--chat-text-color);
   font-size: var(--chat-text-size);
   font-weight: var(--chat-text-weight);
