@@ -1037,6 +1037,60 @@ const copyHistoryDatabase = async (
 };
 
 /**
+ * Default age after which an on-disk history clone is considered orphaned.
+ * Collection runs finish in seconds, so anything older than this can only
+ * be a leftover from a process that died mid-collection before its
+ * `finally` cleanup ran.
+ */
+const ORPHANED_CLONE_MAX_AGE_MS = 60 * 60 * 1000;
+
+const CLONE_FILE_PREFIX = "browser_history_";
+
+/**
+ * Delete leftover history clones (`browser_history_*.db` plus `-wal`/`-shm`
+ * sidecars) under `<baseDir>/cache`. The normal collection paths clean up
+ * their own clone in a `finally` block, but a hard crash mid-collection
+ * (or a process killed before the un-awaited unlink ran) can orphan a
+ * clone permanently. Age-gating keeps this safe to call concurrently with
+ * an in-flight collection: a clone younger than `maxAgeMs` is left alone.
+ */
+export const sweepOrphanedBrowserDbClones = async (
+  baseDir: string,
+  maxAgeMs: number = ORPHANED_CLONE_MAX_AGE_MS,
+): Promise<number> => {
+  const cacheDir = path.join(baseDir, "cache");
+  let entries: string[];
+  try {
+    entries = await fs.readdir(cacheDir);
+  } catch {
+    // No cache directory yet — nothing to sweep.
+    return 0;
+  }
+
+  const cutoff = Date.now() - maxAgeMs;
+  let removed = 0;
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (!entry.startsWith(CLONE_FILE_PREFIX)) return;
+      const fullPath = path.join(cacheDir, entry);
+      try {
+        const stat = await fs.stat(fullPath);
+        if (stat.mtimeMs > cutoff) return;
+        await fs.unlink(fullPath);
+        removed += 1;
+      } catch {
+        // Already gone or unreadable — ignore.
+      }
+    }),
+  );
+
+  if (removed > 0) {
+    log(`Swept ${removed} orphaned browser db clone file(s) from ${cacheDir}`);
+  }
+  return removed;
+};
+
+/**
  * Run cluster query (may not exist in all browsers)
  */
 const queryClusterDomains = (db: SqliteDatabase): string[] => {
