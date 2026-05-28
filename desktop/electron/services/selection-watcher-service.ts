@@ -160,8 +160,13 @@ export class SelectionWatcherService {
     }
 
     if (this.currentText === trimmed) {
-      // Same selection as the chip we already have up; leave it alone so
-      // we don't spam the user with re-anchoring during a click-through.
+      if (!wasDrag) {
+        // Some AX providers keep returning the previous selected text after
+        // a plain click has already cleared the visible selection.
+        this.hide('plain-click-same-selection')
+      }
+      // Same selection as the chip we already have up; leave it alone during
+      // drag-driven rechecks so we don't spam the user with re-anchoring.
       return
     }
 
