@@ -1,11 +1,11 @@
 ---
 name: stella-computer
-description: Desktop-app automation through Stella's stella-computer CLI.
+description: macOS desktop-app automation through Stella's stella-computer CLI.
 ---
 
-# Stella Computer
+# Stella Computer for macOS
 
-Use this skill when the user asks you to inspect or operate a desktop app, including Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, or any other windowed app.
+Use this skill when the user asks you to inspect or operate a macOS desktop app, including Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, or any other windowed app.
 
 Use `stella-computer` through `exec_command`.
 

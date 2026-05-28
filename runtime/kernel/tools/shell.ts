@@ -119,7 +119,6 @@ const SNAPSHOT_IGNORED_DIRS = new Set([
   "coverage",
   ".cache",
   "electron-user-data",
-  "state/electron-user-data",
 ]);
 
 const APPROX_BYTES_PER_TOKEN = 4;

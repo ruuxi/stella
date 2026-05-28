@@ -168,11 +168,10 @@
         ]
       },
       {
-        "from": "state",
-        "to": "state",
+        "from": "runtime/home-seed",
+        "to": "runtime/home-seed",
         "filter": [
           "DREAM.md",
-          "registry.md",
           "skills/**",
           "outputs/README.md"
         ]

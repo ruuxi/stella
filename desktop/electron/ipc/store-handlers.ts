@@ -170,9 +170,9 @@ const installConfirmedStoreRelease = async (
   const installRecord = (await runner.installFromBlueprint(
     installPayload,
   )) satisfies StoreInstallRecord;
-  const stellaRoot = options.getStellaRoot();
-  if (stellaRoot) {
-    await cleanupStoreInstallArtifacts(stellaRoot, installPayload).catch(
+  const stellaHome = options.getStellaHome();
+  if (stellaHome) {
+    await cleanupStoreInstallArtifacts(stellaHome, installPayload).catch(
       () => undefined,
     );
   }
@@ -180,10 +180,10 @@ const installConfirmedStoreRelease = async (
 };
 
 const cleanupStoreInstallArtifacts = async (
-  stellaRoot: string,
+  stellaHome: string,
   payload: { packageId: string; releaseNumber: number },
 ) => {
-  const artifactRoot = path.join(stellaRoot, "state", "raw", "store-installs");
+  const artifactRoot = path.join(stellaHome, "raw", "store-installs");
   const safePackageSegment = safeStorePackageSegment(payload.packageId);
   const packagePrefix = `${safePackageSegment}-r`;
   await fs.rm(

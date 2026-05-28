@@ -7,8 +7,8 @@ description: Use Store integrations and imported MCP/API connectors through the 
 
 Stella Connect has two paths:
 
-- Store integrations: the user enables them in Store, Stella writes a small skill under `state/skills/<id>/SKILL.md`, and future runs call them with `stella-connect`.
-- Imported MCP/API connectors: the user or agent adds them with `stella-connect import-mcp`; the CLI probes the server, persists it under `state/connectors/`, and writes the same kind of per-connector skill.
+- Store integrations: the user enables them in Store, Stella writes a small skill under `~/.stella/skills/<id>/SKILL.md`, and future runs call them with `stella-connect`.
+- Imported MCP/API connectors: the user or agent adds them with `stella-connect import-mcp`; the CLI probes the server, persists it under `~/.stella/connectors/`, and writes the same kind of per-connector skill.
 
 Connector action schemas are never preloaded into the model context. Inspect them on demand with `stella-connect tools` and invoke them with `stella-connect call`.
 
@@ -54,7 +54,7 @@ stella-connect import-mcp \
   --url https://example.com/mcp
 ```
 
-The import probes available actions, writes `state/connectors/commands.json`, and creates `state/skills/my-service/SKILL.md`.
+The import probes available actions, writes `~/.stella/connectors/commands.json`, and creates `~/.stella/skills/my-service/SKILL.md`.
 
 ## Calling a connector
 
@@ -91,7 +91,7 @@ stella-connect import-mcp \
   --auth-header-name Authorization --auth-scheme bearer
 ```
 
-When the CLI hits a 401/403 (during `import-mcp` probe, `tools`, `call`, or `refresh-skill`) AND the connector has an `auth-token-key` AND the worker exposed its CLI bridge socket (env `STELLA_CLI_BRIDGE_SOCK`, normally always set under Stella), the CLI **pauses and pops the matching dialog** inline. For OAuth: browser opens, user authorizes, token saves. For api_key: paste-key modal, user pastes, token saves. Either way the desktop writes to `state/connectors/.credentials.json` and the CLI retries the original call once — you just see the successful result in your tool output, no extra steps needed.
+When the CLI hits a 401/403 (during `import-mcp` probe, `tools`, `call`, or `refresh-skill`) AND the connector has an `auth-token-key` AND the worker exposed its CLI bridge socket (env `STELLA_CLI_BRIDGE_SOCK`, normally always set under Stella), the CLI **pauses and pops the matching dialog** inline. For OAuth: browser opens, user authorizes, token saves. For api_key: paste-key modal, user pastes, token saves. Either way the desktop writes to `~/.stella/connectors/.credentials.json` and the CLI retries the original call once — you just see the successful result in your tool output, no extra steps needed.
 
 For `tools`, `call`, and `refresh-skill`: if the user dismisses the dialog, the bridge is unreachable, or the second attempt also fails (bad key), the CLI exits with **status 2** and prints `{ "ok": false, "error": "auth_required", "tokenKey": "...", "displayName": "...", ... }` on stdout. Treat that as "user declined / key is bad" and either ask the user what went wrong or move on; don't immediately retry the same command without a different plan.
 
@@ -107,4 +107,4 @@ The `RequestCredential` agent tool still exists for non-connector secrets — us
 stella-connect remove <id>
 ```
 
-Drops the entry from `state/connectors/{commands,api-connectors}.json`. Stored tokens under `state/connectors/.credentials.json` are not deleted automatically — drop them manually if the connector is gone for good.
+Drops the entry from `~/.stella/connectors/{commands,api-connectors}.json`. Stored tokens under `~/.stella/connectors/.credentials.json` are not deleted automatically — drop them manually if the connector is gone for good.

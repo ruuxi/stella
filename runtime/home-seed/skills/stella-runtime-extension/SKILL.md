@@ -102,7 +102,7 @@ For core Stella tools, prefer the built-in tool path:
 
 For extension-owned tools, create `runtime/extensions/tools/<name>.tool.ts` or register a tool from an extension `index.ts`.
 
-Tool definitions return `ToolResult` and receive `ToolContext`. Keep schemas narrow and descriptions concise; put larger operating guidance into a skill under `state/skills/`.
+Tool definitions return `ToolResult` and receive `ToolContext`. Keep schemas narrow and descriptions concise; put larger operating guidance into a skill under `runtime/home-seed/skills/`.
 
 ## Adding Hooks Or Providers
 
@@ -137,7 +137,7 @@ Providers implement `ProviderDefinition` from `runtime/kernel/extensions/types.t
 
 Agent prompts live in `runtime/extensions/stella-runtime/agents/*.md`. Keep prompt changes small and outcome-first. Do not add tool schema reference sections; tool schemas are already attached by the runtime.
 
-General-agent prompts should stay lean. Move detailed reusable procedure into `state/skills/<skill-id>/SKILL.md` and have the prompt point to the skill by name.
+General-agent prompts should stay lean. Move detailed reusable procedure into `runtime/home-seed/skills/<skill-id>/SKILL.md` and have the prompt point to the skill by name.
 
 ## Validation
 

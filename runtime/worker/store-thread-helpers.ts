@@ -110,7 +110,6 @@ const STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS = [
   ":(exclude,glob)**/dist-electron/**",
   ":(exclude,glob)**/build/**",
   ":(exclude,glob).stella/electron-user-data/**",
-  ":(exclude,glob)state/electron-user-data/**",
   ":(exclude,glob)**/*.snap",
 ];
 

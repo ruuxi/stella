@@ -4,9 +4,11 @@
 #define NOMINMAX
 #include <windows.h>
 #include <UIAutomationClient.h>
+#include <dwmapi.h>
 #include <gdiplus.h>
 #include <objidl.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <tlhelp32.h>
 
 #include <algorithm>
@@ -22,6 +24,7 @@
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "dwmapi.lib")
 
 #ifndef PW_RENDERFULLCONTENT
 #define PW_RENDERFULLCONTENT 0x00000002
@@ -316,6 +319,9 @@ struct Snapshot {
     std::wstring focusedSummary;
     std::wstring selectedText;
     std::vector<ElementRecord> elements;
+    std::vector<std::string> warnings;
+    std::string captureMethod;
+    bool captureOccluded = false;
 };
 
 static bool envFlag(const char* name) {
@@ -395,6 +401,8 @@ static long long parseHwndTarget(const std::wstring& query) {
     unsigned long long value = wcstoull(lower.c_str() + prefix.size(), &end, 10);
     return value > 0 ? (long long)value : 0;
 }
+
+static std::wstring classNameForWindow(HWND hwnd);
 
 static DWORD integrityRidForProcess(DWORD pid) {
     HANDLE process = pid == GetCurrentProcessId()
@@ -606,6 +614,85 @@ static WindowProcess resolveApp(IUIAutomation* uia, const std::wstring& query, l
     throw std::runtime_error("appNotFound(\"" + toUtf8(query) + "\")");
 }
 
+static WindowProcess launchApp(IUIAutomation* uia, const std::wstring& query, bool startMinimized) {
+    HWND previousForeground = GetForegroundWindow();
+    std::set<long long> existingWindows;
+    for (const auto& win : listWindowProcesses(uia)) {
+        existingWindows.insert(hwndValue(win.hwnd));
+    }
+    SHELLEXECUTEINFOW info = {};
+    info.cbSize = sizeof(info);
+    info.fMask = SEE_MASK_NOCLOSEPROCESS;
+    info.lpFile = query.c_str();
+    info.nShow = startMinimized ? SW_SHOWMINNOACTIVE : SW_SHOWNOACTIVATE;
+    DWORD launchedPid = 0;
+    bool launchedOk = !!ShellExecuteExW(&info);
+    if (launchedOk && info.hProcess) {
+        launchedPid = GetProcessId(info.hProcess);
+    }
+    if (!launchedOk) {
+        IApplicationActivationManager* activation = nullptr;
+        HRESULT hr = CoCreateInstance(
+            CLSID_ApplicationActivationManager,
+            NULL,
+            CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(&activation)
+        );
+        if (SUCCEEDED(hr) && activation) {
+            hr = activation->ActivateApplication(query.c_str(), nullptr, AO_NONE, &launchedPid);
+            activation->Release();
+            launchedOk = SUCCEEDED(hr);
+        }
+    }
+    if (!launchedOk) {
+        throw std::runtime_error("launchFailed(\"" + toUtf8(query) + "\")");
+    }
+
+    WindowProcess launched;
+    for (int i = 0; i < 40 && !launched.hwnd; i++) {
+        Sleep(250);
+        std::vector<WindowProcess> windows = listWindowProcesses(uia);
+        for (const auto& win : windows) {
+            if (launchedPid > 0 && win.pid == launchedPid) {
+                launched = win;
+                break;
+            }
+        }
+        if (!launched.hwnd) {
+            std::wstring lowerQuery = lowerW(query);
+            for (const auto& win : windows) {
+                std::wstring name = lowerW(win.processName);
+                std::wstring title = lowerW(win.title);
+                if (name == lowerQuery || name + L".exe" == lowerQuery ||
+                    (!lowerQuery.empty() && title.find(lowerQuery) != std::wstring::npos)) {
+                    launched = win;
+                    break;
+                }
+            }
+        }
+        if (!launched.hwnd) {
+            for (const auto& win : windows) {
+                if (!existingWindows.count(hwndValue(win.hwnd))) {
+                    launched = win;
+                    break;
+                }
+            }
+        }
+    }
+    if (info.hProcess) CloseHandle(info.hProcess);
+    if (previousForeground && IsWindow(previousForeground) && GetForegroundWindow() != previousForeground) {
+        SetForegroundWindow(previousForeground);
+    }
+    if (!launched.hwnd) {
+        throw std::runtime_error("launchWindowNotFound(\"" + toUtf8(query) + "\")");
+    }
+    if (startMinimized) {
+        ShowWindow(launched.hwnd, SW_SHOWMINNOACTIVE);
+        ShowWindow(launched.hwnd, SW_MINIMIZE);
+    }
+    return launched;
+}
+
 static Frame frameFromRect(const RECT& rect) {
     Frame frame;
     frame.present = true;
@@ -619,6 +706,10 @@ static Frame frameFromRect(const RECT& rect) {
 
 static Frame windowBounds(HWND hwnd, IUIAutomationElement* element) {
     RECT rect = {};
+    if (hwnd && SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &rect, sizeof(rect))) &&
+        rect.right > rect.left && rect.bottom > rect.top) {
+        return frameFromRect(rect);
+    }
     if (hwnd && GetWindowRect(hwnd, &rect)) {
         return frameFromRect(rect);
     }
@@ -826,25 +917,14 @@ static std::string frameJson(const Frame& frame) {
     return out.str();
 }
 
-static void renderTreeVisit(IUIAutomation* uia, IUIAutomationElement* node, int depth, const Frame& windowFrame,
-                            std::set<std::string>& visited, std::vector<ElementRecord>& records,
-                            std::vector<std::string>& lines) {
-    if (!node || records.size() >= 500 || depth > 16) return;
-    std::vector<int> runtime = getRuntimeId(node);
-    std::ostringstream key;
-    for (int value : runtime) key << value << ".";
-    std::string runtimeKey = key.str();
-    if (runtimeKey.empty()) runtimeKey = std::to_string((uintptr_t)node);
-    if (!visited.insert(runtimeKey).second) return;
+static const size_t MAX_TREE_ELEMENTS = 3000;
+static const int MAX_TREE_DEPTH = 24;
 
-    int index = (int)records.size();
-    ElementRecord record = elementRecord(node, index, windowFrame);
-    records.push_back(record);
-
+static void appendTreeLine(const ElementRecord& record, int depth, std::vector<std::string>& lines) {
     std::wstring role = !record.localizedControlType.empty() ? record.localizedControlType : record.controlType;
     std::wstring title = elementTitle(record);
     std::string line((depth + 1), '\t');
-    line += std::to_string(index) + " " + toUtf8(role) + " " + toUtf8(title);
+    line += std::to_string(record.index) + " " + toUtf8(role) + " " + toUtf8(title);
     if (!record.value.empty() && record.value != title) {
         std::string value = toUtf8(record.value);
         std::replace(value.begin(), value.end(), '\r', ' ');
@@ -865,6 +945,23 @@ static void renderTreeVisit(IUIAutomation* uia, IUIAutomationElement* node, int 
             ", height: " + std::to_string((int)std::round(record.frame.height)) + "}";
     }
     lines.push_back(line);
+}
+
+static void renderTreeVisit(IUIAutomation* uia, IUIAutomationElement* node, int depth, const Frame& windowFrame,
+                            std::set<std::string>& visited, std::vector<ElementRecord>& records,
+                            std::vector<std::string>& lines) {
+    if (!node || records.size() >= MAX_TREE_ELEMENTS || depth > MAX_TREE_DEPTH) return;
+    std::vector<int> runtime = getRuntimeId(node);
+    std::ostringstream key;
+    for (int value : runtime) key << value << ".";
+    std::string runtimeKey = key.str();
+    if (runtimeKey.empty()) runtimeKey = std::to_string((uintptr_t)node);
+    if (!visited.insert(runtimeKey).second) return;
+
+    int index = (int)records.size();
+    ElementRecord record = elementRecord(node, index, windowFrame);
+    records.push_back(record);
+    appendTreeLine(record, depth, lines);
 
     IUIAutomationCondition* condition = nullptr;
     IUIAutomationElementArray* children = nullptr;
@@ -957,6 +1054,32 @@ static bool sampledBitmapLooksBlack(HDC dc, int width, int height) {
     return sampleCount > 0 && visibleCount == 0;
 }
 
+static bool rectsOverlapEnough(const RECT& a, const RECT& b) {
+    RECT intersection = {};
+    if (!IntersectRect(&intersection, &a, &b)) return false;
+    LONG width = intersection.right - intersection.left;
+    LONG height = intersection.bottom - intersection.top;
+    return width > 16 && height > 16;
+}
+
+static bool isWindowLikelyOccluded(HWND hwnd, const Frame& bounds) {
+    if (!hwnd || !bounds.present) return false;
+    RECT target = {
+        (LONG)std::round(bounds.x),
+        (LONG)std::round(bounds.y),
+        (LONG)std::round(bounds.x + bounds.width),
+        (LONG)std::round(bounds.y + bounds.height),
+    };
+    for (HWND candidate = GetTopWindow(NULL); candidate; candidate = GetWindow(candidate, GW_HWNDNEXT)) {
+        if (candidate == hwnd) return false;
+        if (!IsWindowVisible(candidate)) continue;
+        RECT rect = {};
+        if (!GetWindowRect(candidate, &rect) || rect.right <= rect.left || rect.bottom <= rect.top) continue;
+        if (rectsOverlapEnough(target, rect)) return true;
+    }
+    return false;
+}
+
 static std::string captureScreenRegionPngBase64(const Frame& bounds) {
     if (!bounds.present || bounds.width <= 0 || bounds.height <= 0) return "";
     int width = std::max(1, (int)std::round(bounds.width));
@@ -1004,9 +1127,13 @@ static std::string capturePrintWindowPngBase64(HWND hwnd, const Frame& bounds) {
     return out;
 }
 
-static std::string captureWindowPngBase64(HWND hwnd, const Frame& bounds) {
+static std::string captureWindowPngBase64(HWND hwnd, const Frame& bounds, std::string* methodOut = nullptr) {
     std::string out = capturePrintWindowPngBase64(hwnd, bounds);
-    if (!out.empty()) return out;
+    if (!out.empty()) {
+        if (methodOut) *methodOut = "printwindow";
+        return out;
+    }
+    if (methodOut) *methodOut = "bitblt";
     return captureScreenRegionPngBase64(bounds);
 }
 
@@ -1072,7 +1199,11 @@ static Snapshot buildSnapshot(IUIAutomation* uia, const std::wstring& query, lon
     snapshot.windowBounds = windowBounds(process.hwnd, root);
     std::set<std::string> visited;
     renderTreeVisit(uia, root, 0, snapshot.windowBounds, visited, snapshot.elements, snapshot.treeLines);
-    snapshot.screenshotBase64 = captureWindowPngBase64(process.hwnd, snapshot.windowBounds);
+    snapshot.screenshotBase64 = captureWindowPngBase64(process.hwnd, snapshot.windowBounds, &snapshot.captureMethod);
+    snapshot.captureOccluded = snapshot.captureMethod == "bitblt" && isWindowLikelyOccluded(process.hwnd, snapshot.windowBounds);
+    if (snapshot.captureOccluded) {
+        snapshot.warnings.push_back("Screenshot used screen-region capture while another window appears to overlap the target; pixels may include the covering window.");
+    }
     snapshot.focusedSummary = focusedSummary(uia, process.pid);
     snapshot.selectedText = selectedText(uia, process.pid);
     safeRelease(root);
@@ -1318,6 +1449,181 @@ static void sendKey(HWND hwnd, const std::string& key) {
     for (int mod : modifiers) PostMessageW(hwnd, WM_KEYUP, mod, 0);
 }
 
+struct InputState {
+    HWND foreground = NULL;
+    POINT cursor = {};
+    bool cursorKnown = false;
+};
+
+static InputState captureInputState() {
+    InputState state;
+    state.foreground = GetForegroundWindow();
+    state.cursorKnown = !!GetCursorPos(&state.cursor);
+    return state;
+}
+
+static void restoreInputState(const InputState& state) {
+    if (state.cursorKnown) SetCursorPos(state.cursor.x, state.cursor.y);
+    if (state.foreground && IsWindow(state.foreground) && GetForegroundWindow() != state.foreground) {
+        SetForegroundWindow(state.foreground);
+    }
+}
+
+static void ensureForegroundInputTarget(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) throw std::runtime_error("foreground dispatch target window is unavailable");
+    if (GetForegroundWindow() == hwnd) return;
+    ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    SetForegroundWindow(hwnd);
+    Sleep(80);
+    if (GetForegroundWindow() != hwnd) {
+        throw std::runtime_error("foreground dispatch was blocked by Windows foreground activation policy");
+    }
+}
+
+static bool isKnownBackgroundDropTarget(const WindowProcess& process, const std::string& eventKind) {
+    std::wstring haystack = lowerW(process.processName + L" " + classNameForWindow(process.hwnd));
+    bool chromium = haystack.find(L"chrome_widgetwin") != std::wstring::npos ||
+                    haystack.find(L"chrome") != std::wstring::npos ||
+                    haystack.find(L"msedge") != std::wstring::npos ||
+                    haystack.find(L"electron") != std::wstring::npos;
+    bool xaml = haystack.find(L"applicationframewindow") != std::wstring::npos ||
+                haystack.find(L"windows.ui.core") != std::wstring::npos ||
+                haystack.find(L"xaml") != std::wstring::npos;
+    bool gtk = haystack.find(L"gtk") != std::wstring::npos || haystack.find(L"gdk") != std::wstring::npos;
+    bool vcl = haystack.find(L"tapplication") != std::wstring::npos || haystack.find(L"vcl") != std::wstring::npos;
+    if (eventKind == "mouse" || eventKind == "drag" || eventKind == "scroll") {
+        return chromium || xaml || gtk || vcl;
+    }
+    if (eventKind == "keyboard" || eventKind == "text") {
+        return xaml || gtk || vcl;
+    }
+    return false;
+}
+
+static bool shouldUseForegroundDispatch(const WindowProcess& process, const std::string& eventKind, const std::string& dispatch) {
+    if (dispatch == "foreground") return true;
+    bool knownDrop = isKnownBackgroundDropTarget(process, eventKind);
+    if (dispatch == "auto") return knownDrop;
+    if (dispatch == "background" && knownDrop) {
+        throw std::runtime_error(
+            "background_unavailable: Windows is likely to silently drop " + eventKind +
+            " input for this target framework; retry with --dispatch foreground or --dispatch auto."
+        );
+    }
+    return false;
+}
+
+static void sendForegroundClick(HWND hwnd, POINT screen, const std::string& button, int count) {
+    InputState state = captureInputState();
+    ensureForegroundInputTarget(hwnd);
+    SetCursorPos(screen.x, screen.y);
+    DWORD down = MOUSEEVENTF_LEFTDOWN, up = MOUSEEVENTF_LEFTUP;
+    if (button == "right") {
+        down = MOUSEEVENTF_RIGHTDOWN;
+        up = MOUSEEVENTF_RIGHTUP;
+    } else if (button == "middle") {
+        down = MOUSEEVENTF_MIDDLEDOWN;
+        up = MOUSEEVENTF_MIDDLEUP;
+    }
+    for (int i = 0; i < std::max(1, count); i++) {
+        mouse_event(down, 0, 0, 0, 0);
+        Sleep(35);
+        mouse_event(up, 0, 0, 0, 0);
+        Sleep(50);
+    }
+    restoreInputState(state);
+}
+
+static void sendForegroundDrag(HWND hwnd, POINT from, POINT to) {
+    InputState state = captureInputState();
+    ensureForegroundInputTarget(hwnd);
+    SetCursorPos(from.x, from.y);
+    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+    for (int i = 1; i <= 16; i++) {
+        int x = (int)std::round(from.x + (to.x - from.x) * i / 16.0);
+        int y = (int)std::round(from.y + (to.y - from.y) * i / 16.0);
+        SetCursorPos(x, y);
+        Sleep(20);
+    }
+    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+    restoreInputState(state);
+}
+
+static void sendForegroundScroll(HWND hwnd, POINT screen, const std::string& direction, double pages) {
+    InputState state = captureInputState();
+    ensureForegroundInputTarget(hwnd);
+    SetCursorPos(screen.x, screen.y);
+    int delta = (int)std::round(120 * pages);
+    DWORD flag = MOUSEEVENTF_WHEEL;
+    if (direction == "down" || direction == "right") delta *= -1;
+    if (direction == "left" || direction == "right") flag = MOUSEEVENTF_HWHEEL;
+    mouse_event(flag, 0, 0, (DWORD)delta, 0);
+    restoreInputState(state);
+}
+
+static std::vector<std::string> keyParts(const std::string& key) {
+    std::vector<std::string> parts;
+    std::string current;
+    for (char c : key) {
+        if (c == '+') {
+            if (!current.empty()) parts.push_back(current);
+            current.clear();
+        } else {
+            current.push_back(c);
+        }
+    }
+    if (!current.empty()) parts.push_back(current);
+    return parts;
+}
+
+static void sendForegroundKey(HWND hwnd, const std::string& key) {
+    InputState state = captureInputState();
+    ensureForegroundInputTarget(hwnd);
+    std::vector<std::string> parts = keyParts(key);
+    if (parts.empty()) throw std::runtime_error("press_key requires a key.");
+    std::vector<int> modifiers;
+    for (size_t i = 0; i + 1 < parts.size(); i++) {
+        std::string m = parts[i];
+        std::transform(m.begin(), m.end(), m.begin(), ::tolower);
+        if (m == "ctrl" || m == "control") modifiers.push_back(VK_CONTROL);
+        else if (m == "shift") modifiers.push_back(VK_SHIFT);
+        else if (m == "alt") modifiers.push_back(VK_MENU);
+        else if (m == "super" || m == "win" || m == "cmd") modifiers.push_back(VK_LWIN);
+    }
+    auto sendVk = [](WORD vk, DWORD flags) {
+        INPUT input = {};
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = vk;
+        input.ki.dwFlags = flags;
+        SendInput(1, &input, sizeof(INPUT));
+    };
+    for (int mod : modifiers) sendVk((WORD)mod, 0);
+    WORD vk = (WORD)virtualKey(parts.back());
+    sendVk(vk, 0);
+    Sleep(25);
+    sendVk(vk, KEYEVENTF_KEYUP);
+    std::reverse(modifiers.begin(), modifiers.end());
+    for (int mod : modifiers) sendVk((WORD)mod, KEYEVENTF_KEYUP);
+    restoreInputState(state);
+}
+
+static void sendForegroundText(HWND hwnd, const std::wstring& text) {
+    InputState state = captureInputState();
+    ensureForegroundInputTarget(hwnd);
+    for (wchar_t ch : text) {
+        INPUT inputs[2] = {};
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].ki.wScan = ch;
+        inputs[0].ki.dwFlags = KEYEVENTF_UNICODE;
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].ki.wScan = ch;
+        inputs[1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+        SendInput(2, inputs, sizeof(INPUT));
+        Sleep(8);
+    }
+    restoreInputState(state);
+}
+
 static bool invokePreferredClick(IUIAutomationElement* element) {
     IUIAutomationInvokePattern* invoke = getPattern<IUIAutomationInvokePattern>(element, UIA_InvokePatternId);
     if (invoke) {
@@ -1337,6 +1643,21 @@ static bool invokePreferredClick(IUIAutomationElement* element) {
         toggle->Release();
         if (SUCCEEDED(hr)) return true;
     }
+    IUIAutomationExpandCollapsePattern* expand = getPattern<IUIAutomationExpandCollapsePattern>(element, UIA_ExpandCollapsePatternId);
+    if (expand) {
+        ExpandCollapseState state = ExpandCollapseState_LeafNode;
+        HRESULT hr = expand->get_CurrentExpandCollapseState(&state);
+        bool attempted = false;
+        if (SUCCEEDED(hr) && state == ExpandCollapseState_Collapsed) {
+            hr = expand->Expand();
+            attempted = true;
+        } else if (SUCCEEDED(hr) && state == ExpandCollapseState_Expanded) {
+            hr = expand->Collapse();
+            attempted = true;
+        }
+        expand->Release();
+        if (attempted && SUCCEEDED(hr)) return true;
+    }
     return false;
 }
 
@@ -1354,6 +1675,11 @@ static bool hasPreferredClickPattern(IUIAutomationElement* element) {
     IUIAutomationTogglePattern* toggle = getPattern<IUIAutomationTogglePattern>(element, UIA_TogglePatternId);
     if (toggle) {
         toggle->Release();
+        return true;
+    }
+    IUIAutomationExpandCollapsePattern* expand = getPattern<IUIAutomationExpandCollapsePattern>(element, UIA_ExpandCollapsePatternId);
+    if (expand) {
+        expand->Release();
         return true;
     }
     return false;
@@ -1568,13 +1894,14 @@ static ActionProbe captureProbe() {
     return probe;
 }
 
-static std::string receiptJson(const ActionProbe& before, const std::string& route) {
+static std::string receiptJson(const ActionProbe& before, const std::string& route, const std::string& dispatch) {
     POINT after = {};
     bool afterKnown = !!GetCursorPos(&after);
     bool cursorMoved = !before.cursorKnown || !afterKnown || before.cursor.x != after.x || before.cursor.y != after.y;
     bool foregroundChanged = before.foreground != (long long)GetForegroundWindow();
     std::ostringstream out;
     out << "{\"ok\":true,\"route\":" << jsonString(route)
+        << ",\"dispatch\":" << jsonString(dispatch)
         << ",\"lane\":\"same_session\",\"background_safe\":" << ((!cursorMoved && !foregroundChanged) ? "true" : "false")
         << ",\"cursor_moved\":" << (cursorMoved ? "true" : "false")
         << ",\"foreground_changed\":" << (foregroundChanged ? "true" : "false")
@@ -1627,6 +1954,19 @@ static std::string snapshotJson(const Snapshot& snapshot) {
     out << ",\"selectedText\":";
     if (snapshot.selectedText.empty()) out << "null";
     else out << jsonString(toUtf8(snapshot.selectedText));
+    out << ",\"warnings\":[";
+    for (size_t i = 0; i < snapshot.warnings.size(); i++) {
+        if (i) out << ",";
+        out << jsonString(snapshot.warnings[i]);
+    }
+    out << "],\"capture\":{\"method\":";
+    if (snapshot.captureMethod.empty()) out << "null";
+    else out << jsonString(snapshot.captureMethod);
+    out << ",\"occluded\":" << (snapshot.captureOccluded ? "true" : "false");
+    if (snapshot.captureOccluded && !snapshot.warnings.empty()) {
+        out << ",\"warning\":" << jsonString(snapshot.warnings.front());
+    }
+    out << "}";
     out << ",\"elements\":[";
     for (size_t i = 0; i < snapshot.elements.size(); i++) {
         if (i) out << ",";
@@ -1650,6 +1990,70 @@ static std::string listAppsText(IUIAutomation* uia) {
         out << name << " -- " << name << " [running, pid=" << windows[i].pid
             << ", target=hwnd:" << hwndValue(windows[i].hwnd) << ", window=" << title << "]";
     }
+    return out.str();
+}
+
+static std::wstring classNameForWindow(HWND hwnd) {
+    wchar_t buffer[256] = {};
+    int length = GetClassNameW(hwnd, buffer, (int)(sizeof(buffer) / sizeof(buffer[0])));
+    return length > 0 ? std::wstring(buffer, buffer + length) : L"";
+}
+
+static std::string windowRecordJson(const WindowProcess& window) {
+    RECT rect = {};
+    Frame bounds;
+    if (GetWindowRect(window.hwnd, &rect)) bounds = frameFromRect(rect);
+    std::ostringstream out;
+    out << "{\"pid\":" << window.pid
+        << ",\"windowId\":" << hwndValue(window.hwnd)
+        << ",\"app\":" << jsonString(toUtf8(window.processName))
+        << ",\"title\":" << jsonString(toUtf8(window.title))
+        << ",\"bounds\":" << frameJson(bounds)
+        << ",\"foreground\":" << (GetForegroundWindow() == window.hwnd ? "true" : "false")
+        << ",\"className\":" << jsonString(toUtf8(classNameForWindow(window.hwnd)))
+        << "}";
+    return out.str();
+}
+
+static std::string listWindowsText(IUIAutomation* uia) {
+    std::vector<WindowProcess> windows = listWindowProcesses(uia);
+    std::sort(windows.begin(), windows.end(), [](const WindowProcess& a, const WindowProcess& b) {
+        if (lowerW(a.processName) == lowerW(b.processName)) return hwndValue(a.hwnd) < hwndValue(b.hwnd);
+        return lowerW(a.processName) < lowerW(b.processName);
+    });
+    std::ostringstream out;
+    for (size_t i = 0; i < windows.size(); i++) {
+        if (i) out << "\n";
+        RECT rect = {};
+        Frame bounds;
+        if (GetWindowRect(windows[i].hwnd, &rect)) bounds = frameFromRect(rect);
+        std::string title = toUtf8(windows[i].title.empty() ? L"untitled" : windows[i].title);
+        std::string name = toUtf8(windows[i].processName);
+        out << name << " -- " << title << " [pid=" << windows[i].pid
+            << ", window-id=" << hwndValue(windows[i].hwnd)
+            << ", target=hwnd:" << hwndValue(windows[i].hwnd);
+        if (bounds.present) {
+            out << ", bounds=" << (int)std::round(bounds.x) << "," << (int)std::round(bounds.y)
+                << " " << (int)std::round(bounds.width) << "x" << (int)std::round(bounds.height);
+        }
+        out << ", class=" << toUtf8(classNameForWindow(windows[i].hwnd)) << "]";
+    }
+    return out.str();
+}
+
+static std::string listWindowsJson(IUIAutomation* uia) {
+    std::vector<WindowProcess> windows = listWindowProcesses(uia);
+    std::sort(windows.begin(), windows.end(), [](const WindowProcess& a, const WindowProcess& b) {
+        if (lowerW(a.processName) == lowerW(b.processName)) return hwndValue(a.hwnd) < hwndValue(b.hwnd);
+        return lowerW(a.processName) < lowerW(b.processName);
+    });
+    std::ostringstream out;
+    out << "{\"ok\":true,\"text\":" << jsonString(listWindowsText(uia)) << ",\"windows\":[";
+    for (size_t i = 0; i < windows.size(); i++) {
+        if (i) out << ",";
+        out << windowRecordJson(windows[i]);
+    }
+    out << "]}";
     return out.str();
 }
 
@@ -1693,6 +2097,121 @@ static std::string okSnapshotJson(const Snapshot& snapshot) {
     return "{\"ok\":true,\"snapshot\":" + snapshotJson(snapshot) + "}";
 }
 
+static std::string executeOperation(IUIAutomation* uia, const Json& operation);
+
+struct DaemonOptions {
+    std::wstring pipeName;
+    std::wstring pidFile;
+};
+
+static bool writeUtf8File(const std::wstring& path, const std::string& text) {
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    BOOL ok = WriteFile(file, text.data(), (DWORD)text.size(), &written, NULL);
+    CloseHandle(file);
+    return ok && written == text.size();
+}
+
+static DaemonOptions parseDaemonOptions(int argc, char** argv) {
+    DaemonOptions options;
+    for (int i = 2; i + 1 < argc; i++) {
+        std::string key = argv[i] ? argv[i] : "";
+        std::wstring value = toWide(argv[i + 1] ? argv[i + 1] : "");
+        if (key == "--pipe-name") {
+            options.pipeName = value;
+            i++;
+        } else if (key == "--pid-file") {
+            options.pidFile = value;
+            i++;
+        }
+    }
+    if (options.pipeName.empty() || options.pidFile.empty()) {
+        throw std::runtime_error("stella-computer-helper daemon requires --pipe-name and --pid-file.");
+    }
+    return options;
+}
+
+static std::string daemonEnvelope(long long seq, int status, const std::string& stdoutText, const std::string& stderrText) {
+    std::ostringstream out;
+    out << "{\"seq\":" << seq
+        << ",\"status\":" << status
+        << ",\"stdout\":" << jsonString(stdoutText)
+        << ",\"stderr\":" << jsonString(stderrText)
+        << "}";
+    return out.str();
+}
+
+static std::string readPipeRequest(HANDLE pipe) {
+    std::string request;
+    char buffer[4096];
+    while (true) {
+        DWORD read = 0;
+        BOOL ok = ReadFile(pipe, buffer, sizeof(buffer), &read, NULL);
+        if (!ok || read == 0) break;
+        request.append(buffer, buffer + read);
+        if (request.find('\n') != std::string::npos) break;
+    }
+    size_t newline = request.find('\n');
+    if (newline != std::string::npos) request.resize(newline);
+    return request;
+}
+
+static void writePipeResponse(HANDLE pipe, const std::string& response) {
+    std::string text = response + "\n";
+    DWORD written = 0;
+    WriteFile(pipe, text.data(), (DWORD)text.size(), &written, NULL);
+    FlushFileBuffers(pipe);
+}
+
+static std::string executeDaemonPayload(IUIAutomation* uia, const std::string& payload) {
+    if (payload.empty()) return "";
+    try {
+        JsonParser parser(payload);
+        Json request = parser.parseValue();
+        long long seq = (long long)request.num("seq", 0);
+        const Json* operation = request.get("operation");
+        if (!operation || operation->type != Json::Object) {
+            return daemonEnvelope(seq, 1, "", "invalid daemon request");
+        }
+        try {
+            return daemonEnvelope(seq, 0, executeOperation(uia, *operation), "");
+        } catch (const std::exception& error) {
+            return daemonEnvelope(seq, 0, failJson(error.what()), "");
+        }
+    } catch (const std::exception& error) {
+        return daemonEnvelope(0, 1, "", error.what());
+    }
+}
+
+static int runDaemon(IUIAutomation* uia, const DaemonOptions& options) {
+    writeUtf8File(options.pidFile, std::to_string(GetCurrentProcessId()));
+    while (true) {
+        HANDLE pipe = CreateNamedPipeW(
+            options.pipeName.c_str(),
+            PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            1,
+            1024 * 1024,
+            1024 * 1024,
+            0,
+            NULL
+        );
+        if (pipe == INVALID_HANDLE_VALUE) {
+            Sleep(200);
+            continue;
+        }
+        BOOL connected = ConnectNamedPipe(pipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
+        if (connected) {
+            std::string request = readPipeRequest(pipe);
+            std::string response = executeDaemonPayload(uia, request);
+            if (!response.empty()) writePipeResponse(pipe, response);
+        }
+        DisconnectNamedPipe(pipe);
+        CloseHandle(pipe);
+    }
+}
+
 static int operationElementIndex(const Json& operation) {
     const Json* element = operation.get("element");
     return element ? (int)element->num("index", -1) : -1;
@@ -1703,6 +2222,9 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     if (tool == "list_apps") {
         return "{\"ok\":true,\"text\":" + jsonString(listAppsText(uia)) + "}";
     }
+    if (tool == "list_windows") {
+        return listWindowsJson(uia);
+    }
     if (tool == "doctor") {
         return "{\"ok\":true,\"text\":" + jsonString(doctorText(uia)) + "}";
     }
@@ -1711,14 +2233,28 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     if (tool == "get_app_state") {
         return okSnapshotJson(buildSnapshot(uia, app, windowId));
     }
+    if (tool == "launch_app") {
+        const Json* startMinimizedValue = operation.get("start_minimized");
+        bool startMinimized = startMinimizedValue && startMinimizedValue->type == Json::Bool && startMinimizedValue->boolValue;
+        WindowProcess launched = launchApp(uia, app, startMinimized);
+        Snapshot snapshot = buildSnapshot(uia, app, hwndValue(launched.hwnd));
+        std::ostringstream out;
+        out << "{\"ok\":true,\"text\":"
+            << jsonString("Launched " + toUtf8(launched.processName) + " target=hwnd:" + std::to_string(hwndValue(launched.hwnd)))
+            << ",\"windows\":[" << windowRecordJson(launched) << "]"
+            << ",\"snapshot\":" << snapshotJson(snapshot) << "}";
+        return out.str();
+    }
 
     WindowProcess process = resolveApp(uia, app, windowId);
     IUIAutomationElement* root = nullptr;
     if (FAILED(uia->ElementFromHandle(process.hwnd, &root)) || !root) {
         throw std::runtime_error("No top-level UI Automation window is available for " + toUtf8(process.processName));
     }
+    IUIAutomationElement* element = nullptr;
+    try {
     const Json* elementJsonValue = operation.get("element");
-    IUIAutomationElement* element = findElement(uia, root, elementJsonValue);
+    element = findElement(uia, root, elementJsonValue);
     Frame windowFrame = parseFrame(&operation);
     const Json* wb = operation.get("windowBounds");
     if (wb && wb->type == Json::Object) {
@@ -1732,6 +2268,10 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     }
     ActionProbe probe = captureProbe();
     std::string route = "unknown";
+    std::string dispatch = operation.str("dispatch", "background");
+    if (dispatch != "background" && dispatch != "foreground" && dispatch != "auto") {
+        throw std::runtime_error("unsupported dispatch mode: " + dispatch);
+    }
 
     if (tool == "click") {
         std::string button = operation.str("mouse_button", "left");
@@ -1755,9 +2295,14 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
                 if (handled) route = "uia.hit_test.click";
             }
             if (!handled) {
-                ensureCanPostMessages(process.pid);
-                sendMouseClick(process.hwnd, point, button, clickCount);
-                route = "hwnd.postmessage.click";
+                if (shouldUseForegroundDispatch(process, "mouse", dispatch)) {
+                    sendForegroundClick(process.hwnd, point, button, clickCount);
+                    route = "foreground.sendinput.click";
+                } else {
+                    ensureCanPostMessages(process.pid);
+                    sendMouseClick(process.hwnd, point, button, clickCount);
+                    route = "hwnd.postmessage.click";
+                }
             }
         }
     } else if (tool == "perform_secondary_action") {
@@ -1775,28 +2320,48 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
             Frame elementFrame = parseFrame(elementJsonValue);
             POINT point = elementFrame.present ? screenPointFromFrame(elementFrame, windowFrame)
                                                : POINT{(LONG)std::round(windowFrame.x + windowFrame.width / 2), (LONG)std::round(windowFrame.y + windowFrame.height / 2)};
-            ensureCanPostMessages(process.pid);
-            sendScroll(process.hwnd, point, direction, pages);
-            route = "hwnd.postmessage.scroll";
+            if (shouldUseForegroundDispatch(process, "scroll", dispatch)) {
+                sendForegroundScroll(process.hwnd, point, direction, pages);
+                route = "foreground.sendinput.scroll";
+            } else {
+                ensureCanPostMessages(process.pid);
+                sendScroll(process.hwnd, point, direction, pages);
+                route = "hwnd.postmessage.scroll";
+            }
         }
     } else if (tool == "drag") {
         POINT from = {(LONG)std::round(windowFrame.x + operation.num("from_x")), (LONG)std::round(windowFrame.y + operation.num("from_y"))};
         POINT to = {(LONG)std::round(windowFrame.x + operation.num("to_x")), (LONG)std::round(windowFrame.y + operation.num("to_y"))};
-        ensureCanPostMessages(process.pid);
-        sendDrag(process.hwnd, from, to);
-        route = "hwnd.postmessage.drag";
+        if (shouldUseForegroundDispatch(process, "drag", dispatch)) {
+            sendForegroundDrag(process.hwnd, from, to);
+            route = "foreground.sendinput.drag";
+        } else {
+            ensureCanPostMessages(process.pid);
+            sendDrag(process.hwnd, from, to);
+            route = "hwnd.postmessage.drag";
+        }
     } else if (tool == "type_text") {
         std::wstring text = toWide(operation.str("text"));
         if (invokeTypeText(uia, root, process, text)) route = "uia_or_hwnd.text_target";
         else {
-            ensureCanPostMessages(process.pid);
-            sendText(process.hwnd, text);
-            route = "hwnd.postmessage.text";
+            if (shouldUseForegroundDispatch(process, "text", dispatch)) {
+                sendForegroundText(process.hwnd, text);
+                route = "foreground.sendinput.text";
+            } else {
+                ensureCanPostMessages(process.pid);
+                sendText(process.hwnd, text);
+                route = "hwnd.postmessage.text";
+            }
         }
     } else if (tool == "press_key") {
-        ensureCanPostMessages(process.pid);
-        sendKey(process.hwnd, operation.str("key"));
-        route = "hwnd.postmessage.key";
+        if (shouldUseForegroundDispatch(process, "keyboard", dispatch)) {
+            sendForegroundKey(process.hwnd, operation.str("key"));
+            route = "foreground.sendinput.key";
+        } else {
+            ensureCanPostMessages(process.pid);
+            sendKey(process.hwnd, operation.str("key"));
+            route = "hwnd.postmessage.key";
+        }
     } else if (tool == "set_value") {
         if (!element) throw std::runtime_error("unknown element_index '" + std::to_string(operationElementIndex(operation)) + "'");
         IUIAutomationValuePattern* value = getPattern<IUIAutomationValuePattern>(element, UIA_ValuePatternId);
@@ -1814,16 +2379,22 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
 
     Sleep(120);
     Snapshot refreshed = buildSnapshot(uia, app, hwndValue(process.hwnd));
-    std::string response = "{\"ok\":true,\"receipt\":" + receiptJson(probe, route) + ",\"snapshot\":" + snapshotJson(refreshed) + "}";
+    std::string response = "{\"ok\":true,\"receipt\":" + receiptJson(probe, route, dispatch) + ",\"snapshot\":" + snapshotJson(refreshed) + "}";
     safeRelease(element);
     safeRelease(root);
     return response;
+    } catch (...) {
+        safeRelease(element);
+        safeRelease(root);
+        throw;
+    }
 }
 
 int main(int argc, char** argv) {
     SetConsoleOutputCP(CP_UTF8);
-    if (argc != 2) {
-        printf("%s\n", failJson("Usage: stella-computer-helper.exe <operation.json>").c_str());
+    bool daemonMode = argc >= 2 && std::string(argv[1] ? argv[1] : "") == "daemon";
+    if (!daemonMode && argc != 2) {
+        printf("%s\n", failJson("Usage: stella-computer-helper.exe <operation.json> | daemon --pipe-name PIPE --pid-file PATH").c_str());
         return 0;
     }
 
@@ -1844,6 +2415,20 @@ int main(int argc, char** argv) {
         if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
         printf("%s\n", failJson("UI Automation initialization failed").c_str());
         return 0;
+    }
+
+    if (daemonMode) {
+        try {
+            int code = runDaemon(uia, parseDaemonOptions(argc, argv));
+            safeRelease(uia);
+            if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
+            return code;
+        } catch (const std::exception& error) {
+            safeRelease(uia);
+            if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
+            printf("%s\n", failJson(error.what()).c_str());
+            return 0;
+        }
     }
 
     try {

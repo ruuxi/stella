@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -84,6 +91,92 @@ describe("reconcileBundledSkills", () => {
     ).resolves.toBe("alpha v1");
     const manifest = await readManifest(home);
     expect(Object.keys(manifest.skills).sort()).toEqual(["alpha", "beta"]);
+  });
+
+  it("seeds only the current platform computer skill", async () => {
+    const bundled = await tempDir("stella-bundled-");
+    const home = await tempDir("stella-home-skills-");
+
+    await writeSkillFile(bundled, "alpha", "SKILL.md", "alpha v1");
+    await writeSkillFile(
+      bundled,
+      "stella-computer-macos",
+      "SKILL.md",
+      "mac skill",
+    );
+    await writeSkillFile(
+      bundled,
+      "stella-computer-windows",
+      "SKILL.md",
+      "windows skill",
+    );
+
+    const report = await reconcileBundledSkills(bundled, home, {
+      platform: "win32",
+    });
+
+    expect(report.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "seed", skillId: "alpha" }),
+        expect.objectContaining({
+          type: "seed",
+          skillId: "stella-computer-windows",
+        }),
+      ]),
+    );
+    await expect(
+      readFile(path.join(home, "stella-computer-windows", "SKILL.md"), "utf-8"),
+    ).resolves.toBe("windows skill");
+    await expect(
+      readFile(path.join(home, "stella-computer-macos", "SKILL.md"), "utf-8"),
+    ).rejects.toThrow();
+    const manifest = await readManifest(home);
+    expect(Object.keys(manifest.skills).sort()).toEqual([
+      "alpha",
+      "stella-computer-windows",
+    ]);
+  });
+
+  it("removes a previously tracked platform computer skill when the platform changes", async () => {
+    const bundled = await tempDir("stella-bundled-");
+    const home = await tempDir("stella-home-skills-");
+
+    await writeSkillFile(
+      bundled,
+      "stella-computer-macos",
+      "SKILL.md",
+      "mac skill",
+    );
+    await writeSkillFile(
+      bundled,
+      "stella-computer-windows",
+      "SKILL.md",
+      "windows skill",
+    );
+
+    await reconcileBundledSkills(bundled, home, { platform: "darwin" });
+    const report = await reconcileBundledSkills(bundled, home, {
+      platform: "win32",
+    });
+
+    expect(report.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "seed",
+          skillId: "stella-computer-windows",
+        }),
+        expect.objectContaining({
+          type: "remove-obsolete",
+          skillId: "stella-computer-macos",
+        }),
+      ]),
+    );
+    await expect(
+      readFile(path.join(home, "stella-computer-macos", "SKILL.md"), "utf-8"),
+    ).rejects.toThrow();
+    await expect(
+      readFile(path.join(home, "stella-computer-windows", "SKILL.md"), "utf-8"),
+    ).resolves.toBe("windows skill");
   });
 
   it("overwrites a home skill when its hash still matches the manifest", async () => {

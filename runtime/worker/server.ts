@@ -2991,8 +2991,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         "_",
       );
       const installRoot = path.join(
-        state.init.stellaRoot,
-        "state",
+        state.init.stellaHomePath,
         "raw",
         "store-installs",
         `${safePackageSegment}-r${payload.releaseNumber}`,
@@ -3018,7 +3017,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           "",
         ].join("\n");
         await fsPromises.writeFile(filePath, `${header}${commit.diff}`, "utf8");
-        referencePaths.push(path.relative(state.init.stellaRoot, filePath));
+        referencePaths.push(filePath);
       }
 
       const sourcePackPath = sourcePackForAgent
@@ -3044,14 +3043,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const installPrompt = buildStoreInstallPrompt({
         displayName: payload.displayName,
         packageId: payload.packageId,
-        installRootRelativePath: path.relative(
-          state.init.stellaRoot,
-          installRoot,
-        ),
-        specRelativePath: path.relative(state.init.stellaRoot, specPath),
-        sourcePackRelativePath: sourcePackPath
-          ? path.relative(state.init.stellaRoot, sourcePackPath)
-          : null,
+        installRootPath: installRoot,
+        specPath,
+        sourcePackPath,
         referencePaths,
         blueprintMarkdown: payload.blueprintMarkdown,
       });

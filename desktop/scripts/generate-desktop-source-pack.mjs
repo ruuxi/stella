@@ -81,7 +81,6 @@ const normalizePath = (value) =>
 const excludedPrefixes = [
   ".git/",
   ".stella/electron-user-data/",
-  "state/electron-user-data/",
   "node_modules/",
   "release-root/",
   "release-assets/",

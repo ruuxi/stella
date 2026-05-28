@@ -1,18 +1,18 @@
 # Dream — Manual Skill Consolidation Protocol
 
-Run this protocol periodically or on demand to review skill health and prune stale entries. This is a _manual_ protocol the General agent can execute on request — it is separate from the background Dream agent that consolidates `thread_summaries` into `state/memories/MEMORY.md` automatically.
+Run this protocol periodically or on demand to review skill health and prune stale entries. This is a _manual_ protocol the General agent can execute on request — it is separate from the background Dream agent that consolidates `thread_summaries` into `memories/MEMORY.md` automatically.
 
 ## When to Dream
 
 - When `skills/` has entries that may be outdated, duplicated, or unused
-- After a long stretch of work where `state/memories/MEMORY.md` shows recurring patterns that should be promoted into a skill
+- After a long stretch of work where `memories/MEMORY.md` shows recurring patterns that should be promoted into a skill
 - On explicit request
 
 ## Protocol
 
 ### 1. Orient
 
-Read the full skill layer: `skills/index.md`, every `skills/<name>/SKILL.md`. Skim `state/memories/MEMORY.md` for recent task patterns that may indicate drift. Form hypotheses about what feels stale or missing. No searching yet.
+Read the full skill layer: `skills/index.md`, every `skills/<name>/SKILL.md`. Skim `memories/MEMORY.md` for recent task patterns that may indicate drift. Form hypotheses about what feels stale or missing. No searching yet.
 
 ### 2. Signal
 
@@ -51,7 +51,7 @@ Tighten memory for the next cold start:
 ## Boundaries
 
 - This protocol touches `skills/` and `skills/index.md`
-- Never modify `state/memories/` — that's owned by the background Dream agent
+- Never modify `memories/` — that's owned by the background Dream agent
 - Never modify `raw/` — it is an immutable record
 - Never touch project code, tests, or config
 - Your final assistant message should briefly summarize what skills you consolidated, merged, pruned, or promoted

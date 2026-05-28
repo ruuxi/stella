@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 
 import { resolveStatePath } from "../../../runtime/kernel/cli/shared.js";
@@ -49,7 +55,9 @@ const trySignal = (pid: number, signal: NodeJS.Signals): boolean => {
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const parsePsRows = (output: string): Array<{
+const parsePsRows = (
+  output: string,
+): Array<{
   pid: number;
   ppid: number;
   command: string;
@@ -93,12 +101,14 @@ const findOrphanedDesktopAutomationPids = (): number[] => {
   }
 };
 
-// Stops every long-lived `desktop_automation` daemon spawned by stella-
-// computer. Each session caches a pidfile under
-// `~/.stella/stella-computer/sessions/<id>/automation.pid` and a socket
-// under `~/.stella/stella-computer/daemon-sockets/<sha>.sock`. We SIGTERM
-// the pids, give them a moment to exit cleanly, then SIGKILL anything
-// that didn't, and finally clean up the pidfile + socket so the next
+// Stops every long-lived stella-computer daemon. macOS stores
+// `desktop_automation` pids under
+// `~/.stella/stella-computer/sessions/<id>/automation.pid` plus sockets under
+// `~/.stella/stella-computer/daemon-sockets/<sha>.sock`; Windows stores
+// `stella-computer-helper.exe` pids under
+// `~/.stella/stella-computer/sessions/<id>/windows-daemon/helper.pid`.
+// We SIGTERM the pids, give them a moment to exit cleanly, then SIGKILL
+// anything that didn't, and finally clean up pid/socket state so the next
 // boot doesn't trip over stale entries.
 //
 // The reason this matters: macOS does not reload an executable under a
@@ -131,13 +141,18 @@ export const stopAllDesktopAutomationDaemons = async (): Promise<void> => {
       }
       if (!isDir) continue;
 
-      const pidFile = path.join(sessionPath, "automation.pid");
-      const pid = readPidFile(pidFile);
-      if (pid !== null && isProcessAlive(pid)) {
-        targetedPids.add(pid);
-      }
-      if (existsSync(pidFile)) {
-        pidFiles.push(pidFile);
+      const sessionPidFiles = [
+        path.join(sessionPath, "automation.pid"),
+        path.join(sessionPath, "windows-daemon", "helper.pid"),
+      ];
+      for (const pidFile of sessionPidFiles) {
+        const pid = readPidFile(pidFile);
+        if (pid !== null && isProcessAlive(pid)) {
+          targetedPids.add(pid);
+        }
+        if (existsSync(pidFile)) {
+          pidFiles.push(pidFile);
+        }
       }
     }
   }
@@ -158,6 +173,9 @@ export const stopAllDesktopAutomationDaemons = async (): Promise<void> => {
   // mistakes a dead pid for a live daemon.
   for (const pidFile of pidFiles) {
     rmSync(pidFile, { force: true });
+    if (path.basename(path.dirname(pidFile)) === "windows-daemon") {
+      rmSync(path.dirname(pidFile), { recursive: true, force: true });
+    }
   }
   const sockets = socketsDir(root);
   if (existsSync(sockets)) {

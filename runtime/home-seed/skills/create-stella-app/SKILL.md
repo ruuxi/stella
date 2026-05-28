@@ -11,12 +11,12 @@ No sidebar entry. No multi-file scaffold.
 
 ## Scaffold
 
-Run from the Stella install root (the directory containing `desktop/`,
-`runtime/`, `state/`) so the script writes into the tree the running
+Run from the Stella install root (the directory containing `desktop/` and
+`runtime/`) so the script writes into the tree the running
 app loads from:
 
 ```sh
-bun state/skills/create-stella-app/scripts/program.ts <slug> <label words...>
+bun runtime/home-seed/skills/create-stella-app/scripts/program.ts <slug> <label words...>
 ```
 
 `<slug>` is lowercase `[a-z][a-z0-9-]*`, ≤32 chars (the URL segment).

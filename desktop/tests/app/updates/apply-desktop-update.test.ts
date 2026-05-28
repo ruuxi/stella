@@ -17,15 +17,16 @@ describe("buildInstallUpdatePrompt", () => {
         reason: "Stella source-pack merge reported conflicts.",
         headCommit: "c".repeat(40),
         changedFiles: ["src/panel.tsx"],
-        sourcePackFile: "state/raw/desktop-updates/desktop-v1.2.3/SOURCE_PACK.json",
+        sourcePackFile:
+          "/Users/example/.stella/raw/desktop-updates/desktop-v1.2.3/SOURCE_PACK.json",
         sourcePackConflictFile:
-          "state/raw/desktop-updates/desktop-v1.2.3/SOURCE_PACK_CONFLICTS.json",
+          "/Users/example/.stella/raw/desktop-updates/desktop-v1.2.3/SOURCE_PACK_CONFLICTS.json",
         sourcePackConflictJson: JSON.stringify(
           {
             status: "conflicts",
             revisionId: "source:next",
             sourcePackFile:
-              "state/raw/desktop-updates/desktop-v1.2.3/SOURCE_PACK.json",
+              "/Users/example/.stella/raw/desktop-updates/desktop-v1.2.3/SOURCE_PACK.json",
             appliedPaths: ["src/settings.ts"],
             appliedChanges: [
               {

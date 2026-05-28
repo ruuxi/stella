@@ -39,7 +39,7 @@ const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   STELLA_REPO_ROOT,
   '.stella-runtime-reload-state.json',
 )
-const BUNDLED_STELLA_HOME_SEED_DIR = path.resolve(__dirname, '..', 'state')
+const BUNDLED_STELLA_HOME_SEED_DIR = path.resolve(__dirname, '..', 'runtime', 'home-seed')
 const VITE_WORKSPACE_ROOT = searchForWorkspaceRoot(__dirname)
 
 const normalizeWatchedFilePath = (filePath: string) =>

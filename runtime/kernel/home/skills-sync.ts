@@ -7,7 +7,8 @@ import { ensurePrivateDir } from "../shared/private-fs.js";
 /**
  * Hash-history reconciliation of bundled skills into Stella home.
  *
- * Stella ships a default skill catalogue at `${stellaRoot}/state/skills/`.
+ * Stella ships a default skill catalogue at
+ * `${stellaRoot}/runtime/home-seed/skills/`.
  * Users carry their own copy at `${stellaHome}/skills/`. The first-launch
  * bootstrap used to seed the home copy once and never touch it again, so
  * shipped skill updates (new docs, deleted templates, renamed scripts)
@@ -32,6 +33,14 @@ import { ensurePrivateDir } from "../shared/private-fs.js";
 const MANIFEST_FILENAME = ".bundled-manifest.json";
 const USER_PROFILE_SKILL_ID = "user-profile";
 const MANIFEST_VERSION = 1 as const;
+const PLATFORM_SKILL_IDS: Partial<Record<NodeJS.Platform, readonly string[]>> =
+  {
+    darwin: ["stella-computer-macos"],
+    win32: ["stella-computer-windows"],
+  };
+const PLATFORM_EXCLUSIVE_SKILL_IDS = new Set(
+  Object.values(PLATFORM_SKILL_IDS).flat(),
+);
 
 type SkillId = string;
 type Sha256Hex = string;
@@ -39,6 +48,10 @@ type Sha256Hex = string;
 type BundledManifest = {
   version: typeof MANIFEST_VERSION;
   skills: Record<SkillId, Sha256Hex>;
+};
+
+type SkillsSyncOptions = {
+  platform?: NodeJS.Platform;
 };
 
 export type SkillsSyncAction =
@@ -85,6 +98,16 @@ const listSkillIds = async (skillsDir: string): Promise<SkillId[]> => {
     .filter((entry) => entry.isDirectory() && isSkillIdValid(entry.name))
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b));
+};
+
+const isBundledSkillIncludedForPlatform = (
+  skillId: SkillId,
+  platform: NodeJS.Platform,
+): boolean => {
+  if (!PLATFORM_EXCLUSIVE_SKILL_IDS.has(skillId)) {
+    return true;
+  }
+  return PLATFORM_SKILL_IDS[platform]?.includes(skillId) === true;
 };
 
 /**
@@ -196,6 +219,7 @@ const writeManifest = async (
 export const reconcileBundledSkills = async (
   bundledSkillsDir: string,
   homeSkillsDir: string,
+  options: SkillsSyncOptions = {},
 ): Promise<SkillsSyncReport> => {
   await ensurePrivateDir(homeSkillsDir);
 
@@ -204,7 +228,10 @@ export const reconcileBundledSkills = async (
     (await readManifest(manifestPath)) ??
     ({ version: MANIFEST_VERSION, skills: {} } as BundledManifest);
 
-  const bundledIds = await listSkillIds(bundledSkillsDir);
+  const platform = options.platform ?? process.platform;
+  const bundledIds = (await listSkillIds(bundledSkillsDir)).filter((skillId) =>
+    isBundledSkillIncludedForPlatform(skillId, platform),
+  );
   const homeIds = await listSkillIds(homeSkillsDir);
 
   const actions: SkillsSyncAction[] = [];
