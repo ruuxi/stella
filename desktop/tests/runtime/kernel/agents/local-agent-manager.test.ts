@@ -255,7 +255,7 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(maxConcurrentCalls).toBe(1);
   });
 
-  it("serializes native external engine runs through the filesystem lock", async () => {
+  it("allows concurrent Cursor engine runs", async () => {
     let activeRuns = 0;
     let maxConcurrentRuns = 0;
 
@@ -307,10 +307,10 @@ describe("LocalAgentManager Exec fs locking", () => {
       waitForAgentSettled(manager, second.threadId),
     ]);
 
-    expect(maxConcurrentRuns).toBe(1);
+    expect(maxConcurrentRuns).toBe(2);
   });
 
-  it("serializes non-general Codex engine runs through the filesystem lock", async () => {
+  it("allows concurrent General Codex engine runs", async () => {
     let activeRuns = 0;
     let maxConcurrentRuns = 0;
 
@@ -346,14 +346,14 @@ describe("LocalAgentManager Exec fs locking", () => {
       conversationId: "conv-1",
       description: "first",
       prompt: "first prompt",
-      agentType: "install_update",
+      agentType: "general",
       storageMode: "local",
     });
     const second = await manager.createAgent({
       conversationId: "conv-1",
       description: "second",
       prompt: "second prompt",
-      agentType: "install_update",
+      agentType: "general",
       storageMode: "local",
     });
 
@@ -362,6 +362,6 @@ describe("LocalAgentManager Exec fs locking", () => {
       waitForAgentSettled(manager, second.threadId),
     ]);
 
-    expect(maxConcurrentRuns).toBe(1);
+    expect(maxConcurrentRuns).toBe(2);
   });
 });

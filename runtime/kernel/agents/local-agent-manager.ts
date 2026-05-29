@@ -55,10 +55,7 @@ import type {
 } from "../storage/shared.js";
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import type { ReasoningEffort } from "../preferences/local-preferences.js";
-import {
-  type AgentRuntimeEngine,
-  isCursorModelOverride,
-} from "../../contracts/agent-engine.js";
+import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import {
   type SubagentSession,
   getOrCreateSubagentSession,
@@ -413,15 +410,6 @@ const getFsLockKey = (
 
 const isSpawnAgentTool = (toolName: string): boolean =>
   toolName === "spawn_agent";
-
-const shouldLockNativeExternalEngineRun = (
-  task: RuntimeAgentRecord,
-  context: LocalAgentContext,
-): boolean =>
-  context.agentEngine === "codex_cli" ||
-  (task.agentType === "general" &&
-    (context.agentEngine === "cursor_sdk" ||
-      isCursorModelOverride(context.model)));
 
 const AGENT_INPUT_INTERRUPT_ERROR = "Interrupted by agent input";
 export const AGENT_SHUTDOWN_CANCEL_REASON =
@@ -889,17 +877,7 @@ export class LocalAgentManager implements AgentToolApi {
           }
         },
       };
-      const runSubagent = () => this.opts.runSubagent(runSubagentArgs);
-      const result = shouldLockNativeExternalEngineRun(task, context)
-        ? await (async () => {
-            const release = await this.acquireFsLock(task.threadId, "*");
-            try {
-              return await runSubagent();
-            } finally {
-              release();
-            }
-          })()
-        : await runSubagent();
+      const result = await this.opts.runSubagent(runSubagentArgs);
 
       task.completedAt = Date.now();
       if (this.shouldDeliverFollowUp(task)) {
