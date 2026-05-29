@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { useRouter } from "@tanstack/react-router";
 import { readPersistedLastLocation } from "@/shared/lib/last-location";
+import { useWindowType } from "@/shared/hooks/use-window-type";
 
 type Router = ReturnType<typeof useRouter>;
 
@@ -9,10 +10,15 @@ type Router = ReturnType<typeof useRouter>;
  * from `localStorage` (no async hydration race) and only navigates if
  * the pathname matches a registered route in this router. Anything
  * else falls through to the memory-history default (`/chat`).
+ *
+ * The mini window shares `localStorage` with the full window, so it must
+ * never restore the full window's last route — it always opens at home.
  */
 export function useLastLocationRestore(router: Router): void {
+  const isMiniWindow = useWindowType() === "mini";
   const restoredRef = useRef(false);
   useEffect(() => {
+    if (isMiniWindow) return;
     if (restoredRef.current) return;
     restoredRef.current = true;
 
@@ -34,5 +40,5 @@ export function useLastLocationRestore(router: Router): void {
       to: pathname,
       search: searchParams as never,
     });
-  }, [router]);
+  }, [router, isMiniWindow]);
 }
