@@ -10,6 +10,7 @@ import {
 import { VoiceCatalogPicker } from "@/global/settings/VoiceCatalogPicker";
 import {
   coerceRealtimeVoiceProvider,
+  type ReadAloudVoiceProvider,
   type RealtimeVoicePreferences,
   type RealtimeVoiceUnderlyingProvider,
 } from "../../../../runtime/contracts/local-preferences";
@@ -610,6 +611,18 @@ export function AgentModelPicker({
     [patchRealtimeVoice, preferences],
   );
 
+  const handleReadAloudProviderSelect = useCallback(
+    (provider: ReadAloudVoiceProvider) => {
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      if ((previous.readAloudProvider ?? "inworld") === provider) return;
+      void patchRealtimeVoice(
+        { ...previous, readAloudProvider: provider },
+        "Failed to update read-aloud provider.",
+      );
+    },
+    [patchRealtimeVoice, preferences],
+  );
+
   const handleVoiceProviderSelect = useCallback(
     async (providerKey: string) => {
       if (!preferences || pendingAgent) return;
@@ -896,6 +909,7 @@ export function AgentModelPicker({
               stellaSubProvider={voicePreferences.stellaSubProvider}
               selectedVoices={voicePreferences.voices}
               inworldSpeed={voicePreferences.inworldSpeed}
+              readAloudProvider={voicePreferences.readAloudProvider}
               onSelectVoice={(underlyingProvider, voiceId) =>
                 void handleVoiceSelect(underlyingProvider, voiceId)
               }
@@ -904,6 +918,9 @@ export function AgentModelPicker({
               }
               onSelectInworldSpeed={(speed) =>
                 void handleInworldSpeedSelect(speed)
+              }
+              onSelectReadAloudProvider={(provider) =>
+                void handleReadAloudProviderSelect(provider)
               }
               disabled={!preferences || pendingAgent !== null}
             />

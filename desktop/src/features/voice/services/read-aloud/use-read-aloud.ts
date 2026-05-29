@@ -20,6 +20,8 @@
  */
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { MessageRecord } from "../../../../../../runtime/contracts/local-chat.js";
+import { resolveReadAloudProvider } from "../../../../../../runtime/contracts/local-preferences.js";
+import { getDefaultRealtimeVoice } from "../../../../../../runtime/contracts/realtime-voice-catalog.js";
 import { stripMarkdownForTts } from "./markdown-strip";
 import { fetchReadAloudAudio, type ReadAloudVoiceFamily } from "./tts-client";
 import { playReadAloud, stopReadAloud } from "./read-aloud-player";
@@ -41,14 +43,6 @@ const getAssistantText = (message: MessageRecord): string | null => {
   return text;
 };
 
-const resolveVoiceFamily = (
-  underlying: "openai" | "xai" | "inworld" | undefined,
-): ReadAloudVoiceFamily => {
-  // xAI has no non-realtime TTS endpoint — fall back to OpenAI voices.
-  if (underlying === "inworld") return "inworld";
-  return "openai";
-};
-
 const readVoicePrefs = async (): Promise<{
   family: ReadAloudVoiceFamily;
   voice?: string;
@@ -57,27 +51,27 @@ const readVoicePrefs = async (): Promise<{
   try {
     const prefs = await window.electronAPI?.system?.getLocalModelPreferences?.();
     const rt = prefs?.realtimeVoice;
-    if (!rt) return { family: "openai" };
-    const underlying =
-      rt.provider === "stella"
-        ? (rt.stellaSubProvider ?? "openai")
-        : rt.provider;
-    const family = resolveVoiceFamily(
-      underlying as "openai" | "xai" | "inworld",
-    );
-    const voice = rt.voices?.[family];
-    const speed = family === "inworld" ? rt.inworldSpeed : undefined;
+    // Read-aloud has its own provider, decoupled from the realtime voice
+    // agent. Defaults to Inworld.
+    const family: ReadAloudVoiceFamily = resolveReadAloudProvider({
+      readAloudProvider: rt?.readAloudProvider,
+    });
+    const stored = rt?.voices?.[family];
+    // Fall back to the catalog default (e.g. Olivia for Inworld) rather
+    // than letting the backend pick its own default voice.
+    const voice =
+      typeof stored === "string" && stored.trim().length > 0
+        ? stored.trim()
+        : getDefaultRealtimeVoice(family);
+    const speed = family === "inworld" ? rt?.inworldSpeed : undefined;
     return {
       family,
-      voice:
-        typeof voice === "string" && voice.trim().length > 0
-          ? voice.trim()
-          : undefined,
+      voice,
       speed:
         typeof speed === "number" && Number.isFinite(speed) ? speed : undefined,
     };
   } catch {
-    return { family: "openai" };
+    return { family: "inworld" };
   }
 };
 
