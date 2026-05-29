@@ -67,6 +67,16 @@ import {
   rewriteFileEditToolNames,
 } from "../tools/file-edit-policy.js";
 
+const CODEX_SKILL_CATALOG_OMITTED_IDS = [
+  "stella-computer-windows",
+  "stella-computer-macos",
+  "stella-browser",
+  "electron",
+  "stella-office",
+  "stella-runtime-extension",
+  "pdf",
+] as const;
+
 type ThreadHistoryEntry = {
   timestamp?: number;
   role: string;
@@ -803,8 +813,12 @@ export const buildAgentContext = async (
     );
   }
   if (agentHasCapability(args.agentType, "injectsSkillCatalog")) {
+    const skillCatalogOptions =
+      agentEngine === "codex_cli"
+        ? { omitSkillIds: CODEX_SKILL_CATALOG_OMITTED_IDS }
+        : undefined;
     dynamicContextSections.push(
-      await renderSkillCatalogBlock(context.stellaHome),
+      await renderSkillCatalogBlock(context.stellaHome, skillCatalogOptions),
     );
   }
   if (agentHasCapability(args.agentType, "injectsSubagentRoster")) {

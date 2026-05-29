@@ -11,6 +11,7 @@ import {
   buildCodexUserInput,
   buildCodexPromptFromMessages,
   codexImagePathFromFileUrl,
+  extractCodexDeveloperInstructions,
   fileChangesFromCodexItem,
   getCodexRuntimePreferences,
   runCodexAgentTurn,
@@ -133,13 +134,73 @@ describe("Codex agent runtime", () => {
     );
   });
 
-  it("starts Codex app-server threads with Stella skills in the system prompt and native Codex tools", () => {
+  it("extracts only minimal Stella context for Codex developer instructions", () => {
+    expect(
+      extractCodexDeveloperInstructions(
+        [
+          "You are Stella.",
+          "",
+          "- `~/.stella/outputs/` — generated files go here.",
+          "- `~/.stella/projects/<name>/` — scaffolded external projects go here.",
+          "",
+          "Current working directory: /repo/desktop",
+          "",
+          "<skills>",
+          "- `create-stella-app` — App scaffold.",
+          "</skills>",
+          "",
+          "File edits: use apply_patch.",
+        ].join("\n"),
+      ),
+    ).toBe(
+      [
+        "- `~/.stella/outputs/` — generated files go here.",
+        "- `~/.stella/projects/<name>/` — scaffolded external projects go here.",
+        "Current working directory: /repo/desktop",
+        "",
+        "<skills>",
+        "- `create-stella-app` — App scaffold.",
+        "</skills>",
+      ].join("\n"),
+    );
+  });
+
+  it("preserves source order for extracted Codex developer instructions", () => {
+    expect(
+      extractCodexDeveloperInstructions(
+        [
+          "You are Stella.",
+          "",
+          "- `~/.stella/outputs/` — generated files go here.",
+          "- `~/.stella/projects/<name>/` — scaffolded external projects go here.",
+          "",
+          "Current working directory: /repo/desktop",
+          "",
+          "<skills>",
+          "- `create-stella-app` — App scaffold.",
+          "</skills>",
+        ].join("\n"),
+      ),
+    ).toBe(
+      [
+        "- `~/.stella/outputs/` — generated files go here.",
+        "- `~/.stella/projects/<name>/` — scaffolded external projects go here.",
+        "Current working directory: /repo/desktop",
+        "",
+        "<skills>",
+        "- `create-stella-app` — App scaffold.",
+        "</skills>",
+      ].join("\n"),
+    );
+  });
+
+  it("starts Codex app-server threads without overriding native Codex base instructions", () => {
     expect(
       buildCodexThreadStartParams({
         model: DEFAULT_CODEX_MODEL,
         cwd: "/repo",
         systemPrompt:
-          "You are Stella.\n\n<skills>\n- `stella-browser` — Browser automation.\n</skills>",
+          "You are Stella.\n\n- `~/.stella/outputs/` — generated files go here.\n\nCurrent working directory: /repo\n\n<skills>\n- `stella-browser` — Browser automation.\n</skills>",
       }),
     ).toEqual({
       model: DEFAULT_CODEX_MODEL,
@@ -147,22 +208,21 @@ describe("Codex agent runtime", () => {
       approvalPolicy: "never",
       sandbox: "danger-full-access",
       serviceName: "Stella",
-      baseInstructions:
-        "You are Stella.\n\n<skills>\n- `stella-browser` — Browser automation.\n</skills>",
       developerInstructions:
-        "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact. Stella skills are listed in the system prompt; when a skill matches, inspect its ~/.stella/skills/<name>/SKILL.md file with your normal Codex tools.",
+        "- `~/.stella/outputs/` — generated files go here.\nCurrent working directory: /repo\n\n<skills>\n- `stella-browser` — Browser automation.\n</skills>",
       ephemeral: false,
       experimentalRawEvents: false,
     });
   });
 
-  it("resumes Codex app-server threads with Stella instructions outside the turn text", () => {
+  it("resumes Codex app-server threads with only Stella skills outside the turn text", () => {
     expect(
       buildCodexThreadResumeParams({
         threadId: "thread-1",
         model: DEFAULT_CODEX_MODEL,
         cwd: "/repo",
-        systemPrompt: "You are Stella.",
+        systemPrompt:
+          "You are Stella.\n\n- `~/.stella/projects/<name>/` — scaffolded external projects go here.\n\nCurrent working directory: /repo\n\n<skills>\n- `create-stella-app` — App scaffold.\n</skills>",
       }),
     ).toEqual({
       threadId: "thread-1",
@@ -170,9 +230,8 @@ describe("Codex agent runtime", () => {
       cwd: "/repo",
       approvalPolicy: "never",
       sandbox: "danger-full-access",
-      baseInstructions: "You are Stella.",
       developerInstructions:
-        "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact. Stella skills are listed in the system prompt; when a skill matches, inspect its ~/.stella/skills/<name>/SKILL.md file with your normal Codex tools.",
+        "- `~/.stella/projects/<name>/` — scaffolded external projects go here.\nCurrent working directory: /repo\n\n<skills>\n- `create-stella-app` — App scaffold.\n</skills>",
       excludeTurns: true,
     });
   });
