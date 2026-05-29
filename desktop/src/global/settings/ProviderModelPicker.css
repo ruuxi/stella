@@ -70,6 +70,69 @@
   background: color-mix(in oklch, var(--border) 50%, transparent);
 }
 
+.model-picker-rail-item-wrap {
+  position: relative;
+  display: flex;
+}
+
+.model-picker-rail-item-wrap .model-picker-rail-item {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hover sign-out — pinned to the right of a connected provider, filled so
+ * it doesn't need its own column (mirrors the per-model reasoning/star
+ * affordance). Revealed on row hover; double-click (arm → confirm) to drop
+ * the credential. */
+.model-picker-rail-signout {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.model-picker-rail-item-wrap:hover .model-picker-rail-signout,
+.model-picker-rail-signout:focus-visible,
+.model-picker-rail-signout[data-armed] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.model-picker-rail-signout:hover:not(:disabled),
+.model-picker-rail-signout:focus-visible {
+  outline: none;
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--text-strong) 10%, transparent);
+}
+
+.model-picker-rail-signout[data-armed],
+.model-picker-rail-signout[data-armed]:hover:not(:disabled) {
+  color: var(--danger, #c2410c);
+  background: color-mix(in oklch, var(--danger, #c2410c) 12%, transparent);
+}
+
+.model-picker-rail-signout:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .model-picker-rail-item {
   position: relative;
   display: flex;
@@ -199,22 +262,6 @@
 .model-picker-model--default .model-picker-model-name {
   font-weight: 600;
   color: var(--text-strong);
-}
-
-.model-picker-pane-badge {
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-  color: var(--text-weak);
-  background: color-mix(in oklch, var(--background) 70%, transparent);
-}
-
-.model-picker-pane-badge[data-tone="ok"] {
-  color: var(--text-strong);
-  border-color: color-mix(in oklch, var(--text-strong) 35%, transparent);
 }
 
 .model-picker-pane-desc {
@@ -348,6 +395,19 @@
   letter-spacing: -0.005em;
 }
 
+.model-picker-auth-row [data-component="button"].model-picker-key-save {
+  flex-shrink: 0;
+  width: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.model-picker-auth-row [data-component="button"].model-picker-signin {
+  color: var(--text-base);
+}
+
 /* ----------------------------------------------------------- Custom model inputs */
 
 .model-picker-openrouter,
@@ -412,7 +472,11 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 2px;
+  /* Pull the scroll container out to the pane's right edge (cancelling the
+   * inner pane padding) so the scrollbar hugs the panel side, while keeping
+   * the rows themselves inset from the bar. */
+  margin-right: -14px;
+  padding-right: 12px;
   /* Keep breathing room under the last row so the flex-tall scroll pane
    * doesn't read like an empty footer; scrolls with the list. */
   padding-bottom: 28px;
@@ -435,15 +499,10 @@
   text-align: center;
 }
 
-.model-picker-model-gap {
-  height: 1px;
-  flex-shrink: 0;
-}
-
 .model-picker-model-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
 }
 
 .model-picker-model-row .model-picker-model {
@@ -451,52 +510,71 @@
   min-width: 0;
 }
 
-.model-picker-model-star {
+/* Hover affordances overlay the right edge of the row without reserving
+   layout space. Plain icons (no chrome) that only pick up a subtle hover
+   background, so they read as part of the row rather than floating chips. */
+.model-picker-model-actions {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.model-picker-model-row:hover .model-picker-model-actions,
+.model-picker-model-row:focus-within .model-picker-model-actions,
+.model-picker-model-actions[data-open] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.model-picker-model-star,
+.model-picker-model-reason {
   appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin-right: 2px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border: none;
   border-radius: var(--radius-sm, 6px);
   background: transparent;
-  color: color-mix(in oklch, var(--text-weak) 70%, transparent);
+  color: var(--text-weak);
   cursor: pointer;
-  opacity: 0;
   transition:
-    opacity 120ms ease,
     color 120ms ease,
     background 120ms ease;
 }
 
-.model-picker-model-row:hover .model-picker-model-star,
-.model-picker-model-row:focus-within .model-picker-model-star,
-.model-picker-model-star:focus-visible {
-  opacity: 1;
-}
-
-.model-picker-model-row:hover .model-picker-model-star[data-favorite],
-.model-picker-model-row:focus-within .model-picker-model-star[data-favorite] {
-  color: #eab308;
-}
-
 .model-picker-model-star:hover:not(:disabled),
-.model-picker-model-star:focus-visible {
+.model-picker-model-star:focus-visible,
+.model-picker-model-reason:hover:not(:disabled),
+.model-picker-model-reason:focus-visible {
   outline: none;
   color: var(--text-strong);
-  background: color-mix(in oklch, var(--text-strong) 7%, transparent);
+  background: color-mix(in oklch, var(--text-strong) 10%, transparent);
 }
 
+.model-picker-model-star[data-favorite],
 .model-picker-model-star:hover:not(:disabled)[data-favorite],
 .model-picker-model-star:focus-visible[data-favorite] {
   color: #eab308;
 }
 
-.model-picker-model-star:disabled {
+.model-picker-model-reason[data-active] {
+  color: var(--text-strong);
+}
+
+.model-picker-model-star:disabled,
+.model-picker-model-reason:disabled {
   cursor: not-allowed;
-  opacity: 0.35;
+  opacity: 0.4;
 }
 
 .model-picker-model {
