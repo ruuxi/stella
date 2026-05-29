@@ -13,6 +13,7 @@ import {
   getAgentRuntimeEngine,
   getModelOverride,
   loadLocalPreferences,
+  type ReasoningEffort,
 } from "../preferences/local-preferences.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import { resolveLocalCliCwd, textFromUnknown } from "../agent-runtime/shared.js";
@@ -71,6 +72,33 @@ export const getClaudeCodeAgentModelId = (
     preferredModel ??
     DEFAULT_CLAUDE_CODE_MODEL;
   return `claude-code/${model || DEFAULT_CLAUDE_CODE_MODEL}`;
+};
+
+/**
+ * Map the stored reasoning effort to a Claude Code `CLAUDE_CODE_EFFORT_LEVEL`
+ * value. Returns undefined for "default" so the CLI keeps its model default.
+ * Claude Code has no "minimal" tier, so it folds into "low".
+ */
+const CLAUDE_CODE_EFFORT_BY_REASONING: Record<
+  Exclude<ReasoningEffort, "default">,
+  string
+> = {
+  minimal: "low",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "xhigh",
+};
+
+export const getClaudeCodeRuntimeEffortLevel = (
+  stellaRoot?: string,
+): string | undefined => {
+  const envOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL?.trim();
+  if (envOverride) return envOverride;
+  const prefs = stellaRoot ? loadLocalPreferences(stellaRoot) : null;
+  const effort = prefs?.claudeCodeReasoningEffort;
+  if (!effort || effort === "default") return undefined;
+  return CLAUDE_CODE_EFFORT_BY_REASONING[effort];
 };
 
 type PromptContentPart = TextContent | ImageContent | ThinkingContent | ToolCall;
@@ -137,10 +165,12 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
     args.stellaModel,
     args.agentType,
   );
+  const effortLevel = getClaudeCodeRuntimeEffortLevel(args.stellaRoot);
   const result = await runClaudeCodeTurn({
     runId,
     sessionKey: args.sessionKey ?? `${args.agentType}:one-shot:${runId}`,
     modelId,
+    ...(effortLevel ? { effortLevel } : {}),
     prompt: buildPromptFromMessages(args.context.messages),
     systemPrompt: args.context.systemPrompt,
     cwd: resolveLocalCliCwd({

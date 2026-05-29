@@ -80,6 +80,12 @@ type ClaudeCodeTurnRequest = {
   resumeFallbackPrompt?: string;
   systemPrompt?: string;
   modelId: string;
+  /**
+   * Effort/thinking level forwarded to the Claude Code CLI via the
+   * `CLAUDE_CODE_EFFORT_LEVEL` env var (`low`/`medium`/`high`/`xhigh`/`max`).
+   * Undefined leaves the CLI on its model default.
+   */
+  effortLevel?: string;
   cwd?: string;
   attachments?: RuntimeAttachmentRef[];
   tools: ToolMetadata[];
@@ -866,6 +872,7 @@ class ClaudeCodeSessionRuntime {
       return session.process;
     }
 
+    const effortLevel = request.effortLevel?.trim();
     const child = spawn("claude", this.buildClaudeCodeArgs(
       session,
       request,
@@ -875,6 +882,9 @@ class ClaudeCodeSessionRuntime {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       cwd: request.cwd,
+      env: effortLevel
+        ? { ...process.env, CLAUDE_CODE_EFFORT_LEVEL: effortLevel }
+        : process.env,
     });
     const processState: ClaudeCodeStreamingProcess = {
       child,

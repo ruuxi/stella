@@ -15,6 +15,7 @@ import {
 } from "../integrations/claude-code-session-runtime.js";
 import {
   getClaudeCodeAgentModelId,
+  getClaudeCodeRuntimeEffortLevel,
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
 import {
@@ -535,6 +536,9 @@ const runClaudeHostedTurn = async (args: {
   const resumeFallbackPrompt = historyPromptMessage
     ? buildClaudePromptFromMessages(promptMessagesWithHistory)
     : undefined;
+  const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
+    args.opts.stellaRoot,
+  );
 
   let finalResult = await runClaudeCodeTurn({
     runId,
@@ -545,6 +549,7 @@ const runClaudeHostedTurn = async (args: {
       args.opts.agentContext.model,
       args.opts.agentType,
     ),
+    ...(claudeCodeEffortLevel ? { effortLevel: claudeCodeEffortLevel } : {}),
     prompt,
     ...(resumeFallbackPrompt ? { resumeFallbackPrompt } : {}),
     systemPrompt: args.systemPrompt,
@@ -597,6 +602,7 @@ const runClaudeHostedTurn = async (args: {
         args.opts.agentContext.model,
         args.opts.agentType,
       ),
+      ...(claudeCodeEffortLevel ? { effortLevel: claudeCodeEffortLevel } : {}),
       prompt: queuedPrompt,
       ...(queuedResumeFallbackPrompt
         ? { resumeFallbackPrompt: queuedResumeFallbackPrompt }

@@ -800,6 +800,13 @@ export type ElectronSystemApi = {
   recordHeapTrace: (
     durationMs?: number,
   ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  reportError: (payload: {
+    message?: string;
+    stack?: string;
+    source?: string;
+    kind?: string;
+  }) => void;
+  openLogs: () => Promise<{ ok: boolean; path?: string; error?: string }>;
   getWakeWordEnabled: () => Promise<boolean>;
   setWakeWordEnabled: (enabled: boolean) => Promise<{ enabled: boolean }>;
   getPersonalityVoice: () => Promise<string | null>;
@@ -833,6 +840,13 @@ export type ElectronSystemApi = {
       | "high"
       | "xhigh";
     claudeCodeModel: string;
+    claudeCodeReasoningEffort:
+      | "default"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh";
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -863,6 +877,13 @@ export type ElectronSystemApi = {
       | "high"
       | "xhigh";
     claudeCodeModel?: string;
+    claudeCodeReasoningEffort?:
+      | "default"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh";
     maxAgentConcurrency?: number;
     imageGeneration?: {
       provider: "stella" | "openai" | "openrouter" | "fal";
@@ -892,6 +913,13 @@ export type ElectronSystemApi = {
       | "high"
       | "xhigh";
     claudeCodeModel: string;
+    claudeCodeReasoningEffort:
+      | "default"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh";
     maxAgentConcurrency: number;
     imageGeneration: {
       provider: "stella" | "openai" | "openrouter" | "fal";

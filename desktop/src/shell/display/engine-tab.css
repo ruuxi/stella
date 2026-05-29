@@ -786,6 +786,53 @@
   opacity: 0.35;
 }
 
+/* Thinking/effort lightbulb — plain icon that reveals on row hover, mirroring
+   the star. Stays visible while its menu is open or when the selected model
+   carries a non-default effort. */
+.engine-runtime-model-panel__reason {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: color-mix(in oklch, var(--text-weak) 70%, transparent);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.engine-runtime-model-panel__row:hover .engine-runtime-model-panel__reason,
+.engine-runtime-model-panel__row:focus-within
+  .engine-runtime-model-panel__reason,
+.engine-runtime-model-panel__reason:focus-visible,
+.engine-runtime-model-panel__reason[data-open],
+.engine-runtime-model-panel__reason[data-active] {
+  opacity: 1;
+}
+
+.engine-runtime-model-panel__reason:hover:not(:disabled),
+.engine-runtime-model-panel__reason:focus-visible {
+  outline: none;
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--text-strong) 7%, transparent);
+}
+
+.engine-runtime-model-panel__reason[data-active] {
+  color: var(--text-strong);
+}
+
+.engine-runtime-model-panel__reason:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
 /* ── Assignment popover ──────────────────────────────────────── */
 
 .engine-tab__assign-backdrop {

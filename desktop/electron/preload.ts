@@ -71,6 +71,8 @@ import {
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
   IPC_DIAGNOSTICS_RECORD_HEAP_TRACE,
+  IPC_DIAGNOSTICS_REPORT_ERROR,
+  IPC_DIAGNOSTICS_OPEN_LOGS,
   IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED,
   IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
   IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT,
@@ -1136,6 +1138,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_DIAGNOSTICS_RECORD_HEAP_TRACE, {
         durationMs,
       }) as Promise<{ ok: boolean; path?: string; error?: string }>,
+    reportError: (payload: {
+      message?: string;
+      stack?: string;
+      source?: string;
+      kind?: string;
+    }) => ipcRenderer.send(IPC_DIAGNOSTICS_REPORT_ERROR, payload),
+    openLogs: () =>
+      ipcRenderer.invoke(IPC_DIAGNOSTICS_OPEN_LOGS) as Promise<{
+        ok: boolean;
+        path?: string;
+        error?: string;
+      }>,
     getWakeWordEnabled: () =>
       ipcRenderer.invoke(IPC_PREFERENCES_GET_WAKE_WORD) as Promise<boolean>,
     setWakeWordEnabled: (enabled: boolean) =>
@@ -1184,6 +1198,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "high"
           | "xhigh";
         claudeCodeModel: string;
+        claudeCodeReasoningEffort:
+          | "default"
+          | "minimal"
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh";
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1214,6 +1235,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "high"
         | "xhigh";
       claudeCodeModel?: string;
+      claudeCodeReasoningEffort?:
+        | "default"
+        | "minimal"
+        | "low"
+        | "medium"
+        | "high"
+        | "xhigh";
       maxAgentConcurrency?: number;
       imageGeneration?: {
         provider: "stella" | "openai" | "openrouter" | "fal";
@@ -1244,6 +1272,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
           | "high"
           | "xhigh";
         claudeCodeModel: string;
+        claudeCodeReasoningEffort:
+          | "default"
+          | "minimal"
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh";
         maxAgentConcurrency: number;
         imageGeneration: {
           provider: "stella" | "openai" | "openrouter" | "fal";

@@ -18,6 +18,8 @@ import {
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { getMainLogger } from "../observability/main-logger.js";
+import { resolveLogPaths } from "../../../runtime/observability/log-paths.js";
 import {
   getLocalModelPreferences,
   getOnboardingCompleted,
@@ -89,6 +91,8 @@ import {
   IPC_BACKUP_RESTORE,
   IPC_BACKUP_RUN_NOW,
   IPC_DIAGNOSTICS_RECORD_HEAP_TRACE,
+  IPC_DIAGNOSTICS_REPORT_ERROR,
+  IPC_DIAGNOSTICS_OPEN_LOGS,
   IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED,
   IPC_GLOBAL_SHORTCUTS_SET_SUSPENDED,
   IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT,
@@ -1344,6 +1348,57 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     }
   });
 
+  ipcMain.on(
+    IPC_DIAGNOSTICS_REPORT_ERROR,
+    (
+      event,
+      payload: {
+        message?: string;
+        stack?: string;
+        source?: string;
+        kind?: string;
+      },
+    ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          IPC_DIAGNOSTICS_REPORT_ERROR,
+        )
+      ) {
+        return;
+      }
+      // The shared FileLogger scrubs message/stack before writing. `stack`
+      // is rendered as an indented block; pass the renderer's stack through
+      // directly rather than via crash() (which would wrap the string and
+      // overwrite it with a main-process stack).
+      getMainLogger()?.error("renderer.error", {
+        kind: payload?.kind,
+        source: payload?.source,
+        errorMessage: payload?.message,
+        ...(payload?.stack ? { stack: payload.stack } : {}),
+      });
+    },
+  );
+
+  ipcMain.handle(IPC_DIAGNOSTICS_OPEN_LOGS, async (event) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_DIAGNOSTICS_OPEN_LOGS,
+      )
+    ) {
+      throw new Error("Blocked untrusted diagnostics:openLogs request.");
+    }
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) return { ok: false as const, error: "no-root" };
+    const { logDir } = resolveLogPaths(stellaRoot);
+    const opened = await shell.openPath(logDir);
+    // shell.openPath returns "" on success, or an error string.
+    return opened
+      ? { ok: false as const, error: opened, path: logDir }
+      : { ok: true as const, path: logDir };
+  });
+
   ipcMain.handle(
     IPC_SHELL_SAVE_FILE_AS,
     async (
@@ -2191,6 +2246,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           typeof payload.claudeCodeModel === "string"
             ? payload.claudeCodeModel.trim()
             : "";
+      }
+      if (payload?.claudeCodeReasoningEffort !== undefined) {
+        patch.claudeCodeReasoningEffort = sanitizeReasoningEffort(
+          payload.claudeCodeReasoningEffort,
+        );
       }
       if (payload?.maxAgentConcurrency !== undefined) {
         patch.maxAgentConcurrency = maxAgentConcurrency;
