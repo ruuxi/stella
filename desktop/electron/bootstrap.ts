@@ -10,6 +10,7 @@ import {
   STELLA_WINDOWS_APP_USER_MODEL_ID,
 } from './bootstrap/constants.js'
 import { createBootstrapContext } from './bootstrap/context.js'
+import { initMainProcessLogging } from './observability/main-logger.js'
 import { resolveRuntimeStatePath } from '../../runtime/kernel/home/stella-home.js'
 import {
   initializeBootstrapSingleInstance,
@@ -80,6 +81,7 @@ const startLocalCrashReporter = () => {
 
 export const bootstrapMainProcess = () => {
   app.setName(STELLA_APP_NAME)
+  initMainProcessLogging(stellaRoot)
   installDevBrokenPipeGuards()
   configureDevKeychainBehavior()
   configureDevUserDataPath()

@@ -10,6 +10,11 @@ docs/
 .codex
 DEV-CONTEXT.md
 
+# Local diagnostic logs (primary location is ~/.stella/logs, already ignored
+# via .stella/ above; this covers any repo-relative fallback).
+/state/logs/
+**/state/logs/
+
 # Workspace installs
 /node_modules/
 /runtime/node_modules/

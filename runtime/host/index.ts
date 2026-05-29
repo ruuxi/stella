@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { readConfiguredConvexUrl } from "../kernel/convex-urls.js";
+import { getFileLogger } from "../observability/file-logger.js";
 import { LocalSchedulerService } from "../kernel/local-scheduler-service.js";
 import { createRemoteTurnBridge } from "../kernel/remote-turn-bridge.js";
 import {
@@ -405,20 +406,33 @@ export class StellaRuntimeHost {
           );
         }
       },
-      onConnectionStarted: async () => {
+      onConnectionStarted: async (connection) => {
         this.workerGeneration += 1;
+        getFileLogger()?.process("host.worker-connected", {
+          pid: connection.pid,
+          generation: this.workerGeneration,
+        });
         this.workerHealthCache = await this.workerController.getHealth({
           ensureWorker: false,
         });
         this.events.emit("runtime-ready", await this.health());
       },
       onUnexpectedExit: async () => {
+        getFileLogger()?.error("host.worker-unexpected-exit", {
+          generation: this.workerGeneration,
+        });
         this.workerHealthCache = null;
         if (this.started) {
           this.events.emit("runtime-ready", await this.health());
         }
       },
       onAfterStop: async (reason) => {
+        // "idle" closes the IPC channel but leaves the worker alive for the
+        // next host to reattach — routine churn, not a real stop. Only log
+        // when the worker process is actually being torn down.
+        if (reason !== "idle") {
+          getFileLogger()?.process("host.worker-stopped", { reason });
+        }
         this.workerHealthCache = null;
         if (this.started) {
           this.events.emit("runtime-reloading", { reason: `worker-${reason}` });

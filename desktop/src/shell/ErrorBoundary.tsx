@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { CrashSurface } from "./CrashSurface";
+import { reportRendererError } from "@/platform/diagnostics/report-error";
 import {
   STELLA_BUILD_ERROR_CLEARED_EVENT,
   STELLA_BUILD_ERROR_EVENT,
@@ -61,6 +62,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("ErrorBoundary caught:", error, info);
+    reportRendererError({
+      kind: "react",
+      message: error.message,
+      stack: error.stack,
+      source: info.componentStack?.trim().split("\n")[0]?.trim(),
+    });
     this.setState({
       caughtError: error,
       componentStack: info.componentStack ?? null,

@@ -6,6 +6,7 @@ import {
   promises as fsPromises,
   type WriteStream,
 } from "node:fs";
+import { getFileLogger } from "../observability/file-logger.js";
 import {
   resolveRuntimePaths,
   runtimeIpcPathUsesFilesystem,
@@ -90,6 +91,9 @@ export class WorkerLifecycleServer {
    */
   async start(): Promise<void> {
     await fsPromises.mkdir(this.paths.rootDir, { recursive: true });
+    // Human-readable logs (runtime.log + diagnostic channels) live in a
+    // separate dir from the sock/pid/lock control files.
+    await fsPromises.mkdir(this.paths.logDir, { recursive: true });
 
     // Stale lock cleanup: if the lock file exists but the recorded pid
     // is dead, take ownership. This avoids the "crashed worker leaves
@@ -98,6 +102,10 @@ export class WorkerLifecycleServer {
       const stalePid = await readPidFile(this.paths.lockFile);
       if (stalePid != null && !pidIsAlive(stalePid)) {
         await fsPromises.unlink(this.paths.lockFile).catch(() => undefined);
+        getFileLogger()?.process("worker.stale-lock-cleared", {
+          stalePid,
+          rootHash: this.paths.rootHash,
+        });
       }
     }
 
@@ -146,6 +154,13 @@ export class WorkerLifecycleServer {
     this.logStream.write(
       `\n[${new Date().toISOString()}] worker pid=${process.pid} listening (root=${this.options.stellaRoot})\n`,
     );
+    getFileLogger()?.process("worker.listening", {
+      pid: process.pid,
+      rootHash: this.paths.rootHash,
+      idleShutdownMs: this.idleShutdownMs,
+      // Time from worker process launch to bound-and-listening.
+      startupMs: Math.round(process.uptime() * 1000),
+    });
   }
 
   /**
@@ -214,6 +229,10 @@ export class WorkerLifecycleServer {
   async shutdown(reason: "idle" | "signal"): Promise<void> {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
+    getFileLogger()?.process("worker.shutdown", {
+      pid: process.pid,
+      reason,
+    });
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
@@ -224,6 +243,10 @@ export class WorkerLifecycleServer {
       this.logStream?.write(
         `[${new Date().toISOString()}] shutdown handler error: ${(error as Error).message}\n`,
       );
+      getFileLogger()?.error("worker.shutdown-handler-error", {
+        reason,
+        error,
+      });
     }
     await this.releaseFiles();
     this.logStream?.end();

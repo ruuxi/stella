@@ -1,4 +1,9 @@
 import {
+  getFileLogger,
+  initFileLogger,
+  installGlobalErrorLogging,
+} from "../observability/file-logger.js";
+import {
   WorkerLifecycleServer,
   removeStaleRuntimeArtifacts,
 } from "./lifecycle-server.js";
@@ -108,6 +113,9 @@ const main = async () => {
       process.exit(2);
     }
     detachedMode = true;
+    const logger = initFileLogger(cliArgs.stellaRoot, "worker");
+    installGlobalErrorLogging(logger);
+    logger.process("worker.starting", { pid: process.pid });
     lifecycle = new WorkerLifecycleServer({
       stellaRoot: cliArgs.stellaRoot,
       ...(cliArgs.idleShutdownMs ? { idleShutdownMs: cliArgs.idleShutdownMs } : {}),
@@ -168,6 +176,7 @@ const main = async () => {
 
 void main().catch((error) => {
   console.error("[runtime-worker] fatal:", error);
+  getFileLogger()?.crash("worker.fatal", error);
   process.exit(1);
 });
 

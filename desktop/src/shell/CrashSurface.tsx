@@ -220,6 +220,10 @@ export function CrashSurface({ error, componentStack }: Props) {
     window.location.reload();
   }, []);
 
+  const handleOpenLogs = useCallback(() => {
+    void window.electronAPI?.system?.openLogs?.();
+  }, []);
+
   const handleRevertClick = useCallback(() => {
     setConfirmingRevert(true);
   }, []);
@@ -286,6 +290,13 @@ export function CrashSurface({ error, componentStack }: Props) {
             </div>
           )}
         </div>
+        <button
+          className="error-boundary-loglink"
+          onClick={handleOpenLogs}
+          type="button"
+        >
+          Open logs folder
+        </button>
         {confirmingRevert && canRevert && (
           <div className="error-boundary-confirm">
             <p className="error-boundary-confirm__title">{confirmationTitle}</p>

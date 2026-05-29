@@ -11,6 +11,7 @@
     "format": "bunx prettier@3.6.2 --write .",
     "format:check": "bunx prettier@3.6.2 --check .",
     "lint": "cd desktop && eslint .",
+    "logs": "node desktop/scripts/open-logs.mjs",
     "test": "cd desktop && vitest",
     "test:run": "cd desktop && vitest run",
     "test:electron": "cd desktop && vitest run --config vitest.electron.config.ts",
