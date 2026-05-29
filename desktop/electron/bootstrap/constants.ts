@@ -12,6 +12,7 @@ export const HARD_RESET_MUTABLE_HOME_PATHS = [
   "core-memory.md",
   "device.json",
   "local-scheduler.json",
+  "preferences.json",
   "stella.sqlite",
   "stella.sqlite-shm",
   "stella.sqlite-wal",
