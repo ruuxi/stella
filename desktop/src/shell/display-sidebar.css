@@ -360,11 +360,6 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-.display-sidebar__models-btn[aria-pressed="true"] {
-  color: var(--text-base);
-  background: color-mix(in oklch, var(--foreground) 7%, transparent);
-}
-
 .display-sidebar__active {
   flex: 1;
   min-height: 0;
