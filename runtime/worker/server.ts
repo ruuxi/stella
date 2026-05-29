@@ -3469,7 +3469,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         (params as
           | { selectedBrowser?: string; selectedProfile?: string }
           | undefined) ?? {};
-      const data = await collectBrowserData(state.init.stellaRoot, {
+      const data = await collectBrowserData(state.init.stellaHomePath, {
         selectedBrowser: payload.selectedBrowser as
           | import("../discovery/browser-data.js").BrowserType
           | undefined,
@@ -3494,7 +3494,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             }
           | undefined) ?? {};
       return await collectAllSignals(
-        state.init.stellaRoot,
+        state.init.stellaHomePath,
         payload.categories as
           | import("../contracts/discovery.js").DiscoveryCategory[]
           | undefined,

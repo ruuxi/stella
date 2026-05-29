@@ -10,6 +10,7 @@ export const HARD_RESET_MUTABLE_HOME_PATHS = [
   "tmp",
   "skills/user-profile",
   "core-memory.md",
+  "discovery_categories.json",
   "device.json",
   "local-scheduler.json",
   "preferences.json",
