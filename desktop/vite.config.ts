@@ -1284,13 +1284,13 @@ export default defineConfig({
     },
   },
   server: {
-    // Pin to IPv4 loopback and publish that exact address via the dev-url
-    // plugin above. With the default (`localhost`), Node 17+'s verbatim DNS
-    // order makes Vite bind IPv6-only on macOS, while Chromium may try IPv4
-    // first and surface intermittent ERR_CONNECTION_REFUSED on cold start.
+    // Pin to a single IPv4 loopback port and publish that exact address via
+    // the dev-url plugin above. The runtime worker reads that file for
+    // self-mod HMR calls, so silently rolling to 57315 would split the UI and
+    // worker across different assumptions.
     host: '127.0.0.1',
     port: 57314,
-    strictPort: false,
+    strictPort: true,
     forwardConsole: true,
     // Vite's red overlay is replaced by the renderer-side CrashSurface (see
     // `src/platform/dev/vite-error-recovery.ts` + `src/shell/ErrorBoundary.tsx`).
