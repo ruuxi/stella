@@ -10,7 +10,7 @@
  * default. It does not key off this toggle.
  *
  *   - `enable: true,  pending: true`  → user opted in but isn't signed in
- *     yet. We persist intent (`chronicle.pendingEnable`) but do NOT spawn
+ *     yet. We persist intent in local preferences but do NOT spawn
  *     the daemon. Once the user signs in after onboarding, the
  *     post-onboarding chrome calls `memory:promotePending` which flips it
  *     to a fully-enabled state.

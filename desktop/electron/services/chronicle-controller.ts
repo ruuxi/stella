@@ -3,13 +3,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { resolveNativeHelperPath } from "../native-helper-path.js";
 import { hasMacPermission, requestMacPermission } from "../utils/macos-permissions.js";
+import {
+  getChronicleEnabled,
+  getChroniclePendingEnable,
+  setChronicleMemoryPreference,
+} from "../../../runtime/kernel/preferences/local-preferences.js";
 
 /**
  * ChronicleController owns the lifecycle of the `chronicle` Swift sidecar.
  *
  * Responsibilities:
  *   - Resolve the binary location (dev + packaged)
- *   - Skip cleanly when disabled in `~/.stella/config.json` or when Screen
+ *   - Skip cleanly when disabled in `~/.stella/preferences.json` or when Screen
  *     Recording permission is not granted
  *   - Spawn the daemon as a detached process and remember the pid for
  *     status checks
@@ -18,15 +23,6 @@ import { hasMacPermission, requestMacPermission } from "../utils/macos-permissio
  */
 
 type ChronicleConfig = {
-  enabled?: boolean;
-  /**
-   * The user toggled Live Memory on during onboarding but isn't signed in
-   * yet, so we recorded the *intent* without spawning the daemon. Cleared
-   * once the user either signs in (we promote it to `enabled: true` and
-   * call `start()`) or cancels (we clear it). Treated as opt-out by every
-   * lifecycle path until promoted.
-   */
-  pendingEnable?: boolean;
   intervalMs?: number;
   maxStrings?: number;
 };
@@ -51,26 +47,6 @@ const readConfig = async (stellaHome: string): Promise<ChronicleConfig> => {
   } catch {
     return {};
   }
-};
-
-const writeConfigPatch = async (
-  stellaHome: string,
-  patch: ChronicleConfig,
-): Promise<void> => {
-  const configPath = path.join(stellaHome, "config.json");
-  let current: StellaConfig = {};
-  try {
-    const raw = await fs.readFile(configPath, "utf-8");
-    current = JSON.parse(raw) as StellaConfig;
-  } catch {
-    current = {};
-  }
-  const next: StellaConfig = {
-    ...current,
-    chronicle: { ...(current.chronicle ?? {}), ...patch },
-  };
-  await fs.mkdir(path.dirname(configPath), { recursive: true });
-  await fs.writeFile(configPath, `${JSON.stringify(next, null, 2)}\n`, "utf-8");
 };
 
 export class ChronicleController {
@@ -126,9 +102,9 @@ export class ChronicleController {
   async start(): Promise<{ started: boolean; reason?: string }> {
     const config = await readConfig(this.stellaHome);
     // Live Memory is opt-in: only start when the user has explicitly
-    // enabled it. Missing config or `pendingEnable` (waiting on sign-in)
+    // enabled it. A pending enable (waiting on sign-in)
     // both keep the daemon dormant.
-    if (config.enabled !== true) {
+    if (getChronicleEnabled(this.stellaHome) !== true) {
       return { started: false, reason: "disabled" };
     }
     if (process.platform !== "darwin") {
@@ -203,8 +179,7 @@ export class ChronicleController {
   }
 
   async isEnabled(): Promise<boolean> {
-    const config = await readConfig(this.stellaHome);
-    return config.enabled === true;
+    return getChronicleEnabled(this.stellaHome);
   }
 
   /**
@@ -213,8 +188,7 @@ export class ChronicleController {
    * Used by the renderer to render a "Sign in to start Live Memory" banner.
    */
   async isPendingEnable(): Promise<boolean> {
-    const config = await readConfig(this.stellaHome);
-    return config.enabled !== true && config.pendingEnable === true;
+    return getChroniclePendingEnable(this.stellaHome);
   }
 
   /**
@@ -225,12 +199,15 @@ export class ChronicleController {
    */
   async setPendingEnable(pending: boolean): Promise<void> {
     if (pending) {
-      await writeConfigPatch(this.stellaHome, {
+      setChronicleMemoryPreference(this.stellaHome, {
         enabled: false,
         pendingEnable: true,
       });
     } else {
-      await writeConfigPatch(this.stellaHome, { pendingEnable: false });
+      setChronicleMemoryPreference(this.stellaHome, {
+        enabled: false,
+        pendingEnable: false,
+      });
     }
   }
 
@@ -284,7 +261,7 @@ export class ChronicleController {
   }> {
     if (!enabled) {
       // Explicit disable: also clear any staged "pending sign-in" intent.
-      await writeConfigPatch(this.stellaHome, {
+      setChronicleMemoryPreference(this.stellaHome, {
         enabled: false,
         pendingEnable: false,
       });
@@ -297,7 +274,7 @@ export class ChronicleController {
       };
     }
     if (process.platform !== "darwin") {
-      await writeConfigPatch(this.stellaHome, {
+      setChronicleMemoryPreference(this.stellaHome, {
         enabled: false,
         pendingEnable: false,
       });
@@ -312,7 +289,7 @@ export class ChronicleController {
     if (process.platform === "darwin" && !hasMacPermission("screen", false)) {
       const result = await requestMacPermission("screen");
       if (!result.granted) {
-        await writeConfigPatch(this.stellaHome, {
+        setChronicleMemoryPreference(this.stellaHome, {
           enabled: false,
           pendingEnable: false,
         });
@@ -326,13 +303,13 @@ export class ChronicleController {
       }
     }
     // Promote: clear pending intent and mark enabled.
-    await writeConfigPatch(this.stellaHome, {
+    setChronicleMemoryPreference(this.stellaHome, {
       enabled: true,
       pendingEnable: false,
     });
     const startResult = await this.start();
     if (!startResult.started) {
-      await writeConfigPatch(this.stellaHome, {
+      setChronicleMemoryPreference(this.stellaHome, {
         enabled: false,
         pendingEnable: false,
       });

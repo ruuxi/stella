@@ -20,6 +20,7 @@ import {
   type ChronicleSummaryResult,
 } from "../../../../../runtime/kernel/memory/chronicle-summarizer.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
+import { setChronicleMemoryPreference } from "../../../../../runtime/kernel/preferences/local-preferences.js";
 
 type TestContext = {
   rootPath: string;
@@ -42,6 +43,7 @@ const createTestContext = (): TestContext => {
       .slice(2)}`,
   );
   const ctx = { rootPath };
+  setChronicleMemoryPreference(rootPath, { enabled: true });
   activeContexts.add(ctx);
   return ctx;
 };
@@ -81,13 +83,7 @@ const writeChronicleConfig = async (
   rootPath: string,
   enabled: boolean,
 ): Promise<void> => {
-  const configPath = path.join(rootPath, "config.json");
-  await mkdir(path.dirname(configPath), { recursive: true });
-  await writeFile(
-    configPath,
-    `${JSON.stringify({ chronicle: { enabled } }, null, 2)}\n`,
-    "utf-8",
-  );
+  setChronicleMemoryPreference(rootPath, { enabled });
 };
 
 const fakeAssistant = (text: string): AssistantMessage => ({

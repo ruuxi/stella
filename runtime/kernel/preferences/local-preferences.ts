@@ -134,6 +134,12 @@ export type LocalPreferences = {
    */
   readAloudEnabled: boolean;
   /**
+   * Live Memory (Chronicle screen capture/OCR) is opt-in. Onboarding may
+   * stage an enable while waiting for sign-in, then promote it after auth.
+   */
+  chronicleEnabled: boolean;
+  chroniclePendingEnable: boolean;
+  /**
    * "Hey Stella" wake-word listener — when enabled, a background
    * native helper continuously listens for the wake word and starts
    * the realtime voice agent on detection. Mic buttons / keybinds
@@ -199,6 +205,8 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   onboardingCompleted: false,
   wakeWordThreshold: 0.6,
   readAloudEnabled: false,
+  chronicleEnabled: false,
+  chroniclePendingEnable: false,
 };
 
 const LEGACY_STELLA_DEFAULT_MODEL = "stella/default";
@@ -280,6 +288,9 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
           ? parsed.wakeWordThreshold
           : DEFAULT_PREFERENCES.wakeWordThreshold,
       readAloudEnabled: parsed.readAloudEnabled === true,
+      chronicleEnabled: parsed.chronicleEnabled === true,
+      chroniclePendingEnable:
+        parsed.chronicleEnabled !== true && parsed.chroniclePendingEnable === true,
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;
@@ -502,6 +513,28 @@ export const setReadAloudEnabled = (
 ): void => {
   const prefs = loadLocalPreferences(stellaHome);
   saveLocalPreferences(stellaHome, { ...prefs, readAloudEnabled: enabled });
+};
+
+export const getChronicleEnabled = (stellaHome: string): boolean => {
+  return loadLocalPreferences(stellaHome).chronicleEnabled;
+};
+
+export const getChroniclePendingEnable = (stellaHome: string): boolean => {
+  const prefs = loadLocalPreferences(stellaHome);
+  return prefs.chronicleEnabled !== true && prefs.chroniclePendingEnable === true;
+};
+
+export const setChronicleMemoryPreference = (
+  stellaHome: string,
+  value: { enabled: boolean; pendingEnable?: boolean },
+): void => {
+  const prefs = loadLocalPreferences(stellaHome);
+  saveLocalPreferences(stellaHome, {
+    ...prefs,
+    chronicleEnabled: value.enabled,
+    chroniclePendingEnable:
+      value.enabled === true ? false : value.pendingEnable === true,
+  });
 };
 
 export const getOnboardingCompleted = (stellaHome: string): boolean =>
