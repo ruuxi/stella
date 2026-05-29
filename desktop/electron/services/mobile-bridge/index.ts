@@ -5,3 +5,7 @@ export {
   isMobileBridgeEventChannel,
   isMobileBridgeRequestChannel,
 } from "./bridge-policy.js";
+export {
+  buildMobileBridgeCapabilityManifest,
+  type MobileBridgeCapabilityManifest,
+} from "./capabilities.js";

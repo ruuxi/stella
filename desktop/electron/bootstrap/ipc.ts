@@ -328,6 +328,7 @@ export const registerBootstrapIpcHandlers = (
   registerDisplayHandlers({
     getStellaRoot: lifecycle.getStellaRoot,
     getStellaHome: lifecycle.getStellaHome,
+    localChatHistoryService: services.localChatHistoryService,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

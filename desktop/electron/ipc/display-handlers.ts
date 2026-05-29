@@ -20,10 +20,18 @@ import {
   purgeAllDeferredDeletes,
   purgeDeferredDelete,
 } from "../../../runtime/kernel/tools/deferred-delete.js";
+import type { LocalChatHistoryService } from "../services/local-chat-history-service.js";
+import {
+  isFileChangeRecordArray,
+  isProducedFileRecordArray,
+  type FileChangeRecord,
+} from "../../../runtime/contracts/file-changes.js";
+import type { LocalChatEventRecord } from "../../../runtime/kernel/storage/shared.js";
 
 type DisplayHandlersOptions = {
   getStellaRoot: () => string | null;
   getStellaHome: () => string | null;
+  localChatHistoryService?: LocalChatHistoryService;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -31,6 +39,7 @@ type DisplayHandlersOptions = {
 };
 
 const MAX_DISPLAY_FILE_BYTES = 200 * 1024 * 1024;
+const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".pdf": "application/pdf",
@@ -99,6 +108,52 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 
 const ALLOWED_EXTENSIONS = new Set(Object.keys(MIME_BY_EXTENSION));
 
+const resolvedPathForChange = (record: FileChangeRecord): string | null => {
+  if (record.kind.type === "delete") return null;
+  const filePath =
+    record.kind.type === "update" && record.kind.move_path
+      ? record.kind.move_path
+      : record.path;
+  if (!filePath || !path.isAbsolute(filePath)) return null;
+  return path.resolve(filePath);
+};
+
+export const isDisplayReadPathInLocalChatFiles = (
+  events: ReadonlyArray<LocalChatEventRecord>,
+  requestedPath: string,
+): boolean => {
+  const resolvedRequestedPath = path.resolve(requestedPath);
+  for (const event of events) {
+    const payload = event.payload;
+    if (!payload || typeof payload !== "object") continue;
+
+    if (
+      typeof payload.filePath === "string" &&
+      path.isAbsolute(payload.filePath) &&
+      path.resolve(payload.filePath) === resolvedRequestedPath
+    ) {
+      return true;
+    }
+
+    const fileChanges = isFileChangeRecordArray(payload.fileChanges)
+      ? payload.fileChanges
+      : [];
+    const producedFiles = isProducedFileRecordArray(payload.producedFiles)
+      ? payload.producedFiles
+      : [];
+    for (const record of [...fileChanges, ...producedFiles]) {
+      if (resolvedPathForChange(record) === resolvedRequestedPath) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const isMobileBridgeSender = (event: IpcMainEvent | IpcMainInvokeEvent) =>
+  event.senderFrame?.url === MOBILE_BRIDGE_SENDER_URL ||
+  event.sender.getURL() === MOBILE_BRIDGE_SENDER_URL;
+
 export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
   const requireStellaRoot = () => {
     const stellaRoot = options.getStellaRoot();
@@ -117,7 +172,10 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
 
   ipcMain.handle(
     IPC_DISPLAY_READ_FILE,
-    async (event, payload?: { filePath?: unknown }) => {
+    async (
+      event,
+      payload?: { filePath?: unknown; conversationId?: unknown },
+    ) => {
       if (!options.assertPrivilegedSender(event, IPC_DISPLAY_READ_FILE)) {
         throw new Error(`Blocked untrusted ${IPC_DISPLAY_READ_FILE} request.`);
       }
@@ -129,6 +187,29 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
       }
 
       const resolved = path.resolve(requestedPath);
+      if (isMobileBridgeSender(event)) {
+        const conversationId =
+          typeof payload?.conversationId === "string"
+            ? payload.conversationId.trim()
+            : "";
+        if (!conversationId) {
+          throw new Error(
+            "display:readFile from mobile requires a conversationId.",
+          );
+        }
+        if (!options.localChatHistoryService) {
+          throw new Error("Local chat file history is unavailable.");
+        }
+        const { files } = options.localChatHistoryService.listFiles({
+          conversationId,
+          limit: 500,
+        });
+        if (!isDisplayReadPathInLocalChatFiles(files, resolved)) {
+          throw new Error(
+            "display:readFile from mobile is limited to recent files Stella displayed for the active conversation.",
+          );
+        }
+      }
       const extension = path.extname(resolved).toLowerCase();
       if (!ALLOWED_EXTENSIONS.has(extension)) {
         throw new Error(

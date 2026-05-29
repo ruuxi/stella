@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useUiState } from "@/context/ui-state";
 
 type DisplayFileReadResult =
   | {
@@ -22,13 +23,16 @@ const isDisplayFileApiAvailable = (): boolean =>
 const readDisplayFileRaw = async (
   filePath: string,
   unavailableMessage?: string,
+  conversationId?: string | null,
 ): Promise<DisplayFileReadResult> => {
   if (!isDisplayFileApiAvailable()) {
     throw new Error(
       unavailableMessage ?? "File preview requires the Electron host runtime.",
     );
   }
-  return await window.electronAPI!.display.readFile(filePath);
+  return await window.electronAPI!.display.readFile(filePath, {
+    conversationId,
+  });
 };
 
 /**
@@ -98,10 +102,16 @@ const finalizeEvict = (filePath: string, entry: CacheEntry) => {
 const acquire = (
   filePath: string,
   unavailableMessage: string | undefined,
+  conversationId: string | null | undefined,
 ): CacheEntry => {
-  let entry = cache.get(filePath);
+  const cacheKey = `${conversationId ?? ""}\0${filePath}`;
+  let entry = cache.get(cacheKey);
   if (!entry) {
-    const promise = readDisplayFileRaw(filePath, unavailableMessage);
+    const promise = readDisplayFileRaw(
+      filePath,
+      unavailableMessage,
+      conversationId,
+    );
     entry = {
       promise,
       resolved: null,
@@ -110,12 +120,12 @@ const acquire = (
       refCount: 0,
       evictionTimer: null,
     };
-    cache.set(filePath, entry);
+    cache.set(cacheKey, entry);
     void promise
       .then((result) => {
         // Guard against the entry having been evicted while the IPC was
         // in flight (no consumers ever subscribed).
-        const live = cache.get(filePath);
+        const live = cache.get(cacheKey);
         if (live === entry) {
           entry!.resolved = result;
         }
@@ -151,6 +161,9 @@ export function useDisplayFileBytes(
   filePath: string,
   unavailableMessage?: string,
 ) {
+  const {
+    state: { conversationId },
+  } = useUiState();
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
@@ -163,7 +176,8 @@ export function useDisplayFileBytes(
     setMissing(false);
     setBytes(null);
 
-    const entry = acquire(filePath, unavailableMessage);
+    const cacheKey = `${conversationId ?? ""}\0${filePath}`;
+    const entry = acquire(filePath, unavailableMessage, conversationId);
     void entry.promise
       .then((result) => {
         if (cancelled) return;
@@ -183,9 +197,9 @@ export function useDisplayFileBytes(
 
     return () => {
       cancelled = true;
-      release(filePath, entry);
+      release(cacheKey, entry);
     };
-  }, [filePath, unavailableMessage]);
+  }, [conversationId, filePath, unavailableMessage]);
 
   return { bytes, error, loading, missing };
 }
@@ -194,6 +208,9 @@ export function useDisplayFileBlobs(
   filePaths: string[],
   unavailableMessage?: string,
 ) {
+  const {
+    state: { conversationId },
+  } = useUiState();
   const [files, setFiles] = useState<(DisplayFileBlob | null)[]>(() =>
     filePaths.map(() => null),
   );
@@ -203,15 +220,18 @@ export function useDisplayFileBlobs(
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // `filePaths` reference changes on every render, so key off contents.
-  const key = useMemo(() => filePaths.join("|"), [filePaths]);
+  const key = useMemo(
+    () => `${conversationId ?? ""}\0${filePaths.join("|")}`,
+    [conversationId, filePaths],
+  );
 
   useEffect(() => {
     let cancelled = false;
 
-    const acquired: { filePath: string; entry: CacheEntry }[] = filePaths.map(
+    const acquired: { cacheKey: string; entry: CacheEntry }[] = filePaths.map(
       (filePath) => ({
-        filePath,
-        entry: acquire(filePath, unavailableMessage),
+        cacheKey: `${conversationId ?? ""}\0${filePath}`,
+        entry: acquire(filePath, unavailableMessage, conversationId),
       }),
     );
 
@@ -287,7 +307,7 @@ export function useDisplayFileBlobs(
       // window lets a quick remount (e.g. parent re-render flicker)
       // reuse the same Blob/URL instead of re-fetching, so consumers
       // don't see broken images during transient unmount/remount.
-      for (const { filePath, entry } of acquired) release(filePath, entry);
+      for (const { cacheKey, entry } of acquired) release(cacheKey, entry);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, unavailableMessage]);

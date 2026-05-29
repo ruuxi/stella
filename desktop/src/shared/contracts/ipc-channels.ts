@@ -142,6 +142,7 @@ export const IPC_AGENT_GET_ACTIVE_RUN = "agent:getActiveRun" as const;
 export const IPC_AGENT_GET_SESSION_STARTED_AT =
   "agent:getAppSessionStartedAt" as const;
 export const IPC_AGENT_START_CHAT = "agent:startChat" as const;
+export const IPC_AGENT_SEND_INPUT = "agent:sendInput" as const;
 export const IPC_AGENT_CANCEL_CHAT = "agent:cancelChat" as const;
 export const IPC_AGENT_RESUME = "agent:resume" as const;
 export const IPC_AGENT_EVENT = "agent:event" as const;
@@ -270,6 +271,14 @@ export const IPC_BACKUP_RUN_NOW = "backup:runNow" as const;
 export const IPC_BACKUP_LIST = "backup:list" as const;
 export const IPC_BACKUP_RESTORE = "backup:restore" as const;
 export const IPC_LLM_CREDENTIALS_LIST = "llmCredentials:list" as const;
+export const IPC_LLM_CREDENTIALS_LIST_OAUTH_PROVIDERS =
+  "llmCredentials:listOAuthProviders" as const;
+export const IPC_LLM_CREDENTIALS_LIST_OAUTH =
+  "llmCredentials:listOAuth" as const;
+export const IPC_LLM_CREDENTIALS_LOGIN_OAUTH =
+  "llmCredentials:loginOAuth" as const;
+export const IPC_LLM_CREDENTIALS_DELETE_OAUTH =
+  "llmCredentials:deleteOAuth" as const;
 export const IPC_LLM_CREDENTIALS_SAVE = "llmCredentials:save" as const;
 export const IPC_LLM_CREDENTIALS_DELETE = "llmCredentials:delete" as const;
 export const IPC_APP_RESET_MESSAGES = "app:resetLocalMessages" as const;

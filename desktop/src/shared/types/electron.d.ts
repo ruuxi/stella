@@ -1577,7 +1577,10 @@ export type ElectronDisplayApi = {
    * giving the renderer file:// access. Bytes are transferred directly
    * via Electron's structured-clone IPC (no base64 round-trip).
    */
-  readFile: (filePath: string) => Promise<
+  readFile: (
+    filePath: string,
+    options?: { conversationId?: string | null },
+  ) => Promise<
     | {
         bytes: Uint8Array;
         sizeBytes: number;
