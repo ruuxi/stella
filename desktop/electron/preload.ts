@@ -212,7 +212,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   display: {
     onUpdate: onIpc<string | unknown>("display:update"),
-    readFile: (filePath: string, options?: { conversationId?: string | null }) =>
+    readFile: (
+      filePath: string,
+      options?: { conversationId?: string | null },
+    ) =>
       ipcRenderer.invoke("display:readFile", {
         filePath,
         conversationId: options?.conversationId,
@@ -244,12 +247,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   officePreview: {
-    list: () =>
-      ipcRenderer.invoke(IPC_OFFICE_PREVIEW_LIST) as Promise<
+    list: (options?: { conversationId?: string | null }) =>
+      ipcRenderer.invoke(IPC_OFFICE_PREVIEW_LIST, options ?? {}) as Promise<
         OfficePreviewSnapshot[]
       >,
-    start: (filePath: string) =>
-      ipcRenderer.invoke(IPC_OFFICE_PREVIEW_START, { filePath }) as Promise<{
+    start: (filePath: string, options?: { conversationId?: string | null }) =>
+      ipcRenderer.invoke(IPC_OFFICE_PREVIEW_START, {
+        filePath,
+        conversationId: options?.conversationId,
+      }) as Promise<{
         sessionId: string;
         title: string;
         sourcePath: string;
@@ -1964,6 +1970,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       conversationId: string;
       maxMessages?: number;
     }) => ipcRenderer.invoke("localChat:listSyncMessages", payload),
+    syncMessages: (payload: {
+      conversationId: string;
+      sinceCursor?: string | null;
+      maxMessages?: number;
+    }) => ipcRenderer.invoke("localChat:syncMessages", payload),
     getSyncCheckpoint: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("localChat:getSyncCheckpoint", payload),
     setSyncCheckpoint: (payload: {

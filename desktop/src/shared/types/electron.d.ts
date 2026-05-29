@@ -73,6 +73,7 @@ import type {
   OfficePreviewRef as SharedOfficePreviewRef,
   OfficePreviewSnapshot as SharedOfficePreviewSnapshot,
 } from "../../../../runtime/contracts/office-preview.js";
+import type { DisplayPayload } from "../contracts/display-payload";
 import type {
   BackupNowResult as SharedBackupNowResult,
   BackupStatusSnapshot as SharedBackupStatusSnapshot,
@@ -1438,8 +1439,24 @@ export type ElectronLocalChatApi = {
       text: string;
       timestamp: number;
       deviceId?: string;
+      artifacts?: DisplayPayload[];
     }>
   >;
+  syncMessages: (payload: {
+    conversationId: string;
+    sinceCursor?: string | null;
+    maxMessages?: number;
+  }) => Promise<{
+    cursor: string | null;
+    messages: Array<{
+      localMessageId: string;
+      role: "user" | "assistant";
+      text: string;
+      timestamp: number;
+      deviceId?: string;
+      artifacts?: DisplayPayload[];
+    }>;
+  }>;
   getSyncCheckpoint: (payload: {
     conversationId: string;
   }) => Promise<string | null>;
@@ -1642,8 +1659,13 @@ export type ElectronDisplayApi = {
 };
 
 export type ElectronOfficePreviewApi = {
-  list: () => Promise<OfficePreviewSnapshot[]>;
-  start: (filePath: string) => Promise<OfficePreviewRef>;
+  list: (options?: {
+    conversationId?: string | null;
+  }) => Promise<OfficePreviewSnapshot[]>;
+  start: (
+    filePath: string,
+    options?: { conversationId?: string | null },
+  ) => Promise<OfficePreviewRef>;
   onUpdate: (callback: (snapshot: OfficePreviewSnapshot) => void) => () => void;
 };
 

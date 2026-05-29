@@ -234,6 +234,29 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
+    "localChat:syncMessages",
+    async (
+      event,
+      payload: {
+        conversationId?: string;
+        sinceCursor?: string | null;
+        maxMessages?: number;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:syncMessages",
+        (client) =>
+          client.syncMessages({
+            conversationId: payload?.conversationId ?? "",
+            sinceCursor: payload?.sinceCursor,
+            maxMessages: payload?.maxMessages,
+          }),
+      ),
+  );
+
+  ipcMain.handle(
     "localChat:getSyncCheckpoint",
     async (
       event,

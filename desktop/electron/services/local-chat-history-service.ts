@@ -14,10 +14,16 @@ import type {
   LocalChatEventRecord,
   LocalChatFilesWindow,
   LocalChatMessageWindow,
-  LocalChatSyncMessage,
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
 import type { LocalChatUpdatedPayload } from "../../../runtime/contracts/local-chat.js";
+import {
+  buildMobileSyncMessagesPage,
+  buildMobileSyncMessages,
+  decodeMobileSyncCursor,
+  type LocalChatMobileSyncResult,
+  type LocalChatSyncMessageWithArtifacts,
+} from "./local-chat-artifacts.js";
 
 type LocalChatHistoryServiceOptions = {
   stellaRoot: string;
@@ -61,7 +67,9 @@ export class LocalChatHistoryService {
   private db: SqliteDatabase | null = null;
   private store: SessionStore | null = null;
   private readonly stellaRoot: string;
-  private readonly onUpdated?: (payload: LocalChatUpdatedPayload | null) => void;
+  private readonly onUpdated?: (
+    payload: LocalChatUpdatedPayload | null,
+  ) => void;
   private resetInProgress = false;
 
   constructor(options: LocalChatHistoryServiceOptions) {
@@ -270,18 +278,46 @@ export class LocalChatHistoryService {
   listSyncMessages(args: {
     conversationId: string;
     maxMessages?: number;
-  }): LocalChatSyncMessage[] {
-    return this.getStore().listSyncMessages(args.conversationId, args.maxMessages);
+  }): LocalChatSyncMessageWithArtifacts[] {
+    const maxMessages = Math.max(1, Math.floor(args.maxMessages ?? 100));
+    const { messages } = this.getStore().listMessages(args.conversationId, {
+      maxVisibleMessages: maxMessages,
+    });
+    return buildMobileSyncMessages(messages, maxMessages);
+  }
+
+  syncMessages(args: {
+    conversationId: string;
+    sinceCursor?: string | null;
+    maxMessages?: number;
+  }): LocalChatMobileSyncResult {
+    const maxMessages = Math.max(1, Math.floor(args.maxMessages ?? 100));
+    const cursor = decodeMobileSyncCursor(args.sinceCursor);
+    if (cursor) {
+      const { messages, sourceEvents } = this.getStore().listMessagesAfter(
+        args.conversationId,
+        {
+          afterTimestampMs: cursor.timestamp,
+          afterId: cursor.id,
+          maxVisibleMessages: maxMessages,
+        },
+      );
+      return buildMobileSyncMessagesPage(messages, maxMessages, sourceEvents);
+    }
+
+    const { messages } = this.getStore().listMessages(args.conversationId, {
+      maxVisibleMessages: maxMessages,
+    });
+    return buildMobileSyncMessagesPage(messages, maxMessages);
   }
 
   getSyncCheckpoint(args: { conversationId: string }): string | null {
     return this.getStore().getSyncCheckpoint(args.conversationId);
   }
 
-  setSyncCheckpoint(args: {
-    conversationId: string;
-    localMessageId: string;
-  }): { ok: true } {
+  setSyncCheckpoint(args: { conversationId: string; localMessageId: string }): {
+    ok: true;
+  } {
     this.getStore().setSyncCheckpoint(args.conversationId, args.localMessageId);
     return { ok: true };
   }

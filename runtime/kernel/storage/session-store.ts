@@ -163,21 +163,23 @@ const toIsoTimestamp = (timestamp: number): string =>
   new Date(timestamp).toISOString();
 
 const formatThreadCheckpointMessage = (summary: string): string =>
-  [
-    THREAD_CHECKPOINT_MARKER,
-    "",
-    summary.trim(),
-  ].join("\n");
+  [THREAD_CHECKPOINT_MARKER, "", summary.trim()].join("\n");
 
 const previewFromTextAndImages = (
-  content: Extract<PersistedRuntimeThreadPayload, { role: "user" | "toolResult" }>["content"] | RuntimeThreadCustomMessageEntry["content"],
+  content:
+    | Extract<
+        PersistedRuntimeThreadPayload,
+        { role: "user" | "toolResult" }
+      >["content"]
+    | RuntimeThreadCustomMessageEntry["content"],
 ): string => {
   if (typeof content === "string") {
     return content;
   }
   return content
     .map((block) =>
-      block.type === "text" ? block.text : `[Image: ${block.mimeType}]`)
+      block.type === "text" ? block.text : `[Image: ${block.mimeType}]`,
+    )
     .join("\n")
     .trim();
 };
@@ -200,18 +202,15 @@ const previewFromAssistantPayload = (
     .join("\n\n")
     .trim();
 
-const previewFromPayload = (
-  payload: PersistedRuntimeThreadPayload,
-): string => {
+const previewFromPayload = (payload: PersistedRuntimeThreadPayload): string => {
   if (payload.role === "assistant") {
     return previewFromAssistantPayload(payload);
   }
   if (payload.role === "toolResult") {
     const body = previewFromTextAndImages(payload.content);
-    return [
-      `[Tool result] ${payload.toolName}`,
-      ...(body ? [body] : []),
-    ].join("\n").trim();
+    return [`[Tool result] ${payload.toolName}`, ...(body ? [body] : [])]
+      .join("\n")
+      .trim();
   }
   return previewFromTextAndImages(payload.content);
 };
@@ -225,9 +224,10 @@ const buildFallbackThreadPayload = (
   if (message.role === "assistant") {
     return {
       role: "assistant",
-      content: message.content.trim().length > 0
-        ? [{ type: "text", text: message.content }]
-        : [],
+      content:
+        message.content.trim().length > 0
+          ? [{ type: "text", text: message.content }]
+          : [],
       api: "openai-completions",
       provider: "stella",
       model: "history",
@@ -254,9 +254,10 @@ const buildFallbackThreadPayload = (
       role: "toolResult",
       toolCallId: message.toolCallId ?? "",
       toolName: "tool",
-      content: message.content.trim().length > 0
-        ? [{ type: "text", text: message.content }]
-        : [],
+      content:
+        message.content.trim().length > 0
+          ? [{ type: "text", text: message.content }]
+          : [],
       isError: false,
       timestamp: message.timestamp,
     };
@@ -293,12 +294,10 @@ const customMessageByteLength = (
 const truncatePreview = (
   value: string,
   maxChars = THREAD_ROW_PREVIEW_CHARS,
-): string => (value.length <= maxChars ? value : `${value.slice(0, maxChars)}...`);
-
-const truncateTextBlockForStorage = (
-  text: string,
-  label = "Text",
 ): string =>
+  value.length <= maxChars ? value : `${value.slice(0, maxChars)}...`;
+
+const truncateTextBlockForStorage = (text: string, label = "Text"): string =>
   `[${label} truncated for storage (${text.length} chars). First ${Math.min(text.length, THREAD_ROW_PREVIEW_CHARS)} chars: ${truncatePreview(text)}]`;
 
 const truncateToolOutputForStorage = (text: string): string =>
@@ -326,8 +325,12 @@ const enforceThreadPayloadRowSizeLimit = (
       typeof payload.content === "string"
         ? truncateTextBlockForStorage(payload.content, "User content")
         : payload.content.map((block) =>
-            block.type === "text" && block.text.length > THREAD_ROW_MAX_TEXT_CHARS
-              ? { ...block, text: truncateTextBlockForStorage(block.text, "User content") }
+            block.type === "text" &&
+            block.text.length > THREAD_ROW_MAX_TEXT_CHARS
+              ? {
+                  ...block,
+                  text: truncateTextBlockForStorage(block.text, "User content"),
+                }
               : block,
           );
     const candidate = { ...payload, content };
@@ -339,7 +342,15 @@ const enforceThreadPayloadRowSizeLimit = (
       content:
         typeof payload.content === "string"
           ? truncateTextBlockForStorage(payload.content, "User content")
-          : [{ type: "text", text: truncateTextBlockForStorage(JSON.stringify(payload.content), "User content") }],
+          : [
+              {
+                type: "text",
+                text: truncateTextBlockForStorage(
+                  JSON.stringify(payload.content),
+                  "User content",
+                ),
+              },
+            ],
     };
   }
 
@@ -347,18 +358,30 @@ const enforceThreadPayloadRowSizeLimit = (
     const compacted = {
       ...payload,
       content: payload.content.map((block) => {
-        if (block.type === "text" && block.text.length > THREAD_ROW_MAX_TEXT_CHARS) {
+        if (
+          block.type === "text" &&
+          block.text.length > THREAD_ROW_MAX_TEXT_CHARS
+        ) {
           return { ...block, text: truncateTextBlockForStorage(block.text) };
         }
-        if (block.type === "thinking" && block.thinking.length > THREAD_ROW_MAX_TEXT_CHARS) {
-          return { ...block, thinking: truncateTextBlockForStorage(block.thinking, "Reasoning") };
+        if (
+          block.type === "thinking" &&
+          block.thinking.length > THREAD_ROW_MAX_TEXT_CHARS
+        ) {
+          return {
+            ...block,
+            thinking: truncateTextBlockForStorage(block.thinking, "Reasoning"),
+          };
         }
         if (block.type === "toolCall") {
           const argsJson = JSON.stringify(block.arguments ?? {});
           if (argsJson.length > THREAD_ROW_MAX_TEXT_CHARS) {
             return {
               ...block,
-              arguments: truncateObjectForStorage(block.arguments ?? {}, `${block.name} arguments`),
+              arguments: truncateObjectForStorage(
+                block.arguments ?? {},
+                `${block.name} arguments`,
+              ),
             };
           }
         }
@@ -404,7 +427,7 @@ const enforceThreadPayloadRowSizeLimit = (
       if (block.type !== "image") {
         return block;
       }
-      const sizeKb = Math.round((block.data?.length ?? 0) * 0.75 / 1024);
+      const sizeKb = Math.round(((block.data?.length ?? 0) * 0.75) / 1024);
       return {
         type: "text" as const,
         text: `[image content block stripped for storage: mime=${block.mimeType ?? "image/png"} approx_kb=${sizeKb}]`,
@@ -417,7 +440,12 @@ const enforceThreadPayloadRowSizeLimit = (
 
   return {
     ...payload,
-    content: [{ type: "text", text: truncateToolOutputForStorage(JSON.stringify(payload.content)) }],
+    content: [
+      {
+        type: "text",
+        text: truncateToolOutputForStorage(JSON.stringify(payload.content)),
+      },
+    ],
   };
 };
 
@@ -438,7 +466,10 @@ const enforceCustomMessageRowSizeLimit = (
     typeof message.content === "string"
       ? truncateTextBlockForStorage(message.content, "Custom message")
       : message.content.map((block) => {
-          if (block.type === "text" && block.text.length > THREAD_ROW_MAX_TEXT_CHARS) {
+          if (
+            block.type === "text" &&
+            block.text.length > THREAD_ROW_MAX_TEXT_CHARS
+          ) {
             return {
               ...block,
               text: truncateTextBlockForStorage(block.text, "Custom message"),
@@ -456,18 +487,21 @@ const enforceCustomMessageRowSizeLimit = (
 
   const withoutImageData = {
     ...compacted,
-    content: typeof compacted.content === "string"
-      ? compacted.content
-      : compacted.content.map((block) => {
-          if (block.type !== "image") {
-            return block;
-          }
-          const sizeKb = Math.round((block.data?.length ?? 0) * 0.75 / 1024);
-          return {
-            type: "text" as const,
-            text: `[image content block stripped for storage: mime=${block.mimeType ?? "image/png"} approx_kb=${sizeKb}]`,
-          };
-        }),
+    content:
+      typeof compacted.content === "string"
+        ? compacted.content
+        : compacted.content.map((block) => {
+            if (block.type !== "image") {
+              return block;
+            }
+            const sizeKb = Math.round(
+              ((block.data?.length ?? 0) * 0.75) / 1024,
+            );
+            return {
+              type: "text" as const,
+              text: `[image content block stripped for storage: mime=${block.mimeType ?? "image/png"} approx_kb=${sizeKb}]`,
+            };
+          }),
   };
   if (customMessageByteLength(withoutImageData) <= THREAD_ROW_MAX_BYTES) {
     return withoutImageData;
@@ -478,13 +512,15 @@ const enforceCustomMessageRowSizeLimit = (
     content:
       typeof message.content === "string"
         ? truncateTextBlockForStorage(message.content, "Custom message")
-        : [{
-            type: "text",
-            text: truncateTextBlockForStorage(
-              JSON.stringify(message.content),
-              "Custom message",
-            ),
-          }],
+        : [
+            {
+              type: "text",
+              text: truncateTextBlockForStorage(
+                JSON.stringify(message.content),
+                "Custom message",
+              ),
+            },
+          ],
   };
 };
 
@@ -515,19 +551,16 @@ const parseThreadSessionEntry = (
       const summary =
         typeof data?.summary === "string" ? data.summary.trim() : "";
       const fromEntryId =
-        typeof data?.fromEntryId === "string"
-          ? data.fromEntryId.trim()
-          : "";
+        typeof data?.fromEntryId === "string" ? data.fromEntryId.trim() : "";
       const toEntryId =
-        typeof data?.toEntryId === "string"
-          ? data.toEntryId.trim()
-          : "";
+        typeof data?.toEntryId === "string" ? data.toEntryId.trim() : "";
       const firstKeptEntryId =
         typeof data?.firstKeptEntryId === "string"
           ? data.firstKeptEntryId.trim()
           : "";
       const tokensBefore =
-        typeof data?.tokensBefore === "number" && Number.isFinite(data.tokensBefore)
+        typeof data?.tokensBefore === "number" &&
+        Number.isFinite(data.tokensBefore)
           ? data.tokensBefore
           : 0;
       if (!summary || (!(fromEntryId && toEntryId) && !firstKeptEntryId)) {
@@ -683,7 +716,10 @@ const buildThreadCompactionOverlays = (
   rawMessages: Array<RuntimeThreadMessage & { entryId: string }>,
 ): ThreadCompactionOverlay[] =>
   path
-    .filter((entry): entry is RuntimeThreadCompactionEntry => entry.type === "compaction")
+    .filter(
+      (entry): entry is RuntimeThreadCompactionEntry =>
+        entry.type === "compaction",
+    )
     .map((entry) => normalizeCompactionOverlay(entry, rawMessages))
     .filter((entry): entry is ThreadCompactionOverlay => entry !== null);
 
@@ -698,8 +734,11 @@ const applyCompactionOverlays = (
   const result: Array<RuntimeThreadMessage & { entryId: string }> = [];
   let index = 0;
   while (index < rawMessages.length) {
-    const matching = overlays.filter((overlay) => overlay.fromEntryId === ids[index]);
-    const overlay = matching.length > 1 ? matching[matching.length - 1] : matching[0];
+    const matching = overlays.filter(
+      (overlay) => overlay.fromEntryId === ids[index],
+    );
+    const overlay =
+      matching.length > 1 ? matching[matching.length - 1] : matching[0];
     if (overlay) {
       const endIndex = ids.indexOf(overlay.toEntryId);
       if (endIndex >= index) {
@@ -758,24 +797,32 @@ export class SessionStore {
   }
 
   private getSetting(key: string): string | null {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT value
       FROM settings
       WHERE key = ?
-    `).get(key) as { value?: unknown } | undefined;
+    `,
+      )
+      .get(key) as { value?: unknown } | undefined;
     return typeof row?.value === "string" && row.value.length > 0
       ? row.value
       : null;
   }
 
   private setSetting(key: string, value: string): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO settings (key, value, updated_at)
       VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET
         value = excluded.value,
         updated_at = excluded.updated_at
-    `).run(key, value, Date.now());
+    `,
+      )
+      .run(key, value, Date.now());
   }
 
   private sanitizeConversationId(value: unknown): string {
@@ -787,7 +834,9 @@ export class SessionStore {
   }
 
   private upsertSession(sessionId: string, updatedAt: number): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO session (
         id,
         title,
@@ -801,18 +850,24 @@ export class SessionStore {
           WHEN excluded.updated_at > updated_at THEN excluded.updated_at
           ELSE updated_at
         END
-    `).run(sessionId, updatedAt, updatedAt);
+    `,
+      )
+      .run(sessionId, updatedAt, updatedAt);
   }
 
   private getSession(sessionId: string): SessionRow | null {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT
         id,
         sync_checkpoint_message_id AS syncCheckpointMessageId
       FROM session
       WHERE id = ?
       LIMIT 1
-    `).get(sessionId) as SessionRow | undefined;
+    `,
+      )
+      .get(sessionId) as SessionRow | undefined;
     return row ?? null;
   }
 
@@ -826,9 +881,10 @@ export class SessionStore {
       const conversationId = threadKey.slice(0, subagentIndex).trim();
       const remainder = threadKey.slice(subagentIndex + subagentMarker.length);
       const nextDelimiter = remainder.indexOf("::");
-      const agentType = nextDelimiter > 0
-        ? remainder.slice(0, nextDelimiter).trim()
-        : "subagent";
+      const agentType =
+        nextDelimiter > 0
+          ? remainder.slice(0, nextDelimiter).trim()
+          : "subagent";
       if (conversationId) {
         return {
           conversationId,
@@ -850,7 +906,9 @@ export class SessionStore {
     const derived = this.deriveImplicitThreadMetadata(threadKey);
     const now = Date.now();
     this.upsertSession(derived.conversationId, now);
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_threads (
         thread_key,
         conversation_id,
@@ -863,27 +921,37 @@ export class SessionStore {
       )
       VALUES (?, ?, ?, ?, 'evicted', ?, ?, NULL)
       ON CONFLICT(thread_key) DO NOTHING
-    `).run(
-      threadKey,
-      derived.conversationId,
-      derived.agentType,
-      threadKey,
-      now,
-      now,
-    );
+    `,
+      )
+      .run(
+        threadKey,
+        derived.conversationId,
+        derived.agentType,
+        threadKey,
+        now,
+        now,
+      );
     return derived;
   }
 
-  private replaceMessageParts(messageId: string, sessionId: string, parts: Array<{
-    type: string;
-    toolCallId?: string;
-    data: unknown;
-    createdAt: number;
-  }>): void {
-    this.db.prepare(`
+  private replaceMessageParts(
+    messageId: string,
+    sessionId: string,
+    parts: Array<{
+      type: string;
+      toolCallId?: string;
+      data: unknown;
+      createdAt: number;
+    }>,
+  ): void {
+    this.db
+      .prepare(
+        `
       DELETE FROM part
       WHERE message_id = ?
-    `).run(messageId);
+    `,
+      )
+      .run(messageId);
     const stmt = this.db.prepare(`
       INSERT INTO part (
         id,
@@ -922,7 +990,9 @@ export class SessionStore {
     payload?: Record<string, unknown>;
     channelEnvelope?: Record<string, unknown>;
   }): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO message (
         id,
         session_id,
@@ -949,31 +1019,37 @@ export class SessionStore {
         data_json = excluded.data_json,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at
-    `).run(
+    `,
+      )
+      .run(
+        args.eventId,
+        args.sessionId,
+        eventRoleForType(args.type),
+        args.type,
+        args.requestId ?? null,
+        args.deviceId ?? null,
+        args.targetDeviceId ?? null,
+        toJsonString(
+          args.channelEnvelope
+            ? { channelEnvelope: args.channelEnvelope }
+            : undefined,
+        ),
+        args.timestamp,
+        args.timestamp,
+      );
+    this.replaceMessageParts(
       args.eventId,
       args.sessionId,
-      eventRoleForType(args.type),
-      args.type,
-      args.requestId ?? null,
-      args.deviceId ?? null,
-      args.targetDeviceId ?? null,
-      toJsonString(
-        args.channelEnvelope
-          ? { channelEnvelope: args.channelEnvelope }
-          : undefined,
-      ),
-      args.timestamp,
-      args.timestamp,
+      args.payload
+        ? [
+            {
+              type: "payload",
+              data: args.payload,
+              createdAt: args.timestamp,
+            },
+          ]
+        : [],
     );
-    this.replaceMessageParts(args.eventId, args.sessionId, args.payload
-      ? [
-          {
-            type: "payload",
-            data: args.payload,
-            createdAt: args.timestamp,
-          },
-        ]
-      : []);
   }
 
   private deserializeEventRow(row: LocalChatEventRow): LocalChatEventRecord {
@@ -985,8 +1061,12 @@ export class SessionStore {
       ...(row.deviceId ? { deviceId: row.deviceId } : {}),
       ...(row.requestId ? { requestId: row.requestId } : {}),
       ...(row.targetDeviceId ? { targetDeviceId: row.targetDeviceId } : {}),
-      ...(parseJsonRecord(row.payloadJson) ? { payload: parseJsonRecord(row.payloadJson)! } : {}),
-      ...(asObject(meta?.channelEnvelope) ? { channelEnvelope: asObject(meta?.channelEnvelope)! } : {}),
+      ...(parseJsonRecord(row.payloadJson)
+        ? { payload: parseJsonRecord(row.payloadJson)! }
+        : {}),
+      ...(asObject(meta?.channelEnvelope)
+        ? { channelEnvelope: asObject(meta?.channelEnvelope)! }
+        : {}),
     };
   }
 
@@ -997,7 +1077,8 @@ export class SessionStore {
       throw new Error("type is required.");
     }
     const timestamp = asFiniteNumber(args.timestamp) ?? Date.now();
-    const eventId = asTrimmedString(args.eventId) || `local-${generateLocalId()}`;
+    const eventId =
+      asTrimmedString(args.eventId) || `local-${generateLocalId()}`;
     const payload = asObject(args.payload) ?? undefined;
     const channelEnvelope = asObject(args.channelEnvelope) ?? undefined;
     const deviceId = asTrimmedString(args.deviceId) || undefined;
@@ -1065,7 +1146,8 @@ export class SessionStore {
     let updatedRecord: LocalChatEventRecord | null = null;
     this.withTransaction(() => {
       const existingRow = this.db
-        .prepare(`
+        .prepare(
+          `
           SELECT
             message.id AS _id,
             message.created_at AS timestamp,
@@ -1081,7 +1163,8 @@ export class SessionStore {
            AND part.ord = 0
           WHERE message.id = ?
             AND message.session_id = ?
-        `)
+        `,
+        )
         .get(eventId, conversationId) as LocalChatEventRow | undefined;
       if (!existingRow) {
         return;
@@ -1090,13 +1173,12 @@ export class SessionStore {
       // destructive across all ords for this message id; if we ever
       // see >1 part row pre-merge it means a multi-part event type
       // has landed and this method silently dropped sibling parts.
-      const existingPartCount = (
-        this.db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM part WHERE message_id = ?`,
-          )
-          .get(eventId) as { n: number } | undefined
-      )?.n ?? 0;
+      const existingPartCount =
+        (
+          this.db
+            .prepare(`SELECT COUNT(*) AS n FROM part WHERE message_id = ?`)
+            .get(eventId) as { n: number } | undefined
+        )?.n ?? 0;
       if (existingPartCount > 1) {
         console.warn(
           `[session-store] mergeEventPayload destructively replaced ${existingPartCount} parts for event ${eventId} (conversation ${conversationId}); only ord:0 will survive. A multi-part event type now exists — switch this method to a part-level merge.`,
@@ -1160,7 +1242,9 @@ export class SessionStore {
   ): LocalChatEventRecord[] {
     const conversationId = this.sanitizeConversationId(conversationIdInput);
     const normalizedLimit = Math.max(1, Math.floor(maxItems));
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         recent.id AS _id,
         recent.created_at AS timestamp,
@@ -1182,7 +1266,9 @@ export class SessionStore {
         ON part.message_id = recent.id
        AND part.ord = 0
       ORDER BY recent.created_at ASC, recent.id ASC
-    `).all(conversationId, normalizedLimit) as LocalChatEventRow[];
+    `,
+      )
+      .all(conversationId, normalizedLimit) as LocalChatEventRow[];
 
     return rows.map((row) => this.deserializeEventRow(row));
   }
@@ -1205,7 +1291,9 @@ export class SessionStore {
       1,
       Math.min(Math.floor(args.limit ?? 80), 500),
     );
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         recent.session_id AS conversationId,
         recent.id AS _id,
@@ -1237,7 +1325,9 @@ export class SessionStore {
         ON part.message_id = recent.id
        AND part.ord = 0
       ORDER BY recent.created_at ASC, recent.id ASC
-    `).all(sinceMs, normalizedLimit) as Array<
+    `,
+      )
+      .all(sinceMs, normalizedLimit) as Array<
       LocalChatEventRow & { conversationId: string }
     >;
 
@@ -1270,7 +1360,9 @@ export class SessionStore {
     const beforeTimestamp = Math.floor(opts.beforeTimestampMs);
     const beforeId = opts.beforeId ?? "";
     const normalizedLimit = Math.max(1, Math.floor(opts.limit ?? 50));
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         recent.id AS _id,
         recent.created_at AS timestamp,
@@ -1296,13 +1388,15 @@ export class SessionStore {
         ON part.message_id = recent.id
        AND part.ord = 0
       ORDER BY recent.created_at ASC, recent.id ASC
-    `).all(
-      conversationId,
-      beforeTimestamp,
-      beforeTimestamp,
-      beforeId,
-      normalizedLimit,
-    ) as LocalChatEventRow[];
+    `,
+      )
+      .all(
+        conversationId,
+        beforeTimestamp,
+        beforeTimestamp,
+        beforeId,
+        normalizedLimit,
+      ) as LocalChatEventRow[];
 
     return rows.map((row) => this.deserializeEventRow(row));
   }
@@ -1382,6 +1476,52 @@ export class SessionStore {
   }
 
   /**
+   * Same projection as `listMessages`, but walks forward from a known mobile
+   * cursor. The returned rows are the new user/assistant messages plus any
+   * existing message rows whose turn gained new tool-derived artifacts after
+   * the cursor.
+   */
+  listMessagesAfter(
+    conversationIdInput: string,
+    args: {
+      afterTimestampMs: number;
+      afterId: string;
+      maxVisibleMessages?: number;
+    },
+  ): LocalChatMessageWindow & { sourceEvents: LocalChatEventRecord[] } {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const maxVisibleMessages = Math.max(
+      1,
+      Math.floor(args.maxVisibleMessages ?? 200),
+    );
+    const after = {
+      timestamp: Math.floor(args.afterTimestampMs),
+      id: args.afterId,
+    };
+    const fetchCutoff = this.findTurnFetchCutoff(conversationId, after);
+    const rows = this.fetchTimelineRows(
+      conversationId,
+      fetchCutoff,
+      null,
+      null,
+      CUTOFF_SCAN_CEILING,
+    );
+    const sourceEvents = rows.filter(
+      (row) =>
+        compareTimelineCursor({ timestamp: row.timestamp, id: row._id }, after) >
+        0,
+    );
+    return {
+      ...this.limitChangedMessageWindow(
+        this.assembleMessageWindow(rows),
+        after,
+        maxVisibleMessages,
+      ),
+      sourceEvents,
+    };
+  }
+
+  /**
    * Walks user/assistant rows DESC pulling the payload JSON so we can
    * skip UI-hidden messages (system reminders, workspace-creation
    * requests — see `isUiHiddenChatMessagePayload`). Without this, hidden
@@ -1399,7 +1539,9 @@ export class SessionStore {
     conversationId: string,
     maxVisibleMessages: number,
   ): TimelineCursor {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT message.created_at AS timestamp, message.id AS id, part.data_json AS payloadJson
       FROM message
       LEFT JOIN part
@@ -1409,7 +1551,9 @@ export class SessionStore {
         AND message.type IN ('user_message', 'assistant_message')
       ORDER BY message.created_at DESC, message.id DESC
       LIMIT ?
-    `).all(conversationId, CUTOFF_SCAN_CEILING) as VisibleScanRow[];
+    `,
+      )
+      .all(conversationId, CUTOFF_SCAN_CEILING) as VisibleScanRow[];
     return cursorFromVisibleScan(rows, maxVisibleMessages);
   }
 
@@ -1418,7 +1562,9 @@ export class SessionStore {
     maxVisibleMessages: number,
     before: TimelineCursor & {},
   ): TimelineCursor {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT message.created_at AS timestamp, message.id AS id, part.data_json AS payloadJson
       FROM message
       LEFT JOIN part
@@ -1432,13 +1578,15 @@ export class SessionStore {
         )
       ORDER BY message.created_at DESC, message.id DESC
       LIMIT ?
-    `).all(
-      conversationId,
-      before.timestamp,
-      before.timestamp,
-      before.id,
-      CUTOFF_SCAN_CEILING,
-    ) as VisibleScanRow[];
+    `,
+      )
+      .all(
+        conversationId,
+        before.timestamp,
+        before.timestamp,
+        before.id,
+        CUTOFF_SCAN_CEILING,
+      ) as VisibleScanRow[];
     return cursorFromVisibleScan(rows, maxVisibleMessages);
   }
 
@@ -1446,6 +1594,8 @@ export class SessionStore {
     conversationId: string,
     cutoff: TimelineCursor,
     before: TimelineCursor,
+    after: TimelineCursor = null,
+    limit?: number,
   ): LocalChatEventRecord[] {
     const clauses: string[] = [
       "message.session_id = ?",
@@ -1453,12 +1603,29 @@ export class SessionStore {
     ];
     const params: Array<string | number> = [conversationId];
     if (cutoff) {
-      clauses.push("(message.created_at > ? OR (message.created_at = ? AND message.id >= ?))");
+      clauses.push(
+        "(message.created_at > ? OR (message.created_at = ? AND message.id >= ?))",
+      );
       params.push(cutoff.timestamp, cutoff.timestamp, cutoff.id);
     }
     if (before) {
-      clauses.push("(message.created_at < ? OR (message.created_at = ? AND message.id < ?))");
+      clauses.push(
+        "(message.created_at < ? OR (message.created_at = ? AND message.id < ?))",
+      );
       params.push(before.timestamp, before.timestamp, before.id);
+    }
+    if (after) {
+      clauses.push(
+        "(message.created_at > ? OR (message.created_at = ? AND message.id > ?))",
+      );
+      params.push(after.timestamp, after.timestamp, after.id);
+    }
+    const normalizedLimit =
+      typeof limit === "number" && Number.isFinite(limit)
+        ? Math.max(1, Math.floor(limit))
+        : null;
+    if (normalizedLimit !== null) {
+      params.push(normalizedLimit);
     }
     const sql = `
       SELECT
@@ -1476,6 +1643,7 @@ export class SessionStore {
        AND part.ord = 0
       WHERE ${clauses.join(" AND ")}
       ORDER BY message.created_at ASC, message.id ASC
+      ${normalizedLimit !== null ? "LIMIT ?" : ""}
     `;
     const rows = this.db.prepare(sql).all(...params) as LocalChatEventRow[];
     return rows.map((row) => this.deserializeEventRow(row));
@@ -1486,7 +1654,9 @@ export class SessionStore {
     cutoff: TimelineCursor,
   ): TimelineCursor {
     if (!cutoff) return null;
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT message.created_at AS timestamp, message.id AS id
       FROM message
       WHERE message.session_id = ?
@@ -1497,12 +1667,11 @@ export class SessionStore {
         )
       ORDER BY message.created_at DESC, message.id DESC
       LIMIT 1
-    `).get(
-      conversationId,
-      cutoff.timestamp,
-      cutoff.timestamp,
-      cutoff.id,
-    ) as { timestamp?: unknown; id?: unknown } | undefined;
+    `,
+      )
+      .get(conversationId, cutoff.timestamp, cutoff.timestamp, cutoff.id) as
+      | { timestamp?: unknown; id?: unknown }
+      | undefined;
     if (typeof row?.timestamp !== "number" || typeof row.id !== "string") {
       return cutoff;
     }
@@ -1526,6 +1695,56 @@ export class SessionStore {
       }
       return keep;
     });
+    return { messages, visibleMessageCount };
+  }
+
+  private limitMessageWindow(
+    window: LocalChatMessageWindow,
+    maxVisibleMessages: number,
+  ): LocalChatMessageWindow {
+    const messages: LocalChatMessageRecord[] = [];
+    let visibleMessageCount = 0;
+    for (const message of window.messages) {
+      messages.push(message);
+      if (!isUiHiddenChatMessagePayload(message.payload ?? null)) {
+        visibleMessageCount += 1;
+      }
+      if (visibleMessageCount >= maxVisibleMessages) {
+        break;
+      }
+    }
+    return { messages, visibleMessageCount };
+  }
+
+  private limitChangedMessageWindow(
+    window: LocalChatMessageWindow,
+    after: TimelineCursor & {},
+    maxVisibleMessages: number,
+  ): LocalChatMessageWindow {
+    const messages: LocalChatMessageRecord[] = [];
+    let visibleMessageCount = 0;
+    for (const message of window.messages) {
+      const messageChanged =
+        compareTimelineCursor(
+          { timestamp: message.timestamp, id: message._id },
+          after,
+        ) > 0;
+      const toolEventsChanged = message.toolEvents.some(
+        (event) =>
+          compareTimelineCursor(
+            { timestamp: event.timestamp, id: event._id },
+            after,
+          ) > 0,
+      );
+      if (!messageChanged && !toolEventsChanged) continue;
+      messages.push(message);
+      if (!isUiHiddenChatMessagePayload(message.payload ?? null)) {
+        visibleMessageCount += 1;
+      }
+      if (visibleMessageCount >= maxVisibleMessages) {
+        break;
+      }
+    }
     return { messages, visibleMessageCount };
   }
 
@@ -1625,10 +1844,7 @@ export class SessionStore {
         continue;
       }
       if (currentAssistant) {
-        currentAssistant.toolEvents = [
-          ...currentAssistant.toolEvents,
-          row,
-        ];
+        currentAssistant.toolEvents = [...currentAssistant.toolEvents, row];
       } else {
         pendingPreAssistantTools.push(row);
       }
@@ -1690,7 +1906,9 @@ export class SessionStore {
     }
     params.push(normalizedLimit);
 
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         recent.id AS _id,
         recent.created_at AS timestamp,
@@ -1711,18 +1929,24 @@ export class SessionStore {
         ON part.message_id = recent.id
        AND part.ord = 0
       ORDER BY recent.created_at ASC, recent.id ASC
-    `).all(...params) as LocalChatEventRow[];
+    `,
+      )
+      .all(...params) as LocalChatEventRow[];
 
     const activities = rows.map((row) => this.deserializeEventRow(row));
 
-    const latestRow = this.db.prepare(`
+    const latestRow = this.db
+      .prepare(
+        `
       SELECT created_at AS timestamp
       FROM message
       WHERE session_id = ?
         AND type IN ('user_message', 'assistant_message')
       ORDER BY created_at DESC, id DESC
       LIMIT 1
-    `).get(conversationId) as { timestamp?: unknown } | undefined;
+    `,
+      )
+      .get(conversationId) as { timestamp?: unknown } | undefined;
     const latestMessageTimestampMs =
       typeof latestRow?.timestamp === "number" ? latestRow.timestamp : null;
 
@@ -1779,7 +2003,9 @@ export class SessionStore {
     }
     params.push(normalizedLimit);
 
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         recent.id AS _id,
         recent.created_at AS timestamp,
@@ -1803,19 +2029,25 @@ export class SessionStore {
         ON part.message_id = recent.id
        AND part.ord = 0
       ORDER BY recent.created_at ASC, recent.id ASC
-    `).all(...params) as LocalChatEventRow[];
+    `,
+      )
+      .all(...params) as LocalChatEventRow[];
 
     return { files: rows.map((row) => this.deserializeEventRow(row)) };
   }
 
   getEventCount(conversationIdInput: string): number {
     const conversationId = this.sanitizeConversationId(conversationIdInput);
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT COUNT(*) AS count
       FROM message
       WHERE session_id = ?
         AND type NOT IN ('thread_message', 'run_event', 'memory')
-    `).get(conversationId) as { count?: unknown } | undefined;
+    `,
+      )
+      .get(conversationId) as { count?: unknown } | undefined;
     return typeof row?.count === "number" ? row.count : 0;
   }
 
@@ -1825,7 +2057,9 @@ export class SessionStore {
   ): LocalChatSyncMessage[] {
     const conversationId = this.sanitizeConversationId(conversationIdInput);
     const normalizedLimit = Math.max(1, Math.floor(maxMessages));
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         message.id AS _id,
         message.created_at AS timestamp,
@@ -1840,7 +2074,9 @@ export class SessionStore {
         AND message.type IN ('user_message', 'assistant_message')
       ORDER BY message.created_at DESC, message.id DESC
       LIMIT ?
-    `).all(conversationId, CUTOFF_SCAN_CEILING) as Array<{
+    `,
+      )
+      .all(conversationId, CUTOFF_SCAN_CEILING) as Array<{
       _id: string;
       timestamp: number;
       type: string;
@@ -1872,33 +2108,49 @@ export class SessionStore {
     return this.getSession(conversationId)?.syncCheckpointMessageId ?? null;
   }
 
-  setSyncCheckpoint(conversationIdInput: string, localMessageIdInput: string): void {
+  setSyncCheckpoint(
+    conversationIdInput: string,
+    localMessageIdInput: string,
+  ): void {
     const conversationId = this.sanitizeConversationId(conversationIdInput);
     const localMessageId = asTrimmedString(localMessageIdInput);
     if (!localMessageId) return;
     this.upsertSession(conversationId, Date.now());
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE session
       SET sync_checkpoint_message_id = ?, updated_at = ?
       WHERE id = ?
-    `).run(localMessageId, Date.now(), conversationId);
+    `,
+      )
+      .run(localMessageId, Date.now(), conversationId);
   }
 
   private getThreadConversationId(threadKey: string): string {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT conversation_id AS conversationId
       FROM runtime_threads
       WHERE thread_key = ?
       LIMIT 1
-    `).get(threadKey) as { conversationId?: unknown } | undefined;
-    if (typeof row?.conversationId === "string" && row.conversationId.trim().length > 0) {
+    `,
+      )
+      .get(threadKey) as { conversationId?: unknown } | undefined;
+    if (
+      typeof row?.conversationId === "string" &&
+      row.conversationId.trim().length > 0
+    ) {
       return row.conversationId;
     }
     return this.ensureImplicitThreadRow(threadKey).conversationId;
   }
 
   private getThreadSession(threadKey: string): ThreadSessionRow | null {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT
         session_id AS sessionId,
         created_at AS createdAt,
@@ -1907,7 +2159,9 @@ export class SessionStore {
       FROM runtime_thread_sessions
       WHERE thread_key = ?
       LIMIT 1
-    `).get(threadKey) as ThreadSessionRow | undefined;
+    `,
+      )
+      .get(threadKey) as ThreadSessionRow | undefined;
     return row ?? null;
   }
 
@@ -1918,18 +2172,24 @@ export class SessionStore {
   ): ThreadSessionRow {
     const existing = this.getThreadSession(threadKey);
     if (existing) {
-      this.db.prepare(`
+      this.db
+        .prepare(
+          `
         UPDATE runtime_thread_sessions
         SET updated_at = ?
         WHERE thread_key = ?
-      `).run(timestamp, threadKey);
+      `,
+        )
+        .run(timestamp, threadKey);
       return existing;
     }
 
     const sessionId = generateLocalId();
     const cwd = "";
     this.upsertSession(conversationId, timestamp);
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_thread_sessions (
         thread_key,
         session_id,
@@ -1940,14 +2200,16 @@ export class SessionStore {
         updated_at
       )
       VALUES (?, ?, ?, ?, NULL, ?, ?)
-    `).run(
-      threadKey,
-      sessionId,
-      RUNTIME_THREAD_SESSION_VERSION,
-      cwd,
-      timestamp,
-      timestamp,
-    );
+    `,
+      )
+      .run(
+        threadKey,
+        sessionId,
+        RUNTIME_THREAD_SESSION_VERSION,
+        cwd,
+        timestamp,
+        timestamp,
+      );
     return {
       sessionId,
       createdAt: timestamp,
@@ -1957,13 +2219,17 @@ export class SessionStore {
   }
 
   private getThreadLeafEntryId(threadKey: string): string | null {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT entry_id AS entryId
       FROM runtime_thread_entries
       WHERE thread_key = ?
       ORDER BY created_at DESC, entry_id DESC
       LIMIT 1
-    `).get(threadKey) as { entryId?: unknown } | undefined;
+    `,
+      )
+      .get(threadKey) as { entryId?: unknown } | undefined;
     return typeof row?.entryId === "string" && row.entryId.trim().length > 0
       ? row.entryId
       : null;
@@ -1979,7 +2245,9 @@ export class SessionStore {
     const entryId = generateLocalId();
     const parentEntryId = this.getThreadLeafEntryId(args.threadKey);
     const timestampIso = toIsoTimestamp(args.timestamp);
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_thread_entries (
         entry_id,
         thread_key,
@@ -1991,16 +2259,18 @@ export class SessionStore {
         data_json
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      entryId,
-      args.threadKey,
-      args.sessionId,
-      parentEntryId,
-      args.entryType,
-      timestampIso,
-      args.timestamp,
-      toJsonValueString(args.data),
-    );
+    `,
+      )
+      .run(
+        entryId,
+        args.threadKey,
+        args.sessionId,
+        parentEntryId,
+        args.entryType,
+        timestampIso,
+        args.timestamp,
+        toJsonValueString(args.data),
+      );
     return entryId;
   }
 
@@ -2136,7 +2406,9 @@ export class SessionStore {
       content: message.content,
       ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
       ...(message.payload ? { payload: message.payload } : {}),
-      ...(message.customMessage ? { customMessage: message.customMessage } : {}),
+      ...(message.customMessage
+        ? { customMessage: message.customMessage }
+        : {}),
     }));
   }
 
@@ -2165,7 +2437,9 @@ export class SessionStore {
     const timestamp = asFiniteNumber(args.timestamp) ?? Date.now();
     const conversationId = this.getThreadConversationId(threadKey);
     this.withTransaction(() => {
-      const path = buildThreadPathEntries(this.loadThreadSessionEntries(threadKey));
+      const path = buildThreadPathEntries(
+        this.loadThreadSessionEntries(threadKey),
+      );
       const rawMessages = buildRawThreadMessages(path);
       const existingOverlays = buildThreadCompactionOverlays(path, rawMessages);
       const normalizedFromEntryId =
@@ -2202,7 +2476,9 @@ export class SessionStore {
     const messageId = `run:${event.runId}:${event.seq ?? generateLocalId()}`;
     this.withTransaction(() => {
       this.upsertSession(event.conversationId, event.timestamp);
-      this.db.prepare(`
+      this.db
+        .prepare(
+          `
         INSERT INTO message (
           id,
           session_id,
@@ -2226,18 +2502,20 @@ export class SessionStore {
           data_json = excluded.data_json,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at
-      `).run(
-        messageId,
-        event.conversationId,
-        event.runId,
-        event.agentType,
-        toJsonString({
-          eventType: event.type,
-          ...(event.seq == null ? {} : { seq: event.seq }),
-        }),
-        event.timestamp,
-        event.timestamp,
-      );
+      `,
+        )
+        .run(
+          messageId,
+          event.conversationId,
+          event.runId,
+          event.agentType,
+          toJsonString({
+            eventType: event.type,
+            ...(event.seq == null ? {} : { seq: event.seq }),
+          }),
+          event.timestamp,
+          event.timestamp,
+        );
       this.replaceMessageParts(messageId, event.conversationId, [
         {
           type: "run_event",
@@ -2274,7 +2552,9 @@ export class SessionStore {
   }
 
   listActiveThreads(conversationId: string): RuntimeThreadRecord[] {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         thread_key AS threadId,
         runtime_threads.conversation_id AS conversationId,
@@ -2292,7 +2572,9 @@ export class SessionStore {
         AND runtime_threads.status = 'active'
       ORDER BY runtime_threads.last_used_at DESC
       LIMIT ?
-    `).all(conversationId, MAX_ACTIVE_RUNTIME_THREADS) as Array<{
+    `,
+      )
+      .all(conversationId, MAX_ACTIVE_RUNTIME_THREADS) as Array<{
       threadId: string;
       conversationId: string;
       name: string;
@@ -2313,7 +2595,9 @@ export class SessionStore {
   }): { threadId: string; reused: boolean } {
     const requestedThreadId = normalizeRuntimeThreadId(args.threadId ?? "");
     const existing = requestedThreadId
-      ? this.db.prepare(`
+      ? (this.db
+          .prepare(
+            `
         SELECT
           thread_key AS threadId,
           conversation_id AS conversationId,
@@ -2325,15 +2609,19 @@ export class SessionStore {
         FROM runtime_threads
         WHERE thread_key = ?
         LIMIT 1
-      `).get(requestedThreadId) as {
-        threadId: string;
-        conversationId: string;
-        agentType: string;
-        status: "active" | "evicted";
-        createdAt: number;
-        lastUsedAt: number;
-        summary: string | null;
-      } | undefined
+      `,
+          )
+          .get(requestedThreadId) as
+          | {
+              threadId: string;
+              conversationId: string;
+              agentType: string;
+              status: "active" | "evicted";
+              createdAt: number;
+              lastUsedAt: number;
+              summary: string | null;
+            }
+          | undefined)
       : undefined;
 
     if (existing) {
@@ -2341,28 +2629,40 @@ export class SessionStore {
         existing.conversationId !== args.conversationId ||
         existing.agentType !== args.agentType
       ) {
-        throw new Error(`Thread ${existing.threadId} belongs to a different conversation or agent type.`);
+        throw new Error(
+          `Thread ${existing.threadId} belongs to a different conversation or agent type.`,
+        );
       }
       const activeThreads = this.listActiveThreads(args.conversationId);
       if (
         existing.status !== "active" &&
         activeThreads.length >= MAX_ACTIVE_RUNTIME_THREADS
       ) {
-        const oldest = [...activeThreads].sort((a, b) => a.lastUsedAt - b.lastUsedAt)[0];
+        const oldest = [...activeThreads].sort(
+          (a, b) => a.lastUsedAt - b.lastUsedAt,
+        )[0];
         if (oldest) {
-          this.db.prepare(`
+          this.db
+            .prepare(
+              `
             UPDATE runtime_threads
             SET status = 'evicted'
             WHERE thread_key = ?
-          `).run(oldest.threadId);
+          `,
+            )
+            .run(oldest.threadId);
         }
       }
       if (existing.status !== "active") {
-        this.db.prepare(`
+        this.db
+          .prepare(
+            `
           UPDATE runtime_threads
           SET status = 'active'
           WHERE thread_key = ?
-        `).run(existing.threadId);
+        `,
+          )
+          .run(existing.threadId);
       }
       this.touchThread(existing.threadId);
       return {
@@ -2373,22 +2673,32 @@ export class SessionStore {
 
     const activeThreads = this.listActiveThreads(args.conversationId);
     if (activeThreads.length >= MAX_ACTIVE_RUNTIME_THREADS) {
-      const oldest = [...activeThreads].sort((a, b) => a.lastUsedAt - b.lastUsedAt)[0];
+      const oldest = [...activeThreads].sort(
+        (a, b) => a.lastUsedAt - b.lastUsedAt,
+      )[0];
       if (oldest) {
-        this.db.prepare(`
+        this.db
+          .prepare(
+            `
           UPDATE runtime_threads
           SET status = 'evicted'
           WHERE thread_key = ?
-        `).run(oldest.threadId);
+        `,
+          )
+          .run(oldest.threadId);
       }
     }
 
     const prefix = "task-";
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT thread_key AS threadId
       FROM runtime_threads
       WHERE agent_type = ?
-    `).all(args.agentType) as Array<{ threadId: string }>;
+    `,
+      )
+      .all(args.agentType) as Array<{ threadId: string }>;
     let nextOrdinal = 1;
     for (const row of rows) {
       if (!row.threadId.startsWith(prefix)) continue;
@@ -2400,7 +2710,9 @@ export class SessionStore {
     const threadId = requestedThreadId || `${prefix}${nextOrdinal}`;
     const now = Date.now();
     this.upsertSession(args.conversationId, now);
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_threads (
         thread_key,
         conversation_id,
@@ -2412,14 +2724,9 @@ export class SessionStore {
         summary
       )
       VALUES (?, ?, ?, ?, 'active', ?, ?, NULL)
-    `).run(
-      threadId,
-      args.conversationId,
-      args.agentType,
-      threadId,
-      now,
-      now,
-    );
+    `,
+      )
+      .run(threadId, args.conversationId, args.agentType, threadId, now, now);
     return {
       threadId,
       reused: false,
@@ -2427,21 +2734,29 @@ export class SessionStore {
   }
 
   touchThread(threadKey: string): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE runtime_threads
       SET last_used_at = ?
       WHERE thread_key = ?
-    `).run(Date.now(), threadKey);
+    `,
+      )
+      .run(Date.now(), threadKey);
   }
 
   getThreadExternalSessionId(threadKey: string): string | undefined {
     this.ensureImplicitThreadRow(threadKey);
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT external_session_id AS externalSessionId
       FROM runtime_threads
       WHERE thread_key = ?
       LIMIT 1
-    `).get(threadKey) as { externalSessionId?: unknown } | undefined;
+    `,
+      )
+      .get(threadKey) as { externalSessionId?: unknown } | undefined;
     return typeof row?.externalSessionId === "string" &&
       row.externalSessionId.trim().length > 0
       ? row.externalSessionId.trim()
@@ -2454,50 +2769,74 @@ export class SessionStore {
   ): void {
     this.ensureImplicitThreadRow(threadKey);
     const normalized =
-      typeof externalSessionId === "string" && externalSessionId.trim().length > 0
+      typeof externalSessionId === "string" &&
+      externalSessionId.trim().length > 0
         ? externalSessionId.trim()
         : null;
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE runtime_threads
       SET external_session_id = ?, last_used_at = ?
       WHERE thread_key = ?
-    `).run(normalized, Date.now(), threadKey);
+    `,
+      )
+      .run(normalized, Date.now(), threadKey);
   }
 
   updateThreadSummary(threadKey: string, summary: string): void {
     const trimmed = summary.trim();
     if (!trimmed) return;
     this.ensureImplicitThreadRow(threadKey);
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT conversation_id AS conversationId
       FROM runtime_threads
       WHERE thread_key = ?
       LIMIT 1
-    `).get(threadKey) as { conversationId?: unknown } | undefined;
-    this.db.prepare(`
+    `,
+      )
+      .get(threadKey) as { conversationId?: unknown } | undefined;
+    this.db
+      .prepare(
+        `
       UPDATE runtime_threads
       SET summary = ?, last_used_at = ?
       WHERE thread_key = ?
-    `).run(trimmed, Date.now(), threadKey);
-    if (typeof row?.conversationId === "string" && row.conversationId.length > 0) {
+    `,
+      )
+      .run(trimmed, Date.now(), threadKey);
+    if (
+      typeof row?.conversationId === "string" &&
+      row.conversationId.length > 0
+    ) {
       this.forceOrchestratorReminderOnNextTurn(row.conversationId);
     }
   }
 
   getThreadName(threadKey: string): string | undefined {
     this.ensureImplicitThreadRow(threadKey);
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT name
       FROM runtime_threads
       WHERE thread_key = ?
       LIMIT 1
-    `).get(threadKey) as { name?: unknown } | undefined;
-    return typeof row?.name === "string" && row.name.length > 0 ? row.name : undefined;
+    `,
+      )
+      .get(threadKey) as { name?: unknown } | undefined;
+    return typeof row?.name === "string" && row.name.length > 0
+      ? row.name
+      : undefined;
   }
 
   saveAgentRecord(record: PersistedAgentRecord): void {
     this.upsertSession(record.conversationId, record.updatedAt);
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_agents (
         thread_id,
         conversation_id,
@@ -2529,26 +2868,30 @@ export class SessionStore {
         result = excluded.result,
         error = excluded.error,
         updated_at = excluded.updated_at
-    `).run(
-      record.threadId,
-      record.conversationId,
-      record.agentType,
-      record.description,
-      record.agentDepth,
-      record.maxAgentDepth ?? null,
-      record.parentAgentId ?? null,
-      toJsonValueString(record.selfModMetadata) ?? null,
-      record.status,
-      record.startedAt,
-      record.completedAt ?? null,
-      record.result ?? null,
-      record.error ?? null,
-      record.updatedAt,
-    );
+    `,
+      )
+      .run(
+        record.threadId,
+        record.conversationId,
+        record.agentType,
+        record.description,
+        record.agentDepth,
+        record.maxAgentDepth ?? null,
+        record.parentAgentId ?? null,
+        toJsonValueString(record.selfModMetadata) ?? null,
+        record.status,
+        record.startedAt,
+        record.completedAt ?? null,
+        record.result ?? null,
+        record.error ?? null,
+        record.updatedAt,
+      );
   }
 
   getAgentRecord(threadId: string): PersistedAgentRecord | null {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT
         thread_id,
         conversation_id,
@@ -2567,7 +2910,9 @@ export class SessionStore {
       FROM runtime_agents
       WHERE thread_id = ?
       LIMIT 1
-    `).get(threadId) as
+    `,
+      )
+      .get(threadId) as
       | {
           thread_id: string;
           conversation_id: string;
@@ -2588,16 +2933,18 @@ export class SessionStore {
     if (!row) {
       return null;
     }
-    const selfModMetadata = parseJsonValue<PersistedAgentRecord["selfModMetadata"]>(
-      row.self_mod_metadata_json,
-    );
+    const selfModMetadata = parseJsonValue<
+      PersistedAgentRecord["selfModMetadata"]
+    >(row.self_mod_metadata_json);
     return {
       threadId: row.thread_id,
       conversationId: row.conversation_id,
       agentType: row.agent_type,
       description: row.description,
       agentDepth: row.agent_depth,
-      ...(row.max_agent_depth == null ? {} : { maxAgentDepth: row.max_agent_depth }),
+      ...(row.max_agent_depth == null
+        ? {}
+        : { maxAgentDepth: row.max_agent_depth }),
       ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
       ...(selfModMetadata ? { selfModMetadata } : {}),
       status: row.status,
@@ -2612,7 +2959,9 @@ export class SessionStore {
   listAgentRecordsByStatus(
     status: PersistedAgentRecord["status"],
   ): PersistedAgentRecord[] {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         thread_id,
         conversation_id,
@@ -2631,7 +2980,9 @@ export class SessionStore {
       FROM runtime_agents
       WHERE status = ?
       ORDER BY updated_at DESC, thread_id ASC
-    `).all(status) as Array<{
+    `,
+      )
+      .all(status) as Array<{
       thread_id: string;
       conversation_id: string;
       agent_type: string;
@@ -2649,16 +3000,18 @@ export class SessionStore {
     }>;
 
     return rows.map((row) => {
-      const selfModMetadata = parseJsonValue<PersistedAgentRecord["selfModMetadata"]>(
-        row.self_mod_metadata_json,
-      );
+      const selfModMetadata = parseJsonValue<
+        PersistedAgentRecord["selfModMetadata"]
+      >(row.self_mod_metadata_json);
       return {
         threadId: row.thread_id,
         conversationId: row.conversation_id,
         agentType: row.agent_type,
         description: row.description,
         agentDepth: row.agent_depth,
-        ...(row.max_agent_depth == null ? {} : { maxAgentDepth: row.max_agent_depth }),
+        ...(row.max_agent_depth == null
+          ? {}
+          : { maxAgentDepth: row.max_agent_depth }),
         ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
         ...(selfModMetadata ? { selfModMetadata } : {}),
         status: row.status,
@@ -2675,20 +3028,27 @@ export class SessionStore {
     shouldInjectDynamicReminder: boolean;
     reminderTokensSinceLastInjection: number;
   } {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT
         reminder_tokens_since_last_injection AS reminderTokensSinceLastInjection,
         force_reminder_on_next_turn AS forceReminderOnNextTurn
       FROM runtime_conversation_state
       WHERE conversation_id = ?
       LIMIT 1
-    `).get(conversationId) as {
-      reminderTokensSinceLastInjection?: unknown;
-      forceReminderOnNextTurn?: unknown;
-    } | undefined;
-    const current = typeof row?.reminderTokensSinceLastInjection === "number"
-      ? Math.max(0, Math.floor(row.reminderTokensSinceLastInjection))
-      : 0;
+    `,
+      )
+      .get(conversationId) as
+      | {
+          reminderTokensSinceLastInjection?: unknown;
+          forceReminderOnNextTurn?: unknown;
+        }
+      | undefined;
+    const current =
+      typeof row?.reminderTokensSinceLastInjection === "number"
+        ? Math.max(0, Math.floor(row.reminderTokensSinceLastInjection))
+        : 0;
     const shouldInjectDynamicReminder = row?.forceReminderOnNextTurn === 1;
     return {
       shouldInjectDynamicReminder,
@@ -2701,30 +3061,40 @@ export class SessionStore {
     resetTo?: number;
     incrementBy?: number;
   }): void {
-    const currentState = this.db.prepare(`
+    const currentState = this.db
+      .prepare(
+        `
       SELECT
         reminder_tokens_since_last_injection AS reminderTokensSinceLastInjection,
         force_reminder_on_next_turn AS forceReminderOnNextTurn
       FROM runtime_conversation_state
       WHERE conversation_id = ?
       LIMIT 1
-    `).get(args.conversationId) as {
-      reminderTokensSinceLastInjection?: unknown;
-      forceReminderOnNextTurn?: unknown;
-    } | undefined;
+    `,
+      )
+      .get(args.conversationId) as
+      | {
+          reminderTokensSinceLastInjection?: unknown;
+          forceReminderOnNextTurn?: unknown;
+        }
+      | undefined;
     const current =
       typeof currentState?.reminderTokensSinceLastInjection === "number"
         ? currentState.reminderTokensSinceLastInjection
         : 0;
-    const nextValue = args.resetTo != null
-      ? Math.max(0, Math.floor(args.resetTo))
-      : Math.max(0, Math.floor(current + (args.incrementBy ?? 0)));
-    const forceReminderOnNextTurn = args.resetTo != null
-      ? 0
-      : currentState?.forceReminderOnNextTurn === 1
-        ? 1
-        : 0;
-    this.db.prepare(`
+    const nextValue =
+      args.resetTo != null
+        ? Math.max(0, Math.floor(args.resetTo))
+        : Math.max(0, Math.floor(current + (args.incrementBy ?? 0)));
+    const forceReminderOnNextTurn =
+      args.resetTo != null
+        ? 0
+        : currentState?.forceReminderOnNextTurn === 1
+          ? 1
+          : 0;
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_conversation_state (
         conversation_id,
         reminder_tokens_since_last_injection,
@@ -2734,21 +3104,31 @@ export class SessionStore {
       ON CONFLICT(conversation_id) DO UPDATE SET
         reminder_tokens_since_last_injection = excluded.reminder_tokens_since_last_injection,
         force_reminder_on_next_turn = excluded.force_reminder_on_next_turn
-    `).run(args.conversationId, nextValue, forceReminderOnNextTurn);
+    `,
+      )
+      .run(args.conversationId, nextValue, forceReminderOnNextTurn);
   }
 
   forceOrchestratorReminderOnNextTurn(conversationId: string): void {
-    const currentState = this.db.prepare(`
+    const currentState = this.db
+      .prepare(
+        `
       SELECT reminder_tokens_since_last_injection AS reminderTokensSinceLastInjection
       FROM runtime_conversation_state
       WHERE conversation_id = ?
       LIMIT 1
-    `).get(conversationId) as { reminderTokensSinceLastInjection?: unknown } | undefined;
+    `,
+      )
+      .get(conversationId) as
+      | { reminderTokensSinceLastInjection?: unknown }
+      | undefined;
     const reminderTokensSinceLastInjection =
       typeof currentState?.reminderTokensSinceLastInjection === "number"
         ? currentState.reminderTokensSinceLastInjection
         : 0;
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_conversation_state (
         conversation_id,
         reminder_tokens_since_last_injection,
@@ -2758,7 +3138,9 @@ export class SessionStore {
       ON CONFLICT(conversation_id) DO UPDATE SET
         reminder_tokens_since_last_injection = excluded.reminder_tokens_since_last_injection,
         force_reminder_on_next_turn = 1
-    `).run(conversationId, reminderTokensSinceLastInjection);
+    `,
+      )
+      .run(conversationId, reminderTokensSinceLastInjection);
   }
 
   /**
@@ -2768,17 +3150,24 @@ export class SessionStore {
    * inflate the count.
    */
   incrementUserTurnsSinceMemoryReview(conversationId: string): number {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT user_turns_since_review AS userTurnsSinceReview
       FROM runtime_memory_review_state
       WHERE conversation_id = ?
       LIMIT 1
-    `).get(conversationId) as { userTurnsSinceReview?: unknown } | undefined;
-    const current = typeof row?.userTurnsSinceReview === "number"
-      ? Math.max(0, Math.floor(row.userTurnsSinceReview))
-      : 0;
+    `,
+      )
+      .get(conversationId) as { userTurnsSinceReview?: unknown } | undefined;
+    const current =
+      typeof row?.userTurnsSinceReview === "number"
+        ? Math.max(0, Math.floor(row.userTurnsSinceReview))
+        : 0;
     const next = current + 1;
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_memory_review_state (
         conversation_id,
         user_turns_since_review,
@@ -2787,7 +3176,9 @@ export class SessionStore {
       VALUES (?, ?, NULL)
       ON CONFLICT(conversation_id) DO UPDATE SET
         user_turns_since_review = excluded.user_turns_since_review
-    `).run(conversationId, next);
+    `,
+      )
+      .run(conversationId, next);
     return next;
   }
 
@@ -2803,13 +3194,17 @@ export class SessionStore {
     userTurnsSinceReview: number;
     lastReviewedMessageTs: number;
   } {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT user_turns_since_review AS userTurnsSinceReview,
              last_reviewed_message_ts AS lastReviewedMessageTs
       FROM runtime_memory_review_state
       WHERE conversation_id = ?
       LIMIT 1
-    `).get(conversationId) as
+    `,
+      )
+      .get(conversationId) as
       | { userTurnsSinceReview?: unknown; lastReviewedMessageTs?: unknown }
       | undefined;
     return {
@@ -2842,7 +3237,9 @@ export class SessionStore {
       lastReviewedMessageTs > 0
         ? Math.floor(lastReviewedMessageTs)
         : null;
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_memory_review_state (
         conversation_id,
         user_turns_since_review,
@@ -2857,7 +3254,9 @@ export class SessionStore {
           excluded.last_reviewed_message_ts,
           runtime_memory_review_state.last_reviewed_message_ts
         )
-    `).run(conversationId, now, reviewedTs);
+    `,
+      )
+      .run(conversationId, now, reviewedTs);
   }
 
   /**
@@ -2870,14 +3269,13 @@ export class SessionStore {
     conversationId: string,
     lastReviewedMessageTs: number,
   ): void {
-    if (
-      !Number.isFinite(lastReviewedMessageTs) ||
-      lastReviewedMessageTs <= 0
-    ) {
+    if (!Number.isFinite(lastReviewedMessageTs) || lastReviewedMessageTs <= 0) {
       return;
     }
     const reviewedTs = Math.floor(lastReviewedMessageTs);
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO runtime_memory_review_state (
         conversation_id,
         user_turns_since_review,
@@ -2889,7 +3287,9 @@ export class SessionStore {
           COALESCE(runtime_memory_review_state.last_reviewed_message_ts, 0),
           excluded.last_reviewed_message_ts
         )
-    `).run(conversationId, reviewedTs);
+    `,
+      )
+      .run(conversationId, reviewedTs);
   }
 
   /**
@@ -2938,5 +3338,4 @@ export class SessionStore {
   markSelfModRevertsOriginThreadConsumed(revertIds: string[]): void {
     markOriginThreadConsumedImpl(this.db, revertIds);
   }
-
 }
