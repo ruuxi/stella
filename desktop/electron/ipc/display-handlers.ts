@@ -39,7 +39,7 @@ type DisplayHandlersOptions = {
 };
 
 const MAX_DISPLAY_FILE_BYTES = 200 * 1024 * 1024;
-const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
+export const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".pdf": "application/pdf",
@@ -150,7 +150,9 @@ export const isDisplayReadPathInLocalChatFiles = (
   return false;
 };
 
-const isMobileBridgeSender = (event: IpcMainEvent | IpcMainInvokeEvent) =>
+export const isMobileBridgeSender = (
+  event: IpcMainEvent | IpcMainInvokeEvent,
+) =>
   event.senderFrame?.url === MOBILE_BRIDGE_SENDER_URL ||
   event.sender.getURL() === MOBILE_BRIDGE_SENDER_URL;
 

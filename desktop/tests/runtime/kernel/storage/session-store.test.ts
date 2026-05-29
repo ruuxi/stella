@@ -24,7 +24,9 @@ const createTestContext = (): TestContext => {
     `stella-session-store-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   const dbPath = getDesktopDatabasePath(rootPath);
-  const db = new DatabaseSync(dbPath, { timeout: 5000 }) as unknown as SqliteDatabase;
+  const db = new DatabaseSync(dbPath, {
+    timeout: 5000,
+  }) as unknown as SqliteDatabase;
   initializeDesktopDatabase(db);
   const context = {
     rootPath,
@@ -58,11 +60,14 @@ describe("session-store", () => {
 
     expect(nextConversationId).not.toBe(firstConversationId);
     expect(store.getOrCreateDefaultConversationId()).toBe(nextConversationId);
-    expect(store.listMessages(nextConversationId, { maxVisibleMessages: 10 }).messages).toEqual([]);
     expect(
-      store.listMessages(firstConversationId, { maxVisibleMessages: 10 }).messages.map(
-        (message) => message.payload.text,
-      ),
+      store.listMessages(nextConversationId, { maxVisibleMessages: 10 })
+        .messages,
+    ).toEqual([]);
+    expect(
+      store
+        .listMessages(firstConversationId, { maxVisibleMessages: 10 })
+        .messages.map((message) => message.payload.text),
     ).toEqual(["Keep this"]);
   });
 
@@ -90,23 +95,27 @@ describe("session-store", () => {
       payload: { text: "Here are some options." },
     });
 
-    expect(store.listEvents(conversationId, 10).map((event) => event.type)).toEqual([
-      "user_message",
-      "tool_request",
-      "assistant_message",
-    ]);
+    expect(
+      store.listEvents(conversationId, 10).map((event) => event.type),
+    ).toEqual(["user_message", "tool_request", "assistant_message"]);
     expect(store.getEventCount(conversationId)).toBe(3);
 
     store.setSyncCheckpoint(conversationId, assistantEvent._id);
     expect(store.getSyncCheckpoint(conversationId)).toBe(assistantEvent._id);
 
-    const messageRows = db.prepare(`
+    const messageRows = db
+      .prepare(
+        `
       SELECT id, type, role
       FROM message
       WHERE session_id = ?
       ORDER BY created_at ASC, id ASC
-    `).all(conversationId) as Array<{ id: string; type: string; role: string }>;
-    expect(messageRows.map((row) => ({ type: row.type, role: row.role }))).toEqual([
+    `,
+      )
+      .all(conversationId) as Array<{ id: string; type: string; role: string }>;
+    expect(
+      messageRows.map((row) => ({ type: row.type, role: row.role })),
+    ).toEqual([
       { type: "user_message", role: "user" },
       { type: "tool_request", role: "tool" },
       { type: "assistant_message", role: "assistant" },
@@ -114,7 +123,9 @@ describe("session-store", () => {
     expect(messageRows[0]?.id).toBe(userEvent._id);
     expect(messageRows[2]?.id).toBe(assistantEvent._id);
 
-    const oldTables = db.prepare(`
+    const oldTables = db
+      .prepare(
+        `
       SELECT name
       FROM sqlite_master
       WHERE type = 'table'
@@ -127,7 +138,9 @@ describe("session-store", () => {
           'runtime_memories'
         )
       ORDER BY name ASC
-    `).all() as Array<{ name: string }>;
+    `,
+      )
+      .all() as Array<{ name: string }>;
     expect(oldTables).toEqual([]);
   });
 
@@ -187,14 +200,20 @@ describe("session-store", () => {
     const { messages } = store.listMessages(conversationId, {
       maxVisibleMessages: 10,
     });
-    expect(messages.map((m) => m._id)).toEqual([userA._id, assistantA._id, userB._id]);
+    expect(messages.map((m) => m._id)).toEqual([
+      userA._id,
+      assistantA._id,
+      userB._id,
+    ]);
     expect(messages[0]?.toolEvents).toEqual([]);
-    expect(
-      messages[1]?.toolEvents.map((event) => event.type),
-    ).toEqual(["tool_request", "tool_result", "agent-completed"]);
-    expect(
-      messages[2]?.toolEvents.map((event) => event.type),
-    ).toEqual(["tool_request"]);
+    expect(messages[1]?.toolEvents.map((event) => event.type)).toEqual([
+      "tool_request",
+      "tool_result",
+      "agent-completed",
+    ]);
+    expect(messages[2]?.toolEvents.map((event) => event.type)).toEqual([
+      "tool_request",
+    ]);
   });
 
   it("attaches pre-reply tool outputs to the assistant when one fires later in the turn", () => {
@@ -501,6 +520,97 @@ describe("session-store", () => {
     ]);
   });
 
+  it("listMessagesAfter returns only messages after the mobile cursor", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    const first = store.appendEvent({
+      conversationId,
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "already synced" },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "user_message",
+      timestamp: 1_010,
+      payload: { text: "new user" },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "tool_result",
+      timestamp: 1_011,
+      payload: {
+        toolName: "exec_command",
+        producedFiles: [{ path: "/tmp/report.pdf", kind: { type: "add" } }],
+      },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "assistant_message",
+      timestamp: 1_012,
+      payload: { text: "new assistant" },
+    });
+
+    const { messages, sourceEvents } = store.listMessagesAfter(conversationId, {
+      afterTimestampMs: first.timestamp,
+      afterId: first._id,
+      maxVisibleMessages: 10,
+    });
+
+    expect(messages.map((m) => m.payload?.text)).toEqual([
+      "new user",
+      "new assistant",
+    ]);
+    expect(messages[1]?.toolEvents.map((event) => event.type)).toEqual([
+      "tool_result",
+    ]);
+    expect(sourceEvents.map((event) => event.type)).toEqual([
+      "user_message",
+      "tool_result",
+      "assistant_message",
+    ]);
+  });
+
+  it("listMessagesAfter returns an existing assistant when its turn gets a new artifact", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    store.appendEvent({
+      conversationId,
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "make a report" },
+    });
+    const assistant = store.appendEvent({
+      conversationId,
+      type: "assistant_message",
+      timestamp: 1_010,
+      payload: { text: "Working on it." },
+    });
+    const artifact = store.appendEvent({
+      conversationId,
+      type: "tool_result",
+      timestamp: 1_020,
+      payload: {
+        toolName: "html",
+        filePath: "/Users/me/.stella/outputs/html/report.html",
+      },
+    });
+
+    const { messages, sourceEvents } = store.listMessagesAfter(conversationId, {
+      afterTimestampMs: assistant.timestamp,
+      afterId: assistant._id,
+      maxVisibleMessages: 10,
+    });
+
+    expect(messages.map((m) => m._id)).toEqual([assistant._id]);
+    expect(messages[0]?.toolEvents.map((event) => event._id)).toEqual([
+      artifact._id,
+    ]);
+    expect(sourceEvents.map((event) => event._id)).toEqual([artifact._id]);
+  });
+
   it("keeps listMessages bounded when the requested visible window exceeds the scan ceiling", () => {
     const { store } = createTestContext();
     const conversationId = store.getOrCreateDefaultConversationId();
@@ -603,11 +713,9 @@ describe("session-store", () => {
     const { activities: latest } = store.listActivity(conversationId, {
       limit: 3,
     });
-    expect(latest.map((event) => (event.payload as { agentId: string })?.agentId)).toEqual([
-      "agent-3",
-      "agent-4",
-      "agent-5",
-    ]);
+    expect(
+      latest.map((event) => (event.payload as { agentId: string })?.agentId),
+    ).toEqual(["agent-3", "agent-4", "agent-5"]);
 
     const oldest = latest[0]!;
     const { activities: older } = store.listActivity(conversationId, {
@@ -615,11 +723,9 @@ describe("session-store", () => {
       beforeTimestampMs: oldest.timestamp,
       beforeId: oldest._id,
     });
-    expect(older.map((event) => (event.payload as { agentId: string })?.agentId)).toEqual([
-      "agent-0",
-      "agent-1",
-      "agent-2",
-    ]);
+    expect(
+      older.map((event) => (event.payload as { agentId: string })?.agentId),
+    ).toEqual(["agent-0", "agent-1", "agent-2"]);
   });
 
   it("listActivity returns latestMessageTimestampMs across the whole conversation, not just the activity window", () => {
@@ -683,9 +789,7 @@ describe("session-store", () => {
       requestId: "tool-2",
       payload: {
         toolName: "apply_patch",
-        fileChanges: [
-          { kind: { type: "create" }, path: "/repo/src/new.ts" },
-        ],
+        fileChanges: [{ kind: { type: "create" }, path: "/repo/src/new.ts" }],
       },
     });
     // tool_result with empty fileChanges array — should be excluded.
@@ -707,7 +811,9 @@ describe("session-store", () => {
       timestamp: 1_030,
       payload: {
         agentId: "general-1",
-        producedFiles: [{ path: "/out/report.pdf", mimeType: "application/pdf" }],
+        producedFiles: [
+          { path: "/out/report.pdf", mimeType: "application/pdf" },
+        ],
       },
     });
     // agent-completed without files — should be excluded.
@@ -904,12 +1010,16 @@ describe("session-store", () => {
       model: "claude-sonnet",
     });
 
-    const threadRows = db.prepare(`
+    const threadRows = db
+      .prepare(
+        `
       SELECT COUNT(*) AS count
       FROM runtime_thread_entries
       WHERE thread_key = ?
         AND entry_type = 'message'
-    `).get(threadId) as { count: number };
+    `,
+      )
+      .get(threadId) as { count: number };
     expect(threadRows.count).toBe(2);
   });
 
@@ -1075,12 +1185,16 @@ describe("session-store", () => {
       content: "Latest request",
     });
 
-    const compactionRows = db.prepare(`
+    const compactionRows = db
+      .prepare(
+        `
       SELECT COUNT(*) AS count
       FROM runtime_thread_entries
       WHERE thread_key = ?
         AND entry_type = 'compaction'
-    `).get(threadId) as { count: number };
+    `,
+      )
+      .get(threadId) as { count: number };
     expect(compactionRows.count).toBe(1);
   });
 
@@ -1230,7 +1344,9 @@ describe("session-store", () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0]?.content).toBe("Hello from the orchestrator thread");
 
-    const runtimeThread = db.prepare(`
+    const runtimeThread = db
+      .prepare(
+        `
       SELECT
         conversation_id AS conversationId,
         agent_type AS agentType,
@@ -1238,7 +1354,9 @@ describe("session-store", () => {
       FROM runtime_threads
       WHERE thread_key = ?
       LIMIT 1
-    `).get(conversationId) as {
+    `,
+      )
+      .get(conversationId) as {
       conversationId: string;
       agentType: string;
       status: string;

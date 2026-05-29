@@ -55,6 +55,7 @@ import {
   IPC_LOCAL_CHAT_LIST_SYNC_MESSAGES,
   IPC_LOCAL_CHAT_PERSIST_WELCOME,
   IPC_LOCAL_CHAT_SET_SYNC_CHECKPOINT,
+  IPC_LOCAL_CHAT_SYNC_MESSAGES,
   IPC_LOCAL_CHAT_UPDATED,
   IPC_LLM_CREDENTIALS_DELETE,
   IPC_LLM_CREDENTIALS_DELETE_OAUTH,
@@ -69,7 +70,6 @@ import {
   IPC_MINI_BRIDGE_UPDATE,
   IPC_OFFICE_PREVIEW_LIST,
   IPC_OFFICE_PREVIEW_START,
-  IPC_OFFICE_PREVIEW_UPDATE,
   IPC_ONBOARDING_SYNTHESIZE,
   IPC_PERMISSIONS_GET_STATUS,
   IPC_PERMISSIONS_OPEN_SETTINGS,
@@ -249,7 +249,10 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
 
   invoke("officePreview.list", IPC_OFFICE_PREVIEW_LIST),
   invoke("officePreview.start", IPC_OFFICE_PREVIEW_START),
-  event("officePreview.onUpdate", IPC_OFFICE_PREVIEW_UPDATE),
+  noop(
+    "officePreview.onUpdate",
+    "Mobile receives office preview updates through scoped list polling.",
+  ),
 
   invoke("ui.getState", IPC_UI_GET_STATE),
   invoke("ui.setState", IPC_UI_SET_STATE),
@@ -383,6 +386,7 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
   invoke("localChat.getEventCount", IPC_LOCAL_CHAT_GET_EVENT_COUNT),
   invoke("localChat.persistDiscoveryWelcome", IPC_LOCAL_CHAT_PERSIST_WELCOME),
   invoke("localChat.listSyncMessages", IPC_LOCAL_CHAT_LIST_SYNC_MESSAGES),
+  invoke("localChat.syncMessages", IPC_LOCAL_CHAT_SYNC_MESSAGES),
   invoke("localChat.getSyncCheckpoint", IPC_LOCAL_CHAT_GET_SYNC_CHECKPOINT),
   invoke("localChat.setSyncCheckpoint", IPC_LOCAL_CHAT_SET_SYNC_CHECKPOINT),
   event("localChat.onUpdated", IPC_LOCAL_CHAT_UPDATED),

@@ -21,12 +21,16 @@ describe("mobile bridge policy", () => {
     expect(
       isMobileBridgeRequestChannel("localChat:persistDiscoveryWelcome"),
     ).toBe(true);
+    expect(isMobileBridgeRequestChannel("localChat:syncMessages")).toBe(true);
     expect(isMobileBridgeEventChannel("localChat:updated")).toBe(true);
   });
 
   it("derives bridge channel access from explicit mobile capability decisions", () => {
     expect(isMobileBridgeRequestChannel("agent:sendInput")).toBe(true);
     expect(isMobileBridgeRequestChannel("display:readFile")).toBe(true);
+    expect(isMobileBridgeRequestChannel("officePreview:list")).toBe(true);
+    expect(isMobileBridgeRequestChannel("officePreview:start")).toBe(true);
+    expect(isMobileBridgeEventChannel("officePreview:update")).toBe(false);
     expect(isMobileBridgeRequestChannel("devtest:triggerViteError")).toBe(
       false,
     );
@@ -57,6 +61,13 @@ describe("mobile bridge policy", () => {
           capability.path === "display.readFile" &&
           capability.mode === "remote-request" &&
           capability.channel === "display:readFile",
+      ),
+    ).toBe(true);
+    expect(
+      MOBILE_BRIDGE_CAPABILITIES.some(
+        (capability) =>
+          capability.path === "officePreview.onUpdate" &&
+          capability.mode === "noop",
       ),
     ).toBe(true);
   });
