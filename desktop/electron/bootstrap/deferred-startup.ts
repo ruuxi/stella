@@ -92,7 +92,7 @@ const createDeferredStartupTasks = (
       label: "chronicle-daemon",
       delayMs: config.startupStageDelayMs,
       run: async () => {
-        const stellaHome = state.stellaRoot;
+        const stellaHome = state.stellaHomePath;
         if (!stellaHome) return;
         if (!state.chronicleController) {
           state.chronicleController = new ChronicleController(stellaHome);

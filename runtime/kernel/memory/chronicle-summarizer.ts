@@ -35,6 +35,7 @@ import {
   type ResolvedLlmRoute,
 } from "../model-routing.js";
 import { createRuntimeLogger } from "../debug.js";
+import { getChronicleEnabled } from "../preferences/local-preferences.js";
 import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
@@ -59,14 +60,6 @@ type CaptureEntry = {
   displayId?: string;
   addedLines?: string[];
   removedLines?: string[];
-};
-
-type ChronicleConfig = {
-  enabled?: boolean;
-};
-
-type StellaConfig = {
-  chronicle?: ChronicleConfig;
 };
 
 const chronicleStateDir = (stellaHome: string): string =>
@@ -135,16 +128,7 @@ const ensureInstructions = async (stellaHome: string): Promise<void> => {
 };
 
 const isChronicleEnabled = async (stellaHome: string): Promise<boolean> => {
-  try {
-    const raw = await fsp.readFile(
-      path.join(stellaHome, "config.json"),
-      "utf-8",
-    );
-    const parsed = JSON.parse(raw) as StellaConfig;
-    return parsed.chronicle?.enabled !== false;
-  } catch {
-    return true;
-  }
+  return getChronicleEnabled(stellaHome);
 };
 
 const lockDir = (stellaHome: string, window: ChronicleSummaryWindow): string =>
