@@ -10,6 +10,7 @@ import type {
 
 const DEFAULT_REPO_OWNER = "ruuxi";
 const DEFAULT_REPO_NAME = "stella";
+const UPDATE_METADATA_TIMEOUT_MS = 20_000;
 
 export type ActiveDesktopUpdate = {
   status: "starting" | "running";
@@ -86,6 +87,29 @@ export type UpdateAgentFallback = {
   sourcePackConflictJson?: string;
 };
 
+const withUpdateMetadataTimeout = async <T>(
+  label: string,
+  promise: Promise<T>,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new Error(
+            `Desktop update metadata step "${label}" timed out after ${Math.round(UPDATE_METADATA_TIMEOUT_MS / 1000)}s.`,
+          ),
+        );
+      }, UPDATE_METADATA_TIMEOUT_MS);
+    });
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+};
+
 export const recordOfficialDesktopUpdateSourceHistory = async (args: {
   updatesApi:
     | Pick<ElectronUpdatesApi, "recordSourceHistory">
@@ -98,13 +122,16 @@ export const recordOfficialDesktopUpdateSourceHistory = async (args: {
   const recordSourceHistory = args.updatesApi?.recordSourceHistory;
   if (!recordSourceHistory) return;
   try {
-    await recordSourceHistory({
-      targetCommit: args.targetCommit,
-      releaseTag: args.releaseTag,
-      ...(args.sourceHistoryRef
-        ? { sourceHistoryRef: args.sourceHistoryRef }
-        : {}),
-    });
+    await withUpdateMetadataTimeout(
+      "record source history",
+      recordSourceHistory({
+        targetCommit: args.targetCommit,
+        releaseTag: args.releaseTag,
+        ...(args.sourceHistoryRef
+          ? { sourceHistoryRef: args.sourceHistoryRef }
+          : {}),
+      }),
+    );
   } catch (error) {
     console.warn(
       "[updates] Failed to record official desktop source history:",

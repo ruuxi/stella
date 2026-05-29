@@ -106,9 +106,11 @@ export const ShellTopBarUpdatePill = () => {
         }
       }
     } catch (error) {
+      const message = (error as Error).message ?? "Please try again.";
+      const timedOut = /timed out/i.test(message);
       showToast({
-        title: "Couldn't start update",
-        description: (error as Error).message ?? "Please try again.",
+        title: timedOut ? "Update timed out" : "Couldn't start update",
+        description: message,
         variant: "error",
       });
     }

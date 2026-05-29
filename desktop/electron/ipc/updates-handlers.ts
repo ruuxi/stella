@@ -60,11 +60,98 @@ import {
   recordDesktopUpdateSourceHistory,
   sourceHistoryRefFromDesktopReleaseManifest,
 } from "./desktop-source-history.js";
+import {
+  getFileLogger,
+  type LogFields,
+} from "../../../runtime/observability/file-logger.js";
 
 const INSTALL_MANIFEST_BASENAME = "stella-install.json";
 const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers";
 const DEFAULT_NATIVE_HELPERS_MANIFEST_URL = `${DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL}/current.json`;
+const UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS = 120_000;
+const UPDATE_SOURCE_HISTORY_TIMEOUT_MS = 20_000;
+
+class DesktopUpdateRuntimeTimeoutError extends Error {
+  constructor(
+    readonly phase: string,
+    readonly timeoutMs: number,
+  ) {
+    super(
+      `Desktop update phase "${phase}" timed out after ${Math.round(timeoutMs / 1000)}s.`,
+    );
+    this.name = "DesktopUpdateRuntimeTimeoutError";
+  }
+}
+
+const shortCommit = (commit: string | null | undefined): string | undefined =>
+  commit ? commit.slice(0, 12) : undefined;
+
+const logDesktopUpdateProcess = (event: string, fields?: LogFields) => {
+  getFileLogger()?.process(event, fields);
+};
+
+const logDesktopUpdateWarn = (event: string, fields?: LogFields) => {
+  getFileLogger()?.warn(event, fields);
+};
+
+const logDesktopUpdateError = (
+  event: string,
+  error: unknown,
+  fields?: LogFields,
+) => {
+  getFileLogger()?.error(event, {
+    ...(fields ?? {}),
+    error,
+  });
+};
+
+const withDesktopUpdateTimeout = async <T>(
+  phase: string,
+  timeoutMs: number,
+  promise: Promise<T>,
+  fields?: LogFields,
+): Promise<T> => {
+  const startedAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  logDesktopUpdateProcess("desktop-update.phase.start", {
+    phase,
+    timeoutMs,
+    ...(fields ?? {}),
+  });
+  try {
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(new DesktopUpdateRuntimeTimeoutError(phase, timeoutMs));
+      }, timeoutMs);
+      timer.unref?.();
+    });
+    const result = await Promise.race([promise, timeout]);
+    logDesktopUpdateProcess("desktop-update.phase.done", {
+      phase,
+      elapsedMs: Date.now() - startedAt,
+      ...(fields ?? {}),
+    });
+    return result;
+  } catch (error) {
+    const logFields = {
+      phase,
+      elapsedMs: Date.now() - startedAt,
+      ...(fields ?? {}),
+      error,
+    };
+    if (error instanceof DesktopUpdateRuntimeTimeoutError) {
+      logDesktopUpdateWarn("desktop-update.phase.timeout", logFields);
+    } else {
+      logDesktopUpdateError("desktop-update.phase.failed", error, logFields);
+    }
+    throw error;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+};
 
 const nativeHelperPlatformKey = (): string => {
   if (process.platform === "win32" && process.arch === "x64") {
@@ -719,7 +806,16 @@ const tryApplySourcePackDesktopUpdate = async (
     artifactRefs?: StellaReleaseArtifactRef[];
   },
 ): Promise<DesktopUpdateFastApplyResult> => {
+  logDesktopUpdateProcess("desktop-update.source-pack.start", {
+    releaseTag: args.releaseTag,
+    baseCommit: shortCommit(args.baseCommit),
+    targetCommit: shortCommit(args.targetCommit),
+  });
   if (await hasMergeInProgress(stellaRoot)) {
+    logDesktopUpdateWarn("desktop-update.source-pack.needs-agent", {
+      releaseTag: args.releaseTag,
+      reason: "merge-in-progress",
+    });
     return {
       status: "needs-agent",
       reason: "A merge is already in progress in the install tree.",
@@ -727,6 +823,10 @@ const tryApplySourcePackDesktopUpdate = async (
   }
 
   if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
+    logDesktopUpdateWarn("desktop-update.source-pack.needs-agent", {
+      releaseTag: args.releaseTag,
+      reason: "tracked-local-changes",
+    });
     return {
       status: "needs-agent",
       reason: "The install tree has tracked local changes.",
@@ -735,6 +835,11 @@ const tryApplySourcePackDesktopUpdate = async (
 
   const sourcePack = await fetchDesktopUpdateSourcePack(args.sourcePackRef);
   if (!desktopSourcePackMatchesBaseCommit(sourcePack, args.baseCommit)) {
+    logDesktopUpdateWarn("desktop-update.source-pack.base-mismatch", {
+      releaseTag: args.releaseTag,
+      baseCommit: shortCommit(args.baseCommit),
+      sourceBaseRevisionId: sourcePack.baseRevisionId,
+    });
     return {
       status: "needs-agent",
       reason: `Desktop source pack starts at ${sourcePack.baseRevisionId}, but this install is based on git:${args.baseCommit}.`,
@@ -743,6 +848,11 @@ const tryApplySourcePackDesktopUpdate = async (
   }
   const sourcePaths = collectSourcePackPaths(sourcePack);
   if (!desktopSourcePackCanApplyLocally(sourcePack)) {
+    logDesktopUpdateWarn("desktop-update.source-pack.not-local", {
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      changedFileCount: sourcePaths.length,
+    });
     return {
       status: "needs-agent",
       reason:
@@ -764,6 +874,12 @@ const tryApplySourcePackDesktopUpdate = async (
     },
   });
   if (obstruction) {
+    logDesktopUpdateWarn("desktop-update.source-pack.obstructed", {
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      reason: obstruction.reason,
+      changedFileCount: sourcePaths.length,
+    });
     return {
       status: "needs-agent",
       reason: `${obstruction.reason} Falling back to Git update.`,
@@ -772,11 +888,19 @@ const tryApplySourcePackDesktopUpdate = async (
   }
   const recordSourceHistory = async (commitHash = args.targetCommit) => {
     if (!runner) return;
-    await recordDesktopUpdateSourceHistory(runner, {
-      sourcePack,
-      releaseTag: args.releaseTag,
-      targetCommit: commitHash,
-    }).catch((error) => {
+    await withDesktopUpdateTimeout(
+      "source-pack.record-history",
+      UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
+      recordDesktopUpdateSourceHistory(runner, {
+        sourcePack,
+        releaseTag: args.releaseTag,
+        targetCommit: commitHash,
+      }),
+      {
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(commitHash),
+      },
+    ).catch((error) => {
       console.warn("[updates] Failed to record desktop source history:", error);
     });
   };
@@ -787,6 +911,12 @@ const tryApplySourcePackDesktopUpdate = async (
   });
 
   if (sourceApply.status === "conflicts") {
+    logDesktopUpdateWarn("desktop-update.source-pack.conflicts", {
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      appliedPathCount: sourceApply.appliedPaths.length,
+      conflictCount: sourceApply.conflicts.length,
+    });
     const conflictRoot = path.join(
       stellaHome,
       "raw",
@@ -837,6 +967,10 @@ const tryApplySourcePackDesktopUpdate = async (
   }
 
   if (sourceApply.appliedPaths.length === 0) {
+    logDesktopUpdateProcess("desktop-update.source-pack.noop", {
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+    });
     await recordSourceHistory();
     await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedReleasePointer(
@@ -867,16 +1001,36 @@ const tryApplySourcePackDesktopUpdate = async (
     .slice(2)}`;
   let hmrRunStarted = false;
   try {
-    await runner.beginExternalSelfMod({
-      runId,
-      paths: sourceApply.appliedPaths,
-    });
+    await withDesktopUpdateTimeout(
+      "source-pack.begin-external-self-mod",
+      UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+      runner.beginExternalSelfMod({
+        runId,
+        paths: sourceApply.appliedPaths,
+      }),
+      {
+        runId,
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(args.targetCommit),
+        changedFileCount: sourceApply.appliedPaths.length,
+      },
+    );
     hmrRunStarted = true;
+    logDesktopUpdateProcess("desktop-update.source-pack.write.start", {
+      runId,
+      releaseTag: args.releaseTag,
+      changedFileCount: sourceApply.appliedPaths.length,
+    });
     await writeSourcePackApplyResult({
       repoRoot: stellaRoot,
       paths: sourcePaths,
       tree: sourceApply.tree,
       appliedPaths: sourceApply.appliedPaths,
+    });
+    logDesktopUpdateProcess("desktop-update.source-pack.write.done", {
+      runId,
+      releaseTag: args.releaseTag,
+      changedFileCount: sourceApply.appliedPaths.length,
     });
 
     const addResult = await runGit(stellaRoot, [
@@ -901,9 +1055,18 @@ const tryApplySourcePackDesktopUpdate = async (
       );
     }
 
+    logDesktopUpdateProcess("desktop-update.source-pack.commit.done", {
+      runId,
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+    });
     const dependencyInstallRan =
       sourceApply.appliedPaths.some(isDependencyChange);
     if (dependencyInstallRan) {
+      logDesktopUpdateProcess("desktop-update.dependencies.install.start", {
+        runId,
+        releaseTag: args.releaseTag,
+      });
       let installResult: ProcessRunResult | null = null;
       let lastMissingBunError: Error | null = null;
       for (const bunCommand of candidateBunCommands()) {
@@ -936,6 +1099,10 @@ const tryApplySourcePackDesktopUpdate = async (
             : `Dependency install failed with exit code ${installResult.exitCode}.`,
         );
       }
+      logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
+        runId,
+        releaseTag: args.releaseTag,
+      });
     }
 
     await runner.finishExternalSelfMod({ runId, succeeded: true });
@@ -956,6 +1123,12 @@ const tryApplySourcePackDesktopUpdate = async (
       nativeHelpersRefreshed: true,
     };
   } catch (error) {
+    logDesktopUpdateError("desktop-update.source-pack.failed", error, {
+      runId,
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      hmrRunStarted,
+    });
     if (hmrRunStarted) {
       await runner
         .finishExternalSelfMod({ runId, succeeded: false })
@@ -977,6 +1150,12 @@ const tryApplyCleanDesktopUpdate = async (
     artifactRefs?: StellaReleaseArtifactRef[];
   },
 ): Promise<DesktopUpdateFastApplyResult> => {
+  logDesktopUpdateProcess("desktop-update.fast.start", {
+    releaseTag: args.releaseTag,
+    baseCommit: shortCommit(args.baseCommit),
+    targetCommit: shortCommit(args.targetCommit),
+    hasSourcePack: Boolean(args.sourcePackRef),
+  });
   if (args.sourcePackRef) {
     try {
       const sourcePackResult = await tryApplySourcePackDesktopUpdate(
@@ -995,17 +1174,42 @@ const tryApplyCleanDesktopUpdate = async (
         sourcePackResult.status === "applied" ||
         Boolean(sourcePackResult.sourcePackConflictFile)
       ) {
+        logDesktopUpdateProcess("desktop-update.fast.source-pack-result", {
+          releaseTag: args.releaseTag,
+          targetCommit: shortCommit(args.targetCommit),
+          status: sourcePackResult.status,
+          changedFileCount:
+            sourcePackResult.status === "applied"
+              ? sourcePackResult.changedFiles.length
+              : (sourcePackResult.changedFiles?.length ?? 0),
+        });
         return sourcePackResult;
       }
+      logDesktopUpdateWarn("desktop-update.fast.source-pack-fallback", {
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(args.targetCommit),
+        reason: sourcePackResult.reason,
+      });
     } catch (error) {
+      if (error instanceof DesktopUpdateRuntimeTimeoutError) {
+        throw error;
+      }
       console.warn(
         "[updates] Source-pack update path failed; falling back to git:",
         error,
       );
+      logDesktopUpdateError("desktop-update.fast.source-pack-failed", error, {
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(args.targetCommit),
+      });
     }
   }
 
   if (await hasMergeInProgress(stellaRoot)) {
+    logDesktopUpdateWarn("desktop-update.fast.needs-agent", {
+      releaseTag: args.releaseTag,
+      reason: "merge-in-progress",
+    });
     return {
       status: "needs-agent",
       reason: "A merge is already in progress in the install tree.",
@@ -1013,12 +1217,20 @@ const tryApplyCleanDesktopUpdate = async (
   }
 
   if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
+    logDesktopUpdateWarn("desktop-update.fast.needs-agent", {
+      releaseTag: args.releaseTag,
+      reason: "tracked-local-changes",
+    });
     return {
       status: "needs-agent",
       reason: "The install tree has tracked local changes.",
     };
   }
 
+  logDesktopUpdateProcess("desktop-update.git.fetch.start", {
+    releaseTag: args.releaseTag,
+    targetCommit: shortCommit(args.targetCommit),
+  });
   const fetchResult = await runGit(stellaRoot, [
     "fetch",
     "--filter=blob:none",
@@ -1031,6 +1243,10 @@ const tryApplyCleanDesktopUpdate = async (
       gitFailureDetail(fetchResult, "Failed to fetch the desktop update."),
     );
   }
+  logDesktopUpdateProcess("desktop-update.git.fetch.done", {
+    releaseTag: args.releaseTag,
+    targetCommit: shortCommit(args.targetCommit),
+  });
 
   const alreadyApplied = await runGit(stellaRoot, [
     "merge-base",
@@ -1039,6 +1255,10 @@ const tryApplyCleanDesktopUpdate = async (
     "HEAD",
   ]);
   if (alreadyApplied.exitCode === 0) {
+    logDesktopUpdateProcess("desktop-update.git.already-applied", {
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+    });
     await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedCommit(
       stellaRoot,
@@ -1062,6 +1282,10 @@ const tryApplyCleanDesktopUpdate = async (
     args.targetCommit,
   ]);
   if (mergeTree.exitCode !== 0) {
+    logDesktopUpdateWarn("desktop-update.git.preflight-conflict", {
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+    });
     return {
       status: "needs-agent",
       reason: "Git reported merge conflicts.",
@@ -1100,16 +1324,38 @@ const tryApplyCleanDesktopUpdate = async (
   try {
     if (changedFiles.length > 0) {
       if (!runner) {
+        logDesktopUpdateWarn("desktop-update.fast.needs-agent", {
+          releaseTag: args.releaseTag,
+          targetCommit: shortCommit(args.targetCommit),
+          reason: "runtime-unavailable-for-morph",
+          changedFileCount: changedFiles.length,
+        });
         return {
           status: "needs-agent",
           reason: "Stella runtime is not available for the update morph.",
           changedFiles,
         };
       }
-      await runner.beginExternalSelfMod({ runId, paths: changedFiles });
+      await withDesktopUpdateTimeout(
+        "git.begin-external-self-mod",
+        UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+        runner.beginExternalSelfMod({ runId, paths: changedFiles }),
+        {
+          runId,
+          releaseTag: args.releaseTag,
+          targetCommit: shortCommit(args.targetCommit),
+          changedFileCount: changedFiles.length,
+        },
+      );
       hmrRunStarted = true;
     }
 
+    logDesktopUpdateProcess("desktop-update.git.merge.start", {
+      runId,
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      changedFileCount: changedFiles.length,
+    });
     const mergeResult = await runGit(stellaRoot, [
       "merge",
       "--no-edit",
@@ -1125,6 +1371,12 @@ const tryApplyCleanDesktopUpdate = async (
           .catch(() => undefined);
         hmrRunStarted = false;
       }
+      logDesktopUpdateWarn("desktop-update.git.merge-needs-agent", {
+        runId,
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(args.targetCommit),
+        changedFileCount: changedFiles.length,
+      });
       return {
         status: "needs-agent",
         reason: gitFailureDetail(mergeResult, "Git could not merge cleanly."),
@@ -1132,9 +1384,19 @@ const tryApplyCleanDesktopUpdate = async (
       };
     }
     mergeLanded = true;
+    logDesktopUpdateProcess("desktop-update.git.merge.done", {
+      runId,
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      changedFileCount: changedFiles.length,
+    });
 
     const dependencyInstallRan = changedFiles.some(isDependencyChange);
     if (dependencyInstallRan) {
+      logDesktopUpdateProcess("desktop-update.dependencies.install.start", {
+        runId,
+        releaseTag: args.releaseTag,
+      });
       let installResult: ProcessRunResult | null = null;
       let lastMissingBunError: Error | null = null;
       for (const bunCommand of candidateBunCommands()) {
@@ -1167,6 +1429,10 @@ const tryApplyCleanDesktopUpdate = async (
             : `Dependency install failed with exit code ${installResult.exitCode}.`,
         );
       }
+      logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
+        runId,
+        releaseTag: args.releaseTag,
+      });
     }
 
     if (hmrRunStarted && runner) {
@@ -1174,6 +1440,13 @@ const tryApplyCleanDesktopUpdate = async (
       hmrRunStarted = false;
     }
 
+    logDesktopUpdateProcess("desktop-update.fast.applied", {
+      runId,
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      changedFileCount: changedFiles.length,
+      dependencyInstallRan,
+    });
     await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedCommit(
       stellaRoot,
@@ -1189,6 +1462,13 @@ const tryApplyCleanDesktopUpdate = async (
       nativeHelpersRefreshed: true,
     };
   } catch (error) {
+    logDesktopUpdateError("desktop-update.fast.failed", error, {
+      runId,
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      hmrRunStarted,
+      mergeLanded,
+    });
     if (hmrRunStarted && runner) {
       await runner
         .finishExternalSelfMod({ runId, succeeded: mergeLanded })
@@ -1257,22 +1537,53 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!stellaHome) {
         throw new Error("Stella home directory is unavailable.");
       }
-      return await tryApplyCleanDesktopUpdate(
-        stellaRoot,
-        stellaHome,
-        options.getStellaHostRunner?.() ?? null,
-        {
-          baseCommit,
-          targetCommit,
+      const startedAt = Date.now();
+      logDesktopUpdateProcess("desktop-update.try-clean.start", {
+        releaseTag,
+        baseCommit: shortCommit(baseCommit),
+        targetCommit: shortCommit(targetCommit),
+        hasSourcePack: Boolean(payload.sourcePackRef),
+        artifactRefCount: Array.isArray(payload.artifactRefs)
+          ? payload.artifactRefs.length
+          : 0,
+      });
+      try {
+        const result = await tryApplyCleanDesktopUpdate(
+          stellaRoot,
+          stellaHome,
+          options.getStellaHostRunner?.() ?? null,
+          {
+            baseCommit,
+            targetCommit,
+            releaseTag,
+            ...(payload.sourcePackRef
+              ? { sourcePackRef: payload.sourcePackRef }
+              : {}),
+            ...(Array.isArray(payload.artifactRefs)
+              ? { artifactRefs: payload.artifactRefs }
+              : {}),
+          },
+        );
+        logDesktopUpdateProcess("desktop-update.try-clean.done", {
           releaseTag,
-          ...(payload.sourcePackRef
-            ? { sourcePackRef: payload.sourcePackRef }
-            : {}),
-          ...(Array.isArray(payload.artifactRefs)
-            ? { artifactRefs: payload.artifactRefs }
-            : {}),
-        },
-      );
+          targetCommit: shortCommit(targetCommit),
+          elapsedMs: Date.now() - startedAt,
+          status: result.status,
+          changedFileCount:
+            result.status === "applied"
+              ? result.changedFiles.length
+              : (result.changedFiles?.length ?? 0),
+          ...(result.status === "needs-agent" ? { reason: result.reason } : {}),
+        });
+        return result;
+      } catch (error) {
+        logDesktopUpdateError("desktop-update.try-clean.failed", error, {
+          releaseTag,
+          targetCommit: shortCommit(targetCommit),
+          elapsedMs: Date.now() - startedAt,
+        });
+        throw error;
+      }
     },
   );
 
@@ -1347,6 +1658,12 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!releaseTag) {
         throw new Error("releaseTag is required.");
       }
+      const startedAt = Date.now();
+      logDesktopUpdateProcess("desktop-update.record-source-history.start", {
+        releaseTag,
+        targetCommit: shortCommit(targetCommit),
+        hasSourceHistoryRef: Boolean(payload?.sourceHistoryRef),
+      });
       let sourceHistoryRef = payload?.sourceHistoryRef ?? null;
       if (!sourceHistoryRef) {
         sourceHistoryRef = await fetchDesktopReleaseSourceHistoryRef({
@@ -1355,20 +1672,65 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         });
       }
       if (!sourceHistoryRef) {
+        logDesktopUpdateWarn(
+          "desktop-update.record-source-history.unavailable",
+          {
+            releaseTag,
+            targetCommit: shortCommit(targetCommit),
+            elapsedMs: Date.now() - startedAt,
+          },
+        );
         return { ok: false, reason: "source-history-unavailable" };
       }
       const runner = options.getStellaHostRunner?.() ?? null;
       if (!runner) {
+        logDesktopUpdateWarn(
+          "desktop-update.record-source-history.unavailable",
+          {
+            releaseTag,
+            targetCommit: shortCommit(targetCommit),
+            elapsedMs: Date.now() - startedAt,
+            reason: "runtime-unavailable",
+          },
+        );
         return { ok: false, reason: "runtime-unavailable" };
       }
-      const sourcePack = await fetchDesktopSourceHistoryPack(sourceHistoryRef);
-      await recordDesktopUpdateSourceHistory(runner, {
-        sourcePack,
-        releaseTag,
-        targetCommit,
-        origin: "official",
-      });
-      return { ok: true, revisionId: sourcePack.revisionId };
+      try {
+        const sourcePack =
+          await fetchDesktopSourceHistoryPack(sourceHistoryRef);
+        await withDesktopUpdateTimeout(
+          "official.record-history",
+          UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
+          recordDesktopUpdateSourceHistory(runner, {
+            sourcePack,
+            releaseTag,
+            targetCommit,
+            origin: "official",
+          }),
+          {
+            releaseTag,
+            targetCommit: shortCommit(targetCommit),
+          },
+        );
+        logDesktopUpdateProcess("desktop-update.record-source-history.done", {
+          releaseTag,
+          targetCommit: shortCommit(targetCommit),
+          revisionId: sourcePack.revisionId,
+          elapsedMs: Date.now() - startedAt,
+        });
+        return { ok: true, revisionId: sourcePack.revisionId };
+      } catch (error) {
+        logDesktopUpdateError(
+          "desktop-update.record-source-history.failed",
+          error,
+          {
+            releaseTag,
+            targetCommit: shortCommit(targetCommit),
+            elapsedMs: Date.now() - startedAt,
+          },
+        );
+        throw error;
+      }
     },
   );
 
