@@ -57,7 +57,7 @@ const fallbackResolvedModelForAlias = (modelId: string): string => {
     case "stella/builder":
       return "openai/gpt-5.5";
     case "stella/designer":
-      return "anthropic/claude-opus-4.7";
+      return "anthropic/claude-opus-4.8";
     case "stella/vision":
       return "google/gemini-3-flash-preview";
     case STELLA_DEFAULT_MODEL:

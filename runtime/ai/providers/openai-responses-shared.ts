@@ -174,6 +174,9 @@ export function convertResponsesMessages<TApi extends Api>(
 			}
 		} else if (msg.role === "assistant") {
 			const output: ResponseInput = [];
+			// Counts unsigned text blocks within this single assistant message so
+			// 2nd+ fallback ids don't collide (OpenAI rejects duplicate input ids).
+			let textBlockIndex = 0;
 			const assistantMsg = msg as AssistantMessage;
 			const isDifferentModel =
 				assistantMsg.model !== model.id &&
@@ -206,9 +209,12 @@ export function convertResponsesMessages<TApi extends Api>(
 				}
 				const parsedSignature = parseTextSignature(textBlock.textSignature);
 				// OpenAI requires id to be max 64 characters
+				const fallbackMsgId =
+					textBlockIndex === 0 ? `msg_${msgIndex}` : `msg_${msgIndex}_${textBlockIndex}`;
+				textBlockIndex++;
 				let msgId = parsedSignature?.id;
 				if (!msgId) {
-					msgId = `msg_${msgIndex}`;
+					msgId = fallbackMsgId;
 				} else if (msgId.length > 64) {
 					msgId = `msg_${shortHash(msgId)}`;
 				}
