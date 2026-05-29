@@ -17,8 +17,6 @@ export function DisplaySidebarModelsButton() {
       type="button"
       className="display-sidebar__models-btn pill-btn"
       onClick={handleClick}
-      aria-pressed={isOpen}
-      aria-current={isOpen ? "page" : undefined}
       title={isOpen ? "Hide models" : "Models and engine"}
     >
       <SlidersHorizontal
