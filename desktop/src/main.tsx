@@ -9,10 +9,13 @@ import "./shared/i18n/rtl.css";
 import "./platform/dev/vite-error-recovery";
 import "./shared/lib/interface-preferences";
 import "./shared/lib/native-font-smoothing";
+import { installRendererErrorReporting } from "./platform/diagnostics/report-error";
 import { App } from "./App.tsx";
 import { AppProviders } from "./context/AppProviders";
 import { DesktopConvexAuthProvider } from "./global/auth/DesktopConvexAuthProvider";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
+
+installRendererErrorReporting();
 
 const requestedWindow = new URLSearchParams(window.location.search).get("window");
 document.documentElement.dataset.stellaWindow =

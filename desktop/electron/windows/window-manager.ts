@@ -17,6 +17,7 @@ import {
   type WebsiteViewParams,
   type WebsiteViewTheme,
 } from './website-view.js'
+import { getMainLogger } from '../observability/main-logger.js'
 import type { UiState } from '../types.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
 
@@ -374,11 +375,19 @@ export class WindowManager {
     console.warn(
       `[unresponsive] ${mode} renderer stopped responding; recovering in ${UNRESPONSIVE_RECOVERY_THRESHOLD_MS}ms if it doesn't recover`,
     )
+    getMainLogger()?.error('main.renderer-unresponsive', {
+      mode,
+      recoverInMs: UNRESPONSIVE_RECOVERY_THRESHOLD_MS,
+    })
     const timer = setTimeout(() => {
       this.unresponsiveTimerByMode.delete(mode)
       console.error(
         `[unresponsive] ${mode} renderer still unresponsive after ${UNRESPONSIVE_RECOVERY_THRESHOLD_MS}ms; forcing recovery surface`,
       )
+      getMainLogger()?.error('main.renderer-recovery-forced', {
+        mode,
+        afterMs: UNRESPONSIVE_RECOVERY_THRESHOLD_MS,
+      })
       forceRecover()
     }, UNRESPONSIVE_RECOVERY_THRESHOLD_MS)
     this.unresponsiveTimerByMode.set(mode, timer)

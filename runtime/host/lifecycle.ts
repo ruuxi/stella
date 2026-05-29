@@ -2,6 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createConnection, type Socket } from "node:net";
 import {
   existsSync,
+  mkdirSync,
   openSync,
   closeSync,
   writeFileSync,
@@ -22,6 +23,7 @@ import {
   probeRunningWorker,
   removeStaleRuntimeArtifacts,
 } from "../worker/lifecycle-server.js";
+import { rotateLogIfOversized } from "../observability/rotate-file.js";
 
 /**
  * Host-side lifecycle: discover or launch the detached worker and
@@ -289,6 +291,10 @@ const spawnDetachedWorker = (
   if (options.idleShutdownMs && options.idleShutdownMs > 0) {
     args.push("--idle-shutdown-ms", String(options.idleShutdownMs));
   }
+  // Bound the raw stdout/stderr sink before the fresh worker appends to it.
+  // The log dir is separate from the runtime control dir, so ensure it exists.
+  mkdirSync(paths.logDir, { recursive: true });
+  rotateLogIfOversized(paths.logFile);
   const logFd = openSync(paths.logFile, "a");
   let child: ChildProcess;
   try {

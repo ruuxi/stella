@@ -11,13 +11,20 @@ import path from "node:path";
  * a pidfile/socket and accidentally talk to each other's worker.
  *
  * Layout:
- *   ~/.stella/runtime/<rootHash>/
+ *   ~/.stella/runtime/<rootHash>/   <- machine control files
  *     ├── runtime.lock     <- flock for serializing start/stop
  *     ├── runtime.pid      <- pid of the currently-running worker
  *     ├── runtime.sock     <- Unix domain socket the host connects to on POSIX
- *     ├── runtime.log      <- worker stdout/stderr (rotating)
  *     ├── host-executable.txt <- Electron executable path that spawned it
  *     └── root.txt         <- the literal stellaRoot, for debugging
+ *   ~/.stella/logs/<rootHash>/      <- human-readable logs (colocated)
+ *     ├── runtime.log      <- worker stdout/stderr (rotating)
+ *     ├── error-YYYY-MM-DD.txt   <- crashes / uncaught errors
+ *     └── process-YYYY-MM-DD.txt <- lifecycle events
+ *
+ * The raw `runtime.log` lives alongside the diagnostic logs (not next to
+ * the sock/pid/lock control files) so "Open logs folder" / `bun run logs`
+ * surface every human-readable log in one place.
  *
  * Windows uses named pipes instead of socket files:
  *   \\.\pipe\stella-runtime-<rootHash>
@@ -26,6 +33,23 @@ import path from "node:path";
 
 const RUNTIME_DIR_NAME = ".stella";
 const RUNTIME_SUBDIR = "runtime";
+const LOGS_SUBDIR = "logs";
+
+/**
+ * Per-stellaRoot directory for human-readable logs (worker stdout/stderr
+ * plus the diagnostic error/process channels). Single source of truth shared
+ * with `runtime/observability/log-paths.ts`.
+ */
+export const resolveLogDir = (
+  stellaRoot: string,
+  options?: { homeDir?: string },
+): string =>
+  path.join(
+    options?.homeDir ?? os.homedir(),
+    RUNTIME_DIR_NAME,
+    LOGS_SUBDIR,
+    hashStellaRoot(stellaRoot),
+  );
 
 export type RuntimePaths = {
   rootHash: string;
@@ -43,12 +67,14 @@ export type RuntimePaths = {
    * socket files stay well under the 104-char BSD UDS path cap.
    */
   cliBridgeSocketPath: string;
+  /** Directory holding `runtime.log` and the diagnostic log channels. */
+  logDir: string;
   logFile: string;
   hostExecutableFile: string;
   rootMarkerFile: string;
 };
 
-const hashStellaRoot = (stellaRoot: string): string => {
+export const hashStellaRoot = (stellaRoot: string): string => {
   const normalized = path.resolve(stellaRoot);
   return crypto
     .createHash("sha256")
@@ -82,6 +108,7 @@ export const resolveRuntimePaths = (
     RUNTIME_SUBDIR,
   );
   const rootDir = path.join(baseDir, rootHash);
+  const logDir = resolveLogDir(stellaRoot, options);
   const platform = options?.platform ?? process.platform;
   const socketPath =
     platform === "win32"
@@ -100,7 +127,8 @@ export const resolveRuntimePaths = (
     // The hash + base dir keep POSIX socket files well under that.
     socketPath,
     cliBridgeSocketPath,
-    logFile: path.join(rootDir, "runtime.log"),
+    logDir,
+    logFile: path.join(logDir, "runtime.log"),
     hostExecutableFile: path.join(rootDir, "host-executable.txt"),
     rootMarkerFile: path.join(rootDir, "root.txt"),
   };

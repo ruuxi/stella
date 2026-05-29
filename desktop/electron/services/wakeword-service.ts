@@ -3,6 +3,7 @@ import type { Readable } from "node:stream";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { resolveNativeHelperPath } from "../native-helper-path.js";
+import { getFileLogger } from "../../../runtime/observability/file-logger.js";
 
 /**
  * Manages the lifecycle of the native `wakeword_listener` child process.
@@ -133,12 +134,14 @@ export class WakewordService {
       });
     } catch (error) {
       console.warn("[wakeword] failed to spawn listener:", error);
+      getFileLogger()?.error("native.wakeword.spawn-failed", { error });
       this.scheduleRestart();
       return;
     }
 
     this.child = child;
     this.stdoutBuffer = "";
+    getFileLogger()?.process("native.wakeword.spawned", { pid: child.pid });
 
     const stdout = child.stdout as Readable | null;
     const stderr = child.stderr as Readable | null;
@@ -171,6 +174,11 @@ export class WakewordService {
       console.warn(
         `[wakeword] listener exited (code=${code} signal=${signal}); will retry`,
       );
+      getFileLogger()?.warn("native.wakeword.exited", {
+        code,
+        signal,
+        willRetry: true,
+      });
       this.scheduleRestart();
     });
     child.on("error", (error) => {
@@ -211,6 +219,10 @@ export class WakewordService {
     const child = this.child;
     if (!child) return;
     this.child = null;
+    getFileLogger()?.process("native.wakeword.stopped", {
+      pid: child.pid,
+      disposed: this.disposed,
+    });
     try {
       child.kill();
     } catch {
