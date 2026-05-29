@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import {
+  AGENT_IDS,
   AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
   isTaskLifecycleEventType,
@@ -25,6 +26,7 @@ import type {
 } from "../../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
+import { getFileLogger } from "../../../runtime/observability/file-logger.js";
 
 type AgentHandlersOptions = {
   getStellaHostRunner: () => StellaHostRunner | null;
@@ -538,6 +540,14 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       const senderWebContentsId = event.sender.id;
       const requestId = `req:${crypto.randomUUID()}`;
       requestOwners.set(requestId, senderWebContentsId);
+      const isInstallUpdateAgent =
+        payload.agentType === AGENT_IDS.INSTALL_UPDATE;
+      if (isInstallUpdateAgent) {
+        getFileLogger()?.process("desktop-update.agent.start-request", {
+          requestId,
+          conversationId: payload.conversationId,
+        });
+      }
 
       const emitRunFinished = (args: {
         runId: string;
@@ -588,6 +598,14 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             onRunStarted: (ev) => {
               if (ev.uiVisibility === "hidden") {
                 return;
+              }
+              if (isInstallUpdateAgent) {
+                getFileLogger()?.process("desktop-update.agent.run-started", {
+                  requestId,
+                  conversationId: payload.conversationId,
+                  runId: ev.runId,
+                  agentType: ev.agentType,
+                });
               }
               terminalRunIds.delete(ev.runId);
               runOwners.set(ev.runId, senderWebContentsId);
@@ -667,6 +685,17 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                 senderWebContentsId,
               ),
             onRunFinished: (ev) => {
+              if (isInstallUpdateAgent) {
+                getFileLogger()?.process("desktop-update.agent.run-finished", {
+                  requestId,
+                  conversationId: payload.conversationId,
+                  runId: ev.runId,
+                  outcome: ev.outcome ?? AGENT_RUN_FINISH_OUTCOMES.ERROR,
+                  agentType: ev.agentType,
+                  reason: ev.reason,
+                  error: ev.error,
+                });
+              }
               emitRunFinished({
                 runId: ev.runId,
                 outcome: ev.outcome ?? AGENT_RUN_FINISH_OUTCOMES.ERROR,
@@ -745,6 +774,13 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             return;
           }
 
+          if (isInstallUpdateAgent) {
+            getFileLogger()?.error("desktop-update.agent.start-failed", {
+              requestId,
+              conversationId: payload.conversationId,
+              error,
+            });
+          }
           console.error(
             "[chat] Local chat failed before runtime run start:",
             message,
