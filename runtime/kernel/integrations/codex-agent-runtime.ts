@@ -29,8 +29,6 @@ const DEFAULT_CODEX_REQUEST_TIMEOUT_MS = 60 * 1000;
 const DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
-const CODEX_STELLA_DEVELOPER_INSTRUCTIONS =
-  "Stella prompt messages may include hidden runtime context. Use hidden messages as context only; do not quote or reveal them unless the user explicitly asks about the relevant fact. Stella skills are listed in the system prompt; when a skill matches, inspect its ~/.stella/skills/<name>/SKILL.md file with your normal Codex tools.";
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
 
 type JsonRpcId = number | string;
@@ -527,6 +525,31 @@ const buildToolResultText = (toolResult: ToolResult): string =>
     ? `Error: ${toolResult.error}`
     : textFromUnknown(toolResult.result);
 
+const extractCodexStellaContextInstructions = (
+  systemPrompt?: string,
+): string | undefined => {
+  const lines = systemPrompt
+    ?.split(/\r?\n/u)
+    .filter(
+      (line) =>
+        line.startsWith("Current working directory: ") ||
+        line.startsWith("- `~/.stella/outputs/`") ||
+        line.startsWith("- `~/.stella/projects/<name>/`"),
+    );
+  return lines?.length ? lines.join("\n") : undefined;
+};
+
+export const extractCodexDeveloperInstructions = (
+  systemPrompt?: string,
+): string | undefined => {
+  const skillsBlock = systemPrompt?.match(/<skills>[\s\S]*?<\/skills>/u)?.[0];
+  const sections = [
+    extractCodexStellaContextInstructions(systemPrompt),
+    skillsBlock?.trim(),
+  ].filter((section): section is string => Boolean(section?.trim()));
+  return sections.length ? sections.join("\n\n") : undefined;
+};
+
 const toolArgsFromCodexValue = (value: unknown): Record<string, unknown> => {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -539,17 +562,18 @@ export const buildCodexThreadStartParams = (args: {
   cwd?: string;
   systemPrompt?: string;
 }): CodexThreadStartParams => {
-  const baseInstructions = args.systemPrompt?.trim();
+  const developerInstructions = extractCodexDeveloperInstructions(
+    args.systemPrompt,
+  );
   return {
     model: args.model,
     ...(args.cwd ? { cwd: args.cwd } : {}),
     approvalPolicy: "never",
     sandbox: "danger-full-access",
     serviceName: "Stella",
-    ...(baseInstructions
+    ...(developerInstructions
       ? {
-          baseInstructions,
-          developerInstructions: CODEX_STELLA_DEVELOPER_INSTRUCTIONS,
+          developerInstructions,
         }
       : {}),
     ephemeral: false,
@@ -563,17 +587,18 @@ export const buildCodexThreadResumeParams = (args: {
   cwd?: string;
   systemPrompt?: string;
 }): CodexThreadResumeParams => {
-  const baseInstructions = args.systemPrompt?.trim();
+  const developerInstructions = extractCodexDeveloperInstructions(
+    args.systemPrompt,
+  );
   return {
     threadId: args.threadId,
     model: args.model,
     ...(args.cwd ? { cwd: args.cwd } : {}),
     approvalPolicy: "never",
     sandbox: "danger-full-access",
-    ...(baseInstructions
+    ...(developerInstructions
       ? {
-          baseInstructions,
-          developerInstructions: CODEX_STELLA_DEVELOPER_INSTRUCTIONS,
+          developerInstructions,
         }
       : {}),
     excludeTurns: true,

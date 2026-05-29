@@ -20,6 +20,10 @@ export type SkillCatalogPromptState = {
   block: string;
 };
 
+export type SkillCatalogRenderOptions = {
+  omitSkillIds?: readonly string[];
+};
+
 const SKILLS_DIR_NAME = "skills";
 const SKILL_FILENAME = "SKILL.md";
 const PROGRAM_FILENAME = path.join("scripts", "program.ts");
@@ -67,6 +71,15 @@ const listSkillDirectoryIds = async (stellaRoot: string): Promise<string[]> => {
     .sort((a, b) => a.localeCompare(b));
 };
 
+const filterSkillDirectoryIds = (
+  skillIds: readonly string[],
+  options: SkillCatalogRenderOptions = {},
+): string[] => {
+  const omitted = new Set(options.omitSkillIds ?? []);
+  if (omitted.size === 0) return [...skillIds];
+  return skillIds.filter((skillId) => !omitted.has(skillId));
+};
+
 const readSkillCatalogEntry = async (
   skillsRoot: string,
   skillId: string,
@@ -105,9 +118,13 @@ const readSkillCatalogEntry = async (
 
 export const listSkillCatalogEntries = async (
   stellaRoot: string,
+  options: SkillCatalogRenderOptions = {},
 ): Promise<SkillCatalogEntry[]> => {
   const skillsRoot = path.join(stellaRoot, SKILLS_DIR_NAME);
-  const skillIds = await listSkillDirectoryIds(stellaRoot);
+  const skillIds = filterSkillDirectoryIds(
+    await listSkillDirectoryIds(stellaRoot),
+    options,
+  );
   return await Promise.all(
     skillIds.map((skillId) => readSkillCatalogEntry(skillsRoot, skillId)),
   );
@@ -171,8 +188,12 @@ const renderPlaceholderSkillCatalogBlock = (totalSkills: number): string =>
 
 export const buildSkillCatalogPromptState = async (
   stellaRoot: string,
+  options: SkillCatalogRenderOptions = {},
 ): Promise<SkillCatalogPromptState> => {
-  const skillIds = await listSkillDirectoryIds(stellaRoot);
+  const skillIds = filterSkillDirectoryIds(
+    await listSkillDirectoryIds(stellaRoot),
+    options,
+  );
   if (skillIds.length > INLINE_SKILL_CATALOG_THRESHOLD) {
     return {
       mode: "placeholder",
@@ -182,7 +203,7 @@ export const buildSkillCatalogPromptState = async (
     };
   }
 
-  const entries = await listSkillCatalogEntries(stellaRoot);
+  const entries = await listSkillCatalogEntries(stellaRoot, options);
   return {
     mode: "inline",
     totalSkills: entries.length,
@@ -193,7 +214,8 @@ export const buildSkillCatalogPromptState = async (
 
 export const renderSkillCatalogBlock = async (
   stellaRoot: string,
+  options: SkillCatalogRenderOptions = {},
 ): Promise<string> => {
-  const state = await buildSkillCatalogPromptState(stellaRoot);
+  const state = await buildSkillCatalogPromptState(stellaRoot, options);
   return state.block;
 };
