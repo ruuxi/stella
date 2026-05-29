@@ -19,6 +19,12 @@ export type RealtimeVoiceProvider = "stella" | "openai" | "xai" | "inworld";
 export type RealtimeVoiceUnderlyingProvider = "openai" | "xai" | "inworld";
 
 /**
+ * Providers that expose a non-realtime ("one-shot") TTS endpoint used by
+ * the Read-aloud feature. xAI has no such endpoint, so it's excluded.
+ */
+export type ReadAloudVoiceProvider = "openai" | "inworld";
+
+/**
  * Per-underlying-provider voice id selection. Stored per provider (rather
  * than as a single flat field) so that switching between providers
  * preserves each one's choice — e.g. picking "rex" under xAI doesn't get
@@ -46,6 +52,14 @@ export type RealtimeVoicePreferences = {
    * `audio.output.speed`. Only applies to Inworld voices.
    */
   inworldSpeed?: number;
+  /**
+   * Voice family used for the "Read aloud" feature (one-shot TTS of
+   * finalized assistant replies). Independent from the realtime voice
+   * agent above so the user can run, e.g., OpenAI live voice but Inworld
+   * read-aloud. Only "openai" and "inworld" expose a non-realtime TTS
+   * endpoint. Defaults to "inworld" when unset.
+   */
+  readAloudProvider?: ReadAloudVoiceProvider;
 };
 
 /**
@@ -63,6 +77,15 @@ export const resolveRealtimeUnderlyingProvider = (
   if (prefs.stellaSubProvider === "inworld") return "inworld";
   return "openai";
 };
+
+/**
+ * Resolve the TTS family used by the Read-aloud feature. Independent
+ * from the realtime voice agent's provider; defaults to Inworld.
+ */
+export const resolveReadAloudProvider = (
+  prefs: Pick<RealtimeVoicePreferences, "readAloudProvider">,
+): ReadAloudVoiceProvider =>
+  prefs.readAloudProvider === "openai" ? "openai" : "inworld";
 
 const REALTIME_VOICE_PROVIDERS: readonly RealtimeVoiceProvider[] = [
   "stella",

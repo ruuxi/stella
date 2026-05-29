@@ -59,8 +59,12 @@ export type {
   RealtimeVoiceUnderlyingProvider,
   RealtimeVoiceSelections,
   RealtimeVoicePreferences,
+  ReadAloudVoiceProvider,
 } from "../../contracts/local-preferences.js";
-export { resolveRealtimeUnderlyingProvider } from "../../contracts/local-preferences.js";
+export {
+  resolveRealtimeUnderlyingProvider,
+  resolveReadAloudProvider,
+} from "../../contracts/local-preferences.js";
 
 export type LocalPreferences = {
   /** Default models keyed by agent type. */
@@ -123,9 +127,10 @@ export type LocalPreferences = {
   /** Allows start/stop sound effects for dictation. */
   dictationSoundEffectsEnabled: boolean;
   /**
-   * Reads finalized assistant messages aloud via the realtime voice
-   * provider's TTS. Off by default — the user opts in from a speaker
-   * toggle in the chat UI.
+   * Reads finalized assistant messages aloud via one-shot TTS. Off by
+   * default — the user opts in from a speaker toggle in the chat UI. The
+   * provider is `realtimeVoice.readAloudProvider` (defaults to Inworld),
+   * independent from the realtime voice agent.
    */
   readAloudEnabled: boolean;
   /**
@@ -681,6 +686,7 @@ export const normalizeRealtimeVoicePreferences = (
     voices?: unknown;
     stellaSubProvider?: unknown;
     inworldSpeed?: unknown;
+    readAloudProvider?: unknown;
   };
 
   const provider = coerceRealtimeVoiceProvider(
@@ -697,12 +703,18 @@ export const normalizeRealtimeVoicePreferences = (
     Number.isFinite(record.inworldSpeed)
       ? Math.min(INWORLD_SPEED_MAX, Math.max(INWORLD_SPEED_MIN, record.inworldSpeed))
       : undefined;
+  const readAloudProvider =
+    record.readAloudProvider === "openai" ||
+    record.readAloudProvider === "inworld"
+      ? record.readAloudProvider
+      : undefined;
 
   const result: RealtimeVoicePreferences = { provider };
   if (provider !== "stella" && model) result.model = model;
   if (voices) result.voices = voices;
   if (stellaSubProvider) result.stellaSubProvider = stellaSubProvider;
   if (inworldSpeed !== undefined) result.inworldSpeed = inworldSpeed;
+  if (readAloudProvider) result.readAloudProvider = readAloudProvider;
   return result;
 };
 

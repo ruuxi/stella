@@ -52,6 +52,7 @@ import {
 } from "@/shared/billing/audience";
 import {
   coerceRealtimeVoiceProvider,
+  type ReadAloudVoiceProvider,
   type RealtimeVoicePreferences,
   type RealtimeVoiceUnderlyingProvider,
 } from "../../../../runtime/contracts/local-preferences";
@@ -1140,6 +1141,18 @@ function ModelsSection({
     [preferences, writePreferences],
   );
 
+  const onReadAloudProviderSelect = useCallback(
+    async (provider: ReadAloudVoiceProvider) => {
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      if ((previous.readAloudProvider ?? "inworld") === provider) return;
+      await writePreferences(
+        { realtimeVoice: { ...previous, readAloudProvider: provider } },
+        "voice",
+      );
+    },
+    [preferences, writePreferences],
+  );
+
   /* ── render ──────────────────────────────────────────────── */
 
   const orchestratorCurrent = overrides.orchestrator ?? overrides.general ?? "";
@@ -1329,6 +1342,7 @@ function ModelsSection({
               stellaSubProvider={voicePreferences.stellaSubProvider}
               selectedVoices={voicePreferences.voices}
               inworldSpeed={voicePreferences.inworldSpeed}
+              readAloudProvider={voicePreferences.readAloudProvider}
               onSelectVoice={(underlying, voiceId) =>
                 void onVoiceSelect(underlying, voiceId)
               }
@@ -1336,6 +1350,9 @@ function ModelsSection({
                 void onVoiceSubProviderSelect(sub)
               }
               onSelectInworldSpeed={(speed) => void onInworldSpeedSelect(speed)}
+              onSelectReadAloudProvider={(provider) =>
+                void onReadAloudProviderSelect(provider)
+              }
               disabled={inputsDisabled}
             />
           </div>

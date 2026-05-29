@@ -309,3 +309,21 @@
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Read-aloud provider toggle ───────────────────────────────── */
+
+.voice-catalog-readaloud {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed color-mix(in oklch, var(--border) 40%, transparent);
+}
+
+.voice-catalog-readaloud-desc {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-weak);
+}

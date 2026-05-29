@@ -30,7 +30,9 @@ import {
   getRealtimeVoiceCatalog,
 } from "../../../../runtime/contracts/realtime-voice-catalog";
 import {
+  resolveReadAloudProvider,
   resolveRealtimeUnderlyingProvider,
+  type ReadAloudVoiceProvider,
   type RealtimeVoicePreferences,
   type RealtimeVoiceUnderlyingProvider,
 } from "../../../../runtime/contracts/local-preferences";
@@ -63,6 +65,16 @@ interface VoiceCatalogPickerProps {
   ) => void;
   /** Called when the user moves the Inworld speed slider. */
   onSelectInworldSpeed: (speed: number) => void;
+  /**
+   * Current Read-aloud TTS provider. Read-aloud is decoupled from the
+   * realtime voice agent — defaults to Inworld when unset.
+   */
+  readAloudProvider?: ReadAloudVoiceProvider;
+  /**
+   * Called when the user changes the Read-aloud TTS provider. When
+   * omitted, the read-aloud control is not rendered.
+   */
+  onSelectReadAloudProvider?: (provider: ReadAloudVoiceProvider) => void;
   disabled?: boolean;
 }
 
@@ -102,6 +114,8 @@ export function VoiceCatalogPicker({
   onSelectVoice,
   onSelectStellaSubProvider,
   onSelectInworldSpeed,
+  readAloudProvider,
+  onSelectReadAloudProvider,
   disabled = false,
 }: VoiceCatalogPickerProps) {
   // For BYOK modes this is pinned to the provider; for Stella mode it
@@ -124,6 +138,9 @@ export function VoiceCatalogPicker({
   const showSubToggle = voiceProvider === "stella";
   const showSpeed = underlyingProvider === "inworld";
   const activeSpeed = inworldSpeed ?? DEFAULT_INWORLD_REALTIME_SPEED;
+
+  const activeReadAloud = resolveReadAloudProvider({ readAloudProvider });
+  const showReadAloud = typeof onSelectReadAloudProvider === "function";
 
   // ── Speed slider: commit on release ──────────────────────────────
   // The slider stays responsive during drag (local state drives the
@@ -187,6 +204,15 @@ export function VoiceCatalogPicker({
     if (disabled) return;
     commitSpeed(draftSpeed);
   }, [commitSpeed, disabled, draftSpeed]);
+
+  const handleReadAloudPick = useCallback(
+    (provider: ReadAloudVoiceProvider) => {
+      if (disabled || !onSelectReadAloudProvider) return;
+      if (provider === activeReadAloud) return;
+      onSelectReadAloudProvider(provider);
+    },
+    [activeReadAloud, disabled, onSelectReadAloudProvider],
+  );
 
   const labelSourceText =
     underlyingProvider === "xai"
@@ -359,6 +385,47 @@ export function VoiceCatalogPicker({
             <span>1.0×</span>
             <span>2.0×</span>
           </div>
+        </div>
+      ) : null}
+
+      {showReadAloud ? (
+        <div className="voice-catalog-readaloud">
+          <div className="voice-catalog-picker-label">
+            <span>Read aloud</span>
+            <div
+              className="voice-catalog-subtoggle"
+              role="tablist"
+              aria-label="Read aloud voice provider"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeReadAloud === "openai"}
+                className="voice-catalog-subtoggle-btn"
+                data-active={activeReadAloud === "openai" || undefined}
+                onClick={() => handleReadAloudPick("openai")}
+                disabled={disabled}
+                title="Read replies aloud with OpenAI TTS"
+              >
+                OpenAI
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeReadAloud === "inworld"}
+                className="voice-catalog-subtoggle-btn"
+                data-active={activeReadAloud === "inworld" || undefined}
+                onClick={() => handleReadAloudPick("inworld")}
+                disabled={disabled}
+                title="Read replies aloud with Inworld TTS"
+              >
+                Inworld
+              </button>
+            </div>
+          </div>
+          <p className="voice-catalog-readaloud-desc">
+            Speaks replies out loud using this provider's voice.
+          </p>
         </div>
       ) : null}
     </div>

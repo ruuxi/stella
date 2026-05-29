@@ -75,7 +75,8 @@ export const XAI_REALTIME_VOICES: readonly RealtimeVoiceCatalogEntry[] = [
  * opaque string. To add or remove default voices, edit this list.
  */
 export const INWORLD_REALTIME_VOICES: readonly RealtimeVoiceCatalogEntry[] = [
-  { id: "Clive", label: "Clive", description: "English male, middle-aged (default)." },
+  { id: "Evelyn", label: "Evelyn", description: "English female, warm (default)." },
+  { id: "Clive", label: "Clive", description: "English male, middle-aged." },
   { id: "Ashley", label: "Ashley", description: "English female, middle-aged." },
   { id: "Blake", label: "Blake", description: "English male, middle-aged." },
   { id: "Eleanor", label: "Eleanor", description: "English female, middle-aged." },
@@ -104,7 +105,7 @@ export const DEFAULT_INWORLD_REALTIME_SPEED = 1.15;
 
 export const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
 export const DEFAULT_XAI_REALTIME_VOICE = "eve";
-export const DEFAULT_INWORLD_REALTIME_VOICE = "Clive";
+export const DEFAULT_INWORLD_REALTIME_VOICE = "Evelyn";
 
 export function getDefaultRealtimeVoice(
   provider: RealtimeVoiceUnderlyingProvider,
