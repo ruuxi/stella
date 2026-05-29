@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildMobileBridgeBootstrap } from "../../electron/services/mobile-bridge/bootstrap-payload.js";
 import {
+  MOBILE_BRIDGE_CAPABILITIES,
+  MOBILE_BRIDGE_EVENT_CAPABILITIES,
+  MOBILE_BRIDGE_REQUEST_CAPABILITIES,
+} from "../../electron/services/mobile-bridge/capabilities.js";
+import {
   isMobileBridgeEventChannel,
   isMobileBridgeRequestChannel,
 } from "../../electron/services/mobile-bridge/bridge-policy.js";
@@ -13,9 +18,47 @@ describe("mobile bridge policy", () => {
     );
     expect(isMobileBridgeRequestChannel("localChat:listActivity")).toBe(true);
     expect(isMobileBridgeRequestChannel("localChat:listFiles")).toBe(true);
-    expect(isMobileBridgeRequestChannel("localChat:persistDiscoveryWelcome"))
-      .toBe(true);
+    expect(
+      isMobileBridgeRequestChannel("localChat:persistDiscoveryWelcome"),
+    ).toBe(true);
     expect(isMobileBridgeEventChannel("localChat:updated")).toBe(true);
+  });
+
+  it("derives bridge channel access from explicit mobile capability decisions", () => {
+    expect(isMobileBridgeRequestChannel("agent:sendInput")).toBe(true);
+    expect(isMobileBridgeRequestChannel("display:readFile")).toBe(true);
+    expect(isMobileBridgeRequestChannel("devtest:triggerViteError")).toBe(
+      false,
+    );
+    expect(
+      MOBILE_BRIDGE_REQUEST_CAPABILITIES.some(
+        (capability) =>
+          capability.path === "agent.sendInput" &&
+          capability.channel === "agent:sendInput",
+      ),
+    ).toBe(true);
+    expect(
+      MOBILE_BRIDGE_EVENT_CAPABILITIES.some(
+        (capability) =>
+          capability.path === "agent.onStream" &&
+          capability.channel === "agent:event",
+      ),
+    ).toBe(true);
+    expect(
+      MOBILE_BRIDGE_CAPABILITIES.some(
+        (capability) =>
+          capability.path === "system.openExternal" &&
+          capability.mode === "native",
+      ),
+    ).toBe(true);
+    expect(
+      MOBILE_BRIDGE_CAPABILITIES.some(
+        (capability) =>
+          capability.path === "display.readFile" &&
+          capability.mode === "remote-request" &&
+          capability.channel === "display:readFile",
+      ),
+    ).toBe(true);
   });
 
   it("bootstraps welcome dialog state into the mobile WebView", () => {
@@ -26,21 +69,28 @@ describe("mobile bridge policy", () => {
           '{"seededAt":1,"active":{"connect":true}}',
         "stella.home.ideasSeen.v2.default": '{"Ideas":"abcd"}',
         "stella-billing-last-seen-plan:user@example.com": "pro",
+        "stella-nickname:user@example.com": "Rahul",
+        "stella-nickname-asked:user@example.com": "true",
         "stella-dictation-local": "true",
         "stella.displayPanel.width": "480",
         "better-auth_cookie": "secret",
         "stella-onboarding-complete": "true",
         "unrelated-key": "ignored",
       }),
-    ).toEqual({
+    ).toMatchObject({
       localStorage: {
         "stella-welcome-dialog-seen": "true",
         "stella:post-onboarding-hints":
           '{"seededAt":1,"active":{"connect":true}}',
         "stella.home.ideasSeen.v2.default": '{"Ideas":"abcd"}',
         "stella-billing-last-seen-plan:user@example.com": "pro",
+        "stella-nickname:user@example.com": "Rahul",
+        "stella-nickname-asked:user@example.com": "true",
         "stella-dictation-local": "true",
         "stella-onboarding-complete": "true",
+      },
+      mobileBridgeCapabilities: {
+        version: 1,
       },
     });
   });

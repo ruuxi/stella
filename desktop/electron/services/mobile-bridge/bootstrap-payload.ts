@@ -1,5 +1,11 @@
+import {
+  buildMobileBridgeCapabilityManifest,
+  type MobileBridgeCapabilityManifest,
+} from "./capabilities.js";
+
 export type MobileBridgeBootstrap = {
   localStorage: Record<string, string>;
+  mobileBridgeCapabilities: MobileBridgeCapabilityManifest;
 };
 
 const MOBILE_BRIDGE_LOCAL_STORAGE_KEYS = new Set([
@@ -41,11 +47,13 @@ const MOBILE_BRIDGE_LOCAL_STORAGE_KEYS = new Set([
 const MOBILE_BRIDGE_LOCAL_STORAGE_PREFIXES = [
   "stella.home.ideasSeen.v2.",
   "stella-billing-last-seen-plan:",
+  "stella-nickname:",
+  "stella-nickname-asked:",
 ] as const;
 
 const isAllowedMobileBridgeLocalStorageKey = (key: string) =>
-  MOBILE_BRIDGE_LOCAL_STORAGE_KEYS.has(key)
-  || MOBILE_BRIDGE_LOCAL_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
+  MOBILE_BRIDGE_LOCAL_STORAGE_KEYS.has(key) ||
+  MOBILE_BRIDGE_LOCAL_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
 
 export function buildMobileBridgeBootstrap(
   storage: Record<string, string>,
@@ -58,5 +66,8 @@ export function buildMobileBridgeBootstrap(
     }
   }
 
-  return { localStorage };
+  return {
+    localStorage,
+    mobileBridgeCapabilities: buildMobileBridgeCapabilityManifest(),
+  };
 }
