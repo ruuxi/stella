@@ -17,13 +17,15 @@ import { ErrorBoundary } from "./shell/ErrorBoundary";
 
 installRendererErrorReporting();
 
-const requestedWindow = new URLSearchParams(window.location.search).get("window");
-document.documentElement.dataset.stellaWindow =
-  requestedWindow === "mini" ? "mini" : "full";
+const requestedWindow = new URLSearchParams(window.location.search).get(
+  "window",
+);
+const isMiniWindow = requestedWindow === "mini";
+document.documentElement.dataset.stellaWindow = isMiniWindow ? "mini" : "full";
 
 const appTree = (
   <ErrorBoundary>
-    <DesktopConvexAuthProvider>
+    <DesktopConvexAuthProvider enableRuntimeEffects={!isMiniWindow}>
       <AppProviders>
         <App />
       </AppProviders>

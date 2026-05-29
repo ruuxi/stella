@@ -399,14 +399,23 @@ function DesktopAuthRuntimeEffects({
 
 export function DesktopConvexAuthProvider({
   children,
+  enableRuntimeEffects = true,
 }: {
   children: ReactNode;
+  enableRuntimeEffects?: boolean;
 }) {
   const [authBootstrapState, setAuthBootstrapState] =
-    useState<AuthBootstrapState>({
-      status: "loading_session",
-      error: null,
-    });
+    useState<AuthBootstrapState>(() =>
+      enableRuntimeEffects
+        ? {
+            status: "loading_session",
+            error: null,
+          }
+        : {
+            status: "ready",
+            error: null,
+          },
+    );
   const authBootstrapValue = useMemo(
     () => ({
       ...authBootstrapState,
@@ -422,9 +431,11 @@ export function DesktopConvexAuthProvider({
     >
       <AuthBootstrapContext.Provider value={authBootstrapValue}>
         <MagicLinkAuthProvider>
-          <DesktopAuthRuntimeEffects
-            setAuthBootstrapState={setAuthBootstrapState}
-          />
+          {enableRuntimeEffects ? (
+            <DesktopAuthRuntimeEffects
+              setAuthBootstrapState={setAuthBootstrapState}
+            />
+          ) : null}
           {children}
         </MagicLinkAuthProvider>
       </AuthBootstrapContext.Provider>

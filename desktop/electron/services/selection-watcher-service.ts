@@ -129,6 +129,14 @@ export class SelectionWatcherService {
     event: LeftMouseUpEvent,
     wasDrag: boolean,
   ): Promise<void> {
+    if (process.platform === 'win32' && !wasDrag) {
+      // Windows UIA can stall in the selected_text helper for ordinary clicks
+      // in some apps. The global chip only needs to probe after a selection
+      // drag, so keep plain clicks on the cheap path.
+      if (this.currentRequestId !== null) this.hide('plain-click')
+      return
+    }
+
     let result: SelectedTextResult | null = null
     try {
       // Fast pass: AX only. Cheap, side-effect-free, succeeds in
