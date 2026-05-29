@@ -103,6 +103,7 @@ type LocalModelPreferences = {
   codexModel: string;
   codexReasoningEffort: CodexReasoningPreference;
   claudeCodeModel: string;
+  claudeCodeReasoningEffort: ReasoningEffort;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
@@ -223,6 +224,7 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
 const DEFAULT_CODEX_MODEL = "gpt-5.5";
 const DEFAULT_CLAUDE_CODE_MODEL = "default";
 const DEFAULT_CODEX_REASONING: CodexReasoningPreference = "default";
+const DEFAULT_CLAUDE_CODE_REASONING: ReasoningEffort = "default";
 const PREFS_EVENT = "stella:local-model-preferences-changed";
 const NOTICE_TTL_MS = 2400;
 
@@ -350,6 +352,8 @@ export function EngineTabContent() {
         codexReasoningEffort:
           saved.codexReasoningEffort || DEFAULT_CODEX_REASONING,
         claudeCodeModel: saved.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL,
+        claudeCodeReasoningEffort:
+          saved.claudeCodeReasoningEffort || DEFAULT_CLAUDE_CODE_REASONING,
       };
       if (next.agentRuntimeEngine === "cursor_sdk") {
         const generalOverride = next.modelOverrides[GENERAL_AGENT_KEY];
@@ -950,6 +954,54 @@ function ModelsSection({
     preferences?.reasoningEfforts?.orchestrator ??
     "default";
 
+  // Codex and Claude Code carry a single engine-wide effort (not per-agent):
+  // Codex applies it as the turn `effort`, Claude Code as the CLI
+  // `CLAUDE_CODE_EFFORT_LEVEL`.
+  const selectedRuntimeReasoning: ReasoningEffort =
+    runtimeModelEngine === "codex_cli"
+      ? (preferences?.codexReasoningEffort ?? "default")
+      : runtimeModelEngine === "claude_code_local"
+        ? (preferences?.claudeCodeReasoningEffort ?? "default")
+        : "default";
+
+  // Selecting a thinking level on a runtime row both applies that model and
+  // sets the engine-global effort, in one write so the UI doesn't flicker.
+  const selectRuntimeReasoning = useCallback(
+    async (modelId: string, effort: ReasoningEffort) => {
+      if (!preferences || !runtimeModelEngine) return;
+      const normalizedId = toRuntimeOverrideId(runtimeModelEngine, modelId);
+      const agentKeys = batchAssignableAgents.map((entry) => entry.key);
+      if (agentKeys.length === 0) return;
+      const nextOverrides = { ...preferences.modelOverrides };
+      const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
+      const nextPropagated = new Set(
+        preferences.assistantPropagatedAgents ?? [],
+      );
+      for (const key of agentKeys) {
+        nextOverrides[key] = normalizedId;
+        // Runtime engines use the engine-global effort, not per-agent.
+        delete nextReasoning[key];
+        if (CONVERSATION_AGENT_KEYS.has(key)) nextPropagated.delete(key);
+        else nextPropagated.add(key);
+      }
+      const bareModel = fromRuntimeOverrideId(normalizedId);
+      const patch: Partial<LocalModelPreferences> = {
+        modelOverrides: nextOverrides,
+        reasoningEfforts: nextReasoning,
+        assistantPropagatedAgents: Array.from(nextPropagated),
+      };
+      if (runtimeModelEngine === "codex_cli") {
+        patch.codexModel = bareModel;
+        patch.codexReasoningEffort = effort as CodexReasoningPreference;
+      } else {
+        patch.claudeCodeModel = bareModel;
+        patch.claudeCodeReasoningEffort = effort;
+      }
+      await writePreferences(patch, "overrides");
+    },
+    [batchAssignableAgents, preferences, runtimeModelEngine, writePreferences],
+  );
+
   // Per-row reasoning affordance: applies the model to the agent set at the
   // chosen reasoning effort, so the lightbulb doubles as a model+reasoning
   // pick (matching the "click a model to apply" picker semantics).
@@ -1199,6 +1251,10 @@ function ModelsSection({
                     modelId,
                     runtimeModelEngine ?? "codex_cli",
                   )
+                }
+                reasoningEffort={selectedRuntimeReasoning}
+                onSelectReasoning={(modelId, effort) =>
+                  void selectRuntimeReasoning(modelId, effort)
                 }
               />
               <ProviderModelPanel

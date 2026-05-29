@@ -96,6 +96,8 @@ export type LocalPreferences = {
   codexReasoningEffort: ReasoningEffort;
   /** Claude Code model or alias used when the Claude Code engine is selected. */
   claudeCodeModel: string;
+  /** Claude Code effort/thinking level used when the Claude Code engine is selected. */
+  claudeCodeReasoningEffort: ReasoningEffort;
   /** Shared max concurrency across all agent task execution */
   maxAgentConcurrency: number;
   /** Image generation provider/model. Stella is the managed default. */
@@ -154,6 +156,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "codexModel"
   | "codexReasoningEffort"
   | "claudeCodeModel"
+  | "claudeCodeReasoningEffort"
   | "maxAgentConcurrency"
   | "imageGeneration"
   | "realtimeVoice"
@@ -174,6 +177,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   codexModel: DEFAULT_CODEX_MODEL,
   codexReasoningEffort: "default",
   claudeCodeModel: DEFAULT_CLAUDE_CODE_MODEL,
+  claudeCodeReasoningEffort: "default",
   maxAgentConcurrency: DEFAULT_MAX_AGENT_CONCURRENCY,
   imageGeneration: { provider: "stella" },
   realtimeVoice: { provider: "stella" },
@@ -232,6 +236,9 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.codexReasoningEffort,
       ),
       claudeCodeModel: normalizeClaudeCodeModel(parsed.claudeCodeModel),
+      claudeCodeReasoningEffort: normalizeReasoningEffort(
+        parsed.claudeCodeReasoningEffort,
+      ),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       imageGeneration: normalizeImageGenerationPreferences(
         parsed.imageGeneration,
@@ -374,6 +381,7 @@ export const getLocalModelPreferences = (
     codexModel: prefs.codexModel,
     codexReasoningEffort: prefs.codexReasoningEffort,
     claudeCodeModel: prefs.claudeCodeModel,
+    claudeCodeReasoningEffort: prefs.claudeCodeReasoningEffort,
     maxAgentConcurrency: prefs.maxAgentConcurrency,
     imageGeneration: { ...prefs.imageGeneration },
     realtimeVoice: { ...prefs.realtimeVoice },
@@ -423,6 +431,10 @@ export const updateLocalModelPreferences = (
       patch.claudeCodeModel === undefined
         ? prefs.claudeCodeModel
         : normalizeClaudeCodeModel(patch.claudeCodeModel),
+    claudeCodeReasoningEffort:
+      patch.claudeCodeReasoningEffort === undefined
+        ? prefs.claudeCodeReasoningEffort
+        : normalizeReasoningEffort(patch.claudeCodeReasoningEffort),
     maxAgentConcurrency:
       patch.maxAgentConcurrency === undefined
         ? prefs.maxAgentConcurrency
