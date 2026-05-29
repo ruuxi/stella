@@ -28,25 +28,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { Button } from "@/ui/button";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import {
   ProviderOnlyPicker,
   type ProviderOption,
 } from "@/global/settings/ProviderOnlyPicker";
 import { VoiceCatalogPicker } from "@/global/settings/VoiceCatalogPicker";
-import {
-  findApiKey,
-  findOauthCredential,
-  useLlmCredentials,
-} from "@/global/settings/hooks/use-llm-credentials";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
-import {
-  compareProviderRailOrder,
-  CURSOR_MODEL_PREFIX,
-  LLM_PROVIDERS,
-} from "@/global/settings/lib/llm-providers";
+import { CURSOR_MODEL_PREFIX } from "@/global/settings/lib/llm-providers";
 import { DEFAULT_CURSOR_MODEL } from "@/shell/display/engine-tab-constants";
 import {
   buildModelDefaultsMap,
@@ -65,7 +55,6 @@ import {
   type RealtimeVoicePreferences,
   type RealtimeVoiceUnderlyingProvider,
 } from "../../../../runtime/contracts/local-preferences";
-import { useT } from "@/shared/i18n";
 import { EngineRuntimeModelPanel } from "./EngineRuntimeModelPanel";
 import "./engine-tab.css";
 
@@ -700,8 +689,6 @@ export function EngineTabContent() {
           onSaveCursorModel={(id) => void saveCursorModel(id)}
           onRefreshCursorModels={() => void loadCursorModels()}
         />
-
-        <ConnectedProvidersSection />
       </section>
     </div>
   );
@@ -947,9 +934,32 @@ function ModelsSection({
         : modelId;
       const agentKeys = batchAssignableAgents.map((entry) => entry.key);
       if (agentKeys.length === 0) return;
-      await assignTo(normalizedId, agentKeys, "default");
+      // Preserve the current reasoning effort when switching models so a
+      // model pick doesn't silently reset the user's reasoning choice.
+      const effort =
+        preferences.reasoningEfforts?.[GENERAL_AGENT_KEY] ??
+        preferences.reasoningEfforts?.orchestrator ??
+        "default";
+      await assignTo(normalizedId, agentKeys, effort);
     },
     [assignTo, batchAssignableAgents, preferences],
+  );
+
+  const selectedReasoningEffort: ReasoningEffort =
+    preferences?.reasoningEfforts?.[GENERAL_AGENT_KEY] ??
+    preferences?.reasoningEfforts?.orchestrator ??
+    "default";
+
+  // Per-row reasoning affordance: applies the model to the agent set at the
+  // chosen reasoning effort, so the lightbulb doubles as a model+reasoning
+  // pick (matching the "click a model to apply" picker semantics).
+  const selectReasoning = useCallback(
+    async (modelId: string, effort: ReasoningEffort) => {
+      const agentKeys = batchAssignableAgents.map((entry) => entry.key);
+      if (agentKeys.length === 0) return;
+      await assignTo(modelId, agentKeys, effort);
+    },
+    [assignTo, batchAssignableAgents],
   );
 
   const clearStellaModelOverrides = useCallback(async () => {
@@ -1229,6 +1239,10 @@ function ModelsSection({
                     ),
                   onSaveManualModel: () => onSaveCursorModel(),
                 }}
+                reasoningEffort={selectedReasoningEffort}
+                onSelectReasoning={(modelId, effort) =>
+                  void selectReasoning(modelId, effort)
+                }
                 onSelect={(modelId) =>
                   modelId
                     ? void autoApplyModel(modelId, null)
@@ -1275,115 +1289,3 @@ function ModelsSection({
   );
 }
 
-/* ── Connected providers section ─────────────────────────────── */
-
-function ConnectedProvidersSection() {
-  const t = useT();
-  const credentials = useLlmCredentials();
-  const [removingProvider, setRemovingProvider] = useState<string | null>(null);
-
-  const connectedProviders = useMemo(() => {
-    const rows = LLM_PROVIDERS.map((entry) => {
-      const apiKey = findApiKey(credentials.apiKeys, entry.key);
-      const oauth = findOauthCredential(
-        credentials.oauthCredentials,
-        entry.key,
-      );
-      if (!apiKey && !oauth) return null;
-      return { ...entry, apiKey, oauth };
-    }).filter(Boolean) as Array<
-      (typeof LLM_PROVIDERS)[number] & {
-        apiKey: ReturnType<typeof findApiKey>;
-        oauth: ReturnType<typeof findOauthCredential>;
-      }
-    >;
-    return rows.sort((a, b) =>
-      compareProviderRailOrder(a.key, b.key, a.label, b.label),
-    );
-  }, [credentials.apiKeys, credentials.oauthCredentials]);
-
-  const handleRemove = useCallback(
-    async (providerKey: string, kind: "key" | "oauth") => {
-      setRemovingProvider(providerKey);
-      try {
-        if (kind === "key") {
-          await credentials.removeApiKey(providerKey);
-        } else {
-          await credentials.logoutOAuth(providerKey);
-        }
-      } catch {
-        // Failures surface via the credentials hook's `error` state on the
-        // next reload; nothing useful to do inline here.
-      } finally {
-        setRemovingProvider(null);
-      }
-    },
-    [credentials],
-  );
-
-  if (connectedProviders.length === 0 && !credentials.error) return null;
-
-  return (
-    <div className="engine-tab__connected">
-      <h4 className="engine-tab__section-title">
-        {t("settings.connectedProviders.title")}
-      </h4>
-      {credentials.error ? (
-        <p className="engine-tab__error" role="alert">
-          {credentials.error}
-        </p>
-      ) : null}
-      <ul className="engine-tab__connected-list">
-        {connectedProviders.map((provider) => {
-          const isRemoving = removingProvider === provider.key;
-          return (
-            <li key={provider.key} className="engine-tab__connected-row">
-              <div className="engine-tab__connected-info">
-                <span className="engine-tab__connected-label">
-                  {provider.label}
-                </span>
-                <span className="engine-tab__connected-sublabel">
-                  {provider.apiKey
-                    ? t("settings.connectedProviders.apiKey")
-                    : null}
-                  {provider.apiKey && provider.oauth ? " · " : null}
-                  {provider.oauth
-                    ? t("settings.connectedProviders.signedIn")
-                    : null}
-                </span>
-              </div>
-              <div className="engine-tab__connected-actions">
-                {provider.apiKey ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="engine-tab__connected-btn"
-                    onClick={() => void handleRemove(provider.key, "key")}
-                    disabled={isRemoving}
-                  >
-                    {isRemoving
-                      ? t("settings.connectedProviders.removingKey")
-                      : t("settings.connectedProviders.removeKey")}
-                  </Button>
-                ) : null}
-                {provider.oauth ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="engine-tab__connected-btn"
-                    onClick={() => void handleRemove(provider.key, "oauth")}
-                    disabled={isRemoving}
-                  >
-                    {isRemoving
-                      ? t("settings.connectedProviders.signingOut")
-                      : t("settings.connectedProviders.signOut")}
-                  </Button>
-                ) : null}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}

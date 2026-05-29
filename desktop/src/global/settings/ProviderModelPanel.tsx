@@ -1,9 +1,20 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import {
-  LegendList,
-  type LegendListRenderItemProps,
-} from "@legendapp/list/react";
-import { Check, KeyRound, LogIn, Search, Star } from "lucide-react";
+  Check,
+  KeyRound,
+  Lightbulb,
+  LogIn,
+  LogOut,
+  Search,
+  Star,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/ui/dropdown-menu";
 import {
   readEngineModelFavorites,
   sortByFavorites,
@@ -57,11 +68,28 @@ import {
 } from "@/global/settings/hooks/use-llm-credentials";
 import "./ProviderModelPicker.css";
 
+export type ReasoningEffort =
+  | "default"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
+const REASONING_OPTIONS: ReadonlyArray<{ id: ReasoningEffort; label: string }> =
+  [
+    { id: "default", label: "Auto" },
+    { id: "minimal", label: "Minimal" },
+    { id: "low", label: "Low" },
+    { id: "medium", label: "Medium" },
+    { id: "high", label: "High" },
+    { id: "xhigh", label: "Max" },
+  ];
+
 const STELLA_PROVIDER_KEY = "stella";
 const LOCAL_PROVIDER_KEY = "local";
 const DEFAULT_TARGET = "__default__";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
-const MODEL_ROW_ESTIMATED_SIZE = 47;
 
 type ProviderTab = {
   key: string;
@@ -88,6 +116,14 @@ interface ProviderModelPanelProps {
   favoriteScope?: string;
   /** Cursor SDK provider (API key + model list) for the Agents tab. */
   cursorProvider?: CursorProviderConfig;
+  /**
+   * Current reasoning effort applied to the agent set. When
+   * `onSelectReasoning` is also provided, each model row shows a hover
+   * lightbulb that opens a reasoning-level menu.
+   */
+  reasoningEffort?: ReasoningEffort;
+  /** Apply a model at a specific reasoning effort. */
+  onSelectReasoning?: (modelId: string, effort: ReasoningEffort) => void;
   /**
    * When true, the user's plan can't override the default Stella model
    * (anonymous / free / Go). Non-default rows on the Stella tab are
@@ -162,6 +198,8 @@ export function ProviderModelPanel({
   groups,
   onSelect,
   disabled = false,
+  reasoningEffort,
+  onSelectReasoning,
   restrictStellaPicks = false,
   restrictedPlanLabel,
   ariaLabel,
@@ -291,6 +329,48 @@ export function ProviderModelPanel({
     [disabled, onSelect],
   );
 
+  // Rail sign-out: a connected provider shows a hover log-out icon on its
+  // right. First click arms it (visual confirm), a second click within the
+  // window actually drops the API key + OAuth session for that provider.
+  const [signOutArmed, setSignOutArmed] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState<string | null>(null);
+  const signOutTimerRef = useRef<number | null>(null);
+
+  const handleRailSignOut = useCallback(
+    async (providerKey: string) => {
+      if (signOutArmed !== providerKey) {
+        setSignOutArmed(providerKey);
+        if (signOutTimerRef.current) {
+          window.clearTimeout(signOutTimerRef.current);
+        }
+        signOutTimerRef.current = window.setTimeout(
+          () => setSignOutArmed(null),
+          3000,
+        );
+        return;
+      }
+      if (signOutTimerRef.current) {
+        window.clearTimeout(signOutTimerRef.current);
+        signOutTimerRef.current = null;
+      }
+      setSignOutArmed(null);
+      setSigningOut(providerKey);
+      try {
+        if (findApiKey(credentials.apiKeys, providerKey)) {
+          await credentials.removeApiKey(providerKey);
+        }
+        if (findOauthCredential(credentials.oauthCredentials, providerKey)) {
+          await credentials.logoutOAuth(providerKey);
+        }
+      } catch {
+        // Failures surface via the credentials hook's `error` state.
+      } finally {
+        setSigningOut(null);
+      }
+    },
+    [credentials, signOutArmed],
+  );
+
   const handleSaveKey = useCallback(
     async (providerKey: string, label: string) => {
       const trimmed = draftKey.trim();
@@ -360,34 +440,69 @@ export function ProviderModelPanel({
         {tabs.map((tab) => {
           const isActive = tab.key === activeProvider;
           const connected = isProviderConnected(tab.key);
+          // Only providers with a stored credential we can drop get a
+          // sign-out affordance — Stella (always-on) and Cursor (managed in
+          // its own pane) have nothing removable here.
+          const removable =
+            Boolean(findApiKey(credentials.apiKeys, tab.key)) ||
+            Boolean(findOauthCredential(credentials.oauthCredentials, tab.key));
+          const armed = signOutArmed === tab.key;
+          const isSigningOut = signingOut === tab.key;
           return (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              className="model-picker-rail-item"
-              data-active={isActive || undefined}
-              title={
-                disabledProviderSet.has(tab.key)
-                  ? disabledProviderReason
-                  : undefined
-              }
-              onClick={() => {
-                setActiveProvider(tab.key);
-                setQuery("");
-                setDraftKey("");
-                setAuthError(null);
-              }}
-              disabled={disabled || disabledProviderSet.has(tab.key)}
-            >
-              <span
-                className="model-picker-rail-bar"
-                data-on={connected || undefined}
-                aria-hidden
-              />
-              <span className="model-picker-rail-label">{tab.label}</span>
-            </button>
+            <div key={tab.key} className="model-picker-rail-item-wrap">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className="model-picker-rail-item"
+                data-active={isActive || undefined}
+                title={
+                  disabledProviderSet.has(tab.key)
+                    ? disabledProviderReason
+                    : undefined
+                }
+                onClick={() => {
+                  setActiveProvider(tab.key);
+                  setQuery("");
+                  setDraftKey("");
+                  setAuthError(null);
+                }}
+                disabled={disabled || disabledProviderSet.has(tab.key)}
+              >
+                <span
+                  className="model-picker-rail-bar"
+                  data-on={connected || undefined}
+                  aria-hidden
+                />
+                <span className="model-picker-rail-label">{tab.label}</span>
+              </button>
+              {removable ? (
+                <button
+                  type="button"
+                  className="model-picker-rail-signout"
+                  data-armed={armed || undefined}
+                  disabled={isSigningOut}
+                  aria-label={
+                    armed
+                      ? `Click again to sign out of ${tab.label}`
+                      : `Sign out of ${tab.label}`
+                  }
+                  title={
+                    armed ? "Click again to confirm" : `Sign out of ${tab.label}`
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleRailSignOut(tab.key);
+                  }}
+                >
+                  {armed ? (
+                    <Check size={13} strokeWidth={2} aria-hidden />
+                  ) : (
+                    <LogOut size={13} strokeWidth={1.75} aria-hidden />
+                  )}
+                </button>
+              ) : null}
+            </div>
           );
         })}
       </aside>
@@ -443,6 +558,8 @@ export function ProviderModelPanel({
             favoriteScope={favoriteScope}
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
+            reasoningEffort={reasoningEffort}
+            onSelectReasoning={onSelectReasoning}
             disabledProviderReason={disabledProviderReason}
             cursorProvider={
               activeTab.key === CURSOR_PROVIDER_KEY ? cursorProvider : undefined
@@ -495,16 +612,11 @@ interface ProviderPaneProps {
   favoriteScope?: string;
   favorites: readonly string[];
   onToggleFavorite: (modelId: string) => void;
+  reasoningEffort?: ReasoningEffort;
+  onSelectReasoning?: (modelId: string, effort: ReasoningEffort) => void;
   disabledProviderReason?: string;
   cursorProvider?: CursorProviderConfig;
 }
-
-type ModelListItem = {
-  id: string;
-  model: CatalogModel;
-};
-
-const keyModelListItem = (item: ModelListItem) => item.id;
 
 type ModelRowProps = {
   model: CatalogModel;
@@ -517,6 +629,8 @@ type ModelRowProps = {
   favorite: boolean;
   showFavorite: boolean;
   onToggleFavorite: (modelId: string) => void;
+  reasoningEffort?: ReasoningEffort;
+  onSelectReasoning?: (modelId: string, effort: ReasoningEffort) => void;
 };
 
 const ModelRow = memo(function ModelRow({
@@ -530,7 +644,12 @@ const ModelRow = memo(function ModelRow({
   favorite,
   showFavorite,
   onToggleFavorite,
+  reasoningEffort,
+  onSelectReasoning,
 }: ModelRowProps) {
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const showReasoning = Boolean(onSelectReasoning);
+  const hasActions = showReasoning || showFavorite;
   const isStellaModel = model.provider === STELLA_PROVIDER_KEY;
   const displayName = isStellaModel ? getStellaDisplayName(model) : model.name;
   const subtitle = isStellaModel
@@ -571,28 +690,69 @@ const ModelRow = memo(function ModelRow({
           <Check size={13} className="model-picker-model-check" />
         ) : null}
       </button>
-      {showFavorite ? (
-        <button
-          type="button"
-          className="model-picker-model-star"
-          data-favorite={favorite || undefined}
-          aria-pressed={favorite}
-          aria-label={favorite ? "Remove favorite" : "Add favorite"}
-          title={favorite ? "Remove favorite" : "Favorite — pin to top"}
-          disabled={disabled || rowRestricted}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleFavorite(model.id);
-          }}
+      {hasActions ? (
+        <div
+          className="model-picker-model-actions"
+          data-open={reasoningOpen || undefined}
         >
-          <Star size={14} strokeWidth={1.75} />
-        </button>
+          {showReasoning ? (
+            <DropdownMenu open={reasoningOpen} onOpenChange={setReasoningOpen}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="model-picker-model-reason"
+                  data-active={
+                    (selected &&
+                      reasoningEffort &&
+                      reasoningEffort !== "default") ||
+                    undefined
+                  }
+                  aria-label="Reasoning effort"
+                  title="Reasoning effort"
+                  disabled={disabled || rowRestricted}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Lightbulb size={14} strokeWidth={1.75} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="bottom" align="end" sideOffset={6}>
+                <DropdownMenuRadioGroup
+                  value={reasoningEffort ?? "default"}
+                  onValueChange={(value) =>
+                    onSelectReasoning?.(model.id, value as ReasoningEffort)
+                  }
+                >
+                  {REASONING_OPTIONS.map((option) => (
+                    <DropdownMenuRadioItem key={option.id} value={option.id}>
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+          {showFavorite ? (
+            <button
+              type="button"
+              className="model-picker-model-star"
+              data-favorite={favorite || undefined}
+              aria-pressed={favorite}
+              aria-label={favorite ? "Remove favorite" : "Add favorite"}
+              title={favorite ? "Remove favorite" : "Favorite — pin to top"}
+              disabled={disabled || rowRestricted}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleFavorite(model.id);
+              }}
+            >
+              <Star size={14} strokeWidth={1.75} />
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
 });
-
-const ModelListSeparator = () => <div className="model-picker-model-gap" />;
 
 function ProviderPane({
   tab,
@@ -631,6 +791,8 @@ function ProviderPane({
   favoriteScope,
   favorites,
   onToggleFavorite,
+  reasoningEffort,
+  onSelectReasoning,
   disabledProviderReason,
   cursorProvider,
 }: ProviderPaneProps) {
@@ -692,84 +854,30 @@ function ProviderPane({
     cursorProvider.modelDraft.trim() !==
       cursorProvider.selectedModelId.trim() &&
     cursorProvider.modelDraft.trim().length > 0;
-  const modelItems = useMemo<ModelListItem[]>(
-    () => filteredModels.map((model) => ({ id: model.id, model })),
-    [filteredModels],
-  );
-  const renderModelItem = useCallback(
-    ({ item }: LegendListRenderItemProps<ModelListItem>) => {
-      const selected = !isDefaultSelected && item.model.id === selectedModelId;
-      const rowRestricted =
-        restrictStellaPicks &&
-        item.model.provider === STELLA_PROVIDER_KEY &&
-        !selected &&
-        item.model.allowedForAudience === false;
-      return (
-        <ModelRow
-          model={item.model}
-          selected={selected}
-          rowRestricted={rowRestricted}
-          restrictedPlanLabel={restrictedPlanLabel}
-          restrictedReason={
-            rowRestricted && !restrictedPlanLabel
-              ? (disabledProviderReason ?? null)
-              : null
-          }
-          onPick={onPick}
-          disabled={providerDisabled}
-          favorite={favorites.includes(item.model.id)}
-          showFavorite={Boolean(favoriteScope)}
-          onToggleFavorite={onToggleFavorite}
-        />
-      );
-    },
-    [
-      disabled,
-      disabledProviderReason,
-      favoriteScope,
-      favorites,
-      isDefaultSelected,
-      onPick,
-      onToggleFavorite,
-      restrictedPlanLabel,
-      restrictStellaPicks,
-      selectedModelId,
-    ],
-  );
-  const modelListHeader = useMemo(() => {
-    if (hideDefaultRow) return undefined;
-    if (!isStella) return undefined;
-    return (
-      <button
-        type="button"
-        role="option"
-        aria-selected={isDefaultSelected}
-        className="model-picker-model model-picker-model--default"
-        data-selected={isDefaultSelected || undefined}
-        onClick={(event) => onPick(DEFAULT_TARGET, event.currentTarget)}
-        disabled={disabled}
-      >
-        <span className="model-picker-model-text">
-          <span className="model-picker-model-name">{defaultLabel}</span>
-        </span>
-        {isDefaultSelected ? (
-          <Check size={13} className="model-picker-model-check" />
-        ) : null}
-      </button>
-    );
-  }, [
-    defaultLabel,
-    disabled,
-    hideDefaultRow,
-    isDefaultSelected,
-    isStella,
-    onPick,
-  ]);
+  const showDefaultRow = !hideDefaultRow && isStella;
+  const defaultRow = showDefaultRow ? (
+    <button
+      type="button"
+      role="option"
+      aria-selected={isDefaultSelected}
+      className="model-picker-model model-picker-model--default"
+      data-selected={isDefaultSelected || undefined}
+      onClick={(event) => onPick(DEFAULT_TARGET, event.currentTarget)}
+      disabled={disabled}
+    >
+      <span className="model-picker-model-text">
+        <span className="model-picker-model-name">{defaultLabel}</span>
+      </span>
+      {isDefaultSelected ? (
+        <Check size={13} className="model-picker-model-check" />
+      ) : null}
+    </button>
+  ) : null;
 
   return (
     <div className="model-picker-pane-inner">
-      <header className="model-picker-pane-header">
-        {hideSelectedTitle ? null : (
+      {hideSelectedTitle ? null : (
+        <header className="model-picker-pane-header">
           <div className="model-picker-pane-title">
             <span className="model-picker-pane-kicker">
               {selectedHeaderKicker ?? "Selected"}
@@ -778,25 +886,8 @@ function ProviderPane({
               {currentLabel}
             </span>
           </div>
-        )}
-        {isLocal ? (
-          <span className="model-picker-pane-badge" data-tone="ok">
-            Ready
-          </span>
-        ) : isCursor && cursorProvider.hasApiKey ? (
-          <span className="model-picker-pane-badge" data-tone="ok">
-            API key connected
-          </span>
-        ) : apiKey || oauthCredential ? (
-          <span className="model-picker-pane-badge" data-tone="ok">
-            {apiKey ? "API key connected" : "Signed in"}
-          </span>
-        ) : llmEntry ? (
-          <span className="model-picker-pane-badge" data-tone="muted">
-            Not connected
-          </span>
-        ) : null}
-      </header>
+        </header>
+      )}
 
       {requiresAuth ? (
         isCursor ? (
@@ -825,6 +916,9 @@ function ProviderPane({
               <Button
                 type="button"
                 variant="primary"
+                size="small"
+                className="model-picker-key-save"
+                aria-label="Save Cursor API key"
                 onClick={cursorProvider.onSaveApiKey}
                 disabled={
                   !cursorProvider.apiKeyDraft.trim() ||
@@ -832,7 +926,7 @@ function ProviderPane({
                   disabled
                 }
               >
-                {cursorProvider.savingKey ? "Saving…" : "Save"}
+                <Check size={15} aria-hidden />
               </Button>
             </div>
           </div>
@@ -846,10 +940,11 @@ function ProviderPane({
                 <Button
                   type="button"
                   variant="ghost"
+                  className="model-picker-signin"
                   onClick={onLoginOAuth}
                   disabled={oauthInFlight || disabled}
                 >
-                  {oauthInFlight ? "Opening…" : `Sign in with ${tab.label}`}
+                  {oauthInFlight ? "Opening…" : "Sign in"}
                 </Button>
               </div>
             ) : null}
@@ -872,10 +967,13 @@ function ProviderPane({
                 <Button
                   type="button"
                   variant="primary"
+                  size="small"
+                  className="model-picker-key-save"
+                  aria-label={`Save ${tab.label} API key`}
                   onClick={onSaveKey}
                   disabled={!draftKey.trim() || saving || providerDisabled}
                 >
-                  {saving ? "Saving…" : "Save"}
+                  <Check size={15} aria-hidden />
                 </Button>
               </div>
             ) : null}
@@ -1117,24 +1215,47 @@ function ProviderPane({
                 />
               </div>
               <div className="model-picker-models" role="listbox">
-                {modelItems.length === 0 ? (
-                  <div className="model-picker-empty">
-                    {tab.models.length === 0
-                      ? `No ${tab.label} models available yet.`
-                      : "No models match."}
-                  </div>
-                ) : (
-                  <LegendList<ModelListItem>
-                    data={modelItems}
-                    keyExtractor={keyModelListItem}
-                    renderItem={renderModelItem}
-                    estimatedItemSize={MODEL_ROW_ESTIMATED_SIZE}
-                    recycleItems
-                    ListHeaderComponent={modelListHeader}
-                    ItemSeparatorComponent={ModelListSeparator}
-                    style={{ height: "100%", width: "100%" }}
-                  />
-                )}
+                {defaultRow}
+                {filteredModels.length === 0
+                  ? defaultRow
+                    ? null
+                    : (
+                        <div className="model-picker-empty">
+                          {tab.models.length === 0
+                            ? `No ${tab.label} models available yet.`
+                            : "No models match."}
+                        </div>
+                      )
+                  : filteredModels.map((model) => {
+                      const selected =
+                        !isDefaultSelected && model.id === selectedModelId;
+                      const rowRestricted =
+                        restrictStellaPicks &&
+                        model.provider === STELLA_PROVIDER_KEY &&
+                        !selected &&
+                        model.allowedForAudience === false;
+                      return (
+                        <ModelRow
+                          key={model.id}
+                          model={model}
+                          selected={selected}
+                          rowRestricted={rowRestricted}
+                          restrictedPlanLabel={restrictedPlanLabel}
+                          restrictedReason={
+                            rowRestricted && !restrictedPlanLabel
+                              ? (disabledProviderReason ?? null)
+                              : null
+                          }
+                          onPick={onPick}
+                          disabled={providerDisabled}
+                          favorite={favorites.includes(model.id)}
+                          showFavorite={Boolean(favoriteScope)}
+                          onToggleFavorite={onToggleFavorite}
+                          reasoningEffort={reasoningEffort}
+                          onSelectReasoning={onSelectReasoning}
+                        />
+                      );
+                    })}
               </div>
             </>
           ) : null}

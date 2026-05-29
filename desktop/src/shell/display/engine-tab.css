@@ -355,17 +355,6 @@
   opacity: 0.55;
 }
 
-/* ── section title (used by Models + Connected) ──────────────── */
-
-.engine-tab__section-title {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-weaker, var(--text-weak));
-}
-
 /* ── Models section ──────────────────────────────────────────── */
 
 .engine-tab__models {
@@ -795,87 +784,6 @@
 .engine-runtime-model-panel__star:disabled {
   cursor: not-allowed;
   opacity: 0.35;
-}
-
-/* ── Connected providers ─────────────────────────────────────── */
-
-.engine-tab__connected {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.engine-tab__connected-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.engine-tab__connected-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md, 8px);
-  transition: background 120ms ease;
-}
-
-.engine-tab__connected-row:hover {
-  background: color-mix(in oklch, var(--text-strong) 3%, transparent);
-}
-
-.engine-tab__connected-info {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.engine-tab__connected-label {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-strong);
-  letter-spacing: -0.005em;
-}
-
-.engine-tab__connected-sublabel {
-  font-size: 11.5px;
-  color: var(--text-weak);
-}
-
-.engine-tab__connected-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.engine-tab__connected-btn[data-component="button"] {
-  height: 26px;
-  padding-inline: 10px;
-  font-size: 11.5px;
-  color: var(--text-weak);
-  border: 1px solid transparent;
-}
-
-.engine-tab__connected-btn[data-component="button"]:hover:not(:disabled) {
-  color: var(--danger, #b42318);
-  border-color: color-mix(in oklch, var(--danger, #b42318) 35%, transparent);
-  background: color-mix(in oklch, var(--danger, #b42318) 7%, transparent);
-}
-
-.engine-tab__error {
-  margin: 0;
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--danger, #b42318);
-  border-radius: var(--radius-md, 8px);
-  background: color-mix(in oklch, var(--danger, #b42318) 8%, transparent);
 }
 
 /* ── Assignment popover ──────────────────────────────────────── */
