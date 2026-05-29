@@ -96,11 +96,10 @@ export function createHmrTransitionController(deps: {
 
   const selectTierTiming = (
     requiresFullReload: boolean,
-  ): MorphTimingTierSettings => {
-    return requiresFullReload
+  ): MorphTimingTierSettings =>
+    requiresFullReload
       ? DEFAULT_MORPH_TIMING_SETTINGS.reload
       : DEFAULT_MORPH_TIMING_SETTINGS.hmr;
-  };
 
   const runTransition = async (opts: {
     runIds: string[];

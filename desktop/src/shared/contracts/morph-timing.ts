@@ -12,11 +12,15 @@
  * MorphTransition). This gives the HMR cover an S-curve start instead of
  * popping straight into the ripple.
  */
-export const MORPH_RENDERER_COVER_RAMP_MS = 200;
-export const MORPH_RELOAD_COVER_RAMP_MS = 400;
+export const MORPH_RENDERER_COVER_RAMP_MS = 550;
+export const MORPH_RELOAD_COVER_RAMP_MS = 1050;
 
-/** Handoff: `u_mix` 0→1 and strength →0 once the second capture is ready. */
-export const MORPH_HANDOFF_FADE_MS = 500;
+/**
+ * Handoff: the reveal of the second capture. For the blur flavor this drives
+ * the glimm band sweep; matches glimm's default 1100ms traversal so the
+ * motion feels the same.
+ */
+export const MORPH_HANDOFF_FADE_MS = 1100;
 
 /** Plateau strength during forward cover (fragment shader `u_strength`). */
 export const MORPH_STEADY_STRENGTH = 0.65;
