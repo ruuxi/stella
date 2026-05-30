@@ -23,7 +23,16 @@
 .engine-tab__engine-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+}
+
+.engine-tab__engine-kicker {
+  padding: 0 2px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-weak);
 }
 
 .engine-tab__header {
@@ -69,16 +78,20 @@
 
 /* ── engine cards ─────────────────────────────────────────────── */
 
+/* Segmented engine switch — an inset track with the selected option
+ * lifting into an elevated chip (matching the voice sub-toggle), softer
+ * and more finished than a hard-bordered cell grid. */
 .engine-tab__engine-list {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  align-self: flex-start;
+  align-self: stretch;
   width: 100%;
-  max-width: 360px;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  border-radius: var(--radius-md, 8px);
-  overflow: hidden;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface-inset);
 }
 
 .engine-tab__engine-option {
@@ -88,32 +101,33 @@
   align-items: center;
   justify-content: center;
   min-width: 0;
-  padding: 10px 8px;
+  padding: 8px 8px;
   text-align: center;
   font: inherit;
-  color: var(--text-base);
-  border: none;
-  border-right: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  border-radius: 0;
+  color: var(--text-weak);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 7px);
   background: transparent;
   cursor: pointer;
   transition:
-    background 120ms ease,
-    color 120ms ease;
+    background 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.engine-tab__engine-option:last-child {
-  border-right: none;
-}
-
-.engine-tab__engine-option:hover:not(:disabled),
-.engine-tab__engine-option:focus-visible {
+.engine-tab__engine-option:hover:not(:disabled):not([data-selected]),
+.engine-tab__engine-option:focus-visible:not([data-selected]) {
   outline: none;
-  background: color-mix(in oklch, var(--text-strong) 4%, transparent);
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--text-strong) 5%, transparent);
 }
 
 .engine-tab__engine-option[data-selected] {
-  background: color-mix(in oklch, var(--text-strong) 10%, transparent);
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  border-color: var(--border);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 color-mix(in srgb, var(--foreground) 6%, transparent);
 }
 
 .engine-tab__engine-option[data-selected] .engine-tab__engine-label {
@@ -128,8 +142,9 @@
 .engine-tab__engine-label {
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--text-strong);
+  color: inherit;
   line-height: 1.2;
+  letter-spacing: -0.005em;
 }
 
 /* ── BYOK block (Codex reasoning when Codex is selected) ───────── */
