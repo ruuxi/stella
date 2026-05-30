@@ -20,6 +20,8 @@ import {
   collectBrowserActivityWindows,
   type BrowserActivityWindow,
 } from "../../discovery/browser-data.js";
+import type { BrowserType } from "../../contracts/index.js";
+import { getCadenceReportsPreferences } from "../preferences/local-preferences.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -510,8 +512,11 @@ export const spawnOpenPanelCadenceReports = (deps: {
 }): void => {
   void (async () => {
     const nowMs = Date.now();
+    const config = getCadenceReportsPreferences(deps.stellaRoot);
     const index = await readOpenPanelReportIndex(deps.stellaRoot);
     const due = CADENCES.filter((cadence) => {
+      // Reports are opt-in per cadence. A disabled cadence never generates.
+      if (!config.schedules[cadence.id]) return false;
       if (inFlightCadences.has(cadence.id)) return false;
       const existing = index.reports[cadence.id];
       return !existing || nowMs - existing.generatedAt >= cadence.intervalMs;
@@ -530,6 +535,10 @@ export const spawnOpenPanelCadenceReports = (deps: {
           label: cadence.label,
           sinceMs: nowMs - cadence.windowMs,
         })),
+        {
+          selectedBrowser: (config.browser as BrowserType | null) ?? null,
+          selectedProfile: config.profile,
+        },
       );
       const browserById = new Map(browserWindows.map((entry) => [entry.id, entry]));
 

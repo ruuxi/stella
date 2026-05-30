@@ -679,6 +679,14 @@ export type LockedComputerUseStatus = {
   warnings: string[];
 };
 
+export type CadenceReportCadenceId = "4h" | "daily" | "weekly";
+
+export type CadenceReportSettings = {
+  schedules: Record<CadenceReportCadenceId, boolean>;
+  browser: string | null;
+  profile: string | null;
+};
+
 export type ElectronSystemApi = {
   getDeviceId: () => Promise<string | null>;
   startPhoneAccessSession: () => Promise<{ ok: boolean }>;
@@ -788,6 +796,10 @@ export type ElectronSystemApi = {
   ) => Promise<{ enabled: boolean }>;
   getReadAloudEnabled: () => Promise<boolean>;
   setReadAloudEnabled: (enabled: boolean) => Promise<{ enabled: boolean }>;
+  getCadenceReportSettings: () => Promise<CadenceReportSettings>;
+  setCadenceReportSettings: (
+    settings: CadenceReportSettings,
+  ) => Promise<CadenceReportSettings>;
   getOnboardingCompleted: () => Promise<boolean>;
   setOnboardingCompleted: (
     completed: boolean,
