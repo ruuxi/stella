@@ -243,6 +243,10 @@ export const IPC_PREFERENCES_GET_READ_ALOUD =
   "preferences:getReadAloud" as const;
 export const IPC_PREFERENCES_SET_READ_ALOUD =
   "preferences:setReadAloud" as const;
+export const IPC_PREFERENCES_GET_CADENCE_REPORTS =
+  "preferences:getCadenceReports" as const;
+export const IPC_PREFERENCES_SET_CADENCE_REPORTS =
+  "preferences:setCadenceReports" as const;
 export const IPC_PREFERENCES_GET_ONBOARDING_COMPLETED =
   "preferences:getOnboardingCompleted" as const;
 export const IPC_PREFERENCES_SET_ONBOARDING_COMPLETED =

@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   CreditCard,
+  FileText,
   LogOut,
   MessageSquare,
   Palette,
@@ -53,6 +54,12 @@ import "./account-dialogs.css";
 
 const FeedbackDialog = lazy(() =>
   import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })),
+);
+
+const ReportsDialog = lazy(() =>
+  import("@/global/settings/ReportsDialog").then((m) => ({
+    default: m.ReportsDialog,
+  })),
 );
 
 type BillingPlanId = "free" | "go" | "pro" | "plus" | "ultra";
@@ -190,8 +197,10 @@ export const ShellTopBarAccount = ({
   const pendingConnectRef = useRef(false);
   const pendingSettingsRef = useRef(false);
   const pendingThemeRef = useRef(false);
+  const pendingReportsRef = useRef(false);
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
   const pendingSignOutRef = useRef(false);
 
   const handleDropdownCloseAutoFocus = useCallback(
@@ -218,6 +227,12 @@ export const ShellTopBarAccount = ({
         pendingThemeRef.current = false;
         event.preventDefault();
         setThemePickerOpen(true);
+        return;
+      }
+      if (pendingReportsRef.current) {
+        pendingReportsRef.current = false;
+        event.preventDefault();
+        setReportsOpen(true);
         return;
       }
       if (pendingSignOutRef.current) {
@@ -297,6 +312,16 @@ export const ShellTopBarAccount = ({
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
+                pendingReportsRef.current = true;
+              }}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <FileText size={14} strokeWidth={1.75} />
+              </span>
+              Reports
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
                 pendingConnectRef.current = true;
               }}
               onMouseEnter={preloadConnectDialog}
@@ -343,6 +368,11 @@ export const ShellTopBarAccount = ({
               variant={feedbackVariant}
               onSubmitted={acknowledgeFeedbackPrompt}
             />
+          </Suspense>
+        ) : null}
+        {reportsOpen ? (
+          <Suspense fallback={null}>
+            <ReportsDialog open onOpenChange={setReportsOpen} />
           </Suspense>
         ) : null}
       </div>
@@ -413,6 +443,16 @@ export const ShellTopBarAccount = ({
               <Palette size={14} strokeWidth={1.75} />
             </span>
             Theme
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              pendingReportsRef.current = true;
+            }}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <FileText size={14} strokeWidth={1.75} />
+            </span>
+            Reports
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
@@ -518,6 +558,11 @@ export const ShellTopBarAccount = ({
             variant={feedbackVariant}
             onSubmitted={acknowledgeFeedbackPrompt}
           />
+        </Suspense>
+      ) : null}
+      {reportsOpen ? (
+        <Suspense fallback={null}>
+          <ReportsDialog open onOpenChange={setReportsOpen} />
         </Suspense>
       ) : null}
       <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>

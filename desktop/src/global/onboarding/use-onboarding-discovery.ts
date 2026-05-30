@@ -187,6 +187,28 @@ export function useOnboardingDiscovery({
       localStorage.removeItem(BROWSER_PROFILE_KEY);
     }
 
+    // Cadence reports default on only when the user opted into browser
+    // discovery — otherwise they have no browsing source and reports stay
+    // off until they pick one from the Reports dialog. Persist to
+    // preferences.json so the runtime scheduler can read it.
+    const reportsApi = window.electronAPI?.system;
+    if (reportsApi?.setCadenceReportSettings) {
+      const enableReports = browserEnabled && Boolean(selectedBrowser);
+      void reportsApi
+        .setCadenceReportSettings({
+          schedules: {
+            "4h": enableReports,
+            daily: enableReports,
+            weekly: enableReports,
+          },
+          browser: enableReports ? selectedBrowser : null,
+          profile: enableReports ? (selectedProfile ?? null) : null,
+        })
+        .catch(() => {
+          // Best-effort; the Reports dialog can configure this later.
+        });
+    }
+
     if (isAuthenticated) {
       const preferredBrowser =
         browserEnabled && selectedBrowser ? selectedBrowser : "none";
