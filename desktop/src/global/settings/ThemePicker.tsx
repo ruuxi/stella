@@ -201,8 +201,12 @@ export function ThemePicker({
                       setOpen(false);
                       onThemeSelect?.();
                     }}
-                    onMouseEnter={() => previewTheme(t.id)}
-                    onFocus={() => previewTheme(t.id)}
+                    onMouseEnter={() => {
+                      if (open) previewTheme(t.id);
+                    }}
+                    onFocus={() => {
+                      if (open) previewTheme(t.id);
+                    }}
                   >
                     <span data-slot="theme-picker-theme-name">{t.name}</span>
                     {isSelected && (
