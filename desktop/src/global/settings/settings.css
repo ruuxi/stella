@@ -668,6 +668,7 @@
 
 .settings-btn--reset-all {
   font-size: 11px;
+  min-width: 66px;
   padding: 3px 10px;
   border: none;
   background: transparent;
@@ -676,6 +677,7 @@
 
 .settings-btn--reset-all[data-component="button"] {
   min-height: 0;
+  min-width: 66px;
   padding: 3px 10px;
   border: none;
   background: transparent;

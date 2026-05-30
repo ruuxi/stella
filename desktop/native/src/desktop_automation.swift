@@ -147,6 +147,13 @@ struct ErrorPayload: Codable {
     let screenshotPath: String?
 }
 
+struct AccessibilityPermissionPayload: Codable {
+    let ok: Bool
+    let granted: Bool
+    let message: String
+    let warnings: [String]
+}
+
 struct AutomationDaemonRequest: Codable {
     let seq: Int
     let argv: [String]
@@ -821,6 +828,37 @@ func emitCommandResult(_ result: CommandExecutionResult) -> Never {
         fputs("\(result.stderr)\n", stderr)
     }
     exit(result.status)
+}
+
+func isAccessibilityTrusted() -> Bool {
+    return AXIsProcessTrusted()
+}
+
+func openAccessibilitySettings() {
+    guard let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+    ) else {
+        return
+    }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    process.arguments = [url.absoluteString]
+    try? process.run()
+}
+
+func waitForAccessibilityPermission(timeoutMs: Int) -> Bool {
+    if isAccessibilityTrusted() {
+        return true
+    }
+
+    let deadline = Date().addingTimeInterval(Double(max(timeoutMs, 0)) / 1000.0)
+    while Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.5)
+        if isAccessibilityTrusted() {
+            return true
+        }
+    }
+    return isAccessibilityTrusted()
 }
 
 func exitWithJson<T: Encodable>(_ payload: T, code: Int32 = 0) -> Never {
@@ -7463,6 +7501,27 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
     // WindowServer connection, so it short-circuits before the bootstrap.
     if command == "list-apps" {
         return commandResult(listAppsCommand())
+    }
+
+    if command == "accessibility-permission" {
+        let shouldOpenSettings = hasFlag(commandArgs, key: "--open-settings")
+        let waitMs = parseNamedOption(commandArgs, key: "--wait-ms").flatMap(Int.init) ?? 0
+        if shouldOpenSettings && !isAccessibilityTrusted() {
+            openAccessibilitySettings()
+        }
+        let granted = waitForAccessibilityPermission(timeoutMs: waitMs)
+        let message = granted
+            ? "Accessibility permission is granted for desktop automation."
+            : "Accessibility permission is required for desktop automation. Enable Accessibility for Stella, then try again."
+        return commandResult(
+            AccessibilityPermissionPayload(
+                ok: granted,
+                granted: granted,
+                message: message,
+                warnings: []
+            ),
+            code: granted ? 0 : 1
+        )
     }
 
     if command == "locked-use-begin" ||

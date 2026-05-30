@@ -40,6 +40,7 @@ import {
 import { getSettingsErrorMessage } from "./shared";
 
 const SETTINGS_PERMISSION_RESTART_KINDS = ["screen"] as const;
+const ACCESSIBILITY_RESET_CONFIRM_TIMEOUT_MS = 8_000;
 const STELLA_CHROME_EXTENSION_URL =
   "https://chromewebstore.google.com/detail/kfnchfpocpmdblhfgcnpfaaebaioojnl?utm_source=item-share-cb";
 
@@ -440,11 +441,29 @@ export function GeneralTab() {
 
   const [resettingPermission, setResettingPermission] =
     useState<PermissionKind | null>(null);
+  const [confirmingAccessibilityReset, setConfirmingAccessibilityReset] =
+    useState(false);
+
+  useEffect(() => {
+    if (!confirmingAccessibilityReset) return;
+    const timeoutId = window.setTimeout(() => {
+      setConfirmingAccessibilityReset(false);
+    }, ACCESSIBILITY_RESET_CONFIRM_TIMEOUT_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [confirmingAccessibilityReset]);
+
   const handlePermissionReset = useCallback(
     async (kind: PermissionKind) => {
+      if (kind === "accessibility" && !confirmingAccessibilityReset) {
+        setPermissionsError(null);
+        setConfirmingAccessibilityReset(true);
+        return;
+      }
+
       const reset = window.electronAPI?.system.resetPermission;
       if (!reset) return;
       setPermissionsError(null);
+      setConfirmingAccessibilityReset(false);
       setResettingPermission(kind);
       try {
         const result = await reset(kind);
@@ -464,7 +483,7 @@ export function GeneralTab() {
         setResettingPermission(null);
       }
     },
-    [setPermissionsError, t],
+    [confirmingAccessibilityReset, setPermissionsError, t],
   );
 
   // Single-row toggle cards: collapse the eyebrow into the card title so
@@ -553,10 +572,12 @@ export function GeneralTab() {
               disabled={
                 !permissionsLoaded || resettingPermission === "accessibility"
               }
-              resetting={resettingPermission === "accessibility"}
               onClick={() => void handlePermissionReset("accessibility")}
-              label={t("settings.permissions.reset")}
-              resettingLabel={t("settings.permissions.resetting")}
+              label={
+                confirmingAccessibilityReset
+                  ? t("settings.permissions.restart.action")
+                  : t("settings.permissions.reset")
+              }
             />
           </div>
         </div>
@@ -590,10 +611,8 @@ export function GeneralTab() {
               disabled={
                 !permissionsLoaded || resettingPermission === "screen"
               }
-              resetting={resettingPermission === "screen"}
               onClick={() => void handlePermissionReset("screen")}
               label={t("settings.permissions.reset")}
-              resettingLabel={t("settings.permissions.resetting")}
             />
           </div>
         </div>
@@ -627,10 +646,8 @@ export function GeneralTab() {
               disabled={
                 !permissionsLoaded || resettingPermission === "microphone"
               }
-              resetting={resettingPermission === "microphone"}
               onClick={() => void handlePermissionReset("microphone")}
               label={t("settings.permissions.reset")}
-              resettingLabel={t("settings.permissions.resetting")}
             />
           </div>
         </div>
@@ -859,16 +876,12 @@ export function GeneralTab() {
 // nuke their TCC entry by accident.
 function PermissionResetButton({
   disabled,
-  resetting,
   onClick,
   label,
-  resettingLabel,
 }: {
   disabled: boolean;
-  resetting: boolean;
   onClick: () => void;
   label: string;
-  resettingLabel: string;
 }) {
   return (
     <Button
@@ -880,7 +893,7 @@ function PermissionResetButton({
       aria-label={label}
       title={label}
     >
-      {resetting ? resettingLabel : label}
+      {label}
     </Button>
   );
 }

@@ -500,6 +500,7 @@ type SystemHandlersOptions = {
   startPhoneAccessSession: () => { ok: boolean };
   stopPhoneAccessSession: () => Promise<{ ok: boolean }>;
   onPermissionGranted?: (kind: MacPermissionKind) => void;
+  stopGlobalInputHooksForPermissionReset?: () => void;
   /** Update the radial-trigger key on the gesture service when prefs change. */
   setRadialTriggerKey: (triggerKey: RadialTriggerCode) => void;
   /** Update the mini double-tap modifier on the gesture service when prefs change. */
@@ -2507,16 +2508,27 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       if (!["accessibility", "screen", "microphone"].includes(kind)) {
         return { ok: false };
       }
-      const approved = await options.ensurePrivilegedActionApproval(
-        "permissions.reset",
-        `Reset ${kind} permission for Stella?`,
-        "Stella will need to ask for this permission again the next time you use a feature that requires it.",
-        event,
-      );
-      if (!approved) {
-        return { ok: false };
+      if (kind !== "accessibility") {
+        const approved = await options.ensurePrivilegedActionApproval(
+          "permissions.reset",
+          `Reset ${kind} permission for Stella?`,
+          "Stella will need to ask for this permission again the next time you use a feature that requires it.",
+          event,
+        );
+        if (!approved) {
+          return { ok: false };
+        }
       }
-      return { ok: await resetMacPermission(kind) };
+      if (kind === "accessibility") {
+        options.stopGlobalInputHooksForPermissionReset?.();
+      }
+      const ok = await resetMacPermission(kind);
+      if (ok && kind === "accessibility") {
+        setTimeout(() => {
+          app.quit();
+        }, 50);
+      }
+      return { ok };
     },
   );
 
