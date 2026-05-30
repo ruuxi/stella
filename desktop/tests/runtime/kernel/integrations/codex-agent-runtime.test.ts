@@ -900,6 +900,110 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("exposes the Codex thread id before an interrupted turn completes", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-interrupt-resume-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    const methodsFile = path.join(dir, "methods.txt");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        'const readline = require("node:readline");',
+        "let turnCount = 0;",
+        "const threadId = 'thread-resume-target';",
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "const log = (line) => fs.appendFileSync(process.env.STELLA_FAKE_CODEX_METHODS_FILE, line + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { log('thread/start'); send({ id: message.id, result: { thread: { id: threadId } } }); return; }",
+        "  if (message.method === 'thread/resume') { log(`thread/resume:${message.params.threadId}`); send({ id: message.id, result: { thread: { id: message.params.threadId } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    turnCount += 1;",
+        "    const turn = { id: `turn-${turnCount}`, status: turnCount === 1 ? 'inProgress' : 'completed' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId: message.params.threadId, turn } });",
+        "    if (turnCount === 1) {",
+        "      send({ method: 'item/reasoning/textDelta', params: { threadId: message.params.threadId, turnId: turn.id, delta: 'first turn started' } });",
+        "      return;",
+        "    }",
+        "    send({ method: 'item/completed', params: { threadId: message.params.threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-2', text: 'resumed same Codex thread' } } });",
+        "    send({ method: 'turn/completed', params: { threadId: message.params.threadId, turn } });",
+        "    return;",
+        "  }",
+        "  if (message.method === 'turn/interrupt') {",
+        "    send({ id: message.id, result: {} });",
+        "    const turn = { id: message.params.turnId, status: 'interrupted' };",
+        "    send({ method: 'turn/completed', params: { threadId: message.params.threadId, turn } });",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const previousMethodsFile = process.env.STELLA_FAKE_CODEX_METHODS_FILE;
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    process.env.STELLA_FAKE_CODEX_METHODS_FILE = methodsFile;
+    const observedSessionIds: string[] = [];
+    let markFirstTurnStarted: (() => void) | null = null;
+    const firstTurnStarted = new Promise<void>((resolve) => {
+      markFirstTurnStarted = resolve;
+    });
+    const controller = new AbortController();
+
+    try {
+      const first = runCodexAgentTurn({
+        runId: "run-codex-interrupt-1",
+        prompt: "start",
+        reuseAppServer: true,
+        abortSignal: controller.signal,
+        onSessionId: (sessionId) => {
+          observedSessionIds.push(sessionId);
+        },
+        onStatus: (status) => {
+          if (status === "first turn started") markFirstTurnStarted?.();
+        },
+      });
+
+      await firstTurnStarted;
+      controller.abort(new Error("Interrupted by agent input"));
+      await expect(first).rejects.toThrow(/interrupted|aborted/i);
+
+      expect(observedSessionIds).toEqual(["thread-resume-target"]);
+
+      const second = await runCodexAgentTurn({
+        runId: "run-codex-interrupt-2",
+        prompt: "follow-up",
+        persistedSessionId: observedSessionIds[0],
+        reuseAppServer: true,
+      });
+
+      expect(second.text).toBe("resumed same Codex thread");
+      expect(fs.readFileSync(methodsFile, "utf8").trim().split("\n")).toEqual([
+        "thread/start",
+        "thread/resume:thread-resume-target",
+      ]);
+    } finally {
+      shutdownCodexAppServerRuntime();
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      if (previousMethodsFile === undefined) {
+        delete process.env.STELLA_FAKE_CODEX_METHODS_FILE;
+      } else {
+        process.env.STELLA_FAKE_CODEX_METHODS_FILE = previousMethodsFile;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("normalizes Codex file_change items to Stella file changes", () => {
     const changes = fileChangesFromCodexItem(
       {
