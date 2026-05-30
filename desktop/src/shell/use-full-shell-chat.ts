@@ -201,6 +201,7 @@ export function useFullShellChat({
     scrollToBottom,
     releaseFollow,
     nudgeAfterSend,
+    nudgeQueuedMessagesIntoView,
     thumbState,
   } = useChatScrollManagement({
     hasOlderEvents: hasOlderMessages,
@@ -224,15 +225,14 @@ export function useFullShellChat({
     // physically above the absolute end (because the trailing-region
     // footer is off-screen below the latest text).
     //
-    // Skip the nudge while a stream is already in flight — that send
-    // queues as a follow-up chip in the trailing region (no new
-    // user-row in the event list), so `scrollLatestUserMessageIntoView`
-    // would fall through to the prior turn's user bubble and scroll
-    // *backwards* to re-frame it. The queued chip's own appearance
-    // plus the streaming-row auto-follow then re-target the viewport
-    // a frame later, producing the visible double-nudge jump.
-    const shouldNudgeAfterSend =
-      !isStreaming && (showHomeContent || getIsFollowing())
+    // While a stream is already in flight, the send queues as a
+    // follow-up chip in the trailing region (no new user-row in the
+    // event list). The normal latest-user-row nudge is still skipped:
+    // it would fall through to the prior turn's user bubble and scroll
+    // *backwards* to re-frame it. The streaming branch below uses a
+    // footer-tail target instead.
+    const shouldKeepTailFramed = showHomeContent || getIsFollowing()
+    const shouldNudgeAfterSend = !isStreaming && shouldKeepTailFramed
     if (showHomeContent) {
       setComposerFocusRequestId((id) => id + 1)
     }
@@ -249,11 +249,14 @@ export function useFullShellChat({
       },
     })
     if (isStreaming) {
-      // Queued follow-up — leave the scroll alone. The streaming
-      // assistant row's own auto-follow keeps it framed, and the
-      // queued-message chip animates into the trailing region in
-      // place. Touching the latch here (releaseFollow) would also
-      // detach the assistant-row follow key mid-stream.
+      // Queued follow-up — no new user row lands in the event list.
+      // The streaming assistant row's own auto-follow keeps the reply
+      // framed, but repeated queued chips live below that row in the
+      // footer and can drift under the viewport without their own tail
+      // target.
+      if (shouldKeepTailFramed) {
+        nudgeQueuedMessagesIntoView()
+      }
     } else if (shouldNudgeAfterSend) {
       // Routes the small post-send bump through the same lerp loop
       // as streaming auto-follow so the two motions blend rather
@@ -269,6 +272,7 @@ export function useFullShellChat({
     isStreaming,
     message,
     nudgeAfterSend,
+    nudgeQueuedMessagesIntoView,
     releaseFollow,
     resetIdleTimer,
     selectedText,
