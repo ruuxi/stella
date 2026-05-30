@@ -187,14 +187,14 @@ describe("session-store", () => {
       timestamp: 2_000,
       payload: { text: "Try again" },
     });
-    // Tool fires BEFORE any assistant in this second turn (askQuestion
-    // as first action). No assistant in turn → user_message is anchor.
+    // Tool fires BEFORE any assistant in this second turn. No assistant
+    // in turn → user_message is anchor.
     store.appendEvent({
       conversationId,
       type: "tool_request",
       timestamp: 2_001,
       requestId: "req-2",
-      payload: { toolName: "askQuestion", args: { question: "which?" } },
+      payload: { toolName: "image_gen", args: { prompt: "which?" } },
     });
 
     const { messages } = store.listMessages(conversationId, {

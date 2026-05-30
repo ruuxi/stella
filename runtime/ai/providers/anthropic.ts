@@ -79,7 +79,6 @@ const claudeCodeTools = [
 	"Bash",
 	"Grep",
 	"Glob",
-	"AskUserQuestion",
 	"EnterPlanMode",
 	"ExitPlanMode",
 	"KillShell",

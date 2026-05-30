@@ -13,7 +13,6 @@ import type {
 import type { OfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
-import type { AskQuestionState } from "@/app/chat/AskQuestionBubble";
 import type {
   AssistantRowViewModel,
   EventRowViewModel,
@@ -108,44 +107,6 @@ const scheduleReceiptEqual = (
     if (left.id !== right.id) return false;
     if (left.enabled !== right.enabled) return false;
     if (left.nextRunAtMs !== right.nextRunAtMs) return false;
-  }
-  return true;
-};
-
-const askQuestionPayloadEqual = (
-  a: AskQuestionState | undefined,
-  b: AskQuestionState | undefined,
-): boolean => {
-  if (a === b) return true;
-  if (!a || !b) return a === b;
-  if (Boolean(a.submitted) !== Boolean(b.submitted)) return false;
-  if (a.questions.length !== b.questions.length) return false;
-  for (let i = 0; i < a.questions.length; i += 1) {
-    const left = a.questions[i];
-    const right = b.questions[i];
-    if (left.question !== right.question) return false;
-    if (Boolean(left.allowOther) !== Boolean(right.allowOther)) return false;
-    if (left.options.length !== right.options.length) return false;
-    for (let j = 0; j < left.options.length; j += 1) {
-      if (left.options[j].label !== right.options[j].label) return false;
-    }
-    const leftSelection = a.selections?.[i];
-    const rightSelection = b.selections?.[i];
-    if (leftSelection?.kind !== rightSelection?.kind) return false;
-    if (
-      leftSelection?.kind === "option" &&
-      rightSelection?.kind === "option" &&
-      leftSelection.key !== rightSelection.key
-    ) {
-      return false;
-    }
-    if (
-      leftSelection?.kind === "other" &&
-      rightSelection?.kind === "other" &&
-      leftSelection.text !== rightSelection.text
-    ) {
-      return false;
-    }
   }
   return true;
 };
@@ -281,7 +242,6 @@ const assistantRowEqual = (
   sourceDiffPayloadsEqual(a.sourceDiffPayloads, b.sourceDiffPayloads) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
-  askQuestionPayloadEqual(a.askQuestion, b.askQuestion) &&
   // Compare a stable key for the custom slot (the ReactNode itself
   // changes identity on each render of the Store thread). Surfaces
   // that mount a custom slot must supply a key derived from the

@@ -107,7 +107,8 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("web")).toBe(true);
     expect(orchestratorTools.has("Memory")).toBe(false);
     expect(orchestratorTools.has("MemoryNote")).toBe(false);
-    expect(orchestratorTools.has("askQuestion")).toBe(true);
+    expect(orchestratorTools.has("askQuestion")).toBe(false);
+    expect(orchestratorTools.has("AskUserQuestion")).toBe(false);
     expect(orchestratorTools.has("Fashion")).toBe(false);
 
     const spawnAgentTool = host
@@ -130,6 +131,7 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("MemoryNote")).toBe(false);
     expect(generalTools.has("Context")).toBe(false);
     expect(generalTools.has("askQuestion")).toBe(false);
+    expect(generalTools.has("AskUserQuestion")).toBe(false);
     expect(generalTools.has("exec_command")).toBe(true);
     expect(generalTools.has("write_stdin")).toBe(true);
     expect(generalTools.has("apply_patch")).toBe(true);
@@ -189,60 +191,12 @@ describe("orchestrator direct tool surface", () => {
     const fashionTools = new Set(
       host.getToolCatalog("fashion").map((tool) => tool.name),
     );
-    expect(fashionTools.has("askQuestion")).toBe(false);
     expect(fashionTools.has("FashionGetContext")).toBe(true);
     expect(fashionTools.has("FashionSearchProducts")).toBe(true);
     expect(fashionTools.has("FashionCreateOutfit")).toBe(true);
     expect(fashionTools.has("FashionMarkOutfitReady")).toBe(true);
     expect(fashionTools.has("Fashion")).toBe(false);
     expect(fashionTools.has("image_gen")).toBe(true);
-  });
-
-  it("executes askQuestion for user-facing agents and rejects other agents", async () => {
-    const { host } = await createTestHost();
-
-    const orchestratorResult = await host.executeTool(
-      "askQuestion",
-      {
-        questions: [
-          {
-            question: "Which option fits best?",
-            options: [{ label: "Option A" }, { label: "Option B" }],
-            allowOther: true,
-          },
-        ],
-      },
-      makeToolContext("orchestrator"),
-    );
-
-    expect(orchestratorResult.error).toBeUndefined();
-    expect(typeof orchestratorResult.result).toBe("string");
-    expect(orchestratorResult.result as string).toContain(
-      "Question tray rendered in chat",
-    );
-
-    const generalResult = await host.executeTool(
-      "askQuestion",
-      {
-        questions: [
-          {
-            question: "Should not be allowed",
-            options: [{ label: "Nope" }],
-          },
-        ],
-      },
-      makeToolContext("general"),
-    );
-
-    expect(generalResult.error).toContain("only available to the orchestrator");
-
-    const missingResult = await host.executeTool(
-      "askQuestion",
-      { questions: [] },
-      makeToolContext("orchestrator"),
-    );
-
-    expect(missingResult.error).toContain("questions array is required");
   });
 
   it("executes Context for the orchestrator and rejects other agents", async () => {

@@ -110,7 +110,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   contentContainerStyle,
   estimatedItemSize,
 }: Props) {
-  const { rows: projectedRows, pendingAskQuestion } = useEventRows({
+  const { rows: projectedRows } = useEventRows({
     messages,
     maxItems,
   });
@@ -136,7 +136,6 @@ export const ConversationEvents = memo(function ConversationEvents({
   return (
     <ChatTimeline
       rows={rows}
-      pendingAskQuestion={pendingAskQuestion}
       hasOlderEvents={hasOlderMessages}
       isLoadingOlder={isLoadingOlder}
       isLoadingHistory={isLoadingHistory}

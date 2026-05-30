@@ -7,8 +7,8 @@ import { wrapInternalSystemReminder } from "../../../contracts/system-reminders.
  * The orchestrator handles both desktop and connector chats (Linq SMS,
  * Slack, Discord, Teams, Google Chat) in a single thread. The two
  * surfaces have very different rendering capabilities: the desktop
- * renders markdown, can show `askQuestion` chip trays, and renders
- * `html` artifacts inline, while connector chats only show plain text.
+ * renders markdown and `html` artifacts inline, while connector chats
+ * only show plain text.
  *
  * This hook prepends a hidden `<system_reminder>` on the single turn
  * where the routing surface changed (desktop → connector, connector →

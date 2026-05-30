@@ -121,7 +121,7 @@ export type MessageMetadata = {
  * `MessageRecord` and attaches each turn's tool/`agent-completed` events
  * to the turn's anchor — first assistant when one exists, otherwise the
  * user_message of the turn. Turn-scoped decoration data (inline
- * artifacts, askQuestion bubbles, schedule receipts, file-change
+ * artifacts, schedule receipts, file-change
  * previews) lives on the anchor's `toolEvents` rather than being
  * recovered from a flat event stream at render time.
  *

@@ -70,7 +70,7 @@ describe("groupEventsIntoMessages", () => {
         _id: "t3",
         type: "tool_request",
         timestamp: 7,
-        payload: { toolName: "askQuestion", args: {} },
+        payload: { toolName: "image_gen", args: {} },
       }),
     ];
     const messages = groupEventsIntoMessages(events);

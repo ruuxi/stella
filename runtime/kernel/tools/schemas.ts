@@ -13,7 +13,6 @@
  */
 
 export const DEVICE_TOOL_NAMES = [
-  "AskUserQuestion",
   "RequestCredential",
 ] as const;
 

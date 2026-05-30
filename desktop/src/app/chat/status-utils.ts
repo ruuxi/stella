@@ -79,18 +79,6 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
     "Getting oriented",
     "Looking at what matters",
   ],
-  askquestion: [
-    "One quick question",
-    "Quick question",
-    "Just a quick check",
-    "Need to ask you something",
-    "One sec",
-    "Got something to ask",
-    "Quick check with you",
-    "Putting some options together",
-    "One thing to confirm",
-    "Want to double-check something",
-  ],
   spawn_agent: AGENT_WORK_VARIATIONS,
   send_input: AGENT_WORK_VARIATIONS,
   pause_agent: [
