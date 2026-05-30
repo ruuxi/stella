@@ -346,11 +346,10 @@ export type StellaReleaseArtifactRef = {
 };
 
 /**
- * A published Store release is a behaviour-spec markdown blueprint
- * plus Stella source packs and per-commit reference diffs that produced it on
- * the author's tree. Store installs always go through the local install agent:
- * the spec is the intent, while source packs and diffs are exact reference
- * material that the agent adapts to the installer's divergent tree.
+ * A published Store release is source-backed changed-file material plus a
+ * lightweight listing summary. Store installs always go through the local
+ * install agent: source packs and diffs are exact reference material that the
+ * agent adapts to the installer's divergent tree.
  */
 export type StoreReleaseArtifact = {
   kind: "blueprint";
@@ -361,7 +360,7 @@ export type StoreReleaseArtifact = {
   sourcePack?: StoreReleaseSourcePack;
   /** Pre-uploaded R2 reference for large source packs. */
   sourcePackRef?: StoreReleaseSourcePackRef;
-  /** Per-commit reference diffs. Optional only for legacy spec-only releases. */
+  /** Per-commit reference diffs selected by the publisher's local Store flow. */
   commits?: StoreReleaseCommit[];
 };
 

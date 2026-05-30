@@ -1259,6 +1259,22 @@ export type ElectronStoreApi = {
     manifest: Record<string, unknown>;
     releaseNotes?: string;
   }) => Promise<StorePackageReleaseRecord>;
+  publishSelectedFeatures: (payload: {
+    attachedFeatureNames: string[];
+    packageId: string;
+    asUpdate: boolean;
+    displayName?: string;
+    description?: string;
+    category?:
+      | "apps-games"
+      | "productivity"
+      | "customization"
+      | "skills-agents"
+      | "integrations"
+      | "other";
+    manifest: Record<string, unknown>;
+    releaseNotes?: string;
+  }) => Promise<StorePackageReleaseRecord>;
   uninstallPackage: (packageId: string) => Promise<{
     packageId: string;
     revertedCommits: string[];

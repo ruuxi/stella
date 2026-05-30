@@ -17,9 +17,10 @@ import type { StoreCategory, StoreThreadMessage } from "./types";
 type PublishDialogProps = {
   open: boolean;
   blueprint: StoreThreadMessage | null;
+  selectedFeatureNames: string[];
   onClose: () => void;
   onPublished: (args: {
-    messageId: string;
+    messageId?: string;
     releaseNumber: number;
   }) => Promise<void> | void;
 };
@@ -27,6 +28,7 @@ type PublishDialogProps = {
 export function PublishDialog({
   open,
   blueprint,
+  selectedFeatureNames,
   onClose,
   onPublished,
 }: PublishDialogProps) {
@@ -44,19 +46,41 @@ export function PublishDialog({
   const [updatePackageId, setUpdatePackageId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const blueprintMeta = useMemo(
-    () =>
-      blueprint
-        ? parseBlueprintMetadata(blueprint.text)
-        : { name: "", description: "", category: null as StoreCategory | null },
-    [blueprint],
-  );
+  const sourceFeatureNames = useMemo(() => {
+    const names = blueprint?.attachedFeatureNames?.length
+      ? blueprint.attachedFeatureNames
+      : selectedFeatureNames;
+    const seen = new Set<string>();
+    return names
+      .map((name) => name.trim())
+      .filter((name) => {
+        if (!name || seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      });
+  }, [blueprint, selectedFeatureNames]);
+
+  const selectedFeatureName =
+    sourceFeatureNames.length === 1 ? sourceFeatureNames[0] : "";
+
+  const blueprintMeta = useMemo(() => {
+    if (!blueprint) {
+      return {
+        name: selectedFeatureName,
+        description: "",
+        category: null as StoreCategory | null,
+      };
+    }
+    const parsed = parseBlueprintMetadata(blueprint.text);
+    return {
+      ...parsed,
+      name: parsed.name || selectedFeatureName,
+    };
+  }, [blueprint, selectedFeatureName]);
 
   // When the dialog opens (or the blueprint changes), seed the form
-  // from the blueprint header so the user can just hit Publish on a
-  // well-formed draft instead of retyping fields the agent already
-  // produced. We re-seed on every open so a different blueprint draft
-  // gets its own pre-fill rather than reusing stale state.
+  // from the selected feature or legacy blueprint header. We re-seed on
+  // every open so a different source selection gets its own pre-fill.
   useEffect(() => {
     if (!open) {
       setDisplayName("");
@@ -80,10 +104,10 @@ export function PublishDialog({
   }>;
 
   const handleSubmit = async () => {
-    if (!blueprint) {
+    if (sourceFeatureNames.length === 0) {
       showToast({
-        title: "No blueprint",
-        description: "Ask the Store agent to draft a blueprint first.",
+        title: "No source changes",
+        description: "Select at least one recent source-backed change first.",
         variant: "error",
       });
       return;
@@ -143,7 +167,7 @@ export function PublishDialog({
         : {}),
     };
     const storeApi = window.electronAPI?.store;
-    if (!storeApi?.publishBlueprint) {
+    if (!storeApi?.publishSelectedFeatures) {
       showToast({
         title: "Publish failed",
         description: "Publish backend is not available.",
@@ -152,7 +176,7 @@ export function PublishDialog({
       return;
     }
     const publishArgs = {
-      messageId: blueprint._id,
+      attachedFeatureNames: sourceFeatureNames,
       packageId: publishPackageId,
       asUpdate,
       manifest,
@@ -164,7 +188,7 @@ export function PublishDialog({
             ...(publishCategory ? { category: publishCategory } : {}),
           }),
     };
-    const publishedMessageId = blueprint._id;
+    const publishedMessageId = blueprint?._id;
     const toastName = publishDisplayName;
     setSubmitting(true);
     onClose();
@@ -174,13 +198,12 @@ export function PublishDialog({
     });
     void (async () => {
       try {
-        // The worker resolves the source message → attached features →
-        // commit hashes → redacted reference diffs and ships the spec
-        // and diffs to Convex in one round-trip. The renderer no longer
-        // talks to Convex directly here.
-        const release = await storeApi.publishBlueprint(publishArgs);
+        // The worker resolves selected feature names to commits and a
+        // source pack. Renderer input is only listing metadata plus the
+        // selected source refs.
+        const release = await storeApi.publishSelectedFeatures(publishArgs);
         await onPublished({
-          messageId: publishedMessageId,
+          ...(publishedMessageId ? { messageId: publishedMessageId } : {}),
           releaseNumber: release.releaseNumber,
         });
         showToast({

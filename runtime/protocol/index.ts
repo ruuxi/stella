@@ -126,6 +126,7 @@ export const METHOD_NAMES = {
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
   STORE_PUBLISH_BLUEPRINT: "store.publishBlueprint",
+  STORE_PUBLISH_SELECTED_FEATURES: "store.publishSelectedFeatures",
   STORE_INSTALL_FROM_BLUEPRINT: "store.installFromBlueprint",
   STORE_THREAD_GET: "store.thread.get",
   STORE_THREAD_SEND_MESSAGE: "store.thread.sendMessage",
@@ -210,6 +211,8 @@ export const METHOD_NAMES = {
     "internal.worker.createStoreReleaseUpdate",
   INTERNAL_WORKER_PUBLISH_STORE_BLUEPRINT:
     "internal.worker.publishStoreBlueprint",
+  INTERNAL_WORKER_PUBLISH_STORE_SELECTED_FEATURES:
+    "internal.worker.publishStoreSelectedFeatures",
   INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT:
     "internal.worker.installFromBlueprint",
   INTERNAL_WORKER_STORE_THREAD_GET: "internal.worker.storeThread.get",
@@ -744,6 +747,21 @@ export type StorePublishBlueprintArgs = {
   releaseNotes?: string;
 };
 
+/**
+ * Source-backed publish path. The renderer only selects local feature names and
+ * listing metadata; the worker resolves those names to commits/source packs.
+ */
+export type StorePublishSelectedFeaturesArgs = {
+  attachedFeatureNames: string[];
+  packageId: string;
+  asUpdate: boolean;
+  displayName?: string;
+  description?: string;
+  category?: StoreReleaseArtifact["manifest"]["category"];
+  manifest: StoreReleaseArtifact["manifest"];
+  releaseNotes?: string;
+};
+
 export type RuntimeStoreApi = {
   listPackages: () => Promise<StorePackageRecord[]>;
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
@@ -760,6 +778,9 @@ export type RuntimeStoreApi = {
   ) => Promise<StorePackageReleaseRecord>;
   publishBlueprint: (
     args: StorePublishBlueprintArgs,
+  ) => Promise<StorePackageReleaseRecord>;
+  publishSelectedFeatures: (
+    args: StorePublishSelectedFeaturesArgs,
   ) => Promise<StorePackageReleaseRecord>;
   getStoreThread: () => Promise<StoreThreadSnapshot>;
   sendStoreThreadMessage: (

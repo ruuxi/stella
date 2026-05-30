@@ -17,6 +17,7 @@ import {
   type RuntimeOneShotCompletionResult,
   type RuntimeSelfModRevertResult,
   type StorePublishArgs,
+  type StorePublishSelectedFeaturesArgs,
   type StoreThreadSendInput,
   type RuntimeLocalAgentRequest,
 } from "../protocol/index.js";
@@ -271,7 +272,11 @@ import {
   normalizeStoreThreadFeatureNames,
   normalizeStoreThreadText,
 } from "./store-thread-helpers.js";
-import { buildStoreInstallPrompt } from "./store-install-prompt.js";
+import {
+  buildStoreInstallPrompt,
+  buildStoreInstallReviewPrompt,
+  parseStoreInstallReviewDecision,
+} from "./store-install-prompt.js";
 import {
   assertStoreSourcePackIntegrity,
   selectStoreSourcePackForInstalledRevisions,
@@ -558,12 +563,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const pendingApplyPinned = pendingApplyBatches.size > 0;
     return Boolean(
       state.runner?.getActiveOrchestratorRun() ||
-      (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
-      requestPinned ||
-      pendingApplyPinned ||
-      storePinned ||
-      socialPinned ||
-      voicePinned,
+        (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
+        requestPinned ||
+        pendingApplyPinned ||
+        storePinned ||
+        socialPinned ||
+        voicePinned,
     );
   };
 
@@ -2559,12 +2564,126 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       await ensureRunner().createStoreReleaseUpdate(params as StorePublishArgs),
   );
 
+  const buildSourceBackedReleaseSummary = (args: {
+    packageId: string;
+    displayName?: string;
+    description?: string;
+    category?: StorePublishArgs["manifest"]["category"];
+    releaseNotes?: string;
+    attachedFeatureNames: string[];
+  }): string => {
+    const oneLine = (value: string | undefined): string =>
+      asTrimmedString(value).replace(/\s+/g, " ");
+    const title = oneLine(args.displayName) || args.packageId;
+    const description = oneLine(args.description);
+    const category = args.category ?? "other";
+    const releaseNotes = asTrimmedString(args.releaseNotes);
+    const lines = [
+      `# ${title}`,
+      description
+        ? `> ${description}`
+        : "> Source-backed Stella Store release.",
+      "",
+      `Category: ${category}`,
+      "",
+      "This release is backed by selected Stella source changes. The source pack and reference diffs are the authoritative install material.",
+      "",
+      "## Selected changes",
+      ...args.attachedFeatureNames.map((name) => `- ${name}`),
+    ];
+    if (releaseNotes) {
+      lines.push("", "## Release notes", releaseNotes);
+    }
+    return lines.join("\n");
+  };
+
+  const publishSourceBackedStoreRelease = async (
+    payload: StorePublishSelectedFeaturesArgs,
+  ): Promise<StorePackageReleaseRecord> => {
+    if (!state.init) {
+      throw new Error("Worker has not been initialized.");
+    }
+    const attachedFeatureNames = normalizeStoreThreadFeatureNames(
+      payload.attachedFeatureNames,
+    );
+    if (attachedFeatureNames.length === 0) {
+      throw new Error("Select at least one source-backed change to publish.");
+    }
+
+    const store = ensureStoreModStore();
+    const repoRoot = state.init.stellaRoot;
+    const snapshot = store.readFeatureSnapshot();
+    const commits = await collectStoreReleaseCommits({
+      repoRoot,
+      attachedFeatureNames,
+      snapshot,
+    });
+    if (commits.length === 0) {
+      throw new Error(
+        "The selected changes no longer resolve to source commits. Refresh Store and select the source changes again.",
+      );
+    }
+
+    const sourcePack = await collectStoreReleaseSourcePack({
+      repoRoot,
+      attachedFeatureNames,
+      snapshot,
+      sourceHistory: ensureSourceHistoryStore(),
+    });
+    if (
+      !sourcePack ||
+      !sourcePack.changeSets.some((changeSet) => changeSet.changes.length > 0)
+    ) {
+      throw new Error(
+        "Could not build a source pack for the selected changes. Store publishing now requires source-backed changes; try publishing a smaller, committed feature.",
+      );
+    }
+
+    const baseManifest = payload.manifest ?? {};
+    const category = payload.category ?? baseManifest.category;
+    const redact = buildStoreReleaseRedactor();
+    const blueprintMarkdown = redact(
+      buildSourceBackedReleaseSummary({
+        packageId: payload.packageId,
+        ...(payload.displayName ? { displayName: payload.displayName } : {}),
+        ...(payload.description ? { description: payload.description } : {}),
+        ...(category ? { category } : {}),
+        ...(payload.releaseNotes ? { releaseNotes: payload.releaseNotes } : {}),
+        attachedFeatureNames,
+      }),
+    );
+
+    // The store-operations runner does not forward releaseNumber to Convex
+    // (the action assigns it). We carry a sentinel here just to satisfy the
+    // StorePublishArgs shape.
+    const releaseNumber = 0;
+    const artifact: StorePublishArgs["artifact"] = {
+      kind: "blueprint",
+      schemaVersion: 2,
+      manifest: { ...baseManifest },
+      blueprintMarkdown,
+      sourcePack,
+      commits,
+    };
+    const publishArgs: StorePublishArgs = {
+      packageId: payload.packageId,
+      releaseNumber,
+      displayName: payload.displayName ?? "",
+      ...(payload.description ? { description: payload.description } : {}),
+      ...(payload.releaseNotes ? { releaseNotes: payload.releaseNotes } : {}),
+      manifest: { ...baseManifest },
+      artifact,
+    };
+
+    const runner = ensureRunner();
+    return payload.asUpdate
+      ? await runner.createStoreReleaseUpdate(publishArgs)
+      : await runner.createFirstStoreRelease(publishArgs);
+  };
+
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_BLUEPRINT,
     async (params) => {
-      if (!state.init) {
-        throw new Error("Worker has not been initialized.");
-      }
       const payload = params as {
         messageId: string;
         packageId: string;
@@ -2599,58 +2718,25 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           "The latest blueprint draft was denied. Edit it before publishing.",
         );
       }
-      const blueprintMarkdown = message.text.trim();
-      if (!blueprintMarkdown) {
-        throw new Error("The blueprint draft is empty.");
-      }
-      const repoRoot = state.init.stellaRoot;
-      const snapshot = store.readFeatureSnapshot();
-      const commits = await collectStoreReleaseCommits({
-        repoRoot,
+      return await publishSourceBackedStoreRelease({
         attachedFeatureNames: message.attachedFeatureNames ?? [],
-        snapshot,
-      });
-      const sourcePack = await collectStoreReleaseSourcePack({
-        repoRoot,
-        attachedFeatureNames: message.attachedFeatureNames ?? [],
-        snapshot,
-        sourceHistory: ensureSourceHistoryStore(),
-      });
-      // Mechanical scrub of the spec body too — diffs are scrubbed
-      // inside `collectStoreReleaseCommits`. Reviewer is the hard gate;
-      // this is best-effort defense in depth.
-      const redact = buildStoreReleaseRedactor();
-      const redactedBlueprint = redact(blueprintMarkdown);
-
-      const baseManifest = payload.manifest ?? {};
-      // The store-operations runner does not forward releaseNumber to
-      // Convex (the action assigns it). We carry a sentinel here just
-      // to satisfy the StorePublishArgs shape.
-      const releaseNumber = 0;
-      const artifact: StorePublishArgs["artifact"] = {
-        kind: "blueprint",
-        schemaVersion: 2,
-        manifest: { ...baseManifest },
-        blueprintMarkdown: redactedBlueprint,
-        ...(sourcePack ? { sourcePack } : {}),
-        ...(commits.length > 0 ? { commits } : {}),
-      };
-      const publishArgs: StorePublishArgs = {
         packageId: payload.packageId,
-        releaseNumber,
-        displayName: payload.displayName ?? "",
+        asUpdate: payload.asUpdate,
+        ...(payload.displayName ? { displayName: payload.displayName } : {}),
         ...(payload.description ? { description: payload.description } : {}),
+        ...(payload.category ? { category: payload.category } : {}),
+        manifest: payload.manifest,
         ...(payload.releaseNotes ? { releaseNotes: payload.releaseNotes } : {}),
-        manifest: { ...baseManifest },
-        artifact,
-      };
-
-      const runner = ensureRunner();
-      const release = payload.asUpdate
-        ? await runner.createStoreReleaseUpdate(publishArgs)
-        : await runner.createFirstStoreRelease(publishArgs);
-      return release;
+      });
     },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_SELECTED_FEATURES,
+    async (params) =>
+      await publishSourceBackedStoreRelease(
+        params as StorePublishSelectedFeaturesArgs,
+      ),
   );
 
   // Snapshot read for the side panel features list. The snapshot is
@@ -2947,6 +3033,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
+      const init = state.init;
       const payload = params as {
         packageId: string;
         releaseNumber: number;
@@ -2958,9 +3045,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const runner = ensureRunner();
       const service = ensureStoreModService();
 
-      const headBeforeRun = await getGitHead(state.init.stellaRoot).catch(
-        () => null,
-      );
+      const headBeforeRun = await getGitHead(init.stellaRoot).catch(() => null);
       const existingInstall = service.getInstall(payload.packageId);
       const installApplyMode = existingInstall ? "update" : "install";
       const verifiedSourcePack = payload.sourcePack
@@ -2977,9 +3062,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           ? sourcePackPlan.revisionId
           : null;
       const sourcePackForAgent =
-        sourcePackPlan?.status === "handoff"
-          ? sourcePackPlan.sourcePack
-          : null;
+        sourcePackPlan?.status === "handoff" ? sourcePackPlan.sourcePack : null;
 
       // Materialise the spec + reference diffs into a per-install
       // working directory under `~/.stella/raw/`. The general agent reads
@@ -3038,6 +3121,52 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           installCommitHash: null,
           sourceRevisionId: alreadyInstalledRevisionId,
         });
+      }
+
+      const reviewResult = await runOneShotCompletion({
+        request: {
+          agentType: "store_install_review",
+          fallbackAgentTypes: ["general"],
+          systemPrompt:
+            "You are a no-tool safety reviewer for Stella Store installs. Return only the requested JSON decision.",
+          userText: buildStoreInstallReviewPrompt({
+            displayName: payload.displayName,
+            packageId: payload.packageId,
+            releaseSummary: payload.blueprintMarkdown,
+            sourcePack: sourcePackForAgent,
+            commits,
+          }),
+          temperature: 0,
+          maxOutputTokens: 700,
+        },
+        runtime: {
+          stellaRoot: init.stellaRoot,
+          stellaHome: init.stellaHomePath,
+          siteBaseUrl: init.convexSiteUrl,
+          getAuthToken: () => init.authToken,
+          hasConnectedAccount: () => state.init?.hasConnectedAccount ?? false,
+          requestRuntimeAuthRefresh: async () => {
+            try {
+              return (await peer.request(
+                METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
+                { source: "store_install_review" },
+                { retryOnDisconnect: true },
+              )) as {
+                authenticated: boolean;
+                token: string | null;
+                hasConnectedAccount: boolean;
+              };
+            } catch {
+              return null;
+            }
+          },
+        },
+      });
+      const reviewDecision = parseStoreInstallReviewDecision(reviewResult.text);
+      if (!reviewDecision.allow) {
+        throw new Error(
+          `Store install review blocked this release: ${reviewDecision.reason}`,
+        );
       }
 
       const installPrompt = buildStoreInstallPrompt({

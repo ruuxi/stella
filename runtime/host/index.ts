@@ -67,6 +67,7 @@ import {
   type StorePackageReleaseRecord,
   type StorePublishArgs,
   type StorePublishBlueprintArgs,
+  type StorePublishSelectedFeaturesArgs,
   type StoreReleaseSourcePack,
   type StoreThreadSendInput,
   type StoreThreadSnapshot,
@@ -1879,6 +1880,17 @@ export class StellaRuntimeHost {
   async publishStoreBlueprint(args: StorePublishBlueprintArgs) {
     return await this.requestWorker<StorePackageReleaseRecord>(
       METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_BLUEPRINT,
+      args,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
+  async publishStoreSelectedFeatures(args: StorePublishSelectedFeaturesArgs) {
+    return await this.requestWorker<StorePackageReleaseRecord>(
+      METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_SELECTED_FEATURES,
       args,
       {
         ensureWorker: true,
