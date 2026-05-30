@@ -641,6 +641,8 @@ export function EngineTabContent() {
             {status ? <span>{status.text}</span> : null}
           </div>
 
+          <span className="engine-tab__engine-kicker">Engine</span>
+
           <div
             className="engine-tab__engine-list"
             role="radiogroup"
