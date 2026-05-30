@@ -20,9 +20,6 @@ const NON_PARALLEL_TOOL_NAMES = new Set<string>([
   "Write",
   "Edit",
   "write_stdin",
-  "ask_user_question",
-  "AskUserQuestion",
-  "askQuestion",
   "request_credential",
   "RequestCredential",
 ]);

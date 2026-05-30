@@ -3,9 +3,8 @@
  *
  * Each message renders as a single row in chronological order, with no
  * per-turn user/assistant grouping. Tool-derived artifacts (web-search
- * badge, office preview, end-resource pill, self-mod undo,
- * ask-question bubble) attach to the assistant row that immediately
- * followed the producing tool events.
+ * badge, office preview, end-resource pill, self-mod undo) attach to
+ * the assistant row that immediately followed the producing tool events.
  *
  * Streaming is NOT a separate row: live stream chunks update an
  * in-memory `MessageRecord` overlay that `useConversationDisplayMessages`
@@ -41,10 +40,6 @@ import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
-import {
-  AskQuestionBubble,
-  type AskQuestionState,
-} from "@/app/chat/AskQuestionBubble";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
 import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
 import { eventRowEqual } from "@/app/chat/lib/row-equality";
@@ -110,11 +105,10 @@ export type AssistantRowViewModel = {
     affected: ScheduleToolAffectedRef[];
     summary?: string;
   };
-  askQuestion?: AskQuestionState;
   /**
    * Optional renderer for surface-specific row attachments (e.g. the Store
    * thread's draft confirmation card). Mounted after the markdown body and
-   * before askQuestion.
+   * after built-in inline artifacts.
    *
    * Identity-stable per `customSlotKey` — the row equality comparator only
    * checks `customSlotKey` so re-rendering ancestors don't blow away the
@@ -288,7 +282,6 @@ export const AssistantMessageRow = memo(
     const hasResource = Boolean(row.resourcePayload);
     const hasInlineImages = (row.inlineImagePayloads?.length ?? 0) > 0;
     const hasSelfMod = Boolean(row.selfModApplied);
-    const hasAskQuestion = Boolean(row.askQuestion);
     const hasCustomSlot = Boolean(row.customSlot);
     const hasScheduleReceipt = Boolean(
       row.scheduleReceipt && row.scheduleReceipt.affected.length > 0,
@@ -300,7 +293,6 @@ export const AssistantMessageRow = memo(
       !hasResource &&
       !hasInlineImages &&
       !hasSelfMod &&
-      !hasAskQuestion &&
       !hasCustomSlot &&
       !hasScheduleReceipt
     ) {
@@ -327,9 +319,7 @@ export const AssistantMessageRow = memo(
         className={`event-row event-row--assistant${row.isStreaming ? " event-row--streaming" : ""}`}
         data-scroll-follow-key={row.id}
       >
-        <div
-          className={`event-item assistant${!hasText && hasAskQuestion ? " event-item--ask-question-only" : ""}`}
-        >
+        <div className="event-item assistant">
           {hasText && (
             <Markdown
               text={text}
@@ -370,24 +360,9 @@ export const AssistantMessageRow = memo(
             />
           )}
           {row.customSlot ? row.customSlot : null}
-          {row.askQuestion && <AskQuestionBubble payload={row.askQuestion} />}
         </div>
       </div>
     );
   },
   (prev, next) => eventRowEqual(prev.row, next.row),
 );
-
-export const PendingAskQuestionRow = memo(function PendingAskQuestionRow({
-  payload,
-}: {
-  payload: AskQuestionState;
-}) {
-  return (
-    <div className="event-row event-row--assistant">
-      <div className="event-item assistant event-item--ask-question-only">
-        <AskQuestionBubble payload={payload} />
-      </div>
-    </div>
-  );
-});

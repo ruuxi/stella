@@ -24,8 +24,6 @@ import type {
 } from "../types.js";
 
 import { applyPatchTool } from "./apply-patch.js";
-import { askQuestionTool } from "./ask-question.js";
-import { askUserQuestionTool } from "./ask-user-question.js";
 import { createContextTool } from "./context.js";
 import { dreamTool } from "./dream.js";
 import { editTool } from "./edit.js";
@@ -104,8 +102,6 @@ export const buildBuiltinTools = (
   tools.push(createWebTool({ webSearch: options.webSearch }));
 
   // Orchestrator coordination surface
-  tools.push(askQuestionTool);
-  tools.push(askUserQuestionTool);
   tools.push(createHtmlTool({ stellaHome: options.stellaHome ?? options.stellaRoot }));
   tools.push(
     createVoiceActionCompleteTool({

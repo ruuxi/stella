@@ -1411,7 +1411,7 @@ export class SessionStore {
    * `maxVisibleMessages`-th most-recent user/assistant row, then fetch all
    * tool/agent-completed events from the cutoff forward and group them by
    * turn (boundary = `user_message`). Mirrors the renderer's prior
-   * `segmentToolEventsByAssistant` so the inline-artifact / askQuestion /
+   * `segmentToolEventsByAssistant` so the inline-artifact /
    * schedule-receipt projections that hung off the flat event stream keep
    * working without a flat event stream.
    *
@@ -1768,10 +1768,9 @@ export class SessionStore {
    *
    *   - **user_message** of the turn when no assistant fires — fixes
    *     the prior port's silent drop of tools in turns where the
-   *     agent's first action is `askQuestion`. The renderer's
-   *     standalone-askQuestion bubble and trailing-image artifact
-   *     paths already read from `user_message.toolEvents`, so they
-   *     surface correctly.
+   *     agent's first action is a fire-and-forget tool. The renderer's
+   *     trailing artifact paths already read from `user_message.toolEvents`,
+   *     so they surface correctly.
    *
    * `visibleMessageCount` is the count of user/assistant rows whose
    * payload doesn't satisfy `isUiHiddenChatMessagePayload`. The chat
@@ -1795,7 +1794,7 @@ export class SessionStore {
     /**
      * Flush tools that arrived in the current turn without ever seeing
      * an assistant message — fall back to the user_message anchor so
-     * inline artifacts on `askQuestion`-only or fire-and-forget turns
+     * inline artifacts on fire-and-forget turns
      * still render. Mirrors `groupEventsIntoMessages` on the renderer.
      */
     const finalizePreAssistantTools = () => {

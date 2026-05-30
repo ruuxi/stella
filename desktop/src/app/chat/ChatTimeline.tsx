@@ -29,8 +29,8 @@
  *    browser then clamped `scrollTop` up to the new max — visible as a
  *    jump back to the top of the previous assistant reply just before
  *    the post-send nudge animated back down. The fixed bottom-floor
- *    `min-height` and the pending-askQuestion / queued-messages slots
- *    live on the `ListFooterComponent` instead.
+ *    `min-height` and queued-messages slot live on the `ListFooterComponent`
+ *    instead.
  *  - `onStartReached` triggers older-history pagination.
  *
  * Empty / loading-history states render outside the list, matching the
@@ -54,20 +54,16 @@ import {
 } from "@legendapp/list/react";
 import {
   AssistantMessageRow,
-  PendingAskQuestionRow,
   UserMessageRow,
   type EventRowViewModel,
 } from "@/app/chat/MessageRow";
 import type { Attachment } from "@/app/chat/lib/event-transforms";
-import type { AskQuestionState } from "@/app/chat/AskQuestionBubble";
 import { ComposerQueuedMessages } from "./ComposerQueuedMessages";
 import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
 import { Spinner } from "@/ui/spinner";
 
 type ChatTimelineProps = {
   rows: EventRowViewModel[];
-  /** Optional pending askQuestion bubble rendered in the trailing footer. */
-  pendingAskQuestion?: AskQuestionState | null;
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -148,7 +144,6 @@ const renderRow = (
 
 export const ChatTimeline = memo(function ChatTimeline({
   rows,
-  pendingAskQuestion = null,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
@@ -192,8 +187,8 @@ export const ChatTimeline = memo(function ChatTimeline({
   }, [hasOlderEvents, isLoadingOlder]);
 
   /**
-   * Footer: bottom-floor min-height + pending askQuestion + queued user
-   * messages, plus any surface-specific `extraTail` node. The min-height
+   * Footer: bottom-floor min-height + queued user messages, plus any
+   * surface-specific `extraTail` node. The min-height
    * pre-allocates the empty reading area below the just-sent user bubble
    * (and below short streaming replies) without reserving the full
    * viewport. Living here — rather than wrapping the latest user/assistant
@@ -205,16 +200,13 @@ export const ChatTimeline = memo(function ChatTimeline({
   const ListFooter = useMemo(
     () => (
       <div className="event-list-trailing-region">
-        {pendingAskQuestion && (
-          <PendingAskQuestionRow payload={pendingAskQuestion} />
-        )}
         <ComposerQueuedMessages messages={queuedUserMessages ?? []} />
         {extraTail && (
           <div className="event-list-extra-tail">{extraTail}</div>
         )}
       </div>
     ),
-    [extraTail, pendingAskQuestion, queuedUserMessages],
+    [extraTail, queuedUserMessages],
   );
 
   if (isLoadingHistory && rows.length === 0) {

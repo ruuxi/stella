@@ -42,14 +42,6 @@ import {
  * The row builder uses this prefix to tag rows as `isStreaming: true`.
  */
 const STREAMING_OVERLAY_ID_PREFIX = 'stream-overlay:'
-import {
-  parseAskQuestionArgs,
-  parseAskQuestionAnswersMessage,
-  type AskQuestionState,
-} from './AskQuestionBubble'
-import { isUiHiddenMessagePayload } from '@/app/chat/lib/message-display'
-
-type Selection = NonNullable<AskQuestionState["selections"]>[number]
 
 const getMessagePayload = (
   event?: EventRecord | MessageRecord,
@@ -131,166 +123,6 @@ const getCwd = (events: readonly EventRecord[]): string | undefined => {
   return undefined
 }
 
-/**
- * Walk the event stream once and produce everything the chat surface
- * needs to render askQuestion bubbles in a single, stable place per
- * question:
- *
- *  - `payloadByAssistantId`: for every askQuestion we've seen, the
- *    full payload (with optional `submitted`/`selections`) keyed by the
- *    assistant message it should attach to. Includes both pending and
- *    answered questions.
- *  - `standaloneByUserId`: askQuestions with no preceding assistant
- *    message, keyed by the visible user message that triggered them.
- *    Rendering them as rows immediately after that user message keeps
- *    answered summaries exactly where the question appeared, even after
- *    later assistant messages stream in.
- *  - `pendingWithoutAnchor`: rare fallback for a question with neither
- *    an assistant nor visible user anchor.
- *
- * Resolving the originating assistant skips agent-terminal-notice
- * messages so the bubble doesn't get parked on an "Agent completed"
- * row when there's a real chat reply available.
- *
- * The main chat does not infer routing from active sub-agents. A Store
- * agent can use askQuestion only from its own Store-specific surface;
- * the orchestrator chat answer path stays local to the current chat.
- */
-type AskQuestionDerivation = {
-  payloadByAssistantId: Map<string, AskQuestionState>
-  standaloneByUserId: Map<string, AskQuestionState>
-  pendingWithoutAnchor: AskQuestionState | null
-}
-
-const isAskQuestionResponseMessage = (message: MessageRecord): boolean => {
-  if (message.type !== 'user_message') return false
-  const payload = getMessagePayload(message)
-  return (
-    payload?.metadata?.trigger?.kind === 'ask_question_response' &&
-    payload.metadata.trigger.source === 'ask-question-bubble'
-  )
-}
-
-const isTerminalNoticeAssistant = (
-  responseTarget: AgentResponseTarget | undefined,
-): boolean => responseTarget?.type === 'agent_terminal_notice'
-
-/**
- * Walk messages (with their owned `toolEvents` inlined chronologically)
- * and route every `askQuestion` tool_request to its render anchor:
- *  - the most recent non-terminal-notice assistant in the same turn, or
- *  - the visible user message above it when no assistant has fired yet
- *    in this turn, or
- *  - the standalone "pending without anchor" tail-row fallback.
- *
- * A `user_message` flagged as `ask_question_response` finalizes the
- * pending question with the selected answers; ordinary visible user
- * messages start a new turn (which discards the prior turn's pending
- * assistant anchor so a fresh question attaches to the new turn).
- */
-const deriveAskQuestions = (
-  messages: MessageRecord[],
-  responseTargetByAssistantId: Map<string, AgentResponseTarget | undefined>,
-): AskQuestionDerivation => {
-  const payloadByAssistantId = new Map<string, AskQuestionState>()
-  const standaloneByUserId = new Map<string, AskQuestionState>()
-  let pendingWithoutAnchor: AskQuestionState | null = null
-
-  type Pending = {
-    assistantId: string | null
-    userId: string | null
-    payload: AskQuestionState
-  }
-  let lastNonNoticeAssistantId: string | null = null
-  let lastVisibleUserId: string | null = null
-  // `pending` carries the most recent unanswered askQuestion across the
-  // message walk. Explicit `Pending | null` annotation (instead of
-  // inferred) keeps TS from collapsing the type back to `null` between
-  // mutations.
-  let pending: Pending | null = null
-
-  const finalize = (
-    assistantId: string | null,
-    userId: string | null,
-    payload: AskQuestionState,
-    selections: Record<number, Selection> | null,
-  ) => {
-    const state: AskQuestionState = {
-      ...payload,
-      ...(selections ? { submitted: true, selections } : {}),
-    }
-    if (assistantId) {
-      payloadByAssistantId.set(assistantId, state)
-    } else if (userId) {
-      standaloneByUserId.set(userId, state)
-    } else {
-      pendingWithoutAnchor = state
-    }
-  }
-
-  for (const message of messages) {
-    if (isAssistantMessage(message)) {
-      const responseTarget = responseTargetByAssistantId.get(message._id)
-      if (!isTerminalNoticeAssistant(responseTarget)) {
-        lastNonNoticeAssistantId = message._id
-      }
-    } else if (message.type === 'user_message') {
-      const currentPending = pending
-      if (isAskQuestionResponseMessage(message) && currentPending) {
-        const text =
-          typeof (message.payload as { text?: unknown })?.text === 'string'
-            ? ((message.payload as { text: string }).text)
-            : ''
-        const selections = parseAskQuestionAnswersMessage(
-          currentPending.payload,
-          text,
-        )
-        finalize(
-          currentPending.assistantId,
-          currentPending.userId,
-          currentPending.payload,
-          selections,
-        )
-        pending = null
-      } else if (!isUiHiddenMessagePayload(getMessagePayload(message))) {
-        // A visible user message marks a real turn boundary. A
-        // subsequent askQuestion belongs to *this* turn, not the prior
-        // assistant — drop the stale anchor so the next askQuestion
-        // attaches to either a fresh assistant in this turn or, if the
-        // agent's first action is the question, the standalone
-        // `PendingAskQuestionRow` tail. Hidden user messages (system
-        // reminders, workspace creation requests, etc.) don't visually
-        // break the turn, so they don't discard the anchor.
-        lastNonNoticeAssistantId = null
-        lastVisibleUserId = message._id
-      }
-    }
-
-    for (const toolEvent of message.toolEvents) {
-      if (toolEvent.type !== 'tool_request') continue
-      const payload = toolEvent.payload as
-        | { toolName?: string; args?: unknown }
-        | undefined
-      if (payload?.toolName !== 'askQuestion') continue
-      const parsed = parseAskQuestionArgs(payload.args)
-      if (!parsed) continue
-      const assistantId = lastNonNoticeAssistantId
-      pending = {
-        assistantId,
-        userId: assistantId ? null : lastVisibleUserId,
-        payload: parsed,
-      }
-    }
-  }
-
-  const tail = pending
-  if (tail) {
-    finalize(tail.assistantId, tail.userId, tail.payload, null)
-  }
-
-  return { payloadByAssistantId, standaloneByUserId, pendingWithoutAnchor }
-}
-
 type UseEventRowsOptions = {
   messages: MessageRecord[]
   maxItems?: number
@@ -298,8 +130,6 @@ type UseEventRowsOptions = {
 
 type UseEventRowsResult = {
   rows: EventRowViewModel[]
-  /** Rare pending askQuestion with no row anchor. */
-  pendingAskQuestion: AskQuestionState | null
 }
 
 const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
@@ -310,7 +140,6 @@ const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
   !(row.sourceDiffPayloads?.length) &&
   !row.selfModApplied &&
   !row.scheduleReceipt &&
-  !row.askQuestion &&
   !row.customSlot
 
 /** Merge sequential one-by-one image_gen rows into a single inline strip. */
@@ -332,7 +161,6 @@ const coalesceInlineImageRows = (
       !(prev.sourceDiffPayloads?.length) &&
       !prev.selfModApplied &&
       !prev.scheduleReceipt &&
-      !prev.askQuestion &&
       !prev.customSlot
     ) {
       out[out.length - 1] = {
@@ -402,11 +230,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     return map
   }, [messages])
 
-  const askQuestion = useMemo(
-    () => deriveAskQuestions(messages, responseTargetByAssistantId),
-    [messages, responseTargetByAssistantId],
-  )
-
   const allRows = useMemo<EventRowViewModel[]>(() => {
     const computed: EventRowViewModel[] = []
     /**
@@ -452,17 +275,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             : {}),
         }
         computed.push(row)
-        const standaloneAskQuestion = askQuestion.standaloneByUserId.get(message._id)
-        if (standaloneAskQuestion) {
-          const stableKey = `ask-question-for-${message._id}`
-          computed.push({
-            kind: 'assistant',
-            id: stableKey,
-            text: '',
-            cacheKey: stableKey,
-            askQuestion: standaloneAskQuestion,
-          })
-        }
         continue
       }
 
@@ -511,7 +323,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const sourceDiffPayloads = collectTurnSourceDiffPayloads(toolEvents, {
           developerResourcesEnabled: developerResourcePreviewsEnabled,
         })
-        const askQuestionState = askQuestion.payloadByAssistantId.get(message._id)
         const selfModApplied = payload?.selfModApplied
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
@@ -536,7 +347,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(getScheduleReceipt(toolEvents)
             ? { scheduleReceipt: getScheduleReceipt(toolEvents) }
             : {}),
-          ...(askQuestionState ? { askQuestion: askQuestionState } : {}),
         }
         computed.push(row)
       }
@@ -570,7 +380,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
 
     return coalesceInlineImageRows(computed)
   }, [
-    askQuestion,
     developerResourcePreviewsEnabled,
     displayMessages,
     responseTargetByAssistantId,
@@ -601,6 +410,5 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
 
   return {
     rows: slicedRows,
-    pendingAskQuestion: askQuestion.pendingWithoutAnchor,
   }
 }

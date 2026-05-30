@@ -1,9 +1,8 @@
 /**
- * User interaction tools: AskUser, RequestCredential handlers.
+ * User interaction tools: RequestCredential handlers.
  */
 
 import type { ToolResult } from "./types.js";
-import { truncate } from "./utils.js";
 
 export type UserToolsConfig = {
   requestCredential?: (payload: {
@@ -12,36 +11,6 @@ export type UserToolsConfig = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
-};
-
-export const handleAskUser = async (args: Record<string, unknown>): Promise<ToolResult> => {
-  const questions = Array.isArray(args.questions) ? args.questions : [];
-  if (questions.length === 0) {
-    return { error: "questions array is required." };
-  }
-  const summary = questions
-    .map((question, index) => {
-      if (!question || typeof question !== "object") {
-        return `Question ${index + 1}: (invalid)`;
-      }
-      const record = question as {
-        question?: string;
-        options?: Array<{ label?: string; description?: string }>;
-      };
-      const options = (record.options ?? [])
-        .map((option, optionIndex) => {
-          return `  ${optionIndex + 1}. ${option.label ?? "Option"} - ${
-            option.description ?? ""
-          }`;
-        })
-        .join("\n");
-      return `Question ${index + 1}: ${record.question ?? ""}\n${options}`;
-    })
-    .join("\n\n");
-  return {
-    result:
-      "User input is required. Ask the user directly in chat.\n\n" + truncate(summary, 8000),
-  };
 };
 
 export const handleRequestCredential = async (

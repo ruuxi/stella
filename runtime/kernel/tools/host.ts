@@ -66,7 +66,6 @@ const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
   "spawn_agent",
   "send_input",
   "pause_agent",
-  "askQuestion",
   "html",
 ]);
 
