@@ -164,6 +164,7 @@ export const METHOD_NAMES = {
   HOST_APP_BROWSER_CONTEXT_GET: "host.appBrowserContext.get",
   HOST_DISPLAY_UPDATE: "host.display.update",
   HOST_NOTIFICATION_SHOW: "host.notification.show",
+  HOST_SYSTEM_REQUEST_PERMISSION: "host.system.requestPermission",
   HOST_SYSTEM_OPEN_EXTERNAL: "host.system.openExternal",
   HOST_WINDOW_SHOW: "host.window.show",
   HOST_WINDOW_FOCUS: "host.window.focus",

@@ -22,6 +22,10 @@ export type StellaSiteAuthResult =
   | { ok: true; baseUrl: string; authToken: string }
   | { ok: false; reason: string };
 
+export type DesktopPermissionRequestResult =
+  | { ok: true; granted: boolean; alreadyGranted: boolean }
+  | { ok: false; reason: string };
+
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 let nextRequestId = 1;
 
@@ -199,6 +203,45 @@ export const requestStellaSiteAuthFromBridge = async ({
       ok: true,
       baseUrl: record.baseUrl,
       authToken: record.authToken,
+    };
+  }
+  return {
+    ok: false,
+    reason:
+      typeof record.reason === "string" && record.reason
+        ? record.reason
+        : "unavailable",
+  };
+};
+
+export const requestDesktopPermissionFromBridge = async ({
+  socketPath,
+  kind,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+}: {
+  socketPath: string;
+  kind: "accessibility" | "screen";
+  timeoutMs?: number;
+}): Promise<DesktopPermissionRequestResult> => {
+  const result = await sendRequest(
+    socketPath,
+    "system.requestPermission",
+    { kind },
+    timeoutMs,
+  );
+  if (!result || typeof result !== "object") {
+    return { ok: false, reason: "invalid_response" };
+  }
+  const record = result as Record<string, unknown>;
+  if (
+    record.ok === true &&
+    typeof record.granted === "boolean" &&
+    typeof record.alreadyGranted === "boolean"
+  ) {
+    return {
+      ok: true,
+      granted: record.granted,
+      alreadyGranted: record.alreadyGranted,
     };
   }
   return {

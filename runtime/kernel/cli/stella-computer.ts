@@ -10,6 +10,10 @@ import { screenshotPixelToScreenPoint } from "./screenshot-coordinates.js";
 import { runWindowsStellaComputer } from "./stella-computer-windows.js";
 import { sanitizeStellaComputerSessionId } from "../tools/stella-computer-session.js";
 import {
+  requestDesktopPermissionFromBridge,
+  type DesktopPermissionRequestResult,
+} from "../connectors/cli-broker-client.js";
+import {
   loadLocalPreferences,
   saveLocalPreferences,
 } from "../preferences/local-preferences.js";
@@ -597,7 +601,9 @@ const promptForAutomationAccessibility = async (
     return { ok: true };
   }
 
-  const checkAccessibility = async (openSettings: boolean) => {
+  const checkAccessibility = async (
+    openSettings: boolean,
+  ): Promise<AutomationDaemonReadyResult> => {
     const helperArgs = [
       "accessibility-permission",
       ...(openSettings ? ["--open-settings"] : []),
@@ -643,10 +649,40 @@ const promptForAutomationAccessibility = async (
     }
   };
 
-  // Settings/onboarding prompts Accessibility through Electron. This opens the
-  // same macOS pane, then re-runs fresh helper checks so a just-granted TCC
-  // change is visible before the original command continues.
-  let lastResult = await checkAccessibility(true);
+  const requestViaHost = async (): Promise<DesktopPermissionRequestResult> => {
+    const socketPath = process.env.STELLA_CLI_BRIDGE_SOCK;
+    if (!socketPath) {
+      return { ok: false, reason: "no_bridge" as const };
+    }
+    try {
+      return await requestDesktopPermissionFromBridge({
+        socketPath,
+        kind: "accessibility",
+        timeoutMs: automationAccessibilityWaitMs,
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        reason: (error as Error).message || "bridge_failed",
+      };
+    }
+  };
+
+  let lastResult = await checkAccessibility(false);
+  if (lastResult.ok) {
+    return lastResult;
+  }
+
+  const hostRequest = await requestViaHost();
+  if (hostRequest.ok && hostRequest.granted) {
+    return { ok: true };
+  }
+
+  const shouldOpenSettingsFallback =
+    !hostRequest.ok && hostRequest.reason === "no_bridge";
+  if (shouldOpenSettingsFallback) {
+    lastResult = await checkAccessibility(true);
+  }
   if (lastResult.ok) {
     return lastResult;
   }

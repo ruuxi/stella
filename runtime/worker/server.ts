@@ -900,6 +900,22 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             }
             return { ok: true, baseUrl, authToken };
           },
+          requestDesktopPermission: async ({ kind }) => {
+            try {
+              const result = await peer.request<{
+                granted: boolean;
+                alreadyGranted: boolean;
+              }>(METHOD_NAMES.HOST_SYSTEM_REQUEST_PERMISSION, kind, {
+                retryOnDisconnect: true,
+              });
+              return { ok: true, ...result };
+            } catch (error) {
+              return {
+                ok: false,
+                reason: (error as Error).message || "host_unreachable",
+              };
+            }
+          },
         },
       });
     } catch (error) {

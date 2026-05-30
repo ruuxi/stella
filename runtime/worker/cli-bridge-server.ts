@@ -87,6 +87,15 @@ export type CliBridgeHandlers = {
       >
     | { ok: true; baseUrl: string; authToken: string }
     | { ok: false; reason: string };
+  requestDesktopPermission?: (params: {
+    kind: "accessibility" | "screen";
+  }) =>
+    | Promise<
+        | { ok: true; granted: boolean; alreadyGranted: boolean }
+        | { ok: false; reason: string }
+      >
+    | { ok: true; granted: boolean; alreadyGranted: boolean }
+    | { ok: false; reason: string };
 };
 
 export type CliBridgeServer = {
@@ -191,6 +200,20 @@ const dispatch = async (
         return { ok: false, reason: "unsupported" };
       }
       return await handlers.getStellaSiteAuth();
+    }
+    case "system.requestPermission": {
+      if (!handlers.requestDesktopPermission) {
+        return { ok: false, reason: "unsupported" };
+      }
+      const record =
+        params && typeof params === "object"
+          ? (params as Record<string, unknown>)
+          : {};
+      const kind = typeof record.kind === "string" ? record.kind : "";
+      if (kind !== "accessibility" && kind !== "screen") {
+        throw new Error("system.requestPermission: unsupported permission kind");
+      }
+      return await handlers.requestDesktopPermission({ kind });
     }
     case "connector.requestCredential": {
       const record =
