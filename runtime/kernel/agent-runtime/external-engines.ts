@@ -768,6 +768,14 @@ const runCodexHostedTurn = async (args: {
     threadKey,
     engine: "codex_cli",
   });
+  const persistCodexSessionId = (sessionId: string) => {
+    setExternalEngineSessionId({
+      store: args.opts.store,
+      threadKey,
+      engine: "codex_cli",
+      sessionId,
+    });
+  };
   const emitToolUpdateStatus = (update: ToolResult) => {
     const details =
       update.details && typeof update.details === "object"
@@ -871,6 +879,7 @@ const runCodexHostedTurn = async (args: {
       args.opts.onProgress?.(chunk);
       args.callbacks?.onStream?.(runEvents.recordStream(chunk));
     },
+    onSessionId: persistCodexSessionId,
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     executeTool: executeCodexTool,
     reuseAppServer: true,
@@ -911,6 +920,7 @@ const runCodexHostedTurn = async (args: {
         args.opts.onProgress?.(chunk);
         args.callbacks?.onStream?.(runEvents.recordStream(chunk));
       },
+      onSessionId: persistCodexSessionId,
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
       executeTool: executeCodexTool,
       reuseAppServer: true,
@@ -931,12 +941,7 @@ const runCodexHostedTurn = async (args: {
   if (assistantMessageEvent) {
     args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
   }
-  setExternalEngineSessionId({
-    store: args.opts.store,
-    threadKey,
-    engine: "codex_cli",
-    sessionId: finalResult.sessionId,
-  });
+  persistCodexSessionId(finalResult.sessionId);
 
   return {
     finalText: finalResult.text,

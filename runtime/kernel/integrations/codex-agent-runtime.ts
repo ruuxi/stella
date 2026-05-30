@@ -1063,6 +1063,7 @@ export const runCodexAgentTurn = async (request: {
   abortSignal?: AbortSignal;
   onStatus?: (status: string) => void;
   onStream?: (chunk: string) => void;
+  onSessionId?: (sessionId: string) => void;
   streamFinalAnswer?: boolean;
   onToolUpdate?: (args: {
     toolCallId: string;
@@ -1331,6 +1332,10 @@ export const runCodexAgentTurn = async (request: {
       systemPrompt: request.systemPrompt,
       onStatus: request.onStatus,
     });
+    request.onSessionId?.(threadId);
+    if (request.abortSignal?.aborted) {
+      throw new Error("Aborted");
+    }
 
     const turn = await client.request<CodexTurnStartResponse>(
       "turn/start",
@@ -1343,6 +1348,10 @@ export const runCodexAgentTurn = async (request: {
       }),
     );
     turnId = turn.turn.id;
+    if (request.abortSignal?.aborted) {
+      void client.interrupt(threadId, turnId);
+      throw new Error("Aborted");
+    }
     if (turn.turn.status === "failed" || turn.turn.status === "interrupted") {
       throw new Error(turn.turn.error?.message ?? "Codex run failed.");
     }
