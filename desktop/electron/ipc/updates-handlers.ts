@@ -580,7 +580,7 @@ const verifyMergeApplied = async (
   if (isAncestor.exitCode !== 0) {
     return {
       ok: false,
-      reason: `HEAD does not contain target commit ${targetCommit.slice(0, 8)} — the merge didn't land.`,
+      reason: `Stella could not confirm the update was applied. The update agent finished, but this install is still not on ${targetCommit.slice(0, 8)}. Please try Update again.`,
     };
   }
   const headRev = await runGit(stellaRoot, ["rev-parse", "HEAD"]);

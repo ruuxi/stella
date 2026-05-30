@@ -16,6 +16,7 @@ import type {
   RuntimePromptMessage,
 } from "../../protocol/index.js";
 import {
+  AGENT_IDS,
   agentControlsSelfModHmr,
   agentHasCapability,
 } from "../../contracts/agent-runtime.js";
@@ -481,11 +482,16 @@ export const launchPreparedOrchestratorRun = (args: {
             return false;
           }),
       );
-      if (!shellGuardActive) {
+      if (!shellGuardActive && prepared.agentType !== AGENT_IDS.INSTALL_UPDATE) {
         return {
           error:
             "Self-mod HMR shell guard failed before running a mutating shell command.",
         };
+      }
+      if (!shellGuardActive) {
+        console.warn(
+          "[self-mod-hmr] shell mutation guard unavailable for install-update; running bounded update command without HMR guard.",
+        );
       }
     }
 
