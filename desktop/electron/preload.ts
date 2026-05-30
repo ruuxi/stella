@@ -919,8 +919,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("selfmod:revert", { featureId, steps }),
     getCrashRecoveryStatus: () =>
       ipcRenderer.invoke("selfmod:crashRecoveryStatus"),
-    discardUnfinishedSelfModChanges: () =>
-      ipcRenderer.invoke("selfmod:discardUnfinished"),
+    discardUnfinishedSelfModChanges: (conversationId?: string) =>
+      ipcRenderer.invoke("selfmod:discardUnfinished", { conversationId }),
     getLastSelfModFeature: () => ipcRenderer.invoke("selfmod:lastFeature"),
     listSelfModFeatures: (limit?: number) =>
       ipcRenderer.invoke("selfmod:recentFeatures", { limit }) as Promise<

@@ -658,8 +658,9 @@ export type ElectronAgentApi = {
         latestFeature: SelfModFeatureSummary | null;
       }
   >;
-  discardUnfinishedSelfModChanges: () => Promise<{
+  discardUnfinishedSelfModChanges: (conversationId?: string) => Promise<{
     discardedFileCount: number;
+    discardedFiles: string[];
   }>;
   getLastSelfModFeature: () => Promise<string | null>;
   listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>;

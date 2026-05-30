@@ -854,7 +854,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     return await stellaHostRunner.getCrashRecoveryStatus();
   });
 
-  ipcMain.handle("selfmod:discardUnfinished", async (event) => {
+  ipcMain.handle("selfmod:discardUnfinished", async (event, payload) => {
     if (!options.assertPrivilegedSender(event, "selfmod:discardUnfinished")) {
       throw new Error("Blocked untrusted request.");
     }
@@ -862,7 +862,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     if (!stellaHostRunner) {
       throw new Error("Stella runtime not available");
     }
-    return await stellaHostRunner.discardUnfinishedSelfModChanges();
+    return await stellaHostRunner.discardUnfinishedSelfModChanges({
+      conversationId:
+        typeof payload?.conversationId === "string"
+          ? payload.conversationId
+          : undefined,
+    });
   });
 
   ipcMain.handle("selfmod:lastFeature", async (event) => {

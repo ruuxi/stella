@@ -262,6 +262,31 @@ const resolveRuntimeCliPath = (fileName: string) =>
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+const recordSelfModRevertNotice = (args: {
+  runtimeStore: RuntimeStore | null;
+  conversationId?: string | null;
+  originThreadKey?: string | null;
+  featureId: string;
+  files?: string[];
+  logScope: string;
+}) => {
+  const conversationId = asTrimmedString(args.conversationId);
+  if (!conversationId || !args.runtimeStore) return;
+  try {
+    args.runtimeStore.recordSelfModRevert({
+      conversationId,
+      originThreadKey: args.originThreadKey ?? null,
+      featureId: args.featureId,
+      files: args.files ?? [],
+    });
+  } catch (error) {
+    console.warn(
+      `[${args.logScope}] failed to record revert notice:`,
+      (error as Error).message,
+    );
+  }
+};
+
 import {
   STORE_THREAD_CONVERSATION_ID,
   buildStoreReleaseRedactor,
@@ -1437,21 +1462,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         // the next user turn for orchestrator + originating subagent.
         // Skipped when the commit had no `Stella-Conversation`
         // trailer — without it, we have no conversation to route to.
-        if (result.conversationId && state.runtimeStore) {
-          try {
-            state.runtimeStore.recordSelfModRevert({
-              conversationId: result.conversationId,
-              originThreadKey: result.originThreadKey ?? null,
-              featureId: result.featureId,
-              files: result.files ?? [],
-            });
-          } catch (error) {
-            console.warn(
-              "[self-mod-revert] failed to record revert notice:",
-              (error as Error).message,
-            );
-          }
-        }
+        recordSelfModRevertNotice({
+          runtimeStore: state.runtimeStore,
+          conversationId: result.conversationId,
+          originThreadKey: result.originThreadKey,
+          featureId: result.featureId,
+          files: result.files,
+          logScope: "self-mod-revert",
+        });
 
         // Finalize through the shared apply pipeline — same code path
         // an agent self-mod run takes. Handles HMR vs full reload vs
@@ -3747,12 +3765,20 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const payload = params as { featureId?: string; steps?: number };
       if (!state.revertSelfModWithMorph) {
         // Worker initialized without HMR wiring (test fixtures, e.g.).
-        // Fall back to the raw revert with no morph cover or ledger
-        // — better than refusing the user's undo entirely.
+        // Fall back to the raw revert with no morph cover — better than
+        // refusing the user's undo entirely.
         const result = await revertGitFeature({
           repoRoot: state.init.stellaRoot,
           featureId: payload.featureId,
           steps: payload.steps,
+        });
+        recordSelfModRevertNotice({
+          runtimeStore: state.runtimeStore,
+          conversationId: result.conversationId,
+          originThreadKey: result.originThreadKey,
+          featureId: result.featureId,
+          files: result.files,
+          logScope: "self-mod-revert",
         });
         return result;
       }
@@ -3809,11 +3835,23 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_DISCARD_UNFINISHED,
-    async () => {
+    async (params) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
-      return await discardGitDirtyFiles(state.init.stellaRoot);
+      const payload = params as { conversationId?: string } | undefined;
+      const result = await discardGitDirtyFiles(state.init.stellaRoot);
+      if (result.discardedFileCount > 0) {
+        recordSelfModRevertNotice({
+          runtimeStore: state.runtimeStore,
+          conversationId: asTrimmedString(payload?.conversationId),
+          originThreadKey: null,
+          featureId: `unfinished:${crypto.randomUUID()}`,
+          files: result.discardedFiles,
+          logScope: "self-mod-discard-unfinished",
+        });
+      }
+      return result;
     },
   );
 

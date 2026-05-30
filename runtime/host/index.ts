@@ -2116,10 +2116,10 @@ export class StellaRuntimeHost {
     );
   }
 
-  async discardUnfinishedSelfModChanges() {
+  async discardUnfinishedSelfModChanges(payload?: { conversationId?: string }) {
     return await this.requestWorker<RuntimeDiscardUnfinishedResult>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_DISCARD_UNFINISHED,
-      undefined,
+      payload,
       { ensureWorker: true, recordActivity: true },
     );
   }
