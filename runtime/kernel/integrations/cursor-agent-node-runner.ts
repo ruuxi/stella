@@ -75,6 +75,7 @@ const main = async () => {
           name: "Stella General",
           idempotencyKey: request.sessionKey,
         });
+    writeEvent({ type: "session", sessionId: agent.agentId });
     if (cancelRequested) {
       throw new Error("Aborted");
     }

@@ -202,6 +202,37 @@ describe("Cursor agent runtime", () => {
     });
   });
 
+  it("exposes the Cursor agent id before sending a cancellable turn", async () => {
+    process.env.CURSOR_API_KEY = "cursor-key";
+    process.env.STELLA_CURSOR_SDK_IN_PROCESS = "1";
+    const controller = new AbortController();
+    const agent = {
+      agentId: "agent-resume-target",
+      close: vi.fn(),
+      send: cursorSdkSend,
+      [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+    };
+    cursorSdkCreate.mockResolvedValue(agent);
+    const observedSessionIds: string[] = [];
+
+    await expect(
+      runCursorAgentTurn({
+        runId: "run-id",
+        sessionKey: "session-key",
+        prompt: "Do the work.",
+        cwd: "/repo",
+        abortSignal: controller.signal,
+        onSessionId: (sessionId) => {
+          observedSessionIds.push(sessionId);
+          controller.abort(new Error("Interrupted by agent input"));
+        },
+      }),
+    ).rejects.toThrow("Aborted");
+
+    expect(observedSessionIds).toEqual(["agent-resume-target"]);
+    expect(cursorSdkSend).not.toHaveBeenCalled();
+  });
+
   it("runs the Cursor SDK in a Node runner under Bun unless explicitly disabled", () => {
     expect(shouldRunCursorSdkInNodeRunner()).toBe(
       Boolean((process.versions as { bun?: string }).bun),

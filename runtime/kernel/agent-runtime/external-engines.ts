@@ -682,6 +682,14 @@ const runCursorHostedTurn = async (args: {
     threadKey,
     engine: "cursor_sdk",
   });
+  const persistCursorSessionId = (sessionId: string) => {
+    setExternalEngineSessionId({
+      store: args.opts.store,
+      threadKey,
+      engine: "cursor_sdk",
+      sessionId,
+    });
+  };
   const prompt = buildCursorPromptFromMessages({
     systemPrompt: args.systemPrompt,
     promptMessages: args.promptMessages,
@@ -696,6 +704,7 @@ const runCursorHostedTurn = async (args: {
     stellaRoot: args.opts.stellaRoot,
     attachments: args.opts.attachments,
     abortSignal: args.opts.abortSignal,
+    onSessionId: persistCursorSessionId,
     onStatus: (status) => {
       args.opts.onProgress?.(status);
       args.callbacks?.onStatus?.(runEvents.recordStatus(status));
@@ -717,12 +726,7 @@ const runCursorHostedTurn = async (args: {
   if (assistantMessageEvent) {
     args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
   }
-  setExternalEngineSessionId({
-    store: args.opts.store,
-    threadKey,
-    engine: "cursor_sdk",
-    sessionId: result.sessionId,
-  });
+  persistCursorSessionId(result.sessionId);
 
   return {
     finalText: result.text,

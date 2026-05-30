@@ -446,6 +446,7 @@ type CursorNodeRunnerRequest = {
 type CursorNodeRunnerEvent =
   | { type: "status"; text: string }
   | { type: "stream"; text: string }
+  | { type: "session"; sessionId: string }
   | { type: "result"; text: string; sessionId: string }
   | { type: "error"; message: string; stack?: string };
 
@@ -542,6 +543,12 @@ const parseCursorNodeRunnerLine = (
       return parsed as CursorNodeRunnerEvent;
     }
     if (
+      parsed.type === "session" &&
+      typeof (parsed as { sessionId?: unknown }).sessionId === "string"
+    ) {
+      return parsed as CursorNodeRunnerEvent;
+    }
+    if (
       parsed.type === "result" &&
       typeof (parsed as { text?: unknown }).text === "string" &&
       typeof (parsed as { sessionId?: unknown }).sessionId === "string"
@@ -610,6 +617,7 @@ export const abortCursorNodeRunnerProcess = (
 const runCursorAgentTurnInNodeRunner = async (args: {
   request: CursorNodeRunnerRequest;
   abortSignal?: AbortSignal;
+  onSessionId?: (sessionId: string) => void;
   onCancelReady?: (cancel: () => void) => void;
   onStatus?: (text: string) => void;
   onStream?: (chunk: string) => void;
@@ -664,6 +672,10 @@ const runCursorAgentTurnInNodeRunner = async (args: {
       }
       if (event.type === "stream") {
         args.onStream?.(event.text);
+        return;
+      }
+      if (event.type === "session") {
+        args.onSessionId?.(event.sessionId);
         return;
       }
       if (event.type === "error") {
@@ -733,6 +745,7 @@ export const runCursorAgentTurn = async (request: {
   stellaRoot?: string;
   attachments?: RuntimeAttachmentRef[];
   abortSignal?: AbortSignal;
+  onSessionId?: (sessionId: string) => void;
   onStatus?: (text: string) => void;
   onStream?: (chunk: string) => void;
 }): Promise<CursorAgentTurnResult> => {
@@ -826,6 +839,7 @@ export const runCursorAgentTurn = async (request: {
               : {}),
           },
           abortSignal: request.abortSignal,
+          onSessionId: request.onSessionId,
           onCancelReady: (cancel) => {
             cancelCurrentRun = cancel;
           },
@@ -864,6 +878,10 @@ export const runCursorAgentTurn = async (request: {
               idempotencyKey: request.sessionKey,
             }),
           );
+      request.onSessionId?.(agent.agentId);
+      if (request.abortSignal?.aborted) {
+        throw new Error("Aborted");
+      }
 
       const images = (request.attachments ?? [])
         .map(cursorImageFromAttachment)
