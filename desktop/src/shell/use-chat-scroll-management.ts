@@ -93,15 +93,6 @@ const FOLLOW_MIN_STEP_PX = 0.5
  */
 const FOLLOW_BREATHING_PX = 72
 
-/**
- * Gap left above the streaming assistant row's top edge when auto-follow
- * pins to the top. Without it the row sits flush at the viewport top
- * and the prior user/assistant message is cut off cleanly; a small
- * peek of the previous message above makes the conversation feel
- * continuous rather than chopped.
- */
-const FOLLOW_TOP_PEEK_PX = 56
-
 /** Matches `.event-list-trailing-region` min-heights in full-shell.chat.css */
 const TRAILING_REGION_MIN_PX = {
   full: 160,
@@ -140,6 +131,8 @@ type FollowApi = {
   nudgeBy: (delta: number) => void
   /** Scroll the latest user row into view with trailing reading space. */
   scrollLatestUserMessageIntoView: () => void
+  /** Scroll the active queued follow-up stack into view during streaming. */
+  scrollQueuedMessagesIntoView: () => void
   /** Stop the lerp loop and drop the pending target. */
   cancel: () => void
 }
@@ -332,6 +325,21 @@ export function useChatScrollManagement({
   }, [setFollow])
 
   /**
+   * While a stream is active, additional sends render as queued chips in
+   * the footer instead of as new event rows. Keep those chips in frame
+   * without reusing the latest-user-row nudge, which would target the
+   * previous turn and can scroll backward.
+   */
+  const nudgeQueuedMessagesIntoView = useCallback(() => {
+    setFollow(true)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        followApi.current?.scrollQueuedMessagesIntoView()
+      })
+    })
+  }, [setFollow])
+
+  /**
    * Wheel/touch/keyboard listeners + auto-follow loop.
    *
    * - User wheel-up / touch-start / Up-arrow / PageUp / Home = explicit
@@ -501,10 +509,33 @@ export function useChatScrollManagement({
         setTarget(target, { allowBackward: true })
       }
 
+      const scrollQueuedMessagesIntoView = () => {
+        if (!attached) return
+        if (!followRef.current) return
+        const queuedMessages = attached.querySelectorAll<HTMLElement>(
+          '.composer-queued-message:not(.composer-queued-message--leaving)',
+        )
+        const queuedMessage =
+          queuedMessages.length > 0
+            ? queuedMessages[queuedMessages.length - 1]!
+            : null
+        if (!queuedMessage) return
+        const messageRect = queuedMessage.getBoundingClientRect()
+        const containerRect = attached.getBoundingClientRect()
+        const messageBottom =
+          messageRect.bottom - containerRect.top + attached.scrollTop
+        const target =
+          messageBottom -
+          attached.clientHeight +
+          POST_SEND_USER_MESSAGE_BREATHING_PX
+        setTarget(target)
+      }
+
       followApi.current = {
         setTarget,
         nudgeBy,
         scrollLatestUserMessageIntoView,
+        scrollQueuedMessagesIntoView,
         cancel: stopLoop,
       }
 
@@ -518,15 +549,30 @@ export function useChatScrollManagement({
         if (!streamingRow || streamingRow.offsetHeight <= 0) return
         const rowRect = streamingRow.getBoundingClientRect()
         const containerRect = attached.getBoundingClientRect()
-        const rowTop = rowRect.top - containerRect.top + attached.scrollTop
         const rowBottom =
           rowRect.bottom - containerRect.top + attached.scrollTop
         const desiredScrollTop = Math.max(
           0,
           rowBottom - attached.clientHeight + FOLLOW_BREATHING_PX,
         )
-        const pinnedTop = Math.max(0, rowTop - FOLLOW_TOP_PEEK_PX)
-        const target = Math.min(pinnedTop, desiredScrollTop)
+        const queuedStack = attached.querySelector<HTMLElement>(
+          '.composer-queued-stack',
+        )
+        const queuedStackBottom = queuedStack
+          ? queuedStack.getBoundingClientRect().bottom -
+            containerRect.top +
+            attached.scrollTop
+          : null
+        const queuedScrollTop =
+          queuedStackBottom === null
+            ? 0
+            : Math.max(
+                0,
+                queuedStackBottom -
+                  attached.clientHeight +
+                POST_SEND_USER_MESSAGE_BREATHING_PX,
+              )
+        const target = Math.max(desiredScrollTop, queuedScrollTop)
         setTarget(target)
       }
       let followAssistantRowRaf = 0
@@ -638,6 +684,7 @@ export function useChatScrollManagement({
     scrollToBottom,
     releaseFollow,
     nudgeAfterSend,
+    nudgeQueuedMessagesIntoView,
     nudgeBy,
     getIsFollowing,
     thumbState,
