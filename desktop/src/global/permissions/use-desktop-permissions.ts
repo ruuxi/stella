@@ -183,7 +183,13 @@ export const useDesktopPermissions = ({
       try {
         const result = await systemApi.requestPermission(kind);
         const nextStatus = await refresh();
-        if (!nextStatus[kind] && !result.granted && !result.openedSettings) {
+        const canOpenSettingsFallback = kind !== "accessibility";
+        if (
+          canOpenSettingsFallback &&
+          !nextStatus[kind] &&
+          !result.granted &&
+          !result.openedSettings
+        ) {
           await systemApi.openPermissionSettings(kind);
         }
         return nextStatus;

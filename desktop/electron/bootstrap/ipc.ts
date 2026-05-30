@@ -279,6 +279,12 @@ export const registerBootstrapIpcHandlers = (
         scheduleGlobalInputHooksAfterAppReady(context);
       }
     },
+    stopGlobalInputHooksForPermissionReset: () => {
+      services.radialGestureService.stop();
+      services.selectionWatcherService.stop();
+      state.globalInputHooksStarted = false;
+      state.globalInputHooksStartScheduled = false;
+    },
     setRadialTriggerKey: (triggerKey) => {
       services.radialGestureService.setRadialTriggerKey(triggerKey);
     },

@@ -153,6 +153,13 @@ type AutomationHelperResult = {
   timedOut?: boolean;
 };
 
+type AccessibilityPermissionPayload = {
+  ok: boolean;
+  granted: boolean;
+  message: string;
+  warnings: string[];
+};
+
 type LockedUsePayload = {
   ok: boolean;
   enabled: boolean;
@@ -187,6 +194,10 @@ type SessionTargetRegistry = {
   targets: Record<string, SessionTargetRecord>;
 };
 
+type AutomationDaemonReadyResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
 const stateDir = path.join(resolveStatePath(), "stella-computer");
 const sessionsDir = path.join(stateDir, "sessions");
 const locksDir = path.join(stateDir, "locks");
@@ -202,6 +213,24 @@ const defaultLockTimeoutMs = 30_000;
 const staleLockTimeoutMs = 90_000;
 const lockPollIntervalMs = 125;
 const automationDaemonStartupBudgetMs = 7_500;
+const parseNonNegativeIntegerEnv = (
+  value: string | undefined,
+  fallback: number,
+) => {
+  if (value === undefined || value.trim() === "") {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, parsed);
+};
+const automationAccessibilityWaitMs = parseNonNegativeIntegerEnv(
+  process.env.STELLA_COMPUTER_ACCESSIBILITY_WAIT_MS,
+  30_000,
+);
+const automationAccessibilityPollIntervalMs = 500;
 // 30s covers heavy AppKit apps (Mail with thousands of messages, Notes with
 // large note bodies, Music with full library indexed) where the AX walk
 // reaches the maxNodes cap of 1500 before the daemon can return. Lighter
@@ -561,17 +590,95 @@ const filteredAutomationDaemonEnv = () =>
     ),
   ) as Record<string, string>;
 
-const ensureAutomationDaemon = async (sessionPaths: SessionPaths) => {
+const promptForAutomationAccessibility = async (
+  sessionPaths: SessionPaths,
+): Promise<AutomationDaemonReadyResult> => {
+  if (process.platform !== "darwin" || automationAccessibilityWaitMs <= 0) {
+    return { ok: true };
+  }
+
+  const checkAccessibility = async (openSettings: boolean) => {
+    const helperArgs = [
+      "accessibility-permission",
+      ...(openSettings ? ["--open-settings"] : []),
+      "--wait-ms",
+      "0",
+    ];
+    const result = await runNativeHelper({
+      helperName: "desktop_automation",
+      helperArgs,
+      env: {
+        ...process.env,
+        STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+        STELLA_COMPUTER_STATE_DIR: stateDir,
+      },
+      timeoutMs: 5_000,
+    });
+
+    if (result.error) {
+      return { ok: false, error: result.error.message };
+    }
+    if (!result.stdout) {
+      return {
+        ok: false,
+        error:
+          result.stderr ||
+          "Accessibility permission is required for the desktop_automation daemon.",
+      };
+    }
+
+    try {
+      const payload = parseJson<AccessibilityPermissionPayload>(result.stdout);
+      if (payload.granted) {
+        return { ok: true };
+      }
+      return { ok: false, error: payload.message };
+    } catch {
+      return {
+        ok: false,
+        error:
+          result.stderr ||
+          "Accessibility permission is required for the desktop_automation daemon.",
+      };
+    }
+  };
+
+  // Settings/onboarding prompts Accessibility through Electron. This opens the
+  // same macOS pane, then re-runs fresh helper checks so a just-granted TCC
+  // change is visible before the original command continues.
+  let lastResult = await checkAccessibility(true);
+  if (lastResult.ok) {
+    return lastResult;
+  }
+
+  const deadline = Date.now() + automationAccessibilityWaitMs;
+  while (Date.now() < deadline) {
+    await delayMs(automationAccessibilityPollIntervalMs);
+    lastResult = await checkAccessibility(false);
+    if (lastResult.ok) {
+      return lastResult;
+    }
+  }
+
+  return lastResult;
+};
+
+const ensureAutomationDaemon = async (
+  sessionPaths: SessionPaths,
+): Promise<AutomationDaemonReadyResult> => {
   const pidPath = automationPidPath(sessionPaths);
   const socketPath = automationSocketPath(sessionPaths);
   const helperPath = resolveNativeHelperPath("desktop_automation");
   if (!helperPath) {
-    return false;
+    return {
+      ok: false,
+      error: "Native helper \"desktop_automation\" was not found. Build desktop/native first.",
+    };
   }
   const existingPid = readPidFile(pidPath);
   if (existingPid && pidIsRunning(existingPid) && fs.existsSync(socketPath)) {
     if (!helperNewerThanDaemon(helperPath, pidPath)) {
-      return true;
+      return { ok: true };
     }
     killDetachedProcess(existingPid);
     resetAutomationDaemonFiles(sessionPaths);
@@ -581,6 +688,11 @@ const ensureAutomationDaemon = async (sessionPaths: SessionPaths) => {
   }
   resetAutomationDaemonFiles(sessionPaths);
   fs.mkdirSync(automationSocketsDir(), { recursive: true });
+
+  const permission = await promptForAutomationAccessibility(sessionPaths);
+  if (!permission.ok) {
+    return permission;
+  }
 
   const child = spawn(
     helperPath,
@@ -612,10 +724,13 @@ const ensureAutomationDaemon = async (sessionPaths: SessionPaths) => {
     await delayMs(25);
     const pid = readPidFile(pidPath);
     if (pid && pidIsRunning(pid) && fs.existsSync(socketPath)) {
-      return true;
+      return { ok: true };
     }
   }
-  return false;
+  return {
+    ok: false,
+    error: `desktop_automation daemon failed to start after ${automationDaemonStartupBudgetMs}ms`,
+  };
 };
 
 const runAutomationDaemonCommand = async (
@@ -624,12 +739,14 @@ const runAutomationDaemonCommand = async (
   timeoutMs = automationDaemonRequestTimeoutMs,
 ): Promise<AutomationHelperResult> => {
   const daemonReady = await ensureAutomationDaemon(sessionPaths);
-  if (!daemonReady) {
+  if (!daemonReady.ok) {
     resetAutomationDaemonFiles(sessionPaths);
     return {
       status: 1,
       stdout: "",
-      stderr: `desktop_automation daemon failed to start after ${automationDaemonStartupBudgetMs}ms`,
+      stderr:
+        daemonReady.error ||
+        `desktop_automation daemon failed to start after ${automationDaemonStartupBudgetMs}ms`,
     };
   }
 
