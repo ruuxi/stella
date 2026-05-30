@@ -30,6 +30,7 @@ type MockRuntimeState = {
     | "real_shell_write"
     | "shell_suppressed_route_tree"
     | "shell_alias_write"
+    | "install_update_merge"
     | "running_shell"
     | "parallel_running_shell"
     | "interrupted"
@@ -50,6 +51,7 @@ const mockRuntime: MockRuntimeState = {
     | "real_shell_write"
     | "shell_suppressed_route_tree"
     | "shell_alias_write"
+    | "install_update_merge"
     | "running_shell"
     | "parallel_running_shell"
     | "interrupted"
@@ -213,6 +215,12 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
                     { command: "perl -pi -e s/before/after/ desktop/src/foo.tsx" },
                     context,
                   )
+                : runtime.mode === "install_update_merge"
+                  ? await opts.toolExecutor(
+                      "exec_command",
+                      { cmd: "git merge --no-edit -m Update abc123" },
+                      context,
+                    )
           : await opts.toolExecutor(
               "exec_command",
               { cmd: "rg value desktop/src/foo.tsx" },
@@ -1025,5 +1033,49 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(context.toolHost.killAllShells).not.toHaveBeenCalled();
     expect(context.selfModLifecycle.finalizeRun).not.toHaveBeenCalled();
     expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("still runs install-update git commands when the shell mutation guard is unavailable", async () => {
+    const root = await makeTempRoot();
+    mockRuntime.root = root;
+    mockRuntime.mode = "install_update_merge";
+    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
+      .__stellaOrchHmrMock = mockRuntime;
+    const controller = {
+      beginRun: vi.fn(),
+      recordWrite: vi.fn(),
+      beginShellMutationGuard: vi.fn(async () => false),
+      endShellMutationGuard: vi.fn(async () => true),
+      hasRun: vi.fn(() => true),
+    };
+    const context = createTestContext(root, controller);
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "apply update",
+      prompt: "apply update",
+      agentType: AGENT_IDS.INSTALL_UPDATE,
+      storageMode: "local",
+    });
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "completed" });
+    expect(controller.beginShellMutationGuard).toHaveBeenCalledTimes(1);
+    expect(controller.endShellMutationGuard).not.toHaveBeenCalled();
+    expect(context.toolHost.killShell).not.toHaveBeenCalled();
+    expect(context.toolHost.killAllShells).not.toHaveBeenCalled();
+    expect(context.selfModLifecycle.finalizeRun).toHaveBeenCalledTimes(1);
+    expect(context.selfModLifecycle.cancelRun).not.toHaveBeenCalled();
   });
 });

@@ -256,6 +256,9 @@ const resolveSelfModMetadata = (args: {
       mode: args.selfModMetadata.mode ?? "author",
     };
   }
+  if (args.agentType === AGENT_IDS.INSTALL_UPDATE) {
+    return { mode: "desktop-update" };
+  }
   if (args.agentType !== AGENT_IDS.GENERAL) {
     return undefined;
   }
@@ -646,11 +649,16 @@ export const createAgentOrchestration = (
                 return false;
               }),
           );
-          if (!shellGuardActive) {
+          if (!shellGuardActive && agentType !== AGENT_IDS.INSTALL_UPDATE) {
             return {
               error:
                 "Self-mod HMR shell guard failed before running a mutating shell command.",
             };
+          }
+          if (!shellGuardActive) {
+            console.warn(
+              "[self-mod-hmr] shell mutation guard unavailable for install-update; running bounded update command without HMR guard.",
+            );
           }
         }
         try {
