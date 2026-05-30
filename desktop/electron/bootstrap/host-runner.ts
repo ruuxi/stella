@@ -22,6 +22,7 @@ import { IPC_AUTH_RUNTIME_REFRESH_REQUESTED } from "../../src/shared/contracts/i
 import { showStellaNotification } from "../services/notification-service.js";
 import { getActiveBrowserTabForBundleId } from "../active-browser-tab.js";
 import { listRecentApps } from "../recent-apps.js";
+import { requestMacPermission } from "../utils/macos-permissions.js";
 
 const IDLE_HMR_STATE: SelfModHmrState = {
   phase: "idle",
@@ -123,6 +124,7 @@ export const createHostRunnerHandlers = (
       silent: !soundEnabled,
     });
   },
+  requestDesktopPermission: async (kind) => requestMacPermission(kind),
   openExternal: async (url) => {
     context.services.externalLinkService.openSafeExternalUrl(url);
   },

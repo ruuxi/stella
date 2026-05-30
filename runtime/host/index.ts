@@ -190,6 +190,10 @@ export type RuntimeHostHandlers = {
     body: string;
     sound?: string;
   }) => Promise<void> | void;
+  requestDesktopPermission?: (kind: "accessibility" | "screen") => Promise<{
+    granted: boolean;
+    alreadyGranted: boolean;
+  }>;
   openExternal?: (url: string) => Promise<void> | void;
   showWindow?: (target: HostWindowTarget) => Promise<void> | void;
   focusWindow?: (target: HostWindowTarget) => Promise<void> | void;
@@ -2589,6 +2593,27 @@ export class StellaRuntimeHost {
           params as { title: string; body: string; sound?: string },
         );
         return { ok: true };
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_SYSTEM_REQUEST_PERMISSION,
+      async (params) => {
+        const kind = String(params ?? "");
+        if (kind !== "accessibility" && kind !== "screen") {
+          return {
+            granted: false,
+            alreadyGranted: false,
+            reason: "unsupported",
+          };
+        }
+        if (!this.options.hostHandlers.requestDesktopPermission) {
+          return {
+            granted: false,
+            alreadyGranted: false,
+            reason: "unsupported",
+          };
+        }
+        return await this.options.hostHandlers.requestDesktopPermission(kind);
       },
     );
     peer.registerRequestHandler(
