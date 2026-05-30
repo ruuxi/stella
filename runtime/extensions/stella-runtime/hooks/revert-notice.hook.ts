@@ -9,8 +9,9 @@ import type { SelfModRevertRecord } from "../../../kernel/storage/self-mod-rever
  * Self-mod revert notice (stella-runtime).
  *
  * Companion to the inline "Undo changes" button rendered on every
- * self-mod assistant turn (`desktop/src/app/chat/SelfModUndoButton.tsx`).
- * When the user clicks undo, the worker's
+ * self-mod assistant turn (`desktop/src/app/chat/SelfModUndoButton.tsx`)
+ * and the crash-recovery Undo update surface. When the user clicks undo,
+ * the worker's
  * `INTERNAL_WORKER_SELF_MOD_REVERT` handler runs `revertGitFeature`
  * and records a row in `self_mod_reverts` keyed by:
  *   - `conversationId` (from the commit's `Stella-Conversation` trailer)
@@ -54,10 +55,10 @@ const buildReminderText = (pending: SelfModRevertRecord[]): string => {
   if (pending.length === 1) {
     const filesSummary = formatFilesSummary(pending[0]!.files);
     return filesSummary
-      ? `The user undid your last change (files: ${filesSummary}).`
-      : "The user undid your last change.";
+      ? `The user clicked Undo. Stella reverted the change (files: ${filesSummary}).`
+      : "The user clicked Undo. Stella reverted the change.";
   }
-  return `The user undid your last ${pending.length} changes.`;
+  return `The user clicked Undo ${pending.length} times. Stella reverted those changes.`;
 };
 
 const createReminderMessage = (text: string): RuntimePromptMessage => ({

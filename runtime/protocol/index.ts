@@ -554,6 +554,7 @@ export type RuntimeCrashRecoveryStatus =
 
 export type RuntimeDiscardUnfinishedResult = {
   discardedFileCount: number;
+  discardedFiles: string[];
 };
 
 export type RuntimeLocalAgentRequest = {

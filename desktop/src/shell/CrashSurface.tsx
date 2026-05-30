@@ -111,7 +111,17 @@ export function CrashSurface({ error, componentStack }: Props) {
     setReverting(true);
     try {
       if (recoveryStatus?.kind === "dirty") {
-        await window.electronAPI?.agent.discardUnfinishedSelfModChanges?.();
+        const uiState = await window.electronAPI?.ui
+          ?.getState?.()
+          .catch(() => null);
+        const conversationId =
+          typeof uiState?.conversationId === "string" &&
+          uiState.conversationId.trim()
+            ? uiState.conversationId
+            : undefined;
+        await window.electronAPI?.agent.discardUnfinishedSelfModChanges?.(
+          conversationId,
+        );
       } else {
         await window.electronAPI?.agent.selfModRevert(
           recoveryStatus?.kind === "clean"

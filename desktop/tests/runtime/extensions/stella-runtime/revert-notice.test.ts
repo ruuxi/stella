@@ -132,7 +132,8 @@ describe("createRevertNoticeHook — orchestrator path", () => {
     const message = result?.prependMessages?.[0];
     expect(message?.uiVisibility).toBe("hidden");
     expect(message?.text).toContain("<system-reminder>");
-    expect(message?.text).toContain("undid your last change");
+    expect(message?.text).toContain("clicked Undo");
+    expect(message?.text).toContain("reverted the change");
     expect(message?.text).toContain("desktop/src/foo.tsx, desktop/src/bar.tsx");
     expect(store.markSelfModRevertsOrchestratorConsumed).toHaveBeenCalledWith([
       record.revertId,
@@ -153,7 +154,10 @@ describe("createRevertNoticeHook — orchestrator path", () => {
 
     expect(result?.prependMessages).toHaveLength(1);
     expect(result?.prependMessages?.[0]?.text).toContain(
-      "undid your last 2 changes",
+      "clicked Undo 2 times",
+    );
+    expect(result?.prependMessages?.[0]?.text).toContain(
+      "reverted those changes",
     );
     expect(store.markSelfModRevertsOrchestratorConsumed).toHaveBeenCalledWith([
       "a",

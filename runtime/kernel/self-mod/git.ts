@@ -1105,17 +1105,17 @@ export const listGitDirtyFiles = async (repoRoot: string): Promise<string[]> => 
 
 export const discardGitDirtyFiles = async (
   repoRoot: string,
-): Promise<{ discardedFileCount: number }> => {
+): Promise<{ discardedFileCount: number; discardedFiles: string[] }> => {
   await assertGitRepository(repoRoot);
   const dirtyFiles = await listDirtyFiles(repoRoot);
   if (dirtyFiles.length === 0) {
-    return { discardedFileCount: 0 };
+    return { discardedFileCount: 0, discardedFiles: [] };
   }
 
   await runGit(repoRoot, ["reset", "--hard", "HEAD"]);
   await runGit(repoRoot, ["clean", "-fd"]);
 
-  return { discardedFileCount: dirtyFiles.length };
+  return { discardedFileCount: dirtyFiles.length, discardedFiles: dirtyFiles };
 };
 
 /**

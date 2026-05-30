@@ -1086,8 +1086,8 @@ export class RuntimeHostAdapter {
     return this.host.getCrashRecoveryStatus();
   }
 
-  discardUnfinishedSelfModChanges() {
-    return this.host.discardUnfinishedSelfModChanges();
+  discardUnfinishedSelfModChanges(payload?: { conversationId?: string }) {
+    return this.host.discardUnfinishedSelfModChanges(payload);
   }
 
   getLastSelfModFeature() {
