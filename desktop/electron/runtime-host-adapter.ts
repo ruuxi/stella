@@ -18,6 +18,7 @@ import type {
   StoreReleaseSourcePack,
   StorePublishArgs,
   StorePublishBlueprintArgs,
+  StorePublishSelectedFeaturesArgs,
 } from "../../runtime/protocol/index.js";
 import {
   StellaRuntimeHost,
@@ -935,6 +936,10 @@ export class RuntimeHostAdapter {
 
   publishStoreBlueprint(args: StorePublishBlueprintArgs) {
     return this.host.publishStoreBlueprint(args);
+  }
+
+  publishStoreSelectedFeatures(args: StorePublishSelectedFeaturesArgs) {
+    return this.host.publishStoreSelectedFeatures(args);
   }
 
   uninstallStoreMod(packageId: string) {

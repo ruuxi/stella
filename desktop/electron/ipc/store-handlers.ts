@@ -50,7 +50,9 @@ const sanitizeWebsiteViewTheme = (
       : undefined;
   const sanitized: WebsiteViewThemePayload = {
     ...(mode ? { mode } : {}),
-    ...(pickString("foreground") ? { foreground: pickString("foreground") } : {}),
+    ...(pickString("foreground")
+      ? { foreground: pickString("foreground") }
+      : {}),
     ...(pickString("foregroundWeak")
       ? { foregroundWeak: pickString("foregroundWeak") }
       : {}),
@@ -615,10 +617,26 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       ),
   );
 
-  // Renderer-side publish entry point. The renderer collects the form
-  // fields and the source `messageId`; the worker resolves the message
-  // → attached features → commit hashes → `git show -U10` → redacted
-  // diffs, and ships the spec + diffs to the backend in a single call.
+  type StorePublishSelectedFeaturesPayload = {
+    attachedFeatureNames: string[];
+    packageId: string;
+    asUpdate: boolean;
+    displayName?: string;
+    description?: string;
+    category?:
+      | "apps-games"
+      | "productivity"
+      | "customization"
+      | "skills-agents"
+      | "integrations"
+      | "other";
+    manifest: Record<string, unknown>;
+    releaseNotes?: string;
+  };
+
+  // Legacy renderer-side publish entry point. The normal UI now publishes
+  // selected source features directly; blueprint drafts still resolve through
+  // the worker so old drafts cannot bypass source-pack construction.
   ipcMain.handle(
     "store:publishBlueprint",
     async (
@@ -651,6 +669,21 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
   );
 
   ipcMain.handle(
+    "store:publishSelectedFeatures",
+    async (event, payload: StorePublishSelectedFeaturesPayload) =>
+      await withStoreRunner(
+        event,
+        "store:publishSelectedFeatures",
+        async (runner) =>
+          await runner.publishStoreSelectedFeatures(
+            payload as Parameters<
+              typeof runner.publishStoreSelectedFeatures
+            >[0],
+          ),
+      ),
+  );
+
+  ipcMain.handle(
     "storeWeb:publishBlueprint",
     async (
       event,
@@ -677,6 +710,21 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         async (runner) =>
           await runner.publishStoreBlueprint(
             payload as Parameters<typeof runner.publishStoreBlueprint>[0],
+          ),
+      ),
+  );
+
+  ipcMain.handle(
+    "storeWeb:publishSelectedFeatures",
+    async (event, payload: StorePublishSelectedFeaturesPayload) =>
+      await withStoreWebRunner(
+        event,
+        "storeWeb:publishSelectedFeatures",
+        async (runner) =>
+          await runner.publishStoreSelectedFeatures(
+            payload as Parameters<
+              typeof runner.publishStoreSelectedFeatures
+            >[0],
           ),
       ),
   );
@@ -820,5 +868,4 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
       );
     },
   );
-
 };

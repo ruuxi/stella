@@ -4,20 +4,18 @@
  * Three stacked surfaces:
  * 1. Recent changes — rolling-window feature snapshot. Rows toggle
  *    multi-select; one Publish bar below shows how many are selected.
- * 2. Chat thread — local messages with the Store agent rendered through
+ * 2. Chat thread — optional local messages with the Store agent rendered through
  *    the same `UserMessageRow` / `AssistantMessageRow` components as the
  *    full chat / chat sidebar, so bubble alignment, markdown, and
- *    spacing match across surfaces. Pending state shows a calm two-line
- *    "Drafting your blueprint." indicator.
+ *    spacing match across surfaces.
  * 3. Composer — reuses the chat-sidebar shell verbatim
  *    (`.chat-sidebar-composer` / `.chat-sidebar-shell` / etc.) so the
  *    pill, focus glow, and animated submit button match the chat
  *    sidebar.
  *
- * Blueprint drafts render as an `EndResourceCard`-shaped artifact pill
- * inside the assistant row, with a status dot and label. Clicking opens
- * a glass Radix `Dialog` with the markdown on a solid surface; approving
- * opens a second glass dialog for the publish form.
+ * Legacy blueprint drafts render as an `EndResourceCard`-shaped artifact
+ * pill inside the assistant row. The primary Publish button now opens the
+ * publish form directly for selected source-backed changes.
  *
  * When a new blueprint draft lands while the panel is mounted, fires an
  * OS notification so the user gets pulled back even if the side panel
@@ -48,6 +46,10 @@ import { useStoreThread } from "./store-side-panel/use-store-thread";
 export function StoreSidePanel() {
   const state = useStoreSidePanelState();
   const [composer, setComposer] = useState("");
+  const [publishSource, setPublishSource] = useState<"selection" | "blueprint">(
+    "selection",
+  );
+  const [publishFeatureNames, setPublishFeatureNames] = useState<string[]>([]);
   const {
     messages,
     sending,
@@ -102,24 +104,32 @@ export function StoreSidePanel() {
     state.selectedFeatureNames,
   ]);
 
-  const handlePublishSelected = useCallback(async () => {
+  const handlePublishSelected = useCallback(() => {
     const names = Array.from(state.selectedFeatureNames);
     if (names.length === 0 || sending || isInFlight) return;
-    const text =
-      names.length === 1
-        ? `Draft a blueprint to publish: ${names[0]}`
-        : `Draft a blueprint to publish these changes: ${names.join(", ")}`;
-    await sendThreadTurn({ text, attachedFeatureNames: names });
-  }, [isInFlight, sendThreadTurn, sending, state.selectedFeatureNames]);
+    setPublishSource("selection");
+    setPublishFeatureNames(names);
+    setPublishOpen(true);
+  }, [isInFlight, sending, setPublishOpen, state.selectedFeatureNames]);
 
   const handleApproveBlueprint = useCallback(() => {
+    setPublishSource("blueprint");
+    setPublishFeatureNames(reviewingMessage?.attachedFeatureNames ?? []);
     setReviewingMessage(null);
     setPublishOpen(true);
-  }, [setPublishOpen, setReviewingMessage]);
+  }, [reviewingMessage, setPublishOpen, setReviewingMessage]);
 
   const handleBlueprintPublished = useCallback(
-    async (args: { messageId: string; releaseNumber: number }) => {
-      await markBlueprintPublished(args);
+    async (args: { messageId?: string; releaseNumber: number }) => {
+      if (args.messageId) {
+        await markBlueprintPublished({
+          messageId: args.messageId,
+          releaseNumber: args.releaseNumber,
+        });
+      } else {
+        storeSidePanelStore.clearSelections();
+      }
+      setPublishFeatureNames([]);
       setReviewingMessage(null);
       setPublishOpen(false);
     },
@@ -198,8 +208,14 @@ export function StoreSidePanel() {
 
       <PublishDialog
         open={publishOpen}
-        blueprint={latestPublishableBlueprint}
-        onClose={() => setPublishOpen(false)}
+        blueprint={
+          publishSource === "blueprint" ? latestPublishableBlueprint : null
+        }
+        selectedFeatureNames={publishFeatureNames}
+        onClose={() => {
+          setPublishOpen(false);
+          setPublishFeatureNames([]);
+        }}
         onPublished={handleBlueprintPublished}
       />
     </div>

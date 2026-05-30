@@ -1821,6 +1821,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
       manifest: Record<string, unknown>;
       releaseNotes?: string;
     }) => ipcRenderer.invoke("store:publishBlueprint", payload),
+    publishSelectedFeatures: (payload: {
+      attachedFeatureNames: string[];
+      packageId: string;
+      asUpdate: boolean;
+      displayName?: string;
+      description?: string;
+      category?: string;
+      manifest: Record<string, unknown>;
+      releaseNotes?: string;
+    }) => ipcRenderer.invoke("store:publishSelectedFeatures", payload),
     uninstallPackage: (packageId: string) =>
       ipcRenderer.invoke("store:uninstallMod", { packageId }),
     showBlueprintNotification: (payload: { messageId: string; name: string }) =>

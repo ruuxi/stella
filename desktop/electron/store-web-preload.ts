@@ -63,6 +63,16 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
     manifest: Record<string, unknown>;
     releaseNotes?: string;
   }) => invoke("storeWeb:publishBlueprint", payload),
+  publishSelectedFeatures: (payload: {
+    attachedFeatureNames: string[];
+    packageId: string;
+    asUpdate: boolean;
+    displayName?: string;
+    description?: string;
+    category?: string;
+    manifest: Record<string, unknown>;
+    releaseNotes?: string;
+  }) => invoke("storeWeb:publishSelectedFeatures", payload),
   openStorePanel: () => invoke("storeWeb:openStorePanel"),
   openSignIn: () => invoke("storeWeb:openSignIn"),
   showToast: (payload: {
