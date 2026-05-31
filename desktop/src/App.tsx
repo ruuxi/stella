@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AuthDeepLinkHandler } from "./global/auth/AuthDeepLinkHandler";
 import { PhoneAccessBridge } from "./global/mobile/PhoneAccessBridge";
-import { AppBootstrap } from "./systems/boot/AppBootstrap";
+import { AppBootstrap } from "./bootstrap/AppBootstrap";
 import { ChatStoreProvider } from "@/context/chat-store";
 import { CredentialRequestLayer } from "./global/auth/CredentialRequestLayer";
 import { ConnectorCredentialRequestLayer } from "./global/auth/ConnectorCredentialRequestLayer";
