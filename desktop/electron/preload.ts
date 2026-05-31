@@ -115,8 +115,6 @@ import {
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
-  IPC_STORE_BLUEPRINT_NOTIFICATION_ACTIVATED,
-  IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
   IPC_UPDATES_GET_INSTALL_MANIFEST,
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
   IPC_UPDATES_RECORD_SOURCE_HISTORY,
@@ -1811,28 +1809,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       packageId: string;
       releaseNumber: number;
     }) => ipcRenderer.invoke("store:installFromBlueprint", payload),
-    getThread: () => ipcRenderer.invoke("store:getThread"),
-    sendThreadMessage: (payload: {
-      text: string;
-      attachedFeatureNames?: string[];
-      editingBlueprint?: boolean;
-    }) => ipcRenderer.invoke("store:sendThreadMessage", payload),
-    cancelThreadTurn: () => ipcRenderer.invoke("store:cancelThreadTurn"),
-    denyLatestBlueprint: () => ipcRenderer.invoke("store:denyLatestBlueprint"),
-    markBlueprintPublished: (payload: {
-      messageId: string;
-      releaseNumber: number;
-    }) => ipcRenderer.invoke("store:markBlueprintPublished", payload),
-    publishBlueprint: (payload: {
-      messageId: string;
-      packageId: string;
-      asUpdate: boolean;
-      displayName?: string;
-      description?: string;
-      category?: string;
-      manifest: Record<string, unknown>;
-      releaseNotes?: string;
-    }) => ipcRenderer.invoke("store:publishBlueprint", payload),
     publishSelectedFeatures: (payload: {
       attachedFeatureNames: string[];
       packageId: string;
@@ -1845,17 +1821,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("store:publishSelectedFeatures", payload),
     uninstallPackage: (packageId: string) =>
       ipcRenderer.invoke("store:uninstallMod", { packageId }),
-    showBlueprintNotification: (payload: { messageId: string; name: string }) =>
-      ipcRenderer.invoke(IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION, payload),
-    onBlueprintNotificationActivated: (
-      callback: (payload: { messageId: string | null }) => void,
-    ) =>
-      onIpc<{ messageId: string | null }>(
-        IPC_STORE_BLUEPRINT_NOTIFICATION_ACTIVATED,
-      )(callback),
-    onThreadUpdated: onIpc<
-      import("../../runtime/contracts/index.js").StoreThreadSnapshot
-    >("store:threadUpdated"),
   },
 
   storeWeb: {

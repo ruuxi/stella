@@ -1,11 +1,8 @@
 import { Notification } from "electron";
 import { randomUUID } from "node:crypto";
 import type { BootstrapContext } from "../bootstrap/context.js";
-import { broadcastToWindows } from "../bootstrap/context.js";
 
-type NotificationRoute =
-  | { kind: "open-window" }
-  | { kind: "store-blueprint"; messageId: string | null };
+type NotificationRoute = { kind: "open-window" };
 
 type ActivationArguments = {
   type: "click" | "action" | "reply" | string;
@@ -38,9 +35,6 @@ const routeFromActivationArguments = (
   for (const [id, route] of notificationRoutes) {
     if (args.includes(id)) return route;
   }
-  if (args.includes("store-blueprint")) {
-    return { kind: "store-blueprint", messageId: null };
-  }
   return null;
 };
 
@@ -55,11 +49,6 @@ const activateNotificationRoute = (
     return;
   }
   context.state.windowManager.showWindow("full");
-  if (route?.kind === "store-blueprint") {
-    broadcastToWindows(context, "store:blueprintNotificationActivated", {
-      messageId: route.messageId,
-    });
-  }
 };
 
 export const configureNotificationActivationHandling = (

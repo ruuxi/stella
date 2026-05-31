@@ -29,7 +29,7 @@ export const normalizeStoreSourcePath = (value: string): string => {
   return segments.join("/");
 };
 
-const DEPENDENCY_FILE_NAMES = new Set([
+export const STORE_SOURCE_DEPENDENCY_FILE_NAMES = [
   "package.json",
   "bun.lock",
   "bun.lockb",
@@ -37,7 +37,11 @@ const DEPENDENCY_FILE_NAMES = new Set([
   "pnpm-lock.yaml",
   "yarn.lock",
   "npm-shrinkwrap.json",
-]);
+] as const;
+
+const DEPENDENCY_FILE_NAMES = new Set<string>(
+  STORE_SOURCE_DEPENDENCY_FILE_NAMES,
+);
 
 type ProcessRunResult = {
   exitCode: number;

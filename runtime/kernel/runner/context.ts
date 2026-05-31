@@ -387,6 +387,7 @@ export const createRunnerContext = ({
   requestRuntimeAuthRefresh,
   notifyVoiceActionComplete,
   scheduleApi,
+  sourceImportApi,
 
   fashionApi,
   runtimeStore,
@@ -513,6 +514,7 @@ export const createRunnerContext = ({
         void client.close().catch(() => undefined);
       }
     },
+    sourceImportApi,
     contextProvider: async (payload) => {
       const agent = resolveAgent(context, AGENT_IDS.ORCHESTRATOR);
       const model = getConfiguredModel(context, AGENT_IDS.ORCHESTRATOR, agent);

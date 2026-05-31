@@ -47,7 +47,6 @@ import {
 } from "./aux-runtime.js";
 import { scheduleGlobalInputHooksAfterAppReady } from "./global-input-hooks.js";
 import { randomUUID } from "crypto";
-import { showStellaNotification } from "../services/notification-service.js";
 import { startOfficePreviewBridge } from "./office-preview-bridge.js";
 
 const DEFAULT_STORE_WEB_URL = "https://stella.sh/store";
@@ -403,19 +402,6 @@ export const registerBootstrapIpcHandlers = (
     goForwardInStoreWebView: () =>
       state.windowManager?.goForwardInStoreWebView(),
     reloadStoreWebView: () => state.windowManager?.reloadStoreWebView(),
-    showBlueprintNotification: ({ messageId, name }) => {
-      showStellaNotification(
-        context,
-        {
-          id: `store-blueprint-${messageId}`,
-          groupId: "stella-store-blueprints",
-          groupTitle: "Stella Store",
-          title: "Blueprint draft ready",
-          body: `${name} is ready to review and publish.`,
-        },
-        { kind: "store-blueprint", messageId },
-      );
-    },
     dispatchStoreWebLocalAction,
   });
 

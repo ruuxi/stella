@@ -42,16 +42,18 @@ import type {
   StoreReleaseSourcePack,
 } from "../../../runtime/contracts/index.js";
 import {
-  applyStellaSourcePack,
   type StellaSourceApplyResult,
   type StellaSourceApplyConflict,
   type StellaSourceBlob,
 } from "../../../runtime/kernel/self-mod/stella-source-control.js";
 import {
-  collectSourcePackPaths,
-  findStoreSourcePackApplyObstruction,
-  readLocalSourceTree,
-  writeSourcePackApplyResult,
+  applyCleanSourceImportToWorkingTree,
+  preflightSourcePackImport,
+} from "../../../runtime/worker/source-import-core.js";
+import {
+  STORE_SOURCE_DEPENDENCY_FILE_NAMES,
+  runStoreSourcePackDependencyInstall,
+  storeSourcePackTouchesDependencyFiles,
 } from "../../../runtime/worker/store-source-pack-install.js";
 import {
   desktopSourcePackCanApplyLocally,
@@ -380,29 +382,49 @@ const MAX_DESKTOP_SOURCE_PACK_BYTES = 10 * 1024 * 1024;
 const MAX_DESKTOP_SOURCE_HISTORY_BYTES = 10 * 1024 * 1024;
 const MAX_DESKTOP_SOURCE_PACK_CONFLICT_PROMPT_BYTES = 200 * 1024;
 
-const DEPENDENCY_FILE_NAMES = new Set([
-  "package.json",
-  "bun.lock",
-  "bun.lockb",
-  "package-lock.json",
-  "pnpm-lock.yaml",
-  "yarn.lock",
-  "npm-shrinkwrap.json",
-]);
-
 const parseGitNameList = (stdout: string): string[] =>
   stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
 
+const expandExternalSelfModPaths = (paths: string[]): string[] => {
+  const expanded = new Set(paths);
+  if (storeSourcePackTouchesDependencyFiles(paths)) {
+    for (const dependencyFile of STORE_SOURCE_DEPENDENCY_FILE_NAMES) {
+      expanded.add(dependencyFile);
+    }
+  }
+  return [...expanded];
+};
+
 const gitFailureDetail = (result: GitRunResult, fallback: string): string => {
   const detail = (result.stderr || result.stdout).trim();
   return detail || fallback;
 };
 
-const isDependencyChange = (filePath: string): boolean =>
-  DEPENDENCY_FILE_NAMES.has(path.basename(filePath));
+const runDesktopUpdateDependencyInstall = async (args: {
+  stellaRoot: string;
+  changedFiles: string[];
+  runId: string;
+  releaseTag: string;
+}): Promise<boolean> => {
+  const dependencyInstallRan = storeSourcePackTouchesDependencyFiles(
+    args.changedFiles,
+  );
+  if (!dependencyInstallRan) return false;
+
+  logDesktopUpdateProcess("desktop-update.dependencies.install.start", {
+    runId: args.runId,
+    releaseTag: args.releaseTag,
+  });
+  await runStoreSourcePackDependencyInstall(args.stellaRoot);
+  logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
+    runId: args.runId,
+    releaseTag: args.releaseTag,
+  });
+  return true;
+};
 
 const readHeadCommit = async (stellaRoot: string): Promise<string> => {
   const result = await runGit(stellaRoot, ["rev-parse", "HEAD"]);
@@ -822,17 +844,6 @@ const tryApplySourcePackDesktopUpdate = async (
     };
   }
 
-  if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
-    logDesktopUpdateWarn("desktop-update.source-pack.needs-agent", {
-      releaseTag: args.releaseTag,
-      reason: "tracked-local-changes",
-    });
-    return {
-      status: "needs-agent",
-      reason: "The install tree has tracked local changes.",
-    };
-  }
-
   const sourcePack = await fetchDesktopUpdateSourcePack(args.sourcePackRef);
   if (!desktopSourcePackMatchesBaseCommit(sourcePack, args.baseCommit)) {
     logDesktopUpdateWarn("desktop-update.source-pack.base-mismatch", {
@@ -846,8 +857,10 @@ const tryApplySourcePackDesktopUpdate = async (
       changedFiles: [],
     };
   }
-  const sourcePaths = collectSourcePackPaths(sourcePack);
   if (!desktopSourcePackCanApplyLocally(sourcePack)) {
+    const sourcePaths = sourcePack.changeSets.flatMap((changeSet) =>
+      changeSet.changes.map((change) => change.path),
+    );
     logDesktopUpdateWarn("desktop-update.source-pack.not-local", {
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
@@ -860,9 +873,19 @@ const tryApplySourcePackDesktopUpdate = async (
       changedFiles: sourcePaths,
     };
   }
-  const obstruction = await findStoreSourcePackApplyObstruction({
+
+  const preflight = await preflightSourcePackImport({
     repoRoot: stellaRoot,
-    paths: sourcePaths,
+    sourcePack,
+    inspectDirtyTree: async () => {
+      const dirty = await hasTrackedWorkingTreeChanges(stellaRoot);
+      return dirty
+        ? {
+            dirty: true,
+            reason: "The install tree has tracked local changes.",
+          }
+        : { dirty: false };
+    },
     isPathTracked: async (sourcePath) => {
       const result = await runGit(stellaRoot, [
         "ls-files",
@@ -873,17 +896,19 @@ const tryApplySourcePackDesktopUpdate = async (
       return result.exitCode === 0;
     },
   });
-  if (obstruction) {
+  if (preflight.status === "needs-agent") {
     logDesktopUpdateWarn("desktop-update.source-pack.obstructed", {
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
-      reason: obstruction.reason,
-      changedFileCount: sourcePaths.length,
+      reason: preflight.reason,
+      changedFileCount: preflight.sourcePaths.length,
     });
     return {
       status: "needs-agent",
-      reason: `${obstruction.reason} Falling back to Git update.`,
-      changedFiles: sourcePaths,
+      reason: preflight.obstruction
+        ? `${preflight.reason} Falling back to Git update.`
+        : preflight.reason,
+      changedFiles: preflight.sourcePaths,
     };
   }
   const recordSourceHistory = async (commitHash = args.targetCommit) => {
@@ -904,18 +929,13 @@ const tryApplySourcePackDesktopUpdate = async (
       console.warn("[updates] Failed to record desktop source history:", error);
     });
   };
-  const localTree = await readLocalSourceTree(stellaRoot, sourcePaths);
-  const sourceApply = applyStellaSourcePack({
-    pack: sourcePack,
-    localTree,
-  });
 
-  if (sourceApply.status === "conflicts") {
+  if (preflight.status === "conflicts") {
     logDesktopUpdateWarn("desktop-update.source-pack.conflicts", {
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
-      appliedPathCount: sourceApply.appliedPaths.length,
-      conflictCount: sourceApply.conflicts.length,
+      appliedPathCount: preflight.sourceApply.appliedPaths.length,
+      conflictCount: preflight.sourceApply.conflicts.length,
     });
     const conflictRoot = path.join(
       stellaHome,
@@ -926,13 +946,16 @@ const tryApplySourcePackDesktopUpdate = async (
     const sourcePackFile = path.join(conflictRoot, "SOURCE_PACK.json");
     const conflictFile = path.join(conflictRoot, "SOURCE_PACK_CONFLICTS.json");
     const conflictPayload = {
-      status: sourceApply.status,
-      revisionId: sourceApply.revisionId,
+      status: preflight.sourceApply.status,
+      revisionId: preflight.sourceApply.revisionId,
       sourcePackFile,
-      appliedPaths: sourceApply.appliedPaths,
-      appliedChanges: buildSourcePackAppliedChangesForAgent(sourceApply),
-      noopPaths: sourceApply.noopPaths,
-      conflicts: sourceApply.conflicts satisfies StellaSourceApplyConflict[],
+      appliedPaths: preflight.sourceApply.appliedPaths,
+      appliedChanges: buildSourcePackAppliedChangesForAgent(
+        preflight.sourceApply,
+      ),
+      noopPaths: preflight.sourceApply.noopPaths,
+      conflicts: preflight.sourceApply
+        .conflicts satisfies StellaSourceApplyConflict[],
     };
     const sourcePackConflictJson = `${JSON.stringify(conflictPayload, null, 2)}\n`;
     const shouldInlineConflictJson =
@@ -944,7 +967,7 @@ const tryApplySourcePackDesktopUpdate = async (
         reason:
           "Stella source-pack merge reported conflicts, but the handoff was too large for the install-update agent. Falling back to Git update.",
         headCommit: await readHeadCommit(stellaRoot),
-        changedFiles: sourcePaths,
+        changedFiles: preflight.sourcePaths,
       };
     }
     await fs.rm(conflictRoot, { recursive: true, force: true });
@@ -959,14 +982,14 @@ const tryApplySourcePackDesktopUpdate = async (
       status: "needs-agent",
       reason: `Stella source-pack merge reported conflicts. Conflict details were written to ${conflictFile}.`,
       headCommit: await readHeadCommit(stellaRoot),
-      changedFiles: sourcePaths,
+      changedFiles: preflight.sourcePaths,
       sourcePackFile,
       sourcePackConflictFile: conflictFile,
       ...(shouldInlineConflictJson ? { sourcePackConflictJson } : {}),
     };
   }
 
-  if (sourceApply.appliedPaths.length === 0) {
+  if (preflight.sourceApply.appliedPaths.length === 0) {
     logDesktopUpdateProcess("desktop-update.source-pack.noop", {
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
@@ -992,7 +1015,7 @@ const tryApplySourcePackDesktopUpdate = async (
     return {
       status: "needs-agent",
       reason: "Stella runtime is not available for the update morph.",
-      changedFiles: sourceApply.appliedPaths,
+      changedFiles: preflight.sourceApply.appliedPaths,
     };
   }
 
@@ -1006,38 +1029,52 @@ const tryApplySourcePackDesktopUpdate = async (
       UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
       runner.beginExternalSelfMod({
         runId,
-        paths: sourceApply.appliedPaths,
+        paths: expandExternalSelfModPaths(preflight.sourceApply.appliedPaths),
       }),
       {
         runId,
         releaseTag: args.releaseTag,
         targetCommit: shortCommit(args.targetCommit),
-        changedFileCount: sourceApply.appliedPaths.length,
+        changedFileCount: preflight.sourceApply.appliedPaths.length,
       },
     );
     hmrRunStarted = true;
     logDesktopUpdateProcess("desktop-update.source-pack.write.start", {
       runId,
       releaseTag: args.releaseTag,
-      changedFileCount: sourceApply.appliedPaths.length,
+      changedFileCount: preflight.sourceApply.appliedPaths.length,
     });
-    await writeSourcePackApplyResult({
+    const sourcePackTouchesDependencies = storeSourcePackTouchesDependencyFiles(
+      preflight.sourceApply.appliedPaths,
+    );
+    if (sourcePackTouchesDependencies) {
+      logDesktopUpdateProcess("desktop-update.dependencies.install.start", {
+        runId,
+        releaseTag: args.releaseTag,
+      });
+    }
+    const { dependencyInstallRan } = await applyCleanSourceImportToWorkingTree({
       repoRoot: stellaRoot,
-      paths: sourcePaths,
-      tree: sourceApply.tree,
-      appliedPaths: sourceApply.appliedPaths,
+      sourcePaths: preflight.sourcePaths,
+      sourceApply: preflight.sourceApply,
     });
+    if (dependencyInstallRan) {
+      logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
+        runId,
+        releaseTag: args.releaseTag,
+      });
+    }
     logDesktopUpdateProcess("desktop-update.source-pack.write.done", {
       runId,
       releaseTag: args.releaseTag,
-      changedFileCount: sourceApply.appliedPaths.length,
+      changedFileCount: preflight.sourceApply.appliedPaths.length,
     });
 
     const addResult = await runGit(stellaRoot, [
       "add",
       "-A",
       "--",
-      ...sourceApply.appliedPaths,
+      ...preflight.sourceApply.appliedPaths,
     ]);
     if (addResult.exitCode !== 0) {
       throw new Error(
@@ -1060,50 +1097,6 @@ const tryApplySourcePackDesktopUpdate = async (
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
     });
-    const dependencyInstallRan =
-      sourceApply.appliedPaths.some(isDependencyChange);
-    if (dependencyInstallRan) {
-      logDesktopUpdateProcess("desktop-update.dependencies.install.start", {
-        runId,
-        releaseTag: args.releaseTag,
-      });
-      let installResult: ProcessRunResult | null = null;
-      let lastMissingBunError: Error | null = null;
-      for (const bunCommand of candidateBunCommands()) {
-        try {
-          installResult = await runProcess(stellaRoot, bunCommand, [
-            "install",
-            "--frozen-lockfile",
-          ]);
-          break;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-            lastMissingBunError = error as Error;
-            continue;
-          }
-          throw error;
-        }
-      }
-      if (!installResult) {
-        throw new Error(
-          lastMissingBunError
-            ? "Dependency install failed because Bun is not available."
-            : "Dependency install failed because no Bun command was configured.",
-        );
-      }
-      if (installResult.exitCode !== 0) {
-        const detail = (installResult.stderr || installResult.stdout).trim();
-        throw new Error(
-          detail
-            ? `Dependency install failed: ${detail}`
-            : `Dependency install failed with exit code ${installResult.exitCode}.`,
-        );
-      }
-      logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
-        runId,
-        releaseTag: args.releaseTag,
-      });
-    }
 
     await runner.finishExternalSelfMod({ runId, succeeded: true });
     hmrRunStarted = false;
@@ -1118,7 +1111,7 @@ const tryApplySourcePackDesktopUpdate = async (
       status: "applied",
       manifest,
       headCommit: await readHeadCommit(stellaRoot),
-      changedFiles: sourceApply.appliedPaths,
+      changedFiles: preflight.sourceApply.appliedPaths,
       dependencyInstallRan,
       nativeHelpersRefreshed: true,
     };
@@ -1339,7 +1332,10 @@ const tryApplyCleanDesktopUpdate = async (
       await withDesktopUpdateTimeout(
         "git.begin-external-self-mod",
         UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
-        runner.beginExternalSelfMod({ runId, paths: changedFiles }),
+        runner.beginExternalSelfMod({
+          runId,
+          paths: expandExternalSelfModPaths(changedFiles),
+        }),
         {
           runId,
           releaseTag: args.releaseTag,
@@ -1391,49 +1387,12 @@ const tryApplyCleanDesktopUpdate = async (
       changedFileCount: changedFiles.length,
     });
 
-    const dependencyInstallRan = changedFiles.some(isDependencyChange);
-    if (dependencyInstallRan) {
-      logDesktopUpdateProcess("desktop-update.dependencies.install.start", {
-        runId,
-        releaseTag: args.releaseTag,
-      });
-      let installResult: ProcessRunResult | null = null;
-      let lastMissingBunError: Error | null = null;
-      for (const bunCommand of candidateBunCommands()) {
-        try {
-          installResult = await runProcess(stellaRoot, bunCommand, [
-            "install",
-            "--frozen-lockfile",
-          ]);
-          break;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-            lastMissingBunError = error as Error;
-            continue;
-          }
-          throw error;
-        }
-      }
-      if (!installResult) {
-        throw new Error(
-          lastMissingBunError
-            ? "Dependency install failed because Bun is not available."
-            : "Dependency install failed because no Bun command was configured.",
-        );
-      }
-      if (installResult.exitCode !== 0) {
-        const detail = (installResult.stderr || installResult.stdout).trim();
-        throw new Error(
-          detail
-            ? `Dependency install failed: ${detail}`
-            : `Dependency install failed with exit code ${installResult.exitCode}.`,
-        );
-      }
-      logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
-        runId,
-        releaseTag: args.releaseTag,
-      });
-    }
+    const dependencyInstallRan = await runDesktopUpdateDependencyInstall({
+      stellaRoot,
+      changedFiles,
+      runId,
+      releaseTag: args.releaseTag,
+    });
 
     if (hmrRunStarted && runner) {
       await runner.finishExternalSelfMod({ runId, succeeded: true });

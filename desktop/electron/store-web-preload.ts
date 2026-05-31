@@ -41,28 +41,6 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
   }) => invoke("storeWeb:requestPackageInstall", payload),
   uninstallPackage: (packageId: string) =>
     invoke("storeWeb:uninstallMod", { packageId }),
-  getThread: () => invoke("storeWeb:getThread"),
-  sendThreadMessage: (payload: {
-    text: string;
-    attachedFeatureNames?: string[];
-    editingBlueprint?: boolean;
-  }) => invoke("storeWeb:sendThreadMessage", payload),
-  cancelThreadTurn: () => invoke("storeWeb:cancelThreadTurn"),
-  denyLatestBlueprint: () => invoke("storeWeb:denyLatestBlueprint"),
-  markBlueprintPublished: (payload: {
-    messageId: string;
-    releaseNumber: number;
-  }) => invoke("storeWeb:markBlueprintPublished", payload),
-  publishBlueprint: (payload: {
-    messageId: string;
-    packageId: string;
-    asUpdate: boolean;
-    displayName?: string;
-    description?: string;
-    category?: string;
-    manifest: Record<string, unknown>;
-    releaseNotes?: string;
-  }) => invoke("storeWeb:publishBlueprint", payload),
   publishSelectedFeatures: (payload: {
     attachedFeatureNames: string[];
     packageId: string;
@@ -100,10 +78,13 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
       downloads?: number;
     };
   }) => invoke("storeWeb:installPet", payload),
-  selectPet: (payload: { petId: string }) => invoke("storeWeb:selectPet", payload),
-  removePet: (payload: { petId: string }) => invoke("storeWeb:removePet", payload),
+  selectPet: (payload: { petId: string }) =>
+    invoke("storeWeb:selectPet", payload),
+  removePet: (payload: { petId: string }) =>
+    invoke("storeWeb:removePet", payload),
   getPetState: () => invoke("storeWeb:getPetState"),
-  setPetOpen: (payload: { open: boolean }) => invoke("storeWeb:setPetOpen", payload),
+  setPetOpen: (payload: { open: boolean }) =>
+    invoke("storeWeb:setPetOpen", payload),
   installEmojiPack: (payload: { packId: string; sheetUrls: string[] }) =>
     invoke("storeWeb:installEmojiPack", payload),
   clearEmojiPack: (payload?: { packId?: string }) =>

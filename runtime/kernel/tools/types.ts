@@ -168,6 +168,7 @@ export type ToolHostOptions = {
   stellaConnectCliPath?: string;
   cliBridgeSocketPath?: string;
   agentApi?: AgentToolApi;
+  sourceImportApi?: SourceImportToolApi;
   getSubagentTypes?: () => readonly string[];
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
@@ -352,6 +353,53 @@ export type ScheduleToolApi = {
   runHeartbeat: (
     conversationId: string,
   ) => Promise<LocalHeartbeatConfigRecord | null>;
+};
+
+export type SourceImportToolTrust = "trusted" | "untrusted";
+
+export type SourceImportToolScope =
+  | { kind: "all" }
+  | { kind: "feature"; label: string };
+
+export type SourceImportToolSource =
+  | {
+      kind: "local-path";
+      path: string;
+      ref?: string;
+    }
+  | {
+      kind: "git";
+      url: string;
+      ref?: string;
+    };
+
+export type SourceImportToolResult = {
+  status: "applied" | "applied-by-agent" | "no-changes" | "needs-agent";
+  message: string;
+  importRoot?: string;
+  sourceRoot?: string;
+  commitHash?: string | null;
+  threadId?: string;
+  fastPath?: {
+    attempted: boolean;
+    applied: boolean;
+    reason?: string;
+  };
+  review?: {
+    skipped: boolean;
+    reason?: string;
+  };
+};
+
+export type SourceImportToolApi = {
+  importSource: (args: {
+    source: SourceImportToolSource;
+    scope: SourceImportToolScope;
+    trust: SourceImportToolTrust;
+    conversationId: string;
+    requestId: string;
+    signal?: AbortSignal;
+  }) => Promise<SourceImportToolResult>;
 };
 
 export type ToolHandler = (

@@ -6,10 +6,11 @@ Stella needs source control that behaves like GitHub for users without making th
 
 - Self-mod runs already commit local source changes and the inline undo flow reverts those commits.
 - Store publishing ships a behavior spec, redacted per-commit reference diffs, and a Stella source pack when the selected commits are safe to package. When local Stella source-history rows exist, the pack preserves those revision ids and hydrates only the selected changed-file content for sharing.
-- Store installation is always agent-applied. The behavior spec, redacted commit diffs, and source pack are materialized into a temporary install folder; the agent reads those exact package inputs and adapts the feature to the user's divergent tree. Installed packages record both local undo commits and Stella source revision ids, so updates can pass only the revisions since the user's installed version.
-- Desktop releases publish an official source pack next to the hydrated platform archive. Clean source-pack updates apply locally without fetching Git objects, then native helpers check the latest helper manifest and no-op when already current. Conflict updates hand structured conflict content to the install-update agent.
+- Store installation and desktop source-pack updates share the source-import primitive: prepare source material, run the trust gate when needed, try the cheap clean apply, and hand structured materials to the general agent when the tree has diverged. Installed packages record both local undo commits and Stella source revision ids, so updates can pass only the revisions since the user's installed version.
+- Desktop releases publish an official source pack next to the hydrated platform archive. Clean source-pack updates apply locally without fetching Git objects, then native helpers check the latest helper manifest and no-op when already current. Conflict updates hand structured conflict content to the same source-import handoff shape.
+- Arbitrary imports expose the same primitive to the orchestrator as `import_source(source, scope, trust)`. Local paths and git URLs resolve into an import workspace; untrusted sources are reviewed first; merge-compatible git refs use native git as a fast path; unrelated repos or named feature extraction fall back to the general agent with the source checkout, tree listing, reference diff, and recent commits.
 
-That works, but it makes Git the product model. The better Stella model is a local history graph plus content-addressed source packs that can be merged directly when safe and handed to an agent only when there is a real semantic conflict.
+That works, but it makes Git the product model. The better Stella model is a local history graph plus content-addressed source packs that can be merged directly when safe and handed to an agent only when there is a real semantic conflict. Native Git remains an optimization for sources that genuinely have compatible Git history; Store packages use source packs because they publish selected Stella revisions and changed-file content, not a full foreign object graph.
 
 ## Target Model
 
@@ -33,20 +34,24 @@ When a user shares a Store package, Stella uploads only the selected feature rev
 - Convex stores package metadata, release ordering, author, visibility, install counts, and moderation/review state.
 - R2 stores larger source packs by content hash when the pack outgrows Convex document limits.
 - A source pack contains changed-file content only for the shared feature. It does not contain unrelated files from the user's Stella.
-- The behavior spec remains the semantic north star and review surface. The source pack is exact changed-file package material for the install agent, not a hidden clean-merge path for Store packages.
+- The release summary remains the semantic north star and review surface. The source pack is exact changed-file package material for the clean import path and, when needed, the install agent.
 
 ### Merge
 
-Official desktop update uses the source merge primitive directly when clean. Store install/update uses the same source-pack shape as agent input, but the agent always performs the local implementation:
+Official desktop update and Store install/update use the same source-pack shape as import input. The clean path is automatic:
 
 1. Confirm the install has the referenced base history id.
 2. For each changed path, compare the user's local blob hash to the pack's base and next hashes.
 3. If local equals base, write the incoming blob.
 4. If local equals next, mark the path already applied.
 5. If local diverged but the edit is non-overlapping text, perform a three-way text merge.
-6. If the edit overlaps, involves deletion/binary content, or the base history is missing during an official update, produce a structured conflict for the install-update agent.
+6. If the edit overlaps, involves deletion/binary content, or the base history is missing during an official update, produce a structured conflict for the import handoff.
 
 The agent sees a Stella conflict object, not a raw Git conflict. It gets the base, local, incoming, feature metadata, and behavior spec, then writes the resolution into the local tree. Stella commits that resolution as a local revision.
+
+### Git Sources
+
+When the source is a local git repo or git URL, Stella fetches the source ref into the target repo and runs `git merge-tree --write-tree HEAD FETCH_HEAD` as the cheap path. If the ref shares history and the merge tree is clean, Stella checks out the merged tree's changed paths and commits them through the normal self-mod lifecycle. If the histories are unrelated, the working tree is dirty, the user asked for a named subset, or merge-tree reports conflicts, Stella materializes the source checkout and reference materials for the general agent instead.
 
 ### Native Artifacts
 
@@ -60,8 +65,8 @@ Native helpers should not be hidden inside source history. They are official des
 ## Migration Path
 
 1. Land the local source-control core beside the current Git-backed flow.
-2. Publish Store releases with both the current blueprint/diff payload and a Stella source pack.
-3. Feed Store installs and updates through the agent using the source pack and reference diffs as exact package input.
+2. Publish Store releases with editable metadata, reference diffs, and a Stella source pack.
+3. Feed Store installs and updates through the shared source-import primitive, using the source pack as the clean path and source pack plus reference diffs as exact agent input when adaptation is needed.
 4. Keep improving the official update conflict handoff so large or complex conflicts are resolved from Stella conflict objects instead of raw Git conflict markers.
 5. Keep native-helper refresh in the official desktop update path, where Stella can check latest and no-op when already current.
 6. Keep Git as an internal compatibility layer only until launcher/install/update no longer need GitHub object fetches.

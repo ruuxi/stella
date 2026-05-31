@@ -24,7 +24,8 @@ describe("buildStoreInstallPrompt", () => {
 
     expect(prompt).toContain("Source pack:");
     expect(prompt).toContain("SOURCE_PACK.json");
-    expect(prompt).toContain("do not apply it mechanically");
+    expect(prompt).toContain("safe automatic import path");
+    expect(prompt).toContain("replaying it blindly");
     expect(prompt).not.toContain("Artifact refs");
     expect(prompt).not.toContain("Artifact install report:");
     expect(prompt).toContain("original-release-to-new-release delta");

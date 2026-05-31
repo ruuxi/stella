@@ -6,7 +6,6 @@ export const AGENT_IDS = {
   SOCIAL_SESSION: "social_session",
   OFFLINE_RESPONDER: "offline_responder",
   EXPLORE: "explore",
-  STORE: "store",
   DREAM: "dream",
   CHRONICLE: "chronicle",
   OPEN_PANEL_REPORTS: "open_panel_reports",
@@ -228,24 +227,6 @@ const BUILTIN_AGENT_DEFINITIONS = [
     modelSettings: {
       description: "Finds relevant context before a task starts",
       order: 3,
-    },
-  },
-  {
-    id: AGENT_IDS.STORE,
-    name: "Store",
-    description:
-      "Drafts Store blueprints from repo context with a read-only tool surface.",
-    activityLabel: "Drafting",
-    bundledCore: true,
-    runsAsSubagent: false,
-    includeInAgentRoster: false,
-    usesLocalCliRuntime: false,
-    promptRole: "subagent",
-    controlsSelfModHmr: false,
-    localCliWorkingDirectory: null,
-    modelSettings: {
-      description: "Drafts Store blueprints",
-      order: 4,
     },
   },
   {

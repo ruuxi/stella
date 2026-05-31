@@ -18,7 +18,6 @@ import {
   type RuntimeSelfModRevertResult,
   type StorePublishArgs,
   type StorePublishSelectedFeaturesArgs,
-  type StoreThreadSendInput,
   type RuntimeLocalAgentRequest,
 } from "../protocol/index.js";
 import type {
@@ -213,8 +212,6 @@ type WorkerState = {
   finishExternalSelfModWithMorph:
     | ((args: { runId: string; succeeded: boolean }) => Promise<{ ok: true }>)
     | null;
-  activeStoreThreadAgentId: string | null;
-  activeStoreThreadMessageId: string | null;
   /**
    * Persistent ring buffer for streaming run events. Every event we emit
    * via NOTIFICATION_NAMES.RUN_EVENT also gets persisted here so that a
@@ -288,14 +285,10 @@ const recordSelfModRevertNotice = (args: {
 };
 
 import {
-  STORE_THREAD_CONVERSATION_ID,
   buildStoreReleaseRedactor,
-  buildStoreThreadAgentPrompt,
   collectStoreReleaseCommits,
   collectStoreReleaseSourcePack,
-  extractBlueprintMarkdown,
   normalizeStoreThreadFeatureNames,
-  normalizeStoreThreadText,
 } from "./store-thread-helpers.js";
 import {
   buildStoreInstallPrompt,
@@ -306,6 +299,8 @@ import {
   assertStoreSourcePackIntegrity,
   selectStoreSourcePackForInstalledRevisions,
 } from "./store-source-pack-install.js";
+import { trySourceImportFastPath } from "./source-import.js";
+import { importExternalSource } from "./source-import-external.js";
 
 const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
 const HTTP_URL_RE = /^https?:\/\//i;
@@ -416,8 +411,6 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.storeModService = null;
   state.socialSessionStore = null;
   state.selfModHmrController = null;
-  state.activeStoreThreadAgentId = null;
-  state.activeStoreThreadMessageId = null;
   state.runEventLog?.stop();
   state.runEventLog = null;
   await state.cliBridgeServer?.stop().catch(() => undefined);
@@ -445,8 +438,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     revertSelfModWithMorph: null,
     beginExternalSelfModWithMorph: null,
     finishExternalSelfModWithMorph: null,
-    activeStoreThreadAgentId: null,
-    activeStoreThreadMessageId: null,
     runEventLog: null,
     cliBridgeServer: null,
   };
@@ -583,7 +574,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const voicePinned =
       (state.voiceService?.isBusy() ?? false) ||
       (state.voiceService?.getPendingRequestCount() ?? 0) > 0;
-    const storePinned = Boolean(state.activeStoreThreadAgentId);
     const requestPinned = (peer.activeRequestHandlerCount?.() ?? 0) > 0;
     const pendingApplyPinned = pendingApplyBatches.size > 0;
     return Boolean(
@@ -591,7 +581,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
         requestPinned ||
         pendingApplyPinned ||
-        storePinned ||
         socialPinned ||
         voicePinned,
     );
@@ -751,19 +740,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             : undefined),
       });
     }
-  };
-
-  const reconcileStoreThreadPendingMessages = () => {
-    const store = ensureStoreModStore();
-    const pending = store
-      .listStoreThreadMessages()
-      .some((message) => message.pending === true);
-    if (pending && !state.activeStoreThreadAgentId) {
-      store.clearPendingStoreThreadMessages(
-        "The Store agent stopped unexpectedly. Please send your message again.",
-      );
-    }
-    return store;
   };
 
   const ensureVoiceService = () => {
@@ -950,24 +926,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       );
       state.cliBridgeServer = null;
     }
-
-    // Push a fresh snapshot to subscribers whenever the Store thread mutates
-    // (matches the localChat updated-channel pattern). The renderer
-    // subscribes via `electronAPI.store.onThreadUpdated` so the side panel
-    // never has to poll.
-    storeModStore.setThreadUpdatedListener(() => {
-      try {
-        peer.notify(
-          NOTIFICATION_NAMES.STORE_THREAD_UPDATED,
-          storeModStore.readStoreThread(),
-        );
-      } catch (error) {
-        console.warn(
-          "[store-mod-store] Failed to notify thread update:",
-          (error as Error).message,
-        );
-      }
-    });
 
     // ---- self-mod apply orchestration ----
     // The worker server owns morph orchestration: each finalize/cancel that
@@ -1235,6 +1193,76 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             },
             { retryOnDisconnect: true },
           ),
+      },
+      sourceImportApi: {
+        importSource: async (payload) => {
+          const currentInit = state.init;
+          if (!currentInit) {
+            throw new Error("Worker has not been initialized.");
+          }
+          return await importExternalSource({
+            repoRoot: currentInit.stellaRoot,
+            stellaHome: currentInit.stellaHomePath,
+            source: payload.source,
+            scope: payload.scope,
+            trust: payload.trust,
+            conversationId: payload.conversationId,
+            requestId: payload.requestId,
+            service: storeModService,
+            lifecycle: {
+              ...(state.beginExternalSelfModWithMorph
+                ? { beginExternalSelfMod: state.beginExternalSelfModWithMorph }
+                : {}),
+              ...(state.finishExternalSelfModWithMorph
+                ? {
+                    finishExternalSelfMod:
+                      state.finishExternalSelfModWithMorph,
+                  }
+                : {}),
+            },
+            runReview: async ({ prompt }) => {
+              const review = await runOneShotCompletion({
+                request: {
+                  agentType: "source_import_review",
+                  fallbackAgentTypes: ["store_install_review", "general"],
+                  systemPrompt:
+                    "You are a no-tool safety reviewer for source imports. Return only the requested JSON decision.",
+                  userText: prompt,
+                  temperature: 0,
+                  maxOutputTokens: 700,
+                },
+                runtime: {
+                  stellaRoot: currentInit.stellaRoot,
+                  stellaHome: currentInit.stellaHomePath,
+                  siteBaseUrl: currentInit.convexSiteUrl,
+                  getAuthToken: () => currentInit.authToken,
+                  hasConnectedAccount: () =>
+                    state.init?.hasConnectedAccount ?? false,
+                  requestRuntimeAuthRefresh: async () => {
+                    try {
+                      return (await peer.request(
+                        METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
+                        { source: "source_import_review" },
+                        { retryOnDisconnect: true },
+                      )) as {
+                        authenticated: boolean;
+                        token: string | null;
+                        hasConnectedAccount: boolean;
+                      };
+                    } catch {
+                      return null;
+                    }
+                  },
+                },
+              });
+              return review.text;
+            },
+            runBlockingLocalAgent: async (request) =>
+              await ensureRunner().runBlockingLocalAgent(request),
+            ...(payload.signal ? { signal: payload.signal } : {}),
+            log: (event, fields) => logger.info(event, fields),
+          });
+        },
       },
       // Store agent moved to backend — no local agent surface.
       selfModMonitor: {
@@ -2620,7 +2648,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       "",
       `Category: ${category}`,
       "",
-      "This release is backed by selected Stella source changes. The source pack and reference diffs are the authoritative install material.",
+      "This release is backed by selected Stella source changes. Stella imports the source material directly when it applies cleanly, and asks an agent to adapt it only when the local tree has diverged.",
       "",
       "## Selected changes",
       ...args.attachedFeatureNames.map((name) => `- ${name}`),
@@ -2716,56 +2744,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   };
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_BLUEPRINT,
-    async (params) => {
-      const payload = params as {
-        messageId: string;
-        packageId: string;
-        asUpdate: boolean;
-        displayName?: string;
-        description?: string;
-        category?:
-          | "apps-games"
-          | "productivity"
-          | "customization"
-          | "skills-agents"
-          | "integrations"
-          | "other";
-        manifest: StorePublishArgs["manifest"];
-        releaseNotes?: string;
-      };
-      if (!payload.messageId) {
-        throw new Error("messageId is required.");
-      }
-      const store = ensureStoreModStore();
-      const message = store
-        .listStoreThreadMessages()
-        .find((entry) => entry._id === payload.messageId);
-      if (!message) {
-        throw new Error("Could not find the blueprint draft to publish.");
-      }
-      if (!message.isBlueprint) {
-        throw new Error("That message is not a publishable blueprint.");
-      }
-      if (message.denied) {
-        throw new Error(
-          "The latest blueprint draft was denied. Edit it before publishing.",
-        );
-      }
-      return await publishSourceBackedStoreRelease({
-        attachedFeatureNames: message.attachedFeatureNames ?? [],
-        packageId: payload.packageId,
-        asUpdate: payload.asUpdate,
-        ...(payload.displayName ? { displayName: payload.displayName } : {}),
-        ...(payload.description ? { description: payload.description } : {}),
-        ...(payload.category ? { category: payload.category } : {}),
-        manifest: payload.manifest,
-        ...(payload.releaseNotes ? { releaseNotes: payload.releaseNotes } : {}),
-      });
-    },
-  );
-
-  peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_SELECTED_FEATURES,
     async (params) =>
       await publishSourceBackedStoreRelease(
@@ -2780,207 +2758,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     async () => {
       const service = ensureStoreModService();
       return service.readFeatureSnapshot();
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_GET,
-    async () => reconcileStoreThreadPendingMessages().readStoreThread(),
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_SEND_MESSAGE,
-    async (params) => {
-      const store = reconcileStoreThreadPendingMessages();
-      const runner = ensureRunner();
-      const payload = params as StoreThreadSendInput;
-      const text = normalizeStoreThreadText(payload.text);
-      const attachedFeatureNames = normalizeStoreThreadFeatureNames(
-        payload.attachedFeatureNames,
-      );
-      const pending = store
-        .listStoreThreadMessages()
-        .some((message) => message.pending === true);
-      if (pending) {
-        throw new Error(
-          "The Store agent is still working. Stop it or wait for it to finish before sending another message.",
-        );
-      }
-
-      const latestBlueprint = store.findLatestPublishableBlueprint();
-      const userMessage = store.appendStoreThreadMessage({
-        role: "user",
-        text,
-        attachedFeatureNames,
-        editingBlueprint: payload.editingBlueprint === true,
-      });
-      const assistantMessage = store.appendStoreThreadMessage({
-        role: "assistant",
-        text: "Working…",
-        pending: true,
-      });
-      const repoRoot = state.init?.stellaRoot;
-      if (!repoRoot) {
-        store.deleteStoreThreadMessages([
-          userMessage._id,
-          assistantMessage._id,
-        ]);
-        throw new Error("Worker has not been initialized.");
-      }
-      let prompt: string;
-      try {
-        prompt = buildStoreThreadAgentPrompt({
-          userText: text,
-          editingBlueprint: payload.editingBlueprint === true,
-          ...(latestBlueprint
-            ? { latestBlueprintMarkdown: latestBlueprint.text }
-            : {}),
-          attachedFeatureNames,
-          transcript: store.listStoreThreadMessages(),
-        });
-      } catch (error) {
-        store.deleteStoreThreadMessages([
-          userMessage._id,
-          assistantMessage._id,
-        ]);
-        throw error;
-      }
-
-      let threadId: string;
-      try {
-        const created = await runner.createBackgroundAgent({
-          conversationId: STORE_THREAD_CONVERSATION_ID,
-          // Fresh runtime thread id per send — each Store turn is one-shot.
-          // The curated prompt above already re-injects the local transcript
-          // and latest blueprint, so carrying runtime thread history across
-          // turns would duplicate (and compound) that context.
-          threadId: `store-agent-local-thread:${crypto.randomUUID()}`,
-          description: "Draft Store blueprint",
-          prompt,
-          agentType: AGENT_IDS.STORE,
-          toolWorkspaceRoot: repoRoot,
-        });
-        threadId = created.threadId;
-      } catch (error) {
-        store.deleteStoreThreadMessages([
-          userMessage._id,
-          assistantMessage._id,
-        ]);
-        throw error;
-      }
-      state.activeStoreThreadAgentId = threadId;
-      state.activeStoreThreadMessageId = assistantMessage._id;
-
-      void (async () => {
-        while (true) {
-          const agent = await runner.getLocalAgentSnapshot(threadId);
-          if (!agent) {
-            if (state.activeStoreThreadMessageId === assistantMessage._id) {
-              store.patchStoreThreadMessage(assistantMessage._id, {
-                text: "The Store agent stopped unexpectedly.",
-                pending: false,
-              });
-              state.activeStoreThreadAgentId = null;
-              state.activeStoreThreadMessageId = null;
-            }
-            return;
-          }
-          if (agent.status === "completed") {
-            if (state.activeStoreThreadMessageId !== assistantMessage._id) {
-              return;
-            }
-            const parsed = extractBlueprintMarkdown(agent.result ?? "");
-            const assistantText =
-              parsed.blueprintMarkdown ??
-              (parsed.visibleText ||
-                "I could not draft a blueprint from that request.");
-            store.patchStoreThreadMessage(assistantMessage._id, {
-              text: assistantText,
-              pending: false,
-              isBlueprint: Boolean(parsed.blueprintMarkdown),
-            });
-            state.activeStoreThreadAgentId = null;
-            state.activeStoreThreadMessageId = null;
-            return;
-          }
-          if (agent.status === "error" || agent.status === "canceled") {
-            if (state.activeStoreThreadMessageId === assistantMessage._id) {
-              store.patchStoreThreadMessage(assistantMessage._id, {
-                text:
-                  agent.status === "canceled"
-                    ? "Stopped."
-                    : (agent.error ?? "The Store agent failed."),
-                pending: false,
-              });
-              state.activeStoreThreadAgentId = null;
-              state.activeStoreThreadMessageId = null;
-            }
-            return;
-          }
-          await new Promise<void>((resolve) => setTimeout(resolve, 250));
-        }
-      })().catch((error) => {
-        if (state.activeStoreThreadMessageId === assistantMessage._id) {
-          store.patchStoreThreadMessage(assistantMessage._id, {
-            text: (error as Error)?.message ?? "The Store agent failed.",
-            pending: false,
-          });
-          state.activeStoreThreadAgentId = null;
-          state.activeStoreThreadMessageId = null;
-        }
-      });
-      return store.readStoreThread();
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_CANCEL,
-    async () => {
-      const store = ensureStoreModStore();
-      const agentId = state.activeStoreThreadAgentId;
-      const messageId = state.activeStoreThreadMessageId;
-      state.activeStoreThreadAgentId = null;
-      state.activeStoreThreadMessageId = null;
-      if (messageId) {
-        store.patchStoreThreadMessage(messageId, {
-          text: "Stopped.",
-          pending: false,
-        });
-      } else {
-        store.clearPendingStoreThreadMessages("Stopped.");
-      }
-      if (agentId) {
-        await ensureRunner().cancelLocalAgent(agentId, "Stopped by user");
-      }
-      return store.readStoreThread();
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_DENY_LATEST_BLUEPRINT,
-    async () => {
-      const store = ensureStoreModStore();
-      store.denyLatestPublishableBlueprint();
-      return store.readStoreThread();
-    },
-  );
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_MARK_BLUEPRINT_PUBLISHED,
-    async (params) => {
-      const payload = params as { messageId: string; releaseNumber: number };
-      const releaseNumber = Number.isFinite(payload.releaseNumber)
-        ? Math.floor(payload.releaseNumber)
-        : null;
-      if (!payload.messageId || !releaseNumber || releaseNumber < 1) {
-        throw new Error("messageId and releaseNumber are required.");
-      }
-      const store = ensureStoreModStore();
-      store.markLatestPublishableBlueprintPublished({
-        messageId: payload.messageId,
-        releaseNumber,
-      });
-      return store.readStoreThread();
     },
   );
 
@@ -3201,6 +2978,35 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         throw new Error(
           `Store install review blocked this release: ${reviewDecision.reason}`,
         );
+      }
+
+      if (sourcePackForAgent) {
+        const fastImportResult = await trySourceImportFastPath({
+          repoRoot: init.stellaRoot,
+          service,
+          source: {
+            kind: "store-package",
+            packageId: payload.packageId,
+            releaseNumber: payload.releaseNumber,
+            displayName: payload.displayName,
+            sourcePack: sourcePackForAgent,
+          },
+          scope: { kind: "all" },
+          trust: "untrusted",
+          applyMode: installApplyMode,
+          lifecycle: {
+            ...(state.beginExternalSelfModWithMorph
+              ? { beginExternalSelfMod: state.beginExternalSelfModWithMorph }
+              : {}),
+            ...(state.finishExternalSelfModWithMorph
+              ? { finishExternalSelfMod: state.finishExternalSelfModWithMorph }
+              : {}),
+          },
+          log: (event, fields) => logger.info(event, fields),
+        });
+        if (fastImportResult.status === "applied") {
+          return fastImportResult.installRecord;
+        }
       }
 
       const installPrompt = buildStoreInstallPrompt({
