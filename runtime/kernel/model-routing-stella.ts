@@ -53,7 +53,7 @@ const fallbackResolvedModelForAlias = (modelId: string): string => {
     case "stella/light":
       return "deepseek/deepseek-v4-flash";
     case "stella/priority":
-      return "accounts/fireworks/routers/kimi-k2p6-turbo";
+      return "accounts/fireworks/models/kimi-k2p6";
     case "stella/builder":
       return "openai/gpt-5.5";
     case "stella/designer":

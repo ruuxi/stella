@@ -211,7 +211,9 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
 
         if (synthesisResult.welcomeMessage) {
           try {
-            const firstReport = buildOnboardingFirstReport(synthesisResult);
+            const firstReport = buildOnboardingFirstReport(
+              synthesisResult.welcomeHtml,
+            );
             await window.electronAPI?.localChat.persistDiscoveryWelcome?.({
               conversationId: activeConversationId,
               message: synthesisResult.welcomeMessage,

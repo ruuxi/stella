@@ -7,5 +7,6 @@ export type OnboardingSynthesisRequest = {
 export type OnboardingSynthesisResponse = {
   coreMemory: string;
   welcomeMessage: string;
+  welcomeHtml: string;
   categoryAnalyses?: Record<string, string>;
 };
