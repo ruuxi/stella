@@ -191,8 +191,7 @@ export function convertResponsesMessages<TApi extends Api>(
 					}
 			} else if (block.type === "text") {
 				const textBlock = block as TextContent;
-				// Fireworks routers (kimi-k2p6, kimi-k2p5, including their
-				// `-turbo` variants) do NOT understand the Responses
+				// Fireworks routers (kimi-k2p6, kimi-k2p5) do NOT understand the Responses
 				// `{type: "message", content: [{type: "output_text", ...}]}`
 				// replay shape for prior assistant turns — they echo the
 				// entire content array back to the user as literal Python-
@@ -260,7 +259,7 @@ export function convertResponsesMessages<TApi extends Api>(
 
 			// `function_call_output.output` is always a string. Several
 			// OpenAI-Responses-compatible providers (Fireworks routers
-			// including kimi-k2p6-turbo, kimi-k2p5-turbo) cannot parse
+			// including kimi-k2p6 and kimi-k2p5) cannot parse
 			// `input_image` parts inside the output array — they
 			// stringify the entire array (data URL included) and tokenize
 			// it as raw text, blowing past the model's context window.
@@ -333,8 +332,8 @@ export async function processResponsesStream<TApi extends Api>(
 	const blocks = output.content;
 	const blockIndex = () => blocks.length - 1;
 
-	// Fireworks's Responses API for kimi-k2p6 (and kimi-k2p5, including the
-	// `-turbo` variants) sometimes emits `response.output_text.delta`
+	// Fireworks's Responses API for kimi-k2p6 and kimi-k2p5 sometimes emits
+	// `response.output_text.delta`
 	// BEFORE the matching `response.output_item.added` for the message
 	// they belong to. Without this helper, those early deltas would be
 	// silently dropped — the assistant reply still ends up correct
