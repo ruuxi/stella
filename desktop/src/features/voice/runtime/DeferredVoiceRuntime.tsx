@@ -1,7 +1,7 @@
 import { Suspense, lazy, startTransition, useEffect, useState } from "react";
 
 const LazyVoiceRuntimeRoot = lazy(() =>
-  import("@/systems/voice/VoiceRuntimeRoot").then((module) => ({
+  import("@/features/voice/runtime/VoiceRuntimeRoot").then((module) => ({
     default: module.VoiceRuntimeRoot,
   })),
 );

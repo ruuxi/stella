@@ -38,7 +38,7 @@ import {
   registerRunAgent,
   addTrace,
   formatTraceSnippet,
-} from "@/debug/trace-store";
+} from "@/platform/diagnostics/trace-store";
 
 /**
  * Persistent IPC listener that captures all agent stream events

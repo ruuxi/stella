@@ -8,11 +8,11 @@
  * larger capability catalog and wants direct control).
  */
 import { useCallback, useState } from "react";
-import { createServiceRequest } from "@/infra/http/service-request";
+import { createServiceRequest } from "@/platform/http/service-request";
 import {
   notifyMediaGenerationError,
   parseMediaApiErrorMessage,
-} from "@/shared/billing/paid-media-tier-toast";
+} from "@/global/billing/paid-media-tier-toast";
 import type { MediaActionId } from "./media-actions";
 
 export type SubmitMediaJobArgs = {

@@ -5,7 +5,7 @@ import { ThemeProvider } from "./context/theme-context";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { UiStateProvider } from "./context/ui-state";
 import { OverlayRoot } from "./shell/overlay/OverlayRoot";
-import { DeferredVoiceRuntime } from "./systems/voice/DeferredVoiceRuntime";
+import { DeferredVoiceRuntime } from "./features/voice/runtime/DeferredVoiceRuntime";
 import { ToastProvider } from "./ui/toast";
 
 document.documentElement.dataset.stellaWindow = "overlay";

@@ -3,7 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useDesktopAuthSession } from "@/global/auth/services/auth-session";
 import { useModelCatalogUpdatedAt } from "@/global/settings/hooks/model-catalog-updated-at";
-import { createServiceRequest } from "@/infra/http/service-request";
+import { createServiceRequest } from "@/platform/http/service-request";
 import {
   groupCatalogModelsByProvider,
   listLocalCatalogModels,
@@ -21,7 +21,7 @@ import { STELLA_MODELS_PATH } from "@/shared/stella-api";
 import {
   resolveBillingAudience,
   type ManagedModelAudience,
-} from "@/shared/billing/audience";
+} from "@/global/billing/audience";
 import {
   createResourceStore,
   useResourceStore,

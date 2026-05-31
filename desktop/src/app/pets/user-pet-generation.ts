@@ -1,4 +1,4 @@
-import { createServiceRequest } from "@/infra/http/service-request";
+import { createServiceRequest } from "@/platform/http/service-request";
 import type { UserPetUploadTarget } from "./user-pet-data";
 
 export const USER_PET_ATLAS = {

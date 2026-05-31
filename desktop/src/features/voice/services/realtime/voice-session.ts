@@ -28,7 +28,7 @@
  * from here on.
  */
 
-import { postServiceJson } from "@/infra/http/service-request";
+import { postServiceJson } from "@/platform/http/service-request";
 import { getVoiceSessionPromptConfig } from "@/prompts";
 import {
   formatRealtimeSystemMessage,

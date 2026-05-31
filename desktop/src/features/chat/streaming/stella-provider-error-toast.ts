@@ -1,5 +1,5 @@
 import { router } from '@/router'
-import { BYOK_TOAST_ACTION } from '@/shared/billing/byok-action'
+import { BYOK_TOAST_ACTION } from '@/global/billing/byok-action'
 import type { ToastOptions } from '@/ui/toast'
 
 const normalizeErrorText = (value: string | null | undefined): string =>

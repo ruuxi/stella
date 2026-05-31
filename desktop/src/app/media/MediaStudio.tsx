@@ -8,8 +8,8 @@ import {
 } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
-import { createServiceRequest } from "@/infra/http/service-request";
-import { maybeShowPaidMediaTierToast } from "@/shared/billing/paid-media-tier-toast";
+import { createServiceRequest } from "@/platform/http/service-request";
+import { maybeShowPaidMediaTierToast } from "@/global/billing/paid-media-tier-toast";
 import {
   type FormState,
   type HistoryEntry,

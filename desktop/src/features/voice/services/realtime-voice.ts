@@ -6,7 +6,7 @@
  * be swapped without touching every consumer. This file just re-exports
  * the stable surface used by:
  *   - hooks/use-realtime-voice.ts (VoiceSessionManager)
- *   - systems/voice/VoiceRuntimeRoot.tsx
+ *   - features/voice/runtime/VoiceRuntimeRoot.tsx
  *
  * Imports that referenced this module continue to work unchanged.
  */

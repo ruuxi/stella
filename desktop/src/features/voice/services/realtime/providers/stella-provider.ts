@@ -20,7 +20,7 @@
  * The user does not need a BYOK key in any of these sub-paths.
  */
 
-import { postServiceJson } from "@/infra/http/service-request";
+import { postServiceJson } from "@/platform/http/service-request";
 import {
   DEFAULT_INWORLD_REALTIME_MODEL,
   DEFAULT_INWORLD_REALTIME_SPEED,

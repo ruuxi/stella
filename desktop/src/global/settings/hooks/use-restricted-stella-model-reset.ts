@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
-import { isRestrictedModelOverrideAudience } from "@/shared/billing/audience";
+import { isRestrictedModelOverrideAudience } from "@/global/billing/audience";
 
 const ASSISTANT_MODEL_KEYS = ["orchestrator", "general"] as const;
 

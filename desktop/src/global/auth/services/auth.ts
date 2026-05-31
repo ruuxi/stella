@@ -1,5 +1,5 @@
 import { api } from "@/convex/api";
-import { convexClient } from "@/infra/convex-client";
+import { convexClient } from "@/platform/convex/convex-client";
 import { signOutAuthSession } from "@/global/auth/services/auth-session";
 import { getDeviceIdOrNull } from "@/platform/electron/device";
 

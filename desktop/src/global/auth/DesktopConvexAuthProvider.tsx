@@ -18,7 +18,7 @@ import {
   signInAnonymous,
   useDesktopAuthSession,
 } from "@/global/auth/services/auth-session";
-import { convexClient } from "@/infra/convex-client";
+import { convexClient } from "@/platform/convex/convex-client";
 import { getJwtExpMs } from "@/shared/lib/jwt";
 
 const TOKEN_BOOTSTRAP_RETRY_BASE_MS = 3_000;
