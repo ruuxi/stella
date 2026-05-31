@@ -4,10 +4,10 @@ import { lazy, Suspense } from 'react'
  * Auth and Connect render as URL-driven dialogs (`?dialog=auth|connect`).
  * Settings is a top-level route (`/settings`), not a dialog.
  *
- * Both chunks are warmed by sidebar hover/focus handlers
+ * Both chunks are warmed by topbar hover/focus handlers
  * (`preloadAuthDialog` / `preloadConnectDialog` in
- * `@/shared/lib/sidebar-preloads`) and again at idle from `FullShell` via
- * `preloadAllSidebarSurfaces`, so by the time the user actually sets
+ * `@/shell/topbar/nav-surface-preloads`) and again at idle from `FullShell` via
+ * `preloadAllNavSurfaces`, so by the time the user actually sets
  * `?dialog=...` the chunk is already in memory and `Suspense` falls
  * straight through.
  */

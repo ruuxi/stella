@@ -26,8 +26,7 @@ import {
   saveOutputToStella,
   type OutputMedia,
 } from "./media-store"
-import { displayTabs } from "@/shell/display/tab-store"
-import { payloadToTabSpec } from "@/shell/display/payload-to-tab-spec"
+import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload"
 
 const MATERIALIZED_KEY = "stella-media-materialized-jobs"
 const MATERIALIZED_PAYLOADS_KEY = "stella-media-materialized-payloads"
@@ -272,7 +271,7 @@ export const useMediaMaterializer = ({
           persistToStorage(materializedJobs)
 
           if (payload.asset.kind === "image") {
-            displayTabs.openTab(payloadToTabSpec(payload), {
+            openDisplayPayloadTab(payload, {
               activate: false,
             })
           }

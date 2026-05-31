@@ -20,8 +20,8 @@ import { SocialComposer } from "./SocialComposer";
 import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import type { SocialProfile } from "./hooks/use-social-profile";
 import { MessageSquare } from "lucide-react";
-import { AddonShareCard } from "@/global/store/AddonShareCard";
-import { parseShareLink } from "@/global/store/share-link";
+import { AddonShareCard } from "@/features/store/AddonShareCard";
+import { parseShareLink } from "@/features/store/share-link";
 
 type SocialChatPaneProps = {
   roomId: string;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EventRecord } from "../../../../runtime/contracts/local-chat";
-import { groupEventsIntoMessages } from "@/app/chat/lib/group-events-into-messages";
+import { groupEventsIntoMessages } from "@/features/chat/lib/group-events-into-messages";
 
 const event = (overrides: Partial<EventRecord>): EventRecord => ({
   _id: overrides._id ?? "",

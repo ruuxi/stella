@@ -10,8 +10,7 @@ import {
 import { extractOutput, saveOutputToStella } from "@/app/media/media-store";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
-import { displayTabs } from "@/shell/display/tab-store";
-import { payloadToTabSpec } from "@/shell/display/payload-to-tab-spec";
+import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
 import { notifyAssistantScrollFollowLayoutChange } from "@/shell/chat-scroll-follow";
 import "./inline-generated-image-card.css";
 
@@ -309,7 +308,7 @@ export const InlineGeneratedImageCard = ({
       const completedPayload = await mediaPayloadFromJob(job);
       if (cancelled || !completedPayload) return;
       publishMaterializedMediaPayload(completedPayload);
-      displayTabs.openTab(payloadToTabSpec(completedPayload), {
+      openDisplayPayloadTab(completedPayload, {
         activate: false,
       });
       markMediaJobMaterialized(job.jobId);
@@ -361,7 +360,7 @@ export const InlineGeneratedImageCard = ({
 
   const handleClick = useCallback(() => {
     if (!isImage || filePaths.length === 0) return;
-    displayTabs.openTab(payloadToTabSpec(effectivePayload));
+    openDisplayPayloadTab(effectivePayload);
   }, [effectivePayload, filePaths.length, isImage]);
 
   if (!isImage) return null;

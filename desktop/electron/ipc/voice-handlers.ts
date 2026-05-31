@@ -52,7 +52,6 @@ type VoiceHandlersOptions = {
   stellaHomePath: string;
 };
 
-const DEFAULT_VOICE_RTC_SHORTCUT = "CommandOrControl+Shift+D";
 const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime";
 const DEFAULT_XAI_REALTIME_MODEL = "grok-voice-think-fast-1.0";
 

@@ -6,10 +6,10 @@ import type {
 import {
   getEventText,
   type TaskItem,
-} from "@/app/chat/lib/event-transforms";
-import { filterMessagesForUiDisplay } from "@/app/chat/lib/message-display";
+} from "@/features/chat/lib/event-transforms";
+import { filterMessagesForUiDisplay } from "@/features/chat/lib/message-display";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
-import { getWorkingIndicatorDisplayStatus } from "@/app/chat/working-indicator-state";
+import { getWorkingIndicatorDisplayStatus } from "@/features/chat/working-indicator-state";
 import {
   readLastSeenPetAssistantMessageId,
   writeLastSeenPetAssistantMessageId,

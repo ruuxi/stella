@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeShowHomeContent } from "../../src/app/chat/hooks/use-idle-home-visibility";
+import { computeShowHomeContent } from "../../src/features/chat/hooks/use-idle-home-visibility";
 
 describe("computeShowHomeContent", () => {
   it("keeps home visible when back was forced during active streaming", () => {

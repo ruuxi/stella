@@ -25,7 +25,7 @@ import {
   updateHistoryEntry,
 } from "./media-store";
 import { markMediaJobMaterialized } from "./use-media-materializer";
-import { fileToDataUri } from "@/shell/display/media-tab/media-files";
+import { fileToDataUri } from "@/features/workspace-display/media-files";
 import "./media-studio.css";
 
 function FolderIcon() {

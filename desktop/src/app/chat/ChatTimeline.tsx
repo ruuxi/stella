@@ -55,11 +55,11 @@ import {
 import {
   AssistantMessageRow,
   UserMessageRow,
-  type EventRowViewModel,
 } from "@/app/chat/MessageRow";
-import type { Attachment } from "@/app/chat/lib/event-transforms";
+import type { EventRowViewModel } from "@/features/chat/conversation-row-types";
+import type { Attachment } from "@/features/chat/lib/event-transforms";
 import { ComposerQueuedMessages } from "./ComposerQueuedMessages";
-import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
+import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import { Spinner } from "@/ui/spinner";
 
 type ChatTimelineProps = {

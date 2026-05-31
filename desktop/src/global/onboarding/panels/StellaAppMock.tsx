@@ -95,7 +95,7 @@ const SECTION_PILLS: SectionPill[] = [
 ];
 
 /* ──────────────────────────────────────────────────────────────────────
- * Reusable inline icons that match the real `SidebarIcons.tsx` set.
+ * Reusable inline icons that match the real nav icon set.
  * Kept inline so the mock is self-contained and renders identically when
  * the onboarding is themed differently from the rest of the app.
  * ────────────────────────────────────────────────────────────────────── */

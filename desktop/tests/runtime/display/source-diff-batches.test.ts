@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../src/shell/display/tab-store", () => ({
+vi.mock("../../../src/features/workspace-display/tab-store", () => ({
   displayTabs: { openTab: vi.fn() },
 }));
 
@@ -9,10 +9,10 @@ const {
   pushAndOpenSourceDiffBatch,
   peekSourceDiffBatches,
   SOURCE_DIFF_TAB_ID,
-} = await import("../../../src/shell/display/source-diff-batches");
+} = await import("../../../src/features/workspace-display/source-diff-batches");
 
 const { displayTabs } = await import(
-  "../../../src/shell/display/tab-store"
+  "../../../src/features/workspace-display/tab-store"
 );
 
 const sourceDiffPayload = (filePath: string, createdAt = 0) =>

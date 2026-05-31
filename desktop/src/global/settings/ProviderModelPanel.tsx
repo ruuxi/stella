@@ -19,7 +19,7 @@ import {
   readEngineModelFavorites,
   sortByFavorites,
   toggleEngineModelFavorite,
-} from "@/shell/display/engine-model-favorites";
+} from "@/features/workspace-display/engine-model-favorites";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import {

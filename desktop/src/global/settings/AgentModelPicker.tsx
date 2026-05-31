@@ -32,7 +32,7 @@ import {
   isRestrictedModelOverrideAudience,
 } from "@/shared/billing/audience";
 import { router } from "@/router";
-import { openEngineDisplayTab } from "@/shell/display/default-tabs";
+import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
 import "./AgentModelPicker.css";
 
 type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";

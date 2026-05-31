@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { shouldRetainResumedStreamingState } from "../../src/app/chat/hooks/use-resume-agent-run";
+import { shouldRetainResumedStreamingState } from "../../src/features/chat/hooks/use-resume-agent-run";
 import {
   initialStoreState,
   reconcileTerminalTaskKeysFromResumeTasks,
   streamStoreReducer,
-} from "../../src/app/chat/streaming/store";
+} from "../../src/features/chat/streaming/store";
 
 describe("shouldRetainResumedStreamingState", () => {
   it("drops stale resumed state when replay is exhausted and the run is gone", () => {

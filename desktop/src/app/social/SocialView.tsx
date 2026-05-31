@@ -12,7 +12,7 @@ import {
   preloadSocialChatPane,
   preloadSocialFriendsDialog,
   preloadSocialNewChatDialog,
-} from "@/shared/lib/sidebar-preloads";
+} from "@/shell/topbar/nav-surface-preloads";
 import "./social.css";
 
 const SocialChatPane = lazy(() =>

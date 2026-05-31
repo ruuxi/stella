@@ -7,7 +7,7 @@ import {
   __privateLocalFilesStore,
   subscribeToLocalFilesWindow,
   type LocalFilesWindowSnapshot,
-} from "@/app/chat/services/local-files-store";
+} from "@/features/chat/services/local-files-store";
 
 type FilesPayload = {
   files: EventRecord[];

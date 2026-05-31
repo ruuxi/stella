@@ -1,4 +1,4 @@
-import { CustomUsers } from "@/shell/sidebar/SidebarIcons";
+import { CustomUsers } from "@/ui/nav-icons";
 import type { AppMetadata } from "../_shared/app-metadata";
 
 const metadata: AppMetadata = {

@@ -15,7 +15,7 @@ export {
   isSupportedMediaFile,
   isSupportedMediaMime,
   readSourceAsDataUri,
-} from "./media-files";
+} from "@/features/workspace-display/media-files";
 export {
   submitMediaJob,
   useMediaGeneration,

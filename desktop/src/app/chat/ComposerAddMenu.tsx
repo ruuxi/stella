@@ -25,13 +25,13 @@ import {
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import { showToast } from "@/ui/toast";
-import { ComposerAddButton } from "./ComposerPrimitives";
+import { ComposerAddButton } from "@/features/chat/ComposerPrimitives";
 import { getElectronApi } from "@/platform/electron/electron";
 import {
   applyProcessedAttachments,
   attachFilesToContext,
-} from "@/app/chat/lib/file-attach";
-import { useRecentFiles } from "@/app/chat/hooks/use-recent-files";
+} from "@/features/chat/lib/file-attach";
+import { useRecentFiles } from "@/features/chat/hooks/use-recent-files";
 import type { ChatContext, ChatContextFile } from "@/shared/types/electron";
 import "./composer-add-menu.css";
 

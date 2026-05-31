@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { displayTabs } from "../tab-store";
+import { displayTabs } from "@/features/workspace-display/tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import {
   type CanvasHtmlItem,
@@ -134,7 +134,7 @@ const CANVAS_SELECTION_BRIDGE_SCRIPT = String.raw`
 `;
 
 const injectCanvasSelectionBridge = (html: string): string => {
-  const script = `<script>${CANVAS_SELECTION_BRIDGE_SCRIPT}<\/script>`;
+  const script = `<script>${CANVAS_SELECTION_BRIDGE_SCRIPT}</script>`;
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, `${script}</body>`);
   }

@@ -157,13 +157,6 @@ export const isMobileBridgeSender = (
   event.sender.getURL() === MOBILE_BRIDGE_SENDER_URL;
 
 export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
-  const requireStellaRoot = () => {
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
-      throw new Error("Stella root is unavailable.");
-    }
-    return stellaRoot;
-  };
   const requireStellaHome = () => {
     const stellaHome = options.getStellaHome();
     if (!stellaHome) {

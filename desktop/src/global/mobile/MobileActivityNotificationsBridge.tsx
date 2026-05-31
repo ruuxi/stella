@@ -5,7 +5,7 @@ import {
   extractTasksFromActivities,
   mergeFooterTasks,
   type TaskItem,
-} from "@/app/chat/lib/event-transforms";
+} from "@/features/chat/lib/event-transforms";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";

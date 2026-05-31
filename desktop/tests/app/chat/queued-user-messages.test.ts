@@ -3,7 +3,7 @@ import {
   removeQueuedUserMessageById,
   shouldClearQueuedUserMessagesForRunOutcome,
   type QueuedUserMessage,
-} from '../../../src/app/chat/hooks/queued-user-messages'
+} from '../../../src/features/chat/hooks/queued-user-messages'
 
 const queued = (
   id: string,

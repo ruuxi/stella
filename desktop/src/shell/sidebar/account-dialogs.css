@@ -1,6 +1,6 @@
 /* Dialogs & icon hover animations shared between the top-bar account
    menu and the feedback dialog. The Custom* icon set itself is defined
-   in `SidebarIcons.tsx`; these rules layer hover-driven motion on top
+   in `nav-icons.tsx`; these rules layer hover-driven motion on top
    when the icons appear inside a `.shell-topbar-nav-item` row. */
 
 /* ── Custom icon hover animations (sign-in pill) ─────────────────── */

@@ -10,7 +10,7 @@ import {
 } from "@/global/settings/hooks/use-llm-credentials";
 import { api } from "@/convex/api";
 import { router } from "@/router";
-import { openEngineDisplayTab } from "@/shell/display/default-tabs";
+import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
 import { getSettingsErrorMessage } from "./shared";
 
 type ChronicleStatus = {

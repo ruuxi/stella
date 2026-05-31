@@ -17,11 +17,11 @@ import {
   ComposerStopButton,
   ComposerSubmitButton,
   ComposerTextarea,
-} from "./ComposerPrimitives";
+} from "@/features/chat/ComposerPrimitives";
 import {
   deriveComposerState,
   hasAttachedComposerChips,
-} from "./composer-context";
+} from "@/features/chat/composer-context";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "./ScreenshotPreview";
 import { useDictation } from "@/features/dictation/hooks/use-dictation";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";

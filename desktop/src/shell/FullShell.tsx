@@ -19,7 +19,7 @@ import { useOnboardingOverlay } from "@/global/onboarding/use-onboarding-overlay
 import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { useWindowType } from "@/shared/hooks/use-window-type";
-import { preloadAllSidebarSurfaces } from "@/shared/lib/sidebar-preloads";
+import { preloadAllNavSurfaces } from "@/shell/topbar/nav-surface-preloads";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import { MorphInputAbsorber } from "./MorphInputAbsorber";
@@ -313,7 +313,7 @@ export const FullShell = () => {
       window.cancelIdleCallback ??
       ((handle: number) => window.clearTimeout(handle));
     const idleHandle = scheduleIdle(() => {
-      preloadAllSidebarSurfaces();
+      preloadAllNavSurfaces();
     });
     return () => cancelIdle(idleHandle);
   }, [appReady]);

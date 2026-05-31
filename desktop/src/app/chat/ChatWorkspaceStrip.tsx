@@ -37,26 +37,24 @@ import {
   getTaskDisplayText,
   mergeFooterTasks,
   type TaskItem,
-} from "@/app/chat/lib/event-transforms";
+} from "@/features/chat/lib/event-transforms";
 import {
   deriveConversationFiles,
   type ConversationFileEntry,
-} from "@/shell/display/derive-conversation-files";
-import { basenameOf } from "@/shell/display/path-to-viewer";
-import { displayTabs, useDisplayPanelOpen } from "@/shell/display/tab-store";
-import { DisplayTabIcon } from "@/shell/display/icons";
+} from "@/features/workspace-display/derive-conversation-files";
+import { DisplayTabIcon } from "@/features/workspace-display/icons";
+import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
+import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
+import { basenameOf } from "@/features/workspace-display/path-to-viewer";
+import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import {
   ActivityHistoryDialog,
   type ActivityHistorySection,
 } from "@/shell/display/ActivityHistoryDialog";
-import {
-  displayTabKindForPayload,
-  payloadToTabSpec,
-} from "@/shell/display/payload-to-tab-spec";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
-import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
-import { useChatWorkspaceStripStore } from "./chat-workspace-strip-store";
+import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
+import { useChatWorkspaceStripStore } from "@/features/chat/chat-workspace-strip-store";
 import { TextShimmer } from "./TextShimmer";
 import { WorkspaceActionsList } from "./WorkspaceActionsList";
 import "./chat-workspace-strip.css";
@@ -275,7 +273,7 @@ export function ChatWorkspaceStrip({
     return [scheduleEntryToAffectedRef(openScheduleEntry, conversationId)];
   }, [conversationId, openScheduleEntry]);
   const handleOpenFile = (entry: ConversationFileEntry) => {
-    displayTabs.openTab(payloadToTabSpec(entry.payload));
+    openDisplayPayloadTab(entry.payload);
   };
   const hidden =
     forceHidden || !stripVisible || (panelOpen && !embeddedInDisplayPanel);

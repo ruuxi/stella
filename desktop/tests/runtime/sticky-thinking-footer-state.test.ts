@@ -6,7 +6,7 @@ import {
   mergeFooterTasks,
   type EventRecord,
   type TaskItem,
-} from "@/app/chat/lib/event-transforms";
+} from "@/features/chat/lib/event-transforms";
 import { getStickyThinkingFooterState } from "@/app/chat/sticky-thinking-footer-state";
 import { getStickyThinkingFooterDisplayText } from "@/app/chat/sticky-thinking-footer-state";
 

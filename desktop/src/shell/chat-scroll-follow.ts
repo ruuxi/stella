@@ -7,7 +7,7 @@
  * `useChatScrollManagement` instance subscribes and follows the keyed
  * row via ResizeObserver — no `.event-row--streaming` heuristics.
  */
-import { assistantScrollFollowKey } from '@/app/chat/streaming/streaming-types'
+import { assistantScrollFollowKey } from '@/features/chat/streaming/streaming-types'
 
 export { assistantScrollFollowKey }
 

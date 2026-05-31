@@ -1,4 +1,4 @@
-import { CustomStore } from "@/shell/sidebar/SidebarIcons";
+import { CustomStore } from "@/ui/nav-icons";
 import type { AppMetadata } from "../_shared/app-metadata";
 
 const metadata: AppMetadata = {

@@ -2,27 +2,34 @@ import { createElement } from "react";
 import { useMatchRoute } from "@tanstack/react-router";
 import { ChatPanelTab, type ChatPanelOpenRequest } from "@/shell/ChatSidebar";
 import { useChatRuntime } from "@/context/use-chat-runtime";
-import { StoreSidePanel } from "@/global/store/StoreSidePanel";
+import { StoreSidePanel } from "@/features/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
 import { ChatHomeOverview } from "./ChatHomeOverview";
 import { MediaTabContent } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { getCanvasHtmlItems } from "./canvas-tab/canvas-items";
-import { displayTabs, useDisplayPanelExpanded } from "./tab-store";
+import { displayTabs, useDisplayPanelExpanded } from "@/features/workspace-display/tab-store";
 import { engineOverlay } from "./engine-overlay-store";
 import {
-  CANVAS_HTML_TAB_ID,
-  GENERATED_MEDIA_TAB_ID,
-  getGeneratedMediaItems,
-} from "./payload-to-tab-spec";
-import type { OpenTabOptions } from "./types";
+  CANVAS_DISPLAY_TAB_ID,
+  CHAT_DISPLAY_TAB_ID,
+  HOME_DISPLAY_TAB_ID,
+  MEDIA_DISPLAY_TAB_ID,
+  STORE_DISPLAY_TAB_ID,
+  TRASH_DISPLAY_TAB_ID,
+  registerWorkspaceDefaultTabs,
+} from "@/features/workspace-display/default-tabs";
+import { getGeneratedMediaItems } from "./payload-to-tab-spec";
+import type { OpenTabOptions } from "@/features/workspace-display/types";
 
-export const CHAT_DISPLAY_TAB_ID = "chat";
-export const HOME_DISPLAY_TAB_ID = "home";
-export const STORE_DISPLAY_TAB_ID = "store:side-panel";
-export const TRASH_DISPLAY_TAB_ID = "trash:deferred-delete";
-export const MEDIA_DISPLAY_TAB_ID = GENERATED_MEDIA_TAB_ID;
-export const CANVAS_DISPLAY_TAB_ID = CANVAS_HTML_TAB_ID;
+export {
+  CANVAS_DISPLAY_TAB_ID,
+  CHAT_DISPLAY_TAB_ID,
+  HOME_DISPLAY_TAB_ID,
+  MEDIA_DISPLAY_TAB_ID,
+  STORE_DISPLAY_TAB_ID,
+  TRASH_DISPLAY_TAB_ID,
+} from "@/features/workspace-display/default-tabs";
 
 /**
  * Chat display tab body. Always mounted via the singleton tab store; its
@@ -163,3 +170,15 @@ export function openCanvasDisplayTab(): void {
     render: () => createElement(CanvasTabContent, { items }),
   });
 }
+
+registerWorkspaceDefaultTabs({
+  openChatDisplayTab: (openRequest, opts) =>
+    openChatDisplayTab(openRequest as ChatPanelOpenRequest | null, opts),
+  openHomeDisplayTab,
+  ensureChatDisplayTab,
+  openStoreDisplayTab,
+  openTrashDisplayTab,
+  openEngineDisplayTab,
+  openMediaDisplayTab,
+  openCanvasDisplayTab,
+});

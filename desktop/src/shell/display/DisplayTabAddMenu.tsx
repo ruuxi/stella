@@ -21,9 +21,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { displayTabs, useDisplayTabList } from "./tab-store";
-import { DisplayTabIcon } from "./icons";
-import type { DisplayTabKind } from "./types";
+import { displayTabs, useDisplayTabList } from "@/features/workspace-display/tab-store";
+import { DisplayTabIcon } from "@/features/workspace-display/icons";
+import type { DisplayTabKind } from "@/features/workspace-display/types";
 import {
   CANVAS_DISPLAY_TAB_ID,
   CHAT_DISPLAY_TAB_ID,

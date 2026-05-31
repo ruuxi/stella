@@ -1,12 +1,9 @@
 import { useState, useCallback } from "react";
 import { showToast } from "@/ui/toast";
+import type { SelfModApplied } from "@/features/chat/self-mod-types";
 import "./selfmod-undo.css";
 
-export type SelfModApplied = {
-  featureId: string;
-  files: string[];
-  batchIndex: number;
-};
+export type { SelfModApplied } from "@/features/chat/self-mod-types";
 
 export function SelfModUndoButton({
   selfModApplied,
@@ -61,4 +58,3 @@ export function SelfModUndoButton({
     </button>
   );
 }
-

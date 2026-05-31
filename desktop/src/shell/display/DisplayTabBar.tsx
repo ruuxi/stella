@@ -8,9 +8,9 @@
 import type { CSSProperties } from "react";
 import { useMatchRoute } from "@tanstack/react-router";
 import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
-import { displayTabs, useDisplayTabList } from "./tab-store";
+import { displayTabs, useDisplayTabList } from "@/features/workspace-display/tab-store";
 import { CHAT_DISPLAY_TAB_ID } from "./default-tabs";
-import { DisplayTabIcon } from "./icons";
+import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import { DisplayTabAddMenu } from "./DisplayTabAddMenu";
 
 const closeIconStyle: CSSProperties = {

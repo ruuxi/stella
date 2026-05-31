@@ -20,7 +20,7 @@ export const router = createRouter({
   history: createMemoryHistory({ initialEntries: ["/chat"] }),
   // `defaultPreload: "intent"` covers `<Link>` hover/focus on actual route
   // boundaries (chat / social / store / settings / billing / c.$handle).
-  // The hand-rolled `runOnce` cache in `@/shared/lib/sidebar-preloads`
+  // The hand-rolled `runOnce` cache in `@/shell/topbar/nav-surface-preloads`
   // covers everything *not* in the route graph — popovers, dialogs,
   // social subdialogs, billing query bundle — so the two layers are
   // complementary, not redundant. Don't drop either.

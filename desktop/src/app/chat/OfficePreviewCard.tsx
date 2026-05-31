@@ -1,6 +1,6 @@
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
-import { useOfficePreview } from "./office-preview-store";
-import { useFilePreviewActions } from "./hooks/use-file-preview-actions";
+import { useOfficePreview } from "@/features/chat/office-preview-store";
+import { useFilePreviewActions } from "@/features/chat/hooks/use-file-preview-actions";
 import { FilePreviewCardShell } from "./FilePreviewCardShell";
 import "./office-preview-card.css";
 

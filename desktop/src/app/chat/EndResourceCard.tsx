@@ -12,19 +12,17 @@ import type {
   DisplayTabPayload,
 } from "@/shared/contracts/display-payload";
 import { getDisplayPayloadTitle } from "@/shared/contracts/display-payload";
-import { displayTabs } from "@/shell/display/tab-store";
+import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import {
-  createSourceDiffTabSpec,
-  displayTabKindForPayload,
-  payloadToTabSpec,
-} from "@/shell/display/payload-to-tab-spec";
-import { pushAndOpenSourceDiffBatch } from "@/shell/display/source-diff-batches";
-import { DisplayTabIcon } from "@/shell/display/icons";
+  openDisplayPayloadTab,
+  openSourceDiffBatch,
+} from "@/features/workspace-display/open-payload";
+import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
 import {
   basenameOf,
   extensionOf,
   isDeveloperResourceExtension,
-} from "@/shell/display/path-to-viewer";
+} from "@/features/workspace-display/path-to-viewer";
 import { OpenWithMenu } from "./OpenWithMenu";
 import "./end-resource-card.css";
 
@@ -219,10 +217,9 @@ export const EndResourceCard = ({ payload }: { payload: DisplayTabPayload }) => 
   const tooltip = tooltipForPayload(payload);
 
   const handleClick = useCallback(() => {
-    // Build the spec on click only — `payloadToTabSpec` is the path
-    // that registers media/canvas items into shared stores, so we
-    // defer it to the moment the user actually opens the tab.
-    displayTabs.openTab(payloadToTabSpec(payload));
+    // Opening is deferred until click because payload-backed media/canvas
+    // registration has side effects in the shell tab adapter.
+    openDisplayPayloadTab(payload);
   }, [payload]);
 
   // Source-diff payloads must always flow through `SourceDiffEndResource`
@@ -302,14 +299,11 @@ export const SourceDiffEndResource = ({
 
   const handleClick = useCallback(() => {
     if (sourceDiffPayloads.length === 0) return;
-    pushAndOpenSourceDiffBatch(
-      {
-        id: batchId,
-        createdAt,
-        payloads: sourceDiffPayloads,
-      },
-      createSourceDiffTabSpec(),
-    );
+    openSourceDiffBatch({
+      id: batchId,
+      createdAt,
+      payloads: sourceDiffPayloads,
+    });
   }, [batchId, createdAt, sourceDiffPayloads]);
 
   if (!primary) return null;

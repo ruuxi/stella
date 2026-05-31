@@ -22,13 +22,13 @@ import { ComposerAreaSelectOverlay } from "./ComposerAreaSelectOverlay";
 import { HomeContent } from "@/app/home/HomeContent";
 import { ChatWorkspaceStrip } from "./ChatWorkspaceStrip";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
-import { getCurrentRunningTool } from "./lib/event-transforms";
-import { useAgentSessionStartedAt } from "./hooks/use-agent-session-started-at";
-import { useFooterTasks } from "./hooks/use-footer-tasks";
-import { useFileDrop } from "./hooks/use-file-drop";
+import { getCurrentRunningTool } from "@/features/chat/lib/event-transforms";
+import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
+import { useFooterTasks } from "@/features/chat/hooks/use-footer-tasks";
+import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
-import type { ChatColumnProps } from "./chat-column-types";
-import { useAssistantReplyPeek } from "./hooks/use-assistant-reply-peek";
+import type { ChatColumnProps } from "@/features/chat/chat-column-types";
+import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
 import "./full-shell.chat.css";
 
 /**
