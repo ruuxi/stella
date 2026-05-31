@@ -1098,6 +1098,18 @@ export type DesktopUpdateFastApplyResult =
       sourcePackConflictJson?: string;
     };
 
+export type DesktopUpdateRollbackResult =
+  | {
+      status: "rolled-back";
+      headCommit: string;
+      restoredFiles: string[];
+    }
+  | {
+      status: "skipped";
+      reason: string;
+      headCommit?: string;
+    };
+
 export type ElectronUpdatesApi = {
   getInstallManifest: () => Promise<InstallManifestSnapshot | null>;
   tryApplyCleanUpdate: (payload: {
@@ -1136,6 +1148,11 @@ export type ElectronUpdatesApi = {
       startingHeadCommit?: string;
     },
   ) => Promise<InstallManifestSnapshot | null>;
+  rollbackCanceledUpdate: (payload: {
+    startingHeadCommit: string;
+    releaseTag?: string;
+    changedFiles?: string[];
+  }) => Promise<DesktopUpdateRollbackResult>;
 };
 
 export type ElectronOnboardingApi = {

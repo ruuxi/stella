@@ -15,8 +15,7 @@ import "./shell-topbar-update-pill.css";
  * Compact "update available" pill that lives in the shell top bar,
  * right of the macOS traffic-light controls. Mirrors the apply/cancel
  * flow that previously lived in the Settings banner. Clean merges apply
- * directly; conflict cases fall back to the install-update agent, and the
- * inline `×` cancels the in-flight agent.
+ * directly; conflict cases fall back to a background install-update agent.
  */
 export const ShellTopBarUpdatePill = () => {
   const isMiniWindow = useWindowType() === "mini";
@@ -77,11 +76,11 @@ export const ShellTopBarUpdatePill = () => {
             showToast({
               title:
                 event.outcome === "canceled"
-                  ? "Update canceled"
+                  ? "Update cancelled"
                   : "Update didn't finish",
               description:
                 event.outcome === "canceled"
-                  ? "No changes were recorded."
+                  ? "Stella stopped applying the update."
                   : (event.reason ?? event.error ?? "Please try again."),
               variant: "error",
             });
@@ -95,14 +94,10 @@ export const ShellTopBarUpdatePill = () => {
             description: `Stella updated to ${currentRelease.tag}.`,
           });
         } else {
-          const active = getActiveDesktopUpdate();
-          if (active?.conversationId === result.conversationId) {
-            showToast({
-              title: "Update started",
-              description:
-                "Stella is applying the new release in a dedicated agent thread.",
-            });
-          }
+          showToast({
+            title: "Stella is updating",
+            description: "Stella is applying the update in the background.",
+          });
         }
       }
     } catch (error) {
@@ -139,6 +134,7 @@ export const ShellTopBarUpdatePill = () => {
 
   if (isMiniWindow) return null;
   if (!updateAvailable || !currentRelease) return null;
+  if (activeUpdate?.status === "background") return null;
 
   const isActive = updateState !== "idle";
   const label =

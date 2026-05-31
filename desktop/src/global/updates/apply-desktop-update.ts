@@ -13,7 +13,7 @@ const DEFAULT_REPO_NAME = "stella";
 const UPDATE_METADATA_TIMEOUT_MS = 20_000;
 
 export type ActiveDesktopUpdate = {
-  status: "starting" | "running";
+  status: "starting" | "running" | "background";
   conversationId: string;
   requestId?: string;
   runId?: string;
@@ -85,6 +85,12 @@ export type UpdateAgentFallback = {
   sourcePackFile?: string;
   sourcePackConflictFile?: string;
   sourcePackConflictJson?: string;
+};
+
+type DesktopUpdateRollbackSnapshot = {
+  startingHeadCommit: string;
+  releaseTag: string;
+  changedFiles: string[];
 };
 
 const withUpdateMetadataTimeout = async <T>(
@@ -292,7 +298,17 @@ export const applyDesktopUpdate = async (
       ...(options.artifactRefs ? { artifactRefs: options.artifactRefs } : {}),
     });
     if (fastApply.status === "applied") {
-      await recordOfficialDesktopUpdateSourceHistory({
+      await options.onAppliedCommit?.(fastApply.manifest);
+      if (getActiveDesktopUpdate()?.conversationId === conversationId) {
+        setActiveDesktopUpdate(null);
+      }
+      options.onFinished?.(
+        buildSyntheticCompletedEvent(
+          conversationId,
+          `desktop-update-fast:${options.publishedCommit.slice(0, 12)}`,
+        ),
+      );
+      void recordOfficialDesktopUpdateSourceHistory({
         updatesApi: electronApi.updates,
         targetCommit: options.publishedCommit,
         releaseTag: options.publishedTag,
@@ -300,16 +316,6 @@ export const applyDesktopUpdate = async (
           ? { sourceHistoryRef: options.sourceHistoryRef }
           : {}),
       });
-      await options.onAppliedCommit?.(fastApply.manifest);
-      options.onFinished?.(
-        buildSyntheticCompletedEvent(
-          conversationId,
-          `desktop-update-fast:${options.publishedCommit.slice(0, 12)}`,
-        ),
-      );
-      if (getActiveDesktopUpdate()?.conversationId === conversationId) {
-        setActiveDesktopUpdate(null);
-      }
       return {
         requestId: `desktop-update-fast:${conversationId}`,
         conversationId,
@@ -353,9 +359,17 @@ export const applyDesktopUpdate = async (
     fastApplyFallback?.sourcePackConflictFile && fastApplyFallback.headCommit
       ? fastApplyFallback.headCommit
       : null;
+  const rollbackSnapshot: DesktopUpdateRollbackSnapshot | null =
+    fastApplyFallback?.headCommit
+      ? {
+          startingHeadCommit: fastApplyFallback.headCommit,
+          releaseTag: options.publishedTag,
+          changedFiles: fastApplyFallback.changedFiles ?? [],
+        }
+      : null;
 
   setActiveDesktopUpdate({
-    status: "starting",
+    status: "background",
     conversationId,
     targetCommit: options.publishedCommit,
     targetTag: options.publishedTag,
@@ -375,7 +389,7 @@ export const applyDesktopUpdate = async (
       if (activeDesktopUpdate?.conversationId === conversationId) {
         setActiveDesktopUpdate({
           ...activeDesktopUpdate,
-          status: "running",
+          status: "background",
           runId: event.runId,
         });
       }
@@ -432,6 +446,16 @@ export const applyDesktopUpdate = async (
           error: reason,
         };
       } finally {
+        if (effectiveEvent.outcome === "canceled" && rollbackSnapshot) {
+          await electronApi.updates
+            .rollbackCanceledUpdate(rollbackSnapshot)
+            .catch((error) => {
+              console.warn(
+                "[install-update] Canceled update rollback failed:",
+                error,
+              );
+            });
+        }
         options.onFinished?.(effectiveEvent);
         if (activeDesktopUpdate?.conversationId === conversationId) {
           setActiveDesktopUpdate(null);

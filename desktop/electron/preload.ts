@@ -119,6 +119,7 @@ import {
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
   IPC_UPDATES_RECORD_SOURCE_HISTORY,
   IPC_UPDATES_REFRESH_NATIVE_HELPERS,
+  IPC_UPDATES_ROLLBACK_CANCELED,
   IPC_UPDATES_TRY_APPLY_CLEAN,
   IPC_VOICE_CREATE_OPENAI_SESSION,
   IPC_VOICE_CREATE_XAI_SESSION,
@@ -1564,6 +1565,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
         desktopReleaseCommit: string | null;
         desktopInstallBaseCommit: string | null;
       } | null>,
+    rollbackCanceledUpdate: (payload: {
+      startingHeadCommit: string;
+      releaseTag?: string;
+      changedFiles?: string[];
+    }) =>
+      ipcRenderer.invoke(IPC_UPDATES_ROLLBACK_CANCELED, payload) as Promise<
+        | {
+            status: "rolled-back";
+            headCommit: string;
+            restoredFiles: string[];
+          }
+        | {
+            status: "skipped";
+            reason: string;
+            headCommit?: string;
+          }
+      >,
   },
 
   onboarding: {
