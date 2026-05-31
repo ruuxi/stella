@@ -81,6 +81,12 @@
       "description": "Lets Stella see the page you're on and take actions in your browser.",
       "action": "Get extension"
     },
+    "migration": {
+      "title": "Import from Hermes or OpenClaw",
+      "action": "Import",
+      "description": "Bring over memory, skills, sessions, and model choices from another local assistant install.",
+      "dialogClose": "Close import"
+    },
     "permissions": {
       "title": "Permissions",
       "enable": "Enable",
@@ -107,6 +113,296 @@
         "closing": "Closing…"
       }
     },
+    "shortcuts": {
+      "title": "Shortcuts",
+      "change": "Change",
+      "capturing": "Press keys…",
+      "clear": "Clear",
+      "off": "Off",
+      "actions": {
+        "dictation": "Dictation",
+        "voice": "Voice agent"
+      },
+      "dictation": {
+        "description": "Hold Option to dictate into Stella or the app you're using."
+      },
+      "voiceAgent": {
+        "description": "Starts or stops Stella's live voice agent."
+      },
+      "radial": {
+        "label": "Radial dial",
+        "description": "Opens the wedge menu for capture, chat, voice, and quick actions.",
+        "ariaLabel": "Radial dial shortcut"
+      },
+      "mini": {
+        "label": "Mini window",
+        "description": "Double-tap a modifier key to open or dismiss the mini chat.",
+        "ariaLabel": "Mini window shortcut"
+      },
+      "targets": {
+        "dictation": "dictation",
+        "voice": "the voice agent"
+      },
+      "toasts": {
+        "updatedTitle": "{action} shortcut updated",
+        "clearedTitle": "{action} shortcut cleared",
+        "updatedDescription": "Press {keys} to start {target}.",
+        "clearedDescription": "{action} is disabled until you set a new shortcut.",
+        "unavailableTitle": "Shortcut unavailable",
+        "failedTitle": "Shortcut update failed",
+        "radialUpdatedTitle": "Radial dial shortcut updated",
+        "radialUpdatedDescription": "Hold {key} to open the radial dial.",
+        "miniUpdatedTitle": "Mini window shortcut updated",
+        "miniDisabledDescription": "Double-tap is disabled.",
+        "miniUpdatedDescription": "Double-tap {modifier} to open the mini window."
+      },
+      "errors": {
+        "load": "Failed to load shortcuts.",
+        "unavailable": "Shortcuts are unavailable in this window.",
+        "unavailableShortcut": "That shortcut is unavailable.",
+        "update": "Failed to update shortcut.",
+        "radialUpdate": "Failed to update radial dial shortcut.",
+        "miniUpdate": "Failed to update mini window shortcut."
+      }
+    },
+    "memory": {
+      "title": "Memory",
+      "enable": "Enable",
+      "disable": "Disable",
+      "working": "Working…",
+      "screen": {
+        "label": "Screen memory",
+        "description": "Stella can glance at your screen now and then to remember what you were doing.",
+        "signInDescription": "Sign in to Stella, or pick a small model for Chronicle in the Engine panel.",
+        "upgradeDescription": "Screen memory is included with any Stella plan. Upgrade, or pick a small model for Chronicle in the Engine panel."
+      },
+      "status": {
+        "label": "Status",
+        "running": "Running",
+        "stopped": "Stopped",
+        "disabled": "Disabled",
+        "fps": "{fps} fps",
+        "lastCapture": "last capture {time}"
+      },
+      "folder": {
+        "label": "Memory folder",
+        "description": "Open the folder on your computer where Stella keeps its memories.",
+        "open": "Open folder",
+        "opening": "Opening…"
+      },
+      "update": {
+        "label": "Update memory now",
+        "description": "Have Stella review recent activity and save what it learned. This usually happens on its own.",
+        "run": "Run now",
+        "running": "Dreaming…"
+      },
+      "erase": {
+        "label": "Erase memory",
+        "description": "Delete everything Stella has remembered, including saved screen activity. This can't be undone.",
+        "action": "Wipe",
+        "working": "Wiping…",
+        "confirm": "Erase everything Stella has remembered? This cannot be undone."
+      },
+      "access": {
+        "signInTitle": "Sign in required",
+        "subscriptionTitle": "Subscription required",
+        "signInMessage": "Sign in to Stella, or pick a small model for Chronicle in the Engine panel.",
+        "upgradeMessage": "Screen memory is included with any Stella plan. Upgrade — or pick a small model for Chronicle in the Engine panel.",
+        "pickModel": "Pick a model",
+        "upgrade": "Upgrade"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle enabled",
+        "disabledTitle": "Chronicle disabled",
+        "alreadyRunning": "Chronicle was already running.",
+        "enableFailedTitle": "Could not enable Chronicle",
+        "disableFailedTitle": "Could not disable Chronicle",
+        "dreamScheduledTitle": "Dream pass scheduled",
+        "dreamNotScheduledTitle": "Dream pass not scheduled",
+        "wipeFailedTitle": "Wipe failed",
+        "wipedTitle": "Memories wiped"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Stella's workspace root is unavailable.",
+        "needsPermission": "Screen Recording permission is still required before Chronicle can start.",
+        "binaryMissing": "The Chronicle helper binary is missing.",
+        "startupTimeout": "Chronicle did not come online after launch.",
+        "unsupportedPlatform": "Chronicle is only available on macOS.",
+        "unknown": "Unknown error."
+      },
+      "dreamResults": {
+        "scheduled": "Dream will consolidate the current backlog.",
+        "inFlight": "A Dream pass is already running.",
+        "noInputs": "There is nothing new to consolidate right now.",
+        "noApiKey": "Dream needs a configured model/API key or signed-in Stella route.",
+        "disabled": "Dream scheduling is currently disabled.",
+        "belowThreshold": "The idle threshold has not been reached yet.",
+        "lockBusy": "Dream is busy right now. Try again in a moment.",
+        "noRunner": "The local runtime is not ready yet.",
+        "unavailable": "Dream is currently unavailable.",
+        "pendingPrefix": "Pending: {items}.",
+        "pendingThreadSummary": "{count} task summary",
+        "pendingThreadSummaries": "{count} task summaries",
+        "pendingExtension": "{count} Chronicle file",
+        "pendingExtensions": "{count} Chronicle files",
+        "pendingJoin": " and "
+      },
+      "errors": {
+        "loadStatus": "Failed to load Chronicle status.",
+        "update": "Failed to update Chronicle.",
+        "dream": "Failed to trigger Dream pass.",
+        "wipe": "Failed to wipe memories."
+      }
+    },
+    "backup": {
+      "title": "Backups",
+      "upgradeNotice": "Backups are included with any paid Stella plan.",
+      "never": "Never",
+      "automatic": {
+        "label": "Automatic backups",
+        "lastLocal": "Last local backup: {time}",
+        "lastRemote": "Last remote backup: {time}",
+        "remoteIssue": "Remote backup issue: {error}",
+        "off": "Off",
+        "hourly": "Automatic hourly backups",
+        "ariaLabel": "Backups"
+      },
+      "backupNow": {
+        "label": "Back up now",
+        "description": "Save a backup right now. It uploads automatically when you're signed in.",
+        "action": "Back Up Now",
+        "working": "Backing Up…"
+      },
+      "saved": {
+        "label": "Saved backups",
+        "signedInDescription": "Pick a backup to restore on this device.",
+        "signedOutDescription": "Sign in to save backups online and restore them on any device.",
+        "empty": "No remote backups yet.",
+        "latest": "Latest",
+        "files": "{count} files",
+        "from": "From: {source}",
+        "restore": "Restore",
+        "restoring": "Restoring…"
+      },
+      "toasts": {
+        "completedTitle": "Backup completed",
+        "queuedTitle": "Backup queued",
+        "deferredTitle": "Backup deferred",
+        "noneNeededTitle": "No backup needed",
+        "failedTitle": "Backup failed",
+        "restorePreparedTitle": "Restore prepared",
+        "restorePreparedDescription": "Stella will restart to finish applying this backup.",
+        "restoreFailedTitle": "Restore failed"
+      },
+      "errors": {
+        "load": "Failed to load backup settings.",
+        "unavailable": "Backup settings are unavailable in this window.",
+        "signInRequired": "Sign in and choose a Stella plan to turn on backups.",
+        "checkingPlan": "Checking your Stella plan before turning on backups.",
+        "subscriptionRequired": "Backups require an active Stella subscription.",
+        "updateMode": "Failed to update backup mode.",
+        "backupUnavailable": "Backup is unavailable in this window.",
+        "startBackup": "Failed to start backup.",
+        "restoreUnavailable": "Restore is unavailable in this window.",
+        "restore": "Failed to restore backup."
+      }
+    },
+    "account": {
+      "title": "Account",
+      "signOut": {
+        "label": "Sign out",
+        "description": "Sign out of Stella on this device.",
+        "action": "Sign Out"
+      },
+      "deleteData": {
+        "label": "Delete data",
+        "description": "Erase every conversation, memory, and saved Stella setting.",
+        "action": "Delete",
+        "working": "Deleting…"
+      },
+      "deleteAccount": {
+        "label": "Delete account",
+        "description": "Permanently delete your account and everything in it.",
+        "action": "Delete",
+        "working": "Deleting…"
+      },
+      "legal": {
+        "title": "Legal",
+        "terms": "Terms of Service",
+        "privacy": "Privacy Policy",
+        "view": "View"
+      },
+      "dialog": {
+        "deleteDataTitle": "Delete your Stella data?",
+        "deleteAccountTitle": "Delete your Stella account?",
+        "deleteDataDescription": "This erases your conversations, memory, settings, and local Stella state. This cannot be undone.",
+        "deleteAccountDescription": "This permanently deletes your account and Stella data. This cannot be undone.",
+        "deleteDataButton": "Delete data",
+        "deleteAccountButton": "Delete account",
+        "working": "Deleting…"
+      },
+      "toasts": {
+        "dataDeleted": "Your Stella data was deleted.",
+        "accountDeleted": "Your Stella account was deleted.",
+        "deleteDataFailed": "Could not delete your data. Please try again.",
+        "deleteAccountFailed": "Could not delete your account. Please try again.",
+        "signInBeforeDelete": "Sign in before deleting your account."
+      }
+    },
+    "audio": {
+      "systemDefault": "System default",
+      "microphoneDeviceFallback": "Microphone {index}",
+      "speakerDeviceFallback": "Speaker {index}",
+      "microphone": {
+        "title": "Microphone",
+        "enableLabel": "Enable microphone",
+        "enableDescription": "Required for talking to Stella.",
+        "deviceLabel": "Microphone",
+        "deviceDescription": "Which mic should Stella listen to?"
+      },
+      "recovery": {
+        "manageLabel": "Manage microphone access",
+        "recoverLabel": "Recover microphone access",
+        "manageDescription": "If the microphone permission ever gets stuck, you can reset it and ask macOS to prompt again.",
+        "recoverDescription": "Once you've said no, macOS won't ask again on its own. Reset the permission, then quit and reopen Stella.",
+        "openSettings": "Open Settings",
+        "reset": "Reset & Restart",
+        "closing": "Closing…"
+      },
+      "wakeWord": {
+        "label": "Hey Stella wake word",
+        "description": "Listen for \"Hey Stella\" in the background and start a voice conversation. When off, mic stays idle until you press dictate."
+      },
+      "superFast": {
+        "label": "Super Fast dictation",
+        "description": "Keep the microphone warm so dictation starts with less delay."
+      },
+      "dictationSounds": {
+        "label": "Dictation sounds",
+        "description": "Play a sound when dictation starts and stops."
+      },
+      "enhance": {
+        "label": "Enhance transcription",
+        "description": "Clean up local dictation text with Mercury before inserting it."
+      },
+      "localDictation": {
+        "label": "On-device transcription",
+        "description": "Use the local Parakeet model instead of Inworld. This can use more memory on lower-end Macs.",
+        "unavailableFallback": "Unavailable on this Mac."
+      },
+      "speaker": {
+        "title": "Speaker",
+        "outputLabel": "Output device",
+        "outputDescription": "Pick the speaker or headphones to use.",
+        "empty": "No speakers found.",
+        "emptyMicOff": "Turn on the microphone to see your speakers."
+      },
+      "errors": {
+        "listDevices": "Unable to list audio devices.",
+        "micDeniedReset": "Microphone access was denied earlier. Reset it and restart Stella, or open System Settings.",
+        "micDenied": "Microphone access was denied. Please allow it in your system settings."
+      }
+    },
     "connectedProviders": {
       "title": "Connected providers",
       "empty": "No providers connected yet. Pick a non-Stella option in the model picker above to add an API key or sign in.",
@@ -116,6 +412,29 @@
       "removingKey": "Removing…",
       "signOut": "Sign out",
       "signingOut": "Signing out…"
+    },
+    "search": {
+      "placeholder": "Search settings",
+      "clear": "Clear search",
+      "noResultsTitle": "No settings match \u201C{query}\u201D",
+      "noResultsBody": "Try a shorter or different word.",
+      "resultsOne": "{count} result for",
+      "resultsOther": "{count} results for",
+      "resultsAriaOne": "{count} result",
+      "resultsAriaOther": "{count} results",
+      "descriptions": {
+        "voice": "Pick Stella's speaking style and personality voice.",
+        "permissions": "Grant accessibility, screen capture, and microphone access on macOS.",
+        "shortcuts": "Change how Stella opens, listens, and starts the radial dial or voice.",
+        "memory": "Manage screen memory, update or erase what Stella has remembered.",
+        "backup": "Automatic encrypted backups, restore points, and on-demand snapshots.",
+        "account": "Sign out, delete your data, or permanently delete your account.",
+        "legal": "Terms of Service and Privacy Policy.",
+        "microphone": "Pick your input device, enable wake word, dictation sounds, and on-device transcription.",
+        "speaker": "Pick the speaker or headphones Stella's voice plays through.",
+        "wakeWord": "Listen for \u201CHey Stella\u201D and start a voice conversation.",
+        "onDeviceTranscription": "Use the local Parakeet model instead of cloud transcription."
+      }
     },
     "errors": {
       "loadPower": "Failed to load power setting.",

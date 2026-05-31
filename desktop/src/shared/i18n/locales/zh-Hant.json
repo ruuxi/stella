@@ -38,6 +38,424 @@
     "language": {
       "title": "語言",
       "description": "選擇 Stella 在應用程式中與回覆時使用的語言。"
+    },
+    "developerPreviews": {
+      "title": "開發者檔案預覽",
+      "description": "在聊天中顯示程式碼變更，並在側邊面板中開啟它們。"
+    },
+    "nativeFontSmoothing": {
+      "title": "原生字體平滑",
+      "description": "像 macOS App 那樣算繪文字，使用灰階反鋸齒。"
+    },
+    "motion": {
+      "title": "動態效果",
+      "reduceMotion": {
+        "label": "減少動態效果",
+        "description": "盡量減少介面動畫。",
+        "system": "系統",
+        "on": "開啟",
+        "off": "關閉"
+      }
+    },
+    "voice": {
+      "title": "語音",
+      "personality": {
+        "label": "個性"
+      }
+    },
+    "notifications": {
+      "title": "聲音通知",
+      "description": "當 Stella 完成一次代理執行時播放聲音。"
+    },
+    "power": {
+      "title": "讓電腦保持喚醒",
+      "description": "在 Stella 開啟時阻止電腦進入睡眠。"
+    },
+    "lockedComputerUse": {
+      "title": "鎖定時使用電腦",
+      "description": "允許 Stella 在此 Mac 鎖定後繼續電腦操作工作。需要管理者授權，並在 Stella 工作時遮蓋螢幕。",
+      "unsupported": "鎖定時使用電腦僅在 macOS 上可用。"
+    },
+    "browserExtension": {
+      "title": "Stella for Chrome",
+      "description": "讓 Stella 查看你所在的頁面並在瀏覽器中執行操作。",
+      "action": "取得擴充功能"
+    },
+    "migration": {
+      "title": "從 Hermes 或 OpenClaw 匯入",
+      "action": "匯入",
+      "description": "從另一個本機助理安裝中帶入記憶、技能、工作階段和模型選擇。",
+      "dialogClose": "關閉匯入"
+    },
+    "permissions": {
+      "title": "權限",
+      "enable": "啟用",
+      "granted": "已授權",
+      "opening": "正在開啟…",
+      "reset": "重設",
+      "resetting": "正在重設…",
+      "accessibility": {
+        "label": "輔助使用",
+        "description": "讓 Stella 讀取選取的文字，並可在電腦任何位置透過 ⌘+右鍵捷徑開啟。"
+      },
+      "screen": {
+        "label": "螢幕錄製",
+        "description": "讓 Stella 查看你的螢幕，以便協助你正在查看的內容。開啟後你可能需要結束並重新開啟 Stella。"
+      },
+      "microphone": {
+        "label": "麥克風",
+        "description": "用於語音與聽寫。如果之前拒絕了 Stella 且 macOS 不再詢問，請重設。"
+      },
+      "restart": {
+        "label": "重新啟動 Stella",
+        "description": "螢幕錄製剛剛開啟。請結束並重新開啟 Stella 以完成設定。",
+        "action": "重新啟動",
+        "closing": "正在關閉…"
+      }
+    },
+    "shortcuts": {
+      "title": "捷徑",
+      "change": "變更",
+      "capturing": "請按下按鍵…",
+      "clear": "清除",
+      "off": "關閉",
+      "actions": {
+        "dictation": "聽寫",
+        "voice": "語音代理"
+      },
+      "dictation": {
+        "description": "按住 Option 即可向 Stella 或你正在使用的 App 聽寫。"
+      },
+      "voiceAgent": {
+        "description": "啟動或停止 Stella 的即時語音代理。"
+      },
+      "radial": {
+        "label": "環形轉盤",
+        "description": "開啟用於擷取、聊天、語音和快速操作的扇形選單。",
+        "ariaLabel": "環形轉盤捷徑"
+      },
+      "mini": {
+        "label": "迷你視窗",
+        "description": "點兩下一個修飾鍵以開啟或關閉迷你聊天。",
+        "ariaLabel": "迷你視窗捷徑"
+      },
+      "targets": {
+        "dictation": "聽寫",
+        "voice": "語音代理"
+      },
+      "toasts": {
+        "updatedTitle": "已更新「{action}」捷徑",
+        "clearedTitle": "已清除「{action}」捷徑",
+        "updatedDescription": "按 {keys} 即可開始{target}。",
+        "clearedDescription": "在你設定新的捷徑之前，{action}已停用。",
+        "unavailableTitle": "捷徑無法使用",
+        "failedTitle": "更新捷徑失敗",
+        "radialUpdatedTitle": "已更新環形轉盤捷徑",
+        "radialUpdatedDescription": "按住 {key} 即可開啟環形轉盤。",
+        "miniUpdatedTitle": "已更新迷你視窗捷徑",
+        "miniDisabledDescription": "點兩下已停用。",
+        "miniUpdatedDescription": "點兩下 {modifier} 即可開啟迷你視窗。"
+      },
+      "errors": {
+        "load": "載入捷徑失敗。",
+        "unavailable": "此視窗中無法使用捷徑。",
+        "unavailableShortcut": "該捷徑無法使用。",
+        "update": "更新捷徑失敗。",
+        "radialUpdate": "更新環形轉盤捷徑失敗。",
+        "miniUpdate": "更新迷你視窗捷徑失敗。"
+      }
+    },
+    "memory": {
+      "title": "記憶",
+      "enable": "啟用",
+      "disable": "停用",
+      "working": "處理中…",
+      "screen": {
+        "label": "螢幕記憶",
+        "description": "Stella 可以三不五時看一眼你的螢幕，記住你在做什麼。",
+        "signInDescription": "登入 Stella，或在 Engine 面板中為 Chronicle 選擇一個小型模型。",
+        "upgradeDescription": "螢幕記憶包含在任何 Stella 方案中。請升級，或在 Engine 面板中為 Chronicle 選擇一個小型模型。"
+      },
+      "status": {
+        "label": "狀態",
+        "running": "執行中",
+        "stopped": "已停止",
+        "disabled": "已停用",
+        "fps": "{fps} fps",
+        "lastCapture": "上次擷取 {time}"
+      },
+      "folder": {
+        "label": "記憶資料夾",
+        "description": "開啟電腦上 Stella 儲存記憶的資料夾。",
+        "open": "開啟資料夾",
+        "opening": "正在開啟…"
+      },
+      "update": {
+        "label": "立即更新記憶",
+        "description": "讓 Stella 回顧最近的活動並儲存所學到的內容。這通常會自動進行。",
+        "run": "立即執行",
+        "running": "做夢中…"
+      },
+      "erase": {
+        "label": "清除記憶",
+        "description": "刪除 Stella 記住的所有內容，包括已儲存的螢幕活動。此操作無法復原。",
+        "action": "清除",
+        "working": "正在清除…",
+        "confirm": "清除 Stella 記住的所有內容？此操作無法復原。"
+      },
+      "access": {
+        "signInTitle": "需要登入",
+        "subscriptionTitle": "需要訂閱",
+        "signInMessage": "登入 Stella，或在 Engine 面板中為 Chronicle 選擇一個小型模型。",
+        "upgradeMessage": "螢幕記憶包含在任何 Stella 方案中。請升級 — 或在 Engine 面板中為 Chronicle 選擇一個小型模型。",
+        "pickModel": "選擇模型",
+        "upgrade": "升級"
+      },
+      "toasts": {
+        "enabledTitle": "已啟用 Chronicle",
+        "disabledTitle": "已停用 Chronicle",
+        "alreadyRunning": "Chronicle 已在執行。",
+        "enableFailedTitle": "無法啟用 Chronicle",
+        "disableFailedTitle": "無法停用 Chronicle",
+        "dreamScheduledTitle": "已排定 Dream 執行",
+        "dreamNotScheduledTitle": "未排定 Dream 執行",
+        "wipeFailedTitle": "清除失敗",
+        "wipedTitle": "已清除記憶"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Stella 的工作區根目錄無法使用。",
+        "needsPermission": "在 Chronicle 啟動前仍需要螢幕錄製權限。",
+        "binaryMissing": "缺少 Chronicle 輔助程式檔案。",
+        "startupTimeout": "Chronicle 啟動後未上線。",
+        "unsupportedPlatform": "Chronicle 僅在 macOS 上可用。",
+        "unknown": "未知錯誤。"
+      },
+      "dreamResults": {
+        "scheduled": "Dream 將整合目前的待處理內容。",
+        "inFlight": "已有一次 Dream 執行正在進行。",
+        "noInputs": "目前沒有可整合的新內容。",
+        "noApiKey": "Dream 需要已設定的模型/API 金鑰，或已登入的 Stella 路線。",
+        "disabled": "Dream 排程目前已停用。",
+        "belowThreshold": "尚未達到閒置門檻。",
+        "lockBusy": "Dream 現在忙碌中。請稍後再試。",
+        "noRunner": "本機執行階段尚未就緒。",
+        "unavailable": "Dream 目前無法使用。",
+        "pendingPrefix": "待處理：{items}。",
+        "pendingThreadSummary": "{count} 則工作摘要",
+        "pendingThreadSummaries": "{count} 則工作摘要",
+        "pendingExtension": "{count} 個 Chronicle 檔案",
+        "pendingExtensions": "{count} 個 Chronicle 檔案",
+        "pendingJoin": "和"
+      },
+      "errors": {
+        "loadStatus": "載入 Chronicle 狀態失敗。",
+        "update": "更新 Chronicle 失敗。",
+        "dream": "觸發 Dream 執行失敗。",
+        "wipe": "清除記憶失敗。"
+      }
+    },
+    "backup": {
+      "title": "備份",
+      "upgradeNotice": "備份包含在任何付費 Stella 方案中。",
+      "never": "從不",
+      "automatic": {
+        "label": "自動備份",
+        "lastLocal": "上次本機備份：{time}",
+        "lastRemote": "上次遠端備份：{time}",
+        "remoteIssue": "遠端備份問題：{error}",
+        "off": "關閉",
+        "hourly": "每小時自動備份",
+        "ariaLabel": "備份"
+      },
+      "backupNow": {
+        "label": "立即備份",
+        "description": "立即儲存一份備份。登入後會自動上傳。",
+        "action": "立即備份",
+        "working": "正在備份…"
+      },
+      "saved": {
+        "label": "已儲存的備份",
+        "signedInDescription": "選擇一份備份以在此裝置上還原。",
+        "signedOutDescription": "登入以線上儲存備份，並在任何裝置上還原。",
+        "empty": "尚無遠端備份。",
+        "latest": "最新",
+        "files": "{count} 個檔案",
+        "from": "來自：{source}",
+        "restore": "還原",
+        "restoring": "正在還原…"
+      },
+      "toasts": {
+        "completedTitle": "備份完成",
+        "queuedTitle": "備份已排入佇列",
+        "deferredTitle": "備份已延後",
+        "noneNeededTitle": "無需備份",
+        "failedTitle": "備份失敗",
+        "restorePreparedTitle": "還原已準備就緒",
+        "restorePreparedDescription": "Stella 將重新啟動以完成此備份的套用。",
+        "restoreFailedTitle": "還原失敗"
+      },
+      "errors": {
+        "load": "載入備份設定失敗。",
+        "unavailable": "此視窗中無法使用備份設定。",
+        "signInRequired": "登入並選擇一個 Stella 方案以開啟備份。",
+        "checkingPlan": "正在開啟備份前檢查你的 Stella 方案。",
+        "subscriptionRequired": "備份需要有效的 Stella 訂閱。",
+        "updateMode": "更新備份模式失敗。",
+        "backupUnavailable": "此視窗中無法使用備份。",
+        "startBackup": "啟動備份失敗。",
+        "restoreUnavailable": "此視窗中無法使用還原。",
+        "restore": "還原備份失敗。"
+      }
+    },
+    "account": {
+      "title": "帳號",
+      "signOut": {
+        "label": "登出",
+        "description": "在此裝置上登出 Stella。",
+        "action": "登出"
+      },
+      "deleteData": {
+        "label": "刪除資料",
+        "description": "清除所有對話、記憶和已儲存的 Stella 設定。",
+        "action": "刪除",
+        "working": "正在刪除…"
+      },
+      "deleteAccount": {
+        "label": "刪除帳號",
+        "description": "永久刪除你的帳號及其中的所有內容。",
+        "action": "刪除",
+        "working": "正在刪除…"
+      },
+      "legal": {
+        "title": "法律",
+        "terms": "服務條款",
+        "privacy": "隱私權政策",
+        "view": "查看"
+      },
+      "dialog": {
+        "deleteDataTitle": "刪除你的 Stella 資料？",
+        "deleteAccountTitle": "刪除你的 Stella 帳號？",
+        "deleteDataDescription": "這將清除你的對話、記憶、設定和本機 Stella 狀態。此操作無法復原。",
+        "deleteAccountDescription": "這將永久刪除你的帳號和 Stella 資料。此操作無法復原。",
+        "deleteDataButton": "刪除資料",
+        "deleteAccountButton": "刪除帳號",
+        "working": "正在刪除…"
+      },
+      "toasts": {
+        "dataDeleted": "你的 Stella 資料已刪除。",
+        "accountDeleted": "你的 Stella 帳號已刪除。",
+        "deleteDataFailed": "無法刪除你的資料。請重試。",
+        "deleteAccountFailed": "無法刪除你的帳號。請重試。",
+        "signInBeforeDelete": "請先登入，再刪除帳號。"
+      }
+    },
+    "audio": {
+      "systemDefault": "系統預設",
+      "microphoneDeviceFallback": "麥克風 {index}",
+      "speakerDeviceFallback": "喇叭 {index}",
+      "microphone": {
+        "title": "麥克風",
+        "enableLabel": "啟用麥克風",
+        "enableDescription": "與 Stella 對話所必需。",
+        "deviceLabel": "麥克風",
+        "deviceDescription": "Stella 應該使用哪個麥克風？"
+      },
+      "recovery": {
+        "manageLabel": "管理麥克風存取權",
+        "recoverLabel": "復原麥克風存取權",
+        "manageDescription": "如果麥克風權限卡住，你可以重設它並讓 macOS 再次詢問。",
+        "recoverDescription": "一旦你拒絕，macOS 就不會自動再次詢問。請重設權限，然後結束並重新開啟 Stella。",
+        "openSettings": "開啟設定",
+        "reset": "重設並重新啟動",
+        "closing": "正在關閉…"
+      },
+      "wakeWord": {
+        "label": "喚醒詞「Hey Stella」",
+        "description": "在背景監聽「Hey Stella」並開始語音對話。關閉時，麥克風將保持閒置，直到你按下聽寫。"
+      },
+      "superFast": {
+        "label": "超快聽寫",
+        "description": "讓麥克風保持就緒，使聽寫以更少的延遲開始。"
+      },
+      "dictationSounds": {
+        "label": "聽寫聲音",
+        "description": "在聽寫開始和停止時播放聲音。"
+      },
+      "enhance": {
+        "label": "增強轉錄",
+        "description": "在插入之前用 Mercury 整理本機聽寫文字。"
+      },
+      "localDictation": {
+        "label": "裝置端轉錄",
+        "description": "使用本機 Parakeet 模型而非 Inworld。在低階 Mac 上這可能佔用更多記憶體。",
+        "unavailableFallback": "此 Mac 上無法使用。"
+      },
+      "speaker": {
+        "title": "喇叭",
+        "outputLabel": "輸出裝置",
+        "outputDescription": "選擇要使用的喇叭或耳機。",
+        "empty": "找不到喇叭。",
+        "emptyMicOff": "開啟麥克風以查看你的喇叭。"
+      },
+      "errors": {
+        "listDevices": "無法列出音訊裝置。",
+        "micDeniedReset": "之前麥克風存取被拒絕。請重設並重新啟動 Stella，或開啟系統設定。",
+        "micDenied": "麥克風存取被拒絕。請在系統設定中允許。"
+      }
+    },
+    "connectedProviders": {
+      "title": "已連接的供應商",
+      "empty": "尚未連接任何供應商。在上方的模型選擇器中選擇 Stella 以外的選項，以新增 API 金鑰或登入。",
+      "apiKey": "API 金鑰",
+      "signedIn": "已登入",
+      "removeKey": "移除金鑰",
+      "removingKey": "正在移除…",
+      "signOut": "登出",
+      "signingOut": "正在登出…"
+    },
+    "search": {
+      "placeholder": "搜尋設定",
+      "clear": "清除搜尋",
+      "noResultsTitle": "沒有與「{query}」相符的設定",
+      "noResultsBody": "請嘗試更短或不同的字詞。",
+      "resultsOne": "{count} 筆結果：",
+      "resultsOther": "{count} 筆結果：",
+      "resultsAriaOne": "{count} 筆結果",
+      "resultsAriaOther": "{count} 筆結果",
+      "descriptions": {
+        "voice": "選擇 Stella 的說話風格和個性語音。",
+        "permissions": "在 macOS 上授予輔助使用、螢幕錄製和麥克風存取權。",
+        "shortcuts": "變更 Stella 開啟、監聽以及啟動環形轉盤或語音的方式。",
+        "memory": "管理螢幕記憶，更新或清除 Stella 記住的內容。",
+        "backup": "自動加密備份、還原點和隨需快照。",
+        "account": "登出、刪除你的資料或永久刪除你的帳號。",
+        "legal": "服務條款和隱私權政策。",
+        "microphone": "選擇輸入裝置，啟用喚醒詞、聽寫聲音和裝置端轉錄。",
+        "speaker": "選擇播放 Stella 語音的喇叭或耳機。",
+        "wakeWord": "監聽「Hey Stella」並開始語音對話。",
+        "onDeviceTranscription": "使用本機 Parakeet 模型而非雲端轉錄。"
+      }
+    },
+    "errors": {
+      "loadPower": "載入電源設定失敗。",
+      "savePower": "更新電源設定失敗。",
+      "powerUnavailable": "此視窗中無法使用電源設定。",
+      "loadLockedComputerUse": "載入鎖定時使用電腦的設定失敗。",
+      "saveLockedComputerUse": "更新鎖定時使用電腦失敗。",
+      "lockedComputerUseUnavailable": "此視窗中無法使用鎖定時使用電腦。",
+      "loadSoundNotifications": "載入聲音通知設定失敗。",
+      "saveSoundNotifications": "更新聲音通知設定失敗。",
+      "soundNotificationsUnavailable": "此視窗中無法使用聲音通知設定。",
+      "loadVoice": "載入語音設定失敗。",
+      "saveVoice": "更新語音設定失敗。",
+      "voiceUnavailable": "此視窗中無法使用語音設定。",
+      "loadPermissions": "載入桌面權限狀態失敗。",
+      "savePermission": "更新「{kind}」權限失敗。",
+      "resetPermission": "重設「{kind}」權限失敗。",
+      "resetPermissionMaybeReopen": "無法重設「{kind}」權限。可能需要重新開啟 Stella。",
+      "microphoneDeniedReopen": "之前麥克風存取被拒絕。請在系統設定中開啟，然後重新開啟 Stella。",
+      "microphoneStillOff": "麥克風存取仍處於關閉狀態。請在系統設定中開啟，然後重新開啟 Stella。",
+      "restart": "重新啟動 Stella 失敗。"
     }
   },
   "onboarding": {

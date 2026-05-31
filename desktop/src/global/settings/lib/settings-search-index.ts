@@ -1,9 +1,17 @@
 import type { SettingsTab } from "@/global/settings/settings-tabs";
 
 /**
- * A single searchable entry in the Settings page. One entry per
- * `.settings-card` (or logical section) so users find a card by its
- * heading, description, or any row label / sublabel inside it.
+ * Translate function shape (matches `useT()` / `i18n.t`). The search
+ * catalog is i18n-driven: entries reference catalog keys and are
+ * resolved against the active locale at query time so results — and the
+ * scroll-to-card matching — work in every supported language.
+ */
+export type SettingsSearchTranslate = (key: string) => string;
+
+/**
+ * Definition of a searchable Settings entry. One entry per
+ * `.settings-card` (or logical row) so users find a card by its heading,
+ * description, or any row label / sublabel inside it.
  *
  * This catalog drives the global "Search settings" results view: every
  * tab can be searched at once because the catalog covers them all, even
@@ -12,37 +20,48 @@ import type { SettingsTab } from "@/global/settings/settings-tabs";
  * Two layers of synonym handling:
  *   - Per-entry `keywords` — the strongest signal. Use this for
  *     setting-specific aliases ("byok", "anthropic oauth", "rtl").
+ *     Keywords stay English; localized search still matches via the
+ *     translated title/description.
  *   - Global `SEARCH_SYNONYMS` map below — for words that should match
  *     across many settings ("mute" → sound/audio/volume/notification).
  *
- * Keep titles in sync with `<h3 className="settings-card-title">…</h3>`
- * across the tab components — the title is what we use to scroll the
- * user to the section after jumping to its tab.
+ * `titleKey` MUST resolve to the same string rendered in the matching
+ * `<h3 className="settings-card-title">…</h3>` (or `cardTitleKey` for
+ * row-level entries) — that resolved title is what we use to scroll the
+ * user to the section after jumping to its tab, so reusing the card's
+ * own catalog key keeps it correct in every locale automatically.
  */
-export interface SettingsSearchEntry {
+export interface SettingsSearchEntryDef {
   tab: SettingsTab;
-  /** Display title shown in results. May be a card heading OR a row label. */
-  title: string;
-  /** Short description shown in the results list under the title. */
-  description: string;
+  /** Catalog key for the title shown in results (card heading OR row label). */
+  titleKey: string;
+  /** Catalog key for the description shown under the title. */
+  descriptionKey: string;
   /**
-   * Optional card heading to scroll to after the user picks this entry.
-   * Defaults to `title`. Use this for row-level entries whose `title`
-   * is a control inside a larger card — e.g. "Wake word" has
-   * `cardTitle: "Microphone"` so picking it scrolls to the Microphone
-   * card on the Audio tab.
+   * Optional catalog key for the card heading to scroll to after the
+   * user picks this entry. Defaults to `titleKey`. Use this for
+   * row-level entries whose title is a control inside a larger card.
    */
-  cardTitle?: string;
-  /** Extra free-form text users might type. Title + description are auto-included. */
+  cardTitleKey?: string;
+  /** Extra free-form (English) text users might type. */
   keywords: string[];
 }
 
-export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
+/** A catalog entry resolved against the active locale. */
+export interface ResolvedSettingsSearchEntry {
+  tab: SettingsTab;
+  title: string;
+  description: string;
+  cardTitle?: string;
+  keywords: string[];
+}
+
+export const SETTINGS_SEARCH_ENTRY_DEFS: SettingsSearchEntryDef[] = [
   // ---------- General ----------
   {
     tab: "general",
-    title: "Language",
-    description: "Choose the language Stella uses across the app.",
+    titleKey: "settings.language.title",
+    descriptionKey: "settings.language.description",
     keywords: [
       "locale",
       "translation",
@@ -61,14 +80,14 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
-    title: "Developer file previews",
-    description: "Show developer file changes in chat and the side panel.",
+    titleKey: "settings.developerPreviews.title",
+    descriptionKey: "settings.developerPreviews.description",
     keywords: ["developer", "code", "diff", "file previews", "preview"],
   },
   {
     tab: "general",
-    title: "Native font smoothing",
-    description: "Render text the way macOS apps do, with grayscale anti-aliasing.",
+    titleKey: "settings.nativeFontSmoothing.title",
+    descriptionKey: "settings.nativeFontSmoothing.description",
     keywords: [
       "font",
       "fonts",
@@ -87,8 +106,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
-    title: "Motion",
-    description: "Minimize interface animations.",
+    titleKey: "settings.motion.title",
+    descriptionKey: "settings.motion.reduceMotion.description",
     keywords: [
       "reduce motion",
       "reduced motion",
@@ -100,14 +119,14 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
-    title: "Voice",
-    description: "Pick Stella's speaking style and personality voice.",
+    titleKey: "settings.voice.title",
+    descriptionKey: "settings.search.descriptions.voice",
     keywords: ["personality", "tone", "stella voice", "accent"],
   },
   {
     tab: "general",
-    title: "Sound notifications",
-    description: "Play a sound when Stella finishes an agent run.",
+    titleKey: "settings.notifications.title",
+    descriptionKey: "settings.notifications.description",
     keywords: [
       "alerts",
       "sound notifications",
@@ -124,8 +143,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
-    title: "Keep computer awake",
-    description: "Stop your computer from sleeping while Stella is open.",
+    titleKey: "settings.power.title",
+    descriptionKey: "settings.power.description",
     keywords: [
       "prevent sleep",
       "keep awake",
@@ -134,12 +153,15 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
       "energy",
       "idle",
       "power",
+      "caffeinate",
+      "no sleep",
+      "stay on",
     ],
   },
   {
     tab: "general",
-    title: "Locked computer use",
-    description: "Let Stella continue computer-use tasks after this Mac locks.",
+    titleKey: "settings.lockedComputerUse.title",
+    descriptionKey: "settings.lockedComputerUse.description",
     keywords: [
       "computer use",
       "lock screen",
@@ -152,8 +174,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
-    title: "Stella for Chrome",
-    description: "Add the Stella extension to Chrome and other browsers.",
+    titleKey: "settings.browserExtension.title",
+    descriptionKey: "settings.browserExtension.description",
     keywords: [
       "chrome",
       "extension",
@@ -169,9 +191,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
-    title: "Import from Hermes or OpenClaw",
-    description:
-      "Bring memory, skills, sessions, and model choices into Stella.",
+    titleKey: "settings.migration.title",
+    descriptionKey: "settings.migration.description",
     keywords: [
       "migration",
       "migrate",
@@ -186,9 +207,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "general",
-    title: "Permissions",
-    description:
-      "Grant accessibility, screen capture, and microphone access on macOS.",
+    titleKey: "settings.permissions.title",
+    descriptionKey: "settings.search.descriptions.permissions",
     keywords: [
       "accessibility",
       "screen capture",
@@ -207,9 +227,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   // ---------- Shortcuts ----------
   {
     tab: "shortcuts",
-    title: "Shortcuts",
-    description:
-      "Change how Stella opens, listens, and starts the radial dial or voice.",
+    titleKey: "settings.shortcuts.title",
+    descriptionKey: "settings.search.descriptions.shortcuts",
     keywords: [
       "keybindings",
       "hotkeys",
@@ -227,9 +246,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   // ---------- Memory ----------
   {
     tab: "memory",
-    title: "Memory",
-    description:
-      "Manage screen memory, update or erase what Stella has remembered.",
+    titleKey: "settings.memory.title",
+    descriptionKey: "settings.search.descriptions.memory",
     keywords: [
       "screen memory",
       "chronicle",
@@ -247,9 +265,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   // ---------- Backup ----------
   {
     tab: "backup",
-    title: "Backups",
-    description:
-      "Automatic encrypted backups, restore points, and on-demand snapshots.",
+    titleKey: "settings.backup.title",
+    descriptionKey: "settings.search.descriptions.backup",
     keywords: [
       "restore",
       "snapshot",
@@ -268,9 +285,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   // ---------- Account & Legal ----------
   {
     tab: "account",
-    title: "Account",
-    description:
-      "Sign out, delete your data, or permanently delete your account.",
+    titleKey: "settings.account.title",
+    descriptionKey: "settings.search.descriptions.account",
     keywords: [
       "sign out",
       "log out",
@@ -287,17 +303,16 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "account",
-    title: "Legal",
-    description: "Terms of Service and Privacy Policy.",
+    titleKey: "settings.account.legal.title",
+    descriptionKey: "settings.search.descriptions.legal",
     keywords: ["terms of service", "tos", "privacy policy", "license"],
   },
 
   // ---------- Audio ----------
   {
     tab: "audio",
-    title: "Microphone",
-    description:
-      "Pick your input device, enable wake word, dictation sounds, and on-device transcription.",
+    titleKey: "settings.audio.microphone.title",
+    descriptionKey: "settings.search.descriptions.microphone",
     keywords: [
       "mic",
       "input device",
@@ -319,8 +334,8 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: "audio",
-    title: "Speaker",
-    description: "Pick the speaker or headphones Stella's voice plays through.",
+    titleKey: "settings.audio.speaker.title",
+    descriptionKey: "settings.search.descriptions.speaker",
     keywords: [
       "output device",
       "headphones",
@@ -338,65 +353,55 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   //
   // Surface popular toggles as their own results so search lands on the
   // setting the user named, not just the card it lives in. Each carries
-  // `cardTitle` so we still scroll to the right card on jump.
+  // `cardTitleKey` so we still scroll to the right card on jump.
 
   {
     tab: "audio",
-    title: "Wake word",
-    cardTitle: "Microphone",
-    description:
-      "Listen for \u201CHey Stella\u201D and start a voice conversation.",
+    titleKey: "settings.audio.wakeWord.label",
+    cardTitleKey: "settings.audio.microphone.title",
+    descriptionKey: "settings.search.descriptions.wakeWord",
     keywords: ["hey stella", "wake", "always listening", "voice trigger"],
   },
   {
     tab: "audio",
-    title: "On-device transcription",
-    cardTitle: "Microphone",
-    description:
-      "Use the local Parakeet model instead of cloud transcription.",
+    titleKey: "settings.audio.localDictation.label",
+    cardTitleKey: "settings.audio.microphone.title",
+    descriptionKey: "settings.search.descriptions.onDeviceTranscription",
     keywords: ["parakeet", "local", "offline", "private", "stt"],
   },
   {
     tab: "audio",
-    title: "Dictation sounds",
-    cardTitle: "Microphone",
-    description: "Play a sound when dictation starts and stops.",
+    titleKey: "settings.audio.dictationSounds.label",
+    cardTitleKey: "settings.audio.microphone.title",
+    descriptionKey: "settings.audio.dictationSounds.description",
     keywords: ["chime", "ping", "feedback", "mute dictation"],
   },
   {
-    tab: "general",
-    title: "Prevent sleep",
-    cardTitle: "Keep computer awake",
-    description: "Stop your computer from sleeping while Stella is open.",
-    keywords: ["caffeinate", "keep awake", "no sleep", "stay on", "power"],
-  },
-  {
     tab: "account",
-    title: "Sign out",
-    cardTitle: "Account",
-    description: "Sign out of Stella on this device.",
+    titleKey: "settings.account.signOut.label",
+    cardTitleKey: "settings.account.title",
+    descriptionKey: "settings.account.signOut.description",
     keywords: ["log out", "logout", "signout"],
   },
   {
     tab: "account",
-    title: "Delete account",
-    cardTitle: "Account",
-    description: "Permanently delete your account and everything in it.",
+    titleKey: "settings.account.deleteAccount.label",
+    cardTitleKey: "settings.account.title",
+    descriptionKey: "settings.account.deleteAccount.description",
     keywords: ["close account", "remove account", "cancel account"],
   },
   {
     tab: "account",
-    title: "Delete data",
-    cardTitle: "Account",
-    description:
-      "Erase every conversation, memory, and saved Stella setting.",
+    titleKey: "settings.account.deleteData.label",
+    cardTitleKey: "settings.account.title",
+    descriptionKey: "settings.account.deleteData.description",
     keywords: ["wipe", "clear", "erase", "reset"],
   },
   {
     tab: "backup",
-    title: "Back up now",
-    cardTitle: "Backups",
-    description: "Save an encrypted backup right now.",
+    titleKey: "settings.backup.backupNow.label",
+    cardTitleKey: "settings.backup.title",
+    descriptionKey: "settings.backup.backupNow.description",
     keywords: ["manual backup", "snapshot", "save"],
   },
 ];
@@ -645,25 +650,50 @@ export function matchesAllTokenGroups(
 }
 
 interface NormalizedEntry {
-  entry: SettingsSearchEntry;
+  entry: ResolvedSettingsSearchEntry;
   titleText: string;
   descriptionText: string;
   /** Title + description + keywords + tab key. */
   searchText: string;
 }
 
-// Pre-normalize once at module load — per-keystroke work becomes pure
-// `String.prototype.includes` calls.
-const NORMALIZED_ENTRIES: NormalizedEntry[] = SETTINGS_SEARCH_ENTRIES.map(
-  (entry) => ({
+/** Resolve every catalog def against the active locale's translator. */
+function resolveEntries(
+  t: SettingsSearchTranslate,
+): ResolvedSettingsSearchEntry[] {
+  return SETTINGS_SEARCH_ENTRY_DEFS.map((def) => {
+    const cardTitle = def.cardTitleKey ? t(def.cardTitleKey) : undefined;
+    return {
+      tab: def.tab,
+      title: t(def.titleKey),
+      description: t(def.descriptionKey),
+      ...(cardTitle ? { cardTitle } : {}),
+      keywords: def.keywords,
+    };
+  });
+}
+
+// Resolve + normalize the catalog per translator. The active locale's
+// `t` is stable between renders, so we memoize on its identity and only
+// rebuild when the language actually changes.
+let normalizedCacheKey: SettingsSearchTranslate | null = null;
+let normalizedCache: NormalizedEntry[] = [];
+
+function getNormalizedEntries(
+  t: SettingsSearchTranslate,
+): NormalizedEntry[] {
+  if (normalizedCacheKey === t) return normalizedCache;
+  normalizedCache = resolveEntries(t).map((entry) => ({
     entry,
     titleText: normalizeSearchText(entry.title),
     descriptionText: normalizeSearchText(entry.description),
     searchText: normalizeSearchText(
       [entry.title, entry.description, ...entry.keywords, entry.tab].join(" "),
     ),
-  }),
-);
+  }));
+  normalizedCacheKey = t;
+  return normalizedCache;
+}
 
 /**
  * Score an entry against expanded token groups. Higher is better.
@@ -717,22 +747,26 @@ function scoreEntry(normalized: NormalizedEntry, tokens: string[]): number {
   return -1;
 }
 
-export interface ScoredSettingsSearchEntry extends SettingsSearchEntry {
+export interface ScoredSettingsSearchEntry extends ResolvedSettingsSearchEntry {
   score: number;
 }
 
 /**
  * Returns matched catalog entries, best-scoring first. Stable secondary
  * sort by catalog order so equal-score results don't shuffle as the
- * user types.
+ * user types. Entries are resolved against `t` so both the displayed
+ * copy and the scroll-to-card title match the active locale.
  */
-export function searchSettings(query: string): ScoredSettingsSearchEntry[] {
+export function searchSettings(
+  query: string,
+  t: SettingsSearchTranslate,
+): ScoredSettingsSearchEntry[] {
   const tokens = tokenizeQuery(query);
   if (tokens.length === 0) return [];
 
   const indexed: Array<{ scored: ScoredSettingsSearchEntry; order: number }> =
     [];
-  NORMALIZED_ENTRIES.forEach((normalized, order) => {
+  getNormalizedEntries(t).forEach((normalized, order) => {
     const score = scoreEntry(normalized, tokens);
     if (score < 0) return;
     indexed.push({

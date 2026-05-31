@@ -11,7 +11,10 @@ import {
 import { api } from "@/convex/api";
 import { router } from "@/router";
 import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
+import { useT } from "@/shared/i18n";
 import { getSettingsErrorMessage } from "./shared";
+
+type TFunction = (key: string, params?: Record<string, string | number>) => string;
 
 type ChronicleStatus = {
   enabled: boolean;
@@ -25,79 +28,106 @@ type ChronicleStatus = {
 function formatPendingDreamInputs(
   pendingThreadSummaries: number,
   pendingExtensions: number,
+  t: TFunction,
 ): string | undefined {
   const parts: string[] = [];
   if (pendingThreadSummaries > 0) {
     parts.push(
-      `${pendingThreadSummaries} task ${pendingThreadSummaries === 1 ? "summary" : "summaries"}`,
+      t(
+        pendingThreadSummaries === 1
+          ? "settings.memory.dreamResults.pendingThreadSummary"
+          : "settings.memory.dreamResults.pendingThreadSummaries",
+        { count: pendingThreadSummaries },
+      ),
     );
   }
   if (pendingExtensions > 0) {
     parts.push(
-      `${pendingExtensions} Chronicle ${pendingExtensions === 1 ? "file" : "files"}`,
+      t(
+        pendingExtensions === 1
+          ? "settings.memory.dreamResults.pendingExtension"
+          : "settings.memory.dreamResults.pendingExtensions",
+        { count: pendingExtensions },
+      ),
     );
   }
-  return parts.length > 0 ? `Pending: ${parts.join(" and ")}.` : undefined;
+  return parts.length > 0
+    ? t("settings.memory.dreamResults.pendingPrefix", {
+        items: parts.join(t("settings.memory.dreamResults.pendingJoin")),
+      })
+    : undefined;
 }
 
-function formatChronicleEnableFailure(args: {
-  reason?: string;
-  detail?: string;
-}): string {
+function formatChronicleEnableFailure(
+  args: {
+    reason?: string;
+    detail?: string;
+  },
+  t: TFunction,
+): string {
   switch (args.reason) {
     case "no-stella-root":
-      return "Stella's workspace root is unavailable.";
+      return t("settings.memory.enableFailures.noStellaRoot");
     case "needs-permission":
-      return "Screen Recording permission is still required before Chronicle can start.";
+      return t("settings.memory.enableFailures.needsPermission");
     case "binary-missing":
-      return "The Chronicle helper binary is missing.";
+      return t("settings.memory.enableFailures.binaryMissing");
     case "startup-timeout":
-      return "Chronicle did not come online after launch.";
+      return t("settings.memory.enableFailures.startupTimeout");
     case "unsupported-platform":
-      return "Chronicle is only available on macOS.";
+      return t("settings.memory.enableFailures.unsupportedPlatform");
     default:
-      return args.detail ?? args.reason ?? "Unknown error.";
+      return (
+        args.detail ??
+        args.reason ??
+        t("settings.memory.enableFailures.unknown")
+      );
   }
 }
 
-function formatDreamRunResult(args: {
-  ok: boolean;
-  reason?: string;
-  pendingThreadSummaries: number;
-  pendingExtensions: number;
-  detail?: string;
-}): string | undefined {
+function formatDreamRunResult(
+  args: {
+    ok: boolean;
+    reason?: string;
+    pendingThreadSummaries: number;
+    pendingExtensions: number;
+    detail?: string;
+  },
+  t: TFunction,
+): string | undefined {
   const pending = formatPendingDreamInputs(
     args.pendingThreadSummaries,
     args.pendingExtensions,
+    t,
   );
   switch (args.reason) {
     case "scheduled":
-      return pending ?? "Dream will consolidate the current backlog.";
+      return pending ?? t("settings.memory.dreamResults.scheduled");
     case "in_flight":
-      return "A Dream pass is already running.";
+      return t("settings.memory.dreamResults.inFlight");
     case "no_inputs":
-      return "There is nothing new to consolidate right now.";
+      return t("settings.memory.dreamResults.noInputs");
     case "no_api_key":
-      return "Dream needs a configured model/API key or signed-in Stella route.";
+      return t("settings.memory.dreamResults.noApiKey");
     case "disabled":
-      return "Dream scheduling is currently disabled.";
+      return t("settings.memory.dreamResults.disabled");
     case "below_threshold":
-      return pending ?? "The idle threshold has not been reached yet.";
+      return pending ?? t("settings.memory.dreamResults.belowThreshold");
     case "lock_busy":
-      return "Dream is busy right now. Try again in a moment.";
+      return t("settings.memory.dreamResults.lockBusy");
     case "no-runner":
-      return "The local runtime is not ready yet.";
+      return t("settings.memory.dreamResults.noRunner");
     case "no-stella-root":
-      return "Stella's workspace root is unavailable.";
+      return t("settings.memory.enableFailures.noStellaRoot");
     case "unavailable":
-      return args.detail ?? "Dream is currently unavailable.";
+      return args.detail ?? t("settings.memory.dreamResults.unavailable");
     default:
       return args.detail ?? args.reason ?? pending;
   }
 }
 
 function ChronicleSettingsCard() {
+  const t = useT();
   const chronicleApi = window.electronAPI?.chronicle;
   const { hasConnectedAccount, isLoading: authLoading } =
     useAuthSessionState();
@@ -198,12 +228,15 @@ function ChronicleSettingsCard() {
       setError(null);
     } catch (caught) {
       setError(
-        getSettingsErrorMessage(caught, "Failed to load Chronicle status."),
+        getSettingsErrorMessage(
+          caught,
+          t("settings.memory.errors.loadStatus"),
+        ),
       );
     } finally {
       setLoading(false);
     }
-  }, [chronicleApi]);
+  }, [chronicleApi, t]);
 
   useEffect(() => {
     void refresh();
@@ -229,23 +262,23 @@ function ChronicleSettingsCard() {
       // it's "upgrade or BYOK". Either way the BYOK link opens the
       // workspace panel's Engine tab on the Models section.
       const message = !hasConnectedAccount
-        ? "Sign in to Stella, or pick a small model for Chronicle in the Engine panel."
-        : "Screen memory is included with any Stella plan. Upgrade — or pick a small model for Chronicle in the Engine panel.";
+        ? t("settings.memory.access.signInMessage")
+        : t("settings.memory.access.upgradeMessage");
       setError(message);
       showToast({
         title: !hasConnectedAccount
-          ? "Sign in required"
-          : "Subscription required",
+          ? t("settings.memory.access.signInTitle")
+          : t("settings.memory.access.subscriptionTitle"),
         description: message,
         variant: "error",
         action: {
-          label: "Pick a model",
+          label: t("settings.memory.access.pickModel"),
           onClick: openChronicleModelPicker,
         },
         secondaryAction: !hasConnectedAccount
           ? undefined
           : {
-              label: "Upgrade",
+              label: t("settings.memory.access.upgrade"),
               onClick: () => {
                 void router.navigate({ to: "/billing" });
               },
@@ -258,28 +291,32 @@ function ChronicleSettingsCard() {
     try {
       const result = await chronicleApi.setEnabled(next);
       if (!result.ok) {
-        const message = formatChronicleEnableFailure(result);
+        const message = formatChronicleEnableFailure(result, t);
         setError(message);
         showToast({
           title: next
-            ? "Could not enable Chronicle"
-            : "Could not disable Chronicle",
+            ? t("settings.memory.toasts.enableFailedTitle")
+            : t("settings.memory.toasts.disableFailedTitle"),
           description: message,
           variant: "error",
         });
       } else {
         showToast({
-          title: next ? "Chronicle enabled" : "Chronicle disabled",
+          title: next
+            ? t("settings.memory.toasts.enabledTitle")
+            : t("settings.memory.toasts.disabledTitle"),
           description:
             result.reason === "already-running"
-              ? "Chronicle was already running."
+              ? t("settings.memory.toasts.alreadyRunning")
               : undefined,
           variant: "default",
         });
       }
       await refresh();
     } catch (caught) {
-      setError(getSettingsErrorMessage(caught, "Failed to update Chronicle."));
+      setError(
+        getSettingsErrorMessage(caught, t("settings.memory.errors.update")),
+      );
     } finally {
       setBusy(null);
     }
@@ -291,15 +328,17 @@ function ChronicleSettingsCard() {
     setError(null);
     try {
       const result = await chronicleApi.dreamNow();
-      const description = formatDreamRunResult(result);
+      const description = formatDreamRunResult(result, t);
       showToast({
-        title: result.ok ? "Dream pass scheduled" : "Dream pass not scheduled",
+        title: result.ok
+          ? t("settings.memory.toasts.dreamScheduledTitle")
+          : t("settings.memory.toasts.dreamNotScheduledTitle"),
         description,
         variant: result.ok ? "success" : "error",
       });
     } catch (caught) {
       setError(
-        getSettingsErrorMessage(caught, "Failed to trigger Dream pass."),
+        getSettingsErrorMessage(caught, t("settings.memory.errors.dream")),
       );
     } finally {
       setBusy(null);
@@ -318,31 +357,31 @@ function ChronicleSettingsCard() {
 
   const handleWipe = async () => {
     if (!chronicleApi?.wipeMemories) return;
-    const confirmed = window.confirm(
-      "Erase everything Stella has remembered? This cannot be undone.",
-    );
+    const confirmed = window.confirm(t("settings.memory.erase.confirm"));
     if (!confirmed) return;
     setBusy("wipe");
     setError(null);
     try {
       const result = await chronicleApi.wipeMemories();
       if (!result.ok) {
-        const message = result.reason ?? "Failed to wipe memories.";
+        const message = result.reason ?? t("settings.memory.errors.wipe");
         setError(message);
         showToast({
-          title: "Wipe failed",
+          title: t("settings.memory.toasts.wipeFailedTitle"),
           description: message,
           variant: "error",
         });
         return;
       }
       showToast({
-        title: "Memories wiped",
+        title: t("settings.memory.toasts.wipedTitle"),
         variant: "success",
       });
       await refresh();
     } catch (caught) {
-      setError(getSettingsErrorMessage(caught, "Failed to wipe memories."));
+      setError(
+        getSettingsErrorMessage(caught, t("settings.memory.errors.wipe")),
+      );
     } finally {
       setBusy(null);
     }
@@ -358,17 +397,34 @@ function ChronicleSettingsCard() {
   const lastCaptureAt = status?.lastCaptureAt ?? null;
   const screenMemoryDescription =
     accessLoading || canEnable
-      ? "Stella can glance at your screen now and then to remember what you were doing."
+      ? t("settings.memory.screen.description")
       : !hasConnectedAccount
-        ? "Sign in to Stella, or pick a small model for Chronicle in the Engine panel."
-        : "Screen memory is included with any Stella plan. Upgrade, or pick a small model for Chronicle in the Engine panel.";
+        ? t("settings.memory.screen.signInDescription")
+        : t("settings.memory.screen.upgradeDescription");
+  const statusDescription = loading
+    ? t("common.loading")
+    : enabled
+      ? `${running ? t("settings.memory.status.running") : t("settings.memory.status.stopped")}${
+          typeof fps === "number"
+            ? ` · ${t("settings.memory.status.fps", { fps: fps.toFixed(2) })}`
+            : ""
+        }${
+          lastCaptureAt
+            ? ` · ${t("settings.memory.status.lastCapture", {
+                time: new Date(lastCaptureAt).toLocaleTimeString(),
+              })}`
+            : ""
+        }`
+      : t("settings.memory.status.disabled");
 
   return (
     <div className="settings-card">
-      <h3 className="settings-card-title">Memory</h3>
+      <h3 className="settings-card-title">{t("settings.memory.title")}</h3>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Screen memory</div>
+          <div className="settings-row-label">
+            {t("settings.memory.screen.label")}
+          </div>
           <div className="settings-row-sublabel">
             {screenMemoryDescription}
           </div>
@@ -381,33 +437,29 @@ function ChronicleSettingsCard() {
             disabled={busy !== null || loading || accessLoading}
             onClick={() => handleToggle(!enabled)}
           >
-            {busy === "toggle" ? "Working…" : enabled ? "Disable" : "Enable"}
+            {busy === "toggle"
+              ? t("settings.memory.working")
+              : enabled
+                ? t("settings.memory.disable")
+                : t("settings.memory.enable")}
           </Button>
         </div>
       </div>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Status</div>
-          <div className="settings-row-sublabel">
-            {loading
-              ? "Loading…"
-              : enabled
-                ? `${running ? "Running" : "Stopped"}${
-                    typeof fps === "number" ? ` · ${fps.toFixed(2)} fps` : ""
-                  }${
-                    lastCaptureAt
-                      ? ` · last capture ${new Date(lastCaptureAt).toLocaleTimeString()}`
-                      : ""
-                  }`
-                : "Disabled"}
+          <div className="settings-row-label">
+            {t("settings.memory.status.label")}
           </div>
+          <div className="settings-row-sublabel">{statusDescription}</div>
         </div>
       </div>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Memory folder</div>
+          <div className="settings-row-label">
+            {t("settings.memory.folder.label")}
+          </div>
           <div className="settings-row-sublabel">
-            Open the folder on your computer where Stella keeps its memories.
+            {t("settings.memory.folder.description")}
           </div>
         </div>
         <div className="settings-row-control">
@@ -418,16 +470,19 @@ function ChronicleSettingsCard() {
             disabled={busy !== null}
             onClick={handleOpenFolder}
           >
-            {busy === "open" ? "Opening…" : "Open folder"}
+            {busy === "open"
+              ? t("settings.memory.folder.opening")
+              : t("settings.memory.folder.open")}
           </Button>
         </div>
       </div>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Update memory now</div>
+          <div className="settings-row-label">
+            {t("settings.memory.update.label")}
+          </div>
           <div className="settings-row-sublabel">
-            Have Stella review recent activity and save what it learned. This
-            usually happens on its own.
+            {t("settings.memory.update.description")}
           </div>
         </div>
         <div className="settings-row-control">
@@ -438,16 +493,19 @@ function ChronicleSettingsCard() {
             disabled={busy !== null}
             onClick={handleDreamNow}
           >
-            {busy === "dream" ? "Dreaming…" : "Run now"}
+            {busy === "dream"
+              ? t("settings.memory.update.running")
+              : t("settings.memory.update.run")}
           </Button>
         </div>
       </div>
       <div className="settings-row">
         <div className="settings-row-info">
-          <div className="settings-row-label">Erase memory</div>
+          <div className="settings-row-label">
+            {t("settings.memory.erase.label")}
+          </div>
           <div className="settings-row-sublabel">
-            Delete everything Stella has remembered, including saved screen
-            activity. This can't be undone.
+            {t("settings.memory.erase.description")}
           </div>
         </div>
         <div className="settings-row-control">
@@ -458,7 +516,9 @@ function ChronicleSettingsCard() {
             disabled={busy !== null}
             onClick={handleWipe}
           >
-            {busy === "wipe" ? "Wiping…" : "Wipe"}
+            {busy === "wipe"
+              ? t("settings.memory.erase.working")
+              : t("settings.memory.erase.action")}
           </Button>
         </div>
       </div>

@@ -18,6 +18,7 @@ import {
 } from "@/features/dictation/services/inworld-dictation";
 import { useMicrophoneRecovery } from "@/global/permissions/use-microphone-recovery";
 import { requestBrowserMicrophoneAccess } from "@/global/permissions/microphone-permission";
+import { useT } from "@/shared/i18n";
 
 type MicrophonePermissionStatus =
   | "not-determined"
@@ -27,6 +28,7 @@ type MicrophonePermissionStatus =
   | "unknown";
 
 export function AudioTab() {
+  const t = useT();
   const platform = window.electronAPI?.platform;
   const arch = window.electronAPI?.arch;
   const localDictationSupported = platform === "darwin" && arch === "arm64";
@@ -84,9 +86,9 @@ export function AudioTab() {
       setAudioOutputDevices(outputs);
       setPermissionError(null);
     } catch {
-      setPermissionError("Unable to list audio devices.");
+      setPermissionError(t("settings.audio.errors.listDevices"));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void syncPermissionStatus();
@@ -153,9 +155,7 @@ export function AudioTab() {
       if (checked) {
         void (async () => {
           if (microphoneDenied) {
-            setPermissionError(
-              "Microphone access was denied earlier. Reset it and restart Stella, or open System Settings.",
-            );
+            setPermissionError(t("settings.audio.errors.micDeniedReset"));
             setMicEnabled(false);
             localStorage.setItem(MIC_ENABLED_KEY, "false");
             return;
@@ -169,8 +169,8 @@ export function AudioTab() {
             const permissionStatus = await syncPermissionStatus();
             setPermissionError(
               permissionStatus?.microphoneStatus === "denied"
-                ? "Microphone access was denied earlier. Reset it and restart Stella, or open System Settings."
-                : "Microphone access was denied. Please allow it in your system settings.",
+                ? t("settings.audio.errors.micDeniedReset")
+                : t("settings.audio.errors.micDenied"),
             );
             setMicEnabled(false);
             localStorage.setItem(MIC_ENABLED_KEY, "false");
@@ -178,7 +178,7 @@ export function AudioTab() {
         })();
       }
     },
-    [loadDevices, microphoneStatus, platform, syncPermissionStatus],
+    [loadDevices, microphoneStatus, platform, syncPermissionStatus, t],
   );
 
   const handleDictationSuperFastToggle = useCallback((checked: boolean) => {
@@ -228,14 +228,15 @@ export function AudioTab() {
         setLocalDictationUnavailableReason(
           status.available
             ? null
-            : (status.reason ?? "Unavailable on this Mac."),
+            : (status.reason ??
+                t("settings.audio.localDictation.unavailableFallback")),
         );
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [localDictationSupported]);
+  }, [localDictationSupported, t]);
 
   useEffect(() => {
     if (!micEnabled && dictationSuperFast) {
@@ -275,16 +276,18 @@ export function AudioTab() {
     platform === "darwin" && microphoneStatus === "denied";
   const showMicrophoneRecovery = platform === "darwin";
   const microphoneRecoveryLabel = microphoneDenied
-    ? "Recover microphone access"
-    : "Manage microphone access";
+    ? t("settings.audio.recovery.recoverLabel")
+    : t("settings.audio.recovery.manageLabel");
   const microphoneRecoveryDescription = microphoneDenied
-    ? "Once you've said no, macOS won't ask again on its own. Reset the permission, then quit and reopen Stella."
-    : "If the microphone permission ever gets stuck, you can reset it and ask macOS to prompt again.";
+    ? t("settings.audio.recovery.recoverDescription")
+    : t("settings.audio.recovery.manageDescription");
 
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
-        <h3 className="settings-card-title">Microphone</h3>
+        <h3 className="settings-card-title">
+          {t("settings.audio.microphone.title")}
+        </h3>
         {permissionError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -295,9 +298,11 @@ export function AudioTab() {
         ) : null}
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Enable microphone</div>
+            <div className="settings-row-label">
+              {t("settings.audio.microphone.enableLabel")}
+            </div>
             <div className="settings-row-sublabel">
-              Required for talking to Stella.
+              {t("settings.audio.microphone.enableDescription")}
             </div>
           </div>
           <div className="settings-row-control">
@@ -325,7 +330,7 @@ export function AudioTab() {
                 disabled={microphoneRecovery.isResetting}
                 onClick={microphoneRecovery.openSettings}
               >
-                Open Settings
+                {t("settings.audio.recovery.openSettings")}
               </button>
               <button
                 type="button"
@@ -334,8 +339,8 @@ export function AudioTab() {
                 onClick={() => void microphoneRecovery.resetAndRestart()}
               >
                 {microphoneRecovery.isResetting
-                  ? "Closing..."
-                  : "Reset & Restart"}
+                  ? t("settings.audio.recovery.closing")
+                  : t("settings.audio.recovery.reset")}
               </button>
             </div>
           </div>
@@ -343,10 +348,11 @@ export function AudioTab() {
         {micEnabled ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Hey Stella wake word</div>
+              <div className="settings-row-label">
+                {t("settings.audio.wakeWord.label")}
+              </div>
               <div className="settings-row-sublabel">
-                Listen for "Hey Stella" in the background and start a voice
-                conversation. When off, mic stays idle until you press dictate.
+                {t("settings.audio.wakeWord.description")}
               </div>
             </div>
             <div className="settings-row-control">
@@ -361,9 +367,11 @@ export function AudioTab() {
         {micEnabled && audioInputDevices.length > 0 ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Microphone</div>
+              <div className="settings-row-label">
+                {t("settings.audio.microphone.deviceLabel")}
+              </div>
               <div className="settings-row-sublabel">
-                Which mic should Stella listen to?
+                {t("settings.audio.microphone.deviceDescription")}
               </div>
             </div>
             <div className="settings-row-control">
@@ -371,12 +379,16 @@ export function AudioTab() {
                 className="settings-runtime-select"
                 value={selectedMicId}
                 onValueChange={(value) => handleMicChange(value)}
-                aria-label="Microphone"
+                aria-label={t("settings.audio.microphone.deviceLabel")}
                 options={[
-                  { value: "", label: "System default" },
+                  { value: "", label: t("settings.audio.systemDefault") },
                   ...audioInputDevices.map((device, index) => ({
                     value: device.deviceId,
-                    label: device.label || `Microphone ${index + 1}`,
+                    label:
+                      device.label ||
+                      t("settings.audio.microphoneDeviceFallback", {
+                        index: index + 1,
+                      }),
                   })),
                 ]}
               />
@@ -386,9 +398,11 @@ export function AudioTab() {
         {micEnabled ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Super Fast dictation</div>
+              <div className="settings-row-label">
+                {t("settings.audio.superFast.label")}
+              </div>
               <div className="settings-row-sublabel">
-                Keep the microphone warm so dictation starts with less delay.
+                {t("settings.audio.superFast.description")}
               </div>
             </div>
             <div className="settings-row-control">
@@ -402,9 +416,11 @@ export function AudioTab() {
         ) : null}
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Dictation sounds</div>
+            <div className="settings-row-label">
+              {t("settings.audio.dictationSounds.label")}
+            </div>
             <div className="settings-row-sublabel">
-              Play a sound when dictation starts and stops.
+              {t("settings.audio.dictationSounds.description")}
             </div>
           </div>
           <div className="settings-row-control">
@@ -421,10 +437,11 @@ export function AudioTab() {
         {micEnabled ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Enhance transcription</div>
+              <div className="settings-row-label">
+                {t("settings.audio.enhance.label")}
+              </div>
               <div className="settings-row-sublabel">
-                Clean up local dictation text with Mercury before inserting
-                it.
+                {t("settings.audio.enhance.description")}
               </div>
             </div>
             <div className="settings-row-control">
@@ -439,10 +456,12 @@ export function AudioTab() {
         {localDictationSupported && micEnabled ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">On-device transcription</div>
+              <div className="settings-row-label">
+                {t("settings.audio.localDictation.label")}
+              </div>
               <div className="settings-row-sublabel">
                 {localDictationUnavailableReason ??
-                  "Use the local Parakeet model instead of Inworld. This can use more memory on lower-end Macs."}
+                  t("settings.audio.localDictation.description")}
               </div>
             </div>
             <div className="settings-row-control">
@@ -458,13 +477,17 @@ export function AudioTab() {
       </div>
 
       <div className="settings-card">
-        <h3 className="settings-card-title">Speaker</h3>
+        <h3 className="settings-card-title">
+          {t("settings.audio.speaker.title")}
+        </h3>
         {audioOutputDevices.length > 0 ? (
           <div className="settings-row">
             <div className="settings-row-info">
-              <div className="settings-row-label">Output device</div>
+              <div className="settings-row-label">
+                {t("settings.audio.speaker.outputLabel")}
+              </div>
               <div className="settings-row-sublabel">
-                Pick the speaker or headphones to use.
+                {t("settings.audio.speaker.outputDescription")}
               </div>
             </div>
             <div className="settings-row-control">
@@ -472,12 +495,16 @@ export function AudioTab() {
                 className="settings-runtime-select"
                 value={selectedSpeakerId}
                 onValueChange={(value) => handleSpeakerChange(value)}
-                aria-label="Output device"
+                aria-label={t("settings.audio.speaker.outputLabel")}
                 options={[
-                  { value: "", label: "System default" },
+                  { value: "", label: t("settings.audio.systemDefault") },
                   ...audioOutputDevices.map((device, index) => ({
                     value: device.deviceId,
-                    label: device.label || `Speaker ${index + 1}`,
+                    label:
+                      device.label ||
+                      t("settings.audio.speakerDeviceFallback", {
+                        index: index + 1,
+                      }),
                   })),
                 ]}
               />
@@ -488,8 +515,8 @@ export function AudioTab() {
             <div className="settings-row-info">
               <div className="settings-row-sublabel">
                 {micEnabled
-                  ? "No speakers found."
-                  : "Turn on the microphone to see your speakers."}
+                  ? t("settings.audio.speaker.empty")
+                  : t("settings.audio.speaker.emptyMicOff")}
               </div>
             </div>
           </div>

@@ -13,12 +13,13 @@ import {
   MINI_DOUBLE_TAP_MODIFIER_OPTIONS,
   type MiniDoubleTapModifier,
 } from "@/shared/lib/mini-double-tap";
+import { useT } from "@/shared/i18n";
 import { getSettingsErrorMessage } from "./shared";
 
 const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "Command"]);
 
-function formatShortcutForDisplay(shortcut: string): string[] {
-  if (!shortcut) return ["Off"];
+function formatShortcutForDisplay(shortcut: string, offLabel: string): string[] {
+  if (!shortcut) return [offLabel];
   return shortcut
     .split("+")
     .filter(Boolean)
@@ -90,11 +91,6 @@ function keyboardEventToAccelerator(event: KeyboardEvent): string | null {
 
 type ShortcutAction = "dictation" | "voice";
 
-const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
-  dictation: "Dictation",
-  voice: "Voice agent",
-};
-
 // Curated radial-dial trigger options. The underlying catalog includes
 // every letter/digit/punctuation key — none of which are sane choices
 // for a global "hold to open" trigger (binding to "A" pops the dial
@@ -111,7 +107,12 @@ const RADIAL_TRIGGER_LABEL_OVERRIDES: Partial<Record<RadialTriggerCode, string>>
 };
 
 export function ShortcutsTab() {
+  const t = useT();
   const platform = window.electronAPI?.platform;
+  const actionLabel = useCallback(
+    (action: ShortcutAction) => t(`settings.shortcuts.actions.${action}`),
+    [t],
+  );
   const allRadialOptions = useMemo(
     () => getRadialTriggerOptions(platform),
     [platform],
@@ -179,7 +180,7 @@ export function ShortcutsTab() {
       } catch (error) {
         if (!cancelled) {
           setShortcutError(
-            getSettingsErrorMessage(error, "Failed to load shortcuts."),
+            getSettingsErrorMessage(error, t("settings.shortcuts.errors.load")),
           );
         }
       } finally {
@@ -190,7 +191,7 @@ export function ShortcutsTab() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const saveShortcut = useCallback(
     async (action: ShortcutAction, shortcut: string) => {
@@ -199,7 +200,7 @@ export function ShortcutsTab() {
           ? window.electronAPI?.dictation?.setShortcut
           : window.electronAPI?.voice?.setRtcShortcut;
       if (!setShortcut) {
-        setShortcutError("Shortcuts are unavailable in this window.");
+        setShortcutError(t("settings.shortcuts.errors.unavailable"));
         return;
       }
 
@@ -212,10 +213,11 @@ export function ShortcutsTab() {
           [action]: result.activeShortcut,
         }));
         if (!result.ok) {
-          const message = result.error ?? "That shortcut is unavailable.";
+          const message =
+            result.error ?? t("settings.shortcuts.errors.unavailableShortcut");
           setShortcutError(message);
           showToast({
-            title: "Shortcut unavailable",
+            title: t("settings.shortcuts.toasts.unavailableTitle"),
             description: message,
             variant: "error",
           });
@@ -223,20 +225,32 @@ export function ShortcutsTab() {
         }
         showToast({
           title: shortcut
-            ? `${SHORTCUT_LABELS[action]} shortcut updated`
-            : `${SHORTCUT_LABELS[action]} shortcut cleared`,
+            ? t("settings.shortcuts.toasts.updatedTitle", {
+                action: actionLabel(action),
+              })
+            : t("settings.shortcuts.toasts.clearedTitle", {
+                action: actionLabel(action),
+              }),
           description: shortcut
-            ? `Press ${formatShortcutForDisplay(shortcut).join(" + ")} to start ${action === "dictation" ? "dictation" : "the voice agent"}.`
-            : `${SHORTCUT_LABELS[action]} is disabled until you set a new shortcut.`,
+            ? t("settings.shortcuts.toasts.updatedDescription", {
+                keys: formatShortcutForDisplay(
+                  shortcut,
+                  t("settings.shortcuts.off"),
+                ).join(" + "),
+                target: t(`settings.shortcuts.targets.${action}`),
+              })
+            : t("settings.shortcuts.toasts.clearedDescription", {
+                action: actionLabel(action),
+              }),
         });
       } catch (error) {
         const message = getSettingsErrorMessage(
           error,
-          "Failed to update shortcut.",
+          t("settings.shortcuts.errors.update"),
         );
         setShortcutError(message);
         showToast({
-          title: "Shortcut update failed",
+          title: t("settings.shortcuts.toasts.failedTitle"),
           description: message,
           variant: "error",
         });
@@ -245,7 +259,7 @@ export function ShortcutsTab() {
         setCapturingShortcut(null);
       }
     },
-    [],
+    [actionLabel, t],
   );
 
   useEffect(() => {
@@ -288,19 +302,21 @@ export function ShortcutsTab() {
         const result = await api.setRadialTriggerKey(triggerKey);
         setRadialTriggerKey(result.triggerKey);
         showToast({
-          title: "Radial dial shortcut updated",
-          description: `Hold ${getRadialTriggerLabel(result.triggerKey, platform)} to open the radial dial.`,
+          title: t("settings.shortcuts.toasts.radialUpdatedTitle"),
+          description: t("settings.shortcuts.toasts.radialUpdatedDescription", {
+            key: getRadialTriggerLabel(result.triggerKey, platform),
+          }),
         });
       } catch (error) {
         setShortcutError(
           getSettingsErrorMessage(
             error,
-            "Failed to update radial dial shortcut.",
+            t("settings.shortcuts.errors.radialUpdate"),
           ),
         );
       }
     },
-    [platform],
+    [platform, t],
   );
 
   const saveMiniDoubleTap = useCallback(
@@ -312,32 +328,42 @@ export function ShortcutsTab() {
         const result = await api.setMiniDoubleTapModifier(modifier);
         setMiniDoubleTapModifier(result.modifier);
         showToast({
-          title: "Mini window shortcut updated",
+          title: t("settings.shortcuts.toasts.miniUpdatedTitle"),
           description:
             result.modifier === "Off"
-              ? "Double-tap is disabled."
-              : `Double-tap ${getMiniDoubleTapModifierLabel(result.modifier, platform)} to open the mini window.`,
+              ? t("settings.shortcuts.toasts.miniDisabledDescription")
+              : t("settings.shortcuts.toasts.miniUpdatedDescription", {
+                  modifier: getMiniDoubleTapModifierLabel(
+                    result.modifier,
+                    platform,
+                  ),
+                }),
         });
       } catch (error) {
         setShortcutError(
           getSettingsErrorMessage(
             error,
-            "Failed to update mini window shortcut.",
+            t("settings.shortcuts.errors.miniUpdate"),
           ),
         );
       }
     },
-    [platform],
+    [platform, t],
   );
 
   const renderShortcutRow = (action: ShortcutAction, description: string) => (
     <div className="settings-row">
       <div className="settings-row-info">
-        <div className="settings-row-label">{SHORTCUT_LABELS[action]}</div>
+        <div className="settings-row-label">{actionLabel(action)}</div>
         <div className="settings-row-sublabel">{description}</div>
       </div>
       <div className="settings-row-control">
-        <Keybind keys={formatShortcutForDisplay(shortcuts[action])} />
+        <Keybind
+          keys={formatShortcutForDisplay(
+            shortcuts[action],
+            t("settings.shortcuts.off"),
+          )}
+        />
         <Button
           type="button"
           variant="ghost"
@@ -347,7 +373,9 @@ export function ShortcutsTab() {
           }
           onClick={() => setCapturingShortcut(action)}
         >
-          {capturingShortcut === action ? "Press keys..." : "Change"}
+          {capturingShortcut === action
+            ? t("settings.shortcuts.capturing")
+            : t("settings.shortcuts.change")}
         </Button>
         <Button
           type="button"
@@ -361,7 +389,7 @@ export function ShortcutsTab() {
           }
           onClick={() => void saveShortcut(action, "")}
         >
-          Clear
+          {t("settings.shortcuts.clear")}
         </Button>
       </div>
     </div>
@@ -370,7 +398,7 @@ export function ShortcutsTab() {
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
-        <h3 className="settings-card-title">Shortcuts</h3>
+        <h3 className="settings-card-title">{t("settings.shortcuts.title")}</h3>
         {shortcutError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -381,17 +409,19 @@ export function ShortcutsTab() {
         ) : null}
         {renderShortcutRow(
           "dictation",
-          "Hold Option to dictate into Stella or the app you're using.",
+          t("settings.shortcuts.dictation.description"),
         )}
         {renderShortcutRow(
           "voice",
-          "Starts or stops Stella's live voice agent.",
+          t("settings.shortcuts.voiceAgent.description"),
         )}
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Radial dial</div>
+            <div className="settings-row-label">
+              {t("settings.shortcuts.radial.label")}
+            </div>
             <div className="settings-row-sublabel">
-              Opens the wedge menu for capture, chat, voice, and quick actions.
+              {t("settings.shortcuts.radial.description")}
             </div>
           </div>
           <div className="settings-row-control">
@@ -399,7 +429,7 @@ export function ShortcutsTab() {
               className="settings-runtime-select"
               value={radialTriggerKey}
               disabled={!loaded}
-              aria-label="Radial dial shortcut"
+              aria-label={t("settings.shortcuts.radial.ariaLabel")}
               onValueChange={(value) => void saveRadialTrigger(value)}
               options={radialOptions.map((option) => ({
                 value: option.code,
@@ -410,9 +440,11 @@ export function ShortcutsTab() {
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Mini window</div>
+            <div className="settings-row-label">
+              {t("settings.shortcuts.mini.label")}
+            </div>
             <div className="settings-row-sublabel">
-              Double-tap a modifier key to open or dismiss the mini chat.
+              {t("settings.shortcuts.mini.description")}
             </div>
           </div>
           <div className="settings-row-control">
@@ -420,7 +452,7 @@ export function ShortcutsTab() {
               className="settings-runtime-select"
               value={miniDoubleTapModifier}
               disabled={!loaded}
-              aria-label="Mini window shortcut"
+              aria-label={t("settings.shortcuts.mini.ariaLabel")}
               onValueChange={(value) => void saveMiniDoubleTap(value)}
               options={MINI_DOUBLE_TAP_MODIFIER_OPTIONS.map((modifier) => ({
                 value: modifier,

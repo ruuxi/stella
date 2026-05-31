@@ -38,6 +38,424 @@
     "language": {
       "title": "שפה",
       "description": "בחרו את השפה שבה Stella משתמשת באפליקציה ובתגובות שלה."
+    },
+    "developerPreviews": {
+      "title": "תצוגות מקדימות של קבצים למפתחים",
+      "description": "הצגת שינויי קוד בצ'אט ופתיחתם בלוח הצד."
+    },
+    "nativeFontSmoothing": {
+      "title": "החלקת גופנים מובנית",
+      "description": "מציג טקסט כמו אפליקציות macOS, עם החלקת קצוות בגווני אפור."
+    },
+    "motion": {
+      "title": "תנועה",
+      "reduceMotion": {
+        "label": "הפחתת תנועה",
+        "description": "ממזער את האנימציות בממשק.",
+        "system": "מערכת",
+        "on": "פעיל",
+        "off": "כבוי"
+      }
+    },
+    "voice": {
+      "title": "קול",
+      "personality": {
+        "label": "אישיות"
+      }
+    },
+    "notifications": {
+      "title": "התראות קוליות",
+      "description": "השמעת צליל כאשר Stella מסיימת הרצת סוכן."
+    },
+    "power": {
+      "title": "השאר את המחשב ער",
+      "description": "מונע מהמחשב להיכנס למצב שינה בזמן ש-Stella פתוחה."
+    },
+    "lockedComputerUse": {
+      "title": "שימוש במחשב נעול",
+      "description": "מאפשר ל-Stella להמשיך משימות שימוש במחשב לאחר נעילת ה-Mac הזה. דורש אישור מנהל ומכסה את המסך בזמן ש-Stella עובדת.",
+      "unsupported": "שימוש במחשב נעול זמין רק ב-macOS."
+    },
+    "browserExtension": {
+      "title": "Stella ל-Chrome",
+      "description": "מאפשר ל-Stella לראות את הדף שאתה נמצא בו ולבצע פעולות בדפדפן שלך.",
+      "action": "קבל הרחבה"
+    },
+    "migration": {
+      "title": "ייבוא מ-Hermes או OpenClaw",
+      "action": "ייבא",
+      "description": "הבא זיכרון, מיומנויות, שיחות ובחירות מודלים מהתקנת עוזר מקומית אחרת.",
+      "dialogClose": "סגור ייבוא"
+    },
+    "permissions": {
+      "title": "הרשאות",
+      "enable": "הפעל",
+      "granted": "ניתנה",
+      "opening": "פותח…",
+      "reset": "אפס",
+      "resetting": "מאפס…",
+      "accessibility": {
+        "label": "נגישות",
+        "description": "מאפשר ל-Stella לקרוא טקסט מסומן ולהיפתח באמצעות קיצור ⌘+קליק ימני בכל מקום במחשב שלך."
+      },
+      "screen": {
+        "label": "צילום מסך",
+        "description": "מאפשר ל-Stella לראות את המסך שלך כדי לעזור עם מה שאתה מסתכל עליו. ייתכן שתצטרך לצאת ולפתוח מחדש את Stella לאחר ההפעלה."
+      },
+      "microphone": {
+        "label": "מיקרופון",
+        "description": "משמש לקול ולהכתבה. אפס אם Stella נדחתה בעבר ו-macOS אינו שואל שוב."
+      },
+      "restart": {
+        "label": "הפעל מחדש את Stella",
+        "description": "צילום המסך הופעל זה עתה. צא ופתח מחדש את Stella כדי להשלים את ההגדרה.",
+        "action": "הפעל מחדש",
+        "closing": "סוגר…"
+      }
+    },
+    "shortcuts": {
+      "title": "קיצורים",
+      "change": "שנה",
+      "capturing": "הקש על מקשים…",
+      "clear": "נקה",
+      "off": "כבוי",
+      "actions": {
+        "dictation": "הכתבה",
+        "voice": "סוכן קולי"
+      },
+      "dictation": {
+        "description": "החזק את Option כדי להכתיב ל-Stella או לאפליקציה שאתה משתמש בה."
+      },
+      "voiceAgent": {
+        "description": "מפעיל או עוצר את הסוכן הקולי החי של Stella."
+      },
+      "radial": {
+        "label": "חוגה רדיאלית",
+        "description": "פותח את תפריט הטריזים לצילום, צ'אט, קול ופעולות מהירות.",
+        "ariaLabel": "קיצור החוגה הרדיאלית"
+      },
+      "mini": {
+        "label": "חלון מיני",
+        "description": "הקש פעמיים על מקש שינוי כדי לפתוח או לסגור את צ'אט המיני.",
+        "ariaLabel": "קיצור חלון המיני"
+      },
+      "targets": {
+        "dictation": "הכתבה",
+        "voice": "הסוכן הקולי"
+      },
+      "toasts": {
+        "updatedTitle": "קיצור {action} עודכן",
+        "clearedTitle": "קיצור {action} נוקה",
+        "updatedDescription": "הקש {keys} כדי להתחיל {target}.",
+        "clearedDescription": "{action} מושבת עד שתגדיר קיצור חדש.",
+        "unavailableTitle": "הקיצור אינו זמין",
+        "failedTitle": "עדכון הקיצור נכשל",
+        "radialUpdatedTitle": "קיצור החוגה הרדיאלית עודכן",
+        "radialUpdatedDescription": "החזק את {key} כדי לפתוח את החוגה הרדיאלית.",
+        "miniUpdatedTitle": "קיצור חלון המיני עודכן",
+        "miniDisabledDescription": "הקשה כפולה מושבתת.",
+        "miniUpdatedDescription": "הקש פעמיים על {modifier} כדי לפתוח את חלון המיני."
+      },
+      "errors": {
+        "load": "טעינת הקיצורים נכשלה.",
+        "unavailable": "הקיצורים אינם זמינים בחלון זה.",
+        "unavailableShortcut": "הקיצור הזה אינו זמין.",
+        "update": "עדכון הקיצור נכשל.",
+        "radialUpdate": "עדכון קיצור החוגה הרדיאלית נכשל.",
+        "miniUpdate": "עדכון קיצור חלון המיני נכשל."
+      }
+    },
+    "memory": {
+      "title": "זיכרון",
+      "enable": "הפעל",
+      "disable": "השבת",
+      "working": "עובד…",
+      "screen": {
+        "label": "זיכרון מסך",
+        "description": "Stella יכולה להציץ במסך שלך מדי פעם כדי לזכור מה עשית.",
+        "signInDescription": "התחבר ל-Stella, או בחר מודל קטן עבור Chronicle בלוח Engine.",
+        "upgradeDescription": "זיכרון מסך כלול בכל תוכנית Stella. שדרג, או בחר מודל קטן עבור Chronicle בלוח Engine."
+      },
+      "status": {
+        "label": "סטטוס",
+        "running": "פועל",
+        "stopped": "נעצר",
+        "disabled": "מושבת",
+        "fps": "{fps} fps",
+        "lastCapture": "צילום אחרון {time}"
+      },
+      "folder": {
+        "label": "תיקיית זיכרון",
+        "description": "פותח את התיקייה במחשב שבה Stella שומרת את הזיכרונות שלה.",
+        "open": "פתח תיקייה",
+        "opening": "פותח…"
+      },
+      "update": {
+        "label": "עדכן זיכרון כעת",
+        "description": "אפשר ל-Stella לסקור את הפעילות האחרונה ולשמור את מה שלמדה. זה קורה בדרך כלל מעצמו.",
+        "run": "הרץ עכשיו",
+        "running": "חולמת…"
+      },
+      "erase": {
+        "label": "מחק זיכרון",
+        "description": "מוחק את כל מה ש-Stella זכרה, כולל פעילות מסך שמורה. לא ניתן לבטל פעולה זו.",
+        "action": "מחק",
+        "working": "מוחק…",
+        "confirm": "למחוק את כל מה ש-Stella זכרה? לא ניתן לבטל פעולה זו."
+      },
+      "access": {
+        "signInTitle": "נדרשת התחברות",
+        "subscriptionTitle": "נדרש מנוי",
+        "signInMessage": "התחבר ל-Stella, או בחר מודל קטן עבור Chronicle בלוח Engine.",
+        "upgradeMessage": "זיכרון מסך כלול בכל תוכנית Stella. שדרג — או בחר מודל קטן עבור Chronicle בלוח Engine.",
+        "pickModel": "בחר מודל",
+        "upgrade": "שדרג"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle הופעל",
+        "disabledTitle": "Chronicle הושבת",
+        "alreadyRunning": "Chronicle כבר פעל.",
+        "enableFailedTitle": "לא ניתן להפעיל את Chronicle",
+        "disableFailedTitle": "לא ניתן להשבית את Chronicle",
+        "dreamScheduledTitle": "מעבר Dream תוזמן",
+        "dreamNotScheduledTitle": "מעבר Dream לא תוזמן",
+        "wipeFailedTitle": "המחיקה נכשלה",
+        "wipedTitle": "הזיכרונות נמחקו"
+      },
+      "enableFailures": {
+        "noStellaRoot": "תיקיית השורש של סביבת העבודה של Stella אינה זמינה.",
+        "needsPermission": "עדיין נדרשת הרשאת הקלטת מסך לפני ש-Chronicle יכול להתחיל.",
+        "binaryMissing": "קובץ העזר של Chronicle חסר.",
+        "startupTimeout": "Chronicle לא התחבר לאחר ההפעלה.",
+        "unsupportedPlatform": "Chronicle זמין רק ב-macOS.",
+        "unknown": "שגיאה לא ידועה."
+      },
+      "dreamResults": {
+        "scheduled": "Dream יאחד את הצבר הנוכחי.",
+        "inFlight": "מעבר Dream כבר פועל.",
+        "noInputs": "אין כרגע משהו חדש לאחד.",
+        "noApiKey": "Dream זקוק למודל/מפתח API מוגדרים או למסלול Stella מחובר.",
+        "disabled": "תזמון Dream מושבת כעת.",
+        "belowThreshold": "סף חוסר הפעילות עדיין לא הושג.",
+        "lockBusy": "Dream עסוק כרגע. נסה שוב בעוד רגע.",
+        "noRunner": "סביבת הריצה המקומית עדיין לא מוכנה.",
+        "unavailable": "Dream אינו זמין כרגע.",
+        "pendingPrefix": "ממתין: {items}.",
+        "pendingThreadSummary": "{count} סיכום משימה",
+        "pendingThreadSummaries": "{count} סיכומי משימות",
+        "pendingExtension": "{count} קובץ Chronicle",
+        "pendingExtensions": "{count} קובצי Chronicle",
+        "pendingJoin": " ו-"
+      },
+      "errors": {
+        "loadStatus": "טעינת סטטוס Chronicle נכשלה.",
+        "update": "עדכון Chronicle נכשל.",
+        "dream": "הפעלת מעבר Dream נכשלה.",
+        "wipe": "מחיקת הזיכרונות נכשלה."
+      }
+    },
+    "backup": {
+      "title": "גיבויים",
+      "upgradeNotice": "גיבויים כלולים בכל תוכנית Stella בתשלום.",
+      "never": "אף פעם",
+      "automatic": {
+        "label": "גיבויים אוטומטיים",
+        "lastLocal": "גיבוי מקומי אחרון: {time}",
+        "lastRemote": "גיבוי מרוחק אחרון: {time}",
+        "remoteIssue": "בעיה בגיבוי מרוחק: {error}",
+        "off": "כבוי",
+        "hourly": "גיבויים אוטומטיים מדי שעה",
+        "ariaLabel": "גיבויים"
+      },
+      "backupNow": {
+        "label": "גבה עכשיו",
+        "description": "שמור גיבוי כעת. הוא מועלה אוטומטית כשאתה מחובר.",
+        "action": "גבה עכשיו",
+        "working": "מגבה…"
+      },
+      "saved": {
+        "label": "גיבויים שמורים",
+        "signedInDescription": "בחר גיבוי לשחזור במכשיר זה.",
+        "signedOutDescription": "התחבר כדי לשמור גיבויים אונליין ולשחזר אותם בכל מכשיר.",
+        "empty": "אין עדיין גיבויים מרוחקים.",
+        "latest": "האחרון",
+        "files": "{count} קבצים",
+        "from": "מאת: {source}",
+        "restore": "שחזר",
+        "restoring": "משחזר…"
+      },
+      "toasts": {
+        "completedTitle": "הגיבוי הושלם",
+        "queuedTitle": "הגיבוי בתור",
+        "deferredTitle": "הגיבוי נדחה",
+        "noneNeededTitle": "אין צורך בגיבוי",
+        "failedTitle": "הגיבוי נכשל",
+        "restorePreparedTitle": "השחזור הוכן",
+        "restorePreparedDescription": "Stella תופעל מחדש כדי להשלים את החלת הגיבוי הזה.",
+        "restoreFailedTitle": "השחזור נכשל"
+      },
+      "errors": {
+        "load": "טעינת הגדרות הגיבוי נכשלה.",
+        "unavailable": "הגדרות הגיבוי אינן זמינות בחלון זה.",
+        "signInRequired": "התחבר ובחר תוכנית Stella כדי להפעיל גיבויים.",
+        "checkingPlan": "בודק את תוכנית Stella שלך לפני הפעלת הגיבויים.",
+        "subscriptionRequired": "גיבויים דורשים מנוי Stella פעיל.",
+        "updateMode": "עדכון מצב הגיבוי נכשל.",
+        "backupUnavailable": "הגיבוי אינו זמין בחלון זה.",
+        "startBackup": "התחלת הגיבוי נכשלה.",
+        "restoreUnavailable": "השחזור אינו זמין בחלון זה.",
+        "restore": "שחזור הגיבוי נכשל."
+      }
+    },
+    "account": {
+      "title": "חשבון",
+      "signOut": {
+        "label": "התנתק",
+        "description": "התנתק מ-Stella במכשיר זה.",
+        "action": "התנתק"
+      },
+      "deleteData": {
+        "label": "מחק נתונים",
+        "description": "מוחק את כל השיחות, הזיכרון והגדרות Stella השמורות.",
+        "action": "מחק",
+        "working": "מוחק…"
+      },
+      "deleteAccount": {
+        "label": "מחק חשבון",
+        "description": "מוחק לצמיתות את החשבון שלך וכל מה שבו.",
+        "action": "מחק",
+        "working": "מוחק…"
+      },
+      "legal": {
+        "title": "משפטי",
+        "terms": "תנאי השירות",
+        "privacy": "מדיניות הפרטיות",
+        "view": "הצג"
+      },
+      "dialog": {
+        "deleteDataTitle": "למחוק את נתוני Stella שלך?",
+        "deleteAccountTitle": "למחוק את חשבון Stella שלך?",
+        "deleteDataDescription": "פעולה זו מוחקת את השיחות, הזיכרון, ההגדרות ומצב Stella המקומי שלך. לא ניתן לבטל.",
+        "deleteAccountDescription": "פעולה זו מוחקת לצמיתות את החשבון ואת נתוני Stella שלך. לא ניתן לבטל.",
+        "deleteDataButton": "מחק נתונים",
+        "deleteAccountButton": "מחק חשבון",
+        "working": "מוחק…"
+      },
+      "toasts": {
+        "dataDeleted": "נתוני Stella שלך נמחקו.",
+        "accountDeleted": "חשבון Stella שלך נמחק.",
+        "deleteDataFailed": "לא ניתן היה למחוק את הנתונים שלך. נסה שוב.",
+        "deleteAccountFailed": "לא ניתן היה למחוק את החשבון שלך. נסה שוב.",
+        "signInBeforeDelete": "התחבר לפני מחיקת החשבון שלך."
+      }
+    },
+    "audio": {
+      "systemDefault": "ברירת מחדל של המערכת",
+      "microphoneDeviceFallback": "מיקרופון {index}",
+      "speakerDeviceFallback": "רמקול {index}",
+      "microphone": {
+        "title": "מיקרופון",
+        "enableLabel": "הפעל מיקרופון",
+        "enableDescription": "נדרש כדי לדבר עם Stella.",
+        "deviceLabel": "מיקרופון",
+        "deviceDescription": "לאיזה מיקרופון Stella צריכה להאזין?"
+      },
+      "recovery": {
+        "manageLabel": "ניהול גישת מיקרופון",
+        "recoverLabel": "שחזור גישת מיקרופון",
+        "manageDescription": "אם הרשאת המיקרופון נתקעת, אפשר לאפס אותה ולבקש מ-macOS לשאול שוב.",
+        "recoverDescription": "ברגע שאמרת לא, macOS לא ישאל שוב מעצמו. אפס את ההרשאה, ואז צא ופתח מחדש את Stella.",
+        "openSettings": "פתח הגדרות",
+        "reset": "אפס והפעל מחדש",
+        "closing": "סוגר…"
+      },
+      "wakeWord": {
+        "label": "מילת הפעלה “Hey Stella”",
+        "description": "מאזין ל-“Hey Stella” ברקע ומתחיל שיחה קולית. כשכבוי, המיקרופון נשאר במנוחה עד שתלחץ על הכתבה."
+      },
+      "superFast": {
+        "label": "הכתבה מהירה במיוחד",
+        "description": "שומר את המיקרופון מוכן כדי שההכתבה תתחיל בעיכוב קטן יותר."
+      },
+      "dictationSounds": {
+        "label": "צלילי הכתבה",
+        "description": "השמעת צליל כשההכתבה מתחילה ונעצרת."
+      },
+      "enhance": {
+        "label": "שיפור התמלול",
+        "description": "מנקה את טקסט ההכתבה המקומי באמצעות Mercury לפני ההוספה."
+      },
+      "localDictation": {
+        "label": "תמלול במכשיר",
+        "description": "משתמש במודל Parakeet המקומי במקום ב-Inworld. הדבר עשוי לצרוך יותר זיכרון במחשבי Mac חלשים.",
+        "unavailableFallback": "לא זמין ב-Mac הזה."
+      },
+      "speaker": {
+        "title": "רמקול",
+        "outputLabel": "התקן פלט",
+        "outputDescription": "בחר את הרמקול או האוזניות לשימוש.",
+        "empty": "לא נמצאו רמקולים.",
+        "emptyMicOff": "הפעל את המיקרופון כדי לראות את הרמקולים שלך."
+      },
+      "errors": {
+        "listDevices": "לא ניתן להציג את התקני השמע.",
+        "micDeniedReset": "גישת המיקרופון נדחתה קודם לכן. אפס אותה והפעל מחדש את Stella, או פתח את הגדרות המערכת.",
+        "micDenied": "גישת המיקרופון נדחתה. אנא אפשר אותה בהגדרות המערכת שלך."
+      }
+    },
+    "connectedProviders": {
+      "title": "ספקים מחוברים",
+      "empty": "עדיין אין ספקים מחוברים. בחר אפשרות שאינה Stella בבורר המודלים למעלה כדי להוסיף מפתח API או להתחבר.",
+      "apiKey": "מפתח API",
+      "signedIn": "מחובר",
+      "removeKey": "הסר מפתח",
+      "removingKey": "מסיר…",
+      "signOut": "התנתק",
+      "signingOut": "מתנתק…"
+    },
+    "search": {
+      "placeholder": "חפש בהגדרות",
+      "clear": "נקה חיפוש",
+      "noResultsTitle": "אין הגדרות שתואמות ל-“{query}”",
+      "noResultsBody": "נסה מילה קצרה יותר או שונה.",
+      "resultsOne": "{count} תוצאה עבור",
+      "resultsOther": "{count} תוצאות עבור",
+      "resultsAriaOne": "{count} תוצאה",
+      "resultsAriaOther": "{count} תוצאות",
+      "descriptions": {
+        "voice": "בחר את סגנון הדיבור ואת קול האישיות של Stella.",
+        "permissions": "הענק גישה לנגישות, צילום מסך ומיקרופון ב-macOS.",
+        "shortcuts": "שנה כיצד Stella נפתחת, מאזינה ומפעילה את החוגה הרדיאלית או הקול.",
+        "memory": "נהל את זיכרון המסך, עדכן או מחק את מה ש-Stella זכרה.",
+        "backup": "גיבויים מוצפנים אוטומטיים, נקודות שחזור ותמונות מצב לפי דרישה.",
+        "account": "התנתק, מחק את הנתונים שלך או מחק את החשבון שלך לצמיתות.",
+        "legal": "תנאי השירות ומדיניות הפרטיות.",
+        "microphone": "בחר את התקן הקלט שלך, הפעל מילת הפעלה, צלילי הכתבה ותמלול במכשיר.",
+        "speaker": "בחר את הרמקול או האוזניות שדרכם מושמע קולה של Stella.",
+        "wakeWord": "מאזין ל-“Hey Stella” ומתחיל שיחה קולית.",
+        "onDeviceTranscription": "משתמש במודל Parakeet המקומי במקום בתמלול בענן."
+      }
+    },
+    "errors": {
+      "loadPower": "טעינת הגדרת החשמל נכשלה.",
+      "savePower": "עדכון הגדרת החשמל נכשל.",
+      "powerUnavailable": "הגדרות החשמל אינן זמינות בחלון זה.",
+      "loadLockedComputerUse": "טעינת הגדרת השימוש במחשב נעול נכשלה.",
+      "saveLockedComputerUse": "עדכון השימוש במחשב נעול נכשל.",
+      "lockedComputerUseUnavailable": "שימוש במחשב נעול אינו זמין בחלון זה.",
+      "loadSoundNotifications": "טעינת הגדרת ההתראות הקוליות נכשלה.",
+      "saveSoundNotifications": "עדכון הגדרת ההתראות הקוליות נכשל.",
+      "soundNotificationsUnavailable": "הגדרות ההתראות הקוליות אינן זמינות בחלון זה.",
+      "loadVoice": "טעינת הגדרת הקול נכשלה.",
+      "saveVoice": "עדכון הגדרת הקול נכשל.",
+      "voiceUnavailable": "הגדרות הקול אינן זמינות בחלון זה.",
+      "loadPermissions": "טעינת סטטוס ההרשאות של שולחן העבודה נכשלה.",
+      "savePermission": "עדכון הרשאת {kind} נכשל.",
+      "resetPermission": "איפוס הרשאת {kind} נכשל.",
+      "resetPermissionMaybeReopen": "לא ניתן היה לאפס את הרשאת {kind}. ייתכן שיהיה צורך לפתוח מחדש את Stella.",
+      "microphoneDeniedReopen": "גישת המיקרופון נדחתה קודם לכן. הפעל אותה בהגדרות המערכת, ואז פתח מחדש את Stella.",
+      "microphoneStillOff": "גישת המיקרופון עדיין כבויה. הפעל אותה בהגדרות המערכת, ואז פתח מחדש את Stella.",
+      "restart": "הפעלת Stella מחדש נכשלה."
     }
   },
   "onboarding": {

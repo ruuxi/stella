@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { Search, X } from "lucide-react";
+import { useT } from "@/shared/i18n";
 
 interface SettingsSearchProps {
   value: string;
@@ -26,6 +27,7 @@ interface SettingsSearchProps {
  */
 export const SettingsSearch = forwardRef<HTMLInputElement, SettingsSearchProps>(
   function SettingsSearch({ value, onChange, placeholder }, ref) {
+    const t = useT();
     const innerRef = useRef<HTMLInputElement>(null);
 
     const setRefs = useCallback(
@@ -104,9 +106,9 @@ export const SettingsSearch = forwardRef<HTMLInputElement, SettingsSearchProps>(
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder ?? "Search settings"}
+          placeholder={placeholder ?? t("settings.search.placeholder")}
           className="settings-search-input"
-          aria-label="Search settings"
+          aria-label={t("settings.search.placeholder")}
           spellCheck={false}
           autoComplete="off"
           autoCorrect="off"
@@ -117,8 +119,8 @@ export const SettingsSearch = forwardRef<HTMLInputElement, SettingsSearchProps>(
             type="button"
             className="settings-search-clear"
             onClick={handleClear}
-            aria-label="Clear search"
-            title="Clear search"
+            aria-label={t("settings.search.clear")}
+            title={t("settings.search.clear")}
           >
             <X size={12} strokeWidth={2} />
           </button>

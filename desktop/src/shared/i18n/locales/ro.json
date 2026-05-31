@@ -38,6 +38,424 @@
     "language": {
       "title": "Limbă",
       "description": "Alege limba pe care o folosește Stella în aplicație și în răspunsuri."
+    },
+    "developerPreviews": {
+      "title": "Previzualizări de fișiere pentru dezvoltatori",
+      "description": "Afișează modificările de cod în chat și le deschide în panoul lateral."
+    },
+    "nativeFontSmoothing": {
+      "title": "Netezire nativă a fonturilor",
+      "description": "Redă textul așa cum o fac aplicațiile macOS, cu anti-aliasing în tonuri de gri."
+    },
+    "motion": {
+      "title": "Mișcare",
+      "reduceMotion": {
+        "label": "Reduce mișcarea",
+        "description": "Minimizează animațiile interfeței.",
+        "system": "Sistem",
+        "on": "Activat",
+        "off": "Dezactivat"
+      }
+    },
+    "voice": {
+      "title": "Voce",
+      "personality": {
+        "label": "Personalitate"
+      }
+    },
+    "notifications": {
+      "title": "Notificări sonore",
+      "description": "Redă un sunet când Stella termină rularea unui agent."
+    },
+    "power": {
+      "title": "Menține computerul activ",
+      "description": "Împiedică computerul să intre în repaus cât timp Stella este deschisă."
+    },
+    "lockedComputerUse": {
+      "title": "Utilizare cu computerul blocat",
+      "description": "Permite Stellei să continue sarcinile de utilizare a computerului după ce acest Mac se blochează. Necesită o solicitare de administrator și acoperă ecranul cât timp Stella lucrează.",
+      "unsupported": "Utilizarea cu computerul blocat este disponibilă doar pe macOS."
+    },
+    "browserExtension": {
+      "title": "Stella pentru Chrome",
+      "description": "Permite Stellei să vadă pagina pe care te afli și să efectueze acțiuni în browserul tău.",
+      "action": "Obține extensia"
+    },
+    "migration": {
+      "title": "Importă din Hermes sau OpenClaw",
+      "action": "Importă",
+      "description": "Adu memoria, abilitățile, sesiunile și alegerile de modele dintr-o altă instalare locală de asistent.",
+      "dialogClose": "Închide importul"
+    },
+    "permissions": {
+      "title": "Permisiuni",
+      "enable": "Activează",
+      "granted": "Acordată",
+      "opening": "Se deschide…",
+      "reset": "Resetează",
+      "resetting": "Se resetează…",
+      "accessibility": {
+        "label": "Accesibilitate",
+        "description": "Permite Stellei să citească textul selectat și să se deschidă cu scurtătura ⌘+clic dreapta oriunde pe computer."
+      },
+      "screen": {
+        "label": "Captură de ecran",
+        "description": "Permite Stellei să vadă ecranul tău pentru a te ajuta cu ceea ce privești. Poate fi necesar să închizi și să redeschizi Stella după activare."
+      },
+      "microphone": {
+        "label": "Microfon",
+        "description": "Folosit pentru voce și dictare. Resetează dacă Stella a fost refuzată anterior, iar macOS nu mai întreabă."
+      },
+      "restart": {
+        "label": "Repornește Stella",
+        "description": "Captura de ecran tocmai a fost activată. Închide și redeschide Stella pentru a finaliza configurarea.",
+        "action": "Repornește",
+        "closing": "Se închide…"
+      }
+    },
+    "shortcuts": {
+      "title": "Scurtături",
+      "change": "Modifică",
+      "capturing": "Apasă tastele…",
+      "clear": "Șterge",
+      "off": "Dezactivat",
+      "actions": {
+        "dictation": "Dictare",
+        "voice": "Agent vocal"
+      },
+      "dictation": {
+        "description": "Ține apăsat Option pentru a dicta în Stella sau în aplicația pe care o folosești."
+      },
+      "voiceAgent": {
+        "description": "Pornește sau oprește agentul vocal live al Stellei."
+      },
+      "radial": {
+        "label": "Selector radial",
+        "description": "Deschide meniul radial pentru captură, chat, voce și acțiuni rapide.",
+        "ariaLabel": "Scurtătură pentru selectorul radial"
+      },
+      "mini": {
+        "label": "Fereastră mini",
+        "description": "Apasă de două ori o tastă modificatoare pentru a deschide sau închide chatul mini.",
+        "ariaLabel": "Scurtătură pentru fereastra mini"
+      },
+      "targets": {
+        "dictation": "dictarea",
+        "voice": "agentul vocal"
+      },
+      "toasts": {
+        "updatedTitle": "Scurtătura {action} a fost actualizată",
+        "clearedTitle": "Scurtătura {action} a fost ștearsă",
+        "updatedDescription": "Apasă {keys} pentru a porni {target}.",
+        "clearedDescription": "{action} este dezactivat până când setezi o nouă scurtătură.",
+        "unavailableTitle": "Scurtătură indisponibilă",
+        "failedTitle": "Actualizarea scurtăturii a eșuat",
+        "radialUpdatedTitle": "Scurtătura selectorului radial a fost actualizată",
+        "radialUpdatedDescription": "Ține apăsat {key} pentru a deschide selectorul radial.",
+        "miniUpdatedTitle": "Scurtătura ferestrei mini a fost actualizată",
+        "miniDisabledDescription": "Apăsarea dublă este dezactivată.",
+        "miniUpdatedDescription": "Apasă de două ori {modifier} pentru a deschide fereastra mini."
+      },
+      "errors": {
+        "load": "Nu s-au putut încărca scurtăturile.",
+        "unavailable": "Scurtăturile nu sunt disponibile în această fereastră.",
+        "unavailableShortcut": "Acea scurtătură nu este disponibilă.",
+        "update": "Nu s-a putut actualiza scurtătura.",
+        "radialUpdate": "Nu s-a putut actualiza scurtătura selectorului radial.",
+        "miniUpdate": "Nu s-a putut actualiza scurtătura ferestrei mini."
+      }
+    },
+    "memory": {
+      "title": "Memorie",
+      "enable": "Activează",
+      "disable": "Dezactivează",
+      "working": "Se lucrează…",
+      "screen": {
+        "label": "Memoria ecranului",
+        "description": "Stella poate arunca din când în când o privire pe ecranul tău pentru a-și aminti ce făceai.",
+        "signInDescription": "Conectează-te la Stella sau alege un model mic pentru Chronicle în panoul Engine.",
+        "upgradeDescription": "Memoria ecranului este inclusă în orice plan Stella. Fă upgrade sau alege un model mic pentru Chronicle în panoul Engine."
+      },
+      "status": {
+        "label": "Stare",
+        "running": "În execuție",
+        "stopped": "Oprit",
+        "disabled": "Dezactivat",
+        "fps": "{fps} fps",
+        "lastCapture": "ultima captură {time}"
+      },
+      "folder": {
+        "label": "Folder de memorie",
+        "description": "Deschide folderul de pe computer unde Stella își păstrează amintirile.",
+        "open": "Deschide folderul",
+        "opening": "Se deschide…"
+      },
+      "update": {
+        "label": "Actualizează memoria acum",
+        "description": "Lasă Stella să revizuiască activitatea recentă și să salveze ce a învățat. De obicei se întâmplă de la sine.",
+        "run": "Rulează acum",
+        "running": "Visează…"
+      },
+      "erase": {
+        "label": "Șterge memoria",
+        "description": "Șterge tot ce și-a amintit Stella, inclusiv activitatea de ecran salvată. Această acțiune nu poate fi anulată.",
+        "action": "Șterge",
+        "working": "Se șterge…",
+        "confirm": "Ștergi tot ce și-a amintit Stella? Această acțiune nu poate fi anulată."
+      },
+      "access": {
+        "signInTitle": "Conectare necesară",
+        "subscriptionTitle": "Abonament necesar",
+        "signInMessage": "Conectează-te la Stella sau alege un model mic pentru Chronicle în panoul Engine.",
+        "upgradeMessage": "Memoria ecranului este inclusă în orice plan Stella. Fă upgrade — sau alege un model mic pentru Chronicle în panoul Engine.",
+        "pickModel": "Alege un model",
+        "upgrade": "Fă upgrade"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle activat",
+        "disabledTitle": "Chronicle dezactivat",
+        "alreadyRunning": "Chronicle rula deja.",
+        "enableFailedTitle": "Chronicle nu a putut fi activat",
+        "disableFailedTitle": "Chronicle nu a putut fi dezactivat",
+        "dreamScheduledTitle": "Trecere Dream programată",
+        "dreamNotScheduledTitle": "Trecere Dream neprogramată",
+        "wipeFailedTitle": "Ștergerea a eșuat",
+        "wipedTitle": "Amintiri șterse"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Rădăcina spațiului de lucru al Stellei este indisponibilă.",
+        "needsPermission": "Permisiunea de înregistrare a ecranului este încă necesară înainte ca Chronicle să poată porni.",
+        "binaryMissing": "Fișierul ajutător Chronicle lipsește.",
+        "startupTimeout": "Chronicle nu a ajuns online după lansare.",
+        "unsupportedPlatform": "Chronicle este disponibil doar pe macOS.",
+        "unknown": "Eroare necunoscută."
+      },
+      "dreamResults": {
+        "scheduled": "Dream va consolida backlogul curent.",
+        "inFlight": "O trecere Dream este deja în execuție.",
+        "noInputs": "Nu există nimic nou de consolidat în acest moment.",
+        "noApiKey": "Dream are nevoie de un model/cheie API configurate sau de o rută Stella conectată.",
+        "disabled": "Programarea Dream este momentan dezactivată.",
+        "belowThreshold": "Pragul de inactivitate nu a fost încă atins.",
+        "lockBusy": "Dream este ocupat acum. Încearcă din nou într-o clipă.",
+        "noRunner": "Mediul de execuție local nu este încă pregătit.",
+        "unavailable": "Dream este momentan indisponibil.",
+        "pendingPrefix": "În așteptare: {items}.",
+        "pendingThreadSummary": "{count} rezumat de sarcină",
+        "pendingThreadSummaries": "{count} rezumate de sarcini",
+        "pendingExtension": "{count} fișier Chronicle",
+        "pendingExtensions": "{count} fișiere Chronicle",
+        "pendingJoin": " și "
+      },
+      "errors": {
+        "loadStatus": "Nu s-a putut încărca starea Chronicle.",
+        "update": "Nu s-a putut actualiza Chronicle.",
+        "dream": "Nu s-a putut declanșa trecerea Dream.",
+        "wipe": "Nu s-au putut șterge amintirile."
+      }
+    },
+    "backup": {
+      "title": "Copii de rezervă",
+      "upgradeNotice": "Copiile de rezervă sunt incluse în orice plan Stella plătit.",
+      "never": "Niciodată",
+      "automatic": {
+        "label": "Copii de rezervă automate",
+        "lastLocal": "Ultima copie locală: {time}",
+        "lastRemote": "Ultima copie la distanță: {time}",
+        "remoteIssue": "Problemă cu copia la distanță: {error}",
+        "off": "Dezactivat",
+        "hourly": "Copii de rezervă automate la fiecare oră",
+        "ariaLabel": "Copii de rezervă"
+      },
+      "backupNow": {
+        "label": "Fă o copie acum",
+        "description": "Salvează o copie de rezervă chiar acum. Se încarcă automat când ești conectat.",
+        "action": "Fă o copie acum",
+        "working": "Se face copia…"
+      },
+      "saved": {
+        "label": "Copii salvate",
+        "signedInDescription": "Alege o copie de rezervă pentru a o restaura pe acest dispozitiv.",
+        "signedOutDescription": "Conectează-te pentru a salva copii online și a le restaura pe orice dispozitiv.",
+        "empty": "Încă nu există copii la distanță.",
+        "latest": "Cea mai recentă",
+        "files": "{count} fișiere",
+        "from": "De la: {source}",
+        "restore": "Restaurează",
+        "restoring": "Se restaurează…"
+      },
+      "toasts": {
+        "completedTitle": "Copia de rezervă a fost finalizată",
+        "queuedTitle": "Copie de rezervă în coadă",
+        "deferredTitle": "Copie de rezervă amânată",
+        "noneNeededTitle": "Nu e nevoie de copie de rezervă",
+        "failedTitle": "Copia de rezervă a eșuat",
+        "restorePreparedTitle": "Restaurare pregătită",
+        "restorePreparedDescription": "Stella va reporni pentru a finaliza aplicarea acestei copii de rezervă.",
+        "restoreFailedTitle": "Restaurarea a eșuat"
+      },
+      "errors": {
+        "load": "Nu s-au putut încărca setările copiilor de rezervă.",
+        "unavailable": "Setările copiilor de rezervă nu sunt disponibile în această fereastră.",
+        "signInRequired": "Conectează-te și alege un plan Stella pentru a activa copiile de rezervă.",
+        "checkingPlan": "Se verifică planul Stella înainte de activarea copiilor de rezervă.",
+        "subscriptionRequired": "Copiile de rezervă necesită un abonament Stella activ.",
+        "updateMode": "Nu s-a putut actualiza modul de copiere de rezervă.",
+        "backupUnavailable": "Copierea de rezervă nu este disponibilă în această fereastră.",
+        "startBackup": "Nu s-a putut porni copierea de rezervă.",
+        "restoreUnavailable": "Restaurarea nu este disponibilă în această fereastră.",
+        "restore": "Nu s-a putut restaura copia de rezervă."
+      }
+    },
+    "account": {
+      "title": "Cont",
+      "signOut": {
+        "label": "Deconectează-te",
+        "description": "Deconectează-te de la Stella pe acest dispozitiv.",
+        "action": "Deconectează-te"
+      },
+      "deleteData": {
+        "label": "Șterge datele",
+        "description": "Șterge toate conversațiile, memoria și setările Stella salvate.",
+        "action": "Șterge",
+        "working": "Se șterge…"
+      },
+      "deleteAccount": {
+        "label": "Șterge contul",
+        "description": "Șterge definitiv contul tău și tot ce conține.",
+        "action": "Șterge",
+        "working": "Se șterge…"
+      },
+      "legal": {
+        "title": "Aspecte legale",
+        "terms": "Termeni și condiții",
+        "privacy": "Politică de confidențialitate",
+        "view": "Vizualizează"
+      },
+      "dialog": {
+        "deleteDataTitle": "Ștergi datele tale Stella?",
+        "deleteAccountTitle": "Ștergi contul tău Stella?",
+        "deleteDataDescription": "Aceasta șterge conversațiile, memoria, setările și starea locală Stella. Această acțiune nu poate fi anulată.",
+        "deleteAccountDescription": "Aceasta șterge definitiv contul tău și datele Stella. Această acțiune nu poate fi anulată.",
+        "deleteDataButton": "Șterge datele",
+        "deleteAccountButton": "Șterge contul",
+        "working": "Se șterge…"
+      },
+      "toasts": {
+        "dataDeleted": "Datele tale Stella au fost șterse.",
+        "accountDeleted": "Contul tău Stella a fost șters.",
+        "deleteDataFailed": "Nu am putut șterge datele tale. Încearcă din nou.",
+        "deleteAccountFailed": "Nu am putut șterge contul tău. Încearcă din nou.",
+        "signInBeforeDelete": "Conectează-te înainte de a-ți șterge contul."
+      }
+    },
+    "audio": {
+      "systemDefault": "Implicit de sistem",
+      "microphoneDeviceFallback": "Microfon {index}",
+      "speakerDeviceFallback": "Difuzor {index}",
+      "microphone": {
+        "title": "Microfon",
+        "enableLabel": "Activează microfonul",
+        "enableDescription": "Necesar pentru a vorbi cu Stella.",
+        "deviceLabel": "Microfon",
+        "deviceDescription": "Ce microfon ar trebui să asculte Stella?"
+      },
+      "recovery": {
+        "manageLabel": "Gestionează accesul la microfon",
+        "recoverLabel": "Recuperează accesul la microfon",
+        "manageDescription": "Dacă permisiunea pentru microfon se blochează, o poți reseta și cere macOS să întrebe din nou.",
+        "recoverDescription": "Odată ce ai spus nu, macOS nu mai întreabă singur. Resetează permisiunea, apoi închide și redeschide Stella.",
+        "openSettings": "Deschide Setări",
+        "reset": "Resetează și repornește",
+        "closing": "Se închide…"
+      },
+      "wakeWord": {
+        "label": "Cuvânt de activare „Hey Stella”",
+        "description": "Ascultă „Hey Stella” în fundal și pornește o conversație vocală. Când este dezactivat, microfonul rămâne inactiv până apeși pe dictare."
+      },
+      "superFast": {
+        "label": "Dictare super rapidă",
+        "description": "Menține microfonul pregătit pentru ca dictarea să pornească cu mai puțină întârziere."
+      },
+      "dictationSounds": {
+        "label": "Sunete de dictare",
+        "description": "Redă un sunet când dictarea pornește și se oprește."
+      },
+      "enhance": {
+        "label": "Îmbunătățește transcrierea",
+        "description": "Curăță textul dictării locale cu Mercury înainte de a-l insera."
+      },
+      "localDictation": {
+        "label": "Transcriere pe dispozitiv",
+        "description": "Folosește modelul local Parakeet în loc de Inworld. Acesta poate folosi mai multă memorie pe Mac-urile mai slabe.",
+        "unavailableFallback": "Indisponibil pe acest Mac."
+      },
+      "speaker": {
+        "title": "Difuzor",
+        "outputLabel": "Dispozitiv de ieșire",
+        "outputDescription": "Alege difuzorul sau căștile pe care vrei să le folosești.",
+        "empty": "Nu s-au găsit difuzoare.",
+        "emptyMicOff": "Activează microfonul pentru a-ți vedea difuzoarele."
+      },
+      "errors": {
+        "listDevices": "Nu se pot lista dispozitivele audio.",
+        "micDeniedReset": "Accesul la microfon a fost refuzat anterior. Resetează-l și repornește Stella, sau deschide Setări de sistem.",
+        "micDenied": "Accesul la microfon a fost refuzat. Permite-l în setările sistemului tău."
+      }
+    },
+    "connectedProviders": {
+      "title": "Furnizori conectați",
+      "empty": "Încă nu sunt furnizori conectați. Alege o opțiune diferită de Stella în selectorul de modele de mai sus pentru a adăuga o cheie API sau a te conecta.",
+      "apiKey": "Cheie API",
+      "signedIn": "Conectat",
+      "removeKey": "Elimină cheia",
+      "removingKey": "Se elimină…",
+      "signOut": "Deconectează-te",
+      "signingOut": "Se deconectează…"
+    },
+    "search": {
+      "placeholder": "Caută în setări",
+      "clear": "Șterge căutarea",
+      "noResultsTitle": "Nicio setare nu se potrivește cu „{query}”",
+      "noResultsBody": "Încearcă un cuvânt mai scurt sau diferit.",
+      "resultsOne": "{count} rezultat pentru",
+      "resultsOther": "{count} rezultate pentru",
+      "resultsAriaOne": "{count} rezultat",
+      "resultsAriaOther": "{count} rezultate",
+      "descriptions": {
+        "voice": "Alege stilul de vorbire și vocea de personalitate a Stellei.",
+        "permissions": "Acordă acces la accesibilitate, captură de ecran și microfon pe macOS.",
+        "shortcuts": "Schimbă modul în care Stella se deschide, ascultă și pornește selectorul radial sau vocea.",
+        "memory": "Gestionează memoria ecranului, actualizează sau șterge ce și-a amintit Stella.",
+        "backup": "Copii de rezervă criptate automate, puncte de restaurare și instantanee la cerere.",
+        "account": "Deconectează-te, șterge-ți datele sau șterge-ți definitiv contul.",
+        "legal": "Termeni și condiții și politică de confidențialitate.",
+        "microphone": "Alege dispozitivul de intrare, activează cuvântul de activare, sunetele de dictare și transcrierea pe dispozitiv.",
+        "speaker": "Alege difuzorul sau căștile prin care se redă vocea Stellei.",
+        "wakeWord": "Ascultă „Hey Stella” și pornește o conversație vocală.",
+        "onDeviceTranscription": "Folosește modelul local Parakeet în loc de transcrierea în cloud."
+      }
+    },
+    "errors": {
+      "loadPower": "Nu s-a putut încărca setarea de alimentare.",
+      "savePower": "Nu s-a putut actualiza setarea de alimentare.",
+      "powerUnavailable": "Setările de alimentare nu sunt disponibile în această fereastră.",
+      "loadLockedComputerUse": "Nu s-a putut încărca setarea de utilizare cu computerul blocat.",
+      "saveLockedComputerUse": "Nu s-a putut actualiza utilizarea cu computerul blocat.",
+      "lockedComputerUseUnavailable": "Utilizarea cu computerul blocat nu este disponibilă în această fereastră.",
+      "loadSoundNotifications": "Nu s-a putut încărca setarea notificărilor sonore.",
+      "saveSoundNotifications": "Nu s-a putut actualiza setarea notificărilor sonore.",
+      "soundNotificationsUnavailable": "Setările notificărilor sonore nu sunt disponibile în această fereastră.",
+      "loadVoice": "Nu s-a putut încărca setarea de voce.",
+      "saveVoice": "Nu s-a putut actualiza setarea de voce.",
+      "voiceUnavailable": "Setările de voce nu sunt disponibile în această fereastră.",
+      "loadPermissions": "Nu s-a putut încărca starea permisiunilor desktopului.",
+      "savePermission": "Nu s-a putut actualiza permisiunea {kind}.",
+      "resetPermission": "Nu s-a putut reseta permisiunea {kind}.",
+      "resetPermissionMaybeReopen": "Nu s-a putut reseta permisiunea {kind}. Este posibil să fie nevoie să redeschizi Stella.",
+      "microphoneDeniedReopen": "Accesul la microfon a fost refuzat anterior. Activează-l în Setări de sistem, apoi redeschide Stella.",
+      "microphoneStillOff": "Accesul la microfon este încă dezactivat. Activează-l în Setări de sistem, apoi redeschide Stella.",
+      "restart": "Nu s-a putut reporni Stella."
     }
   },
   "onboarding": {

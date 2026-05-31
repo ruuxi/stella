@@ -6,20 +6,22 @@ import { Button } from "@/ui/button";
 import { Select } from "@/ui/select";
 import { showToast } from "@/ui/toast";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { useT } from "@/shared/i18n";
 import type {
   BackupStatusSnapshot,
   BackupSummary,
 } from "@/shared/types/electron";
 import { getSettingsErrorMessage } from "./shared";
 
-function formatBackupTimestamp(timestamp?: number) {
+function formatBackupTimestamp(timestamp: number | undefined, neverLabel: string) {
   if (!timestamp) {
-    return "Never";
+    return neverLabel;
   }
   return new Date(timestamp).toLocaleString();
 }
 
 export function BackupTab() {
+  const t = useT();
   const { hasConnectedAccount } = useAuthSessionState();
   const [billingNowMs] = useState(() => Date.now());
   const billingStatus = useConvexOneShot(api.billing.getSubscriptionStatus, {
@@ -80,7 +82,7 @@ export function BackupTab() {
       } catch (error) {
         if (!cancelled) {
           setBackupError(
-            getSettingsErrorMessage(error, "Failed to load backup settings."),
+            getSettingsErrorMessage(error, t("settings.backup.errors.load")),
           );
           setRemoteBackups([]);
         }
@@ -94,7 +96,7 @@ export function BackupTab() {
     return () => {
       cancelled = true;
     };
-  }, [loadBackupState]);
+  }, [loadBackupState, t]);
 
   const handleSyncModeChange = useCallback(
     async (value: string) => {
@@ -105,19 +107,19 @@ export function BackupTab() {
       const previousMode = syncMode;
       const systemApi = window.electronAPI?.system;
       if (!systemApi?.setLocalSyncMode) {
-        setBackupError("Backup settings are unavailable in this window.");
+        setBackupError(t("settings.backup.errors.unavailable"));
         return;
       }
       if (nextMode === "on" && !hasConnectedAccount) {
-        setBackupError("Sign in and choose a Stella plan to turn on backups.");
+        setBackupError(t("settings.backup.errors.signInRequired"));
         return;
       }
       if (nextMode === "on" && isBillingStatusLoading) {
-        setBackupError("Checking your Stella plan before turning on backups.");
+        setBackupError(t("settings.backup.errors.checkingPlan"));
         return;
       }
       if (nextMode === "on" && isBackupUpgradeRequired) {
-        setBackupError("Backups require an active Stella subscription.");
+        setBackupError(t("settings.backup.errors.subscriptionRequired"));
         return;
       }
       setBackupError(null);
@@ -132,7 +134,7 @@ export function BackupTab() {
       } catch (error) {
         setSyncMode(previousMode);
         setBackupError(
-          getSettingsErrorMessage(error, "Failed to update backup mode."),
+          getSettingsErrorMessage(error, t("settings.backup.errors.updateMode")),
         );
       } finally {
         setIsSavingSyncMode(false);
@@ -146,13 +148,14 @@ export function BackupTab() {
       loadBackupState,
       setRemoteSyncMode,
       syncMode,
+      t,
     ],
   );
 
   const handleBackupNow = useCallback(async () => {
     const systemApi = window.electronAPI?.system;
     if (!systemApi?.backUpNow) {
-      setBackupError("Backup is unavailable in this window.");
+      setBackupError(t("settings.backup.errors.backupUnavailable"));
       return;
     }
     setBackupError(null);
@@ -163,61 +166,67 @@ export function BackupTab() {
       showToast({
         title:
           result.status === "completed"
-            ? "Backup completed"
+            ? t("settings.backup.toasts.completedTitle")
             : result.status === "queued"
-              ? "Backup queued"
+              ? t("settings.backup.toasts.queuedTitle")
               : result.status === "deferred"
-                ? "Backup deferred"
-                : "No backup needed",
+                ? t("settings.backup.toasts.deferredTitle")
+                : t("settings.backup.toasts.noneNeededTitle"),
         description: result.message,
       });
     } catch (error) {
-      const message = getSettingsErrorMessage(error, "Failed to start backup.");
+      const message = getSettingsErrorMessage(
+        error,
+        t("settings.backup.errors.startBackup"),
+      );
       setBackupError(message);
       showToast({
-        title: "Backup failed",
+        title: t("settings.backup.toasts.failedTitle"),
         description: message,
         variant: "error",
       });
     } finally {
       setIsRunningBackup(false);
     }
-  }, [loadBackupState]);
+  }, [loadBackupState, t]);
 
-  const handleRestoreBackup = useCallback(async (snapshotId: string) => {
-    const systemApi = window.electronAPI?.system;
-    if (!systemApi?.restoreBackup) {
-      setBackupError("Restore is unavailable in this window.");
-      return;
-    }
-    setBackupError(null);
-    setRestoringSnapshotId(snapshotId);
-    try {
-      await systemApi.restoreBackup(snapshotId);
-      showToast({
-        title: "Restore prepared",
-        description: "Stella will restart to finish applying this backup.",
-      });
-    } catch (error) {
-      const message = getSettingsErrorMessage(
-        error,
-        "Failed to restore backup.",
-      );
-      setBackupError(message);
-      showToast({
-        title: "Restore failed",
-        description: message,
-        variant: "error",
-      });
-    } finally {
-      setRestoringSnapshotId(null);
-    }
-  }, []);
+  const handleRestoreBackup = useCallback(
+    async (snapshotId: string) => {
+      const systemApi = window.electronAPI?.system;
+      if (!systemApi?.restoreBackup) {
+        setBackupError(t("settings.backup.errors.restoreUnavailable"));
+        return;
+      }
+      setBackupError(null);
+      setRestoringSnapshotId(snapshotId);
+      try {
+        await systemApi.restoreBackup(snapshotId);
+        showToast({
+          title: t("settings.backup.toasts.restorePreparedTitle"),
+          description: t("settings.backup.toasts.restorePreparedDescription"),
+        });
+      } catch (error) {
+        const message = getSettingsErrorMessage(
+          error,
+          t("settings.backup.errors.restore"),
+        );
+        setBackupError(message);
+        showToast({
+          title: t("settings.backup.toasts.restoreFailedTitle"),
+          description: message,
+          variant: "error",
+        });
+      } finally {
+        setRestoringSnapshotId(null);
+      }
+    },
+    [t],
+  );
 
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
-        <h3 className="settings-card-title">Backups</h3>
+        <h3 className="settings-card-title">{t("settings.backup.title")}</h3>
         {backupError ? (
           <p
             className="settings-card-desc settings-card-desc--error"
@@ -228,23 +237,35 @@ export function BackupTab() {
         ) : null}
         {isBackupUpgradeRequired ? (
           <p className="settings-card-desc">
-            Backups are included with any paid Stella plan.
+            {t("settings.backup.upgradeNotice")}
           </p>
         ) : null}
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Automatic backups</div>
-            <div className="settings-row-sublabel">
-              Last local backup:{" "}
-              {formatBackupTimestamp(backupStatus?.lastSuccessAt)}
+            <div className="settings-row-label">
+              {t("settings.backup.automatic.label")}
             </div>
             <div className="settings-row-sublabel">
-              Last remote backup:{" "}
-              {formatBackupTimestamp(backupStatus?.lastRemoteSuccessAt)}
+              {t("settings.backup.automatic.lastLocal", {
+                time: formatBackupTimestamp(
+                  backupStatus?.lastSuccessAt,
+                  t("settings.backup.never"),
+                ),
+              })}
+            </div>
+            <div className="settings-row-sublabel">
+              {t("settings.backup.automatic.lastRemote", {
+                time: formatBackupTimestamp(
+                  backupStatus?.lastRemoteSuccessAt,
+                  t("settings.backup.never"),
+                ),
+              })}
             </div>
             {backupStatus?.lastRemoteError ? (
               <div className="settings-row-sublabel">
-                Remote backup issue: {backupStatus.lastRemoteError}
+                {t("settings.backup.automatic.remoteIssue", {
+                  error: backupStatus.lastRemoteError,
+                })}
               </div>
             ) : null}
           </div>
@@ -256,20 +277,21 @@ export function BackupTab() {
               disabled={
                 !backupLoaded || isSavingSyncMode || isBillingStatusLoading
               }
-              aria-label="Backups"
+              aria-label={t("settings.backup.automatic.ariaLabel")}
               options={[
-                { value: "off", label: "Off" },
-                { value: "on", label: "Automatic hourly backups" },
+                { value: "off", label: t("settings.backup.automatic.off") },
+                { value: "on", label: t("settings.backup.automatic.hourly") },
               ]}
             />
           </div>
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Back up now</div>
+            <div className="settings-row-label">
+              {t("settings.backup.backupNow.label")}
+            </div>
             <div className="settings-row-sublabel">
-              Save a backup right now. It uploads automatically when you're
-              signed in.
+              {t("settings.backup.backupNow.description")}
             </div>
           </div>
           <div className="settings-row-control">
@@ -282,17 +304,21 @@ export function BackupTab() {
                 !backupLoaded || isRunningBackup || Boolean(restoringSnapshotId)
               }
             >
-              {isRunningBackup ? "Backing Up..." : "Back Up Now"}
+              {isRunningBackup
+                ? t("settings.backup.backupNow.working")
+                : t("settings.backup.backupNow.action")}
             </Button>
           </div>
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Saved backups</div>
+            <div className="settings-row-label">
+              {t("settings.backup.saved.label")}
+            </div>
             <div className="settings-row-sublabel">
               {hasConnectedAccount
-                ? "Pick a backup to restore on this device."
-                : "Sign in to save backups online and restore them on any device."}
+                ? t("settings.backup.saved.signedInDescription")
+                : t("settings.backup.saved.signedOutDescription")}
             </div>
           </div>
         </div>
@@ -300,7 +326,7 @@ export function BackupTab() {
           <div className="settings-row">
             <div className="settings-row-info">
               <div className="settings-row-sublabel">
-                No remote backups yet.
+                {t("settings.backup.saved.empty")}
               </div>
             </div>
           </div>
@@ -310,14 +336,23 @@ export function BackupTab() {
               <div key={backup.snapshotId} className="settings-row">
                 <div className="settings-row-info">
                   <div className="settings-row-label">
-                    {formatBackupTimestamp(backup.createdAt)}
-                    {backup.isLatest ? " (Latest)" : ""}
+                    {formatBackupTimestamp(
+                      backup.createdAt,
+                      t("settings.backup.never"),
+                    )}
+                    {backup.isLatest
+                      ? ` (${t("settings.backup.saved.latest")})`
+                      : ""}
                   </div>
                   <div className="settings-row-sublabel">
-                    {backup.entryCount} files
+                    {t("settings.backup.saved.files", {
+                      count: backup.entryCount,
+                    })}
                   </div>
                   <div className="settings-row-sublabel">
-                    From: {backup.sourceHostname || backup.sourceDeviceId}
+                    {t("settings.backup.saved.from", {
+                      source: backup.sourceHostname || backup.sourceDeviceId,
+                    })}
                   </div>
                 </div>
                 <div className="settings-row-control">
@@ -332,8 +367,8 @@ export function BackupTab() {
                     }
                   >
                     {restoringSnapshotId === backup.snapshotId
-                      ? "Restoring..."
-                      : "Restore"}
+                      ? t("settings.backup.saved.restoring")
+                      : t("settings.backup.saved.restore")}
                   </Button>
                 </div>
               </div>

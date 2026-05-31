@@ -38,6 +38,424 @@
     "language": {
       "title": "ภาษา",
       "description": "เลือกภาษาที่ Stella ใช้ในแอปและในการตอบกลับ"
+    },
+    "developerPreviews": {
+      "title": "ตัวอย่างไฟล์สำหรับนักพัฒนา",
+      "description": "แสดงการเปลี่ยนแปลงโค้ดในแชทและเปิดในแผงด้านข้าง"
+    },
+    "nativeFontSmoothing": {
+      "title": "การลบรอยหยักฟอนต์แบบเนทีฟ",
+      "description": "แสดงข้อความเหมือนแอป macOS ด้วยการลบรอยหยักแบบเฉดสีเทา"
+    },
+    "motion": {
+      "title": "การเคลื่อนไหว",
+      "reduceMotion": {
+        "label": "ลดการเคลื่อนไหว",
+        "description": "ลดภาพเคลื่อนไหวของอินเทอร์เฟซให้น้อยที่สุด",
+        "system": "ระบบ",
+        "on": "เปิด",
+        "off": "ปิด"
+      }
+    },
+    "voice": {
+      "title": "เสียง",
+      "personality": {
+        "label": "บุคลิก"
+      }
+    },
+    "notifications": {
+      "title": "การแจ้งเตือนด้วยเสียง",
+      "description": "เล่นเสียงเมื่อ Stella ทำงานเอเจนต์เสร็จ"
+    },
+    "power": {
+      "title": "ให้คอมพิวเตอร์ตื่นอยู่",
+      "description": "ป้องกันไม่ให้คอมพิวเตอร์เข้าสู่โหมดสลีปขณะที่ Stella เปิดอยู่"
+    },
+    "lockedComputerUse": {
+      "title": "ใช้คอมพิวเตอร์ขณะล็อก",
+      "description": "ให้ Stella ทำงานควบคุมคอมพิวเตอร์ต่อหลังจาก Mac เครื่องนี้ล็อก ต้องมีการยืนยันจากผู้ดูแลระบบและจะปิดบังหน้าจอขณะที่ Stella ทำงาน",
+      "unsupported": "การใช้คอมพิวเตอร์ขณะล็อกใช้ได้บน macOS เท่านั้น"
+    },
+    "browserExtension": {
+      "title": "Stella สำหรับ Chrome",
+      "description": "ให้ Stella เห็นหน้าเว็บที่คุณกำลังดูและดำเนินการในเบราว์เซอร์ของคุณ",
+      "action": "รับส่วนขยาย"
+    },
+    "migration": {
+      "title": "นำเข้าจาก Hermes หรือ OpenClaw",
+      "action": "นำเข้า",
+      "description": "นำหน่วยความจำ ทักษะ เซสชัน และตัวเลือกโมเดลมาจากการติดตั้งผู้ช่วยในเครื่องอื่น",
+      "dialogClose": "ปิดการนำเข้า"
+    },
+    "permissions": {
+      "title": "สิทธิ์",
+      "enable": "เปิดใช้งาน",
+      "granted": "ให้สิทธิ์แล้ว",
+      "opening": "กำลังเปิด…",
+      "reset": "รีเซ็ต",
+      "resetting": "กำลังรีเซ็ต…",
+      "accessibility": {
+        "label": "การช่วยการเข้าถึง",
+        "description": "ให้ Stella อ่านข้อความที่เลือกและเปิดด้วยทางลัด ⌘+คลิกขวาได้ทุกที่บนคอมพิวเตอร์ของคุณ"
+      },
+      "screen": {
+        "label": "การบันทึกหน้าจอ",
+        "description": "ให้ Stella เห็นหน้าจอของคุณเพื่อช่วยกับสิ่งที่คุณกำลังดู คุณอาจต้องปิดและเปิด Stella อีกครั้งหลังเปิดใช้งานสิ่งนี้"
+      },
+      "microphone": {
+        "label": "ไมโครโฟน",
+        "description": "ใช้สำหรับเสียงและการบอกตามคำพูด รีเซ็ตหาก Stella เคยถูกปฏิเสธและ macOS ไม่ถามอีก"
+      },
+      "restart": {
+        "label": "รีสตาร์ท Stella",
+        "description": "เพิ่งเปิดการบันทึกหน้าจอ ปิดและเปิด Stella อีกครั้งเพื่อตั้งค่าให้เสร็จ",
+        "action": "รีสตาร์ท",
+        "closing": "กำลังปิด…"
+      }
+    },
+    "shortcuts": {
+      "title": "ทางลัด",
+      "change": "เปลี่ยน",
+      "capturing": "กดปุ่ม…",
+      "clear": "ล้าง",
+      "off": "ปิด",
+      "actions": {
+        "dictation": "การบอกตามคำพูด",
+        "voice": "เอเจนต์เสียง"
+      },
+      "dictation": {
+        "description": "กด Option ค้างไว้เพื่อบอกตามคำพูดไปยัง Stella หรือแอปที่คุณใช้อยู่"
+      },
+      "voiceAgent": {
+        "description": "เริ่มหรือหยุดเอเจนต์เสียงสดของ Stella"
+      },
+      "radial": {
+        "label": "วงล้อแบบรัศมี",
+        "description": "เปิดเมนูรูปลิ่มสำหรับการจับภาพ แชท เสียง และการดำเนินการด่วน",
+        "ariaLabel": "ทางลัดวงล้อแบบรัศมี"
+      },
+      "mini": {
+        "label": "หน้าต่างมินิ",
+        "description": "แตะปุ่มตัวปรับแต่งสองครั้งเพื่อเปิดหรือปิดแชทมินิ",
+        "ariaLabel": "ทางลัดหน้าต่างมินิ"
+      },
+      "targets": {
+        "dictation": "การบอกตามคำพูด",
+        "voice": "เอเจนต์เสียง"
+      },
+      "toasts": {
+        "updatedTitle": "อัปเดตทางลัด {action} แล้ว",
+        "clearedTitle": "ล้างทางลัด {action} แล้ว",
+        "updatedDescription": "กด {keys} เพื่อเริ่ม {target}",
+        "clearedDescription": "{action} ถูกปิดใช้งานจนกว่าคุณจะตั้งทางลัดใหม่",
+        "unavailableTitle": "ทางลัดไม่พร้อมใช้งาน",
+        "failedTitle": "อัปเดตทางลัดไม่สำเร็จ",
+        "radialUpdatedTitle": "อัปเดตทางลัดวงล้อแบบรัศมีแล้ว",
+        "radialUpdatedDescription": "กด {key} ค้างไว้เพื่อเปิดวงล้อแบบรัศมี",
+        "miniUpdatedTitle": "อัปเดตทางลัดหน้าต่างมินิแล้ว",
+        "miniDisabledDescription": "ปิดใช้งานการแตะสองครั้งแล้ว",
+        "miniUpdatedDescription": "แตะ {modifier} สองครั้งเพื่อเปิดหน้าต่างมินิ"
+      },
+      "errors": {
+        "load": "โหลดทางลัดไม่สำเร็จ",
+        "unavailable": "ทางลัดไม่พร้อมใช้งานในหน้าต่างนี้",
+        "unavailableShortcut": "ทางลัดนั้นไม่พร้อมใช้งาน",
+        "update": "อัปเดตทางลัดไม่สำเร็จ",
+        "radialUpdate": "อัปเดตทางลัดวงล้อแบบรัศมีไม่สำเร็จ",
+        "miniUpdate": "อัปเดตทางลัดหน้าต่างมินิไม่สำเร็จ"
+      }
+    },
+    "memory": {
+      "title": "หน่วยความจำ",
+      "enable": "เปิดใช้งาน",
+      "disable": "ปิดใช้งาน",
+      "working": "กำลังทำงาน…",
+      "screen": {
+        "label": "หน่วยความจำหน้าจอ",
+        "description": "Stella สามารถชำเลืองดูหน้าจอของคุณเป็นครั้งคราวเพื่อจดจำสิ่งที่คุณกำลังทำ",
+        "signInDescription": "ลงชื่อเข้าใช้ Stella หรือเลือกโมเดลขนาดเล็กสำหรับ Chronicle ในแผง Engine",
+        "upgradeDescription": "หน่วยความจำหน้าจอรวมอยู่ในทุกแผน Stella อัปเกรด หรือเลือกโมเดลขนาดเล็กสำหรับ Chronicle ในแผง Engine"
+      },
+      "status": {
+        "label": "สถานะ",
+        "running": "กำลังทำงาน",
+        "stopped": "หยุดแล้ว",
+        "disabled": "ปิดใช้งาน",
+        "fps": "{fps} fps",
+        "lastCapture": "จับภาพล่าสุด {time}"
+      },
+      "folder": {
+        "label": "โฟลเดอร์หน่วยความจำ",
+        "description": "เปิดโฟลเดอร์บนคอมพิวเตอร์ที่ Stella เก็บความทรงจำไว้",
+        "open": "เปิดโฟลเดอร์",
+        "opening": "กำลังเปิด…"
+      },
+      "update": {
+        "label": "อัปเดตหน่วยความจำตอนนี้",
+        "description": "ให้ Stella ทบทวนกิจกรรมล่าสุดและบันทึกสิ่งที่เรียนรู้ มักจะเกิดขึ้นเอง",
+        "run": "เรียกใช้ตอนนี้",
+        "running": "กำลังฝัน…"
+      },
+      "erase": {
+        "label": "ลบหน่วยความจำ",
+        "description": "ลบทุกสิ่งที่ Stella จดจำ รวมถึงกิจกรรมหน้าจอที่บันทึกไว้ การกระทำนี้ไม่สามารถยกเลิกได้",
+        "action": "ลบ",
+        "working": "กำลังลบ…",
+        "confirm": "ลบทุกสิ่งที่ Stella จดจำหรือไม่ การกระทำนี้ไม่สามารถยกเลิกได้"
+      },
+      "access": {
+        "signInTitle": "ต้องลงชื่อเข้าใช้",
+        "subscriptionTitle": "ต้องสมัครสมาชิก",
+        "signInMessage": "ลงชื่อเข้าใช้ Stella หรือเลือกโมเดลขนาดเล็กสำหรับ Chronicle ในแผง Engine",
+        "upgradeMessage": "หน่วยความจำหน้าจอรวมอยู่ในทุกแผน Stella อัปเกรด — หรือเลือกโมเดลขนาดเล็กสำหรับ Chronicle ในแผง Engine",
+        "pickModel": "เลือกโมเดล",
+        "upgrade": "อัปเกรด"
+      },
+      "toasts": {
+        "enabledTitle": "เปิดใช้งาน Chronicle แล้ว",
+        "disabledTitle": "ปิดใช้งาน Chronicle แล้ว",
+        "alreadyRunning": "Chronicle กำลังทำงานอยู่แล้ว",
+        "enableFailedTitle": "ไม่สามารถเปิดใช้งาน Chronicle",
+        "disableFailedTitle": "ไม่สามารถปิดใช้งาน Chronicle",
+        "dreamScheduledTitle": "กำหนดเวลารอบ Dream แล้ว",
+        "dreamNotScheduledTitle": "ไม่ได้กำหนดเวลารอบ Dream",
+        "wipeFailedTitle": "การลบล้มเหลว",
+        "wipedTitle": "ลบความทรงจำแล้ว"
+      },
+      "enableFailures": {
+        "noStellaRoot": "ไม่สามารถใช้รูทของพื้นที่ทำงานของ Stella ได้",
+        "needsPermission": "ยังต้องมีสิทธิ์บันทึกหน้าจอก่อนที่ Chronicle จะเริ่มได้",
+        "binaryMissing": "ไฟล์ช่วยเหลือของ Chronicle หายไป",
+        "startupTimeout": "Chronicle ไม่ออนไลน์หลังจากเปิด",
+        "unsupportedPlatform": "Chronicle ใช้ได้บน macOS เท่านั้น",
+        "unknown": "ข้อผิดพลาดที่ไม่รู้จัก"
+      },
+      "dreamResults": {
+        "scheduled": "Dream จะรวมงานค้างปัจจุบัน",
+        "inFlight": "มีรอบ Dream กำลังทำงานอยู่แล้ว",
+        "noInputs": "ตอนนี้ไม่มีสิ่งใหม่ให้รวม",
+        "noApiKey": "Dream ต้องมีโมเดล/คีย์ API ที่กำหนดค่าไว้ หรือเส้นทาง Stella ที่ลงชื่อเข้าใช้",
+        "disabled": "การกำหนดเวลา Dream ถูกปิดใช้งานอยู่ในขณะนี้",
+        "belowThreshold": "ยังไม่ถึงเกณฑ์การไม่ใช้งาน",
+        "lockBusy": "Dream กำลังไม่ว่างในขณะนี้ ลองอีกครั้งในอีกสักครู่",
+        "noRunner": "รันไทม์ในเครื่องยังไม่พร้อม",
+        "unavailable": "Dream ไม่พร้อมใช้งานในขณะนี้",
+        "pendingPrefix": "รอดำเนินการ: {items}",
+        "pendingThreadSummary": "สรุปงาน {count} รายการ",
+        "pendingThreadSummaries": "สรุปงาน {count} รายการ",
+        "pendingExtension": "ไฟล์ Chronicle {count} ไฟล์",
+        "pendingExtensions": "ไฟล์ Chronicle {count} ไฟล์",
+        "pendingJoin": " และ "
+      },
+      "errors": {
+        "loadStatus": "โหลดสถานะ Chronicle ไม่สำเร็จ",
+        "update": "อัปเดต Chronicle ไม่สำเร็จ",
+        "dream": "เริ่มรอบ Dream ไม่สำเร็จ",
+        "wipe": "ลบความทรงจำไม่สำเร็จ"
+      }
+    },
+    "backup": {
+      "title": "การสำรองข้อมูล",
+      "upgradeNotice": "การสำรองข้อมูลรวมอยู่ในแผน Stella แบบชำระเงินทุกแผน",
+      "never": "ไม่เคย",
+      "automatic": {
+        "label": "การสำรองข้อมูลอัตโนมัติ",
+        "lastLocal": "สำรองในเครื่องครั้งล่าสุด: {time}",
+        "lastRemote": "สำรองระยะไกลครั้งล่าสุด: {time}",
+        "remoteIssue": "ปัญหาการสำรองระยะไกล: {error}",
+        "off": "ปิด",
+        "hourly": "สำรองข้อมูลอัตโนมัติทุกชั่วโมง",
+        "ariaLabel": "การสำรองข้อมูล"
+      },
+      "backupNow": {
+        "label": "สำรองข้อมูลตอนนี้",
+        "description": "บันทึกการสำรองข้อมูลตอนนี้ จะอัปโหลดอัตโนมัติเมื่อคุณลงชื่อเข้าใช้",
+        "action": "สำรองข้อมูลตอนนี้",
+        "working": "กำลังสำรองข้อมูล…"
+      },
+      "saved": {
+        "label": "การสำรองข้อมูลที่บันทึกไว้",
+        "signedInDescription": "เลือกการสำรองข้อมูลเพื่อกู้คืนบนอุปกรณ์นี้",
+        "signedOutDescription": "ลงชื่อเข้าใช้เพื่อบันทึกการสำรองข้อมูลออนไลน์และกู้คืนบนอุปกรณ์ใดก็ได้",
+        "empty": "ยังไม่มีการสำรองข้อมูลระยะไกล",
+        "latest": "ล่าสุด",
+        "files": "{count} ไฟล์",
+        "from": "จาก: {source}",
+        "restore": "กู้คืน",
+        "restoring": "กำลังกู้คืน…"
+      },
+      "toasts": {
+        "completedTitle": "สำรองข้อมูลเสร็จสมบูรณ์",
+        "queuedTitle": "เข้าคิวสำรองข้อมูลแล้ว",
+        "deferredTitle": "เลื่อนการสำรองข้อมูลแล้ว",
+        "noneNeededTitle": "ไม่จำเป็นต้องสำรองข้อมูล",
+        "failedTitle": "สำรองข้อมูลล้มเหลว",
+        "restorePreparedTitle": "เตรียมการกู้คืนแล้ว",
+        "restorePreparedDescription": "Stella จะรีสตาร์ทเพื่อใช้การสำรองข้อมูลนี้ให้เสร็จสมบูรณ์",
+        "restoreFailedTitle": "การกู้คืนล้มเหลว"
+      },
+      "errors": {
+        "load": "โหลดการตั้งค่าสำรองข้อมูลไม่สำเร็จ",
+        "unavailable": "การตั้งค่าสำรองข้อมูลไม่พร้อมใช้งานในหน้าต่างนี้",
+        "signInRequired": "ลงชื่อเข้าใช้และเลือกแผน Stella เพื่อเปิดการสำรองข้อมูล",
+        "checkingPlan": "กำลังตรวจสอบแผน Stella ของคุณก่อนเปิดการสำรองข้อมูล",
+        "subscriptionRequired": "การสำรองข้อมูลต้องมีการสมัครสมาชิก Stella ที่ใช้งานอยู่",
+        "updateMode": "อัปเดตโหมดการสำรองข้อมูลไม่สำเร็จ",
+        "backupUnavailable": "การสำรองข้อมูลไม่พร้อมใช้งานในหน้าต่างนี้",
+        "startBackup": "เริ่มการสำรองข้อมูลไม่สำเร็จ",
+        "restoreUnavailable": "การกู้คืนไม่พร้อมใช้งานในหน้าต่างนี้",
+        "restore": "กู้คืนการสำรองข้อมูลไม่สำเร็จ"
+      }
+    },
+    "account": {
+      "title": "บัญชี",
+      "signOut": {
+        "label": "ออกจากระบบ",
+        "description": "ออกจากระบบ Stella บนอุปกรณ์นี้",
+        "action": "ออกจากระบบ"
+      },
+      "deleteData": {
+        "label": "ลบข้อมูล",
+        "description": "ลบการสนทนา หน่วยความจำ และการตั้งค่า Stella ที่บันทึกไว้ทั้งหมด",
+        "action": "ลบ",
+        "working": "กำลังลบ…"
+      },
+      "deleteAccount": {
+        "label": "ลบบัญชี",
+        "description": "ลบบัญชีของคุณและทุกสิ่งในนั้นอย่างถาวร",
+        "action": "ลบ",
+        "working": "กำลังลบ…"
+      },
+      "legal": {
+        "title": "กฎหมาย",
+        "terms": "ข้อกำหนดในการให้บริการ",
+        "privacy": "นโยบายความเป็นส่วนตัว",
+        "view": "ดู"
+      },
+      "dialog": {
+        "deleteDataTitle": "ลบข้อมูล Stella ของคุณหรือไม่",
+        "deleteAccountTitle": "ลบบัญชี Stella ของคุณหรือไม่",
+        "deleteDataDescription": "การดำเนินการนี้จะลบการสนทนา หน่วยความจำ การตั้งค่า และสถานะ Stella ในเครื่องของคุณ ไม่สามารถยกเลิกได้",
+        "deleteAccountDescription": "การดำเนินการนี้จะลบบัญชีและข้อมูล Stella ของคุณอย่างถาวร ไม่สามารถยกเลิกได้",
+        "deleteDataButton": "ลบข้อมูล",
+        "deleteAccountButton": "ลบบัญชี",
+        "working": "กำลังลบ…"
+      },
+      "toasts": {
+        "dataDeleted": "ลบข้อมูล Stella ของคุณแล้ว",
+        "accountDeleted": "ลบบัญชี Stella ของคุณแล้ว",
+        "deleteDataFailed": "ไม่สามารถลบข้อมูลของคุณได้ โปรดลองอีกครั้ง",
+        "deleteAccountFailed": "ไม่สามารถลบบัญชีของคุณได้ โปรดลองอีกครั้ง",
+        "signInBeforeDelete": "ลงชื่อเข้าใช้ก่อนลบบัญชีของคุณ"
+      }
+    },
+    "audio": {
+      "systemDefault": "ค่าเริ่มต้นของระบบ",
+      "microphoneDeviceFallback": "ไมโครโฟน {index}",
+      "speakerDeviceFallback": "ลำโพง {index}",
+      "microphone": {
+        "title": "ไมโครโฟน",
+        "enableLabel": "เปิดใช้งานไมโครโฟน",
+        "enableDescription": "จำเป็นสำหรับการพูดกับ Stella",
+        "deviceLabel": "ไมโครโฟน",
+        "deviceDescription": "Stella ควรฟังไมโครโฟนใด"
+      },
+      "recovery": {
+        "manageLabel": "จัดการการเข้าถึงไมโครโฟน",
+        "recoverLabel": "กู้คืนการเข้าถึงไมโครโฟน",
+        "manageDescription": "หากสิทธิ์ไมโครโฟนค้าง คุณสามารถรีเซ็ตและขอให้ macOS ถามอีกครั้ง",
+        "recoverDescription": "เมื่อคุณปฏิเสธแล้ว macOS จะไม่ถามอีกด้วยตัวเอง รีเซ็ตสิทธิ์ แล้วปิดและเปิด Stella อีกครั้ง",
+        "openSettings": "เปิดการตั้งค่า",
+        "reset": "รีเซ็ตและรีสตาร์ท",
+        "closing": "กำลังปิด…"
+      },
+      "wakeWord": {
+        "label": "คำปลุก “Hey Stella”",
+        "description": "ฟัง “Hey Stella” อยู่เบื้องหลังและเริ่มการสนทนาด้วยเสียง เมื่อปิด ไมโครโฟนจะอยู่เฉยจนกว่าคุณจะกดบอกตามคำพูด"
+      },
+      "superFast": {
+        "label": "การบอกตามคำพูดแบบเร็วพิเศษ",
+        "description": "ทำให้ไมโครโฟนพร้อมเพื่อให้การบอกตามคำพูดเริ่มได้โดยมีความหน่วงน้อยลง"
+      },
+      "dictationSounds": {
+        "label": "เสียงการบอกตามคำพูด",
+        "description": "เล่นเสียงเมื่อการบอกตามคำพูดเริ่มและหยุด"
+      },
+      "enhance": {
+        "label": "ปรับปรุงการถอดเสียง",
+        "description": "จัดข้อความบอกตามคำพูดในเครื่องด้วย Mercury ก่อนแทรก"
+      },
+      "localDictation": {
+        "label": "การถอดเสียงบนอุปกรณ์",
+        "description": "ใช้โมเดล Parakeet ในเครื่องแทน Inworld อาจใช้หน่วยความจำมากขึ้นบน Mac รุ่นต่ำ",
+        "unavailableFallback": "ไม่พร้อมใช้งานบน Mac เครื่องนี้"
+      },
+      "speaker": {
+        "title": "ลำโพง",
+        "outputLabel": "อุปกรณ์เอาต์พุต",
+        "outputDescription": "เลือกลำโพงหรือหูฟังที่จะใช้",
+        "empty": "ไม่พบลำโพง",
+        "emptyMicOff": "เปิดไมโครโฟนเพื่อดูลำโพงของคุณ"
+      },
+      "errors": {
+        "listDevices": "ไม่สามารถแสดงรายการอุปกรณ์เสียงได้",
+        "micDeniedReset": "การเข้าถึงไมโครโฟนถูกปฏิเสธก่อนหน้านี้ รีเซ็ตและรีสตาร์ท Stella หรือเปิดการตั้งค่าระบบ",
+        "micDenied": "การเข้าถึงไมโครโฟนถูกปฏิเสธ โปรดอนุญาตในการตั้งค่าระบบของคุณ"
+      }
+    },
+    "connectedProviders": {
+      "title": "ผู้ให้บริการที่เชื่อมต่อ",
+      "empty": "ยังไม่มีผู้ให้บริการที่เชื่อมต่อ เลือกตัวเลือกอื่นที่ไม่ใช่ Stella ในตัวเลือกโมเดลด้านบนเพื่อเพิ่มคีย์ API หรือลงชื่อเข้าใช้",
+      "apiKey": "คีย์ API",
+      "signedIn": "ลงชื่อเข้าใช้แล้ว",
+      "removeKey": "ลบคีย์",
+      "removingKey": "กำลังลบ…",
+      "signOut": "ออกจากระบบ",
+      "signingOut": "กำลังออกจากระบบ…"
+    },
+    "search": {
+      "placeholder": "ค้นหาการตั้งค่า",
+      "clear": "ล้างการค้นหา",
+      "noResultsTitle": "ไม่มีการตั้งค่าที่ตรงกับ “{query}”",
+      "noResultsBody": "ลองใช้คำที่สั้นกว่าหรือคำอื่น",
+      "resultsOne": "{count} ผลลัพธ์สำหรับ",
+      "resultsOther": "{count} ผลลัพธ์สำหรับ",
+      "resultsAriaOne": "{count} ผลลัพธ์",
+      "resultsAriaOther": "{count} ผลลัพธ์",
+      "descriptions": {
+        "voice": "เลือกสไตล์การพูดและเสียงบุคลิกของ Stella",
+        "permissions": "ให้สิทธิ์การช่วยการเข้าถึง การบันทึกหน้าจอ และไมโครโฟนบน macOS",
+        "shortcuts": "เปลี่ยนวิธีที่ Stella เปิด ฟัง และเริ่มวงล้อแบบรัศมีหรือเสียง",
+        "memory": "จัดการหน่วยความจำหน้าจอ อัปเดตหรือลบสิ่งที่ Stella จดจำ",
+        "backup": "การสำรองข้อมูลแบบเข้ารหัสอัตโนมัติ จุดกู้คืน และสแนปช็อตตามต้องการ",
+        "account": "ออกจากระบบ ลบข้อมูลของคุณ หรือลบบัญชีของคุณอย่างถาวร",
+        "legal": "ข้อกำหนดในการให้บริการและนโยบายความเป็นส่วนตัว",
+        "microphone": "เลือกอุปกรณ์อินพุตของคุณ เปิดคำปลุก เสียงการบอกตามคำพูด และการถอดเสียงบนอุปกรณ์",
+        "speaker": "เลือกลำโพงหรือหูฟังที่เสียงของ Stella เล่นผ่าน",
+        "wakeWord": "ฟัง “Hey Stella” และเริ่มการสนทนาด้วยเสียง",
+        "onDeviceTranscription": "ใช้โมเดล Parakeet ในเครื่องแทนการถอดเสียงบนคลาวด์"
+      }
+    },
+    "errors": {
+      "loadPower": "โหลดการตั้งค่าพลังงานไม่สำเร็จ",
+      "savePower": "อัปเดตการตั้งค่าพลังงานไม่สำเร็จ",
+      "powerUnavailable": "การตั้งค่าพลังงานไม่พร้อมใช้งานในหน้าต่างนี้",
+      "loadLockedComputerUse": "โหลดการตั้งค่าการใช้คอมพิวเตอร์ขณะล็อกไม่สำเร็จ",
+      "saveLockedComputerUse": "อัปเดตการใช้คอมพิวเตอร์ขณะล็อกไม่สำเร็จ",
+      "lockedComputerUseUnavailable": "การใช้คอมพิวเตอร์ขณะล็อกไม่พร้อมใช้งานในหน้าต่างนี้",
+      "loadSoundNotifications": "โหลดการตั้งค่าการแจ้งเตือนด้วยเสียงไม่สำเร็จ",
+      "saveSoundNotifications": "อัปเดตการตั้งค่าการแจ้งเตือนด้วยเสียงไม่สำเร็จ",
+      "soundNotificationsUnavailable": "การตั้งค่าการแจ้งเตือนด้วยเสียงไม่พร้อมใช้งานในหน้าต่างนี้",
+      "loadVoice": "โหลดการตั้งค่าเสียงไม่สำเร็จ",
+      "saveVoice": "อัปเดตการตั้งค่าเสียงไม่สำเร็จ",
+      "voiceUnavailable": "การตั้งค่าเสียงไม่พร้อมใช้งานในหน้าต่างนี้",
+      "loadPermissions": "โหลดสถานะสิทธิ์เดสก์ท็อปไม่สำเร็จ",
+      "savePermission": "อัปเดตสิทธิ์ {kind} ไม่สำเร็จ",
+      "resetPermission": "รีเซ็ตสิทธิ์ {kind} ไม่สำเร็จ",
+      "resetPermissionMaybeReopen": "ไม่สามารถรีเซ็ตสิทธิ์ {kind} ได้ อาจต้องเปิด Stella อีกครั้ง",
+      "microphoneDeniedReopen": "การเข้าถึงไมโครโฟนถูกปฏิเสธก่อนหน้านี้ เปิดในการตั้งค่าระบบ แล้วเปิด Stella อีกครั้ง",
+      "microphoneStillOff": "การเข้าถึงไมโครโฟนยังปิดอยู่ เปิดในการตั้งค่าระบบ แล้วเปิด Stella อีกครั้ง",
+      "restart": "รีสตาร์ท Stella ไม่สำเร็จ"
     }
   },
   "onboarding": {

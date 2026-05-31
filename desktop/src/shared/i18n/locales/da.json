@@ -38,6 +38,424 @@
     "language": {
       "title": "Sprog",
       "description": "Vælg det sprog, Stella bruger i appen og i svar."
+    },
+    "developerPreviews": {
+      "title": "Filforhåndsvisninger for udviklere",
+      "description": "Vis kodeændringer i chatten, og åbn dem i sidepanelet."
+    },
+    "nativeFontSmoothing": {
+      "title": "Indbygget skriftudjævning",
+      "description": "Gengiver tekst, som macOS-apps gør, med kantudjævning i gråtoner."
+    },
+    "motion": {
+      "title": "Bevægelse",
+      "reduceMotion": {
+        "label": "Reducer bevægelse",
+        "description": "Minimerer animationer i brugerfladen.",
+        "system": "System",
+        "on": "Til",
+        "off": "Fra"
+      }
+    },
+    "voice": {
+      "title": "Stemme",
+      "personality": {
+        "label": "Personlighed"
+      }
+    },
+    "notifications": {
+      "title": "Lydnotifikationer",
+      "description": "Afspiller en lyd, når Stella afslutter en agentkørsel."
+    },
+    "power": {
+      "title": "Hold computeren vågen",
+      "description": "Forhindrer computeren i at gå i dvale, mens Stella er åben."
+    },
+    "lockedComputerUse": {
+      "title": "Brug ved låst computer",
+      "description": "Lader Stella fortsætte computerbrug-opgaver, efter at denne Mac låses. Kræver en administratoranmodning og dækker skærmen, mens Stella arbejder.",
+      "unsupported": "Brug ved låst computer er kun tilgængelig på macOS."
+    },
+    "browserExtension": {
+      "title": "Stella til Chrome",
+      "description": "Lader Stella se den side, du er på, og udføre handlinger i din browser.",
+      "action": "Hent udvidelse"
+    },
+    "migration": {
+      "title": "Importér fra Hermes eller OpenClaw",
+      "action": "Importér",
+      "description": "Tag hukommelse, færdigheder, sessioner og modelvalg med fra en anden lokal assistentinstallation.",
+      "dialogClose": "Luk import"
+    },
+    "permissions": {
+      "title": "Tilladelser",
+      "enable": "Aktivér",
+      "granted": "Tildelt",
+      "opening": "Åbner…",
+      "reset": "Nulstil",
+      "resetting": "Nulstiller…",
+      "accessibility": {
+        "label": "Tilgængelighed",
+        "description": "Lader Stella læse markeret tekst og åbnes med genvejen ⌘+højreklik hvor som helst på din computer."
+      },
+      "screen": {
+        "label": "Skærmoptagelse",
+        "description": "Lader Stella se din skærm, så den kan hjælpe med det, du kigger på. Du skal måske afslutte og åbne Stella igen, efter du har slået dette til."
+      },
+      "microphone": {
+        "label": "Mikrofon",
+        "description": "Bruges til stemme og diktering. Nulstil, hvis Stella tidligere blev afvist, og macOS ikke spørger igen."
+      },
+      "restart": {
+        "label": "Genstart Stella",
+        "description": "Skærmoptagelse blev lige slået til. Afslut og åbn Stella igen for at fuldføre opsætningen.",
+        "action": "Genstart",
+        "closing": "Lukker…"
+      }
+    },
+    "shortcuts": {
+      "title": "Genveje",
+      "change": "Skift",
+      "capturing": "Tryk på taster…",
+      "clear": "Ryd",
+      "off": "Fra",
+      "actions": {
+        "dictation": "Diktering",
+        "voice": "Stemmeagent"
+      },
+      "dictation": {
+        "description": "Hold Option nede for at diktere til Stella eller den app, du bruger."
+      },
+      "voiceAgent": {
+        "description": "Starter eller stopper Stellas direkte stemmeagent."
+      },
+      "radial": {
+        "label": "Radialhjul",
+        "description": "Åbner kilemenuen til optagelse, chat, stemme og hurtige handlinger.",
+        "ariaLabel": "Genvej til radialhjul"
+      },
+      "mini": {
+        "label": "Minivindue",
+        "description": "Tryk to gange på en modifikationstast for at åbne eller lukke minichatten.",
+        "ariaLabel": "Genvej til minivindue"
+      },
+      "targets": {
+        "dictation": "diktering",
+        "voice": "stemmeagenten"
+      },
+      "toasts": {
+        "updatedTitle": "Genvej til {action} opdateret",
+        "clearedTitle": "Genvej til {action} ryddet",
+        "updatedDescription": "Tryk på {keys} for at starte {target}.",
+        "clearedDescription": "{action} er deaktiveret, indtil du angiver en ny genvej.",
+        "unavailableTitle": "Genvej ikke tilgængelig",
+        "failedTitle": "Kunne ikke opdatere genvejen",
+        "radialUpdatedTitle": "Genvej til radialhjul opdateret",
+        "radialUpdatedDescription": "Hold {key} nede for at åbne radialhjulet.",
+        "miniUpdatedTitle": "Genvej til minivindue opdateret",
+        "miniDisabledDescription": "Dobbelttryk er deaktiveret.",
+        "miniUpdatedDescription": "Tryk to gange på {modifier} for at åbne minivinduet."
+      },
+      "errors": {
+        "load": "Kunne ikke indlæse genveje.",
+        "unavailable": "Genveje er ikke tilgængelige i dette vindue.",
+        "unavailableShortcut": "Den genvej er ikke tilgængelig.",
+        "update": "Kunne ikke opdatere genvejen.",
+        "radialUpdate": "Kunne ikke opdatere genvejen til radialhjulet.",
+        "miniUpdate": "Kunne ikke opdatere genvejen til minivinduet."
+      }
+    },
+    "memory": {
+      "title": "Hukommelse",
+      "enable": "Aktivér",
+      "disable": "Deaktivér",
+      "working": "Arbejder…",
+      "screen": {
+        "label": "Skærmhukommelse",
+        "description": "Stella kan en gang imellem kigge på din skærm for at huske, hvad du var i gang med.",
+        "signInDescription": "Log ind på Stella, eller vælg en lille model til Chronicle i Engine-panelet.",
+        "upgradeDescription": "Skærmhukommelse er inkluderet i alle Stella-planer. Opgradér, eller vælg en lille model til Chronicle i Engine-panelet."
+      },
+      "status": {
+        "label": "Status",
+        "running": "Kører",
+        "stopped": "Stoppet",
+        "disabled": "Deaktiveret",
+        "fps": "{fps} fps",
+        "lastCapture": "seneste optagelse {time}"
+      },
+      "folder": {
+        "label": "Hukommelsesmappe",
+        "description": "Åbner mappen på din computer, hvor Stella gemmer sine minder.",
+        "open": "Åbn mappe",
+        "opening": "Åbner…"
+      },
+      "update": {
+        "label": "Opdater hukommelsen nu",
+        "description": "Lad Stella gennemgå den seneste aktivitet og gemme det, den har lært. Det sker som regel af sig selv.",
+        "run": "Kør nu",
+        "running": "Drømmer…"
+      },
+      "erase": {
+        "label": "Slet hukommelse",
+        "description": "Sletter alt, hvad Stella har husket, inklusive gemt skærmaktivitet. Dette kan ikke fortrydes.",
+        "action": "Slet",
+        "working": "Sletter…",
+        "confirm": "Slet alt, hvad Stella har husket? Dette kan ikke fortrydes."
+      },
+      "access": {
+        "signInTitle": "Login kræves",
+        "subscriptionTitle": "Abonnement kræves",
+        "signInMessage": "Log ind på Stella, eller vælg en lille model til Chronicle i Engine-panelet.",
+        "upgradeMessage": "Skærmhukommelse er inkluderet i alle Stella-planer. Opgradér — eller vælg en lille model til Chronicle i Engine-panelet.",
+        "pickModel": "Vælg en model",
+        "upgrade": "Opgradér"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle aktiveret",
+        "disabledTitle": "Chronicle deaktiveret",
+        "alreadyRunning": "Chronicle kørte allerede.",
+        "enableFailedTitle": "Kunne ikke aktivere Chronicle",
+        "disableFailedTitle": "Kunne ikke deaktivere Chronicle",
+        "dreamScheduledTitle": "Dream-kørsel planlagt",
+        "dreamNotScheduledTitle": "Dream-kørsel ikke planlagt",
+        "wipeFailedTitle": "Sletning mislykkedes",
+        "wipedTitle": "Minder slettet"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Stellas arbejdsområdes rodmappe er ikke tilgængelig.",
+        "needsPermission": "Tilladelse til skærmoptagelse kræves stadig, før Chronicle kan starte.",
+        "binaryMissing": "Chronicles hjælpefil mangler.",
+        "startupTimeout": "Chronicle kom ikke online efter start.",
+        "unsupportedPlatform": "Chronicle er kun tilgængelig på macOS.",
+        "unknown": "Ukendt fejl."
+      },
+      "dreamResults": {
+        "scheduled": "Dream vil konsolidere det aktuelle efterslæb.",
+        "inFlight": "En Dream-kørsel er allerede i gang.",
+        "noInputs": "Der er intet nyt at konsolidere lige nu.",
+        "noApiKey": "Dream kræver en konfigureret model/API-nøgle eller en Stella-rute, du er logget ind på.",
+        "disabled": "Planlægning af Dream er i øjeblikket deaktiveret.",
+        "belowThreshold": "Inaktivitetstærsklen er ikke nået endnu.",
+        "lockBusy": "Dream er optaget lige nu. Prøv igen om et øjeblik.",
+        "noRunner": "Det lokale runtime-miljø er ikke klar endnu.",
+        "unavailable": "Dream er i øjeblikket ikke tilgængelig.",
+        "pendingPrefix": "Afventer: {items}.",
+        "pendingThreadSummary": "{count} opgaveresumé",
+        "pendingThreadSummaries": "{count} opgaveresuméer",
+        "pendingExtension": "{count} Chronicle-fil",
+        "pendingExtensions": "{count} Chronicle-filer",
+        "pendingJoin": " og "
+      },
+      "errors": {
+        "loadStatus": "Kunne ikke indlæse Chronicle-status.",
+        "update": "Kunne ikke opdatere Chronicle.",
+        "dream": "Kunne ikke udløse Dream-kørsel.",
+        "wipe": "Kunne ikke slette minder."
+      }
+    },
+    "backup": {
+      "title": "Sikkerhedskopier",
+      "upgradeNotice": "Sikkerhedskopier er inkluderet i alle betalte Stella-planer.",
+      "never": "Aldrig",
+      "automatic": {
+        "label": "Automatiske sikkerhedskopier",
+        "lastLocal": "Seneste lokale sikkerhedskopi: {time}",
+        "lastRemote": "Seneste fjernsikkerhedskopi: {time}",
+        "remoteIssue": "Problem med fjernsikkerhedskopi: {error}",
+        "off": "Fra",
+        "hourly": "Automatiske sikkerhedskopier hver time",
+        "ariaLabel": "Sikkerhedskopier"
+      },
+      "backupNow": {
+        "label": "Sikkerhedskopiér nu",
+        "description": "Gem en sikkerhedskopi nu. Den uploades automatisk, når du er logget ind.",
+        "action": "Sikkerhedskopiér nu",
+        "working": "Sikkerhedskopierer…"
+      },
+      "saved": {
+        "label": "Gemte sikkerhedskopier",
+        "signedInDescription": "Vælg en sikkerhedskopi, der skal gendannes på denne enhed.",
+        "signedOutDescription": "Log ind for at gemme sikkerhedskopier online og gendanne dem på enhver enhed.",
+        "empty": "Ingen fjernsikkerhedskopier endnu.",
+        "latest": "Seneste",
+        "files": "{count} filer",
+        "from": "Fra: {source}",
+        "restore": "Gendan",
+        "restoring": "Gendanner…"
+      },
+      "toasts": {
+        "completedTitle": "Sikkerhedskopiering fuldført",
+        "queuedTitle": "Sikkerhedskopi i kø",
+        "deferredTitle": "Sikkerhedskopi udskudt",
+        "noneNeededTitle": "Ingen sikkerhedskopi nødvendig",
+        "failedTitle": "Sikkerhedskopiering mislykkedes",
+        "restorePreparedTitle": "Gendannelse forberedt",
+        "restorePreparedDescription": "Stella genstarter for at fuldføre anvendelsen af denne sikkerhedskopi.",
+        "restoreFailedTitle": "Gendannelse mislykkedes"
+      },
+      "errors": {
+        "load": "Kunne ikke indlæse indstillinger for sikkerhedskopiering.",
+        "unavailable": "Indstillinger for sikkerhedskopiering er ikke tilgængelige i dette vindue.",
+        "signInRequired": "Log ind, og vælg en Stella-plan for at slå sikkerhedskopier til.",
+        "checkingPlan": "Kontrollerer din Stella-plan, før sikkerhedskopier slås til.",
+        "subscriptionRequired": "Sikkerhedskopier kræver et aktivt Stella-abonnement.",
+        "updateMode": "Kunne ikke opdatere sikkerhedskopieringstilstand.",
+        "backupUnavailable": "Sikkerhedskopiering er ikke tilgængelig i dette vindue.",
+        "startBackup": "Kunne ikke starte sikkerhedskopiering.",
+        "restoreUnavailable": "Gendannelse er ikke tilgængelig i dette vindue.",
+        "restore": "Kunne ikke gendanne sikkerhedskopien."
+      }
+    },
+    "account": {
+      "title": "Konto",
+      "signOut": {
+        "label": "Log ud",
+        "description": "Log ud af Stella på denne enhed.",
+        "action": "Log ud"
+      },
+      "deleteData": {
+        "label": "Slet data",
+        "description": "Sletter alle samtaler, hukommelse og gemte Stella-indstillinger.",
+        "action": "Slet",
+        "working": "Sletter…"
+      },
+      "deleteAccount": {
+        "label": "Slet konto",
+        "description": "Sletter din konto og alt i den permanent.",
+        "action": "Slet",
+        "working": "Sletter…"
+      },
+      "legal": {
+        "title": "Juridisk",
+        "terms": "Servicevilkår",
+        "privacy": "Privatlivspolitik",
+        "view": "Vis"
+      },
+      "dialog": {
+        "deleteDataTitle": "Slet dine Stella-data?",
+        "deleteAccountTitle": "Slet din Stella-konto?",
+        "deleteDataDescription": "Dette sletter dine samtaler, hukommelse, indstillinger og lokale Stella-tilstand. Dette kan ikke fortrydes.",
+        "deleteAccountDescription": "Dette sletter din konto og dine Stella-data permanent. Dette kan ikke fortrydes.",
+        "deleteDataButton": "Slet data",
+        "deleteAccountButton": "Slet konto",
+        "working": "Sletter…"
+      },
+      "toasts": {
+        "dataDeleted": "Dine Stella-data blev slettet.",
+        "accountDeleted": "Din Stella-konto blev slettet.",
+        "deleteDataFailed": "Kunne ikke slette dine data. Prøv igen.",
+        "deleteAccountFailed": "Kunne ikke slette din konto. Prøv igen.",
+        "signInBeforeDelete": "Log ind, før du sletter din konto."
+      }
+    },
+    "audio": {
+      "systemDefault": "Systemstandard",
+      "microphoneDeviceFallback": "Mikrofon {index}",
+      "speakerDeviceFallback": "Højttaler {index}",
+      "microphone": {
+        "title": "Mikrofon",
+        "enableLabel": "Aktivér mikrofon",
+        "enableDescription": "Kræves for at tale med Stella.",
+        "deviceLabel": "Mikrofon",
+        "deviceDescription": "Hvilken mikrofon skal Stella lytte til?"
+      },
+      "recovery": {
+        "manageLabel": "Administrer mikrofonadgang",
+        "recoverLabel": "Gendan mikrofonadgang",
+        "manageDescription": "Hvis mikrofontilladelsen sætter sig fast, kan du nulstille den og bede macOS spørge igen.",
+        "recoverDescription": "Når du har sagt nej, spørger macOS ikke igen af sig selv. Nulstil tilladelsen, og afslut og åbn Stella igen.",
+        "openSettings": "Åbn Indstillinger",
+        "reset": "Nulstil og genstart",
+        "closing": "Lukker…"
+      },
+      "wakeWord": {
+        "label": "Aktiveringsord “Hey Stella”",
+        "description": "Lytter efter “Hey Stella” i baggrunden og starter en stemmesamtale. Når det er fra, forbliver mikrofonen inaktiv, indtil du trykker på diktér."
+      },
+      "superFast": {
+        "label": "Superhurtig diktering",
+        "description": "Holder mikrofonen klar, så dikteringen starter med mindre forsinkelse."
+      },
+      "dictationSounds": {
+        "label": "Dikteringslyde",
+        "description": "Afspiller en lyd, når dikteringen starter og stopper."
+      },
+      "enhance": {
+        "label": "Forbedr transskription",
+        "description": "Rydder op i lokal dikteringstekst med Mercury, før den indsættes."
+      },
+      "localDictation": {
+        "label": "Transskription på enheden",
+        "description": "Bruger den lokale Parakeet-model i stedet for Inworld. Dette kan bruge mere hukommelse på svagere Mac-computere.",
+        "unavailableFallback": "Ikke tilgængelig på denne Mac."
+      },
+      "speaker": {
+        "title": "Højttaler",
+        "outputLabel": "Outputenhed",
+        "outputDescription": "Vælg den højttaler eller de hovedtelefoner, der skal bruges.",
+        "empty": "Ingen højttalere fundet.",
+        "emptyMicOff": "Slå mikrofonen til for at se dine højttalere."
+      },
+      "errors": {
+        "listDevices": "Kan ikke vise lydenheder.",
+        "micDeniedReset": "Mikrofonadgang blev afvist tidligere. Nulstil den, og genstart Stella, eller åbn Systemindstillinger.",
+        "micDenied": "Mikrofonadgang blev afvist. Tillad den i dine systemindstillinger."
+      }
+    },
+    "connectedProviders": {
+      "title": "Tilsluttede udbydere",
+      "empty": "Ingen udbydere tilsluttet endnu. Vælg en anden mulighed end Stella i modelvælgeren ovenfor for at tilføje en API-nøgle eller logge ind.",
+      "apiKey": "API-nøgle",
+      "signedIn": "Logget ind",
+      "removeKey": "Fjern nøgle",
+      "removingKey": "Fjerner…",
+      "signOut": "Log ud",
+      "signingOut": "Logger ud…"
+    },
+    "search": {
+      "placeholder": "Søg i indstillinger",
+      "clear": "Ryd søgning",
+      "noResultsTitle": "Ingen indstilling matcher “{query}”",
+      "noResultsBody": "Prøv et kortere eller andet ord.",
+      "resultsOne": "{count} resultat for",
+      "resultsOther": "{count} resultater for",
+      "resultsAriaOne": "{count} resultat",
+      "resultsAriaOther": "{count} resultater",
+      "descriptions": {
+        "voice": "Vælg Stellas talestil og personlighedsstemme.",
+        "permissions": "Giv adgang til tilgængelighed, skærmoptagelse og mikrofon på macOS.",
+        "shortcuts": "Skift, hvordan Stella åbnes, lytter og starter radialhjulet eller stemmen.",
+        "memory": "Administrer skærmhukommelse, opdater eller slet det, Stella har husket.",
+        "backup": "Automatiske krypterede sikkerhedskopier, gendannelsespunkter og øjebliksbilleder efter behov.",
+        "account": "Log ud, slet dine data, eller slet din konto permanent.",
+        "legal": "Servicevilkår og privatlivspolitik.",
+        "microphone": "Vælg din inputenhed, aktivér aktiveringsord, dikteringslyde og transskription på enheden.",
+        "speaker": "Vælg den højttaler eller de hovedtelefoner, Stellas stemme afspilles gennem.",
+        "wakeWord": "Lytter efter “Hey Stella” og starter en stemmesamtale.",
+        "onDeviceTranscription": "Bruger den lokale Parakeet-model i stedet for transskription i skyen."
+      }
+    },
+    "errors": {
+      "loadPower": "Kunne ikke indlæse strømindstillingen.",
+      "savePower": "Kunne ikke opdatere strømindstillingen.",
+      "powerUnavailable": "Strømindstillinger er ikke tilgængelige i dette vindue.",
+      "loadLockedComputerUse": "Kunne ikke indlæse indstillingen for brug ved låst computer.",
+      "saveLockedComputerUse": "Kunne ikke opdatere brug ved låst computer.",
+      "lockedComputerUseUnavailable": "Brug ved låst computer er ikke tilgængelig i dette vindue.",
+      "loadSoundNotifications": "Kunne ikke indlæse indstillingen for lydnotifikationer.",
+      "saveSoundNotifications": "Kunne ikke opdatere indstillingen for lydnotifikationer.",
+      "soundNotificationsUnavailable": "Indstillinger for lydnotifikationer er ikke tilgængelige i dette vindue.",
+      "loadVoice": "Kunne ikke indlæse stemmeindstillingen.",
+      "saveVoice": "Kunne ikke opdatere stemmeindstillingen.",
+      "voiceUnavailable": "Stemmeindstillinger er ikke tilgængelige i dette vindue.",
+      "loadPermissions": "Kunne ikke indlæse tilladelsesstatus for skrivebordet.",
+      "savePermission": "Kunne ikke opdatere tilladelsen {kind}.",
+      "resetPermission": "Kunne ikke nulstille tilladelsen {kind}.",
+      "resetPermissionMaybeReopen": "Kunne ikke nulstille tilladelsen {kind}. Stella skal måske åbnes igen.",
+      "microphoneDeniedReopen": "Mikrofonadgang blev afvist tidligere. Slå den til i Systemindstillinger, og åbn Stella igen.",
+      "microphoneStillOff": "Mikrofonadgang er stadig slået fra. Slå den til i Systemindstillinger, og åbn Stella igen.",
+      "restart": "Kunne ikke genstarte Stella."
     }
   },
   "onboarding": {

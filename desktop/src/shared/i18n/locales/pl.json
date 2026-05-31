@@ -38,6 +38,424 @@
     "language": {
       "title": "Język",
       "description": "Wybierz język, którego Stella używa w aplikacji i w odpowiedziach."
+    },
+    "developerPreviews": {
+      "title": "Podglądy plików dla deweloperów",
+      "description": "Pokazuje zmiany w kodzie na czacie i otwiera je w panelu bocznym."
+    },
+    "nativeFontSmoothing": {
+      "title": "Natywne wygładzanie czcionek",
+      "description": "Renderuje tekst tak jak aplikacje macOS, z wygładzaniem w skali szarości."
+    },
+    "motion": {
+      "title": "Ruch",
+      "reduceMotion": {
+        "label": "Ogranicz ruch",
+        "description": "Minimalizuje animacje interfejsu.",
+        "system": "Systemowe",
+        "on": "Wł.",
+        "off": "Wył."
+      }
+    },
+    "voice": {
+      "title": "Głos",
+      "personality": {
+        "label": "Osobowość"
+      }
+    },
+    "notifications": {
+      "title": "Powiadomienia dźwiękowe",
+      "description": "Odtwarza dźwięk, gdy Stella kończy działanie agenta."
+    },
+    "power": {
+      "title": "Utrzymuj komputer aktywnym",
+      "description": "Zapobiega usypianiu komputera, gdy Stella jest otwarta."
+    },
+    "lockedComputerUse": {
+      "title": "Użycie przy zablokowanym komputerze",
+      "description": "Pozwala Stelli kontynuować zadania obsługi komputera po zablokowaniu tego Maca. Wymaga monitu administratora i zasłania ekran, gdy Stella pracuje.",
+      "unsupported": "Użycie przy zablokowanym komputerze jest dostępne tylko w macOS."
+    },
+    "browserExtension": {
+      "title": "Stella dla Chrome",
+      "description": "Pozwala Stelli widzieć stronę, na której jesteś, i wykonywać działania w przeglądarce.",
+      "action": "Pobierz rozszerzenie"
+    },
+    "migration": {
+      "title": "Importuj z Hermes lub OpenClaw",
+      "action": "Importuj",
+      "description": "Przenieś pamięć, umiejętności, sesje i wybory modeli z innej lokalnej instalacji asystenta.",
+      "dialogClose": "Zamknij import"
+    },
+    "permissions": {
+      "title": "Uprawnienia",
+      "enable": "Włącz",
+      "granted": "Przyznano",
+      "opening": "Otwieranie…",
+      "reset": "Resetuj",
+      "resetting": "Resetowanie…",
+      "accessibility": {
+        "label": "Dostępność",
+        "description": "Pozwala Stelli czytać zaznaczony tekst i otwierać się skrótem ⌘+kliknięcie prawym przyciskiem w dowolnym miejscu komputera."
+      },
+      "screen": {
+        "label": "Przechwytywanie ekranu",
+        "description": "Pozwala Stelli widzieć Twój ekran, aby pomóc z tym, na co patrzysz. Po włączeniu może być konieczne zamknięcie i ponowne otwarcie Stelli."
+      },
+      "microphone": {
+        "label": "Mikrofon",
+        "description": "Używany do głosu i dyktowania. Zresetuj, jeśli Stella została wcześniej odrzucona, a macOS już nie pyta."
+      },
+      "restart": {
+        "label": "Uruchom Stellę ponownie",
+        "description": "Przechwytywanie ekranu zostało właśnie włączone. Zamknij i otwórz Stellę ponownie, aby dokończyć konfigurację.",
+        "action": "Uruchom ponownie",
+        "closing": "Zamykanie…"
+      }
+    },
+    "shortcuts": {
+      "title": "Skróty",
+      "change": "Zmień",
+      "capturing": "Naciśnij klawisze…",
+      "clear": "Wyczyść",
+      "off": "Wył.",
+      "actions": {
+        "dictation": "Dyktowanie",
+        "voice": "Agent głosowy"
+      },
+      "dictation": {
+        "description": "Przytrzymaj Option, aby dyktować do Stelli lub używanej aplikacji."
+      },
+      "voiceAgent": {
+        "description": "Uruchamia lub zatrzymuje agenta głosowego Stelli na żywo."
+      },
+      "radial": {
+        "label": "Tarcza promienista",
+        "description": "Otwiera menu klinowe do przechwytywania, czatu, głosu i szybkich działań.",
+        "ariaLabel": "Skrót tarczy promienistej"
+      },
+      "mini": {
+        "label": "Mini okno",
+        "description": "Dotknij dwukrotnie klawisza modyfikującego, aby otworzyć lub zamknąć mini czat.",
+        "ariaLabel": "Skrót mini okna"
+      },
+      "targets": {
+        "dictation": "dyktowanie",
+        "voice": "agenta głosowego"
+      },
+      "toasts": {
+        "updatedTitle": "Zaktualizowano skrót {action}",
+        "clearedTitle": "Wyczyszczono skrót {action}",
+        "updatedDescription": "Naciśnij {keys}, aby uruchomić {target}.",
+        "clearedDescription": "{action} jest wyłączone, dopóki nie ustawisz nowego skrótu.",
+        "unavailableTitle": "Skrót niedostępny",
+        "failedTitle": "Nie udało się zaktualizować skrótu",
+        "radialUpdatedTitle": "Zaktualizowano skrót tarczy promienistej",
+        "radialUpdatedDescription": "Przytrzymaj {key}, aby otworzyć tarczę promienistą.",
+        "miniUpdatedTitle": "Zaktualizowano skrót mini okna",
+        "miniDisabledDescription": "Dwukrotne dotknięcie jest wyłączone.",
+        "miniUpdatedDescription": "Dotknij dwukrotnie {modifier}, aby otworzyć mini okno."
+      },
+      "errors": {
+        "load": "Nie udało się wczytać skrótów.",
+        "unavailable": "Skróty są niedostępne w tym oknie.",
+        "unavailableShortcut": "Ten skrót jest niedostępny.",
+        "update": "Nie udało się zaktualizować skrótu.",
+        "radialUpdate": "Nie udało się zaktualizować skrótu tarczy promienistej.",
+        "miniUpdate": "Nie udało się zaktualizować skrótu mini okna."
+      }
+    },
+    "memory": {
+      "title": "Pamięć",
+      "enable": "Włącz",
+      "disable": "Wyłącz",
+      "working": "Pracuję…",
+      "screen": {
+        "label": "Pamięć ekranu",
+        "description": "Stella może od czasu do czasu zerknąć na Twój ekran, aby zapamiętać, co robiłeś.",
+        "signInDescription": "Zaloguj się do Stelli lub wybierz mały model dla Chronicle w panelu Engine.",
+        "upgradeDescription": "Pamięć ekranu jest dostępna w każdym planie Stelli. Przejdź na wyższy plan lub wybierz mały model dla Chronicle w panelu Engine."
+      },
+      "status": {
+        "label": "Status",
+        "running": "Działa",
+        "stopped": "Zatrzymano",
+        "disabled": "Wyłączone",
+        "fps": "{fps} kl./s",
+        "lastCapture": "ostatnie przechwycenie {time}"
+      },
+      "folder": {
+        "label": "Folder pamięci",
+        "description": "Otwiera folder na komputerze, w którym Stella przechowuje swoje wspomnienia.",
+        "open": "Otwórz folder",
+        "opening": "Otwieranie…"
+      },
+      "update": {
+        "label": "Zaktualizuj pamięć teraz",
+        "description": "Niech Stella przejrzy ostatnią aktywność i zapisze, czego się nauczyła. Zwykle dzieje się to samoczynnie.",
+        "run": "Uruchom teraz",
+        "running": "Śni…"
+      },
+      "erase": {
+        "label": "Wymaż pamięć",
+        "description": "Usuwa wszystko, co Stella zapamiętała, w tym zapisaną aktywność ekranu. Tego nie można cofnąć.",
+        "action": "Wymaż",
+        "working": "Wymazywanie…",
+        "confirm": "Wymazać wszystko, co Stella zapamiętała? Tego nie można cofnąć."
+      },
+      "access": {
+        "signInTitle": "Wymagane logowanie",
+        "subscriptionTitle": "Wymagana subskrypcja",
+        "signInMessage": "Zaloguj się do Stelli lub wybierz mały model dla Chronicle w panelu Engine.",
+        "upgradeMessage": "Pamięć ekranu jest dostępna w każdym planie Stelli. Przejdź na wyższy plan — lub wybierz mały model dla Chronicle w panelu Engine.",
+        "pickModel": "Wybierz model",
+        "upgrade": "Ulepsz plan"
+      },
+      "toasts": {
+        "enabledTitle": "Włączono Chronicle",
+        "disabledTitle": "Wyłączono Chronicle",
+        "alreadyRunning": "Chronicle już działał.",
+        "enableFailedTitle": "Nie udało się włączyć Chronicle",
+        "disableFailedTitle": "Nie udało się wyłączyć Chronicle",
+        "dreamScheduledTitle": "Zaplanowano przebieg Dream",
+        "dreamNotScheduledTitle": "Nie zaplanowano przebiegu Dream",
+        "wipeFailedTitle": "Wymazywanie nie powiodło się",
+        "wipedTitle": "Wspomnienia wymazane"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Katalog główny obszaru roboczego Stelli jest niedostępny.",
+        "needsPermission": "Przed uruchomieniem Chronicle nadal wymagane jest uprawnienie do nagrywania ekranu.",
+        "binaryMissing": "Brakuje pliku pomocniczego Chronicle.",
+        "startupTimeout": "Chronicle nie połączył się po uruchomieniu.",
+        "unsupportedPlatform": "Chronicle jest dostępny tylko w macOS.",
+        "unknown": "Nieznany błąd."
+      },
+      "dreamResults": {
+        "scheduled": "Dream skonsoliduje bieżące zaległości.",
+        "inFlight": "Przebieg Dream już trwa.",
+        "noInputs": "W tej chwili nie ma nic nowego do skonsolidowania.",
+        "noApiKey": "Dream potrzebuje skonfigurowanego modelu/klucza API lub zalogowanej trasy Stelli.",
+        "disabled": "Harmonogram Dream jest obecnie wyłączony.",
+        "belowThreshold": "Próg bezczynności nie został jeszcze osiągnięty.",
+        "lockBusy": "Dream jest teraz zajęty. Spróbuj ponownie za chwilę.",
+        "noRunner": "Lokalne środowisko uruchomieniowe nie jest jeszcze gotowe.",
+        "unavailable": "Dream jest obecnie niedostępny.",
+        "pendingPrefix": "Oczekujące: {items}.",
+        "pendingThreadSummary": "{count} podsumowanie zadania",
+        "pendingThreadSummaries": "podsumowania zadań: {count}",
+        "pendingExtension": "{count} plik Chronicle",
+        "pendingExtensions": "pliki Chronicle: {count}",
+        "pendingJoin": " i "
+      },
+      "errors": {
+        "loadStatus": "Nie udało się wczytać statusu Chronicle.",
+        "update": "Nie udało się zaktualizować Chronicle.",
+        "dream": "Nie udało się uruchomić przebiegu Dream.",
+        "wipe": "Nie udało się wymazać wspomnień."
+      }
+    },
+    "backup": {
+      "title": "Kopie zapasowe",
+      "upgradeNotice": "Kopie zapasowe są dostępne w każdym płatnym planie Stelli.",
+      "never": "Nigdy",
+      "automatic": {
+        "label": "Automatyczne kopie zapasowe",
+        "lastLocal": "Ostatnia kopia lokalna: {time}",
+        "lastRemote": "Ostatnia kopia zdalna: {time}",
+        "remoteIssue": "Problem z kopią zdalną: {error}",
+        "off": "Wył.",
+        "hourly": "Automatyczne kopie co godzinę",
+        "ariaLabel": "Kopie zapasowe"
+      },
+      "backupNow": {
+        "label": "Utwórz kopię teraz",
+        "description": "Zapisz kopię zapasową teraz. Jest przesyłana automatycznie, gdy jesteś zalogowany.",
+        "action": "Utwórz kopię teraz",
+        "working": "Tworzenie kopii…"
+      },
+      "saved": {
+        "label": "Zapisane kopie zapasowe",
+        "signedInDescription": "Wybierz kopię do przywrócenia na tym urządzeniu.",
+        "signedOutDescription": "Zaloguj się, aby zapisywać kopie online i przywracać je na dowolnym urządzeniu.",
+        "empty": "Brak jeszcze kopii zdalnych.",
+        "latest": "Najnowsza",
+        "files": "pliki: {count}",
+        "from": "Z: {source}",
+        "restore": "Przywróć",
+        "restoring": "Przywracanie…"
+      },
+      "toasts": {
+        "completedTitle": "Kopia zapasowa ukończona",
+        "queuedTitle": "Kopia zapasowa w kolejce",
+        "deferredTitle": "Kopia zapasowa odroczona",
+        "noneNeededTitle": "Kopia zapasowa niepotrzebna",
+        "failedTitle": "Kopia zapasowa nie powiodła się",
+        "restorePreparedTitle": "Przywracanie przygotowane",
+        "restorePreparedDescription": "Stella uruchomi się ponownie, aby dokończyć stosowanie tej kopii.",
+        "restoreFailedTitle": "Przywracanie nie powiodło się"
+      },
+      "errors": {
+        "load": "Nie udało się wczytać ustawień kopii zapasowych.",
+        "unavailable": "Ustawienia kopii zapasowych są niedostępne w tym oknie.",
+        "signInRequired": "Zaloguj się i wybierz plan Stelli, aby włączyć kopie zapasowe.",
+        "checkingPlan": "Sprawdzanie planu Stelli przed włączeniem kopii zapasowych.",
+        "subscriptionRequired": "Kopie zapasowe wymagają aktywnej subskrypcji Stelli.",
+        "updateMode": "Nie udało się zaktualizować trybu kopii zapasowych.",
+        "backupUnavailable": "Tworzenie kopii jest niedostępne w tym oknie.",
+        "startBackup": "Nie udało się rozpocząć tworzenia kopii.",
+        "restoreUnavailable": "Przywracanie jest niedostępne w tym oknie.",
+        "restore": "Nie udało się przywrócić kopii zapasowej."
+      }
+    },
+    "account": {
+      "title": "Konto",
+      "signOut": {
+        "label": "Wyloguj się",
+        "description": "Wyloguj się ze Stelli na tym urządzeniu.",
+        "action": "Wyloguj się"
+      },
+      "deleteData": {
+        "label": "Usuń dane",
+        "description": "Usuwa wszystkie rozmowy, pamięć i zapisane ustawienia Stelli.",
+        "action": "Usuń",
+        "working": "Usuwanie…"
+      },
+      "deleteAccount": {
+        "label": "Usuń konto",
+        "description": "Trwale usuwa Twoje konto i wszystko, co się w nim znajduje.",
+        "action": "Usuń",
+        "working": "Usuwanie…"
+      },
+      "legal": {
+        "title": "Informacje prawne",
+        "terms": "Warunki korzystania",
+        "privacy": "Polityka prywatności",
+        "view": "Wyświetl"
+      },
+      "dialog": {
+        "deleteDataTitle": "Usunąć dane Stelli?",
+        "deleteAccountTitle": "Usunąć konto Stelli?",
+        "deleteDataDescription": "To usuwa Twoje rozmowy, pamięć, ustawienia i lokalny stan Stelli. Tego nie można cofnąć.",
+        "deleteAccountDescription": "To trwale usuwa Twoje konto i dane Stelli. Tego nie można cofnąć.",
+        "deleteDataButton": "Usuń dane",
+        "deleteAccountButton": "Usuń konto",
+        "working": "Usuwanie…"
+      },
+      "toasts": {
+        "dataDeleted": "Twoje dane Stelli zostały usunięte.",
+        "accountDeleted": "Twoje konto Stelli zostało usunięte.",
+        "deleteDataFailed": "Nie udało się usunąć danych. Spróbuj ponownie.",
+        "deleteAccountFailed": "Nie udało się usunąć konta. Spróbuj ponownie.",
+        "signInBeforeDelete": "Zaloguj się przed usunięciem konta."
+      }
+    },
+    "audio": {
+      "systemDefault": "Domyślny systemowy",
+      "microphoneDeviceFallback": "Mikrofon {index}",
+      "speakerDeviceFallback": "Głośnik {index}",
+      "microphone": {
+        "title": "Mikrofon",
+        "enableLabel": "Włącz mikrofon",
+        "enableDescription": "Wymagany do rozmowy ze Stellą.",
+        "deviceLabel": "Mikrofon",
+        "deviceDescription": "Którego mikrofonu ma używać Stella?"
+      },
+      "recovery": {
+        "manageLabel": "Zarządzaj dostępem do mikrofonu",
+        "recoverLabel": "Przywróć dostęp do mikrofonu",
+        "manageDescription": "Jeśli uprawnienie do mikrofonu się zablokuje, możesz je zresetować i poprosić macOS o ponowne pytanie.",
+        "recoverDescription": "Gdy raz odmówisz, macOS nie zapyta ponownie samodzielnie. Zresetuj uprawnienie, a następnie zamknij i otwórz Stellę ponownie.",
+        "openSettings": "Otwórz Ustawienia",
+        "reset": "Resetuj i uruchom ponownie",
+        "closing": "Zamykanie…"
+      },
+      "wakeWord": {
+        "label": "Słowo aktywujące „Hey Stella”",
+        "description": "Nasłuchuje „Hey Stella” w tle i rozpoczyna rozmowę głosową. Gdy wyłączone, mikrofon pozostaje bezczynny, dopóki nie naciśniesz dyktowania."
+      },
+      "superFast": {
+        "label": "Superszybkie dyktowanie",
+        "description": "Utrzymuje mikrofon w gotowości, aby dyktowanie zaczynało się z mniejszym opóźnieniem."
+      },
+      "dictationSounds": {
+        "label": "Dźwięki dyktowania",
+        "description": "Odtwarza dźwięk, gdy dyktowanie się zaczyna i kończy."
+      },
+      "enhance": {
+        "label": "Ulepsz transkrypcję",
+        "description": "Porządkuje lokalny tekst dyktowania za pomocą Mercury przed wstawieniem."
+      },
+      "localDictation": {
+        "label": "Transkrypcja na urządzeniu",
+        "description": "Używa lokalnego modelu Parakeet zamiast Inworld. Na słabszych Macach może zużywać więcej pamięci.",
+        "unavailableFallback": "Niedostępne na tym Macu."
+      },
+      "speaker": {
+        "title": "Głośnik",
+        "outputLabel": "Urządzenie wyjściowe",
+        "outputDescription": "Wybierz głośnik lub słuchawki do użycia.",
+        "empty": "Nie znaleziono głośników.",
+        "emptyMicOff": "Włącz mikrofon, aby zobaczyć swoje głośniki."
+      },
+      "errors": {
+        "listDevices": "Nie można wyświetlić listy urządzeń audio.",
+        "micDeniedReset": "Dostęp do mikrofonu został wcześniej odrzucony. Zresetuj go i uruchom Stellę ponownie lub otwórz Ustawienia systemowe.",
+        "micDenied": "Dostęp do mikrofonu został odrzucony. Zezwól na niego w ustawieniach systemu."
+      }
+    },
+    "connectedProviders": {
+      "title": "Połączeni dostawcy",
+      "empty": "Brak połączonych dostawców. Wybierz powyżej w selektorze modeli opcję inną niż Stella, aby dodać klucz API lub się zalogować.",
+      "apiKey": "Klucz API",
+      "signedIn": "Zalogowano",
+      "removeKey": "Usuń klucz",
+      "removingKey": "Usuwanie…",
+      "signOut": "Wyloguj się",
+      "signingOut": "Wylogowywanie…"
+    },
+    "search": {
+      "placeholder": "Szukaj w ustawieniach",
+      "clear": "Wyczyść wyszukiwanie",
+      "noResultsTitle": "Żadne ustawienie nie pasuje do „{query}”",
+      "noResultsBody": "Spróbuj krótszego lub innego słowa.",
+      "resultsOne": "{count} wynik dla",
+      "resultsOther": "Wyniki ({count}) dla",
+      "resultsAriaOne": "{count} wynik",
+      "resultsAriaOther": "Wyniki: {count}",
+      "descriptions": {
+        "voice": "Wybierz styl mówienia i głos osobowości Stelli.",
+        "permissions": "Przyznaj dostęp do dostępności, przechwytywania ekranu i mikrofonu w macOS.",
+        "shortcuts": "Zmień sposób, w jaki Stella się otwiera, nasłuchuje i uruchamia tarczę promienistą lub głos.",
+        "memory": "Zarządzaj pamięcią ekranu, aktualizuj lub wymazuj to, co Stella zapamiętała.",
+        "backup": "Automatyczne szyfrowane kopie zapasowe, punkty przywracania i migawki na żądanie.",
+        "account": "Wyloguj się, usuń dane lub trwale usuń konto.",
+        "legal": "Warunki korzystania i polityka prywatności.",
+        "microphone": "Wybierz urządzenie wejściowe, włącz słowo aktywujące, dźwięki dyktowania i transkrypcję na urządzeniu.",
+        "speaker": "Wybierz głośnik lub słuchawki, przez które odtwarzany jest głos Stelli.",
+        "wakeWord": "Nasłuchuje „Hey Stella” i rozpoczyna rozmowę głosową.",
+        "onDeviceTranscription": "Używa lokalnego modelu Parakeet zamiast transkrypcji w chmurze."
+      }
+    },
+    "errors": {
+      "loadPower": "Nie udało się wczytać ustawienia zasilania.",
+      "savePower": "Nie udało się zaktualizować ustawienia zasilania.",
+      "powerUnavailable": "Ustawienia zasilania są niedostępne w tym oknie.",
+      "loadLockedComputerUse": "Nie udało się wczytać ustawienia użycia przy zablokowanym komputerze.",
+      "saveLockedComputerUse": "Nie udało się zaktualizować użycia przy zablokowanym komputerze.",
+      "lockedComputerUseUnavailable": "Użycie przy zablokowanym komputerze jest niedostępne w tym oknie.",
+      "loadSoundNotifications": "Nie udało się wczytać ustawienia powiadomień dźwiękowych.",
+      "saveSoundNotifications": "Nie udało się zaktualizować ustawienia powiadomień dźwiękowych.",
+      "soundNotificationsUnavailable": "Ustawienia powiadomień dźwiękowych są niedostępne w tym oknie.",
+      "loadVoice": "Nie udało się wczytać ustawienia głosu.",
+      "saveVoice": "Nie udało się zaktualizować ustawienia głosu.",
+      "voiceUnavailable": "Ustawienia głosu są niedostępne w tym oknie.",
+      "loadPermissions": "Nie udało się wczytać statusu uprawnień pulpitu.",
+      "savePermission": "Nie udało się zaktualizować uprawnienia {kind}.",
+      "resetPermission": "Nie udało się zresetować uprawnienia {kind}.",
+      "resetPermissionMaybeReopen": "Nie można zresetować uprawnienia {kind}. Może być konieczne ponowne otwarcie Stelli.",
+      "microphoneDeniedReopen": "Dostęp do mikrofonu został wcześniej odrzucony. Włącz go w Ustawieniach systemowych, a następnie otwórz Stellę ponownie.",
+      "microphoneStillOff": "Dostęp do mikrofonu jest nadal wyłączony. Włącz go w Ustawieniach systemowych, a następnie otwórz Stellę ponownie.",
+      "restart": "Nie udało się uruchomić Stelli ponownie."
     }
   },
   "onboarding": {
