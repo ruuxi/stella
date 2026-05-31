@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Search } from "lucide-react";
-import { dispatchShowHome } from "@/shared/lib/stella-orb-chat";
+import { dispatchComposeText } from "@/shared/lib/stella-orb-chat";
 import {
   getSnapshot,
   subscribe,
@@ -22,6 +22,8 @@ const SORT_LABELS: Record<SortOption, string> = {
   recent: "Most recent",
   name: "Name",
 };
+
+const CREATE_APP_PROMPT = "Tell me what stella apps can you make for me?";
 
 const RELATIVE_UNITS: ReadonlyArray<{ ms: number; unit: Intl.RelativeTimeFormatUnit }> = [
   { ms: 60 * 1000, unit: "second" },
@@ -65,7 +67,9 @@ export function AppsApp() {
 
   const handleCreateApp = useCallback(() => {
     void navigate({ to: "/chat" }).then(() => {
-      dispatchShowHome();
+      requestAnimationFrame(() => {
+        dispatchComposeText({ text: CREATE_APP_PROMPT });
+      });
     });
   }, [navigate]);
 
