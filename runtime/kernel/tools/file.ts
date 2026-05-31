@@ -18,6 +18,7 @@ import {
   stripBom,
 } from "./utils.js";
 import { isBlockedPath } from "./command-safety.js";
+import { sanitizeToolVisibleText } from "./safety.js";
 
 export type FileToolsConfig = {
   stellaRoot?: string;
@@ -67,7 +68,7 @@ export const readTextFile = async (
   context?: ToolContext,
 ): Promise<{ path: string; content: string }> => {
   const filePath = resolveFilePath(rawPath, context);
-  const pathBlock = isBlockedPath(filePath);
+  const pathBlock = isBlockedPath(filePath, context);
   if (pathBlock) {
     throw new Error(pathBlock);
   }
@@ -92,7 +93,7 @@ export const writeTextFile = async (
   context?: ToolContext,
 ): Promise<{ path: string; created: boolean }> => {
   const filePath = resolveFilePath(rawPath, context);
-  const pathBlock = isBlockedPath(filePath);
+  const pathBlock = isBlockedPath(filePath, context);
   if (pathBlock) {
     throw new Error(pathBlock);
   }
@@ -132,7 +133,7 @@ export const replaceTextInFile = async (
   const filePath = resolveFilePath(args.filePath, context);
   const replaceAll = Boolean(args.replaceAll ?? false);
 
-  const pathBlock = isBlockedPath(filePath);
+  const pathBlock = isBlockedPath(filePath, context);
   if (pathBlock) {
     throw new Error(pathBlock);
   }
@@ -195,7 +196,11 @@ export const handleRead = async (
     );
     const offset = Number(args.offset ?? 1);
     const limit = Number(args.limit ?? 2000);
-    const formatted = formatWithLineNumbers(content, offset, limit);
+    const formatted = formatWithLineNumbers(
+      sanitizeToolVisibleText(content, { codeFile: true }),
+      offset,
+      limit,
+    );
     return {
       result: `File: ${filePath}\n${formatted.header}\n\n${formatted.body}`,
     };

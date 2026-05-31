@@ -443,8 +443,11 @@ const applyReplacements = (
   return fileLines;
 };
 
-const applyUpdate = async (op: Extract<FileOp, { kind: "update" }>) => {
-  const block = isBlockedPath(op.path);
+const applyUpdate = async (
+  op: Extract<FileOp, { kind: "update" }>,
+  context?: ToolContext,
+) => {
+  const block = isBlockedPath(op.path, context);
   if (block) throw new Error(block);
 
   let original: string;
@@ -468,7 +471,7 @@ const applyUpdate = async (op: Extract<FileOp, { kind: "update" }>) => {
 
   const targetPath = op.moveTo ?? op.path;
   if (op.moveTo) {
-    const moveBlock = isBlockedPath(op.moveTo);
+    const moveBlock = isBlockedPath(op.moveTo, context);
     if (moveBlock) throw new Error(moveBlock);
     await fs.mkdir(path.dirname(op.moveTo), { recursive: true });
     await fs.writeFile(op.moveTo, newContent, "utf-8");
@@ -493,8 +496,11 @@ const applyUpdate = async (op: Extract<FileOp, { kind: "update" }>) => {
   };
 };
 
-const applyAdd = async (op: Extract<FileOp, { kind: "add" }>) => {
-  const block = isBlockedPath(op.path);
+const applyAdd = async (
+  op: Extract<FileOp, { kind: "add" }>,
+  context?: ToolContext,
+) => {
+  const block = isBlockedPath(op.path, context);
   if (block) throw new Error(block);
   await fs.mkdir(path.dirname(op.path), { recursive: true });
   const content = op.lines.join("\n") + (op.lines.length > 0 ? "\n" : "");
@@ -502,8 +508,11 @@ const applyAdd = async (op: Extract<FileOp, { kind: "add" }>) => {
   return { kind: "add" as const, path: op.path };
 };
 
-const applyDelete = async (op: Extract<FileOp, { kind: "delete" }>) => {
-  const block = isBlockedPath(op.path);
+const applyDelete = async (
+  op: Extract<FileOp, { kind: "delete" }>,
+  context?: ToolContext,
+) => {
+  const block = isBlockedPath(op.path, context);
   if (block) throw new Error(block);
   await fs.unlink(op.path);
   return { kind: "delete" as const, path: op.path };
@@ -614,13 +623,13 @@ export const handleApplyPatch = async (
     for (const op of ops) {
       switch (op.kind) {
         case "add":
-          results.push(await applyAdd(op));
+          results.push(await applyAdd(op, context));
           break;
         case "update":
-          results.push(await applyUpdate(op));
+          results.push(await applyUpdate(op, context));
           break;
         case "delete":
-          results.push(await applyDelete(op));
+          results.push(await applyDelete(op, context));
           break;
         default:
           break;
