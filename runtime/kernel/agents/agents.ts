@@ -32,6 +32,36 @@ export const loadBundledAgents = (): ParsedAgent[] =>
       return leftOrder - rightOrder || left.id.localeCompare(right.id);
     });
 
+const agentKeys = (agent: ParsedAgent): Set<string> =>
+  new Set([agent.id, ...agent.agentTypes]);
+
+const agentsOverlap = (left: ParsedAgent, right: ParsedAgent): boolean => {
+  const leftKeys = agentKeys(left);
+  for (const key of agentKeys(right)) {
+    if (leftKeys.has(key)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const mergeBundledAndExtensionAgents = (
+  extensionAgents: readonly ParsedAgent[],
+): ParsedAgent[] => {
+  const merged = loadBundledAgents();
+  for (const extensionAgent of extensionAgents) {
+    const index = merged.findIndex((agent) =>
+      agentsOverlap(agent, extensionAgent),
+    );
+    if (index >= 0) {
+      merged[index] = extensionAgent;
+      continue;
+    }
+    merged.push(extensionAgent);
+  }
+  return merged;
+};
+
 /** Resolved when `agentType` is internal-only (not in `loadBundledAgents`). */
 export const getBundledCoreAgentFallback = (
   agentType: string,
