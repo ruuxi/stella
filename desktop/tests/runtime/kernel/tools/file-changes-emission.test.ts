@@ -179,6 +179,55 @@ describe("fileChanges emission", () => {
     ]);
   });
 
+  it("exec_command skips produced-file snapshots for known read-only commands", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+    const initialFile = path.join(root, "initial.txt");
+    const createdDuringCommand = path.join(root, "created-during-tail.txt");
+    await writeFile(initialFile, "hello\n", "utf-8");
+
+    const started = await handleExecCommand(
+      shellState,
+      {
+        cmd: "tail -f initial.txt",
+        workdir: root,
+        yield_time_ms: 100,
+      },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
+    );
+
+    expect(started.error).toBeUndefined();
+    const sessionId = (started.result as { session_id: string | null })
+      .session_id;
+    expect(typeof sessionId).toBe("string");
+
+    await writeFile(createdDuringCommand, "not from tail\n", "utf-8");
+    shellState.shells.get(sessionId!)?.kill();
+
+    const finished = await handleWriteStdin(
+      shellState,
+      {
+        session_id: sessionId,
+        chars: "",
+        yield_time_ms: 1000,
+      },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaRoot: root,
+      },
+    );
+
+    expect(finished.error).toBeUndefined();
+    expect(finished.producedFiles).toBeUndefined();
+  });
+
   it("exec_command snapshots stellaRoot when cwd is a subdirectory", async () => {
     const root = await createTempDir();
     const workdir = path.join(root, "desktop");

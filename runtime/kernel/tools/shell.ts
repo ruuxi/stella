@@ -27,6 +27,7 @@ import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 import { getStellaComputerSessionId } from "./stella-computer-session.js";
 import { inferShellMentionedPaths } from "./path-inference.js";
+import { isKnownSafeCommand } from "./safe-commands.js";
 import type { OfficePreviewRef } from "../../contracts/office-preview.js";
 import {
   purgeExpiredDeferredDeletes,
@@ -415,6 +416,9 @@ const snapshotShellSideEffects = async (
   );
   return { rootSnapshot, externalCandidateSnapshots };
 };
+
+const shouldSnapshotShellSideEffects = (command: string): boolean =>
+  !isKnownSafeCommand(command);
 
 const takeCompletedProducedFiles = async (
   record: ManagedShellRecord,
@@ -1331,12 +1335,13 @@ export const handleExecCommand = async (
     return windowsDeleteResult;
   }
 
-  const snapshotRoot = resolveShellSnapshotRoot(prepared.cwd, context);
-  const beforeSideEffects = await snapshotShellSideEffects(
-    { cmd: prepared.command, workdir: prepared.cwd },
-    snapshotRoot,
-    context,
-  );
+  const beforeSideEffects = shouldSnapshotShellSideEffects(prepared.command)
+    ? await snapshotShellSideEffects(
+        { cmd: prepared.command, workdir: prepared.cwd },
+        resolveShellSnapshotRoot(prepared.cwd, context),
+        context,
+      )
+    : { rootSnapshot: null };
   let lastUpdateAt = 0;
   const maxOutputChars = outputCharBudgetFromTokens(args.max_output_tokens);
   const emitUpdate = (record: ManagedShellRecord) => {
@@ -1484,12 +1489,13 @@ export const handleBash = async (
   }
 
   if (runInBackground) {
-    const snapshotRoot = resolveShellSnapshotRoot(cwd, context);
-    const beforeSideEffects = await snapshotShellSideEffects(
-      { cmd: command, workdir: cwd },
-      snapshotRoot,
-      context,
-    );
+    const beforeSideEffects = shouldSnapshotShellSideEffects(command)
+      ? await snapshotShellSideEffects(
+          { cmd: command, workdir: cwd },
+          resolveShellSnapshotRoot(cwd, context),
+          context,
+        )
+      : { rootSnapshot: null };
     const record = startShell(
       state,
       command,
@@ -1517,22 +1523,31 @@ export const handleBash = async (
     };
   }
 
-  const snapshotRoot = resolveShellSnapshotRoot(cwd, context);
-  const beforeSideEffects = await snapshotShellSideEffects(
-    { cmd: command, workdir: cwd },
-    snapshotRoot,
-    context,
-  );
+  const shouldSnapshotSideEffects = shouldSnapshotShellSideEffects(command);
+  const snapshotRoot = shouldSnapshotSideEffects
+    ? resolveShellSnapshotRoot(cwd, context)
+    : null;
+  const beforeSideEffects =
+    shouldSnapshotSideEffects && snapshotRoot
+      ? await snapshotShellSideEffects(
+          { cmd: command, workdir: cwd },
+          snapshotRoot,
+          context,
+        )
+      : { rootSnapshot: null };
   const output = await runShell(state, command, cwd, timeout, envOverrides);
-  const producedFiles = mergeProducedFiles(
-    diffFileSnapshots(
-      beforeSideEffects.rootSnapshot,
-      await snapshotFiles(snapshotRoot),
-    ),
-    await diffExternalCandidateSnapshots(
-      beforeSideEffects.externalCandidateSnapshots,
-    ),
-  );
+  const producedFiles =
+    shouldSnapshotSideEffects && snapshotRoot
+      ? mergeProducedFiles(
+          diffFileSnapshots(
+            beforeSideEffects.rootSnapshot,
+            await snapshotFiles(snapshotRoot),
+          ),
+          await diffExternalCandidateSnapshots(
+            beforeSideEffects.externalCandidateSnapshots,
+          ),
+        )
+      : undefined;
   const extracted = extractOfficePreviewRef(output);
   return {
     result: truncate(extracted.cleanedOutput),
