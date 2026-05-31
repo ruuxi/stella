@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
-import { clearComposerWindowContext } from "@/app/chat/composer-context";
+import { clearComposerWindowContext } from "@/features/chat/composer-context";
 import { normalizeChatContext } from "@/shell/use-captured-chat-context";
 
 const screenshot = (dataUrl: string) => ({

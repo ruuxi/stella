@@ -13,11 +13,11 @@ import {
   type RefObject,
 } from "react";
 import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from "@legendapp/list/react";
-import type { Attachment } from "@/app/chat/lib/event-transforms";
+import type { Attachment } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
-import { useEventRows } from "./use-event-rows";
+import { useEventRows } from "@/features/chat/hooks/use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
-import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
+import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 
 const USER_MESSAGE_ENTER_MS = 360;
 

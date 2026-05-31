@@ -12,8 +12,8 @@ import type {
   OfficePreviewRef,
   OfficePreviewSnapshot,
 } from "../../../../runtime/contracts/office-preview.js";
-import { useOfficePreview } from "@/app/chat/office-preview-store";
-import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
+import { useOfficePreview } from "@/features/chat/office-preview-store";
+import { useFilePreviewActions } from "@/features/chat/hooks/use-file-preview-actions";
 import { Select } from "@/ui/select";
 
 const ZOOM_OPTIONS = [75, 100, 125, 150] as const;

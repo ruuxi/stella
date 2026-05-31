@@ -1,5 +1,5 @@
 import { dispatchShowHome } from "@/shared/lib/stella-orb-chat";
-import { CustomHouse } from "@/shell/sidebar/SidebarIcons";
+import { CustomHouse } from "@/ui/nav-icons";
 import type { AppMetadata } from "../_shared/app-metadata";
 
 const metadata: AppMetadata = {

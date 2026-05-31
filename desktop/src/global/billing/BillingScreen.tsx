@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import {
   useDisplayPanelExpanded,
   useDisplayPanelOpen,
-} from "@/shell/display/tab-store";
+} from "@/features/workspace-display/tab-store";
 import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
 import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
 import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";

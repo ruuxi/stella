@@ -1,5 +1,5 @@
 import { createLazyFileRoute } from "@tanstack/react-router";
-import { CreatorPage } from "@/global/store/CreatorPage";
+import { CreatorPage } from "@/features/store/CreatorPage";
 
 function CreatorRouteComponent() {
   const { handle } = Route.useParams();

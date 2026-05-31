@@ -14,7 +14,7 @@
  * (see `default-tabs.tsx`).
  */
 import { useEffect, useState, type ReactNode } from "react";
-import { DisplayTabIcon } from "./icons";
+import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import {
   openCanvasDisplayTab,
   openMediaDisplayTab,
@@ -24,7 +24,7 @@ import {
 import { EngineTabContent } from "./EngineTabContent";
 import { useEngineOverlayOpen } from "./engine-overlay-store";
 import { DisplaySidebarModelsButton } from "./DisplaySidebarModelsButton";
-import type { DisplayTabKind } from "./types";
+import type { DisplayTabKind } from "@/features/workspace-display/types";
 import "./chat-home-overview.css";
 
 type LauncherEntry = {

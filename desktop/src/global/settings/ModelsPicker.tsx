@@ -10,7 +10,7 @@ import {
   type MouseEvent,
   type ReactElement,
 } from "react";
-import { preloadModelsPicker } from "@/shared/lib/sidebar-preloads";
+import { preloadModelsPicker } from "@/shell/topbar/nav-surface-preloads";
 import {
   Popover,
   PopoverBody,
@@ -51,7 +51,7 @@ interface ModelsPickerProps {
 }
 
 /**
- * Sidebar entry-point for the model picker. The popover renders a single
+ * Topbar entry-point for the model picker. The popover renders a single
  * `AgentModelPicker` directly — no nested dropdowns — with the agent toggle
  * sitting at the top of the picker itself.
  */

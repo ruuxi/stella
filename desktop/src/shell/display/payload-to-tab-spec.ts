@@ -28,9 +28,10 @@ import {
 } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { addCanvasHtmlItem } from "./canvas-tab/canvas-items";
-import type { DisplayTabKind, DisplayTabSpec } from "./types";
-import { kindForPath } from "./path-to-viewer";
-import { SOURCE_DIFF_TAB_ID } from "./source-diff-batches";
+import type { DisplayTabSpec } from "@/features/workspace-display/types";
+import { kindForPath } from "@/features/workspace-display/path-to-viewer";
+import { SOURCE_DIFF_TAB_ID } from "@/features/workspace-display/source-diff-batches";
+import { registerWorkspaceDisplayPayloadAdapter } from "@/features/workspace-display/open-payload";
 
 export const CANVAS_HTML_TAB_ID = "canvas:html";
 
@@ -195,56 +196,6 @@ export const removeGeneratedMediaItem = (
   return generatedMediaSnapshot;
 };
 
-/**
- * Pure mapping from a `DisplayPayload` to the `DisplayTabKind` used by
- * the icon set. Lifted out of `payloadToTabSpec` so callers that just
- * need the icon (e.g. the home overview's recent-files list) don't have
- * to invoke the side-effecting tab-spec builder.
- */
-export const displayTabKindForPayload = (
-  payload: DisplayTabPayload,
-): DisplayTabKind => {
-  switch (payload.kind) {
-    case "canvas-html":
-      return "canvas";
-    case "url":
-      return "url";
-    case "markdown":
-      return "markdown";
-    case "source-diff":
-      return "source-diff";
-    case "office": {
-      const inferred = kindForPath(payload.previewRef.sourcePath);
-      return inferred === "office-spreadsheet" || inferred === "office-slides"
-        ? inferred
-        : "office-document";
-    }
-    case "file-artifact":
-      return payload.artifactKind === "delimited-table"
-        ? "office-spreadsheet"
-        : payload.artifactKind;
-    case "pdf":
-      return "pdf";
-    case "trash":
-      return "trash";
-    case "media":
-      switch (payload.asset.kind) {
-        case "image":
-          return "image";
-        case "video":
-          return "video";
-        case "audio":
-          return "audio";
-        case "model3d":
-          return "model3d";
-        case "download":
-          return "download";
-        case "text":
-          return "text";
-      }
-  }
-};
-
 export const payloadToTabSpec = (
   payload: DisplayTabPayload,
 ): DisplayTabSpec => {
@@ -393,3 +344,8 @@ export const payloadToTabSpec = (
     }
   }
 };
+
+registerWorkspaceDisplayPayloadAdapter({
+  payloadToTabSpec,
+  createSourceDiffTabSpec,
+});

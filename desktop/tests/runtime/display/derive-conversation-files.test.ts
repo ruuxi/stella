@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   deriveConversationFiles,
   type ConversationFileEntry,
-} from "../../../src/shell/display/derive-conversation-files";
-import type { EventRecord } from "../../../src/app/chat/lib/event-transforms";
+} from "../../../src/features/workspace-display/derive-conversation-files";
+import type { EventRecord } from "../../../src/features/chat/lib/event-transforms";
 
 const event = (
   partial: Partial<EventRecord> &

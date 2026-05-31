@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { useFilePreviewActions } from "./hooks/use-file-preview-actions";
+import { useFilePreviewActions } from "@/features/chat/hooks/use-file-preview-actions";
 import { FilePreviewCardShell } from "./FilePreviewCardShell";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import "react-pdf/dist/Page/AnnotationLayer.css";

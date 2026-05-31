@@ -18,13 +18,13 @@ import { Markdown } from "@/app/chat/Markdown";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { openExternalUrl } from "@/platform/electron/open-external";
-import { useFilePreviewActions } from "@/app/chat/hooks/use-file-preview-actions";
+import { useFilePreviewActions } from "@/features/chat/hooks/use-file-preview-actions";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import {
   sourceDiffBatches,
   useSourceDiffBatches,
   type SourceDiffBatch,
-} from "./source-diff-batches";
+} from "@/features/workspace-display/source-diff-batches";
 import { OfficeArtifactPanel } from "./office-artifact-panel";
 
 type WithMediaMeta = {

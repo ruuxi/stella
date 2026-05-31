@@ -1,4 +1,4 @@
-import { CustomLayout } from "@/shell/sidebar/SidebarIcons";
+import { CustomLayout } from "@/ui/nav-icons";
 import type { AppMetadata } from "../_shared/app-metadata";
 
 const metadata: AppMetadata = {

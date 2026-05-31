@@ -11,7 +11,7 @@ import {
   markAllUserAppsSeen,
   useNewUserAppsHint,
 } from "@/app/_user/new-user-apps-hint";
-import { preloadSidebarRoute } from "@/shared/lib/sidebar-preloads";
+import { preloadNavSurfaceRoute } from "@/shell/topbar/nav-surface-preloads";
 import {
   getSnapshot as getAppRegistrySnapshot,
   subscribe as subscribeToAppRegistry,
@@ -46,7 +46,7 @@ const NavItem = ({
 
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
-      preloadSidebarRoute(app.id);
+      preloadNavSurfaceRoute(app.id);
       if (showHint) onHintDismiss?.();
       if (isActive && app.onActiveClick) {
         event.preventDefault();
@@ -63,8 +63,8 @@ const NavItem = ({
       data-active={showActiveState ? "true" : undefined}
       aria-current={showActiveState ? "page" : undefined}
       onClick={handleClick}
-      onFocus={() => preloadSidebarRoute(app.id)}
-      onMouseEnter={() => preloadSidebarRoute(app.id)}
+      onFocus={() => preloadNavSurfaceRoute(app.id)}
+      onMouseEnter={() => preloadNavSurfaceRoute(app.id)}
       title={showBadge ? `${app.label} (${badgeCount} unread)` : app.label}
       aria-label={showBadge ? `${app.label}, ${badgeCount} unread` : app.label}
     >

@@ -22,8 +22,8 @@ import {
   type SuggestionChip,
   type SuggestionLane,
   type SuggestionSlot,
-} from "./hooks/use-auto-context-chips";
-import { truncateChipLabel } from "./composer-context";
+} from "@/features/chat/hooks/use-auto-context-chips";
+import { truncateChipLabel } from "@/features/chat/composer-context";
 
 // ---------------------------------------------------------------------------
 // Attached chips — context the user has committed to sending. Lives INSIDE

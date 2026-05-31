@@ -1,6 +1,6 @@
-import type { TaskItem } from "@/app/chat/lib/event-transforms";
-import { TASK_COMPLETION_INDICATOR_MS } from "@/app/chat/lib/event-transforms";
-import { getWorkingIndicatorDisplayStatus } from "./working-indicator-state";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
+import { TASK_COMPLETION_INDICATOR_MS } from "@/features/chat/lib/event-transforms";
+import { getWorkingIndicatorDisplayStatus } from "@/features/chat/working-indicator-state";
 
 export const TASK_ROTATE_MS = 3000;
 

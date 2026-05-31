@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import type { EventRecord } from "@/app/chat/lib/event-transforms";
+import type { EventRecord } from "@/features/chat/lib/event-transforms";
 import {
   AGENT_IDS,
   AGENT_STREAM_EVENT_TYPES,
@@ -22,7 +22,7 @@ import {
   isUserMessage,
   isAssistantMessage,
   getEventText,
-} from "@/app/chat/lib/event-transforms";
+} from "@/features/chat/lib/event-transforms";
 import {
   traceToolStart,
   traceToolEnd,

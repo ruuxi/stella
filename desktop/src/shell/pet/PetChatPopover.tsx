@@ -9,7 +9,7 @@ import {
 import {
   ComposerSubmitButton,
   ComposerTextarea,
-} from "@/app/chat/ComposerPrimitives";
+} from "@/features/chat/ComposerPrimitives";
 // Import the full chat composer's stylesheet so this popover renders
 // pixel-identically — same shell, same form, same toolbar — to the
 // composer the user already knows from the main window.

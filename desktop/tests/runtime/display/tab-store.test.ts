@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { displayTabs } from "../../../src/shell/display/tab-store";
-import type { DisplayTabSpec } from "../../../src/shell/display/types";
+import { displayTabs } from "../../../src/features/workspace-display/tab-store";
+import type { DisplayTabSpec } from "../../../src/features/workspace-display/types";
 
 const makeSpec = (
   id: string,

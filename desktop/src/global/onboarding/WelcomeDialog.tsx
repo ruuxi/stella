@@ -8,10 +8,10 @@ import {
   DialogDescription,
 } from "@/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import { listLocalEvents } from "@/app/chat/services/local-chat-store";
+import { listLocalEvents } from "@/features/chat/services/local-chat-store";
 import { Compass, LogIn, Smartphone } from "lucide-react";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
-import { openCanvasDisplayTab } from "@/shell/display/default-tabs";
+import { openCanvasDisplayTab } from "@/features/workspace-display/default-tabs";
 import "./welcome-dialog.css";
 
 const WELCOME_DIALOG_SEEN_KEY = "stella-welcome-dialog-seen";

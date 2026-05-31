@@ -4,8 +4,8 @@ import {
   DEFAULT_STORE_TAB,
   normalizeStoreTab,
   type StoreTab,
-} from "@/global/store/store-tabs";
-import { openStoreDisplayTab } from "@/shell/display/default-tabs";
+} from "@/features/store/store-tabs";
+import { openStoreDisplayTab } from "@/features/workspace-display/default-tabs";
 import {
   addInstalledPet,
   readInstalledPetIds,
@@ -26,7 +26,7 @@ import { normalizePet } from "@/shell/pet/built-in-pets";
 import {
   useDisplayPanelExpanded,
   useDisplayPanelOpen,
-} from "@/shell/display/tab-store";
+} from "@/features/workspace-display/tab-store";
 import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
 import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
 import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";
@@ -91,7 +91,8 @@ const handleStoreWebLocalAction = async (
           ? payload.variant
           : undefined;
       const duration =
-        typeof payload.duration === "number" && Number.isFinite(payload.duration)
+        typeof payload.duration === "number" &&
+        Number.isFinite(payload.duration)
           ? payload.duration
           : undefined;
       showToast({
@@ -116,7 +117,9 @@ const handleStoreWebLocalAction = async (
     }
     case "installPet": {
       const pet = normalizePet(
-        normalizeActionRecord(payload.pet) as Parameters<typeof normalizePet>[0],
+        normalizeActionRecord(payload.pet) as Parameters<
+          typeof normalizePet
+        >[0],
       );
       if (!pet) throw new Error("Invalid pet payload.");
       writeCachedPetById(pet);
@@ -151,7 +154,9 @@ const handleStoreWebLocalAction = async (
     case "installEmojiPack": {
       const packId = typeof payload.packId === "string" ? payload.packId : "";
       const sheetUrls = Array.isArray(payload.sheetUrls)
-        ? payload.sheetUrls.filter((url): url is string => typeof url === "string")
+        ? payload.sheetUrls.filter(
+            (url): url is string => typeof url === "string",
+          )
         : [];
       if (!packId || sheetUrls.length === 0) {
         throw new Error("Invalid emoji pack payload.");
@@ -181,14 +186,12 @@ export function StoreApp() {
   const panelExpanded = useDisplayPanelExpanded();
   const layoutFrameRef = useRef<number | null>(null);
   const embeddedTheme = useEmbeddedWebsiteTheme();
-  const {
-    viewSuspended,
-    placeholderVisible,
-    placeholderActive,
-  } = useNativeWebsiteGlassSuspension();
+  const { viewSuspended, placeholderVisible, placeholderActive } =
+    useNativeWebsiteGlassSuspension();
 
   const requestedTab = normalizeStoreTab(search.tab);
-  const urlIsLegacy = typeof search.tab === "string" && search.tab !== requestedTab;
+  const urlIsLegacy =
+    typeof search.tab === "string" && search.tab !== requestedTab;
 
   const syncStoreWebLayout = useCallback(() => {
     const contentArea = document.querySelector<HTMLElement>(".content-area");
@@ -200,7 +203,9 @@ export function StoreApp() {
       x: Math.round(rect.left),
       y: Math.round(rect.top + topInset),
       width:
-        viewSuspended || (panelOpen && panelExpanded) ? 0 : Math.round(rect.width),
+        viewSuspended || (panelOpen && panelExpanded)
+          ? 0
+          : Math.round(rect.width),
       height: viewSuspended
         ? 0
         : Math.max(0, Math.round(rect.height - topInset)),

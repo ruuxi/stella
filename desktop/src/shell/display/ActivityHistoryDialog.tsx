@@ -33,16 +33,16 @@ import {
   getTaskDisplayText,
   type EventRecord,
   type TaskItem,
-} from "@/app/chat/lib/event-transforms";
+} from "@/features/chat/lib/event-transforms";
 import type { ScheduleEntry } from "@/global/schedule/use-conversation-schedules";
 import { formatNextRun } from "@/global/schedule/format-schedule";
-import { DisplayTabIcon } from "./icons";
-import { basenameOf } from "./path-to-viewer";
-import { displayTabKindForPayload } from "./payload-to-tab-spec";
+import { DisplayTabIcon } from "@/features/workspace-display/icons";
+import { basenameOf } from "@/features/workspace-display/path-to-viewer";
+import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
 import {
   deriveConversationFiles,
   type ConversationFileEntry,
-} from "./derive-conversation-files";
+} from "@/features/workspace-display/derive-conversation-files";
 import "./activity-history-dialog.css";
 
 export type ActivityHistorySection = "done" | "upNext" | "files";

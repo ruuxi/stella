@@ -11,7 +11,7 @@ import {
   readEngineModelFavorites,
   sortByFavorites,
   toggleEngineModelFavorite,
-} from "./engine-model-favorites";
+} from "@/features/workspace-display/engine-model-favorites";
 
 export type EngineRuntimeReasoningEffort =
   | "default"

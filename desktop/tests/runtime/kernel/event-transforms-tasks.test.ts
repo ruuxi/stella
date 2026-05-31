@@ -5,7 +5,7 @@ import {
   getFooterTasksFromEvents,
   mergeFooterTasks,
   type EventRecord,
-} from "@/app/chat/lib/event-transforms";
+} from "@/features/chat/lib/event-transforms";
 
 const event = (
   id: string,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
+import type { MessageMetadata } from '@/features/chat/lib/event-transforms'
 import type { ChatContext } from '@/shared/types/electron'
-import type { SendMessageArgs } from '@/app/chat/streaming/chat-types'
+import type { SendMessageArgs } from '@/features/chat/streaming/chat-types'
 import type { StellaSendMessageDetail } from '@/shared/lib/stella-send-message'
 
 const NO_OP = () => {}

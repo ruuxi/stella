@@ -12,7 +12,7 @@ import {
   type DisplayFileBlob,
 } from "@/shared/hooks/use-display-file-data";
 import { copyImageBlob } from "@/shell/media-clipboard";
-import { displayTabs } from "@/shell/display/tab-store";
+import { displayTabs } from "@/features/workspace-display/tab-store";
 import { AudioPlayer } from "@/shell/AudioPlayer";
 
 type MediaPreviewCardProps = {

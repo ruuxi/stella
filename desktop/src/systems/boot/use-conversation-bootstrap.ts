@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { getOrCreateLocalConversationId } from '@/app/chat/services/local-chat-store'
+import { getOrCreateLocalConversationId } from '@/features/chat/services/local-chat-store'
 import { useUiState } from '@/context/ui-state'
 import { configurePiRuntime, getOrCreateDeviceId } from '@/platform/electron/device'
 import { router } from '@/router'

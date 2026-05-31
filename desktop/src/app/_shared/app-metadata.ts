@@ -30,7 +30,7 @@ export type AppMetadata = {
   id: string;
   /** Human-visible label rendered next to the icon in the sidebar. */
   label: string;
-  /** Icon component (e.g. one of `@/shell/sidebar/SidebarIcons`). */
+  /** Icon component (e.g. one of `@/ui/nav-icons`). */
   icon: AppIcon;
   /** Router path (e.g. `/chat`). Renders a `<Link to={route} />`. */
   route: string;

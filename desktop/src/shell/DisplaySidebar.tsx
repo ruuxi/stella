@@ -22,7 +22,7 @@ import {
   useActiveDisplayTab,
   useDisplayPanelExpanded,
   useDisplayPanelOpen,
-} from "./display/tab-store";
+} from "@/features/workspace-display/tab-store";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
 import {
   dispatchClosePanel,

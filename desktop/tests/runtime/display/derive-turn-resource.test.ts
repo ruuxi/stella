@@ -5,8 +5,8 @@ import {
   deriveTurnInlineImagePayloads,
   deriveTurnResource,
   extractMarkdownLinkPaths,
-} from "../../../src/app/chat/lib/derive-turn-resource";
-import type { EventRecord } from "../../../src/app/chat/lib/event-transforms";
+} from "../../../src/features/chat/lib/derive-turn-resource";
+import type { EventRecord } from "../../../src/features/chat/lib/event-transforms";
 
 const event = (
   partial: Partial<EventRecord> &

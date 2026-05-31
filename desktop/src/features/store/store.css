@@ -1,0 +1,967 @@
+/* ============================================
+   Store chrome (side panel, creator page, share cards).
+   Browse/install UI is the embedded stella-website /store webview.
+   ============================================ */
+
+@keyframes store-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Creator grid/card --- */
+
+.store-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 780px) {
+  .store-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .store-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Card --- */
+
+.store-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 10px;
+  border-radius: 14px;
+  overflow: hidden;
+  padding: 12px;
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 5%, transparent);
+  cursor: default;
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s;
+  animation: store-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+/* Stagger card entrance — using backwards fill so they're visible before animation starts,
+   they just haven't animated *in* yet. Much better than `both` which hides them. */
+.store-card:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.store-card:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.store-card:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.store-card:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.store-card:nth-child(5) {
+  animation-delay: 0.18s;
+}
+.store-card:nth-child(6) {
+  animation-delay: 0.22s;
+}
+.store-card:nth-child(7) {
+  animation-delay: 0.26s;
+}
+.store-card:nth-child(8) {
+  animation-delay: 0.3s;
+}
+.store-card:nth-child(9) {
+  animation-delay: 0.34s;
+}
+
+.store-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklch, var(--foreground) 9%, transparent);
+  box-shadow:
+    0 8px 24px color-mix(in oklch, var(--foreground) 5%, transparent),
+    0 2px 6px color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.store-card[data-clickable="true"] {
+  cursor: pointer;
+}
+
+/* --- Card Body --- */
+
+.store-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.store-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.store-card-name {
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.store-card-desc {
+  font-size: 12px;
+  color: var(--text-weak);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.store-card-meta {
+  font-size: 11px;
+  color: var(--text-weaker);
+  margin-top: 2px;
+}
+
+/* The Store tab strip lives in the shell's top bar
+   (`ShellTopBarStoreTabs`) — see `shell/full-shell.layout.css`. */
+
+/* ============================================
+   Store side panel
+   ============================================ */
+
+.store-side-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+.display-sidebar__rich.display-sidebar__rich--store > * {
+  flex: 0 0 auto;
+  min-height: initial;
+}
+
+.display-sidebar__rich.display-sidebar__rich--store > .store-side-panel-recent,
+.display-sidebar__rich.display-sidebar__rich--store
+  > .store-side-panel-empty-state {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.store-side-panel-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.store-side-panel-empty-state-art {
+  width: 180px;
+  height: 135px;
+  opacity: 0.9;
+}
+
+.store-side-panel-empty-state-body {
+  margin: 0;
+  max-width: 240px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-weak);
+}
+
+.store-side-panel-recent {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.store-side-panel-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-width: thin;
+}
+.store-side-panel-list::-webkit-scrollbar {
+  width: 6px;
+}
+.store-side-panel-list::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+
+.store-side-panel-publish-bar {
+  flex: 0 0 auto;
+  padding: 6px 12px 8px;
+}
+
+.store-side-panel-publish-btn {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  border: 1px solid
+    color-mix(
+      in oklch,
+      var(--interactive, var(--primary, oklch(0.62 0.18 250))) 28%,
+      transparent
+    );
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 12%,
+    transparent
+  );
+  color: var(--interactive, var(--primary, oklch(0.62 0.18 250)));
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+.store-side-panel-publish-btn:hover:not(:disabled) {
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 18%,
+    transparent
+  );
+}
+.store-side-panel-publish-btn:disabled {
+  cursor: default;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 10%, transparent);
+  color: var(--text-weak);
+  opacity: 1;
+}
+
+.store-side-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 120ms ease;
+  outline: none;
+}
+.store-side-panel-row:hover {
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+.store-side-panel-row:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(
+      in oklch,
+      var(--interactive, var(--primary, oklch(0.62 0.18 250))) 25%,
+      transparent
+    );
+}
+.store-side-panel-row[data-selected] {
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 5%,
+    transparent
+  );
+}
+
+.store-side-panel-row-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  color: var(--text-weak);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+.store-side-panel-row:hover .store-side-panel-row-glyph {
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+.store-side-panel-row-glyph[data-selected] {
+  color: var(--interactive, var(--primary, oklch(0.62 0.18 250)));
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 14%,
+    transparent
+  );
+}
+
+.store-side-panel-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.store-side-panel-row-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-strong);
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.store-side-panel-row-meta {
+  font-size: 11.5px;
+  color: var(--text-weaker);
+  letter-spacing: -0.005em;
+}
+
+/* Expanded display panel keeps the source list and publish bar aligned. */
+.display-sidebar--expanded .store-side-panel-list,
+.display-sidebar--expanded .store-side-panel-publish-bar {
+  padding-inline: 24px;
+}
+
+/*
+ * Publish dialog. Uses the shared Radix `Dialog` shell (`@/ui/dialog`) and
+ * adopts the glass aesthetic from `ConnectDialog`: backdrop-filter on the
+ * content card, soft border, header/body separators.
+ */
+[data-slot="dialog-content"].store-publish-dialog {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  padding: 0;
+}
+
+.store-publish-dialog [data-slot="dialog-header"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.store-publish-dialog [data-slot="dialog-title"] {
+  font-size: 15px;
+  font-weight: 620;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+.store-publish-dialog [data-slot="dialog-close-button"] {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md, 8px);
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.store-publish-dialog [data-slot="dialog-close-button"]:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.store-publish-dialog [data-slot="dialog-body"] {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+[data-component="dialog"][data-fit]:has(
+    [data-slot="dialog-content"].store-publish-dialog
+  )
+  [data-slot="dialog-container"] {
+  --dialog-width: 460px;
+}
+
+.store-publish-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.store-publish-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-base);
+}
+
+.store-publish-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.store-publish-dialog-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-weaker);
+}
+
+.store-publish-dialog-field-hint {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: color-mix(in oklch, var(--text-weaker) 70%, transparent);
+}
+
+.store-publish-dialog-field input,
+.store-publish-dialog-field textarea,
+.store-publish-dialog-field select {
+  font-family: inherit;
+  font-size: 13.5px;
+  padding: 9px 11px;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  border: 1px solid var(--border-weak);
+  color: var(--text-strong);
+}
+.store-publish-dialog-field input:focus,
+.store-publish-dialog-field textarea:focus,
+.store-publish-dialog-field select:focus {
+  outline: none;
+  border-color: var(--border-base);
+  background: color-mix(in srgb, var(--background) 80%, transparent);
+}
+
+/*
+ * Re-skin the shared `.pill-btn` inside our dialogs so every action is
+ * a real, bordered, tinted pill at rest (the base `.pill-btn` is
+ * transparent except for the `--primary` variant). Same Apple-style
+ * tint language used elsewhere in the redesign.
+ */
+.store-publish-dialog .pill-btn {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  color: var(--text-strong);
+  padding: 7px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.store-publish-dialog .pill-btn:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  color: var(--text-strong);
+}
+.store-publish-dialog .pill-btn--danger {
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 14%,
+    transparent
+  );
+  color: var(--destructive, oklch(0.6 0.2 25));
+  border-color: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 32%,
+    transparent
+  );
+}
+.store-publish-dialog .pill-btn--danger:hover:not(:disabled) {
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 22%,
+    transparent
+  );
+}
+.store-publish-dialog .pill-btn--primary {
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 14%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 32%,
+    transparent
+  );
+  color: var(--interactive, var(--primary, oklch(0.62 0.18 250)));
+}
+.store-publish-dialog .pill-btn--primary:hover:not(:disabled) {
+  background: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 20%,
+    transparent
+  );
+  opacity: 1;
+}
+
+/* ============================================
+   Creator page (`/c/:handle`)
+   ============================================ */
+
+.store-creator-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 32px 48px;
+}
+
+.store-creator-loading {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.store-creator-empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.store-creator-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 6px;
+}
+.store-creator-empty-body {
+  font-size: 13px;
+}
+
+.store-creator-header {
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.store-creator-handle {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.store-creator-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Owner kebab menu — leans entirely on the base Radix dropdown surface
+   in `ui/dropdown-menu.css` (glass, border, hover, indicator, separator,
+   destructive variant). Only the bits that are genuinely specific to the
+   card menu live here: a wider min-width to fit two-line items and the
+   inner title/sub typography. */
+.store-card-menu {
+  min-width: 220px;
+  z-index: 1000;
+}
+
+.store-card-menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.store-card-menu-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: inherit;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.store-card-menu-item-sub {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-weaker, var(--muted-foreground));
+  letter-spacing: -0.005em;
+  line-height: 1.3;
+}
+
+/* ── Share dialog ────────────────────────────────────────────────── */
+
+.share-addon-dialog {
+  max-width: 420px;
+}
+
+[data-slot="dialog-content"].credential-modal-content.share-addon-dialog {
+  max-width: 420px;
+}
+
+.share-addon-dialog-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-slot="dialog-content"].credential-modal-content.share-addon-dialog
+  .share-addon-dialog-title[data-slot="dialog-title"] {
+  padding: 0;
+  margin: 0;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: clamp(1.35rem, 2.4vw, 1.55rem);
+  font-weight: 450;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+}
+
+[data-slot="dialog-content"].credential-modal-content.share-addon-dialog
+  .share-addon-dialog-description[data-slot="dialog-description"] {
+  padding: 0;
+  margin: 0;
+  justify-content: flex-start;
+  align-items: flex-start;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--text-weak);
+}
+.share-addon-private-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+}
+.share-addon-private-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--text-strong);
+  flex-shrink: 0;
+}
+.share-addon-private-banner-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.share-addon-private-banner-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.share-addon-private-banner-sub {
+  font-size: 11.5px;
+  color: var(--text-weak);
+  line-height: 1.45;
+}
+
+.share-addon-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.share-addon-link {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 11.5px;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.share-addon-friends {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.share-addon-friends-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.share-addon-friends-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-weaker);
+}
+.share-addon-empty {
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-weaker);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-radius: var(--radius-md, 8px);
+}
+.share-addon-friend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.share-addon-friend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius-md, 8px);
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: default;
+  transition: background 0.15s;
+}
+.share-addon-friend-row:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+.share-addon-friend-row[data-selected] {
+  background: color-mix(
+    in oklch,
+    var(--interactive, oklch(0.62 0.2 250)) 12%,
+    transparent
+  );
+}
+.share-addon-friend-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+.share-addon-friend-check {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--interactive, oklch(0.62 0.2 250));
+}
+.share-addon-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* ── Embedded share card (rendered inside a social chat bubble) ────
+ *
+ * Visual language matches the credential / share dialogs: glass bg,
+ * border-weak, restrained typography, rounded corners. The card sits
+ * inside a chat bubble whose padding/background we strip so the embed
+ * IS the message — the bubble just provides positioning and the
+ * sender-time eyebrow above it. */
+
+.social-message-bubble[data-embed="addon-share"] {
+  padding: 0;
+  background: transparent;
+  border: none;
+  max-width: 380px;
+  width: 100%;
+}
+
+.addon-share-card {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--radius-lg, 14px);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+  text-align: left;
+  cursor: default;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.18s ease;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  color: inherit;
+}
+.addon-share-card:hover {
+  border-color: color-mix(in oklch, var(--foreground) 18%, var(--border-weak));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px color-mix(in oklch, black 10%, transparent);
+}
+.addon-share-card:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.addon-share-card[data-loading] {
+  cursor: progress;
+  opacity: 0.7;
+}
+.addon-share-card[data-missing] {
+  opacity: 0.75;
+  cursor: default;
+}
+.addon-share-card[data-missing]:hover {
+  transform: none;
+  border-color: var(--border-weak);
+  box-shadow: none;
+}
+
+/* Artwork mirrors the dialog's circular-ish hero icon: 52px tile,
+ * generous radius, soft inner background that lets either a real icon
+ * or a single-letter fallback feel like one shape. */
+.addon-share-card-art {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg, 12px);
+  flex-shrink: 0;
+  object-fit: cover;
+  background: color-mix(in oklch, var(--foreground) 6%, var(--popover));
+}
+.addon-share-card-art--letter,
+.addon-share-card-art--missing {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text-strong, var(--foreground));
+  letter-spacing: -0.02em;
+}
+
+.addon-share-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  /* Distribute name/desc/meta evenly down the card so the byline
+     bottoms align with the artwork. */
+  justify-content: space-between;
+  padding: 1px 0;
+}
+
+/* Small uppercase eyebrow — same shape as `.share-addon-friends-header`
+ * uppercase labels and the dialog's "Add-on" hero affordance. Keeps
+ * the embed clearly branded as a Stella add-on, not a generic link. */
+.addon-share-card-eyebrow {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-foreground);
+  margin-bottom: 1px;
+}
+
+.addon-share-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong, var(--foreground));
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+.addon-share-card-desc {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  margin-top: 2px;
+}
+.addon-share-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  gap: 8px;
+}
+.addon-share-card-handle {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-weak, var(--muted-foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.addon-share-card-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-strong, var(--foreground));
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.addon-share-card:hover .addon-share-card-cta {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+/* Loading skeleton — same height as the resolved card so the chat
+ * doesn't reflow when the query lands. */
+.addon-share-card-line {
+  height: 11px;
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+.addon-share-card-line--name {
+  width: 60%;
+  margin-bottom: 6px;
+}
+.addon-share-card-line--desc {
+  width: 92%;
+  height: 9px;
+  margin-bottom: 4px;
+}
+
+/* Self-bubble subtle accent: when the user shared the link themselves
+ * (their own bubble), warm the embed border slightly so the message
+ * still reads as "from me" without breaking the card's neutral tone. */
+.social-message-bubble[data-embed="addon-share"][data-role="self"]
+  .addon-share-card {
+  border-color: color-mix(
+    in oklch,
+    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 22%,
+    var(--border-weak)
+  );
+}

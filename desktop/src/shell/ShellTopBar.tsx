@@ -16,14 +16,14 @@ import {
   WindowsMaximizeIcon,
   WindowsRestoreIcon,
 } from "@/shell/ShellTopBarWindowsIcons";
-import { chatWorkspaceStripStore, useChatWorkspaceStripStore } from "@/app/chat/chat-workspace-strip-store";
+import { chatWorkspaceStripStore, useChatWorkspaceStripStore } from "@/features/chat/chat-workspace-strip-store";
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import {
   displayTabs,
   useDisplayPanelExpanded,
   useDisplayPanelOpen,
-} from "@/shell/display/tab-store";
+} from "@/features/workspace-display/tab-store";
 import { DisplayTabBar } from "@/shell/display/DisplayTabBar";
 import { dispatchOpenWorkspacePanel } from "@/shared/lib/stella-orb-chat";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";

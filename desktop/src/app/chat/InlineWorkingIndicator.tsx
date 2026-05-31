@@ -20,7 +20,7 @@
  * timeline doesn't have to.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { TaskItem } from "@/app/chat/lib/event-transforms";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import { WorkingIndicator } from "./WorkingIndicator";
 import {
   getStickyThinkingFooterState,

@@ -7,7 +7,7 @@ import {
 } from "@/shared/lib/stella-orb-chat";
 import type { DisplayTabPayload } from "@/shared/contracts/display-payload";
 import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
-import { displayTabs } from "@/shell/display/tab-store";
+import { displayTabs } from "@/features/workspace-display/tab-store";
 
 type UseWorkspacePanelEventsOptions = {
   displaySidebarRef: RefObject<DisplaySidebarHandle | null>;

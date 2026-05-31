@@ -5,8 +5,8 @@ import {
   useEffect,
   useMemo,
 } from "react";
-import { CompactConversationSurface } from "@/app/chat/CompactConversationSurface";
-import type { ChatColumnScroll } from "@/app/chat/chat-column-types";
+import { CompactConversationSurface } from "@/features/chat/CompactConversationSurface";
+import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
 import {
   ComposerContextRow,
@@ -19,31 +19,31 @@ import {
   ComposerSubmitButton,
   ComposerStopButton,
   ComposerTextarea,
-} from "@/app/chat/ComposerPrimitives";
+} from "@/features/chat/ComposerPrimitives";
 import { useDictation } from "@/features/dictation/hooks/use-dictation";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
 import {
   deriveComposerState,
   hasAttachedComposerChips,
-} from "@/app/chat/composer-context";
+} from "@/features/chat/composer-context";
 import type { InlineWorkingIndicatorMountProps } from "@/app/chat/InlineWorkingIndicator";
-import { getCurrentRunningTool } from "@/app/chat/lib/event-transforms";
-import { useAgentSessionStartedAt } from "@/app/chat/hooks/use-agent-session-started-at";
-import { useFooterTasks } from "@/app/chat/hooks/use-footer-tasks";
-import { useFileDrop } from "@/app/chat/hooks/use-file-drop";
+import { getCurrentRunningTool } from "@/features/chat/lib/event-transforms";
+import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
+import { useFooterTasks } from "@/features/chat/hooks/use-footer-tasks";
+import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
-import type { EventRecord, TaskItem } from "@/app/chat/lib/event-transforms";
+import type { EventRecord, TaskItem } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
-import type { QueuedUserMessage } from "@/app/chat/hooks/use-streaming-chat";
+import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import { useCapturedChatContext } from "./use-captured-chat-context";
 import {
   updateComposerTextareaExpansion,
   useAnimatedComposerShell,
 } from "@/shared/hooks/use-animated-composer-shell";
 import { AssistantReplyPeek } from "@/app/chat/AssistantReplyPeek";
-import { useAssistantReplyPeek } from "@/app/chat/hooks/use-assistant-reply-peek";
+import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
 import { ChatWorkspaceStrip } from "@/app/chat/ChatWorkspaceStrip";
 import "./chat-sidebar.css";
 

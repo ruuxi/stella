@@ -21,11 +21,11 @@
  * Reasoning text is intentionally NOT rendered anywhere in this surface
  * (the underlying data still flows through state for model history).
  */
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import type {
   Attachment,
   ChannelEnvelope,
-} from "@/app/chat/lib/event-transforms";
+} from "@/features/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
 import {
   EndResourceCard,
@@ -35,90 +35,14 @@ import { InlineGeneratedImageStrip } from "@/app/chat/InlineGeneratedImageCard";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
-import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
-import type { SelfModApplied } from "@/app/chat/SelfModUndoButton";
-import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
-import type { AgentResponseTarget } from "@/app/chat/streaming/streaming-types";
-import { eventRowEqual } from "@/app/chat/lib/row-equality";
-
-export type UserRowViewModel = {
-  kind: "user";
-  id: string;
-  text: string;
-  /** True only for the freshly-sent user bubble — drives the entry animation. */
-  justSent?: boolean;
-  windowLabel?: string;
-  windowPreviewImageUrl?: string;
-  appSelectionLabel?: string;
-  attachments: Attachment[];
-  channelEnvelope?: ChannelEnvelope;
-};
-
-export type AssistantRowViewModel = {
-  kind: "assistant";
-  /**
-   * React key for this row. Stable across the streaming → persisted
-   * transition: a row that responds to user message `U` keeps the same
-   * `id` whether it is fed by the streaming buffer or loaded from the
-   * persisted `assistant_message`.
-   */
-  id: string;
-  text: string;
-  /**
-   * Stable Streamdown cache key. Same value across the streaming →
-   * persisted handoff so the markdown parse cache is reused.
-   */
-  cacheKey: string;
-  /**
-   * Set when this row is sourced from a live `StreamingAssistantOverlay`
-   * (text still growing). Scroll follow uses `data-scroll-follow-key`
-   * + runtime signals from `useLocalAgentStream`.
-   */
-  isStreaming?: boolean;
-  responseTarget?: AgentResponseTarget;
-  /** User turn this assistant row belongs to (for inline-image coalescing). */
-  replyToUserMessageId?: string;
-  officePreviewRef?: OfficePreviewRef;
-  resourcePayload?: DisplayPayload;
-  /** Orchestrator image_gen inline cards — one group per tool call. */
-  inlineImagePayloads?: DisplayPayload[];
-  /**
-   * Developer-resource source-diff payloads for this turn, in edit
-   * order. Populated only when the developer-file-previews setting
-   * is on AND the turn touched at least one such file. `.length`
-   * doubles as the "N file changes" label; the payloads themselves
-   * are pushed into the singleton "Code changes" tab when the user
-   * clicks the inline link / summary card.
-   */
-  sourceDiffPayloads?: DisplayPayload[];
-  selfModApplied?: SelfModApplied;
-  /**
-   * Inline "Scheduled" receipt chip shown after the orchestrator's
-   * `Schedule` tool returns. Carries the structured affected entries
-   * straight from the tool result so click → dialog has no race with
-   * a separate IPC fetch.
-   */
-  scheduleReceipt?: {
-    affected: ScheduleToolAffectedRef[];
-    summary?: string;
-  };
-  /**
-   * Optional renderer for surface-specific row attachments (e.g. the Store
-   * thread's draft confirmation card). Mounted after the markdown body and
-   * after built-in inline artifacts.
-   *
-   * Identity-stable per `customSlotKey` — the row equality comparator only
-   * checks `customSlotKey` so re-rendering ancestors don't blow away the
-   * memoized row when the renderer closure identity churns.
-   */
-  customSlot?: ReactNode;
-  customSlotKey?: string;
-};
-
-export type EventRowViewModel = UserRowViewModel | AssistantRowViewModel;
+import { eventRowEqual } from "@/features/chat/lib/row-equality";
+import type {
+  AssistantRowViewModel,
+  UserRowViewModel,
+} from "@/features/chat/conversation-row-types";
 
 const getAttachmentLabel = (attachment: Attachment, index: number) => {
   if (attachment.name) return attachment.name;

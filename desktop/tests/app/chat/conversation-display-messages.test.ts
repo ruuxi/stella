@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat";
-import type { StreamingAssistantOverlay } from "@/app/chat/streaming/streaming-types";
+import type { StreamingAssistantOverlay } from "@/features/chat/streaming/streaming-types";
 import {
   getPersistedAssistantSlots,
   mergeConversationDisplayMessageSources,
   overlayToMessageRecord,
-} from "@/app/chat/hooks/use-conversation-display-messages";
+} from "@/features/chat/hooks/use-conversation-display-messages";
 
 const message = (overrides: Partial<MessageRecord>): MessageRecord => ({
   _id: overrides._id ?? "message",

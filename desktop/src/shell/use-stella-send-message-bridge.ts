@@ -4,7 +4,7 @@ import {
   type StellaSendMessageDetail,
   toStellaMessageMetadata,
 } from '@/shared/lib/stella-send-message'
-import type { MessageMetadata } from '@/app/chat/lib/event-transforms'
+import type { MessageMetadata } from '@/features/chat/lib/event-transforms'
 
 type UseStellaSendMessageBridgeOptions = {
   sendContextlessMessage: (text: string, metadata?: MessageMetadata) => void

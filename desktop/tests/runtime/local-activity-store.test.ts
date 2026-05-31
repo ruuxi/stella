@@ -7,7 +7,7 @@ import {
   __privateLocalActivityStore,
   subscribeToLocalActivityWindow,
   type LocalActivityWindowSnapshot,
-} from "@/app/chat/services/local-activity-store";
+} from "@/features/chat/services/local-activity-store";
 
 type ActivityPayload = {
   activities: EventRecord[];

@@ -8,7 +8,7 @@ import {
   kindForPath,
   pickPrimaryEditedPath,
   tabIdForPath,
-} from "../../../src/shell/display/path-to-viewer";
+} from "../../../src/features/workspace-display/path-to-viewer";
 
 describe("extensionOf", () => {
   it("extracts lowercased extension from common paths", () => {

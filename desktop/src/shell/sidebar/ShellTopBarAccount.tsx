@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { router } from "@/router";
-import { openEngineDisplayTab } from "@/shell/display/default-tabs";
+import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
 import {
   lazy,
   Suspense,
@@ -22,8 +22,8 @@ import {
   preloadAuthDialog,
   preloadBillingScreen,
   preloadConnectDialog,
-  preloadSidebarRoute,
-} from "@/shared/lib/sidebar-preloads";
+  preloadNavSurfaceRoute,
+} from "@/shell/topbar/nav-surface-preloads";
 import { ThemePicker } from "@/global/settings/ThemePicker";
 import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
@@ -48,7 +48,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { CustomDevice as Device, CustomLogIn as LogIn } from "./SidebarIcons";
+import { CustomDevice as Device, CustomLogIn as LogIn } from "@/ui/nav-icons";
 import { useFeedbackPrompt } from "./use-feedback-prompt";
 import "./account-dialogs.css";
 
@@ -292,8 +292,8 @@ export const ShellTopBarAccount = ({
               onClick={() => {
                 pendingSettingsRef.current = true;
               }}
-              onMouseEnter={() => preloadSidebarRoute("settings")}
-              onFocus={() => preloadSidebarRoute("settings")}
+              onMouseEnter={() => preloadNavSurfaceRoute("settings")}
+              onFocus={() => preloadNavSurfaceRoute("settings")}
             >
               <span data-slot="dropdown-menu-item-icon">
                 <SettingsIcon size={14} strokeWidth={1.75} />
@@ -426,8 +426,8 @@ export const ShellTopBarAccount = ({
             onClick={() => {
               pendingSettingsRef.current = true;
             }}
-            onMouseEnter={() => preloadSidebarRoute("settings")}
-            onFocus={() => preloadSidebarRoute("settings")}
+            onMouseEnter={() => preloadNavSurfaceRoute("settings")}
+            onFocus={() => preloadNavSurfaceRoute("settings")}
           >
             <span data-slot="dropdown-menu-item-icon">
               <SettingsIcon size={14} strokeWidth={1.75} />

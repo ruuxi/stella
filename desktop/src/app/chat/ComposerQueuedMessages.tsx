@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { QueuedUserMessage } from "./hooks/use-streaming-chat";
+import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 
 const EXIT_MS = 100;
 

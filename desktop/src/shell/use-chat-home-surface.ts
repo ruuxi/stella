@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useIdleHomeVisibility } from '@/app/chat/hooks/use-idle-home-visibility'
+import { useIdleHomeVisibility } from '@/features/chat/hooks/use-idle-home-visibility'
 import { STELLA_SHOW_HOME_EVENT } from '@/shared/lib/stella-orb-chat'
 
 /** Set when navigating away from chat; cleared on full app restart (new session). */

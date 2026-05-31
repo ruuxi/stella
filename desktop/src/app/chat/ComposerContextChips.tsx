@@ -10,7 +10,7 @@ import {
   removeComposerFileContext,
   removeComposerScreenshotContext,
   truncateChipLabel,
-} from "./composer-context";
+} from "@/features/chat/composer-context";
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 

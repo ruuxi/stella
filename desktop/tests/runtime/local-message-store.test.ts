@@ -7,7 +7,7 @@ import {
   __privateLocalMessageStore,
   subscribeToLocalMessageWindow,
   type LocalMessageWindowSnapshot,
-} from "@/app/chat/services/local-message-store";
+} from "@/features/chat/services/local-message-store";
 
 type WindowPayload = {
   messages: MessageRecord[];
@@ -216,7 +216,6 @@ describe("local-message-store", () => {
 
   it("seeds a larger active window from the smaller loaded snapshot while loading older messages", async () => {
     let resolveSecond: ((value: WindowPayload) => void) | null = null;
-    let call = 0;
     const firstWindow = window([makeMessage("u-1", 1_000, "first")]);
     const secondWindow = window([
       makeMessage("u-0", 990, "older"),
@@ -224,7 +223,6 @@ describe("local-message-store", () => {
     ]);
     const listMessages = vi.fn().mockImplementation(
       async (payload: { maxVisibleMessages?: number }) => {
-        call += 1;
         if (payload.maxVisibleMessages === 50) return firstWindow;
         return await new Promise<WindowPayload>((resolve) => {
           resolveSecond = resolve;

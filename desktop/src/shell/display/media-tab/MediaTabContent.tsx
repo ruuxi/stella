@@ -3,7 +3,7 @@ import { ArrowUp, ChevronUp, Folder } from "lucide-react";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import { updateComposerTextareaExpansion } from "@/shared/hooks/use-animated-composer-shell";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
-import { displayTabs } from "../tab-store";
+import { displayTabs } from "@/features/workspace-display/tab-store";
 import { removeGeneratedMediaItem } from "../payload-to-tab-spec";
 import {
   MEDIA_ACTIONS,
@@ -17,7 +17,7 @@ import {
   importLocalMedia,
   isSupportedMediaFile,
   readSourceAsDataUri,
-} from "./media-files";
+} from "@/features/workspace-display/media-files";
 import { notifyMediaGenerationError } from "@/shared/billing/paid-media-tier-toast";
 import { useMediaGeneration } from "./use-media-generation";
 import { MediaTile } from "./MediaTile";

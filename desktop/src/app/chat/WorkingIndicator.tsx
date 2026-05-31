@@ -3,10 +3,10 @@ import { useUiState } from "@/context/ui-state";
 import { useWindowFocus } from "@/shared/hooks/use-window-focus";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { cn } from "@/shared/lib/utils";
-import type { TaskItem } from "@/app/chat/lib/event-transforms";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { SwapText } from "./SwapText";
-import { getWorkingIndicatorDisplayStatus } from "./working-indicator-state";
+import { getWorkingIndicatorDisplayStatus } from "@/features/chat/working-indicator-state";
 import "./indicators.css";
 
 interface WorkingIndicatorProps {
