@@ -3341,7 +3341,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "")
-            .slice(0, 64) || "report-welcome";
+            .slice(0, 64) || "welcome";
         const timestamp = Date.now();
         const filePath = path.join(
           state.init.stellaHomePath,

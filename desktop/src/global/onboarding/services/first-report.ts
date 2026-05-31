@@ -27,6 +27,9 @@ const fallbackIdeas = [
   "Create a reusable workflow for turning notes into documents, decks, or spreadsheets.",
 ];
 
+const toComposePrompt = (idea: string): string =>
+  `Help me act on this welcome idea: ${idea}`;
+
 export function buildOnboardingFirstReport(
   synthesis: OnboardingSynthesisResponse,
 ): OnboardingFirstReport {
@@ -42,19 +45,20 @@ export function buildOnboardingFirstReport(
   const cards = ideas
     .map((idea) => {
       const text = escapeHtml(idea);
-      return `<article class="card" data-stella-compose="${text}"><p>${text}</p></article>`;
+      const composePrompt = escapeHtml(toComposePrompt(idea));
+      return `<article class="card" data-stella-compose="${composePrompt}"><p>${text}</p></article>`;
     })
     .join("\n");
 
   return {
-    slug: "report-welcome",
-    title: "Report - Welcome",
+    slug: "welcome",
+    title: "Welcome",
     html: `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Report - Welcome</title>
+  <title>Welcome</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600&display=swap');
     :root {
@@ -120,7 +124,7 @@ export function buildOnboardingFirstReport(
 </head>
 <body>
   <main>
-    <h1>Report - Welcome</h1>
+    <h1>Welcome</h1>
     <p class="dek">A first pass at workflows, small apps, reminders, and saved routines Stella can help make useful.</p>
     <section class="grid" aria-label="Ideas Stella can help with">
       ${cards}

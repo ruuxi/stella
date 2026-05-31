@@ -44,7 +44,7 @@ const normalizeReportSlug = (value: unknown): string => {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
-  return REPORT_SLUG_RE.test(slug) ? slug : "report-welcome";
+  return REPORT_SLUG_RE.test(slug) ? slug : "welcome";
 };
 
 const normalizeFirstReport = (value: unknown): FirstReportPayload | null => {
