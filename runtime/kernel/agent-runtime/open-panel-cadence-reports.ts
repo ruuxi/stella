@@ -26,13 +26,17 @@ import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import type { LocalChatAppendEventArgs } from "../storage/shared.js";
+import type {
+  LocalChatAppendEventArgs,
+  LocalChatRecentActivityRecord,
+} from "../storage/shared.js";
 import { eventTextFromPayload } from "../storage/shared.js";
 import type { ThreadSummaryRow } from "../memory/thread-summaries-store.js";
 import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
+import { isUiHiddenChatMessagePayload } from "../../chat-event-visibility.js";
 
 const logger = createRuntimeLogger("agent-runtime.open-panel-cadence-reports");
 
@@ -52,6 +56,7 @@ export type OpenPanelReportRecord = {
   title: string;
   filePath: string;
   generatedAt: number;
+  slotAt?: number;
   windowStartAt: number;
   openedAt?: number;
 };
@@ -59,6 +64,7 @@ export type OpenPanelReportRecord = {
 type ReportIndex = {
   version: 1;
   reports: Partial<Record<OpenPanelReportCadence, OpenPanelReportRecord>>;
+  checkedSlots?: Partial<Record<OpenPanelReportCadence, number>>;
 };
 
 const CADENCES: CadenceConfig[] = [
@@ -89,7 +95,14 @@ const MAX_THREAD_SUMMARIES = 40;
 const MAX_THREAD_SUMMARY_CHARS = 2_000;
 const MAX_ACTIVITY_EVENTS = 80;
 const MAX_ACTIVITY_TEXT_CHARS = 700;
-const MIN_4H_USER_TURNS = 1;
+const MIN_USER_TURNS_BY_CADENCE: Record<OpenPanelReportCadence, number> = {
+  "4h": 20,
+  daily: 40,
+  weekly: 60,
+};
+const FOUR_HOUR_LOCAL_SLOTS = [8, 12, 16, 20] as const;
+const DAILY_LOCAL_HOUR = 8;
+const WEEKLY_LOCAL_DAY = 1;
 const inFlightCadences = new Set<OpenPanelReportCadence>();
 
 const SYSTEM_PROMPT = [
@@ -99,12 +112,12 @@ const SYSTEM_PROMPT = [
   "The report is not a diary and not a status summary. Its job is to surface useful ideas Stella could help with next.",
   "Only include something when it is actually worth suggesting. Prefer a short report over padding.",
   "Write for a normal non-technical user. Hide implementation details, commands, file paths, source modules, and internal tool names unless the user explicitly asked about them in the activity.",
-  "Translate technical evidence into everyday outcomes. For example, say \"save a checklist for code changes\" instead of naming validation commands or source files.",
+  'Translate technical evidence into everyday outcomes. For example, say "save a checklist for code changes" instead of naming validation commands or source files.',
   "Look for real repeated patterns or durable needs. Do not promote one-off actions into patterns just because they happened once.",
   "Good outputs are suggestions for reusable workflows, Stella skills, small apps, reminders, schedules, or connected-app/browser workflows.",
   "Each idea should be phrased as something the user could ask Stella to do, in plain language.",
   "The output is rendered directly in Stella's trusted Canvas viewer. You may use inline scripts, external scripts, external stylesheets, CDN imports, charts, tables, and interactive controls when helpful.",
-  "If an idea is a good next chat prompt, put it in a selectable/actionable element with data-stella-compose=\"the exact plain-language prompt Stella should place in chat\". Stella will add the hover button; do not build your own chat button.",
+  'If an idea is a good next chat prompt, put it in a selectable/actionable element with data-stella-compose="the exact plain-language prompt Stella should place in chat". Stella will add the hover button; do not build your own chat button.',
   "",
   "You MUST deliver the report by calling the `emit_report` tool exactly once with the complete HTML document in the `html` parameter. Do NOT include the HTML in your text response. Do NOT skip the tool call.",
   "",
@@ -116,7 +129,7 @@ const SYSTEM_PROMPT = [
   "  5. If there is little signal, say there is nothing standout yet and keep the report short. Do not fill space with generic ideas.",
   "  6. Keep the visual style quiet, native-feeling, and readable in a side panel. Cormorant for display type and Manrope for body when convenient.",
   "  7. Use friendly labels like Skill, Workflow, App idea, Reminder, or Schedule. Avoid developer vocabulary.",
-  "  8. Avoid headings like \"patterns worth making durable\". Use plain headings such as \"Ideas worth saving\", \"Useful reminders\", or \"Small apps Stella could make\".",
+  '  8. Avoid headings like "patterns worth making durable". Use plain headings such as "Ideas worth saving", "Useful reminders", or "Small apps Stella could make".',
 ].join("\n");
 
 const EMIT_REPORT_TOOL: Tool = {
@@ -142,12 +155,17 @@ const EMIT_REPORT_TOOL: Tool = {
 const reportsDir = (stellaRoot: string) =>
   path.join(stellaRoot, "open-panel-reports");
 
-const indexPath = (stellaRoot: string) => path.join(reportsDir(stellaRoot), "index.json");
+const indexPath = (stellaRoot: string) =>
+  path.join(reportsDir(stellaRoot), "index.json");
 
 const truncate = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max)}...(truncated)`;
 
-const emptyIndex = (): ReportIndex => ({ version: 1, reports: {} });
+const emptyIndex = (): ReportIndex => ({
+  version: 1,
+  reports: {},
+  checkedSlots: {},
+});
 
 const isCadence = (value: unknown): value is OpenPanelReportCadence =>
   value === "4h" || value === "daily" || value === "weekly";
@@ -165,7 +183,8 @@ const isRecord = (value: unknown): value is OpenPanelReportRecord => {
   );
 };
 
-export const listOpenPanelReportCadences = (): readonly CadenceConfig[] => CADENCES;
+export const listOpenPanelReportCadences = (): readonly CadenceConfig[] =>
+  CADENCES;
 
 export const readOpenPanelReportIndex = async (
   stellaRoot: string,
@@ -186,7 +205,24 @@ export const readOpenPanelReportIndex = async (
         reports[key] = value;
       }
     }
-    return { version: 1, reports };
+    const checkedSlots: ReportIndex["checkedSlots"] = {};
+    const rawCheckedSlots = (parsed as { checkedSlots?: unknown }).checkedSlots;
+    if (
+      rawCheckedSlots &&
+      typeof rawCheckedSlots === "object" &&
+      !Array.isArray(rawCheckedSlots)
+    ) {
+      for (const [key, value] of Object.entries(rawCheckedSlots)) {
+        if (
+          isCadence(key) &&
+          typeof value === "number" &&
+          Number.isFinite(value)
+        ) {
+          checkedSlots[key] = value;
+        }
+      }
+    }
+    return { version: 1, reports, checkedSlots };
   } catch {
     return emptyIndex();
   }
@@ -197,7 +233,95 @@ const writeOpenPanelReportIndex = async (
   index: ReportIndex,
 ): Promise<void> => {
   await fs.mkdir(reportsDir(stellaRoot), { recursive: true });
-  await fs.writeFile(indexPath(stellaRoot), JSON.stringify(index, null, 2), "utf-8");
+  await fs.writeFile(
+    indexPath(stellaRoot),
+    JSON.stringify(index, null, 2),
+    "utf-8",
+  );
+};
+
+const startOfLocalDay = (date: Date): Date =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+
+const localSlotMs = (date: Date, hour: number): number =>
+  new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    hour,
+    0,
+    0,
+    0,
+  ).getTime();
+
+const latestDailySlotAt = (nowMs: number): number => {
+  const now = new Date(nowMs);
+  const todayAt8 = localSlotMs(now, DAILY_LOCAL_HOUR);
+  if (nowMs >= todayAt8) return todayAt8;
+  const yesterday = startOfLocalDay(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return localSlotMs(yesterday, DAILY_LOCAL_HOUR);
+};
+
+const latestWeeklySlotAt = (nowMs: number): number => {
+  const now = new Date(nowMs);
+  const candidate = startOfLocalDay(now);
+  const daysSinceMonday = (candidate.getDay() - WEEKLY_LOCAL_DAY + 7) % 7;
+  candidate.setDate(candidate.getDate() - daysSinceMonday);
+  candidate.setHours(DAILY_LOCAL_HOUR, 0, 0, 0);
+  if (nowMs < candidate.getTime()) {
+    candidate.setDate(candidate.getDate() - 7);
+  }
+  return candidate.getTime();
+};
+
+const latestFourHourSlotAt = (nowMs: number): number => {
+  const now = new Date(nowMs);
+  for (let i = FOUR_HOUR_LOCAL_SLOTS.length - 1; i >= 0; i -= 1) {
+    const slotAt = localSlotMs(now, FOUR_HOUR_LOCAL_SLOTS[i]!);
+    if (nowMs >= slotAt) return slotAt;
+  }
+  const yesterday = startOfLocalDay(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return localSlotMs(
+    yesterday,
+    FOUR_HOUR_LOCAL_SLOTS[FOUR_HOUR_LOCAL_SLOTS.length - 1]!,
+  );
+};
+
+export const latestOpenPanelReportSlotAt = (
+  cadence: OpenPanelReportCadence,
+  nowMs: number,
+): number => {
+  if (cadence === "4h") return latestFourHourSlotAt(nowMs);
+  if (cadence === "daily") return latestDailySlotAt(nowMs);
+  return latestWeeklySlotAt(nowMs);
+};
+
+const latestKnownSlotAt = (
+  cadence: OpenPanelReportCadence,
+  index: ReportIndex,
+): number | null => {
+  const checkedAt = index.checkedSlots?.[cadence];
+  const generatedAt = index.reports[cadence]?.slotAt;
+  const legacyGeneratedAt = index.reports[cadence]?.generatedAt;
+  const candidates = [checkedAt, generatedAt, legacyGeneratedAt].filter(
+    (value): value is number =>
+      typeof value === "number" && Number.isFinite(value),
+  );
+  if (candidates.length === 0) return null;
+  return Math.max(...candidates);
+};
+
+const setCheckedSlot = (
+  index: ReportIndex,
+  cadence: OpenPanelReportCadence,
+  slotAt: number,
+): void => {
+  index.checkedSlots = {
+    ...(index.checkedSlots ?? {}),
+    [cadence]: slotAt,
+  };
 };
 
 export const listOpenPanelReports = async (
@@ -275,20 +399,27 @@ const formatThreadSummaries = (
   if (matching.length === 0) return "(none)";
   return matching
     .map((row) => {
-      const summary = truncate(row.rolloutSummary.trim(), MAX_THREAD_SUMMARY_CHARS);
+      const summary = truncate(
+        row.rolloutSummary.trim(),
+        MAX_THREAD_SUMMARY_CHARS,
+      );
       return `- [${new Date(row.sourceUpdatedAt).toISOString()}] ${summary}`;
     })
     .join("\n");
 };
 
-const formatRecentActivity = (
+const getRecentActivity = (
   store: RuntimeStore,
   sinceMs: number,
-): string => {
-  const events = store.listRecentActivitySince({
+): LocalChatRecentActivityRecord[] =>
+  store.listRecentActivitySince({
     sinceMs,
     limit: MAX_ACTIVITY_EVENTS,
   });
+
+const formatRecentActivity = (
+  events: LocalChatRecentActivityRecord[],
+): string => {
   if (events.length === 0) return "(none)";
   return events
     .map((event) => {
@@ -302,19 +433,31 @@ const formatRecentActivity = (
     .join("\n");
 };
 
-const countUserTurnsInActivity = (activity: string): number =>
-  activity
-    .split("\n")
-    .filter((line) => /\]\s+user_message(?:\s|-|$)/.test(line))
-    .length;
+const countVisibleUserTurns = (
+  events: LocalChatRecentActivityRecord[],
+): number =>
+  events.filter(
+    (event) =>
+      event.type === "user_message" &&
+      !isUiHiddenChatMessagePayload(event.payload ?? null),
+  ).length;
+
+export const hasEnoughOpenPanelReportActivity = (
+  cadence: OpenPanelReportCadence,
+  events: LocalChatRecentActivityRecord[],
+): boolean =>
+  countVisibleUserTurns(events) >= MIN_USER_TURNS_BY_CADENCE[cadence];
 
 const formatDomainList = (
   domains: ReadonlyArray<{ domain: string; visits: number }>,
-): string => domains.map((domain) => `${domain.domain} (${domain.visits})`).join("\n");
+): string =>
+  domains.map((domain) => `${domain.domain} (${domain.visits})`).join("\n");
 
 const formatBrowserWindow = (window: BrowserActivityWindow | null): string => {
   if (!window?.data.browser) return "No browser data available.";
-  const sections = [`## Browser Activity (${window.data.browser}, ${window.label})`];
+  const sections = [
+    `## Browser Activity (${window.data.browser}, ${window.label})`,
+  ];
   if (window.data.recentDomains.length > 0) {
     sections.push("\n### Active domains");
     sections.push(formatDomainList(window.data.recentDomains));
@@ -340,7 +483,9 @@ const formatBrowserWindow = (window: BrowserActivityWindow | null): string => {
         .join("\n"),
     );
   }
-  return sections.length === 1 ? "No browser activity in this window." : sections.join("\n");
+  return sections.length === 1
+    ? "No browser activity in this window."
+    : sections.join("\n");
 };
 
 const buildUserPrompt = (args: {
@@ -390,6 +535,8 @@ const generateReport = async (args: {
   summaries: ThreadSummaryRow[];
   browserWindow: BrowserActivityWindow | null;
   nowMs: number;
+  slotAt: number;
+  activity: string;
 }): Promise<OpenPanelReportRecord | null> => {
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
     stellaRoot: args.stellaRoot,
@@ -406,16 +553,6 @@ const generateReport = async (args: {
   }
 
   const sinceMs = args.nowMs - args.cadence.windowMs;
-  const activity = formatRecentActivity(args.store, sinceMs);
-  if (
-    args.cadence.id === "4h" &&
-    countUserTurnsInActivity(activity) < MIN_4H_USER_TURNS
-  ) {
-    logger.debug("open-panel-report.skipped.low-stella-activity", {
-      cadence: args.cadence.id,
-    });
-    return null;
-  }
   const userMessage: Message = {
     role: "user",
     content: [
@@ -426,7 +563,7 @@ const generateReport = async (args: {
           sinceMs,
           nowMs: args.nowMs,
           summaries: args.summaries,
-          activity,
+          activity: args.activity,
           browserWindow: args.browserWindow,
         }),
       },
@@ -499,6 +636,7 @@ const generateReport = async (args: {
     title: args.cadence.title,
     filePath,
     generatedAt: args.nowMs,
+    slotAt: args.slotAt,
     windowStartAt: sinceMs,
   };
 };
@@ -514,23 +652,61 @@ export const spawnOpenPanelCadenceReports = (deps: {
     const nowMs = Date.now();
     const config = getCadenceReportsPreferences(deps.stellaRoot);
     const index = await readOpenPanelReportIndex(deps.stellaRoot);
-    const due = CADENCES.filter((cadence) => {
+    const nextIndex = {
+      ...index,
+      checkedSlots: { ...(index.checkedSlots ?? {}) },
+    };
+    let shouldWriteBaseline = false;
+    const due = CADENCES.map((cadence) => ({
+      cadence,
+      slotAt: latestOpenPanelReportSlotAt(cadence.id, nowMs),
+    })).filter(({ cadence, slotAt }) => {
       // Reports are opt-in per cadence. A disabled cadence never generates.
       if (!config.schedules[cadence.id]) return false;
       if (inFlightCadences.has(cadence.id)) return false;
-      const existing = index.reports[cadence.id];
-      return !existing || nowMs - existing.generatedAt >= cadence.intervalMs;
+      const previousSlotAt = latestKnownSlotAt(cadence.id, index);
+      if (previousSlotAt === null) {
+        setCheckedSlot(nextIndex, cadence.id, slotAt);
+        shouldWriteBaseline = true;
+        return false;
+      }
+      return slotAt > previousSlotAt;
     });
+    if (shouldWriteBaseline) {
+      await writeOpenPanelReportIndex(deps.stellaRoot, nextIndex);
+    }
     if (due.length === 0) return;
 
-    for (const cadence of due) inFlightCadences.add(cadence.id);
+    const dueWithActivity = due
+      .map(({ cadence, slotAt }) => {
+        const events = getRecentActivity(deps.store, nowMs - cadence.windowMs);
+        return {
+          cadence,
+          slotAt,
+          activity: formatRecentActivity(events),
+          hasEnoughActivity: hasEnoughOpenPanelReportActivity(
+            cadence.id,
+            events,
+          ),
+        };
+      })
+      .filter(({ cadence, hasEnoughActivity }) => {
+        if (hasEnoughActivity) return true;
+        logger.debug("open-panel-report.skipped.low-stella-activity", {
+          cadence: cadence.id,
+        });
+        return false;
+      });
+    if (dueWithActivity.length === 0) return;
+
+    for (const { cadence } of dueWithActivity) inFlightCadences.add(cadence.id);
     try {
       const summaries = deps.store.threadSummariesStore.listRecent({
         limit: MAX_THREAD_SUMMARIES,
       });
       const browserWindows = await collectBrowserActivityWindows(
         deps.stellaRoot,
-        due.map((cadence) => ({
+        dueWithActivity.map(({ cadence }) => ({
           id: cadence.id,
           label: cadence.label,
           sinceMs: nowMs - cadence.windowMs,
@@ -540,9 +716,14 @@ export const spawnOpenPanelCadenceReports = (deps: {
           selectedProfile: config.profile,
         },
       );
-      const browserById = new Map(browserWindows.map((entry) => [entry.id, entry]));
+      const browserById = new Map(
+        browserWindows.map((entry) => [entry.id, entry]),
+      );
 
-      for (const [reportIndex, cadence] of due.entries()) {
+      for (const [
+        reportIndex,
+        { cadence, slotAt, activity },
+      ] of dueWithActivity.entries()) {
         try {
           const report = await generateReport({
             ...deps,
@@ -550,8 +731,15 @@ export const spawnOpenPanelCadenceReports = (deps: {
             summaries,
             browserWindow: browserById.get(cadence.id) ?? null,
             nowMs,
+            slotAt,
+            activity,
           });
-          if (!report) continue;
+          if (!report) {
+            const latestIndex = await readOpenPanelReportIndex(deps.stellaRoot);
+            setCheckedSlot(latestIndex, cadence.id, slotAt);
+            await writeOpenPanelReportIndex(deps.stellaRoot, latestIndex);
+            continue;
+          }
           const bytes = Buffer.byteLength(
             await fs.readFile(report.filePath, "utf-8"),
             "utf-8",
@@ -593,6 +781,7 @@ export const spawnOpenPanelCadenceReports = (deps: {
             },
           });
           const latestIndex = await readOpenPanelReportIndex(deps.stellaRoot);
+          setCheckedSlot(latestIndex, cadence.id, slotAt);
           latestIndex.reports[cadence.id] = {
             ...report,
             openedAt: latestIndex.reports[cadence.id]?.openedAt,
@@ -603,6 +792,9 @@ export const spawnOpenPanelCadenceReports = (deps: {
             filePath: report.filePath,
           });
         } catch (error) {
+          const latestIndex = await readOpenPanelReportIndex(deps.stellaRoot);
+          setCheckedSlot(latestIndex, cadence.id, slotAt);
+          await writeOpenPanelReportIndex(deps.stellaRoot, latestIndex);
           logger.debug("open-panel-report.failed", {
             cadence: cadence.id,
             error: error instanceof Error ? error.message : String(error),
@@ -610,7 +802,8 @@ export const spawnOpenPanelCadenceReports = (deps: {
         }
       }
     } finally {
-      for (const cadence of due) inFlightCadences.delete(cadence.id);
+      for (const { cadence } of dueWithActivity)
+        inFlightCadences.delete(cadence.id);
     }
   })().catch((error) => {
     logger.debug("open-panel-reports.failed", {
