@@ -38,6 +38,424 @@
     "language": {
       "title": "Dil",
       "description": "Stella'nın uygulamada ve yanıtlarında kullanacağı dili seçin."
+    },
+    "developerPreviews": {
+      "title": "Geliştirici dosya önizlemeleri",
+      "description": "Kod değişikliklerini sohbette gösterir ve yan panelde açar."
+    },
+    "nativeFontSmoothing": {
+      "title": "Yerel yazı tipi yumuşatma",
+      "description": "Metni macOS uygulamaları gibi, gri tonlamalı kenar yumuşatmayla işler."
+    },
+    "motion": {
+      "title": "Hareket",
+      "reduceMotion": {
+        "label": "Hareketi azalt",
+        "description": "Arayüz animasyonlarını en aza indirir.",
+        "system": "Sistem",
+        "on": "Açık",
+        "off": "Kapalı"
+      }
+    },
+    "voice": {
+      "title": "Ses",
+      "personality": {
+        "label": "Kişilik"
+      }
+    },
+    "notifications": {
+      "title": "Ses bildirimleri",
+      "description": "Stella bir aracı çalıştırmasını tamamladığında bir ses çalar."
+    },
+    "power": {
+      "title": "Bilgisayarı uyanık tut",
+      "description": "Stella açıkken bilgisayarınızın uyku moduna geçmesini engeller."
+    },
+    "lockedComputerUse": {
+      "title": "Kilitliyken bilgisayar kullanımı",
+      "description": "Bu Mac kilitlendikten sonra Stella'nın bilgisayar kullanım görevlerine devam etmesine izin verir. Yönetici onayı gerektirir ve Stella çalışırken ekranı kaplar.",
+      "unsupported": "Kilitliyken bilgisayar kullanımı yalnızca macOS'te kullanılabilir."
+    },
+    "browserExtension": {
+      "title": "Chrome için Stella",
+      "description": "Stella'nın bulunduğunuz sayfayı görmesine ve tarayıcınızda işlem yapmasına olanak tanır.",
+      "action": "Uzantıyı al"
+    },
+    "migration": {
+      "title": "Hermes veya OpenClaw'dan içe aktar",
+      "action": "İçe aktar",
+      "description": "Başka bir yerel asistan kurulumundan belleği, becerileri, oturumları ve model seçimlerini getirin.",
+      "dialogClose": "İçe aktarmayı kapat"
+    },
+    "permissions": {
+      "title": "İzinler",
+      "enable": "Etkinleştir",
+      "granted": "Verildi",
+      "opening": "Açılıyor…",
+      "reset": "Sıfırla",
+      "resetting": "Sıfırlanıyor…",
+      "accessibility": {
+        "label": "Erişilebilirlik",
+        "description": "Stella'nın seçili metni okumasına ve bilgisayarınızın herhangi bir yerinde ⌘+sağ tıklama kısayoluyla açılmasına olanak tanır."
+      },
+      "screen": {
+        "label": "Ekran kaydı",
+        "description": "Stella'nın baktığınız şeyde yardımcı olabilmesi için ekranınızı görmesine olanak tanır. Bunu açtıktan sonra Stella'yı kapatıp yeniden açmanız gerekebilir."
+      },
+      "microphone": {
+        "label": "Mikrofon",
+        "description": "Ses ve dikte için kullanılır. Stella daha önce reddedildiyse ve macOS tekrar sormuyorsa sıfırlayın."
+      },
+      "restart": {
+        "label": "Stella'yı yeniden başlat",
+        "description": "Ekran kaydı az önce açıldı. Kurulumu tamamlamak için Stella'yı kapatıp yeniden açın.",
+        "action": "Yeniden başlat",
+        "closing": "Kapatılıyor…"
+      }
+    },
+    "shortcuts": {
+      "title": "Kısayollar",
+      "change": "Değiştir",
+      "capturing": "Tuşlara basın…",
+      "clear": "Temizle",
+      "off": "Kapalı",
+      "actions": {
+        "dictation": "Dikte",
+        "voice": "Ses aracısı"
+      },
+      "dictation": {
+        "description": "Stella'ya veya kullandığınız uygulamaya dikte etmek için Option tuşunu basılı tutun."
+      },
+      "voiceAgent": {
+        "description": "Stella'nın canlı ses aracısını başlatır veya durdurur."
+      },
+      "radial": {
+        "label": "Radyal kadran",
+        "description": "Yakalama, sohbet, ses ve hızlı işlemler için dilim menüsünü açar.",
+        "ariaLabel": "Radyal kadran kısayolu"
+      },
+      "mini": {
+        "label": "Mini pencere",
+        "description": "Mini sohbeti açmak veya kapatmak için bir değiştirici tuşa iki kez dokunun.",
+        "ariaLabel": "Mini pencere kısayolu"
+      },
+      "targets": {
+        "dictation": "dikteyi",
+        "voice": "ses aracısını"
+      },
+      "toasts": {
+        "updatedTitle": "{action} kısayolu güncellendi",
+        "clearedTitle": "{action} kısayolu temizlendi",
+        "updatedDescription": "{target} başlatmak için {keys} tuşlarına basın.",
+        "clearedDescription": "Yeni bir kısayol ayarlayana kadar {action} devre dışı.",
+        "unavailableTitle": "Kısayol kullanılamıyor",
+        "failedTitle": "Kısayol güncellenemedi",
+        "radialUpdatedTitle": "Radyal kadran kısayolu güncellendi",
+        "radialUpdatedDescription": "Radyal kadranı açmak için {key} tuşunu basılı tutun.",
+        "miniUpdatedTitle": "Mini pencere kısayolu güncellendi",
+        "miniDisabledDescription": "İki kez dokunma devre dışı.",
+        "miniUpdatedDescription": "Mini pencereyi açmak için {modifier} tuşuna iki kez dokunun."
+      },
+      "errors": {
+        "load": "Kısayollar yüklenemedi.",
+        "unavailable": "Kısayollar bu pencerede kullanılamıyor.",
+        "unavailableShortcut": "Bu kısayol kullanılamıyor.",
+        "update": "Kısayol güncellenemedi.",
+        "radialUpdate": "Radyal kadran kısayolu güncellenemedi.",
+        "miniUpdate": "Mini pencere kısayolu güncellenemedi."
+      }
+    },
+    "memory": {
+      "title": "Bellek",
+      "enable": "Etkinleştir",
+      "disable": "Devre dışı bırak",
+      "working": "Çalışıyor…",
+      "screen": {
+        "label": "Ekran belleği",
+        "description": "Stella, ne yaptığınızı hatırlamak için ara sıra ekranınıza göz atabilir.",
+        "signInDescription": "Stella'ya giriş yapın veya Engine panelinde Chronicle için küçük bir model seçin.",
+        "upgradeDescription": "Ekran belleği tüm Stella planlarına dahildir. Yükseltin veya Engine panelinde Chronicle için küçük bir model seçin."
+      },
+      "status": {
+        "label": "Durum",
+        "running": "Çalışıyor",
+        "stopped": "Durduruldu",
+        "disabled": "Devre dışı",
+        "fps": "{fps} fps",
+        "lastCapture": "son yakalama {time}"
+      },
+      "folder": {
+        "label": "Bellek klasörü",
+        "description": "Bilgisayarınızda Stella'nın anılarını sakladığı klasörü açar.",
+        "open": "Klasörü aç",
+        "opening": "Açılıyor…"
+      },
+      "update": {
+        "label": "Belleği şimdi güncelle",
+        "description": "Stella'nın son etkinlikleri gözden geçirmesini ve öğrendiklerini kaydetmesini sağlayın. Bu genellikle kendiliğinden olur.",
+        "run": "Şimdi çalıştır",
+        "running": "Rüya görüyor…"
+      },
+      "erase": {
+        "label": "Belleği sil",
+        "description": "Kaydedilmiş ekran etkinliği dahil olmak üzere Stella'nın hatırladığı her şeyi siler. Bu geri alınamaz.",
+        "action": "Sil",
+        "working": "Siliniyor…",
+        "confirm": "Stella'nın hatırladığı her şey silinsin mi? Bu geri alınamaz."
+      },
+      "access": {
+        "signInTitle": "Giriş gerekli",
+        "subscriptionTitle": "Abonelik gerekli",
+        "signInMessage": "Stella'ya giriş yapın veya Engine panelinde Chronicle için küçük bir model seçin.",
+        "upgradeMessage": "Ekran belleği tüm Stella planlarına dahildir. Yükseltin — veya Engine panelinde Chronicle için küçük bir model seçin.",
+        "pickModel": "Model seç",
+        "upgrade": "Yükselt"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle etkinleştirildi",
+        "disabledTitle": "Chronicle devre dışı bırakıldı",
+        "alreadyRunning": "Chronicle zaten çalışıyordu.",
+        "enableFailedTitle": "Chronicle etkinleştirilemedi",
+        "disableFailedTitle": "Chronicle devre dışı bırakılamadı",
+        "dreamScheduledTitle": "Dream geçişi zamanlandı",
+        "dreamNotScheduledTitle": "Dream geçişi zamanlanmadı",
+        "wipeFailedTitle": "Silme başarısız oldu",
+        "wipedTitle": "Anılar silindi"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Stella'nın çalışma alanı kök dizini kullanılamıyor.",
+        "needsPermission": "Chronicle başlayabilmeden önce ekran kaydı izni hâlâ gerekiyor.",
+        "binaryMissing": "Chronicle yardımcı dosyası eksik.",
+        "startupTimeout": "Chronicle başlatıldıktan sonra çevrimiçi olmadı.",
+        "unsupportedPlatform": "Chronicle yalnızca macOS'te kullanılabilir.",
+        "unknown": "Bilinmeyen hata."
+      },
+      "dreamResults": {
+        "scheduled": "Dream, mevcut birikmiş işleri birleştirecek.",
+        "inFlight": "Bir Dream geçişi zaten çalışıyor.",
+        "noInputs": "Şu anda birleştirilecek yeni bir şey yok.",
+        "noApiKey": "Dream, yapılandırılmış bir model/API anahtarı ya da giriş yapılmış bir Stella rotası gerektirir.",
+        "disabled": "Dream zamanlaması şu anda devre dışı.",
+        "belowThreshold": "Boşta kalma eşiğine henüz ulaşılmadı.",
+        "lockBusy": "Dream şu anda meşgul. Birazdan tekrar deneyin.",
+        "noRunner": "Yerel çalışma zamanı henüz hazır değil.",
+        "unavailable": "Dream şu anda kullanılamıyor.",
+        "pendingPrefix": "Bekliyor: {items}.",
+        "pendingThreadSummary": "{count} görev özeti",
+        "pendingThreadSummaries": "{count} görev özeti",
+        "pendingExtension": "{count} Chronicle dosyası",
+        "pendingExtensions": "{count} Chronicle dosyası",
+        "pendingJoin": " ve "
+      },
+      "errors": {
+        "loadStatus": "Chronicle durumu yüklenemedi.",
+        "update": "Chronicle güncellenemedi.",
+        "dream": "Dream geçişi tetiklenemedi.",
+        "wipe": "Anılar silinemedi."
+      }
+    },
+    "backup": {
+      "title": "Yedekler",
+      "upgradeNotice": "Yedekler, tüm ücretli Stella planlarına dahildir.",
+      "never": "Hiçbir zaman",
+      "automatic": {
+        "label": "Otomatik yedekler",
+        "lastLocal": "Son yerel yedek: {time}",
+        "lastRemote": "Son uzak yedek: {time}",
+        "remoteIssue": "Uzak yedek sorunu: {error}",
+        "off": "Kapalı",
+        "hourly": "Saatlik otomatik yedekler",
+        "ariaLabel": "Yedekler"
+      },
+      "backupNow": {
+        "label": "Şimdi yedekle",
+        "description": "Şimdi bir yedek kaydedin. Giriş yaptığınızda otomatik olarak yüklenir.",
+        "action": "Şimdi yedekle",
+        "working": "Yedekleniyor…"
+      },
+      "saved": {
+        "label": "Kaydedilmiş yedekler",
+        "signedInDescription": "Bu cihazda geri yüklenecek bir yedek seçin.",
+        "signedOutDescription": "Yedekleri çevrimiçi kaydetmek ve herhangi bir cihazda geri yüklemek için giriş yapın.",
+        "empty": "Henüz uzak yedek yok.",
+        "latest": "En son",
+        "files": "{count} dosya",
+        "from": "Kaynak: {source}",
+        "restore": "Geri yükle",
+        "restoring": "Geri yükleniyor…"
+      },
+      "toasts": {
+        "completedTitle": "Yedekleme tamamlandı",
+        "queuedTitle": "Yedek sıraya alındı",
+        "deferredTitle": "Yedek ertelendi",
+        "noneNeededTitle": "Yedeklemeye gerek yok",
+        "failedTitle": "Yedekleme başarısız oldu",
+        "restorePreparedTitle": "Geri yükleme hazırlandı",
+        "restorePreparedDescription": "Stella, bu yedeğin uygulanmasını tamamlamak için yeniden başlayacak.",
+        "restoreFailedTitle": "Geri yükleme başarısız oldu"
+      },
+      "errors": {
+        "load": "Yedek ayarları yüklenemedi.",
+        "unavailable": "Yedek ayarları bu pencerede kullanılamıyor.",
+        "signInRequired": "Yedekleri açmak için giriş yapın ve bir Stella planı seçin.",
+        "checkingPlan": "Yedekler açılmadan önce Stella planınız kontrol ediliyor.",
+        "subscriptionRequired": "Yedekler etkin bir Stella aboneliği gerektirir.",
+        "updateMode": "Yedekleme modu güncellenemedi.",
+        "backupUnavailable": "Yedekleme bu pencerede kullanılamıyor.",
+        "startBackup": "Yedekleme başlatılamadı.",
+        "restoreUnavailable": "Geri yükleme bu pencerede kullanılamıyor.",
+        "restore": "Yedek geri yüklenemedi."
+      }
+    },
+    "account": {
+      "title": "Hesap",
+      "signOut": {
+        "label": "Çıkış yap",
+        "description": "Bu cihazda Stella'dan çıkış yapın.",
+        "action": "Çıkış yap"
+      },
+      "deleteData": {
+        "label": "Verileri sil",
+        "description": "Tüm konuşmaları, belleği ve kaydedilmiş Stella ayarlarını siler.",
+        "action": "Sil",
+        "working": "Siliniyor…"
+      },
+      "deleteAccount": {
+        "label": "Hesabı sil",
+        "description": "Hesabınızı ve içindeki her şeyi kalıcı olarak siler.",
+        "action": "Sil",
+        "working": "Siliniyor…"
+      },
+      "legal": {
+        "title": "Yasal",
+        "terms": "Hizmet Koşulları",
+        "privacy": "Gizlilik Politikası",
+        "view": "Görüntüle"
+      },
+      "dialog": {
+        "deleteDataTitle": "Stella verileriniz silinsin mi?",
+        "deleteAccountTitle": "Stella hesabınız silinsin mi?",
+        "deleteDataDescription": "Bu işlem konuşmalarınızı, belleğinizi, ayarlarınızı ve yerel Stella durumunuzu siler. Bu geri alınamaz.",
+        "deleteAccountDescription": "Bu işlem hesabınızı ve Stella verilerinizi kalıcı olarak siler. Bu geri alınamaz.",
+        "deleteDataButton": "Verileri sil",
+        "deleteAccountButton": "Hesabı sil",
+        "working": "Siliniyor…"
+      },
+      "toasts": {
+        "dataDeleted": "Stella verileriniz silindi.",
+        "accountDeleted": "Stella hesabınız silindi.",
+        "deleteDataFailed": "Verileriniz silinemedi. Lütfen tekrar deneyin.",
+        "deleteAccountFailed": "Hesabınız silinemedi. Lütfen tekrar deneyin.",
+        "signInBeforeDelete": "Hesabınızı silmeden önce giriş yapın."
+      }
+    },
+    "audio": {
+      "systemDefault": "Sistem varsayılanı",
+      "microphoneDeviceFallback": "Mikrofon {index}",
+      "speakerDeviceFallback": "Hoparlör {index}",
+      "microphone": {
+        "title": "Mikrofon",
+        "enableLabel": "Mikrofonu etkinleştir",
+        "enableDescription": "Stella ile konuşmak için gereklidir.",
+        "deviceLabel": "Mikrofon",
+        "deviceDescription": "Stella hangi mikrofonu dinlemeli?"
+      },
+      "recovery": {
+        "manageLabel": "Mikrofon erişimini yönet",
+        "recoverLabel": "Mikrofon erişimini kurtar",
+        "manageDescription": "Mikrofon izni takılırsa onu sıfırlayıp macOS'ten tekrar sormasını isteyebilirsiniz.",
+        "recoverDescription": "Bir kez hayır dediğinizde macOS kendiliğinden tekrar sormaz. İzni sıfırlayın, ardından Stella'yı kapatıp yeniden açın.",
+        "openSettings": "Ayarları aç",
+        "reset": "Sıfırla ve yeniden başlat",
+        "closing": "Kapatılıyor…"
+      },
+      "wakeWord": {
+        "label": "Uyandırma sözcüğü “Hey Stella”",
+        "description": "Arka planda “Hey Stella” ifadesini dinler ve sesli bir konuşma başlatır. Kapalıyken, dikteye basana kadar mikrofon boşta kalır."
+      },
+      "superFast": {
+        "label": "Süper hızlı dikte",
+        "description": "Diktenin daha az gecikmeyle başlaması için mikrofonu hazır tutar."
+      },
+      "dictationSounds": {
+        "label": "Dikte sesleri",
+        "description": "Dikte başladığında ve durduğunda bir ses çalar."
+      },
+      "enhance": {
+        "label": "Yazıya dökmeyi iyileştir",
+        "description": "Yerel dikte metnini eklemeden önce Mercury ile temizler."
+      },
+      "localDictation": {
+        "label": "Cihazda yazıya dökme",
+        "description": "Inworld yerine yerel Parakeet modelini kullanır. Bu, düşük donanımlı Mac'lerde daha fazla bellek kullanabilir.",
+        "unavailableFallback": "Bu Mac'te kullanılamıyor."
+      },
+      "speaker": {
+        "title": "Hoparlör",
+        "outputLabel": "Çıkış aygıtı",
+        "outputDescription": "Kullanılacak hoparlörü veya kulaklığı seçin.",
+        "empty": "Hoparlör bulunamadı.",
+        "emptyMicOff": "Hoparlörlerinizi görmek için mikrofonu açın."
+      },
+      "errors": {
+        "listDevices": "Ses aygıtları listelenemiyor.",
+        "micDeniedReset": "Mikrofon erişimi daha önce reddedildi. Sıfırlayın ve Stella'yı yeniden başlatın ya da Sistem Ayarları'nı açın.",
+        "micDenied": "Mikrofon erişimi reddedildi. Lütfen sistem ayarlarınızda buna izin verin."
+      }
+    },
+    "connectedProviders": {
+      "title": "Bağlı sağlayıcılar",
+      "empty": "Henüz bağlı sağlayıcı yok. Bir API anahtarı eklemek veya giriş yapmak için yukarıdaki model seçicide Stella dışında bir seçenek seçin.",
+      "apiKey": "API anahtarı",
+      "signedIn": "Giriş yapıldı",
+      "removeKey": "Anahtarı kaldır",
+      "removingKey": "Kaldırılıyor…",
+      "signOut": "Çıkış yap",
+      "signingOut": "Çıkış yapılıyor…"
+    },
+    "search": {
+      "placeholder": "Ayarlarda ara",
+      "clear": "Aramayı temizle",
+      "noResultsTitle": "“{query}” ile eşleşen ayar yok",
+      "noResultsBody": "Daha kısa veya farklı bir sözcük deneyin.",
+      "resultsOne": "{count} sonuç:",
+      "resultsOther": "{count} sonuç:",
+      "resultsAriaOne": "{count} sonuç",
+      "resultsAriaOther": "{count} sonuç",
+      "descriptions": {
+        "voice": "Stella'nın konuşma tarzını ve kişilik sesini seçin.",
+        "permissions": "macOS'te erişilebilirlik, ekran kaydı ve mikrofon erişimi verin.",
+        "shortcuts": "Stella'nın açılma, dinleme ve radyal kadranı veya sesi başlatma şeklini değiştirin.",
+        "memory": "Ekran belleğini yönetin, Stella'nın hatırladıklarını güncelleyin veya silin.",
+        "backup": "Otomatik şifreli yedekler, geri yükleme noktaları ve istek üzerine anlık görüntüler.",
+        "account": "Çıkış yapın, verilerinizi silin veya hesabınızı kalıcı olarak silin.",
+        "legal": "Hizmet Koşulları ve Gizlilik Politikası.",
+        "microphone": "Giriş aygıtınızı seçin; uyandırma sözcüğünü, dikte seslerini ve cihazda yazıya dökmeyi etkinleştirin.",
+        "speaker": "Stella'nın sesinin çalındığı hoparlörü veya kulaklığı seçin.",
+        "wakeWord": "“Hey Stella” ifadesini dinler ve sesli bir konuşma başlatır.",
+        "onDeviceTranscription": "Bulut tabanlı yazıya dökme yerine yerel Parakeet modelini kullanır."
+      }
+    },
+    "errors": {
+      "loadPower": "Güç ayarı yüklenemedi.",
+      "savePower": "Güç ayarı güncellenemedi.",
+      "powerUnavailable": "Güç ayarları bu pencerede kullanılamıyor.",
+      "loadLockedComputerUse": "Kilitliyken bilgisayar kullanımı ayarı yüklenemedi.",
+      "saveLockedComputerUse": "Kilitliyken bilgisayar kullanımı güncellenemedi.",
+      "lockedComputerUseUnavailable": "Kilitliyken bilgisayar kullanımı bu pencerede kullanılamıyor.",
+      "loadSoundNotifications": "Ses bildirimi ayarı yüklenemedi.",
+      "saveSoundNotifications": "Ses bildirimi ayarı güncellenemedi.",
+      "soundNotificationsUnavailable": "Ses bildirimi ayarları bu pencerede kullanılamıyor.",
+      "loadVoice": "Ses ayarı yüklenemedi.",
+      "saveVoice": "Ses ayarı güncellenemedi.",
+      "voiceUnavailable": "Ses ayarları bu pencerede kullanılamıyor.",
+      "loadPermissions": "Masaüstü izin durumu yüklenemedi.",
+      "savePermission": "{kind} izni güncellenemedi.",
+      "resetPermission": "{kind} izni sıfırlanamadı.",
+      "resetPermissionMaybeReopen": "{kind} izni sıfırlanamadı. Stella'nın yeniden açılması gerekebilir.",
+      "microphoneDeniedReopen": "Mikrofon erişimi daha önce reddedildi. Sistem Ayarları'ndan açın, ardından Stella'yı yeniden açın.",
+      "microphoneStillOff": "Mikrofon erişimi hâlâ kapalı. Sistem Ayarları'ndan açın, ardından Stella'yı yeniden açın.",
+      "restart": "Stella yeniden başlatılamadı."
     }
   },
   "onboarding": {

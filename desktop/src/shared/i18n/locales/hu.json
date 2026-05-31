@@ -38,6 +38,424 @@
     "language": {
       "title": "Nyelv",
       "description": "Válaszd ki a Stella által az alkalmazásban és a válaszokban használt nyelvet."
+    },
+    "developerPreviews": {
+      "title": "Fejlesztői fájl-előnézetek",
+      "description": "Megjeleníti a kódmódosításokat a csevegésben, és megnyitja őket az oldalsó panelen."
+    },
+    "nativeFontSmoothing": {
+      "title": "Natív betűsimítás",
+      "description": "Úgy jeleníti meg a szöveget, ahogy a macOS-alkalmazások, szürkeárnyalatos élsimítással."
+    },
+    "motion": {
+      "title": "Mozgás",
+      "reduceMotion": {
+        "label": "Mozgás csökkentése",
+        "description": "Minimálisra csökkenti a felület animációit.",
+        "system": "Rendszer",
+        "on": "Be",
+        "off": "Ki"
+      }
+    },
+    "voice": {
+      "title": "Hang",
+      "personality": {
+        "label": "Személyiség"
+      }
+    },
+    "notifications": {
+      "title": "Hangértesítések",
+      "description": "Hangot játszik le, amikor a Stella befejez egy ügynökfuttatást."
+    },
+    "power": {
+      "title": "Számítógép ébren tartása",
+      "description": "Megakadályozza, hogy a számítógép alvó állapotba lépjen, amíg a Stella nyitva van."
+    },
+    "lockedComputerUse": {
+      "title": "Számítógép-használat zárolt állapotban",
+      "description": "Lehetővé teszi a Stellának, hogy a Mac zárolása után is folytassa a számítógép-használati feladatokat. Rendszergazdai jóváhagyást igényel, és letakarja a képernyőt, amíg a Stella dolgozik.",
+      "unsupported": "A számítógép-használat zárolt állapotban csak macOS-en érhető el."
+    },
+    "browserExtension": {
+      "title": "Stella Chrome-hoz",
+      "description": "Lehetővé teszi a Stellának, hogy lássa az oldalt, amelyen vagy, és műveleteket végezzen a böngésződben.",
+      "action": "Bővítmény beszerzése"
+    },
+    "migration": {
+      "title": "Importálás Hermesből vagy OpenClawból",
+      "action": "Importálás",
+      "description": "Hozd át a memóriát, a képességeket, a munkameneteket és a modellválasztásokat egy másik helyi asszisztens-telepítésből.",
+      "dialogClose": "Importálás bezárása"
+    },
+    "permissions": {
+      "title": "Engedélyek",
+      "enable": "Engedélyezés",
+      "granted": "Megadva",
+      "opening": "Megnyitás…",
+      "reset": "Visszaállítás",
+      "resetting": "Visszaállítás…",
+      "accessibility": {
+        "label": "Kisegítő lehetőségek",
+        "description": "Lehetővé teszi a Stellának, hogy elolvassa a kijelölt szöveget, és a ⌘+jobb kattintás gyorsbillentyűvel megnyíljon a számítógép bármely pontján."
+      },
+      "screen": {
+        "label": "Képernyőrögzítés",
+        "description": "Lehetővé teszi a Stellának, hogy lássa a képernyődet, így segíthet abban, amit nézel. Bekapcsolás után előfordulhat, hogy ki kell lépned a Stellából, és újra meg kell nyitnod."
+      },
+      "microphone": {
+        "label": "Mikrofon",
+        "description": "Hanghoz és diktáláshoz használatos. Állítsd vissza, ha a Stellát korábban elutasították, és a macOS nem kérdez rá újra."
+      },
+      "restart": {
+        "label": "Stella újraindítása",
+        "description": "A képernyőrögzítés most lett bekapcsolva. A beállítás befejezéséhez lépj ki a Stellából, és nyisd meg újra.",
+        "action": "Újraindítás",
+        "closing": "Bezárás…"
+      }
+    },
+    "shortcuts": {
+      "title": "Gyorsbillentyűk",
+      "change": "Módosítás",
+      "capturing": "Nyomj le billentyűket…",
+      "clear": "Törlés",
+      "off": "Ki",
+      "actions": {
+        "dictation": "Diktálás",
+        "voice": "Hangügynök"
+      },
+      "dictation": {
+        "description": "Tartsd lenyomva az Option billentyűt, hogy a Stellába vagy az éppen használt alkalmazásba diktálj."
+      },
+      "voiceAgent": {
+        "description": "Elindítja vagy leállítja a Stella élő hangügynökét."
+      },
+      "radial": {
+        "label": "Radiális tárcsa",
+        "description": "Megnyitja a szeletmenüt rögzítéshez, csevegéshez, hanghoz és gyors műveletekhez.",
+        "ariaLabel": "Radiális tárcsa gyorsbillentyűje"
+      },
+      "mini": {
+        "label": "Mini ablak",
+        "description": "Koppints duplán egy módosítóbillentyűre a mini csevegés megnyitásához vagy bezárásához.",
+        "ariaLabel": "Mini ablak gyorsbillentyűje"
+      },
+      "targets": {
+        "dictation": "a diktálást",
+        "voice": "a hangügynököt"
+      },
+      "toasts": {
+        "updatedTitle": "A(z) {action} gyorsbillentyű frissítve",
+        "clearedTitle": "A(z) {action} gyorsbillentyű törölve",
+        "updatedDescription": "Nyomd meg a(z) {keys} billentyűket {target} elindításához.",
+        "clearedDescription": "A(z) {action} le van tiltva, amíg nem állítasz be új gyorsbillentyűt.",
+        "unavailableTitle": "Gyorsbillentyű nem érhető el",
+        "failedTitle": "A gyorsbillentyű frissítése sikertelen",
+        "radialUpdatedTitle": "A radiális tárcsa gyorsbillentyűje frissítve",
+        "radialUpdatedDescription": "Tartsd lenyomva a(z) {key} billentyűt a radiális tárcsa megnyitásához.",
+        "miniUpdatedTitle": "A mini ablak gyorsbillentyűje frissítve",
+        "miniDisabledDescription": "A dupla koppintás le van tiltva.",
+        "miniUpdatedDescription": "Koppints duplán a(z) {modifier} billentyűre a mini ablak megnyitásához."
+      },
+      "errors": {
+        "load": "A gyorsbillentyűk betöltése sikertelen.",
+        "unavailable": "A gyorsbillentyűk nem érhetők el ebben az ablakban.",
+        "unavailableShortcut": "Ez a gyorsbillentyű nem érhető el.",
+        "update": "A gyorsbillentyű frissítése sikertelen.",
+        "radialUpdate": "A radiális tárcsa gyorsbillentyűjének frissítése sikertelen.",
+        "miniUpdate": "A mini ablak gyorsbillentyűjének frissítése sikertelen."
+      }
+    },
+    "memory": {
+      "title": "Memória",
+      "enable": "Engedélyezés",
+      "disable": "Letiltás",
+      "working": "Folyamatban…",
+      "screen": {
+        "label": "Képernyőmemória",
+        "description": "A Stella időnként rápillanthat a képernyődre, hogy emlékezzen arra, mit csináltál.",
+        "signInDescription": "Jelentkezz be a Stellába, vagy válassz egy kis modellt a Chronicle-höz az Engine panelen.",
+        "upgradeDescription": "A képernyőmemória minden Stella-csomagban benne van. Fejleszd a csomagod, vagy válassz egy kis modellt a Chronicle-höz az Engine panelen."
+      },
+      "status": {
+        "label": "Állapot",
+        "running": "Fut",
+        "stopped": "Leállítva",
+        "disabled": "Letiltva",
+        "fps": "{fps} fps",
+        "lastCapture": "utolsó rögzítés {time}"
+      },
+      "folder": {
+        "label": "Memóriamappa",
+        "description": "Megnyitja a számítógépeden azt a mappát, ahol a Stella tárolja az emlékeit.",
+        "open": "Mappa megnyitása",
+        "opening": "Megnyitás…"
+      },
+      "update": {
+        "label": "Memória frissítése most",
+        "description": "Engedd, hogy a Stella átnézze a legutóbbi tevékenységet, és elmentse, amit tanult. Ez általában magától megtörténik.",
+        "run": "Futtatás most",
+        "running": "Álmodik…"
+      },
+      "erase": {
+        "label": "Memória törlése",
+        "description": "Törli mindazt, amire a Stella emlékezett, beleértve a mentett képernyőtevékenységet is. Ez nem vonható vissza.",
+        "action": "Törlés",
+        "working": "Törlés…",
+        "confirm": "Törölsz mindent, amire a Stella emlékezett? Ez nem vonható vissza."
+      },
+      "access": {
+        "signInTitle": "Bejelentkezés szükséges",
+        "subscriptionTitle": "Előfizetés szükséges",
+        "signInMessage": "Jelentkezz be a Stellába, vagy válassz egy kis modellt a Chronicle-höz az Engine panelen.",
+        "upgradeMessage": "A képernyőmemória minden Stella-csomagban benne van. Fejleszd a csomagod – vagy válassz egy kis modellt a Chronicle-höz az Engine panelen.",
+        "pickModel": "Modell kiválasztása",
+        "upgrade": "Fejlesztés"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle engedélyezve",
+        "disabledTitle": "Chronicle letiltva",
+        "alreadyRunning": "A Chronicle már futott.",
+        "enableFailedTitle": "Nem sikerült engedélyezni a Chronicle-t",
+        "disableFailedTitle": "Nem sikerült letiltani a Chronicle-t",
+        "dreamScheduledTitle": "Dream-futás ütemezve",
+        "dreamNotScheduledTitle": "Dream-futás nem lett ütemezve",
+        "wipeFailedTitle": "A törlés sikertelen",
+        "wipedTitle": "Emlékek törölve"
+      },
+      "enableFailures": {
+        "noStellaRoot": "A Stella munkaterületének gyökere nem érhető el.",
+        "needsPermission": "A Chronicle elindítása előtt még szükség van a képernyőrögzítési engedélyre.",
+        "binaryMissing": "A Chronicle segédfájlja hiányzik.",
+        "startupTimeout": "A Chronicle az indítás után nem csatlakozott.",
+        "unsupportedPlatform": "A Chronicle csak macOS-en érhető el.",
+        "unknown": "Ismeretlen hiba."
+      },
+      "dreamResults": {
+        "scheduled": "A Dream összevonja az aktuális hátralékot.",
+        "inFlight": "Egy Dream-futás már folyamatban van.",
+        "noInputs": "Most nincs semmi új, amit össze lehetne vonni.",
+        "noApiKey": "A Dreamhez beállított modell/API-kulcs vagy bejelentkezett Stella-útvonal szükséges.",
+        "disabled": "A Dream ütemezése jelenleg le van tiltva.",
+        "belowThreshold": "Az inaktivitási küszöb még nem teljesült.",
+        "lockBusy": "A Dream most foglalt. Próbáld újra egy pillanat múlva.",
+        "noRunner": "A helyi futtatókörnyezet még nem áll készen.",
+        "unavailable": "A Dream jelenleg nem érhető el.",
+        "pendingPrefix": "Függőben: {items}.",
+        "pendingThreadSummary": "{count} feladatösszegzés",
+        "pendingThreadSummaries": "{count} feladatösszegzés",
+        "pendingExtension": "{count} Chronicle-fájl",
+        "pendingExtensions": "{count} Chronicle-fájl",
+        "pendingJoin": " és "
+      },
+      "errors": {
+        "loadStatus": "Nem sikerült betölteni a Chronicle állapotát.",
+        "update": "Nem sikerült frissíteni a Chronicle-t.",
+        "dream": "Nem sikerült elindítani a Dream-futást.",
+        "wipe": "Nem sikerült törölni az emlékeket."
+      }
+    },
+    "backup": {
+      "title": "Biztonsági mentések",
+      "upgradeNotice": "A biztonsági mentések minden fizetős Stella-csomagban benne vannak.",
+      "never": "Soha",
+      "automatic": {
+        "label": "Automatikus biztonsági mentések",
+        "lastLocal": "Utolsó helyi mentés: {time}",
+        "lastRemote": "Utolsó távoli mentés: {time}",
+        "remoteIssue": "Probléma a távoli mentéssel: {error}",
+        "off": "Ki",
+        "hourly": "Óránkénti automatikus mentések",
+        "ariaLabel": "Biztonsági mentések"
+      },
+      "backupNow": {
+        "label": "Mentés most",
+        "description": "Ment egy biztonsági mentést azonnal. Bejelentkezve automatikusan feltöltődik.",
+        "action": "Mentés most",
+        "working": "Mentés…"
+      },
+      "saved": {
+        "label": "Mentett biztonsági mentések",
+        "signedInDescription": "Válassz egy mentést, amelyet visszaállítasz ezen az eszközön.",
+        "signedOutDescription": "Jelentkezz be, hogy online ments biztonsági mentéseket, és bármely eszközön visszaállíthasd őket.",
+        "empty": "Még nincsenek távoli mentések.",
+        "latest": "Legújabb",
+        "files": "{count} fájl",
+        "from": "Forrás: {source}",
+        "restore": "Visszaállítás",
+        "restoring": "Visszaállítás…"
+      },
+      "toasts": {
+        "completedTitle": "Biztonsági mentés kész",
+        "queuedTitle": "Mentés sorba állítva",
+        "deferredTitle": "Mentés elhalasztva",
+        "noneNeededTitle": "Nincs szükség mentésre",
+        "failedTitle": "A biztonsági mentés sikertelen",
+        "restorePreparedTitle": "Visszaállítás előkészítve",
+        "restorePreparedDescription": "A Stella újraindul, hogy befejezze ennek a mentésnek az alkalmazását.",
+        "restoreFailedTitle": "A visszaállítás sikertelen"
+      },
+      "errors": {
+        "load": "Nem sikerült betölteni a biztonsági mentés beállításait.",
+        "unavailable": "A biztonsági mentés beállításai nem érhetők el ebben az ablakban.",
+        "signInRequired": "Jelentkezz be, és válassz Stella-csomagot a biztonsági mentések bekapcsolásához.",
+        "checkingPlan": "A Stella-csomagod ellenőrzése a biztonsági mentések bekapcsolása előtt.",
+        "subscriptionRequired": "A biztonsági mentésekhez aktív Stella-előfizetés szükséges.",
+        "updateMode": "Nem sikerült frissíteni a biztonsági mentés módját.",
+        "backupUnavailable": "A biztonsági mentés nem érhető el ebben az ablakban.",
+        "startBackup": "Nem sikerült elindítani a biztonsági mentést.",
+        "restoreUnavailable": "A visszaállítás nem érhető el ebben az ablakban.",
+        "restore": "Nem sikerült visszaállítani a biztonsági mentést."
+      }
+    },
+    "account": {
+      "title": "Fiók",
+      "signOut": {
+        "label": "Kijelentkezés",
+        "description": "Jelentkezz ki a Stellából ezen az eszközön.",
+        "action": "Kijelentkezés"
+      },
+      "deleteData": {
+        "label": "Adatok törlése",
+        "description": "Törli az összes beszélgetést, a memóriát és a mentett Stella-beállításokat.",
+        "action": "Törlés",
+        "working": "Törlés…"
+      },
+      "deleteAccount": {
+        "label": "Fiók törlése",
+        "description": "Véglegesen törli a fiókodat és minden benne lévőt.",
+        "action": "Törlés",
+        "working": "Törlés…"
+      },
+      "legal": {
+        "title": "Jogi információk",
+        "terms": "Felhasználási feltételek",
+        "privacy": "Adatvédelmi szabályzat",
+        "view": "Megtekintés"
+      },
+      "dialog": {
+        "deleteDataTitle": "Törlöd a Stella-adataidat?",
+        "deleteAccountTitle": "Törlöd a Stella-fiókodat?",
+        "deleteDataDescription": "Ez törli a beszélgetéseidet, a memóriádat, a beállításaidat és a helyi Stella-állapotot. Ez nem vonható vissza.",
+        "deleteAccountDescription": "Ez véglegesen törli a fiókodat és a Stella-adataidat. Ez nem vonható vissza.",
+        "deleteDataButton": "Adatok törlése",
+        "deleteAccountButton": "Fiók törlése",
+        "working": "Törlés…"
+      },
+      "toasts": {
+        "dataDeleted": "A Stella-adataidat töröltük.",
+        "accountDeleted": "A Stella-fiókodat töröltük.",
+        "deleteDataFailed": "Nem sikerült törölni az adataidat. Próbáld újra.",
+        "deleteAccountFailed": "Nem sikerült törölni a fiókodat. Próbáld újra.",
+        "signInBeforeDelete": "Jelentkezz be a fiókod törlése előtt."
+      }
+    },
+    "audio": {
+      "systemDefault": "Rendszer alapértelmezett",
+      "microphoneDeviceFallback": "Mikrofon {index}",
+      "speakerDeviceFallback": "Hangszóró {index}",
+      "microphone": {
+        "title": "Mikrofon",
+        "enableLabel": "Mikrofon engedélyezése",
+        "enableDescription": "A Stellával való beszélgetéshez szükséges.",
+        "deviceLabel": "Mikrofon",
+        "deviceDescription": "Melyik mikrofont hallgassa a Stella?"
+      },
+      "recovery": {
+        "manageLabel": "Mikrofon-hozzáférés kezelése",
+        "recoverLabel": "Mikrofon-hozzáférés helyreállítása",
+        "manageDescription": "Ha a mikrofon engedélye elakad, visszaállíthatod, és megkérheted a macOS-t, hogy kérdezzen rá újra.",
+        "recoverDescription": "Miután nemet mondtál, a macOS magától nem kérdez rá újra. Állítsd vissza az engedélyt, majd lépj ki a Stellából, és nyisd meg újra.",
+        "openSettings": "Beállítások megnyitása",
+        "reset": "Visszaállítás és újraindítás",
+        "closing": "Bezárás…"
+      },
+      "wakeWord": {
+        "label": "Ébresztőszó: „Hey Stella”",
+        "description": "A háttérben figyel a „Hey Stella” szóra, és hangbeszélgetést indít. Kikapcsolva a mikrofon inaktív marad, amíg meg nem nyomod a diktálást."
+      },
+      "superFast": {
+        "label": "Szupergyors diktálás",
+        "description": "Készenlétben tartja a mikrofont, hogy a diktálás kevesebb késéssel induljon."
+      },
+      "dictationSounds": {
+        "label": "Diktálási hangok",
+        "description": "Hangot játszik le, amikor a diktálás elindul és leáll."
+      },
+      "enhance": {
+        "label": "Átirat javítása",
+        "description": "A helyi diktálás szövegét a Mercury segítségével rendezi, mielőtt beilleszti."
+      },
+      "localDictation": {
+        "label": "Eszközön történő átírás",
+        "description": "A helyi Parakeet modellt használja az Inworld helyett. Ez gyengébb Mac-eken több memóriát igényelhet.",
+        "unavailableFallback": "Ezen a Macen nem érhető el."
+      },
+      "speaker": {
+        "title": "Hangszóró",
+        "outputLabel": "Kimeneti eszköz",
+        "outputDescription": "Válaszd ki a használni kívánt hangszórót vagy fejhallgatót.",
+        "empty": "Nem található hangszóró.",
+        "emptyMicOff": "Kapcsold be a mikrofont a hangszóróid megtekintéséhez."
+      },
+      "errors": {
+        "listDevices": "Nem lehet listázni az audioeszközöket.",
+        "micDeniedReset": "A mikrofon-hozzáférést korábban elutasították. Állítsd vissza, és indítsd újra a Stellát, vagy nyisd meg a Rendszerbeállításokat.",
+        "micDenied": "A mikrofon-hozzáférést elutasították. Engedélyezd a rendszerbeállításokban."
+      }
+    },
+    "connectedProviders": {
+      "title": "Csatlakoztatott szolgáltatók",
+      "empty": "Még nincs csatlakoztatott szolgáltató. Válassz a Stellától eltérő lehetőséget a fenti modellválasztóban API-kulcs hozzáadásához vagy bejelentkezéshez.",
+      "apiKey": "API-kulcs",
+      "signedIn": "Bejelentkezve",
+      "removeKey": "Kulcs eltávolítása",
+      "removingKey": "Eltávolítás…",
+      "signOut": "Kijelentkezés",
+      "signingOut": "Kijelentkezés…"
+    },
+    "search": {
+      "placeholder": "Keresés a beállításokban",
+      "clear": "Keresés törlése",
+      "noResultsTitle": "Nincs „{query}” kifejezésre illő beállítás",
+      "noResultsBody": "Próbálj rövidebb vagy más szót.",
+      "resultsOne": "{count} találat erre:",
+      "resultsOther": "{count} találat erre:",
+      "resultsAriaOne": "{count} találat",
+      "resultsAriaOther": "{count} találat",
+      "descriptions": {
+        "voice": "Válaszd ki a Stella beszédstílusát és személyiséghangját.",
+        "permissions": "Adj hozzáférést a kisegítő lehetőségekhez, a képernyőrögzítéshez és a mikrofonhoz macOS-en.",
+        "shortcuts": "Módosítsd, hogyan nyílik meg, figyel és indítja a Stella a radiális tárcsát vagy a hangot.",
+        "memory": "Kezeld a képernyőmemóriát, frissítsd vagy töröld, amire a Stella emlékezett.",
+        "backup": "Automatikus titkosított biztonsági mentések, visszaállítási pontok és igény szerinti pillanatképek.",
+        "account": "Jelentkezz ki, töröld az adataidat, vagy töröld véglegesen a fiókodat.",
+        "legal": "Felhasználási feltételek és adatvédelmi szabályzat.",
+        "microphone": "Válaszd ki a bemeneti eszközt, engedélyezd az ébresztőszót, a diktálási hangokat és az eszközön történő átírást.",
+        "speaker": "Válaszd ki azt a hangszórót vagy fejhallgatót, amelyen a Stella hangja megszólal.",
+        "wakeWord": "Figyel a „Hey Stella” szóra, és hangbeszélgetést indít.",
+        "onDeviceTranscription": "A helyi Parakeet modellt használja a felhőalapú átírás helyett."
+      }
+    },
+    "errors": {
+      "loadPower": "Nem sikerült betölteni az energiabeállítást.",
+      "savePower": "Nem sikerült frissíteni az energiabeállítást.",
+      "powerUnavailable": "Az energiabeállítások nem érhetők el ebben az ablakban.",
+      "loadLockedComputerUse": "Nem sikerült betölteni a zárolt állapotú számítógép-használat beállítását.",
+      "saveLockedComputerUse": "Nem sikerült frissíteni a zárolt állapotú számítógép-használatot.",
+      "lockedComputerUseUnavailable": "A zárolt állapotú számítógép-használat nem érhető el ebben az ablakban.",
+      "loadSoundNotifications": "Nem sikerült betölteni a hangértesítések beállítását.",
+      "saveSoundNotifications": "Nem sikerült frissíteni a hangértesítések beállítását.",
+      "soundNotificationsUnavailable": "A hangértesítések beállításai nem érhetők el ebben az ablakban.",
+      "loadVoice": "Nem sikerült betölteni a hangbeállítást.",
+      "saveVoice": "Nem sikerült frissíteni a hangbeállítást.",
+      "voiceUnavailable": "A hangbeállítások nem érhetők el ebben az ablakban.",
+      "loadPermissions": "Nem sikerült betölteni az asztali engedélyek állapotát.",
+      "savePermission": "Nem sikerült frissíteni a(z) {kind} engedélyt.",
+      "resetPermission": "Nem sikerült visszaállítani a(z) {kind} engedélyt.",
+      "resetPermissionMaybeReopen": "A(z) {kind} engedélyt nem sikerült visszaállítani. Lehet, hogy újra meg kell nyitni a Stellát.",
+      "microphoneDeniedReopen": "A mikrofon-hozzáférést korábban elutasították. Kapcsold be a Rendszerbeállításokban, majd nyisd meg újra a Stellát.",
+      "microphoneStillOff": "A mikrofon-hozzáférés még mindig ki van kapcsolva. Kapcsold be a Rendszerbeállításokban, majd nyisd meg újra a Stellát.",
+      "restart": "Nem sikerült újraindítani a Stellát."
     }
   },
   "onboarding": {

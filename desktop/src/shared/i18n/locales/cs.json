@@ -38,6 +38,424 @@
     "language": {
       "title": "Jazyk",
       "description": "Vyberte jazyk, který Stella používá v aplikaci a ve svých odpovědích."
+    },
+    "developerPreviews": {
+      "title": "Náhledy souborů pro vývojáře",
+      "description": "Zobrazí změny kódu v chatu a otevře je v bočním panelu."
+    },
+    "nativeFontSmoothing": {
+      "title": "Nativní vyhlazování písma",
+      "description": "Vykresluje text jako aplikace macOS, s vyhlazováním ve stupních šedi."
+    },
+    "motion": {
+      "title": "Pohyb",
+      "reduceMotion": {
+        "label": "Omezit pohyb",
+        "description": "Minimalizuje animace rozhraní.",
+        "system": "Systém",
+        "on": "Zapnuto",
+        "off": "Vypnuto"
+      }
+    },
+    "voice": {
+      "title": "Hlas",
+      "personality": {
+        "label": "Osobnost"
+      }
+    },
+    "notifications": {
+      "title": "Zvuková upozornění",
+      "description": "Přehraje zvuk, když Stella dokončí běh agenta."
+    },
+    "power": {
+      "title": "Udržovat počítač vzhůru",
+      "description": "Zabrání počítači v přechodu do režimu spánku, když je Stella otevřená."
+    },
+    "lockedComputerUse": {
+      "title": "Použití při zamčeném počítači",
+      "description": "Umožní Stelle pokračovat v úlohách ovládání počítače poté, co se tento Mac zamkne. Vyžaduje výzvu správce a během práce Stelly zakrývá obrazovku.",
+      "unsupported": "Použití při zamčeném počítači je dostupné pouze v systému macOS."
+    },
+    "browserExtension": {
+      "title": "Stella pro Chrome",
+      "description": "Umožní Stelle vidět stránku, na které jste, a provádět akce ve vašem prohlížeči.",
+      "action": "Získat rozšíření"
+    },
+    "migration": {
+      "title": "Importovat z Hermes nebo OpenClaw",
+      "action": "Importovat",
+      "description": "Přeneste paměť, dovednosti, relace a výběr modelů z jiné místní instalace asistenta.",
+      "dialogClose": "Zavřít import"
+    },
+    "permissions": {
+      "title": "Oprávnění",
+      "enable": "Povolit",
+      "granted": "Uděleno",
+      "opening": "Otevírání…",
+      "reset": "Obnovit",
+      "resetting": "Obnovování…",
+      "accessibility": {
+        "label": "Zpřístupnění",
+        "description": "Umožní Stelle číst vybraný text a otevírat se zkratkou ⌘+pravé tlačítko kdekoli v počítači."
+      },
+      "screen": {
+        "label": "Záznam obrazovky",
+        "description": "Umožní Stelle vidět vaši obrazovku, aby vám pomohla s tím, na co se díváte. Po zapnutí může být nutné Stellu ukončit a znovu otevřít."
+      },
+      "microphone": {
+        "label": "Mikrofon",
+        "description": "Používá se pro hlas a diktování. Obnovte, pokud byla Stella dříve zamítnuta a macOS se znovu neptá."
+      },
+      "restart": {
+        "label": "Restartovat Stellu",
+        "description": "Záznam obrazovky byl právě zapnut. Ukončete a znovu otevřete Stellu, abyste dokončili nastavení.",
+        "action": "Restartovat",
+        "closing": "Zavírání…"
+      }
+    },
+    "shortcuts": {
+      "title": "Zkratky",
+      "change": "Změnit",
+      "capturing": "Stiskněte klávesy…",
+      "clear": "Vymazat",
+      "off": "Vypnuto",
+      "actions": {
+        "dictation": "Diktování",
+        "voice": "Hlasový agent"
+      },
+      "dictation": {
+        "description": "Podržte Option pro diktování do Stelly nebo do aplikace, kterou používáte."
+      },
+      "voiceAgent": {
+        "description": "Spustí nebo zastaví živého hlasového agenta Stelly."
+      },
+      "radial": {
+        "label": "Radiální volič",
+        "description": "Otevře klínové menu pro zachycení, chat, hlas a rychlé akce.",
+        "ariaLabel": "Zkratka radiálního voliče"
+      },
+      "mini": {
+        "label": "Mini okno",
+        "description": "Dvojitým klepnutím na modifikační klávesu otevřete nebo zavřete mini chat.",
+        "ariaLabel": "Zkratka mini okna"
+      },
+      "targets": {
+        "dictation": "diktování",
+        "voice": "hlasového agenta"
+      },
+      "toasts": {
+        "updatedTitle": "Zkratka {action} aktualizována",
+        "clearedTitle": "Zkratka {action} vymazána",
+        "updatedDescription": "Stisknutím {keys} spustíte {target}.",
+        "clearedDescription": "{action} je zakázáno, dokud nenastavíte novou zkratku.",
+        "unavailableTitle": "Zkratka není dostupná",
+        "failedTitle": "Aktualizace zkratky se nezdařila",
+        "radialUpdatedTitle": "Zkratka radiálního voliče aktualizována",
+        "radialUpdatedDescription": "Podržte {key} pro otevření radiálního voliče.",
+        "miniUpdatedTitle": "Zkratka mini okna aktualizována",
+        "miniDisabledDescription": "Dvojité klepnutí je zakázáno.",
+        "miniUpdatedDescription": "Dvojitým klepnutím na {modifier} otevřete mini okno."
+      },
+      "errors": {
+        "load": "Nepodařilo se načíst zkratky.",
+        "unavailable": "Zkratky nejsou v tomto okně dostupné.",
+        "unavailableShortcut": "Tato zkratka není dostupná.",
+        "update": "Nepodařilo se aktualizovat zkratku.",
+        "radialUpdate": "Nepodařilo se aktualizovat zkratku radiálního voliče.",
+        "miniUpdate": "Nepodařilo se aktualizovat zkratku mini okna."
+      }
+    },
+    "memory": {
+      "title": "Paměť",
+      "enable": "Povolit",
+      "disable": "Zakázat",
+      "working": "Pracuji…",
+      "screen": {
+        "label": "Paměť obrazovky",
+        "description": "Stella se může čas od času podívat na vaši obrazovku, aby si zapamatovala, co jste dělali.",
+        "signInDescription": "Přihlaste se ke Stelle nebo vyberte malý model pro Chronicle v panelu Engine.",
+        "upgradeDescription": "Paměť obrazovky je součástí každého plánu Stella. Upgradujte nebo vyberte malý model pro Chronicle v panelu Engine."
+      },
+      "status": {
+        "label": "Stav",
+        "running": "Běží",
+        "stopped": "Zastaveno",
+        "disabled": "Zakázáno",
+        "fps": "{fps} fps",
+        "lastCapture": "poslední zachycení {time}"
+      },
+      "folder": {
+        "label": "Složka paměti",
+        "description": "Otevře složku ve vašem počítači, kde Stella uchovává své vzpomínky.",
+        "open": "Otevřít složku",
+        "opening": "Otevírání…"
+      },
+      "update": {
+        "label": "Aktualizovat paměť nyní",
+        "description": "Nechte Stellu projít nedávnou aktivitu a uložit, co se naučila. Obvykle to probíhá samo.",
+        "run": "Spustit nyní",
+        "running": "Sní…"
+      },
+      "erase": {
+        "label": "Vymazat paměť",
+        "description": "Odstraní vše, co si Stella zapamatovala, včetně uložené aktivity obrazovky. Toto nelze vrátit zpět.",
+        "action": "Vymazat",
+        "working": "Mazání…",
+        "confirm": "Vymazat vše, co si Stella zapamatovala? Toto nelze vrátit zpět."
+      },
+      "access": {
+        "signInTitle": "Vyžadováno přihlášení",
+        "subscriptionTitle": "Vyžadováno předplatné",
+        "signInMessage": "Přihlaste se ke Stelle nebo vyberte malý model pro Chronicle v panelu Engine.",
+        "upgradeMessage": "Paměť obrazovky je součástí každého plánu Stella. Upgradujte — nebo vyberte malý model pro Chronicle v panelu Engine.",
+        "pickModel": "Vybrat model",
+        "upgrade": "Upgradovat"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle povolen",
+        "disabledTitle": "Chronicle zakázán",
+        "alreadyRunning": "Chronicle už běžel.",
+        "enableFailedTitle": "Nepodařilo se povolit Chronicle",
+        "disableFailedTitle": "Nepodařilo se zakázat Chronicle",
+        "dreamScheduledTitle": "Průchod Dream naplánován",
+        "dreamNotScheduledTitle": "Průchod Dream nenaplánován",
+        "wipeFailedTitle": "Mazání se nezdařilo",
+        "wipedTitle": "Vzpomínky vymazány"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Kořen pracovního prostoru Stelly není dostupný.",
+        "needsPermission": "Před spuštěním Chronicle je stále vyžadováno oprávnění k záznamu obrazovky.",
+        "binaryMissing": "Pomocný soubor Chronicle chybí.",
+        "startupTimeout": "Chronicle se po spuštění nepřipojil.",
+        "unsupportedPlatform": "Chronicle je dostupný pouze v systému macOS.",
+        "unknown": "Neznámá chyba."
+      },
+      "dreamResults": {
+        "scheduled": "Dream sloučí aktuální nevyřízené položky.",
+        "inFlight": "Průchod Dream už probíhá.",
+        "noInputs": "Právě teď není co slučovat.",
+        "noApiKey": "Dream potřebuje nakonfigurovaný model/klíč API nebo přihlášenou trasu Stella.",
+        "disabled": "Plánování Dream je momentálně zakázáno.",
+        "belowThreshold": "Práh nečinnosti ještě nebyl dosažen.",
+        "lockBusy": "Dream je právě zaneprázdněn. Zkuste to za chvíli znovu.",
+        "noRunner": "Místní běhové prostředí ještě není připraveno.",
+        "unavailable": "Dream je momentálně nedostupný.",
+        "pendingPrefix": "Čeká: {items}.",
+        "pendingThreadSummary": "{count} souhrn úlohy",
+        "pendingThreadSummaries": "souhrnů úloh: {count}",
+        "pendingExtension": "{count} soubor Chronicle",
+        "pendingExtensions": "souborů Chronicle: {count}",
+        "pendingJoin": " a "
+      },
+      "errors": {
+        "loadStatus": "Nepodařilo se načíst stav Chronicle.",
+        "update": "Nepodařilo se aktualizovat Chronicle.",
+        "dream": "Nepodařilo se spustit průchod Dream.",
+        "wipe": "Nepodařilo se vymazat vzpomínky."
+      }
+    },
+    "backup": {
+      "title": "Zálohy",
+      "upgradeNotice": "Zálohy jsou součástí každého placeného plánu Stella.",
+      "never": "Nikdy",
+      "automatic": {
+        "label": "Automatické zálohy",
+        "lastLocal": "Poslední místní záloha: {time}",
+        "lastRemote": "Poslední vzdálená záloha: {time}",
+        "remoteIssue": "Problém se vzdálenou zálohou: {error}",
+        "off": "Vypnuto",
+        "hourly": "Automatické zálohy každou hodinu",
+        "ariaLabel": "Zálohy"
+      },
+      "backupNow": {
+        "label": "Zálohovat nyní",
+        "description": "Uloží zálohu hned teď. Po přihlášení se nahraje automaticky.",
+        "action": "Zálohovat nyní",
+        "working": "Zálohování…"
+      },
+      "saved": {
+        "label": "Uložené zálohy",
+        "signedInDescription": "Vyberte zálohu k obnovení na tomto zařízení.",
+        "signedOutDescription": "Přihlaste se, abyste ukládali zálohy online a obnovovali je na jakémkoli zařízení.",
+        "empty": "Zatím žádné vzdálené zálohy.",
+        "latest": "Nejnovější",
+        "files": "souborů: {count}",
+        "from": "Z: {source}",
+        "restore": "Obnovit",
+        "restoring": "Obnovování…"
+      },
+      "toasts": {
+        "completedTitle": "Zálohování dokončeno",
+        "queuedTitle": "Záloha ve frontě",
+        "deferredTitle": "Záloha odložena",
+        "noneNeededTitle": "Záloha není potřeba",
+        "failedTitle": "Zálohování se nezdařilo",
+        "restorePreparedTitle": "Obnovení připraveno",
+        "restorePreparedDescription": "Stella se restartuje, aby dokončila použití této zálohy.",
+        "restoreFailedTitle": "Obnovení se nezdařilo"
+      },
+      "errors": {
+        "load": "Nepodařilo se načíst nastavení záloh.",
+        "unavailable": "Nastavení záloh nejsou v tomto okně dostupná.",
+        "signInRequired": "Přihlaste se a vyberte plán Stella, abyste zapnuli zálohy.",
+        "checkingPlan": "Před zapnutím záloh se kontroluje váš plán Stella.",
+        "subscriptionRequired": "Zálohy vyžadují aktivní předplatné Stella.",
+        "updateMode": "Nepodařilo se aktualizovat režim zálohování.",
+        "backupUnavailable": "Zálohování není v tomto okně dostupné.",
+        "startBackup": "Nepodařilo se spustit zálohování.",
+        "restoreUnavailable": "Obnovení není v tomto okně dostupné.",
+        "restore": "Nepodařilo se obnovit zálohu."
+      }
+    },
+    "account": {
+      "title": "Účet",
+      "signOut": {
+        "label": "Odhlásit se",
+        "description": "Odhlaste se ze Stelly na tomto zařízení.",
+        "action": "Odhlásit se"
+      },
+      "deleteData": {
+        "label": "Smazat data",
+        "description": "Vymaže všechny konverzace, paměť a uložená nastavení Stelly.",
+        "action": "Smazat",
+        "working": "Mazání…"
+      },
+      "deleteAccount": {
+        "label": "Smazat účet",
+        "description": "Trvale smaže váš účet a vše v něm.",
+        "action": "Smazat",
+        "working": "Mazání…"
+      },
+      "legal": {
+        "title": "Právní informace",
+        "terms": "Podmínky služby",
+        "privacy": "Zásady ochrany osobních údajů",
+        "view": "Zobrazit"
+      },
+      "dialog": {
+        "deleteDataTitle": "Smazat vaše data Stella?",
+        "deleteAccountTitle": "Smazat váš účet Stella?",
+        "deleteDataDescription": "Tímto se vymažou vaše konverzace, paměť, nastavení a místní stav Stelly. Toto nelze vrátit zpět.",
+        "deleteAccountDescription": "Tímto se trvale smaže váš účet a data Stella. Toto nelze vrátit zpět.",
+        "deleteDataButton": "Smazat data",
+        "deleteAccountButton": "Smazat účet",
+        "working": "Mazání…"
+      },
+      "toasts": {
+        "dataDeleted": "Vaše data Stella byla smazána.",
+        "accountDeleted": "Váš účet Stella byl smazán.",
+        "deleteDataFailed": "Vaše data se nepodařilo smazat. Zkuste to znovu.",
+        "deleteAccountFailed": "Váš účet se nepodařilo smazat. Zkuste to znovu.",
+        "signInBeforeDelete": "Před smazáním účtu se přihlaste."
+      }
+    },
+    "audio": {
+      "systemDefault": "Výchozí systémové",
+      "microphoneDeviceFallback": "Mikrofon {index}",
+      "speakerDeviceFallback": "Reproduktor {index}",
+      "microphone": {
+        "title": "Mikrofon",
+        "enableLabel": "Povolit mikrofon",
+        "enableDescription": "Vyžadováno pro mluvení se Stellou.",
+        "deviceLabel": "Mikrofon",
+        "deviceDescription": "Který mikrofon má Stella poslouchat?"
+      },
+      "recovery": {
+        "manageLabel": "Spravovat přístup k mikrofonu",
+        "recoverLabel": "Obnovit přístup k mikrofonu",
+        "manageDescription": "Pokud se oprávnění mikrofonu zasekne, můžete ho obnovit a požádat macOS, aby se zeptal znovu.",
+        "recoverDescription": "Jakmile řeknete ne, macOS se sám znovu nezeptá. Obnovte oprávnění a poté Stellu ukončete a znovu otevřete.",
+        "openSettings": "Otevřít Nastavení",
+        "reset": "Obnovit a restartovat",
+        "closing": "Zavírání…"
+      },
+      "wakeWord": {
+        "label": "Aktivační slovo „Hey Stella“",
+        "description": "Naslouchá „Hey Stella“ na pozadí a zahájí hlasovou konverzaci. Když je vypnuto, mikrofon zůstává nečinný, dokud nestisknete diktování."
+      },
+      "superFast": {
+        "label": "Superrychlé diktování",
+        "description": "Udržuje mikrofon připravený, aby diktování začínalo s menším zpožděním."
+      },
+      "dictationSounds": {
+        "label": "Zvuky diktování",
+        "description": "Přehraje zvuk, když diktování začne a skončí."
+      },
+      "enhance": {
+        "label": "Vylepšit přepis",
+        "description": "Před vložením vyčistí text místního diktování pomocí Mercury."
+      },
+      "localDictation": {
+        "label": "Přepis na zařízení",
+        "description": "Používá místní model Parakeet místo Inworld. Na slabších Macích to může využívat více paměti.",
+        "unavailableFallback": "Na tomto Macu není dostupné."
+      },
+      "speaker": {
+        "title": "Reproduktor",
+        "outputLabel": "Výstupní zařízení",
+        "outputDescription": "Vyberte reproduktor nebo sluchátka, která chcete použít.",
+        "empty": "Nebyly nalezeny žádné reproduktory.",
+        "emptyMicOff": "Zapněte mikrofon, abyste viděli své reproduktory."
+      },
+      "errors": {
+        "listDevices": "Nelze vypsat zvuková zařízení.",
+        "micDeniedReset": "Přístup k mikrofonu byl dříve odepřen. Obnovte ho a restartujte Stellu, nebo otevřete Nastavení systému.",
+        "micDenied": "Přístup k mikrofonu byl odepřen. Povolte ho v nastavení systému."
+      }
+    },
+    "connectedProviders": {
+      "title": "Připojení poskytovatelé",
+      "empty": "Zatím nejsou připojeni žádní poskytovatelé. Vyberte výše v přepínači modelů jinou možnost než Stella, abyste přidali klíč API nebo se přihlásili.",
+      "apiKey": "Klíč API",
+      "signedIn": "Přihlášeno",
+      "removeKey": "Odebrat klíč",
+      "removingKey": "Odebírání…",
+      "signOut": "Odhlásit se",
+      "signingOut": "Odhlašování…"
+    },
+    "search": {
+      "placeholder": "Hledat v nastavení",
+      "clear": "Vymazat hledání",
+      "noResultsTitle": "Žádné nastavení neodpovídá „{query}“",
+      "noResultsBody": "Zkuste kratší nebo jiné slovo.",
+      "resultsOne": "{count} výsledek pro",
+      "resultsOther": "Výsledků ({count}) pro",
+      "resultsAriaOne": "{count} výsledek",
+      "resultsAriaOther": "Výsledky: {count}",
+      "descriptions": {
+        "voice": "Vyberte styl mluvení a hlas osobnosti Stelly.",
+        "permissions": "Udělte v systému macOS přístup ke zpřístupnění, záznamu obrazovky a mikrofonu.",
+        "shortcuts": "Změňte, jak se Stella otevírá, naslouchá a spouští radiální volič nebo hlas.",
+        "memory": "Spravujte paměť obrazovky, aktualizujte nebo vymažte, co si Stella zapamatovala.",
+        "backup": "Automatické šifrované zálohy, body obnovení a snímky na vyžádání.",
+        "account": "Odhlaste se, smažte svá data nebo trvale smažte svůj účet.",
+        "legal": "Podmínky služby a zásady ochrany osobních údajů.",
+        "microphone": "Vyberte vstupní zařízení, povolte aktivační slovo, zvuky diktování a přepis na zařízení.",
+        "speaker": "Vyberte reproduktor nebo sluchátka, kterými se přehrává hlas Stelly.",
+        "wakeWord": "Naslouchá „Hey Stella“ a zahájí hlasovou konverzaci.",
+        "onDeviceTranscription": "Používá místní model Parakeet místo cloudového přepisu."
+      }
+    },
+    "errors": {
+      "loadPower": "Nepodařilo se načíst nastavení napájení.",
+      "savePower": "Nepodařilo se aktualizovat nastavení napájení.",
+      "powerUnavailable": "Nastavení napájení nejsou v tomto okně dostupná.",
+      "loadLockedComputerUse": "Nepodařilo se načíst nastavení použití při zamčeném počítači.",
+      "saveLockedComputerUse": "Nepodařilo se aktualizovat použití při zamčeném počítači.",
+      "lockedComputerUseUnavailable": "Použití při zamčeném počítači není v tomto okně dostupné.",
+      "loadSoundNotifications": "Nepodařilo se načíst nastavení zvukových upozornění.",
+      "saveSoundNotifications": "Nepodařilo se aktualizovat nastavení zvukových upozornění.",
+      "soundNotificationsUnavailable": "Nastavení zvukových upozornění nejsou v tomto okně dostupná.",
+      "loadVoice": "Nepodařilo se načíst nastavení hlasu.",
+      "saveVoice": "Nepodařilo se aktualizovat nastavení hlasu.",
+      "voiceUnavailable": "Nastavení hlasu nejsou v tomto okně dostupná.",
+      "loadPermissions": "Nepodařilo se načíst stav oprávnění plochy.",
+      "savePermission": "Nepodařilo se aktualizovat oprávnění {kind}.",
+      "resetPermission": "Nepodařilo se obnovit oprávnění {kind}.",
+      "resetPermissionMaybeReopen": "Oprávnění {kind} nelze obnovit. Možná bude nutné Stellu znovu otevřít.",
+      "microphoneDeniedReopen": "Přístup k mikrofonu byl dříve odepřen. Zapněte ho v Nastavení systému a poté Stellu znovu otevřete.",
+      "microphoneStillOff": "Přístup k mikrofonu je stále vypnutý. Zapněte ho v Nastavení systému a poté Stellu znovu otevřete.",
+      "restart": "Nepodařilo se restartovat Stellu."
     }
   },
   "onboarding": {

@@ -38,6 +38,424 @@
     "language": {
       "title": "Kieli",
       "description": "Valitse kieli, jota Stella käyttää sovelluksessa ja vastauksissa."
+    },
+    "developerPreviews": {
+      "title": "Kehittäjän tiedostojen esikatselut",
+      "description": "Näytä koodimuutokset chatissa ja avaa ne sivupaneelissa."
+    },
+    "nativeFontSmoothing": {
+      "title": "Natiivi fonttien pehmennys",
+      "description": "Piirtää tekstin kuten macOS-sovellukset, harmaasävyreunanpehmennyksellä."
+    },
+    "motion": {
+      "title": "Liike",
+      "reduceMotion": {
+        "label": "Vähennä liikettä",
+        "description": "Minimoi käyttöliittymän animaatiot.",
+        "system": "Järjestelmä",
+        "on": "Päällä",
+        "off": "Pois"
+      }
+    },
+    "voice": {
+      "title": "Ääni",
+      "personality": {
+        "label": "Persoonallisuus"
+      }
+    },
+    "notifications": {
+      "title": "Ääni-ilmoitukset",
+      "description": "Toistaa äänen, kun Stella saa agentin ajon valmiiksi."
+    },
+    "power": {
+      "title": "Pidä tietokone hereillä",
+      "description": "Estää tietokonetta siirtymästä lepotilaan, kun Stella on auki."
+    },
+    "lockedComputerUse": {
+      "title": "Käyttö lukitulla tietokoneella",
+      "description": "Antaa Stellan jatkaa tietokoneen käyttötehtäviä tämän Macin lukitsemisen jälkeen. Vaatii järjestelmänvalvojan vahvistuksen ja peittää näytön Stellan työskennellessä.",
+      "unsupported": "Käyttö lukitulla tietokoneella on saatavilla vain macOS:ssä."
+    },
+    "browserExtension": {
+      "title": "Stella Chromelle",
+      "description": "Antaa Stellan nähdä sivun, jolla olet, ja toimia selaimessasi.",
+      "action": "Hanki laajennus"
+    },
+    "migration": {
+      "title": "Tuo Hermesistä tai OpenClaw'sta",
+      "action": "Tuo",
+      "description": "Tuo muisti, taidot, istunnot ja mallivalinnat toisesta paikallisesta avustaja-asennuksesta.",
+      "dialogClose": "Sulje tuonti"
+    },
+    "permissions": {
+      "title": "Käyttöoikeudet",
+      "enable": "Ota käyttöön",
+      "granted": "Myönnetty",
+      "opening": "Avataan…",
+      "reset": "Nollaa",
+      "resetting": "Nollataan…",
+      "accessibility": {
+        "label": "Saavutettavuus",
+        "description": "Antaa Stellan lukea valitun tekstin ja avautua pikanäppäimellä ⌘+oikea napsautus missä tahansa tietokoneellasi."
+      },
+      "screen": {
+        "label": "Näytön tallennus",
+        "description": "Antaa Stellan nähdä näyttösi, jotta se voi auttaa siinä, mitä katsot. Saatat joutua sulkemaan ja avaamaan Stellan uudelleen tämän käyttöönoton jälkeen."
+      },
+      "microphone": {
+        "label": "Mikrofoni",
+        "description": "Käytetään ääneen ja saneluun. Nollaa, jos Stella estettiin aiemmin eikä macOS kysy enää."
+      },
+      "restart": {
+        "label": "Käynnistä Stella uudelleen",
+        "description": "Näytön tallennus otettiin juuri käyttöön. Sulje ja avaa Stella uudelleen viimeistelläksesi käyttöönoton.",
+        "action": "Käynnistä uudelleen",
+        "closing": "Suljetaan…"
+      }
+    },
+    "shortcuts": {
+      "title": "Pikanäppäimet",
+      "change": "Muuta",
+      "capturing": "Paina näppäimiä…",
+      "clear": "Tyhjennä",
+      "off": "Pois",
+      "actions": {
+        "dictation": "Sanelu",
+        "voice": "Ääniagentti"
+      },
+      "dictation": {
+        "description": "Pidä Option-näppäintä pohjassa sanellaksesi Stellaan tai käyttämääsi sovellukseen."
+      },
+      "voiceAgent": {
+        "description": "Käynnistää tai pysäyttää Stellan reaaliaikaisen ääniagentin."
+      },
+      "radial": {
+        "label": "Säteittäisvalitsin",
+        "description": "Avaa kiilavalikon kaappaukseen, chattiin, ääneen ja pikatoimintoihin.",
+        "ariaLabel": "Säteittäisvalitsimen pikanäppäin"
+      },
+      "mini": {
+        "label": "Pikkuikkuna",
+        "description": "Napauta muokkausnäppäintä kahdesti avataksesi tai sulkeaksesi pikkuchatin.",
+        "ariaLabel": "Pikkuikkunan pikanäppäin"
+      },
+      "targets": {
+        "dictation": "sanelu",
+        "voice": "ääniagentti"
+      },
+      "toasts": {
+        "updatedTitle": "{action}-pikanäppäin päivitetty",
+        "clearedTitle": "{action}-pikanäppäin tyhjennetty",
+        "updatedDescription": "Paina {keys} aloittaaksesi: {target}.",
+        "clearedDescription": "{action} on poissa käytöstä, kunnes asetat uuden pikanäppäimen.",
+        "unavailableTitle": "Pikanäppäin ei käytettävissä",
+        "failedTitle": "Pikanäppäimen päivitys epäonnistui",
+        "radialUpdatedTitle": "Säteittäisvalitsimen pikanäppäin päivitetty",
+        "radialUpdatedDescription": "Pidä {key} pohjassa avataksesi säteittäisvalitsimen.",
+        "miniUpdatedTitle": "Pikkuikkunan pikanäppäin päivitetty",
+        "miniDisabledDescription": "Kaksoisnapautus on poissa käytöstä.",
+        "miniUpdatedDescription": "Napauta {modifier} kahdesti avataksesi pikkuikkunan."
+      },
+      "errors": {
+        "load": "Pikanäppäimien lataaminen epäonnistui.",
+        "unavailable": "Pikanäppäimet eivät ole käytettävissä tässä ikkunassa.",
+        "unavailableShortcut": "Kyseinen pikanäppäin ei ole käytettävissä.",
+        "update": "Pikanäppäimen päivitys epäonnistui.",
+        "radialUpdate": "Säteittäisvalitsimen pikanäppäimen päivitys epäonnistui.",
+        "miniUpdate": "Pikkuikkunan pikanäppäimen päivitys epäonnistui."
+      }
+    },
+    "memory": {
+      "title": "Muisti",
+      "enable": "Ota käyttöön",
+      "disable": "Poista käytöstä",
+      "working": "Työskentelee…",
+      "screen": {
+        "label": "Näyttömuisti",
+        "description": "Stella voi vilkaista näyttöäsi silloin tällöin muistaakseen, mitä olit tekemässä.",
+        "signInDescription": "Kirjaudu Stellaan tai valitse pieni malli Chroniclelle Engine-paneelissa.",
+        "upgradeDescription": "Näyttömuisti sisältyy kaikkiin Stella-tilauksiin. Päivitä tai valitse pieni malli Chroniclelle Engine-paneelissa."
+      },
+      "status": {
+        "label": "Tila",
+        "running": "Käynnissä",
+        "stopped": "Pysäytetty",
+        "disabled": "Pois käytöstä",
+        "fps": "{fps} fps",
+        "lastCapture": "viimeisin kaappaus {time}"
+      },
+      "folder": {
+        "label": "Muistikansio",
+        "description": "Avaa tietokoneellasi olevan kansion, johon Stella tallentaa muistonsa.",
+        "open": "Avaa kansio",
+        "opening": "Avataan…"
+      },
+      "update": {
+        "label": "Päivitä muisti nyt",
+        "description": "Anna Stellan käydä läpi viimeaikainen toiminta ja tallentaa oppimansa. Tämä tapahtuu yleensä itsestään.",
+        "run": "Suorita nyt",
+        "running": "Näkee unta…"
+      },
+      "erase": {
+        "label": "Tyhjennä muisti",
+        "description": "Poistaa kaiken, mitä Stella on muistanut, mukaan lukien tallennetun näyttötoiminnan. Tätä ei voi kumota.",
+        "action": "Tyhjennä",
+        "working": "Tyhjennetään…",
+        "confirm": "Tyhjennetäänkö kaikki, mitä Stella on muistanut? Tätä ei voi kumota."
+      },
+      "access": {
+        "signInTitle": "Kirjautuminen vaaditaan",
+        "subscriptionTitle": "Tilaus vaaditaan",
+        "signInMessage": "Kirjaudu Stellaan tai valitse pieni malli Chroniclelle Engine-paneelissa.",
+        "upgradeMessage": "Näyttömuisti sisältyy kaikkiin Stella-tilauksiin. Päivitä — tai valitse pieni malli Chroniclelle Engine-paneelissa.",
+        "pickModel": "Valitse malli",
+        "upgrade": "Päivitä"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle otettu käyttöön",
+        "disabledTitle": "Chronicle poistettu käytöstä",
+        "alreadyRunning": "Chronicle oli jo käynnissä.",
+        "enableFailedTitle": "Chroniclen käyttöönotto epäonnistui",
+        "disableFailedTitle": "Chroniclen poistaminen käytöstä epäonnistui",
+        "dreamScheduledTitle": "Dream-ajo ajoitettu",
+        "dreamNotScheduledTitle": "Dream-ajoa ei ajoitettu",
+        "wipeFailedTitle": "Tyhjennys epäonnistui",
+        "wipedTitle": "Muistot tyhjennetty"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Stellan työtilan juurikansio ei ole käytettävissä.",
+        "needsPermission": "Näytön tallennuksen käyttöoikeus vaaditaan vielä, ennen kuin Chronicle voi käynnistyä.",
+        "binaryMissing": "Chroniclen aputiedosto puuttuu.",
+        "startupTimeout": "Chronicle ei tullut verkkoon käynnistyksen jälkeen.",
+        "unsupportedPlatform": "Chronicle on saatavilla vain macOS:ssä.",
+        "unknown": "Tuntematon virhe."
+      },
+      "dreamResults": {
+        "scheduled": "Dream yhdistää nykyiset jonossa olevat tiedot.",
+        "inFlight": "Dream-ajo on jo käynnissä.",
+        "noInputs": "Juuri nyt ei ole mitään uutta yhdistettävää.",
+        "noApiKey": "Dream tarvitsee määritetyn mallin/API-avaimen tai kirjautuneen Stella-reitin.",
+        "disabled": "Dreamin ajoitus on tällä hetkellä poissa käytöstä.",
+        "belowThreshold": "Joutenoloraja ei ole vielä täyttynyt.",
+        "lockBusy": "Dream on nyt varattu. Yritä uudelleen hetken kuluttua.",
+        "noRunner": "Paikallinen suoritusympäristö ei ole vielä valmis.",
+        "unavailable": "Dream ei ole tällä hetkellä käytettävissä.",
+        "pendingPrefix": "Odottaa: {items}.",
+        "pendingThreadSummary": "{count} tehtäväyhteenveto",
+        "pendingThreadSummaries": "{count} tehtäväyhteenvetoa",
+        "pendingExtension": "{count} Chronicle-tiedosto",
+        "pendingExtensions": "{count} Chronicle-tiedostoa",
+        "pendingJoin": " ja "
+      },
+      "errors": {
+        "loadStatus": "Chroniclen tilan lataaminen epäonnistui.",
+        "update": "Chroniclen päivitys epäonnistui.",
+        "dream": "Dream-ajon käynnistäminen epäonnistui.",
+        "wipe": "Muistojen tyhjentäminen epäonnistui."
+      }
+    },
+    "backup": {
+      "title": "Varmuuskopiot",
+      "upgradeNotice": "Varmuuskopiot sisältyvät kaikkiin maksullisiin Stella-tilauksiin.",
+      "never": "Ei koskaan",
+      "automatic": {
+        "label": "Automaattiset varmuuskopiot",
+        "lastLocal": "Viimeisin paikallinen varmuuskopio: {time}",
+        "lastRemote": "Viimeisin etävarmuuskopio: {time}",
+        "remoteIssue": "Etävarmuuskopion ongelma: {error}",
+        "off": "Pois",
+        "hourly": "Automaattiset varmuuskopiot tunneittain",
+        "ariaLabel": "Varmuuskopiot"
+      },
+      "backupNow": {
+        "label": "Varmuuskopioi nyt",
+        "description": "Tallenna varmuuskopio heti. Se ladataan automaattisesti, kun olet kirjautuneena.",
+        "action": "Varmuuskopioi nyt",
+        "working": "Varmuuskopioidaan…"
+      },
+      "saved": {
+        "label": "Tallennetut varmuuskopiot",
+        "signedInDescription": "Valitse varmuuskopio palautettavaksi tällä laitteella.",
+        "signedOutDescription": "Kirjaudu sisään tallentaaksesi varmuuskopiot verkkoon ja palauttaaksesi ne millä tahansa laitteella.",
+        "empty": "Ei vielä etävarmuuskopioita.",
+        "latest": "Uusin",
+        "files": "{count} tiedostoa",
+        "from": "Lähde: {source}",
+        "restore": "Palauta",
+        "restoring": "Palautetaan…"
+      },
+      "toasts": {
+        "completedTitle": "Varmuuskopiointi valmis",
+        "queuedTitle": "Varmuuskopio jonossa",
+        "deferredTitle": "Varmuuskopio lykätty",
+        "noneNeededTitle": "Varmuuskopiota ei tarvita",
+        "failedTitle": "Varmuuskopiointi epäonnistui",
+        "restorePreparedTitle": "Palautus valmisteltu",
+        "restorePreparedDescription": "Stella käynnistyy uudelleen viimeistelläkseen tämän varmuuskopion käyttöönoton.",
+        "restoreFailedTitle": "Palautus epäonnistui"
+      },
+      "errors": {
+        "load": "Varmuuskopioasetusten lataaminen epäonnistui.",
+        "unavailable": "Varmuuskopioasetukset eivät ole käytettävissä tässä ikkunassa.",
+        "signInRequired": "Kirjaudu sisään ja valitse Stella-tilaus ottaaksesi varmuuskopiot käyttöön.",
+        "checkingPlan": "Tarkistetaan Stella-tilaustasi ennen varmuuskopioiden käyttöönottoa.",
+        "subscriptionRequired": "Varmuuskopiot vaativat aktiivisen Stella-tilauksen.",
+        "updateMode": "Varmuuskopiointitilan päivitys epäonnistui.",
+        "backupUnavailable": "Varmuuskopiointi ei ole käytettävissä tässä ikkunassa.",
+        "startBackup": "Varmuuskopioinnin aloitus epäonnistui.",
+        "restoreUnavailable": "Palautus ei ole käytettävissä tässä ikkunassa.",
+        "restore": "Varmuuskopion palautus epäonnistui."
+      }
+    },
+    "account": {
+      "title": "Tili",
+      "signOut": {
+        "label": "Kirjaudu ulos",
+        "description": "Kirjaudu ulos Stellasta tällä laitteella.",
+        "action": "Kirjaudu ulos"
+      },
+      "deleteData": {
+        "label": "Poista tiedot",
+        "description": "Poistaa kaikki keskustelut, muistin ja tallennetut Stella-asetukset.",
+        "action": "Poista",
+        "working": "Poistetaan…"
+      },
+      "deleteAccount": {
+        "label": "Poista tili",
+        "description": "Poistaa tilisi ja kaiken siihen liittyvän pysyvästi.",
+        "action": "Poista",
+        "working": "Poistetaan…"
+      },
+      "legal": {
+        "title": "Oikeudelliset tiedot",
+        "terms": "Käyttöehdot",
+        "privacy": "Tietosuojakäytäntö",
+        "view": "Näytä"
+      },
+      "dialog": {
+        "deleteDataTitle": "Poistetaanko Stella-tietosi?",
+        "deleteAccountTitle": "Poistetaanko Stella-tilisi?",
+        "deleteDataDescription": "Tämä poistaa keskustelusi, muistisi, asetuksesi ja paikallisen Stella-tilan. Tätä ei voi kumota.",
+        "deleteAccountDescription": "Tämä poistaa tilisi ja Stella-tietosi pysyvästi. Tätä ei voi kumota.",
+        "deleteDataButton": "Poista tiedot",
+        "deleteAccountButton": "Poista tili",
+        "working": "Poistetaan…"
+      },
+      "toasts": {
+        "dataDeleted": "Stella-tietosi poistettiin.",
+        "accountDeleted": "Stella-tilisi poistettiin.",
+        "deleteDataFailed": "Tietojasi ei voitu poistaa. Yritä uudelleen.",
+        "deleteAccountFailed": "Tiliäsi ei voitu poistaa. Yritä uudelleen.",
+        "signInBeforeDelete": "Kirjaudu sisään ennen tilisi poistamista."
+      }
+    },
+    "audio": {
+      "systemDefault": "Järjestelmän oletus",
+      "microphoneDeviceFallback": "Mikrofoni {index}",
+      "speakerDeviceFallback": "Kaiutin {index}",
+      "microphone": {
+        "title": "Mikrofoni",
+        "enableLabel": "Ota mikrofoni käyttöön",
+        "enableDescription": "Vaaditaan Stellan kanssa puhumiseen.",
+        "deviceLabel": "Mikrofoni",
+        "deviceDescription": "Mitä mikrofonia Stellan tulisi kuunnella?"
+      },
+      "recovery": {
+        "manageLabel": "Hallitse mikrofonin käyttöoikeutta",
+        "recoverLabel": "Palauta mikrofonin käyttöoikeus",
+        "manageDescription": "Jos mikrofonin käyttöoikeus jää jumiin, voit nollata sen ja pyytää macOS:ää kysymään uudelleen.",
+        "recoverDescription": "Kun olet kieltäytynyt, macOS ei kysy enää itsestään. Nollaa käyttöoikeus, sulje sitten Stella ja avaa se uudelleen.",
+        "openSettings": "Avaa Asetukset",
+        "reset": "Nollaa ja käynnistä uudelleen",
+        "closing": "Suljetaan…"
+      },
+      "wakeWord": {
+        "label": "Herätyssana ”Hey Stella”",
+        "description": "Kuuntelee ”Hey Stella” -sanaa taustalla ja aloittaa puhekeskustelun. Kun pois päältä, mikrofoni pysyy lepotilassa, kunnes painat sanelua."
+      },
+      "superFast": {
+        "label": "Supernopea sanelu",
+        "description": "Pitää mikrofonin valmiina, jotta sanelu alkaa pienemmällä viiveellä."
+      },
+      "dictationSounds": {
+        "label": "Sanelun äänet",
+        "description": "Toistaa äänen, kun sanelu alkaa ja pysähtyy."
+      },
+      "enhance": {
+        "label": "Paranna litterointia",
+        "description": "Siistii paikallisen sanelutekstin Mercuryllä ennen lisäämistä."
+      },
+      "localDictation": {
+        "label": "Laitteella tapahtuva litterointi",
+        "description": "Käyttää paikallista Parakeet-mallia Inworldin sijaan. Tämä voi käyttää enemmän muistia heikommissa Mac-tietokoneissa.",
+        "unavailableFallback": "Ei käytettävissä tässä Macissa."
+      },
+      "speaker": {
+        "title": "Kaiutin",
+        "outputLabel": "Lähtölaite",
+        "outputDescription": "Valitse käytettävä kaiutin tai kuulokkeet.",
+        "empty": "Kaiuttimia ei löytynyt.",
+        "emptyMicOff": "Ota mikrofoni käyttöön nähdäksesi kaiuttimesi."
+      },
+      "errors": {
+        "listDevices": "Äänilaitteita ei voi luetella.",
+        "micDeniedReset": "Mikrofonin käyttö evättiin aiemmin. Nollaa se ja käynnistä Stella uudelleen tai avaa Järjestelmäasetukset.",
+        "micDenied": "Mikrofonin käyttö evättiin. Salli se järjestelmäasetuksissasi."
+      }
+    },
+    "connectedProviders": {
+      "title": "Yhdistetyt palveluntarjoajat",
+      "empty": "Ei vielä yhdistettyjä palveluntarjoajia. Valitse yllä olevasta mallivalitsimesta muu kuin Stella lisätäksesi API-avaimen tai kirjautuaksesi sisään.",
+      "apiKey": "API-avain",
+      "signedIn": "Kirjautunut",
+      "removeKey": "Poista avain",
+      "removingKey": "Poistetaan…",
+      "signOut": "Kirjaudu ulos",
+      "signingOut": "Kirjaudutaan ulos…"
+    },
+    "search": {
+      "placeholder": "Hae asetuksista",
+      "clear": "Tyhjennä haku",
+      "noResultsTitle": "Mikään asetus ei vastaa hakua ”{query}”",
+      "noResultsBody": "Kokeile lyhyempää tai toista sanaa.",
+      "resultsOne": "{count} tulos haulle",
+      "resultsOther": "{count} tulosta haulle",
+      "resultsAriaOne": "{count} tulos",
+      "resultsAriaOther": "{count} tulosta",
+      "descriptions": {
+        "voice": "Valitse Stellan puhetyyli ja persoonallisuusääni.",
+        "permissions": "Myönnä macOS:ssä käyttöoikeudet saavutettavuuteen, näytön tallennukseen ja mikrofoniin.",
+        "shortcuts": "Muuta, miten Stella avautuu, kuuntelee ja käynnistää säteittäisvalitsimen tai äänen.",
+        "memory": "Hallitse näyttömuistia, päivitä tai tyhjennä se, mitä Stella on muistanut.",
+        "backup": "Automaattiset salatut varmuuskopiot, palautuspisteet ja pyynnöstä otettavat tilannevedokset.",
+        "account": "Kirjaudu ulos, poista tietosi tai poista tilisi pysyvästi.",
+        "legal": "Käyttöehdot ja tietosuojakäytäntö.",
+        "microphone": "Valitse syöttölaite ja ota käyttöön herätyssana, sanelun äänet ja laitteella tapahtuva litterointi.",
+        "speaker": "Valitse kaiutin tai kuulokkeet, joiden kautta Stellan ääni toistetaan.",
+        "wakeWord": "Kuuntelee ”Hey Stella” -sanaa ja aloittaa puhekeskustelun.",
+        "onDeviceTranscription": "Käyttää paikallista Parakeet-mallia pilvilitteroinnin sijaan."
+      }
+    },
+    "errors": {
+      "loadPower": "Virranhallinta-asetuksen lataaminen epäonnistui.",
+      "savePower": "Virranhallinta-asetuksen päivitys epäonnistui.",
+      "powerUnavailable": "Virranhallinta-asetukset eivät ole käytettävissä tässä ikkunassa.",
+      "loadLockedComputerUse": "Lukitulla tietokoneella käytön asetuksen lataaminen epäonnistui.",
+      "saveLockedComputerUse": "Lukitulla tietokoneella käytön päivitys epäonnistui.",
+      "lockedComputerUseUnavailable": "Käyttö lukitulla tietokoneella ei ole käytettävissä tässä ikkunassa.",
+      "loadSoundNotifications": "Ääni-ilmoitusasetuksen lataaminen epäonnistui.",
+      "saveSoundNotifications": "Ääni-ilmoitusasetuksen päivitys epäonnistui.",
+      "soundNotificationsUnavailable": "Ääni-ilmoitusasetukset eivät ole käytettävissä tässä ikkunassa.",
+      "loadVoice": "Ääniasetuksen lataaminen epäonnistui.",
+      "saveVoice": "Ääniasetuksen päivitys epäonnistui.",
+      "voiceUnavailable": "Ääniasetukset eivät ole käytettävissä tässä ikkunassa.",
+      "loadPermissions": "Työpöydän käyttöoikeustilan lataaminen epäonnistui.",
+      "savePermission": "Käyttöoikeuden {kind} päivitys epäonnistui.",
+      "resetPermission": "Käyttöoikeuden {kind} nollaus epäonnistui.",
+      "resetPermissionMaybeReopen": "Käyttöoikeutta {kind} ei voitu nollata. Stella on ehkä avattava uudelleen.",
+      "microphoneDeniedReopen": "Mikrofonin käyttö evättiin aiemmin. Ota se käyttöön Järjestelmäasetuksissa ja avaa Stella uudelleen.",
+      "microphoneStillOff": "Mikrofonin käyttö on edelleen pois päältä. Ota se käyttöön Järjestelmäasetuksissa ja avaa Stella uudelleen.",
+      "restart": "Stellan uudelleenkäynnistys epäonnistui."
     }
   },
   "onboarding": {

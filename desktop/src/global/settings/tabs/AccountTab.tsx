@@ -14,6 +14,7 @@ import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
 import { deleteAuthUser } from "@/global/auth/services/auth-session";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
 import type { LegalDocument } from "@/global/legal/legal-text";
+import { useT } from "@/shared/i18n";
 import { getSettingsErrorMessage } from "./shared";
 
 type AccountDeleteAction = "data" | "account";
@@ -86,6 +87,7 @@ interface AccountTabProps {
 }
 
 export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
+  const t = useT();
   const { hasConnectedAccount } = useAuthSessionState();
   const resetUserData = useAction(api.reset.resetAllUserData);
   const [pendingDeleteAction, setPendingDeleteAction] =
@@ -113,7 +115,7 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
         }
       } else {
         if (!hasConnectedAccount) {
-          throw new Error("Sign in before deleting your account.");
+          throw new Error(t("settings.account.toasts.signInBeforeDelete"));
         }
         await deleteCurrentBetterAuthUser();
       }
@@ -121,8 +123,8 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
       await clearLocalAccountState();
       showToast(
         action === "data"
-          ? "Your Stella data was deleted."
-          : "Your Stella account was deleted.",
+          ? t("settings.account.toasts.dataDeleted")
+          : t("settings.account.toasts.accountDeleted"),
       );
       window.location.reload();
     } catch (error) {
@@ -131,35 +133,39 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
         getSettingsErrorMessage(
           error,
           action === "data"
-            ? "Could not delete your data. Please try again."
-            : "Could not delete your account. Please try again.",
+            ? t("settings.account.toasts.deleteDataFailed")
+            : t("settings.account.toasts.deleteAccountFailed"),
         ),
       );
       setIsDeleting(false);
       setPendingDeleteAction(null);
     }
-  }, [hasConnectedAccount, isDeleting, pendingDeleteAction, resetUserData]);
+  }, [hasConnectedAccount, isDeleting, pendingDeleteAction, resetUserData, t]);
 
   const deleteDialogTitle =
     pendingDeleteAction === "account"
-      ? "Delete your Stella account?"
-      : "Delete your Stella data?";
+      ? t("settings.account.dialog.deleteAccountTitle")
+      : t("settings.account.dialog.deleteDataTitle");
   const deleteDialogDescription =
     pendingDeleteAction === "account"
-      ? "This permanently deletes your account and Stella data. This cannot be undone."
-      : "This erases your conversations, memory, settings, and local Stella state. This cannot be undone.";
+      ? t("settings.account.dialog.deleteAccountDescription")
+      : t("settings.account.dialog.deleteDataDescription");
   const deleteDialogButton =
-    pendingDeleteAction === "account" ? "Delete account" : "Delete data";
+    pendingDeleteAction === "account"
+      ? t("settings.account.dialog.deleteAccountButton")
+      : t("settings.account.dialog.deleteDataButton");
 
   return (
     <div className="settings-tab-content">
       <div className="settings-card">
-        <h3 className="settings-card-title">Account</h3>
+        <h3 className="settings-card-title">{t("settings.account.title")}</h3>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Sign out</div>
+            <div className="settings-row-label">
+              {t("settings.account.signOut.label")}
+            </div>
             <div className="settings-row-sublabel">
-              Sign out of Stella on this device.
+              {t("settings.account.signOut.description")}
             </div>
           </div>
           <div className="settings-row-control">
@@ -169,15 +175,17 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
               className="settings-btn"
               onClick={onSignOut}
             >
-              Sign Out
+              {t("settings.account.signOut.action")}
             </Button>
           </div>
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Delete data</div>
+            <div className="settings-row-label">
+              {t("settings.account.deleteData.label")}
+            </div>
             <div className="settings-row-sublabel">
-              Erase every conversation, memory, and saved Stella setting.
+              {t("settings.account.deleteData.description")}
             </div>
           </div>
           <div className="settings-row-control">
@@ -189,16 +197,18 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
               disabled={isDeleting}
             >
               {isDeleting && pendingDeleteAction === "data"
-                ? "Deleting..."
-                : "Delete"}
+                ? t("settings.account.deleteData.working")
+                : t("settings.account.deleteData.action")}
             </Button>
           </div>
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Delete account</div>
+            <div className="settings-row-label">
+              {t("settings.account.deleteAccount.label")}
+            </div>
             <div className="settings-row-sublabel">
-              Permanently delete your account and everything in it.
+              {t("settings.account.deleteAccount.description")}
             </div>
           </div>
           <div className="settings-row-control">
@@ -210,17 +220,21 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
               disabled={isDeleting || !hasConnectedAccount}
             >
               {isDeleting && pendingDeleteAction === "account"
-                ? "Deleting..."
-                : "Delete"}
+                ? t("settings.account.deleteAccount.working")
+                : t("settings.account.deleteAccount.action")}
             </Button>
           </div>
         </div>
       </div>
       <div className="settings-card">
-        <h3 className="settings-card-title">Legal</h3>
+        <h3 className="settings-card-title">
+          {t("settings.account.legal.title")}
+        </h3>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Terms of Service</div>
+            <div className="settings-row-label">
+              {t("settings.account.legal.terms")}
+            </div>
           </div>
           <div className="settings-row-control">
             <Button
@@ -229,13 +243,15 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
               className="settings-btn"
               onClick={() => onOpenLegal?.("terms")}
             >
-              View
+              {t("settings.account.legal.view")}
             </Button>
           </div>
         </div>
         <div className="settings-row">
           <div className="settings-row-info">
-            <div className="settings-row-label">Privacy Policy</div>
+            <div className="settings-row-label">
+              {t("settings.account.legal.privacy")}
+            </div>
           </div>
           <div className="settings-row-control">
             <Button
@@ -244,7 +260,7 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
               className="settings-btn"
               onClick={() => onOpenLegal?.("privacy")}
             >
-              View
+              {t("settings.account.legal.view")}
             </Button>
           </div>
         </div>
@@ -273,7 +289,7 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
               onClick={() => setPendingDeleteAction(null)}
               disabled={isDeleting}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               type="button"
@@ -284,7 +300,9 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
               onClick={() => void handleConfirmDelete()}
               disabled={isDeleting}
             >
-              {isDeleting ? "Deleting..." : deleteDialogButton}
+              {isDeleting
+                ? t("settings.account.dialog.working")
+                : deleteDialogButton}
             </Button>
           </div>
         </DialogContent>

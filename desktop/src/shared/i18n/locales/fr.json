@@ -38,6 +38,424 @@
     "language": {
       "title": "Langue",
       "description": "Choisissez la langue que Stella utilisera dans l'app et pour vous répondre."
+    },
+    "developerPreviews": {
+      "title": "Aperçus de fichiers pour développeurs",
+      "description": "Affiche les modifications de code dans le chat et ouvre-les dans le panneau latéral."
+    },
+    "nativeFontSmoothing": {
+      "title": "Lissage des polices natif",
+      "description": "Affiche le texte comme les apps macOS, avec un anticrénelage en niveaux de gris."
+    },
+    "motion": {
+      "title": "Animations",
+      "reduceMotion": {
+        "label": "Réduire les animations",
+        "description": "Réduit au minimum les animations de l'interface.",
+        "system": "Système",
+        "on": "Activé",
+        "off": "Désactivé"
+      }
+    },
+    "voice": {
+      "title": "Voix",
+      "personality": {
+        "label": "Personnalité"
+      }
+    },
+    "notifications": {
+      "title": "Notifications sonores",
+      "description": "Joue un son lorsque Stella termine l'exécution d'un agent."
+    },
+    "power": {
+      "title": "Garder l'ordinateur actif",
+      "description": "Empêche votre ordinateur de se mettre en veille pendant que Stella est ouverte."
+    },
+    "lockedComputerUse": {
+      "title": "Utilisation de l'ordinateur verrouillé",
+      "description": "Laisse Stella poursuivre les tâches d'utilisation de l'ordinateur après le verrouillage de ce Mac. Nécessite une autorisation administrateur et masque l'écran pendant que Stella travaille.",
+      "unsupported": "L'utilisation de l'ordinateur verrouillé n'est disponible que sur macOS."
+    },
+    "browserExtension": {
+      "title": "Stella pour Chrome",
+      "description": "Permet à Stella de voir la page sur laquelle vous êtes et d'agir dans votre navigateur.",
+      "action": "Obtenir l'extension"
+    },
+    "migration": {
+      "title": "Importer depuis Hermes ou OpenClaw",
+      "action": "Importer",
+      "description": "Récupère la mémoire, les compétences, les sessions et les choix de modèle depuis une autre installation d'assistant local.",
+      "dialogClose": "Fermer l'importation"
+    },
+    "permissions": {
+      "title": "Autorisations",
+      "enable": "Activer",
+      "granted": "Accordée",
+      "opening": "Ouverture…",
+      "reset": "Réinitialiser",
+      "resetting": "Réinitialisation…",
+      "accessibility": {
+        "label": "Accessibilité",
+        "description": "Permet à Stella de lire le texte sélectionné et de s'ouvrir via le raccourci ⌘+clic droit partout sur votre ordinateur."
+      },
+      "screen": {
+        "label": "Capture d'écran",
+        "description": "Permet à Stella de voir votre écran pour vous aider avec ce que vous regardez. Vous devrez peut-être quitter et rouvrir Stella après l'avoir activé."
+      },
+      "microphone": {
+        "label": "Microphone",
+        "description": "Utilisé pour la voix et la dictée. Réinitialisez si Stella a été refusée auparavant et que macOS ne redemande plus."
+      },
+      "restart": {
+        "label": "Redémarrer Stella",
+        "description": "La capture d'écran vient d'être activée. Quittez et rouvrez Stella pour terminer sa configuration.",
+        "action": "Redémarrer",
+        "closing": "Fermeture…"
+      }
+    },
+    "shortcuts": {
+      "title": "Raccourcis",
+      "change": "Modifier",
+      "capturing": "Appuyez sur des touches…",
+      "clear": "Effacer",
+      "off": "Désactivé",
+      "actions": {
+        "dictation": "Dictée",
+        "voice": "Agent vocal"
+      },
+      "dictation": {
+        "description": "Maintenez Option pour dicter dans Stella ou dans l'app que vous utilisez."
+      },
+      "voiceAgent": {
+        "description": "Démarre ou arrête l'agent vocal en direct de Stella."
+      },
+      "radial": {
+        "label": "Cadran radial",
+        "description": "Ouvre le menu radial pour la capture, le chat, la voix et les actions rapides.",
+        "ariaLabel": "Raccourci du cadran radial"
+      },
+      "mini": {
+        "label": "Fenêtre mini",
+        "description": "Appuyez deux fois sur une touche de modification pour ouvrir ou fermer le chat mini.",
+        "ariaLabel": "Raccourci de la fenêtre mini"
+      },
+      "targets": {
+        "dictation": "la dictée",
+        "voice": "l'agent vocal"
+      },
+      "toasts": {
+        "updatedTitle": "Raccourci {action} mis à jour",
+        "clearedTitle": "Raccourci {action} effacé",
+        "updatedDescription": "Appuyez sur {keys} pour démarrer {target}.",
+        "clearedDescription": "{action} est désactivé jusqu'à ce que vous définissiez un nouveau raccourci.",
+        "unavailableTitle": "Raccourci indisponible",
+        "failedTitle": "Échec de la mise à jour du raccourci",
+        "radialUpdatedTitle": "Raccourci du cadran radial mis à jour",
+        "radialUpdatedDescription": "Maintenez {key} pour ouvrir le cadran radial.",
+        "miniUpdatedTitle": "Raccourci de la fenêtre mini mis à jour",
+        "miniDisabledDescription": "La double pression est désactivée.",
+        "miniUpdatedDescription": "Appuyez deux fois sur {modifier} pour ouvrir la fenêtre mini."
+      },
+      "errors": {
+        "load": "Échec du chargement des raccourcis.",
+        "unavailable": "Les raccourcis ne sont pas disponibles dans cette fenêtre.",
+        "unavailableShortcut": "Ce raccourci n'est pas disponible.",
+        "update": "Échec de la mise à jour du raccourci.",
+        "radialUpdate": "Échec de la mise à jour du raccourci du cadran radial.",
+        "miniUpdate": "Échec de la mise à jour du raccourci de la fenêtre mini."
+      }
+    },
+    "memory": {
+      "title": "Mémoire",
+      "enable": "Activer",
+      "disable": "Désactiver",
+      "working": "Traitement…",
+      "screen": {
+        "label": "Mémoire d'écran",
+        "description": "Stella peut jeter un œil à votre écran de temps en temps pour se souvenir de ce que vous faisiez.",
+        "signInDescription": "Connectez-vous à Stella, ou choisissez un petit modèle pour Chronicle dans le panneau Engine.",
+        "upgradeDescription": "La mémoire d'écran est incluse dans tous les forfaits Stella. Passez à un forfait supérieur, ou choisissez un petit modèle pour Chronicle dans le panneau Engine."
+      },
+      "status": {
+        "label": "État",
+        "running": "En cours",
+        "stopped": "Arrêté",
+        "disabled": "Désactivé",
+        "fps": "{fps} fps",
+        "lastCapture": "dernière capture {time}"
+      },
+      "folder": {
+        "label": "Dossier de mémoire",
+        "description": "Ouvre le dossier de votre ordinateur où Stella conserve ses souvenirs.",
+        "open": "Ouvrir le dossier",
+        "opening": "Ouverture…"
+      },
+      "update": {
+        "label": "Mettre la mémoire à jour maintenant",
+        "description": "Demandez à Stella de passer en revue l'activité récente et d'enregistrer ce qu'elle a appris. Cela se fait généralement tout seul.",
+        "run": "Exécuter maintenant",
+        "running": "Rêve en cours…"
+      },
+      "erase": {
+        "label": "Effacer la mémoire",
+        "description": "Supprime tout ce que Stella a mémorisé, y compris l'activité d'écran enregistrée. Cette action est irréversible.",
+        "action": "Effacer",
+        "working": "Effacement…",
+        "confirm": "Effacer tout ce que Stella a mémorisé ? Cette action est irréversible."
+      },
+      "access": {
+        "signInTitle": "Connexion requise",
+        "subscriptionTitle": "Abonnement requis",
+        "signInMessage": "Connectez-vous à Stella, ou choisissez un petit modèle pour Chronicle dans le panneau Engine.",
+        "upgradeMessage": "La mémoire d'écran est incluse dans tous les forfaits Stella. Passez à un forfait supérieur — ou choisissez un petit modèle pour Chronicle dans le panneau Engine.",
+        "pickModel": "Choisir un modèle",
+        "upgrade": "Mettre à niveau"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle activé",
+        "disabledTitle": "Chronicle désactivé",
+        "alreadyRunning": "Chronicle était déjà en cours d'exécution.",
+        "enableFailedTitle": "Impossible d'activer Chronicle",
+        "disableFailedTitle": "Impossible de désactiver Chronicle",
+        "dreamScheduledTitle": "Passe de Dream planifiée",
+        "dreamNotScheduledTitle": "Passe de Dream non planifiée",
+        "wipeFailedTitle": "Échec de l'effacement",
+        "wipedTitle": "Souvenirs effacés"
+      },
+      "enableFailures": {
+        "noStellaRoot": "La racine de l'espace de travail de Stella est indisponible.",
+        "needsPermission": "L'autorisation d'enregistrement d'écran est encore requise avant que Chronicle puisse démarrer.",
+        "binaryMissing": "Le binaire auxiliaire de Chronicle est manquant.",
+        "startupTimeout": "Chronicle ne s'est pas connecté après le lancement.",
+        "unsupportedPlatform": "Chronicle n'est disponible que sur macOS.",
+        "unknown": "Erreur inconnue."
+      },
+      "dreamResults": {
+        "scheduled": "Dream va consolider le travail en attente actuel.",
+        "inFlight": "Une passe de Dream est déjà en cours.",
+        "noInputs": "Il n'y a rien de nouveau à consolider pour le moment.",
+        "noApiKey": "Dream a besoin d'un modèle/d'une clé d'API configurés ou d'une route Stella connectée.",
+        "disabled": "La planification de Dream est actuellement désactivée.",
+        "belowThreshold": "Le seuil d'inactivité n'a pas encore été atteint.",
+        "lockBusy": "Dream est occupé pour le moment. Réessayez dans un instant.",
+        "noRunner": "L'environnement d'exécution local n'est pas encore prêt.",
+        "unavailable": "Dream est actuellement indisponible.",
+        "pendingPrefix": "En attente : {items}.",
+        "pendingThreadSummary": "{count} résumé de tâche",
+        "pendingThreadSummaries": "{count} résumés de tâches",
+        "pendingExtension": "{count} fichier Chronicle",
+        "pendingExtensions": "{count} fichiers Chronicle",
+        "pendingJoin": " et "
+      },
+      "errors": {
+        "loadStatus": "Échec du chargement de l'état de Chronicle.",
+        "update": "Échec de la mise à jour de Chronicle.",
+        "dream": "Échec du déclenchement de la passe de Dream.",
+        "wipe": "Échec de l'effacement des souvenirs."
+      }
+    },
+    "backup": {
+      "title": "Sauvegardes",
+      "upgradeNotice": "Les sauvegardes sont incluses dans tous les forfaits Stella payants.",
+      "never": "Jamais",
+      "automatic": {
+        "label": "Sauvegardes automatiques",
+        "lastLocal": "Dernière sauvegarde locale : {time}",
+        "lastRemote": "Dernière sauvegarde distante : {time}",
+        "remoteIssue": "Problème de sauvegarde distante : {error}",
+        "off": "Désactivé",
+        "hourly": "Sauvegardes automatiques toutes les heures",
+        "ariaLabel": "Sauvegardes"
+      },
+      "backupNow": {
+        "label": "Sauvegarder maintenant",
+        "description": "Enregistre une sauvegarde maintenant. Elle est envoyée automatiquement lorsque vous êtes connecté.",
+        "action": "Sauvegarder maintenant",
+        "working": "Sauvegarde…"
+      },
+      "saved": {
+        "label": "Sauvegardes enregistrées",
+        "signedInDescription": "Choisissez une sauvegarde à restaurer sur cet appareil.",
+        "signedOutDescription": "Connectez-vous pour enregistrer des sauvegardes en ligne et les restaurer sur n'importe quel appareil.",
+        "empty": "Aucune sauvegarde distante pour l'instant.",
+        "latest": "La plus récente",
+        "files": "{count} fichiers",
+        "from": "De : {source}",
+        "restore": "Restaurer",
+        "restoring": "Restauration…"
+      },
+      "toasts": {
+        "completedTitle": "Sauvegarde terminée",
+        "queuedTitle": "Sauvegarde en file d'attente",
+        "deferredTitle": "Sauvegarde différée",
+        "noneNeededTitle": "Aucune sauvegarde nécessaire",
+        "failedTitle": "Échec de la sauvegarde",
+        "restorePreparedTitle": "Restauration préparée",
+        "restorePreparedDescription": "Stella va redémarrer pour terminer l'application de cette sauvegarde.",
+        "restoreFailedTitle": "Échec de la restauration"
+      },
+      "errors": {
+        "load": "Échec du chargement des réglages de sauvegarde.",
+        "unavailable": "Les réglages de sauvegarde ne sont pas disponibles dans cette fenêtre.",
+        "signInRequired": "Connectez-vous et choisissez un forfait Stella pour activer les sauvegardes.",
+        "checkingPlan": "Vérification de votre forfait Stella avant d'activer les sauvegardes.",
+        "subscriptionRequired": "Les sauvegardes nécessitent un abonnement Stella actif.",
+        "updateMode": "Échec de la mise à jour du mode de sauvegarde.",
+        "backupUnavailable": "La sauvegarde n'est pas disponible dans cette fenêtre.",
+        "startBackup": "Échec du démarrage de la sauvegarde.",
+        "restoreUnavailable": "La restauration n'est pas disponible dans cette fenêtre.",
+        "restore": "Échec de la restauration de la sauvegarde."
+      }
+    },
+    "account": {
+      "title": "Compte",
+      "signOut": {
+        "label": "Se déconnecter",
+        "description": "Déconnectez-vous de Stella sur cet appareil.",
+        "action": "Se déconnecter"
+      },
+      "deleteData": {
+        "label": "Supprimer les données",
+        "description": "Efface toutes les conversations, la mémoire et les réglages enregistrés de Stella.",
+        "action": "Supprimer",
+        "working": "Suppression…"
+      },
+      "deleteAccount": {
+        "label": "Supprimer le compte",
+        "description": "Supprime définitivement votre compte et tout ce qu'il contient.",
+        "action": "Supprimer",
+        "working": "Suppression…"
+      },
+      "legal": {
+        "title": "Mentions légales",
+        "terms": "Conditions d'utilisation",
+        "privacy": "Politique de confidentialité",
+        "view": "Voir"
+      },
+      "dialog": {
+        "deleteDataTitle": "Supprimer vos données Stella ?",
+        "deleteAccountTitle": "Supprimer votre compte Stella ?",
+        "deleteDataDescription": "Cela efface vos conversations, votre mémoire, vos réglages et l'état local de Stella. Cette action est irréversible.",
+        "deleteAccountDescription": "Cela supprime définitivement votre compte et vos données Stella. Cette action est irréversible.",
+        "deleteDataButton": "Supprimer les données",
+        "deleteAccountButton": "Supprimer le compte",
+        "working": "Suppression…"
+      },
+      "toasts": {
+        "dataDeleted": "Vos données Stella ont été supprimées.",
+        "accountDeleted": "Votre compte Stella a été supprimé.",
+        "deleteDataFailed": "Impossible de supprimer vos données. Veuillez réessayer.",
+        "deleteAccountFailed": "Impossible de supprimer votre compte. Veuillez réessayer.",
+        "signInBeforeDelete": "Connectez-vous avant de supprimer votre compte."
+      }
+    },
+    "audio": {
+      "systemDefault": "Réglage système par défaut",
+      "microphoneDeviceFallback": "Microphone {index}",
+      "speakerDeviceFallback": "Haut-parleur {index}",
+      "microphone": {
+        "title": "Microphone",
+        "enableLabel": "Activer le microphone",
+        "enableDescription": "Nécessaire pour parler à Stella.",
+        "deviceLabel": "Microphone",
+        "deviceDescription": "Quel micro Stella doit-elle écouter ?"
+      },
+      "recovery": {
+        "manageLabel": "Gérer l'accès au microphone",
+        "recoverLabel": "Récupérer l'accès au microphone",
+        "manageDescription": "Si l'autorisation du microphone se bloque, vous pouvez la réinitialiser et demander à macOS de redemander.",
+        "recoverDescription": "Une fois que vous avez refusé, macOS ne redemande plus de lui-même. Réinitialisez l'autorisation, puis quittez et rouvrez Stella.",
+        "openSettings": "Ouvrir les Réglages",
+        "reset": "Réinitialiser et redémarrer",
+        "closing": "Fermeture…"
+      },
+      "wakeWord": {
+        "label": "Mot d'activation « Hey Stella »",
+        "description": "Écoute « Hey Stella » en arrière-plan et démarre une conversation vocale. Lorsqu'il est désactivé, le micro reste inactif jusqu'à ce que vous appuyiez sur dicter."
+      },
+      "superFast": {
+        "label": "Dictée ultra-rapide",
+        "description": "Garde le microphone prêt pour que la dictée démarre avec moins de délai."
+      },
+      "dictationSounds": {
+        "label": "Sons de la dictée",
+        "description": "Joue un son lorsque la dictée démarre et s'arrête."
+      },
+      "enhance": {
+        "label": "Améliorer la transcription",
+        "description": "Nettoie le texte de dictée locale avec Mercury avant de l'insérer."
+      },
+      "localDictation": {
+        "label": "Transcription sur l'appareil",
+        "description": "Utilise le modèle local Parakeet au lieu d'Inworld. Cela peut consommer plus de mémoire sur les Mac d'entrée de gamme.",
+        "unavailableFallback": "Indisponible sur ce Mac."
+      },
+      "speaker": {
+        "title": "Haut-parleur",
+        "outputLabel": "Périphérique de sortie",
+        "outputDescription": "Choisissez le haut-parleur ou le casque à utiliser.",
+        "empty": "Aucun haut-parleur trouvé.",
+        "emptyMicOff": "Activez le microphone pour voir vos haut-parleurs."
+      },
+      "errors": {
+        "listDevices": "Impossible de lister les périphériques audio.",
+        "micDeniedReset": "L'accès au microphone a été refusé auparavant. Réinitialisez-le et redémarrez Stella, ou ouvrez les Réglages système.",
+        "micDenied": "L'accès au microphone a été refusé. Veuillez l'autoriser dans les réglages de votre système."
+      }
+    },
+    "connectedProviders": {
+      "title": "Fournisseurs connectés",
+      "empty": "Aucun fournisseur connecté pour l'instant. Choisissez une option autre que Stella dans le sélecteur de modèles ci-dessus pour ajouter une clé d'API ou vous connecter.",
+      "apiKey": "Clé d'API",
+      "signedIn": "Connecté",
+      "removeKey": "Retirer la clé",
+      "removingKey": "Retrait…",
+      "signOut": "Se déconnecter",
+      "signingOut": "Déconnexion…"
+    },
+    "search": {
+      "placeholder": "Rechercher dans les réglages",
+      "clear": "Effacer la recherche",
+      "noResultsTitle": "Aucun réglage ne correspond à « {query} »",
+      "noResultsBody": "Essayez un mot plus court ou différent.",
+      "resultsOne": "{count} résultat pour",
+      "resultsOther": "{count} résultats pour",
+      "resultsAriaOne": "{count} résultat",
+      "resultsAriaOther": "{count} résultats",
+      "descriptions": {
+        "voice": "Choisissez le style d'élocution et la voix de personnalité de Stella.",
+        "permissions": "Accordez l'accès à l'accessibilité, à la capture d'écran et au microphone sur macOS.",
+        "shortcuts": "Modifiez la façon dont Stella s'ouvre, écoute et démarre le cadran radial ou la voix.",
+        "memory": "Gérez la mémoire d'écran, mettez à jour ou effacez ce que Stella a mémorisé.",
+        "backup": "Sauvegardes chiffrées automatiques, points de restauration et instantanés à la demande.",
+        "account": "Déconnectez-vous, supprimez vos données ou supprimez définitivement votre compte.",
+        "legal": "Conditions d'utilisation et politique de confidentialité.",
+        "microphone": "Choisissez votre périphérique d'entrée, activez le mot d'activation, les sons de dictée et la transcription sur l'appareil.",
+        "speaker": "Choisissez le haut-parleur ou le casque par lequel la voix de Stella est diffusée.",
+        "wakeWord": "Écoute « Hey Stella » et démarre une conversation vocale.",
+        "onDeviceTranscription": "Utilise le modèle local Parakeet au lieu de la transcription dans le cloud."
+      }
+    },
+    "errors": {
+      "loadPower": "Échec du chargement du réglage d'alimentation.",
+      "savePower": "Échec de la mise à jour du réglage d'alimentation.",
+      "powerUnavailable": "Les réglages d'alimentation ne sont pas disponibles dans cette fenêtre.",
+      "loadLockedComputerUse": "Échec du chargement du réglage d'utilisation de l'ordinateur verrouillé.",
+      "saveLockedComputerUse": "Échec de la mise à jour de l'utilisation de l'ordinateur verrouillé.",
+      "lockedComputerUseUnavailable": "L'utilisation de l'ordinateur verrouillé n'est pas disponible dans cette fenêtre.",
+      "loadSoundNotifications": "Échec du chargement du réglage des notifications sonores.",
+      "saveSoundNotifications": "Échec de la mise à jour du réglage des notifications sonores.",
+      "soundNotificationsUnavailable": "Les réglages des notifications sonores ne sont pas disponibles dans cette fenêtre.",
+      "loadVoice": "Échec du chargement du réglage de la voix.",
+      "saveVoice": "Échec de la mise à jour du réglage de la voix.",
+      "voiceUnavailable": "Les réglages de la voix ne sont pas disponibles dans cette fenêtre.",
+      "loadPermissions": "Échec du chargement de l'état des autorisations du bureau.",
+      "savePermission": "Échec de la mise à jour de l'autorisation {kind}.",
+      "resetPermission": "Échec de la réinitialisation de l'autorisation {kind}.",
+      "resetPermissionMaybeReopen": "Impossible de réinitialiser l'autorisation {kind}. Il faudra peut-être rouvrir Stella.",
+      "microphoneDeniedReopen": "L'accès au microphone a été refusé auparavant. Activez-le dans les Réglages système, puis rouvrez Stella.",
+      "microphoneStillOff": "L'accès au microphone est toujours désactivé. Activez-le dans les Réglages système, puis rouvrez Stella.",
+      "restart": "Échec du redémarrage de Stella."
     }
   },
   "onboarding": {

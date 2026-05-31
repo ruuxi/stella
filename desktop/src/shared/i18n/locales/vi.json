@@ -38,6 +38,424 @@
     "language": {
       "title": "Ngôn ngữ",
       "description": "Chọn ngôn ngữ Stella sử dụng trong ứng dụng và khi phản hồi bạn."
+    },
+    "developerPreviews": {
+      "title": "Xem trước tệp dành cho nhà phát triển",
+      "description": "Hiển thị thay đổi mã trong trò chuyện và mở chúng trong bảng bên."
+    },
+    "nativeFontSmoothing": {
+      "title": "Làm mịn phông chữ gốc",
+      "description": "Hiển thị văn bản như các ứng dụng macOS, với khử răng cưa thang độ xám."
+    },
+    "motion": {
+      "title": "Chuyển động",
+      "reduceMotion": {
+        "label": "Giảm chuyển động",
+        "description": "Giảm thiểu hiệu ứng động của giao diện.",
+        "system": "Hệ thống",
+        "on": "Bật",
+        "off": "Tắt"
+      }
+    },
+    "voice": {
+      "title": "Giọng nói",
+      "personality": {
+        "label": "Tính cách"
+      }
+    },
+    "notifications": {
+      "title": "Thông báo âm thanh",
+      "description": "Phát âm thanh khi Stella hoàn thành một lần chạy tác nhân."
+    },
+    "power": {
+      "title": "Giữ máy tính thức",
+      "description": "Ngăn máy tính của bạn vào chế độ ngủ khi Stella đang mở."
+    },
+    "lockedComputerUse": {
+      "title": "Sử dụng máy tính khi đã khóa",
+      "description": "Cho phép Stella tiếp tục các tác vụ sử dụng máy tính sau khi máy Mac này bị khóa. Yêu cầu lời nhắc quản trị viên và che màn hình khi Stella làm việc.",
+      "unsupported": "Sử dụng máy tính khi đã khóa chỉ có trên macOS."
+    },
+    "browserExtension": {
+      "title": "Stella cho Chrome",
+      "description": "Cho phép Stella xem trang bạn đang ở và thực hiện thao tác trong trình duyệt của bạn.",
+      "action": "Tải tiện ích"
+    },
+    "migration": {
+      "title": "Nhập từ Hermes hoặc OpenClaw",
+      "action": "Nhập",
+      "description": "Mang bộ nhớ, kỹ năng, phiên và lựa chọn mô hình từ một bản cài đặt trợ lý cục bộ khác.",
+      "dialogClose": "Đóng nhập"
+    },
+    "permissions": {
+      "title": "Quyền",
+      "enable": "Bật",
+      "granted": "Đã cấp",
+      "opening": "Đang mở…",
+      "reset": "Đặt lại",
+      "resetting": "Đang đặt lại…",
+      "accessibility": {
+        "label": "Trợ năng",
+        "description": "Cho phép Stella đọc văn bản đã chọn và mở bằng phím tắt ⌘+nhấp chuột phải ở bất kỳ đâu trên máy tính của bạn."
+      },
+      "screen": {
+        "label": "Quay màn hình",
+        "description": "Cho phép Stella xem màn hình của bạn để hỗ trợ điều bạn đang xem. Bạn có thể cần thoát và mở lại Stella sau khi bật mục này."
+      },
+      "microphone": {
+        "label": "Micrô",
+        "description": "Dùng cho giọng nói và đọc chính tả. Đặt lại nếu Stella từng bị từ chối và macOS không hỏi lại."
+      },
+      "restart": {
+        "label": "Khởi động lại Stella",
+        "description": "Quay màn hình vừa được bật. Thoát và mở lại Stella để hoàn tất thiết lập.",
+        "action": "Khởi động lại",
+        "closing": "Đang đóng…"
+      }
+    },
+    "shortcuts": {
+      "title": "Phím tắt",
+      "change": "Thay đổi",
+      "capturing": "Nhấn phím…",
+      "clear": "Xóa",
+      "off": "Tắt",
+      "actions": {
+        "dictation": "Đọc chính tả",
+        "voice": "Tác nhân giọng nói"
+      },
+      "dictation": {
+        "description": "Giữ Option để đọc chính tả vào Stella hoặc ứng dụng bạn đang dùng."
+      },
+      "voiceAgent": {
+        "description": "Bắt đầu hoặc dừng tác nhân giọng nói trực tiếp của Stella."
+      },
+      "radial": {
+        "label": "Vòng quay xuyên tâm",
+        "description": "Mở menu hình nêm cho chụp, trò chuyện, giọng nói và thao tác nhanh.",
+        "ariaLabel": "Phím tắt vòng quay xuyên tâm"
+      },
+      "mini": {
+        "label": "Cửa sổ mini",
+        "description": "Nhấn đúp một phím bổ trợ để mở hoặc đóng trò chuyện mini.",
+        "ariaLabel": "Phím tắt cửa sổ mini"
+      },
+      "targets": {
+        "dictation": "đọc chính tả",
+        "voice": "tác nhân giọng nói"
+      },
+      "toasts": {
+        "updatedTitle": "Đã cập nhật phím tắt {action}",
+        "clearedTitle": "Đã xóa phím tắt {action}",
+        "updatedDescription": "Nhấn {keys} để bắt đầu {target}.",
+        "clearedDescription": "{action} bị tắt cho đến khi bạn đặt phím tắt mới.",
+        "unavailableTitle": "Phím tắt không khả dụng",
+        "failedTitle": "Không thể cập nhật phím tắt",
+        "radialUpdatedTitle": "Đã cập nhật phím tắt vòng quay xuyên tâm",
+        "radialUpdatedDescription": "Giữ {key} để mở vòng quay xuyên tâm.",
+        "miniUpdatedTitle": "Đã cập nhật phím tắt cửa sổ mini",
+        "miniDisabledDescription": "Nhấn đúp đã bị tắt.",
+        "miniUpdatedDescription": "Nhấn đúp {modifier} để mở cửa sổ mini."
+      },
+      "errors": {
+        "load": "Không tải được phím tắt.",
+        "unavailable": "Phím tắt không khả dụng trong cửa sổ này.",
+        "unavailableShortcut": "Phím tắt đó không khả dụng.",
+        "update": "Không cập nhật được phím tắt.",
+        "radialUpdate": "Không cập nhật được phím tắt vòng quay xuyên tâm.",
+        "miniUpdate": "Không cập nhật được phím tắt cửa sổ mini."
+      }
+    },
+    "memory": {
+      "title": "Bộ nhớ",
+      "enable": "Bật",
+      "disable": "Tắt",
+      "working": "Đang xử lý…",
+      "screen": {
+        "label": "Bộ nhớ màn hình",
+        "description": "Stella có thể thỉnh thoảng nhìn vào màn hình của bạn để nhớ bạn đang làm gì.",
+        "signInDescription": "Đăng nhập vào Stella, hoặc chọn một mô hình nhỏ cho Chronicle trong bảng Engine.",
+        "upgradeDescription": "Bộ nhớ màn hình có trong mọi gói Stella. Hãy nâng cấp, hoặc chọn một mô hình nhỏ cho Chronicle trong bảng Engine."
+      },
+      "status": {
+        "label": "Trạng thái",
+        "running": "Đang chạy",
+        "stopped": "Đã dừng",
+        "disabled": "Đã tắt",
+        "fps": "{fps} fps",
+        "lastCapture": "lần chụp cuối {time}"
+      },
+      "folder": {
+        "label": "Thư mục bộ nhớ",
+        "description": "Mở thư mục trên máy tính nơi Stella lưu các ký ức của mình.",
+        "open": "Mở thư mục",
+        "opening": "Đang mở…"
+      },
+      "update": {
+        "label": "Cập nhật bộ nhớ ngay",
+        "description": "Để Stella xem lại hoạt động gần đây và lưu những gì đã học. Việc này thường tự diễn ra.",
+        "run": "Chạy ngay",
+        "running": "Đang mơ…"
+      },
+      "erase": {
+        "label": "Xóa bộ nhớ",
+        "description": "Xóa mọi thứ Stella đã nhớ, bao gồm hoạt động màn hình đã lưu. Không thể hoàn tác.",
+        "action": "Xóa",
+        "working": "Đang xóa…",
+        "confirm": "Xóa mọi thứ Stella đã nhớ? Không thể hoàn tác."
+      },
+      "access": {
+        "signInTitle": "Cần đăng nhập",
+        "subscriptionTitle": "Cần đăng ký",
+        "signInMessage": "Đăng nhập vào Stella, hoặc chọn một mô hình nhỏ cho Chronicle trong bảng Engine.",
+        "upgradeMessage": "Bộ nhớ màn hình có trong mọi gói Stella. Hãy nâng cấp — hoặc chọn một mô hình nhỏ cho Chronicle trong bảng Engine.",
+        "pickModel": "Chọn mô hình",
+        "upgrade": "Nâng cấp"
+      },
+      "toasts": {
+        "enabledTitle": "Đã bật Chronicle",
+        "disabledTitle": "Đã tắt Chronicle",
+        "alreadyRunning": "Chronicle đã đang chạy.",
+        "enableFailedTitle": "Không thể bật Chronicle",
+        "disableFailedTitle": "Không thể tắt Chronicle",
+        "dreamScheduledTitle": "Đã lên lịch lượt chạy Dream",
+        "dreamNotScheduledTitle": "Lượt chạy Dream chưa được lên lịch",
+        "wipeFailedTitle": "Xóa thất bại",
+        "wipedTitle": "Đã xóa ký ức"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Thư mục gốc không gian làm việc của Stella không khả dụng.",
+        "needsPermission": "Vẫn cần quyền quay màn hình trước khi Chronicle có thể khởi động.",
+        "binaryMissing": "Thiếu tệp trợ giúp Chronicle.",
+        "startupTimeout": "Chronicle không trực tuyến sau khi khởi chạy.",
+        "unsupportedPlatform": "Chronicle chỉ có trên macOS.",
+        "unknown": "Lỗi không xác định."
+      },
+      "dreamResults": {
+        "scheduled": "Dream sẽ hợp nhất phần tồn đọng hiện tại.",
+        "inFlight": "Một lượt chạy Dream đã đang diễn ra.",
+        "noInputs": "Hiện không có gì mới để hợp nhất.",
+        "noApiKey": "Dream cần một mô hình/khóa API đã cấu hình hoặc một tuyến Stella đã đăng nhập.",
+        "disabled": "Lập lịch Dream hiện đang bị tắt.",
+        "belowThreshold": "Chưa đạt ngưỡng nhàn rỗi.",
+        "lockBusy": "Dream hiện đang bận. Hãy thử lại sau giây lát.",
+        "noRunner": "Môi trường chạy cục bộ chưa sẵn sàng.",
+        "unavailable": "Dream hiện không khả dụng.",
+        "pendingPrefix": "Đang chờ: {items}.",
+        "pendingThreadSummary": "{count} bản tóm tắt nhiệm vụ",
+        "pendingThreadSummaries": "{count} bản tóm tắt nhiệm vụ",
+        "pendingExtension": "{count} tệp Chronicle",
+        "pendingExtensions": "{count} tệp Chronicle",
+        "pendingJoin": " và "
+      },
+      "errors": {
+        "loadStatus": "Không tải được trạng thái Chronicle.",
+        "update": "Không cập nhật được Chronicle.",
+        "dream": "Không kích hoạt được lượt chạy Dream.",
+        "wipe": "Không xóa được ký ức."
+      }
+    },
+    "backup": {
+      "title": "Bản sao lưu",
+      "upgradeNotice": "Bản sao lưu có trong mọi gói Stella trả phí.",
+      "never": "Không bao giờ",
+      "automatic": {
+        "label": "Sao lưu tự động",
+        "lastLocal": "Bản sao lưu cục bộ gần nhất: {time}",
+        "lastRemote": "Bản sao lưu từ xa gần nhất: {time}",
+        "remoteIssue": "Sự cố sao lưu từ xa: {error}",
+        "off": "Tắt",
+        "hourly": "Sao lưu tự động mỗi giờ",
+        "ariaLabel": "Bản sao lưu"
+      },
+      "backupNow": {
+        "label": "Sao lưu ngay",
+        "description": "Lưu một bản sao lưu ngay bây giờ. Bản sao lưu tự động tải lên khi bạn đã đăng nhập.",
+        "action": "Sao lưu ngay",
+        "working": "Đang sao lưu…"
+      },
+      "saved": {
+        "label": "Bản sao lưu đã lưu",
+        "signedInDescription": "Chọn một bản sao lưu để khôi phục trên thiết bị này.",
+        "signedOutDescription": "Đăng nhập để lưu bản sao lưu trực tuyến và khôi phục trên bất kỳ thiết bị nào.",
+        "empty": "Chưa có bản sao lưu từ xa.",
+        "latest": "Mới nhất",
+        "files": "{count} tệp",
+        "from": "Từ: {source}",
+        "restore": "Khôi phục",
+        "restoring": "Đang khôi phục…"
+      },
+      "toasts": {
+        "completedTitle": "Sao lưu hoàn tất",
+        "queuedTitle": "Bản sao lưu trong hàng đợi",
+        "deferredTitle": "Bản sao lưu bị hoãn",
+        "noneNeededTitle": "Không cần sao lưu",
+        "failedTitle": "Sao lưu thất bại",
+        "restorePreparedTitle": "Đã chuẩn bị khôi phục",
+        "restorePreparedDescription": "Stella sẽ khởi động lại để hoàn tất áp dụng bản sao lưu này.",
+        "restoreFailedTitle": "Khôi phục thất bại"
+      },
+      "errors": {
+        "load": "Không tải được cài đặt sao lưu.",
+        "unavailable": "Cài đặt sao lưu không khả dụng trong cửa sổ này.",
+        "signInRequired": "Đăng nhập và chọn một gói Stella để bật sao lưu.",
+        "checkingPlan": "Đang kiểm tra gói Stella của bạn trước khi bật sao lưu.",
+        "subscriptionRequired": "Bản sao lưu yêu cầu đăng ký Stella đang hoạt động.",
+        "updateMode": "Không cập nhật được chế độ sao lưu.",
+        "backupUnavailable": "Sao lưu không khả dụng trong cửa sổ này.",
+        "startBackup": "Không bắt đầu được sao lưu.",
+        "restoreUnavailable": "Khôi phục không khả dụng trong cửa sổ này.",
+        "restore": "Không khôi phục được bản sao lưu."
+      }
+    },
+    "account": {
+      "title": "Tài khoản",
+      "signOut": {
+        "label": "Đăng xuất",
+        "description": "Đăng xuất khỏi Stella trên thiết bị này.",
+        "action": "Đăng xuất"
+      },
+      "deleteData": {
+        "label": "Xóa dữ liệu",
+        "description": "Xóa tất cả cuộc trò chuyện, bộ nhớ và cài đặt Stella đã lưu.",
+        "action": "Xóa",
+        "working": "Đang xóa…"
+      },
+      "deleteAccount": {
+        "label": "Xóa tài khoản",
+        "description": "Xóa vĩnh viễn tài khoản của bạn và mọi thứ trong đó.",
+        "action": "Xóa",
+        "working": "Đang xóa…"
+      },
+      "legal": {
+        "title": "Pháp lý",
+        "terms": "Điều khoản dịch vụ",
+        "privacy": "Chính sách quyền riêng tư",
+        "view": "Xem"
+      },
+      "dialog": {
+        "deleteDataTitle": "Xóa dữ liệu Stella của bạn?",
+        "deleteAccountTitle": "Xóa tài khoản Stella của bạn?",
+        "deleteDataDescription": "Thao tác này xóa các cuộc trò chuyện, bộ nhớ, cài đặt và trạng thái Stella cục bộ của bạn. Không thể hoàn tác.",
+        "deleteAccountDescription": "Thao tác này xóa vĩnh viễn tài khoản và dữ liệu Stella của bạn. Không thể hoàn tác.",
+        "deleteDataButton": "Xóa dữ liệu",
+        "deleteAccountButton": "Xóa tài khoản",
+        "working": "Đang xóa…"
+      },
+      "toasts": {
+        "dataDeleted": "Dữ liệu Stella của bạn đã được xóa.",
+        "accountDeleted": "Tài khoản Stella của bạn đã được xóa.",
+        "deleteDataFailed": "Không thể xóa dữ liệu của bạn. Vui lòng thử lại.",
+        "deleteAccountFailed": "Không thể xóa tài khoản của bạn. Vui lòng thử lại.",
+        "signInBeforeDelete": "Đăng nhập trước khi xóa tài khoản của bạn."
+      }
+    },
+    "audio": {
+      "systemDefault": "Mặc định hệ thống",
+      "microphoneDeviceFallback": "Micrô {index}",
+      "speakerDeviceFallback": "Loa {index}",
+      "microphone": {
+        "title": "Micrô",
+        "enableLabel": "Bật micrô",
+        "enableDescription": "Cần thiết để nói chuyện với Stella.",
+        "deviceLabel": "Micrô",
+        "deviceDescription": "Stella nên nghe micrô nào?"
+      },
+      "recovery": {
+        "manageLabel": "Quản lý quyền truy cập micrô",
+        "recoverLabel": "Khôi phục quyền truy cập micrô",
+        "manageDescription": "Nếu quyền micrô bị kẹt, bạn có thể đặt lại và yêu cầu macOS hỏi lại.",
+        "recoverDescription": "Sau khi bạn từ chối, macOS sẽ không tự hỏi lại. Hãy đặt lại quyền, rồi thoát và mở lại Stella.",
+        "openSettings": "Mở Cài đặt",
+        "reset": "Đặt lại & khởi động lại",
+        "closing": "Đang đóng…"
+      },
+      "wakeWord": {
+        "label": "Từ đánh thức “Hey Stella”",
+        "description": "Lắng nghe “Hey Stella” ở chế độ nền và bắt đầu cuộc trò chuyện bằng giọng nói. Khi tắt, micrô vẫn nhàn rỗi cho đến khi bạn nhấn đọc chính tả."
+      },
+      "superFast": {
+        "label": "Đọc chính tả siêu nhanh",
+        "description": "Giữ micrô sẵn sàng để đọc chính tả bắt đầu với ít độ trễ hơn."
+      },
+      "dictationSounds": {
+        "label": "Âm thanh đọc chính tả",
+        "description": "Phát âm thanh khi đọc chính tả bắt đầu và dừng."
+      },
+      "enhance": {
+        "label": "Cải thiện phiên âm",
+        "description": "Làm sạch văn bản đọc chính tả cục bộ bằng Mercury trước khi chèn."
+      },
+      "localDictation": {
+        "label": "Phiên âm trên thiết bị",
+        "description": "Dùng mô hình Parakeet cục bộ thay vì Inworld. Việc này có thể dùng nhiều bộ nhớ hơn trên các máy Mac cấu hình thấp.",
+        "unavailableFallback": "Không khả dụng trên máy Mac này."
+      },
+      "speaker": {
+        "title": "Loa",
+        "outputLabel": "Thiết bị đầu ra",
+        "outputDescription": "Chọn loa hoặc tai nghe để sử dụng.",
+        "empty": "Không tìm thấy loa.",
+        "emptyMicOff": "Bật micrô để xem loa của bạn."
+      },
+      "errors": {
+        "listDevices": "Không thể liệt kê các thiết bị âm thanh.",
+        "micDeniedReset": "Quyền truy cập micrô đã bị từ chối trước đó. Hãy đặt lại và khởi động lại Stella, hoặc mở Cài đặt hệ thống.",
+        "micDenied": "Quyền truy cập micrô đã bị từ chối. Vui lòng cho phép trong cài đặt hệ thống của bạn."
+      }
+    },
+    "connectedProviders": {
+      "title": "Nhà cung cấp đã kết nối",
+      "empty": "Chưa có nhà cung cấp nào được kết nối. Chọn một tùy chọn khác Stella trong bộ chọn mô hình ở trên để thêm khóa API hoặc đăng nhập.",
+      "apiKey": "Khóa API",
+      "signedIn": "Đã đăng nhập",
+      "removeKey": "Xóa khóa",
+      "removingKey": "Đang xóa…",
+      "signOut": "Đăng xuất",
+      "signingOut": "Đang đăng xuất…"
+    },
+    "search": {
+      "placeholder": "Tìm trong cài đặt",
+      "clear": "Xóa tìm kiếm",
+      "noResultsTitle": "Không có cài đặt nào khớp với “{query}”",
+      "noResultsBody": "Hãy thử một từ ngắn hơn hoặc khác.",
+      "resultsOne": "{count} kết quả cho",
+      "resultsOther": "{count} kết quả cho",
+      "resultsAriaOne": "{count} kết quả",
+      "resultsAriaOther": "{count} kết quả",
+      "descriptions": {
+        "voice": "Chọn phong cách nói và giọng tính cách của Stella.",
+        "permissions": "Cấp quyền trợ năng, quay màn hình và micrô trên macOS.",
+        "shortcuts": "Thay đổi cách Stella mở, lắng nghe và khởi chạy vòng quay xuyên tâm hoặc giọng nói.",
+        "memory": "Quản lý bộ nhớ màn hình, cập nhật hoặc xóa những gì Stella đã nhớ.",
+        "backup": "Bản sao lưu được mã hóa tự động, điểm khôi phục và ảnh chụp theo yêu cầu.",
+        "account": "Đăng xuất, xóa dữ liệu của bạn hoặc xóa vĩnh viễn tài khoản của bạn.",
+        "legal": "Điều khoản dịch vụ và chính sách quyền riêng tư.",
+        "microphone": "Chọn thiết bị đầu vào, bật từ đánh thức, âm thanh đọc chính tả và phiên âm trên thiết bị.",
+        "speaker": "Chọn loa hoặc tai nghe phát giọng nói của Stella.",
+        "wakeWord": "Lắng nghe “Hey Stella” và bắt đầu cuộc trò chuyện bằng giọng nói.",
+        "onDeviceTranscription": "Dùng mô hình Parakeet cục bộ thay vì phiên âm trên đám mây."
+      }
+    },
+    "errors": {
+      "loadPower": "Không tải được cài đặt nguồn.",
+      "savePower": "Không cập nhật được cài đặt nguồn.",
+      "powerUnavailable": "Cài đặt nguồn không khả dụng trong cửa sổ này.",
+      "loadLockedComputerUse": "Không tải được cài đặt sử dụng máy tính khi đã khóa.",
+      "saveLockedComputerUse": "Không cập nhật được sử dụng máy tính khi đã khóa.",
+      "lockedComputerUseUnavailable": "Sử dụng máy tính khi đã khóa không khả dụng trong cửa sổ này.",
+      "loadSoundNotifications": "Không tải được cài đặt thông báo âm thanh.",
+      "saveSoundNotifications": "Không cập nhật được cài đặt thông báo âm thanh.",
+      "soundNotificationsUnavailable": "Cài đặt thông báo âm thanh không khả dụng trong cửa sổ này.",
+      "loadVoice": "Không tải được cài đặt giọng nói.",
+      "saveVoice": "Không cập nhật được cài đặt giọng nói.",
+      "voiceUnavailable": "Cài đặt giọng nói không khả dụng trong cửa sổ này.",
+      "loadPermissions": "Không tải được trạng thái quyền trên máy tính để bàn.",
+      "savePermission": "Không cập nhật được quyền {kind}.",
+      "resetPermission": "Không đặt lại được quyền {kind}.",
+      "resetPermissionMaybeReopen": "Không thể đặt lại quyền {kind}. Có thể cần mở lại Stella.",
+      "microphoneDeniedReopen": "Quyền truy cập micrô đã bị từ chối trước đó. Bật trong Cài đặt hệ thống, rồi mở lại Stella.",
+      "microphoneStillOff": "Quyền truy cập micrô vẫn đang tắt. Bật trong Cài đặt hệ thống, rồi mở lại Stella.",
+      "restart": "Không khởi động lại được Stella."
     }
   },
   "onboarding": {

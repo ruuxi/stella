@@ -38,6 +38,424 @@
     "language": {
       "title": "Bahasa",
       "description": "Pilih bahasa yang digunakan Stella di aplikasi dan saat menjawab Anda."
+    },
+    "developerPreviews": {
+      "title": "Pratinjau berkas pengembang",
+      "description": "Tampilkan perubahan kode di obrolan dan buka di panel samping."
+    },
+    "nativeFontSmoothing": {
+      "title": "Penghalusan font asli",
+      "description": "Merender teks seperti aplikasi macOS, dengan anti-aliasing skala abu-abu."
+    },
+    "motion": {
+      "title": "Gerakan",
+      "reduceMotion": {
+        "label": "Kurangi gerakan",
+        "description": "Meminimalkan animasi antarmuka.",
+        "system": "Sistem",
+        "on": "Aktif",
+        "off": "Nonaktif"
+      }
+    },
+    "voice": {
+      "title": "Suara",
+      "personality": {
+        "label": "Kepribadian"
+      }
+    },
+    "notifications": {
+      "title": "Notifikasi suara",
+      "description": "Memutar suara saat Stella menyelesaikan sebuah proses agen."
+    },
+    "power": {
+      "title": "Jaga komputer tetap aktif",
+      "description": "Mencegah komputer Anda tidur selama Stella terbuka."
+    },
+    "lockedComputerUse": {
+      "title": "Penggunaan komputer saat terkunci",
+      "description": "Memungkinkan Stella melanjutkan tugas penggunaan komputer setelah Mac ini terkunci. Memerlukan izin administrator dan menutupi layar selama Stella bekerja.",
+      "unsupported": "Penggunaan komputer saat terkunci hanya tersedia di macOS."
+    },
+    "browserExtension": {
+      "title": "Stella untuk Chrome",
+      "description": "Memungkinkan Stella melihat halaman yang sedang Anda buka dan melakukan tindakan di browser Anda.",
+      "action": "Dapatkan ekstensi"
+    },
+    "migration": {
+      "title": "Impor dari Hermes atau OpenClaw",
+      "action": "Impor",
+      "description": "Bawa memori, keterampilan, sesi, dan pilihan model dari instalasi asisten lokal lain.",
+      "dialogClose": "Tutup impor"
+    },
+    "permissions": {
+      "title": "Izin",
+      "enable": "Aktifkan",
+      "granted": "Diberikan",
+      "opening": "Membuka…",
+      "reset": "Atur ulang",
+      "resetting": "Mengatur ulang…",
+      "accessibility": {
+        "label": "Aksesibilitas",
+        "description": "Memungkinkan Stella membaca teks yang dipilih dan terbuka melalui pintasan ⌘+klik kanan di mana saja di komputer Anda."
+      },
+      "screen": {
+        "label": "Rekam layar",
+        "description": "Memungkinkan Stella melihat layar Anda agar bisa membantu dengan apa yang Anda lihat. Anda mungkin perlu menutup dan membuka kembali Stella setelah mengaktifkannya."
+      },
+      "microphone": {
+        "label": "Mikrofon",
+        "description": "Digunakan untuk suara dan dikte. Atur ulang jika Stella sebelumnya ditolak dan macOS tidak meminta lagi."
+      },
+      "restart": {
+        "label": "Mulai ulang Stella",
+        "description": "Rekam layar baru saja diaktifkan. Tutup dan buka kembali Stella untuk menyelesaikan pengaturan.",
+        "action": "Mulai ulang",
+        "closing": "Menutup…"
+      }
+    },
+    "shortcuts": {
+      "title": "Pintasan",
+      "change": "Ubah",
+      "capturing": "Tekan tombol…",
+      "clear": "Hapus",
+      "off": "Nonaktif",
+      "actions": {
+        "dictation": "Dikte",
+        "voice": "Agen suara"
+      },
+      "dictation": {
+        "description": "Tahan Option untuk mendikte ke Stella atau aplikasi yang Anda gunakan."
+      },
+      "voiceAgent": {
+        "description": "Memulai atau menghentikan agen suara langsung Stella."
+      },
+      "radial": {
+        "label": "Tombol radial",
+        "description": "Membuka menu irisan untuk tangkapan, obrolan, suara, dan tindakan cepat.",
+        "ariaLabel": "Pintasan tombol radial"
+      },
+      "mini": {
+        "label": "Jendela mini",
+        "description": "Ketuk dua kali tombol pengubah untuk membuka atau menutup obrolan mini.",
+        "ariaLabel": "Pintasan jendela mini"
+      },
+      "targets": {
+        "dictation": "dikte",
+        "voice": "agen suara"
+      },
+      "toasts": {
+        "updatedTitle": "Pintasan {action} diperbarui",
+        "clearedTitle": "Pintasan {action} dihapus",
+        "updatedDescription": "Tekan {keys} untuk memulai {target}.",
+        "clearedDescription": "{action} dinonaktifkan hingga Anda menetapkan pintasan baru.",
+        "unavailableTitle": "Pintasan tidak tersedia",
+        "failedTitle": "Gagal memperbarui pintasan",
+        "radialUpdatedTitle": "Pintasan tombol radial diperbarui",
+        "radialUpdatedDescription": "Tahan {key} untuk membuka tombol radial.",
+        "miniUpdatedTitle": "Pintasan jendela mini diperbarui",
+        "miniDisabledDescription": "Ketuk dua kali dinonaktifkan.",
+        "miniUpdatedDescription": "Ketuk dua kali {modifier} untuk membuka jendela mini."
+      },
+      "errors": {
+        "load": "Gagal memuat pintasan.",
+        "unavailable": "Pintasan tidak tersedia di jendela ini.",
+        "unavailableShortcut": "Pintasan itu tidak tersedia.",
+        "update": "Gagal memperbarui pintasan.",
+        "radialUpdate": "Gagal memperbarui pintasan tombol radial.",
+        "miniUpdate": "Gagal memperbarui pintasan jendela mini."
+      }
+    },
+    "memory": {
+      "title": "Memori",
+      "enable": "Aktifkan",
+      "disable": "Nonaktifkan",
+      "working": "Memproses…",
+      "screen": {
+        "label": "Memori layar",
+        "description": "Stella dapat sesekali melirik layar Anda untuk mengingat apa yang Anda lakukan.",
+        "signInDescription": "Masuk ke Stella, atau pilih model kecil untuk Chronicle di panel Engine.",
+        "upgradeDescription": "Memori layar termasuk dalam paket Stella mana pun. Tingkatkan, atau pilih model kecil untuk Chronicle di panel Engine."
+      },
+      "status": {
+        "label": "Status",
+        "running": "Berjalan",
+        "stopped": "Berhenti",
+        "disabled": "Dinonaktifkan",
+        "fps": "{fps} fps",
+        "lastCapture": "tangkapan terakhir {time}"
+      },
+      "folder": {
+        "label": "Folder memori",
+        "description": "Membuka folder di komputer Anda tempat Stella menyimpan memorinya.",
+        "open": "Buka folder",
+        "opening": "Membuka…"
+      },
+      "update": {
+        "label": "Perbarui memori sekarang",
+        "description": "Minta Stella meninjau aktivitas terbaru dan menyimpan apa yang dipelajarinya. Ini biasanya terjadi otomatis.",
+        "run": "Jalankan sekarang",
+        "running": "Bermimpi…"
+      },
+      "erase": {
+        "label": "Hapus memori",
+        "description": "Menghapus semua yang diingat Stella, termasuk aktivitas layar yang tersimpan. Ini tidak dapat dibatalkan.",
+        "action": "Hapus",
+        "working": "Menghapus…",
+        "confirm": "Hapus semua yang diingat Stella? Ini tidak dapat dibatalkan."
+      },
+      "access": {
+        "signInTitle": "Perlu masuk",
+        "subscriptionTitle": "Perlu langganan",
+        "signInMessage": "Masuk ke Stella, atau pilih model kecil untuk Chronicle di panel Engine.",
+        "upgradeMessage": "Memori layar termasuk dalam paket Stella mana pun. Tingkatkan — atau pilih model kecil untuk Chronicle di panel Engine.",
+        "pickModel": "Pilih model",
+        "upgrade": "Tingkatkan"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle diaktifkan",
+        "disabledTitle": "Chronicle dinonaktifkan",
+        "alreadyRunning": "Chronicle sudah berjalan.",
+        "enableFailedTitle": "Tidak dapat mengaktifkan Chronicle",
+        "disableFailedTitle": "Tidak dapat menonaktifkan Chronicle",
+        "dreamScheduledTitle": "Proses Dream dijadwalkan",
+        "dreamNotScheduledTitle": "Proses Dream tidak dijadwalkan",
+        "wipeFailedTitle": "Penghapusan gagal",
+        "wipedTitle": "Memori dihapus"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Root ruang kerja Stella tidak tersedia.",
+        "needsPermission": "Izin perekaman layar masih diperlukan sebelum Chronicle dapat dimulai.",
+        "binaryMissing": "Berkas bantuan Chronicle tidak ada.",
+        "startupTimeout": "Chronicle tidak online setelah diluncurkan.",
+        "unsupportedPlatform": "Chronicle hanya tersedia di macOS.",
+        "unknown": "Kesalahan tidak diketahui."
+      },
+      "dreamResults": {
+        "scheduled": "Dream akan mengonsolidasikan tumpukan saat ini.",
+        "inFlight": "Proses Dream sudah berjalan.",
+        "noInputs": "Tidak ada yang baru untuk dikonsolidasikan saat ini.",
+        "noApiKey": "Dream memerlukan model/kunci API yang dikonfigurasi atau rute Stella yang sudah masuk.",
+        "disabled": "Penjadwalan Dream saat ini dinonaktifkan.",
+        "belowThreshold": "Ambang batas idle belum tercapai.",
+        "lockBusy": "Dream sedang sibuk. Coba lagi sebentar.",
+        "noRunner": "Runtime lokal belum siap.",
+        "unavailable": "Dream saat ini tidak tersedia.",
+        "pendingPrefix": "Tertunda: {items}.",
+        "pendingThreadSummary": "{count} ringkasan tugas",
+        "pendingThreadSummaries": "{count} ringkasan tugas",
+        "pendingExtension": "{count} berkas Chronicle",
+        "pendingExtensions": "{count} berkas Chronicle",
+        "pendingJoin": " dan "
+      },
+      "errors": {
+        "loadStatus": "Gagal memuat status Chronicle.",
+        "update": "Gagal memperbarui Chronicle.",
+        "dream": "Gagal memicu proses Dream.",
+        "wipe": "Gagal menghapus memori."
+      }
+    },
+    "backup": {
+      "title": "Cadangan",
+      "upgradeNotice": "Cadangan termasuk dalam paket Stella berbayar mana pun.",
+      "never": "Tidak pernah",
+      "automatic": {
+        "label": "Cadangan otomatis",
+        "lastLocal": "Cadangan lokal terakhir: {time}",
+        "lastRemote": "Cadangan jarak jauh terakhir: {time}",
+        "remoteIssue": "Masalah cadangan jarak jauh: {error}",
+        "off": "Nonaktif",
+        "hourly": "Cadangan otomatis setiap jam",
+        "ariaLabel": "Cadangan"
+      },
+      "backupNow": {
+        "label": "Cadangkan sekarang",
+        "description": "Simpan cadangan sekarang. Otomatis diunggah saat Anda masuk.",
+        "action": "Cadangkan sekarang",
+        "working": "Mencadangkan…"
+      },
+      "saved": {
+        "label": "Cadangan tersimpan",
+        "signedInDescription": "Pilih cadangan untuk dipulihkan di perangkat ini.",
+        "signedOutDescription": "Masuk untuk menyimpan cadangan secara online dan memulihkannya di perangkat mana pun.",
+        "empty": "Belum ada cadangan jarak jauh.",
+        "latest": "Terbaru",
+        "files": "{count} berkas",
+        "from": "Dari: {source}",
+        "restore": "Pulihkan",
+        "restoring": "Memulihkan…"
+      },
+      "toasts": {
+        "completedTitle": "Pencadangan selesai",
+        "queuedTitle": "Cadangan dalam antrean",
+        "deferredTitle": "Cadangan ditunda",
+        "noneNeededTitle": "Tidak perlu cadangan",
+        "failedTitle": "Pencadangan gagal",
+        "restorePreparedTitle": "Pemulihan disiapkan",
+        "restorePreparedDescription": "Stella akan dimulai ulang untuk menyelesaikan penerapan cadangan ini.",
+        "restoreFailedTitle": "Pemulihan gagal"
+      },
+      "errors": {
+        "load": "Gagal memuat pengaturan cadangan.",
+        "unavailable": "Pengaturan cadangan tidak tersedia di jendela ini.",
+        "signInRequired": "Masuk dan pilih paket Stella untuk mengaktifkan cadangan.",
+        "checkingPlan": "Memeriksa paket Stella Anda sebelum mengaktifkan cadangan.",
+        "subscriptionRequired": "Cadangan memerlukan langganan Stella aktif.",
+        "updateMode": "Gagal memperbarui mode pencadangan.",
+        "backupUnavailable": "Pencadangan tidak tersedia di jendela ini.",
+        "startBackup": "Gagal memulai pencadangan.",
+        "restoreUnavailable": "Pemulihan tidak tersedia di jendela ini.",
+        "restore": "Gagal memulihkan cadangan."
+      }
+    },
+    "account": {
+      "title": "Akun",
+      "signOut": {
+        "label": "Keluar",
+        "description": "Keluar dari Stella di perangkat ini.",
+        "action": "Keluar"
+      },
+      "deleteData": {
+        "label": "Hapus data",
+        "description": "Menghapus semua percakapan, memori, dan pengaturan Stella yang tersimpan.",
+        "action": "Hapus",
+        "working": "Menghapus…"
+      },
+      "deleteAccount": {
+        "label": "Hapus akun",
+        "description": "Menghapus akun Anda dan semua isinya secara permanen.",
+        "action": "Hapus",
+        "working": "Menghapus…"
+      },
+      "legal": {
+        "title": "Hukum",
+        "terms": "Ketentuan Layanan",
+        "privacy": "Kebijakan Privasi",
+        "view": "Lihat"
+      },
+      "dialog": {
+        "deleteDataTitle": "Hapus data Stella Anda?",
+        "deleteAccountTitle": "Hapus akun Stella Anda?",
+        "deleteDataDescription": "Ini menghapus percakapan, memori, pengaturan, dan status Stella lokal Anda. Ini tidak dapat dibatalkan.",
+        "deleteAccountDescription": "Ini menghapus akun dan data Stella Anda secara permanen. Ini tidak dapat dibatalkan.",
+        "deleteDataButton": "Hapus data",
+        "deleteAccountButton": "Hapus akun",
+        "working": "Menghapus…"
+      },
+      "toasts": {
+        "dataDeleted": "Data Stella Anda telah dihapus.",
+        "accountDeleted": "Akun Stella Anda telah dihapus.",
+        "deleteDataFailed": "Tidak dapat menghapus data Anda. Coba lagi.",
+        "deleteAccountFailed": "Tidak dapat menghapus akun Anda. Coba lagi.",
+        "signInBeforeDelete": "Masuk sebelum menghapus akun Anda."
+      }
+    },
+    "audio": {
+      "systemDefault": "Default sistem",
+      "microphoneDeviceFallback": "Mikrofon {index}",
+      "speakerDeviceFallback": "Speaker {index}",
+      "microphone": {
+        "title": "Mikrofon",
+        "enableLabel": "Aktifkan mikrofon",
+        "enableDescription": "Diperlukan untuk berbicara dengan Stella.",
+        "deviceLabel": "Mikrofon",
+        "deviceDescription": "Mikrofon mana yang harus didengarkan Stella?"
+      },
+      "recovery": {
+        "manageLabel": "Kelola akses mikrofon",
+        "recoverLabel": "Pulihkan akses mikrofon",
+        "manageDescription": "Jika izin mikrofon macet, Anda dapat mengaturnya ulang dan meminta macOS untuk bertanya lagi.",
+        "recoverDescription": "Setelah Anda menolak, macOS tidak akan bertanya lagi dengan sendirinya. Atur ulang izin, lalu tutup dan buka kembali Stella.",
+        "openSettings": "Buka Pengaturan",
+        "reset": "Atur ulang & mulai ulang",
+        "closing": "Menutup…"
+      },
+      "wakeWord": {
+        "label": "Kata pemicu “Hey Stella”",
+        "description": "Mendengarkan “Hey Stella” di latar belakang dan memulai percakapan suara. Saat nonaktif, mikrofon tetap diam hingga Anda menekan dikte."
+      },
+      "superFast": {
+        "label": "Dikte super cepat",
+        "description": "Menjaga mikrofon tetap siap agar dikte dimulai dengan lebih sedikit jeda."
+      },
+      "dictationSounds": {
+        "label": "Suara dikte",
+        "description": "Memutar suara saat dikte dimulai dan berhenti."
+      },
+      "enhance": {
+        "label": "Tingkatkan transkripsi",
+        "description": "Membersihkan teks dikte lokal dengan Mercury sebelum disisipkan."
+      },
+      "localDictation": {
+        "label": "Transkripsi di perangkat",
+        "description": "Menggunakan model Parakeet lokal alih-alih Inworld. Ini dapat menggunakan lebih banyak memori pada Mac kelas bawah.",
+        "unavailableFallback": "Tidak tersedia di Mac ini."
+      },
+      "speaker": {
+        "title": "Speaker",
+        "outputLabel": "Perangkat keluaran",
+        "outputDescription": "Pilih speaker atau headphone yang akan digunakan.",
+        "empty": "Speaker tidak ditemukan.",
+        "emptyMicOff": "Aktifkan mikrofon untuk melihat speaker Anda."
+      },
+      "errors": {
+        "listDevices": "Tidak dapat menampilkan perangkat audio.",
+        "micDeniedReset": "Akses mikrofon sebelumnya ditolak. Atur ulang dan mulai ulang Stella, atau buka Pengaturan Sistem.",
+        "micDenied": "Akses mikrofon ditolak. Harap izinkan di pengaturan sistem Anda."
+      }
+    },
+    "connectedProviders": {
+      "title": "Penyedia terhubung",
+      "empty": "Belum ada penyedia yang terhubung. Pilih opsi selain Stella di pemilih model di atas untuk menambahkan kunci API atau masuk.",
+      "apiKey": "Kunci API",
+      "signedIn": "Sudah masuk",
+      "removeKey": "Hapus kunci",
+      "removingKey": "Menghapus…",
+      "signOut": "Keluar",
+      "signingOut": "Keluar…"
+    },
+    "search": {
+      "placeholder": "Cari pengaturan",
+      "clear": "Hapus pencarian",
+      "noResultsTitle": "Tidak ada pengaturan yang cocok dengan “{query}”",
+      "noResultsBody": "Coba kata yang lebih pendek atau berbeda.",
+      "resultsOne": "{count} hasil untuk",
+      "resultsOther": "{count} hasil untuk",
+      "resultsAriaOne": "{count} hasil",
+      "resultsAriaOther": "{count} hasil",
+      "descriptions": {
+        "voice": "Pilih gaya bicara dan suara kepribadian Stella.",
+        "permissions": "Berikan akses ke aksesibilitas, rekam layar, dan mikrofon di macOS.",
+        "shortcuts": "Ubah cara Stella terbuka, mendengarkan, dan memulai tombol radial atau suara.",
+        "memory": "Kelola memori layar, perbarui atau hapus apa yang diingat Stella.",
+        "backup": "Cadangan terenkripsi otomatis, titik pemulihan, dan snapshot sesuai permintaan.",
+        "account": "Keluar, hapus data Anda, atau hapus akun Anda secara permanen.",
+        "legal": "Ketentuan Layanan dan Kebijakan Privasi.",
+        "microphone": "Pilih perangkat masukan Anda, aktifkan kata pemicu, suara dikte, dan transkripsi di perangkat.",
+        "speaker": "Pilih speaker atau headphone tempat suara Stella diputar.",
+        "wakeWord": "Mendengarkan “Hey Stella” dan memulai percakapan suara.",
+        "onDeviceTranscription": "Menggunakan model Parakeet lokal alih-alih transkripsi cloud."
+      }
+    },
+    "errors": {
+      "loadPower": "Gagal memuat pengaturan daya.",
+      "savePower": "Gagal memperbarui pengaturan daya.",
+      "powerUnavailable": "Pengaturan daya tidak tersedia di jendela ini.",
+      "loadLockedComputerUse": "Gagal memuat pengaturan penggunaan komputer saat terkunci.",
+      "saveLockedComputerUse": "Gagal memperbarui penggunaan komputer saat terkunci.",
+      "lockedComputerUseUnavailable": "Penggunaan komputer saat terkunci tidak tersedia di jendela ini.",
+      "loadSoundNotifications": "Gagal memuat pengaturan notifikasi suara.",
+      "saveSoundNotifications": "Gagal memperbarui pengaturan notifikasi suara.",
+      "soundNotificationsUnavailable": "Pengaturan notifikasi suara tidak tersedia di jendela ini.",
+      "loadVoice": "Gagal memuat pengaturan suara.",
+      "saveVoice": "Gagal memperbarui pengaturan suara.",
+      "voiceUnavailable": "Pengaturan suara tidak tersedia di jendela ini.",
+      "loadPermissions": "Gagal memuat status izin desktop.",
+      "savePermission": "Gagal memperbarui izin {kind}.",
+      "resetPermission": "Gagal mengatur ulang izin {kind}.",
+      "resetPermissionMaybeReopen": "Tidak dapat mengatur ulang izin {kind}. Stella mungkin perlu dibuka kembali.",
+      "microphoneDeniedReopen": "Akses mikrofon sebelumnya ditolak. Aktifkan di Pengaturan Sistem, lalu buka kembali Stella.",
+      "microphoneStillOff": "Akses mikrofon masih nonaktif. Aktifkan di Pengaturan Sistem, lalu buka kembali Stella.",
+      "restart": "Gagal memulai ulang Stella."
     }
   },
   "onboarding": {

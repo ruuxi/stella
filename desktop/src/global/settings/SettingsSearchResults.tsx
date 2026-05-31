@@ -38,7 +38,7 @@ export function SettingsSearchResults({
   // "notification" in the results — that's the cue that tells the user
   // "your synonym got picked up".
   const highlightTerms = useMemo(() => expandedMatchTerms(query), [query]);
-  const results = useMemo(() => searchSettings(query), [query]);
+  const results = useMemo(() => searchSettings(query, t), [query, t]);
   const trimmedQuery = query.trim();
 
   if (results.length === 0) {
@@ -48,16 +48,16 @@ export function SettingsSearchResults({
           <Search size={20} strokeWidth={1.5} />
         </div>
         <div className="settings-search-results-empty-title">
-          No settings match &ldquo;{trimmedQuery}&rdquo;
+          {t("settings.search.noResultsTitle", { query: trimmedQuery })}
         </div>
         <div className="settings-search-results-empty-body">
-          Try a shorter or different word.{" "}
+          {t("settings.search.noResultsBody")}{" "}
           <button
             type="button"
             className="settings-search-results-link"
             onClick={onClear}
           >
-            Clear search
+            {t("settings.search.clear")}
           </button>
           .
         </div>
@@ -65,14 +65,24 @@ export function SettingsSearchResults({
     );
   }
 
+  const resultsCount = results.length;
+  const countKey =
+    resultsCount === 1
+      ? "settings.search.resultsOne"
+      : "settings.search.resultsOther";
+  const ariaKey =
+    resultsCount === 1
+      ? "settings.search.resultsAriaOne"
+      : "settings.search.resultsAriaOther";
+
   return (
     <div
       className="settings-search-results"
       role="listbox"
-      aria-label={`${results.length} result${results.length === 1 ? "" : "s"}`}
+      aria-label={t(ariaKey, { count: resultsCount })}
     >
       <div className="settings-search-results-header">
-        {results.length} result{results.length === 1 ? "" : "s"} for{" "}
+        {t(countKey, { count: resultsCount })}{" "}
         <span className="settings-search-results-header-query">
           {trimmedQuery}
         </span>

@@ -38,6 +38,424 @@
     "language": {
       "title": "Taal",
       "description": "Kies de taal die Stella gebruikt in de app en in antwoorden."
+    },
+    "developerPreviews": {
+      "title": "Bestandsvoorbeelden voor ontwikkelaars",
+      "description": "Toon codewijzigingen in de chat en open ze in het zijpaneel."
+    },
+    "nativeFontSmoothing": {
+      "title": "Native lettertype-afronding",
+      "description": "Geeft tekst weer zoals macOS-apps, met antialiasing in grijswaarden."
+    },
+    "motion": {
+      "title": "Beweging",
+      "reduceMotion": {
+        "label": "Beweging verminderen",
+        "description": "Minimaliseert animaties in de interface.",
+        "system": "Systeem",
+        "on": "Aan",
+        "off": "Uit"
+      }
+    },
+    "voice": {
+      "title": "Stem",
+      "personality": {
+        "label": "Persoonlijkheid"
+      }
+    },
+    "notifications": {
+      "title": "Geluidsmeldingen",
+      "description": "Speelt een geluid af wanneer Stella een agent-taak voltooit."
+    },
+    "power": {
+      "title": "Computer wakker houden",
+      "description": "Voorkomt dat je computer in de sluimerstand gaat terwijl Stella open is."
+    },
+    "lockedComputerUse": {
+      "title": "Gebruik bij vergrendelde computer",
+      "description": "Laat Stella computergebruik-taken voortzetten nadat deze Mac is vergrendeld. Vereist een beheerdersverzoek en bedekt het scherm terwijl Stella werkt.",
+      "unsupported": "Gebruik bij vergrendelde computer is alleen beschikbaar op macOS."
+    },
+    "browserExtension": {
+      "title": "Stella voor Chrome",
+      "description": "Laat Stella de pagina zien waar je bent en acties uitvoeren in je browser.",
+      "action": "Extensie ophalen"
+    },
+    "migration": {
+      "title": "Importeren uit Hermes of OpenClaw",
+      "action": "Importeren",
+      "description": "Neem geheugen, vaardigheden, sessies en modelkeuzes over van een andere lokale assistent-installatie.",
+      "dialogClose": "Import sluiten"
+    },
+    "permissions": {
+      "title": "Machtigingen",
+      "enable": "Inschakelen",
+      "granted": "Verleend",
+      "opening": "Openen…",
+      "reset": "Opnieuw instellen",
+      "resetting": "Opnieuw instellen…",
+      "accessibility": {
+        "label": "Toegankelijkheid",
+        "description": "Laat Stella geselecteerde tekst lezen en openen via de sneltoets ⌘+rechtermuisklik overal op je computer."
+      },
+      "screen": {
+        "label": "Schermopname",
+        "description": "Laat Stella je scherm zien om te helpen met waar je naar kijkt. Mogelijk moet je Stella afsluiten en opnieuw openen nadat je dit hebt ingeschakeld."
+      },
+      "microphone": {
+        "label": "Microfoon",
+        "description": "Gebruikt voor stem en dictee. Reset als Stella eerder is geweigerd en macOS niet opnieuw vraagt."
+      },
+      "restart": {
+        "label": "Stella opnieuw starten",
+        "description": "Schermopname is zojuist ingeschakeld. Sluit Stella af en open opnieuw om de installatie te voltooien.",
+        "action": "Opnieuw starten",
+        "closing": "Afsluiten…"
+      }
+    },
+    "shortcuts": {
+      "title": "Sneltoetsen",
+      "change": "Wijzigen",
+      "capturing": "Druk op toetsen…",
+      "clear": "Wissen",
+      "off": "Uit",
+      "actions": {
+        "dictation": "Dictee",
+        "voice": "Spraakagent"
+      },
+      "dictation": {
+        "description": "Houd Option ingedrukt om te dicteren in Stella of de app die je gebruikt."
+      },
+      "voiceAgent": {
+        "description": "Start of stopt de live spraakagent van Stella."
+      },
+      "radial": {
+        "label": "Radiaalschijf",
+        "description": "Opent het radiale menu voor opname, chat, stem en snelle acties.",
+        "ariaLabel": "Sneltoets radiaalschijf"
+      },
+      "mini": {
+        "label": "Mini-venster",
+        "description": "Tik twee keer op een modificatietoets om de mini-chat te openen of te sluiten.",
+        "ariaLabel": "Sneltoets mini-venster"
+      },
+      "targets": {
+        "dictation": "dictee",
+        "voice": "de spraakagent"
+      },
+      "toasts": {
+        "updatedTitle": "Sneltoets voor {action} bijgewerkt",
+        "clearedTitle": "Sneltoets voor {action} gewist",
+        "updatedDescription": "Druk op {keys} om {target} te starten.",
+        "clearedDescription": "{action} is uitgeschakeld totdat je een nieuwe sneltoets instelt.",
+        "unavailableTitle": "Sneltoets niet beschikbaar",
+        "failedTitle": "Bijwerken van sneltoets mislukt",
+        "radialUpdatedTitle": "Sneltoets radiaalschijf bijgewerkt",
+        "radialUpdatedDescription": "Houd {key} ingedrukt om de radiaalschijf te openen.",
+        "miniUpdatedTitle": "Sneltoets mini-venster bijgewerkt",
+        "miniDisabledDescription": "Dubbeltikken is uitgeschakeld.",
+        "miniUpdatedDescription": "Tik twee keer op {modifier} om het mini-venster te openen."
+      },
+      "errors": {
+        "load": "Sneltoetsen laden mislukt.",
+        "unavailable": "Sneltoetsen zijn niet beschikbaar in dit venster.",
+        "unavailableShortcut": "Die sneltoets is niet beschikbaar.",
+        "update": "Sneltoets bijwerken mislukt.",
+        "radialUpdate": "Sneltoets van de radiaalschijf bijwerken mislukt.",
+        "miniUpdate": "Sneltoets van het mini-venster bijwerken mislukt."
+      }
+    },
+    "memory": {
+      "title": "Geheugen",
+      "enable": "Inschakelen",
+      "disable": "Uitschakelen",
+      "working": "Bezig…",
+      "screen": {
+        "label": "Schermgeheugen",
+        "description": "Stella kan af en toe een blik op je scherm werpen om te onthouden waar je mee bezig was.",
+        "signInDescription": "Meld je aan bij Stella, of kies een klein model voor Chronicle in het Engine-paneel.",
+        "upgradeDescription": "Schermgeheugen is inbegrepen bij elk Stella-abonnement. Upgrade, of kies een klein model voor Chronicle in het Engine-paneel."
+      },
+      "status": {
+        "label": "Status",
+        "running": "Actief",
+        "stopped": "Gestopt",
+        "disabled": "Uitgeschakeld",
+        "fps": "{fps} fps",
+        "lastCapture": "laatste opname {time}"
+      },
+      "folder": {
+        "label": "Geheugenmap",
+        "description": "Opent de map op je computer waar Stella haar herinneringen bewaart.",
+        "open": "Map openen",
+        "opening": "Openen…"
+      },
+      "update": {
+        "label": "Geheugen nu bijwerken",
+        "description": "Laat Stella recente activiteit doornemen en opslaan wat ze heeft geleerd. Dit gebeurt meestal vanzelf.",
+        "run": "Nu uitvoeren",
+        "running": "Dromen…"
+      },
+      "erase": {
+        "label": "Geheugen wissen",
+        "description": "Verwijdert alles wat Stella heeft onthouden, inclusief opgeslagen schermactiviteit. Dit kan niet ongedaan worden gemaakt.",
+        "action": "Wissen",
+        "working": "Wissen…",
+        "confirm": "Alles wissen wat Stella heeft onthouden? Dit kan niet ongedaan worden gemaakt."
+      },
+      "access": {
+        "signInTitle": "Aanmelden vereist",
+        "subscriptionTitle": "Abonnement vereist",
+        "signInMessage": "Meld je aan bij Stella, of kies een klein model voor Chronicle in het Engine-paneel.",
+        "upgradeMessage": "Schermgeheugen is inbegrepen bij elk Stella-abonnement. Upgrade — of kies een klein model voor Chronicle in het Engine-paneel.",
+        "pickModel": "Kies een model",
+        "upgrade": "Upgraden"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle ingeschakeld",
+        "disabledTitle": "Chronicle uitgeschakeld",
+        "alreadyRunning": "Chronicle was al actief.",
+        "enableFailedTitle": "Chronicle kon niet worden ingeschakeld",
+        "disableFailedTitle": "Chronicle kon niet worden uitgeschakeld",
+        "dreamScheduledTitle": "Dream-doorloop gepland",
+        "dreamNotScheduledTitle": "Dream-doorloop niet gepland",
+        "wipeFailedTitle": "Wissen mislukt",
+        "wipedTitle": "Herinneringen gewist"
+      },
+      "enableFailures": {
+        "noStellaRoot": "De werkruimte-hoofdmap van Stella is niet beschikbaar.",
+        "needsPermission": "De machtiging voor schermopname is nog steeds vereist voordat Chronicle kan starten.",
+        "binaryMissing": "Het Chronicle-hulpbestand ontbreekt.",
+        "startupTimeout": "Chronicle kwam na het starten niet online.",
+        "unsupportedPlatform": "Chronicle is alleen beschikbaar op macOS.",
+        "unknown": "Onbekende fout."
+      },
+      "dreamResults": {
+        "scheduled": "Dream consolideert de huidige achterstand.",
+        "inFlight": "Er loopt al een Dream-doorloop.",
+        "noInputs": "Er is op dit moment niets nieuws om te consolideren.",
+        "noApiKey": "Dream heeft een geconfigureerd model/API-sleutel of een aangemelde Stella-route nodig.",
+        "disabled": "Dream-planning is momenteel uitgeschakeld.",
+        "belowThreshold": "De inactiviteitsdrempel is nog niet bereikt.",
+        "lockBusy": "Dream is op dit moment bezig. Probeer het zo opnieuw.",
+        "noRunner": "De lokale runtime is nog niet klaar.",
+        "unavailable": "Dream is momenteel niet beschikbaar.",
+        "pendingPrefix": "In behandeling: {items}.",
+        "pendingThreadSummary": "{count} taaksamenvatting",
+        "pendingThreadSummaries": "{count} taaksamenvattingen",
+        "pendingExtension": "{count} Chronicle-bestand",
+        "pendingExtensions": "{count} Chronicle-bestanden",
+        "pendingJoin": " en "
+      },
+      "errors": {
+        "loadStatus": "Chronicle-status laden mislukt.",
+        "update": "Chronicle bijwerken mislukt.",
+        "dream": "Dream-doorloop starten mislukt.",
+        "wipe": "Herinneringen wissen mislukt."
+      }
+    },
+    "backup": {
+      "title": "Back-ups",
+      "upgradeNotice": "Back-ups zijn inbegrepen bij elk betaald Stella-abonnement.",
+      "never": "Nooit",
+      "automatic": {
+        "label": "Automatische back-ups",
+        "lastLocal": "Laatste lokale back-up: {time}",
+        "lastRemote": "Laatste externe back-up: {time}",
+        "remoteIssue": "Probleem met externe back-up: {error}",
+        "off": "Uit",
+        "hourly": "Automatische back-ups per uur",
+        "ariaLabel": "Back-ups"
+      },
+      "backupNow": {
+        "label": "Nu back-up maken",
+        "description": "Maak nu een back-up. Deze wordt automatisch geüpload wanneer je bent aangemeld.",
+        "action": "Nu back-up maken",
+        "working": "Back-up maken…"
+      },
+      "saved": {
+        "label": "Opgeslagen back-ups",
+        "signedInDescription": "Kies een back-up om op dit apparaat te herstellen.",
+        "signedOutDescription": "Meld je aan om back-ups online op te slaan en op elk apparaat te herstellen.",
+        "empty": "Nog geen externe back-ups.",
+        "latest": "Nieuwste",
+        "files": "{count} bestanden",
+        "from": "Van: {source}",
+        "restore": "Herstellen",
+        "restoring": "Herstellen…"
+      },
+      "toasts": {
+        "completedTitle": "Back-up voltooid",
+        "queuedTitle": "Back-up in wachtrij",
+        "deferredTitle": "Back-up uitgesteld",
+        "noneNeededTitle": "Geen back-up nodig",
+        "failedTitle": "Back-up mislukt",
+        "restorePreparedTitle": "Herstel voorbereid",
+        "restorePreparedDescription": "Stella wordt opnieuw gestart om deze back-up volledig toe te passen.",
+        "restoreFailedTitle": "Herstel mislukt"
+      },
+      "errors": {
+        "load": "Back-upinstellingen laden mislukt.",
+        "unavailable": "Back-upinstellingen zijn niet beschikbaar in dit venster.",
+        "signInRequired": "Meld je aan en kies een Stella-abonnement om back-ups in te schakelen.",
+        "checkingPlan": "Je Stella-abonnement controleren voordat back-ups worden ingeschakeld.",
+        "subscriptionRequired": "Back-ups vereisen een actief Stella-abonnement.",
+        "updateMode": "Back-upmodus bijwerken mislukt.",
+        "backupUnavailable": "Back-up is niet beschikbaar in dit venster.",
+        "startBackup": "Back-up starten mislukt.",
+        "restoreUnavailable": "Herstellen is niet beschikbaar in dit venster.",
+        "restore": "Back-up herstellen mislukt."
+      }
+    },
+    "account": {
+      "title": "Account",
+      "signOut": {
+        "label": "Afmelden",
+        "description": "Meld je af bij Stella op dit apparaat.",
+        "action": "Afmelden"
+      },
+      "deleteData": {
+        "label": "Gegevens verwijderen",
+        "description": "Wist alle gesprekken, het geheugen en opgeslagen Stella-instellingen.",
+        "action": "Verwijderen",
+        "working": "Verwijderen…"
+      },
+      "deleteAccount": {
+        "label": "Account verwijderen",
+        "description": "Verwijdert je account en alles daarin definitief.",
+        "action": "Verwijderen",
+        "working": "Verwijderen…"
+      },
+      "legal": {
+        "title": "Juridisch",
+        "terms": "Servicevoorwaarden",
+        "privacy": "Privacybeleid",
+        "view": "Bekijken"
+      },
+      "dialog": {
+        "deleteDataTitle": "Je Stella-gegevens verwijderen?",
+        "deleteAccountTitle": "Je Stella-account verwijderen?",
+        "deleteDataDescription": "Dit wist je gesprekken, geheugen, instellingen en de lokale Stella-status. Dit kan niet ongedaan worden gemaakt.",
+        "deleteAccountDescription": "Dit verwijdert je account en Stella-gegevens definitief. Dit kan niet ongedaan worden gemaakt.",
+        "deleteDataButton": "Gegevens verwijderen",
+        "deleteAccountButton": "Account verwijderen",
+        "working": "Verwijderen…"
+      },
+      "toasts": {
+        "dataDeleted": "Je Stella-gegevens zijn verwijderd.",
+        "accountDeleted": "Je Stella-account is verwijderd.",
+        "deleteDataFailed": "Kon je gegevens niet verwijderen. Probeer het opnieuw.",
+        "deleteAccountFailed": "Kon je account niet verwijderen. Probeer het opnieuw.",
+        "signInBeforeDelete": "Meld je aan voordat je je account verwijdert."
+      }
+    },
+    "audio": {
+      "systemDefault": "Systeemstandaard",
+      "microphoneDeviceFallback": "Microfoon {index}",
+      "speakerDeviceFallback": "Luidspreker {index}",
+      "microphone": {
+        "title": "Microfoon",
+        "enableLabel": "Microfoon inschakelen",
+        "enableDescription": "Vereist om met Stella te praten.",
+        "deviceLabel": "Microfoon",
+        "deviceDescription": "Naar welke microfoon moet Stella luisteren?"
+      },
+      "recovery": {
+        "manageLabel": "Microfoontoegang beheren",
+        "recoverLabel": "Microfoontoegang herstellen",
+        "manageDescription": "Als de microfoonmachtiging ooit vastloopt, kun je deze resetten en macOS vragen opnieuw te vragen.",
+        "recoverDescription": "Zodra je nee hebt gezegd, vraagt macOS niet meer uit zichzelf. Reset de machtiging en sluit Stella af en open deze opnieuw.",
+        "openSettings": "Instellingen openen",
+        "reset": "Resetten en opnieuw starten",
+        "closing": "Afsluiten…"
+      },
+      "wakeWord": {
+        "label": "Wekwoord “Hey Stella”",
+        "description": "Luistert op de achtergrond naar “Hey Stella” en start een spraakgesprek. Wanneer uit, blijft de microfoon inactief totdat je op dicteren drukt."
+      },
+      "superFast": {
+        "label": "Supersnel dicteren",
+        "description": "Houdt de microfoon paraat zodat dicteren met minder vertraging start."
+      },
+      "dictationSounds": {
+        "label": "Dicteergeluiden",
+        "description": "Speelt een geluid af wanneer dicteren start en stopt."
+      },
+      "enhance": {
+        "label": "Transcriptie verbeteren",
+        "description": "Schoont lokale dicteertekst op met Mercury voordat deze wordt ingevoegd."
+      },
+      "localDictation": {
+        "label": "Transcriptie op het apparaat",
+        "description": "Gebruikt het lokale Parakeet-model in plaats van Inworld. Dit kan meer geheugen gebruiken op eenvoudigere Macs.",
+        "unavailableFallback": "Niet beschikbaar op deze Mac."
+      },
+      "speaker": {
+        "title": "Luidspreker",
+        "outputLabel": "Uitvoerapparaat",
+        "outputDescription": "Kies de luidspreker of koptelefoon die je wilt gebruiken.",
+        "empty": "Geen luidsprekers gevonden.",
+        "emptyMicOff": "Schakel de microfoon in om je luidsprekers te zien."
+      },
+      "errors": {
+        "listDevices": "Kan audio-apparaten niet weergeven.",
+        "micDeniedReset": "Microfoontoegang is eerder geweigerd. Reset deze en start Stella opnieuw, of open Systeeminstellingen.",
+        "micDenied": "Microfoontoegang is geweigerd. Sta deze toe in je systeeminstellingen."
+      }
+    },
+    "connectedProviders": {
+      "title": "Verbonden providers",
+      "empty": "Nog geen providers verbonden. Kies hierboven in de modelkiezer een andere optie dan Stella om een API-sleutel toe te voegen of je aan te melden.",
+      "apiKey": "API-sleutel",
+      "signedIn": "Aangemeld",
+      "removeKey": "Sleutel verwijderen",
+      "removingKey": "Verwijderen…",
+      "signOut": "Afmelden",
+      "signingOut": "Afmelden…"
+    },
+    "search": {
+      "placeholder": "Instellingen zoeken",
+      "clear": "Zoekopdracht wissen",
+      "noResultsTitle": "Geen instelling komt overeen met “{query}”",
+      "noResultsBody": "Probeer een korter of ander woord.",
+      "resultsOne": "{count} resultaat voor",
+      "resultsOther": "{count} resultaten voor",
+      "resultsAriaOne": "{count} resultaat",
+      "resultsAriaOther": "{count} resultaten",
+      "descriptions": {
+        "voice": "Kies Stella's spreekstijl en persoonlijkheidsstem.",
+        "permissions": "Verleen toegang tot toegankelijkheid, schermopname en microfoon op macOS.",
+        "shortcuts": "Wijzig hoe Stella opent, luistert en de radiaalschijf of stem start.",
+        "memory": "Beheer schermgeheugen, werk bij of wis wat Stella heeft onthouden.",
+        "backup": "Automatische versleutelde back-ups, herstelpunten en momentopnamen op aanvraag.",
+        "account": "Meld je af, verwijder je gegevens of verwijder je account definitief.",
+        "legal": "Servicevoorwaarden en privacybeleid.",
+        "microphone": "Kies je invoerapparaat, schakel het wekwoord, dicteergeluiden en transcriptie op het apparaat in.",
+        "speaker": "Kies de luidspreker of koptelefoon waardoor Stella's stem klinkt.",
+        "wakeWord": "Luistert naar “Hey Stella” en start een spraakgesprek.",
+        "onDeviceTranscription": "Gebruikt het lokale Parakeet-model in plaats van transcriptie in de cloud."
+      }
+    },
+    "errors": {
+      "loadPower": "Energie-instelling laden mislukt.",
+      "savePower": "Energie-instelling bijwerken mislukt.",
+      "powerUnavailable": "Energie-instellingen zijn niet beschikbaar in dit venster.",
+      "loadLockedComputerUse": "Instelling voor gebruik bij vergrendelde computer laden mislukt.",
+      "saveLockedComputerUse": "Gebruik bij vergrendelde computer bijwerken mislukt.",
+      "lockedComputerUseUnavailable": "Gebruik bij vergrendelde computer is niet beschikbaar in dit venster.",
+      "loadSoundNotifications": "Instelling voor geluidsmeldingen laden mislukt.",
+      "saveSoundNotifications": "Instelling voor geluidsmeldingen bijwerken mislukt.",
+      "soundNotificationsUnavailable": "Instellingen voor geluidsmeldingen zijn niet beschikbaar in dit venster.",
+      "loadVoice": "Steminstelling laden mislukt.",
+      "saveVoice": "Steminstelling bijwerken mislukt.",
+      "voiceUnavailable": "Steminstellingen zijn niet beschikbaar in dit venster.",
+      "loadPermissions": "Machtigingsstatus van bureaublad laden mislukt.",
+      "savePermission": "Machtiging {kind} bijwerken mislukt.",
+      "resetPermission": "Machtiging {kind} resetten mislukt.",
+      "resetPermissionMaybeReopen": "Kon machtiging {kind} niet resetten. Stella moet mogelijk opnieuw worden geopend.",
+      "microphoneDeniedReopen": "Microfoontoegang is eerder geweigerd. Schakel deze in via Systeeminstellingen en open Stella opnieuw.",
+      "microphoneStillOff": "Microfoontoegang staat nog steeds uit. Schakel deze in via Systeeminstellingen en open Stella opnieuw.",
+      "restart": "Stella opnieuw starten mislukt."
     }
   },
   "onboarding": {

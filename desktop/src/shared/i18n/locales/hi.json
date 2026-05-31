@@ -38,6 +38,424 @@
     "language": {
       "title": "भाषा",
       "description": "वह भाषा चुनें जिसे Stella ऐप में और जवाबों में इस्तेमाल करेगी।"
+    },
+    "developerPreviews": {
+      "title": "डेवलपर फ़ाइल पूर्वावलोकन",
+      "description": "चैट में कोड परिवर्तन दिखाएँ और उन्हें साइड पैनल में खोलें।"
+    },
+    "nativeFontSmoothing": {
+      "title": "नेटिव फ़ॉन्ट स्मूदिंग",
+      "description": "टेक्स्ट को macOS ऐप्स की तरह, ग्रेस्केल एंटी-एलियासिंग के साथ रेंडर करें।"
+    },
+    "motion": {
+      "title": "मोशन",
+      "reduceMotion": {
+        "label": "मोशन कम करें",
+        "description": "इंटरफ़ेस एनिमेशन को न्यूनतम करें।",
+        "system": "सिस्टम",
+        "on": "चालू",
+        "off": "बंद"
+      }
+    },
+    "voice": {
+      "title": "आवाज़",
+      "personality": {
+        "label": "व्यक्तित्व"
+      }
+    },
+    "notifications": {
+      "title": "ध्वनि सूचनाएँ",
+      "description": "जब Stella किसी एजेंट का रन पूरा करती है तो एक ध्वनि बजाएँ।"
+    },
+    "power": {
+      "title": "कंप्यूटर को जगाए रखें",
+      "description": "जब Stella खुली हो तब आपके कंप्यूटर को स्लीप में जाने से रोकें।"
+    },
+    "lockedComputerUse": {
+      "title": "लॉक होने पर कंप्यूटर उपयोग",
+      "description": "इस Mac के लॉक होने के बाद Stella को कंप्यूटर-उपयोग कार्य जारी रखने दें। इसके लिए व्यवस्थापक अनुमति आवश्यक है और Stella के काम करते समय स्क्रीन ढक जाती है।",
+      "unsupported": "लॉक होने पर कंप्यूटर उपयोग केवल macOS पर उपलब्ध है।"
+    },
+    "browserExtension": {
+      "title": "Chrome के लिए Stella",
+      "description": "Stella को वह पेज देखने दें जिस पर आप हैं और आपके ब्राउज़र में कार्य करने दें।",
+      "action": "एक्सटेंशन प्राप्त करें"
+    },
+    "migration": {
+      "title": "Hermes या OpenClaw से आयात करें",
+      "action": "आयात करें",
+      "description": "किसी अन्य स्थानीय असिस्टेंट इंस्टॉल से मेमोरी, स्किल्स, सत्र और मॉडल विकल्प लाएँ।",
+      "dialogClose": "आयात बंद करें"
+    },
+    "permissions": {
+      "title": "अनुमतियाँ",
+      "enable": "सक्षम करें",
+      "granted": "दी गई",
+      "opening": "खोल रहे हैं…",
+      "reset": "रीसेट करें",
+      "resetting": "रीसेट हो रहा है…",
+      "accessibility": {
+        "label": "एक्सेसिबिलिटी",
+        "description": "Stella को चयनित टेक्स्ट पढ़ने और आपके कंप्यूटर पर कहीं भी ⌘+राइट-क्लिक शॉर्टकट से खुलने देता है।"
+      },
+      "screen": {
+        "label": "स्क्रीन कैप्चर",
+        "description": "Stella को आपकी स्क्रीन देखने देता है ताकि वह उसमें मदद कर सके जो आप देख रहे हैं। इसे चालू करने के बाद आपको Stella को बंद करके फिर से खोलना पड़ सकता है।"
+      },
+      "microphone": {
+        "label": "माइक्रोफ़ोन",
+        "description": "आवाज़ और श्रुतलेखन के लिए उपयोग किया जाता है। यदि Stella पहले अस्वीकृत हो गई थी और macOS दोबारा नहीं पूछता, तो रीसेट करें।"
+      },
+      "restart": {
+        "label": "Stella पुनः आरंभ करें",
+        "description": "स्क्रीन कैप्चर अभी चालू हुआ। सेटअप पूरा करने के लिए Stella बंद करके फिर से खोलें।",
+        "action": "पुनः आरंभ करें",
+        "closing": "बंद हो रहा है…"
+      }
+    },
+    "shortcuts": {
+      "title": "शॉर्टकट",
+      "change": "बदलें",
+      "capturing": "कुंजियाँ दबाएँ…",
+      "clear": "साफ़ करें",
+      "off": "बंद",
+      "actions": {
+        "dictation": "श्रुतलेखन",
+        "voice": "वॉइस एजेंट"
+      },
+      "dictation": {
+        "description": "Stella या आप जिस ऐप का उपयोग कर रहे हैं उसमें बोलकर लिखने के लिए Option दबाए रखें।"
+      },
+      "voiceAgent": {
+        "description": "Stella के लाइव वॉइस एजेंट को शुरू या बंद करता है।"
+      },
+      "radial": {
+        "label": "रेडियल डायल",
+        "description": "कैप्चर, चैट, आवाज़ और त्वरित कार्यों के लिए वेज मेन्यू खोलता है।",
+        "ariaLabel": "रेडियल डायल शॉर्टकट"
+      },
+      "mini": {
+        "label": "मिनी विंडो",
+        "description": "मिनी चैट खोलने या बंद करने के लिए किसी मॉडिफ़ायर कुंजी को दो बार टैप करें।",
+        "ariaLabel": "मिनी विंडो शॉर्टकट"
+      },
+      "targets": {
+        "dictation": "श्रुतलेखन",
+        "voice": "वॉइस एजेंट"
+      },
+      "toasts": {
+        "updatedTitle": "{action} शॉर्टकट अपडेट किया गया",
+        "clearedTitle": "{action} शॉर्टकट साफ़ किया गया",
+        "updatedDescription": "{target} शुरू करने के लिए {keys} दबाएँ।",
+        "clearedDescription": "जब तक आप नया शॉर्टकट सेट नहीं करते, {action} अक्षम है।",
+        "unavailableTitle": "शॉर्टकट उपलब्ध नहीं",
+        "failedTitle": "शॉर्टकट अपडेट करने में विफल",
+        "radialUpdatedTitle": "रेडियल डायल शॉर्टकट अपडेट किया गया",
+        "radialUpdatedDescription": "रेडियल डायल खोलने के लिए {key} दबाए रखें।",
+        "miniUpdatedTitle": "मिनी विंडो शॉर्टकट अपडेट किया गया",
+        "miniDisabledDescription": "डबल-टैप अक्षम है।",
+        "miniUpdatedDescription": "मिनी विंडो खोलने के लिए {modifier} को दो बार टैप करें।"
+      },
+      "errors": {
+        "load": "शॉर्टकट लोड करने में विफल।",
+        "unavailable": "इस विंडो में शॉर्टकट उपलब्ध नहीं हैं।",
+        "unavailableShortcut": "वह शॉर्टकट उपलब्ध नहीं है।",
+        "update": "शॉर्टकट अपडेट करने में विफल।",
+        "radialUpdate": "रेडियल डायल शॉर्टकट अपडेट करने में विफल।",
+        "miniUpdate": "मिनी विंडो शॉर्टकट अपडेट करने में विफल।"
+      }
+    },
+    "memory": {
+      "title": "मेमोरी",
+      "enable": "सक्षम करें",
+      "disable": "अक्षम करें",
+      "working": "काम चल रहा है…",
+      "screen": {
+        "label": "स्क्रीन मेमोरी",
+        "description": "Stella समय-समय पर आपकी स्क्रीन पर एक नज़र डाल सकती है ताकि याद रख सके कि आप क्या कर रहे थे।",
+        "signInDescription": "Stella में साइन इन करें, या Engine पैनल में Chronicle के लिए एक छोटा मॉडल चुनें।",
+        "upgradeDescription": "स्क्रीन मेमोरी किसी भी Stella प्लान में शामिल है। अपग्रेड करें, या Engine पैनल में Chronicle के लिए एक छोटा मॉडल चुनें।"
+      },
+      "status": {
+        "label": "स्थिति",
+        "running": "चल रहा है",
+        "stopped": "रुका हुआ",
+        "disabled": "अक्षम",
+        "fps": "{fps} fps",
+        "lastCapture": "अंतिम कैप्चर {time}"
+      },
+      "folder": {
+        "label": "मेमोरी फ़ोल्डर",
+        "description": "आपके कंप्यूटर पर वह फ़ोल्डर खोलें जहाँ Stella अपनी यादें रखती है।",
+        "open": "फ़ोल्डर खोलें",
+        "opening": "खोल रहे हैं…"
+      },
+      "update": {
+        "label": "मेमोरी अभी अपडेट करें",
+        "description": "Stella से हाल की गतिविधि की समीक्षा करवाएँ और जो सीखा उसे सहेजने दें। यह आमतौर पर अपने आप होता है।",
+        "run": "अभी चलाएँ",
+        "running": "सपना देख रही है…"
+      },
+      "erase": {
+        "label": "मेमोरी मिटाएँ",
+        "description": "Stella ने जो कुछ भी याद रखा है, सहेजी गई स्क्रीन गतिविधि सहित, सब हटा दें। इसे पूर्ववत नहीं किया जा सकता।",
+        "action": "मिटाएँ",
+        "working": "मिटा रहे हैं…",
+        "confirm": "Stella ने जो कुछ भी याद रखा है, सब मिटाएँ? इसे पूर्ववत नहीं किया जा सकता।"
+      },
+      "access": {
+        "signInTitle": "साइन इन आवश्यक",
+        "subscriptionTitle": "सदस्यता आवश्यक",
+        "signInMessage": "Stella में साइन इन करें, या Engine पैनल में Chronicle के लिए एक छोटा मॉडल चुनें।",
+        "upgradeMessage": "स्क्रीन मेमोरी किसी भी Stella प्लान में शामिल है। अपग्रेड करें — या Engine पैनल में Chronicle के लिए एक छोटा मॉडल चुनें।",
+        "pickModel": "मॉडल चुनें",
+        "upgrade": "अपग्रेड करें"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle सक्षम किया गया",
+        "disabledTitle": "Chronicle अक्षम किया गया",
+        "alreadyRunning": "Chronicle पहले से चल रहा था।",
+        "enableFailedTitle": "Chronicle सक्षम नहीं किया जा सका",
+        "disableFailedTitle": "Chronicle अक्षम नहीं किया जा सका",
+        "dreamScheduledTitle": "Dream पास शेड्यूल किया गया",
+        "dreamNotScheduledTitle": "Dream पास शेड्यूल नहीं किया गया",
+        "wipeFailedTitle": "मिटाना विफल रहा",
+        "wipedTitle": "यादें मिटा दी गईं"
+      },
+      "enableFailures": {
+        "noStellaRoot": "Stella के वर्कस्पेस की रूट उपलब्ध नहीं है।",
+        "needsPermission": "Chronicle के शुरू होने से पहले अभी भी स्क्रीन रिकॉर्डिंग अनुमति आवश्यक है।",
+        "binaryMissing": "Chronicle सहायक बाइनरी अनुपलब्ध है।",
+        "startupTimeout": "लॉन्च के बाद Chronicle ऑनलाइन नहीं हुआ।",
+        "unsupportedPlatform": "Chronicle केवल macOS पर उपलब्ध है।",
+        "unknown": "अज्ञात त्रुटि।"
+      },
+      "dreamResults": {
+        "scheduled": "Dream वर्तमान बैकलॉग को समेकित करेगा।",
+        "inFlight": "एक Dream पास पहले से चल रहा है।",
+        "noInputs": "अभी समेकित करने के लिए कुछ नया नहीं है।",
+        "noApiKey": "Dream को एक कॉन्फ़िगर किया गया मॉडल/API कुंजी या साइन-इन किया गया Stella रूट चाहिए।",
+        "disabled": "Dream शेड्यूलिंग फ़िलहाल अक्षम है।",
+        "belowThreshold": "निष्क्रियता सीमा अभी तक नहीं पहुँची है।",
+        "lockBusy": "Dream अभी व्यस्त है। एक क्षण में फिर से प्रयास करें।",
+        "noRunner": "स्थानीय रनटाइम अभी तैयार नहीं है।",
+        "unavailable": "Dream फ़िलहाल उपलब्ध नहीं है।",
+        "pendingPrefix": "लंबित: {items}।",
+        "pendingThreadSummary": "{count} कार्य सारांश",
+        "pendingThreadSummaries": "{count} कार्य सारांश",
+        "pendingExtension": "{count} Chronicle फ़ाइल",
+        "pendingExtensions": "{count} Chronicle फ़ाइलें",
+        "pendingJoin": " और "
+      },
+      "errors": {
+        "loadStatus": "Chronicle स्थिति लोड करने में विफल।",
+        "update": "Chronicle अपडेट करने में विफल।",
+        "dream": "Dream पास ट्रिगर करने में विफल।",
+        "wipe": "यादें मिटाने में विफल।"
+      }
+    },
+    "backup": {
+      "title": "बैकअप",
+      "upgradeNotice": "बैकअप किसी भी सशुल्क Stella प्लान में शामिल हैं।",
+      "never": "कभी नहीं",
+      "automatic": {
+        "label": "स्वचालित बैकअप",
+        "lastLocal": "अंतिम स्थानीय बैकअप: {time}",
+        "lastRemote": "अंतिम रिमोट बैकअप: {time}",
+        "remoteIssue": "रिमोट बैकअप समस्या: {error}",
+        "off": "बंद",
+        "hourly": "प्रति घंटा स्वचालित बैकअप",
+        "ariaLabel": "बैकअप"
+      },
+      "backupNow": {
+        "label": "अभी बैकअप लें",
+        "description": "अभी एक बैकअप सहेजें। साइन इन होने पर यह स्वचालित रूप से अपलोड हो जाता है।",
+        "action": "अभी बैकअप लें",
+        "working": "बैकअप ले रहे हैं…"
+      },
+      "saved": {
+        "label": "सहेजे गए बैकअप",
+        "signedInDescription": "इस डिवाइस पर पुनर्स्थापित करने के लिए एक बैकअप चुनें।",
+        "signedOutDescription": "बैकअप को ऑनलाइन सहेजने और किसी भी डिवाइस पर पुनर्स्थापित करने के लिए साइन इन करें।",
+        "empty": "अभी तक कोई रिमोट बैकअप नहीं।",
+        "latest": "नवीनतम",
+        "files": "{count} फ़ाइलें",
+        "from": "से: {source}",
+        "restore": "पुनर्स्थापित करें",
+        "restoring": "पुनर्स्थापित हो रहा है…"
+      },
+      "toasts": {
+        "completedTitle": "बैकअप पूरा हुआ",
+        "queuedTitle": "बैकअप कतार में",
+        "deferredTitle": "बैकअप स्थगित",
+        "noneNeededTitle": "किसी बैकअप की आवश्यकता नहीं",
+        "failedTitle": "बैकअप विफल",
+        "restorePreparedTitle": "पुनर्स्थापना तैयार",
+        "restorePreparedDescription": "इस बैकअप को लागू करना पूरा करने के लिए Stella पुनः आरंभ होगी।",
+        "restoreFailedTitle": "पुनर्स्थापना विफल"
+      },
+      "errors": {
+        "load": "बैकअप सेटिंग्स लोड करने में विफल।",
+        "unavailable": "इस विंडो में बैकअप सेटिंग्स उपलब्ध नहीं हैं।",
+        "signInRequired": "बैकअप चालू करने के लिए साइन इन करें और एक Stella प्लान चुनें।",
+        "checkingPlan": "बैकअप चालू करने से पहले आपके Stella प्लान की जाँच की जा रही है।",
+        "subscriptionRequired": "बैकअप के लिए सक्रिय Stella सदस्यता आवश्यक है।",
+        "updateMode": "बैकअप मोड अपडेट करने में विफल।",
+        "backupUnavailable": "इस विंडो में बैकअप उपलब्ध नहीं है।",
+        "startBackup": "बैकअप शुरू करने में विफल।",
+        "restoreUnavailable": "इस विंडो में पुनर्स्थापना उपलब्ध नहीं है।",
+        "restore": "बैकअप पुनर्स्थापित करने में विफल।"
+      }
+    },
+    "account": {
+      "title": "खाता",
+      "signOut": {
+        "label": "साइन आउट",
+        "description": "इस डिवाइस पर Stella से साइन आउट करें।",
+        "action": "साइन आउट"
+      },
+      "deleteData": {
+        "label": "डेटा हटाएँ",
+        "description": "सभी वार्तालाप, मेमोरी और सहेजी गई Stella सेटिंग्स मिटा देता है।",
+        "action": "हटाएँ",
+        "working": "हटा रहे हैं…"
+      },
+      "deleteAccount": {
+        "label": "खाता हटाएँ",
+        "description": "आपके खाते और उसमें मौजूद सब कुछ स्थायी रूप से हटा देता है।",
+        "action": "हटाएँ",
+        "working": "हटा रहे हैं…"
+      },
+      "legal": {
+        "title": "कानूनी",
+        "terms": "सेवा की शर्तें",
+        "privacy": "गोपनीयता नीति",
+        "view": "देखें"
+      },
+      "dialog": {
+        "deleteDataTitle": "अपना Stella डेटा हटाएँ?",
+        "deleteAccountTitle": "अपना Stella खाता हटाएँ?",
+        "deleteDataDescription": "यह आपके वार्तालाप, मेमोरी, सेटिंग्स और स्थानीय Stella स्थिति मिटा देता है। इसे पूर्ववत नहीं किया जा सकता।",
+        "deleteAccountDescription": "यह आपके खाते और Stella डेटा को स्थायी रूप से हटा देता है। इसे पूर्ववत नहीं किया जा सकता।",
+        "deleteDataButton": "डेटा हटाएँ",
+        "deleteAccountButton": "खाता हटाएँ",
+        "working": "हटा रहे हैं…"
+      },
+      "toasts": {
+        "dataDeleted": "आपका Stella डेटा हटा दिया गया।",
+        "accountDeleted": "आपका Stella खाता हटा दिया गया।",
+        "deleteDataFailed": "आपका डेटा हटाया नहीं जा सका। कृपया फिर से प्रयास करें।",
+        "deleteAccountFailed": "आपका खाता हटाया नहीं जा सका। कृपया फिर से प्रयास करें।",
+        "signInBeforeDelete": "अपना खाता हटाने से पहले साइन इन करें।"
+      }
+    },
+    "audio": {
+      "systemDefault": "सिस्टम डिफ़ॉल्ट",
+      "microphoneDeviceFallback": "माइक्रोफ़ोन {index}",
+      "speakerDeviceFallback": "स्पीकर {index}",
+      "microphone": {
+        "title": "माइक्रोफ़ोन",
+        "enableLabel": "माइक्रोफ़ोन सक्षम करें",
+        "enableDescription": "Stella से बात करने के लिए आवश्यक।",
+        "deviceLabel": "माइक्रोफ़ोन",
+        "deviceDescription": "Stella को कौन सा माइक सुनना चाहिए?"
+      },
+      "recovery": {
+        "manageLabel": "माइक्रोफ़ोन एक्सेस प्रबंधित करें",
+        "recoverLabel": "माइक्रोफ़ोन एक्सेस पुनर्प्राप्त करें",
+        "manageDescription": "यदि माइक्रोफ़ोन अनुमति कभी अटक जाए, तो आप इसे रीसेट कर सकते हैं और macOS से दोबारा पूछने को कह सकते हैं।",
+        "recoverDescription": "एक बार मना करने के बाद, macOS अपने आप दोबारा नहीं पूछेगा। अनुमति रीसेट करें, फिर Stella बंद करके दोबारा खोलें।",
+        "openSettings": "सेटिंग्स खोलें",
+        "reset": "रीसेट करें और पुनः आरंभ करें",
+        "closing": "बंद हो रहा है…"
+      },
+      "wakeWord": {
+        "label": "वेक वर्ड “Hey Stella”",
+        "description": "बैकग्राउंड में “Hey Stella” सुनता है और एक वॉइस वार्तालाप शुरू करता है। बंद होने पर, जब तक आप श्रुतलेखन नहीं दबाते, माइक निष्क्रिय रहता है।"
+      },
+      "superFast": {
+        "label": "सुपर फ़ास्ट श्रुतलेखन",
+        "description": "माइक्रोफ़ोन को तैयार रखता है ताकि श्रुतलेखन कम देरी से शुरू हो।"
+      },
+      "dictationSounds": {
+        "label": "श्रुतलेखन ध्वनियाँ",
+        "description": "श्रुतलेखन शुरू और बंद होने पर एक ध्वनि बजाएँ।"
+      },
+      "enhance": {
+        "label": "ट्रांसक्रिप्शन बेहतर करें",
+        "description": "डालने से पहले स्थानीय श्रुतलेखन टेक्स्ट को Mercury से साफ़ करता है।"
+      },
+      "localDictation": {
+        "label": "डिवाइस पर ट्रांसक्रिप्शन",
+        "description": "Inworld के बजाय स्थानीय Parakeet मॉडल का उपयोग करें। कमज़ोर Mac पर इससे अधिक मेमोरी लग सकती है।",
+        "unavailableFallback": "इस Mac पर उपलब्ध नहीं।"
+      },
+      "speaker": {
+        "title": "स्पीकर",
+        "outputLabel": "आउटपुट डिवाइस",
+        "outputDescription": "उपयोग करने के लिए स्पीकर या हेडफ़ोन चुनें।",
+        "empty": "कोई स्पीकर नहीं मिला।",
+        "emptyMicOff": "अपने स्पीकर देखने के लिए माइक्रोफ़ोन चालू करें।"
+      },
+      "errors": {
+        "listDevices": "ऑडियो डिवाइस सूचीबद्ध नहीं किए जा सके।",
+        "micDeniedReset": "माइक्रोफ़ोन एक्सेस पहले अस्वीकृत किया गया था। इसे रीसेट करें और Stella पुनः आरंभ करें, या सिस्टम सेटिंग्स खोलें।",
+        "micDenied": "माइक्रोफ़ोन एक्सेस अस्वीकृत किया गया। कृपया इसे अपनी सिस्टम सेटिंग्स में अनुमति दें।"
+      }
+    },
+    "connectedProviders": {
+      "title": "कनेक्ट किए गए प्रदाता",
+      "empty": "अभी तक कोई प्रदाता कनेक्ट नहीं है। API कुंजी जोड़ने या साइन इन करने के लिए ऊपर मॉडल पिकर में Stella के अलावा कोई विकल्प चुनें।",
+      "apiKey": "API कुंजी",
+      "signedIn": "साइन इन किया गया",
+      "removeKey": "कुंजी हटाएँ",
+      "removingKey": "हटा रहे हैं…",
+      "signOut": "साइन आउट",
+      "signingOut": "साइन आउट हो रहा है…"
+    },
+    "search": {
+      "placeholder": "सेटिंग्स खोजें",
+      "clear": "खोज साफ़ करें",
+      "noResultsTitle": "“{query}” से मेल खाती कोई सेटिंग नहीं",
+      "noResultsBody": "कोई छोटा या अलग शब्द आज़माएँ।",
+      "resultsOne": "{count} परिणाम के लिए",
+      "resultsOther": "{count} परिणाम के लिए",
+      "resultsAriaOne": "{count} परिणाम",
+      "resultsAriaOther": "{count} परिणाम",
+      "descriptions": {
+        "voice": "Stella की बोलने की शैली और व्यक्तित्व आवाज़ चुनें।",
+        "permissions": "macOS पर एक्सेसिबिलिटी, स्क्रीन कैप्चर और माइक्रोफ़ोन एक्सेस दें।",
+        "shortcuts": "बदलें कि Stella कैसे खुलती है, सुनती है और रेडियल डायल या आवाज़ शुरू करती है।",
+        "memory": "स्क्रीन मेमोरी प्रबंधित करें, Stella ने जो याद रखा है उसे अपडेट या मिटाएँ।",
+        "backup": "स्वचालित एन्क्रिप्टेड बैकअप, पुनर्स्थापना बिंदु और मांग पर स्नैपशॉट।",
+        "account": "साइन आउट करें, अपना डेटा हटाएँ, या अपना खाता स्थायी रूप से हटाएँ।",
+        "legal": "सेवा की शर्तें और गोपनीयता नीति।",
+        "microphone": "अपना इनपुट डिवाइस चुनें, वेक वर्ड, श्रुतलेखन ध्वनियाँ और डिवाइस पर ट्रांसक्रिप्शन सक्षम करें।",
+        "speaker": "वह स्पीकर या हेडफ़ोन चुनें जिससे Stella की आवाज़ बजती है।",
+        "wakeWord": "“Hey Stella” सुनता है और एक वॉइस वार्तालाप शुरू करता है।",
+        "onDeviceTranscription": "क्लाउड ट्रांसक्रिप्शन के बजाय स्थानीय Parakeet मॉडल का उपयोग करें।"
+      }
+    },
+    "errors": {
+      "loadPower": "पावर सेटिंग लोड करने में विफल।",
+      "savePower": "पावर सेटिंग अपडेट करने में विफल।",
+      "powerUnavailable": "इस विंडो में पावर सेटिंग्स उपलब्ध नहीं हैं।",
+      "loadLockedComputerUse": "लॉक होने पर कंप्यूटर उपयोग सेटिंग लोड करने में विफल।",
+      "saveLockedComputerUse": "लॉक होने पर कंप्यूटर उपयोग अपडेट करने में विफल।",
+      "lockedComputerUseUnavailable": "इस विंडो में लॉक होने पर कंप्यूटर उपयोग उपलब्ध नहीं है।",
+      "loadSoundNotifications": "ध्वनि सूचना सेटिंग लोड करने में विफल।",
+      "saveSoundNotifications": "ध्वनि सूचना सेटिंग अपडेट करने में विफल।",
+      "soundNotificationsUnavailable": "इस विंडो में ध्वनि सूचना सेटिंग्स उपलब्ध नहीं हैं।",
+      "loadVoice": "आवाज़ सेटिंग लोड करने में विफल।",
+      "saveVoice": "आवाज़ सेटिंग अपडेट करने में विफल।",
+      "voiceUnavailable": "इस विंडो में आवाज़ सेटिंग्स उपलब्ध नहीं हैं।",
+      "loadPermissions": "डेस्कटॉप अनुमति स्थिति लोड करने में विफल।",
+      "savePermission": "{kind} अनुमति अपडेट करने में विफल।",
+      "resetPermission": "{kind} अनुमति रीसेट करने में विफल।",
+      "resetPermissionMaybeReopen": "{kind} अनुमति रीसेट नहीं की जा सकी। Stella को दोबारा खोलना पड़ सकता है।",
+      "microphoneDeniedReopen": "माइक्रोफ़ोन एक्सेस पहले अस्वीकृत किया गया था। इसे सिस्टम सेटिंग्स में चालू करें, फिर Stella दोबारा खोलें।",
+      "microphoneStillOff": "माइक्रोफ़ोन एक्सेस अभी भी बंद है। इसे सिस्टम सेटिंग्स में चालू करें, फिर Stella दोबारा खोलें।",
+      "restart": "Stella पुनः आरंभ करने में विफल।"
     }
   },
   "onboarding": {

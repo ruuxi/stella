@@ -38,6 +38,424 @@
     "language": {
       "title": "Lingua",
       "description": "Scegli la lingua che Stella userà nell'app e quando ti risponde."
+    },
+    "developerPreviews": {
+      "title": "Anteprime file per sviluppatori",
+      "description": "Mostra le modifiche al codice nella chat e aprile nel pannello laterale."
+    },
+    "nativeFontSmoothing": {
+      "title": "Smussatura caratteri nativa",
+      "description": "Mostra il testo come fanno le app di macOS, con antialiasing in scala di grigi."
+    },
+    "motion": {
+      "title": "Animazioni",
+      "reduceMotion": {
+        "label": "Riduci animazioni",
+        "description": "Riduce al minimo le animazioni dell'interfaccia.",
+        "system": "Sistema",
+        "on": "Attivo",
+        "off": "Disattivato"
+      }
+    },
+    "voice": {
+      "title": "Voce",
+      "personality": {
+        "label": "Personalità"
+      }
+    },
+    "notifications": {
+      "title": "Notifiche sonore",
+      "description": "Riproduce un suono quando Stella termina l'esecuzione di un agente."
+    },
+    "power": {
+      "title": "Mantieni il computer attivo",
+      "description": "Impedisce al computer di andare in stop mentre Stella è aperta."
+    },
+    "lockedComputerUse": {
+      "title": "Uso a computer bloccato",
+      "description": "Consente a Stella di continuare le attività di uso del computer dopo che questo Mac si blocca. Richiede una richiesta da amministratore e copre lo schermo mentre Stella lavora.",
+      "unsupported": "L'uso a computer bloccato è disponibile solo su macOS."
+    },
+    "browserExtension": {
+      "title": "Stella per Chrome",
+      "description": "Consente a Stella di vedere la pagina su cui ti trovi e di agire nel tuo browser.",
+      "action": "Ottieni estensione"
+    },
+    "migration": {
+      "title": "Importa da Hermes o OpenClaw",
+      "action": "Importa",
+      "description": "Porta memoria, abilità, sessioni e scelte di modello da un'altra installazione di assistente locale.",
+      "dialogClose": "Chiudi importazione"
+    },
+    "permissions": {
+      "title": "Autorizzazioni",
+      "enable": "Abilita",
+      "granted": "Concessa",
+      "opening": "Apertura…",
+      "reset": "Reimposta",
+      "resetting": "Reimpostazione…",
+      "accessibility": {
+        "label": "Accessibilità",
+        "description": "Consente a Stella di leggere il testo selezionato e di aprirsi con la scorciatoia ⌘+clic destro ovunque sul computer."
+      },
+      "screen": {
+        "label": "Cattura schermo",
+        "description": "Consente a Stella di vedere lo schermo per aiutarti con ciò che stai guardando. Potresti dover chiudere e riaprire Stella dopo averlo attivato."
+      },
+      "microphone": {
+        "label": "Microfono",
+        "description": "Usato per voce e dettatura. Reimposta se in precedenza Stella è stata negata e macOS non chiede più."
+      },
+      "restart": {
+        "label": "Riavvia Stella",
+        "description": "La cattura schermo è stata appena attivata. Chiudi e riapri Stella per completare la configurazione.",
+        "action": "Riavvia",
+        "closing": "Chiusura…"
+      }
+    },
+    "shortcuts": {
+      "title": "Scorciatoie",
+      "change": "Cambia",
+      "capturing": "Premi i tasti…",
+      "clear": "Cancella",
+      "off": "Disattivato",
+      "actions": {
+        "dictation": "Dettatura",
+        "voice": "Agente vocale"
+      },
+      "dictation": {
+        "description": "Tieni premuto Option per dettare in Stella o nell'app che stai usando."
+      },
+      "voiceAgent": {
+        "description": "Avvia o ferma l'agente vocale dal vivo di Stella."
+      },
+      "radial": {
+        "label": "Selettore radiale",
+        "description": "Apre il menu radiale per cattura, chat, voce e azioni rapide.",
+        "ariaLabel": "Scorciatoia del selettore radiale"
+      },
+      "mini": {
+        "label": "Finestra mini",
+        "description": "Tocca due volte un tasto modificatore per aprire o chiudere la chat mini.",
+        "ariaLabel": "Scorciatoia della finestra mini"
+      },
+      "targets": {
+        "dictation": "la dettatura",
+        "voice": "l'agente vocale"
+      },
+      "toasts": {
+        "updatedTitle": "Scorciatoia {action} aggiornata",
+        "clearedTitle": "Scorciatoia {action} cancellata",
+        "updatedDescription": "Premi {keys} per avviare {target}.",
+        "clearedDescription": "{action} è disattivato finché non imposti una nuova scorciatoia.",
+        "unavailableTitle": "Scorciatoia non disponibile",
+        "failedTitle": "Aggiornamento della scorciatoia non riuscito",
+        "radialUpdatedTitle": "Scorciatoia del selettore radiale aggiornata",
+        "radialUpdatedDescription": "Tieni premuto {key} per aprire il selettore radiale.",
+        "miniUpdatedTitle": "Scorciatoia della finestra mini aggiornata",
+        "miniDisabledDescription": "Il doppio tocco è disattivato.",
+        "miniUpdatedDescription": "Tocca due volte {modifier} per aprire la finestra mini."
+      },
+      "errors": {
+        "load": "Impossibile caricare le scorciatoie.",
+        "unavailable": "Le scorciatoie non sono disponibili in questa finestra.",
+        "unavailableShortcut": "Quella scorciatoia non è disponibile.",
+        "update": "Impossibile aggiornare la scorciatoia.",
+        "radialUpdate": "Impossibile aggiornare la scorciatoia del selettore radiale.",
+        "miniUpdate": "Impossibile aggiornare la scorciatoia della finestra mini."
+      }
+    },
+    "memory": {
+      "title": "Memoria",
+      "enable": "Abilita",
+      "disable": "Disabilita",
+      "working": "In corso…",
+      "screen": {
+        "label": "Memoria dello schermo",
+        "description": "Stella può dare un'occhiata al tuo schermo di tanto in tanto per ricordare cosa stavi facendo.",
+        "signInDescription": "Accedi a Stella o scegli un modello piccolo per Chronicle nel pannello Engine.",
+        "upgradeDescription": "La memoria dello schermo è inclusa in qualsiasi piano Stella. Esegui l'upgrade o scegli un modello piccolo per Chronicle nel pannello Engine."
+      },
+      "status": {
+        "label": "Stato",
+        "running": "In esecuzione",
+        "stopped": "Fermo",
+        "disabled": "Disattivato",
+        "fps": "{fps} fps",
+        "lastCapture": "ultima cattura {time}"
+      },
+      "folder": {
+        "label": "Cartella della memoria",
+        "description": "Apre la cartella sul computer dove Stella conserva i suoi ricordi.",
+        "open": "Apri cartella",
+        "opening": "Apertura…"
+      },
+      "update": {
+        "label": "Aggiorna la memoria ora",
+        "description": "Fai sì che Stella riveda l'attività recente e salvi ciò che ha imparato. Di solito avviene da solo.",
+        "run": "Esegui ora",
+        "running": "Sta sognando…"
+      },
+      "erase": {
+        "label": "Cancella la memoria",
+        "description": "Elimina tutto ciò che Stella ha ricordato, inclusa l'attività dello schermo salvata. Non può essere annullato.",
+        "action": "Cancella",
+        "working": "Cancellazione…",
+        "confirm": "Cancellare tutto ciò che Stella ha ricordato? Non può essere annullato."
+      },
+      "access": {
+        "signInTitle": "Accesso richiesto",
+        "subscriptionTitle": "Abbonamento richiesto",
+        "signInMessage": "Accedi a Stella o scegli un modello piccolo per Chronicle nel pannello Engine.",
+        "upgradeMessage": "La memoria dello schermo è inclusa in qualsiasi piano Stella. Esegui l'upgrade — o scegli un modello piccolo per Chronicle nel pannello Engine.",
+        "pickModel": "Scegli un modello",
+        "upgrade": "Esegui l'upgrade"
+      },
+      "toasts": {
+        "enabledTitle": "Chronicle attivato",
+        "disabledTitle": "Chronicle disattivato",
+        "alreadyRunning": "Chronicle era già in esecuzione.",
+        "enableFailedTitle": "Impossibile attivare Chronicle",
+        "disableFailedTitle": "Impossibile disattivare Chronicle",
+        "dreamScheduledTitle": "Passaggio di Dream programmato",
+        "dreamNotScheduledTitle": "Passaggio di Dream non programmato",
+        "wipeFailedTitle": "Cancellazione non riuscita",
+        "wipedTitle": "Ricordi cancellati"
+      },
+      "enableFailures": {
+        "noStellaRoot": "La radice dell'area di lavoro di Stella non è disponibile.",
+        "needsPermission": "È ancora richiesta l'autorizzazione alla registrazione dello schermo prima che Chronicle possa avviarsi.",
+        "binaryMissing": "Il binario di supporto di Chronicle è mancante.",
+        "startupTimeout": "Chronicle non si è connesso dopo l'avvio.",
+        "unsupportedPlatform": "Chronicle è disponibile solo su macOS.",
+        "unknown": "Errore sconosciuto."
+      },
+      "dreamResults": {
+        "scheduled": "Dream consoliderà l'arretrato attuale.",
+        "inFlight": "Un passaggio di Dream è già in esecuzione.",
+        "noInputs": "Al momento non c'è nulla di nuovo da consolidare.",
+        "noApiKey": "Dream richiede un modello/chiave API configurati o un percorso Stella con accesso effettuato.",
+        "disabled": "La programmazione di Dream è attualmente disattivata.",
+        "belowThreshold": "La soglia di inattività non è ancora stata raggiunta.",
+        "lockBusy": "Dream è occupato in questo momento. Riprova tra poco.",
+        "noRunner": "Il runtime locale non è ancora pronto.",
+        "unavailable": "Dream non è al momento disponibile.",
+        "pendingPrefix": "In attesa: {items}.",
+        "pendingThreadSummary": "{count} riepilogo attività",
+        "pendingThreadSummaries": "{count} riepiloghi attività",
+        "pendingExtension": "{count} file Chronicle",
+        "pendingExtensions": "{count} file Chronicle",
+        "pendingJoin": " e "
+      },
+      "errors": {
+        "loadStatus": "Impossibile caricare lo stato di Chronicle.",
+        "update": "Impossibile aggiornare Chronicle.",
+        "dream": "Impossibile avviare il passaggio di Dream.",
+        "wipe": "Impossibile cancellare i ricordi."
+      }
+    },
+    "backup": {
+      "title": "Backup",
+      "upgradeNotice": "I backup sono inclusi in qualsiasi piano Stella a pagamento.",
+      "never": "Mai",
+      "automatic": {
+        "label": "Backup automatici",
+        "lastLocal": "Ultimo backup locale: {time}",
+        "lastRemote": "Ultimo backup remoto: {time}",
+        "remoteIssue": "Problema con il backup remoto: {error}",
+        "off": "Disattivato",
+        "hourly": "Backup automatici ogni ora",
+        "ariaLabel": "Backup"
+      },
+      "backupNow": {
+        "label": "Esegui backup ora",
+        "description": "Salva un backup adesso. Viene caricato automaticamente quando hai effettuato l'accesso.",
+        "action": "Esegui backup ora",
+        "working": "Backup in corso…"
+      },
+      "saved": {
+        "label": "Backup salvati",
+        "signedInDescription": "Scegli un backup da ripristinare su questo dispositivo.",
+        "signedOutDescription": "Accedi per salvare i backup online e ripristinarli su qualsiasi dispositivo.",
+        "empty": "Ancora nessun backup remoto.",
+        "latest": "Più recente",
+        "files": "{count} file",
+        "from": "Da: {source}",
+        "restore": "Ripristina",
+        "restoring": "Ripristino…"
+      },
+      "toasts": {
+        "completedTitle": "Backup completato",
+        "queuedTitle": "Backup in coda",
+        "deferredTitle": "Backup rinviato",
+        "noneNeededTitle": "Nessun backup necessario",
+        "failedTitle": "Backup non riuscito",
+        "restorePreparedTitle": "Ripristino preparato",
+        "restorePreparedDescription": "Stella si riavvierà per completare l'applicazione di questo backup.",
+        "restoreFailedTitle": "Ripristino non riuscito"
+      },
+      "errors": {
+        "load": "Impossibile caricare le impostazioni di backup.",
+        "unavailable": "Le impostazioni di backup non sono disponibili in questa finestra.",
+        "signInRequired": "Accedi e scegli un piano Stella per attivare i backup.",
+        "checkingPlan": "Verifica del tuo piano Stella prima di attivare i backup.",
+        "subscriptionRequired": "I backup richiedono un abbonamento Stella attivo.",
+        "updateMode": "Impossibile aggiornare la modalità di backup.",
+        "backupUnavailable": "Il backup non è disponibile in questa finestra.",
+        "startBackup": "Impossibile avviare il backup.",
+        "restoreUnavailable": "Il ripristino non è disponibile in questa finestra.",
+        "restore": "Impossibile ripristinare il backup."
+      }
+    },
+    "account": {
+      "title": "Account",
+      "signOut": {
+        "label": "Esci",
+        "description": "Esci da Stella su questo dispositivo.",
+        "action": "Esci"
+      },
+      "deleteData": {
+        "label": "Elimina dati",
+        "description": "Cancella tutte le conversazioni, la memoria e le impostazioni salvate di Stella.",
+        "action": "Elimina",
+        "working": "Eliminazione…"
+      },
+      "deleteAccount": {
+        "label": "Elimina account",
+        "description": "Elimina definitivamente il tuo account e tutto ciò che contiene.",
+        "action": "Elimina",
+        "working": "Eliminazione…"
+      },
+      "legal": {
+        "title": "Note legali",
+        "terms": "Termini di servizio",
+        "privacy": "Informativa sulla privacy",
+        "view": "Visualizza"
+      },
+      "dialog": {
+        "deleteDataTitle": "Eliminare i tuoi dati Stella?",
+        "deleteAccountTitle": "Eliminare il tuo account Stella?",
+        "deleteDataDescription": "Questo cancella le conversazioni, la memoria, le impostazioni e lo stato locale di Stella. Non può essere annullato.",
+        "deleteAccountDescription": "Questo elimina definitivamente il tuo account e i tuoi dati Stella. Non può essere annullato.",
+        "deleteDataButton": "Elimina dati",
+        "deleteAccountButton": "Elimina account",
+        "working": "Eliminazione…"
+      },
+      "toasts": {
+        "dataDeleted": "I tuoi dati Stella sono stati eliminati.",
+        "accountDeleted": "Il tuo account Stella è stato eliminato.",
+        "deleteDataFailed": "Impossibile eliminare i tuoi dati. Riprova.",
+        "deleteAccountFailed": "Impossibile eliminare il tuo account. Riprova.",
+        "signInBeforeDelete": "Accedi prima di eliminare il tuo account."
+      }
+    },
+    "audio": {
+      "systemDefault": "Predefinito di sistema",
+      "microphoneDeviceFallback": "Microfono {index}",
+      "speakerDeviceFallback": "Altoparlante {index}",
+      "microphone": {
+        "title": "Microfono",
+        "enableLabel": "Abilita microfono",
+        "enableDescription": "Necessario per parlare con Stella.",
+        "deviceLabel": "Microfono",
+        "deviceDescription": "Quale microfono deve ascoltare Stella?"
+      },
+      "recovery": {
+        "manageLabel": "Gestisci l'accesso al microfono",
+        "recoverLabel": "Ripristina l'accesso al microfono",
+        "manageDescription": "Se l'autorizzazione del microfono dovesse bloccarsi, puoi reimpostarla e chiedere a macOS di richiederla di nuovo.",
+        "recoverDescription": "Una volta che hai detto di no, macOS non chiede più da solo. Reimposta l'autorizzazione, quindi chiudi e riapri Stella.",
+        "openSettings": "Apri Impostazioni",
+        "reset": "Reimposta e riavvia",
+        "closing": "Chiusura…"
+      },
+      "wakeWord": {
+        "label": "Parola di attivazione «Hey Stella»",
+        "description": "Ascolta «Hey Stella» in background e avvia una conversazione vocale. Quando è disattivato, il microfono resta inattivo finché non premi detta."
+      },
+      "superFast": {
+        "label": "Dettatura super veloce",
+        "description": "Mantiene il microfono pronto così la dettatura parte con meno ritardo."
+      },
+      "dictationSounds": {
+        "label": "Suoni della dettatura",
+        "description": "Riproduce un suono quando la dettatura inizia e si ferma."
+      },
+      "enhance": {
+        "label": "Migliora la trascrizione",
+        "description": "Ripulisce il testo della dettatura locale con Mercury prima di inserirlo."
+      },
+      "localDictation": {
+        "label": "Trascrizione sul dispositivo",
+        "description": "Usa il modello locale Parakeet invece di Inworld. Può usare più memoria sui Mac di fascia bassa.",
+        "unavailableFallback": "Non disponibile su questo Mac."
+      },
+      "speaker": {
+        "title": "Altoparlante",
+        "outputLabel": "Dispositivo di uscita",
+        "outputDescription": "Scegli l'altoparlante o le cuffie da usare.",
+        "empty": "Nessun altoparlante trovato.",
+        "emptyMicOff": "Attiva il microfono per vedere i tuoi altoparlanti."
+      },
+      "errors": {
+        "listDevices": "Impossibile elencare i dispositivi audio.",
+        "micDeniedReset": "L'accesso al microfono è stato negato in precedenza. Reimpostalo e riavvia Stella, oppure apri le Impostazioni di sistema.",
+        "micDenied": "L'accesso al microfono è stato negato. Consentilo nelle impostazioni di sistema."
+      }
+    },
+    "connectedProviders": {
+      "title": "Provider connessi",
+      "empty": "Ancora nessun provider connesso. Scegli un'opzione diversa da Stella nel selettore di modelli qui sopra per aggiungere una chiave API o accedere.",
+      "apiKey": "Chiave API",
+      "signedIn": "Accesso effettuato",
+      "removeKey": "Rimuovi chiave",
+      "removingKey": "Rimozione…",
+      "signOut": "Esci",
+      "signingOut": "Disconnessione…"
+    },
+    "search": {
+      "placeholder": "Cerca nelle impostazioni",
+      "clear": "Cancella ricerca",
+      "noResultsTitle": "Nessuna impostazione corrisponde a «{query}»",
+      "noResultsBody": "Prova una parola più breve o diversa.",
+      "resultsOne": "{count} risultato per",
+      "resultsOther": "{count} risultati per",
+      "resultsAriaOne": "{count} risultato",
+      "resultsAriaOther": "{count} risultati",
+      "descriptions": {
+        "voice": "Scegli lo stile di parlato e la voce di personalità di Stella.",
+        "permissions": "Concedi l'accesso ad accessibilità, cattura schermo e microfono su macOS.",
+        "shortcuts": "Cambia come Stella si apre, ascolta e avvia il selettore radiale o la voce.",
+        "memory": "Gestisci la memoria dello schermo, aggiorna o cancella ciò che Stella ha ricordato.",
+        "backup": "Backup crittografati automatici, punti di ripristino e snapshot su richiesta.",
+        "account": "Esci, elimina i tuoi dati o elimina definitivamente il tuo account.",
+        "legal": "Termini di servizio e informativa sulla privacy.",
+        "microphone": "Scegli il dispositivo di ingresso, attiva la parola di attivazione, i suoni della dettatura e la trascrizione sul dispositivo.",
+        "speaker": "Scegli l'altoparlante o le cuffie attraverso cui viene riprodotta la voce di Stella.",
+        "wakeWord": "Ascolta «Hey Stella» e avvia una conversazione vocale.",
+        "onDeviceTranscription": "Usa il modello locale Parakeet invece della trascrizione nel cloud."
+      }
+    },
+    "errors": {
+      "loadPower": "Impossibile caricare l'impostazione di alimentazione.",
+      "savePower": "Impossibile aggiornare l'impostazione di alimentazione.",
+      "powerUnavailable": "Le impostazioni di alimentazione non sono disponibili in questa finestra.",
+      "loadLockedComputerUse": "Impossibile caricare l'impostazione di uso a computer bloccato.",
+      "saveLockedComputerUse": "Impossibile aggiornare l'uso a computer bloccato.",
+      "lockedComputerUseUnavailable": "L'uso a computer bloccato non è disponibile in questa finestra.",
+      "loadSoundNotifications": "Impossibile caricare l'impostazione delle notifiche sonore.",
+      "saveSoundNotifications": "Impossibile aggiornare l'impostazione delle notifiche sonore.",
+      "soundNotificationsUnavailable": "Le impostazioni delle notifiche sonore non sono disponibili in questa finestra.",
+      "loadVoice": "Impossibile caricare l'impostazione della voce.",
+      "saveVoice": "Impossibile aggiornare l'impostazione della voce.",
+      "voiceUnavailable": "Le impostazioni della voce non sono disponibili in questa finestra.",
+      "loadPermissions": "Impossibile caricare lo stato delle autorizzazioni del desktop.",
+      "savePermission": "Impossibile aggiornare l'autorizzazione {kind}.",
+      "resetPermission": "Impossibile reimpostare l'autorizzazione {kind}.",
+      "resetPermissionMaybeReopen": "Impossibile reimpostare l'autorizzazione {kind}. Potrebbe essere necessario riaprire Stella.",
+      "microphoneDeniedReopen": "L'accesso al microfono è stato negato in precedenza. Attivalo nelle Impostazioni di sistema, poi riapri Stella.",
+      "microphoneStillOff": "L'accesso al microfono è ancora disattivato. Attivalo nelle Impostazioni di sistema, poi riapri Stella.",
+      "restart": "Impossibile riavviare Stella."
     }
   },
   "onboarding": {

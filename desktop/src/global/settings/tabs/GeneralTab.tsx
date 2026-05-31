@@ -821,7 +821,7 @@ export function GeneralTab() {
         <div className="settings-card">
           <div className="settings-card-header">
             <h3 className="settings-card-title">
-              Import from Hermes or OpenClaw
+              {t("settings.migration.title")}
             </h3>
             <Button
               type="button"
@@ -829,12 +829,11 @@ export function GeneralTab() {
               className="settings-btn"
               onClick={() => setMigrationDialogOpen(true)}
             >
-              Import
+              {t("settings.migration.action")}
             </Button>
           </div>
           <p className="settings-card-desc">
-            Bring over memory, skills, sessions, and model choices from another
-            local assistant install.
+            {t("settings.migration.description")}
           </p>
         </div>
         <div className="settings-card">
@@ -859,8 +858,8 @@ export function GeneralTab() {
       <Dialog open={migrationDialogOpen} onOpenChange={setMigrationDialogOpen}>
         <DialogContent fit className="settings-migration-dialog">
           <DialogHeader>
-            <DialogTitle>Import from Hermes or OpenClaw</DialogTitle>
-            <DialogCloseButton aria-label="Close import" />
+            <DialogTitle>{t("settings.migration.title")}</DialogTitle>
+            <DialogCloseButton aria-label={t("settings.migration.dialogClose")} />
           </DialogHeader>
           <DialogBody>
             <ThirdPartyMigrationWizard />
