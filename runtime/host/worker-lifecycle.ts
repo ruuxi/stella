@@ -448,9 +448,9 @@ export class RuntimeWorkerLifecycleController {
       this.options.killWorkerOnStop?.(reason) ?? true;
     this.stopPromise = (shouldKill
       ? this.options.killWorker
-        ? this.options.killWorker().then(() =>
-            waitForWorkerExitEvent(connection.process),
-          )
+        ? this.options
+            .killWorker()
+            .then(() => disconnectWorker(connection.process, 100))
         : waitForWorkerProcessExit(connection.process)
       : disconnectWorker(connection.process)
     ).finally(() => {

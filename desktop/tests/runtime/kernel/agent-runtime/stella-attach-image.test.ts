@@ -1,7 +1,10 @@
 import path from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
-import { extractAttachImageBlocks } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import {
+  extractAttachImageBlocks,
+  truncateModelVisibleToolText,
+} from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
 const tempDirs = createSyncTempDirTracker();
@@ -124,5 +127,29 @@ App=com.apple.finder (pid 504)
     expect(result.images[0].mimeType).toBe("image/png");
     expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
     expect(result.text).not.toContain("[stella-attach-image]");
+  });
+});
+
+describe("truncateModelVisibleToolText", () => {
+  it("leaves small tool output unchanged", () => {
+    const result = truncateModelVisibleToolText("short output", 80);
+    expect(result).toEqual({
+      text: "short output",
+      truncated: false,
+      originalChars: "short output".length,
+    });
+  });
+
+  it("caps large tool output with a head and tail preview", () => {
+    const text = `${"a".repeat(120)}\n${"b".repeat(120)}`;
+    const result = truncateModelVisibleToolText(text, 120);
+
+    expect(result.truncated).toBe(true);
+    expect(result.originalChars).toBe(text.length);
+    expect(result.text.length).toBeLessThanOrEqual(120);
+    expect(result.text).toContain("Tool output truncated");
+    expect(result.text).toContain("Total output lines: 2");
+    expect(result.text.startsWith("a")).toBe(true);
+    expect(result.text.endsWith("b")).toBe(true);
   });
 });

@@ -125,6 +125,50 @@ describe("LocalAgentManager Exec fs locking", () => {
     );
   });
 
+  it("exposes active background agent root runs", async () => {
+    let releaseRun: (() => void) | null = null;
+    const running = new Promise<void>((resolve) => {
+      releaseRun = resolve;
+    });
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        await running;
+        return {
+          runId: args.runId,
+          result: "ok",
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "background task",
+      prompt: "do work",
+      agentType: "general",
+      rootRunId: "root-run-1",
+      storageMode: "local",
+    });
+
+    expect(manager.listActiveAgentRuns()).toEqual([
+      { runId: "root-run-1", conversationId: "conv-1" },
+    ]);
+
+    releaseRun?.();
+    await waitForAgentSettled(manager, task.threadId);
+    expect(manager.listActiveAgentRuns()).toEqual([]);
+  });
+
   it("emits failed terminal events when an engine turn throws", async () => {
     const events: AgentLifecycleEvent[] = [];
     const manager = new LocalAgentManager({

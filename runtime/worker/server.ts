@@ -1676,9 +1676,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const socialSessions =
       state.socialSessionService?.getSnapshot() ??
       createEmptySocialSessionServiceSnapshot();
+    const activeRun =
+      state.runner?.getActiveOrchestratorRun() ??
+      state.runner?.listActiveAgentRuns()[0] ??
+      null;
     return {
       health,
-      activeRun: state.runner?.getActiveOrchestratorRun() ?? null,
+      activeRun,
       activeAgentCount: state.runner?.getActiveAgentCount() ?? 0,
       protocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
       pid: process.pid,
@@ -1816,6 +1820,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const hiddenSystemRunIds = new Set<string>();
       let lastVisibleRunId = "";
       let lastVisibleRequestId = requestId;
+      const hasActiveAgentForRootRun = (runId: string | undefined): boolean => {
+        if (!runId) return false;
+        return (
+          state.runner
+            ?.listActiveAgentRuns()
+            .some((agentRun) => agentRun.runId === runId) ?? false
+        );
+      };
       /**
        * Tracks the eventId of the most-recently-persisted orchestrator
        * assistant message for this run. The `agent_end` self-mod patch
@@ -2083,6 +2095,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             hiddenSystemRunIds.delete(ev.runId);
             if (isHiddenRun) {
               if (lastVisibleRunId) {
+                if (hasActiveAgentForRootRun(lastVisibleRunId)) {
+                  return;
+                }
                 emitRunEvent({
                   ...ev,
                   runId: lastVisibleRunId,
@@ -2097,6 +2112,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                   rootRunId: lastVisibleRunId,
                 });
               }
+              return;
+            }
+            if (
+              (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) ===
+                AGENT_IDS.ORCHESTRATOR &&
+              hasActiveAgentForRootRun(ev.runId)
+            ) {
               return;
             }
             emitRunEvent({
@@ -2425,21 +2447,35 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     async () => {
       const runner = state.runner;
       const activeRun = runner?.getActiveOrchestratorRun() ?? null;
+      const activeAgentRuns = runner?.listActiveAgentRuns() ?? [];
       const result: Array<{
         runId: string;
         conversationId: string;
         kind: "active" | "buffered";
       }> = [];
+      const seenRunIds = new Set<string>();
       if (activeRun) {
         result.push({
           runId: activeRun.runId,
           conversationId: activeRun.conversationId,
           kind: "active",
         });
+        seenRunIds.add(activeRun.runId);
+      }
+      for (const agentRun of activeAgentRuns) {
+        if (seenRunIds.has(agentRun.runId)) continue;
+        result.push({
+          runId: agentRun.runId,
+          conversationId: agentRun.conversationId,
+          kind: "active",
+        });
+        seenRunIds.add(agentRun.runId);
       }
       const activeRunId = activeRun?.runId ?? null;
       for (const buffered of state.runEventLog?.listBufferedRuns() ?? []) {
-        if (buffered.runId === activeRunId) continue;
+        if (buffered.runId === activeRunId || seenRunIds.has(buffered.runId)) {
+          continue;
+        }
         result.push({
           runId: buffered.runId,
           conversationId: buffered.conversationId,
@@ -3768,6 +3804,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   );
 
   peer.registerRequestHandler(METHOD_NAMES.RUNTIME_HEALTH, async () => {
+    const activeRun =
+      state.runner?.getActiveOrchestratorRun() ??
+      state.runner?.listActiveAgentRuns()[0] ??
+      null;
     return {
       ready: Boolean(state.runner?.agentHealthCheck().ready),
       hostPid: process.pid,
@@ -3775,7 +3815,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       workerRunning: true,
       workerGeneration: 0,
       deviceId: state.deviceId,
-      activeRunId: state.runner?.getActiveOrchestratorRun()?.runId ?? null,
+      activeRunId: activeRun?.runId ?? null,
       activeAgentCount: state.runner?.getActiveAgentCount() ?? 0,
     };
   });

@@ -56,6 +56,7 @@ import type {
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import type { ReasoningEffort } from "../preferences/local-preferences.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
+import type { RuntimeActiveRun } from "../../protocol/index.js";
 import {
   type SubagentSession,
   getOrCreateSubagentSession,
@@ -1122,6 +1123,26 @@ export class LocalAgentManager implements AgentToolApi {
       count++;
     }
     return count;
+  }
+
+  listActiveAgentRuns(): RuntimeActiveRun[] {
+    const byRunId = new Map<string, RuntimeActiveRun>();
+    for (const task of this.tasks.values()) {
+      if (
+        task.status === "completed" ||
+        task.status === "error" ||
+        task.status === "canceled"
+      ) {
+        continue;
+      }
+      const runId = task.rootRunId ?? task.threadId;
+      if (!runId) continue;
+      byRunId.set(runId, {
+        runId,
+        conversationId: task.conversationId,
+      });
+    }
+    return [...byRunId.values()];
   }
 
   shutdown(reason = AGENT_SHUTDOWN_CANCEL_REASON): void {
