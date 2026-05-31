@@ -245,6 +245,7 @@ const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1_000;
 const WORKER_UNFOCUSED_IDLE_TIMEOUT_MS = 5 * 60 * 1_000;
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = ".stella-runtime-reload-state.json";
 const DEVICE_HEARTBEAT_INTERVAL_MS = 30_000;
+const SYNTHETIC_RUN_EVENT_SEQ_FLOOR = 1e10;
 
 type RemoteTurnAuthSource = HostRuntimeAuthRefreshParams["source"];
 
@@ -295,6 +296,14 @@ const bufferAgentEvent = (
     return;
   }
   buffers.set(event.runId, { events: [event], updatedAt: Date.now() });
+};
+
+export const shouldAckWorkerRunEvent = (
+  event: Pick<RuntimeAgentEventPayload, "seq" | "type">,
+): boolean => {
+  if (!Number.isFinite(event.seq)) return false;
+  if (event.seq >= SYNTHETIC_RUN_EVENT_SEQ_FLOOR) return false;
+  return event.type !== AGENT_STREAM_EVENT_TYPES.RUN_FINISHED;
 };
 
 export class StellaRuntimeHost {
@@ -2759,15 +2768,13 @@ export class StellaRuntimeHost {
       bufferAgentEvent(this.agentEventBuffers, payload);
       pruneAgentEventBuffers(this.agentEventBuffers);
       this.events.emit("run-event", payload);
-      // Ack back to the worker so the persistent event log can prune.
-      // The host's own buffer is what consumers read from on
-      // renderer-reload, so by this point we've taken responsibility
-      // for the event.
-      if (payload.runId && Number.isFinite(payload.seq)) {
+      // Ack only ordinary recorder events. Terminal events must remain
+      // replayable until the retention sweep, otherwise an Electron
+      // restart between host receipt and renderer resume can strand the
+      // UI in an active run. Synthetic task seqs are Date.now-scale and
+      // would prune lower ordinary run seqs, including terminal rows.
+      if (payload.runId && shouldAckWorkerRunEvent(payload)) {
         this.scheduleRunEventAck(payload.runId, payload.seq);
-        if (payload.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED) {
-          this.flushRunEventAcks();
-        }
       }
     });
     peer.registerNotificationHandler(

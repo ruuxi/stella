@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { AGENT_STREAM_EVENT_TYPES } from "../../../runtime/contracts/agent-runtime.js";
+import { shouldAckWorkerRunEvent } from "../../../runtime/host/index.js";
 import { RuntimeHostAdapter } from "../../electron/runtime-host-adapter.js";
 
 const createAdapter = () =>
@@ -61,5 +63,28 @@ describe("RuntimeHostAdapter config batching", () => {
     );
 
     expect(anyAdapter.activeRun).toBeNull();
+  });
+});
+
+describe("worker run-event acks", () => {
+  it("keeps replay-critical terminal and synthetic events in the worker log", () => {
+    expect(
+      shouldAckWorkerRunEvent({
+        type: AGENT_STREAM_EVENT_TYPES.STREAM,
+        seq: 42,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAckWorkerRunEvent({
+        type: AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED,
+        seq: Date.now(),
+      }),
+    ).toBe(false);
+    expect(
+      shouldAckWorkerRunEvent({
+        type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+        seq: 43,
+      }),
+    ).toBe(false);
   });
 });
