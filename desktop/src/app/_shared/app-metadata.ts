@@ -9,6 +9,10 @@ import type { ComponentType, SVGProps } from "react";
  * `metadata.ts` (e.g. `home`, `media`, `workspace`) are skipped by the
  * glob — nav presence is opt-in per feature.
  *
+ * Keep `app/<id>` focused on route surfaces, metadata, and thin route-shell
+ * composition. Reusable implementation should live in the owning `global/`,
+ * `features/`, `shell/`, or `platform/` home instead of accumulating here.
+ *
  * To add a new sidebar app, agents should:
  *   1. Create `desktop/src/app/<id>/metadata.ts` (this shape).
  *   2. Create `desktop/src/app/<id>/App.tsx` (the route component).
