@@ -38,6 +38,7 @@ import {
   executeRuntimeToolCall,
   extractAttachImageBlocks,
   getRuntimeToolMetadata,
+  truncateModelVisibleToolText,
 } from "./tool-adapters.js";
 import {
   markOrchestratorErrorReported,
@@ -121,9 +122,10 @@ const buildToolResultContent = async (toolResult: {
 }): Promise<(TextContent | ImageContent)[]> => {
   const rawText = buildToolResultText(toolResult);
   const { text, images } = await extractAttachImageBlocks(rawText);
+  const truncatedText = truncateModelVisibleToolText(text);
   const content: (TextContent | ImageContent)[] = [];
-  if (text || images.length === 0) {
-    content.push({ type: "text", text });
+  if (truncatedText.text || images.length === 0) {
+    content.push({ type: "text", text: truncatedText.text });
   }
   content.push(...images);
   return content;

@@ -434,6 +434,7 @@ export type RunnerPublicApi = {
     request: Omit<AgentToolRequest, "storageMode">,
   ) => Promise<{ threadId: string }>;
   getActiveAgentCount: () => number;
+  listActiveAgentRuns: () => RuntimeActiveRun[];
   getLocalAgentSnapshot: (agentId: string) => Promise<AgentToolSnapshot | null>;
   cancelLocalAgent: (
     agentId: string,

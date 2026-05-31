@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   runOrchestratorTurn,
   type RuntimeRunCallbacks,
@@ -41,6 +42,23 @@ type BuildAgentContext = (args: {
     mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
   };
 }) => Promise<LocalAgentContext>;
+
+const waitForBackgroundAgentsForRootRun = async (
+  context: RunnerContext,
+  runId: string,
+  abortSignal?: AbortSignal,
+) => {
+  while (
+    context.state.localAgentManager
+      ?.listActiveAgentRuns()
+      .some((agentRun) => agentRun.runId === runId)
+  ) {
+    if (abortSignal?.aborted) {
+      return;
+    }
+    await delay(250, undefined, { signal: abortSignal }).catch(() => undefined);
+  }
+};
 
 type OrchestratorSelfModMetadata = NonNullable<
   Parameters<BuildAgentContext>[0]["selfModMetadata"]
@@ -288,7 +306,7 @@ export const prepareOrchestratorRun = async (args: {
       }
     }
 
-    return {
+    const prepared: PreparedOrchestratorRun = {
       runId: args.runId,
       conversationId: args.conversationId,
       agentType: args.agentType,
@@ -313,6 +331,7 @@ export const prepareOrchestratorRun = async (args: {
         ? { userTurnsSinceMemoryReview }
         : {}),
     };
+    return prepared;
   } catch (error) {
     if (args.context.state.activeOrchestratorRunId === args.runId) {
       args.context.state.activeOrchestratorRunId = null;
@@ -482,7 +501,10 @@ export const launchPreparedOrchestratorRun = (args: {
             return false;
           }),
       );
-      if (!shellGuardActive && prepared.agentType !== AGENT_IDS.INSTALL_UPDATE) {
+      if (
+        !shellGuardActive &&
+        prepared.agentType !== AGENT_IDS.INSTALL_UPDATE
+      ) {
         return {
           error:
             "Self-mod HMR shell guard failed before running a mutating shell command.",
@@ -608,6 +630,11 @@ export const launchPreparedOrchestratorRun = (args: {
       onExecutionSessionCreated: args.onExecutionSessionCreated,
       orchestratorSession,
       beforeRunEnd: async () => {
+        await waitForBackgroundAgentsForRootRun(
+          context,
+          prepared.runId,
+          prepared.abortController.signal,
+        );
         if (!shouldAttachSelfModLifecycle || selfModLifecycleClosed) {
           return;
         }

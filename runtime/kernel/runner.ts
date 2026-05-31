@@ -202,6 +202,8 @@ export const createStellaHostRunner = (
     createBackgroundAgent: taskOrchestration.createBackgroundAgent,
     getActiveAgentCount: () =>
       context.state.localAgentManager?.getActiveAgentCount() ?? 0,
+    listActiveAgentRuns: () =>
+      context.state.localAgentManager?.listActiveAgentRuns() ?? [],
     getLocalAgentSnapshot: async (agentId: string) => {
       const manager = context.state.localAgentManager;
       if (!manager) {

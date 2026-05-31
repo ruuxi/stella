@@ -112,6 +112,42 @@ const formatToolResult = (
   };
 };
 
+export const MODEL_VISIBLE_TOOL_RESULT_MAX_CHARS = 30_000;
+
+export const truncateModelVisibleToolText = (
+  text: string,
+  maxChars = MODEL_VISIBLE_TOOL_RESULT_MAX_CHARS,
+): { text: string; truncated: boolean; originalChars: number } => {
+  const originalChars = text.length;
+  if (originalChars <= maxChars) {
+    return { text, truncated: false, originalChars };
+  }
+
+  const lineCount = text.length > 0 ? text.split("\n").length : 0;
+  const marker = `\n\n[Tool output truncated to ${maxChars} characters. Total output lines: ${lineCount}.]\n\n`;
+  const available = maxChars - marker.length;
+  if (available <= 0) {
+    return {
+      text: text.slice(0, Math.max(0, maxChars)),
+      truncated: true,
+      originalChars,
+    };
+  }
+
+  const headChars = Math.ceil(available / 2);
+  const tailChars = Math.floor(available / 2);
+  const omittedChars = originalChars - headChars - tailChars;
+  const finalMarker = `\n\n[Tool output truncated: ${omittedChars} characters omitted. Total output lines: ${lineCount}.]\n\n`;
+  const finalAvailable = maxChars - finalMarker.length;
+  const finalHeadChars = Math.ceil(finalAvailable / 2);
+  const finalTailChars = Math.floor(finalAvailable / 2);
+  return {
+    text: `${text.slice(0, finalHeadChars)}${finalMarker}${text.slice(-finalTailChars)}`,
+    truncated: true,
+    originalChars,
+  };
+};
+
 // Inline-image attach contract used by stella-computer (and any other CLI we
 // wire up the same way): when tool output contains a substring of the form
 //
@@ -157,7 +193,8 @@ export const extractAttachImageBlocks = async (
   }
   const matches: Array<{ full: string; path: string }> = [];
   for (const m of text.matchAll(STELLA_ATTACH_IMAGE_RE)) {
-    if (m[1]) matches.push({ full: m[0], path: normalizeAttachImagePath(m[1]) });
+    if (m[1])
+      matches.push({ full: m[0], path: normalizeAttachImagePath(m[1]) });
   }
   if (matches.length === 0) return { text, images: [] };
 
@@ -390,8 +427,11 @@ export const createPiTools = (opts: {
           onUpdate: onUpdate
             ? (partialResult: ToolResult) => {
                 const formattedPartial = formatToolResult(partialResult);
+                const truncatedPartial = truncateModelVisibleToolText(
+                  formattedPartial.text,
+                );
                 onUpdate({
-                  content: [{ type: "text", text: formattedPartial.text }],
+                  content: [{ type: "text", text: truncatedPartial.text }],
                   details: formattedPartial.details,
                 });
               }
@@ -404,15 +444,16 @@ export const createPiTools = (opts: {
         // sees the image on the very next turn with no extra Read step.
         const { text: forwardedText, images: legacyImages } =
           await extractAttachImageBlocks(formatted.text);
+        const truncatedText = truncateModelVisibleToolText(forwardedText);
         const content: Array<TextContent | ImageBlock> = [];
         const screenshotNote =
           legacyImages.length > 0
             ? "\n\n[Screenshot attached below. If the accessibility tree is sparse or missing the visible control, inspect this image directly and use screenshot x/y coordinates.]"
             : "";
-        if (forwardedText || legacyImages.length === 0) {
+        if (truncatedText.text || legacyImages.length === 0) {
           content.push({
             type: "text" as const,
-            text: `${forwardedText}${screenshotNote}`,
+            text: `${truncatedText.text}${screenshotNote}`,
           });
         } else if (screenshotNote) {
           content.push({
