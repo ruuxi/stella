@@ -1,4 +1,4 @@
-import { postServiceJson } from "@/infra/http/service-request";
+import { postServiceJson } from "@/platform/http/service-request";
 import {
   STELLA_OPENROUTER_CHAT_COMPLETIONS_PATH,
   extractChatText,

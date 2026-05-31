@@ -11,11 +11,11 @@
  * either expose the API key or require a stateful WebSocket proxy.
  */
 
-import { postServiceJson } from "@/infra/http/service-request";
+import { postServiceJson } from "@/platform/http/service-request";
 import {
   callChatCompletion,
   extractChatText,
-} from "@/infra/ai/llm";
+} from "@/platform/ai/llm";
 import {
   acquireSharedMicrophone,
   setSharedMicrophoneKeepWarm,

@@ -24,8 +24,8 @@ import {
   isRestrictedModelOverrideAudience,
   resolveBillingAudience,
   type ManagedModelAudience,
-} from '@/shared/billing/audience'
-import { BYOK_TOAST_ACTION } from '@/shared/billing/byok-action'
+} from '@/global/billing/audience'
+import { BYOK_TOAST_ACTION } from '@/global/billing/byok-action'
 import { showToast } from '@/ui/toast'
 
 const ORCHESTRATOR_AND_GENERAL = ['orchestrator', 'general'] as const

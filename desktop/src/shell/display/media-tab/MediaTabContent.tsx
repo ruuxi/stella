@@ -18,7 +18,7 @@ import {
   isSupportedMediaFile,
   readSourceAsDataUri,
 } from "@/features/workspace-display/media-files";
-import { notifyMediaGenerationError } from "@/shared/billing/paid-media-tier-toast";
+import { notifyMediaGenerationError } from "@/global/billing/paid-media-tier-toast";
 import { useMediaGeneration } from "./use-media-generation";
 import { MediaTile } from "./MediaTile";
 import { AttachedChip } from "./AttachedChip";

@@ -5,7 +5,7 @@ import "./index.css";
 import "./ui/register-styles";
 import { ThemeProvider } from "./context/theme-context";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
-import { convexClient } from "./infra/convex-client";
+import { convexClient } from "./platform/convex/convex-client";
 import { useDesktopConvexAuth } from "./global/auth/DesktopConvexAuthProvider";
 import { ToastProvider } from "./ui/toast";
 import { PetOverlay } from "./shell/pet/PetOverlay";

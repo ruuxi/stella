@@ -5,7 +5,7 @@
  * (mp3 for OpenAI voices, wav for Inworld). The backend keeps the
  * provider API keys server-side and gates by managed-billing.
  */
-import { createServiceRequest } from "@/infra/http/service-request";
+import { createServiceRequest } from "@/platform/http/service-request";
 
 export type ReadAloudVoiceFamily = "openai" | "inworld";
 

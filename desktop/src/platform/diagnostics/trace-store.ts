@@ -5,7 +5,7 @@
  * buffer for dev-mode diagnostics.
  */
 
-import { AGENT_IDS, type AgentIdLike } from "../../../runtime/contracts/agent-runtime.js";
+import { AGENT_IDS, type AgentIdLike } from "../../../../runtime/contracts/agent-runtime.js";
 
 type TraceCategory =
   | "orchestrator"

@@ -17,7 +17,7 @@ import { useConversationFiles } from '@/features/chat/hooks/use-conversation-fil
 import { useConversationMessages } from '@/features/chat/hooks/use-conversation-messages'
 import { useStreamingChat } from '@/features/chat/hooks/use-streaming-chat'
 import { useTaskProgressSummaries } from '@/features/chat/hooks/use-task-progress-summaries'
-import { useTraceEventMonitor, useTraceIpcListener } from '@/debug/hooks/use-trace-listener'
+import { useTraceEventMonitor, useTraceIpcListener } from '@/platform/diagnostics/use-trace-listener'
 import { type EventRecord } from '@/features/chat/lib/event-transforms'
 import { useUiState } from '@/context/ui-state'
 import { router } from '@/router'

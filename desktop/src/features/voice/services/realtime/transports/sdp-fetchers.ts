@@ -14,7 +14,7 @@
  *     no org secret ever reaches the renderer.
  */
 
-import { createServiceRequest } from "@/infra/http/service-request";
+import { createServiceRequest } from "@/platform/http/service-request";
 import type { SdpAnswerFetcher } from "./types";
 
 /** POST SDP to a public endpoint using a Bearer token. */

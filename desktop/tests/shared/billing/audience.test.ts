@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   isRestrictedAudienceAllowedStellaModelId,
   isRestrictedModelOverrideAudience,
-} from "../../../src/shared/billing/audience";
+} from "../../../src/global/billing/audience";
 
 describe("billing audience model restrictions", () => {
   it("keeps restricted Stella audiences pinned except for Standard and Light", () => {

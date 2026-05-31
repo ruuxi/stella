@@ -49,7 +49,7 @@ import {
 import {
   getPlanLabel,
   isRestrictedModelOverrideAudience,
-} from "@/shared/billing/audience";
+} from "@/global/billing/audience";
 import {
   coerceRealtimeVoiceProvider,
   type ReadAloudVoiceProvider,

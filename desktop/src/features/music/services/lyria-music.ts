@@ -1,6 +1,6 @@
-import { postServiceJson } from "@/infra/http/service-request";
+import { postServiceJson } from "@/platform/http/service-request";
 import { generateMusicPrompt, type MusicMood } from "@/prompts/music";
-import { maybeShowPaidMediaTierToast } from "@/shared/billing/paid-media-tier-toast";
+import { maybeShowPaidMediaTierToast } from "@/global/billing/paid-media-tier-toast";
 
 export type { MusicMood } from "@/prompts/music";
 export type MusicServiceState = {
