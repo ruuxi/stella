@@ -124,7 +124,7 @@ const resolveComposerPlaceholder = ({
   if (contextState.hasSelectedTextContext) {
     return "Ask about the selection...";
   }
-  return "Ask anything";
+  return "Do anything";
 };
 
 export const deriveComposerState = ({
