@@ -301,6 +301,8 @@ export const IPC_UPDATES_RECORD_APPLIED_COMMIT =
   "updates:recordAppliedCommit" as const;
 export const IPC_UPDATES_REFRESH_NATIVE_HELPERS =
   "updates:refreshNativeHelpers" as const;
+export const IPC_UPDATES_ROLLBACK_CANCELED =
+  "updates:rollbackCanceledUpdate" as const;
 
 // ── Onboarding ──────────────────────────────────────────────────────────────
 

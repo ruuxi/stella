@@ -32,6 +32,7 @@ import {
   IPC_UPDATES_RECORD_APPLIED_COMMIT,
   IPC_UPDATES_RECORD_SOURCE_HISTORY,
   IPC_UPDATES_REFRESH_NATIVE_HELPERS,
+  IPC_UPDATES_ROLLBACK_CANCELED,
   IPC_UPDATES_TRY_APPLY_CLEAN,
 } from "../../src/shared/contracts/ipc-channels.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
@@ -46,6 +47,7 @@ import {
   type StellaSourceApplyConflict,
   type StellaSourceBlob,
 } from "../../../runtime/kernel/self-mod/stella-source-control.js";
+import { rollbackGitChangesSince } from "../../../runtime/kernel/self-mod/git.js";
 import {
   applyCleanSourceImportToWorkingTree,
   preflightSourcePackImport,
@@ -382,6 +384,18 @@ type DesktopUpdateFastApplyResult =
       sourcePackConflictJson?: string;
     };
 
+type DesktopUpdateRollbackResult =
+  | {
+      status: "rolled-back";
+      headCommit: string;
+      restoredFiles: string[];
+    }
+  | {
+      status: "skipped";
+      reason: string;
+      headCommit?: string;
+    };
+
 const MAX_DESKTOP_SOURCE_PACK_BYTES = 10 * 1024 * 1024;
 const MAX_DESKTOP_SOURCE_HISTORY_BYTES = 10 * 1024 * 1024;
 const MAX_DESKTOP_SOURCE_PACK_CONFLICT_PROMPT_BYTES = 200 * 1024;
@@ -467,6 +481,64 @@ const hasTrackedWorkingTreeChanges = async (
 const abortMergeIfNeeded = async (stellaRoot: string) => {
   if (!(await hasMergeInProgress(stellaRoot))) return;
   await runGit(stellaRoot, ["merge", "--abort"]).catch(() => undefined);
+};
+
+const updateCommitSubjectPolicy = (releaseTag: string | null) => {
+  const expected = releaseTag ? `Update to ${releaseTag}` : null;
+  return (subject: string) =>
+    expected ? subject === expected : subject.startsWith("Update to ");
+};
+
+const rollbackCanceledDesktopUpdate = async (
+  stellaRoot: string,
+  args: {
+    startingHeadCommit: string;
+    releaseTag: string | null;
+    changedFiles?: string[];
+  },
+): Promise<DesktopUpdateRollbackResult> => {
+  const startingHeadCommit = args.startingHeadCommit.trim();
+  if (!/^[0-9a-f]{40,64}$/i.test(startingHeadCommit)) {
+    return {
+      status: "skipped",
+      reason: "The update rollback starting commit is invalid.",
+    };
+  }
+
+  logDesktopUpdateProcess("desktop-update.rollback.start", {
+    releaseTag: args.releaseTag,
+    startingHeadCommit: shortCommit(startingHeadCommit),
+    changedFileCount: args.changedFiles?.length ?? 0,
+  });
+
+  const result = await rollbackGitChangesSince({
+    repoRoot: stellaRoot,
+    startingHeadCommit,
+    changedFiles: args.changedFiles,
+    isOwnedCommitSubject: updateCommitSubjectPolicy(args.releaseTag),
+  });
+  if (result.status === "skipped") {
+    logDesktopUpdateWarn("desktop-update.rollback.skipped", {
+      releaseTag: args.releaseTag,
+      headCommit: result.headCommit ? shortCommit(result.headCommit) : null,
+      reason: result.reason,
+    });
+    return {
+      status: "skipped",
+      reason: result.reason,
+      ...(result.headCommit ? { headCommit: result.headCommit } : {}),
+    };
+  }
+  logDesktopUpdateProcess("desktop-update.rollback.rolled-back", {
+    releaseTag: args.releaseTag,
+    headCommit: result.headCommit ? shortCommit(result.headCommit) : null,
+    restoredFileCount: result.restoredFiles.length,
+  });
+  return {
+    status: "rolled-back",
+    headCommit: result.headCommit ?? startingHeadCommit,
+    restoredFiles: result.restoredFiles,
+  };
 };
 
 const writeAppliedCommit = async (
@@ -1068,6 +1140,7 @@ const tryApplySourcePackDesktopUpdate = async (
     return {
       status: "needs-agent",
       reason: "Stella runtime is not available for the update morph.",
+      headCommit: await readHeadCommit(stellaRoot),
       changedFiles: preflight.sourceApply.appliedPaths,
     };
   }
@@ -1332,9 +1405,21 @@ const tryApplyCleanDesktopUpdate = async (
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
     });
+    const conflictChangedResult = await runGit(stellaRoot, [
+      "diff",
+      "--name-only",
+      "HEAD",
+      args.targetCommit,
+    ]);
+    const conflictChangedFiles =
+      conflictChangedResult.exitCode === 0
+        ? parseGitNameList(conflictChangedResult.stdout)
+        : [];
     return {
       status: "needs-agent",
       reason: "Git reported merge conflicts.",
+      headCommit: await readHeadCommit(stellaRoot),
+      changedFiles: conflictChangedFiles,
     };
   }
 
@@ -1379,6 +1464,7 @@ const tryApplyCleanDesktopUpdate = async (
         return {
           status: "needs-agent",
           reason: "Stella runtime is not available for the update morph.",
+          headCommit: await readHeadCommit(stellaRoot),
           changedFiles,
         };
       }
@@ -1741,6 +1827,54 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
             elapsedMs: Date.now() - startedAt,
           },
         );
+        throw error;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_UPDATES_ROLLBACK_CANCELED,
+    async (
+      event,
+      payload: {
+        startingHeadCommit?: string;
+        releaseTag?: string;
+        changedFiles?: string[];
+      },
+    ): Promise<DesktopUpdateRollbackResult> => {
+      if (
+        !options.assertPrivilegedSender(event, IPC_UPDATES_ROLLBACK_CANCELED)
+      ) {
+        throw new Error(
+          "Blocked untrusted updates:rollbackCanceledUpdate request.",
+        );
+      }
+      const stellaRoot = options.getStellaRoot();
+      if (!stellaRoot) {
+        throw new Error("Stella install directory is unavailable.");
+      }
+      const startingHeadCommit = asString(payload?.startingHeadCommit);
+      if (!startingHeadCommit) {
+        throw new Error("startingHeadCommit is required.");
+      }
+      const releaseTag = asString(payload?.releaseTag);
+      const changedFiles = Array.isArray(payload?.changedFiles)
+        ? payload.changedFiles.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [];
+      try {
+        return await rollbackCanceledDesktopUpdate(stellaRoot, {
+          startingHeadCommit,
+          releaseTag,
+          changedFiles,
+        });
+      } catch (error) {
+        logDesktopUpdateError("desktop-update.rollback.failed", error, {
+          releaseTag,
+          startingHeadCommit: shortCommit(startingHeadCommit),
+          changedFileCount: changedFiles.length,
+        });
         throw error;
       }
     },

@@ -70,6 +70,18 @@ export type SelfModAppliedPayload = {
   batchIndex: number;
 };
 
+export type GitRollbackSinceResult =
+  | {
+      status: "rolled-back";
+      headCommit: string | null;
+      restoredFiles: string[];
+    }
+  | {
+      status: "skipped";
+      reason: string;
+      headCommit?: string | null;
+    };
+
 export type GitCustomCommitArgs = {
   repoRoot: string;
   subject: string;
@@ -254,6 +266,152 @@ const listDirtyFiles = async (repoRoot: string): Promise<string[]> => {
     .filter((line): line is string => Boolean(line));
 };
 
+const isSafeRepoRelativePath = (value: string): boolean =>
+  Boolean(value) &&
+  !path.isAbsolute(value) &&
+  !value.split(/[\\/]+/).includes("..");
+
+const uniqueSafeRepoPaths = (paths: string[] | undefined): string[] => [
+  ...new Set((paths ?? []).filter(isSafeRepoRelativePath)),
+];
+
+const parseNulList = (stdout: string | Buffer): string[] =>
+  (Buffer.isBuffer(stdout) ? stdout.toString("utf8") : stdout)
+    .split("\0")
+    .filter(Boolean);
+
+const hasMergeInProgress = async (repoRoot: string): Promise<boolean> => {
+  const result = await runGitStatus(repoRoot, [
+    "rev-parse",
+    "-q",
+    "--verify",
+    "MERGE_HEAD",
+  ]);
+  return result.exitCode === 0;
+};
+
+const abortMergeIfNeeded = async (repoRoot: string): Promise<boolean> => {
+  if (!(await hasMergeInProgress(repoRoot))) return false;
+  await runGit(repoRoot, ["merge", "--abort"]);
+  return true;
+};
+
+const restoreGitPaths = async (
+  repoRoot: string,
+  paths: string[] | undefined,
+): Promise<string[]> => {
+  const safePaths = uniqueSafeRepoPaths(paths);
+  if (safePaths.length === 0) return [];
+  const trackedResult = await runGitStatus(repoRoot, [
+    "ls-files",
+    "-z",
+    "--",
+    ...safePaths,
+  ]);
+  if (trackedResult.exitCode !== 0) {
+    const details =
+      toTrimmedString(trackedResult.stderr) ||
+      toTrimmedString(trackedResult.stdout) ||
+      `exit code ${trackedResult.exitCode}`;
+    throw new Error(`Git command failed (ls-files -z -- <paths>): ${details}`);
+  }
+  const trackedPaths = parseNulList(trackedResult.stdout);
+  if (trackedPaths.length > 0) {
+    await runGit(repoRoot, [
+      "restore",
+      "--staged",
+      "--worktree",
+      "--",
+      ...trackedPaths,
+    ]);
+  }
+  await runGit(repoRoot, ["clean", "-fd", "--", ...safePaths]).catch(
+    () => undefined,
+  );
+  return safePaths;
+};
+
+const readCommitSubjectsSince = async (
+  repoRoot: string,
+  startingHeadCommit: string,
+): Promise<string[] | null> => {
+  const result = await runGitStatus(repoRoot, [
+    "log",
+    "--format=%s",
+    `${startingHeadCommit}..HEAD`,
+  ]);
+  if (result.exitCode !== 0) return null;
+  return toTrimmedString(result.stdout)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+};
+
+export const rollbackGitChangesSince = async (args: {
+  repoRoot: string;
+  startingHeadCommit: string;
+  changedFiles?: string[];
+  isOwnedCommitSubject?: (subject: string) => boolean;
+}): Promise<GitRollbackSinceResult> => {
+  await assertGitRepository(args.repoRoot);
+  const startingHeadCommit = args.startingHeadCommit.trim();
+  if (!/^[0-9a-f]{40,64}$/i.test(startingHeadCommit)) {
+    return {
+      status: "skipped",
+      reason: "The rollback starting commit is invalid.",
+    };
+  }
+
+  if (await abortMergeIfNeeded(args.repoRoot)) {
+    return {
+      status: "rolled-back",
+      headCommit: await getGitHead(args.repoRoot),
+      restoredFiles: [],
+    };
+  }
+
+  const currentHead = await getGitHead(args.repoRoot);
+  if (currentHead !== startingHeadCommit) {
+    const dirtyFiles = await listDirtyFiles(args.repoRoot);
+    if (dirtyFiles.length > 0) {
+      return {
+        status: "skipped",
+        headCommit: currentHead,
+        reason:
+          "HEAD moved and the working tree has local changes; rollback skipped to avoid discarding edits.",
+      };
+    }
+    const subjects = await readCommitSubjectsSince(
+      args.repoRoot,
+      startingHeadCommit,
+    );
+    if (
+      !subjects ||
+      subjects.length === 0 ||
+      !subjects.every(args.isOwnedCommitSubject ?? (() => false))
+    ) {
+      return {
+        status: "skipped",
+        headCommit: currentHead,
+        reason:
+          "The commits after rollback start do not match the expected ownership policy.",
+      };
+    }
+    await runGit(args.repoRoot, ["reset", "--hard", startingHeadCommit]);
+    return {
+      status: "rolled-back",
+      headCommit: await getGitHead(args.repoRoot),
+      restoredFiles: await restoreGitPaths(args.repoRoot, args.changedFiles),
+    };
+  }
+
+  return {
+    status: "rolled-back",
+    headCommit: currentHead,
+    restoredFiles: await restoreGitPaths(args.repoRoot, args.changedFiles),
+  };
+};
+
 /**
  * Dependency manifest/lock files that should follow the changes the
  * agent makes (e.g. `bun install` updating `bun.lock`). Returns only
@@ -261,7 +419,9 @@ const listDirtyFiles = async (repoRoot: string): Promise<string[]> => {
  * the run's baseline dirty set before staging — staging unconditionally
  * sweeps in unrelated user work.
  */
-export const listDependencyFiles = async (repoRoot: string): Promise<string[]> => {
+export const listDependencyFiles = async (
+  repoRoot: string,
+): Promise<string[]> => {
   const candidates = [
     "package.json",
     "bun.lock",
@@ -300,7 +460,9 @@ const hasStagedChanges = async (repoRoot: string): Promise<boolean> => {
     toTrimmedString(result.stderr) ||
     toTrimmedString(result.stdout) ||
     `exit code ${result.exitCode}`;
-  throw new Error(`Git command failed (diff --cached --quiet --exit-code): ${details}`);
+  throw new Error(
+    `Git command failed (diff --cached --quiet --exit-code): ${details}`,
+  );
 };
 
 export const stageGitPathsForCommit = async (
@@ -332,7 +494,8 @@ const commitPathScopedChanges = async (
       return null;
     }
     if (diff.exitCode !== 1) {
-      const details = diff.stderr || diff.stdout || `exit code ${diff.exitCode}`;
+      const details =
+        diff.stderr || diff.stdout || `exit code ${diff.exitCode}`;
       throw new Error(
         `Git command failed (diff --cached --quiet -- <paths>): ${details}`,
       );
@@ -344,7 +507,9 @@ const commitPathScopedChanges = async (
     await runGit(repoRoot, ["reset", "-q", "--", ...paths]);
     return await getGitHead(repoRoot);
   } finally {
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    await fs
+      .rm(tempDir, { recursive: true, force: true })
+      .catch(() => undefined);
   }
 };
 
@@ -421,7 +586,10 @@ export const getChangedFilesForCommits = async (
 
   const blocks = output.split(separator).filter(Boolean);
   for (const block of blocks) {
-    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = block
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     if (lines.length === 0) continue;
     const hash = lines[0];
     const files = lines.slice(1).map(normalizeGitPath);
@@ -496,7 +664,6 @@ export const parseStellaCommitTrailers = (
   return trailers;
 };
 
-
 // Legacy commits from the pre-Phase-3 feature/batch scheme used a
 // `[feature:<id>, +N]` subject prefix. We strip it so the normalized
 // list shows clean human-readable subjects without rewriting history.
@@ -555,8 +722,8 @@ const isStellaSelfModCommitMessage = (rawMessage: string): boolean =>
   STELLA_COMMIT_VERIFY_REGEX.test(rawMessage);
 
 const isPublishableStellaSelfModCommitMessage = (rawMessage: string): boolean =>
-  isStellaSelfModCommitMessage(rawMessage)
-  && !STELLA_STORE_APPLY_TRAILER_REGEX.test(rawMessage);
+  isStellaSelfModCommitMessage(rawMessage) &&
+  !STELLA_STORE_APPLY_TRAILER_REGEX.test(rawMessage);
 
 /**
  * Return recent local *Stella self-mod* commits as a flat list — that
@@ -634,7 +801,9 @@ export const listRecentGitCommits = async (
       timestampMs,
       fileCount,
       files,
-      ...(trailers.conversationId ? { conversationId: trailers.conversationId } : {}),
+      ...(trailers.conversationId
+        ? { conversationId: trailers.conversationId }
+        : {}),
       ...(legacyFeatureTagged ? { legacyFeatureTagged: true } : {}),
       ...(trailers.packageId ? { packageId: trailers.packageId } : {}),
       ...(trailers.featureId ? { featureId: trailers.featureId } : {}),
@@ -719,7 +888,8 @@ export const listRecentGitFeatures = async (
     `--pretty=format:${commitFormat}`,
   ]);
   const commits = parseGitLog(output).filter((commit) =>
-    isStellaSelfModCommitMessage(`${commit.subject}\n${commit.body}`));
+    isStellaSelfModCommitMessage(`${commit.subject}\n${commit.body}`),
+  );
   if (commits.length === 0) {
     return [];
   }
@@ -773,12 +943,14 @@ export const listRecentGitFeatures = async (
 export const listStellaFeatureCommitsRaw = async (
   repoRoot: string,
   limit = 4_000,
-): Promise<Array<{
-  hash: string;
-  timestampMs: number;
-  subject: string;
-  body: string;
-}>> => {
+): Promise<
+  Array<{
+    hash: string;
+    timestampMs: number;
+    subject: string;
+    body: string;
+  }>
+> => {
   await assertGitRepository(repoRoot);
   const safeLimit = Math.max(1, Math.min(20_000, Math.floor(limit)));
   const format = `%H${LOG_FIELD_SEPARATOR}%ct${LOG_FIELD_SEPARATOR}%s${LOG_FIELD_SEPARATOR}%b${LOG_ENTRY_SEPARATOR}`;
@@ -904,7 +1076,9 @@ export const listGitCommitsBySelector = async (
       timestampMs,
       fileCount,
       files,
-      ...(trailers.conversationId ? { conversationId: trailers.conversationId } : {}),
+      ...(trailers.conversationId
+        ? { conversationId: trailers.conversationId }
+        : {}),
       ...(legacyFeatureTagged ? { legacyFeatureTagged: true } : {}),
       ...(trailers.packageId ? { packageId: trailers.packageId } : {}),
       ...(trailers.featureId ? { featureId: trailers.featureId } : {}),
@@ -971,7 +1145,9 @@ export const revertGitFeature = async (args: {
       startCommit,
     ]);
     if (!isStellaSelfModCommitMessage(message)) {
-      throw new Error(`Refusing to revert non-Stella self-mod commit "${startCommit}".`);
+      throw new Error(
+        `Refusing to revert non-Stella self-mod commit "${startCommit}".`,
+      );
     }
   }
 
@@ -1098,7 +1274,9 @@ export const listFilesForCommit = async (
     .filter(Boolean);
 };
 
-export const listGitDirtyFiles = async (repoRoot: string): Promise<string[]> => {
+export const listGitDirtyFiles = async (
+  repoRoot: string,
+): Promise<string[]> => {
   await assertGitRepository(repoRoot);
   return await listDirtyFiles(repoRoot);
 };
@@ -1138,7 +1316,15 @@ export const getStagedDiffPreview = async (
   const paths = normalizePathspecs(options?.paths);
   const diffArgs: string[] =
     paths.length > 0
-      ? ["diff", "HEAD", "--unified=2", "--no-color", "--stat-width=120", "--", ...paths]
+      ? [
+          "diff",
+          "HEAD",
+          "--unified=2",
+          "--no-color",
+          "--stat-width=120",
+          "--",
+          ...paths,
+        ]
       : ["diff", "--cached", "--unified=2", "--no-color", "--stat-width=120"];
   const raw = await runGit(repoRoot, diffArgs);
   if (!raw) return "";
@@ -1204,11 +1390,7 @@ const normalizePathspecs = (paths: string[] | undefined): string[] => {
 const SUBJECT_MAX_LENGTH = 72;
 
 const sanitizeCommitSubject = (raw: string): string => {
-  const cleaned = raw
-    .replace(/\r\n/g, "\n")
-    .split("\n")[0]
-    ?.trim()
-    ?? "";
+  const cleaned = raw.replace(/\r\n/g, "\n").split("\n")[0]?.trim() ?? "";
   if (cleaned.length <= SUBJECT_MAX_LENGTH) {
     return cleaned;
   }
@@ -1303,7 +1485,9 @@ export const getCommitFileSnapshot = async (args: {
     toTrimmedString(result.stderr) ||
     toTrimmedString(result.stdout) ||
     `exit code ${result.exitCode}`;
-  throw new Error(`Git command failed (show ${args.commitHash}:${gitPath}): ${details}`);
+  throw new Error(
+    `Git command failed (show ${args.commitHash}:${gitPath}): ${details}`,
+  );
 };
 
 /**
@@ -1416,10 +1600,16 @@ export const getCommitSelectionSnapshots = async (args: {
   repoRoot: string;
   commitHashes: string[];
   files: string[];
-}): Promise<Array<{ path: string; deleted: boolean; contentBase64?: string }>> => {
+}): Promise<
+  Array<{ path: string; deleted: boolean; contentBase64?: string }>
+> => {
   await assertGitRepository(args.repoRoot);
-  const commitHashes = Array.from(new Set(args.commitHashes.map((hash) => hash.trim()).filter(Boolean)));
-  const files = Array.from(new Set(args.files.map(normalizeGitPath).filter(Boolean)));
+  const commitHashes = Array.from(
+    new Set(args.commitHashes.map((hash) => hash.trim()).filter(Boolean)),
+  );
+  const files = Array.from(
+    new Set(args.files.map(normalizeGitPath).filter(Boolean)),
+  );
   if (commitHashes.length === 0 || files.length === 0) {
     return [];
   }
@@ -1427,20 +1617,37 @@ export const getCommitSelectionSnapshots = async (args: {
   const firstCommitHash = commitHashes[0];
   let baseCommitHash: string;
   try {
-    baseCommitHash = await runGit(args.repoRoot, ["rev-parse", `${firstCommitHash}^`]);
+    baseCommitHash = await runGit(args.repoRoot, [
+      "rev-parse",
+      `${firstCommitHash}^`,
+    ]);
   } catch {
-    throw new Error("Selected commits could not be reconstructed from git history.");
+    throw new Error(
+      "Selected commits could not be reconstructed from git history.",
+    );
   }
 
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stella-store-release-"));
+  const tempRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), "stella-store-release-"),
+  );
   const worktreePath = path.join(tempRoot, "worktree");
 
   try {
-    await runGit(args.repoRoot, ["worktree", "add", "--detach", worktreePath, baseCommitHash]);
+    await runGit(args.repoRoot, [
+      "worktree",
+      "add",
+      "--detach",
+      worktreePath,
+      baseCommitHash,
+    ]);
     try {
       for (const commitHash of commitHashes) {
         try {
-          await runGit(worktreePath, ["cherry-pick", "--allow-empty", commitHash]);
+          await runGit(worktreePath, [
+            "cherry-pick",
+            "--allow-empty",
+            commitHash,
+          ]);
         } catch (error) {
           try {
             await runGit(worktreePath, ["cherry-pick", "--abort"]);
@@ -1453,7 +1660,11 @@ export const getCommitSelectionSnapshots = async (args: {
         }
       }
 
-      const snapshots: Array<{ path: string; deleted: boolean; contentBase64?: string }> = [];
+      const snapshots: Array<{
+        path: string;
+        deleted: boolean;
+        contentBase64?: string;
+      }> = [];
       for (const filePath of files) {
         const absolutePath = path.join(worktreePath, filePath);
         try {
@@ -1472,10 +1683,17 @@ export const getCommitSelectionSnapshots = async (args: {
       }
       return snapshots;
     } finally {
-      await runGit(args.repoRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => undefined);
+      await runGit(args.repoRoot, [
+        "worktree",
+        "remove",
+        "--force",
+        worktreePath,
+      ]).catch(() => undefined);
     }
   } finally {
-    await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+    await fs
+      .rm(tempRoot, { recursive: true, force: true })
+      .catch(() => undefined);
   }
 };
 
@@ -1534,7 +1752,8 @@ export const detectSelfModAppliedSince = async (args: {
     `--max-count=1`,
   ]);
   const commits = parseGitLog(output).filter((commit) =>
-    isStellaSelfModCommitMessage(`${commit.subject}\n${commit.body}`));
+    isStellaSelfModCommitMessage(`${commit.subject}\n${commit.body}`),
+  );
   const latest = commits[0];
   if (!latest) {
     return null;

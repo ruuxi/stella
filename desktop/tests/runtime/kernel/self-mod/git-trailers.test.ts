@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import {
   listFilesForCommit,
   parseStellaCommitTrailers,
   revertGitFeature,
+  rollbackGitChangesSince,
 } from "../../../../../runtime/kernel/self-mod/git.js";
 
 describe("parseStellaCommitTrailers — Stella-Thread", () => {
@@ -31,11 +32,7 @@ describe("parseStellaCommitTrailers — Stella-Thread", () => {
   });
 
   it("returns undefined threadKey when only the legacy trailer is present", () => {
-    const body = [
-      "Add foo",
-      "",
-      "Stella-Conversation: conv-1",
-    ].join("\n");
+    const body = ["Add foo", "", "Stella-Conversation: conv-1"].join("\n");
 
     const trailers = parseStellaCommitTrailers(body);
 
@@ -69,6 +66,11 @@ const initRepo = async (): Promise<string> => {
   git(repoRoot, ["commit", "-q", "-m", "Initial seed"]);
   return repoRoot;
 };
+
+const fileExists = async (filePath: string): Promise<boolean> =>
+  readFile(filePath)
+    .then(() => true)
+    .catch(() => false);
 
 describe("git revert end-to-end with Stella-Thread trailer", () => {
   let repoRoot = "";
@@ -177,5 +179,66 @@ describe("listFilesForCommit", () => {
     await expect(
       listFilesForCommit(repoRoot, "0000000000000000000000000000000000000000"),
     ).rejects.toThrow();
+  });
+});
+
+describe("rollbackGitChangesSince", () => {
+  let repoRoot = "";
+
+  beforeEach(async () => {
+    repoRoot = await initRepo();
+  });
+
+  afterEach(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  it("restores only listed paths when HEAD has not moved", async () => {
+    const startingHead = git(repoRoot, ["rev-parse", "HEAD"]);
+    await writeFile(
+      path.join(repoRoot, "seed.txt"),
+      "update residue\n",
+      "utf8",
+    );
+    await writeFile(path.join(repoRoot, "update-new.txt"), "new\n", "utf8");
+    await writeFile(path.join(repoRoot, "user.txt"), "user edit\n", "utf8");
+
+    const result = await rollbackGitChangesSince({
+      repoRoot,
+      startingHeadCommit: startingHead,
+      changedFiles: ["seed.txt", "update-new.txt"],
+      isOwnedCommitSubject: (subject) => subject === "Update to desktop-v1",
+    });
+
+    expect(result.status).toBe("rolled-back");
+    expect(await readFile(path.join(repoRoot, "seed.txt"), "utf8")).toBe(
+      "seed\n",
+    );
+    expect(await fileExists(path.join(repoRoot, "update-new.txt"))).toBe(false);
+    expect(await readFile(path.join(repoRoot, "user.txt"), "utf8")).toBe(
+      "user edit\n",
+    );
+  });
+
+  it("skips a reset when HEAD moved but the working tree has local edits", async () => {
+    const startingHead = git(repoRoot, ["rev-parse", "HEAD"]);
+    await writeFile(path.join(repoRoot, "update.txt"), "update\n", "utf8");
+    git(repoRoot, ["add", "update.txt"]);
+    git(repoRoot, ["commit", "-q", "-m", "Update to desktop-v1"]);
+    const updateHead = git(repoRoot, ["rev-parse", "HEAD"]);
+    await writeFile(path.join(repoRoot, "user.txt"), "user edit\n", "utf8");
+
+    const result = await rollbackGitChangesSince({
+      repoRoot,
+      startingHeadCommit: startingHead,
+      changedFiles: ["update.txt"],
+      isOwnedCommitSubject: (subject) => subject === "Update to desktop-v1",
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(git(repoRoot, ["rev-parse", "HEAD"])).toBe(updateHead);
+    expect(await readFile(path.join(repoRoot, "user.txt"), "utf8")).toBe(
+      "user edit\n",
+    );
   });
 });
