@@ -68,6 +68,7 @@ import {
 } from "../../../runtime/observability/file-logger.js";
 
 const INSTALL_MANIFEST_BASENAME = "stella-install.json";
+const RELEASE_MANIFEST_BASENAME = "stella-release.json";
 const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers";
 const DEFAULT_NATIVE_HELPERS_MANIFEST_URL = `${DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL}/current.json`;
@@ -190,6 +191,9 @@ export type UpdatesHandlersOptions = {
 
 const manifestPathFromRoot = (stellaRoot: string): string =>
   path.join(stellaRoot, INSTALL_MANIFEST_BASENAME);
+
+const releaseManifestPathFromRoot = (stellaRoot: string): string =>
+  path.join(stellaRoot, RELEASE_MANIFEST_BASENAME);
 
 const asString = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
@@ -510,6 +514,13 @@ const writeAppliedCommit = async (
   const next = `${JSON.stringify(parsed, null, 2)}\n`;
   parseManifest(next);
   await writeFileAtomic(manifestPath, next);
+  await writeAppliedReleaseManifest(stellaRoot, commit, tag).catch((error) => {
+    logDesktopUpdateWarn("desktop-update.release-manifest.write-failed", {
+      tag: tag ?? undefined,
+      commit: shortCommit(commit),
+      error,
+    });
+  });
   return parseManifest(next);
 };
 
@@ -548,6 +559,13 @@ const writeAppliedReleasePointer = async (
   const next = `${JSON.stringify(parsed, null, 2)}\n`;
   parseManifest(next);
   await writeFileAtomic(manifestPath, next);
+  await writeAppliedReleaseManifest(stellaRoot, commit, tag).catch((error) => {
+    logDesktopUpdateWarn("desktop-update.release-manifest.write-failed", {
+      tag: tag ?? undefined,
+      commit: shortCommit(commit),
+      error,
+    });
+  });
   return parseManifest(next);
 };
 
@@ -801,6 +819,41 @@ const writeFileAtomic = async (filePath: string, content: string) => {
     await fs.unlink(tempPath).catch(() => undefined);
     throw error;
   }
+};
+
+export const writeAppliedReleaseManifest = async (
+  stellaRoot: string,
+  commit: string,
+  tag: string | null,
+  options?: { releaseManifestBaseUrl?: string },
+): Promise<boolean> => {
+  if (!tag) return false;
+  const url = desktopReleaseManifestUrl(tag, options?.releaseManifestBaseUrl);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Release manifest download failed (${response.status}).`);
+  }
+  const manifest = (await response.json()) as Record<string, unknown>;
+  if (manifest.tag !== tag) {
+    throw new Error("Release manifest tag did not match the applied release.");
+  }
+  if (manifest.commit !== commit) {
+    throw new Error(
+      "Release manifest commit did not match the applied release.",
+    );
+  }
+  const schemaVersion = manifest.schemaVersion;
+  if (typeof schemaVersion !== "number" || schemaVersion < 1) {
+    throw new Error("Release manifest schemaVersion is invalid.");
+  }
+  if (!manifest.files || typeof manifest.files !== "object") {
+    throw new Error("Release manifest is missing file entries.");
+  }
+  await writeFileAtomic(
+    releaseManifestPathFromRoot(stellaRoot),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+  return true;
 };
 
 type SourcePackAppliedChangeForAgent = {
