@@ -12,6 +12,11 @@ import type { RuntimeStore } from "../storage/runtime-store.js";
 import { TOOL_IDS } from "../../contracts/agent-runtime.js";
 import { AnyToolArgsSchema, textFromUnknown } from "./shared.js";
 import { dispatchLocalTool } from "../tools/local-tool-dispatch.js";
+import {
+  sanitizeToolError,
+  sanitizeToolResult,
+  sanitizeToolVisibleText,
+} from "../tools/safety.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -92,20 +97,22 @@ const formatToolResult = (
   toolResult: ToolResult,
 ): { text: string; details: unknown } => {
   if (toolResult.error) {
+    const error = sanitizeToolError(toolResult.error);
     return {
-      text: `Error: ${toolResult.error}`,
+      text: `Error: ${error}`,
       details: mergeToolSideEffectsIntoDetails(
-        toolResult.details ?? { error: toolResult.error },
+        sanitizeToolResult(toolResult.details ?? { error }),
         toolResult.fileChanges,
         toolResult.producedFiles,
       ),
     };
   }
 
+  const result = sanitizeToolResult(toolResult.result);
   return {
-    text: textFromUnknown(toolResult.result),
+    text: sanitizeToolVisibleText(textFromUnknown(result)),
     details: mergeToolSideEffectsIntoDetails(
-      toolResult.details ?? toolResult.result,
+      sanitizeToolResult(toolResult.details ?? result),
       toolResult.fileChanges,
       toolResult.producedFiles,
     ),

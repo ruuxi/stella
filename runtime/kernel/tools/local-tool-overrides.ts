@@ -8,6 +8,7 @@
  */
 
 import { normalizeSafeExternalUrl } from "./network-guards.js";
+import { containsSecretLikeToken, sanitizeToolVisibleText } from "./safety.js";
 
 const MAX_FETCH_BODY_CHARS = 80_000;
 const FETCH_TIMEOUT_MS = 30_000;
@@ -45,6 +46,9 @@ export const localWebFetch = async (args: {
   prompt?: string;
 }): Promise<string> => {
   if (!args.url) return "Error: URL is required.";
+  if (containsSecretLikeToken(args.url)) {
+    return "Error: URL contains what appears to be an API key or token. Secrets must not be sent in URLs.";
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -53,22 +57,23 @@ export const localWebFetch = async (args: {
     let targetUrl = await normalizeSafeExternalUrl(args.url, safeUrlOptions());
 
     let response: Response | null = null;
-    for (let redirectCount = 0; redirectCount <= MAX_FETCH_REDIRECTS; redirectCount += 1) {
+    for (
+      let redirectCount = 0;
+      redirectCount <= MAX_FETCH_REDIRECTS;
+      redirectCount += 1
+    ) {
       response = await fetch(targetUrl, {
         signal: controller.signal,
         redirect: "manual",
         headers: {
           "User-Agent": "Stella/1.0 (Desktop Assistant)",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
         },
       });
 
       const location = response.headers.get("location");
-      if (
-        response.status >= 300 &&
-        response.status < 400 &&
-        location
-      ) {
+      if (response.status >= 300 && response.status < 400 && location) {
         targetUrl = await normalizeSafeExternalUrl(
           new URL(location, targetUrl).toString(),
           safeUrlOptions(),
@@ -97,7 +102,10 @@ export const localWebFetch = async (args: {
     const rawBody = await response.text();
 
     let text: string;
-    if (contentType.includes("text/html") || contentType.includes("application/xhtml")) {
+    if (
+      contentType.includes("text/html") ||
+      contentType.includes("application/xhtml")
+    ) {
       text = htmlToText(rawBody);
     } else {
       text = rawBody;
@@ -111,13 +119,13 @@ export const localWebFetch = async (args: {
       return "The page returned no readable text content.";
     }
 
-    return text;
+    return sanitizeToolVisibleText(text);
   } catch (error) {
     const msg = (error as Error).message ?? "Unknown error";
     if (msg.includes("abort")) {
       return `Error: Request timed out after ${FETCH_TIMEOUT_MS / 1000}s`;
     }
-    return `Error fetching URL: ${msg}`;
+    return `Error fetching URL: ${sanitizeToolVisibleText(msg)}`;
   } finally {
     clearTimeout(timeout);
   }

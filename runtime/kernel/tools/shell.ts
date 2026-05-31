@@ -28,6 +28,7 @@ import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 import { getStellaComputerSessionId } from "./stella-computer-session.js";
 import { inferShellMentionedPaths } from "./path-inference.js";
 import { isKnownSafeCommand } from "./safe-commands.js";
+import { sanitizeToolVisibleText } from "./safety.js";
 import type { OfficePreviewRef } from "../../contracts/office-preview.js";
 import {
   purgeExpiredDeferredDeletes,
@@ -1034,16 +1035,17 @@ export const startShell = (
   const launch = resolveShellLaunch(shellCommand);
 
   if ("error" in launch) {
+    const safeLaunchError = sanitizeToolVisibleText(launch.error);
     const record: ManagedShellRecord = {
       id,
       command,
       cwd,
-      output: launch.error,
+      output: safeLaunchError,
       running: false,
       exitCode: 127,
       startedAt: Date.now(),
       completedAt: Date.now(),
-      unreadOutput: launch.error,
+      unreadOutput: safeLaunchError,
       outputVersion: 1,
       waiters: new Set(),
       stdinOpen: false,
@@ -1085,8 +1087,12 @@ export const startShell = (
 
   const append = (data: Buffer) => {
     const chunk = data.toString();
-    record.output = truncate(`${record.output}${chunk}`);
-    record.unreadOutput = truncate(`${record.unreadOutput}${chunk}`, 200_000);
+    const safeChunk = sanitizeToolVisibleText(chunk);
+    record.output = truncate(`${record.output}${safeChunk}`);
+    record.unreadOutput = truncate(
+      `${record.unreadOutput}${safeChunk}`,
+      200_000,
+    );
     notifyShellActivity(record);
     onActivity?.(record);
   };
@@ -1098,9 +1104,10 @@ export const startShell = (
     notifyShellActivity(record);
   });
   child.on("error", (error) => {
-    record.output = truncate(`${record.output}${error.message}`);
+    const safeMessage = sanitizeToolVisibleText(error.message);
+    record.output = truncate(`${record.output}${safeMessage}`);
     record.unreadOutput = truncate(
-      `${record.unreadOutput}${error.message}`,
+      `${record.unreadOutput}${safeMessage}`,
       200_000,
     );
     record.running = false;
@@ -1173,7 +1180,7 @@ export const runShell = async (
       finished = true;
       clearTimeout(timer);
       // Clean Windows console noise (chcp output) that confuses LLMs
-      const cleanedOutput = output
+      const cleanedOutput = sanitizeToolVisibleText(output)
         .replace(/^Active code page: \d+\s*/gm, "")
         .replace(/^\s+/, ""); // Trim leading whitespace after removal
       if (code === 0) {
@@ -1267,7 +1274,7 @@ const buildExecToolPayload = (
     session_id: record.running ? record.id : null,
     running: record.running,
     exit_code: record.running ? null : record.exitCode,
-    output: drained.text,
+    output: sanitizeToolVisibleText(drained.text),
     wall_time_seconds: wallTimeSeconds,
     // Always report the pre-truncation token estimate so callers
     // can distinguish "small output" from "output omitted because it was huge".
@@ -1548,7 +1555,7 @@ export const handleBash = async (
           ),
         )
       : undefined;
-  const extracted = extractOfficePreviewRef(output);
+  const extracted = extractOfficePreviewRef(sanitizeToolVisibleText(output));
   return {
     result: truncate(extracted.cleanedOutput),
     ...(producedFiles ? { producedFiles } : {}),
@@ -1588,7 +1595,7 @@ export const handleShellStatus = async (
   if (!record) return { error: `Shell not found: ${shellId}` };
 
   const tail_lines = Number(args.tail_lines ?? 50);
-  const output = record.output || "(no output yet)";
+  const output = sanitizeToolVisibleText(record.output || "(no output yet)");
   // Get last N lines
   const lines = output.split("\n");
   const tail = truncate(lines.slice(-tail_lines).join("\n"));
@@ -1627,6 +1634,8 @@ export const handleKillShell = async (
   }
   record.kill();
   return {
-    result: `Killed shell ${shellId}.\n\nOutput:\n${truncate(record.output)}`,
+    result: `Killed shell ${shellId}.\n\nOutput:\n${truncate(
+      sanitizeToolVisibleText(record.output),
+    )}`,
   };
 };

@@ -52,6 +52,7 @@ import {
 } from "./registry.js";
 import { buildBuiltinTools } from "./defs/index.js";
 import type { ToolDefinition as BuiltinToolDefinition } from "./types.js";
+import { sanitizeToolError, sanitizeToolResult } from "./safety.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
 
@@ -300,7 +301,9 @@ export const createToolHost = ({
 
     const startedAt = Date.now();
     try {
-      const result = await handler(toolArgs, context, extras);
+      const result = sanitizeToolResult(
+        await handler(toolArgs, context, extras),
+      );
       const duration = Date.now() - startedAt;
       log(`Tool ${toolName} completed in ${duration}ms`, {
         hasResult: "result" in result,
@@ -315,7 +318,11 @@ export const createToolHost = ({
     } catch (error) {
       const duration = Date.now() - startedAt;
       logError(`Tool ${toolName} threw after ${duration}ms:`, error);
-      return { error: `Tool ${toolName} failed: ${(error as Error).message}` };
+      return {
+        error: sanitizeToolError(
+          `Tool ${toolName} failed: ${(error as Error).message}`,
+        ),
+      };
     }
   };
 

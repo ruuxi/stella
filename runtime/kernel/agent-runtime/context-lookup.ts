@@ -7,6 +7,10 @@ import type { HostAppBrowserContextSnapshot } from "../../protocol/index.js";
 import type { LocalContextEvent } from "../local-history.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { readOptionalTextFile } from "../shared/read-optional-text-file.js";
+import {
+  sanitizePromptContext,
+  sanitizeToolVisibleText,
+} from "../tools/safety.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import {
   runClaudeCodeAgentTextCompletion,
@@ -19,10 +23,7 @@ const MAX_MEMORY_SEARCH_TERM_CHARS = 120;
 const MAX_MEMORY_SEARCH_MATCHES = 40;
 const MAX_MEMORY_SEARCH_CONTEXT_LINES = 1;
 const MAX_MEMORY_SEARCH_RESULTS_CHARS = 16_000;
-const CHRONICLE_DIR_SEGMENTS = [
-  "memories_extensions",
-  "chronicle",
-] as const;
+const CHRONICLE_DIR_SEGMENTS = ["memories_extensions", "chronicle"] as const;
 
 type ContextLookupStore = Pick<RuntimeStore, "listActiveThreads">;
 
@@ -181,7 +182,7 @@ const readMemoryFiles = async (
     const content = await readOptionalTextFile(file.path);
     if (!content) continue;
     blocks.push(
-      `<memory_file path="${file.displayPath}">\n${content}\n</memory_file>`,
+      `<memory_file path="${file.displayPath}">\n${sanitizePromptContext(content, file.displayPath)}\n</memory_file>`,
     );
   }
   if (blocks.length === 0) return "No memory files found.";
@@ -257,7 +258,7 @@ const readMemorySearchResults = async (
       blocks.push(
         [
           `<match path="${escapeAttribute(file.displayPath)}" lines="${rangeText}">`,
-          numbered,
+          sanitizeToolVisibleText(numbered),
           "</match>",
         ].join("\n"),
       );
