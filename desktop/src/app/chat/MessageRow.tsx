@@ -21,7 +21,17 @@
  * Reasoning text is intentionally NOT rendered anywhere in this surface
  * (the underlying data still flows through state for model history).
  */
-import { memo } from "react";
+import {
+  Fragment,
+  memo,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { AppWindowMac, Crop, Paperclip } from "lucide-react";
+import { ChipPreviewPortal } from "@/app/chat/ChipPreviewPortal";
+import { useHoverPreview } from "@/app/chat/use-hover-preview";
 import type {
   Attachment,
   ChannelEnvelope,
@@ -83,6 +93,176 @@ const summarizeReactions = (envelope: ChannelEnvelope): string | null => {
   return `Reactions ${labels.join(" ")}${suffix}`;
 };
 
+/**
+ * Window context chip inside the user bubble. The screenshot preview is
+ * portaled to `document.body` (via `ChipPreviewPortal`) so it escapes the
+ * scrolling chat container's clip rect — a plain absolutely-positioned
+ * popover gets cropped to the message bubble / scroll viewport.
+ */
+function UserWindowContextChip({
+  label,
+  previewImageUrl,
+}: {
+  label: string;
+  previewImageUrl?: string;
+}) {
+  const { triggerRef, open } = useHoverPreview<HTMLSpanElement>();
+  return (
+    <span className="event-window-badge-hovercard">
+      <span
+        ref={triggerRef}
+        className="event-context-chip event-context-chip--window"
+        data-has-preview={previewImageUrl ? "true" : undefined}
+        tabIndex={previewImageUrl ? 0 : undefined}
+      >
+        <AppWindowMac
+          className="event-context-chip__icon"
+          size={13}
+          strokeWidth={1.75}
+          aria-hidden="true"
+        />
+        <span className="event-context-chip__label">{label}</span>
+      </span>
+      {previewImageUrl && (
+        <ChipPreviewPortal
+          triggerRef={triggerRef}
+          open={open}
+          preferredPlacement="top"
+          className="event-window-preview-card"
+        >
+          <img
+            src={previewImageUrl}
+            alt="Window content preview"
+            className="event-window-preview-img"
+          />
+        </ChipPreviewPortal>
+      )}
+    </span>
+  );
+}
+
+type ContextChip = { key: string; node: ReactNode };
+
+// The chips sit above the bubble and are capped to the same 85% of the
+// message-row column that the bubble uses (`.event-item.user max-width: 85%`),
+// so the overflow math matches what the user sees. `CHIP_GAP` mirrors the
+// chip row's `gap: 6px`.
+const BUBBLE_MAX_FRACTION = 0.85;
+const CHIP_GAP = 6;
+
+/**
+ * Lays out the user-bubble context chips on a single line. When they would
+ * overflow the bubble's max width, the trailing chips collapse into a
+ * "+N" pill; hovering / focusing it reveals the rest in a portaled popover
+ * (portaled so it escapes the scrolling chat container's clip rect).
+ */
+function UserContextChips({ chips }: { chips: ContextChip[] }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  // The "+N" trigger mounts only after the measurement pass collapses chips,
+  // so its hover listeners must be plain React props (a mount-time ref hook
+  // would bind to a null element and never fire).
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(chips.length);
+  const signature = chips.map((chip) => chip.key).join("|");
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const measure = measureRef.current;
+    if (!root || !measure) return;
+    const column = root.closest(".event-row") as HTMLElement | null;
+
+    const compute = () => {
+      const columnWidth = column?.clientWidth ?? root.clientWidth;
+      const available = columnWidth * BUBBLE_MAX_FRACTION;
+      const items = Array.from(measure.children) as HTMLElement[];
+      if (items.length === 0) return;
+      // Last measure child is the "+N" template; the rest map to `chips`.
+      const overflowEl = items[items.length - 1];
+      const chipEls = items.slice(0, items.length - 1);
+      if (chipEls.length <= 1) {
+        setVisibleCount(chipEls.length);
+        return;
+      }
+
+      let total = 0;
+      chipEls.forEach((el, index) => {
+        total += el.offsetWidth + (index > 0 ? CHIP_GAP : 0);
+      });
+      if (total <= available) {
+        setVisibleCount(chipEls.length);
+        return;
+      }
+
+      const reserve = overflowEl.offsetWidth + CHIP_GAP;
+      let used = 0;
+      let count = 0;
+      for (let index = 0; index < chipEls.length; index += 1) {
+        const width = chipEls[index].offsetWidth + (index > 0 ? CHIP_GAP : 0);
+        if (used + width + reserve <= available) {
+          used += width;
+          count += 1;
+        } else {
+          break;
+        }
+      }
+      setVisibleCount(Math.max(1, count));
+    };
+
+    compute();
+    const observer = new ResizeObserver(compute);
+    if (column) observer.observe(column);
+    observer.observe(measure);
+    return () => observer.disconnect();
+  }, [signature]);
+
+  const visible = chips.slice(0, visibleCount);
+  const hidden = chips.slice(visibleCount);
+
+  return (
+    <div className="event-context-chips" ref={rootRef}>
+      <div className="event-context-chips__measure" ref={measureRef} aria-hidden>
+        {chips.map((chip) => (
+          <Fragment key={chip.key}>{chip.node}</Fragment>
+        ))}
+        <span className="event-context-chip event-context-chip--overflow">
+          +9
+        </span>
+      </div>
+      {visible.map((chip) => (
+        <Fragment key={chip.key}>{chip.node}</Fragment>
+      ))}
+      {hidden.length > 0 && (
+        <>
+          <button
+            type="button"
+            ref={triggerRef}
+            className="event-context-chip event-context-chip--overflow"
+            aria-label={`Show ${hidden.length} more`}
+            onMouseEnter={() => setOverflowOpen(true)}
+            onMouseLeave={() => setOverflowOpen(false)}
+            onFocus={() => setOverflowOpen(true)}
+            onBlur={() => setOverflowOpen(false)}
+          >
+            +{hidden.length}
+          </button>
+          <ChipPreviewPortal
+            triggerRef={triggerRef}
+            open={overflowOpen}
+            preferredPlacement="top"
+            className="event-context-overflow-card"
+          >
+            {hidden.map((chip) => (
+              <Fragment key={chip.key}>{chip.node}</Fragment>
+            ))}
+          </ChipPreviewPortal>
+        </>
+      )}
+    </div>
+  );
+}
+
 type UserRowProps = {
   row: UserRowViewModel;
   onOpenAttachment?: (attachment: Attachment) => void;
@@ -98,94 +278,122 @@ export const UserMessageRow = memo(
     const reactionSummary = channelEnvelope
       ? summarizeReactions(channelEnvelope)
       : null;
-    const hasChannelMeta = Boolean(channelEnvelope?.provider);
+
+    const chips: ContextChip[] = [];
+    if (windowLabel) {
+      chips.push({
+        key: "window",
+        node: (
+          <UserWindowContextChip
+            label={windowLabel}
+            previewImageUrl={windowPreviewImageUrl ?? undefined}
+          />
+        ),
+      });
+    }
+    if (appSelectionLabel) {
+      chips.push({
+        key: "app-selection",
+        node: (
+          <span className="event-context-chip event-context-chip--app-selection">
+            <Crop
+              className="event-context-chip__icon"
+              size={13}
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
+            <span className="event-context-chip__label">
+              {appSelectionLabel}
+            </span>
+          </span>
+        ),
+      });
+    }
+    if (channelEnvelope?.provider) {
+      chips.push({
+        key: "channel-provider",
+        node: (
+          <span className="event-channel-badge provider">
+            {formatProvider(channelEnvelope.provider)}
+          </span>
+        ),
+      });
+    }
+    if (channelEnvelope && channelEnvelope.kind !== "message") {
+      chips.push({
+        key: "channel-kind",
+        node: (
+          <span className="event-channel-badge kind">
+            {formatChannelKind(channelEnvelope.kind)}
+          </span>
+        ),
+      });
+    }
+    if (channelEnvelope && reactionSummary) {
+      chips.push({
+        key: "channel-reaction",
+        node: (
+          <span className="event-channel-badge reaction">
+            {reactionSummary}
+          </span>
+        ),
+      });
+    }
+    attachments.forEach((attachment, index) => {
+      const safeUrl = sanitizeAttachmentImageUrl(attachment.url);
+      const key = attachment.id ?? `attachment-${index}`;
+      if (safeUrl) {
+        chips.push({
+          key,
+          node: (
+            <img
+              src={safeUrl}
+              alt="Attachment"
+              className="event-attachment"
+              onClick={() => onOpenAttachment?.(attachment)}
+              role={onOpenAttachment ? "button" : undefined}
+              tabIndex={onOpenAttachment ? 0 : undefined}
+              onKeyDown={(eventKey) => {
+                if (
+                  onOpenAttachment &&
+                  (eventKey.key === "Enter" || eventKey.key === " ")
+                ) {
+                  onOpenAttachment(attachment);
+                }
+              }}
+            />
+          ),
+        });
+        return;
+      }
+      chips.push({
+        key,
+        node: (
+          <div className="event-attachment-fallback">
+            <Paperclip
+              className="event-attachment-fallback__icon"
+              size={13}
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
+            <span className="event-attachment-fallback__label">
+              {getAttachmentLabel(attachment, index)}
+            </span>
+          </div>
+        ),
+      });
+    });
 
     return (
       <div
         className={`event-row event-row--user${row.justSent ? " event-row--user--just-sent" : ""}`}
       >
-        <div className="event-item user">
-          {windowLabel && (
-            <span className="event-window-badge-hovercard">
-              <span
-                className="event-window-badge"
-                tabIndex={windowPreviewImageUrl ? 0 : undefined}
-              >
-                {windowLabel}
-              </span>
-              {windowPreviewImageUrl && (
-                <div className="event-window-preview" role="tooltip">
-                  <img
-                    src={windowPreviewImageUrl}
-                    alt="Window content preview"
-                    className="event-window-preview-img"
-                  />
-                </div>
-              )}
-            </span>
-          )}
-          {appSelectionLabel && (
-            <span className="event-window-badge event-window-badge--app-selection">
-              {appSelectionLabel}
-            </span>
-          )}
-          {hasChannelMeta && (
-            <div className="event-channel-meta">
-              {channelEnvelope?.provider && (
-                <span className="event-channel-badge provider">
-                  {formatProvider(channelEnvelope.provider)}
-                </span>
-              )}
-              {channelEnvelope && channelEnvelope.kind !== "message" && (
-                <span className="event-channel-badge kind">
-                  {formatChannelKind(channelEnvelope.kind)}
-                </span>
-              )}
-              {channelEnvelope && reactionSummary && (
-                <span className="event-channel-badge reaction">
-                  {reactionSummary}
-                </span>
-              )}
-            </div>
-          )}
-          {text.trim() && <UserMessageBody text={text} />}
-          {attachments.length > 0 && (
-            <div className="event-attachments">
-              {attachments.map((attachment, index) => {
-                const safeUrl = sanitizeAttachmentImageUrl(attachment.url);
-                if (safeUrl) {
-                  return (
-                    <img
-                      key={attachment.id ?? `${index}`}
-                      src={safeUrl}
-                      alt="Attachment"
-                      className="event-attachment"
-                      onClick={() => onOpenAttachment?.(attachment)}
-                      role={onOpenAttachment ? "button" : undefined}
-                      tabIndex={onOpenAttachment ? 0 : undefined}
-                      onKeyDown={(eventKey) => {
-                        if (
-                          onOpenAttachment &&
-                          (eventKey.key === "Enter" || eventKey.key === " ")
-                        ) {
-                          onOpenAttachment(attachment);
-                        }
-                      }}
-                    />
-                  );
-                }
-                return (
-                  <div
-                    key={attachment.id ?? `${index}`}
-                    className="event-attachment-fallback"
-                  >
-                    {getAttachmentLabel(attachment, index)}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        {chips.length > 0 && <UserContextChips chips={chips} />}
+        {text.trim() && (
+          <div className="event-item user">
+            <UserMessageBody text={text} />
+          </div>
+        )}
       </div>
     );
   },
