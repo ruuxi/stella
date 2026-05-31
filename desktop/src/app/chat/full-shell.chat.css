@@ -13,8 +13,8 @@
   --chat-text-size: 15px;
   --chat-text-weight: 400;
   --chat-text-strong-weight: 500;
-  --chat-text-tracking: 0.032em;
-  --chat-text-line-height: 1.75;
+  --chat-text-tracking: 0;
+  --chat-text-line-height: 1.5;
   --chat-text-color: var(--text-strong);
 }
 
@@ -303,12 +303,7 @@
   font-size: var(--chat-text-size);
   font-weight: var(--chat-text-weight);
   letter-spacing: var(--chat-text-tracking);
-  /* Assistant markdown deliberately keeps the airier base `.markdown`
-     line-height (set in `markdown.css`) instead of the chat body's
-     1.75 — long-form assistant responses read better with extra
-     breathing room than the user bubble's compact ratio. Compact
-     surfaces override this back down to `--chat-text-line-height`
-     in `compact-conversation.css`. */
+  line-height: var(--chat-text-line-height);
 }
 
 .event-item.assistant .markdown :is(p, li, blockquote, td, th) {
@@ -326,46 +321,144 @@
 .event-item.assistant .markdown h5,
 .event-item.assistant .markdown h6 { font-size: 12px; }
 
+/* Context chip row inside the user bubble — surfaces the window / screen
+   selection attached to the message. Pill aesthetic mirrors the composer
+   context chips so attached context reads consistently before and after
+   send. */
+.event-context-chips {
+  position: relative;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  min-width: 0;
+  /* Chips sit above the bubble as their own row; pull them closer to the
+     bubble than the default 12px inter-row gap. */
+  margin-bottom: -6px;
+}
+
+/* Off-flow row used purely to measure each chip's natural width so the
+   layout effect can decide how many fit before collapsing the rest into
+   the "+N" pill. Absolute so it never inflates the fit-content bubble. */
+.event-context-chips__measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: none;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Popover holding the collapsed chips. Portaled to document.body, so the
+   portal owns position/opacity; this paints the floating panel only. */
+.event-context-overflow-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: min(360px, calc(100vw - 64px));
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.22),
+    0 4px 12px rgba(0, 0, 0, 0.14);
+}
+
+.event-context-overflow-card .event-attachment {
+  max-width: 100%;
+}
+
 .event-window-badge-hovercard {
   position: relative;
   display: inline-flex;
-  align-self: flex-start;
-  width: fit-content;
   min-width: 0;
   max-width: min(100%, 340px);
 }
 
-.event-window-badge {
-  display: inline-block;
+/* Unified chip shell. Every attached-context chip (window, screen
+   selection, channel, attachment, overflow "+N") shares the same
+   primary-tinted "image chip" look. */
+.event-context-chip,
+.event-channel-badge,
+.event-attachment-fallback,
+.event-context-chip--overflow {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: min(100%, 340px);
+  padding: 4px 10px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 500;
-  line-height: 1;
-  padding: 5px 10px;
-  border-radius: 7px;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-weak);
-  margin-bottom: 7px;
-  max-width: min(100%, 340px);
+  line-height: 1.3;
+  color: color-mix(in oklch, var(--text-strong) 80%, var(--primary));
+  border: 1px solid color-mix(in oklch, var(--primary) 22%, transparent);
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+/* Tighten the leading padding when a chip carries an icon. */
+.event-context-chip:has(> .event-context-chip__icon),
+.event-attachment-fallback {
+  padding-left: 8px;
+}
+
+.event-context-chip__icon,
+.event-attachment-fallback__icon {
+  flex: 0 0 auto;
+  color: color-mix(in oklch, var(--primary) 70%, var(--foreground));
+}
+
+.event-context-chip__label,
+.event-attachment-fallback__label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.event-window-badge--app-selection {
-  align-self: flex-start;
+.event-context-chip--window[data-has-preview] {
+  cursor: default;
 }
 
-.event-window-badge-hovercard:focus-within .event-window-badge {
+.event-context-chip--overflow {
+  justify-content: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+button.event-context-chip--overflow {
+  cursor: pointer;
+}
+
+.event-window-badge-hovercard:hover .event-context-chip,
+.event-window-badge-hovercard:focus-within .event-context-chip,
+button.event-context-chip--overflow:hover,
+button.event-context-chip--overflow:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 24%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 38%, transparent);
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
 }
 
-.event-window-preview {
-  position: absolute;
-  left: 0;
-  right: auto;
-  top: calc(100% + 10px);
-  z-index: 5;
+/* Window screenshot preview. Portaled to document.body via
+   `ChipPreviewPortal`, which owns position/opacity/transform inline, so
+   this rule only paints the floating card shell. */
+.event-window-preview-card {
   width: fit-content;
   max-width: min(460px, calc(100vw - 64px));
   padding: 6px;
@@ -375,17 +468,6 @@
   box-shadow:
     0 18px 44px rgba(0, 0, 0, 0.22),
     0 4px 12px rgba(0, 0, 0, 0.14);
-  opacity: 0;
-  transform: translateY(-4px);
-  pointer-events: none;
-  transition:
-    opacity 140ms ease,
-    transform 140ms ease;
-}
-
-.event-item.user .event-window-preview {
-  left: auto;
-  right: 0;
 }
 
 .event-window-preview-img {
@@ -398,46 +480,13 @@
   background: color-mix(in srgb, var(--surface-inset) 55%, transparent);
 }
 
-.event-window-badge-hovercard:hover .event-window-preview,
-.event-window-badge-hovercard:focus-within .event-window-preview {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-.event-channel-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-.event-channel-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  line-height: 1;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border-base);
-  background: color-mix(in srgb, var(--surface-inset) 35%, transparent);
-  color: var(--text-weak);
-}
-
 .event-channel-badge.provider {
   font-weight: 600;
 }
 
 .event-channel-badge.kind {
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.event-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
+  letter-spacing: 0.05em;
 }
 
 .event-attachment {
@@ -451,14 +500,6 @@
 
 .event-attachment:hover {
   transform: scale(1.02);
-}
-
-.event-attachment-fallback {
-  font-size: 12px;
-  color: var(--text-weak);
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-inset);
 }
 
 .event-empty {

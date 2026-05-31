@@ -21,8 +21,8 @@
   --chat-text-size: 15px;
   --chat-text-weight: 400;
   --chat-text-strong-weight: 500;
-  --chat-text-tracking: 0.032em;
-  --chat-text-line-height: 1.75;
+  --chat-text-tracking: 0;
+  --chat-text-line-height: 1.5;
   --chat-text-color: var(--text-strong);
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
