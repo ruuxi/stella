@@ -66,11 +66,8 @@ import {
   type StorePackageRecord,
   type StorePackageReleaseRecord,
   type StorePublishArgs,
-  type StorePublishBlueprintArgs,
   type StorePublishSelectedFeaturesArgs,
   type StoreReleaseSourcePack,
-  type StoreThreadSendInput,
-  type StoreThreadSnapshot,
   type RuntimeInitializeParams,
   type RuntimeInitializeResult,
 } from "../protocol/index.js";
@@ -101,7 +98,6 @@ type RuntimeHostEvents = {
   "voice-self-mod-hmr-state": RuntimeVoiceHmrStatePayload;
   "voice-action-completed": RuntimeVoiceActionCompletedPayload;
   "local-chat-updated": LocalChatUpdatedPayload | null;
-  "store-thread-updated": StoreThreadSnapshot;
   "schedule-updated": void;
 };
 
@@ -1813,7 +1809,13 @@ export class StellaRuntimeHost {
 
   async recordSourcePackHistory(payload: {
     sourcePack: StoreReleaseSourcePack;
-    origin?: "self-mod" | "store-install" | "store-update" | "store-uninstall" | "desktop-update" | "official";
+    origin?:
+      | "self-mod"
+      | "store-install"
+      | "store-update"
+      | "store-uninstall"
+      | "desktop-update"
+      | "official";
     packageId?: string;
     releaseNumber?: number;
     featureId?: string;
@@ -1881,17 +1883,6 @@ export class StellaRuntimeHost {
     );
   }
 
-  async publishStoreBlueprint(args: StorePublishBlueprintArgs) {
-    return await this.requestWorker<StorePackageReleaseRecord>(
-      METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_BLUEPRINT,
-      args,
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
   async publishStoreSelectedFeatures(args: StorePublishSelectedFeaturesArgs) {
     return await this.requestWorker<StorePackageReleaseRecord>(
       METHOD_NAMES.INTERNAL_WORKER_PUBLISH_STORE_SELECTED_FEATURES,
@@ -1927,64 +1918,6 @@ export class StellaRuntimeHost {
   }) {
     return await this.requestWorker<StoreInstallRecord>(
       METHOD_NAMES.INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
-  async getStoreThread() {
-    return await this.requestWorker<StoreThreadSnapshot>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_GET,
-      {},
-      {
-        ensureWorker: true,
-        recordActivity: false,
-      },
-    );
-  }
-
-  async sendStoreThreadMessage(payload: StoreThreadSendInput) {
-    return await this.requestWorker<StoreThreadSnapshot>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_SEND_MESSAGE,
-      payload,
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
-  async cancelStoreThreadTurn() {
-    return await this.requestWorker<StoreThreadSnapshot>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_CANCEL,
-      {},
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
-  async denyLatestStoreBlueprint() {
-    return await this.requestWorker<StoreThreadSnapshot>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_DENY_LATEST_BLUEPRINT,
-      {},
-      {
-        ensureWorker: true,
-        recordActivity: true,
-      },
-    );
-  }
-
-  async markStoreBlueprintPublished(payload: {
-    messageId: string;
-    releaseNumber: number;
-  }) {
-    return await this.requestWorker<StoreThreadSnapshot>(
-      METHOD_NAMES.INTERNAL_WORKER_STORE_THREAD_MARK_BLUEPRINT_PUBLISHED,
       payload,
       {
         ensureWorker: true,
@@ -2879,12 +2812,6 @@ export class StellaRuntimeHost {
         const payload = params as LocalChatUpdatedPayload | null;
         this.handleLocalChatUpdateForConnectorFollowup(payload);
         this.events.emit("local-chat-updated", payload);
-      },
-    );
-    peer.registerNotificationHandler(
-      NOTIFICATION_NAMES.STORE_THREAD_UPDATED,
-      (params) => {
-        this.events.emit("store-thread-updated", params as StoreThreadSnapshot);
       },
     );
     peer.registerNotificationHandler(

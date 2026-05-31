@@ -15,7 +15,6 @@ import type {
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
 import { assertPrivilegedRequest } from "./privileged-ipc.js";
-import { IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION } from "../../src/shared/contracts/ipc-channels.js";
 
 const STORE_INSTALL_ARTIFACT_LIMIT = 20;
 
@@ -98,10 +97,6 @@ type StoreHandlersOptions = {
   goBackInStoreWebView?: () => void;
   goForwardInStoreWebView?: () => void;
   reloadStoreWebView?: () => void;
-  showBlueprintNotification?: (payload: {
-    messageId: string;
-    name: string;
-  }) => void;
   dispatchStoreWebLocalAction?: (
     action: unknown,
     opts?: { timeoutMs?: number },
@@ -149,17 +144,16 @@ const installConfirmedStoreRelease = async (
   if (!packageId || !Number.isFinite(releaseNumber)) {
     throw new Error("Invalid Store install request.");
   }
-  // Confirmation lives in the Store webview (`InstallConfirmDialog`)
-  // which shows the rendered blueprint markdown before the renderer
-  // even reaches this handler. We still fetch our own copy of the
-  // release here so a compromised renderer can't substitute install
-  // contents — the security boundary the OS dialog used to enforce.
+  // Confirmation lives in the Store webview (`InstallConfirmDialog`), which
+  // shows the rendered release summary before the renderer reaches this
+  // handler. Main still fetches its own release copy so a compromised renderer
+  // cannot substitute install contents.
   const release = (await runner.getStorePackageRelease(
     packageId,
     releaseNumber,
   )) satisfies StorePackageReleaseRecord | null;
   if (!release?.blueprintMarkdown) {
-    throw new Error("This package is missing its install blueprint.");
+    throw new Error("This package is missing its install release summary.");
   }
   const installPayload = {
     packageId: release.packageId,
@@ -266,25 +260,6 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     assertStoreWebRequest(event, channel);
     return await action(await waitForRunner());
   };
-
-  ipcMain.handle(
-    IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
-    async (event, payload?: { messageId?: string; name?: string }) => {
-      assertPrivilegedRequest(
-        options,
-        event,
-        IPC_STORE_SHOW_BLUEPRINT_NOTIFICATION,
-      );
-      const messageId =
-        typeof payload?.messageId === "string" ? payload.messageId : "";
-      const name = typeof payload?.name === "string" ? payload.name.trim() : "";
-      if (!messageId || !name) {
-        return { ok: false };
-      }
-      options.showBlueprintNotification?.({ messageId, name });
-      return { ok: true };
-    },
-  );
 
   ipcMain.handle(
     "storeWeb:show",
@@ -582,7 +557,7 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
 
   // Renderer install requests name a Store package/release only. Main fetches
   // the release, asks for native confirmation, then installs the fetched
-  // blueprint so a compromised renderer cannot supply install contents.
+  // source-backed release so a compromised renderer cannot supply contents.
   ipcMain.handle(
     "store:installFromBlueprint",
     async (
@@ -634,40 +609,6 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     releaseNotes?: string;
   };
 
-  // Legacy renderer-side publish entry point. The normal UI now publishes
-  // selected source features directly; blueprint drafts still resolve through
-  // the worker so old drafts cannot bypass source-pack construction.
-  ipcMain.handle(
-    "store:publishBlueprint",
-    async (
-      event,
-      payload: {
-        messageId: string;
-        packageId: string;
-        asUpdate: boolean;
-        displayName?: string;
-        description?: string;
-        category?:
-          | "apps-games"
-          | "productivity"
-          | "customization"
-          | "skills-agents"
-          | "integrations"
-          | "other";
-        manifest: Record<string, unknown>;
-        releaseNotes?: string;
-      },
-    ) =>
-      await withStoreRunner(
-        event,
-        "store:publishBlueprint",
-        async (runner) =>
-          await runner.publishStoreBlueprint(
-            payload as Parameters<typeof runner.publishStoreBlueprint>[0],
-          ),
-      ),
-  );
-
   ipcMain.handle(
     "store:publishSelectedFeatures",
     async (event, payload: StorePublishSelectedFeaturesPayload) =>
@@ -679,37 +620,6 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
             payload as Parameters<
               typeof runner.publishStoreSelectedFeatures
             >[0],
-          ),
-      ),
-  );
-
-  ipcMain.handle(
-    "storeWeb:publishBlueprint",
-    async (
-      event,
-      payload: {
-        messageId: string;
-        packageId: string;
-        asUpdate: boolean;
-        displayName?: string;
-        description?: string;
-        category?:
-          | "apps-games"
-          | "productivity"
-          | "customization"
-          | "skills-agents"
-          | "integrations"
-          | "other";
-        manifest: Record<string, unknown>;
-        releaseNotes?: string;
-      },
-    ) =>
-      await withStoreWebRunner(
-        event,
-        "storeWeb:publishBlueprint",
-        async (runner) =>
-          await runner.publishStoreBlueprint(
-            payload as Parameters<typeof runner.publishStoreBlueprint>[0],
           ),
       ),
   );
@@ -746,108 +656,6 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
         (await runner.listInstalledMods()) satisfies StoreInstallRecord[],
     );
   });
-
-  ipcMain.handle("store:getThread", async (event) => {
-    return await withStoreRunner(
-      event,
-      "store:getThread",
-      async (runner) => await runner.getStoreThread(),
-    );
-  });
-
-  ipcMain.handle("storeWeb:getThread", async (event) => {
-    return await withStoreWebRunner(
-      event,
-      "storeWeb:getThread",
-      async (runner) => await runner.getStoreThread(),
-    );
-  });
-
-  ipcMain.handle(
-    "store:sendThreadMessage",
-    async (
-      event,
-      payload: {
-        text: string;
-        attachedFeatureNames?: string[];
-        editingBlueprint?: boolean;
-      },
-    ) =>
-      await withStoreRunner(
-        event,
-        "store:sendThreadMessage",
-        async (runner) => await runner.sendStoreThreadMessage(payload),
-      ),
-  );
-
-  ipcMain.handle(
-    "storeWeb:sendThreadMessage",
-    async (
-      event,
-      payload: {
-        text: string;
-        attachedFeatureNames?: string[];
-        editingBlueprint?: boolean;
-      },
-    ) =>
-      await withStoreWebRunner(
-        event,
-        "storeWeb:sendThreadMessage",
-        async (runner) => await runner.sendStoreThreadMessage(payload),
-      ),
-  );
-
-  ipcMain.handle("store:cancelThreadTurn", async (event) => {
-    return await withStoreRunner(
-      event,
-      "store:cancelThreadTurn",
-      async (runner) => await runner.cancelStoreThreadTurn(),
-    );
-  });
-
-  ipcMain.handle("storeWeb:cancelThreadTurn", async (event) => {
-    return await withStoreWebRunner(
-      event,
-      "storeWeb:cancelThreadTurn",
-      async (runner) => await runner.cancelStoreThreadTurn(),
-    );
-  });
-
-  ipcMain.handle("store:denyLatestBlueprint", async (event) => {
-    return await withStoreRunner(
-      event,
-      "store:denyLatestBlueprint",
-      async (runner) => await runner.denyLatestStoreBlueprint(),
-    );
-  });
-
-  ipcMain.handle("storeWeb:denyLatestBlueprint", async (event) => {
-    return await withStoreWebRunner(
-      event,
-      "storeWeb:denyLatestBlueprint",
-      async (runner) => await runner.denyLatestStoreBlueprint(),
-    );
-  });
-
-  ipcMain.handle(
-    "store:markBlueprintPublished",
-    async (event, payload: { messageId: string; releaseNumber: number }) =>
-      await withStoreRunner(
-        event,
-        "store:markBlueprintPublished",
-        async (runner) => await runner.markStoreBlueprintPublished(payload),
-      ),
-  );
-
-  ipcMain.handle(
-    "storeWeb:markBlueprintPublished",
-    async (event, payload: { messageId: string; releaseNumber: number }) =>
-      await withStoreWebRunner(
-        event,
-        "storeWeb:markBlueprintPublished",
-        async (runner) => await runner.markStoreBlueprintPublished(payload),
-      ),
-  );
 
   ipcMain.handle(
     "store:uninstallMod",

@@ -18,6 +18,7 @@ type TestHostContext = {
   host: ReturnType<typeof createToolHost>;
   createdTasks: Array<Record<string, unknown>>;
   contextLookups: Array<Record<string, unknown>>;
+  sourceImports: Array<Record<string, unknown>>;
 };
 
 const activeContexts = new Set<TestHostContext>();
@@ -39,6 +40,7 @@ const createTestHost = async (
 
   const createdTasks: Array<Record<string, unknown>> = [];
   const contextLookups: Array<Record<string, unknown>> = [];
+  const sourceImports: Array<Record<string, unknown>> = [];
 
   const host = createToolHost({
     stellaRoot: rootPath,
@@ -60,6 +62,18 @@ const createTestHost = async (
       contextLookups.push(payload);
       return "Relevant context for this turn.";
     },
+    sourceImportApi: {
+      importSource: async (payload) => {
+        sourceImports.push(payload);
+        return {
+          status: "no-changes",
+          message: "already imported",
+          importRoot: path.join(rootPath, "raw", "source-imports", "test"),
+          sourceRoot: rootPath,
+          commitHash: null,
+        };
+      },
+    },
   });
 
   const context = {
@@ -68,6 +82,7 @@ const createTestHost = async (
     host,
     createdTasks,
     contextLookups,
+    sourceImports,
   };
   activeContexts.add(context);
   return context;
@@ -101,6 +116,7 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("spawn_agent")).toBe(true);
     expect(orchestratorTools.has("send_input")).toBe(true);
     expect(orchestratorTools.has("pause_agent")).toBe(true);
+    expect(orchestratorTools.has("import_source")).toBe(true);
     expect(orchestratorTools.has("Display")).toBe(false);
     expect(orchestratorTools.has("DisplayGuidelines")).toBe(false);
     expect(orchestratorTools.has("image_gen")).toBe(true);
@@ -130,6 +146,7 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("Memory")).toBe(false);
     expect(generalTools.has("MemoryNote")).toBe(false);
     expect(generalTools.has("Context")).toBe(false);
+    expect(generalTools.has("import_source")).toBe(false);
     expect(generalTools.has("askQuestion")).toBe(false);
     expect(generalTools.has("AskUserQuestion")).toBe(false);
     expect(generalTools.has("exec_command")).toBe(true);
@@ -197,6 +214,51 @@ describe("orchestrator direct tool surface", () => {
     expect(fashionTools.has("FashionMarkOutfitReady")).toBe(true);
     expect(fashionTools.has("Fashion")).toBe(false);
     expect(fashionTools.has("image_gen")).toBe(true);
+  });
+
+  it("executes import_source for the orchestrator and rejects other agents", async () => {
+    const { host, sourceImports } = await createTestHost();
+
+    const orchestratorResult = await host.executeTool(
+      "import_source",
+      {
+        source: {
+          kind: "git",
+          url: "https://github.com/example/project.git#main",
+        },
+        scope: { kind: "feature", label: "command palette" },
+        trust: "untrusted",
+      },
+      makeToolContext("orchestrator"),
+    );
+
+    expect(orchestratorResult.error).toBeUndefined();
+    expect(orchestratorResult.result).toMatchObject({
+      status: "no-changes",
+      message: "already imported",
+    });
+    expect(sourceImports).toHaveLength(1);
+    expect(sourceImports[0]).toMatchObject({
+      source: {
+        kind: "git",
+        url: "https://github.com/example/project.git#main",
+      },
+      scope: { kind: "feature", label: "command palette" },
+      trust: "untrusted",
+      conversationId: "conv-1",
+      requestId: "req-1",
+    });
+
+    const generalResult = await host.executeTool(
+      "import_source",
+      {
+        source: { kind: "local-path", path: "/tmp/source" },
+      },
+      makeToolContext("general"),
+    );
+    expect(generalResult.error).toContain(
+      "import_source is only available to the orchestrator",
+    );
   });
 
   it("executes Context for the orchestrator and rejects other agents", async () => {

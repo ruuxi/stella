@@ -12,10 +12,7 @@ import {
 } from "../../../../runtime/kernel/storage/database-init.js";
 import type { SqliteDatabase } from "../../../../runtime/kernel/storage/shared.js";
 import { StellaSourceHistoryStore } from "../../../../runtime/kernel/storage/stella-source-history-store.js";
-import {
-  buildStoreThreadAgentPrompt,
-  collectStoreReleaseSourcePack,
-} from "../../../../runtime/worker/store-thread-helpers.js";
+import { collectStoreReleaseSourcePack } from "../../../../runtime/worker/store-thread-helpers.js";
 
 const git = (cwd: string, args: string[]) => {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -336,30 +333,5 @@ describe("collectStoreReleaseSourcePack", () => {
     });
 
     expect(sourcePack).toBeUndefined();
-  });
-});
-
-describe("buildStoreThreadAgentPrompt", () => {
-  it("tells the Store agent that source packs ship automatically with specs", () => {
-    const prompt = buildStoreThreadAgentPrompt({
-      userText: "Publish the quiet mode feature",
-      editingBlueprint: false,
-      attachedFeatureNames: ["Quiet Mode"],
-      transcript: [
-        {
-          role: "user",
-          text: "Publish the quiet mode feature",
-          attachedFeatureNames: ["Quiet Mode"],
-        },
-        {
-          role: "assistant",
-          text: "Working...",
-        },
-      ],
-    });
-
-    expect(prompt).toContain("Stella source pack");
-    expect(prompt).toContain("per-commit reference diffs");
-    expect(prompt).toContain("Functional parity, not byte parity");
   });
 });

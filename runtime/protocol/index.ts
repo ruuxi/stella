@@ -15,8 +15,6 @@ import type {
   StoreReleaseSourcePackRef,
   StoreReleaseSourcePack,
   StellaReleaseArtifactRef,
-  StoreThreadSendInput,
-  StoreThreadSnapshot,
 } from "../contracts/index.js";
 import type {
   AgentRunFinishOutcome,
@@ -40,8 +38,6 @@ export type {
   StoreReleaseSourcePackRef,
   StoreReleaseSourcePack,
   StellaReleaseArtifactRef,
-  StoreThreadSendInput,
-  StoreThreadSnapshot,
 };
 
 export const STELLA_RUNTIME_PROTOCOL_VERSION = "v1";
@@ -125,14 +121,8 @@ export const METHOD_NAMES = {
   STORE_GET_RELEASE: "store.getRelease",
   STORE_CREATE_FIRST_RELEASE: "store.createFirstRelease",
   STORE_CREATE_RELEASE_UPDATE: "store.createReleaseUpdate",
-  STORE_PUBLISH_BLUEPRINT: "store.publishBlueprint",
   STORE_PUBLISH_SELECTED_FEATURES: "store.publishSelectedFeatures",
   STORE_INSTALL_FROM_BLUEPRINT: "store.installFromBlueprint",
-  STORE_THREAD_GET: "store.thread.get",
-  STORE_THREAD_SEND_MESSAGE: "store.thread.sendMessage",
-  STORE_THREAD_CANCEL: "store.thread.cancel",
-  STORE_THREAD_DENY_LATEST_BLUEPRINT: "store.thread.denyLatestBlueprint",
-  STORE_THREAD_MARK_BLUEPRINT_PUBLISHED: "store.thread.markBlueprintPublished",
   STORE_UNINSTALL_MOD: "store.uninstallMod",
   SELF_MOD_FEATURE_SNAPSHOT_READ: "selfMod.featureSnapshot.read",
   SCHEDULE_LIST_CRON_JOBS: "schedule.listCronJobs",
@@ -210,20 +200,10 @@ export const METHOD_NAMES = {
     "internal.worker.createFirstStoreRelease",
   INTERNAL_WORKER_CREATE_STORE_RELEASE_UPDATE:
     "internal.worker.createStoreReleaseUpdate",
-  INTERNAL_WORKER_PUBLISH_STORE_BLUEPRINT:
-    "internal.worker.publishStoreBlueprint",
   INTERNAL_WORKER_PUBLISH_STORE_SELECTED_FEATURES:
     "internal.worker.publishStoreSelectedFeatures",
   INTERNAL_WORKER_INSTALL_FROM_BLUEPRINT:
     "internal.worker.installFromBlueprint",
-  INTERNAL_WORKER_STORE_THREAD_GET: "internal.worker.storeThread.get",
-  INTERNAL_WORKER_STORE_THREAD_SEND_MESSAGE:
-    "internal.worker.storeThread.sendMessage",
-  INTERNAL_WORKER_STORE_THREAD_CANCEL: "internal.worker.storeThread.cancel",
-  INTERNAL_WORKER_STORE_THREAD_DENY_LATEST_BLUEPRINT:
-    "internal.worker.storeThread.denyLatestBlueprint",
-  INTERNAL_WORKER_STORE_THREAD_MARK_BLUEPRINT_PUBLISHED:
-    "internal.worker.storeThread.markBlueprintPublished",
   INTERNAL_WORKER_UNINSTALL_STORE_MOD: "internal.worker.uninstallStoreMod",
   INTERNAL_WORKER_FEATURE_SNAPSHOT_READ:
     "internal.worker.selfMod.featureSnapshotRead",
@@ -340,7 +320,6 @@ export const NOTIFICATION_NAMES = {
   VOICE_SELF_MOD_HMR_STATE: "voice.selfModHmrState",
   VOICE_ACTION_COMPLETED: "voice.actionCompleted",
   LOCAL_CHAT_UPDATED: "localChat.updated",
-  STORE_THREAD_UPDATED: "store.threadUpdated",
   SCHEDULE_UPDATED: "schedule.updated",
   APPROVAL_REQUESTED: "approval.requested",
 } as const;
@@ -728,28 +707,6 @@ export type StorePublishArgs = {
 };
 
 /**
- * Renderer-driven publish path. The dialog passes the source
- * `messageId` so the worker can resolve attached features → commit
- * hashes → redacted reference diffs and ship them with the spec.
- */
-export type StorePublishBlueprintArgs = {
-  messageId: string;
-  packageId: string;
-  asUpdate: boolean;
-  displayName?: string;
-  description?: string;
-  category?:
-    | "apps-games"
-    | "productivity"
-    | "customization"
-    | "skills-agents"
-    | "integrations"
-    | "other";
-  manifest: StoreReleaseArtifact["manifest"];
-  releaseNotes?: string;
-};
-
-/**
  * Source-backed publish path. The renderer only selects local feature names and
  * listing metadata; the worker resolves those names to commits/source packs.
  */
@@ -778,22 +735,9 @@ export type RuntimeStoreApi = {
   createReleaseUpdate: (
     args: StorePublishArgs,
   ) => Promise<StorePackageReleaseRecord>;
-  publishBlueprint: (
-    args: StorePublishBlueprintArgs,
-  ) => Promise<StorePackageReleaseRecord>;
   publishSelectedFeatures: (
     args: StorePublishSelectedFeaturesArgs,
   ) => Promise<StorePackageReleaseRecord>;
-  getStoreThread: () => Promise<StoreThreadSnapshot>;
-  sendStoreThreadMessage: (
-    input: StoreThreadSendInput,
-  ) => Promise<StoreThreadSnapshot>;
-  cancelStoreThreadTurn: () => Promise<StoreThreadSnapshot>;
-  denyLatestStoreBlueprint: () => Promise<StoreThreadSnapshot>;
-  markStoreBlueprintPublished: (args: {
-    messageId: string;
-    releaseNumber: number;
-  }) => Promise<StoreThreadSnapshot>;
 };
 
 export type RuntimeStoreModApi = {

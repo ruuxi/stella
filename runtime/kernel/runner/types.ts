@@ -23,6 +23,7 @@ import type { LocalContextEvent } from "../local-history.js";
 import type {
   FashionToolApi,
   ScheduleToolApi,
+  SourceImportToolApi,
   AgentToolRequest,
   AgentToolSnapshot,
   ToolContext,
@@ -144,6 +145,7 @@ export type StellaHostRunnerOptions = {
     message: string;
   }) => Promise<void> | void;
   scheduleApi?: ScheduleToolApi;
+  sourceImportApi?: SourceImportToolApi;
   fashionApi?: FashionToolApi;
   runtimeStore: RuntimeStore;
   getAppBrowserContext?: () =>

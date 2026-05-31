@@ -63,6 +63,7 @@ const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
   "Context",
   "Schedule",
   "Store",
+  "import_source",
   "spawn_agent",
   "send_input",
   "pause_agent",
@@ -94,6 +95,7 @@ export const createToolHost = ({
   cliBridgeSocketPath,
   requestCredential,
   agentApi,
+  sourceImportApi,
   getSubagentTypes,
   scheduleApi,
 
@@ -159,6 +161,7 @@ export const createToolHost = ({
     stellaConnectCliPath,
     requestCredential,
     agentApi,
+    sourceImportApi,
     scheduleApi,
 
     fashionApi,

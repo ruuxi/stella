@@ -20,12 +20,10 @@ import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
 import { useBootstrapState } from "@/systems/boot/bootstrap-state";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { preloadAllSidebarSurfaces } from "@/shared/lib/sidebar-preloads";
-import { storeSidePanelStore } from "@/global/store/store-side-panel-store";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import { MorphInputAbsorber } from "./MorphInputAbsorber";
 import { AskStellaSelectionChip } from "./selection/AskStellaSelectionChip";
-import { openStoreDisplayTab } from "./display/default-tabs";
 import "./full-shell.layout.css";
 import "./mobile.css";
 
@@ -264,9 +262,7 @@ export const FullShell = () => {
 
   const onboardingResolved = onboardingHydrated || onboardingDone;
   const appReady =
-    onboardingResolved &&
-    onboardingDone &&
-    (isMiniWindow || hasEnteredApp);
+    onboardingResolved && onboardingDone && (isMiniWindow || hasEnteredApp);
   const needsOnboarding = onboardingHydrated && !onboardingDone;
 
   useEffect(() => {
@@ -335,16 +331,6 @@ export const FullShell = () => {
     retryRuntimeBootstrap();
   }, [activeConversationId, appReady, retryRuntimeBootstrap, runtimeStatus]);
 
-  useEffect(() => {
-    if (!appReady || isMiniWindow) return;
-    return window.electronAPI?.store?.onBlueprintNotificationActivated?.(
-      ({ messageId }) => {
-        storeSidePanelStore.requestBlueprintActivation(messageId);
-        openStoreDisplayTab();
-      },
-    );
-  }, [appReady, isMiniWindow]);
-
   return (
     <div
       className="window-shell full"
@@ -368,9 +354,7 @@ export const FullShell = () => {
             activeConversationId={activeConversationId}
             onEnteredApp={() => setHasEnteredApp(true)}
           />
-        ) : (
-          null
-        )}
+        ) : null}
       </div>
     </div>
   );

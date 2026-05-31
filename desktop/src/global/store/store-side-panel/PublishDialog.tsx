@@ -11,23 +11,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/ui/dialog";
-import { packageIdFromName, parseBlueprintMetadata } from "./format";
-import type { StoreCategory, StoreThreadMessage } from "./types";
+import { packageIdFromName } from "./format";
+import type { StoreCategory } from "./types";
 
 type PublishDialogProps = {
   open: boolean;
-  blueprint: StoreThreadMessage | null;
   selectedFeatureNames: string[];
   onClose: () => void;
-  onPublished: (args: {
-    messageId?: string;
-    releaseNumber: number;
-  }) => Promise<void> | void;
+  onPublished: (args: { releaseNumber: number }) => Promise<void> | void;
 };
 
 export function PublishDialog({
   open,
-  blueprint,
   selectedFeatureNames,
   onClose,
   onPublished,
@@ -47,39 +42,20 @@ export function PublishDialog({
   const [submitting, setSubmitting] = useState(false);
 
   const sourceFeatureNames = useMemo(() => {
-    const names = blueprint?.attachedFeatureNames?.length
-      ? blueprint.attachedFeatureNames
-      : selectedFeatureNames;
     const seen = new Set<string>();
-    return names
+    return selectedFeatureNames
       .map((name) => name.trim())
       .filter((name) => {
         if (!name || seen.has(name)) return false;
         seen.add(name);
         return true;
       });
-  }, [blueprint, selectedFeatureNames]);
+  }, [selectedFeatureNames]);
 
   const selectedFeatureName =
     sourceFeatureNames.length === 1 ? sourceFeatureNames[0] : "";
 
-  const blueprintMeta = useMemo(() => {
-    if (!blueprint) {
-      return {
-        name: selectedFeatureName,
-        description: "",
-        category: null as StoreCategory | null,
-      };
-    }
-    const parsed = parseBlueprintMetadata(blueprint.text);
-    return {
-      ...parsed,
-      name: parsed.name || selectedFeatureName,
-    };
-  }, [blueprint, selectedFeatureName]);
-
-  // When the dialog opens (or the blueprint changes), seed the form
-  // from the selected feature or legacy blueprint header. We re-seed on
+  // When the dialog opens, seed the form from the selected feature. Re-seed on
   // every open so a different source selection gets its own pre-fill.
   useEffect(() => {
     if (!open) {
@@ -91,10 +67,10 @@ export function PublishDialog({
       setSubmitting(false);
       return;
     }
-    setDisplayName(blueprintMeta.name);
-    setDescription(blueprintMeta.description);
-    setCategory(blueprintMeta.category ?? "");
-  }, [open, blueprintMeta]);
+    setDisplayName(selectedFeatureName);
+    setDescription("");
+    setCategory("");
+  }, [open, selectedFeatureName]);
 
   const ownedPackages = (myPackages ?? []) as Array<{
     packageId: string;
@@ -188,7 +164,6 @@ export function PublishDialog({
             ...(publishCategory ? { category: publishCategory } : {}),
           }),
     };
-    const publishedMessageId = blueprint?._id;
     const toastName = publishDisplayName;
     setSubmitting(true);
     onClose();
@@ -203,7 +178,6 @@ export function PublishDialog({
         // selected source refs.
         const release = await storeApi.publishSelectedFeatures(publishArgs);
         await onPublished({
-          ...(publishedMessageId ? { messageId: publishedMessageId } : {}),
           releaseNumber: release.releaseNumber,
         });
         showToast({

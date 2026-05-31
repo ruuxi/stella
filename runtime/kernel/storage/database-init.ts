@@ -237,7 +237,7 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   // Rolling-window snapshot of recent self-mod commits, named by a cheap
   // LLM. Single row, regenerated on every successful self-mod commit. The
   // side panel reads this row to render the "features list" the user
-  // selects from when talking to the Store agent.
+  // selects from when publishing a source-backed Store release.
   db.exec(`
     CREATE TABLE IF NOT EXISTS self_mod_feature_snapshot (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -396,8 +396,9 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     ON stella_source_revisions(package_id, created_at);
   `);
 
-  // Local Store agent thread. Publishing is backend-validated, but the
-  // conversation and blueprint review loop live locally with the agent.
+  // Legacy local Store draft thread table. Kept so older local databases open
+  // cleanly, but the current Store publish flow selects source changes
+  // directly and does not use this thread.
   db.exec(`
     CREATE TABLE IF NOT EXISTS store_thread_messages (
       id TEXT PRIMARY KEY,

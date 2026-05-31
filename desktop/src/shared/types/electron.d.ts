@@ -41,8 +41,6 @@ import type {
   StoreInstallRecord as SharedStoreInstallRecord,
   DesktopReleaseSourceHistoryRef as SharedDesktopReleaseSourceHistoryRef,
   StellaReleaseArtifactRef as SharedStellaReleaseArtifactRef,
-  StoreThreadMessage as SharedStoreThreadMessage,
-  StoreThreadSnapshot as SharedStoreThreadSnapshot,
   SelfModFeatureSnapshot as SharedSelfModFeatureSnapshot,
   SelfModHmrPhase as SharedSelfModHmrPhase,
   SelfModHmrState as SharedSelfModHmrState,
@@ -114,8 +112,6 @@ export type StoreInstallRecord = SharedStoreInstallRecord;
 export type DesktopReleaseSourceHistoryRef =
   SharedDesktopReleaseSourceHistoryRef;
 export type StellaReleaseArtifactRef = SharedStellaReleaseArtifactRef;
-export type StoreThreadMessage = SharedStoreThreadMessage;
-export type StoreThreadSnapshot = SharedStoreThreadSnapshot;
 export type SelfModFeatureSnapshot = SharedSelfModFeatureSnapshot;
 export type SelfModHmrPhase = SharedSelfModHmrPhase;
 export type SelfModHmrState = SharedSelfModHmrState;
@@ -1244,34 +1240,6 @@ export type ElectronStoreApi = {
     packageId: string;
     releaseNumber: number;
   }) => Promise<StoreInstallRecord | null>;
-  getThread: () => Promise<StoreThreadSnapshot>;
-  sendThreadMessage: (payload: {
-    text: string;
-    attachedFeatureNames?: string[];
-    editingBlueprint?: boolean;
-  }) => Promise<StoreThreadSnapshot>;
-  cancelThreadTurn: () => Promise<StoreThreadSnapshot>;
-  denyLatestBlueprint: () => Promise<StoreThreadSnapshot>;
-  markBlueprintPublished: (payload: {
-    messageId: string;
-    releaseNumber: number;
-  }) => Promise<StoreThreadSnapshot>;
-  publishBlueprint: (payload: {
-    messageId: string;
-    packageId: string;
-    asUpdate: boolean;
-    displayName?: string;
-    description?: string;
-    category?:
-      | "apps-games"
-      | "productivity"
-      | "customization"
-      | "skills-agents"
-      | "integrations"
-      | "other";
-    manifest: Record<string, unknown>;
-    releaseNotes?: string;
-  }) => Promise<StorePackageReleaseRecord>;
   publishSelectedFeatures: (payload: {
     attachedFeatureNames: string[];
     packageId: string;
@@ -1292,23 +1260,6 @@ export type ElectronStoreApi = {
     packageId: string;
     revertedCommits: string[];
   }>;
-  showBlueprintNotification: (payload: {
-    messageId: string;
-    name: string;
-  }) => Promise<{ ok: boolean }>;
-  onBlueprintNotificationActivated: (
-    callback: (payload: { messageId: string | null }) => void,
-  ) => () => void;
-  /**
-   * Push-based subscription to Store-thread changes. Fires whenever a
-   * thread message is appended/patched/cleared/deleted/denied or marked
-   * as published — both renderer flows that mutate the thread (sending
-   * a turn, denying a draft) and runtime-side mutations (the agent
-   * polling loop completing) emit the same event. Replaces polling.
-   */
-  onThreadUpdated: (
-    callback: (snapshot: StoreThreadSnapshot) => void,
-  ) => () => void;
 };
 
 export type EmbeddedWebsiteTheme = {

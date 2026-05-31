@@ -1,20 +1,12 @@
 /**
- * Store-thread prompt + publish-time commit helpers.
+ * Store publish-time commit helpers.
  *
  * Pulled out of `runtime/worker/server.ts` because they are pure /
  * filesystem-level utilities that don't touch worker state, and they
  * collectively account for ~300 lines of the worker's bulk.
  *
- * - `normalizeStoreThreadText` / `normalizeStoreThreadFeatureNames`
- *   gate the IPC payload going into the Store agent.
- * - `extractBlueprintMarkdown` parses the agent's final text for the
- *   blueprint envelope (fenced ```blueprint or legacy
- *   <blueprint>...</blueprint>).
- * - `buildStoreThreadAgentPrompt` builds the curated prompt sent to
- *   the local Store agent for each turn.
- * - `runStoreReleaseGitShow`, `buildStoreReleaseRedactor`, and
- *   `collectStoreReleaseCommits` produce per-commit reference diffs
- *   for the Store publish pipeline, with a best-effort redactor.
+ * These utilities resolve selected local feature names into source packs and
+ * per-commit reference diffs for the direct Store publish pipeline.
  */
 import os from "node:os";
 import { execFile } from "node:child_process";
@@ -39,20 +31,7 @@ import type {
 } from "../kernel/storage/stella-source-history-store.js";
 import type { StoreModStore } from "../kernel/storage/store-mod-store.js";
 
-export const STORE_THREAD_CONVERSATION_ID = "store-agent-local";
-const STORE_THREAD_MAX_USER_TEXT = 8_000;
 const execFileAsync = promisify(execFile);
-
-export const normalizeStoreThreadText = (value: unknown): string => {
-  const text = typeof value === "string" ? value.trim() : "";
-  if (!text) {
-    throw new Error("Message text is required.");
-  }
-  if (text.length > STORE_THREAD_MAX_USER_TEXT) {
-    throw new Error("Message is too long.");
-  }
-  return text;
-};
 
 export const normalizeStoreThreadFeatureNames = (value: unknown): string[] =>
   Array.isArray(value)
@@ -62,43 +41,6 @@ export const normalizeStoreThreadFeatureNames = (value: unknown): string[] =>
         .filter(Boolean)
         .slice(0, 12)
     : [];
-
-export const extractBlueprintMarkdown = (
-  finalText: string,
-): { blueprintMarkdown: string | null; visibleText: string } => {
-  // Preferred: fenced ```blueprint block. Backreference on the fence
-  // length lets the LLM pick 4+ backticks when the blueprint itself
-  // contains triple-backtick code blocks.
-  const fenced = finalText.match(
-    /(`{3,})blueprint[^\n]*\n([\s\S]*?)\n\1\s*(?:\n|$)/i,
-  );
-  if (fenced) {
-    const blueprintMarkdown = (fenced[2] ?? "").trim();
-    const visibleText = finalText
-      .replace(fenced[0], "")
-      .replace(/<message>\s*([\s\S]*?)\s*<\/message>/i, "$1")
-      .trim();
-    return {
-      blueprintMarkdown: blueprintMarkdown || null,
-      visibleText,
-    };
-  }
-  // Tolerate the legacy <blueprint>...</blueprint> envelope so older
-  // model outputs (or hand-typed examples) still parse.
-  const tagged = finalText.match(/<blueprint>\s*([\s\S]*?)\s*<\/blueprint>/i);
-  if (tagged) {
-    const blueprintMarkdown = (tagged[1] ?? "").trim();
-    const visibleText = finalText
-      .replace(tagged[0], "")
-      .replace(/<message>\s*([\s\S]*?)\s*<\/message>/i, "$1")
-      .trim();
-    return {
-      blueprintMarkdown: blueprintMarkdown || null,
-      visibleText,
-    };
-  }
-  return { blueprintMarkdown: null, visibleText: finalText.trim() };
-};
 
 // Paths that carry no signal for the published reference diffs and
 // routinely dwarf real changes. Excluded from `git show` via pathspec
@@ -649,71 +591,4 @@ const collectStoreReleaseSourcePackFromHistory = async (args: {
     description: args.attachedFeatureNames.join(", "),
     changeSets,
   }) as StoreReleaseSourcePack;
-};
-
-export const buildStoreThreadAgentPrompt = (args: {
-  userText: string;
-  editingBlueprint: boolean;
-  latestBlueprintMarkdown?: string;
-  attachedFeatureNames: string[];
-  transcript: Array<{
-    role: "user" | "assistant" | "system_event";
-    text: string;
-    isBlueprint?: boolean;
-    denied?: boolean;
-    published?: boolean;
-    attachedFeatureNames?: string[];
-    editingBlueprint?: boolean;
-  }>;
-}) => {
-  // Drop the just-sent user turn and the pending assistant placeholder
-  // from the projected transcript. The worker appends both before this
-  // builder runs; without trimming, `## Stated mod purpose` would
-  // duplicate the user's latest message and the placeholder "Working…"
-  // line would leak into the model's view of past turns.
-  const priorTranscript = args.transcript.slice(0, -2);
-  const recentTranscript = priorTranscript
-    .map((message) => {
-      const role = message.role === "system_event" ? "system" : message.role;
-      const text = message.isBlueprint
-        ? `[Blueprint draft saved: ${message.text.length} chars${
-            message.denied ? ", denied" : message.published ? ", published" : ""
-          }]`
-        : message.text;
-      const chips =
-        message.attachedFeatureNames && message.attachedFeatureNames.length > 0
-          ? `\nAttached changes: ${message.attachedFeatureNames.join(", ")}`
-          : "";
-      return `${role}: ${text}${chips}`;
-    })
-    .join("\n\n");
-
-  const sections: Array<string | false> = [
-    "## Stated purpose",
-    args.userText,
-    "",
-    args.attachedFeatureNames.length > 0
-      ? `## Attached features\n${args.attachedFeatureNames.map((n) => `- ${n}`).join("\n")}`
-      : "## Attached features\n- none",
-    "",
-    "## How to scope your work",
-    "The user is non-technical. They picked one or more named features above (or wrote a prompt) to describe what they want to publish. Treat each name as a scope hint pointing at a feature that already exists on this tree. Use `Read` and `Grep` to find the surfaces — components, modules, prompts, tools, schemas, configs — that implement each named feature, and ground your spec in what you actually find. If you cannot locate a feature from its name, ask one concise question rather than inventing surfaces.",
-    "",
-    "## Divergence model",
-    "The installer's tree starts at the same root commit as this tree but may have diverged anywhere — partial refactors, alternate implementations of the same feature, missing files, renamed surfaces. Write the spec so an install agent reading it on a divergent tree can still produce the same observable behaviour. Functional parity, not byte parity. The publish pipeline ships a Stella source pack and per-commit reference diffs alongside your spec; you do not produce them, you do not reference them in the spec body, and you do not list `Files touched` / `Implementation` sections — that is the install agent's job.",
-    "",
-    args.editingBlueprint
-      ? "## Mode\nEditing the existing draft. Revise it in place, preserve the `# Title` line unless the user asks to rename, and keep the section skeleton from the system prompt."
-      : "## Mode\nDrafting a new behaviour spec.",
-  ];
-
-  if (args.latestBlueprintMarkdown) {
-    sections.push("", "## Current draft", args.latestBlueprintMarkdown);
-  }
-
-  if (recentTranscript) {
-    sections.push("", "## Recent store thread", recentTranscript);
-  }
-
-  return sections.filter((section) => section !== false).join("\n");
 };

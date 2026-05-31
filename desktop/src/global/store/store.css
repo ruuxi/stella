@@ -4,23 +4,44 @@
    ============================================ */
 
 @keyframes store-fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes store-scale-in {
-  from { opacity: 0; transform: scale(0.97); }
-  to   { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes store-shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @keyframes store-pulse {
-  0%, 100% { opacity: 0.5; }
-  50%      { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* --- Root --- */
@@ -38,7 +59,9 @@
   container-name: store;
 }
 
-.store-root::-webkit-scrollbar { display: none; }
+.store-root::-webkit-scrollbar {
+  display: none;
+}
 
 .store-upload-btn {
   position: sticky;
@@ -192,19 +215,29 @@
 }
 
 @container store (max-width: 780px) {
-  .store-grid { grid-template-columns: repeat(2, 1fr); }
+  .store-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @container store (max-width: 480px) {
-  .store-grid { grid-template-columns: 1fr; }
-  .store-scroll { padding: 22px 18px 36px; }
-  .store-featured-content { padding: 22px 20px; }
+  .store-grid {
+    grid-template-columns: 1fr;
+  }
+  .store-scroll {
+    padding: 22px 18px 36px;
+  }
+  .store-featured-content {
+    padding: 22px 20px;
+  }
   .store-featured-icon {
     width: 74px;
     height: 74px;
     border-radius: 18px;
   }
-  .store-featured-name { font-size: 22px; }
+  .store-featured-name {
+    font-size: 22px;
+  }
 }
 
 /* --- Card --- */
@@ -237,15 +270,33 @@
 
 /* Stagger card entrance — using backwards fill so they're visible before animation starts,
    they just haven't animated *in* yet. Much better than `both` which hides them. */
-.store-card:nth-child(1)  { animation-delay: 0.02s; }
-.store-card:nth-child(2)  { animation-delay: 0.06s; }
-.store-card:nth-child(3)  { animation-delay: 0.10s; }
-.store-card:nth-child(4)  { animation-delay: 0.14s; }
-.store-card:nth-child(5)  { animation-delay: 0.18s; }
-.store-card:nth-child(6)  { animation-delay: 0.22s; }
-.store-card:nth-child(7)  { animation-delay: 0.26s; }
-.store-card:nth-child(8)  { animation-delay: 0.30s; }
-.store-card:nth-child(9)  { animation-delay: 0.34s; }
+.store-card:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.store-card:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.store-card:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.store-card:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.store-card:nth-child(5) {
+  animation-delay: 0.18s;
+}
+.store-card:nth-child(6) {
+  animation-delay: 0.22s;
+}
+.store-card:nth-child(7) {
+  animation-delay: 0.26s;
+}
+.store-card:nth-child(8) {
+  animation-delay: 0.3s;
+}
+.store-card:nth-child(9) {
+  animation-delay: 0.34s;
+}
 
 .store-card:hover {
   transform: translateY(-2px);
@@ -452,9 +503,14 @@
 }
 
 .store-action-btn[data-variant="remove"] {
-  background: color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 10%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 10%,
+    transparent
+  );
   color: var(--destructive, oklch(0.6 0.2 25));
-  border: 1px solid color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 28%, transparent);
+  border: 1px solid
+    color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 28%, transparent);
 }
 
 .store-action-btn[data-variant="subtle"] {
@@ -516,15 +572,33 @@
   background: color-mix(in oklch, var(--foreground) 3%, transparent);
 }
 
-.store-connector-row:nth-child(1) { animation-delay: 0.02s; }
-.store-connector-row:nth-child(2) { animation-delay: 0.05s; }
-.store-connector-row:nth-child(3) { animation-delay: 0.08s; }
-.store-connector-row:nth-child(4) { animation-delay: 0.11s; }
-.store-connector-row:nth-child(5) { animation-delay: 0.14s; }
-.store-connector-row:nth-child(6) { animation-delay: 0.17s; }
-.store-connector-row:nth-child(7) { animation-delay: 0.20s; }
-.store-connector-row:nth-child(8) { animation-delay: 0.23s; }
-.store-connector-row:nth-child(9) { animation-delay: 0.26s; }
+.store-connector-row:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.store-connector-row:nth-child(2) {
+  animation-delay: 0.05s;
+}
+.store-connector-row:nth-child(3) {
+  animation-delay: 0.08s;
+}
+.store-connector-row:nth-child(4) {
+  animation-delay: 0.11s;
+}
+.store-connector-row:nth-child(5) {
+  animation-delay: 0.14s;
+}
+.store-connector-row:nth-child(6) {
+  animation-delay: 0.17s;
+}
+.store-connector-row:nth-child(7) {
+  animation-delay: 0.2s;
+}
+.store-connector-row:nth-child(8) {
+  animation-delay: 0.23s;
+}
+.store-connector-row:nth-child(9) {
+  animation-delay: 0.26s;
+}
 
 .store-connector-icon {
   width: 44px;
@@ -926,9 +1000,18 @@
 .store-added-chip-badge {
   padding: 3px 7px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--primary, oklch(0.58 0.16 260)) 28%, transparent);
-  background: color-mix(in oklch, var(--primary, oklch(0.58 0.16 260)) 8%, transparent);
-  color: color-mix(in oklch, var(--primary, oklch(0.58 0.16 260)) 82%, var(--foreground));
+  border: 1px solid
+    color-mix(in oklch, var(--primary, oklch(0.58 0.16 260)) 28%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--primary, oklch(0.58 0.16 260)) 8%,
+    transparent
+  );
+  color: color-mix(
+    in oklch,
+    var(--primary, oklch(0.58 0.16 260)) 82%,
+    var(--foreground)
+  );
   font-size: 11px;
   font-weight: 650;
   line-height: 1;
@@ -1051,7 +1134,10 @@
   font-size: 13px;
   font-family: inherit;
   color: var(--text-strong);
-  transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+  transition:
+    border-color 0.18s,
+    background 0.18s,
+    box-shadow 0.18s;
 }
 
 .store-search-input::placeholder {
@@ -1083,7 +1169,10 @@
   font-family: inherit;
   color: var(--text-weak);
   cursor: default;
-  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+  transition:
+    background 0.18s,
+    color 0.18s,
+    box-shadow 0.18s;
   user-select: none;
 }
 
@@ -1260,7 +1349,8 @@
 }
 
 .display-sidebar__rich.display-sidebar__rich--store > .store-side-panel-recent,
-.display-sidebar__rich.display-sidebar__rich--store > .store-side-panel-empty-state {
+.display-sidebar__rich.display-sidebar__rich--store
+  > .store-side-panel-empty-state {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -1312,7 +1402,9 @@
   gap: 2px;
   scrollbar-width: thin;
 }
-.store-side-panel-list::-webkit-scrollbar { width: 6px; }
+.store-side-panel-list::-webkit-scrollbar {
+  width: 6px;
+}
 .store-side-panel-list::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
   border-radius: 3px;
@@ -1386,13 +1478,12 @@
 }
 .store-side-panel-row:focus-visible {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  box-shadow:
-    0 0 0 2px
-      color-mix(
-        in oklch,
-        var(--interactive, var(--primary, oklch(0.62 0.18 250))) 25%,
-        transparent
-      );
+  box-shadow: 0 0 0 2px
+    color-mix(
+      in oklch,
+      var(--interactive, var(--primary, oklch(0.62 0.18 250))) 25%,
+      transparent
+    );
 }
 .store-side-panel-row[data-selected] {
   background: color-mix(
@@ -1412,7 +1503,9 @@
   flex-shrink: 0;
   color: var(--text-weak);
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  transition: background 150ms ease, color 150ms ease;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
 }
 .store-side-panel-row:hover .store-side-panel-row-glyph {
   color: var(--text-base);
@@ -1553,141 +1646,17 @@
   letter-spacing: -0.005em;
 }
 
-/*
- * Drafting indicator. Replaces the in-thread "Working…" line with a
- * larger, calmer message — primary text in `text-strong` plus a
- * subtitle hinting at duration. No status dot.
- */
-.store-side-panel-drafting {
-  margin: 12px 12px 4px;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.45;
-  letter-spacing: -0.01em;
-  color: var(--text-strong);
-}
-.store-side-panel-drafting-sub {
-  display: block;
-  margin-top: 2px;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--text-weak);
-}
-
-/*
- * Blueprint draft pill — same artifact-card shape as `.end-resource-card`
- * with a name on the second line and a right-aligned, transparent-with-
- * border state badge ("Review required" / "Published" / "Denied").
- */
-.store-side-panel-blueprint-card {
-  /* inherits from .end-resource-card */
-}
-.store-side-panel-blueprint-card[data-denied] {
-  opacity: 0.55;
-  text-decoration: line-through;
-  text-decoration-color: var(--text-weaker);
-}
-.store-side-panel-blueprint-card .end-resource-card__action {
-  font-weight: 500;
-  color: var(--text-base);
-}
-
-/*
- * Status indicator on a blueprint draft card. A small colored dot
- * carries the state (review / published / denied); the label stays in
- * text-weak so the file name remains the dominant element on the card.
- * Avoids the prior right-aligned tinted badge that competed with the
- * blueprint name for attention.
- */
-.store-side-panel-blueprint-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  padding-left: 8px;
-  font-size: 11.5px;
-  font-weight: 500;
-  letter-spacing: -0.005em;
-  color: var(--text-weak);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.store-side-panel-blueprint-status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 28%, transparent);
-  flex-shrink: 0;
-}
-
-.store-side-panel-blueprint-status[data-tier="published"]
-  .store-side-panel-blueprint-status-dot {
-  background: oklch(0.65 0.18 145);
-}
-
-.store-side-panel-blueprint-status[data-tier="denied"]
-  .store-side-panel-blueprint-status-dot {
-  background: var(--destructive, oklch(0.6 0.2 25));
-}
-
-/* Editing-blueprint chip rendered in the composer's attached strip. */
-.store-side-panel-edit-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  border: 1px dashed color-mix(in oklch, var(--foreground) 14%, transparent);
-  font-family: inherit;
-  font-size: 11.5px;
-  color: var(--text-base);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.store-side-panel-edit-chip:hover {
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
-}
-
-/*
- * Composer override: the panel composer is the chat-sidebar shell
- * verbatim (`.chat-sidebar-composer` / `.chat-sidebar-shell` /
- * `.chat-sidebar-form` / `.chat-sidebar-input`) so the visual language
- * is identical to the chat surfaces. We only adjust the outer padding
- * to sit flush against the side-panel chrome.
- */
-.store-side-panel > .chat-sidebar-composer {
-  padding: 6px 12px 10px;
-}
-
-/* Expanded display panel — align store thread/composer gutters with chat. */
+/* Expanded display panel keeps the source list and publish bar aligned. */
 .display-sidebar--expanded .store-side-panel-list,
-.display-sidebar--expanded .store-side-panel-thread,
-.display-sidebar--expanded .store-side-panel-publish-bar,
-.display-sidebar--expanded .store-side-panel > .chat-sidebar-composer {
+.display-sidebar--expanded .store-side-panel-publish-bar {
   padding-inline: 24px;
 }
 
-.display-sidebar--expanded .store-side-panel > .chat-sidebar-composer {
-  padding-bottom: 10px;
-}
-
-.display-sidebar--expanded .store-side-panel .chat-sidebar-shell {
-  width: 100%;
-  max-width: none;
-}
-
 /*
- * Blueprint review + Publish dialogs.
- *
- * Both use the shared Radix `Dialog` shell (`@/ui/dialog`) and adopt the
- * glass aesthetic from `ConnectDialog`: backdrop-filter on the content
- * card, soft border, header/body separators. The markdown viewer
- * deliberately uses a *solid* surface (`--background`) so glass-on-glass
- * doesn't reduce readability of long blueprint copy.
+ * Publish dialog. Uses the shared Radix `Dialog` shell (`@/ui/dialog`) and
+ * adopts the glass aesthetic from `ConnectDialog`: backdrop-filter on the
+ * content card, soft border, header/body separators.
  */
-[data-slot="dialog-content"].store-blueprint-dialog,
 [data-slot="dialog-content"].store-publish-dialog {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
@@ -1697,7 +1666,6 @@
   padding: 0;
 }
 
-.store-blueprint-dialog [data-slot="dialog-header"],
 .store-publish-dialog [data-slot="dialog-header"] {
   display: flex;
   align-items: center;
@@ -1706,7 +1674,6 @@
   border-bottom: 1px solid var(--border-weak);
 }
 
-.store-blueprint-dialog [data-slot="dialog-title"],
 .store-publish-dialog [data-slot="dialog-title"] {
   font-size: 15px;
   font-weight: 620;
@@ -1714,7 +1681,6 @@
   letter-spacing: -0.01em;
 }
 
-.store-blueprint-dialog [data-slot="dialog-close-button"],
 .store-publish-dialog [data-slot="dialog-close-button"] {
   width: 28px;
   height: 28px;
@@ -1727,13 +1693,11 @@
   align-items: center;
   justify-content: center;
 }
-.store-blueprint-dialog [data-slot="dialog-close-button"]:hover,
 .store-publish-dialog [data-slot="dialog-close-button"]:hover {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--text-strong);
 }
 
-.store-blueprint-dialog [data-slot="dialog-body"],
 .store-publish-dialog [data-slot="dialog-body"] {
   padding: 16px 20px 20px;
   display: flex;
@@ -1741,90 +1705,13 @@
   gap: 14px;
 }
 
-[data-component="dialog"][data-fit]:has([data-slot="dialog-content"].store-blueprint-dialog)
-  [data-slot="dialog-container"] {
-  --dialog-width: 720px;
-  height: min(calc(100vh - 32px), 720px);
-  min-height: min(calc(100vh - 32px), 560px);
-}
-
-[data-component="dialog"][data-fit]:has([data-slot="dialog-content"].store-publish-dialog)
+[data-component="dialog"][data-fit]:has(
+    [data-slot="dialog-content"].store-publish-dialog
+  )
   [data-slot="dialog-container"] {
   --dialog-width: 460px;
 }
 
-/* Solid (non-glass) markdown surface inside the glass dialog. */
-.store-blueprint-dialog-viewer {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 14px 16px;
-  border-radius: var(--radius-md, 12px);
-  border: 1px solid var(--border-weak);
-  background: var(--background);
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--text-strong);
-}
-
-/*
- * Streamdown's default code-block layout positions the copy/download
- * actions over the language label using a sticky `-mt-10` trick. Inside
- * the blueprint dialog (a narrow 720px modal with frequently small
- * snippets) that overlap reads as cramped: two icon buttons crammed
- * into the top-right corner of the header. Reflow them into the header
- * row at the right edge so the language label sits on the left and the
- * actions sit on the right with real breathing room between them.
- */
-.store-blueprint-dialog-viewer
-  [data-streamdown="code-block"]
-  > div:has(> [data-streamdown="code-block-actions"]) {
-  position: static;
-  margin-top: 0;
-  height: auto;
-  display: flex;
-  justify-content: flex-end;
-  padding-right: 2px;
-}
-
-.store-blueprint-dialog-viewer
-  [data-streamdown="code-block-actions"] {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  background: color-mix(in oklch, var(--background) 85%, transparent);
-  border: 1px solid var(--border-weak);
-  border-radius: var(--radius-md, 6px);
-}
-
-.store-blueprint-dialog-viewer
-  [data-streamdown="code-block-copy-button"],
-.store-blueprint-dialog-viewer
-  [data-streamdown="code-block-download-button"] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: var(--radius-sm, 4px);
-  color: var(--text-weak);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.store-blueprint-dialog-viewer
-  [data-streamdown="code-block-copy-button"]:hover:not(:disabled),
-.store-blueprint-dialog-viewer
-  [data-streamdown="code-block-download-button"]:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--text-strong);
-}
-
-.store-blueprint-dialog-actions,
 .store-publish-dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -1891,7 +1778,6 @@
  * transparent except for the `--primary` variant). Same Apple-style
  * tint language used elsewhere in the redesign.
  */
-.store-blueprint-dialog .pill-btn,
 .store-publish-dialog .pill-btn {
   background: color-mix(in oklch, var(--foreground) 7%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
@@ -1900,22 +1786,30 @@
   font-size: 12.5px;
   font-weight: 600;
 }
-.store-blueprint-dialog .pill-btn:hover:not(:disabled),
 .store-publish-dialog .pill-btn:hover:not(:disabled) {
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
   color: var(--text-strong);
 }
-.store-blueprint-dialog .pill-btn--danger,
 .store-publish-dialog .pill-btn--danger {
-  background: color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 14%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 14%,
+    transparent
+  );
   color: var(--destructive, oklch(0.6 0.2 25));
-  border-color: color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 32%, transparent);
+  border-color: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 32%,
+    transparent
+  );
 }
-.store-blueprint-dialog .pill-btn--danger:hover:not(:disabled),
 .store-publish-dialog .pill-btn--danger:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 22%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 22%,
+    transparent
+  );
 }
-.store-blueprint-dialog .pill-btn--primary,
 .store-publish-dialog .pill-btn--primary {
   background: color-mix(
     in oklch,
@@ -1929,7 +1823,6 @@
   );
   color: var(--interactive, var(--primary, oklch(0.62 0.18 250)));
 }
-.store-blueprint-dialog .pill-btn--primary:hover:not(:disabled),
 .store-publish-dialog .pill-btn--primary:hover:not(:disabled) {
   background: color-mix(
     in oklch,
@@ -1966,7 +1859,9 @@
   color: var(--text-strong);
   margin-bottom: 6px;
 }
-.store-creator-empty-body { font-size: 13px; }
+.store-creator-empty-body {
+  font-size: 13px;
+}
 
 .store-creator-header {
   margin-bottom: 24px;
@@ -2012,7 +1907,11 @@
   color: var(--text-weak);
 }
 .store-card-visibility-badge[data-tier="private"] {
-  background: color-mix(in oklch, var(--destructive, oklch(0.6 0.2 25)) 12%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--destructive, oklch(0.6 0.2 25)) 12%,
+    transparent
+  );
   color: var(--destructive, oklch(0.6 0.2 25));
 }
 
@@ -2197,7 +2096,11 @@
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 .share-addon-friend-row[data-selected] {
-  background: color-mix(in oklch, var(--interactive, oklch(0.62 0.2 250)) 12%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--interactive, oklch(0.62 0.2 250)) 12%,
+    transparent
+  );
 }
 .share-addon-friend-name {
   flex: 1;
@@ -2370,7 +2273,9 @@
   color: var(--text-strong, var(--foreground));
   flex-shrink: 0;
   opacity: 0.7;
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
 }
 .addon-share-card:hover .addon-share-card-cta {
   opacity: 1;

@@ -241,8 +241,8 @@ export type SelfModFeatureSummary = {
 /**
  * One entry in the rolling-window feature snapshot the Store side panel
  * renders. `name` is a normie-friendly 3-7 word phrase the namer LLM
- * produced; `commitHashes` is the LLM's grouping decision used by the
- * Store agent to load selected commit context.
+ * produced; `commitHashes` is the LLM's grouping decision used to build the
+ * source pack and reference diffs for publishing.
  */
 export type SelfModFeatureSnapshotItem = {
   name: string;

@@ -163,9 +163,9 @@ export const buildStoreInstallPrompt = (
     : "- none";
 
   return [
-    `# Install Stella store release: ${args.displayName} (${args.packageId})`,
+    `# Import Stella Store release: ${args.displayName} (${args.packageId})`,
     "",
-    "Another Stella user published this release. The user has asked you to install it on this machine.",
+    "Another Stella user published this source-backed release. The user has asked you to import it into this Stella tree.",
     "",
     "Stella is self-modifying. Every install starts from the same root commit, but each tree may have diverged anywhere — partial refactors, alternate implementations of the same feature, missing files, renamed surfaces. Aim for **functional parity, not byte parity**: produce code that behaves the same as the author's release on this tree, even if the actual changes you write are not identical to the reference diffs.",
     "",
@@ -173,8 +173,8 @@ export const buildStoreInstallPrompt = (
     "",
     "## Inputs you've been given",
     "",
-    `- **Release summary** at \`${args.specPath}\`. Read this first for listing context, but treat the source pack and reference diffs as the authoritative implementation material.`,
-    "- **Stella source pack** (when present) is the exact changed-file package material for this install/update. It may contain only the new revisions since the user's installed version. Read it as source context; do not apply it mechanically.",
+    `- **Release summary** at \`${args.specPath}\`. Read this first for listing context, then verify it against the source material.`,
+    "- **Stella source pack** (when present) is the exact changed-file package material for this install/update. Stella already tried the safe automatic import path before handing this to you; if you are seeing this prompt, adapt the material to local divergence instead of replaying it blindly. It may contain only the new revisions since the user's installed version.",
     "- **Reference diffs** (one per commit on the author's tree). These are `git show -U10` outputs, post-redaction (home-dir paths, usernames, and obvious credential shapes are scrubbed). Use them as a **strong default** for how the change was implemented on the author's tree — but adapt to local divergence.",
     "",
     "Source pack:",

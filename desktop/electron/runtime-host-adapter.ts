@@ -17,7 +17,6 @@ import type {
   StellaReleaseArtifactRef,
   StoreReleaseSourcePack,
   StorePublishArgs,
-  StorePublishBlueprintArgs,
   StorePublishSelectedFeaturesArgs,
 } from "../../runtime/protocol/index.js";
 import {
@@ -934,10 +933,6 @@ export class RuntimeHostAdapter {
     return this.host.createStoreReleaseUpdate(args);
   }
 
-  publishStoreBlueprint(args: StorePublishBlueprintArgs) {
-    return this.host.publishStoreBlueprint(args);
-  }
-
   publishStoreSelectedFeatures(args: StorePublishSelectedFeaturesArgs) {
     return this.host.publishStoreSelectedFeatures(args);
   }
@@ -956,33 +951,6 @@ export class RuntimeHostAdapter {
     commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) {
     return this.host.installFromBlueprint(payload);
-  }
-
-  getStoreThread() {
-    return this.host.getStoreThread();
-  }
-
-  sendStoreThreadMessage(payload: {
-    text: string;
-    attachedFeatureNames?: string[];
-    editingBlueprint?: boolean;
-  }) {
-    return this.host.sendStoreThreadMessage(payload);
-  }
-
-  cancelStoreThreadTurn() {
-    return this.host.cancelStoreThreadTurn();
-  }
-
-  denyLatestStoreBlueprint() {
-    return this.host.denyLatestStoreBlueprint();
-  }
-
-  markStoreBlueprintPublished(payload: {
-    messageId: string;
-    releaseNumber: number;
-  }) {
-    return this.host.markStoreBlueprintPublished(payload);
   }
 
   listCronJobs() {
@@ -1038,14 +1006,6 @@ export class RuntimeHostAdapter {
     ) => void,
   ) {
     return this.host.on("local-chat-updated", listener);
-  }
-
-  onStoreThreadUpdated(
-    listener: (
-      payload: import("../../runtime/contracts/index.js").StoreThreadSnapshot,
-    ) => void,
-  ) {
-    return this.host.on("store-thread-updated", listener);
   }
 
   onVoiceActionCompleted(
