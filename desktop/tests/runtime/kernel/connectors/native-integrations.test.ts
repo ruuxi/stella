@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  buildNativeConnectorCatalog,
   enableNativeConnector,
   getNativeConnectorCatalogActions,
   getNativeConnectorCatalogEntry,
@@ -160,36 +161,8 @@ const createRoot = () => {
 };
 
 describe("native OAuth integration readiness", () => {
-  it("keeps Google-family Composio entries out of the OAuth catalog because Google is handled separately", async () => {
+  it("keeps native Google Workspace as the fallback but lets the server catalog override it", async () => {
     const root = createRoot();
-    const excludedSourceIds = [
-      "gmail",
-      "google_admin",
-      "google_analytics",
-      "google_classroom",
-      "google_maps",
-      "google_search_console",
-      "googleads",
-      "googlebigquery",
-      "googlecalendar",
-      "googledocs",
-      "googledrive",
-      "googlemeet",
-      "googlephotos",
-      "googlesheets",
-      "googleslides",
-      "googlesuper",
-      "googletasks",
-    ];
-
-    expect(
-      OAUTH_PROVIDER_CATALOG.filter((entry) =>
-        excludedSourceIds.includes(entry.id),
-      ),
-    ).toEqual([]);
-    expect(OAUTH_PROVIDER_CATALOG.map((entry) => entry.id)).toContain(
-      "youtube",
-    );
     const connectors = await listNativeConnectors(root);
     const ids = connectors.map((entry) => entry.id);
 
@@ -201,6 +174,34 @@ describe("native OAuth integration readiness", () => {
     expect(ids).not.toContain("googlesheets");
     expect(ids).not.toContain("googleslides");
     expect(ids).not.toContain("googlemeet");
+    expect(connectors.find((entry) => entry.id === "gmail")).toMatchObject({
+      provider: "google-workspace",
+    });
+
+    expect(
+      buildNativeConnectorCatalog([
+        {
+          id: "gmail",
+          name: "Gmail",
+          category: "email",
+          auth: ["OAUTH2"],
+          catalogToolCount: 61,
+          availability: "ready",
+          provider: "backend-composio",
+          description: "Connect Gmail through Composio.",
+          connectable: true,
+          backendConnector: {
+            type: "composio",
+            toolkit: "GMAIL",
+          },
+        },
+      ]),
+    ).toEqual([
+      expect.objectContaining({
+        id: "gmail",
+        provider: "backend-composio",
+      }),
+    ]);
   });
 
   it("keeps backend-owned communication integrations out of the OAuth catalog source and Store surface", async () => {

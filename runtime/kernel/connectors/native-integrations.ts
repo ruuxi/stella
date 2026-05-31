@@ -214,10 +214,7 @@ export const buildNativeConnectorCatalog = (
   serverCatalog?: NativeConnectorCatalogOverride,
 ): NativeConnectorCatalogEntry[] => {
   if (serverCatalog === undefined) return NATIVE_CONNECTOR_CATALOG;
-  const byId = new Map<string, NativeConnectorCatalogEntry>();
-  for (const entry of GOOGLE_WORKSPACE_CONNECTOR_CATALOG) byId.set(entry.id, entry);
-  for (const entry of serverCatalog) byId.set(entry.id, entry);
-  return Array.from(byId.values());
+  return [...serverCatalog];
 };
 
 const statePath = (stellaRoot: string) =>
