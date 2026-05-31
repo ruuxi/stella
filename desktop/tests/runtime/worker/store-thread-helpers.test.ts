@@ -12,7 +12,11 @@ import {
 } from "../../../../runtime/kernel/storage/database-init.js";
 import type { SqliteDatabase } from "../../../../runtime/kernel/storage/shared.js";
 import { StellaSourceHistoryStore } from "../../../../runtime/kernel/storage/stella-source-history-store.js";
-import { collectStoreReleaseSourcePack } from "../../../../runtime/worker/store-thread-helpers.js";
+import {
+  buildStoreReleaseRedactor,
+  collectStoreReleaseCommits,
+  collectStoreReleaseSourcePack,
+} from "../../../../runtime/worker/store-thread-helpers.js";
 
 const git = (cwd: string, args: string[]) => {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -41,6 +45,65 @@ const initRepo = async (): Promise<string> => {
   git(repoRoot, ["commit", "-q", "-m", "Initial seed"]);
   return repoRoot;
 };
+
+describe("Store release redaction", () => {
+  let repoRoot = "";
+
+  beforeEach(async () => {
+    repoRoot = await initRepo();
+  });
+
+  afterEach(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  it("redacts email addresses from text leaving the author's machine", () => {
+    const redact = buildStoreReleaseRedactor();
+
+    expect(
+      redact("Author: Stella User <publisher@example-company.com>"),
+    ).toBe("Author: Stella User <<redacted-email>>");
+  });
+
+  it("omits git commit metadata and redacts emails from Store reference commits", async () => {
+    git(repoRoot, ["config", "user.email", "publisher@example-company.com"]);
+    await writeFile(
+      path.join(repoRoot, "src/feature.ts"),
+      "export const owner = 'publisher@example-company.com';\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "src/feature.ts"]);
+    git(repoRoot, [
+      "commit",
+      "-q",
+      "-m",
+      "Add publisher@example-company.com feature",
+      "-m",
+      "Stella-Conversation: conv-email",
+    ]);
+    const commitHash = git(repoRoot, ["rev-parse", "HEAD"]);
+
+    const commits = await collectStoreReleaseCommits({
+      repoRoot,
+      attachedFeatureNames: ["Email Feature"],
+      snapshot: {
+        generatedAt: Date.now(),
+        items: [
+          {
+            name: "Email Feature",
+            commitHashes: [commitHash],
+          },
+        ],
+      },
+    });
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0]?.subject).toBe("Add <redacted-email> feature");
+    expect(commits[0]?.diff).not.toContain("Author:");
+    expect(commits[0]?.diff).not.toContain("publisher@example-company.com");
+    expect(commits[0]?.diff).toContain("<redacted-email>");
+  });
+});
 
 describe("collectStoreReleaseSourcePack", () => {
   let repoRoot = "";

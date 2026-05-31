@@ -90,6 +90,7 @@ const runStoreReleaseGitShow = async (
       "-U10",
       "--patch",
       "--find-renames",
+      "--format=",
       "--no-color",
       commitHash,
       ...gitPathspecArgs,
@@ -287,9 +288,9 @@ const listStoreReleaseCommitFiles = async (
 /**
  * Best-effort redactor for text leaving the author's machine. Scrubs
  * `$HOME` paths, the local username when it appears in path-shaped
- * contexts, JWT/OAuth/SSH credential shapes, email addresses outside
- * obvious test fixtures, and bearer-token assignments. The reviewer
- * still rejects on anything the regex misses.
+ * contexts, JWT/OAuth/SSH credential shapes, email addresses, and
+ * bearer-token assignments. The reviewer still rejects on anything
+ * the regex misses.
  */
 export const buildStoreReleaseRedactor = (): ((input: string) => string) => {
   const home = os.homedir();
@@ -323,6 +324,7 @@ export const buildStoreReleaseRedactor = (): ((input: string) => string) => {
   }
 
   const credentialPatterns: Array<[RegExp, string]> = [
+    [/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "<redacted-email>"],
     [/sk-[A-Za-z0-9_-]{20,}/g, "<redacted-token>"],
     [/sk-ant-[A-Za-z0-9_-]{20,}/g, "<redacted-token>"],
     [/xoxb-[A-Za-z0-9-]{20,}/g, "<redacted-token>"],
