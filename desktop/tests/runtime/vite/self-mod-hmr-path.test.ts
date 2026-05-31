@@ -7,6 +7,7 @@ import {
   resolveSelfModHmrAbsolutePath,
   resolveSelfModOverlayImportPath,
   shouldPromoteSuppressedShellUpdatePath,
+  shouldParkSelfModHmrClientUpdates,
 } from "../../../vite.config";
 
 const repoRoot = path
@@ -89,5 +90,14 @@ describe("shouldPromoteSuppressedShellUpdatePath", () => {
       true,
     );
     expect(shouldPromoteSuppressedShellUpdatePath(undefined, "")).toBe(false);
+  });
+});
+
+describe("shouldParkSelfModHmrClientUpdates", () => {
+  it("parks client updates by default and keeps live mode as the dev escape hatch", () => {
+    expect(shouldParkSelfModHmrClientUpdates(undefined)).toBe(true);
+    expect(shouldParkSelfModHmrClientUpdates("")).toBe(true);
+    expect(shouldParkSelfModHmrClientUpdates("live")).toBe(false);
+    expect(shouldParkSelfModHmrClientUpdates(" LIVE ")).toBe(false);
   });
 });

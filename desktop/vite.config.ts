@@ -35,6 +35,7 @@ const selfModRequestContext = new AsyncLocalStorage<{
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
 const STELLA_REPO_ROOT = path.resolve(__dirname, '..')
+const SELF_MOD_HMR_MODE_ENV = 'STELLA_SELF_MOD_HMR_MODE'
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   STELLA_REPO_ROOT,
   '.stella-runtime-reload-state.json',
@@ -234,6 +235,10 @@ const isViteTrackableAbsolutePath = (absPath: string): boolean => {
   const repoRelative = normalizeContentionPath(absPath, STELLA_REPO_ROOT)
   return repoRelative != null && isViteTrackablePath(repoRelative)
 }
+
+export const shouldParkSelfModHmrClientUpdates = (
+  mode = process.env[SELF_MOD_HMR_MODE_ENV],
+): boolean => (mode ?? '').trim().toLowerCase() !== 'live'
 
 const packageNameFromModuleId = (id: string): string | null => {
   const normalized = id.replace(/\\/g, '/')
@@ -489,6 +494,7 @@ const collectShellSnapshotFiles = (): string[] => {
  *   - GET  /status         (debug introspection)
  */
 function selfModHmrControl(): Plugin {
+  const parkClientUpdates = shouldParkSelfModHmrClientUpdates()
   const pausedRunIds = new Set<string>()
   const inFlightPaths = new Set<string>()
   const prePeriodSnapshot = new Map<string, string>()
@@ -506,8 +512,11 @@ function selfModHmrControl(): Plugin {
   let clientFullReloadRequestedDuringApply = false
   let shellMutationDepth = 0
 
-  const isClientUpdatePaused = () =>
+  const hasOwnedClientUpdatePause = () =>
     pausedRunIds.size > 0 || shellMutationDepth > 0
+
+  const isClientUpdatePaused = () =>
+    parkClientUpdates || hasOwnedClientUpdatePause()
 
   const pauseRun = (runId: string) => {
     if (runId.length > 0) pausedRunIds.add(runId)
@@ -517,7 +526,7 @@ function selfModHmrControl(): Plugin {
     for (const runId of runIds) {
       pausedRunIds.delete(runId)
     }
-    if (!isClientUpdatePaused()) {
+    if (!hasOwnedClientUpdatePause()) {
       suppressedHotUpdatePaths.clear()
     }
   }
@@ -1005,6 +1014,7 @@ function selfModHmrControl(): Plugin {
             suppressedHotUpdatePaths: suppressedHotUpdatePaths.size,
             suppressedClientMessages,
             shellMutationDepth,
+            parked: parkClientUpdates,
           })
           return
         }
@@ -1195,9 +1205,13 @@ function selfModHmrControl(): Plugin {
           clearAllState()
           shellMutationDepth = 0
           if (shouldReload) {
-            server.ws.send({ type: 'full-reload', path: '*' })
+            sendClientMessage({ type: 'full-reload', path: '*' })
           }
-          sendJson(200, { ok: true, paused: false, reloaded: shouldReload })
+          sendJson(200, {
+            ok: true,
+            paused: isClientUpdatePaused(),
+            reloaded: shouldReload,
+          })
           return
         }
 
@@ -1221,7 +1235,9 @@ function selfModHmrControl(): Plugin {
         // become visible. The worker releases finalized runs from inside the
         // morph cover via /apply, while still leaving other active runs
         // suppressed.
-        suppressedHotUpdatePaths.add(key)
+        if (hasOwnedClientUpdatePause()) {
+          suppressedHotUpdatePaths.add(key)
+        }
         return []
       }
       if (inFlightPaths.has(key)) {
