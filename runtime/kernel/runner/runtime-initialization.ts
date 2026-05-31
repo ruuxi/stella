@@ -1,5 +1,8 @@
 import { watch as fsWatch, type FSWatcher } from "node:fs";
-import { loadBundledAgents } from "../agents/agents.js";
+import {
+  loadBundledAgents,
+  mergeBundledAndExtensionAgents,
+} from "../agents/agents.js";
 import { loadExtensions } from "../extensions/loader.js";
 import type { ExtensionServices } from "../extensions/services.js";
 import { fetchAndRegisterModelsDevDirectProviderModels } from "../../ai/models-dev.js";
@@ -42,8 +45,9 @@ export const createRuntimeInitialization = (
   const installLoadedExtensions = (
     extensions: Awaited<ReturnType<typeof loadExtensions>>,
   ): void => {
-    context.state.loadedAgents =
-      extensions.agents.length > 0 ? extensions.agents : loadBundledAgents();
+    context.state.loadedAgents = mergeBundledAndExtensionAgents(
+      extensions.agents,
+    );
     for (const hook of extensions.hooks) {
       // Force `source: "extension"` even if the disk-loaded hook
       // declared something else. Bundled hooks register through

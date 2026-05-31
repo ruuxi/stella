@@ -1,6 +1,5 @@
 import path from "node:path";
-import os from "node:os";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createShellState,
@@ -11,11 +10,25 @@ import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
 const tempDirs = createSyncTempDirTracker();
+const originalPlatform = process.platform;
 
-afterEach(() => tempDirs.cleanup());
+afterEach(() => {
+  Object.defineProperty(process, "platform", {
+    value: originalPlatform,
+    configurable: true,
+  });
+  tempDirs.cleanup();
+});
 
 const createTempDir = () => {
   return tempDirs.create("stella-computer-shell-");
+};
+
+const forcePlatform = (platform: NodeJS.Platform) => {
+  Object.defineProperty(process, "platform", {
+    value: platform,
+    configurable: true,
+  });
 };
 
 describe("stella-computer shell bootstrap", () => {
@@ -31,7 +44,7 @@ describe("stella-computer shell bootstrap", () => {
       "utf-8",
     );
 
-    const state = createShellState(os.tmpdir(), {
+    const state = createShellState(tempDir, {
       stellaComputerCliPath: fakeComputerCliPath,
     });
     const output = await runShell(
@@ -61,7 +74,7 @@ describe("stella-computer shell bootstrap", () => {
       "utf-8",
     );
 
-    const state = createShellState(os.tmpdir(), {
+    const state = createShellState(tempDir, {
       stellaComputerCliPath: fakeComputerCliPath,
     });
     const context: ToolContext = {
@@ -90,5 +103,22 @@ describe("stella-computer shell bootstrap", () => {
       session: "general-task-task-test",
       args: ["snapshot", "--json"],
     });
+  });
+
+  it("creates a Windows cmd shim for stella-computer", () => {
+    forcePlatform("win32");
+    const tempDir = createTempDir();
+    const fakeComputerCliPath = path.join(tempDir, "fake-stella-computer.js");
+
+    const state = createShellState(tempDir, {
+      stellaComputerCliPath: fakeComputerCliPath,
+    });
+
+    expect(state.windowsCliShimDir).toBeTruthy();
+    const shim = readFileSync(
+      path.join(String(state.windowsCliShimDir), "stella-computer.cmd"),
+      "utf-8",
+    );
+    expect(shim).toContain('"%STELLA_NODE_BIN%" "%STELLA_COMPUTER_CLI%" %*');
   });
 });

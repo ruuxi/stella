@@ -6,7 +6,7 @@ import { spawn } from "child_process";
 import path from "path";
 import os from "os";
 import { fileURLToPath } from "url";
-import { existsSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { readdir, stat } from "fs/promises";
 import { setupEnvironment } from "dugite";
 import {
@@ -41,6 +41,7 @@ export type ShellState = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  windowsCliShimDir?: string;
   /**
    * Per-root CLI bridge UDS path (worker-side). Forwarded into the PTY
    * env as `STELLA_CLI_BRIDGE_SOCK` so sidecar CLIs (`stella-connect`)
@@ -58,6 +59,29 @@ type ShellStateOptions = {
   stellaConnectCliPath?: string;
   cliBridgeSocketPath?: string;
 };
+
+const WINDOWS_CLI_SHIMS = [
+  {
+    command: "stella-browser",
+    optionKey: "stellaBrowserBinPath",
+    envVar: "STELLA_BROWSER_BIN",
+  },
+  {
+    command: "stella-office",
+    optionKey: "stellaOfficeBinPath",
+    envVar: "STELLA_OFFICE_BIN",
+  },
+  {
+    command: "stella-computer",
+    optionKey: "stellaComputerCliPath",
+    envVar: "STELLA_COMPUTER_CLI",
+  },
+  {
+    command: "stella-connect",
+    optionKey: "stellaConnectCliPath",
+    envVar: "STELLA_CONNECT_CLI",
+  },
+] as const;
 
 type ManagedShellRecord = ShellRecord & {
   unreadOutput: string;
@@ -446,6 +470,36 @@ export const extractOfficePreviewRef = (
   };
 };
 
+const buildWindowsCliShimScript = (envVar: string): string =>
+  ["@echo off", `"%STELLA_NODE_BIN%" "%${envVar}%" %*`, ""].join("\r\n");
+
+const ensureWindowsCliShims = (
+  secretStateRoot: string,
+  options?: ShellStateOptions,
+): string | undefined => {
+  const requested = WINDOWS_CLI_SHIMS.filter(
+    (shim) => typeof options?.[shim.optionKey] === "string",
+  );
+  if (requested.length === 0) {
+    return undefined;
+  }
+
+  const shimDir = path.join(secretStateRoot, "shell-shims");
+  try {
+    mkdirSync(shimDir, { recursive: true });
+    for (const shim of requested) {
+      writeFileSync(
+        path.join(shimDir, `${shim.command}.cmd`),
+        buildWindowsCliShimScript(shim.envVar),
+        "utf-8",
+      );
+    }
+    return shimDir;
+  } catch {
+    return undefined;
+  }
+};
+
 export function createShellState(
   secretStateRoot: string,
   options?: ShellStateOptions,
@@ -454,6 +508,11 @@ export function createShellState(
     throw new Error("createShellState requires a secretStateRoot.");
   }
 
+  const windowsCliShimDir =
+    process.platform === "win32"
+      ? ensureWindowsCliShims(secretStateRoot, options)
+      : undefined;
+
   return {
     shells: new Map(),
     secretStateRoot,
@@ -461,6 +520,7 @@ export function createShellState(
     stellaOfficeBinPath: options?.stellaOfficeBinPath,
     stellaComputerCliPath: options?.stellaComputerCliPath,
     stellaConnectCliPath: options?.stellaConnectCliPath,
+    ...(windowsCliShimDir ? { windowsCliShimDir } : {}),
     cliBridgeSocketPath: options?.cliBridgeSocketPath,
     lastDeferredDeleteSweepAt: 0,
   };
@@ -687,10 +747,11 @@ const buildShellEnv = (
     stellaOfficeBinPath?: string;
     stellaComputerCliPath?: string;
     stellaConnectCliPath?: string;
+    windowsCliShimDir?: string;
     cliBridgeSocketPath?: string;
   },
 ) => {
-  const mergedEnv = {
+  const mergedEnv: NodeJS.ProcessEnv = {
     ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
     STELLA_NODE_BIN: process.execPath,
     STELLA_RUNTIME_WORKER_PID: String(process.pid),
@@ -714,6 +775,18 @@ const buildShellEnv = (
       ? { STELLA_CLI_BRIDGE_SOCK: options.cliBridgeSocketPath }
       : {}),
   };
+
+  if (options?.windowsCliShimDir) {
+    const pathKey =
+      Object.keys(mergedEnv).find((key) => key.toLowerCase() === "path") ??
+      "PATH";
+    const existingPath =
+      typeof mergedEnv[pathKey] === "string" ? mergedEnv[pathKey] : "";
+    mergedEnv[pathKey] = [options.windowsCliShimDir, existingPath]
+      .filter(Boolean)
+      .join(path.delimiter);
+    mergedEnv.STELLA_WINDOWS_CLI_SHIM_DIR = options.windowsCliShimDir;
+  }
 
   return setupEnvironment(mergedEnv).env;
 };
