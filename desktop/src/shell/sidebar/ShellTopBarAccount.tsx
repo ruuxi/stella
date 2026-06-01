@@ -25,7 +25,7 @@ import {
   preloadNavSurfaceRoute,
 } from "@/shell/topbar/nav-surface-preloads";
 import { ThemePicker } from "@/global/settings/ThemePicker";
-import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
 import { api } from "@/convex/api";
 import { usePostOnboardingHint } from "@/global/onboarding/post-onboarding-hints";
@@ -102,7 +102,7 @@ export const ShellTopBarAccount = ({
   const t = useT();
   const navigate = useNavigate();
   const { user: convexUser, hasConnectedAccount } = useCurrentUser();
-  const { user: sessionUser } = useAuthSessionState();
+  const { cacheScope, user: sessionUser } = useAuthSessionState();
   const { nickname } = useNickname();
   const user = {
     email: convexUser?.email ?? sessionUser?.email ?? undefined,
@@ -176,10 +176,14 @@ export const ShellTopBarAccount = ({
       window.removeEventListener(SUBSCRIPTION_UPGRADED_EVENT, handler);
   }, []);
 
-  const billingStatus = useConvexOneShot(
+  const billingStatus = usePersistentConvexOneShot(
     api.billing.getSubscriptionStatus,
     hasConnectedAccount && billingQueryReady ? {} : "skip",
-    billingRefreshKey,
+    {
+      scope: cacheScope,
+      ttlMs: 5 * 60 * 1000,
+      refreshKey: billingRefreshKey,
+    },
   ) as BillingStatusLite | undefined;
 
   useEffect(() => {

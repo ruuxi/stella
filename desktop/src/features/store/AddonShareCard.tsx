@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "@/convex/api";
-import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import type { StorePackageRecord } from "@/shared/types/electron";
 import type { ParsedShareLink } from "./share-link";
 import "./store.css";
@@ -16,6 +16,7 @@ type AddonShareCardProps = {
    */
   variant?: "wide" | "compact";
 };
+const ADDON_SHARE_CACHE_TTL_MS = 30 * 60 * 1000;
 
 /**
  * Embedded preview rendered in social chat when a message body is just
@@ -38,9 +39,16 @@ export function AddonShareCard({
   // bubbles (potentially many per conversation), and a published
   // package's name/description/icon doesn't shift while a user is
   // reading the message.
-  const pkg = useConvexOneShot(api.data.store_packages.getPublicPackage, {
-    packageId: link.packageId,
-  }) as StorePackageRecord | null | undefined;
+  const pkg = usePersistentConvexOneShot(
+    api.data.store_packages.getPublicPackage,
+    {
+      packageId: link.packageId,
+    },
+    {
+      scope: "public",
+      ttlMs: ADDON_SHARE_CACHE_TTL_MS,
+    },
+  ) as StorePackageRecord | null | undefined;
 
   // Loading skeleton: matches the resolved card's height so the chat
   // doesn't reflow once the query lands.

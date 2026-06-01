@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { useDesktopAuthSession } from "@/global/auth/services/auth-session";
 import { useModelCatalogUpdatedAt } from "@/global/settings/hooks/model-catalog-updated-at";
@@ -26,6 +25,7 @@ import {
   createResourceStore,
   useResourceStore,
 } from "@/shared/lib/resource-cache";
+import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 
 type StellaCatalogPayload = {
   models: CatalogModel[];
@@ -141,9 +141,14 @@ export function useModelCatalog() {
   const hasConnectedAccount = Boolean(
     sessionData && user?.isAnonymous !== true,
   );
-  const billingStatus = useQuery(
+  const sessionCacheScope = getSessionCacheKey(sessionData);
+  const billingStatus = usePersistentConvexOneShot(
     api.billing.getSubscriptionStatus,
     hasConnectedAccount ? {} : "skip",
+    {
+      scope: sessionCacheScope,
+      ttlMs: 5 * 60 * 1000,
+    },
   ) as BillingStatus | undefined;
   const billingAudienceKey = getBillingAudienceKey(billingStatus);
   const audience = useMemo<ManagedModelAudience | null>(
@@ -156,11 +161,15 @@ export function useModelCatalog() {
   );
   const authAudienceKey = useMemo(() => {
     if (session.isPending) return null;
-    const sessionKey = getSessionCacheKey(sessionData);
-    if (!hasConnectedAccount) return `${sessionKey}:audience:anonymous`;
+    if (!hasConnectedAccount) return `${sessionCacheScope}:audience:anonymous`;
     if (!billingAudienceKey) return null;
-    return `${sessionKey}:audience:${billingAudienceKey}`;
-  }, [billingAudienceKey, hasConnectedAccount, sessionData, session.isPending]);
+    return `${sessionCacheScope}:audience:${billingAudienceKey}`;
+  }, [
+    billingAudienceKey,
+    hasConnectedAccount,
+    session.isPending,
+    sessionCacheScope,
+  ]);
 
   const stellaCacheKey = useMemo(() => {
     if (!authAudienceKey || modelCatalogUpdatedAt === null) return null;

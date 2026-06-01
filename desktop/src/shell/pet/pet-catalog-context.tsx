@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/convex/api";
-import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import {
   PET_BY_ID_STORAGE_KEY,
   getCachedPetById,
@@ -8,6 +9,9 @@ import {
 } from "./pet-catalog-cache";
 import { BUNDLED_PETS } from "./bundled-pets";
 import { normalizePet, type BuiltInPet } from "./built-in-pets";
+
+const PET_RECORD_CACHE_TTL_MS = 30 * 60 * 1000;
+const PET_TAG_FACETS_CACHE_TTL_MS = 60 * 60 * 1000;
 
 const findBundled = (id: string | null | undefined): BuiltInPet | null => {
   if (!id) return null;
@@ -53,6 +57,7 @@ const normalizeUserPet = (pet: unknown): BuiltInPet | null => {
 export const useSelectedPet = (
   selectedPetId: string | null | undefined,
 ): BuiltInPet | null => {
+  const { cacheScope } = useAuthSessionState();
   const bundled = useMemo(() => findBundled(selectedPetId), [selectedPetId]);
   const [cached, setCached] = useState<BuiltInPet | null>(() =>
     selectedPetId ? getCachedPetById(selectedPetId) : null,
@@ -83,13 +88,21 @@ export const useSelectedPet = (
   // immutable post-publish, and the pet overlay window is long-lived.
   // Each `useQuery` here used to keep a Convex watcher open per
   // selected pet for the whole session.
-  const remote = useConvexOneShot(
+  const remote = usePersistentConvexOneShot(
     api.data.pets.getByPetId,
     selectedPetId && !bundled ? { id: selectedPetId } : "skip",
+    {
+      scope: "public",
+      ttlMs: PET_RECORD_CACHE_TTL_MS,
+    },
   );
-  const userPet = useConvexOneShot(
+  const userPet = usePersistentConvexOneShot(
     api.data.user_pets.getByPetId,
     selectedPetId && !bundled ? { petId: selectedPetId } : "skip",
+    {
+      scope: cacheScope,
+      ttlMs: PET_RECORD_CACHE_TTL_MS,
+    },
   );
 
   useEffect(() => {
@@ -117,6 +130,9 @@ export type TagFacet = { tag: string; count: number };
  * standing subscription.
  */
 export const useTagFacets = (): TagFacet[] | null => {
-  const result = useConvexOneShot(api.data.pets.listTagFacets, {});
+  const result = usePersistentConvexOneShot(api.data.pets.listTagFacets, {}, {
+    scope: "public",
+    ttlMs: PET_TAG_FACETS_CACHE_TTL_MS,
+  });
   return (result as TagFacet[] | undefined) ?? null;
 };
