@@ -431,6 +431,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             activeRun = {
               runId: match.runId,
               conversationId,
+              ...(match.uiVisibility
+                ? { uiVisibility: match.uiVisibility }
+                : {}),
             };
             activeRunByConversation.set(conversationId, activeRun);
           }

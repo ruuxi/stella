@@ -106,7 +106,7 @@ export const TASK_COMPLETION_INDICATOR_MS = 3000
 /**
  * Strip out general-agent internal tool-call noise from `statusText`
  * (e.g. "Using exec_command", "Using apply_patch") while letting the
- * orchestrator-level overrides ("Updating", "Pausing") and
+ * orchestrator-level overrides ("Pausing") and
  * any genuinely meaningful per-agent phrase pass through unchanged.
  *
  * `description` is still the preferred stable subtitle — this just
@@ -115,7 +115,8 @@ export const TASK_COMPLETION_INDICATOR_MS = 3000
  * working indicator doesn't collapse to a bare "Working".
  */
 const NOISY_STATUS_TEXT_PATTERN = /^using\s+/i
-const STANDALONE_STATUS_TEXT = new Set(['Updating', 'Pausing'])
+const STANDALONE_STATUS_TEXT = new Set(['Pausing'])
+const LEGACY_CONTROL_ONLY_STATUS_TEXT = new Set(['Updating'])
 const GENERIC_TASK_DESCRIPTION_PATTERN = /^(task|agent|work|help|do this|follow up)$/i
 
 export function isGenericTaskDescription(
@@ -138,6 +139,7 @@ export function normalizeTaskDisplayStatusText(
   const trimmed = statusText.trim()
   if (!trimmed) return undefined
   if (NOISY_STATUS_TEXT_PATTERN.test(trimmed)) return undefined
+  if (LEGACY_CONTROL_ONLY_STATUS_TEXT.has(trimmed)) return undefined
   return trimmed
 }
 

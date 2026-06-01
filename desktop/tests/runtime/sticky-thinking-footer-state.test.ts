@@ -260,14 +260,14 @@ describe("scripted agent/orchestrator footer scenarios", () => {
     ).toBeNull();
   });
 
-  it("shows updating text when send_input interrupts or resumes an agent", () => {
+  it("keeps the working label while send_input description changes the task text", () => {
     const footerTasks = getFooterTasksFromEvents(
       [
         event("1", 100, "agent-started", {
           agentId: "agent-1",
           description: "Inspect settings",
           agentType: "general",
-          statusText: "Updating",
+          statusText: "Use the latest settings",
         }),
       ],
       { nowMs: 150 },
@@ -281,17 +281,17 @@ describe("scripted agent/orchestrator footer scenarios", () => {
           isStreaming: false,
         }),
       }),
-    ).toBe("Updating · Inspect settings");
+    ).toBe("Working · Use the latest settings");
   });
 
-  it("keeps operation text clean when context is generic", () => {
+  it("uses the send_input description even when context is generic", () => {
     const footerTasks = getFooterTasksFromEvents(
       [
         event("1", 100, "agent-started", {
           agentId: "agent-1",
           description: "Task",
           agentType: "general",
-          statusText: "Updating",
+          statusText: "Use the latest settings",
         }),
       ],
       { nowMs: 150 },
@@ -305,7 +305,7 @@ describe("scripted agent/orchestrator footer scenarios", () => {
           isStreaming: false,
         }),
       }),
-    ).toBe("Updating");
+    ).toBe("Working · Use the latest settings");
   });
 
   it("does not let stale live progress revive a canceled persisted agent", () => {

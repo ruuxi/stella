@@ -116,7 +116,17 @@ export const handleSendInput = async (
   if (!message) {
     return { error: "message is required" };
   }
-  const delivered = await ctx.agentApi.sendAgentMessage(threadId, message, sender);
+  const rawDescription = toOptionalString(args.description);
+  if (!rawDescription) {
+    return { error: "description is required" };
+  }
+  const description = deriveAgentDescription(rawDescription, message);
+  const delivered = await ctx.agentApi.sendAgentMessage(
+    threadId,
+    message,
+    sender,
+    { description },
+  );
   if (!delivered.delivered) {
     return { error: `Thread not found: ${threadId}` };
   }

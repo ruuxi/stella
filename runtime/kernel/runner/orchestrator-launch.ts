@@ -630,14 +630,14 @@ export const launchPreparedOrchestratorRun = (args: {
       onExecutionSessionCreated: args.onExecutionSessionCreated,
       orchestratorSession,
       beforeRunEnd: async () => {
+        if (!shouldAttachSelfModLifecycle || selfModLifecycleClosed) {
+          return;
+        }
         await waitForBackgroundAgentsForRootRun(
           context,
           prepared.runId,
           prepared.abortController.signal,
         );
-        if (!shouldAttachSelfModLifecycle || selfModLifecycleClosed) {
-          return;
-        }
         await Promise.resolve(
           context.selfModLifecycle!.finalizeRun({
             runId: prepared.runId,

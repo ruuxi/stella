@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractStepsFromEvents,
   extractTasksFromEvents,
+  getTaskDisplayText,
   getFooterTasksFromEvents,
   mergeFooterTasks,
   type EventRecord,
@@ -88,6 +89,40 @@ describe("extractTasksFromEvents", () => {
     // stays put instead of leaking internal tool names into the UI.
     expect(task.statusText).toBe("Open Spotify");
     expect(task.description).toBe("Open Spotify");
+  });
+
+  it("uses send_input description text as the running task display text", () => {
+    const events = [
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Open Spotify",
+        agentType: "general",
+      }),
+      event("2", 200, "agent-progress", {
+        agentId: "task-1",
+        statusText: "Switch to the playlist tab",
+      }),
+    ];
+
+    const [task] = extractTasksFromEvents(events);
+    expect(task.status).toBe("running");
+    expect(task.statusText).toBe("Switch to the playlist tab");
+    expect(getTaskDisplayText(task)).toBe("Switch to the playlist tab");
+  });
+
+  it("filters legacy send_input Updating control text", () => {
+    const events = [
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Open Spotify",
+        agentType: "general",
+        statusText: "Updating",
+      }),
+    ];
+
+    const [task] = extractTasksFromEvents(events);
+    expect(task.statusText).toBe("Open Spotify");
+    expect(getTaskDisplayText(task)).toBe("Open Spotify");
   });
 
   it("ignores agent-progress that arrives after agent-completed", () => {

@@ -161,6 +161,9 @@ type RuntimeAgentRecord = {
   pendingStartStatusText?: string;
 };
 
+const formatTaskUpdateStatusText = (text: string): string =>
+  truncate(text.replace(/\s+/g, " ").trim(), 200);
+
 type FsLock = {
   id: string;
   threadId: string;
@@ -589,6 +592,7 @@ export class LocalAgentManager implements AgentToolApi {
   private hydrateTaskFromRecord(
     record: PersistedAgentRecord,
     prompt: string,
+    statusText = prompt,
   ): RuntimeAgentRecord {
     return {
       threadId: record.threadId,
@@ -614,7 +618,7 @@ export class LocalAgentManager implements AgentToolApi {
       turnCount: 0,
       interruptedForFollowUp: false,
       terminalEventEmitted: false,
-      pendingStartStatusText: "Updating",
+      pendingStartStatusText: formatTaskUpdateStatusText(statusText),
     };
   }
 
@@ -643,9 +647,13 @@ export class LocalAgentManager implements AgentToolApi {
    * true).
    */
   private deliverFollowUpAsNextTurn(task: RuntimeAgentRecord): void {
+    const pendingStartStatusText = task.pendingStartStatusText;
     const prompt = this.buildTaskPrompt(task);
     this.resetTaskForNextAttempt(task, prompt);
-    task.recentActivity = ["Applying task update from orchestrator."];
+    task.pendingStartStatusText = pendingStartStatusText;
+    task.recentActivity = [
+      pendingStartStatusText ?? "Applying task update from orchestrator.",
+    ];
     this.pendingQueue.unshift(task.threadId);
     this.persistTask(task);
   }
@@ -1247,9 +1255,14 @@ export class LocalAgentManager implements AgentToolApi {
     agentId: string,
     message: string,
     from: "orchestrator" | "subagent",
+    options?: { description?: string },
   ): Promise<{ delivered: boolean }> {
     const text = message.trim();
     if (!text) return { delivered: false };
+    const updateStatusSource = options?.description?.trim()
+      ? options.description
+      : text;
+    const updateStatusText = formatTaskUpdateStatusText(updateStatusSource);
     const task = this.tasks.get(agentId);
     if (!task) {
       if (from !== "orchestrator") {
@@ -1259,7 +1272,11 @@ export class LocalAgentManager implements AgentToolApi {
       if (!persisted) {
         return { delivered: false };
       }
-      const resumedTask = this.hydrateTaskFromRecord(persisted, text);
+      const resumedTask = this.hydrateTaskFromRecord(
+        persisted,
+        text,
+        updateStatusText,
+      );
       resumedTask.messageLog.push({
         from,
         text: truncate(text, 500),
@@ -1288,9 +1305,8 @@ export class LocalAgentManager implements AgentToolApi {
         );
       }
       this.resetTaskForNextAttempt(task, text);
-      const resumeActivity = task.description;
-      task.pendingStartStatusText = "Updating";
-      task.recentActivity = ["Updating."];
+      task.pendingStartStatusText = updateStatusText;
+      task.recentActivity = [updateStatusText];
       this.opts.onAgentEvent?.({
         type: "agent-progress",
         conversationId: task.conversationId,
@@ -1299,19 +1315,9 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         description: task.description,
         parentAgentId: task.parentAgentId,
-        statusText: "Updating",
+        statusText: updateStatusText,
       });
       this.enqueueTask(task);
-      this.opts.onAgentEvent?.({
-        type: "agent-progress",
-        conversationId: task.conversationId,
-        rootRunId: task.rootRunId,
-        agentId: task.threadId,
-        agentType: task.agentType,
-        description: task.description,
-        parentAgentId: task.parentAgentId,
-        statusText: resumeActivity,
-      });
       return { delivered: true };
     }
 
@@ -1338,8 +1344,8 @@ export class LocalAgentManager implements AgentToolApi {
     }
 
     if (from === "orchestrator") {
-      const previousActivity = task.recentActivity[0] ?? task.description;
-      task.recentActivity = [`Update received: ${truncate(text, 200)}`];
+      task.pendingStartStatusText = updateStatusText;
+      task.recentActivity = [updateStatusText];
       this.opts.onAgentEvent?.({
         type: "agent-progress",
         conversationId: task.conversationId,
@@ -1348,7 +1354,7 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         description: task.description,
         parentAgentId: task.parentAgentId,
-        statusText: "Updating",
+        statusText: updateStatusText,
       });
 
       if (task.status === "running" && !task.controller.signal.aborted) {
@@ -1364,17 +1370,6 @@ export class LocalAgentManager implements AgentToolApi {
         task.interruptedForFollowUp = true;
         task.controller.abort(new Error(AGENT_INPUT_INTERRUPT_ERROR));
       }
-      this.opts.onAgentEvent?.({
-        type: "agent-progress",
-        conversationId: task.conversationId,
-        rootRunId: task.rootRunId,
-        agentId: task.threadId,
-        agentType: task.agentType,
-        description: task.description,
-        parentAgentId: task.parentAgentId,
-        statusText: previousActivity,
-      });
-      task.recentActivity = [previousActivity];
     }
 
     this.persistTask(task);
