@@ -33,7 +33,7 @@ import {
   ProviderOnlyPicker,
   type ProviderOption,
 } from "@/global/settings/ProviderOnlyPicker";
-import { VoiceCatalogPicker } from "@/global/settings/VoiceCatalogPicker";
+import { VoiceProviderPicker } from "@/global/settings/VoiceProviderPicker";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import { CURSOR_MODEL_PREFIX } from "@/global/settings/lib/llm-providers";
@@ -50,12 +50,7 @@ import {
   getPlanLabel,
   isRestrictedModelOverrideAudience,
 } from "@/global/billing/audience";
-import {
-  coerceRealtimeVoiceProvider,
-  type ReadAloudVoiceProvider,
-  type RealtimeVoicePreferences,
-  type RealtimeVoiceUnderlyingProvider,
-} from "../../../../runtime/contracts/local-preferences";
+import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
 import { EngineRuntimeModelPanel } from "./EngineRuntimeModelPanel";
 import "./engine-tab.css";
 
@@ -189,30 +184,6 @@ const IMAGE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
     description: "Routes image generation through your OpenRouter account.",
   },
   { key: "fal", label: "fal", description: "Uses your fal account." },
-];
-
-const VOICE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
-  {
-    key: "stella",
-    label: "Stella",
-    description:
-      "Default. All OpenAI, xAI, and Inworld voices included — no API key needed.",
-  },
-  {
-    key: "openai",
-    label: "OpenAI",
-    description: "Use your own OpenAI account.",
-  },
-  {
-    key: "xai",
-    label: "xAI",
-    description: "Use your own xAI account with Grok's Voice Agent.",
-  },
-  {
-    key: "inworld",
-    label: "Inworld",
-    description: "Use your own Inworld account.",
-  },
 ];
 
 const DEFAULT_IMAGE_GENERATION: ImageGenerationPreferences = {
@@ -1073,82 +1044,11 @@ function ModelsSection({
     [writePreferences],
   );
 
-  const onVoiceProviderSelect = useCallback(
-    async (providerKey: string) => {
-      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
-      const next: RealtimeVoicePreferences = {
-        provider: coerceRealtimeVoiceProvider(providerKey),
-        ...(previous.voices ? { voices: previous.voices } : {}),
-        ...(previous.stellaSubProvider
-          ? { stellaSubProvider: previous.stellaSubProvider }
-          : {}),
-        ...(typeof previous.inworldSpeed === "number"
-          ? { inworldSpeed: previous.inworldSpeed }
-          : {}),
-      };
-      await writePreferences({ realtimeVoice: next }, "voice");
-    },
-    [preferences, writePreferences],
-  );
-
-  const onVoiceSelect = useCallback(
-    async (
-      underlyingProvider: RealtimeVoiceUnderlyingProvider,
-      voiceId: string,
-    ) => {
+  const onUpdateVoice = useCallback(
+    async (patch: Partial<RealtimeVoicePreferences>) => {
       const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
       await writePreferences(
-        {
-          realtimeVoice: {
-            ...previous,
-            voices: {
-              ...(previous.voices ?? {}),
-              [underlyingProvider]: voiceId,
-            },
-          },
-        },
-        "voice",
-      );
-    },
-    [preferences, writePreferences],
-  );
-
-  const onVoiceSubProviderSelect = useCallback(
-    async (sub: RealtimeVoiceUnderlyingProvider) => {
-      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
-      if (previous.stellaSubProvider === sub) return;
-      await writePreferences(
-        { realtimeVoice: { ...previous, stellaSubProvider: sub } },
-        "voice",
-      );
-    },
-    [preferences, writePreferences],
-  );
-
-  const onInworldSpeedSelect = useCallback(
-    async (speed: number) => {
-      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
-      const clamped = Math.min(2.0, Math.max(0.5, speed));
-      if (
-        typeof previous.inworldSpeed === "number" &&
-        Math.abs(previous.inworldSpeed - clamped) < 0.001
-      ) {
-        return;
-      }
-      await writePreferences(
-        { realtimeVoice: { ...previous, inworldSpeed: clamped } },
-        "voice",
-      );
-    },
-    [preferences, writePreferences],
-  );
-
-  const onReadAloudProviderSelect = useCallback(
-    async (provider: ReadAloudVoiceProvider) => {
-      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
-      if ((previous.readAloudProvider ?? "inworld") === provider) return;
-      await writePreferences(
-        { realtimeVoice: { ...previous, readAloudProvider: provider } },
+        { realtimeVoice: { ...previous, ...patch } },
         "voice",
       );
     },
@@ -1333,29 +1233,9 @@ function ModelsSection({
           />
         ) : (
           <div className="engine-tab__models-voice">
-            <ProviderOnlyPicker
-              providers={VOICE_PROVIDER_OPTIONS}
-              value={voicePreferences.provider ?? "stella"}
-              onSelect={(key) => void onVoiceProviderSelect(key)}
-              disabled={inputsDisabled}
-              ariaLabel="Voice provider"
-            />
-            <VoiceCatalogPicker
-              voiceProvider={voicePreferences.provider}
-              stellaSubProvider={voicePreferences.stellaSubProvider}
-              selectedVoices={voicePreferences.voices}
-              inworldSpeed={voicePreferences.inworldSpeed}
-              readAloudProvider={voicePreferences.readAloudProvider}
-              onSelectVoice={(underlying, voiceId) =>
-                void onVoiceSelect(underlying, voiceId)
-              }
-              onSelectStellaSubProvider={(sub) =>
-                void onVoiceSubProviderSelect(sub)
-              }
-              onSelectInworldSpeed={(speed) => void onInworldSpeedSelect(speed)}
-              onSelectReadAloudProvider={(provider) =>
-                void onReadAloudProviderSelect(provider)
-              }
+            <VoiceProviderPicker
+              voice={voicePreferences}
+              onUpdateVoice={(patch) => void onUpdateVoice(patch)}
               disabled={inputsDisabled}
             />
           </div>

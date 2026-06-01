@@ -537,9 +537,15 @@
 }
 
 .engine-tab__models-voice {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  padding-right: 2px;
+  padding-bottom: 28px;
+  scrollbar-width: thin;
 }
 
 .engine-tab__empty {
