@@ -190,6 +190,7 @@ export type PublicApiType = {
   };
   "media_jobs": {
     "getByJobId": FunctionReference<'query', 'public', { jobId: string; }, any, string | undefined>;
+    "listFailedSince": FunctionReference<'query', 'public', { limit?: number | undefined; includeLogs?: boolean | undefined; since: number; }, any, string | undefined>;
     "listSucceededSince": FunctionReference<'query', 'public', { limit?: number | undefined; includeLogs?: boolean | undefined; since: number; }, any, string | undefined>;
   };
   "mobile_access": {

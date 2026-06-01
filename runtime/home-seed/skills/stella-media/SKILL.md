@@ -9,7 +9,7 @@ Stella ships a managed media gateway that fronts every supported provider. Use i
 
 ## Still images
 
-General does not call `image_gen` directly. For still images, read the image docs below and route through Stella's managed media gateway. The sidebar surfaces generated assets automatically — tell the user **what** you generated, not where it is. A one-liner like "Generated a 16:9 still of the Tokyo alley scene" is enough.
+General does not call `image_gen` directly. For still images, read the image docs below and route through Stella's managed media gateway. The gateway is async: a successful HTTP response means the job was accepted, not that pixels are ready. On completion, Stella automatically saves generated files to `state/media/outputs/` and opens them in the Display sidebar; if generation fails, Stella shows a failure notification. Tell the user what you started, not where it is. A one-liner like "Started a 16:9 still of the Tokyo alley scene" is enough.
 
 ## Video, audio, 3D — read the relevant doc page first
 

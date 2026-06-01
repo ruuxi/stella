@@ -12,6 +12,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
 import { notifyAssistantScrollFollowLayoutChange } from "@/shell/chat-scroll-follow";
+import { friendlyImageGenerationFailure } from "@/app/media/media-error-copy";
 import "./inline-generated-image-card.css";
 
 type InlineGeneratedImagePayload = Extract<DisplayPayload, { kind: "media" }>;
@@ -38,6 +39,7 @@ type MediaJobLookup = {
   status?: string;
   error?: {
     message?: string;
+    code?: string;
   };
   completedAt?: number;
   updatedAt: number;
@@ -372,7 +374,7 @@ export const InlineGeneratedImageCard = ({
   const placeholderLabel = error
     ? "Could not load image"
     : jobFailed
-      ? "Image generation failed"
+      ? friendlyImageGenerationFailure(job?.error)
       : loading || filePaths.length === 0
         ? "Generating image..."
         : "Image";
