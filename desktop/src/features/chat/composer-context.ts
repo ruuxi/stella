@@ -159,6 +159,7 @@ export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
           window: null,
           browserUrl: null,
           windowScreenshot: null,
+          windowAxTree: null,
           capturePending: false,
           windowContextEnabled: undefined,
         }

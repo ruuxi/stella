@@ -543,6 +543,7 @@ export function appChipToChatContext(app: RecentAppChip): ChatContext {
     selectedText: null,
     regionScreenshots: [],
     windowScreenshot: null,
+    windowAxTree: null,
     capturePending: true,
   }
 }
@@ -558,6 +559,7 @@ export function tabChipToChatContext(tab: BrowserTabChip): ChatContext {
     selectedText: null,
     regionScreenshots: [],
     windowScreenshot: null,
+    windowAxTree: null,
     capturePending: true,
   }
 }

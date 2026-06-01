@@ -36,6 +36,7 @@ export async function captureWindowContent(
 ): Promise<{
   windowInfo: WindowInfo
   screenshot: WindowContentCapture
+  axTree?: string | null
 } | null> {
   if (!hasMacPermission('accessibility') || !hasMacPermission('screen')) return null
 
@@ -66,6 +67,7 @@ export async function captureWindowContent(
   return {
     windowInfo: effectiveWindowInfo,
     screenshot,
+    axTree: windowCapture.axTree ?? effectiveWindowInfo.axTree ?? null,
   }
 }
 

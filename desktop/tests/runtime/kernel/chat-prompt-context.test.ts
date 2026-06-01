@@ -42,6 +42,33 @@ describe("buildChatPromptMessages", () => {
     );
   });
 
+  it("includes active window accessibility text only in hidden context", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "What is selected?",
+      chatContext: {
+        window: contextWindow(
+          "System Settings",
+          "Screen & System Audio Recording",
+        ),
+        windowAxTree: [
+          "<app_state>",
+          "App=System Settings (pid 123)",
+          'Window: "Screen & System Audio Recording", App: System Settings.',
+          "1 window Screen & System Audio Recording",
+          "\t2 checkbox Stella [selected]",
+          "</app_state>",
+        ].join("\n"),
+      } satisfies ChatContext,
+    });
+
+    expect(result.visibleUserPrompt).toBe("What is selected?");
+    const hidden = result.promptMessages?.[0]?.text ?? "";
+    expect(hidden).toContain("<active-window");
+    expect(hidden).toContain("<accessibility-tree>");
+    expect(hidden).toContain("checkbox Stella [selected]");
+    expect(result.visibleUserPrompt).not.toContain("checkbox Stella");
+  });
+
   it("describes explicit images before the ambient window screenshot", () => {
     const result = buildChatPromptMessages({
       userPrompt: "What am I looking at?",

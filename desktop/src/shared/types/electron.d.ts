@@ -1538,6 +1538,7 @@ export type ElectronHomeApi = {
   ) => Promise<{
     capture: {
       title: string;
+      axTree?: string | null;
       screenshot: {
         dataUrl: string;
         width: number;

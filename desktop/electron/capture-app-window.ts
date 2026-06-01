@@ -9,6 +9,7 @@ import { captureWindowScreenshotByPid } from "./window-capture.js";
  */
 export type AppWindowCapture = {
   title: string;
+  axTree?: string | null;
   screenshot: {
     dataUrl: string;
     width: number;
@@ -56,6 +57,7 @@ export const captureAppWindow = async (
       if (capture) {
         return {
           title: capture.windowInfo.title ?? "",
+          axTree: capture.axTree ?? capture.windowInfo.axTree ?? null,
           screenshot: capture.screenshot,
         };
       }
@@ -131,6 +133,7 @@ const captureAppWindowByName = async (
 
   return {
     title: best.titlePortion,
+    axTree: null,
     screenshot: {
       dataUrl: thumbnail.toDataURL(),
       width: size.width,

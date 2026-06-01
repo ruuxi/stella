@@ -19,6 +19,7 @@ export function normalizeChatContext(
         ...context,
         browserUrl: null,
         windowScreenshot: null,
+        windowAxTree: null,
         capturePending: false,
         windowContextEnabled: undefined,
       }
@@ -30,6 +31,7 @@ export function normalizeChatContext(
   const hasFiles = Boolean(normalized.files?.length)
   const hasPendingCapture = Boolean(normalized.capturePending)
   const hasWindowScreenshot = Boolean(normalized.windowScreenshot)
+  const hasWindowAxTree = Boolean(normalized.windowAxTree?.trim())
 
   if (
     !hasWindow &&
@@ -39,7 +41,8 @@ export function normalizeChatContext(
     !hasScreenshots &&
     !hasFiles &&
     !hasPendingCapture &&
-    !hasWindowScreenshot
+    !hasWindowScreenshot &&
+    !hasWindowAxTree
   ) {
     return null
   }

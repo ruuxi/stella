@@ -77,6 +77,7 @@ export class CaptureService {
       window: null,
       browserUrl: null,
       selectedText: null,
+      windowAxTree: null,
       regionScreenshots: [],
     }
   }
@@ -286,6 +287,7 @@ export class CaptureService {
           window: null,
           browserUrl: null,
           selectedText: null,
+          windowAxTree: null,
           regionScreenshots: screenshots,
         }
       } finally {

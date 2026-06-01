@@ -38,6 +38,7 @@ export type ChatContext = {
     stack?: string;
   } | null;
   windowContextEnabled?: boolean;
+  windowAxTree?: string | null;
   browserUrl?: string | null;
   selectedText?: string | null;
   regionScreenshots?: {
