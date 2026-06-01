@@ -27,15 +27,18 @@ import {
   type OutputMedia,
 } from "./media-store"
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload"
+import { showToast } from "@/ui/toast"
+import { friendlyImageGenerationFailure } from "./media-error-copy"
 
 const MATERIALIZED_KEY = "stella-media-materialized-jobs"
 const MATERIALIZED_PAYLOADS_KEY = "stella-media-materialized-payloads"
+const FAILED_NOTIFIED_KEY = "stella-media-failed-notified-jobs"
 const MATERIALIZED_CAP = 1000
 
-const loadFromStorage = (): string[] => {
+const loadFromStorage = (key = MATERIALIZED_KEY): string[] => {
   if (typeof localStorage === "undefined") return []
   try {
-    const raw = localStorage.getItem(MATERIALIZED_KEY)
+    const raw = localStorage.getItem(key)
     if (!raw) return []
     const parsed = JSON.parse(raw) as string[] | { jobIds?: string[] }
     const ids = Array.isArray(parsed) ? parsed : parsed.jobIds
@@ -45,11 +48,11 @@ const loadFromStorage = (): string[] => {
   }
 }
 
-const persistToStorage = (ids: Set<string>): void => {
+const persistToStorage = (ids: Set<string>, key = MATERIALIZED_KEY): void => {
   if (typeof localStorage === "undefined") return
   try {
     const trimmed = Array.from(ids).slice(-MATERIALIZED_CAP)
-    localStorage.setItem(MATERIALIZED_KEY, JSON.stringify(trimmed))
+    localStorage.setItem(key, JSON.stringify(trimmed))
   } catch {
     // Best-effort; no-op on quota errors.
   }
@@ -103,6 +106,9 @@ const persistPayloadsToStorage = (
 // where one writer's mark is invisible to the other (which would happen if
 // each side maintained its own `loadFromStorage()` snapshot).
 const materializedJobs: Set<string> = new Set(loadFromStorage())
+const failedNotifiedJobs: Set<string> = new Set(
+  loadFromStorage(FAILED_NOTIFIED_KEY),
+)
 const materializedPayloadsByJobId = loadPayloadsFromStorage()
 const materializedPayloadListeners = new Set<() => void>()
 
@@ -188,10 +194,16 @@ type MaterializerJob = {
   capability: string
   request?: { prompt?: string }
   output?: unknown
+  error?: {
+    message?: string
+    code?: string
+  }
   completedAt?: number
   updatedAt: number
   createdAt: number
 }
+
+const IMAGE_CAPABILITIES = new Set(["text_to_image", "image_edit", "icon"])
 
 type UseMediaMaterializerOptions = {
   onMaterialized: (payload: DisplayTabPayload) => void
@@ -227,6 +239,11 @@ export const useMediaMaterializer = ({
 
   const jobs = useQuery(
     api.media_jobs.listSucceededSince,
+    hasConnectedAccount ? { since: bootSince, limit: 50 } : "skip",
+  ) as MaterializerJob[] | undefined
+
+  const failedJobs = useQuery(
+    api.media_jobs.listFailedSince,
     hasConnectedAccount ? { since: bootSince, limit: 50 } : "skip",
   ) as MaterializerJob[] | undefined
 
@@ -288,4 +305,24 @@ export const useMediaMaterializer = ({
       })()
     }
   }, [bootSince, jobs])
+
+  useEffect(() => {
+    if (!failedJobs || failedJobs.length === 0) return
+
+    const ordered = [...failedJobs].sort(
+      (a, b) =>
+        (a.completedAt ?? a.updatedAt) - (b.completedAt ?? b.updatedAt),
+    )
+
+    for (const job of ordered) {
+      if (!IMAGE_CAPABILITIES.has(job.capability)) continue
+      if (failedNotifiedJobs.has(job.jobId)) continue
+      failedNotifiedJobs.add(job.jobId)
+      persistToStorage(failedNotifiedJobs, FAILED_NOTIFIED_KEY)
+      showToast({
+        title: friendlyImageGenerationFailure(job.error),
+        variant: "error",
+      })
+    }
+  }, [failedJobs])
 }
