@@ -1287,6 +1287,7 @@ function ModelsSection({
                 ariaLabel="Provider and model picker"
                 selectedHeaderKicker="Tap a model"
                 hideSelectedTitle
+                hideSelectionCheck
                 favoriteScope="engine:stella"
                 cursorProvider={{
                   hasApiKey: hasCursorApiKey,

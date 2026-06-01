@@ -146,6 +146,8 @@ interface ProviderModelPanelProps {
   selectedHeaderKicker?: string;
   /** When true, the "Selected …" title is hidden (badge still shows). */
   hideSelectedTitle?: boolean;
+  /** When true, selected model rows omit the trailing checkmark. */
+  hideSelectionCheck?: boolean;
   /** When true, only the Stella provider can be picked; other provider tabs stay visible but disabled. */
   disableNonStellaProviders?: boolean;
   disabledProviderReason?: string;
@@ -206,6 +208,7 @@ export function ProviderModelPanel({
   hideDefaultRow = false,
   selectedHeaderKicker,
   hideSelectedTitle = false,
+  hideSelectionCheck = false,
   disableNonStellaProviders = false,
   disabledProviderReason,
   visibleProviders,
@@ -555,6 +558,7 @@ export function ProviderModelPanel({
             hideDefaultRow={hideDefaultRow}
             selectedHeaderKicker={selectedHeaderKicker}
             hideSelectedTitle={hideSelectedTitle}
+            hideSelectionCheck={hideSelectionCheck}
             favoriteScope={favoriteScope}
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
@@ -609,6 +613,7 @@ interface ProviderPaneProps {
   hideDefaultRow: boolean;
   selectedHeaderKicker?: string;
   hideSelectedTitle: boolean;
+  hideSelectionCheck: boolean;
   favoriteScope?: string;
   favorites: readonly string[];
   onToggleFavorite: (modelId: string) => void;
@@ -631,6 +636,7 @@ type ModelRowProps = {
   onToggleFavorite: (modelId: string) => void;
   reasoningEffort?: ReasoningEffort;
   onSelectReasoning?: (modelId: string, effort: ReasoningEffort) => void;
+  hideSelectionCheck: boolean;
 };
 
 const ModelRow = memo(function ModelRow({
@@ -646,6 +652,7 @@ const ModelRow = memo(function ModelRow({
   onToggleFavorite,
   reasoningEffort,
   onSelectReasoning,
+  hideSelectionCheck,
 }: ModelRowProps) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const showReasoning = Boolean(onSelectReasoning);
@@ -686,7 +693,7 @@ const ModelRow = memo(function ModelRow({
             <span className="model-picker-model-sub">{subtitle}</span>
           ) : null}
         </span>
-        {selected ? (
+        {!hideSelectionCheck && selected ? (
           <Check size={13} className="model-picker-model-check" />
         ) : null}
       </button>
@@ -788,6 +795,7 @@ function ProviderPane({
   hideDefaultRow,
   selectedHeaderKicker,
   hideSelectedTitle,
+  hideSelectionCheck,
   favoriteScope,
   favorites,
   onToggleFavorite,
@@ -868,7 +876,7 @@ function ProviderPane({
       <span className="model-picker-model-text">
         <span className="model-picker-model-name">{defaultLabel}</span>
       </span>
-      {isDefaultSelected ? (
+      {!hideSelectionCheck && isDefaultSelected ? (
         <Check size={13} className="model-picker-model-check" />
       ) : null}
     </button>
@@ -1056,7 +1064,7 @@ function ProviderPane({
                                 </span>
                               ) : null}
                             </span>
-                            {selected ? (
+                            {!hideSelectionCheck && selected ? (
                               <Check
                                 size={13}
                                 className="model-picker-model-check"
@@ -1253,6 +1261,7 @@ function ProviderPane({
                           onToggleFavorite={onToggleFavorite}
                           reasoningEffort={reasoningEffort}
                           onSelectReasoning={onSelectReasoning}
+                          hideSelectionCheck={hideSelectionCheck}
                         />
                       );
                     })}
