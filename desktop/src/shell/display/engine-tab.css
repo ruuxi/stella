@@ -746,11 +746,6 @@
   white-space: nowrap;
 }
 
-.engine-runtime-model-panel__check {
-  flex-shrink: 0;
-  color: var(--text-strong);
-}
-
 .engine-runtime-model-panel__star {
   appearance: none;
   display: inline-flex;

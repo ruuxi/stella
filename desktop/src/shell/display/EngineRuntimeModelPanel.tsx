@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from "react";
-import { Check, Lightbulb, RefreshCw, Search, Star } from "lucide-react";
+import { Lightbulb, RefreshCw, Search, Star } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -222,9 +222,6 @@ const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
             </span>
           ) : null}
         </span>
-        {selected ? (
-          <Check size={13} className="engine-runtime-model-panel__check" />
-        ) : null}
       </button>
       {showReasoning ? (
         <DropdownMenu open={reasoningOpen} onOpenChange={setReasoningOpen}>
