@@ -543,16 +543,15 @@ export const startOrAttachWorker = async (
         }
       }
     } else {
-      const orphanPids = await findSameRootWorkerPids(
-        options.workerEntryPath,
-        options.stellaRoot,
-      );
-      if (orphanPids.length > 0) {
-        console.warn(
-          `[runtime-host] Reaping ${orphanPids.length} pidless runtime worker(s) for ${options.stellaRoot} before spawning a fresh worker.`,
-        );
-        await stopPids(orphanPids);
-      }
+      // No pidfile for this root: the overwhelmingly common case is a clean
+      // fresh boot with no worker to reap, so we skip the process scan here.
+      // On Windows that scan is a PowerShell cold start + full WMI/CIM
+      // Win32_Process enumeration (commonly 0.5-2s) that would otherwise be
+      // paid on EVERY launch with no live worker, for nothing. A genuinely
+      // orphaned worker that lost its pidfile is exceedingly rare (clean
+      // shutdown removes the pidfile; a crash leaves a stale one, which is
+      // handled by the stale-pidfile branch above); spawning a fresh worker
+      // binds the socket and supersedes it regardless.
       await removeStaleRuntimeArtifacts(options.stellaRoot);
     }
 
