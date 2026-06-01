@@ -1,0 +1,414 @@
+/* VoiceProviderPicker — one card per voice family. The selected card
+   expands to hold the voice dropdown, Inworld speed slider, BYOK auth,
+   and the read-aloud switch. */
+
+.voice-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.voice-picker[data-disabled] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.voice-picker-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  background: transparent;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.voice-picker-card[data-selected] {
+  border-color: var(--border);
+  background: color-mix(in oklch, var(--text-strong) 4%, transparent);
+}
+
+.voice-picker-card-head {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding-right: 8px;
+}
+
+.voice-picker-card-main {
+  appearance: none;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 11px 4px 11px 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-strong);
+  border-radius: 10px;
+}
+
+.voice-picker-card-main:hover {
+  background: color-mix(in oklch, var(--text-strong) 5%, transparent);
+}
+
+.voice-picker-card-main:disabled {
+  cursor: default;
+}
+
+.voice-picker-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.voice-picker-card-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.voice-picker-card-desc {
+  font-size: 11.5px;
+  color: var(--text-weak);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-picker-card-check {
+  flex: 0 0 auto;
+  color: var(--text-strong);
+}
+
+/* BYOK key toggle on the card header. */
+.voice-picker-card-key {
+  appearance: none;
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.voice-picker-card-key:hover:not(:disabled),
+.voice-picker-card-key:focus-visible {
+  outline: none;
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--text-strong) 6%, transparent);
+  border-color: color-mix(in oklch, var(--border) 55%, transparent);
+}
+
+.voice-picker-card-key[data-active] {
+  color: var(--text-strong);
+  border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+}
+
+.voice-picker-card-key:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ── Selected-card body ───────────────────────────────────────── */
+
+.voice-picker-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 12px 14px;
+}
+
+/* ── BYOK inline auth ─────────────────────────────────────────── */
+
+.voice-picker-auth {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed color-mix(in oklch, var(--border) 40%, transparent);
+}
+
+.voice-picker-auth-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-picker-auth-line [data-component="text-field"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.voice-picker-auth-error {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--danger, #c2410c);
+}
+
+/* ── Voice stepper ────────────────────────────────────────────── */
+
+.voice-picker-stepper-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.voice-picker-stepper {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: stretch;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--text-strong) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  overflow: hidden;
+}
+
+.voice-picker-stepper-arrow {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.voice-picker-stepper-arrow:hover:not(:disabled),
+.voice-picker-stepper-arrow:focus-visible {
+  background: color-mix(in oklch, var(--text-strong) 6%, transparent);
+  color: var(--text-strong);
+  outline: none;
+}
+
+.voice-picker-stepper-arrow:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.voice-picker-stepper-current {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+  border-left: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
+  border-right: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
+  transition: background 120ms ease;
+}
+
+.voice-picker-stepper-current:hover:not(:disabled),
+.voice-picker-stepper-current:focus-visible {
+  background: color-mix(in oklch, var(--text-strong) 5%, transparent);
+  outline: none;
+}
+
+.voice-picker-stepper-current:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.voice-picker-stepper-current svg {
+  color: var(--text-weak);
+  transition: transform 160ms ease;
+}
+
+.voice-picker-stepper-current[data-state="open"] svg {
+  transform: rotate(180deg);
+}
+
+.voice-picker-stepper-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voice-picker-stepper-desc {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--text-weak);
+  text-align: center;
+}
+
+/* ── Menu (Radix DropdownMenu surface) ────────────────────────── */
+
+[data-component="dropdown-menu-content"].voice-picker-menu {
+  min-width: var(--radix-dropdown-menu-trigger-width);
+  max-width: 280px;
+  max-height: 260px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+[data-slot="dropdown-menu-item"].voice-picker-menu-item {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+[data-slot="dropdown-menu-item"].voice-picker-menu-item[data-selected] {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  color: var(--text-strong);
+}
+
+.voice-picker-menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.voice-picker-menu-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.005em;
+}
+
+.voice-picker-menu-item-desc {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-weak);
+}
+
+.voice-picker-menu-item-check {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: var(--text-strong);
+}
+
+/* ── Inworld speed slider ─────────────────────────────────────── */
+
+.voice-picker-speed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.voice-picker-speed-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.voice-picker-speed-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-weak);
+}
+
+.voice-picker-speed-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.voice-picker-speed-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--text-strong) 12%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.voice-picker-speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-strong);
+  border: 2px solid var(--background, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.voice-picker-speed-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+.voice-picker-speed-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.voice-picker-speed-marks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Read-aloud switch ────────────────────────────────────────── */
+
+.voice-picker-readaloud {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed color-mix(in oklch, var(--border) 40%, transparent);
+}
+
+.voice-picker-readaloud [data-component="switch"] {
+  justify-content: space-between;
+}
+
+.voice-picker-readaloud [data-component="switch"] [data-slot="switch-label"] {
+  flex: 1 1 auto;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.voice-picker-readaloud-desc {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-weak);
+}
