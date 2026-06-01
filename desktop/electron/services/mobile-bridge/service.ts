@@ -32,6 +32,12 @@ const BRIDGE_PUBLIC_HEALTH_TIMEOUT_MS = 2_000;
  * the 150s registration lease.
  */
 const BRIDGE_PUBLIC_HEALTH_FAILURE_THRESHOLD = 3;
+/**
+ * Reuse a successful probe for this long. Coalesced/burst syncs fire within
+ * milliseconds, so this collapses their duplicate probe; the real refresh ticks
+ * (30s setters / 60s timer) are spaced well beyond it and always re-probe.
+ */
+const BRIDGE_PUBLIC_HEALTH_CACHE_MS = 3_000;
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -257,6 +263,7 @@ export class MobileBridgeService {
   private convexSiteUrl: string | null = null;
   private tunnelUrl: string | null = null;
   private healthFailureStreak = 0;
+  private lastHealthyProbeAt = 0;
   private syncInFlight = false;
   private syncQueued = false;
   private getBootstrapPayload: (() => Promise<MobileBridgeBootstrap>) | null =
@@ -302,8 +309,10 @@ export class MobileBridgeService {
   setTunnelUrl(url: string | null) {
     const next = url?.trim() || null;
     if (next && next !== this.tunnelUrl) {
-      // A freshly advertised URL starts with a clean health streak.
+      // A freshly advertised URL starts with a clean health streak and must be
+      // probed fresh (don't reuse a prior URL's cached result).
       this.healthFailureStreak = 0;
+      this.lastHealthyProbeAt = 0;
     }
     this.tunnelUrl = next;
     void this.syncRegistration();
@@ -1003,7 +1012,18 @@ export class MobileBridgeService {
     // serving. A registered-but-dead tunnel (e.g. cloudflared or its edge route
     // broke mid-session) would otherwise keep the phone pointed at an
     // unreachable URL until the 150s lease lapsed.
-    const healthy = await this.probePublicTunnelHealth(this.tunnelUrl);
+    let healthy: boolean;
+    if (Date.now() - this.lastHealthyProbeAt < BRIDGE_PUBLIC_HEALTH_CACHE_MS) {
+      // Reuse a very recent successful probe (collapses the duplicate probe from
+      // a coalesced/burst sync). Anchored to the last real probe, so it never
+      // extends itself across the far-spaced refresh ticks.
+      healthy = true;
+    } else {
+      healthy = await this.probePublicTunnelHealth(this.tunnelUrl);
+      if (healthy) {
+        this.lastHealthyProbeAt = Date.now();
+      }
+    }
     if (!healthy) {
       this.healthFailureStreak += 1;
       if (

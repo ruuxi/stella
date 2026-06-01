@@ -88,6 +88,7 @@ describe("MobileBridgeService health-gated registration", () => {
     expect(anyService.isBridgeAccessEnabled()).toBe(true);
 
     health.healthy = false;
+    anyService.lastHealthyProbeAt = 0; // simulate a tick past the probe cache
     await anyService.syncRegistration(); // 1 failure, below threshold
 
     expect(counts.clear).toBe(0);
@@ -107,8 +108,10 @@ describe("MobileBridgeService health-gated registration", () => {
     expect(anyService.isBridgeAccessEnabled()).toBe(true);
     const registersBeforeOutage = counts.register;
 
-    // Sustained outage: threshold is 3 consecutive failed probes.
+    // Sustained outage: threshold is 3 consecutive failed probes. Clear the
+    // probe cache so each sync re-probes (real refresh ticks are spaced past it).
     health.healthy = false;
+    anyService.lastHealthyProbeAt = 0;
     await anyService.syncRegistration(); // streak 1
     await anyService.syncRegistration(); // streak 2
     expect(counts.clear).toBe(0);
@@ -150,6 +153,31 @@ describe("MobileBridgeService health-gated registration", () => {
 
     expect(counts.register - registersBefore).toBeLessThanOrEqual(2);
     expect(counts.register - registersBefore).toBeGreaterThanOrEqual(1);
+
+    anyService.clearRegistrationLeaseTimer();
+  });
+
+  it("reuses a recent probe within the cache window, re-probes after it expires", async () => {
+    const service = createService();
+    const anyService = configureReadyService(service);
+    mockBridgeCalls(anyService);
+    mockHealth();
+    const fetchMock = globalThis.fetch as unknown as { mock: { calls: unknown[] } };
+
+    await anyService.syncRegistration(); // one real probe
+    const probesAfterFirst = fetchMock.mock.calls.length;
+    expect(probesAfterFirst).toBe(1);
+
+    // An immediate re-sync reuses the cached probe (no new fetch) but still
+    // refreshes the registration.
+    await anyService.syncRegistration();
+    expect(fetchMock.mock.calls.length).toBe(probesAfterFirst);
+    expect(anyService.isBridgeAccessEnabled()).toBe(true);
+
+    // Once the cache window has passed, the next sync probes again.
+    anyService.lastHealthyProbeAt = Date.now() - 60_000;
+    await anyService.syncRegistration();
+    expect(fetchMock.mock.calls.length).toBe(probesAfterFirst + 1);
 
     anyService.clearRegistrationLeaseTimer();
   });
