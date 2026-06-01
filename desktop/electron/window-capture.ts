@@ -90,6 +90,66 @@ export const getWindowInfoAtPoint = (
   return queryWindowInfo(x, y, options)
 }
 
+/**
+ * Resolve the topmost window at each of several screen points in a single
+ * native-helper invocation (`window_info --points=...`). Returns one entry
+ * per input point (null where no window matched), or `null` when the helper
+ * is unavailable / too old to support batch mode / returns an unexpected
+ * shape — callers should fall back to per-point `getWindowInfoAtPoint` in
+ * that case. Lets the morph-visibility gate probe its sample grid with one
+ * process spawn instead of one per point (far cheaper on Windows, where each
+ * spawn is a full CreateProcess).
+ */
+export const getWindowInfoBatchAtPoints = (
+  points: Array<{ x: number; y: number }>,
+  options?: QueryWindowInfoOptions,
+): Promise<(WindowInfo | null)[] | null> => {
+  if (points.length === 0) return Promise.resolve([])
+  return new Promise((resolve) => {
+    const pointsArg = points
+      .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+      .join(';')
+    const args = [`--points=${pointsArg}`]
+    if (options?.excludePids?.length) {
+      args.push(`--exclude-pids=${options.excludePids.join(',')}`)
+    }
+
+    void runNativeHelper(WINDOW_INFO_HELPER, args, {
+      timeout: 3000,
+      onError: () => {
+        // Old binaries without batch support exit non-zero here; the caller
+        // falls back to per-point queries, so this is expected, not logged.
+      },
+    }).then((stdout) => {
+      if (!stdout) {
+        resolve(null)
+        return
+      }
+      try {
+        const parsed = JSON.parse(stdout)
+        if (!Array.isArray(parsed) || parsed.length !== points.length) {
+          resolve(null)
+          return
+        }
+        resolve(
+          parsed.map((entry) => {
+            if (
+              !entry ||
+              typeof entry !== 'object' ||
+              (entry as { error?: unknown }).error
+            ) {
+              return null
+            }
+            return entry as WindowInfo
+          }),
+        )
+      } catch {
+        resolve(null)
+      }
+    })
+  })
+}
+
 export const moveResizeWindowAtPoint = (
   x: number,
   y: number,

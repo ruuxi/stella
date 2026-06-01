@@ -132,6 +132,55 @@ static bool parseSetBoundsArg(const char* arg, RECT& rect)
     return true;
 }
 
+static bool parsePointsArg(const char* arg, std::vector<POINT>& outPoints)
+{
+    const char* prefix = "--points=";
+    const size_t prefixLen = strlen(prefix);
+    if (strncmp(arg, prefix, prefixLen) != 0)
+    {
+        return false;
+    }
+
+    const char* p = arg + prefixLen;
+    while (*p)
+    {
+        char* end = nullptr;
+        long x = strtol(p, &end, 10);
+        if (end == p)
+        {
+            break;
+        }
+        p = end;
+        if (*p != ',')
+        {
+            break;
+        }
+        ++p;
+
+        long y = strtol(p, &end, 10);
+        if (end == p)
+        {
+            break;
+        }
+        p = end;
+
+        POINT pt;
+        pt.x = x;
+        pt.y = y;
+        outPoints.push_back(pt);
+
+        while (*p && *p != ';')
+        {
+            ++p;
+        }
+        if (*p == ';')
+        {
+            ++p;
+        }
+    }
+    return true;
+}
+
 static HWND findTopLevelWindowAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
 {
     for (HWND hwnd = GetTopWindow(NULL); hwnd; hwnd = GetWindow(hwnd, GW_HWNDNEXT))
@@ -170,6 +219,67 @@ static HWND findTopLevelWindowAtPoint(POINT pt, const std::vector<DWORD>& exclud
     }
 
     return NULL;
+}
+
+// Topmost top-level window at `pt` as a JSON object string
+// (`{title,process,pid,bounds}`) or "null". Reuses the same
+// findTopLevelWindowAtPoint z-order walk as the single-point path; used by
+// the batch `--points` mode so one process invocation answers many points
+// (instead of one CreateProcess per point — the costly part on Windows).
+static std::string windowInfoJsonAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
+{
+    HWND hwnd = findTopLevelWindowAtPoint(pt, excludedPids);
+    if (!hwnd)
+    {
+        return "null";
+    }
+
+    char title[512] = {};
+    GetWindowTextA(hwnd, title, sizeof(title));
+
+    RECT rect = {};
+    GetWindowRect(hwnd, &rect);
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    char processName[MAX_PATH] = {};
+    if (pid)
+    {
+        HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (hProc)
+        {
+            DWORD size = MAX_PATH;
+            QueryFullProcessImageNameA(hProc, 0, processName, &size);
+            CloseHandle(hProc);
+        }
+    }
+
+    const char* exeName = processName;
+    for (const char* p = processName; *p; ++p)
+    {
+        if (*p == '\\' || *p == '/')
+            exeName = p + 1;
+    }
+
+    int w = rect.right - rect.left;
+    int h = rect.bottom - rect.top;
+
+    std::string out = "{\"title\":\"";
+    out += escapeJson(title);
+    out += "\",\"process\":\"";
+    out += escapeJson(exeName);
+    out += "\",\"pid\":";
+    out += std::to_string(static_cast<unsigned long>(pid));
+    out += ",\"bounds\":{\"x\":";
+    out += std::to_string(static_cast<long>(rect.left));
+    out += ",\"y\":";
+    out += std::to_string(static_cast<long>(rect.top));
+    out += ",\"width\":";
+    out += std::to_string(w);
+    out += ",\"height\":";
+    out += std::to_string(h);
+    out += "}}";
+    return out;
 }
 
 static int GetPngEncoderClsid(CLSID* clsid)
@@ -234,6 +344,40 @@ static bool captureWindowToFile(HWND hwnd, const wchar_t* filePath)
 
 int main(int argc, char* argv[])
 {
+    // Batch mode: `window_info.exe --points=x1,y1;x2,y2;...` answers many
+    // points from a single process invocation, printing a JSON array (one
+    // entry per point in order; null when no window is found). Mirrors the
+    // macOS helper's batch mode; used by the morph-visibility gate so a
+    // transition probes N sample points with one spawn instead of N.
+    {
+        std::vector<DWORD> batchExcluded;
+        std::vector<POINT> batchPoints;
+        bool hasPoints = false;
+        for (int i = 1; i < argc; ++i)
+        {
+            parseExcludePidsArg(argv[i], batchExcluded);
+            if (parsePointsArg(argv[i], batchPoints))
+            {
+                hasPoints = true;
+            }
+        }
+        if (hasPoints)
+        {
+            std::string out = "[";
+            for (size_t i = 0; i < batchPoints.size(); ++i)
+            {
+                if (i)
+                {
+                    out += ",";
+                }
+                out += windowInfoJsonAtPoint(batchPoints[i], batchExcluded);
+            }
+            out += "]";
+            printf("%s\n", out.c_str());
+            return 0;
+        }
+    }
+
     if (argc < 3)
     {
         fprintf(stderr, "Usage: window_info <x> <y>\n");

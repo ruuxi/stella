@@ -289,7 +289,39 @@ const listRecentAppsWindows = async (
   limit: number,
 ): Promise<RecentApp[] | null> => {
   if (limit <= 0) return []
+  // Prefer the native EnumWindows helper (a single in-process walk, no
+  // PowerShell cold start). Fall back to the PowerShell snapshot when the
+  // helper is absent/old or returns nothing, so this path is never worse than
+  // the prior behavior.
+  const native = await listRecentAppsWindowsNative(limit)
+  if (native && native.length > 0) return native
+  return listRecentAppsWindowsPowerShell(limit)
+}
 
+const listRecentAppsWindowsNative = async (
+  limit: number,
+): Promise<RecentApp[] | null> => {
+  const stdout = await runNativeHelper('recent_apps', [], {
+    timeout: 3_000,
+    maxBuffer: 4 * 1024 * 1024,
+    onError: () => {
+      // Missing/old binary → caller falls back to PowerShell; not an error.
+    },
+  })
+  if (!stdout) return null
+  let parsed: WinProcess[]
+  try {
+    const json = JSON.parse(stdout)
+    parsed = Array.isArray(json) ? (json as WinProcess[]) : []
+  } catch {
+    return null
+  }
+  return buildRecentAppsFromWinProcesses(parsed, limit)
+}
+
+const listRecentAppsWindowsPowerShell = async (
+  limit: number,
+): Promise<RecentApp[] | null> => {
   // PowerShell: enumerate windowed processes, then mark the current foreground
   // window as active via P/Invoke (GetForegroundWindow).
   const psScript = `
@@ -327,6 +359,19 @@ $procs | ConvertTo-Json -Compress
     return null
   }
 
+  return buildRecentAppsFromWinProcesses(parsed, limit)
+}
+
+/**
+ * Shared cleaning/filtering for Windows windowed-process snapshots, used by
+ * both the native `recent_apps` helper and the PowerShell fallback (both emit
+ * the same `WinProcess` field shape). Sorts foreground-first, drops Stella /
+ * OS-chrome noise, dedups by pid, resolves icons, and caps to `limit`.
+ */
+const buildRecentAppsFromWinProcesses = async (
+  parsed: WinProcess[],
+  limit: number,
+): Promise<RecentApp[]> => {
   const cleaned: RecentApp[] = []
   const seenPids = new Set<number>()
   // Foreground window first, then by name (case-insensitive) for stable order.

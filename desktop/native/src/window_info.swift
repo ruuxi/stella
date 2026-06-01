@@ -57,6 +57,26 @@ func parseSetBounds(_ args: ArraySlice<String>) -> CGRect? {
     return nil
 }
 
+func parsePoints(_ args: ArraySlice<String>) -> [CGPoint]? {
+    let prefix = "--points="
+    for arg in args {
+        guard arg.hasPrefix(prefix) else { continue }
+        let payload = String(arg.dropFirst(prefix.count))
+        var points: [CGPoint] = []
+        for pair in payload.split(separator: ";") {
+            let comps = pair.split(separator: ",")
+            guard comps.count == 2,
+                  let px = Double(comps[0].trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let py = Double(comps[1].trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                continue
+            }
+            points.append(CGPoint(x: px, y: py))
+        }
+        return points
+    }
+    return nil
+}
+
 func escapeJson(_ s: String) -> String {
     var out = ""
     for ch in s {
@@ -70,6 +90,34 @@ func escapeJson(_ s: String) -> String {
         }
     }
     return out
+}
+
+/// Topmost on-screen window containing `point`, as a JSON object string
+/// (`{title,process,pid,bounds}`) or nil. Shares the same layer-0 / area /
+/// exclude-pid filtering as the single-point path; used by the batch
+/// `--points` mode so a single `CGWindowListCopyWindowInfo` answers many
+/// points instead of one process spawn per point.
+func windowJson(at point: CGPoint, in windowList: [[String: Any]], excludedPids: Set<Int>) -> String? {
+    for window in windowList {
+        guard let boundsDict = window[kCGWindowBounds as String] as? [String: CGFloat],
+              let wx = boundsDict["X"],
+              let wy = boundsDict["Y"],
+              let ww = boundsDict["Width"],
+              let wh = boundsDict["Height"] else { continue }
+
+        let rect = CGRect(x: wx, y: wy, width: ww, height: wh)
+        guard rect.contains(point) else { continue }
+        guard ww > 0, wh > 0 else { continue }
+        if let layer = window[kCGWindowLayer as String] as? Int, layer != 0 { continue }
+
+        let title = (window[kCGWindowName as String] as? String) ?? ""
+        let ownerName = (window[kCGWindowOwnerName as String] as? String) ?? ""
+        let pid = (window[kCGWindowOwnerPID as String] as? Int) ?? 0
+        if excludedPids.contains(pid) { continue }
+
+        return "{\"title\":\"\(escapeJson(title))\",\"process\":\"\(escapeJson(ownerName))\",\"pid\":\(pid),\"bounds\":{\"x\":\(Int(rect.origin.x.rounded())),\"y\":\(Int(rect.origin.y.rounded())),\"width\":\(Int(rect.size.width.rounded())),\"height\":\(Int(rect.size.height.rounded()))}}"
+    }
+    return nil
 }
 
 func axCopy(_ element: AXUIElement, _ attribute: String) -> AnyObject? {
@@ -194,6 +242,26 @@ func setAXWindowBounds(pid: Int, title: String, oldBounds: CGRect, newBounds: CG
     )
     let moved = positionResult == .success && sizeResult == .success
     return (moved, axFrame(window))
+}
+
+// Batch mode: `window_info --points=x1,y1;x2,y2;...` answers many points from
+// a single window-list copy and prints a JSON array (one entry per point, in
+// order; null when no window is found). Used by the morph-visibility gate so a
+// transition probes N sample points with one process spawn instead of N.
+if let batchPoints = parsePoints(CommandLine.arguments.dropFirst()) {
+    let excludedPids = parseExcludedPids(CommandLine.arguments.dropFirst())
+    guard let windowList = CGWindowListCopyWindowInfo(
+        [.optionOnScreenOnly, .excludeDesktopElements],
+        kCGNullWindowID
+    ) as? [[String: Any]] else {
+        print("[]")
+        exit(0)
+    }
+    let items = batchPoints.map { point in
+        windowJson(at: point, in: windowList, excludedPids: excludedPids) ?? "null"
+    }
+    print("[" + items.joined(separator: ",") + "]")
+    exit(0)
 }
 
 guard CommandLine.arguments.count >= 3,
