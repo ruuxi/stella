@@ -22,6 +22,7 @@ describe("composer context removal", () => {
       selectedText: null,
       regionScreenshots: [screenshot("data:image/png;base64,kept")],
       windowScreenshot: screenshot("data:image/png;base64,removed"),
+      windowAxTree: "<app_state>\n1 window Example\n</app_state>",
       capturePending: true,
       windowContextEnabled: true,
     };
@@ -38,6 +39,7 @@ describe("composer context removal", () => {
       window: null,
       browserUrl: null,
       windowScreenshot: null,
+      windowAxTree: null,
       capturePending: false,
       windowContextEnabled: undefined,
       regionScreenshots: [screenshot("data:image/png;base64,kept")],
@@ -51,6 +53,7 @@ describe("composer context removal", () => {
       selectedText: null,
       regionScreenshots: [],
       windowScreenshot: screenshot("data:image/png;base64,stale"),
+      windowAxTree: "<app_state>\n1 window stale\n</app_state>",
       capturePending: true,
     });
 
@@ -64,6 +67,7 @@ describe("composer context removal", () => {
       selectedText: null,
       regionScreenshots: [screenshot("data:image/png;base64,region")],
       windowScreenshot: screenshot("data:image/png;base64,stale"),
+      windowAxTree: "<app_state>\n1 window stale\n</app_state>",
       capturePending: true,
     });
 
@@ -73,6 +77,7 @@ describe("composer context removal", () => {
       selectedText: null,
       regionScreenshots: [screenshot("data:image/png;base64,region")],
       windowScreenshot: null,
+      windowAxTree: null,
       capturePending: false,
       windowContextEnabled: undefined,
     });

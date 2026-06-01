@@ -151,6 +151,7 @@ echo "Build successful: $OUTPUT_DIR/home_apps"
 echo "Building home_capture (macOS)..."
 build_swift_universal "home_capture" "src/home_capture.swift" \
   -framework AppKit \
+  -framework ApplicationServices \
   -framework CoreGraphics \
   -framework Foundation \
   -framework ScreenCaptureKit

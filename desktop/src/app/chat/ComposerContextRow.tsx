@@ -389,6 +389,7 @@ const captureAppWindowAsync = (
             title: capture.title || prev.window.title,
           },
           windowScreenshot: capture.screenshot,
+          windowAxTree: capture.axTree ?? prev.windowAxTree ?? null,
           capturePending: false,
         };
       });

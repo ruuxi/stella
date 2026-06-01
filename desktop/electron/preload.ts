@@ -1688,6 +1688,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ) as Promise<{
         capture: {
           title: string;
+          axTree?: string | null;
           screenshot: {
             dataUrl: string;
             width: number;

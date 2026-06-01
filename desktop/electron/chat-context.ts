@@ -21,6 +21,7 @@ export const captureChatContext = async (
   const selectedText = selectedTextResult?.text ?? null
 
   let windowScreenshot: ChatContext['windowScreenshot'] = null
+  let windowAxTree: ChatContext['windowAxTree'] = null
   let capturedWindowInfo = windowInfo
   if (windowInfo) {
     if (options?.cropToContentAtPoint) {
@@ -28,12 +29,14 @@ export const captureChatContext = async (
       if (capture) {
         capturedWindowInfo = capture.windowInfo
         windowScreenshot = capture.screenshot
+        windowAxTree = capture.axTree ?? capture.windowInfo.axTree ?? null
       }
     } else {
       const capture = await captureWindowScreenshot(point.x, point.y, { excludePids })
       if (capture) {
         capturedWindowInfo = capture.windowInfo
         windowScreenshot = capture.screenshot
+        windowAxTree = capture.axTree ?? capture.windowInfo.axTree ?? null
       }
     }
   }
@@ -52,5 +55,6 @@ export const captureChatContext = async (
     selectedText,
     regionScreenshots: [],
     windowScreenshot,
+    windowAxTree,
   }
 }

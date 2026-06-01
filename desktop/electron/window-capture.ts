@@ -11,6 +11,7 @@ export type WindowInfo = {
   process: string
   pid: number
   bounds: { x: number; y: number; width: number; height: number }
+  axTree?: string | null
 }
 
 type WindowBounds = WindowInfo['bounds']
@@ -22,6 +23,7 @@ type WindowCapture = {
     width: number
     height: number
   }
+  axTree?: string | null
 }
 
 export type { WindowCapture }
@@ -216,6 +218,10 @@ const runWindowCapture = async (
     return {
       windowInfo: info,
       screenshot: { dataUrl, width: size.width, height: size.height },
+      axTree:
+        typeof info.axTree === 'string' && info.axTree.trim()
+          ? info.axTree
+          : null,
     }
   } catch {
     return null
