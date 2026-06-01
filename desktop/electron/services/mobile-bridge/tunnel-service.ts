@@ -10,9 +10,9 @@ import { stopChildProcessTree } from "../../process-runtime.js";
  * `/bridge/health` endpoint and only advertise the tunnel URL once it answers,
  * so the phone never receives a URL that isn't actually reachable yet.
  */
-const PUBLIC_READINESS_TIMEOUT_MS = 30_000;
+const PUBLIC_READINESS_TIMEOUT_MS = 15_000;
 const PUBLIC_READINESS_PROBE_TIMEOUT_MS = 2_000;
-const PUBLIC_READINESS_RETRY_MS = 1_000;
+const PUBLIC_READINESS_RETRY_MS = 3_000;
 
 export class CloudflareTunnelService {
   private process: ChildProcess | null = null;
