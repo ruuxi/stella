@@ -1215,8 +1215,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 : {}),
               ...(state.finishExternalSelfModWithMorph
                 ? {
-                    finishExternalSelfMod:
-                      state.finishExternalSelfModWithMorph,
+                    finishExternalSelfMod: state.finishExternalSelfModWithMorph,
                   }
                 : {}),
             },
@@ -1396,6 +1395,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       ),
       stellaComputerCliPath: resolveRuntimeCliPath("stella-computer.js"),
       stellaConnectCliPath: resolveRuntimeCliPath("stella-connect.js"),
+      stellaMediaCliPath: resolveRuntimeCliPath("stella-media.js"),
       // Only advertise the bridge socket once it's listening. If startup
       // failed (state.cliBridgeServer === null) the CLI gracefully falls
       // back to exit-2 `auth_required` instead of dialing a dead socket.

@@ -63,6 +63,7 @@ export type StellaHostRunnerOptions = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  stellaMediaCliPath?: string;
   /** UDS path for the worker-side CLI bridge (see runtime/worker/cli-bridge-server.ts).
    *  Forwarded into PTY env as `STELLA_CLI_BRIDGE_SOCK`. */
   cliBridgeSocketPath?: string;
@@ -314,6 +315,7 @@ export type RunnerContext = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  stellaMediaCliPath?: string;
   cliBridgeSocketPath?: string;
   selfModMonitor?: SelfModMonitor | null;
   selfModLifecycle?: StellaHostRunnerOptions["selfModLifecycle"];
@@ -471,9 +473,7 @@ export type RunnerPublicApi = {
    * Ask the Dream scheduler to run now. Trigger names are advisory and used
    * for diagnostics; eligibility gates apply to non-`manual` triggers.
    */
-  triggerDreamNow: (
-    trigger?: "manual" | "startup_catchup",
-  ) => Promise<{
+  triggerDreamNow: (trigger?: "manual" | "startup_catchup") => Promise<{
     scheduled: boolean;
     reason:
       | "scheduled"

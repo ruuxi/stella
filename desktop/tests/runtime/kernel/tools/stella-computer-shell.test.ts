@@ -121,4 +121,55 @@ describe("stella-computer shell bootstrap", () => {
     );
     expect(shim).toContain('"%STELLA_NODE_BIN%" "%STELLA_COMPUTER_CLI%" %*');
   });
+
+  it("injects stella-media with media auth for command runs", async () => {
+    const tempDir = createTempDir();
+    const fakeMediaCliPath = path.join(tempDir, "fake-stella-media.js");
+    writeFileSync(
+      fakeMediaCliPath,
+      `console.log(JSON.stringify({
+  cli: process.env.STELLA_MEDIA_CLI ?? null,
+  baseUrl: process.env.STELLA_MEDIA_BASE_URL ?? null,
+  tokenPresent: Boolean(process.env.STELLA_MEDIA_AUTH_TOKEN),
+  deviceId: process.env.STELLA_DEVICE_ID ?? null,
+  args: process.argv.slice(2),
+}));`,
+      "utf-8",
+    );
+
+    const state = createShellState(tempDir, {
+      stellaMediaCliPath: fakeMediaCliPath,
+      getStellaSiteAuth: () => ({
+        baseUrl: "https://stella.example",
+        authToken: "token-test",
+      }),
+    });
+    const context: ToolContext = {
+      conversationId: "conversation-test",
+      deviceId: "device-test",
+      requestId: "request-test",
+      runId: "run-test",
+      agentType: "general",
+      stellaRoot: tempDir,
+      storageMode: "local",
+    };
+    const result = await handleBash(
+      state,
+      {
+        command: "stella-media status --job-id job-test --json",
+        working_directory: tempDir,
+        timeout: 10_000,
+      },
+      context,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(String(result.result))).toEqual({
+      cli: fakeMediaCliPath,
+      baseUrl: "https://stella.example",
+      tokenPresent: true,
+      deviceId: "device-test",
+      args: ["status", "--job-id", "job-test", "--json"],
+    });
+  });
 });
