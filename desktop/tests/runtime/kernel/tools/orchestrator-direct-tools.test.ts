@@ -130,12 +130,25 @@ describe("orchestrator direct tool surface", () => {
     const spawnAgentTool = host
       .getToolCatalog("orchestrator")
       .find((tool) => tool.name === "spawn_agent");
+    const sendInputTool = host
+      .getToolCatalog("orchestrator")
+      .find((tool) => tool.name === "send_input");
     expect(
       (
         (spawnAgentTool?.parameters.properties as Record<string, unknown>)
           .agent_type as { enum?: string[] }
       ).enum,
     ).toEqual(["general"]);
+    expect(
+      (sendInputTool?.parameters.properties as Record<string, unknown>)
+        .description,
+    ).toMatchObject({
+      description:
+        "One short, user-friendly sentence summarizing what this work is about.",
+    });
+    expect(sendInputTool?.parameters.required as string[] | undefined).toContain(
+      "description",
+    );
 
     const generalTools = new Set(
       host.getToolCatalog("general").map((tool) => tool.name),

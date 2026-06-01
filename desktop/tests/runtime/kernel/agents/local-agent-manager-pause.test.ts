@@ -126,7 +126,7 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     expect(progressCount).toBe(2);
   });
 
-  it("emits the source lifecycle status text when send_input interrupts a running agent", async () => {
+  it("emits the send_input description as lifecycle status text when it interrupts a running agent", async () => {
     const lifecycleEvents: AgentLifecycleEvent[] = [];
     let started: (() => void) | null = null;
     let finishRun: (() => void) | null = null;
@@ -175,18 +175,21 @@ describe("LocalAgentManager pause_agent cancellation", () => {
     });
 
     await startedPromise;
-    await manager.sendAgentMessage(created.threadId, "now", "orchestrator");
+    await manager.sendAgentMessage(created.threadId, "now", "orchestrator", {
+      description: "Apply latest settings",
+    });
 
     expect(
       lifecycleEvents.some(
         (event) =>
-          event.type === "agent-progress" && event.statusText === "Updating",
+          event.type === "agent-progress" &&
+          event.statusText === "Apply latest settings",
       ),
     ).toBe(true);
     const progressTexts = lifecycleEvents
       .filter((event) => event.type === "agent-progress")
       .map((event) => event.statusText);
-    expect(progressTexts).toEqual(["Updating", "demo"]);
+    expect(progressTexts).toEqual(["Apply latest settings"]);
 
     finishRun?.();
     await waitForAgentSettled(manager, created.threadId);
@@ -255,5 +258,65 @@ describe("LocalAgentManager pause_agent cancellation", () => {
       status: "completed",
       result: "done-2",
     });
+  });
+
+  it("uses the send_input description as start status when resuming a completed agent", async () => {
+    const lifecycleEvents: AgentLifecycleEvent[] = [];
+    const prompts: string[] = [];
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        prompts.push(args.taskPrompt);
+        return { runId: args.runId, result: `done-${prompts.length}` };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "ok" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+      onAgentEvent: (event) => {
+        lifecycleEvents.push(event);
+      },
+    });
+
+    const created = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "demo",
+      prompt: "initial prompt",
+      agentType: "general",
+      storageMode: "local",
+    });
+
+    await waitForAgentSettled(manager, created.threadId);
+    await manager.sendAgentMessage(
+      created.threadId,
+      "check the new settings",
+      "orchestrator",
+      { description: "Check settings update" },
+    );
+    await waitFor(
+      () => prompts.length === 2,
+      "send_input did not resume the completed agent.",
+    );
+    await waitForAgentSettled(manager, created.threadId);
+
+    const resumedStart = lifecycleEvents.find(
+      (event) =>
+        event.type === "agent-started" &&
+        event.statusText === "Check settings update",
+    );
+    expect(resumedStart).toBeTruthy();
+
+    const progressTexts = lifecycleEvents
+      .filter((event) => event.type === "agent-progress")
+      .map((event) => event.statusText);
+    expect(progressTexts).toContain("Check settings update");
+    expect(progressTexts).not.toContain("Updating");
   });
 });

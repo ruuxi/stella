@@ -2452,6 +2452,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         runId: string;
         conversationId: string;
         kind: "active" | "buffered";
+        uiVisibility?: "visible" | "hidden";
       }> = [];
       const seenRunIds = new Set<string>();
       if (activeRun) {
@@ -2468,6 +2469,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           runId: agentRun.runId,
           conversationId: agentRun.conversationId,
           kind: "active",
+          uiVisibility: "hidden",
         });
         seenRunIds.add(agentRun.runId);
       }

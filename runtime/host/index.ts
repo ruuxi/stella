@@ -1482,6 +1482,7 @@ export class StellaRuntimeHost {
           runId: string;
           conversationId: string;
           kind: "active" | "buffered";
+          uiVisibility?: "visible" | "hidden";
         }>;
       }>(
         METHOD_NAMES.INTERNAL_WORKER_LIST_ACTIVE_RUNS,

@@ -57,12 +57,16 @@ export const createAgentTools = (
           type: "string",
           description: "Durable thread id to continue or revise.",
         },
+        description: {
+          type: "string",
+          description: "One short, user-friendly sentence summarizing what this work is about.",
+        },
         message: {
           type: "string",
           description: "Follow-up instruction to deliver to the agent.",
         },
       },
-      required: ["thread_id", "message"],
+      required: ["thread_id", "description", "message"],
     },
     execute: async (args, context) =>
       handleSendInput(stateContext, args, context),
