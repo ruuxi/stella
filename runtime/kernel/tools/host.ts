@@ -93,6 +93,7 @@ export const createToolHost = ({
   stellaOfficeBinPath: _stellaOfficeBinPath,
   stellaComputerCliPath,
   stellaConnectCliPath,
+  stellaMediaCliPath,
   cliBridgeSocketPath,
   requestCredential,
   agentApi,
@@ -118,6 +119,8 @@ export const createToolHost = ({
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaComputerCliPath,
     stellaConnectCliPath,
+    stellaMediaCliPath,
+    getStellaSiteAuth,
     cliBridgeSocketPath,
   });
   const stateContext: StateContext = createStateContext(
@@ -160,6 +163,7 @@ export const createToolHost = ({
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaComputerCliPath,
     stellaConnectCliPath,
+    stellaMediaCliPath,
     requestCredential,
     agentApi,
     sourceImportApi,

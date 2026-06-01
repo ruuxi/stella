@@ -13,8 +13,9 @@ export const createExecCommandTool = (
 ): ToolDefinition => ({
   name: "exec_command",
   description:
-    "Run a shell command in a PTY. Returns immediate output, or a session_id if the process is still running so you can poll/interact via write_stdin. Required: cmd. Stella CLIs (stella-browser, stella-office, stella-computer, stella-connect) are auto-injected into PATH.",
-  promptSnippet: "Execute shell commands (git, build, package managers, file scripts)",
+    "Run a shell command in a PTY. Returns immediate output, or a session_id if the process is still running so you can poll/interact via write_stdin. Required: cmd. Stella CLIs (stella-browser, stella-office, stella-computer, stella-connect, stella-media) are auto-injected into PATH.",
+  promptSnippet:
+    "Execute shell commands (git, build, package managers, file scripts)",
   parameters: {
     type: "object",
     properties: {
@@ -41,7 +42,8 @@ export const createExecCommandTool = (
       },
       max_output_tokens: {
         type: "number",
-        description: "Maximum number of tokens to return. Excess output is truncated.",
+        description:
+          "Maximum number of tokens to return. Excess output is truncated.",
       },
       login: {
         type: "boolean",
@@ -52,5 +54,11 @@ export const createExecCommandTool = (
     required: ["cmd"],
   },
   execute: (args, context, extras) =>
-    handleExecCommand(shellState, args, context, extras?.signal, extras?.onUpdate),
+    handleExecCommand(
+      shellState,
+      args,
+      context,
+      extras?.signal,
+      extras?.onUpdate,
+    ),
 });

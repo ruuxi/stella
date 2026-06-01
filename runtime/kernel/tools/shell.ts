@@ -43,7 +43,9 @@ export type ShellState = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  stellaMediaCliPath?: string;
   windowsCliShimDir?: string;
+  getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
   /**
    * Per-root CLI bridge UDS path (worker-side). Forwarded into the PTY
    * env as `STELLA_CLI_BRIDGE_SOCK` so sidecar CLIs (`stella-connect`)
@@ -59,6 +61,8 @@ type ShellStateOptions = {
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
+  stellaMediaCliPath?: string;
+  getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
   cliBridgeSocketPath?: string;
 };
 
@@ -82,6 +86,11 @@ const WINDOWS_CLI_SHIMS = [
     command: "stella-connect",
     optionKey: "stellaConnectCliPath",
     envVar: "STELLA_CONNECT_CLI",
+  },
+  {
+    command: "stella-media",
+    optionKey: "stellaMediaCliPath",
+    envVar: "STELLA_MEDIA_CLI",
   },
 ] as const;
 
@@ -525,6 +534,8 @@ export function createShellState(
     stellaOfficeBinPath: options?.stellaOfficeBinPath,
     stellaComputerCliPath: options?.stellaComputerCliPath,
     stellaConnectCliPath: options?.stellaConnectCliPath,
+    stellaMediaCliPath: options?.stellaMediaCliPath,
+    getStellaSiteAuth: options?.getStellaSiteAuth,
     ...(windowsCliShimDir ? { windowsCliShimDir } : {}),
     cliBridgeSocketPath: options?.cliBridgeSocketPath,
     lastDeferredDeleteSweepAt: 0,
@@ -559,6 +570,7 @@ const buildProtectedCommand = (
     stellaOfficeBinPath?: string;
     stellaComputerCliPath?: string;
     stellaConnectCliPath?: string;
+    stellaMediaCliPath?: string;
   },
 ) => {
   if (!deferredDeleteHelperPath) {
@@ -579,6 +591,10 @@ const buildProtectedCommand = (
   const stellaConnectCli =
     options?.stellaConnectCliPath && existsSync(options.stellaConnectCliPath)
       ? options.stellaConnectCliPath
+      : "";
+  const stellaMediaCli =
+    options?.stellaMediaCliPath && existsSync(options.stellaMediaCliPath)
+      ? options.stellaMediaCliPath
       : "";
 
   // Dynamically detect python-like invocations (python, python3, python3.11, py, etc.)
@@ -662,8 +678,9 @@ ${stellaBrowserBin ? `stella-browser() { "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN
 ${stellaOfficeBin ? `stella-office() { "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "$@"; }` : ""}
 ${stellaComputerCli ? `stella-computer() { "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
 ${stellaConnectCli ? `stella-connect() { "$STELLA_NODE_BIN" "$STELLA_CONNECT_CLI" "$@"; }` : ""}
+${stellaMediaCli ? `stella-media() { "$STELLA_NODE_BIN" "$STELLA_MEDIA_CLI" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${stellaMediaCli ? " stella-media" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -752,6 +769,7 @@ const buildShellEnv = (
     stellaOfficeBinPath?: string;
     stellaComputerCliPath?: string;
     stellaConnectCliPath?: string;
+    stellaMediaCliPath?: string;
     windowsCliShimDir?: string;
     cliBridgeSocketPath?: string;
   },
@@ -775,6 +793,9 @@ const buildShellEnv = (
       : {}),
     ...(options?.stellaConnectCliPath
       ? { STELLA_CONNECT_CLI: options.stellaConnectCliPath }
+      : {}),
+    ...(options?.stellaMediaCliPath
+      ? { STELLA_MEDIA_CLI: options.stellaMediaCliPath }
       : {}),
     ...(options?.cliBridgeSocketPath
       ? { STELLA_CLI_BRIDGE_SOCK: options.cliBridgeSocketPath }
@@ -1019,6 +1040,9 @@ const shouldUseStellaBrowserBridge = (command: string): boolean =>
 const shouldUseStellaComputer = (command: string): boolean =>
   /\bstella-computer\b/.test(command);
 
+const shouldUseStellaMedia = (command: string): boolean =>
+  /\bstella-media\b/.test(command);
+
 export const startShell = (
   state: ShellState,
   command: string,
@@ -1201,6 +1225,7 @@ export const runShell = async (
 };
 
 const resolveManagedShellCommand = (
+  state: ShellState,
   args: Record<string, unknown>,
   context?: ToolContext,
 ): {
@@ -1245,6 +1270,17 @@ const resolveManagedShellCommand = (
 
   if (shouldUseStellaComputer(command) && stellaComputerSessionId) {
     envOverrides.STELLA_COMPUTER_SESSION = stellaComputerSessionId;
+  }
+
+  if (shouldUseStellaMedia(command)) {
+    const siteAuth = state.getStellaSiteAuth?.();
+    if (siteAuth) {
+      envOverrides.STELLA_MEDIA_BASE_URL = siteAuth.baseUrl;
+      envOverrides.STELLA_MEDIA_AUTH_TOKEN = siteAuth.authToken;
+    }
+    if (context?.deviceId) {
+      envOverrides.STELLA_DEVICE_ID = context.deviceId;
+    }
   }
 
   return { command, cwd, envOverrides };
@@ -1315,7 +1351,7 @@ export const handleExecCommand = async (
   onUpdate?: ToolUpdateCallback,
 ): Promise<ToolResult> => {
   const callStartedAt = Date.now();
-  const prepared = resolveManagedShellCommand(args, context);
+  const prepared = resolveManagedShellCommand(state, args, context);
   const dangerReason = isDangerousCommand(prepared.command);
   if (dangerReason) {
     return {
@@ -1463,7 +1499,7 @@ export const handleBash = async (
   context?: ToolContext,
   _signal?: AbortSignal,
 ): Promise<ToolResult> => {
-  const prepared = resolveManagedShellCommand(args, context);
+  const prepared = resolveManagedShellCommand(state, args, context);
   let command = prepared.command;
 
   // Safety check: reject dangerous commands

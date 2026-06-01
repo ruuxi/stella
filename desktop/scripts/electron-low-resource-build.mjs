@@ -43,6 +43,7 @@ const requiredOutputs = [
   "desktop/dist-electron/runtime/worker/entry.js",
   "desktop/dist-electron/runtime/kernel/cli/stella-computer.js",
   "desktop/dist-electron/runtime/kernel/cli/stella-connect.js",
+  "desktop/dist-electron/runtime/kernel/cli/stella-media.js",
   "desktop/dist-electron/runtime/kernel/tools/deferred-delete-cli.js",
 ];
 

@@ -22,6 +22,7 @@ const electronRuntimeEntryPoints = [
   "runtime/kernel/integrations/cursor-agent-node-runner.ts",
   "runtime/kernel/cli/stella-computer.ts",
   "runtime/kernel/cli/stella-connect.ts",
+  "runtime/kernel/cli/stella-media.ts",
   "runtime/kernel/tools/deferred-delete-cli.ts",
 ];
 const preloadEntryPoints = ["desktop/electron/preload.ts"];
