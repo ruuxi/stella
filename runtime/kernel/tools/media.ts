@@ -6,19 +6,12 @@ import type {
   ToolHandlerExtras,
   ToolResult,
 } from "./types.js";
-import { api } from "../../contracts/convex-api.js";
 import { runLocalImageGeneration } from "./local-image-generation.js";
 
 export const IMAGE_GEN_TOOL_NAME = "image_gen";
-const MANAGED_IMAGE_JOB_TIMEOUT_MS = 4 * 60_000;
-const MANAGED_IMAGE_JOB_POLL_MS = 2_000;
 
 type MediaToolOptions = {
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
-  queryConvex?: (
-    ref: unknown,
-    args: Record<string, unknown>,
-  ) => Promise<unknown>;
 };
 
 const asNonEmptyString = (value: unknown): string | null =>
@@ -68,95 +61,6 @@ const collectStringList = (value: unknown): string[] => {
 const mimeTypeFromPath = (filePath: string): string => {
   const match = filePath.match(/\.([a-z0-9]{2,5})$/i);
   return mimeTypeFromExtension(match?.[1]?.toLowerCase() ?? "png");
-};
-
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-
-const wait = (ms: number, signal?: AbortSignal): Promise<void> =>
-  new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(
-        signal.reason instanceof Error ? signal.reason : new Error("Aborted"),
-      );
-      return;
-    }
-    const activeSignal = signal;
-    const cleanup = () => activeSignal?.removeEventListener("abort", onAbort);
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timeout);
-      cleanup();
-      reject(
-        activeSignal?.reason instanceof Error
-          ? activeSignal.reason
-          : new Error("Aborted"),
-      );
-    };
-    activeSignal?.addEventListener("abort", onAbort, { once: true });
-  });
-
-const pollManagedImageJob = async (args: {
-  jobId: string;
-  queryConvex: NonNullable<MediaToolOptions["queryConvex"]>;
-  signal?: AbortSignal;
-  onUpdate?: ToolHandlerExtras["onUpdate"];
-}): Promise<ToolResult> => {
-  const deadline = Date.now() + MANAGED_IMAGE_JOB_TIMEOUT_MS;
-  let reportedWaiting = false;
-
-  while (Date.now() <= deadline) {
-    const job = asRecord(
-      await args.queryConvex(api.media_jobs.getByJobId, { jobId: args.jobId }),
-    );
-    const status = asNonEmptyString(job?.status);
-    if (status === "succeeded") {
-      return {
-        result: `image_gen job ${args.jobId} finished. The generated image is available in Stella.`,
-        details: {
-          jobId: args.jobId,
-          status,
-          output: job?.output,
-        },
-      };
-    }
-    if (status === "failed" || status === "canceled") {
-      const error = asRecord(job?.error);
-      const message =
-        asNonEmptyString(error?.message) ??
-        (status === "canceled"
-          ? "image_gen was canceled."
-          : "image_gen failed.");
-      return {
-        error: message,
-        details: {
-          jobId: args.jobId,
-          status,
-          error: job?.error,
-        },
-      };
-    }
-
-    if (!reportedWaiting) {
-      args.onUpdate?.({
-        result: `image_gen job ${args.jobId} submitted. Waiting for completion.`,
-        details: { jobId: args.jobId, status: status ?? "queued" },
-      });
-      reportedWaiting = true;
-    }
-    await wait(MANAGED_IMAGE_JOB_POLL_MS, args.signal);
-  }
-
-  return {
-    error:
-      "image_gen timed out after 4 minutes waiting for the backend job to finish.",
-    details: { jobId: args.jobId, status: "timeout" },
-  };
 };
 
 /** Read a local image file and convert it into a `data:` URI. */
@@ -351,22 +255,6 @@ const createImageGenHandler =
     const jobId = asNonEmptyString(accepted.jobId);
     if (!jobId) {
       return { error: "image_gen response did not include a jobId." };
-    }
-
-    if (options.queryConvex) {
-      try {
-        return await pollManagedImageJob({
-          jobId,
-          queryConvex: options.queryConvex,
-          signal: extras?.signal,
-          onUpdate: extras?.onUpdate,
-        });
-      } catch (error) {
-        return {
-          error: `image_gen status check failed: ${(error as Error).message}`,
-          details: { jobId },
-        };
-      }
     }
 
     const details = {

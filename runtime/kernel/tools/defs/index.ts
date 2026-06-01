@@ -87,7 +87,6 @@ export const buildBuiltinTools = (
   tools.push(
     createImageGenTool({
       getStellaSiteAuth: options.getStellaSiteAuth,
-      queryConvex: options.queryConvex,
     }),
   );
   tools.push(
