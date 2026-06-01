@@ -36,6 +36,9 @@ type MediaJobLookup = {
   };
   output?: unknown;
   status?: string;
+  error?: {
+    message?: string;
+  };
   completedAt?: number;
   updatedAt: number;
 } | null;
@@ -351,6 +354,7 @@ export const InlineGeneratedImageCard = ({
   );
   const primaryFile = files[0] ?? null;
   const primaryPath = filePaths[0];
+  const jobFailed = job?.status === "failed" || job?.status === "canceled";
   const frameStyle = {
     "--inline-generated-image-aspect-ratio": previewAspectRatio(
       effectivePayload,
@@ -367,41 +371,43 @@ export const InlineGeneratedImageCard = ({
 
   const placeholderLabel = error
     ? "Could not load image"
-    : loading || filePaths.length === 0
-      ? "Generating image..."
-      : "Image";
+    : jobFailed
+      ? "Image generation failed"
+      : loading || filePaths.length === 0
+        ? "Generating image..."
+        : "Image";
+  const buttonClassName = primaryFile
+    ? "inline-generated-image-card inline-generated-image-card--image"
+    : `inline-generated-image-card${
+        sharedStripPending ? " inline-generated-image-card--strip-slot" : ""
+      }${jobFailed ? " inline-generated-image-card--failed" : ""}`;
+  const frameClassName = primaryFile
+    ? "inline-generated-image-card__frame inline-generated-image-card__frame--image"
+    : `inline-generated-image-card__frame${
+        jobFailed ? " inline-generated-image-card__frame--failed" : ""
+      }`;
+  const placeholderClassName = sharedStripPending
+    ? "inline-generated-image-card__placeholder inline-generated-image-card__placeholder--slot"
+    : `inline-generated-image-card__placeholder${
+        jobFailed ? " inline-generated-image-card__placeholder--failed" : ""
+      }`;
 
   return (
     <button
       type="button"
-      className={
-        primaryFile
-          ? "inline-generated-image-card inline-generated-image-card--image"
-          : `inline-generated-image-card${
-              sharedStripPending
-                ? " inline-generated-image-card--strip-slot"
-                : ""
-            }`
-      }
+      className={buttonClassName}
       onClick={handleClick}
-      title="Open in panel"
+      title={jobFailed ? "Image generation failed" : "Open in panel"}
       aria-label={
         sharedStripPending
           ? undefined
-          : layout === "strip" && !primaryFile
+          : (layout === "strip" && !primaryFile) || jobFailed
             ? placeholderLabel
             : undefined
       }
       tabIndex={sharedStripPending ? -1 : undefined}
     >
-      <span
-        className={
-          primaryFile
-            ? "inline-generated-image-card__frame inline-generated-image-card__frame--image"
-            : "inline-generated-image-card__frame"
-        }
-        style={frameStyle}
-      >
+      <span className={frameClassName} style={frameStyle}>
         {primaryFile ? (
           <img
             src={primaryFile.url}
@@ -414,11 +420,7 @@ export const InlineGeneratedImageCard = ({
           />
         ) : (
           <span
-            className={
-              sharedStripPending
-                ? "inline-generated-image-card__placeholder inline-generated-image-card__placeholder--slot"
-                : "inline-generated-image-card__placeholder"
-            }
+            className={placeholderClassName}
             aria-hidden={layout === "strip" || sharedStripPending}
           >
             {sharedStripPending || layout === "strip" ? null : placeholderLabel}
