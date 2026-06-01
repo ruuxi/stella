@@ -41,10 +41,7 @@ import {
 import { computeAnalyserEnergy } from "@/features/voice/services/audio-energy";
 import type { EventRecord } from "../../../../../../runtime/contracts/local-chat.js";
 import { createRealtimeTransport } from "./providers/provider-registry";
-import type {
-  RealtimeProviderKey,
-  VoiceSessionToken,
-} from "./providers/types";
+import type { RealtimeProviderKey, VoiceSessionToken } from "./providers/types";
 import type { RealtimeTransport } from "./transports/types";
 
 // ---------------------------------------------------------------------------
@@ -106,6 +103,8 @@ const ECHO_GUARD_BARGE_IN_MARGIN = 0.02;
 const ECHO_GUARD_BARGE_IN_RATIO = 0.85;
 const ECHO_GUARD_RELEASE_MS = 180;
 const VOICE_CONTEXT_SYNC_EVENT_LIMIT = 80;
+const STELLA_VOICE_LEASE_HEARTBEAT_MS = 15_000;
+const STELLA_VOICE_LEASE_EXPIRY_SKEW_MS = 1_000;
 
 const VOICE_SYNC_IGNORED_EVENT_TYPES = new Set([
   "agent-started",
@@ -201,6 +200,9 @@ export class RealtimeVoiceSession {
   private unsubscribeLocalChatUpdated: (() => void) | null = null;
   private syncedLocalEventIds = new Set<string>();
   private localChatSyncPromise: Promise<void> = Promise.resolve();
+  private leaseHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private leaseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private leaseTerminalReported = false;
 
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
@@ -302,6 +304,7 @@ export class RealtimeVoiceSession {
         onEvent: (event) => this.handleServerEvent(event),
         onClose: (reason) => {
           if (this._state === "connected" || this._state === "connecting") {
+            void this.reportLeaseEvent("lost");
             this.cleanupAfterConnectionLoss();
             this.setState("error", reason || "Connection lost");
           }
@@ -315,6 +318,7 @@ export class RealtimeVoiceSession {
       await transport.setMicEnabled(this.inputActive);
 
       getVoiceRuntimeState().activeSession = this;
+      this.startLeaseReporting();
       this.setState("connected");
       void this.syncLocalChatContext({ markExisting: true });
     } catch (err) {
@@ -571,6 +575,7 @@ export class RealtimeVoiceSession {
         ? response.id.trim()
         : null;
     const model = this.sessionToken?.model ?? null;
+    const stellaSessionId = this.sessionToken?.stellaSessionId ?? null;
 
     if (!usage || !responseId || !model || this.sessionProvider !== "stella") {
       return;
@@ -582,6 +587,7 @@ export class RealtimeVoiceSession {
         {
           responseId,
           model,
+          ...(stellaSessionId ? { stellaSessionId } : {}),
           ...(this.conversationId
             ? { conversationId: this.conversationId }
             : {}),
@@ -595,6 +601,78 @@ export class RealtimeVoiceSession {
         (err as Error).message,
       );
     }
+  }
+
+  private async reportLeaseEvent(
+    event: "heartbeat" | "ended" | "expired" | "lost",
+  ) {
+    const stellaSessionId = this.sessionToken?.stellaSessionId;
+    if (!stellaSessionId || this.sessionProvider !== "stella") return;
+    if (event !== "heartbeat") {
+      if (this.leaseTerminalReported) return;
+      this.leaseTerminalReported = true;
+    }
+
+    try {
+      await postServiceJson<unknown>(
+        "/api/voice/lease",
+        {
+          stellaSessionId,
+          event,
+        },
+        { parseResponse: false },
+      );
+    } catch (err) {
+      console.debug(
+        "[realtime-voice] Failed to report voice lease event:",
+        (err as Error).message,
+      );
+    }
+  }
+
+  private startLeaseReporting() {
+    if (
+      this.sessionProvider !== "stella" ||
+      !this.sessionToken?.stellaSessionId
+    ) {
+      return;
+    }
+
+    this.stopLeaseReporting();
+    void this.reportLeaseEvent("heartbeat");
+    this.leaseHeartbeatTimer = setInterval(() => {
+      void this.reportLeaseEvent("heartbeat");
+    }, STELLA_VOICE_LEASE_HEARTBEAT_MS);
+
+    const leaseExpiresAt = this.sessionToken.leaseExpiresAt;
+    if (typeof leaseExpiresAt === "number" && Number.isFinite(leaseExpiresAt)) {
+      const delayMs = Math.max(
+        0,
+        leaseExpiresAt - Date.now() - STELLA_VOICE_LEASE_EXPIRY_SKEW_MS,
+      );
+      this.leaseExpiryTimer = setTimeout(() => {
+        this.handleLeaseExpired();
+      }, delayMs);
+    }
+  }
+
+  private stopLeaseReporting() {
+    if (this.leaseHeartbeatTimer) {
+      clearInterval(this.leaseHeartbeatTimer);
+      this.leaseHeartbeatTimer = null;
+    }
+    if (this.leaseExpiryTimer) {
+      clearTimeout(this.leaseExpiryTimer);
+      this.leaseExpiryTimer = null;
+    }
+  }
+
+  private handleLeaseExpired() {
+    if (this.destroyed) return;
+    if (this._state !== "connected" && this._state !== "connecting") return;
+    void this.reportLeaseEvent("expired");
+    this.cleanupAfterConnectionLoss();
+    this.setState("error", "Realtime voice lease expired");
   }
 
   private handleVoiceActionCompleted(payload: VoiceActionCompletedPayload) {
@@ -1077,6 +1155,8 @@ export class RealtimeVoiceSession {
   // ---------------------------------------------------------------------------
 
   private async tearDown() {
+    this.stopLeaseReporting();
+    await this.reportLeaseEvent("ended");
     this.stopEchoGuardMonitor();
     this.assistantOutputActive = false;
     this.recentOutputActiveUntil = 0;
@@ -1107,6 +1187,7 @@ export class RealtimeVoiceSession {
 
   /** Tear down state without awaiting (used inside synchronous onClose paths). */
   private cleanupAfterConnectionLoss() {
+    this.stopLeaseReporting();
     this.stopEchoGuardMonitor();
     this.assistantOutputActive = false;
     this.recentOutputActiveUntil = 0;

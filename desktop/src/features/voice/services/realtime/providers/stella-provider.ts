@@ -90,6 +90,8 @@ type StellaSessionResponse = {
   voice?: unknown;
   expiresAt?: unknown;
   sessionId?: unknown;
+  stellaSessionId?: unknown;
+  leaseExpiresAt?: unknown;
   /** Provider-supplied STUN/TURN servers. Inworld returns these. */
   iceServers?: unknown;
 };
@@ -123,8 +125,7 @@ const inferTransport = (
 export const stellaProvider: ProviderModule = {
   async fetchToken(ctx): Promise<VoiceSessionToken> {
     const convexConversationId = toConvexConversationId(ctx.conversationId);
-    const { voiceProvider, voice, inworldSpeed } =
-      await readStellaVoicePrefs();
+    const { voiceProvider, voice, inworldSpeed } = await readStellaVoicePrefs();
 
     const body = {
       ...(convexConversationId ? { conversationId: convexConversationId } : {}),
@@ -168,10 +169,14 @@ export const stellaProvider: ProviderModule = {
         typeof raw.voice === "string" && raw.voice.length > 0
           ? raw.voice
           : (voice ?? ""),
-      expiresAt:
-        typeof raw.expiresAt === "number" ? raw.expiresAt : undefined,
-      sessionId:
-        typeof raw.sessionId === "string" ? raw.sessionId : undefined,
+      expiresAt: typeof raw.expiresAt === "number" ? raw.expiresAt : undefined,
+      sessionId: typeof raw.sessionId === "string" ? raw.sessionId : undefined,
+      stellaSessionId:
+        typeof raw.stellaSessionId === "string"
+          ? raw.stellaSessionId
+          : undefined,
+      leaseExpiresAt:
+        typeof raw.leaseExpiresAt === "number" ? raw.leaseExpiresAt : undefined,
       iceServers: normalizeIceServers(raw.iceServers),
       speed: inworldSpeed,
     };
@@ -195,7 +200,10 @@ export const stellaProvider: ProviderModule = {
       return new OpenAIWebRTCTransport({
         provider: "inworld",
         model: token.model,
-        sdpFetch: stellaProxiedSdpFetcher(STELLA_INWORLD_SDP_PATH),
+        sdpFetch: stellaProxiedSdpFetcher(
+          STELLA_INWORLD_SDP_PATH,
+          token.stellaSessionId,
+        ),
         initialSessionConfig: buildInworldSessionConfig({
           model: token.model || DEFAULT_INWORLD_REALTIME_MODEL,
           voice: token.voice,
