@@ -37,6 +37,31 @@ const XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime";
 const SUBPROTOCOL_PREFIX = "xai-client-secret.";
 const DEFAULT_INPUT_RATE = 24000;
 const DEFAULT_OUTPUT_RATE = 24000;
+const PCM16_BYTES_PER_SAMPLE = 2;
+
+const estimateBase64Pcm16Seconds = (
+  base64: string,
+  sampleRate: number,
+): number => {
+  if (!base64 || sampleRate <= 0) return 0;
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const byteLength = Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+  return byteLength / PCM16_BYTES_PER_SAMPLE / sampleRate;
+};
+
+const isBillableTextInputItem = (item: unknown): boolean => {
+  if (!item || typeof item !== "object") return true;
+  const record = item as Record<string, unknown>;
+  if (record.type === "function_call_output") return false;
+
+  const content = record.content;
+  if (!Array.isArray(content)) return true;
+  return !content.some((part) => {
+    if (!part || typeof part !== "object") return false;
+    const type = (part as Record<string, unknown>).type;
+    return type === "input_audio" || type === "audio";
+  });
+};
 
 export interface XaiWebSocketTransportOptions {
   clientSecret: string;
@@ -68,6 +93,9 @@ export class XaiWebSocketTransport implements RealtimeTransport {
   private destroyed = false;
 
   private events: RealtimeTransportEvents | null = null;
+  private inputAudioSecondsSinceLastResponse = 0;
+  private outputAudioSecondsSinceLastResponse = 0;
+  private textInputMessagesSinceLastResponse = 0;
 
   constructor(options: XaiWebSocketTransportOptions) {
     this.clientSecret = options.clientSecret;
@@ -80,6 +108,10 @@ export class XaiWebSocketTransport implements RealtimeTransport {
     this.mic = new MicCapture({
       targetSampleRate: this.inputRate,
       onChunk: (base64Pcm) => {
+        this.inputAudioSecondsSinceLastResponse += estimateBase64Pcm16Seconds(
+          base64Pcm,
+          this.inputRate,
+        );
         this.sendRaw({
           type: "input_audio_buffer.append",
           audio: base64Pcm,
@@ -219,12 +251,13 @@ export class XaiWebSocketTransport implements RealtimeTransport {
   private sendRaw(event: Record<string, unknown>): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
+      const isBillableTextInput =
+        event.type === "conversation.item.create" &&
+        isBillableTextInputItem(event.item);
       this.ws.send(JSON.stringify(event));
+      if (isBillableTextInput) this.textInputMessagesSinceLastResponse += 1;
     } catch (err) {
-      console.debug(
-        "[xai-ws] Failed to send event:",
-        (err as Error).message,
-      );
+      console.debug("[xai-ws] Failed to send event:", (err as Error).message);
     }
   }
 
@@ -248,8 +281,17 @@ export class XaiWebSocketTransport implements RealtimeTransport {
     if (type === "response.output_audio.delta") {
       const audio = parsed.delta ?? parsed.audio;
       if (typeof audio === "string" && audio.length > 0) {
+        this.outputAudioSecondsSinceLastResponse += estimateBase64Pcm16Seconds(
+          audio,
+          this.outputRate,
+        );
         this.player.pushBase64Pcm16(audio);
       }
+      return;
+    }
+
+    if (type === "response.done") {
+      this.events?.onEvent(this.withUsageAccounting(parsed));
       return;
     }
 
@@ -261,6 +303,44 @@ export class XaiWebSocketTransport implements RealtimeTransport {
     }
 
     this.events?.onEvent(parsed);
+  }
+
+  private withUsageAccounting(
+    event: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const response = event.response;
+    const inputAudioSeconds = this.inputAudioSecondsSinceLastResponse;
+    const outputAudioSeconds = this.outputAudioSecondsSinceLastResponse;
+    const textInputMessages = this.textInputMessagesSinceLastResponse;
+    this.inputAudioSecondsSinceLastResponse = 0;
+    this.outputAudioSecondsSinceLastResponse = 0;
+    this.textInputMessagesSinceLastResponse = 0;
+
+    if (!response || typeof response !== "object") return event;
+    const responseRecord = response as Record<string, unknown>;
+    const usage =
+      responseRecord.usage && typeof responseRecord.usage === "object"
+        ? (responseRecord.usage as Record<string, unknown>)
+        : {};
+    const audioSeconds = inputAudioSeconds + outputAudioSeconds;
+    return {
+      ...event,
+      response: {
+        ...responseRecord,
+        usage: {
+          ...usage,
+          xai: {
+            ...(usage.xai && typeof usage.xai === "object"
+              ? (usage.xai as Record<string, unknown>)
+              : {}),
+            audio_seconds: audioSeconds,
+            audio_input_seconds: inputAudioSeconds,
+            audio_output_seconds: outputAudioSeconds,
+            text_input_messages: textInputMessages,
+          },
+        },
+      },
+    };
   }
 
   private syncMicState(): Promise<void> {

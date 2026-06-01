@@ -43,11 +43,18 @@ export const bearerSdpFetcher =
  * Inworld) so the org key never enters the renderer.
  */
 export const stellaProxiedSdpFetcher =
-  (path: string): SdpAnswerFetcher =>
+  (path: string, stellaSessionId?: string): SdpAnswerFetcher =>
   async (sdpOffer) => {
-    const { endpoint, headers } = await createServiceRequest(path, {
+    const requestHeaders: Record<string, string> = {
       "Content-Type": "application/sdp",
-    });
+    };
+    if (stellaSessionId) {
+      requestHeaders["X-Stella-Voice-Session-ID"] = stellaSessionId;
+    }
+    const { endpoint, headers } = await createServiceRequest(
+      path,
+      requestHeaders,
+    );
     const response = await fetch(endpoint, {
       method: "POST",
       headers,

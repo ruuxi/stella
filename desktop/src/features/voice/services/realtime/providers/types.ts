@@ -32,6 +32,10 @@ export interface VoiceSessionToken {
   expiresAt?: number;
   /** OpenAI-only: returned session id, useful for debugging. */
   sessionId?: string;
+  /** Stella-managed voice lease id. Present only when Stella minted the session. */
+  stellaSessionId?: string;
+  /** Stella-managed voice lease expiry in Unix milliseconds. */
+  leaseExpiresAt?: number;
   /**
    * STUN/TURN configuration the transport should hand to
    * RTCPeerConnection. Inworld supplies these via
