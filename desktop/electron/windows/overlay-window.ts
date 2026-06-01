@@ -268,15 +268,24 @@ class OverlayWindow {
     }
   }
 
-  /** Fade overlay to transparent (avoids Windows compositor artifacts from hide/show). */
+  /**
+   * Fade the overlay out and drop it from the compositor when idle.
+   *
+   * Setting opacity to 0 alone leaves a transparent, screen-spanning,
+   * always-on-top layered window resident in the composition tree. On
+   * Windows that is a virtual-desktop-sized WS_EX_LAYERED per-pixel-alpha
+   * surface the DWM keeps compositing for the entire session even though
+   * nothing is drawn. Hiding the window (which macOS already did) removes it
+   * entirely; the `show()` / `showInactive()` paths re-materialize it and
+   * ramp opacity back up the next time a surface becomes active. The window
+   * is hidden, not destroyed, so the next summon is still instant.
+   */
   fadeOut() {
     if (!this.window || !this.ready) return
     this.window.setIgnoreMouseEvents(true, { forward: true })
     this.window.setFocusable(false)
     this.window.setOpacity(0)
-    if (process.platform === 'darwin') {
-      this.window.hide()
-    }
+    this.window.hide()
   }
 
   setIgnoreMouseEvents(ignore: boolean) {

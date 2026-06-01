@@ -53,6 +53,11 @@ export class WebsiteViewController {
   private owner: BrowserWindow | null = null;
   private layout: WebsiteViewLayout | null = null;
   private latestTheme: WebsiteViewTheme | null = null;
+  /** Last bounds actually pushed to the view. Live window resize fires a
+   *  high-frequency stream of events; skipping `setBounds` when the computed
+   *  bounds are unchanged avoids redundant native child-surface resizes /
+   *  repaints of the (transparent) web layer. */
+  private lastAppliedBounds: WebsiteViewLayout | null = null;
 
   /** Window currently owning the resize-tracking listeners installed by
    *  `attachResizeTracking`, plus the bound handler we'll remove with.
@@ -128,27 +133,37 @@ export class WebsiteViewController {
     return view;
   }
 
+  private applyBounds(bounds: WebsiteViewLayout) {
+    if (!this.view) return;
+    const last = this.lastAppliedBounds;
+    if (
+      last &&
+      last.x === bounds.x &&
+      last.y === bounds.y &&
+      last.width === bounds.width &&
+      last.height === bounds.height
+    ) {
+      return;
+    }
+    this.lastAppliedBounds = bounds;
+    this.view.setBounds(bounds);
+  }
+
   private syncBounds() {
     if (!this.owner || !this.view || this.owner.isDestroyed()) return;
     const [width, height] = this.owner.getContentSize();
     if (this.layout) {
       const x = Math.max(0, Math.min(width, Math.round(this.layout.x)));
       const y = Math.max(0, Math.min(height, Math.round(this.layout.y)));
-      this.view.setBounds({
+      this.applyBounds({
         x,
         y,
-        width: Math.max(
-          0,
-          Math.min(width - x, Math.round(this.layout.width)),
-        ),
-        height: Math.max(
-          0,
-          Math.min(height - y, Math.round(this.layout.height)),
-        ),
+        width: Math.max(0, Math.min(width - x, Math.round(this.layout.width))),
+        height: Math.max(0, Math.min(height - y, Math.round(this.layout.height))),
       });
       return;
     }
-    this.view.setBounds({
+    this.applyBounds({
       x: WEBSITE_VIEW_LEFT_INSET,
       y: WEBSITE_VIEW_TOP_INSET,
       width: Math.max(0, width - WEBSITE_VIEW_LEFT_INSET),
@@ -235,6 +250,9 @@ export class WebsiteViewController {
       this.owner.contentView.removeChildView(this.view);
     }
     this.owner = null;
+    // Force the next show()'s syncBounds to re-apply rather than short-circuit
+    // on a stale cached value after the view was detached.
+    this.lastAppliedBounds = null;
   }
 
   destroy() {

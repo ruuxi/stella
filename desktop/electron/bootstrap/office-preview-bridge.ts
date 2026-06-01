@@ -92,9 +92,19 @@ export const listOfficePreviewSnapshots = async (
   stellaHome: string,
 ): Promise<OfficePreviewSnapshot[]> => {
   const previewRoot = resolvePreviewRoot(stellaHome);
-  await fs.mkdir(previewRoot, { recursive: true });
 
-  const entries = await fs.readdir(previewRoot, { withFileTypes: true });
+  // No per-call mkdir: the bridge ensures the root once at start. If it does
+  // not exist yet, treat it as "no sessions" rather than recreating it on
+  // every poll tick (a redundant syscall every second for the app lifetime).
+  const entries = await fs
+    .readdir(previewRoot, { withFileTypes: true })
+    .catch((error: NodeJS.ErrnoException) => {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    });
+  if (entries === null) {
+    return [];
+  }
   const snapshots = await Promise.all(
     entries
       .filter((entry) => entry.isDirectory())
@@ -254,6 +264,11 @@ export const startOfficePreviewBridge = (
   let stopped = false;
   let timer: ReturnType<typeof setInterval> | null = null;
   const lastDeliveredAt = new Map<string, number>();
+
+  // Create the preview root once up front so the per-tick scan never has to.
+  void fs.mkdir(resolvePreviewRoot(stellaHome), { recursive: true }).catch(
+    () => undefined,
+  );
 
   const scan = async () => {
     try {

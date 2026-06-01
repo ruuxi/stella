@@ -1159,16 +1159,26 @@ export class WindowManager {
     }
 
     if (process.platform === 'win32') {
+      const alreadyForeground = window.isFocused()
       app.focus({ steal: true })
       window.show()
       window.moveTop()
-      window.setAlwaysOnTop(true, 'screen-saver')
-      window.focus()
-      setTimeout(() => {
-        if (!window.isDestroyed()) {
-          window.setAlwaysOnTop(false)
-        }
-      }, 75)
+      if (alreadyForeground) {
+        // Already the foreground window — a plain focus suffices, so skip the
+        // screen-saver promote/demote that would otherwise churn the global
+        // topmost z-order band (and briefly steal topmost from other apps).
+        window.focus()
+      } else {
+        // Briefly promote into the topmost band so the raise wins over the
+        // always-on-top mini panel, then drop back out of it.
+        window.setAlwaysOnTop(true, 'screen-saver')
+        window.focus()
+        setTimeout(() => {
+          if (!window.isDestroyed()) {
+            window.setAlwaysOnTop(false)
+          }
+        }, 75)
+      }
     } else {
       app.focus({ steal: true })
       window.show()

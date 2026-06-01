@@ -41,6 +41,13 @@ const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   '.stella-runtime-reload-state.json',
 )
 const BUNDLED_STELLA_HOME_SEED_DIR = path.resolve(__dirname, '..', 'runtime', 'home-seed')
+// esbuild owns this tree (the Electron-main/preload bundles); the dev script
+// runs its own purpose-built recursive watcher over it. Vite's default
+// auto-ignore only covers build.outDir ('dist'), so without this entry Vite's
+// renderer chokidar watcher also subscribes to the esbuild output and filters
+// its write bursts on every electron rebuild (heavier ReadDirectoryChangesW
+// churn on Windows). Keep Vite out of it entirely.
+const DIST_ELECTRON_DIR = path.resolve(__dirname, 'dist-electron')
 const VITE_WORKSPACE_ROOT = searchForWorkspaceRoot(__dirname)
 
 const normalizeWatchedFilePath = (filePath: string) =>
@@ -1320,6 +1327,7 @@ export default defineConfig({
     watch: {
       ignored: [
         `${BUNDLED_STELLA_HOME_SEED_DIR.replace(/\\/g, '/')}/**`,
+        `${DIST_ELECTRON_DIR.replace(/\\/g, '/')}/**`,
         normalizeWatchedFilePath(DEV_URL_FILE),
         normalizeWatchedFilePath(SELF_MOD_RUNTIME_RELOAD_STATE_FILE),
       ],

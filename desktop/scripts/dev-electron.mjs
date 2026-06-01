@@ -39,6 +39,11 @@ const devRestartRequestFile = path.join(
   repoRootDir,
   '.stella-dev-restart-request',
 )
+// Records the pid of the currently-launched Electron app so the next dev
+// start can reap a leftover tree. On macOS `terminateStaleDevApps` scans
+// `ps` by image path; Windows has no cheap image-path scan, so we persist
+// the pid and `taskkill /T` it on the next launch instead.
+const devAppPidFile = path.join(desktopDir, '.electron-dev-app.pid')
 const devRuntimeRoot = path.join(desktopDir, DEV_MACOS_RUNTIME_DIR_NAME)
 const prebuiltDisclaimBinary = path.join(
   desktopDir,
@@ -605,7 +610,77 @@ const listStaleDevAppPids = () => {
   }
 }
 
+const readDevAppPid = () => {
+  try {
+    const pid = Number.parseInt(readFileSync(devAppPidFile, 'utf8').trim(), 10)
+    return Number.isInteger(pid) && pid > 0 ? pid : null
+  } catch {
+    return null
+  }
+}
+
+const writeDevAppPid = (pid) => {
+  try {
+    writeFileSync(devAppPidFile, String(pid), 'utf8')
+  } catch {
+    // Best-effort; without it the next start just can't reap this pid.
+  }
+}
+
+const clearDevAppPid = () => {
+  try {
+    rmSync(devAppPidFile, { force: true })
+  } catch {
+    // Ignore stale/missing pid files during shutdown.
+  }
+}
+
+// Confirm a recorded pid still belongs to Electron before killing its tree,
+// guarding against pid reuse. `tasklist` with a single PID filter is cheap
+// (no full WMI/CIM enumeration), unlike the PowerShell scans elsewhere.
+const isWindowsPidElectron = (pid) => {
+  try {
+    const out = execFileSync(
+      'tasklist',
+      ['/FI', `PID eq ${pid}`, '/NH', '/FO', 'CSV'],
+      { encoding: 'utf8', windowsHide: true },
+    ).toLowerCase()
+    return out.includes('electron.exe') || out.includes('stella')
+  } catch {
+    return false
+  }
+}
+
+const terminateStaleWindowsDevApp = async () => {
+  const pid = readDevAppPid()
+  if (
+    pid === null ||
+    pid === process.pid ||
+    !isPidAlive(pid) ||
+    !isWindowsPidElectron(pid)
+  ) {
+    clearDevAppPid()
+    return
+  }
+
+  logError(`found stale dev Electron process (${pid}); terminating tree before launch.`)
+  await new Promise((resolveKill) => {
+    const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    killer.on('error', () => resolveKill())
+    killer.on('exit', () => resolveKill())
+  })
+  clearDevAppPid()
+}
+
 const terminateStaleDevApps = async () => {
+  if (process.platform === 'win32') {
+    await terminateStaleWindowsDevApp()
+    return
+  }
+
   const stalePids = listStaleDevAppPids()
   if (stalePids.length === 0) {
     return
@@ -714,6 +789,9 @@ const startApp = () => {
   })
 
   currentApp = child
+  if (child.pid) {
+    writeDevAppPid(child.pid)
+  }
 
   child.once('error', () => {
     if (currentApp === child) {
@@ -868,6 +946,7 @@ const shutdown = async (exitCode) => {
   watcher?.close()
   rootWatcher?.close()
   await stopApp()
+  clearDevAppPid()
   process.exit(exitCode)
 }
 

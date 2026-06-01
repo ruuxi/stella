@@ -153,14 +153,21 @@ async function stopOrphanedDevChildren() {
       .map((value) => Number.parseInt(String(value), 10))
       .filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid);
 
-    for (const pid of pids) {
+    if (pids.length > 0) {
+      // Batch every orphan into a single taskkill invocation (taskkill
+      // accepts repeated `/pid` pairs) so we pay one CreateProcess instead
+      // of one per orphan on the Windows startup path.
+      const killArgs = pids.flatMap((pid) => ["/pid", String(pid)]);
+      killArgs.push("/T", "/F");
       try {
-        execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+        execFileSync("taskkill", killArgs, {
           stdio: "ignore",
           windowsHide: true,
         });
       } catch {
-        signalPid(pid, "SIGTERM");
+        for (const pid of pids) {
+          signalPid(pid, "SIGTERM");
+        }
       }
     }
     return;
@@ -205,7 +212,15 @@ async function stopOrphanedDevChildren() {
   }
 }
 
-await stopOrphanedDevChildren();
+// Only sweep for orphaned dev children when a prior runner pid file is
+// present — that indicates the previous run did not shut down cleanly
+// (clean exits remove it via removeOwnPidFile). On a first-ever launch or a
+// clean restart there is nothing to reap, so we skip the scan entirely; on
+// Windows that scan is a PowerShell cold start + full WMI/CIM Win32_Process
+// enumeration that would otherwise be paid on every `electron:dev` launch.
+if (existsSync(pidFilePath)) {
+  await stopOrphanedDevChildren();
+}
 writePidFile();
 
 // Self-mod HMR endpoints are gated by Vite's localhost binding plus an
@@ -282,6 +297,7 @@ async function killChildTree(child) {
     await new Promise((resolvePromise) => {
       const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
         stdio: "ignore",
+        windowsHide: true,
       });
       killer.on("error", () => {
         try {
