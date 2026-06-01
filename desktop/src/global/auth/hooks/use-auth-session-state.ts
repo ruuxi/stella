@@ -21,6 +21,11 @@ export function useAuthSessionState() {
   const hasSession = Boolean(sessionData);
   const isAnonymous = user?.isAnonymous === true;
   const hasConnectedAccount = hasSession && !isAnonymous;
+  const cacheScope = !hasSession
+    ? "signed-out"
+    : isAnonymous
+      ? `anonymous:${sessionData?.session?.id ?? "unknown"}`
+      : `account:${user?.email ?? user?.name ?? sessionData?.session?.id ?? "unknown"}`;
 
   return useMemo(
     () => ({
@@ -29,7 +34,15 @@ export function useAuthSessionState() {
       isAnonymous,
       hasConnectedAccount,
       isLoading: Boolean(session.isPending),
+      cacheScope,
     }),
-    [hasConnectedAccount, hasSession, isAnonymous, session.isPending, user],
+    [
+      cacheScope,
+      hasConnectedAccount,
+      hasSession,
+      isAnonymous,
+      session.isPending,
+      user,
+    ],
   );
 }

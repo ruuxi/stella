@@ -6,23 +6,35 @@
  */
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "@/convex/api";
-import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
+import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import type { StorePackageRecord } from "@/shared/types/electron";
 import "./store.css";
 
 type Props = { username: string };
+const CREATOR_CACHE_TTL_MS = 10 * 60 * 1000;
 
 export function CreatorPage({ username }: Props) {
   const navigate = useNavigate();
   // One-shot, not a subscription: visiting a creator's page is
   // read-only browsing — neither the profile nor their published
   // package list will move while the user is on the page.
-  const profile = useConvexOneShot(api.social.profiles.getProfileByUsername, {
-    username,
-  }) as { username: string } | null | undefined;
-  const packages = useConvexOneShot(
+  const profile = usePersistentConvexOneShot(
+    api.social.profiles.getProfileByUsername,
+    {
+      username,
+    },
+    {
+      scope: "public",
+      ttlMs: CREATOR_CACHE_TTL_MS,
+    },
+  ) as { username: string } | null | undefined;
+  const packages = usePersistentConvexOneShot(
     api.data.store_packages.listPackagesByAuthorUsername,
     { username },
+    {
+      scope: "public",
+      ttlMs: CREATOR_CACHE_TTL_MS,
+    },
   ) as StorePackageRecord[] | undefined;
 
   if (profile === undefined || packages === undefined) {
