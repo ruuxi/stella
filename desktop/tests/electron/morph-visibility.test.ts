@@ -135,6 +135,53 @@ describe("morph visibility gate", () => {
     });
   });
 
+  it("uses a single batched query when no per-point query is injected", async () => {
+    const samples = createMorphVisibilitySamplePoints(targetBounds);
+    const queryWindowInfoBatch = vi.fn(
+      async (points: Array<{ x: number; y: number }>) =>
+        points.map(() => fullWindowInfo),
+    );
+
+    const decision = await shouldShowMorphForWindow(createTargetWindow(), {
+      currentPid: 123,
+      platform: "darwin",
+      queryWindowInfoBatch,
+    });
+
+    expect(queryWindowInfoBatch).toHaveBeenCalledTimes(1);
+    expect(queryWindowInfoBatch.mock.calls[0]?.[0]).toHaveLength(samples.length);
+    expect(decision).toMatchObject({
+      showMorph: true,
+      reason: "visible-enough",
+      visibleSamples: samples.length,
+      totalSamples: samples.length,
+    });
+  });
+
+  it("counts only the batched points that resolve to the full window", async () => {
+    const samples = createMorphVisibilitySamplePoints(targetBounds);
+    const queryWindowInfoBatch = vi.fn(
+      async (points: Array<{ x: number; y: number }>) =>
+        points.map((_point, index) =>
+          index < Math.ceil(points.length / 2) ? fullWindowInfo : null,
+        ),
+    );
+
+    const decision = await shouldShowMorphForWindow(createTargetWindow(), {
+      currentPid: 123,
+      platform: "darwin",
+      queryWindowInfoBatch,
+    });
+
+    expect(queryWindowInfoBatch).toHaveBeenCalledTimes(1);
+    expect(decision).toMatchObject({
+      showMorph: true,
+      reason: "visible-enough",
+      visibleSamples: Math.ceil(samples.length / 2),
+      totalSamples: samples.length,
+    });
+  });
+
   it("matches bounds only when the candidate substantially covers the target and itself", () => {
     expect(
       isLikelySameWindowBounds(targetBounds, {

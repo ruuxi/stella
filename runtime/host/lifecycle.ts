@@ -8,6 +8,7 @@ import {
   writeFileSync,
   promises as fsPromises,
 } from "node:fs";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   runtimeIpcListenUrl,
@@ -276,6 +277,45 @@ const releaseHostLock = async (
   await fsPromises.unlink(lockFile).catch(() => undefined);
 };
 
+/**
+ * Resolve the `bun` executable to an absolute path once, falling back to the
+ * bare `"bun"` PATH lookup when no known install location exists. Spawning a
+ * bare command name on Windows forces a PATHEXT + every-PATH-entry filesystem
+ * probe to locate `bun.exe`; pointing `spawn` at an absolute path skips that.
+ * Mirrors the candidate order used elsewhere (STELLA_BUN_PATH / BUN_PATH /
+ * ~/.bun/bin). Only an existing absolute path is used, so behavior is
+ * otherwise identical to the previous bare-`"bun"` spawn.
+ */
+let cachedBunBinaryPath: string | null = null;
+const resolveBunBinaryPath = (): string => {
+  if (cachedBunBinaryPath) return cachedBunBinaryPath;
+  const candidates: string[] = [];
+  const add = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (trimmed) candidates.push(trimmed);
+  };
+  add(process.env.STELLA_BUN_PATH);
+  add(process.env.BUN_PATH);
+  const homeDir = process.env.HOME || process.env.USERPROFILE;
+  if (homeDir) {
+    add(
+      join(
+        homeDir,
+        ".bun",
+        "bin",
+        process.platform === "win32" ? "bun.exe" : "bun",
+      ),
+    );
+  }
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      cachedBunBinaryPath = candidate;
+      return candidate;
+    }
+  }
+  return "bun";
+};
+
 const spawnDetachedWorker = (
   options: LifecycleStartOptions,
   paths: RuntimePaths,
@@ -301,7 +341,7 @@ const spawnDetachedWorker = (
     if (options.env?.NODE_ENV === "development") {
       console.warn(`[runtime-host] Detached worker logs: ${paths.logFile}`);
     }
-    child = spawn(options.bunBinaryPath ?? "bun", args, {
+    child = spawn(options.bunBinaryPath ?? resolveBunBinaryPath(), args, {
       detached: process.platform !== "win32",
       stdio: ["ignore", logFd, logFd],
       env: {

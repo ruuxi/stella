@@ -1,6 +1,7 @@
 import { screen, type BrowserWindow } from 'electron'
 import {
   getWindowInfoAtPoint,
+  getWindowInfoBatchAtPoints,
   type WindowInfo,
 } from '../window-capture.js'
 
@@ -15,6 +16,10 @@ type QueryWindowInfo = (
   x: number,
   y: number,
 ) => Promise<WindowInfo | null>
+
+type QueryWindowInfoBatch = (
+  points: Array<{ x: number; y: number }>,
+) => Promise<(WindowInfo | null)[] | null>
 
 export type MorphVisibilityDecision = {
   showMorph: boolean
@@ -36,6 +41,7 @@ type MorphVisibilityOptions = {
   currentPid?: number
   platform?: NodeJS.Platform
   queryWindowInfo?: QueryWindowInfo
+  queryWindowInfoBatch?: QueryWindowInfoBatch
   visibleRatioThreshold?: number
 }
 
@@ -146,21 +152,40 @@ export async function shouldShowMorphForWindow(
     return { showMorph: false, reason: 'invalid-bounds' }
   }
 
-  const queryWindowInfo = options?.queryWindowInfo ?? getWindowInfoAtPoint
   const currentPid = options?.currentPid ?? process.pid
   const targetNativeBounds = toNativeBounds(bounds)
   const points = createMorphVisibilitySamplePoints(bounds)
+  const nativePoints = points.map(toNativePoint)
 
-  const results = await Promise.all(
-    points.map(async (point) => {
-      const nativePoint = toNativePoint(point)
-      const info = await queryWindowInfo(nativePoint.x, nativePoint.y)
-      return Boolean(
-        info &&
-          info.pid === currentPid &&
-          isLikelySameWindowBounds(targetNativeBounds, info.bounds),
-      )
-    }),
+  // Resolve every sample point's topmost window. The default path issues a
+  // single batched native-helper call (one process spawn for all points);
+  // when the helper can't answer the batch (old binary, failure) we fall back
+  // to per-point queries. An explicitly-injected `queryWindowInfo` (tests /
+  // callers) always takes the per-point path so behavior stays deterministic.
+  let infos: (WindowInfo | null)[]
+  if (options?.queryWindowInfo) {
+    infos = await Promise.all(
+      nativePoints.map((point) =>
+        options.queryWindowInfo!(point.x, point.y),
+      ),
+    )
+  } else {
+    const batchQuery = options?.queryWindowInfoBatch ?? getWindowInfoBatchAtPoints
+    infos =
+      (await batchQuery(nativePoints)) ??
+      (await Promise.all(
+        nativePoints.map((point) =>
+          getWindowInfoAtPoint(point.x, point.y),
+        ),
+      ))
+  }
+
+  const results = infos.map((info) =>
+    Boolean(
+      info &&
+        info.pid === currentPid &&
+        isLikelySameWindowBounds(targetNativeBounds, info.bounds),
+    ),
   )
   const visibleSamples = results.filter(Boolean).length
   const visibleRatio = points.length > 0 ? visibleSamples / points.length : 0
