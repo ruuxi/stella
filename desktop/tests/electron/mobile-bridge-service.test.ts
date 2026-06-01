@@ -23,6 +23,13 @@ describe("MobileBridgeService registration lease", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-07T00:00:00Z"));
+    // syncRegistration now probes the advertised tunnel's /bridge/health before
+    // registering; default it to reachable so these tests exercise the
+    // registration-response handling. The health-gate behavior itself is
+    // covered in mobile-bridge-health-gate.test.ts.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
   });
 
   afterEach(() => {

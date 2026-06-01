@@ -23,6 +23,15 @@ const ALLOW_HEADERS =
   "Content-Type, Authorization, X-Stella-Mobile-Device-Id, X-Stella-Mobile-Pair-Secret";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
+/** Per-tick probe budget when re-checking the advertised public tunnel URL. */
+const BRIDGE_PUBLIC_HEALTH_TIMEOUT_MS = 2_000;
+/**
+ * Consecutive failed health probes (across refresh/sync ticks) before we treat
+ * the advertised tunnel as dead and clear availability. A small streak avoids
+ * down-registering on a single transient blip while still reacting well within
+ * the 150s registration lease.
+ */
+const BRIDGE_PUBLIC_HEALTH_FAILURE_THRESHOLD = 3;
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -247,6 +256,9 @@ export class MobileBridgeService {
   private hostAuthToken: string | null = null;
   private convexSiteUrl: string | null = null;
   private tunnelUrl: string | null = null;
+  private healthFailureStreak = 0;
+  private syncInFlight = false;
+  private syncQueued = false;
   private getBootstrapPayload: (() => Promise<MobileBridgeBootstrap>) | null =
     null;
 
@@ -288,7 +300,12 @@ export class MobileBridgeService {
   }
 
   setTunnelUrl(url: string | null) {
-    this.tunnelUrl = url?.trim() || null;
+    const next = url?.trim() || null;
+    if (next && next !== this.tunnelUrl) {
+      // A freshly advertised URL starts with a clean health streak.
+      this.healthFailureStreak = 0;
+    }
+    this.tunnelUrl = next;
     void this.syncRegistration();
   }
 
@@ -945,7 +962,27 @@ export class MobileBridgeService {
 
   // ── Convex registration ───────────────────────────────────────────────
 
-  private async syncRegistration() {
+  private async syncRegistration(): Promise<void> {
+    // This runs from several setters plus the refresh timer, and now performs a
+    // health probe that takes a moment. Serialize so two probes/registrations
+    // never overlap, then run exactly one more pass if anything asked while we
+    // were busy (so the latest state always wins).
+    if (this.syncInFlight) {
+      this.syncQueued = true;
+      return;
+    }
+    this.syncInFlight = true;
+    try {
+      do {
+        this.syncQueued = false;
+        await this.performRegistrationSync();
+      } while (this.syncQueued);
+    } finally {
+      this.syncInFlight = false;
+    }
+  }
+
+  private async performRegistrationSync(): Promise<void> {
     if (
       !this.port ||
       !this.convexSiteUrl ||
@@ -961,6 +998,32 @@ export class MobileBridgeService {
       return;
     }
     const baseUrls = [this.tunnelUrl];
+
+    // Before (re)registering, confirm the advertised public URL is actually
+    // serving. A registered-but-dead tunnel (e.g. cloudflared or its edge route
+    // broke mid-session) would otherwise keep the phone pointed at an
+    // unreachable URL until the 150s lease lapsed.
+    const healthy = await this.probePublicTunnelHealth(this.tunnelUrl);
+    if (!healthy) {
+      this.healthFailureStreak += 1;
+      if (
+        this.healthFailureStreak >= BRIDGE_PUBLIC_HEALTH_FAILURE_THRESHOLD &&
+        this.hasActiveRegistrationLease()
+      ) {
+        console.warn(
+          `[mobile-bridge] Public tunnel failed ${this.healthFailureStreak} health checks; clearing availability`,
+        );
+        await this.clearRegistration();
+        return;
+      }
+      // Below threshold: keep any existing lease but don't refresh the
+      // registration against an unconfirmed URL this tick.
+      if (this.hasActiveRegistrationLease()) {
+        this.registrationState = "degraded";
+      }
+      return;
+    }
+    this.healthFailureStreak = 0;
 
     try {
       const response = await this.postBridgeJson(
@@ -1014,6 +1077,25 @@ export class MobileBridgeService {
         this.expireBridgeAccess("Desktop bridge unavailable");
       }
       console.warn("[mobile-bridge] registration failed:", error);
+    }
+  }
+
+  private async probePublicTunnelHealth(url: string): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      BRIDGE_PUBLIC_HEALTH_TIMEOUT_MS,
+    );
+    try {
+      const response = await fetch(`${trimTrailingSlash(url)}/bridge/health`, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      return response.ok;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
     }
   }
 

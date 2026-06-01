@@ -3,11 +3,23 @@ import fs from "fs";
 import { bin, install } from "cloudflared";
 import { stopChildProcessTree } from "../../process-runtime.js";
 
+/**
+ * After cloudflared reports a registered connection we don't immediately trust
+ * that the public hostname is routable — the Cloudflare edge can take a moment
+ * to start routing to a freshly (re)connected connector. We probe the public
+ * `/bridge/health` endpoint and only advertise the tunnel URL once it answers,
+ * so the phone never receives a URL that isn't actually reachable yet.
+ */
+const PUBLIC_READINESS_TIMEOUT_MS = 30_000;
+const PUBLIC_READINESS_PROBE_TIMEOUT_MS = 2_000;
+const PUBLIC_READINESS_RETRY_MS = 1_000;
+
 export class CloudflareTunnelService {
   private process: ChildProcess | null = null;
   private tunnelUrl: string | null = null;
   private bridgePort: number | null = null;
   private started = false;
+  private readinessStarted = false;
 
   constructor(
     private readonly options: {
@@ -63,10 +75,15 @@ export class CloudflareTunnelService {
 
       this.process.stderr?.on("data", (chunk: Buffer) => {
         const line = chunk.toString();
-        if (line.includes("Registered tunnel connection")) {
-          this.tunnelUrl = `https://${hostname}`;
-          console.log(`[cloudflare-tunnel] Connected: ${this.tunnelUrl}`);
-          this.options.onTunnelUrl(this.tunnelUrl);
+        if (
+          !this.readinessStarted &&
+          line.includes("Registered tunnel connection")
+        ) {
+          this.readinessStarted = true;
+          console.log(
+            "[cloudflare-tunnel] Connector registered; verifying public reachability",
+          );
+          void this.announceWhenReachable(`https://${hostname}`);
         }
       });
 
@@ -82,6 +99,7 @@ export class CloudflareTunnelService {
         console.log(`[cloudflare-tunnel] Process exited with code ${code}`);
         this.process = null;
         this.started = false;
+        this.readinessStarted = false;
         this.tunnelUrl = null;
         this.options.onTunnelUrl(null);
 
@@ -102,12 +120,61 @@ export class CloudflareTunnelService {
 
   async stop() {
     this.started = false;
+    this.readinessStarted = false;
     if (this.process) {
       await stopChildProcessTree(this.process);
       this.process = null;
     }
     this.tunnelUrl = null;
     this.options.onTunnelUrl(null);
+  }
+
+  /**
+   * Wait until the public tunnel URL actually serves `/bridge/health`, then
+   * advertise it. If it never becomes reachable within the timeout we advertise
+   * anyway as a last resort, so a working-but-slow edge doesn't leave the phone
+   * permanently unable to connect.
+   */
+  private async announceWhenReachable(url: string) {
+    const reachable = await this.waitForPublicReadiness(url);
+    // Bail if the tunnel was stopped or the process exited while we probed.
+    if (!this.started || !this.process) return;
+    if (reachable) {
+      console.log(`[cloudflare-tunnel] Connected: ${url}`);
+    } else {
+      console.warn(
+        `[cloudflare-tunnel] Public URL not reachable within ${PUBLIC_READINESS_TIMEOUT_MS}ms; advertising anyway: ${url}`,
+      );
+    }
+    this.tunnelUrl = url;
+    this.options.onTunnelUrl(url);
+  }
+
+  private async waitForPublicReadiness(url: string): Promise<boolean> {
+    const deadline = Date.now() + PUBLIC_READINESS_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (!this.started || !this.process) return false;
+      const controller = new AbortController();
+      const timer = setTimeout(
+        () => controller.abort(),
+        PUBLIC_READINESS_PROBE_TIMEOUT_MS,
+      );
+      try {
+        const response = await fetch(`${url}/bridge/health`, {
+          method: "GET",
+          signal: controller.signal,
+        });
+        if (response.ok) return true;
+      } catch {
+        // Not routable yet; retry below.
+      } finally {
+        clearTimeout(timer);
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, PUBLIC_READINESS_RETRY_MS),
+      );
+    }
+    return false;
   }
 
   private async fetchTunnelToken(): Promise<{
