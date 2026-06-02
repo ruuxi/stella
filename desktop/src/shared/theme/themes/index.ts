@@ -1,36 +1,48 @@
-import oc1 from "./oc1";
-import dracula from "./dracula";
-import catppuccin from "./catppuccin";
-import monokai from "./monokai";
-import solarized from "./solarized";
-import shadesofpurple from "./shadesofpurple";
-import nightowl from "./nightowl";
-import vesper from "./vesper";
-import gruvbox from "./gruvbox";
-import ayu from "./ayu";
-import aura from "./aura";
-import pearl from "./pearl";
-import noir from "./noir";
-import sage from "./sage";
-import crimson from "./crimson";
-import slate from "./slate";
-import cocoa from "./cocoa";
 import type { Theme, ThemeColors } from "./types";
 
 export type { Theme, ThemeColors };
 
-const themes: Theme[] = [
-  pearl, noir,
-  oc1, dracula, catppuccin, monokai, solarized,
-  shadesofpurple, nightowl, vesper, gruvbox, ayu, aura,
-  sage, crimson, slate, cocoa,
-];
+type ThemeModule = { default?: Theme };
+type ThemeRegistryHotData = {
+  initialized?: boolean;
+  listeners?: Set<() => void>;
+  registeredThemes?: Map<string, Theme>;
+};
 
-const listeners = new Set<() => void>();
-let themesSnapshot: readonly Theme[] = themes.slice();
+const themeModules = import.meta.glob<ThemeModule>("./*.ts", { eager: true });
+const hotData = (import.meta.hot?.data ?? {}) as ThemeRegistryHotData;
+
+const listeners = hotData.listeners ?? new Set<() => void>();
+const registeredThemes = hotData.registeredThemes ?? new Map<string, Theme>();
+if (import.meta.hot) {
+  hotData.listeners = listeners;
+  hotData.registeredThemes = registeredThemes;
+}
+
+const isRegistrySupportModule = (modulePath: string) =>
+  modulePath.endsWith("/index.ts") || modulePath.endsWith("/types.ts");
+
+const readBuiltinThemes = (): Theme[] =>
+  Object.entries(themeModules)
+    .filter(([modulePath]) => !isRegistrySupportModule(modulePath))
+    .map(([, module]) => module.default)
+    .filter((theme): theme is Theme => Boolean(theme?.id && theme.name));
+
+const buildThemesSnapshot = (): readonly Theme[] => {
+  const byId = new Map<string, Theme>();
+  for (const theme of readBuiltinThemes()) {
+    byId.set(theme.id, theme);
+  }
+  for (const theme of registeredThemes.values()) {
+    byId.set(theme.id, theme);
+  }
+  return Array.from(byId.values());
+};
+
+let themesSnapshot: readonly Theme[] = buildThemesSnapshot();
 
 const refreshThemesSnapshot = () => {
-  themesSnapshot = themes.slice();
+  themesSnapshot = buildThemesSnapshot();
 };
 
 const emitChange = () => {
@@ -41,10 +53,10 @@ const emitChange = () => {
 };
 
 export const getThemeById = (id: string): Theme | undefined => {
-  return themes.find((t) => t.id === id);
+  return themesSnapshot.find((t) => t.id === id);
 };
 
-export const defaultTheme = themes.find((t) => t.id === "pearl")!;
+export const defaultTheme = getThemeById("pearl") ?? themesSnapshot[0]!;
 
 export const subscribeThemes = (listener: () => void) => {
   listeners.add(listener);
@@ -56,11 +68,17 @@ export const subscribeThemes = (listener: () => void) => {
 export const getThemesSnapshot = (): readonly Theme[] => themesSnapshot;
 
 export const registerTheme = (theme: Theme) => {
-  const existing = themes.findIndex((t) => t.id === theme.id);
-  if (existing >= 0) {
-    themes[existing] = theme;
-  } else {
-    themes.push(theme);
-  }
+  registeredThemes.set(theme.id, theme);
   emitChange();
 };
+
+if (import.meta.hot) {
+  const shouldNotifyAfterHotUpdate = hotData.initialized === true;
+  hotData.initialized = true;
+  import.meta.hot.accept(() => {
+    emitChange();
+  });
+  if (shouldNotifyAfterHotUpdate) {
+    queueMicrotask(emitChange);
+  }
+}
