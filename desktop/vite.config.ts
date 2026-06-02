@@ -36,6 +36,7 @@ const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
 const STELLA_REPO_ROOT = path.resolve(__dirname, '..')
 const SELF_MOD_HMR_MODE_ENV = 'STELLA_SELF_MOD_HMR_MODE'
+const SELF_MOD_HMR_RELEASE_TAIL_MS = 100
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   STELLA_REPO_ROOT,
   '.stella-runtime-reload-state.json',
@@ -638,6 +639,9 @@ function selfModHmrControl(): Plugin {
     try {
       return await fn()
     } finally {
+      await new Promise((resolve) =>
+        setTimeout(resolve, SELF_MOD_HMR_RELEASE_TAIL_MS),
+      )
       clientUpdateReleaseDepth = Math.max(0, clientUpdateReleaseDepth - 1)
     }
   }
