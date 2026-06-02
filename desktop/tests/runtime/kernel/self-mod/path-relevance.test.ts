@@ -182,6 +182,17 @@ describe("isFullReloadRelevantPath", () => {
     ).toBe(true);
   });
 
+  it("flags theme registry modules because the theme picker reads a glob snapshot", () => {
+    expect(
+      isFullReloadRelevantPath(
+        "desktop/src/shared/theme/themes/interstellar.ts",
+      ),
+    ).toBe(true);
+    expect(
+      isFullReloadRelevantPath("desktop/src/shared/theme/themes/index.ts"),
+    ).toBe(true);
+  });
+
   it("does not pretend manifests or Vite config can be fixed by browser reload", () => {
     expect(isFullReloadRelevantPath("package.json")).toBe(false);
     expect(isFullReloadRelevantPath("bun.lock")).toBe(false);
