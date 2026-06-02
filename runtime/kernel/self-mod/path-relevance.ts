@@ -122,6 +122,7 @@ const FULL_WINDOW_RELOAD_FILES = new Set<string>([
 ]);
 
 const SIDEBAR_APP_METADATA_RE = /^desktop\/src\/app\/[^/]+\/metadata\.ts$/;
+const THEME_REGISTRY_MODULE_RE = /^desktop\/src\/shared\/theme\/themes\/[^/]+\.ts$/;
 
 /**
  * Top-level files (no directory prefix) that still count as relevant —
@@ -296,7 +297,8 @@ export const isFullWindowReloadRelevantPath = (repoRelativePath: string): boolea
   const normalized = stripTrailingSlash(toPosix(repoRelativePath));
   return (
     FULL_WINDOW_RELOAD_FILES.has(normalized) ||
-    SIDEBAR_APP_METADATA_RE.test(normalized)
+    SIDEBAR_APP_METADATA_RE.test(normalized) ||
+    THEME_REGISTRY_MODULE_RE.test(normalized)
   );
 };
 
