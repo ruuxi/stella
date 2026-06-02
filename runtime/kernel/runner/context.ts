@@ -63,6 +63,7 @@ import {
 import { resolveRunnerLlmRouteWithMetadata } from "./model-selection.js";
 import { getResponseLanguageSystemPrompt } from "./locale-prompt.js";
 import {
+  APPLY_PATCH_TOOL_NAME,
   getFileEditToolFamily,
   rewriteFileEditToolNames,
 } from "../tools/file-edit-policy.js";
@@ -813,6 +814,14 @@ export const buildAgentContext = async (
         "## File Editing Tools",
         "This run is using a non-OpenAI model. Use `Write` for new or full-file edits and `Edit` for targeted replacements.",
         "`apply_patch` is not available in this run.",
+      ].join("\n"),
+    );
+  } else if (toolsAllowlist?.includes(APPLY_PATCH_TOOL_NAME)) {
+    dynamicContextSections.push(
+      [
+        "## File Editing Tools",
+        "Use `apply_patch` for manual code edits. Do not create or edit files with `cat` or other shell write tricks. Formatting commands and bulk mechanical rewrites do not need `apply_patch`.",
+        "Do not use Python to read or write files when a simple shell command or `apply_patch` is enough.",
       ].join("\n"),
     );
   }
