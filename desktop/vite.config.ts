@@ -36,7 +36,7 @@ const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
 const STELLA_REPO_ROOT = path.resolve(__dirname, '..')
 const SELF_MOD_HMR_MODE_ENV = 'STELLA_SELF_MOD_HMR_MODE'
-const SELF_MOD_HMR_RELEASE_TAIL_MS = 100
+const SELF_MOD_HMR_FULL_RELOAD_CATCH_TAIL_MS = 100
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   STELLA_REPO_ROOT,
   '.stella-runtime-reload-state.json',
@@ -517,6 +517,7 @@ function selfModHmrControl(): Plugin {
   const recentlyEmittedSyntheticPaths = new Set<string>()
   let suppressedClientMessages = 0
   let clientUpdateReleaseDepth = 0
+  let clientFullReloadCatchDepth = 0
   let clientFullReloadRequestedDuringApply = false
   let shellMutationDepth = 0
 
@@ -623,9 +624,10 @@ function selfModHmrControl(): Plugin {
     // and hiding it would mask real transform/parse failures the user should
     // still see in the renderer's overlay.
     //
-    // React-Refresh recovery is preserved by `clientUpdateReleaseDepth > 0`
-    // gating us off entirely while `applyBatch` runs (and slightly past it,
-    // because Refresh's bail-out-then-`full-reload` round-trip is async).
+    // React-Refresh recovery is preserved by the `server.ws.send` wrapper:
+    // `clientUpdateReleaseDepth > 0` catches synchronous apply-time
+    // `full-reload`, and `clientFullReloadCatchDepth > 0` catches the short
+    // async tail without generally reopening the HMR channel.
     //
     // Concurrent-run edge case (accepted, not handled): if run A finalizes
     // while run B is still paused, A's React-Refresh bail-out reload could
@@ -636,13 +638,24 @@ function selfModHmrControl(): Plugin {
 
   const withClientUpdateRelease = async <T,>(fn: () => Promise<T>): Promise<T> => {
     clientUpdateReleaseDepth += 1
+    let shouldReleaseDepth = true
     try {
-      return await fn()
-    } finally {
-      await new Promise((resolve) =>
-        setTimeout(resolve, SELF_MOD_HMR_RELEASE_TAIL_MS),
-      )
+      const result = await fn()
       clientUpdateReleaseDepth = Math.max(0, clientUpdateReleaseDepth - 1)
+      shouldReleaseDepth = false
+      clientFullReloadCatchDepth += 1
+      try {
+        await new Promise((resolve) =>
+          setTimeout(resolve, SELF_MOD_HMR_FULL_RELOAD_CATCH_TAIL_MS),
+        )
+      } finally {
+        clientFullReloadCatchDepth = Math.max(0, clientFullReloadCatchDepth - 1)
+      }
+      return result
+    } finally {
+      if (shouldReleaseDepth) {
+        clientUpdateReleaseDepth = Math.max(0, clientUpdateReleaseDepth - 1)
+      }
     }
   }
 
@@ -751,15 +764,28 @@ function selfModHmrControl(): Plugin {
 
       const sendClientMessage = server.ws.send.bind(server.ws)
       server.ws.send = ((payload: unknown, ...args: unknown[]) => {
-        if (
-          clientUpdateReleaseDepth > 0 &&
-          payload &&
-          typeof payload === 'object' &&
-          (payload as { type?: unknown }).type === 'full-reload'
-        ) {
-          clientFullReloadRequestedDuringApply = true
-          suppressedClientMessages += 1
-          return
+        if (payload && typeof payload === 'object') {
+          const type = (payload as { type?: unknown }).type
+          // Late React Refresh bail-outs should become a host-controlled
+          // covered reload, not a raw Vite client navigation. During the
+          // catch tail, keep ordinary HMR packets quiet too so the renderer
+          // cannot visibly advance after `applyBatch` has otherwise settled.
+          if (
+            (clientUpdateReleaseDepth > 0 ||
+              clientFullReloadCatchDepth > 0) &&
+            type === 'full-reload'
+          ) {
+            clientFullReloadRequestedDuringApply = true
+            suppressedClientMessages += 1
+            return
+          }
+          if (
+            clientFullReloadCatchDepth > 0 &&
+            (type === 'update' || type === 'prune')
+          ) {
+            suppressedClientMessages += 1
+            return
+          }
         }
         if (shouldSuppressClientMessage(payload)) {
           suppressedClientMessages += 1

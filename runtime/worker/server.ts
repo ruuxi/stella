@@ -3218,6 +3218,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             "[self-mod-hmr] Failed to discard Vite state before process restart.",
           );
         }
+        await controller
+          ?.releaseRuns(pending.applyResult.restartRelevantRunIds)
+          .catch((error) => {
+            console.warn(
+              "[self-mod-hmr] Failed to release Vite client update pause before process restart:",
+              (error as Error).message,
+            );
+          });
         pendingApplyBatches.delete(transitionId);
         await releaseRuntimeReloadFor(
           pending.applyResult.restartRelevantRunIds,
