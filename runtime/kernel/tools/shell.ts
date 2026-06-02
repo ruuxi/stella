@@ -1245,6 +1245,9 @@ const resolveManagedShellCommand = (
     context?.agentId ?? context?.runId ?? context?.rootRunId;
   const stellaComputerSessionId = getStellaComputerSessionId(context);
   const localBinPaths = [
+    ...(context?.stellaHome
+      ? [path.join(path.resolve(context.stellaHome), "bin")]
+      : []),
     path.join(path.resolve(cwd), "node_modules", ".bin"),
     ...(context?.stellaRoot
       ? [path.join(path.resolve(context.stellaRoot), "node_modules", ".bin")]
