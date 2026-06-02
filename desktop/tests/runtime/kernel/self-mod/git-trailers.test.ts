@@ -241,4 +241,56 @@ describe("rollbackGitChangesSince", () => {
       "user edit\n",
     );
   });
+
+  it("restores listed dirty paths before resetting owned commits", async () => {
+    const startingHead = git(repoRoot, ["rev-parse", "HEAD"]);
+    await writeFile(path.join(repoRoot, "update.txt"), "update\n", "utf8");
+    git(repoRoot, ["add", "update.txt"]);
+    git(repoRoot, ["commit", "-q", "-m", "Update to desktop-v1"]);
+    await writeFile(
+      path.join(repoRoot, "update-residue.txt"),
+      "residue\n",
+      "utf8",
+    );
+
+    const result = await rollbackGitChangesSince({
+      repoRoot,
+      startingHeadCommit: startingHead,
+      changedFiles: ["update.txt", "update-residue.txt"],
+      isOwnedCommitSubject: (subject) => subject === "Update to desktop-v1",
+    });
+
+    expect(result.status).toBe("rolled-back");
+    expect(git(repoRoot, ["rev-parse", "HEAD"])).toBe(startingHead);
+    expect(await fileExists(path.join(repoRoot, "update.txt"))).toBe(false);
+    expect(await fileExists(path.join(repoRoot, "update-residue.txt"))).toBe(
+      false,
+    );
+  });
+
+  it("can revert owned commits while preserving unrelated local edits", async () => {
+    const startingHead = git(repoRoot, ["rev-parse", "HEAD"]);
+    await writeFile(path.join(repoRoot, "user.txt"), "user edit\n", "utf8");
+    await writeFile(path.join(repoRoot, "update.txt"), "update\n", "utf8");
+    git(repoRoot, ["add", "update.txt"]);
+    git(repoRoot, ["commit", "-q", "-m", "Store install: quiet-mode"]);
+
+    const result = await rollbackGitChangesSince({
+      repoRoot,
+      startingHeadCommit: startingHead,
+      changedFiles: [],
+      isOwnedCommitSubject: (subject) =>
+        subject === "Store install: quiet-mode",
+      allowRevertWithLocalChanges: true,
+    });
+
+    expect(result.status).toBe("rolled-back");
+    expect(await fileExists(path.join(repoRoot, "update.txt"))).toBe(false);
+    expect(await readFile(path.join(repoRoot, "user.txt"), "utf8")).toBe(
+      "user edit\n",
+    );
+    expect(
+      git(repoRoot, ["rev-list", "--count", `${startingHead}..HEAD`]),
+    ).toBe("2");
+  });
 });

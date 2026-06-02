@@ -160,7 +160,8 @@ const installConfirmedStoreRelease = async (
     releaseNumber: release.releaseNumber,
     displayName: release.manifest.displayName,
     blueprintMarkdown: release.blueprintMarkdown,
-    ...(release.sourcePack ? { sourcePack: release.sourcePack } : {}),
+    ...(release.gitArtifact ? { gitArtifact: release.gitArtifact } : {}),
+    ...(release.diff ? { diff: release.diff } : {}),
     commits: release.commits,
   };
   const installRecord = (await runner.installFromBlueprint(

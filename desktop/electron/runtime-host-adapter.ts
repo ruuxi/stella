@@ -15,6 +15,7 @@ import type {
   RuntimeVoiceChatPayload,
   SelfModFeatureSummary,
   StellaReleaseArtifactRef,
+  StoreReleaseGitArtifact,
   StoreReleaseSourcePack,
   StorePublishArgs,
   StorePublishSelectedFeaturesArgs,
@@ -946,7 +947,8 @@ export class RuntimeHostAdapter {
     releaseNumber: number;
     displayName: string;
     blueprintMarkdown: string;
-    sourcePack?: StoreReleaseSourcePack;
+    gitArtifact?: StoreReleaseGitArtifact;
+    diff?: string;
     artifactRefs?: StellaReleaseArtifactRef[];
     commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) {

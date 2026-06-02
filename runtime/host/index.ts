@@ -67,6 +67,7 @@ import {
   type StorePackageReleaseRecord,
   type StorePublishArgs,
   type StorePublishSelectedFeaturesArgs,
+  type StoreReleaseGitArtifact,
   type StoreReleaseSourcePack,
   type RuntimeInitializeParams,
   type RuntimeInitializeResult,
@@ -1923,7 +1924,8 @@ export class StellaRuntimeHost {
     releaseNumber: number;
     displayName: string;
     blueprintMarkdown: string;
-    sourcePack?: StoreReleaseSourcePack;
+    gitArtifact?: StoreReleaseGitArtifact;
+    diff?: string;
     commits?: Array<{ hash: string; subject: string; diff: string }>;
   }) {
     return await this.requestWorker<StoreInstallRecord>(

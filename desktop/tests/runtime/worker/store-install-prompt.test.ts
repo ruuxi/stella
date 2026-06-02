@@ -6,7 +6,7 @@ import {
 } from "../../../../runtime/worker/store-install-prompt.js";
 
 describe("buildStoreInstallPrompt", () => {
-  it("frames source packs and reference diffs as agent inputs", () => {
+  it("frames Store reference diffs as agent inputs", () => {
     const prompt = buildStoreInstallPrompt({
       displayName: "Quiet Mode",
       packageId: "quiet-mode",
@@ -14,26 +14,19 @@ describe("buildStoreInstallPrompt", () => {
         "/Users/example/.stella/raw/store-installs/quiet-mode-r1",
       specPath:
         "/Users/example/.stella/raw/store-installs/quiet-mode-r1/SPEC.md",
-      sourcePackPath:
-        "/Users/example/.stella/raw/store-installs/quiet-mode-r1/SOURCE_PACK.json",
       referencePaths: [
         "/Users/example/.stella/raw/store-installs/quiet-mode-r1/commit-01.diff",
       ],
       blueprintMarkdown: "# Quiet Mode\n\n> Quiet down status noise.\n",
     });
 
-    expect(prompt).toContain("Source pack:");
-    expect(prompt).toContain("SOURCE_PACK.json");
     expect(prompt).toContain("safe automatic import path");
     expect(prompt).toContain("replaying it blindly");
     expect(prompt).not.toContain("Artifact refs");
     expect(prompt).not.toContain("Artifact install report:");
-    expect(prompt).toContain("original-release-to-new-release delta");
-    expect(prompt.indexOf("Source pack:")).toBeLessThan(
-      prompt.indexOf("Reference diffs to read:"),
-    );
+    expect(prompt).not.toContain("Source pack:");
     expect(prompt).toContain(
-      "Never run the source pack or reference diff files through `git apply`",
+      "Never run reference diff files through `git apply`",
     );
   });
 
@@ -42,7 +35,6 @@ describe("buildStoreInstallPrompt", () => {
       displayName: "Quiet Mode",
       packageId: "quiet-mode",
       releaseSummary: "# Quiet Mode\n\n> Quiet down status noise.\n",
-      sourcePack: null,
       commits: [
         {
           hash: "abc123",
@@ -53,7 +45,7 @@ describe("buildStoreInstallPrompt", () => {
     });
 
     expect(prompt).toContain("no-tool safety reviewer");
-    expect(prompt).toContain("source pack and diffs are authoritative");
+    expect(prompt).toContain("The diffs are authoritative");
     expect(prompt).toContain('"decision":"allow"|"block"');
     expect(prompt).toContain("diff --git");
   });

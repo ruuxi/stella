@@ -7,8 +7,8 @@ import {
   collectSourcePackPaths,
   findStoreSourcePackApplyObstruction,
   readLocalSourceTree,
-  runStoreSourcePackDependencyInstall,
-  storeSourcePackTouchesDependencyFiles,
+  runStorePublishDependencyInstall,
+  storePublishTouchesDependencyFiles,
   writeSourcePackApplyResult,
   type StoreSourcePackApplyObstruction,
 } from "./store-source-pack-install.js";
@@ -132,9 +132,9 @@ export const applyCleanSourceImportToWorkingTree = async (args: {
 
   const dependencyInstallRan =
     args.installDependencies !== false &&
-    storeSourcePackTouchesDependencyFiles(args.sourceApply.appliedPaths);
+    storePublishTouchesDependencyFiles(args.sourceApply.appliedPaths);
   if (dependencyInstallRan) {
-    await runStoreSourcePackDependencyInstall(args.repoRoot);
+    await runStorePublishDependencyInstall(args.repoRoot);
   }
 
   return { dependencyInstallRan };

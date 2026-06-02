@@ -3,9 +3,10 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseCommit,
+  StoreReleaseDiffRef,
+  StoreReleaseGitArtifact,
+  StoreReleaseGitObjectUpload,
   StoreReleaseManifest,
-  StoreReleaseSourcePack,
-  StoreReleaseSourcePackRef,
 } from "../../contracts/index.js";
 import type { StorePublishArgs } from "../../protocol/index.js";
 import type { RunnerContext, StoreOperations } from "./types.js";
@@ -16,8 +17,8 @@ export const createStoreOperations = (
     ensureStoreClient: () => any;
   },
 ): StoreOperations => {
-  const SOURCE_PACK_INLINE_BYTES = 650_000;
-  const SOURCE_PACK_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+  const RELEASE_DIFF_INLINE_BYTES = 1_500_000;
+  const RELEASE_DIFF_MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
   const toSharedStorePackage = (value: unknown): StorePackageRecord | null => {
     if (!value || typeof value !== "object") {
@@ -119,24 +120,24 @@ export const createStoreOperations = (
               entry !== null,
           )
       : [];
-    const sourcePack =
-      record.sourcePack &&
-      typeof record.sourcePack === "object" &&
-      (record.sourcePack as Record<string, unknown>).kind ===
-        "stella-source-pack" &&
-      (record.sourcePack as Record<string, unknown>).schemaVersion === 1
-        ? (record.sourcePack as StoreReleaseSourcePack)
+    const gitArtifact =
+      record.gitArtifact &&
+      typeof record.gitArtifact === "object" &&
+      (record.gitArtifact as Record<string, unknown>).kind ===
+        "git-object-artifact" &&
+      (record.gitArtifact as Record<string, unknown>).schemaVersion === 1
+        ? (record.gitArtifact as StoreReleaseGitArtifact)
         : undefined;
-    const sourcePackRefRecord =
-      record.sourcePackRef && typeof record.sourcePackRef === "object"
-        ? (record.sourcePackRef as Record<string, unknown>)
+    const diffRefRecord =
+      record.diffRef && typeof record.diffRef === "object"
+        ? (record.diffRef as Record<string, unknown>)
         : null;
-    const sourcePackRef =
-      sourcePackRefRecord?.kind === "r2" &&
-      typeof sourcePackRefRecord.r2Key === "string" &&
-      typeof sourcePackRefRecord.sha256 === "string" &&
-      typeof sourcePackRefRecord.sizeBytes === "number"
-        ? (sourcePackRefRecord as StoreReleaseSourcePackRef)
+    const diffRef =
+      diffRefRecord?.kind === "r2" &&
+      typeof diffRefRecord.r2Key === "string" &&
+      typeof diffRefRecord.sha256 === "string" &&
+      typeof diffRefRecord.sizeBytes === "number"
+        ? (diffRefRecord as StoreReleaseDiffRef)
         : undefined;
     const validManifestCategories = new Set([
       "apps-games",
@@ -176,9 +177,10 @@ export const createStoreOperations = (
             : {}),
       },
       blueprintMarkdown: record.blueprintMarkdown,
-      ...(sourcePack ? { sourcePack } : {}),
-      ...(sourcePackRef ? { sourcePackRef } : {}),
       ...(parsedCommits.length > 0 ? { commits: parsedCommits } : {}),
+      ...(gitArtifact ? { gitArtifact } : {}),
+      ...(typeof record.diff === "string" ? { diff: record.diff } : {}),
+      ...(diffRef ? { diffRef } : {}),
       createdAt: record.createdAt,
     };
   };
@@ -192,38 +194,110 @@ export const createStoreOperations = (
     ...(manifest.iconUrl ? { iconUrl: manifest.iconUrl } : {}),
   });
 
-  const serializeSourcePack = (
-    sourcePack: StoreReleaseSourcePack,
-  ): Uint8Array => new TextEncoder().encode(JSON.stringify(sourcePack));
-
   const hashBytes = (bytes: Uint8Array): string =>
     `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
-  const uploadLargeSourcePack = async (args: {
+  const uploadGitObjects = async (args: {
+    client: any;
+    objects: StoreReleaseGitObjectUpload[];
+  }): Promise<void> => {
+    if (args.objects.length === 0) return;
+    const prepared = (await args.client.action(
+      (
+        context.convexApi as {
+          data: {
+            store_git_artifacts: { prepareGitObjectUploads: unknown };
+          };
+        }
+      ).data.store_git_artifacts.prepareGitObjectUploads,
+      {
+        objects: args.objects.map(({ sha, type, sizeBytes }) => ({
+          sha,
+          type,
+          sizeBytes,
+        })),
+      },
+    )) as { uploads?: unknown };
+    const uploads = Array.isArray(prepared.uploads)
+      ? prepared.uploads
+          .map((entry): { sha: string; uploadUrl: string } | null => {
+            if (!entry || typeof entry !== "object") return null;
+            const record = entry as Record<string, unknown>;
+            if (
+              typeof record.sha !== "string" ||
+              typeof record.uploadUrl !== "string"
+            ) {
+              return null;
+            }
+            return { sha: record.sha, uploadUrl: record.uploadUrl };
+          })
+          .filter(
+            (entry): entry is { sha: string; uploadUrl: string } =>
+              entry !== null,
+          )
+      : [];
+    const bySha = new Map(args.objects.map((object) => [object.sha, object]));
+    const uploadedObjects: StoreReleaseGitObjectUpload[] = [];
+    for (const upload of uploads) {
+      const object = bySha.get(upload.sha);
+      if (!object) continue;
+      const response = await fetch(upload.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/x-git-object",
+        },
+        body: object.compressedBytes,
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(
+          `Store Git object upload failed (${response.status})${detail ? `: ${detail}` : ""}`,
+        );
+      }
+      uploadedObjects.push(object);
+    }
+    if (uploadedObjects.length > 0) {
+      await args.client.action(
+        (
+          context.convexApi as {
+            data: {
+              store_git_artifacts: { verifyGitObjectUploads: unknown };
+            };
+          }
+        ).data.store_git_artifacts.verifyGitObjectUploads,
+        {
+          objects: uploadedObjects.map(({ sha, type, sizeBytes }) => ({
+            sha,
+            type,
+            sizeBytes,
+          })),
+        },
+      );
+    }
+  };
+
+  const uploadLargeDiff = async (args: {
     client: any;
     packageId: string;
-    sourcePack: StoreReleaseSourcePack;
-  }): Promise<{
-    sourcePack?: StoreReleaseSourcePack;
-    sourcePackRef?: StoreReleaseSourcePackRef;
-  }> => {
-    const bytes = serializeSourcePack(args.sourcePack);
-    if (bytes.byteLength <= SOURCE_PACK_INLINE_BYTES) {
-      return { sourcePack: args.sourcePack };
+    diff: string;
+  }): Promise<{ diff?: string; diffRef?: StoreReleaseDiffRef }> => {
+    const bytes = new TextEncoder().encode(args.diff);
+    if (bytes.byteLength <= RELEASE_DIFF_INLINE_BYTES) {
+      return { diff: args.diff };
     }
-    if (bytes.byteLength > SOURCE_PACK_MAX_UPLOAD_BYTES) {
+    if (bytes.byteLength > RELEASE_DIFF_MAX_UPLOAD_BYTES) {
       throw new Error(
-        "Store source pack is too large to publish safely. Reduce the selected feature scope and try again.",
+        "Store feature diff is too large to publish safely. Reduce the selected feature scope and try again.",
       );
     }
     const prepared = (await args.client.action(
       (
         context.convexApi as {
           data: {
-            store_source_packs: { prepareSourcePackUpload: unknown };
+            store_git_artifacts: { prepareDiffUpload: unknown };
           };
         }
-      ).data.store_source_packs.prepareSourcePackUpload,
+      ).data.store_git_artifacts.prepareDiffUpload,
       {
         packageId: args.packageId,
         sha256: hashBytes(bytes),
@@ -234,49 +308,55 @@ export const createStoreOperations = (
       prepared.ref &&
       typeof prepared.ref === "object" &&
       (prepared.ref as Record<string, unknown>).kind === "r2"
-        ? (prepared.ref as StoreReleaseSourcePackRef)
+        ? (prepared.ref as StoreReleaseDiffRef)
         : null;
     if (!ref || typeof prepared.uploadUrl !== "string") {
-      throw new Error("Store source-pack upload preparation failed.");
+      throw new Error("Store diff upload preparation failed.");
     }
     const response = await fetch(prepared.uploadUrl, {
       method: "PUT",
       headers: {
-        "content-type": "application/json",
+        "content-type": "text/x-diff; charset=utf-8",
       },
       body: bytes,
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
       throw new Error(
-        `Store source-pack upload failed (${response.status})${detail ? `: ${detail}` : ""}`,
+        `Store diff upload failed (${response.status})${detail ? `: ${detail}` : ""}`,
       );
     }
-    return { sourcePackRef: ref };
+    return { diffRef: ref };
   };
 
-  const hydrateReleaseSourcePack = async (
+  const hydrateReleaseDiff = async (
     client: any,
     release: StorePackageReleaseRecord | null,
   ): Promise<StorePackageReleaseRecord | null> => {
-    if (!release || release.sourcePack || !release.sourcePackRef) {
+    if (!release || release.diff || !release.diffRef) {
       return release;
     }
-    const sourcePack = (await client.action(
+    const diff = (await client.action(
       (
         context.convexApi as {
           data: {
-            store_source_packs: { getReleaseSourcePack: unknown };
+            store_git_artifacts: { getReleaseDiff: unknown };
           };
         }
-      ).data.store_source_packs.getReleaseSourcePack,
+      ).data.store_git_artifacts.getReleaseDiff,
       {
         packageId: release.packageId,
         releaseNumber: release.releaseNumber,
       },
-    )) as StoreReleaseSourcePack | null;
-    return sourcePack ? { ...release, sourcePack } : release;
+    )) as string | null;
+    return diff ? { ...release, diff } : release;
   };
+
+  const hydrateReleaseArtifact = async (
+    client: any,
+    release: StorePackageReleaseRecord | null,
+  ): Promise<StorePackageReleaseRecord | null> =>
+    await hydrateReleaseDiff(client, release);
 
   const listStorePackages = async (): Promise<StorePackageRecord[]> => {
     const client = deps.ensureStoreClient();
@@ -351,7 +431,7 @@ export const createStoreOperations = (
       ).data.store_packages.getPublicRelease,
       { packageId, releaseNumber },
     );
-    return await hydrateReleaseSourcePack(
+    return await hydrateReleaseArtifact(
       client,
       toSharedStoreRelease({ release: record, packageRecord }),
     );
@@ -362,11 +442,15 @@ export const createStoreOperations = (
   ): Promise<StorePackageReleaseRecord> => {
     const client = deps.ensureStoreClient();
     const commits = args.artifact.commits ?? [];
-    const sourcePackStorage = args.artifact.sourcePack
-      ? await uploadLargeSourcePack({
+    await uploadGitObjects({
+      client,
+      objects: args.gitObjectUploads ?? [],
+    });
+    const diffStorage = args.artifact.diff
+      ? await uploadLargeDiff({
           client,
           packageId: args.packageId,
-          sourcePack: args.artifact.sourcePack,
+          diff: args.artifact.diff,
         })
       : {};
     const result = (await client.action(
@@ -383,7 +467,10 @@ export const createStoreOperations = (
         releaseNotes: args.releaseNotes,
         manifest: toBackendStoreManifest(args.manifest),
         blueprintMarkdown: args.artifact.blueprintMarkdown,
-        ...sourcePackStorage,
+        ...(args.artifact.gitArtifact
+          ? { gitArtifact: args.artifact.gitArtifact }
+          : {}),
+        ...diffStorage,
         ...(commits.length > 0 ? { commits } : {}),
       },
     )) as {
@@ -405,11 +492,15 @@ export const createStoreOperations = (
   ): Promise<StorePackageReleaseRecord> => {
     const client = deps.ensureStoreClient();
     const commits = args.artifact.commits ?? [];
-    const sourcePackStorage = args.artifact.sourcePack
-      ? await uploadLargeSourcePack({
+    await uploadGitObjects({
+      client,
+      objects: args.gitObjectUploads ?? [],
+    });
+    const diffStorage = args.artifact.diff
+      ? await uploadLargeDiff({
           client,
           packageId: args.packageId,
-          sourcePack: args.artifact.sourcePack,
+          diff: args.artifact.diff,
         })
       : {};
     const result = (await client.action(
@@ -423,7 +514,10 @@ export const createStoreOperations = (
         releaseNotes: args.releaseNotes,
         manifest: toBackendStoreManifest(args.manifest),
         blueprintMarkdown: args.artifact.blueprintMarkdown,
-        ...sourcePackStorage,
+        ...(args.artifact.gitArtifact
+          ? { gitArtifact: args.artifact.gitArtifact }
+          : {}),
+        ...diffStorage,
         ...(commits.length > 0 ? { commits } : {}),
       },
     )) as {
@@ -440,6 +534,48 @@ export const createStoreOperations = (
     return releaseRecord;
   };
 
+  const getStoreGitObjectUrls = async (
+    packageId: string,
+    releaseNumber: number,
+    shas: string[],
+  ): Promise<Array<{ sha: string; r2Key: string; downloadUrl: string }>> => {
+    if (shas.length === 0) return [];
+    const client = deps.ensureStoreClient();
+    const records = (await client.action(
+      (
+        context.convexApi as {
+          data: {
+            store_git_artifacts: { getReleaseGitObjectUrls: unknown };
+          };
+        }
+      ).data.store_git_artifacts.getReleaseGitObjectUrls,
+      { packageId, releaseNumber, shas },
+    )) as unknown[];
+    return records
+      .map(
+        (entry): { sha: string; r2Key: string; downloadUrl: string } | null => {
+          if (!entry || typeof entry !== "object") return null;
+          const record = entry as Record<string, unknown>;
+          if (
+            typeof record.sha !== "string" ||
+            typeof record.r2Key !== "string" ||
+            typeof record.downloadUrl !== "string"
+          ) {
+            return null;
+          }
+          return {
+            sha: record.sha,
+            r2Key: record.r2Key,
+            downloadUrl: record.downloadUrl,
+          };
+        },
+      )
+      .filter(
+        (entry): entry is { sha: string; r2Key: string; downloadUrl: string } =>
+          entry !== null,
+      );
+  };
+
   return {
     listStorePackages,
     getStorePackage,
@@ -447,5 +583,6 @@ export const createStoreOperations = (
     getStorePackageRelease,
     createFirstStoreRelease,
     createStoreReleaseUpdate,
+    getStoreGitObjectUrls,
   };
 };

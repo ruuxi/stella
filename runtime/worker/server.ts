@@ -23,7 +23,7 @@ import {
 import type {
   StorePackageReleaseRecord,
   StoreReleaseCommit,
-  StoreReleaseSourcePack,
+  StoreReleaseGitArtifact,
 } from "../contracts/index.js";
 import {
   AGENT_IDS,
@@ -62,6 +62,7 @@ import {
   listFilesForCommit,
   listRecentGitFeatures,
   revertGitFeature,
+  rollbackGitChangesSince,
 } from "../kernel/self-mod/git.js";
 import {
   createSelfModHmrController,
@@ -124,6 +125,69 @@ const notifyLocalChatUpdated = (
 const logger = createRuntimeLogger("worker.server");
 
 type RuntimeRunner = ReturnType<typeof createStellaHostRunner>;
+
+const normalizeStoreInstallRollbackPaths = (paths: string[]): string[] =>
+  Array.from(
+    new Set(
+      paths
+        .map((filePath) => filePath.trim().replace(/\\/g, "/"))
+        .filter(Boolean),
+    ),
+  ).sort();
+
+const storeInstallCommitSubjectPolicy = (args: {
+  packageId: string;
+  mode: "install" | "update";
+}) => {
+  const expectedPrefix =
+    args.mode === "update" ? "Store update" : "Store install";
+  const expected = `${expectedPrefix}: ${args.packageId}`;
+  return (subject: string) => subject === expected;
+};
+
+const rollbackFailedStoreInstall = async (args: {
+  repoRoot: string;
+  startingHeadCommit: string | null;
+  baselineDirtyFiles: Set<string>;
+  packageId: string;
+  mode: "install" | "update";
+}): Promise<void> => {
+  if (!args.startingHeadCommit) return;
+  const currentDirtyFiles = await listGitDirtyFiles(args.repoRoot).catch(
+    () => [],
+  );
+  const changedFiles = normalizeStoreInstallRollbackPaths(
+    currentDirtyFiles.filter(
+      (filePath) => !args.baselineDirtyFiles.has(filePath),
+    ),
+  );
+  const result = await rollbackGitChangesSince({
+    repoRoot: args.repoRoot,
+    startingHeadCommit: args.startingHeadCommit,
+    changedFiles,
+    isOwnedCommitSubject: storeInstallCommitSubjectPolicy({
+      packageId: args.packageId,
+      mode: args.mode,
+    }),
+    allowRevertWithLocalChanges: true,
+  });
+  if (result.status === "skipped") {
+    logger.warn("store-install.rollback.skipped", {
+      packageId: args.packageId,
+      mode: args.mode,
+      reason: result.reason,
+      headCommit: result.headCommit,
+      changedFileCount: changedFiles.length,
+    });
+    return;
+  }
+  logger.info("store-install.rollback.done", {
+    packageId: args.packageId,
+    mode: args.mode,
+    headCommit: result.headCommit,
+    restoredFileCount: result.restoredFiles.length,
+  });
+};
 
 const resolveDesktopCliEntrypoint = (
   stellaRoot: string,
@@ -287,7 +351,7 @@ const recordSelfModRevertNotice = (args: {
 import {
   buildStoreReleaseRedactor,
   collectStoreReleaseCommits,
-  collectStoreReleaseSourcePack,
+  collectStoreReleaseGitArtifact,
   normalizeStoreThreadFeatureNames,
 } from "./store-thread-helpers.js";
 import {
@@ -296,10 +360,9 @@ import {
   parseStoreInstallReviewDecision,
 } from "./store-install-prompt.js";
 import {
-  assertStoreSourcePackIntegrity,
-  selectStoreSourcePackForInstalledRevisions,
-} from "./store-source-pack-install.js";
-import { trySourceImportFastPath } from "./source-import.js";
+  materializeStoreGitArtifactReference,
+  tryStoreGitArtifactFastPath,
+} from "./store-git-artifact-install.js";
 import { importExternalSource } from "./source-import-external.js";
 
 const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
@@ -578,11 +641,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const pendingApplyPinned = pendingApplyBatches.size > 0;
     return Boolean(
       state.runner?.getActiveOrchestratorRun() ||
-        (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
-        requestPinned ||
-        pendingApplyPinned ||
-        socialPinned ||
-        voicePinned,
+      (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
+      requestPinned ||
+      pendingApplyPinned ||
+      socialPinned ||
+      voicePinned,
     );
   };
 
@@ -2724,18 +2787,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       );
     }
 
-    const sourcePack = await collectStoreReleaseSourcePack({
+    const gitArtifactBuild = await collectStoreReleaseGitArtifact({
       repoRoot,
       attachedFeatureNames,
       snapshot,
-      sourceHistory: ensureSourceHistoryStore(),
     });
-    if (
-      !sourcePack ||
-      !sourcePack.changeSets.some((changeSet) => changeSet.changes.length > 0)
-    ) {
+    if (!gitArtifactBuild || gitArtifactBuild.objectUploads.length === 0) {
       throw new Error(
-        "Could not build a source pack for the selected changes. Store publishing now requires source-backed changes; try publishing a smaller, committed feature.",
+        "Could not build a git artifact for the selected changes. Try publishing a smaller, committed feature.",
       );
     }
 
@@ -2762,7 +2821,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       schemaVersion: 2,
       manifest: { ...baseManifest },
       blueprintMarkdown,
-      sourcePack,
+      gitArtifact: gitArtifactBuild.gitArtifact,
+      diff: gitArtifactBuild.diff,
       commits,
     };
     const publishArgs: StorePublishArgs = {
@@ -2773,6 +2833,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       ...(payload.releaseNotes ? { releaseNotes: payload.releaseNotes } : {}),
       manifest: { ...baseManifest },
       artifact,
+      gitObjectUploads: gitArtifactBuild.objectUploads,
     };
 
     const runner = ensureRunner();
@@ -2888,216 +2949,251 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         releaseNumber: number;
         displayName: string;
         blueprintMarkdown: string;
-        sourcePack?: StoreReleaseSourcePack;
+        gitArtifact?: StoreReleaseGitArtifact;
+        diff?: string;
         commits?: StoreReleaseCommit[];
       };
       const runner = ensureRunner();
       const service = ensureStoreModService();
 
       const headBeforeRun = await getGitHead(init.stellaRoot).catch(() => null);
+      const baselineDirtyFiles = new Set(
+        normalizeStoreInstallRollbackPaths(
+          await listGitDirtyFiles(init.stellaRoot).catch(() => []),
+        ),
+      );
       const existingInstall = service.getInstall(payload.packageId);
       const installApplyMode = existingInstall ? "update" : "install";
-      const verifiedSourcePack = payload.sourcePack
-        ? assertStoreSourcePackIntegrity(payload.sourcePack)
-        : undefined;
-      const sourcePackPlan = payload.sourcePack
-        ? selectStoreSourcePackForInstalledRevisions(
-            verifiedSourcePack!,
-            existingInstall?.sourceRevisionIds ?? [],
+      try {
+        const alreadyInstalledRevisionId =
+          payload.gitArtifact &&
+          existingInstall?.sourceRevisionIds.includes(
+            `git:${payload.gitArtifact.featureCommit}`,
           )
-        : null;
-      const alreadyInstalledRevisionId =
-        sourcePackPlan?.status === "already-installed"
-          ? sourcePackPlan.revisionId
-          : null;
-      const sourcePackForAgent =
-        sourcePackPlan?.status === "handoff" ? sourcePackPlan.sourcePack : null;
+            ? `git:${payload.gitArtifact.featureCommit}`
+            : null;
 
-      // Materialise the spec + reference diffs into a per-install
-      // working directory under `~/.stella/raw/`. The general agent reads
-      // these files directly during the install run; the directory is
-      // mutable user data and is wiped on next install of the same
-      // package so retries always start clean.
-      const safePackageSegment = payload.packageId.replace(
-        /[^a-z0-9_-]/gi,
-        "_",
-      );
-      const installRoot = path.join(
-        state.init.stellaHomePath,
-        "raw",
-        "store-installs",
-        `${safePackageSegment}-r${payload.releaseNumber}`,
-      );
-      await fsPromises
-        .rm(installRoot, { recursive: true, force: true })
-        .catch(() => undefined);
-      await fsPromises.mkdir(installRoot, { recursive: true });
-      const specPath = path.join(installRoot, "SPEC.md");
-      await fsPromises.writeFile(specPath, payload.blueprintMarkdown, "utf8");
-
-      const commits = payload.commits ?? [];
-      const referencePaths: string[] = [];
-      for (let index = 0; index < commits.length; index += 1) {
-        const commit = commits[index];
-        const ordinal = String(index + 1).padStart(2, "0");
-        const safeHash = commit.hash.replace(/[^a-f0-9]/gi, "").slice(0, 12);
-        const fileName = `commit-${ordinal}-${safeHash || "noid"}.diff`;
-        const filePath = path.join(installRoot, fileName);
-        const header = [
-          `# Commit: ${commit.hash}`,
-          `# Subject: ${commit.subject}`,
-          "",
-        ].join("\n");
-        await fsPromises.writeFile(filePath, `${header}${commit.diff}`, "utf8");
-        referencePaths.push(filePath);
-      }
-
-      const sourcePackPath = sourcePackForAgent
-        ? path.join(installRoot, "SOURCE_PACK.json")
-        : null;
-      if (sourcePackForAgent && sourcePackPath) {
-        await fsPromises.writeFile(
-          sourcePackPath,
-          `${JSON.stringify(sourcePackForAgent, null, 2)}\n`,
-          "utf8",
+        // Materialise the spec + reference diffs into a per-install
+        // working directory under `~/.stella/raw/`. The general agent reads
+        // these files directly during the install run; the directory is
+        // mutable user data and is wiped on next install of the same
+        // package so retries always start clean.
+        const safePackageSegment = payload.packageId.replace(
+          /[^a-z0-9_-]/gi,
+          "_",
         );
-      }
+        const installRoot = path.join(
+          state.init.stellaHomePath,
+          "raw",
+          "store-installs",
+          `${safePackageSegment}-r${payload.releaseNumber}`,
+        );
+        await fsPromises
+          .rm(installRoot, { recursive: true, force: true })
+          .catch(() => undefined);
+        await fsPromises.mkdir(installRoot, { recursive: true });
+        const specPath = path.join(installRoot, "SPEC.md");
+        await fsPromises.writeFile(specPath, payload.blueprintMarkdown, "utf8");
 
-      if (alreadyInstalledRevisionId) {
-        return service.recordInstall({
-          packageId: payload.packageId,
-          releaseNumber: payload.releaseNumber,
-          installCommitHash: null,
-          sourceRevisionId: alreadyInstalledRevisionId,
-        });
-      }
+        const commits = payload.commits ?? [];
+        const referencePaths: string[] = [];
+        if (payload.diff) {
+          const filePath = path.join(
+            installRoot,
+            "squashed-store-feature.diff",
+          );
+          await fsPromises.writeFile(filePath, payload.diff, "utf8");
+          referencePaths.push(filePath);
+        }
+        for (let index = 0; index < commits.length; index += 1) {
+          const commit = commits[index];
+          const ordinal = String(index + 1).padStart(2, "0");
+          const safeHash = commit.hash.replace(/[^a-f0-9]/gi, "").slice(0, 12);
+          const fileName = `commit-${ordinal}-${safeHash || "noid"}.diff`;
+          const filePath = path.join(installRoot, fileName);
+          const header = [
+            `# Commit: ${commit.hash}`,
+            `# Subject: ${commit.subject}`,
+            "",
+          ].join("\n");
+          await fsPromises.writeFile(
+            filePath,
+            `${header}${commit.diff}`,
+            "utf8",
+          );
+          referencePaths.push(filePath);
+        }
 
-      const reviewResult = await runOneShotCompletion({
-        request: {
-          agentType: "store_install_review",
-          fallbackAgentTypes: ["general"],
-          systemPrompt:
-            "You are a no-tool safety reviewer for Stella Store installs. Return only the requested JSON decision.",
-          userText: buildStoreInstallReviewPrompt({
-            displayName: payload.displayName,
+        if (alreadyInstalledRevisionId) {
+          return service.recordInstall({
             packageId: payload.packageId,
-            releaseSummary: payload.blueprintMarkdown,
-            sourcePack: sourcePackForAgent,
-            commits,
-          }),
-          temperature: 0,
-          maxOutputTokens: 700,
-        },
-        runtime: {
-          stellaRoot: init.stellaRoot,
-          stellaHome: init.stellaHomePath,
-          siteBaseUrl: init.convexSiteUrl,
-          getAuthToken: () => init.authToken,
-          hasConnectedAccount: () => state.init?.hasConnectedAccount ?? false,
-          requestRuntimeAuthRefresh: async () => {
-            try {
-              return (await peer.request(
-                METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
-                { source: "store_install_review" },
-                { retryOnDisconnect: true },
-              )) as {
-                authenticated: boolean;
-                token: string | null;
-                hasConnectedAccount: boolean;
-              };
-            } catch {
-              return null;
-            }
-          },
-        },
-      });
-      const reviewDecision = parseStoreInstallReviewDecision(reviewResult.text);
-      if (!reviewDecision.allow) {
-        throw new Error(
-          `Store install review blocked this release: ${reviewDecision.reason}`,
-        );
-      }
+            releaseNumber: payload.releaseNumber,
+            installCommitHash: null,
+            sourceRevisionId: alreadyInstalledRevisionId,
+          });
+        }
 
-      if (sourcePackForAgent) {
-        const fastImportResult = await trySourceImportFastPath({
-          repoRoot: init.stellaRoot,
-          service,
-          source: {
-            kind: "store-package",
+        const reviewResult = await runOneShotCompletion({
+          request: {
+            agentType: "store_install_review",
+            fallbackAgentTypes: ["general"],
+            systemPrompt:
+              "You are a no-tool safety reviewer for Stella Store installs. Return only the requested JSON decision.",
+            userText: buildStoreInstallReviewPrompt({
+              displayName: payload.displayName,
+              packageId: payload.packageId,
+              releaseSummary: payload.blueprintMarkdown,
+              commits:
+                payload.diff && commits.length === 0
+                  ? [
+                      {
+                        hash:
+                          payload.gitArtifact?.featureCommit ??
+                          "squashed-store-feature",
+                        subject: "Squashed Store feature diff",
+                        diff: payload.diff,
+                      },
+                    ]
+                  : commits,
+            }),
+            temperature: 0,
+            maxOutputTokens: 700,
+          },
+          runtime: {
+            stellaRoot: init.stellaRoot,
+            stellaHome: init.stellaHomePath,
+            siteBaseUrl: init.convexSiteUrl,
+            getAuthToken: () => init.authToken,
+            hasConnectedAccount: () => state.init?.hasConnectedAccount ?? false,
+            requestRuntimeAuthRefresh: async () => {
+              try {
+                return (await peer.request(
+                  METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
+                  { source: "store_install_review" },
+                  { retryOnDisconnect: true },
+                )) as {
+                  authenticated: boolean;
+                  token: string | null;
+                  hasConnectedAccount: boolean;
+                };
+              } catch {
+                return null;
+              }
+            },
+          },
+        });
+        const reviewDecision = parseStoreInstallReviewDecision(
+          reviewResult.text,
+        );
+        if (!reviewDecision.allow) {
+          throw new Error(
+            `Store install review blocked this release: ${reviewDecision.reason}`,
+          );
+        }
+
+        if (payload.gitArtifact) {
+          const fastImportResult = await tryStoreGitArtifactFastPath({
+            repoRoot: init.stellaRoot,
+            service,
             packageId: payload.packageId,
             releaseNumber: payload.releaseNumber,
             displayName: payload.displayName,
-            sourcePack: sourcePackForAgent,
-          },
-          scope: { kind: "all" },
-          trust: "untrusted",
-          applyMode: installApplyMode,
-          lifecycle: {
-            ...(state.beginExternalSelfModWithMorph
-              ? { beginExternalSelfMod: state.beginExternalSelfModWithMorph }
-              : {}),
-            ...(state.finishExternalSelfModWithMorph
-              ? { finishExternalSelfMod: state.finishExternalSelfModWithMorph }
-              : {}),
-          },
-          log: (event, fields) => logger.info(event, fields),
-        });
-        if (fastImportResult.status === "applied") {
-          return fastImportResult.installRecord;
+            gitArtifact: payload.gitArtifact,
+            getObjectUrls: async (shas) =>
+              await runner.getStoreGitObjectUrls(
+                payload.packageId,
+                payload.releaseNumber,
+                shas,
+              ),
+            applyMode: installApplyMode,
+            lifecycle: {
+              ...(state.beginExternalSelfModWithMorph
+                ? { beginExternalSelfMod: state.beginExternalSelfModWithMorph }
+                : {}),
+              ...(state.finishExternalSelfModWithMorph
+                ? {
+                    finishExternalSelfMod: state.finishExternalSelfModWithMorph,
+                  }
+                : {}),
+            },
+            log: (event, fields) => logger.info(event, fields),
+          });
+          if (fastImportResult.status === "applied") {
+            return fastImportResult.installRecord;
+          }
+          const authorTreePath = await materializeStoreGitArtifactReference({
+            repoRoot: init.stellaRoot,
+            gitArtifact: payload.gitArtifact,
+            outputRoot: installRoot,
+          }).catch(() => null);
+          if (authorTreePath) {
+            referencePaths.push(authorTreePath);
+          }
         }
-      }
 
-      const installPrompt = buildStoreInstallPrompt({
-        displayName: payload.displayName,
-        packageId: payload.packageId,
-        installRootPath: installRoot,
-        specPath,
-        sourcePackPath,
-        referencePaths,
-        blueprintMarkdown: payload.blueprintMarkdown,
-      });
+        const installPrompt = buildStoreInstallPrompt({
+          displayName: payload.displayName,
+          packageId: payload.packageId,
+          installRootPath: installRoot,
+          specPath,
+          referencePaths,
+          blueprintMarkdown: payload.blueprintMarkdown,
+        });
 
-      const blockingResult = await runner.runBlockingLocalAgent({
-        conversationId: `store-install:${payload.packageId}`,
-        description: `Install ${payload.displayName} from store`,
-        prompt: installPrompt,
-        agentType: "general",
-        selfModMetadata: {
+        const blockingResult = await runner.runBlockingLocalAgent({
+          conversationId: `store-install:${payload.packageId}`,
+          description: `Install ${payload.displayName} from store`,
+          prompt: installPrompt,
+          agentType: "general",
+          selfModMetadata: {
+            packageId: payload.packageId,
+            releaseNumber: payload.releaseNumber,
+            mode: installApplyMode,
+          },
+        });
+        if (blockingResult.status !== "ok") {
+          throw new Error(blockingResult.error);
+        }
+
+        // Capture HEAD after the run so we can record the install commit.
+        // A successful install must produce a self-mod commit; otherwise
+        // the UI would show the add-on as installed with nothing to undo.
+        const headAfterRun = await getGitHead(state.init.stellaRoot).catch(
+          () => null,
+        );
+        const installCommitHash =
+          headAfterRun && headAfterRun !== headBeforeRun ? headAfterRun : null;
+        if (!installCommitHash) {
+          throw new Error(
+            "Store install did not apply any changes, so it was not recorded as installed.",
+          );
+        }
+
+        const installRecord = service.recordInstall({
           packageId: payload.packageId,
           releaseNumber: payload.releaseNumber,
+          installCommitHash,
+          sourceRevisionId:
+            ensureSourceHistoryStore().findRevisionByCommit(installCommitHash)
+              ?.revisionId ?? null,
+        });
+        return installRecord;
+      } catch (error) {
+        await rollbackFailedStoreInstall({
+          repoRoot: init.stellaRoot,
+          startingHeadCommit: headBeforeRun,
+          baselineDirtyFiles,
+          packageId: payload.packageId,
           mode: installApplyMode,
-        },
-      });
-      if (blockingResult.status !== "ok") {
-        throw new Error(blockingResult.error);
+        }).catch((rollbackError) => {
+          logger.warn("store-install.rollback.failed", {
+            packageId: payload.packageId,
+            mode: installApplyMode,
+            error: (rollbackError as Error).message,
+          });
+        });
+        throw error;
       }
-
-      // Capture HEAD after the run so we can record the install commit.
-      // A successful install must produce a self-mod commit; otherwise
-      // the UI would show the add-on as installed with nothing to undo.
-      const headAfterRun = await getGitHead(state.init.stellaRoot).catch(
-        () => null,
-      );
-      const installCommitHash =
-        headAfterRun && headAfterRun !== headBeforeRun ? headAfterRun : null;
-      if (!installCommitHash) {
-        throw new Error(
-          "Store install did not apply any changes, so it was not recorded as installed.",
-        );
-      }
-
-      const installRecord = service.recordInstall({
-        packageId: payload.packageId,
-        releaseNumber: payload.releaseNumber,
-        installCommitHash,
-        sourceRevisionId:
-          ensureSourceHistoryStore().findRevisionByCommit(installCommitHash)
-            ?.revisionId ?? null,
-        ...(sourcePackForAgent
-          ? { sourceRevisionIds: [sourcePackForAgent.revisionId] }
-          : {}),
-      });
-      return installRecord;
     },
   );
 

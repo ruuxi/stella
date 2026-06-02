@@ -1,34 +1,23 @@
 /**
  * Store publish-time commit helpers.
  *
- * Pulled out of `runtime/worker/server.ts` because they are pure /
- * filesystem-level utilities that don't touch worker state, and they
- * collectively account for ~300 lines of the worker's bulk.
- *
- * These utilities resolve selected local feature names into source packs and
- * per-commit reference diffs for the direct Store publish pipeline.
+ * These utilities resolve selected local feature names into sanitized git
+ * object artifacts and reference diffs for the direct Store publish pipeline.
  */
 import os from "node:os";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { promises as fsPromises } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
+import { deflateSync } from "node:zlib";
 import { setupEnvironment } from "dugite";
 import type {
   StoreReleaseCommit,
-  StoreReleaseSourcePack,
+  StoreReleaseGitArtifact,
+  StoreReleaseGitObjectUpload,
 } from "../contracts/index.js";
-import {
-  createStellaSourceChangeSet,
-  createStellaSourcePack,
-  hashSourceBlob,
-  type StellaSourceBlob,
-  type StellaSourceChange,
-  type StellaSourceChangeSet,
-} from "../kernel/self-mod/stella-source-control.js";
 import { orderCommitHashesChronologically } from "../kernel/self-mod/git.js";
-import type {
-  StellaSourceHistoryStore,
-  StellaSourceRevisionRecord,
-} from "../kernel/storage/stella-source-history-store.js";
 import type { StoreModStore } from "../kernel/storage/store-mod-store.js";
 
 const execFileAsync = promisify(execFile);
@@ -42,9 +31,6 @@ export const normalizeStoreThreadFeatureNames = (value: unknown): string[] =>
         .slice(0, 12)
     : [];
 
-// Paths that carry no signal for the published reference diffs and
-// routinely dwarf real changes. Excluded from `git show` via pathspec
-// so both the patch and the --stat header skip them.
 const STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS = [
   ":(exclude,glob)**/*.min.js",
   ":(exclude,glob)**/*.min.css",
@@ -56,60 +42,18 @@ const STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS = [
 ];
 
 const STORE_RELEASE_PER_COMMIT_DIFF_LIMIT = 200_000;
-const STORE_RELEASE_SOURCE_PACK_COMMIT_LIMIT = 32;
-const STORE_RELEASE_SOURCE_PACK_TEXT_FILE_LIMIT = 500_000;
-const STORE_RELEASE_SOURCE_PACK_BINARY_FILE_LIMIT = 1_500_000;
+const STORE_RELEASE_GIT_ARTIFACT_COMMIT_LIMIT = 32;
+const STORE_RELEASE_GIT_TEXT_FILE_LIMIT = 1_500_000;
+const STORE_RELEASE_GIT_OBJECT_CONTENT_LIMIT = 50 * 1024 * 1024;
 
 const gitPathspecArgs = ["--", ...STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS];
 
-const runStoreReleaseGitShow = async (
-  repoRoot: string,
-  commitHash: string,
-): Promise<{ subject: string; diff: string }> => {
-  if (!/^[0-9a-f]{7,40}$/i.test(commitHash)) {
-    throw new Error(`Invalid commit hash: ${commitHash}`);
-  }
-  const { env, gitLocation } = setupEnvironment({});
-  const subjectResult = await execFileAsync(
-    gitLocation,
-    ["show", "-s", "--format=%s", "--no-color", commitHash],
-    {
-      cwd: repoRoot,
-      env,
-      encoding: "utf8",
-      maxBuffer: 1 * 1024 * 1024,
-      windowsHide: true,
-    },
-  );
-  const subjectStdout = subjectResult.stdout;
-  const subject = subjectStdout.trim() || `(no subject)`;
-  const diffResult = await execFileAsync(
-    gitLocation,
-    [
-      "show",
-      "-U10",
-      "--patch",
-      "--find-renames",
-      "--format=",
-      "--no-color",
-      commitHash,
-      ...gitPathspecArgs,
-    ],
-    {
-      cwd: repoRoot,
-      env,
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-      windowsHide: true,
-    },
-  );
-  const diffStdout = diffResult.stdout;
-  const trimmed = diffStdout.trim() || `(empty commit ${commitHash})`;
-  const diff =
-    trimmed.length <= STORE_RELEASE_PER_COMMIT_DIFF_LIMIT
-      ? trimmed
-      : `${trimmed.slice(0, STORE_RELEASE_PER_COMMIT_DIFF_LIMIT)}\n... [truncated]`;
-  return { subject, diff };
+const gitStdoutText = (value: string | Buffer): string =>
+  typeof value === "string" ? value : value.toString("utf8");
+
+const bufferLooksText = (buffer: Buffer): boolean => {
+  if (buffer.includes(0)) return false;
+  return !buffer.toString("utf8").includes("\uFFFD");
 };
 
 const runStoreReleaseGit = async (
@@ -150,148 +94,467 @@ const runStoreReleaseGit = async (
   }
 };
 
-const bufferLooksText = (buffer: Buffer): boolean => {
-  if (buffer.includes(0)) return false;
-  const decoded = buffer.toString("utf8");
-  if (decoded.includes("\uFFFD")) return false;
-  return true;
+const runStoreReleaseGitOrThrow = async (
+  repoRoot: string,
+  args: string[],
+  options?: { encoding?: "utf8" | "buffer"; maxBuffer?: number },
+): Promise<string | Buffer> => {
+  const result = await runStoreReleaseGit(repoRoot, args, options);
+  if (result.status === 0) return result.stdout;
+  const detail =
+    gitStdoutText(result.stderr).trim() ||
+    gitStdoutText(result.stdout).trim() ||
+    `exit code ${result.status}`;
+  throw new Error(`Git command failed (${args.join(" ")}): ${detail}`);
 };
 
-const blobFromGitBuffer = (
-  buffer: Buffer,
-  redactor: (input: string) => string,
-): { blob: StellaSourceBlob; redacted: boolean } => {
-  if (bufferLooksText(buffer)) {
-    const decoded = buffer.toString("utf8");
-    const redacted = redactor(decoded);
-    return {
-      blob: { kind: "text", content: redacted },
-      redacted: redacted !== decoded,
-    };
+const runStoreReleaseGitShow = async (
+  repoRoot: string,
+  commitHash: string,
+): Promise<{ subject: string; diff: string }> => {
+  if (!/^[0-9a-f]{7,40}$/i.test(commitHash)) {
+    throw new Error(`Invalid commit hash: ${commitHash}`);
   }
+  const subject = gitStdoutText(
+    await runStoreReleaseGitOrThrow(repoRoot, [
+      "show",
+      "-s",
+      "--format=%s",
+      "--no-color",
+      commitHash,
+    ]),
+  ).trim();
+  const rawDiff = gitStdoutText(
+    await runStoreReleaseGitOrThrow(
+      repoRoot,
+      [
+        "show",
+        "-U10",
+        "--patch",
+        "--find-renames",
+        "--format=",
+        "--no-color",
+        commitHash,
+        ...gitPathspecArgs,
+      ],
+      { maxBuffer: 10 * 1024 * 1024 },
+    ),
+  ).trim();
+  const diff = rawDiff || `(empty commit ${commitHash})`;
   return {
-    blob: { kind: "binary", contentBase64: buffer.toString("base64") },
-    redacted: false,
+    subject: subject || "(no subject)",
+    diff:
+      diff.length <= STORE_RELEASE_PER_COMMIT_DIFF_LIMIT
+        ? diff
+        : `${diff.slice(0, STORE_RELEASE_PER_COMMIT_DIFF_LIMIT)}\n... [truncated]`,
   };
 };
 
-type StoreReleaseGitBlobRead = {
-  blob?: StellaSourceBlob;
-  redacted: boolean;
-  contentOmitted: boolean;
-};
+const parseNulList = (raw: string | Buffer): string[] =>
+  gitStdoutText(raw)
+    .split("\0")
+    .map((entry) => entry.trim().replace(/\\/g, "/"))
+    .filter(Boolean);
 
-const gitStdoutText = (value: string | Buffer): string =>
-  typeof value === "string" ? value : value.toString("utf8");
-
-const readStoreReleaseGitBlob = async (args: {
-  repoRoot: string;
-  revision: string;
-  filePath: string;
-  redactor: (input: string) => string;
-}): Promise<StoreReleaseGitBlobRead> => {
-  const objectResult = await runStoreReleaseGit(args.repoRoot, [
-    "rev-parse",
-    `${args.revision}:${args.filePath}`,
-  ]);
-  if (objectResult.status !== 0) {
-    return { redacted: false, contentOmitted: false };
-  }
-  const objectId = gitStdoutText(objectResult.stdout).trim();
-  if (!objectId) {
-    return { redacted: false, contentOmitted: true };
-  }
-  const sizeResult = await runStoreReleaseGit(args.repoRoot, [
-    "cat-file",
-    "-s",
-    objectId,
-  ]);
-  if (sizeResult.status !== 0) {
-    return { redacted: false, contentOmitted: true };
-  }
-  const size = Number(gitStdoutText(sizeResult.stdout).trim());
-  if (
-    !Number.isFinite(size) ||
-    size < 0 ||
-    size > STORE_RELEASE_SOURCE_PACK_BINARY_FILE_LIMIT
-  ) {
-    return { redacted: false, contentOmitted: true };
-  }
-  const result = await runStoreReleaseGit(
-    args.repoRoot,
-    ["show", `${args.revision}:${args.filePath}`],
-    {
-      encoding: "buffer",
-      maxBuffer: STORE_RELEASE_SOURCE_PACK_BINARY_FILE_LIMIT + 1024,
-    },
-  );
-  if (result.status !== 0) {
-    return { redacted: false, contentOmitted: true };
-  }
-  const buffer = Buffer.isBuffer(result.stdout)
-    ? result.stdout
-    : Buffer.from(result.stdout);
-  if (
-    bufferLooksText(buffer) &&
-    buffer.length > STORE_RELEASE_SOURCE_PACK_TEXT_FILE_LIMIT
-  ) {
-    return { redacted: false, contentOmitted: true };
-  }
-  if (
-    !bufferLooksText(buffer) &&
-    buffer.length > STORE_RELEASE_SOURCE_PACK_BINARY_FILE_LIMIT
-  ) {
-    return { redacted: false, contentOmitted: true };
-  }
-  return { ...blobFromGitBuffer(buffer, args.redactor), contentOmitted: false };
-};
-
-const listStoreReleaseCommitFiles = async (
+const isGitCommit = async (
   repoRoot: string,
   commitHash: string,
-): Promise<string[]> => {
+): Promise<boolean> => {
+  if (!/^[0-9a-f]{40}$/i.test(commitHash)) return false;
   const result = await runStoreReleaseGit(repoRoot, [
-    "show",
-    "--name-only",
-    "--pretty=format:",
-    "--no-renames",
-    commitHash,
-    ...gitPathspecArgs,
+    "cat-file",
+    "-e",
+    `${commitHash}^{commit}`,
   ]);
-  if (result.status !== 0) {
-    const detail =
-      (typeof result.stderr === "string"
-        ? result.stderr
-        : result.stderr.toString("utf8")
-      ).trim() ||
-      (typeof result.stdout === "string"
-        ? result.stdout
-        : result.stdout.toString("utf8")
-      ).trim() ||
-      `exit code ${result.status}`;
-    throw new Error(`Could not list files for ${commitHash}: ${detail}`);
-  }
-  const stdout =
-    typeof result.stdout === "string"
-      ? result.stdout
-      : result.stdout.toString("utf8");
-  return Array.from(
-    new Set(
-      stdout
-        .split(/\r?\n/)
-        .map((line) => line.trim().replace(/\\/g, "/"))
-        .filter(Boolean),
-    ),
-  ).sort();
+  return result.status === 0;
 };
 
-/**
- * Best-effort redactor for text leaving the author's machine. Scrubs
- * `$HOME` paths, the local username when it appears in path-shaped
- * contexts, JWT/OAuth/SSH credential shapes, email addresses, and
- * bearer-token assignments. The reviewer still rejects on anything
- * the regex misses.
- */
+const readInstallManifestDesktopCommit = async (
+  repoRoot: string,
+): Promise<string | null> => {
+  try {
+    const parsed = JSON.parse(
+      await fsPromises.readFile(path.join(repoRoot, "stella-install.json"), "utf8"),
+    ) as {
+      desktopReleaseCommit?: unknown;
+      installState?: { desktopReleaseCommit?: unknown };
+    };
+    const commit =
+      typeof parsed.installState?.desktopReleaseCommit === "string"
+        ? parsed.installState.desktopReleaseCommit.trim()
+        : typeof parsed.desktopReleaseCommit === "string"
+          ? parsed.desktopReleaseCommit.trim()
+          : "";
+    return commit || null;
+  } catch {
+    return null;
+  }
+};
+
+const resolveStorePublishCanonicalBase = async (args: {
+  repoRoot: string;
+  firstSelectedCommit: string;
+}): Promise<string> => {
+  const installCommit = await readInstallManifestDesktopCommit(args.repoRoot);
+  if (installCommit && (await isGitCommit(args.repoRoot, installCommit))) {
+    return installCommit;
+  }
+
+  for (const ref of [
+    "origin/release",
+    "origin/main",
+    "origin/master",
+    "release",
+    "main",
+    "master",
+  ]) {
+    const mergeBase = await runStoreReleaseGit(args.repoRoot, [
+      "merge-base",
+      args.firstSelectedCommit,
+      ref,
+    ]);
+    const commit = gitStdoutText(mergeBase.stdout).trim();
+    if (mergeBase.status === 0 && (await isGitCommit(args.repoRoot, commit))) {
+      return commit;
+    }
+  }
+
+  throw new Error(
+    "Store publish could not resolve the canonical Stella release base. Make sure stella-install.json has desktopReleaseCommit or the repo has a release/main branch.",
+  );
+};
+
+const BLOCKED_STORE_PUBLISH_PATHS: RegExp[] = [
+  /^\.env(?:\.|$)/i,
+  /(^|\/)\.env(?:\.|$)/i,
+  /(^|\/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519)(?:\.pub)?$/i,
+  /(^|\/)(?:credentials|credential|secrets?|tokens?)\.(?:json|ya?ml|toml|ini|env)$/i,
+  /(^|\/)(?:service-account|client-secret|oauth-client).*\.(?:json|ya?ml)$/i,
+  /(^|\/).*(?:private[-_]?key|refresh[-_]?token|access[-_]?token).*\.(?:json|txt|pem)$/i,
+];
+
+const OMIT_STORE_PUBLISH_PATHS: RegExp[] = [
+  /(^|\/)\.DS_Store$/i,
+  /(^|\/)(?:tmp|temp|cache|logs?)\//i,
+  /\.(?:log|sqlite|sqlite3|db|pid|sock)$/i,
+  /(^|\/)\.stella\/electron-user-data\//i,
+];
+
+const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [
+    /-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+PRIVATE KEY-----/g,
+    "private key",
+  ],
+  [/\bsk-[A-Za-z0-9_-]{20,}\b/g, "API key"],
+  [/\bsk-ant-[A-Za-z0-9_-]{20,}\b/g, "API key"],
+  [/\bxox[baprs]-[A-Za-z0-9-]{20,}\b/g, "Slack token"],
+  [/\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g, "GitHub token"],
+  [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "GitHub token"],
+  [/\bAKIA[0-9A-Z]{16}\b/g, "AWS access key"],
+  [/\bAIza[0-9A-Za-z_-]{30,}\b/g, "Google API key"],
+  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "JWT"],
+  [/\bBearer\s+[A-Za-z0-9._-]{20,}\b/gi, "bearer token"],
+  [
+    /\b(?:api[_-]?key|secret|password|passwd|pwd|auth[_-]?token|access[_-]?token|refresh[_-]?token|client[_-]?secret|session[_-]?token)\b\s*[:=]\s*["'][^"']{12,}["']/gi,
+    "credential assignment",
+  ],
+];
+
+const pathMatches = (filePath: string, patterns: RegExp[]): boolean =>
+  patterns.some((pattern) => pattern.test(filePath));
+
+const firstSecretFinding = (content: string): string | null => {
+  for (const [pattern, label] of SECRET_PATTERNS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(content)) return label;
+  }
+  return null;
+};
+
+const removeStorePublishPath = async (
+  worktreeRoot: string,
+  filePath: string,
+): Promise<void> => {
+  await fsPromises.rm(path.join(worktreeRoot, filePath), {
+    recursive: true,
+    force: true,
+  });
+  await runStoreReleaseGit(worktreeRoot, [
+    "rm",
+    "-r",
+    "--cached",
+    "--ignore-unmatch",
+    "--",
+    filePath,
+  ]);
+};
+
+const sanitizeStorePublishWorktree = async (args: {
+  worktreeRoot: string;
+  baseCommit: string;
+  redactor: (input: string) => string;
+}): Promise<{
+  redactedPaths: string[];
+  omittedPaths: string[];
+  warnings: string[];
+}> => {
+  const changed = parseNulList(
+    await runStoreReleaseGitOrThrow(args.worktreeRoot, [
+      "diff",
+      "--name-only",
+      "-z",
+      args.baseCommit,
+      ...gitPathspecArgs,
+    ]),
+  );
+  const redactedPaths = new Set<string>();
+  const omittedPaths = new Set<string>();
+  const warnings = new Set<string>();
+
+  for (const filePath of changed) {
+    if (pathMatches(filePath, BLOCKED_STORE_PUBLISH_PATHS)) {
+      throw new Error(
+        `Store publish blocked ${filePath} because it looks like a credential or secret file. Move private values to Settings or a connection before publishing.`,
+      );
+    }
+    if (pathMatches(filePath, OMIT_STORE_PUBLISH_PATHS)) {
+      await removeStorePublishPath(args.worktreeRoot, filePath);
+      omittedPaths.add(filePath);
+      continue;
+    }
+    const absolutePath = path.join(args.worktreeRoot, filePath);
+    const stat = await fsPromises.stat(absolutePath).catch(() => null);
+    if (!stat || !stat.isFile()) continue;
+    if (stat.size > STORE_RELEASE_GIT_TEXT_FILE_LIMIT) {
+      warnings.add(`${filePath} is large and will be reviewed as a git object.`);
+      continue;
+    }
+    const buffer = await fsPromises.readFile(absolutePath);
+    if (!bufferLooksText(buffer)) continue;
+    const decoded = buffer.toString("utf8");
+    const secretFinding = firstSecretFinding(decoded);
+    if (secretFinding) {
+      throw new Error(
+        `Store publish blocked ${filePath} because it appears to contain a ${secretFinding}. Move private values to Settings or a connection before publishing.`,
+      );
+    }
+    const redacted = args.redactor(decoded);
+    if (redacted !== decoded) {
+      await fsPromises.writeFile(absolutePath, redacted, "utf8");
+      redactedPaths.add(filePath);
+    }
+  }
+
+  await runStoreReleaseGitOrThrow(args.worktreeRoot, ["add", "-A"]);
+  return {
+    redactedPaths: [...redactedPaths].sort(),
+    omittedPaths: [...omittedPaths].sort(),
+    warnings: [...warnings].sort(),
+  };
+};
+
+const readCompressedGitObject = async (
+  repoRoot: string,
+  sha: string,
+): Promise<StoreReleaseGitObjectUpload> => {
+  const type = gitStdoutText(
+    await runStoreReleaseGitOrThrow(repoRoot, ["cat-file", "-t", sha]),
+  ).trim();
+  if (type !== "blob" && type !== "tree" && type !== "commit") {
+    throw new Error(`Unsupported Store Git object type ${type} for ${sha}.`);
+  }
+  const contentSizeText = gitStdoutText(
+    await runStoreReleaseGitOrThrow(repoRoot, ["cat-file", "-s", sha]),
+  ).trim();
+  const contentSize = Number(contentSizeText);
+  if (
+    !Number.isInteger(contentSize) ||
+    contentSize < 0 ||
+    contentSize > STORE_RELEASE_GIT_OBJECT_CONTENT_LIMIT
+  ) {
+    throw new Error(
+      `Store publish cannot include ${sha}: git object content is too large. Remove large binary assets from the selected feature and try again.`,
+    );
+  }
+  const raw = await runStoreReleaseGitOrThrow(
+    repoRoot,
+    ["cat-file", type, sha],
+    { encoding: "buffer", maxBuffer: STORE_RELEASE_GIT_OBJECT_CONTENT_LIMIT + 1024 },
+  );
+  const content = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+  const storeBytes = Buffer.concat([
+    Buffer.from(`${type} ${content.length}\0`, "utf8"),
+    content,
+  ]);
+  const computed = createHash("sha1").update(storeBytes).digest("hex");
+  if (computed !== sha) {
+    throw new Error(`Git object integrity failed for ${sha}.`);
+  }
+  const compressedBytes = deflateSync(storeBytes);
+  return { sha, type, sizeBytes: compressedBytes.byteLength, compressedBytes };
+};
+
+const listStoreGitArtifactObjects = async (args: {
+  worktreeRoot: string;
+  baseCommit: string;
+  featureCommit: string;
+}): Promise<StoreReleaseGitObjectUpload[]> => {
+  const raw = gitStdoutText(
+    await runStoreReleaseGitOrThrow(args.worktreeRoot, [
+      "rev-list",
+      "--objects",
+      `${args.baseCommit}..${args.featureCommit}`,
+    ]),
+  );
+  const shas = Array.from(
+    new Set(
+      raw
+        .split(/\r?\n/)
+        .map((line) => line.trim().split(/\s+/, 1)[0] ?? "")
+        .filter((sha) => /^[0-9a-f]{40}$/i.test(sha)),
+    ),
+  );
+  if (!shas.includes(args.featureCommit)) {
+    shas.unshift(args.featureCommit);
+  }
+  const objects: StoreReleaseGitObjectUpload[] = [];
+  for (const sha of shas) {
+    objects.push(await readCompressedGitObject(args.worktreeRoot, sha));
+  }
+  return objects;
+};
+
+export type StoreReleaseGitArtifactBuild = {
+  gitArtifact: StoreReleaseGitArtifact;
+  objectUploads: StoreReleaseGitObjectUpload[];
+  diff: string;
+  commitHashes: string[];
+};
+
+export const collectStoreReleaseGitArtifact = async (args: {
+  repoRoot: string;
+  attachedFeatureNames: string[];
+  snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
+}): Promise<StoreReleaseGitArtifactBuild | undefined> => {
+  const ordered = await collectStoreReleaseCommitHashes(args);
+  if (ordered.length === 0) return undefined;
+  if (ordered.length > STORE_RELEASE_GIT_ARTIFACT_COMMIT_LIMIT) {
+    throw new Error(
+      `Store publish supports at most ${STORE_RELEASE_GIT_ARTIFACT_COMMIT_LIMIT} selected commits at once.`,
+    );
+  }
+  const canonicalBase = await resolveStorePublishCanonicalBase({
+    repoRoot: args.repoRoot,
+    firstSelectedCommit: ordered[0]!,
+  });
+  // The git fast path uploads only objects reachable from featureCommit but not
+  // canonicalBase. Installers on a different desktop release may not have that
+  // base commit; they safely fall back to the agent path.
+
+  const tempRoot = await fsPromises.mkdtemp(
+    path.join(os.tmpdir(), "stella-store-publish-"),
+  );
+  const worktreeRoot = path.join(tempRoot, "worktree");
+  const redact = buildStoreReleaseRedactor();
+  try {
+    await runStoreReleaseGit(args.repoRoot, ["worktree", "prune"]).catch(
+      () => undefined,
+    );
+    await runStoreReleaseGitOrThrow(args.repoRoot, [
+      "worktree",
+      "add",
+      "--detach",
+      worktreeRoot,
+      canonicalBase,
+    ]);
+    for (const hash of ordered) {
+      const cherryPick = await runStoreReleaseGit(worktreeRoot, [
+        "cherry-pick",
+        "--no-commit",
+        hash,
+      ]);
+      if (cherryPick.status !== 0) {
+        await runStoreReleaseGit(worktreeRoot, ["cherry-pick", "--abort"]);
+        const detail =
+          gitStdoutText(cherryPick.stderr).trim() ||
+          gitStdoutText(cherryPick.stdout).trim() ||
+          `Could not apply ${hash}`;
+        throw new Error(
+          `Store publish could not squash the selected commits cleanly: ${detail}`,
+        );
+      }
+    }
+
+    const security = await sanitizeStorePublishWorktree({
+      worktreeRoot,
+      baseCommit: canonicalBase,
+      redactor: redact,
+    });
+    const hasChanges = await runStoreReleaseGit(worktreeRoot, [
+      "diff",
+      "--cached",
+      "--quiet",
+    ]);
+    if (hasChanges.status === 0) {
+      throw new Error(
+        "The selected Store feature has no publishable source changes after safety checks.",
+      );
+    }
+
+    await runStoreReleaseGitOrThrow(worktreeRoot, [
+      "-c",
+      "user.name=Stella Store",
+      "-c",
+      "user.email=store@stella.local",
+      "commit",
+      "-m",
+      `Store feature: ${args.attachedFeatureNames.join(", ")}`,
+    ]);
+    const featureCommit = gitStdoutText(
+      await runStoreReleaseGitOrThrow(worktreeRoot, ["rev-parse", "HEAD"]),
+    ).trim();
+    const diff = redact(
+      gitStdoutText(
+        await runStoreReleaseGitOrThrow(
+          worktreeRoot,
+          ["diff", "--find-renames", "--no-color", canonicalBase, featureCommit],
+          { maxBuffer: 10 * 1024 * 1024 },
+        ),
+      ),
+    );
+    const objectUploads = await listStoreGitArtifactObjects({
+      worktreeRoot,
+      baseCommit: canonicalBase,
+      featureCommit,
+    });
+    return {
+      gitArtifact: {
+        kind: "git-object-artifact",
+        schemaVersion: 1,
+        baseCommit: canonicalBase,
+        featureCommit,
+        objects: objectUploads.map(({ sha, type, sizeBytes }) => ({
+          sha,
+          type,
+          sizeBytes,
+        })),
+        security,
+      },
+      objectUploads,
+      diff,
+      commitHashes: ordered,
+    };
+  } finally {
+    await runStoreReleaseGit(args.repoRoot, [
+      "worktree",
+      "remove",
+      "--force",
+      worktreeRoot,
+    ]).catch(() => undefined);
+    await fsPromises.rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+  }
+};
+
 export const buildStoreReleaseRedactor = (): ((input: string) => string) => {
   const home = os.homedir();
   const username = (() => {
@@ -301,7 +564,6 @@ export const buildStoreReleaseRedactor = (): ((input: string) => string) => {
       return null;
     }
   })();
-
   const escapeRegex = (value: string): string =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -309,20 +571,13 @@ export const buildStoreReleaseRedactor = (): ((input: string) => string) => {
   if (home && home.length > 1) {
     homeMatchers.push(new RegExp(escapeRegex(home), "g"));
   }
-
   const usernameMatchers: RegExp[] = [];
   if (username && username.length > 1) {
     const escapedUsername = escapeRegex(username);
-    // Replace username only when it appears inside a path-shaped
-    // context (after `/`, `\\`, or `/Users/`). Bare-word username can
-    // false-positive on real content; we leave that to the reviewer.
     usernameMatchers.push(new RegExp(`/Users/${escapedUsername}\\b`, "g"));
     usernameMatchers.push(new RegExp(`/home/${escapedUsername}\\b`, "g"));
-    usernameMatchers.push(
-      new RegExp(`\\\\Users\\\\${escapedUsername}\\b`, "g"),
-    );
+    usernameMatchers.push(new RegExp(`\\\\Users\\\\${escapedUsername}\\b`, "g"));
   }
-
   const credentialPatterns: Array<[RegExp, string]> = [
     [/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "<redacted-email>"],
     [/sk-[A-Za-z0-9_-]{20,}/g, "<redacted-token>"],
@@ -347,9 +602,7 @@ export const buildStoreReleaseRedactor = (): ((input: string) => string) => {
 
   return (input: string): string => {
     let result = input;
-    for (const matcher of homeMatchers) {
-      result = result.replace(matcher, "~");
-    }
+    for (const matcher of homeMatchers) result = result.replace(matcher, "~");
     for (const matcher of usernameMatchers) {
       result = result.replace(matcher, (full) =>
         full.replace(username ?? "", "<user>"),
@@ -397,200 +650,7 @@ export const collectStoreReleaseCommits = async (args: {
   const commits: StoreReleaseCommit[] = [];
   for (const hash of ordered) {
     const { subject, diff } = await runStoreReleaseGitShow(args.repoRoot, hash);
-    commits.push({
-      hash,
-      subject: redact(subject),
-      diff: redact(diff),
-    });
+    commits.push({ hash, subject: redact(subject), diff: redact(diff) });
   }
   return commits;
-};
-
-export const collectStoreReleaseSourcePack = async (args: {
-  repoRoot: string;
-  attachedFeatureNames: string[];
-  snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
-  sourceHistory?: StellaSourceHistoryStore | null;
-}): Promise<StoreReleaseSourcePack | undefined> => {
-  const ordered = await collectStoreReleaseCommitHashes(args);
-  if (ordered.length === 0) return undefined;
-  if (ordered.length > STORE_RELEASE_SOURCE_PACK_COMMIT_LIMIT) {
-    return undefined;
-  }
-
-  const historyBacked = args.sourceHistory
-    ? await collectStoreReleaseSourcePackFromHistory({
-        repoRoot: args.repoRoot,
-        attachedFeatureNames: args.attachedFeatureNames,
-        orderedCommitHashes: ordered,
-        sourceHistory: args.sourceHistory,
-      })
-    : undefined;
-  if (historyBacked) {
-    return historyBacked;
-  }
-
-  const redact = buildStoreReleaseRedactor();
-  let baseRevisionId: string | null = null;
-  let parentRevisionId: string | null = null;
-  const changeSets: StellaSourceChangeSet[] = [];
-
-  for (const hash of ordered) {
-    const parentResult = await runStoreReleaseGit(args.repoRoot, [
-      "rev-parse",
-      `${hash}^`,
-    ]);
-    if (parentResult.status !== 0) {
-      return undefined;
-    }
-    const parentHash =
-      typeof parentResult.stdout === "string"
-        ? parentResult.stdout.trim()
-        : parentResult.stdout.toString("utf8").trim();
-    if (!parentHash) return undefined;
-    if (!baseRevisionId) {
-      baseRevisionId = `git:${parentHash}`;
-      parentRevisionId = baseRevisionId;
-    }
-
-    const { subject } = await runStoreReleaseGitShow(args.repoRoot, hash);
-    const files = await listStoreReleaseCommitFiles(args.repoRoot, hash);
-    const changes: StellaSourceChange[] = [];
-    for (const filePath of files) {
-      const base = await readStoreReleaseGitBlob({
-        repoRoot: args.repoRoot,
-        revision: `${hash}^`,
-        filePath,
-        redactor: redact,
-      });
-      const next = await readStoreReleaseGitBlob({
-        repoRoot: args.repoRoot,
-        revision: hash,
-        filePath,
-        redactor: redact,
-      });
-      if (
-        base.redacted ||
-        next.redacted ||
-        base.contentOmitted ||
-        next.contentOmitted
-      ) {
-        return undefined;
-      }
-      const baseHash = hashSourceBlob(base.blob);
-      const nextHash = hashSourceBlob(next.blob);
-      if (baseHash === nextHash) continue;
-      changes.push({
-        path: filePath,
-        baseHash,
-        nextHash,
-        ...(base.blob ? { base: base.blob } : {}),
-        ...(next.blob ? { next: next.blob } : {}),
-      });
-    }
-    const changeSet = createStellaSourceChangeSet({
-      baseRevisionId: parentRevisionId ?? `git:${parentHash}`,
-      parentRevisionIds: [parentRevisionId ?? `git:${parentHash}`],
-      description: redact(subject),
-      changes,
-    });
-    changeSets.push(changeSet);
-    parentRevisionId = changeSet.revisionId;
-  }
-
-  if (!baseRevisionId || changeSets.length === 0) return undefined;
-  return createStellaSourcePack({
-    baseRevisionId,
-    description: args.attachedFeatureNames.join(", "),
-    changeSets,
-  }) as StoreReleaseSourcePack;
-};
-
-const collectStoreReleaseSourcePackFromHistory = async (args: {
-  repoRoot: string;
-  attachedFeatureNames: string[];
-  orderedCommitHashes: string[];
-  sourceHistory: StellaSourceHistoryStore;
-}): Promise<StoreReleaseSourcePack | undefined> => {
-  const records: StellaSourceRevisionRecord[] = [];
-  for (const hash of args.orderedCommitHashes) {
-    const record = args.sourceHistory.findRevisionByCommit(hash);
-    if (!record) return undefined;
-    records.push(record);
-  }
-  if (records.length === 0) return undefined;
-
-  const redact = buildStoreReleaseRedactor();
-  const changeSets: StellaSourceChangeSet[] = [];
-  for (const record of records) {
-    if (!record.commitHash) return undefined;
-    const parentResult = await runStoreReleaseGit(args.repoRoot, [
-      "rev-parse",
-      `${record.commitHash}^`,
-    ]);
-    if (parentResult.status !== 0) return undefined;
-    const parentHash =
-      typeof parentResult.stdout === "string"
-        ? parentResult.stdout.trim()
-        : parentResult.stdout.toString("utf8").trim();
-    if (!parentHash) return undefined;
-
-    const changes: StellaSourceChange[] = [];
-    for (const change of record.changeSet.changes) {
-      const base = await readStoreReleaseGitBlob({
-        repoRoot: args.repoRoot,
-        revision: `${record.commitHash}^`,
-        filePath: change.path,
-        redactor: redact,
-      });
-      const next = await readStoreReleaseGitBlob({
-        repoRoot: args.repoRoot,
-        revision: record.commitHash,
-        filePath: change.path,
-        redactor: redact,
-      });
-      if (
-        base.redacted ||
-        next.redacted ||
-        base.contentOmitted ||
-        next.contentOmitted
-      ) {
-        return undefined;
-      }
-      const baseHash = hashSourceBlob(base.blob);
-      const nextHash = hashSourceBlob(next.blob);
-      if (baseHash !== change.baseHash || nextHash !== change.nextHash) {
-        return undefined;
-      }
-      changes.push({
-        path: change.path,
-        baseHash,
-        nextHash,
-        ...(base.blob ? { base: base.blob } : {}),
-        ...(next.blob ? { next: next.blob } : {}),
-      });
-    }
-
-    const changeSet = createStellaSourceChangeSet({
-      baseRevisionId: record.changeSet.baseRevisionId,
-      parentRevisionIds: record.changeSet.parentRevisionIds,
-      ...(record.changeSet.featureId
-        ? { featureId: record.changeSet.featureId }
-        : {}),
-      ...(record.changeSet.description
-        ? { description: record.changeSet.description }
-        : {}),
-      changes,
-    });
-    if (changeSet.revisionId !== record.revisionId) {
-      return undefined;
-    }
-    changeSets.push(changeSet);
-  }
-
-  return createStellaSourcePack({
-    baseRevisionId: records[0]!.baseRevisionId,
-    description: args.attachedFeatureNames.join(", "),
-    changeSets,
-  }) as StoreReleaseSourcePack;
 };

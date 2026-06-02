@@ -53,9 +53,9 @@ import {
   preflightSourcePackImport,
 } from "../../../runtime/worker/source-import-core.js";
 import {
-  STORE_SOURCE_DEPENDENCY_FILE_NAMES,
-  runStoreSourcePackDependencyInstall,
-  storeSourcePackTouchesDependencyFiles,
+  STORE_PUBLISH_DEPENDENCY_FILE_NAMES,
+  runStorePublishDependencyInstall,
+  storePublishTouchesDependencyFiles,
 } from "../../../runtime/worker/store-source-pack-install.js";
 import {
   desktopSourcePackCanApplyLocally,
@@ -503,8 +503,8 @@ const parseGitNameList = (stdout: string): string[] =>
 
 const expandExternalSelfModPaths = (paths: string[]): string[] => {
   const expanded = new Set(paths);
-  if (storeSourcePackTouchesDependencyFiles(paths)) {
-    for (const dependencyFile of STORE_SOURCE_DEPENDENCY_FILE_NAMES) {
+  if (storePublishTouchesDependencyFiles(paths)) {
+    for (const dependencyFile of STORE_PUBLISH_DEPENDENCY_FILE_NAMES) {
       expanded.add(dependencyFile);
     }
   }
@@ -522,7 +522,7 @@ const runDesktopUpdateDependencyInstall = async (args: {
   runId: string;
   releaseTag: string;
 }): Promise<boolean> => {
-  const dependencyInstallRan = storeSourcePackTouchesDependencyFiles(
+  const dependencyInstallRan = storePublishTouchesDependencyFiles(
     args.changedFiles,
   );
   if (!dependencyInstallRan) return false;
@@ -531,7 +531,7 @@ const runDesktopUpdateDependencyInstall = async (args: {
     runId: args.runId,
     releaseTag: args.releaseTag,
   });
-  await runStoreSourcePackDependencyInstall(args.stellaRoot);
+  await runStorePublishDependencyInstall(args.stellaRoot);
   logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
     runId: args.runId,
     releaseTag: args.releaseTag,
@@ -1360,10 +1360,10 @@ const tryApplySourcePackDesktopUpdate = async (
       releaseTag: args.releaseTag,
       changedFileCount: preflight.sourceApply.appliedPaths.length,
     });
-    const sourcePackTouchesDependencies = storeSourcePackTouchesDependencyFiles(
+    const sourceImportTouchesDependencies = storePublishTouchesDependencyFiles(
       preflight.sourceApply.appliedPaths,
     );
-    if (sourcePackTouchesDependencies) {
+    if (sourceImportTouchesDependencies) {
       logDesktopUpdateProcess("desktop-update.dependencies.install.start", {
         runId,
         releaseTag: args.releaseTag,
