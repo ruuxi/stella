@@ -2024,11 +2024,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     listSyncMessages: (payload: {
       conversationId: string;
       maxMessages?: number;
+      includeDeveloperArtifacts?: boolean;
     }) => ipcRenderer.invoke("localChat:listSyncMessages", payload),
     syncMessages: (payload: {
       conversationId: string;
       sinceCursor?: string | null;
       maxMessages?: number;
+      includeDeveloperArtifacts?: boolean;
     }) => ipcRenderer.invoke("localChat:syncMessages", payload),
     getSyncCheckpoint: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("localChat:getSyncCheckpoint", payload),

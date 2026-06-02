@@ -41,12 +41,14 @@ describe("MobileBridgeService registration lease", () => {
     const service = createService();
     const anyService = configureReadyService(service);
     const leaseExpiresAt = Date.now() + 120_000;
-    anyService.postBridgeJson = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ ok: true, leaseExpiresAt }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    );
+    anyService.postBridgeJson = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: true, leaseExpiresAt }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
 
     await anyService.syncRegistration();
 
@@ -63,7 +65,9 @@ describe("MobileBridgeService registration lease", () => {
     anyService.postBridgeJson = vi
       .fn()
       .mockRejectedValue(new Error("temporary network issue"));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const warnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
 
     try {
       await anyService.syncRegistration();
@@ -80,10 +84,12 @@ describe("MobileBridgeService registration lease", () => {
     const anyService = configureReadyService(service);
     anyService.registrationLeaseExpiresAt = Date.now() + 120_000;
     anyService.registrationState = "healthy";
-    anyService.postBridgeJson = vi.fn().mockResolvedValue(
-      new Response("Server error", { status: 500 }),
-    );
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    anyService.postBridgeJson = vi
+      .fn()
+      .mockResolvedValue(new Response("Server error", { status: 500 }));
+    const warnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
 
     try {
       await anyService.syncRegistration();
@@ -104,7 +110,9 @@ describe("MobileBridgeService registration lease", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const warnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
 
     try {
       await anyService.syncRegistration();
@@ -151,14 +159,46 @@ describe("MobileBridgeService registration lease", () => {
     const anyService = configureReadyService(service);
     anyService.registrationLeaseExpiresAt = Date.now() + 120_000;
     anyService.registrationState = "healthy";
-    anyService.postBridgeJson = vi.fn().mockResolvedValue(
-      new Response("Forbidden", { status: 403 }),
-    );
+    anyService.postBridgeJson = vi
+      .fn()
+      .mockResolvedValue(new Response("Forbidden", { status: 403 }));
 
     await anyService.syncRegistration();
 
     expect(anyService.registrationState).toBe("revoked");
     expect(anyService.registrationLeaseExpiresAt).toBeNull();
     expect(anyService.isBridgeAccessEnabled()).toBe(false);
+  });
+
+  it("filters source-diff display updates unless developer previews are enabled", () => {
+    const service = createService();
+    const anyService = configureReadyService(service);
+    anyService.registrationLeaseExpiresAt = Date.now() + 120_000;
+    anyService.registrationState = "healthy";
+    const ws = {
+      close: vi.fn(),
+      send: vi.fn(),
+      readyState: WebSocket.OPEN,
+    } as unknown as WebSocket;
+    anyService.wsClients.set(ws, {
+      authenticated: true,
+      subscriptions: new Set(["display:update"]),
+    });
+
+    service.broadcastToMobile("display:update", {
+      kind: "source-diff",
+      filePath: "/repo/src/app.tsx",
+    });
+    expect(ws.send).not.toHaveBeenCalled();
+
+    anyService.lastBootstrapPayload = {
+      localStorage: { "stella-developer-resource-previews": "true" },
+      mobileBridgeCapabilities: { version: 1, capabilities: [] },
+    };
+    service.broadcastToMobile("display:update", {
+      kind: "source-diff",
+      filePath: "/repo/src/app.tsx",
+    });
+    expect(ws.send).toHaveBeenCalledTimes(1);
   });
 });

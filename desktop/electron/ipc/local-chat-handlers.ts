@@ -219,6 +219,7 @@ export const registerLocalChatHandlers = (
       payload: {
         conversationId?: string;
         maxMessages?: number;
+        includeDeveloperArtifacts?: boolean;
       },
     ) =>
       await withLocalChatClient(
@@ -229,6 +230,8 @@ export const registerLocalChatHandlers = (
           client.listSyncMessages({
             conversationId: payload?.conversationId ?? "",
             maxMessages: payload?.maxMessages,
+            includeDeveloperArtifacts:
+              payload?.includeDeveloperArtifacts === true,
           }),
       ),
   );
@@ -241,6 +244,7 @@ export const registerLocalChatHandlers = (
         conversationId?: string;
         sinceCursor?: string | null;
         maxMessages?: number;
+        includeDeveloperArtifacts?: boolean;
       },
     ) =>
       await withLocalChatClient(
@@ -252,6 +256,8 @@ export const registerLocalChatHandlers = (
             conversationId: payload?.conversationId ?? "",
             sinceCursor: payload?.sinceCursor,
             maxMessages: payload?.maxMessages,
+            includeDeveloperArtifacts:
+              payload?.includeDeveloperArtifacts === true,
           }),
       ),
   );
