@@ -2,15 +2,10 @@ import { promises as fs } from "node:fs";
 
 import { resolveFilePath } from "./file.js";
 import type { ToolContext, ToolResult } from "./types.js";
-
-const imageMimeForPath = (filePath: string): string | null => {
-  const lower = filePath.toLowerCase();
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".webp")) return "image/webp";
-  return null;
-};
+import {
+  imageMimeTypeFromPath,
+  resolveImageMimeType,
+} from "../shared/image-mime.js";
 
 export const handleViewImage = async (
   args: Record<string, unknown>,
@@ -33,8 +28,7 @@ export const handleViewImage = async (
   }
 
   const filePath = resolveFilePath(rawPath, context);
-  const mimeType = imageMimeForPath(filePath);
-  if (!mimeType) {
+  if (!imageMimeTypeFromPath(filePath)) {
     return {
       error:
         "view_image only supports local PNG, JPG, JPEG, GIF, and WEBP files.",
@@ -48,6 +42,12 @@ export const handleViewImage = async (
     }
   } catch {
     return { error: `Image not found: ${filePath}` };
+  }
+
+  const bytes = await fs.readFile(filePath);
+  const mimeType = resolveImageMimeType(filePath, bytes);
+  if (!mimeType) {
+    return { error: `Unsupported image data: ${filePath}` };
   }
 
   const marker = `[stella-attach-image] inline=${mimeType} ${filePath}`;
