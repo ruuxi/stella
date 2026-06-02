@@ -6,6 +6,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import type { ToolContext, ToolResult } from "./types.js";
+import { resolveRipgrepPath } from "./ripgrep.js";
 import {
   expandHomePath,
   toPosix,
@@ -16,10 +17,21 @@ import {
 } from "./utils.js";
 import { isBlockedPath } from "./command-safety.js";
 
-const runRipgrep = async (args: string[], cwd: string) => {
+const runRipgrep = async (
+  args: string[],
+  cwd: string,
+  context?: ToolContext,
+) => {
   return new Promise<{ ok: boolean; output: string; error?: string }>(
-    (resolve) => {
-      const child = spawn("rg", args, {
+    async (resolve) => {
+      const ripgrepPath = await resolveRipgrepPath(context).catch((error) =>
+        error instanceof Error ? null : null,
+      );
+      if (!ripgrepPath) {
+        resolve({ ok: false, output: "", error: "ripgrep is unavailable" });
+        return;
+      }
+      const child = spawn(ripgrepPath, args, {
         cwd,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
@@ -111,7 +123,7 @@ export const handleGrep = async (
   rgArgs.push("--max-count", String(maxResults));
   rgArgs.push(pattern, basePath);
 
-  const rgResult = await runRipgrep(rgArgs, basePath);
+  const rgResult = await runRipgrep(rgArgs, basePath, context);
   if (rgResult.ok) {
     const lines = rgResult.output.trim();
     if (!lines) {
