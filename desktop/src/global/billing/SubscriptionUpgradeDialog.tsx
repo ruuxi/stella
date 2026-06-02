@@ -148,7 +148,7 @@ export function SubscriptionUpgradeDialog() {
 
   return (
     <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
-      <DialogContent className="subscription-upgrade-dialog">
+      <DialogContent fit className="subscription-upgrade-dialog">
         <DialogHeader>
           <DialogTitle>{message.title}</DialogTitle>
           <DialogDescription>{message.description}</DialogDescription>

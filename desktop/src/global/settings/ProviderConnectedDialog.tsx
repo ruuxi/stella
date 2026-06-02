@@ -214,7 +214,7 @@ export function ProviderConnectedDialog() {
 
   return (
     <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
-      <DialogContent className="provider-connected-dialog">
+      <DialogContent fit className="provider-connected-dialog">
         <DialogHeader>
           <DialogTitle>Use {providerLabel} for Stella?</DialogTitle>
           <DialogDescription>

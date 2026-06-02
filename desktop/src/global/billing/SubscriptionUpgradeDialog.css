@@ -14,6 +14,12 @@
 }
 
 .subscription-upgrade-dialog [data-slot="dialog-header"] {
+  /* Base dialog header is a horizontal space-between row (title + close
+   * button). Here we stack the title above the description instead so the
+   * copy reads as a block and doesn't get squeezed beside the title. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   padding: 22px var(--subscription-upgrade-pad-x) 14px;
   border-bottom: 1px solid var(--border-weak);
 }
@@ -28,12 +34,16 @@
 }
 
 .subscription-upgrade-dialog [data-slot="dialog-description"] {
+  /* Reset the base description's row padding/margin — the header padding
+   * already insets it correctly now that the header is a column. */
+  display: block;
+  padding: 0;
+  margin: 8px 0 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 13px;
   line-height: 1.55;
   color: var(--text-base);
   letter-spacing: -0.01em;
-  margin-top: 8px;
 }
 
 .subscription-upgrade-dialog [data-slot="dialog-body"] {
