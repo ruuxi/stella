@@ -1077,6 +1077,22 @@ export type InstallManifestSnapshot = {
   desktopReleaseTag: string | null;
   desktopReleaseCommit: string | null;
   desktopInstallBaseCommit: string | null;
+  installState: {
+    status: "complete";
+    desktopReleaseTag: string | null;
+    desktopReleaseCommit: string;
+    localHeadCommit: string | null;
+    nativeHelpersSha: string | null;
+    completedAt: string;
+  } | null;
+  lastUpdateAttempt: {
+    status: "updating" | "complete" | "failed";
+    targetTag: string | null;
+    targetCommit: string;
+    startedAt: string;
+    finishedAt: string | null;
+    reason: string | null;
+  } | null;
 };
 
 export type DesktopUpdateFastApplyResult =

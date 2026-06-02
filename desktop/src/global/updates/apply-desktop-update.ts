@@ -255,6 +255,7 @@ export const applyDesktopUpdate = async (
   }
 
   const baseCommit =
+    options.installManifest.installState?.desktopReleaseCommit ??
     options.installManifest.desktopReleaseCommit ??
     options.installManifest.desktopInstallBaseCommit;
   if (!baseCommit) {

@@ -1480,6 +1480,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
         desktopReleaseTag: string | null;
         desktopReleaseCommit: string | null;
         desktopInstallBaseCommit: string | null;
+        installState: {
+          status: "complete";
+          desktopReleaseTag: string | null;
+          desktopReleaseCommit: string;
+          localHeadCommit: string | null;
+          nativeHelpersSha: string | null;
+          completedAt: string;
+        } | null;
+        lastUpdateAttempt: {
+          status: "updating" | "complete" | "failed";
+          targetTag: string | null;
+          targetCommit: string;
+          startedAt: string;
+          finishedAt: string | null;
+          reason: string | null;
+        } | null;
       } | null>,
     tryApplyCleanUpdate: (payload: {
       baseCommit: string;
@@ -1504,6 +1520,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
               desktopReleaseTag: string | null;
               desktopReleaseCommit: string | null;
               desktopInstallBaseCommit: string | null;
+              installState: {
+                status: "complete";
+                desktopReleaseTag: string | null;
+                desktopReleaseCommit: string;
+                localHeadCommit: string | null;
+                nativeHelpersSha: string | null;
+                completedAt: string;
+              } | null;
+              lastUpdateAttempt: {
+                status: "updating" | "complete" | "failed";
+                targetTag: string | null;
+                targetCommit: string;
+                startedAt: string;
+                finishedAt: string | null;
+                reason: string | null;
+              } | null;
             } | null;
             headCommit: string;
             changedFiles: string[];
@@ -1564,6 +1596,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
         desktopReleaseTag: string | null;
         desktopReleaseCommit: string | null;
         desktopInstallBaseCommit: string | null;
+        installState: {
+          status: "complete";
+          desktopReleaseTag: string | null;
+          desktopReleaseCommit: string;
+          localHeadCommit: string | null;
+          nativeHelpersSha: string | null;
+          completedAt: string;
+        } | null;
+        lastUpdateAttempt: {
+          status: "updating" | "complete" | "failed";
+          targetTag: string | null;
+          targetCommit: string;
+          startedAt: string;
+          finishedAt: string | null;
+          reason: string | null;
+        } | null;
       } | null>,
     rollbackCanceledUpdate: (payload: {
       startingHeadCommit: string;
