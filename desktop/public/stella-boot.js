@@ -12,6 +12,13 @@
   var params = new URLSearchParams(window.location.search);
   root.dataset.stellaWindow = params.get("window") === "mini" ? "mini" : "full";
 
+  try {
+    if (window.sessionStorage && sessionStorage.getItem("stella:morph-reload") === "1") {
+      root.dataset.stellaMorphReload = "true";
+      sessionStorage.removeItem("stella:morph-reload");
+    }
+  } catch (_error) {}
+
   var themeId = readStorage("stella-theme-id") || "pearl";
   var colorMode = readStorage("stella-color-mode") || "light";
   var resolvedColorMode = "light";

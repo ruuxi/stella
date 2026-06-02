@@ -152,8 +152,8 @@ void main() {
   float crossAxis = v_uv.y;
   float pos = mix(-0.2, 1.2, u_reveal);
 
-  float feather = 0.05;
-  float revealed = 1.0 - smoothstep(pos - feather, pos + feather, axis);
+  float revealed = smoothstep(pos - 0.035, pos + 0.035, axis);
+  revealed = 1.0 - revealed;
   vec3 base = mix(frostedOld, sharpNew, revealed);
 
   // Updating label baked onto the cover: sharp text over the frosted-old side,
@@ -219,7 +219,10 @@ void main() {
   // Glassy specular crest rides the band centre — a content-agnostic white
   // sheen plus a faint fresnel of the vivid content keeps it feeling alive.
   float highMask = band * vfade * entryFade * gate * SWELL_AMOUNT;
-  outRGB += (vec3(spec) * 0.9 + vivid * fresnel * 0.25) * highMask;
+  vec3 iris = 0.5 + 0.5 * cos(vec3(0.0, 2.1, 4.2) + d * 18.0 + tw * 0.8);
+  vec3 bandColor = mix(vec3(0.55, 0.82, 1.0), iris, 0.55);
+  outRGB = mix(outRGB, bandColor, clamp(lensBand * vfade * entryFade * gate * 0.28, 0.0, 0.32));
+  outRGB += (vec3(spec) * 1.05 + bandColor * fresnel * 0.38) * highMask;
   outRGB = clamp(outRGB, 0.0, 1.0);
 
   gl_FragColor = vec4(outRGB, u_alpha);
