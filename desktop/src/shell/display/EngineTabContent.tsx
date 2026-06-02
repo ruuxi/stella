@@ -5,8 +5,7 @@
  *
  *   - Picking the agent runtime engine (Stella / Codex / Claude Code) and
  *     Codex reasoning when Codex is selected.
- *   - Cursor is a provider under Agents (API key + model), not an engine.
- *   - Assigning a Stella / Codex / Claude Code model across the agent set
+ *   - Assigning a Stella / Grok / Codex / Claude Code model across the agent set
  *     with Chronicle left on its cheap default.
  *   - Choosing the image and realtime-voice provider (and per-voice
  *     selection for voice).
@@ -36,8 +35,6 @@ import {
 import { VoiceProviderPicker } from "@/global/settings/VoiceProviderPicker";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
-import { CURSOR_MODEL_PREFIX } from "@/global/settings/lib/llm-providers";
-import { DEFAULT_CURSOR_MODEL } from "@/shell/display/engine-tab-constants";
 import {
   buildModelDefaultsMap,
   buildResolvedModelDefaultsMap,
@@ -56,11 +53,7 @@ import "./engine-tab.css";
 
 /* ── types ────────────────────────────────────────────────────── */
 
-type AgentRuntimeEngine =
-  | "default"
-  | "claude_code_local"
-  | "cursor_sdk"
-  | "codex_cli";
+type AgentRuntimeEngine = "default" | "claude_code_local" | "codex_cli";
 
 type ReasoningEffort =
   | "default"
@@ -95,7 +88,6 @@ type LocalModelPreferences = {
   assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: AgentRuntimeEngine;
-  cursorModel: string;
   codexModel: string;
   codexReasoningEffort: CodexReasoningPreference;
   claudeCodeModel: string;
@@ -103,13 +95,6 @@ type LocalModelPreferences = {
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
-};
-
-type CursorModelOption = {
-  id: string;
-  displayName: string;
-  description?: string;
-  aliases?: string[];
 };
 
 type CodexModelOption = {
@@ -138,8 +123,6 @@ type MediaTab = "agents" | "image" | "voice";
 
 type SavingKind =
   | "engine"
-  | "key"
-  | "cursor-model"
   | "codex-model"
   | "claude-code-model"
   | "overrides"
@@ -233,9 +216,6 @@ const toRuntimeOverrideId = (
   return modelId.startsWith(prefix) ? modelId : `${prefix}${modelId}`;
 };
 
-const isCursorModelId = (modelId: string): boolean =>
-  modelId.startsWith(CURSOR_MODEL_PREFIX);
-
 const fromRuntimeOverrideId = (modelId: string): string => {
   if (modelId.startsWith(CODEX_MODEL_PREFIX)) {
     return modelId.slice(CODEX_MODEL_PREFIX.length);
@@ -261,18 +241,12 @@ export function EngineTabContent() {
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
     () => cachedPreferences,
   );
-  const [hasCursorApiKey, setHasCursorApiKey] = useState(false);
-  const [cursorModels, setCursorModels] = useState<CursorModelOption[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
   const [codexModels, setCodexModels] = useState<CodexModelOption[]>([]);
   const [codexModelsLoading, setCodexModelsLoading] = useState(false);
   const [claudeCodeModels, setClaudeCodeModels] = useState<
     ClaudeCodeModelOption[]
   >([]);
   const [claudeCodeModelsLoading, setClaudeCodeModelsLoading] = useState(false);
-  const [apiKeyDraft, setApiKeyDraft] = useState("");
-  const [cursorModelDraft, setCursorModelDraft] =
-    useState(DEFAULT_CURSOR_MODEL);
   const [loading, setLoading] = useState(() => cachedPreferences === null);
   const [saving, setSaving] = useState<SavingKind>(null);
   const [status, setStatus] = useState<Status | null>(null);
@@ -280,7 +254,6 @@ export function EngineTabContent() {
 
   const selfDispatchRef = useRef(false);
   const noticeTimerRef = useRef<number | null>(null);
-  const cursorModelsLoadedRef = useRef(false);
   const codexModelsLoadedRef = useRef(false);
   const claudeCodeModelsLoadedRef = useRef(false);
 
@@ -312,14 +285,10 @@ export function EngineTabContent() {
   /* ── preferences IO ─────────────────────────────────────────── */
 
   const applySavedPrefs = useCallback(
-    (
-      saved: LocalModelPreferences | null | undefined,
-      { resetEngineDrafts }: { resetEngineDrafts: boolean },
-    ) => {
+    (saved: LocalModelPreferences | null | undefined) => {
       if (!saved) return;
       let next: LocalModelPreferences = {
         ...saved,
-        cursorModel: saved.cursorModel || DEFAULT_CURSOR_MODEL,
         codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
         codexReasoningEffort:
           saved.codexReasoningEffort || DEFAULT_CODEX_REASONING,
@@ -327,32 +296,8 @@ export function EngineTabContent() {
         claudeCodeReasoningEffort:
           saved.claudeCodeReasoningEffort || DEFAULT_CLAUDE_CODE_REASONING,
       };
-      if (next.agentRuntimeEngine === "cursor_sdk") {
-        const generalOverride = next.modelOverrides[GENERAL_AGENT_KEY];
-        next = {
-          ...next,
-          agentRuntimeEngine: "default",
-          modelOverrides: {
-            ...next.modelOverrides,
-            ...(generalOverride?.startsWith(CURSOR_MODEL_PREFIX)
-              ? {}
-              : {
-                  [GENERAL_AGENT_KEY]: `${CURSOR_MODEL_PREFIX}${next.cursorModel}`,
-                }),
-          },
-        };
-        void window.electronAPI?.system?.setLocalModelPreferences?.({
-          agentRuntimeEngine: "default",
-          modelOverrides: next.modelOverrides,
-        });
-      }
       cachedPreferences = next;
       setPreferences(next);
-      if (resetEngineDrafts) {
-        setCursorModelDraft((current) =>
-          current === next.cursorModel ? current : next.cursorModel,
-        );
-      }
     },
     [],
   );
@@ -401,21 +346,6 @@ export function EngineTabContent() {
     [clearStatus, notifyPrefsChanged, preferences, showError],
   );
 
-  const loadCursorModels = useCallback(async () => {
-    setModelsLoading(true);
-    try {
-      const result = await window.electronAPI?.system?.listCursorModels?.();
-      setCursorModels(result?.models ?? []);
-      if ((result?.models ?? []).length > 0) {
-        cursorModelsLoadedRef.current = true;
-      }
-    } catch (caught) {
-      showError(errorText(caught, "Cursor models did not load."));
-    } finally {
-      setModelsLoading(false);
-    }
-  }, [showError]);
-
   const loadCodexModels = useCallback(async () => {
     setCodexModelsLoading(true);
     try {
@@ -448,13 +378,9 @@ export function EngineTabContent() {
         setLoading(true);
       }
       try {
-        const [prefs, keyStatus] = await Promise.all([
-          window.electronAPI?.system?.getLocalModelPreferences?.(),
-          window.electronAPI?.system?.getCursorApiKeyStatus?.(),
-        ]);
-        applySavedPrefs(prefs as LocalModelPreferences | undefined, {
-          resetEngineDrafts: !options?.silent,
-        });
+        const prefs =
+          await window.electronAPI?.system?.getLocalModelPreferences?.();
+        applySavedPrefs(prefs as LocalModelPreferences | undefined);
         if (
           prefs?.agentRuntimeEngine === "codex_cli" &&
           !codexModelsLoadedRef.current
@@ -467,27 +393,13 @@ export function EngineTabContent() {
         ) {
           void loadClaudeCodeModels();
         }
-        const nextHasKey = Boolean(keyStatus?.hasApiKey);
-        setHasCursorApiKey(nextHasKey);
-        if (nextHasKey && !cursorModelsLoadedRef.current) {
-          void loadCursorModels();
-        } else if (!nextHasKey) {
-          setCursorModels([]);
-          cursorModelsLoadedRef.current = false;
-        }
       } catch (caught) {
         showError(errorText(caught, "Engine settings did not load."));
       } finally {
         if (!options?.silent) setLoading(false);
       }
     },
-    [
-      applySavedPrefs,
-      loadClaudeCodeModels,
-      loadCodexModels,
-      loadCursorModels,
-      showError,
-    ],
+    [applySavedPrefs, loadClaudeCodeModels, loadCodexModels, showError],
   );
 
   useEffect(() => {
@@ -528,73 +440,6 @@ export function EngineTabContent() {
       await writePreferences({ agentRuntimeEngine: engine }, "engine");
     },
     [preferences, writePreferences],
-  );
-
-  const saveCursorApiKey = useCallback(async () => {
-    setSaving("key");
-    clearStatus();
-    try {
-      const saved = await window.electronAPI?.system?.setCursorApiKey?.({
-        apiKey: apiKeyDraft,
-      });
-      const nextHasKey = Boolean(saved?.hasApiKey);
-      setHasCursorApiKey(nextHasKey);
-      setApiKeyDraft("");
-      showNotice(nextHasKey ? "Cursor key saved" : "Cursor key removed");
-      if (nextHasKey) {
-        cursorModelsLoadedRef.current = false;
-        void loadCursorModels();
-      } else {
-        setCursorModels([]);
-        cursorModelsLoadedRef.current = false;
-      }
-    } catch (caught) {
-      showError(errorText(caught, "Cursor key was not saved."));
-    } finally {
-      setSaving(null);
-    }
-  }, [apiKeyDraft, clearStatus, loadCursorModels, showError, showNotice]);
-
-  const saveCursorModel = useCallback(
-    async (modelId?: string) => {
-      if (!preferences) return;
-      const nextModel =
-        (modelId ?? cursorModelDraft).trim() || DEFAULT_CURSOR_MODEL;
-      const overrideId = `${CURSOR_MODEL_PREFIX}${nextModel}`;
-      if (
-        nextModel === preferences.cursorModel &&
-        preferences.modelOverrides[GENERAL_AGENT_KEY] === overrideId
-      ) {
-        return;
-      }
-      const nextOverrides = { ...preferences.modelOverrides };
-      const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
-      const nextPropagated = new Set(
-        preferences.assistantPropagatedAgents ?? [],
-      );
-      for (const [key, value] of Object.entries(nextOverrides)) {
-        if (key !== GENERAL_AGENT_KEY && isCursorModelId(value)) {
-          delete nextOverrides[key];
-          delete nextReasoning[key];
-          nextPropagated.delete(key);
-        }
-      }
-      nextOverrides[GENERAL_AGENT_KEY] = overrideId;
-      const next = await writePreferences(
-        {
-          cursorModel: nextModel,
-          modelOverrides: nextOverrides,
-          reasoningEfforts: nextReasoning,
-          assistantPropagatedAgents: Array.from(nextPropagated),
-        },
-        "cursor-model",
-      );
-      if (next) {
-        setCursorModelDraft(next.cursorModel);
-        showNotice("Cursor model saved");
-      }
-    },
-    [cursorModelDraft, preferences, showNotice, writePreferences],
   );
 
   /* ── render ─────────────────────────────────────────────────── */
@@ -655,17 +500,6 @@ export function EngineTabContent() {
           claudeCodeModels={claudeCodeModels}
           claudeCodeModelsLoading={claudeCodeModelsLoading}
           onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
-          hasCursorApiKey={hasCursorApiKey}
-          cursorModels={cursorModels}
-          cursorModelsLoading={modelsLoading}
-          cursorModelDraft={cursorModelDraft}
-          apiKeyDraft={apiKeyDraft}
-          saving={saving}
-          onApiKeyDraftChange={setApiKeyDraft}
-          onCursorModelDraftChange={setCursorModelDraft}
-          onSaveCursorApiKey={() => void saveCursorApiKey()}
-          onSaveCursorModel={(id) => void saveCursorModel(id)}
-          onRefreshCursorModels={() => void loadCursorModels()}
         />
       </section>
     </div>
@@ -691,17 +525,6 @@ interface ModelsSectionProps {
   claudeCodeModels: ClaudeCodeModelOption[];
   claudeCodeModelsLoading: boolean;
   onRefreshClaudeCodeModels: () => void;
-  hasCursorApiKey: boolean;
-  cursorModels: CursorModelOption[];
-  cursorModelsLoading: boolean;
-  cursorModelDraft: string;
-  apiKeyDraft: string;
-  saving: SavingKind;
-  onApiKeyDraftChange: (value: string) => void;
-  onCursorModelDraftChange: (value: string) => void;
-  onSaveCursorApiKey: () => void;
-  onSaveCursorModel: (modelId?: string) => void;
-  onRefreshCursorModels: () => void;
 }
 
 function ModelsSection({
@@ -718,17 +541,6 @@ function ModelsSection({
   claudeCodeModels,
   claudeCodeModelsLoading,
   onRefreshClaudeCodeModels,
-  hasCursorApiKey,
-  cursorModels,
-  cursorModelsLoading,
-  cursorModelDraft,
-  apiKeyDraft,
-  saving,
-  onApiKeyDraftChange,
-  onCursorModelDraftChange,
-  onSaveCursorApiKey,
-  onSaveCursorModel,
-  onRefreshCursorModels,
 }: ModelsSectionProps) {
   const {
     models: stellaModels,
@@ -748,9 +560,7 @@ function ModelsSection({
   );
   const overrides = useMemo(
     () =>
-      preferences
-        ? normalizeModelOverrides(preferences.modelOverrides)
-        : {},
+      preferences ? normalizeModelOverrides(preferences.modelOverrides) : {},
     [preferences],
   );
   const configurableAgents = useMemo(
@@ -783,8 +593,6 @@ function ModelsSection({
       configurableAgents.filter((entry) => entry.key !== CHRONICLE_AGENT_KEY),
     [configurableAgents],
   );
-  const selectedCursorModelId =
-    preferences?.cursorModel ?? DEFAULT_CURSOR_MODEL;
   const selectedStellaModelId =
     preferences?.modelOverrides[GENERAL_AGENT_KEY] ??
     preferences?.modelOverrides.orchestrator ??
@@ -840,24 +648,13 @@ function ModelsSection({
   const assignTo = useCallback(
     async (modelId: string, agentKeys: string[], effort: ReasoningEffort) => {
       if (!preferences || agentKeys.length === 0) return;
-      const targetAgentKeys = isCursorModelId(modelId)
-        ? agentKeys.filter((key) => key === GENERAL_AGENT_KEY)
-        : agentKeys;
+      const targetAgentKeys = agentKeys;
       if (targetAgentKeys.length === 0) return;
       const nextOverrides = { ...preferences.modelOverrides };
       const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
       const nextPropagated = new Set(
         preferences.assistantPropagatedAgents ?? [],
       );
-      if (isCursorModelId(modelId)) {
-        for (const [key, value] of Object.entries(nextOverrides)) {
-          if (key !== GENERAL_AGENT_KEY && isCursorModelId(value)) {
-            delete nextOverrides[key];
-            delete nextReasoning[key];
-            nextPropagated.delete(key);
-          }
-        }
-      }
       const nonStella = !isStellaModelId(modelId);
       for (const key of targetAgentKeys) {
         nextOverrides[key] = modelId;
@@ -891,10 +688,6 @@ function ModelsSection({
         ) {
           patch.claudeCodeModel = claudeCodeModel;
         }
-      }
-      if (isCursorModelId(modelId)) {
-        const cursorModel = modelId.slice(CURSOR_MODEL_PREFIX.length);
-        patch.cursorModel = cursorModel || DEFAULT_CURSOR_MODEL;
       }
       await writePreferences(patch, "overrides");
     },
@@ -1189,28 +982,6 @@ function ModelsSection({
                 hideSelectedTitle
                 hideSelectionCheck
                 favoriteScope="engine:stella"
-                cursorProvider={{
-                  hasApiKey: hasCursorApiKey,
-                  models: cursorModels,
-                  modelsLoading: cursorModelsLoading,
-                  selectedModelId: selectedCursorModelId,
-                  apiKeyDraft,
-                  modelDraft: cursorModelDraft,
-                  savingKey: saving === "key",
-                  savingModel: saving === "cursor-model",
-                  onApiKeyDraftChange,
-                  onModelDraftChange: onCursorModelDraftChange,
-                  onSaveApiKey: onSaveCursorApiKey,
-                  onRefreshModels: onRefreshCursorModels,
-                  onPickModel: (modelId) =>
-                    void autoApplyModel(
-                      modelId.startsWith(CURSOR_MODEL_PREFIX)
-                        ? modelId
-                        : `${CURSOR_MODEL_PREFIX}${modelId}`,
-                      null,
-                    ),
-                  onSaveManualModel: () => onSaveCursorModel(),
-                }}
                 reasoningEffort={selectedReasoningEffort}
                 onSelectReasoning={(modelId, effort) =>
                   void selectReasoning(modelId, effort)
@@ -1244,4 +1015,3 @@ function ModelsSection({
     </div>
   );
 }
-

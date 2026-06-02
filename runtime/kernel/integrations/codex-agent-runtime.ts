@@ -1,10 +1,17 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import {
+  execFile,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { setupEnvironment } from "dugite";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
@@ -17,11 +24,6 @@ import {
   DEFAULT_CODEX_MODEL,
   loadLocalPreferences,
 } from "../preferences/local-preferences.js";
-import {
-  diffCursorWorktreeSnapshots,
-  snapshotCursorWorktree,
-} from "./cursor-agent-runtime.js";
-
 const MAX_STDERR_CAPTURE = 8_000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
@@ -30,6 +32,7 @@ const DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
+const execFileAsync = promisify(execFile);
 
 type JsonRpcId = number | string;
 type JsonRpcError = {
@@ -320,6 +323,184 @@ export const fileChangesFromCodexItem = (
     path: absoluteChangePath(cwd, change.path),
     kind: codexChangeKindToFileChangeKind(change.kind, cwd),
   }));
+};
+
+type WorktreeEntry = {
+  path: string;
+  status: string;
+  movePath?: string;
+};
+
+type WorktreeSnapshot = {
+  repoRoot: string;
+  entries: Map<string, WorktreeEntry>;
+  fingerprints: Map<string, string | null>;
+};
+
+const normalizeGitPath = (value: string): string =>
+  value.trim().replace(/\\/g, "/");
+
+const statusKeyForEntry = (entry: WorktreeEntry): string =>
+  entry.movePath ?? entry.path;
+
+const absoluteRepoPath = (repoRoot: string, repoRelativePath: string): string =>
+  path.resolve(repoRoot, repoRelativePath);
+
+const parseStatusLine = (line: string): WorktreeEntry | null => {
+  if (!line || line.length < 4) return null;
+  const status = line.slice(0, 2);
+  const rawPath = line.slice(3).trim();
+  if (!rawPath) return null;
+  const renameMarker = rawPath.lastIndexOf(" -> ");
+  if (renameMarker >= 0) {
+    return {
+      status,
+      path: normalizeGitPath(rawPath.slice(0, renameMarker)),
+      movePath: normalizeGitPath(rawPath.slice(renameMarker + 4)),
+    };
+  }
+  return {
+    status,
+    path: normalizeGitPath(rawPath),
+  };
+};
+
+const parseGitStatus = (stdout: string): Map<string, WorktreeEntry> => {
+  const entries = new Map<string, WorktreeEntry>();
+  for (const line of stdout.replace(/\r?\n$/, "").split(/\r?\n/)) {
+    const entry = parseStatusLine(line);
+    if (!entry) continue;
+    entries.set(statusKeyForEntry(entry), entry);
+  }
+  return entries;
+};
+
+const runGit = async (
+  repoRoot: string,
+  args: string[],
+): Promise<{ ok: boolean; stdout: string }> => {
+  const { env, gitLocation } = setupEnvironment(process.env);
+  try {
+    const result = await execFileAsync(gitLocation, args, {
+      cwd: repoRoot,
+      env,
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      windowsHide: true,
+    });
+    return { ok: true, stdout: String(result.stdout ?? "") };
+  } catch {
+    return { ok: false, stdout: "" };
+  }
+};
+
+const fingerprintFile = async (
+  repoRoot: string,
+  repoRelativePath: string,
+): Promise<string | null> => {
+  try {
+    const data = await readFile(absoluteRepoPath(repoRoot, repoRelativePath));
+    return crypto.createHash("sha256").update(data).digest("hex");
+  } catch {
+    return null;
+  }
+};
+
+const snapshotWorktree = async (
+  repoRoot: string | undefined,
+): Promise<WorktreeSnapshot | null> => {
+  const root = repoRoot?.trim();
+  if (!root) return null;
+  const inside = await runGit(root, ["rev-parse", "--is-inside-work-tree"]);
+  if (!inside.ok || inside.stdout.trim() !== "true") {
+    return null;
+  }
+  const status = await runGit(root, [
+    "-c",
+    "core.quotepath=false",
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+  ]);
+  if (!status.ok) return null;
+  const entries = parseGitStatus(status.stdout);
+  const fingerprints = new Map<string, string | null>();
+  for (const [key, entry] of entries) {
+    fingerprints.set(
+      key,
+      await fingerprintFile(root, statusKeyForEntry(entry)),
+    );
+  }
+  return { repoRoot: root, entries, fingerprints };
+};
+
+const entryToChange = (
+  snapshot: WorktreeSnapshot,
+  entry: WorktreeEntry,
+): FileChangeRecord => {
+  const status = entry.status;
+  const changePath = absoluteRepoPath(snapshot.repoRoot, entry.path);
+  const movePath = entry.movePath
+    ? absoluteRepoPath(snapshot.repoRoot, entry.movePath)
+    : undefined;
+  if (status === "??" || status.includes("A")) {
+    return { path: movePath ?? changePath, kind: { type: "add" } };
+  }
+  if (status.includes("D") && !status.includes("A")) {
+    return { path: changePath, kind: { type: "delete" } };
+  }
+  return {
+    path: changePath,
+    kind: {
+      type: "update",
+      ...(movePath ? { move_path: movePath } : {}),
+    },
+  };
+};
+
+const diffWorktreeSnapshots = (
+  before: WorktreeSnapshot | null,
+  after: WorktreeSnapshot | null,
+): FileChangeRecord[] => {
+  if (!before || !after || before.repoRoot !== after.repoRoot) {
+    return [];
+  }
+  const changes: FileChangeRecord[] = [];
+  const keys = new Set([...before.entries.keys(), ...after.entries.keys()]);
+  for (const key of keys) {
+    const beforeEntry = before.entries.get(key);
+    const afterEntry = after.entries.get(key);
+    const beforeFingerprint = before.fingerprints.get(key);
+    const afterFingerprint = after.fingerprints.get(key);
+    if (!beforeEntry && afterEntry) {
+      changes.push(entryToChange(after, afterEntry));
+      continue;
+    }
+    if (beforeEntry && !afterEntry) {
+      if (beforeFingerprint === afterFingerprint) continue;
+      const absolutePath = absoluteRepoPath(
+        before.repoRoot,
+        statusKeyForEntry(beforeEntry),
+      );
+      changes.push({
+        path: absolutePath,
+        kind: fs.existsSync(absolutePath)
+          ? { type: "update" }
+          : { type: "delete" },
+      });
+      continue;
+    }
+    if (!beforeEntry || !afterEntry) continue;
+    if (
+      beforeEntry.status !== afterEntry.status ||
+      beforeEntry.path !== afterEntry.path ||
+      beforeEntry.movePath !== afterEntry.movePath ||
+      beforeFingerprint !== afterFingerprint
+    ) {
+      changes.push(entryToChange(after, afterEntry));
+    }
+  }
+  return changes;
 };
 
 const codexExecutablePath = (): string =>
@@ -1089,7 +1270,7 @@ export const runCodexAgentTurn = async (request: {
     attachments: request.attachments,
   });
   const snapshotBefore = request.cwd
-    ? await snapshotCursorWorktree(request.cwd)
+    ? await snapshotWorktree(request.cwd)
     : null;
   const fileChanges: FileChangeRecord[] = [];
   let finalText = "";
@@ -1363,12 +1544,12 @@ export const runCodexAgentTurn = async (request: {
 
     const snapshotAfter =
       request.cwd && snapshotBefore
-        ? await snapshotCursorWorktree(request.cwd)
+        ? await snapshotWorktree(request.cwd)
         : null;
     if (snapshotBefore && snapshotAfter) {
       appendUniqueFileChanges(
         fileChanges,
-        diffCursorWorktreeSnapshots(snapshotBefore, snapshotAfter),
+        diffWorktreeSnapshots(snapshotBefore, snapshotAfter),
       );
     }
 

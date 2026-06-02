@@ -13,19 +13,13 @@ export type LlmProviderEntry = {
   placeholder: string;
 };
 
-/** Provider keys always listed in the Agents model rail (even with no catalog models). */
-export const CURSOR_PROVIDER_KEY = "cursor";
-
-/** Model override prefix for the Cursor SDK general-agent runtime. */
-export const CURSOR_MODEL_PREFIX = "cursor/";
-
 const PROVIDER_RAIL_PRIORITY: readonly string[] = [
   "stella",
   "openrouter",
   "anthropic",
   "openai-codex",
   "openai",
-  CURSOR_PROVIDER_KEY,
+  "grok",
   "xai",
   "local",
 ];
@@ -46,17 +40,13 @@ export const compareProviderRailOrder = (
 
 export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
   { key: "local", label: "Local", placeholder: "No API key needed" },
-  {
-    key: CURSOR_PROVIDER_KEY,
-    label: "Cursor",
-    placeholder: "Cursor API key",
-  },
   { key: "anthropic", label: "Anthropic", placeholder: "sk-ant-..." },
   { key: "openai", label: "OpenAI", placeholder: "sk-..." },
   { key: "openai-codex", label: "OpenAI", placeholder: "eyJ..." },
   { key: "google", label: "Google", placeholder: "AIza..." },
   { key: "kimi-coding", label: "Kimi (Moonshot AI)", placeholder: "sk-..." },
   { key: "zai", label: "Z.AI", placeholder: "..." },
+  { key: "grok", label: "Grok", placeholder: "Use grok login" },
   { key: "xai", label: "xAI", placeholder: "xai-..." },
   { key: "groq", label: "Groq", placeholder: "gsk_..." },
   { key: "mistral", label: "Mistral", placeholder: "..." },

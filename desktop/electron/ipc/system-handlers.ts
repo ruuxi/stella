@@ -10,11 +10,7 @@ import {
   type IpcMainInvokeEvent,
 } from "electron";
 import { spawn } from "node:child_process";
-import {
-  access,
-  copyFile,
-  stat,
-} from "node:fs/promises";
+import { access, copyFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -111,8 +107,6 @@ import {
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_MODELS,
-  IPC_PREFERENCES_GET_CURSOR_API_KEY,
-  IPC_PREFERENCES_LIST_CURSOR_MODELS,
   IPC_PREFERENCES_LIST_CODEX_MODELS,
   IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
@@ -123,7 +117,6 @@ import {
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_MODELS,
-  IPC_PREFERENCES_SET_CURSOR_API_KEY,
   IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
   IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
@@ -157,8 +150,6 @@ import {
 } from "./global-shortcuts.js";
 
 import { createRequire } from "node:module";
-
-const CURSOR_CREDENTIAL_PROVIDER = "cursor";
 
 type ScreenCapturePermissionsModule = {
   hasPromptedForPermission: () => boolean;
@@ -269,8 +260,7 @@ const macAppPaths = (appName: string): string[] => {
 const winAppPaths = (relPath: string): string[] => {
   const localAppData =
     process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
-  const programFiles =
-    process.env["ProgramFiles"] ?? "C:\\Program Files";
+  const programFiles = process.env["ProgramFiles"] ?? "C:\\Program Files";
   const programFilesX86 =
     process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
   return [
@@ -494,7 +484,9 @@ type SystemHandlersOptions = {
     requestId: string;
     value: string;
     label?: string;
-  }) => Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string };
+  }) =>
+    | Promise<{ ok: boolean; error?: string }>
+    | { ok: boolean; error?: string };
   cancelConnectorCredential: (payload: { requestId: string }) => {
     ok: boolean;
     error?: string;
@@ -638,9 +630,8 @@ const resolveLockedComputerUseHome = (stellaRoot: string | null) => {
 
 const readLockedComputerUseEnabled = (stellaRoot: string | null) => {
   try {
-    return loadLocalPreferences(
-      resolveLockedComputerUseHome(stellaRoot),
-    ).lockedComputerUseEnabled;
+    return loadLocalPreferences(resolveLockedComputerUseHome(stellaRoot))
+      .lockedComputerUseEnabled;
   } catch {
     return false;
   }
@@ -1788,10 +1779,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         };
       }
 
-      const installerResult = await runLockedComputerUseInstaller(
-        "install",
-        { admin: true },
-      );
+      const installerResult = await runLockedComputerUseInstaller("install", {
+        admin: true,
+      });
       if (installerResult.status !== 0) {
         throw new Error(
           installerResult.stderr ||
@@ -1913,25 +1903,22 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     },
   );
 
-  ipcMain.handle(
-    IPC_PREFERENCES_SET_READ_ALOUD,
-    (event, enabled: boolean) => {
-      if (
-        !options.externalLinkService.assertPrivilegedSender(
-          event,
-          IPC_PREFERENCES_SET_READ_ALOUD,
-        )
-      ) {
-        throw new Error("Blocked untrusted preferences:setReadAloud request.");
-      }
-      const nextEnabled = enabled === true;
-      const stellaRoot = options.getStellaRoot();
-      if (stellaRoot) {
-        setReadAloudEnabled(stellaRoot, nextEnabled);
-      }
-      return { enabled: nextEnabled };
-    },
-  );
+  ipcMain.handle(IPC_PREFERENCES_SET_READ_ALOUD, (event, enabled: boolean) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_SET_READ_ALOUD,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:setReadAloud request.");
+    }
+    const nextEnabled = enabled === true;
+    const stellaRoot = options.getStellaRoot();
+    if (stellaRoot) {
+      setReadAloudEnabled(stellaRoot, nextEnabled);
+    }
+    return { enabled: nextEnabled };
+  });
 
   ipcMain.handle(IPC_PREFERENCES_GET_CADENCE_REPORTS, (event) => {
     if (
@@ -2114,85 +2101,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     return getLocalModelPreferences(stellaRoot);
   });
 
-  const readCursorApiKey = async (stellaRoot: string): Promise<string> => {
-    const envKey =
-      process.env.CURSOR_API_KEY?.trim() ||
-      process.env.STELLA_CURSOR_API_KEY?.trim();
-    if (envKey) return envKey;
-    return getLocalLlmCredential(stellaRoot, CURSOR_CREDENTIAL_PROVIDER) ?? "";
-  };
-
-  ipcMain.handle(IPC_PREFERENCES_GET_CURSOR_API_KEY, async (event) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_PREFERENCES_GET_CURSOR_API_KEY,
-      )
-    ) {
-      throw new Error(
-        "Blocked untrusted preferences:getCursorApiKeyStatus request.",
-      );
-    }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return { hasApiKey: false };
-    return { hasApiKey: Boolean(await readCursorApiKey(stellaRoot)) };
-  });
-
-  ipcMain.handle(
-    IPC_PREFERENCES_SET_CURSOR_API_KEY,
-    async (event, payload: { apiKey?: unknown }) => {
-      if (
-        !options.externalLinkService.assertPrivilegedSender(
-          event,
-          IPC_PREFERENCES_SET_CURSOR_API_KEY,
-        )
-      ) {
-        throw new Error("Blocked untrusted preferences:setCursorApiKey request.");
-      }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return { hasApiKey: false };
-      const apiKey =
-        typeof payload?.apiKey === "string" ? payload.apiKey.trim() : "";
-      if (!apiKey) {
-        await deleteLocalLlmCredential(stellaRoot, CURSOR_CREDENTIAL_PROVIDER);
-        return { hasApiKey: false };
-      }
-      await saveLocalLlmCredential(stellaRoot, {
-        provider: CURSOR_CREDENTIAL_PROVIDER,
-        label: "Cursor",
-        plaintext: apiKey,
-      });
-      return { hasApiKey: true };
-    },
-  );
-
-  ipcMain.handle(IPC_PREFERENCES_LIST_CURSOR_MODELS, async (event) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_PREFERENCES_LIST_CURSOR_MODELS,
-      )
-    ) {
-      throw new Error("Blocked untrusted preferences:listCursorModels request.");
-    }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return { models: [] };
-    const apiKey = await readCursorApiKey(stellaRoot);
-    if (!apiKey) {
-      return { models: [] };
-    }
-    const { Cursor } = await import("@cursor/sdk");
-    const models = await Cursor.models.list({ apiKey });
-    return {
-      models: models.map((model) => ({
-        id: model.id,
-        displayName: model.displayName,
-        ...(model.description ? { description: model.description } : {}),
-        ...(model.aliases?.length ? { aliases: model.aliases } : {}),
-      })),
-    };
-  });
-
   ipcMain.handle(IPC_PREFERENCES_LIST_CODEX_MODELS, async (event) => {
     if (
       !options.externalLinkService.assertPrivilegedSender(
@@ -2275,12 +2183,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       if (payload?.agentRuntimeEngine !== undefined) {
         patch.agentRuntimeEngine = agentRuntimeEngine;
-      }
-      if (payload?.cursorModel !== undefined) {
-        patch.cursorModel =
-          typeof payload.cursorModel === "string"
-            ? payload.cursorModel.trim()
-            : "";
       }
       if (payload?.codexModel !== undefined) {
         patch.codexModel =

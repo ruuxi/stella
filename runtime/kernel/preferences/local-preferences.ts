@@ -33,7 +33,6 @@ import {
 } from "../../contracts/agent-engine.js";
 
 type AgentEngine = AgentRuntimeEngine;
-export const DEFAULT_CURSOR_MODEL = "composer-latest";
 export const DEFAULT_CODEX_MODEL = "gpt-5.5";
 export const DEFAULT_CLAUDE_CODE_MODEL = "default";
 export type ReasoningEffort =
@@ -108,8 +107,6 @@ export type LocalPreferences = {
   personalityVoiceId?: string;
   /** Runtime engine shared by every local CLI-backed agent. */
   agentRuntimeEngine: AgentEngine;
-  /** Cursor model id used when the Cursor engine is selected. */
-  cursorModel: string;
   /** Codex model id used when the Codex engine is selected. */
   codexModel: string;
   /** Codex reasoning effort used when the Codex engine is selected. */
@@ -186,7 +183,6 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "assistantPropagatedAgents"
   | "reasoningEfforts"
   | "agentRuntimeEngine"
-  | "cursorModel"
   | "codexModel"
   | "codexReasoningEffort"
   | "claudeCodeModel"
@@ -213,7 +209,6 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   expressionStyle: undefined,
   personalityVoiceId: undefined,
   agentRuntimeEngine: "default",
-  cursorModel: DEFAULT_CURSOR_MODEL,
   codexModel: DEFAULT_CODEX_MODEL,
   codexReasoningEffort: "default",
   claudeCodeModel: DEFAULT_CLAUDE_CODE_MODEL,
@@ -273,7 +268,6 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
           ? parsed.personalityVoiceId.trim()
           : DEFAULT_PREFERENCES.personalityVoiceId,
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
-      cursorModel: normalizeCursorModel(parsed.cursorModel),
       codexModel: normalizeCodexModel(parsed.codexModel),
       codexReasoningEffort: normalizeReasoningEffort(
         parsed.codexReasoningEffort,
@@ -320,7 +314,8 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
       readAloudEnabled: parsed.readAloudEnabled === true,
       chronicleEnabled: parsed.chronicleEnabled === true,
       chroniclePendingEnable:
-        parsed.chronicleEnabled !== true && parsed.chroniclePendingEnable === true,
+        parsed.chronicleEnabled !== true &&
+        parsed.chroniclePendingEnable === true,
       cadenceReports: normalizeCadenceReports(parsed.cadenceReports),
     };
     _cached = prefs;
@@ -424,7 +419,6 @@ export const getLocalModelPreferences = (
     assistantPropagatedAgents: [...prefs.assistantPropagatedAgents],
     reasoningEfforts: { ...prefs.reasoningEfforts },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
-    cursorModel: prefs.cursorModel,
     codexModel: prefs.codexModel,
     codexReasoningEffort: prefs.codexReasoningEffort,
     claudeCodeModel: prefs.claudeCodeModel,
@@ -462,10 +456,6 @@ export const updateLocalModelPreferences = (
       patch.agentRuntimeEngine === undefined
         ? prefs.agentRuntimeEngine
         : normalizeEngine(patch.agentRuntimeEngine),
-    cursorModel:
-      patch.cursorModel === undefined
-        ? prefs.cursorModel
-        : normalizeCursorModel(patch.cursorModel),
     codexModel:
       patch.codexModel === undefined
         ? prefs.codexModel
@@ -568,7 +558,9 @@ export const getChronicleEnabled = (stellaHome: string): boolean => {
 
 export const getChroniclePendingEnable = (stellaHome: string): boolean => {
   const prefs = loadLocalPreferences(stellaHome);
-  return prefs.chronicleEnabled !== true && prefs.chroniclePendingEnable === true;
+  return (
+    prefs.chronicleEnabled !== true && prefs.chroniclePendingEnable === true
+  );
 };
 
 export const setChronicleMemoryPreference = (
@@ -602,12 +594,6 @@ export const setOnboardingCompleted = (
 
 const normalizeEngine = (value: unknown): AgentEngine => {
   return coerceAgentRuntimeEngine(value);
-};
-
-const normalizeCursorModel = (value: unknown): string => {
-  if (typeof value !== "string") return DEFAULT_CURSOR_MODEL;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : DEFAULT_CURSOR_MODEL;
 };
 
 const normalizeCodexModel = (value: unknown): string => {
@@ -691,9 +677,7 @@ const normalizeConcurrency = (value: unknown): number => {
   return Math.min(MAX_AGENT_CONCURRENCY_CEILING, rounded);
 };
 
-const normalizeCadenceReports = (
-  value: unknown,
-): CadenceReportsPreferences => {
+const normalizeCadenceReports = (value: unknown): CadenceReportsPreferences => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {
       schedules: { ...DEFAULT_CADENCE_REPORTS.schedules },
@@ -821,7 +805,10 @@ export const normalizeRealtimeVoicePreferences = (
   const inworldSpeed =
     typeof record.inworldSpeed === "number" &&
     Number.isFinite(record.inworldSpeed)
-      ? Math.min(INWORLD_SPEED_MAX, Math.max(INWORLD_SPEED_MIN, record.inworldSpeed))
+      ? Math.min(
+          INWORLD_SPEED_MAX,
+          Math.max(INWORLD_SPEED_MIN, record.inworldSpeed),
+        )
       : undefined;
   const readAloudProvider =
     record.readAloudProvider === "openai" ||

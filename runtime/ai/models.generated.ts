@@ -13663,6 +13663,27 @@ export const MODELS = {
 			maxTokens: 128000,
 		} satisfies Model<"anthropic-messages">,
 	},
+	"grok": {
+		"grok-composer-2.5-fast": {
+			id: "grok-composer-2.5-fast",
+			name: "Composer 2.5",
+			api: "openai-completions",
+			provider: "grok",
+			baseUrl: "https://cli-chat-proxy.grok.com/v1",
+			headers: {"X-XAI-Token-Auth":"xai-grok-cli","x-grok-model-override":"grok-composer-2.5-fast","x-grok-client-version":"0.2.16"},
+			reasoning: false,
+			input: ["text"],
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+			},
+			contextWindow: 200000,
+			maxTokens: 30000,
+			compat: {"supportsStore":false,"supportsDeveloperRole":false,"supportsReasoningEffort":false,"maxTokensField":"max_tokens"},
+		} satisfies Model<"openai-completions">,
+	},
 	"xai": {
 		"grok-2": {
 			id: "grok-2",

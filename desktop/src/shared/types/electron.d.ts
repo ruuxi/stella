@@ -836,12 +836,7 @@ export type ElectronSystemApi = {
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    agentRuntimeEngine:
-      | "default"
-      | "claude_code_local"
-      | "cursor_sdk"
-      | "codex_cli";
-    cursorModel: string;
+    agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
     codexModel: string;
     codexReasoningEffort:
       | "default"
@@ -873,12 +868,7 @@ export type ElectronSystemApi = {
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    agentRuntimeEngine?:
-      | "default"
-      | "claude_code_local"
-      | "cursor_sdk"
-      | "codex_cli";
-    cursorModel?: string;
+    agentRuntimeEngine?: "default" | "claude_code_local" | "codex_cli";
     codexModel?: string;
     codexReasoningEffort?:
       | "default"
@@ -909,12 +899,7 @@ export type ElectronSystemApi = {
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
-    agentRuntimeEngine:
-      | "default"
-      | "claude_code_local"
-      | "cursor_sdk"
-      | "codex_cli";
-    cursorModel: string;
+    agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
     codexModel: string;
     codexReasoningEffort:
       | "default"
@@ -938,18 +923,6 @@ export type ElectronSystemApi = {
     };
     realtimeVoice: RealtimeVoicePreferences;
   } | null>;
-  getCursorApiKeyStatus: () => Promise<{ hasApiKey: boolean }>;
-  setCursorApiKey: (payload: { apiKey: string }) => Promise<{
-    hasApiKey: boolean;
-  }>;
-  listCursorModels: () => Promise<{
-    models: Array<{
-      id: string;
-      displayName: string;
-      description?: string;
-      aliases?: string[];
-    }>;
-  }>;
   listCodexModels: () => Promise<{
     models: Array<{
       id: string;

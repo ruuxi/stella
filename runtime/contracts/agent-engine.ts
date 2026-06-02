@@ -1,22 +1,16 @@
-export type AgentRuntimeEngine =
-  | "default"
-  | "claude_code_local"
-  | "cursor_sdk"
-  | "codex_cli";
+export type AgentRuntimeEngine = "default" | "claude_code_local" | "codex_cli";
 
 export const DEFAULT_AGENT_RUNTIME_ENGINE: AgentRuntimeEngine = "default";
 
 export const AGENT_RUNTIME_ENGINES: readonly AgentRuntimeEngine[] = [
   "default",
   "claude_code_local",
-  "cursor_sdk",
   "codex_cli",
 ];
 
 const AGENT_RUNTIME_ENGINE_LABELS: Record<AgentRuntimeEngine, string> = {
   default: "Stella",
   claude_code_local: "Claude Code",
-  cursor_sdk: "Cursor",
   codex_cli: "Codex",
 };
 
@@ -32,21 +26,3 @@ export const coerceAgentRuntimeEngine = (value: unknown): AgentRuntimeEngine =>
 export const getAgentRuntimeEngineLabel = (
   engine: AgentRuntimeEngine,
 ): string => AGENT_RUNTIME_ENGINE_LABELS[engine];
-
-/** General-agent model override prefix for the Cursor SDK provider. */
-export const CURSOR_MODEL_PREFIX = "cursor/";
-
-export const isCursorModelOverride = (
-  modelId: string | undefined,
-): modelId is string =>
-  typeof modelId === "string" && modelId.startsWith(CURSOR_MODEL_PREFIX);
-
-export const toCursorModelOverrideId = (modelId: string): string =>
-  modelId.startsWith(CURSOR_MODEL_PREFIX)
-    ? modelId
-    : `${CURSOR_MODEL_PREFIX}${modelId}`;
-
-export const fromCursorModelOverrideId = (modelId: string): string =>
-  modelId.startsWith(CURSOR_MODEL_PREFIX)
-    ? modelId.slice(CURSOR_MODEL_PREFIX.length)
-    : modelId;
