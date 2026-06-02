@@ -37,15 +37,6 @@ describe("Claude Code agent runtime selector", () => {
     ).toBe(false);
   });
 
-  it("does not treat Cursor as the Claude Code runtime", () => {
-    expect(
-      shouldUseClaudeCodeAgentRuntime({
-        agentEngine: "cursor_sdk",
-        modelId: "openai/gpt-5",
-      }),
-    ).toBe(false);
-  });
-
   it("does not treat Codex as the Claude Code runtime", () => {
     expect(
       shouldUseClaudeCodeAgentRuntime({
@@ -55,13 +46,7 @@ describe("Claude Code agent runtime selector", () => {
     ).toBe(false);
   });
 
-  it("lets explicit Cursor and Codex engine selections override stale Claude model ids", () => {
-    expect(
-      shouldUseClaudeCodeAgentRuntime({
-        agentEngine: "cursor_sdk",
-        modelId: "claude-code/default",
-      }),
-    ).toBe(false);
+  it("lets an explicit Codex engine selection override stale Claude model ids", () => {
     expect(
       shouldUseClaudeCodeAgentRuntime({
         agentEngine: "codex_cli",

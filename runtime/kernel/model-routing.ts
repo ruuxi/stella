@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { Api, Model } from "../ai/types.js";
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
 import { getModels } from "../ai/models.js";
@@ -28,6 +31,31 @@ export type ResolvedLlmRoute = {
 
 const LOCAL_PROVIDER = "local";
 const DEFAULT_LOCAL_OPENAI_BASE_URL = "http://127.0.0.1:11434/v1";
+const GROK_PROVIDER = "grok";
+const GROK_COMPOSER_MODEL = "grok-composer-2.5-fast";
+
+const readGrokCliSessionToken = (): string | undefined => {
+  const authPath =
+    process.env.GROK_AUTH_PATH?.trim() ||
+    path.join(
+      process.env.GROK_HOME?.trim() || path.join(os.homedir(), ".grok"),
+      "auth.json",
+    );
+  try {
+    const parsed = JSON.parse(fs.readFileSync(authPath, "utf8")) as Record<
+      string,
+      { key?: unknown }
+    >;
+    for (const value of Object.values(parsed)) {
+      if (typeof value?.key === "string" && value.key.trim()) {
+        return value.key.trim();
+      }
+    }
+  } catch {
+    // Missing or corrupt Grok auth means this route is unavailable.
+  }
+  return undefined;
+};
 
 const createLocalOpenAICompatibleModel = (
   modelId: string,
@@ -160,6 +188,7 @@ const getDirectProviderCandidates = (
     case "mistral":
     case "opencode":
     case "cerebras":
+    case GROK_PROVIDER:
     case "xai":
     case "zai":
     case "openrouter":
@@ -227,6 +256,17 @@ const resolveDirectProviderRoute = (args: {
   );
   if (!directModel) {
     return null;
+  }
+
+  if (
+    args.provider === GROK_PROVIDER &&
+    directModel.id === GROK_COMPOSER_MODEL
+  ) {
+    return {
+      model: directModel,
+      route: "direct-provider",
+      getApiKey: () => readGrokCliSessionToken(),
+    };
   }
 
   if (

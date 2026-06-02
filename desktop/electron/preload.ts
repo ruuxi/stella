@@ -80,8 +80,6 @@ import {
   IPC_PERMISSIONS_RESET,
   IPC_PERMISSIONS_RESET_MICROPHONE,
   IPC_PREFERENCES_GET_MODELS,
-  IPC_PREFERENCES_GET_CURSOR_API_KEY,
-  IPC_PREFERENCES_LIST_CURSOR_MODELS,
   IPC_PREFERENCES_LIST_CODEX_MODELS,
   IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
@@ -94,7 +92,6 @@ import {
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
-  IPC_PREFERENCES_SET_CURSOR_API_KEY,
   IPC_PREFERENCES_SET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_SET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_SET_PREVENT_SLEEP,
@@ -1204,12 +1201,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           string,
           "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
         >;
-        agentRuntimeEngine:
-          | "default"
-          | "claude_code_local"
-          | "cursor_sdk"
-          | "codex_cli";
-        cursorModel: string;
+        agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
         codexModel: string;
         codexReasoningEffort:
           | "default"
@@ -1241,12 +1233,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         string,
         "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
       >;
-      agentRuntimeEngine?:
-        | "default"
-        | "claude_code_local"
-        | "cursor_sdk"
-        | "codex_cli";
-      cursorModel?: string;
+      agentRuntimeEngine?: "default" | "claude_code_local" | "codex_cli";
       codexModel?: string;
       codexReasoningEffort?:
         | "default"
@@ -1278,12 +1265,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           string,
           "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
         >;
-        agentRuntimeEngine:
-          | "default"
-          | "claude_code_local"
-          | "cursor_sdk"
-          | "codex_cli";
-        cursorModel: string;
+        agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
         codexModel: string;
         codexReasoningEffort:
           | "default"
@@ -1307,26 +1289,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
         };
         realtimeVoice: RealtimeVoicePreferences;
       } | null>,
-    getCursorApiKeyStatus: () =>
-      ipcRenderer.invoke(IPC_PREFERENCES_GET_CURSOR_API_KEY) as Promise<{
-        hasApiKey: boolean;
-      }>,
-    setCursorApiKey: (payload: { apiKey: string }) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SET_CURSOR_API_KEY,
-        payload,
-      ) as Promise<{
-        hasApiKey: boolean;
-      }>,
-    listCursorModels: () =>
-      ipcRenderer.invoke(IPC_PREFERENCES_LIST_CURSOR_MODELS) as Promise<{
-        models: Array<{
-          id: string;
-          displayName: string;
-          description?: string;
-          aliases?: string[];
-        }>;
-      }>,
     listCodexModels: () =>
       ipcRenderer.invoke(IPC_PREFERENCES_LIST_CODEX_MODELS) as Promise<{
         models: Array<{

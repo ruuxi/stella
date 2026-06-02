@@ -9,7 +9,6 @@ const ENGINE_OPTIONS = [
 ] as const;
 
 type EngineId = (typeof ENGINE_OPTIONS)[number]["id"];
-type StoredEngineId = EngineId | "cursor_sdk";
 
 type LocalModelPreferences = {
   defaultModels: Record<string, string>;
@@ -18,8 +17,7 @@ type LocalModelPreferences = {
     string,
     "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >;
-  agentRuntimeEngine: StoredEngineId;
-  cursorModel: string;
+  agentRuntimeEngine: EngineId;
   codexModel: string;
   claudeCodeModel: string;
 };
@@ -61,10 +59,7 @@ export function LocalRuntimeOptions() {
   }, []);
 
   const ready = preferences !== null;
-  const engine: EngineId =
-    preferences?.agentRuntimeEngine === "cursor_sdk"
-      ? "default"
-      : (preferences?.agentRuntimeEngine ?? "default");
+  const engine: EngineId = preferences?.agentRuntimeEngine ?? "default";
 
   const handleEngineChange = useCallback(
     async (next: EngineId) => {
@@ -83,7 +78,10 @@ export function LocalRuntimeOptions() {
       } catch (caught) {
         setPreferences(previous);
         setError(
-          getSettingsErrorMessage(caught, "Failed to update the agent runtime."),
+          getSettingsErrorMessage(
+            caught,
+            "Failed to update the agent runtime.",
+          ),
         );
       } finally {
         setSaving(false);

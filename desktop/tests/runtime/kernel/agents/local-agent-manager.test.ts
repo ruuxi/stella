@@ -45,7 +45,7 @@ describe("LocalAgentManager Exec fs locking", () => {
                 threadId: "task-8",
                 conversationId: "conv-1",
                 agentType: "general",
-                description: "stale cursor task",
+                description: "stale agent task",
                 agentDepth: 0,
                 status: "running",
                 startedAt: 123,
@@ -79,10 +79,10 @@ describe("LocalAgentManager Exec fs locking", () => {
       }),
       runSubagent: async (args) => ({
         runId: args.runId,
-        result: "Cursor finished the delegated work.",
+        result: "Agent finished the delegated work.",
         fileChanges: [
           {
-            path: "/repo/src/cursor-change.ts",
+            path: "/repo/src/agent-change.ts",
             kind: { type: "update" },
           },
         ],
@@ -99,8 +99,8 @@ describe("LocalAgentManager Exec fs locking", () => {
 
     const task = await manager.createAgent({
       conversationId: "conv-1",
-      description: "cursor task",
-      prompt: "do cursor work",
+      description: "agent task",
+      prompt: "do agent work",
       agentType: "general",
       storageMode: "local",
     });
@@ -113,11 +113,11 @@ describe("LocalAgentManager Exec fs locking", () => {
         conversationId: "conv-1",
         agentId: task.threadId,
         agentType: "general",
-        description: "cursor task",
-        result: "Cursor finished the delegated work.",
+        description: "agent task",
+        result: "Agent finished the delegated work.",
         fileChanges: [
           {
-            path: "/repo/src/cursor-change.ts",
+            path: "/repo/src/agent-change.ts",
             kind: { type: "update" },
           },
         ],
@@ -299,7 +299,7 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(maxConcurrentCalls).toBe(1);
   });
 
-  it("allows concurrent Cursor engine runs", async () => {
+  it("allows concurrent Codex engine runs", async () => {
     let activeRuns = 0;
     let maxConcurrentRuns = 0;
 
@@ -308,7 +308,7 @@ describe("LocalAgentManager Exec fs locking", () => {
       fetchAgentContext: async () => ({
         systemPrompt: "",
         dynamicContext: "",
-        agentEngine: "cursor_sdk",
+        agentEngine: "codex_cli",
         maxAgentDepth: 3,
       }),
       runSubagent: async (args) => {

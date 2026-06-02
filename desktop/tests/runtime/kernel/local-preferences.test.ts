@@ -124,19 +124,6 @@ describe("loadLocalPreferences", () => {
     );
   });
 
-  it("preserves the Cursor runtime engine preference", () => {
-    const stellaHome = makeStellaHome();
-
-    const saved = updateLocalModelPreferences(stellaHome, {
-      agentRuntimeEngine: "cursor_sdk",
-    });
-
-    expect(saved.agentRuntimeEngine).toBe("cursor_sdk");
-    expect(loadLocalPreferences(stellaHome).agentRuntimeEngine).toBe(
-      "cursor_sdk",
-    );
-  });
-
   it("preserves the Codex runtime engine preference", () => {
     const stellaHome = makeStellaHome();
 
@@ -147,19 +134,6 @@ describe("loadLocalPreferences", () => {
     expect(saved.agentRuntimeEngine).toBe("codex_cli");
     expect(loadLocalPreferences(stellaHome).agentRuntimeEngine).toBe(
       "codex_cli",
-    );
-  });
-
-  it("preserves the Cursor model preference", () => {
-    const stellaHome = makeStellaHome();
-
-    const saved = updateLocalModelPreferences(stellaHome, {
-      cursorModel: "custom-cursor-model",
-    });
-
-    expect(saved.cursorModel).toBe("custom-cursor-model");
-    expect(loadLocalPreferences(stellaHome).cursorModel).toBe(
-      "custom-cursor-model",
     );
   });
 
@@ -195,9 +169,7 @@ describe("loadLocalPreferences", () => {
     });
 
     expect(saved.claudeCodeModel).toBe("sonnet[1m]");
-    expect(loadLocalPreferences(stellaHome).claudeCodeModel).toBe(
-      "sonnet[1m]",
-    );
+    expect(loadLocalPreferences(stellaHome).claudeCodeModel).toBe("sonnet[1m]");
   });
 
   it("defaults realtime voice to Stella", () => {
@@ -327,18 +299,18 @@ describe("loadLocalPreferences", () => {
     expect(resolveRealtimeUnderlyingProvider(saved.realtimeVoice)).toEqual(
       "xai",
     );
-    expect(
-      resolveRealtimeUnderlyingProvider({ provider: "stella" }),
-    ).toEqual("openai");
+    expect(resolveRealtimeUnderlyingProvider({ provider: "stella" })).toEqual(
+      "openai",
+    );
     expect(
       resolveRealtimeUnderlyingProvider({
         provider: "openai",
         stellaSubProvider: "xai",
       }),
     ).toEqual("openai"); // BYOK modes ignore stellaSubProvider
-    expect(
-      resolveRealtimeUnderlyingProvider({ provider: "xai" }),
-    ).toEqual("xai");
+    expect(resolveRealtimeUnderlyingProvider({ provider: "xai" })).toEqual(
+      "xai",
+    );
   });
 
   it("drops invalid stellaSubProvider values", () => {

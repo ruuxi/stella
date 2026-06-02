@@ -31,35 +31,11 @@ import {
 } from "@/global/settings/lib/model-catalog";
 import {
   compareProviderRailOrder,
-  CURSOR_PROVIDER_KEY,
   LLM_PROVIDERS,
   isApiKeyOnlyPlaceholder,
   type LlmProviderEntry,
 } from "@/global/settings/lib/llm-providers";
 
-export type CursorModelOption = {
-  id: string;
-  displayName: string;
-  description?: string;
-  aliases?: string[];
-};
-
-type CursorProviderConfig = {
-  hasApiKey: boolean;
-  models: readonly CursorModelOption[];
-  modelsLoading: boolean;
-  selectedModelId: string;
-  apiKeyDraft: string;
-  modelDraft: string;
-  savingKey: boolean;
-  savingModel: boolean;
-  onApiKeyDraftChange: (value: string) => void;
-  onModelDraftChange: (value: string) => void;
-  onSaveApiKey: () => void;
-  onRefreshModels: () => void;
-  onPickModel: (modelId: string, anchor?: HTMLElement) => void;
-  onSaveManualModel: () => void;
-};
 import {
   findApiKey,
   findOauthCredential,
@@ -88,6 +64,7 @@ const REASONING_OPTIONS: ReadonlyArray<{ id: ReasoningEffort; label: string }> =
 
 const STELLA_PROVIDER_KEY = "stella";
 const LOCAL_PROVIDER_KEY = "local";
+const GROK_PROVIDER_KEY = "grok";
 const DEFAULT_TARGET = "__default__";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
 
@@ -114,8 +91,6 @@ interface ProviderModelPanelProps {
   visibleProviders?: readonly string[];
   /** When set, enables per-model favorites pinned to the top of each pane. */
   favoriteScope?: string;
-  /** Cursor SDK provider (API key + model list) for the Agents tab. */
-  cursorProvider?: CursorProviderConfig;
   /**
    * Current reasoning effort applied to the agent set. When
    * `onSelectReasoning` is also provided, each model row shows a hover
@@ -156,7 +131,6 @@ interface ProviderModelPanelProps {
 function buildProviderTabs(
   groups: readonly ProviderGroup[],
   visibleProviders: readonly string[] | undefined,
-  includeCursorProvider: boolean,
 ): ProviderTab[] {
   const tabs = new Map<string, ProviderTab>();
   for (const group of groups) {
@@ -170,17 +144,6 @@ function buildProviderTabs(
       label: group.providerName,
       models,
       llmEntry: LLM_PROVIDERS.find((entry) => entry.key === group.provider),
-    });
-  }
-  if (includeCursorProvider && !tabs.has(CURSOR_PROVIDER_KEY)) {
-    const cursorEntry = LLM_PROVIDERS.find(
-      (entry) => entry.key === CURSOR_PROVIDER_KEY,
-    );
-    tabs.set(CURSOR_PROVIDER_KEY, {
-      key: CURSOR_PROVIDER_KEY,
-      label: cursorEntry?.label ?? "Cursor",
-      models: [],
-      llmEntry: cursorEntry,
     });
   }
   return Array.from(tabs.values()).sort((a, b) =>
@@ -213,17 +176,11 @@ export function ProviderModelPanel({
   disabledProviderReason,
   visibleProviders,
   favoriteScope,
-  cursorProvider,
 }: ProviderModelPanelProps) {
   const credentials = useLlmCredentials();
   const tabs = useMemo(
-    () =>
-      buildProviderTabs(
-        groups,
-        visibleProviders,
-        Boolean(cursorProvider),
-      ),
-    [cursorProvider, groups, visibleProviders],
+    () => buildProviderTabs(groups, visibleProviders),
+    [groups, visibleProviders],
   );
   const [favorites, setFavorites] = useState<string[]>(() =>
     favoriteScope ? readEngineModelFavorites(favoriteScope) : [],
@@ -309,19 +266,13 @@ export function ProviderModelPanel({
   const isProviderConnected = useCallback(
     (providerKey: string) => {
       if (providerKey === STELLA_PROVIDER_KEY) return true;
-      if (providerKey === CURSOR_PROVIDER_KEY) {
-        return Boolean(cursorProvider?.hasApiKey);
-      }
+      if (providerKey === GROK_PROVIDER_KEY) return true;
       if (findApiKey(credentials.apiKeys, providerKey)) return true;
       if (findOauthCredential(credentials.oauthCredentials, providerKey))
         return true;
       return false;
     },
-    [
-      credentials.apiKeys,
-      credentials.oauthCredentials,
-      cursorProvider?.hasApiKey,
-    ],
+    [credentials.apiKeys, credentials.oauthCredentials],
   );
 
   const handlePick = useCallback(
@@ -491,7 +442,9 @@ export function ProviderModelPanel({
                       : `Sign out of ${tab.label}`
                   }
                   title={
-                    armed ? "Click again to confirm" : `Sign out of ${tab.label}`
+                    armed
+                      ? "Click again to confirm"
+                      : `Sign out of ${tab.label}`
                   }
                   onClick={(event) => {
                     event.stopPropagation();
@@ -565,9 +518,6 @@ export function ProviderModelPanel({
             reasoningEffort={reasoningEffort}
             onSelectReasoning={onSelectReasoning}
             disabledProviderReason={disabledProviderReason}
-            cursorProvider={
-              activeTab.key === CURSOR_PROVIDER_KEY ? cursorProvider : undefined
-            }
           />
         ) : null}
       </section>
@@ -620,7 +570,6 @@ interface ProviderPaneProps {
   reasoningEffort?: ReasoningEffort;
   onSelectReasoning?: (modelId: string, effort: ReasoningEffort) => void;
   disabledProviderReason?: string;
-  cursorProvider?: CursorProviderConfig;
 }
 
 type ModelRowProps = {
@@ -802,10 +751,7 @@ function ProviderPane({
   reasoningEffort,
   onSelectReasoning,
   disabledProviderReason,
-  cursorProvider,
 }: ProviderPaneProps) {
-  const isCursor =
-    tab.key === CURSOR_PROVIDER_KEY && cursorProvider !== undefined;
   const llmEntry =
     tab.llmEntry ??
     (!isStella
@@ -816,13 +762,11 @@ function ProviderPane({
         }
       : undefined);
   const providerDisabled = disabled;
-  const connected = isCursor
-    ? cursorProvider.hasApiKey
-    : isStella || Boolean(apiKey) || Boolean(oauthCredential);
+  const isGrok = tab.key === GROK_PROVIDER_KEY;
+  const connected =
+    isStella || isGrok || Boolean(apiKey) || Boolean(oauthCredential);
   const isLocal = tab.key === LOCAL_PROVIDER_KEY;
-  const requiresAuth = isCursor
-    ? !cursorProvider.hasApiKey
-    : !isStella && !isLocal && !connected && Boolean(llmEntry);
+  const requiresAuth = !isStella && !isLocal && !connected && Boolean(llmEntry);
   const supportsApiKey =
     Boolean(llmEntry) && !isApiKeyOnlyPlaceholder(llmEntry?.placeholder ?? "");
   const supportsOAuth = Boolean(oauthProvider);
@@ -841,27 +785,6 @@ function ProviderPane({
   }
 
   const isDefaultSelected = !selectedModelId;
-  const cursorFilteredModels = useMemo(() => {
-    if (!isCursor) return [];
-    const trimmed = query.trim().toLowerCase();
-    if (!trimmed) return [...cursorProvider.models];
-    return cursorProvider.models.filter((model) => {
-      const haystack = [
-        model.id,
-        model.displayName,
-        model.description ?? "",
-        ...(model.aliases ?? []),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(trimmed);
-    });
-  }, [cursorProvider, isCursor, query]);
-  const cursorManualChanged =
-    isCursor &&
-    cursorProvider.modelDraft.trim() !==
-      cursorProvider.selectedModelId.trim() &&
-    cursorProvider.modelDraft.trim().length > 0;
   const showDefaultRow = !hideDefaultRow && isStella;
   const defaultRow = showDefaultRow ? (
     <button
@@ -898,239 +821,60 @@ function ProviderPane({
       )}
 
       {requiresAuth ? (
-        isCursor ? (
-          <div className="model-picker-auth">
-            <h4 className="model-picker-auth-headline">Add a Cursor API key</h4>
-            <p className="model-picker-pane-desc">
-              The key stays on this device.
-            </p>
+        <div className="model-picker-auth">
+          <h4 className="model-picker-auth-headline">{authHeadline}</h4>
+          <p className="model-picker-pane-desc">{authDescription}</p>
+          {supportsOAuth ? (
+            <div className="model-picker-auth-row">
+              <LogIn size={13} aria-hidden />
+              <Button
+                type="button"
+                variant="ghost"
+                className="model-picker-signin"
+                onClick={onLoginOAuth}
+                disabled={oauthInFlight || disabled}
+              >
+                {oauthInFlight ? "Opening…" : "Sign in"}
+              </Button>
+            </div>
+          ) : null}
+          {supportsApiKey ? (
             <div className="model-picker-auth-row">
               <KeyRound size={13} aria-hidden />
               <TextField
-                label="Cursor API key"
+                label={`${tab.label} API key`}
                 hideLabel
                 type="password"
-                placeholder={llmEntry?.placeholder ?? "Cursor API key"}
-                value={cursorProvider.apiKeyDraft}
-                onChange={(e) =>
-                  cursorProvider.onApiKeyDraftChange(e.target.value)
-                }
+                placeholder={llmEntry?.placeholder ?? "API key"}
+                value={draftKey}
+                onChange={(e) => onDraftKeyChange(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") cursorProvider.onSaveApiKey();
+                  if (e.key === "Enter") onSaveKey();
                 }}
-                autoFocus
-                disabled={disabled}
+                autoFocus={!supportsOAuth}
+                disabled={providerDisabled}
               />
               <Button
                 type="button"
                 variant="primary"
                 size="small"
                 className="model-picker-key-save"
-                aria-label="Save Cursor API key"
-                onClick={cursorProvider.onSaveApiKey}
-                disabled={
-                  !cursorProvider.apiKeyDraft.trim() ||
-                  cursorProvider.savingKey ||
-                  disabled
-                }
+                aria-label={`Save ${tab.label} API key`}
+                onClick={onSaveKey}
+                disabled={!draftKey.trim() || saving || providerDisabled}
               >
                 <Check size={15} aria-hidden />
               </Button>
             </div>
-          </div>
-        ) : (
-          <div className="model-picker-auth">
-            <h4 className="model-picker-auth-headline">{authHeadline}</h4>
-            <p className="model-picker-pane-desc">{authDescription}</p>
-            {supportsOAuth ? (
-              <div className="model-picker-auth-row">
-                <LogIn size={13} aria-hidden />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="model-picker-signin"
-                  onClick={onLoginOAuth}
-                  disabled={oauthInFlight || disabled}
-                >
-                  {oauthInFlight ? "Opening…" : "Sign in"}
-                </Button>
-              </div>
-            ) : null}
-            {supportsApiKey ? (
-              <div className="model-picker-auth-row">
-                <KeyRound size={13} aria-hidden />
-                <TextField
-                  label={`${tab.label} API key`}
-                  hideLabel
-                  type="password"
-                  placeholder={llmEntry?.placeholder ?? "API key"}
-                  value={draftKey}
-                  onChange={(e) => onDraftKeyChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") onSaveKey();
-                  }}
-                  autoFocus={!supportsOAuth}
-                  disabled={providerDisabled}
-                />
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="small"
-                  className="model-picker-key-save"
-                  aria-label={`Save ${tab.label} API key`}
-                  onClick={onSaveKey}
-                  disabled={!draftKey.trim() || saving || providerDisabled}
-                >
-                  <Check size={15} aria-hidden />
-                </Button>
-              </div>
-            ) : null}
-            {authError ? (
-              <p className="model-picker-pane-error" role="alert">
-                {authError}
-              </p>
-            ) : null}
-          </div>
-        )
+          ) : null}
+          {authError ? (
+            <p className="model-picker-pane-error" role="alert">
+              {authError}
+            </p>
+          ) : null}
+        </div>
       ) : (
         <>
-          {isCursor ? (
-            <>
-              {cursorProvider.models.length > 0 ? (
-                <>
-                  <div className="model-picker-search">
-                    <Search size={13} strokeWidth={1.75} aria-hidden />
-                    <input
-                      type="text"
-                      value={query}
-                      onChange={(e) => onQueryChange(e.target.value)}
-                      placeholder="Search Cursor…"
-                      spellCheck={false}
-                      autoComplete="off"
-                      aria-label="Search Cursor models"
-                      disabled={providerDisabled}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={cursorProvider.onRefreshModels}
-                      disabled={
-                        cursorProvider.modelsLoading || providerDisabled
-                      }
-                    >
-                      {cursorProvider.modelsLoading ? "Refreshing…" : "Refresh"}
-                    </Button>
-                  </div>
-                  <div
-                    className="model-picker-models"
-                    role="listbox"
-                    aria-label="Cursor models"
-                    aria-busy={cursorProvider.modelsLoading || undefined}
-                  >
-                    {cursorFilteredModels.length === 0 ? (
-                      <div className="model-picker-empty">No models match.</div>
-                    ) : (
-                      cursorFilteredModels.map((model) => {
-                        const selected =
-                          model.id === cursorProvider.selectedModelId ||
-                          model.aliases?.includes(
-                            cursorProvider.selectedModelId,
-                          );
-                        const subtitle =
-                          model.aliases?.[0] ?? model.description ?? model.id;
-                        return (
-                          <button
-                            key={model.id}
-                            type="button"
-                            role="option"
-                            aria-selected={selected}
-                            className="model-picker-model"
-                            data-selected={selected || undefined}
-                            disabled={providerDisabled}
-                            onClick={(event) =>
-                              cursorProvider.onPickModel(
-                                model.id,
-                                event.currentTarget,
-                              )
-                            }
-                          >
-                            <span className="model-picker-model-text">
-                              <span className="model-picker-model-name">
-                                {model.displayName || model.id}
-                              </span>
-                              {subtitle ? (
-                                <span className="model-picker-model-sub">
-                                  {subtitle}
-                                </span>
-                              ) : null}
-                            </span>
-                            {!hideSelectionCheck && selected ? (
-                              <Check
-                                size={13}
-                                className="model-picker-model-check"
-                              />
-                            ) : null}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="model-picker-openrouter">
-                  <p className="model-picker-pane-desc">
-                    {cursorProvider.modelsLoading
-                      ? "Loading Cursor models…"
-                      : "No models available — enter one manually."}
-                  </p>
-                  <div className="model-picker-auth-row">
-                    <TextField
-                      label="Cursor model"
-                      hideLabel
-                      placeholder="composer-2"
-                      value={cursorProvider.modelDraft}
-                      onChange={(e) =>
-                        cursorProvider.onModelDraftChange(e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter")
-                          cursorProvider.onSaveManualModel();
-                      }}
-                      spellCheck={false}
-                      disabled={providerDisabled}
-                    />
-                    <Button
-                      type="button"
-                      variant="primary"
-                      onClick={cursorProvider.onSaveManualModel}
-                      disabled={
-                        disabled ||
-                        cursorProvider.savingModel ||
-                        !cursorManualChanged
-                      }
-                    >
-                      {cursorProvider.savingModel ? "Saving…" : "Use model"}
-                    </Button>
-                  </div>
-                  {cursorProvider.hasApiKey ? (
-                    <div className="model-picker-auth-row model-picker-auth-row--end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={cursorProvider.onRefreshModels}
-                        disabled={cursorProvider.modelsLoading || disabled}
-                      >
-                        {cursorProvider.modelsLoading
-                          ? "Refreshing…"
-                          : "Refresh models"}
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </>
-          ) : null}
-
           {isLocal ? (
             <div className="model-picker-local">
               <p className="model-picker-pane-desc">
@@ -1207,76 +951,70 @@ function ProviderPane({
             </div>
           ) : null}
 
-          {!isCursor ? (
-            <>
-              <div className="model-picker-search">
-                <Search size={13} strokeWidth={1.75} aria-hidden />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => onQueryChange(e.target.value)}
-                  placeholder={`Search ${tab.label}…`}
-                  spellCheck={false}
-                  autoComplete="off"
-                  aria-label={`Search ${tab.label} models`}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="model-picker-models" role="listbox">
-                {defaultRow}
-                {filteredModels.length === 0
-                  ? defaultRow
-                    ? null
-                    : (
-                        <div className="model-picker-empty">
-                          {tab.models.length === 0
-                            ? `No ${tab.label} models available yet.`
-                            : "No models match."}
-                        </div>
-                      )
-                  : filteredModels.map((model) => {
-                      const selected =
-                        !isDefaultSelected && model.id === selectedModelId;
-                      const rowRestricted =
-                        restrictStellaPicks &&
-                        model.provider === STELLA_PROVIDER_KEY &&
-                        !selected &&
-                        model.allowedForAudience === false;
-                      return (
-                        <ModelRow
-                          key={model.id}
-                          model={model}
-                          selected={selected}
-                          rowRestricted={rowRestricted}
-                          restrictedPlanLabel={restrictedPlanLabel}
-                          restrictedReason={
-                            rowRestricted && !restrictedPlanLabel
-                              ? (disabledProviderReason ?? null)
-                              : null
-                          }
-                          onPick={onPick}
-                          disabled={providerDisabled}
-                          favorite={favorites.includes(model.id)}
-                          showFavorite={Boolean(favoriteScope)}
-                          onToggleFavorite={onToggleFavorite}
-                          reasoningEffort={reasoningEffort}
-                          onSelectReasoning={onSelectReasoning}
-                          hideSelectionCheck={hideSelectionCheck}
-                        />
-                      );
-                    })}
-              </div>
-            </>
-          ) : null}
+          <div className="model-picker-search">
+            <Search size={13} strokeWidth={1.75} aria-hidden />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              placeholder={`Search ${tab.label}…`}
+              spellCheck={false}
+              autoComplete="off"
+              aria-label={`Search ${tab.label} models`}
+              disabled={disabled}
+            />
+          </div>
+          <div className="model-picker-models" role="listbox">
+            {defaultRow}
+            {filteredModels.length === 0 ? (
+              defaultRow ? null : (
+                <div className="model-picker-empty">
+                  {tab.models.length === 0
+                    ? `No ${tab.label} models available yet.`
+                    : "No models match."}
+                </div>
+              )
+            ) : (
+              filteredModels.map((model) => {
+                const selected =
+                  !isDefaultSelected && model.id === selectedModelId;
+                const rowRestricted =
+                  restrictStellaPicks &&
+                  model.provider === STELLA_PROVIDER_KEY &&
+                  !selected &&
+                  model.allowedForAudience === false;
+                return (
+                  <ModelRow
+                    key={model.id}
+                    model={model}
+                    selected={selected}
+                    rowRestricted={rowRestricted}
+                    restrictedPlanLabel={restrictedPlanLabel}
+                    restrictedReason={
+                      rowRestricted && !restrictedPlanLabel
+                        ? (disabledProviderReason ?? null)
+                        : null
+                    }
+                    onPick={onPick}
+                    disabled={providerDisabled}
+                    favorite={favorites.includes(model.id)}
+                    showFavorite={Boolean(favoriteScope)}
+                    onToggleFavorite={onToggleFavorite}
+                    reasoningEffort={reasoningEffort}
+                    onSelectReasoning={onSelectReasoning}
+                    hideSelectionCheck={hideSelectionCheck}
+                  />
+                );
+              })
+            )}
+          </div>
         </>
       )}
 
-      {!requiresAuth && (llmEntry || isCursor) ? (
+      {!requiresAuth && llmEntry ? (
         <footer className="model-picker-pane-footer">
-          {isCursor && cursorProvider.hasApiKey ? (
-            <span className="model-picker-pane-foot-text">
-              Using your saved API key
-            </span>
+          {isGrok ? (
+            <span className="model-picker-pane-foot-text">Uses grok login</span>
           ) : apiKey || oauthCredential ? (
             <span className="model-picker-pane-foot-text">
               {apiKey

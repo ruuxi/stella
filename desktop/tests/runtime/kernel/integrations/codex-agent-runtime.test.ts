@@ -49,7 +49,7 @@ describe("Codex agent runtime", () => {
     expect(
       shouldUseCodexAgentRuntime({
         agentType: "general",
-        agentEngine: "cursor_sdk",
+        agentEngine: "claude_code_local",
       }),
     ).toBe(false);
   });

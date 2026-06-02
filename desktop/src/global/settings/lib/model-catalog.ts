@@ -85,6 +85,7 @@ const PROVIDER_NAMES: Record<string, string> = {
   cerebras: "Cerebras",
   "github-copilot": "GitHub Copilot",
   google: "Google",
+  grok: "Grok",
   "google-antigravity": "Google Antigravity",
   "google-gemini-cli": "Google Gemini CLI",
   "google-vertex": "Google Vertex",

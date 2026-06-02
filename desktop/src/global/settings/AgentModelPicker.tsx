@@ -46,12 +46,7 @@ type LocalModelPreferences = {
   modelOverrides: Record<string, string>;
   assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
-  agentRuntimeEngine:
-    | "default"
-    | "claude_code_local"
-    | "cursor_sdk"
-    | "codex_cli";
-  cursorModel: string;
+  agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
   codexModel: string;
   claudeCodeModel: string;
   maxAgentConcurrency: number;
@@ -100,9 +95,7 @@ const VOICE_TARGET = "__voice__";
 const ASSISTANT_AGENT_KEYS: readonly string[] = ["orchestrator", "general"];
 
 /** Agent keys that must never receive Assistant-tab propagation. */
-const ASSISTANT_PROPAGATE_EXCLUDE: ReadonlySet<string> = new Set([
-  "chronicle",
-]);
+const ASSISTANT_PROPAGATE_EXCLUDE: ReadonlySet<string> = new Set(["chronicle"]);
 
 const isStellaModelId = (modelId: string): boolean =>
   modelId === "" || modelId.startsWith("stella/");
@@ -115,7 +108,11 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
 };
 
 const IMAGE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
-  { key: "stella", label: "Stella", description: "Default. Picks the best image model for you." },
+  {
+    key: "stella",
+    label: "Stella",
+    description: "Default. Picks the best image model for you.",
+  },
   { key: "openai", label: "OpenAI", description: "Uses your OpenAI account." },
   {
     key: "openrouter",
@@ -129,11 +126,24 @@ const VOICE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
   {
     key: "stella",
     label: "Stella",
-    description: "Default. All OpenAI, xAI, and Inworld voices included — no API key needed.",
+    description:
+      "Default. All OpenAI, xAI, and Inworld voices included — no API key needed.",
   },
-  { key: "openai", label: "OpenAI", description: "Use your own OpenAI account." },
-  { key: "xai", label: "xAI", description: "Use your own xAI account with Grok's Voice Agent." },
-  { key: "inworld", label: "Inworld", description: "Use your own Inworld account." },
+  {
+    key: "openai",
+    label: "OpenAI",
+    description: "Use your own OpenAI account.",
+  },
+  {
+    key: "xai",
+    label: "xAI",
+    description: "Use your own xAI account with Grok's Voice Agent.",
+  },
+  {
+    key: "inworld",
+    label: "Inworld",
+    description: "Use your own Inworld account.",
+  },
 ];
 
 /**
@@ -222,9 +232,8 @@ export function AgentModelPicker({
     audience,
   } = useModelCatalog();
 
-  const [preferences, setPreferencesRaw] = useState<LocalModelPreferences | null>(
-    () => cachedLocalPreferences,
-  );
+  const [preferences, setPreferencesRaw] =
+    useState<LocalModelPreferences | null>(() => cachedLocalPreferences);
   const [pendingAgent, setPendingAgent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -241,8 +250,7 @@ export function AgentModelPicker({
           ) => LocalModelPreferences | null),
     ) => {
       setPreferencesRaw((current) => {
-        const next =
-          typeof updater === "function" ? updater(current) : updater;
+        const next = typeof updater === "function" ? updater(current) : updater;
         if (next) cachedLocalPreferences = next;
         return next;
       });
@@ -333,7 +341,7 @@ export function AgentModelPicker({
   );
   const initialActiveAgent =
     surface === "settings"
-      ? configurableAgents[0]?.key ?? "orchestrator"
+      ? (configurableAgents[0]?.key ?? "orchestrator")
       : ASSISTANT_TARGET;
   const [activeAgent, setActiveAgent] = useState<string>(initialActiveAgent);
   // Snap to a known agent key if the catalog loads after first render and
@@ -566,8 +574,7 @@ export function AgentModelPicker({
 
   const handleVoiceSelect = useCallback(
     (underlyingProvider: RealtimeVoiceUnderlyingProvider, voiceId: string) => {
-      const previous =
-        preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
       void patchRealtimeVoice(
         {
           ...previous,
@@ -581,8 +588,7 @@ export function AgentModelPicker({
 
   const handleInworldSpeedSelect = useCallback(
     (speed: number) => {
-      const previous =
-        preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
       const clamped = Math.min(2.0, Math.max(0.5, speed));
       if (
         typeof previous.inworldSpeed === "number" &&
@@ -600,8 +606,7 @@ export function AgentModelPicker({
 
   const handleStellaSubProviderSelect = useCallback(
     (subProvider: RealtimeVoiceUnderlyingProvider) => {
-      const previous =
-        preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
+      const previous = preferences?.realtimeVoice ?? DEFAULT_REALTIME_VOICE;
       if (previous.stellaSubProvider === subProvider) return;
       void patchRealtimeVoice(
         { ...previous, stellaSubProvider: subProvider },
@@ -734,37 +739,36 @@ export function AgentModelPicker({
    * key directly (no model id) because those tabs are provider-only.
    */
   const current = activeAssistant
-    ? overrides.orchestrator ?? overrides.general ?? ""
+    ? (overrides.orchestrator ?? overrides.general ?? "")
     : activeImage
       ? imagePreferences.provider
       : activeVoice
         ? voicePreferences.provider
-        : overrides[activeAgent] ?? "";
-  const defaultLabel =
-    activeProviderSetting
-      ? "Stella"
-      : ready
-        ? getDefaultModelOptionLabel(
-            canonicalAgentKey,
-            defaultModelMap,
-            resolvedDefaultModelMap,
-            modelNamesById,
-          )
-        : "Default";
+        : (overrides[activeAgent] ?? "");
+  const defaultLabel = activeProviderSetting
+    ? "Stella"
+    : ready
+      ? getDefaultModelOptionLabel(
+          canonicalAgentKey,
+          defaultModelMap,
+          resolvedDefaultModelMap,
+          modelNamesById,
+        )
+      : "Default";
   const currentLabel = activeProviderSetting
-    ? IMAGE_PROVIDER_OPTIONS.find((entry) => entry.key === current)?.label ??
+    ? (IMAGE_PROVIDER_OPTIONS.find((entry) => entry.key === current)?.label ??
       VOICE_PROVIDER_OPTIONS.find((entry) => entry.key === current)?.label ??
-      "Stella"
+      "Stella")
     : ready
       ? current
         ? getModelPickerDisplayLabel(current, modelNamesById)
         : defaultLabel
       : "Loading…";
   const currentReasoningEffort = activeAssistant
-    ? preferences?.reasoningEfforts?.orchestrator ??
+    ? (preferences?.reasoningEfforts?.orchestrator ??
       preferences?.reasoningEfforts?.general ??
-      "default"
-    : preferences?.reasoningEfforts?.[activeAgent] ?? "default";
+      "default")
+    : (preferences?.reasoningEfforts?.[activeAgent] ?? "default");
   const showFullPanel = expanded && !activeProviderSetting;
 
   /**

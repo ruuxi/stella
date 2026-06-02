@@ -19,11 +19,6 @@ import {
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
 import {
-  buildCursorPromptFromMessages,
-  runCursorAgentTurn,
-  shouldUseCursorAgentRuntime,
-} from "../integrations/cursor-agent-runtime.js";
-import {
   buildCodexPromptFromMessages,
   runCodexAgentTurn,
   shutdownCodexAppServerRuntime,
@@ -131,10 +126,7 @@ const buildToolResultContent = async (toolResult: {
   return content;
 };
 
-type ExternalEngineSessionKind =
-  | "claude_code_local"
-  | "cursor_sdk"
-  | "codex_cli";
+type ExternalEngineSessionKind = "claude_code_local" | "codex_cli";
 
 type ExternalOrchestratorEngine = "claude_code_local";
 
@@ -158,7 +150,6 @@ export const selectExternalOrchestratorEngine = (
 
 const EXTERNAL_ENGINE_SESSION_PREFIXES: readonly string[] = [
   "claude_code_local:",
-  "cursor_sdk:",
   "codex_cli:",
 ];
 
@@ -653,90 +644,6 @@ const runClaudeHostedTurn = async (args: {
   };
 };
 
-const runCursorHostedTurn = async (args: {
-  opts: SubagentRunOptions;
-  session: ExternalSubagentRunSession;
-  systemPrompt: string;
-  promptMessages: RuntimePromptMessage[];
-  callbacks?: Partial<RuntimeRunCallbacks>;
-}): Promise<{
-  finalText: string;
-  sessionId: string;
-  fileChanges?: SubagentRunResult["fileChanges"];
-}> => {
-  const { runId, threadKey, runEvents } = args.session;
-  runEvents.recordRunStart();
-  persistExternalPromptMessages(args.opts, threadKey, args.promptMessages);
-
-  if (args.opts.abortSignal?.aborted) {
-    throw new Error("Aborted");
-  }
-
-  const localCliCwd = resolveLocalCliCwd({
-    agentType: args.opts.agentType,
-    stellaRoot: args.opts.stellaRoot,
-  });
-  const sessionKey = args.opts.agentContext.activeThreadId
-    ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
-    : `${args.opts.conversationId}:run:${runId}`;
-  const persistedSessionId = getExternalEngineSessionId({
-    store: args.opts.store,
-    threadKey,
-    engine: "cursor_sdk",
-  });
-  const persistCursorSessionId = (sessionId: string) => {
-    setExternalEngineSessionId({
-      store: args.opts.store,
-      threadKey,
-      engine: "cursor_sdk",
-      sessionId,
-    });
-  };
-  const prompt = buildCursorPromptFromMessages({
-    systemPrompt: args.systemPrompt,
-    promptMessages: args.promptMessages,
-  });
-  const result = await runCursorAgentTurn({
-    runId,
-    sessionKey,
-    ...(persistedSessionId ? { persistedSessionId } : {}),
-    prompt,
-    cwd: localCliCwd,
-    stellaHome: args.opts.stellaHome,
-    stellaRoot: args.opts.stellaRoot,
-    attachments: args.opts.attachments,
-    abortSignal: args.opts.abortSignal,
-    onSessionId: persistCursorSessionId,
-    onStatus: (status) => {
-      args.opts.onProgress?.(status);
-      args.callbacks?.onStatus?.(runEvents.recordStatus(status));
-    },
-    onStream: (chunk) => {
-      args.opts.onProgress?.(chunk);
-      args.callbacks?.onStream?.(runEvents.recordStream(chunk));
-    },
-  });
-
-  await persistAssistantReply({
-    store: args.opts.store,
-    threadKey,
-    resolvedLlm: args.opts.resolvedLlm,
-    agentType: args.opts.agentType,
-    content: result.text,
-  });
-  const assistantMessageEvent = runEvents.recordAssistantTextEnd(result.text);
-  if (assistantMessageEvent) {
-    args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
-  }
-  persistCursorSessionId(result.sessionId);
-
-  return {
-    finalText: result.text,
-    sessionId: result.sessionId,
-    ...(result.fileChanges?.length ? { fileChanges: result.fileChanges } : {}),
-  };
-};
-
 const runCodexHostedTurn = async (args: {
   opts: BaseRunOptions & { onProgress?: (chunk: string) => void };
   session: ExternalOrchestratorRunSession | ExternalSubagentRunSession;
@@ -1036,16 +943,11 @@ export const runExternalSubagentTurn = async (
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult | null> => {
   if (!shouldUseClaudeCodeRuntime(opts)) {
-    const useCursor = shouldUseCursorAgentRuntime({
-      agentType: opts.agentType,
-      agentEngine: opts.agentContext.agentEngine,
-      model: opts.agentContext.model,
-    });
     const useCodex = shouldUseCodexAgentRuntime({
       agentType: opts.agentType,
       agentEngine: opts.agentContext.agentEngine,
     });
-    if (!useCursor && !useCodex) {
+    if (!useCodex) {
       return null;
     }
 
@@ -1073,21 +975,13 @@ export const runExternalSubagentTurn = async (
         ...opts,
         runId: session.runId,
       });
-      const result = useCursor
-        ? await runCursorHostedTurn({
-            opts,
-            session,
-            systemPrompt,
-            promptMessages,
-            callbacks: opts.callbacks,
-          })
-        : await runCodexHostedTurn({
-            opts,
-            session,
-            systemPrompt,
-            promptMessages,
-            callbacks: opts.callbacks,
-          });
+      const result = await runCodexHostedTurn({
+        opts,
+        session,
+        systemPrompt,
+        promptMessages,
+        callbacks: opts.callbacks,
+      });
       const finalized = await session.finalizeSuccess(result.finalText);
       if (result.fileChanges?.length) {
         finalized.fileChanges = result.fileChanges;
