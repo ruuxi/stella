@@ -194,6 +194,7 @@ export const createStellaHostRunner = (
     getStorePackageRelease: storeOperations.getStorePackageRelease,
     createFirstStoreRelease: storeOperations.createFirstStoreRelease,
     createStoreReleaseUpdate: storeOperations.createStoreReleaseUpdate,
+    getStoreGitObjectUrls: storeOperations.getStoreGitObjectUrls,
     handleLocalChat: orchestratorController.handleLocalChat,
     sendMessage: orchestratorController.sendMessage,
     sendUserMessage: orchestratorController.sendUserMessage,
@@ -237,7 +238,10 @@ export const createStellaHostRunner = (
     googleWorkspaceGetAuthStatus: async () => {
       return {
         connected: Boolean(
-          await loadConnectorAccessToken(context.stellaHome, "google-workspace"),
+          await loadConnectorAccessToken(
+            context.stellaHome,
+            "google-workspace",
+          ),
         ),
       };
     },
@@ -255,18 +259,23 @@ export const createStellaHostRunner = (
     },
 
     googleWorkspaceDisconnect: async () => {
-      await deleteConnectorAccessTokens(context.stellaHome, ["google-workspace"]);
+      await deleteConnectorAccessTokens(context.stellaHome, [
+        "google-workspace",
+      ]);
       return { ok: true };
     },
 
     triggerDreamNow: async (trigger = "manual") => {
       try {
-        const { countPendingDreamExtensions } =
-          await import("./memory/dream-core.js");
-        const { maybeSpawnDreamRun } =
-          await import("./agent-runtime/dream-scheduler.js");
-        const { resolveRunnerLlmRoute } =
-          await import("./runner/model-selection.js");
+        const { countPendingDreamExtensions } = await import(
+          "./memory/dream-core.js"
+        );
+        const { maybeSpawnDreamRun } = await import(
+          "./agent-runtime/dream-scheduler.js"
+        );
+        const { resolveRunnerLlmRoute } = await import(
+          "./runner/model-selection.js"
+        );
         const { AGENT_IDS } = await import("../contracts/agent-runtime.js");
         const pendingThreadSummaries =
           context.runtimeStore.threadSummariesStore.countUnprocessed();
@@ -312,10 +321,12 @@ export const createStellaHostRunner = (
 
     runChronicleSummaryTick: async (window) => {
       try {
-        const { runChronicleSummary } =
-          await import("./memory/chronicle-summarizer.js");
-        const { resolveRunnerLlmRoute } =
-          await import("./runner/model-selection.js");
+        const { runChronicleSummary } = await import(
+          "./memory/chronicle-summarizer.js"
+        );
+        const { resolveRunnerLlmRoute } = await import(
+          "./runner/model-selection.js"
+        );
         const { AGENT_IDS } = await import("../contracts/agent-runtime.js");
         const chronicleAgent = resolveAgent(context, AGENT_IDS.CHRONICLE);
         const chronicleModel = getConfiguredModel(

@@ -13,7 +13,6 @@ import {
 import {
   collectSourcePackPaths,
   readLocalSourceTree,
-  selectStoreSourcePackForInstalledRevisions,
   writeSourcePackApplyResult,
 } from "../../../../../runtime/worker/store-source-pack-install.js";
 
@@ -246,83 +245,6 @@ describe("Stella source-pack desktop update simulation", () => {
     );
     expect(git(repoRoot, ["log", "--format=%s", "-2"])).toBe(
       "Update Quiet Mode to v2\nInstall Quiet Mode v1",
-    );
-  });
-
-  it("skips already-installed Store source revisions before handing off an update", async () => {
-    const baseTree: StellaSourceTree = {};
-    const v1Tree: StellaSourceTree = {
-      "src/copy.ts": text("title: v1\nbody: unchanged\n"),
-    };
-    const v2Tree: StellaSourceTree = {
-      "src/copy.ts": text("title: v1\nbody: v2\n"),
-    };
-    const baseRevisionId = hashSourceTree(baseTree);
-    const v1 = createStellaSourceChangeSetFromTrees({
-      baseRevisionId,
-      baseTree,
-      nextTree: v1Tree,
-      featureId: "store:quiet-mode",
-      description: "Quiet Mode v1",
-    });
-    const v2 = createStellaSourceChangeSetFromTrees({
-      baseRevisionId: v1.revisionId,
-      parentRevisionIds: [v1.revisionId],
-      baseTree: v1Tree,
-      nextTree: v2Tree,
-      featureId: "store:quiet-mode",
-      description: "Quiet Mode v2",
-    });
-    const fullPack = createStellaSourcePack({
-      baseRevisionId,
-      featureId: "store:quiet-mode",
-      description: "Quiet Mode",
-      changeSets: [v1, v2],
-    });
-
-    await writeFile(
-      path.join(repoRoot, "src", "copy.ts"),
-      "title: local custom\nbody: unchanged\n",
-      "utf8",
-    );
-
-    const fullLocalTree = await readLocalSourceTree(
-      repoRoot,
-      collectSourcePackPaths(fullPack),
-    );
-    expect(
-      applyStellaSourcePack({ pack: fullPack, localTree: fullLocalTree }),
-    ).toMatchObject({
-      status: "conflicts",
-      conflicts: [expect.objectContaining({ path: "src/copy.ts" })],
-    });
-
-    const plan = selectStoreSourcePackForInstalledRevisions(fullPack, [
-      v1.revisionId,
-    ]);
-    expect(plan.status).toBe("handoff");
-    if (plan.status !== "handoff") {
-      throw new Error("Expected source pack update plan.");
-    }
-    const selectedPaths = collectSourcePackPaths(plan.sourcePack);
-    const selectedLocalTree = await readLocalSourceTree(
-      repoRoot,
-      selectedPaths,
-    );
-    const sourceApply = applyStellaSourcePack({
-      pack: plan.sourcePack,
-      localTree: selectedLocalTree,
-    });
-
-    expect(sourceApply.status).toBe("clean");
-    await writeSourcePackApplyResult({
-      repoRoot,
-      paths: selectedPaths,
-      tree: sourceApply.tree,
-      appliedPaths: sourceApply.appliedPaths,
-    });
-    expect(await readFile(path.join(repoRoot, "src", "copy.ts"), "utf8")).toBe(
-      "title: local custom\nbody: v2\n",
     );
   });
 

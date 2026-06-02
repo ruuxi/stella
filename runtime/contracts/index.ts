@@ -316,6 +316,38 @@ export type StoreReleaseSourcePackRef = {
   sizeBytes: number;
 };
 
+export type StoreReleaseGitObjectType = "blob" | "tree" | "commit";
+
+export type StoreReleaseGitObject = {
+  sha: string;
+  type: StoreReleaseGitObjectType;
+  sizeBytes: number;
+};
+
+export type StoreReleaseGitArtifact = {
+  kind: "git-object-artifact";
+  schemaVersion: 1;
+  baseCommit: string;
+  featureCommit: string;
+  objects: StoreReleaseGitObject[];
+  security?: {
+    redactedPaths: string[];
+    omittedPaths: string[];
+    warnings: string[];
+  };
+};
+
+export type StoreReleaseDiffRef = {
+  kind: "r2";
+  r2Key: string;
+  sha256: string;
+  sizeBytes: number;
+};
+
+export type StoreReleaseGitObjectUpload = StoreReleaseGitObject & {
+  compressedBytes: Uint8Array;
+};
+
 export type DesktopReleaseSourcePackRef = {
   kind: "url";
   url: string;
@@ -347,21 +379,22 @@ export type StellaReleaseArtifactRef = {
 };
 
 /**
- * A published Store release is source-backed changed-file material plus a
- * lightweight listing summary. Store installs always go through the local
- * install agent: source packs and diffs are exact reference material that the
- * agent adapts to the installer's divergent tree.
+ * A published Store release carries a canonical git-object feature commit plus
+ * a lightweight listing summary. The sanitized diff is kept for preview,
+ * review, and agent fallback when the automatic merge path cannot apply.
  */
 export type StoreReleaseArtifact = {
   kind: "blueprint";
   schemaVersion: 2;
   manifest: StoreReleaseManifest;
   blueprintMarkdown: string;
-  /** Content-addressed changed-file pack for direct Stella-native installs. */
-  sourcePack?: StoreReleaseSourcePack;
-  /** Pre-uploaded R2 reference for large source packs. */
-  sourcePackRef?: StoreReleaseSourcePackRef;
-  /** Per-commit reference diffs selected by the publisher's local Store flow. */
+  /** Git-object Store transport for new source-backed installs. */
+  gitArtifact?: StoreReleaseGitArtifact;
+  /** Sanitized squashed diff for preview, review, and agent fallback. */
+  diff?: string;
+  /** R2 reference for large sanitized diffs. */
+  diffRef?: StoreReleaseDiffRef;
+  /** Legacy per-commit reference diffs selected by the publisher's local Store flow. */
   commits?: StoreReleaseCommit[];
 };
 
@@ -406,12 +439,11 @@ export type StorePackageReleaseRecord = {
   releaseNumber: number;
   manifest: StoreReleaseManifest;
   blueprintMarkdown: string;
-  /** Source pack passed to the install agent as exact changed-file context. */
-  sourcePack?: StoreReleaseSourcePack;
-  /** R2 reference for large source packs; resolved before agent install. */
-  sourcePackRef?: StoreReleaseSourcePackRef;
   /** Reference diffs the install agent uses; absent on legacy releases. */
   commits?: StoreReleaseCommit[];
+  gitArtifact?: StoreReleaseGitArtifact;
+  diff?: string;
+  diffRef?: StoreReleaseDiffRef;
   createdAt: number;
 };
 

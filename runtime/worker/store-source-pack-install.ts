@@ -3,11 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import type { StoreReleaseSourcePack } from "../contracts/index.js";
 import {
-  createStellaSourceChangeSet,
-  createStellaSourcePack,
-  hashSourceBlob,
   sourceBlobFromBuffer,
-  type StellaSourceChange,
   type StellaSourceTree,
 } from "../kernel/self-mod/stella-source-control.js";
 
@@ -29,7 +25,7 @@ export const normalizeStoreSourcePath = (value: string): string => {
   return segments.join("/");
 };
 
-export const STORE_SOURCE_DEPENDENCY_FILE_NAMES = [
+export const STORE_PUBLISH_DEPENDENCY_FILE_NAMES = [
   "package.json",
   "bun.lock",
   "bun.lockb",
@@ -40,7 +36,7 @@ export const STORE_SOURCE_DEPENDENCY_FILE_NAMES = [
 ] as const;
 
 const DEPENDENCY_FILE_NAMES = new Set<string>(
-  STORE_SOURCE_DEPENDENCY_FILE_NAMES,
+  STORE_PUBLISH_DEPENDENCY_FILE_NAMES,
 );
 
 type ProcessRunResult = {
@@ -97,7 +93,7 @@ const candidateBunCommands = (): string[] => {
   return [...seen];
 };
 
-export const storeSourcePackTouchesDependencyFiles = (
+export const storePublishTouchesDependencyFiles = (
   filePaths: string[],
 ): boolean =>
   filePaths.some((filePath) =>
@@ -106,7 +102,7 @@ export const storeSourcePackTouchesDependencyFiles = (
     ),
   );
 
-export const runStoreSourcePackDependencyInstall = async (
+export const runStorePublishDependencyInstall = async (
   repoRoot: string,
 ): Promise<void> => {
   let installResult: ProcessRunResult | null = null;
@@ -141,69 +137,6 @@ export const runStoreSourcePackDependencyInstall = async (
         : `Dependency install failed with exit code ${installResult.exitCode}.`,
     );
   }
-};
-
-export const assertStoreSourcePackIntegrity = (
-  sourcePack: StoreReleaseSourcePack,
-): StoreReleaseSourcePack => {
-  const changeSets = sourcePack.changeSets.map((changeSet) => {
-    const seenPaths = new Set<string>();
-    const changes: StellaSourceChange[] = changeSet.changes.map((change) => {
-      const sourcePath = normalizeStoreSourcePath(change.path);
-      if (seenPaths.has(sourcePath)) {
-        throw new Error(`Duplicate source-pack path: ${sourcePath}`);
-      }
-      seenPaths.add(sourcePath);
-      if (change.baseHash && !change.base) {
-        throw new Error(
-          `Source pack is missing base content for ${sourcePath}`,
-        );
-      }
-      if (change.nextHash && !change.next) {
-        throw new Error(
-          `Source pack is missing incoming content for ${sourcePath}`,
-        );
-      }
-      const baseHash = hashSourceBlob(change.base);
-      const nextHash = hashSourceBlob(change.next);
-      if (baseHash !== change.baseHash) {
-        throw new Error(`Source-pack base hash mismatch for ${sourcePath}`);
-      }
-      if (nextHash !== change.nextHash) {
-        throw new Error(`Source-pack incoming hash mismatch for ${sourcePath}`);
-      }
-      return {
-        path: sourcePath,
-        baseHash,
-        nextHash,
-        ...(change.base ? { base: change.base } : {}),
-        ...(change.next ? { next: change.next } : {}),
-      };
-    });
-    const canonical = createStellaSourceChangeSet({
-      baseRevisionId: changeSet.baseRevisionId,
-      parentRevisionIds: changeSet.parentRevisionIds,
-      ...(changeSet.featureId ? { featureId: changeSet.featureId } : {}),
-      ...(changeSet.description ? { description: changeSet.description } : {}),
-      changes,
-    });
-    if (canonical.revisionId !== changeSet.revisionId) {
-      throw new Error(
-        `Source-pack revision mismatch for ${changeSet.revisionId}`,
-      );
-    }
-    return canonical;
-  });
-  const canonicalPack = createStellaSourcePack({
-    baseRevisionId: sourcePack.baseRevisionId,
-    ...(sourcePack.featureId ? { featureId: sourcePack.featureId } : {}),
-    ...(sourcePack.description ? { description: sourcePack.description } : {}),
-    changeSets,
-  }) as StoreReleaseSourcePack;
-  if (canonicalPack.revisionId !== sourcePack.revisionId) {
-    throw new Error("Source-pack final revision mismatch.");
-  }
-  return canonicalPack;
 };
 
 export const storeSourcePathToAbsolute = (
@@ -318,60 +251,6 @@ export const collectSourcePackPaths = (
       ),
     ),
   ).sort();
-
-export type StoreSourcePackInstallPlan =
-  | {
-      status: "already-installed";
-      revisionId: string;
-    }
-  | {
-      status: "handoff";
-      sourcePack: StoreReleaseSourcePack;
-      skippedRevisionIds: string[];
-    };
-
-export const selectStoreSourcePackForInstalledRevisions = (
-  sourcePack: StoreReleaseSourcePack,
-  installedRevisionIds: string[],
-): StoreSourcePackInstallPlan => {
-  const installed = new Set(
-    installedRevisionIds.map((revisionId) => revisionId.trim()).filter(Boolean),
-  );
-  if (installed.has(sourcePack.revisionId)) {
-    return { status: "already-installed", revisionId: sourcePack.revisionId };
-  }
-
-  let lastInstalledIndex = -1;
-  for (let index = 0; index < sourcePack.changeSets.length; index += 1) {
-    const revisionId = sourcePack.changeSets[index]?.revisionId;
-    if (revisionId && installed.has(revisionId)) {
-      lastInstalledIndex = index;
-    }
-  }
-
-  const changeSets =
-    lastInstalledIndex >= 0
-      ? sourcePack.changeSets.slice(lastInstalledIndex + 1)
-      : sourcePack.changeSets;
-  if (changeSets.length === 0) {
-    return { status: "already-installed", revisionId: sourcePack.revisionId };
-  }
-
-  const firstChangeSet = changeSets[0]!;
-  const lastChangeSet = changeSets[changeSets.length - 1]!;
-  return {
-    status: "handoff",
-    sourcePack: {
-      ...sourcePack,
-      baseRevisionId: firstChangeSet.baseRevisionId,
-      revisionId: lastChangeSet.revisionId,
-      changeSets,
-    },
-    skippedRevisionIds: sourcePack.changeSets
-      .slice(0, lastInstalledIndex + 1)
-      .map((changeSet) => changeSet.revisionId),
-  };
-};
 
 export const readLocalSourceTree = async (
   repoRoot: string,

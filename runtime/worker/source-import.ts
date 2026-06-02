@@ -11,8 +11,8 @@ import {
   preflightSourcePackImport,
 } from "./source-import-core.js";
 import {
-  STORE_SOURCE_DEPENDENCY_FILE_NAMES,
-  storeSourcePackTouchesDependencyFiles,
+  STORE_PUBLISH_DEPENDENCY_FILE_NAMES,
+  storePublishTouchesDependencyFiles,
 } from "./store-source-pack-install.js";
 
 export type SourceImportTrust = "trusted" | "untrusted";
@@ -73,8 +73,8 @@ export type SourceImportFastPathArgs = {
 
 const expandExternalSelfModPaths = (paths: string[]): string[] => {
   const expanded = new Set(paths);
-  if (storeSourcePackTouchesDependencyFiles(paths)) {
-    for (const dependencyFile of STORE_SOURCE_DEPENDENCY_FILE_NAMES) {
+  if (storePublishTouchesDependencyFiles(paths)) {
+    for (const dependencyFile of STORE_PUBLISH_DEPENDENCY_FILE_NAMES) {
       expanded.add(dependencyFile);
     }
   }

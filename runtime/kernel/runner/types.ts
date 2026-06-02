@@ -372,6 +372,11 @@ export type StoreOperations = {
   createStoreReleaseUpdate: (
     args: StorePublishArgs,
   ) => Promise<StorePackageReleaseRecord>;
+  getStoreGitObjectUrls: (
+    packageId: string,
+    releaseNumber: number,
+    shas: string[],
+  ) => Promise<Array<{ sha: string; r2Key: string; downloadUrl: string }>>;
 };
 
 export type RunnerPublicApi = {
@@ -417,6 +422,7 @@ export type RunnerPublicApi = {
   getStorePackageRelease: StoreOperations["getStorePackageRelease"];
   createFirstStoreRelease: StoreOperations["createFirstStoreRelease"];
   createStoreReleaseUpdate: StoreOperations["createStoreReleaseUpdate"];
+  getStoreGitObjectUrls: StoreOperations["getStoreGitObjectUrls"];
   handleLocalChat: (
     payload: ChatPayload,
     callbacks: AgentCallbacks,

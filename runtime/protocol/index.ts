@@ -12,6 +12,8 @@ import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
+  StoreReleaseGitArtifact,
+  StoreReleaseGitObjectUpload,
   StoreReleaseSourcePackRef,
   StoreReleaseSourcePack,
   StellaReleaseArtifactRef,
@@ -35,6 +37,8 @@ export type {
   StorePackageRecord,
   StorePackageReleaseRecord,
   StoreReleaseArtifact,
+  StoreReleaseGitArtifact,
+  StoreReleaseGitObjectUpload,
   StoreReleaseSourcePackRef,
   StoreReleaseSourcePack,
   StellaReleaseArtifactRef,
@@ -704,6 +708,7 @@ export type StorePublishArgs = {
   releaseNotes?: string;
   manifest: StoreReleaseArtifact["manifest"];
   artifact: StoreReleaseArtifact;
+  gitObjectUploads?: StoreReleaseGitObjectUpload[];
 };
 
 /**

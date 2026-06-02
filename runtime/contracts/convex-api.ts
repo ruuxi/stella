@@ -135,6 +135,13 @@ export type PublicApiType = {
       "listSecrets": FunctionReference<'query', 'public', { provider?: string | undefined; }, any, string | undefined>;
       "deleteSecret": FunctionReference<'mutation', 'public', { secretId: Id<'secrets'>; }, any, string | undefined>;
     };
+    "store_git_artifacts": {
+      "prepareGitObjectUploads": FunctionReference<'action', 'public', { objects: { type: 'blob' | 'tree' | 'commit'; sizeBytes: number; sha: string; }[]; }, any, string | undefined>;
+      "verifyGitObjectUploads": FunctionReference<'action', 'public', { objects: { type: 'blob' | 'tree' | 'commit'; sizeBytes: number; sha: string; }[]; }, any, string | undefined>;
+      "prepareDiffUpload": FunctionReference<'action', 'public', { packageId: string; sha256: string; sizeBytes: number; }, any, string | undefined>;
+      "getReleaseDiff": FunctionReference<'action', 'public', { packageId: string; releaseNumber: number; }, any, string | undefined>;
+      "getReleaseGitObjectUrls": FunctionReference<'action', 'public', { packageId: string; releaseNumber: number; shas: string[]; }, any, string | undefined>;
+    };
     "store_packages": {
       "listPackages": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "listPublicPackages": FunctionReference<'query', 'public', { category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
@@ -153,12 +160,8 @@ export type PublicApiType = {
       "listReleases": FunctionReference<'query', 'public', { packageId: string; }, any, string | undefined>;
       "getRelease": FunctionReference<'query', 'public', { packageId: string; releaseNumber: number; }, any, string | undefined>;
       "recordPackageInstall": FunctionReference<'mutation', 'public', { packageId: string; }, any, string | undefined>;
-      "createFirstRelease": FunctionReference<'action', 'public', { description?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; releaseNotes?: string | undefined; sourcePack?: { description?: string | undefined; featureId?: string | undefined; kind: 'stella-source-pack'; schemaVersion: 1; baseRevisionId: string; revisionId: string; changeSets: { description?: string | undefined; featureId?: string | undefined; schemaVersion: 1; baseRevisionId: string; revisionId: string; parentRevisionIds: string[]; changes: { base?: { kind: 'text'; content: string; } | { kind: 'binary'; contentBase64: string; } | undefined; next?: { kind: 'text'; content: string; } | { kind: 'binary'; contentBase64: string; } | undefined; path: string; baseHash: string | null; nextHash: string | null; }[]; }[]; } | undefined; sourcePackRef?: { kind: 'r2'; r2Key: string; sha256: string; sizeBytes: number; } | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; displayName: string; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
-      "createUpdateRelease": FunctionReference<'action', 'public', { iconUrl?: string | undefined; releaseNotes?: string | undefined; sourcePack?: { description?: string | undefined; featureId?: string | undefined; kind: 'stella-source-pack'; schemaVersion: 1; baseRevisionId: string; revisionId: string; changeSets: { description?: string | undefined; featureId?: string | undefined; schemaVersion: 1; baseRevisionId: string; revisionId: string; parentRevisionIds: string[]; changes: { base?: { kind: 'text'; content: string; } | { kind: 'binary'; contentBase64: string; } | undefined; next?: { kind: 'text'; content: string; } | { kind: 'binary'; contentBase64: string; } | undefined; path: string; baseHash: string | null; nextHash: string | null; }[]; }[]; } | undefined; sourcePackRef?: { kind: 'r2'; r2Key: string; sha256: string; sizeBytes: number; } | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
-    };
-    "store_source_packs": {
-      "prepareSourcePackUpload": FunctionReference<'action', 'public', { packageId: string; sha256: string; sizeBytes: number; }, any, string | undefined>;
-      "getReleaseSourcePack": FunctionReference<'action', 'public', { packageId: string; releaseNumber: number; }, any, string | undefined>;
+      "createFirstRelease": FunctionReference<'action', 'public', { description?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; diff?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; gitArtifact?: { security?: { redactedPaths: string[]; omittedPaths: string[]; warnings: string[]; } | undefined; kind: 'git-object-artifact'; schemaVersion: 1; baseCommit: string; featureCommit: string; objects: { type: 'blob' | 'tree' | 'commit'; sizeBytes: number; sha: string; }[]; } | undefined; diffRef?: { kind: 'r2'; r2Key: string; sha256: string; sizeBytes: number; } | undefined; displayName: string; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
+      "createUpdateRelease": FunctionReference<'action', 'public', { iconUrl?: string | undefined; diff?: string | undefined; releaseNotes?: string | undefined; commits?: { hash: string; subject: string; diff: string; }[] | undefined; gitArtifact?: { security?: { redactedPaths: string[]; omittedPaths: string[]; warnings: string[]; } | undefined; kind: 'git-object-artifact'; schemaVersion: 1; baseCommit: string; featureCommit: string; objects: { type: 'blob' | 'tree' | 'commit'; sizeBytes: number; sha: string; }[]; } | undefined; diffRef?: { kind: 'r2'; r2Key: string; sha256: string; sizeBytes: number; } | undefined; packageId: string; manifest: { summary?: string | undefined; category?: 'integrations' | 'apps-games' | 'productivity' | 'customization' | 'skills-agents' | 'other' | undefined; iconUrl?: string | undefined; authoredAtCommit?: string | undefined; }; blueprintMarkdown: string; }, any, string | undefined>;
     };
     "threads": {
       "loadThreadMessagesForRuntime": FunctionReference<'query', 'public', { threadId: Id<'threads'>; }, any, string | undefined>;
@@ -190,8 +193,8 @@ export type PublicApiType = {
   };
   "media_jobs": {
     "getByJobId": FunctionReference<'query', 'public', { jobId: string; }, any, string | undefined>;
-    "listFailedSince": FunctionReference<'query', 'public', { limit?: number | undefined; includeLogs?: boolean | undefined; since: number; }, any, string | undefined>;
     "listSucceededSince": FunctionReference<'query', 'public', { limit?: number | undefined; includeLogs?: boolean | undefined; since: number; }, any, string | undefined>;
+    "listFailedSince": FunctionReference<'query', 'public', { limit?: number | undefined; includeLogs?: boolean | undefined; since: number; }, any, string | undefined>;
   };
   "mobile_access": {
     "getPhoneAccessState": FunctionReference<'query', 'public', { desktopDeviceId: string; }, any, string | undefined>;
@@ -270,7 +273,7 @@ export type PublicApiType = {
       "markSnapshotCreated": FunctionReference<'mutation', 'public', { sessionId: Id<'stella_sessions'>; }, any, string | undefined>;
       "acknowledgeFileOps": FunctionReference<'mutation', 'public', { sessionId: Id<'stella_sessions'>; lastAppliedOrdinal: number; }, any, string | undefined>;
       "deleteFile": FunctionReference<'mutation', 'public', { sessionId: Id<'stella_sessions'>; relativePath: string; }, any, string | undefined>;
-      "uploadFile": FunctionReference<'action', 'public', { contentType?: string | undefined; sessionId: Id<'stella_sessions'>; contentHash: string; relativePath: string; contentBase64: string; }, any, string | undefined>;
+      "uploadFile": FunctionReference<'action', 'public', { contentType?: string | undefined; contentBase64: string; sessionId: Id<'stella_sessions'>; contentHash: string; relativePath: string; }, any, string | undefined>;
     };
   };
   "stella_models": {

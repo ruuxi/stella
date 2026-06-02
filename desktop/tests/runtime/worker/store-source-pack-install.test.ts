@@ -17,12 +17,10 @@ import {
   type StellaSourceTree,
 } from "../../../../runtime/kernel/self-mod/stella-source-control.js";
 import {
-  assertStoreSourcePackIntegrity,
   collectSourcePackPaths,
   findStoreSourcePackApplyObstruction,
   readLocalSourceTree,
-  selectStoreSourcePackForInstalledRevisions,
-  storeSourcePackTouchesDependencyFiles,
+  storePublishTouchesDependencyFiles,
   storeSourcePathToAbsolute,
   writeSourcePackApplyResult,
 } from "../../../../runtime/worker/store-source-pack-install.js";
@@ -157,108 +155,10 @@ describe("Store source-pack install helpers", () => {
     });
   });
 
-  it("verifies source-pack hashes and revision ids before direct apply", () => {
-    const baseTree: StellaSourceTree = {
-      "src/panel.ts": text("base\n"),
-    };
-    const nextTree: StellaSourceTree = {
-      "src/panel.ts": text("next\n"),
-    };
-    const baseRevisionId = hashSourceTree(baseTree);
-    const pack = createStellaSourcePack({
-      baseRevisionId,
-      changeSets: [
-        createStellaSourceChangeSetFromTrees({
-          baseRevisionId,
-          baseTree,
-          nextTree,
-        }),
-      ],
-    });
-
-    expect(assertStoreSourcePackIntegrity(pack)).toMatchObject({
-      revisionId: pack.revisionId,
-    });
-    expect(() =>
-      assertStoreSourcePackIntegrity({
-        ...pack,
-        changeSets: [
-          {
-            ...pack.changeSets[0]!,
-            changes: [
-              {
-                ...pack.changeSets[0]!.changes[0]!,
-                nextHash: "sha256:".concat("0".repeat(64)),
-              },
-            ],
-          },
-        ],
-      }),
-    ).toThrow("Source-pack incoming hash mismatch");
-    expect(() =>
-      assertStoreSourcePackIntegrity({
-        ...pack,
-        revisionId: "sha256:".concat("1".repeat(64)),
-      }),
-    ).toThrow("Source-pack final revision mismatch");
-  });
-
-  it("detects dependency file changes in Store source packs", () => {
+  it("detects dependency file changes in publish/import paths", () => {
     expect(
-      storeSourcePackTouchesDependencyFiles(["src/panel.ts", "package.json"]),
+      storePublishTouchesDependencyFiles(["src/panel.ts", "package.json"]),
     ).toBe(true);
-    expect(storeSourcePackTouchesDependencyFiles(["src/panel.ts"])).toBe(false);
-  });
-
-  it("starts Store updates after the latest installed source revision", () => {
-    const baseTree: StellaSourceTree = {
-      "src/panel.ts": text("base\n"),
-    };
-    const v1Tree: StellaSourceTree = {
-      "src/panel.ts": text("v1\n"),
-    };
-    const v2Tree: StellaSourceTree = {
-      "src/panel.ts": text("v2\n"),
-    };
-    const baseRevisionId = hashSourceTree(baseTree);
-    const v1 = createStellaSourceChangeSetFromTrees({
-      baseRevisionId,
-      baseTree,
-      nextTree: v1Tree,
-      featureId: "store:quiet-mode",
-    });
-    const v2 = createStellaSourceChangeSetFromTrees({
-      baseRevisionId: v1.revisionId,
-      parentRevisionIds: [v1.revisionId],
-      baseTree: v1Tree,
-      nextTree: v2Tree,
-      featureId: "store:quiet-mode",
-    });
-    const pack = createStellaSourcePack({
-      baseRevisionId,
-      featureId: "store:quiet-mode",
-      changeSets: [v1, v2],
-    });
-
-    const updatePlan = selectStoreSourcePackForInstalledRevisions(pack, [
-      v1.revisionId,
-    ]);
-    expect(updatePlan.status).toBe("handoff");
-    if (updatePlan.status !== "handoff") {
-      throw new Error("Expected source pack update plan.");
-    }
-    expect(updatePlan.skippedRevisionIds).toEqual([v1.revisionId]);
-    expect(updatePlan.sourcePack).toMatchObject({
-      baseRevisionId: v1.revisionId,
-      revisionId: v2.revisionId,
-      changeSets: [expect.objectContaining({ revisionId: v2.revisionId })],
-    });
-
-    expect(
-      selectStoreSourcePackForInstalledRevisions(pack, [v2.revisionId]),
-    ).toEqual({
-      status: "already-installed",
-      revisionId: v2.revisionId,
-    });
+    expect(storePublishTouchesDependencyFiles(["src/panel.ts"])).toBe(false);
   });
 });

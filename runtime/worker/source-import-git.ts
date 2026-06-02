@@ -7,9 +7,9 @@ import { setupEnvironment } from "dugite";
 import { listGitDirtyFiles } from "../kernel/self-mod/git.js";
 import type { StoreModService } from "../kernel/self-mod/store-mod-service.js";
 import {
-  STORE_SOURCE_DEPENDENCY_FILE_NAMES,
-  runStoreSourcePackDependencyInstall,
-  storeSourcePackTouchesDependencyFiles,
+  STORE_PUBLISH_DEPENDENCY_FILE_NAMES,
+  runStorePublishDependencyInstall,
+  storePublishTouchesDependencyFiles,
 } from "./store-source-pack-install.js";
 import type { SourceImportLifecycle } from "./source-import.js";
 
@@ -26,8 +26,8 @@ const toText = (value: string | Buffer | undefined): string =>
 
 const expandExternalSelfModPaths = (paths: string[]): string[] => {
   const expanded = new Set(paths);
-  if (storeSourcePackTouchesDependencyFiles(paths)) {
-    for (const dependencyFile of STORE_SOURCE_DEPENDENCY_FILE_NAMES) {
+  if (storePublishTouchesDependencyFiles(paths)) {
+    for (const dependencyFile of STORE_PUBLISH_DEPENDENCY_FILE_NAMES) {
       expanded.add(dependencyFile);
     }
   }
@@ -376,9 +376,9 @@ export const tryGitSourceImportFastPath = async (args: {
     });
 
     const dependencyInstallRan =
-      storeSourcePackTouchesDependencyFiles(appliedPaths);
+      storePublishTouchesDependencyFiles(appliedPaths);
     if (dependencyInstallRan) {
-      await runStoreSourcePackDependencyInstall(args.repoRoot);
+      await runStorePublishDependencyInstall(args.repoRoot);
     }
 
     const finalized = await args.service.finalizeSelfModRun({

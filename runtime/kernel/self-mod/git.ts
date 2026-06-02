@@ -347,11 +347,33 @@ const readCommitSubjectsSince = async (
     .filter(Boolean);
 };
 
+const readCommitsSince = async (
+  repoRoot: string,
+  startingHeadCommit: string,
+): Promise<Array<{ hash: string; subject: string }> | null> => {
+  const result = await runGitStatus(repoRoot, [
+    "log",
+    "--format=%H%x00%s%x00",
+    `${startingHeadCommit}..HEAD`,
+  ]);
+  if (result.exitCode !== 0) return null;
+  const fields = parseNulList(result.stdout);
+  const commits: Array<{ hash: string; subject: string }> = [];
+  for (let index = 0; index < fields.length; index += 2) {
+    const hash = fields[index]?.trim();
+    const subject = fields[index + 1]?.trim();
+    if (!hash || !subject) continue;
+    commits.push({ hash, subject });
+  }
+  return commits;
+};
+
 export const rollbackGitChangesSince = async (args: {
   repoRoot: string;
   startingHeadCommit: string;
   changedFiles?: string[];
   isOwnedCommitSubject?: (subject: string) => boolean;
+  allowRevertWithLocalChanges?: boolean;
 }): Promise<GitRollbackSinceResult> => {
   await assertGitRepository(args.repoRoot);
   const startingHeadCommit = args.startingHeadCommit.trim();
@@ -374,12 +396,51 @@ export const rollbackGitChangesSince = async (args: {
   if (currentHead !== startingHeadCommit) {
     const dirtyFiles = await listDirtyFiles(args.repoRoot);
     if (dirtyFiles.length > 0) {
-      return {
-        status: "skipped",
-        headCommit: currentHead,
-        reason:
-          "HEAD moved and the working tree has local changes; rollback skipped to avoid discarding edits.",
-      };
+      const safePaths = uniqueSafeRepoPaths(args.changedFiles);
+      const safePathSet = new Set(safePaths);
+      const dirtyFilesAreOwned =
+        safePaths.length > 0 &&
+        dirtyFiles.every((file) => safePathSet.has(file));
+      if (!dirtyFilesAreOwned) {
+        if (args.allowRevertWithLocalChanges) {
+          const commits = await readCommitsSince(
+            args.repoRoot,
+            startingHeadCommit,
+          );
+          if (
+            commits &&
+            commits.length > 0 &&
+            commits.every((commit) =>
+              (args.isOwnedCommitSubject ?? (() => false))(commit.subject),
+            )
+          ) {
+            try {
+              await revertGitCommits({
+                repoRoot: args.repoRoot,
+                commitHashes: commits.map((commit) => commit.hash),
+              });
+              return {
+                status: "rolled-back",
+                headCommit: await getGitHead(args.repoRoot),
+                restoredFiles: [],
+              };
+            } catch (error) {
+              return {
+                status: "skipped",
+                headCommit: currentHead,
+                reason: `Rollback revert failed while preserving local edits: ${(error as Error).message}`,
+              };
+            }
+          }
+        }
+        return {
+          status: "skipped",
+          headCommit: currentHead,
+          reason:
+            "HEAD moved and the working tree has local changes; rollback skipped to avoid discarding edits.",
+        };
+      }
+      await restoreGitPaths(args.repoRoot, safePaths);
     }
     const subjects = await readCommitSubjectsSince(
       args.repoRoot,
