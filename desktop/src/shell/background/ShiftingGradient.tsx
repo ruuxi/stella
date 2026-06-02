@@ -192,7 +192,6 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const blobsRef = useRef<Blob[]>([]);
   const prevKeyRef = useRef("");
-  const [ready, setReady] = useState(false);
 
   const getPalette = useCallback((): RGB[] => {
     const isDark = resolvedColorMode === "dark";
@@ -251,10 +250,9 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     }
 
     const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}-${theme.forcedMode ?? ""}`;
-    const isFirstRender = !prevKeyRef.current;
     const settingsChanged = prevKeyRef.current !== key;
 
-    if (!isFirstRender && !settingsChanged) {
+    if (!settingsChanged) {
       return;
     }
 
@@ -283,9 +281,6 @@ export const ShiftingGradient = memo(function ShiftingGradient({
 
     renderGradient(ctx, w, h, bg, blobs, 0.25);
 
-    if (isFirstRender) {
-      requestAnimationFrame(() => setReady(true));
-    }
   }, [theme.id, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors]);
 
   // First-render fallback only. We intentionally do NOT re-render on
@@ -362,8 +357,6 @@ export const ShiftingGradient = memo(function ShiftingGradient({
           className="gradient-base"
           style={{
             imageRendering: "auto",
-            opacity: ready ? 1 : 0,
-            transition: ready ? "opacity 0.4s ease" : "none",
           }}
         />
       )}
