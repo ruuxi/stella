@@ -94,6 +94,76 @@ export function createHmrTransitionController(deps: {
     };
   };
 
+  const waitForRendererReadyForCapture = async (
+    windowForCapture: BrowserWindow,
+    timeoutMs: number,
+  ) => {
+    const startedAt = Date.now();
+    let lastHadSplash = false;
+
+    while (Date.now() - startedAt < timeoutMs) {
+      if (windowForCapture.isDestroyed()) return;
+      const ready = await windowForCapture.webContents
+        .executeJavaScript(
+          `(() => {
+            const splash = document.getElementById("stella-launch");
+            return {
+              ready: document.readyState === "complete",
+              hasSplash: Boolean(splash),
+            };
+          })()`,
+          true,
+        )
+        .catch(() => null);
+      if (
+        ready &&
+        typeof ready === "object" &&
+        (ready as { ready?: unknown }).ready === true
+      ) {
+        lastHadSplash =
+          (ready as { hasSplash?: unknown }).hasSplash === true;
+        if (!lastHadSplash) {
+          await delay(300);
+          return;
+        }
+      }
+      await delay(50);
+    }
+
+    // Fallback: the splash should normally clear quickly, but never wedge the
+    // self-mod path if the renderer gets stuck before reporting readiness.
+    await delay(lastHadSplash ? 250 : 0);
+  };
+
+  const isRendererShowingCrashSurface = async (
+    windowForCapture: BrowserWindow,
+  ): Promise<boolean> => {
+    if (windowForCapture.isDestroyed()) return false;
+    return await windowForCapture.webContents
+      .executeJavaScript(
+        `Boolean(document.querySelector(".error-boundary"))`,
+        true,
+      )
+      .then(Boolean)
+      .catch(() => false);
+  };
+
+  const reloadRendererUnderMorph = async (
+    windowForReload: BrowserWindow,
+  ) => {
+    await windowForReload.webContents
+      .executeJavaScript(
+        `sessionStorage.setItem("stella:morph-reload", "1")`,
+        true,
+      )
+      .catch(() => undefined);
+    windowForReload.webContents.reloadIgnoringCache();
+    await waitForRendererReadyForCapture(
+      windowForReload,
+      DEFAULT_MORPH_TIMING_SETTINGS.reload.settleDelayMs,
+    );
+  };
+
   const selectTierTiming = (
     requiresFullReload: boolean,
   ): MorphTimingTierSettings =>
@@ -285,12 +355,7 @@ export function createHmrTransitionController(deps: {
             paused: false,
             requiresFullReload: true,
           });
-          const settle = createRendererSettle({
-            expectReload: true,
-            settleDelayMs: tierTiming.settleDelayMs,
-          });
-          fullWindow.webContents.reloadIgnoringCache();
-          await settle.wait();
+          await reloadRendererUnderMorph(fullWindow);
           return true;
         }
 
@@ -298,6 +363,15 @@ export function createHmrTransitionController(deps: {
           settleDelayMs: tierTiming.settleDelayMs,
         });
         await settle.wait();
+        if (await isRendererShowingCrashSurface(fullWindow)) {
+          emitState({
+            phase: "reloading",
+            paused: false,
+            requiresFullReload: true,
+          });
+          await reloadRendererUnderMorph(fullWindow);
+          return true;
+        }
         return false;
       })();
 
