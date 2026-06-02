@@ -171,6 +171,31 @@ const nativeHelperPlatformKey = (): string => {
   return "";
 };
 
+const nativeHelperPlatformDir = (): string | null => {
+  if (process.platform === "win32") return "win32";
+  if (process.platform === "darwin") return "darwin";
+  if (process.platform === "linux") return "linux";
+  return null;
+};
+
+export type InstallStateSnapshot = {
+  status: "complete";
+  desktopReleaseTag: string | null;
+  desktopReleaseCommit: string;
+  localHeadCommit: string | null;
+  nativeHelpersSha: string | null;
+  completedAt: string;
+};
+
+export type UpdateAttemptSnapshot = {
+  status: "updating" | "complete" | "failed";
+  targetTag: string | null;
+  targetCommit: string;
+  startedAt: string;
+  finishedAt: string | null;
+  reason: string | null;
+};
+
 export type InstallManifestSnapshot = {
   version: string;
   platform: string;
@@ -179,6 +204,8 @@ export type InstallManifestSnapshot = {
   desktopReleaseTag: string | null;
   desktopReleaseCommit: string | null;
   desktopInstallBaseCommit: string | null;
+  installState: InstallStateSnapshot | null;
+  lastUpdateAttempt: UpdateAttemptSnapshot | null;
 };
 
 export type UpdatesHandlersOptions = {
@@ -206,6 +233,50 @@ const requireString = (value: unknown, field: string): string => {
     throw new Error(`Install manifest field ${field} is missing or empty.`);
   }
   return v;
+};
+
+const parseInstallStateSnapshot = (
+  value: unknown,
+): InstallStateSnapshot | null => {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (record.status !== "complete") return null;
+  const desktopReleaseCommit = asString(record.desktopReleaseCommit);
+  const completedAt = asString(record.completedAt);
+  if (!desktopReleaseCommit || !completedAt) return null;
+  return {
+    status: "complete",
+    desktopReleaseTag: asString(record.desktopReleaseTag),
+    desktopReleaseCommit,
+    localHeadCommit: asString(record.localHeadCommit),
+    nativeHelpersSha: asString(record.nativeHelpersSha),
+    completedAt,
+  };
+};
+
+const parseUpdateAttemptSnapshot = (
+  value: unknown,
+): UpdateAttemptSnapshot | null => {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (
+    record.status !== "updating" &&
+    record.status !== "complete" &&
+    record.status !== "failed"
+  ) {
+    return null;
+  }
+  const targetCommit = asString(record.targetCommit);
+  const startedAt = asString(record.startedAt);
+  if (!targetCommit || !startedAt) return null;
+  return {
+    status: record.status,
+    targetTag: asString(record.targetTag),
+    targetCommit,
+    startedAt,
+    finishedAt: asString(record.finishedAt),
+    reason: asString(record.reason),
+  };
 };
 
 type GitRunResult = { exitCode: number; stdout: string; stderr: string };
@@ -280,6 +351,30 @@ const candidateBunCommands = (): string[] => {
     );
   }
   return [...seen];
+};
+
+const readInstalledNativeHelpersSha = async (
+  stellaRoot: string,
+): Promise<string | null> => {
+  const platformDir = nativeHelperPlatformDir();
+  if (!platformDir) return null;
+  try {
+    const raw = await fs.readFile(
+      path.join(
+        stellaRoot,
+        "desktop",
+        "native",
+        "out",
+        platformDir,
+        ".stella-native-helpers.json",
+      ),
+      "utf-8",
+    );
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return asString(parsed.sha);
+  } catch {
+    return null;
+  }
 };
 
 const getNativeHelpersManifestUrl = (): string => {
@@ -567,6 +662,8 @@ const writeAppliedCommit = async (
         desktopReleaseTag: recovered.desktopReleaseTag,
         desktopReleaseCommit: recovered.desktopReleaseCommit,
         desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
+        installState: recovered.installState,
+        lastUpdateAttempt: recovered.lastUpdateAttempt,
       };
     }
   }
@@ -583,6 +680,25 @@ const writeAppliedCommit = async (
   if (tag) {
     parsed.desktopReleaseTag = tag;
   }
+  const nativeHelpersSha = await readInstalledNativeHelpersSha(stellaRoot);
+  parsed.installState = {
+    status: "complete",
+    desktopReleaseTag: tag ?? asString(parsed.desktopReleaseTag),
+    desktopReleaseCommit: commit,
+    localHeadCommit: verification.headCommit,
+    nativeHelpersSha,
+    completedAt: new Date().toISOString(),
+  };
+  parsed.lastUpdateAttempt = {
+    status: "complete",
+    targetTag: tag,
+    targetCommit: commit,
+    startedAt:
+      parseUpdateAttemptSnapshot(parsed.lastUpdateAttempt)?.startedAt ??
+      new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    reason: null,
+  };
   const next = `${JSON.stringify(parsed, null, 2)}\n`;
   parseManifest(next);
   await writeFileAtomic(manifestPath, next);
@@ -618,6 +734,8 @@ const writeAppliedReleasePointer = async (
         desktopReleaseTag: recovered.desktopReleaseTag,
         desktopReleaseCommit: recovered.desktopReleaseCommit,
         desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
+        installState: recovered.installState,
+        lastUpdateAttempt: recovered.lastUpdateAttempt,
       };
     }
   }
@@ -628,6 +746,26 @@ const writeAppliedReleasePointer = async (
   if (tag) {
     parsed.desktopReleaseTag = tag;
   }
+  const nativeHelpersSha = await readInstalledNativeHelpersSha(stellaRoot);
+  const localHeadCommit = await readHeadCommit(stellaRoot).catch(() => null);
+  parsed.installState = {
+    status: "complete",
+    desktopReleaseTag: tag ?? asString(parsed.desktopReleaseTag),
+    desktopReleaseCommit: commit,
+    localHeadCommit,
+    nativeHelpersSha,
+    completedAt: new Date().toISOString(),
+  };
+  parsed.lastUpdateAttempt = {
+    status: "complete",
+    targetTag: tag,
+    targetCommit: commit,
+    startedAt:
+      parseUpdateAttemptSnapshot(parsed.lastUpdateAttempt)?.startedAt ??
+      new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    reason: null,
+  };
   const next = `${JSON.stringify(parsed, null, 2)}\n`;
   parseManifest(next);
   await writeFileAtomic(manifestPath, next);
@@ -718,6 +856,8 @@ const parseManifest = (raw: string): InstallManifestSnapshot => {
     desktopReleaseTag: asString(parsed.desktopReleaseTag),
     desktopReleaseCommit: asString(parsed.desktopReleaseCommit),
     desktopInstallBaseCommit: asString(parsed.desktopInstallBaseCommit),
+    installState: parseInstallStateSnapshot(parsed.installState),
+    lastUpdateAttempt: parseUpdateAttemptSnapshot(parsed.lastUpdateAttempt),
   };
 };
 
@@ -777,6 +917,8 @@ const recoverManifest = async (
     desktopReleaseCommit:
       release.commit ?? (head.exitCode === 0 ? head.stdout.trim() : null),
     desktopInstallBaseCommit: null,
+    installState: null,
+    lastUpdateAttempt: null,
   };
 };
 
@@ -796,6 +938,57 @@ const readManifestWithRecovery = async (
     );
   }
   return await recoverManifest(stellaRoot);
+};
+
+const writeUpdateAttemptState = async (
+  stellaRoot: string,
+  args: {
+    status: "updating" | "failed";
+    targetCommit: string;
+    targetTag: string | null;
+    reason?: string | null;
+  },
+): Promise<void> => {
+  const manifestPath = manifestPathFromRoot(stellaRoot);
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const raw = await fs.readFile(manifestPath, "utf-8");
+    parseManifest(raw);
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    const recovered = await readManifestWithRecovery(stellaRoot);
+    if (recovered) {
+      parsed = {
+        version: recovered.version,
+        platform: recovered.platform,
+        installPath: recovered.installPath,
+        installedAt: recovered.installedAt,
+        desktopReleaseTag: recovered.desktopReleaseTag,
+        desktopReleaseCommit: recovered.desktopReleaseCommit,
+        desktopInstallBaseCommit: recovered.desktopInstallBaseCommit,
+        installState: recovered.installState,
+        lastUpdateAttempt: recovered.lastUpdateAttempt,
+      };
+    }
+  }
+  if (!parsed) return;
+
+  const previousAttempt = parseUpdateAttemptSnapshot(parsed.lastUpdateAttempt);
+  const now = new Date().toISOString();
+  parsed.lastUpdateAttempt = {
+    status: args.status,
+    targetTag: args.targetTag,
+    targetCommit: args.targetCommit,
+    startedAt:
+      args.status === "updating"
+        ? now
+        : (previousAttempt?.startedAt ?? now),
+    finishedAt: args.status === "failed" ? now : null,
+    reason: args.reason ?? null,
+  };
+  const next = `${JSON.stringify(parsed, null, 2)}\n`;
+  parseManifest(next);
+  await writeFileAtomic(manifestPath, next);
 };
 
 const hashBytes = (bytes: Uint8Array): string =>
@@ -917,9 +1110,6 @@ export const writeAppliedReleaseManifest = async (
   const schemaVersion = manifest.schemaVersion;
   if (typeof schemaVersion !== "number" || schemaVersion < 1) {
     throw new Error("Release manifest schemaVersion is invalid.");
-  }
-  if (!manifest.files || typeof manifest.files !== "object") {
-    throw new Error("Release manifest is missing file entries.");
   }
   await writeFileAtomic(
     releaseManifestPathFromRoot(stellaRoot),
@@ -1636,6 +1826,17 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         throw new Error("Stella home directory is unavailable.");
       }
       const startedAt = Date.now();
+      await writeUpdateAttemptState(stellaRoot, {
+        status: "updating",
+        targetCommit,
+        targetTag: releaseTag,
+      }).catch((error) => {
+        logDesktopUpdateWarn("desktop-update.attempt-state.write-start-failed", {
+          releaseTag,
+          targetCommit: shortCommit(targetCommit),
+          error,
+        });
+      });
       logDesktopUpdateProcess("desktop-update.try-clean.start", {
         releaseTag,
         baseCommit: shortCommit(baseCommit),
@@ -1675,6 +1876,21 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         });
         return result;
       } catch (error) {
+        await writeUpdateAttemptState(stellaRoot, {
+          status: "failed",
+          targetCommit,
+          targetTag: releaseTag,
+          reason:
+            error instanceof Error
+              ? error.message
+              : "Desktop update failed before it could be applied.",
+        }).catch((writeError) => {
+          logDesktopUpdateWarn("desktop-update.attempt-state.write-failed", {
+            releaseTag,
+            targetCommit: shortCommit(targetCommit),
+            error: writeError,
+          });
+        });
         logDesktopUpdateError("desktop-update.try-clean.failed", error, {
           releaseTag,
           targetCommit: shortCommit(targetCommit),
@@ -1910,26 +2126,45 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!stellaRoot) {
         throw new Error("Stella install directory is unavailable.");
       }
-      if (payload?.mode === "release-pointer") {
-        const startingHeadCommit = asString(payload.startingHeadCommit);
-        if (!startingHeadCommit) {
-          throw new Error("startingHeadCommit is required.");
+      try {
+        if (payload?.mode === "release-pointer") {
+          const startingHeadCommit = asString(payload.startingHeadCommit);
+          if (!startingHeadCommit) {
+            throw new Error("startingHeadCommit is required.");
+          }
+          if (await hasMergeInProgress(stellaRoot)) {
+            throw new Error("A merge is still in progress in the install tree.");
+          }
+          if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
+            throw new Error("The install tree still has tracked local changes.");
+          }
+          const currentHead = await readHeadCommit(stellaRoot);
+          if (currentHead === startingHeadCommit) {
+            throw new Error(
+              "The install-update agent did not create an update commit.",
+            );
+          }
+          return await writeAppliedReleasePointer(stellaRoot, commit, tag);
         }
-        if (await hasMergeInProgress(stellaRoot)) {
-          throw new Error("A merge is still in progress in the install tree.");
-        }
-        if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
-          throw new Error("The install tree still has tracked local changes.");
-        }
-        const currentHead = await readHeadCommit(stellaRoot);
-        if (currentHead === startingHeadCommit) {
-          throw new Error(
-            "The install-update agent did not create an update commit.",
-          );
-        }
-        return await writeAppliedReleasePointer(stellaRoot, commit, tag);
+        return await writeAppliedCommit(stellaRoot, commit, tag);
+      } catch (error) {
+        await writeUpdateAttemptState(stellaRoot, {
+          status: "failed",
+          targetCommit: commit,
+          targetTag: tag,
+          reason:
+            error instanceof Error
+              ? error.message
+              : "Stella could not verify the update completed.",
+        }).catch((writeError) => {
+          logDesktopUpdateWarn("desktop-update.attempt-state.write-failed", {
+            tag: tag ?? undefined,
+            commit: shortCommit(commit),
+            error: writeError,
+          });
+        });
+        throw error;
       }
-      return await writeAppliedCommit(stellaRoot, commit, tag);
     },
   );
 };

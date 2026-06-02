@@ -101,7 +101,10 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
     { platform },
   );
 
-  const installedCommit = installManifest?.desktopReleaseCommit ?? null;
+  const installedCommit =
+    installManifest?.installState?.desktopReleaseCommit ??
+    installManifest?.desktopReleaseCommit ??
+    null;
   const publishedCommit = currentRelease?.commit ?? null;
   const updateAvailable = Boolean(
     publishedCommit && installedCommit && publishedCommit !== installedCommit,
@@ -110,7 +113,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   const historyAttemptedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!installManifest || !installedCommit) return;
-    const releaseTag = installManifest.desktopReleaseTag;
+    const releaseTag =
+      installManifest.installState?.desktopReleaseTag ??
+      installManifest.desktopReleaseTag;
     if (!releaseTag) return;
     const latestMatchesInstall =
       currentRelease?.commit === installedCommit &&
