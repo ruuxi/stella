@@ -23,6 +23,7 @@ const ALLOW_HEADERS =
   "Content-Type, Authorization, X-Stella-Mobile-Device-Id, X-Stella-Mobile-Pair-Secret";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
+const DEVELOPER_RESOURCE_PREVIEWS_KEY = "stella-developer-resource-previews";
 /** Per-tick probe budget when re-checking the advertised public tunnel URL. */
 const BRIDGE_PUBLIC_HEALTH_TIMEOUT_MS = 2_000;
 /**
@@ -268,6 +269,7 @@ export class MobileBridgeService {
   private syncQueued = false;
   private getBootstrapPayload: (() => Promise<MobileBridgeBootstrap>) | null =
     null;
+  private lastBootstrapPayload: MobileBridgeBootstrap | null = null;
 
   constructor(private readonly options: MobileBridgeServiceOptions) {}
 
@@ -440,6 +442,13 @@ export class MobileBridgeService {
     if (!isMobileBridgeEventChannel(channel)) {
       return;
     }
+    if (
+      channel === "display:update" &&
+      !this.areDeveloperResourcePreviewsEnabled() &&
+      this.isSourceDiffPayload(data)
+    ) {
+      return;
+    }
     if (!this.isBridgeAccessEnabled()) {
       if (this.wsClients.size > 0 || this.sessions.size > 0) {
         this.expireBridgeAccess("Desktop bridge unavailable");
@@ -457,6 +466,22 @@ export class MobileBridgeService {
       }
     }
   };
+
+  private areDeveloperResourcePreviewsEnabled() {
+    return (
+      this.lastBootstrapPayload?.localStorage?.[
+        DEVELOPER_RESOURCE_PREVIEWS_KEY
+      ] === "true"
+    );
+  }
+
+  private isSourceDiffPayload(data: unknown) {
+    return (
+      Boolean(data) &&
+      typeof data === "object" &&
+      (data as { kind?: unknown }).kind === "source-diff"
+    );
+  }
 
   private clearRegistrationLeaseTimer() {
     if (this.registrationLeaseTimer) {
@@ -476,11 +501,14 @@ export class MobileBridgeService {
   private setRegistrationLease(expiresAt: number) {
     this.clearRegistrationLeaseTimer();
     this.registrationLeaseExpiresAt = expiresAt;
-    this.registrationLeaseTimer = setTimeout(() => {
-      if (!this.hasActiveRegistrationLease()) {
-        this.expireBridgeAccess("Desktop bridge lease expired");
-      }
-    }, Math.max(0, expiresAt - Date.now()));
+    this.registrationLeaseTimer = setTimeout(
+      () => {
+        if (!this.hasActiveRegistrationLease()) {
+          this.expireBridgeAccess("Desktop bridge lease expired");
+        }
+      },
+      Math.max(0, expiresAt - Date.now()),
+    );
   }
 
   private expireBridgeAccess(reason: string) {
@@ -642,9 +670,11 @@ export class MobileBridgeService {
     }
     try {
       const payload = await this.getBootstrapPayload();
+      this.lastBootstrapPayload = payload;
       sendJson(res, 200, payload, requestOrigin);
     } catch (error) {
       console.warn("[mobile-bridge] Failed to read bootstrap payload:", error);
+      this.lastBootstrapPayload = null;
       sendJson(res, 200, { localStorage: {} }, requestOrigin);
     }
   }

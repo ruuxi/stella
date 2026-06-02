@@ -48,6 +48,37 @@ describe("local chat mobile artifacts", () => {
     ]);
   });
 
+  it("omits developer file artifacts unless explicitly enabled", () => {
+    const message = baseMessage({
+      toolEvents: [
+        {
+          _id: "tool-1",
+          timestamp: 1_100,
+          type: "tool_result",
+          payload: {
+            toolName: "apply_patch",
+            fileChanges: [
+              { path: "/repo/src/app.tsx", kind: { type: "update" } },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(deriveMobileArtifactsForMessage(message)).toEqual([]);
+    expect(
+      deriveMobileArtifactsForMessage(message, {
+        includeDeveloperArtifacts: true,
+      }),
+    ).toMatchObject([
+      {
+        kind: "source-diff",
+        filePath: "/repo/src/app.tsx",
+        title: "app.tsx",
+      },
+    ]);
+  });
+
   it("keeps artifact-only assistant rows in mobile sync history", () => {
     const messages = buildMobileSyncMessages(
       [

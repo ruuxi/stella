@@ -1446,12 +1446,14 @@ export type ElectronLocalChatApi = {
   listSyncMessages: (payload: {
     conversationId: string;
     maxMessages?: number;
+    includeDeveloperArtifacts?: boolean;
   }) => Promise<
     Array<{
       localMessageId: string;
       role: "user" | "assistant";
       text: string;
       timestamp: number;
+      requestId?: string;
       deviceId?: string;
       artifacts?: DisplayPayload[];
     }>
@@ -1460,6 +1462,7 @@ export type ElectronLocalChatApi = {
     conversationId: string;
     sinceCursor?: string | null;
     maxMessages?: number;
+    includeDeveloperArtifacts?: boolean;
   }) => Promise<{
     cursor: string | null;
     messages: Array<{
@@ -1467,6 +1470,7 @@ export type ElectronLocalChatApi = {
       role: "user" | "assistant";
       text: string;
       timestamp: number;
+      requestId?: string;
       deviceId?: string;
       artifacts?: DisplayPayload[];
     }>;

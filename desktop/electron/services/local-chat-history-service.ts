@@ -278,20 +278,27 @@ export class LocalChatHistoryService {
   listSyncMessages(args: {
     conversationId: string;
     maxMessages?: number;
+    includeDeveloperArtifacts?: boolean;
   }): LocalChatSyncMessageWithArtifacts[] {
     const maxMessages = Math.max(1, Math.floor(args.maxMessages ?? 100));
     const { messages } = this.getStore().listMessages(args.conversationId, {
       maxVisibleMessages: maxMessages,
     });
-    return buildMobileSyncMessages(messages, maxMessages);
+    return buildMobileSyncMessages(messages, maxMessages, {
+      includeDeveloperArtifacts: args.includeDeveloperArtifacts === true,
+    });
   }
 
   syncMessages(args: {
     conversationId: string;
     sinceCursor?: string | null;
     maxMessages?: number;
+    includeDeveloperArtifacts?: boolean;
   }): LocalChatMobileSyncResult {
     const maxMessages = Math.max(1, Math.floor(args.maxMessages ?? 100));
+    const artifactOptions = {
+      includeDeveloperArtifacts: args.includeDeveloperArtifacts === true,
+    };
     const cursor = decodeMobileSyncCursor(args.sinceCursor);
     if (cursor) {
       const { messages, sourceEvents } = this.getStore().listMessagesAfter(
@@ -302,13 +309,23 @@ export class LocalChatHistoryService {
           maxVisibleMessages: maxMessages,
         },
       );
-      return buildMobileSyncMessagesPage(messages, maxMessages, sourceEvents);
+      return buildMobileSyncMessagesPage(
+        messages,
+        maxMessages,
+        sourceEvents,
+        artifactOptions,
+      );
     }
 
     const { messages } = this.getStore().listMessages(args.conversationId, {
       maxVisibleMessages: maxMessages,
     });
-    return buildMobileSyncMessagesPage(messages, maxMessages);
+    return buildMobileSyncMessagesPage(
+      messages,
+      maxMessages,
+      messages,
+      artifactOptions,
+    );
   }
 
   getSyncCheckpoint(args: { conversationId: string }): string | null {

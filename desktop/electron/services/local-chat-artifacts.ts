@@ -26,6 +26,10 @@ export type LocalChatMobileSyncResult = {
   cursor: string | null;
 };
 
+type MobileArtifactOptions = {
+  includeDeveloperArtifacts?: boolean;
+};
+
 const ARTIFACT_LIMIT_PER_MESSAGE = 8;
 const SYNC_CURSOR_VERSION = "v1";
 
@@ -263,6 +267,7 @@ const pushArtifact = (
 const payloadFromFilePath = (
   filePath: string,
   createdAt: number,
+  options?: MobileArtifactOptions,
 ): DisplayPayload | null => {
   const htmlMatch = HTML_OUTPUT_PATH_RE.exec(filePath);
   if (htmlMatch) {
@@ -341,7 +346,7 @@ const payloadFromFilePath = (
       createdAt,
     };
   }
-  if (DEVELOPER_EXTS.has(ext)) {
+  if (DEVELOPER_EXTS.has(ext) && options?.includeDeveloperArtifacts === true) {
     return {
       kind: "source-diff",
       filePath,
@@ -388,6 +393,7 @@ const imageGenPayload = (event: ArtifactEventRecord): DisplayPayload | null => {
 
 export const deriveMobileArtifactsForMessage = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
+  options?: MobileArtifactOptions,
 ): DisplayPayload[] => {
   const artifacts: DisplayPayload[] = [];
   const seen = new Set<string>();
@@ -407,7 +413,7 @@ export const deriveMobileArtifactsForMessage = (
       pushArtifact(
         artifacts,
         seen,
-        payloadFromFilePath(payload.filePath, event.timestamp),
+        payloadFromFilePath(payload.filePath, event.timestamp, options),
       );
     }
 
@@ -442,7 +448,7 @@ export const deriveMobileArtifactsForMessage = (
       pushArtifact(
         artifacts,
         seen,
-        payloadFromFilePath(resolved.filePath, resolved.timestamp),
+        payloadFromFilePath(resolved.filePath, resolved.timestamp, options),
       );
     }
   }
@@ -453,6 +459,7 @@ export const deriveMobileArtifactsForMessage = (
 export const buildMobileSyncMessages = (
   messages: readonly ArtifactMessageRecord[],
   maxMessages: number,
+  options?: MobileArtifactOptions,
 ): LocalChatSyncMessageWithArtifacts[] => {
   const rows: LocalChatSyncMessageWithArtifacts[] = [];
   for (const message of messages) {
@@ -460,7 +467,7 @@ export const buildMobileSyncMessages = (
     const role = message.type === "user_message" ? "user" : "assistant";
     if (role !== "user" && role !== "assistant") continue;
     const text = textFromPayload(message.payload);
-    const artifacts = deriveMobileArtifactsForMessage(message);
+    const artifacts = deriveMobileArtifactsForMessage(message, options);
 
     if (text || role === "assistant") {
       if (text || artifacts.length > 0) {
@@ -497,7 +504,8 @@ export const buildMobileSyncMessagesPage = (
   messages: readonly ArtifactMessageRecord[],
   maxMessages: number,
   cursorSource: readonly ArtifactSourceRecord[] = messages,
+  options?: MobileArtifactOptions,
 ): LocalChatMobileSyncResult => ({
-  messages: buildMobileSyncMessages(messages, maxMessages),
+  messages: buildMobileSyncMessages(messages, maxMessages, options),
   cursor: cursorForNewestSourceRecord(cursorSource),
 });
