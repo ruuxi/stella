@@ -17,6 +17,7 @@ import {
   sanitizeToolResult,
   sanitizeToolVisibleText,
 } from "../tools/safety.js";
+import { resolveImageMimeType } from "../shared/image-mime.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -180,14 +181,6 @@ const STELLA_ATTACH_IMAGE_RE =
 
 type ImageBlock = { type: "image"; mimeType: string; data: string };
 
-const mimeForPath = (filePath: string): string => {
-  const lower = filePath.toLowerCase();
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".webp")) return "image/webp";
-  return "image/png";
-};
-
 const normalizeAttachImagePath = (filePath: string) =>
   /^[A-Za-z]:\\\\/.test(filePath) ? filePath.replace(/\\\\/g, "\\") : filePath;
 
@@ -212,9 +205,13 @@ export const extractAttachImageBlocks = async (
     try {
       const fs = await import("node:fs/promises");
       const buf = await fs.readFile(imgPath);
+      const mimeType = resolveImageMimeType(imgPath, buf);
+      if (!mimeType) {
+        return { text, images: [] };
+      }
       images.push({
         type: "image",
-        mimeType: mimeForPath(imgPath),
+        mimeType,
         data: buf.toString("base64"),
       });
     } catch {

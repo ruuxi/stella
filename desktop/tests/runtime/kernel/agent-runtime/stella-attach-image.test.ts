@@ -21,6 +21,11 @@ const ONE_BY_ONE_PNG = Buffer.from(
   "base64",
 );
 
+const JPEG_BYTES = Buffer.from([
+  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+  0xff, 0xd9,
+]);
+
 const writePng = (dir: string, name = "snap.png") => {
   const outPath = path.join(dir, name);
   mkdirSync(path.dirname(outPath), { recursive: true });
@@ -58,6 +63,18 @@ App=com.apple.finder (pid 504)
     expect(result.text).toContain("App=com.apple.finder");
   });
 
+  it("uses image bytes over marker and extension when MIME types disagree", async () => {
+    const tempDir = createTempDir();
+    const imgPath = path.join(tempDir, "term-shot.png");
+    writeFileSync(imgPath, JPEG_BYTES);
+
+    const text = `[stella-attach-image] 2728x1872 43KB inline=image/png ${imgPath}\n`;
+    const result = await extractAttachImageBlocks(text);
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0].mimeType).toBe("image/jpeg");
+    expect(result.images[0].data).toBe(JPEG_BYTES.toString("base64"));
+  });
+
   it("falls back to the raw text when the referenced file is missing", async () => {
     const text =
       "<app_state>...</app_state>\n" +
@@ -75,9 +92,10 @@ App=com.apple.finder (pid 504)
     expect(result.text).toBe(text);
   });
 
-  it("infers MIME type from path extension", async () => {
+  it("falls back to path extension when image bytes are not recognized", async () => {
     const tempDir = createTempDir();
-    const jpgPath = writePng(tempDir, "snap.jpg");
+    const jpgPath = path.join(tempDir, "snap.jpg");
+    writeFileSync(jpgPath, Buffer.from("not-enough-image-bytes"));
     const text = `[stella-attach-image] 100x100 inline=image/jpeg ${jpgPath}\n`;
     const result = await extractAttachImageBlocks(text);
     expect(result.images).toHaveLength(1);
