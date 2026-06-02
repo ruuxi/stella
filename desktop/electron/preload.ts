@@ -764,6 +764,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>;
       agentType?: string;
       storageMode?: "cloud" | "local";
+      clientRequestId?: string;
       selfModMetadata?: {
         packageId?: string;
         releaseNumber?: number;

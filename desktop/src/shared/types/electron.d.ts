@@ -589,6 +589,7 @@ export type ElectronAgentApi = {
     userMessageEventId?: string;
     agentType?: string;
     storageMode?: "cloud" | "local";
+    clientRequestId?: string;
     selfModMetadata?: {
       packageId?: string;
       releaseNumber?: number;

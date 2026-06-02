@@ -11,6 +11,7 @@ export type LocalChatSyncMessageWithArtifacts = {
   role: "user" | "assistant";
   text: string;
   timestamp: number;
+  requestId?: string;
   deviceId?: string;
   artifacts?: DisplayPayload[];
 };
@@ -40,6 +41,7 @@ type ArtifactMessageRecord = {
   timestamp: number;
   type: string;
   deviceId?: string;
+  requestId?: string;
   payload?: Record<string, unknown>;
   toolEvents: readonly ArtifactEventRecord[];
 };
@@ -467,6 +469,7 @@ export const buildMobileSyncMessages = (
           role,
           text,
           timestamp: message.timestamp,
+          ...(message.requestId ? { requestId: message.requestId } : {}),
           ...(role === "user" && message.deviceId
             ? { deviceId: message.deviceId }
             : {}),
@@ -482,6 +485,7 @@ export const buildMobileSyncMessages = (
         role: "assistant",
         text: "",
         timestamp: message.timestamp,
+        ...(message.requestId ? { requestId: message.requestId } : {}),
         artifacts,
       });
     }

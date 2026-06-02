@@ -110,6 +110,13 @@ const redactSensitiveLogText = (value: string) =>
 
 const AGENT_EVENT_BUFFER_LIMIT = 1000;
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000;
+/**
+ * How long a client-supplied idempotency key (`clientRequestId`) maps to a
+ * started run. A reconnecting client (e.g. mobile over a flaky tunnel) can
+ * safely re-send the same `startChat` within this window without spawning a
+ * duplicate run; we just hand back the original `requestId`.
+ */
+const CLIENT_REQUEST_DEDUPE_TTL_MS = 5 * 60 * 1000;
 
 export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   const runOwners = new Map<string, number>();
@@ -128,6 +135,21 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       updatedAt: number;
     }
   >();
+  const clientRequestIndex = new Map<
+    string,
+    { requestId: string; createdAt: number }
+  >();
+  const clientRequestKeyByRequestId = new Map<string, string>();
+
+  const pruneClientRequestIndex = () => {
+    const now = Date.now();
+    for (const [key, entry] of clientRequestIndex) {
+      if (now - entry.createdAt > CLIENT_REQUEST_DEDUPE_TTL_MS) {
+        clientRequestIndex.delete(key);
+        clientRequestKeyByRequestId.delete(entry.requestId);
+      }
+    }
+  };
 
   const pruneConversationEventBuffers = () => {
     const now = Date.now();
@@ -336,6 +358,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         requestOwners.delete(linkedRequestId);
         requestToRunId.delete(linkedRequestId);
         runToRequestId.delete(runId);
+        const clientRequestKey =
+          clientRequestKeyByRequestId.get(linkedRequestId);
+        if (clientRequestKey) {
+          clientRequestIndex.delete(clientRequestKey);
+          clientRequestKeyByRequestId.delete(linkedRequestId);
+        }
       }
       pruneConversationEventBuffers();
     }, 60_000);
@@ -499,6 +527,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         userMessageEventId?: string;
         agentType?: string;
         storageMode?: "cloud" | "local";
+        clientRequestId?: string;
         selfModMetadata?: {
           packageId?: string;
           releaseNumber?: number;
@@ -518,31 +547,70 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       if (!stellaHostRunner) {
         throw new Error("Stella runtime not available");
       }
-      await stellaHostRunner.waitUntilConnected(5_000);
 
-      // The worker is lazily spawned — startChat will wake it on demand
-      // via ensureWorker. Only block here to let a freshly-set auth token
-      // propagate; skip if the worker is simply asleep (no reason string).
-      const deadline = Date.now() + 5_000;
-      let health = await stellaHostRunner.agentHealthCheck();
-      while (
-        health?.ready === false &&
-        health.reason &&
-        Date.now() < deadline
-      ) {
-        await new Promise((r) => setTimeout(r, 200));
-        health = await stellaHostRunner.agentHealthCheck();
+      // Idempotent send: a client (e.g. mobile over a flaky tunnel) can retry
+      // the same logical message with a stable `clientRequestId`. If we already
+      // started a run for it, hand back the original `requestId` instead of
+      // spawning a duplicate. Reserve the key before any await so two retries
+      // racing through here can't both start a run.
+      const clientRequestId =
+        typeof payload.clientRequestId === "string"
+          ? payload.clientRequestId.trim()
+          : "";
+      if (clientRequestId) {
+        pruneClientRequestIndex();
+        const existing = clientRequestIndex.get(clientRequestId);
+        if (existing) {
+          return { requestId: existing.requestId };
+        }
       }
-      if (health?.ready === false && health.reason) {
-        throw new Error(health.reason);
+
+      const senderWebContentsId = event.sender.id;
+      const requestId = `req:${crypto.randomUUID()}`;
+      requestOwners.set(requestId, senderWebContentsId);
+      if (clientRequestId) {
+        clientRequestIndex.set(clientRequestId, {
+          requestId,
+          createdAt: Date.now(),
+        });
+        clientRequestKeyByRequestId.set(requestId, clientRequestId);
+      }
+      const releaseClientRequest = () => {
+        if (clientRequestId) {
+          clientRequestIndex.delete(clientRequestId);
+          clientRequestKeyByRequestId.delete(requestId);
+        }
+      };
+
+      try {
+        await stellaHostRunner.waitUntilConnected(5_000);
+
+        // The worker is lazily spawned — startChat will wake it on demand
+        // via ensureWorker. Only block here to let a freshly-set auth token
+        // propagate; skip if the worker is simply asleep (no reason string).
+        const deadline = Date.now() + 5_000;
+        let health = await stellaHostRunner.agentHealthCheck();
+        while (
+          health?.ready === false &&
+          health.reason &&
+          Date.now() < deadline
+        ) {
+          await new Promise((r) => setTimeout(r, 200));
+          health = await stellaHostRunner.agentHealthCheck();
+        }
+        if (health?.ready === false && health.reason) {
+          throw new Error(health.reason);
+        }
+      } catch (error) {
+        // Never started a run; let a future retry try again from scratch.
+        requestOwners.delete(requestId);
+        releaseClientRequest();
+        throw error;
       }
 
       console.log(
         `[stella:trace] IPC agent:startChat | convId=${payload.conversationId} | prompt=${redactSensitiveLogText(payload.userPrompt.slice(0, 200))}`,
       );
-      const senderWebContentsId = event.sender.id;
-      const requestId = `req:${crypto.randomUUID()}`;
-      requestOwners.set(requestId, senderWebContentsId);
       const isInstallUpdateAgent =
         payload.agentType === AGENT_IDS.INSTALL_UPDATE;
       if (isInstallUpdateAgent) {
@@ -789,6 +857,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             message,
           );
           requestOwners.delete(requestId);
+          releaseClientRequest();
           throw error;
         });
 
