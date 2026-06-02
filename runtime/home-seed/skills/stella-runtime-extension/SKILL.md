@@ -9,6 +9,15 @@ Use this skill when modifying Stella's runtime extension surface: adding or chan
 
 Stella's runtime extension system is Pi-shaped. The extension loader discovers files under `runtime/extensions/` and registers them through `ExtensionFactory`.
 
+## Runtime Safety
+
+- Never restart Stella, launch a second Stella runtime, or start Stella dev
+servers for testing. The user is talking to the running app; restarting or
+starting competing runtime/dev processes can interrupt their active session.
+- Validate runtime changes with focused tests, typechecks, and code inspection.
+Let Stella's self-mod/reload pipeline apply changes instead of manually
+restarting Electron or the runtime.
+
 ## Fast Map
 
 - Extension contracts: `runtime/kernel/extensions/types.ts`

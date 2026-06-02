@@ -13,7 +13,7 @@ import type { ComponentType, SVGProps } from "react";
  * composition. Reusable implementation should live in the owning `global/`,
  * `features/`, `shell/`, or `platform/` home instead of accumulating here.
  *
- * To add a new sidebar app, agents should:
+ * To add a new top-bar app, agents should:
  *   1. Create `desktop/src/app/<id>/metadata.ts` (this shape).
  *   2. Create `desktop/src/app/<id>/App.tsx` (the route component).
  *   3. Create `desktop/src/routes/<id>.tsx` (file-system route, optionally
@@ -32,7 +32,7 @@ type AppIcon = ComponentType<
 export type AppMetadata = {
   /** Stable identifier (matches the routes/<id>.tsx filename). */
   id: string;
-  /** Human-visible label rendered next to the icon in the sidebar. */
+  /** Human-visible label rendered next to the icon in the top-bar nav. */
   label: string;
   /** Icon component (e.g. one of `@/ui/nav-icons`). */
   icon: AppIcon;
