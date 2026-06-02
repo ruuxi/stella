@@ -25,6 +25,7 @@ import type { RuntimeStore } from "../storage/runtime-store.js";
 import { now } from "./shared.js";
 import type { AgentMessage } from "../agent-core/types.js";
 import { readOptionalTextFile } from "../shared/read-optional-text-file.js";
+import { redactMemoryText } from "../memory/redaction.js";
 
 const logger = createRuntimeLogger("agent-runtime.thread-memory");
 const LIFE_REGISTRY_DISPLAY_PATH = "~/.stella/registry.md";
@@ -422,7 +423,9 @@ export const buildStartupPromptMessages = async (args: {
       }
     }
 
-    const coreMemory = args.context.coreMemory?.trim();
+    const coreMemory = args.context.coreMemory
+      ? redactMemoryText(args.context.coreMemory.trim())
+      : "";
     if (coreMemory) {
       messages.push(
         createInternalPromptMessage(

@@ -10,6 +10,7 @@
  */
 
 import type { SqliteDatabase } from "../storage/shared.js";
+import { redactMemoryText } from "./redaction.js";
 
 export type ThreadSummaryRow = {
   threadId: string;
@@ -82,7 +83,7 @@ export class ThreadSummariesStore {
    * `rawMemory` is reserved for the Dream agent to fill in later if useful.
    */
   record(args: RecordArgs): void {
-    const summary = args.rolloutSummary.trim();
+    const summary = redactMemoryText(args.rolloutSummary.trim());
     if (!summary) return;
     const now = Date.now();
     this.db
@@ -115,7 +116,7 @@ export class ThreadSummariesStore {
         args.runId,
         args.agentType,
         summary,
-        args.rawMemory ?? null,
+        args.rawMemory ? redactMemoryText(args.rawMemory) : null,
         now,
       );
   }
@@ -124,7 +125,10 @@ export class ThreadSummariesStore {
    * Return rows newer than `sinceWatermark` (exclusive) that have not yet been
    * processed by the Dream agent. Caller decides how many to claim per run.
    */
-  listUnprocessed(args?: { sinceWatermark?: number; limit?: number }): ThreadSummaryRow[] {
+  listUnprocessed(args?: {
+    sinceWatermark?: number;
+    limit?: number;
+  }): ThreadSummaryRow[] {
     const since = args?.sinceWatermark ?? 0;
     const limit = Math.max(1, Math.min(args?.limit ?? 100, 500));
     const rows = this.db
@@ -262,9 +266,12 @@ export class ThreadSummariesStore {
           `,
         );
         for (const key of args.threadKeys) {
-          const result = stmt.run(processedAt, watermark, key.threadId, key.runId) as
-            | { changes?: number }
-            | undefined;
+          const result = stmt.run(
+            processedAt,
+            watermark,
+            key.threadId,
+            key.runId,
+          ) as { changes?: number } | undefined;
           updated += Number(result?.changes ?? 0);
         }
       }

@@ -93,6 +93,23 @@ describe("buildStartupPromptMessages", () => {
     }
   });
 
+  it("redacts secrets from core memory startup docs", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [],
+        coreMemory: "OPENAI_API_KEY=sk-testsecret12345678901234567890",
+      },
+    });
+
+    const promptText = messages.map((message) => message.text).join("\n");
+    expect(promptText).not.toContain("sk-testsecret12345678901234567890");
+    expect(promptText).toContain("OPENAI_API_KEY=");
+    expect(promptText).toContain("***");
+  });
+
   it("does not assemble dynamic memory", async () => {
     const messages = await buildStartupPromptMessages({
       context: {

@@ -70,7 +70,9 @@ describe("buildMemoryReviewTranscript", () => {
         role: "toolResult",
         toolCallId: "tool-1",
         toolName: "spawn_agent",
-        content: [{ type: "text", text: "Agent completed with secret details" }],
+        content: [
+          { type: "text", text: "Agent completed with secret details" },
+        ],
         isError: false,
         timestamp: 3,
       },
@@ -83,14 +85,46 @@ describe("buildMemoryReviewTranscript", () => {
     expect(transcript).not.toContain("Agent completed");
     expect(transcript).not.toContain("secret details");
   });
+
+  it("redacts secret-like values before building the model transcript", () => {
+    const transcript = buildMemoryReviewTranscript([
+      {
+        role: "user",
+        content: "remember OPENAI_API_KEY=sk-testsecret12345678901234567890",
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Noted bearer token Authorization: Bearer sk-testsecret12345678901234567890",
+          },
+        ],
+        timestamp: 2,
+      },
+    ] as AgentMessage[]);
+
+    expect(transcript).not.toContain("sk-testsecret12345678901234567890");
+    expect(transcript).toContain("OPENAI_API_KEY=");
+    expect(transcript).toContain("***");
+  });
 });
 
 describe("sliceMessagesSinceReview", () => {
   const snapshot: AgentMessage[] = [
     { role: "user", content: "first ask", timestamp: 100 },
-    { role: "assistant", content: [{ type: "text", text: "first reply" }], timestamp: 110 },
+    {
+      role: "assistant",
+      content: [{ type: "text", text: "first reply" }],
+      timestamp: 110,
+    },
     { role: "user", content: "second ask", timestamp: 200 },
-    { role: "assistant", content: [{ type: "text", text: "second reply" }], timestamp: 210 },
+    {
+      role: "assistant",
+      content: [{ type: "text", text: "second reply" }],
+      timestamp: 210,
+    },
   ] as AgentMessage[];
 
   it("returns the whole snapshot when there is no prior watermark", () => {
@@ -130,7 +164,11 @@ describe("maxMessageTimestamp", () => {
     expect(
       maxMessageTimestamp([
         { role: "user", content: "a", timestamp: 5 },
-        { role: "assistant", content: [{ type: "text", text: "b" }], timestamp: 42 },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "b" }],
+          timestamp: 42,
+        },
       ] as AgentMessage[]),
     ).toBe(42);
     expect(maxMessageTimestamp([])).toBe(0);
@@ -154,10 +192,23 @@ describe("parseMemoryReviewCandidate", () => {
     expect(candidate).toEqual({
       title: "Read-only constraints",
       category: "user_preference",
-      memory: "The user treats 'do not make changes' as a hard read-only constraint.",
+      memory:
+        "The user treats 'do not make changes' as a hard read-only constraint.",
       recallHooks: ["do not make changes", "read only"],
       evidence: ["User said: do not make changes"],
     });
+  });
+
+  it("redacts secrets from parsed candidates before they can be written", () => {
+    const candidate = parseMemoryReviewCandidate(
+      '{"shouldWrite":true,"title":"API key","category":"active_focus","memory":"User pasted OPENAI_API_KEY=sk-testsecret12345678901234567890","recallHooks":["sk-testsecret12345678901234567890"],"evidence":["Authorization: Bearer sk-testsecret12345678901234567890"]}',
+    );
+
+    expect(JSON.stringify(candidate)).not.toContain(
+      "sk-testsecret12345678901234567890",
+    );
+    expect(candidate?.memory).toContain("OPENAI_API_KEY=");
+    expect(candidate?.memory).toContain("***");
   });
 });
 
@@ -211,6 +262,31 @@ describe("buildKnownMemoryContext", () => {
     expect(context).toContain("recent_candidates");
     expect(context).toContain("dark mode as the default theme");
   });
+
+  it("redacts existing known memory before feeding it into review", async () => {
+    const { rootPath } = createTestContext();
+    await mkdir(path.join(rootPath, "memories"), { recursive: true });
+    await writeFile(
+      path.join(rootPath, "memories", "memory_summary.md"),
+      "- OPENAI_API_KEY=sk-testsecret12345678901234567890\n",
+      "utf-8",
+    );
+    await writeOrchestratorReviewMemoryNote({
+      stellaHome: rootPath,
+      note: {
+        title: "Already redacted",
+        category: "active_focus",
+        memory: "Authorization: Bearer sk-testsecret12345678901234567890",
+        recallHooks: ["token"],
+        evidence: ["token"],
+      },
+    });
+
+    const context = await buildKnownMemoryContext(rootPath);
+    expect(context).not.toContain("sk-testsecret12345678901234567890");
+    expect(context).toContain("OPENAI_API_KEY=");
+    expect(context).toContain("***");
+  });
 });
 
 describe("writeOrchestratorReviewMemoryNote", () => {
@@ -222,9 +298,12 @@ describe("writeOrchestratorReviewMemoryNote", () => {
       note: {
         title: "Read-only constraints",
         category: "user_preference",
-        memory: "Treat 'just investigate' as read-only unless the user later asks to implement.",
+        memory:
+          "Treat 'just investigate' as read-only unless the user later asks to implement.",
         recallHooks: ["just investigate", "read-only"],
-        evidence: ["User corrected the agent after an unwanted implementation."],
+        evidence: [
+          "User corrected the agent after an unwanted implementation.",
+        ],
         createdAt: new Date("2026-05-28T12:00:00.000Z"),
       },
     });
@@ -250,5 +329,26 @@ describe("writeOrchestratorReviewMemoryNote", () => {
     expect(instructions).toContain(
       "the user would expect Stella to recall it in a later conversation",
     );
+  });
+
+  it("redacts secrets when formatting an orchestrator review note", async () => {
+    const { rootPath } = createTestContext();
+
+    const result = await writeOrchestratorReviewMemoryNote({
+      stellaHome: rootPath,
+      note: {
+        title: "Secret note",
+        category: "active_focus",
+        memory: "User pasted OPENAI_API_KEY=sk-testsecret12345678901234567890",
+        recallHooks: ["sk-testsecret12345678901234567890"],
+        evidence: ["Authorization: Bearer sk-testsecret12345678901234567890"],
+        createdAt: new Date("2026-05-28T12:00:00.000Z"),
+      },
+    });
+
+    const note = await readFile(result.path, "utf-8");
+    expect(note).not.toContain("sk-testsecret12345678901234567890");
+    expect(note).toContain("OPENAI_API_KEY=");
+    expect(note).toContain("***");
   });
 });

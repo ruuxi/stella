@@ -8,6 +8,7 @@ import {
   memorySummaryPath,
   rawMemoriesPath,
 } from "../memory/dream-storage.js";
+import { redactMemoryText } from "../memory/redaction.js";
 import type { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
 import { localNoResponse } from "./local-tool-overrides.js";
 
@@ -105,9 +106,7 @@ export type LocalToolDeps = {
   signal?: AbortSignal;
 };
 
-type DispatchResult =
-  | { handled: true; text: string }
-  | { handled: false };
+type DispatchResult = { handled: true; text: string } | { handled: false };
 
 /**
  * Dispatch tools that execute locally (no backend round-trip).
@@ -128,14 +127,18 @@ export async function dispatchLocalTool(
     if (!filePath) {
       return {
         handled: true,
-        text: JSON.stringify({ success: false, error: "file_path is required." }),
+        text: JSON.stringify({
+          success: false,
+          error: "file_path is required.",
+        }),
       };
     }
     try {
       const resolvedPath = deps.dream
         ? await ensureDreamReadPath(deps.dream, filePath)
         : filePath;
-      const content = await fs.readFile(resolvedPath, "utf-8");
+      const rawContent = await fs.readFile(resolvedPath, "utf-8");
+      const content = deps.dream ? redactMemoryText(rawContent) : rawContent;
       const offset =
         typeof args.offset === "number" && args.offset > 0 ? args.offset : 1;
       const limit =
@@ -167,13 +170,22 @@ export async function dispatchLocalTool(
 
   if (toolName === TOOL_IDS.STR_REPLACE) {
     const filePath = typeof args.file_path === "string" ? args.file_path : "";
-    const oldString = typeof args.old_string === "string" ? args.old_string : "";
-    const newString = typeof args.new_string === "string" ? args.new_string : "";
+    const oldString =
+      typeof args.old_string === "string" ? args.old_string : "";
+    const newString =
+      typeof args.new_string === "string"
+        ? deps.dream
+          ? redactMemoryText(args.new_string)
+          : args.new_string
+        : "";
     const replaceAll = args.replace_all === true;
     if (!filePath) {
       return {
         handled: true,
-        text: JSON.stringify({ success: false, error: "file_path is required." }),
+        text: JSON.stringify({
+          success: false,
+          error: "file_path is required.",
+        }),
       };
     }
     try {
@@ -208,7 +220,10 @@ export async function dispatchLocalTool(
           };
         }
         const idx = original.indexOf(oldString);
-        updated = original.slice(0, idx) + newString + original.slice(idx + oldString.length);
+        updated =
+          original.slice(0, idx) +
+          newString +
+          original.slice(idx + oldString.length);
         count = 1;
       }
       await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
@@ -247,7 +262,9 @@ export async function dispatchLocalTool(
     const action = typeof args.action === "string" ? args.action : "";
     if (action === "list") {
       const sinceWatermark =
-        typeof args.sinceWatermark === "number" ? args.sinceWatermark : undefined;
+        typeof args.sinceWatermark === "number"
+          ? args.sinceWatermark
+          : undefined;
       const limit = typeof args.limit === "number" ? args.limit : undefined;
       const result = await dreamList({
         stellaHome: dream.stellaHome,
@@ -255,20 +272,30 @@ export async function dispatchLocalTool(
         ...(sinceWatermark !== undefined ? { sinceWatermark } : {}),
         ...(limit !== undefined ? { limit } : {}),
       });
-      return { handled: true, text: JSON.stringify({ success: true, ...result }) };
+      return {
+        handled: true,
+        text: JSON.stringify({ success: true, ...result }),
+      };
     }
     if (action === "markProcessed") {
       const result = await dreamMarkProcessed({
         stellaHome: dream.stellaHome,
         store: summariesStore,
-        ...(isThreadKeyArray(args.threadKeys) ? { threadKeys: args.threadKeys } : {}),
+        ...(isThreadKeyArray(args.threadKeys)
+          ? { threadKeys: args.threadKeys }
+          : {}),
         ...(isStringArray(args.threadIds) ? { threadIds: args.threadIds } : {}),
         ...(isStringArray(args.extensionPaths)
           ? { extensionPaths: args.extensionPaths }
           : {}),
-        ...(typeof args.watermark === "number" ? { watermark: args.watermark } : {}),
+        ...(typeof args.watermark === "number"
+          ? { watermark: args.watermark }
+          : {}),
       });
-      return { handled: true, text: JSON.stringify({ success: true, ...result }) };
+      return {
+        handled: true,
+        text: JSON.stringify({ success: true, ...result }),
+      };
     }
     return {
       handled: true,

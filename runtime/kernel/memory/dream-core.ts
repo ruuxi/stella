@@ -9,6 +9,7 @@ import { promises as fs } from "node:fs";
 import type { Dirent } from "node:fs";
 import path from "node:path";
 import type { ThreadSummariesStore } from "./thread-summaries-store.js";
+import { redactMemoryText } from "./redaction.js";
 
 export const DREAM_WATERMARK_FILE = "watermark.json";
 
@@ -74,22 +75,24 @@ export const readDreamWatermark = async (
     const parsed = JSON.parse(raw) as Partial<DreamWatermark> | null;
     return {
       thread_summaries:
-        typeof parsed?.thread_summaries === "number" ? parsed.thread_summaries : 0,
+        typeof parsed?.thread_summaries === "number"
+          ? parsed.thread_summaries
+          : 0,
       extensions:
         parsed?.extensions && typeof parsed.extensions === "object"
-          ? Object.fromEntries(
+          ? (Object.fromEntries(
               Object.entries(parsed.extensions).filter(
                 ([, v]) => typeof v === "number" && Number.isFinite(v),
               ),
-            ) as Record<string, number>
+            ) as Record<string, number>)
           : {},
       extension_files:
         parsed?.extension_files && typeof parsed.extension_files === "object"
-          ? Object.fromEntries(
+          ? (Object.fromEntries(
               Object.entries(parsed.extension_files).filter(
                 ([, v]) => typeof v === "number" && Number.isFinite(v),
               ),
-            ) as Record<string, number>
+            ) as Record<string, number>)
           : {},
     };
   } catch {
@@ -211,7 +214,7 @@ export const dreamList = async (args: {
       threadId: row.threadId,
       runId: row.runId,
       agentType: row.agentType,
-      rolloutSummary: row.rolloutSummary,
+      rolloutSummary: redactMemoryText(row.rolloutSummary),
       sourceUpdatedAt: row.sourceUpdatedAt,
     })),
     extensions: entries,
@@ -234,7 +237,9 @@ export const dreamMarkProcessed = async (
   const baseUpdate = args.store.markProcessed({
     threadKeys: args.threadKeys,
     threadIds: args.threadIds,
-    ...(typeof args.watermark === "number" ? { watermark: args.watermark } : {}),
+    ...(typeof args.watermark === "number"
+      ? { watermark: args.watermark }
+      : {}),
   });
 
   const current = await readDreamWatermark(args.stellaHome);

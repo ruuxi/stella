@@ -22,6 +22,7 @@ import {
 } from "../../../runtime/contracts/realtime-voice-catalog.js";
 import { getLocalLlmCredential } from "../../../runtime/kernel/storage/llm-credentials.js";
 import { getLocalLlmOAuthApiKey } from "../../../runtime/kernel/storage/llm-oauth-credentials.js";
+import { redactMemoryText } from "../../../runtime/kernel/memory/redaction.js";
 import {
   IPC_VOICE_CREATE_OPENAI_SESSION,
   IPC_VOICE_CREATE_XAI_SESSION,
@@ -230,10 +231,11 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
 
   ipcMain.handle("voice:getCoreMemory", async () => {
     try {
-      return await fs.readFile(
+      const content = await fs.readFile(
         path.join(options.stellaHomePath, "core-memory.md"),
         "utf-8",
       );
+      return redactMemoryText(content);
     } catch {
       return null;
     }

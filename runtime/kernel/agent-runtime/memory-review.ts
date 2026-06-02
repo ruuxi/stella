@@ -23,6 +23,10 @@ import type { AssistantMessage, Context, Message } from "../../ai/types.js";
 import type { AgentMessage } from "../agent-core/types.js";
 import { readMemorySummary } from "../memory/dream-storage.js";
 import {
+  redactMemoryText,
+  redactMemoryStringArray,
+} from "../memory/redaction.js";
+import {
   readRecentOrchestratorReviewNotes,
   writeOrchestratorReviewMemoryNote,
   type OrchestratorReviewMemoryNote,
@@ -46,7 +50,7 @@ const KNOWN_MEMORY_MAX_CHARS = 6_000;
 const MEMORY_REVIEW_SYSTEM_PROMPT = [
   "You are Stella's background memory pass for the Orchestrator — the ongoing conversation between the user and Stella. You see only recent user and assistant messages from that conversation.",
   "",
-  "Capture what Stella should still know about this conversation after the live context is compacted away, so that later — when the user picks a topic back up or says \"the thing we discussed\" — Stella still has it.",
+  'Capture what Stella should still know about this conversation after the live context is compacted away, so that later — when the user picks a topic back up or says "the thing we discussed" — Stella still has it.',
   "",
   "Test each candidate: if the live context vanished right now, would the user be surprised Stella forgot this? Save it only if yes.",
   "",
@@ -63,10 +67,10 @@ const MEMORY_REVIEW_SYSTEM_PROMPT = [
   "Output JSON only, with no markdown fences.",
   "",
   "If nothing is worth saving:",
-  "{\"shouldWrite\":false,\"reason\":\"brief reason\"}",
+  '{"shouldWrite":false,"reason":"brief reason"}',
   "",
   "If something is worth saving:",
-  "{\"shouldWrite\":true,\"title\":\"short title\",\"category\":\"user_preference|stella_expectation|active_focus|personal_context\",\"memory\":\"concise durable memory\",\"recallHooks\":[\"2-8 search hooks\"],\"evidence\":[\"1-3 short user/assistant snippets, no secrets\"]}",
+  '{"shouldWrite":true,"title":"short title","category":"user_preference|stella_expectation|active_focus|personal_context","memory":"concise durable memory","recallHooks":["2-8 search hooks"],"evidence":["1-3 short user/assistant snippets, no secrets"]}',
 ].join("\n");
 
 const MEMORY_REVIEW_USER_PROMPT_PREFIX =
@@ -88,17 +92,21 @@ const formatTextContent = (parts: AssistantMessage["content"]): string =>
 const summarizeMessageForTranscript = (msg: AgentMessage): string | null => {
   if (msg.role === "user") {
     if (typeof msg.content === "string") {
-      const text = msg.content.trim();
+      const text = redactMemoryText(msg.content.trim());
       return text ? `[User]\n${text}` : null;
     }
-    const text = msg.content
-      .map((part) => (part.type === "text" ? part.text : `[Image: ${part.mimeType}]`))
-      .join("\n")
-      .trim();
+    const text = redactMemoryText(
+      msg.content
+        .map((part) =>
+          part.type === "text" ? part.text : `[Image: ${part.mimeType}]`,
+        )
+        .join("\n")
+        .trim(),
+    );
     return text ? `[User]\n${text}` : null;
   }
   if (msg.role === "assistant") {
-    const text = formatTextContent(msg.content);
+    const text = redactMemoryText(formatTextContent(msg.content));
     return text ? `[Assistant]\n${text}` : null;
   }
   return null;
@@ -190,7 +198,7 @@ export const buildKnownMemoryContext = async (
   ]);
 
   const blocks: string[] = [];
-  const trimmedSummary = summary?.trim();
+  const trimmedSummary = summary ? redactMemoryText(summary.trim()) : "";
   if (trimmedSummary) {
     blocks.push(
       `<consolidated_memory path="~/.stella/memories/memory_summary.md">\n${trimmedSummary}\n</consolidated_memory>`,
@@ -198,7 +206,9 @@ export const buildKnownMemoryContext = async (
   }
   if (recentNotes.length > 0) {
     blocks.push(
-      `<recent_candidates>\n${recentNotes.join("\n\n---\n\n")}\n</recent_candidates>`,
+      `<recent_candidates>\n${redactMemoryText(
+        recentNotes.join("\n\n---\n\n"),
+      )}\n</recent_candidates>`,
     );
   }
   if (blocks.length === 0) return "";
@@ -261,11 +271,11 @@ export const parseMemoryReviewCandidate = (
       ? parsed.category.trim()
       : "active_focus";
   return {
-    title,
-    category,
-    memory,
-    recallHooks: toStringArray(parsed.recallHooks, 8),
-    evidence: toStringArray(parsed.evidence, 3),
+    title: redactMemoryText(title),
+    category: redactMemoryText(category),
+    memory: redactMemoryText(memory),
+    recallHooks: redactMemoryStringArray(toStringArray(parsed.recallHooks, 8)),
+    evidence: redactMemoryStringArray(toStringArray(parsed.evidence, 3)),
   };
 };
 
