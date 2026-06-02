@@ -387,8 +387,8 @@
       },
       "localDictation": {
         "label": "On-device transcription",
-        "description": "Use the local Parakeet model instead of Inworld. This can use more memory on lower-end Macs.",
-        "unavailableFallback": "Unavailable on this Mac."
+        "description": "Transcribe locally with the Parakeet model instead of the cloud. This can use more memory on lower-end devices.",
+        "unavailableFallback": "Unavailable on this device."
       },
       "speaker": {
         "title": "Speaker",
@@ -506,10 +506,7 @@
     "plans": {
       "free": {
         "tagline": "Get started with Stella",
-        "features": [
-          "Basic chat & assistance",
-          "Limited daily usage"
-        ]
+        "features": ["Basic chat & assistance", "Limited daily usage"]
       },
       "go": {
         "tagline": "For everyday personal use",

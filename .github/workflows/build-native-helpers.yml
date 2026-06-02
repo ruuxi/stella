@@ -63,8 +63,17 @@ jobs:
                 continue
               fi
               if [ "$name" = "parakeet_transcriber" ]; then
-                # parakeet only ships on arm64 (uses CoreML / ANE)
+                # CoreML/ANE parakeet helper ships on arm64 only.
                 if [ "$arch_label" = "arm64" ]; then
+                  cp "$entry" "$stage_dir/$name"
+                  chmod +x "$stage_dir/$name"
+                fi
+                continue
+              fi
+              if [ "$name" = "parakeet_cpp_transcriber" ]; then
+                # parakeet.cpp helper covers Intel macOS (x86_64) only; arm64
+                # uses the CoreML helper above.
+                if [ "$arch_label" = "x86_64" ]; then
                   cp "$entry" "$stage_dir/$name"
                   chmod +x "$stage_dir/$name"
                 fi
