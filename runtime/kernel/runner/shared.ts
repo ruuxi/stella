@@ -12,6 +12,7 @@ import {
 } from "../convex-urls.js";
 import { isOrchestratorAgentType } from "../../contracts/agent-runtime.js";
 import { formatAgentTerminalStateSystemReminder } from "../../contracts/system-reminders.js";
+import { redactMemoryText } from "../memory/redaction.js";
 
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
 export const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
@@ -43,7 +44,7 @@ export const readCoreMemory = (stellaHome: string): string | undefined => {
     try {
       const content = fs.readFileSync(filePath, "utf-8").trim();
       if (content) {
-        return content;
+        return redactMemoryText(content);
       }
     } catch {
       continue;
@@ -88,9 +89,9 @@ export const buildAgentEventPrompt = (
     lines.push(`description: ${event.description}`);
   }
   if (
-    event.type === "agent-canceled"
-    && (event.error === AGENT_SHUTDOWN_CANCEL_REASON
-      || event.error === AGENT_PAUSE_CANCEL_REASON)
+    event.type === "agent-canceled" &&
+    (event.error === AGENT_SHUTDOWN_CANCEL_REASON ||
+      event.error === AGENT_PAUSE_CANCEL_REASON)
   ) {
     return null;
   }

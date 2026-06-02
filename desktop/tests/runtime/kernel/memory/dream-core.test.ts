@@ -59,6 +59,32 @@ describe("dream-core", () => {
     ]);
   });
 
+  it("redacts secrets before thread summaries enter Dream input", async () => {
+    const { db, rootPath, store } = createTestContext();
+
+    store.record({
+      threadId: "thread-secret",
+      runId: "run-secret",
+      agentType: "general",
+      rolloutSummary:
+        "Final output included OPENAI_API_KEY=sk-testsecret12345678901234567890",
+      rawMemory:
+        "Raw memory included Authorization: Bearer sk-testsecret12345678901234567890",
+    });
+    db.prepare(
+      "UPDATE thread_summaries SET rollout_summary = ? WHERE thread_id = ?",
+    ).run(
+      "Legacy row still had OPENAI_API_KEY=sk-testsecret12345678901234567890",
+      "thread-secret",
+    );
+
+    const result = await dreamList({ stellaHome: rootPath, store });
+    const serialized = JSON.stringify(result.threadSummaries);
+    expect(serialized).not.toContain("sk-testsecret12345678901234567890");
+    expect(serialized).toContain("OPENAI_API_KEY=");
+    expect(serialized).toContain("***");
+  });
+
   it("tracks processed extension files individually", async () => {
     const { rootPath, store } = createTestContext();
     const extensionDir = path.join(
@@ -110,9 +136,9 @@ describe("dream-core", () => {
     );
 
     const listed = await dreamList({ stellaHome: rootPath, store });
-    expect(listed.instructions.map((entry) => path.basename(entry.path))).toContain(
-      "instructions.md",
-    );
+    expect(
+      listed.instructions.map((entry) => path.basename(entry.path)),
+    ).toContain("instructions.md");
     expect(listed.extensions.map((entry) => entry.path)).toEqual([note.path]);
 
     await dreamMarkProcessed({

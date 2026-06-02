@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { redactMemoryText, redactMemoryStringArray } from "./redaction.js";
 
 export const ORCHESTRATOR_REVIEW_MEMORY_EXTENSION = "orchestrator_review";
 
@@ -111,7 +112,10 @@ const ensureDirectoryChain = async (targets: string[]): Promise<void> => {
   }
 };
 
-const writeIfMissing = async (target: string, contents: string): Promise<void> => {
+const writeIfMissing = async (
+  target: string,
+  contents: string,
+): Promise<void> => {
   try {
     await fs.writeFile(target, contents, { encoding: "utf-8", flag: "wx" });
   } catch (error) {
@@ -177,14 +181,12 @@ const formatNote = (note: Required<OrchestratorReviewMemoryNote>): string =>
     "",
   ].join("\n");
 
-export const writeOrchestratorReviewMemoryNote = async (
-  args: {
-    stellaHome: string;
-    note: OrchestratorReviewMemoryNote;
-  },
-): Promise<WriteOrchestratorReviewMemoryNoteResult> => {
-  const title = args.note.title.trim();
-  const memory = args.note.memory.trim();
+export const writeOrchestratorReviewMemoryNote = async (args: {
+  stellaHome: string;
+  note: OrchestratorReviewMemoryNote;
+}): Promise<WriteOrchestratorReviewMemoryNoteResult> => {
+  const title = redactMemoryText(args.note.title.trim());
+  const memory = redactMemoryText(args.note.memory.trim());
   if (!title) {
     throw new Error("title must not be empty.");
   }
@@ -197,10 +199,14 @@ export const writeOrchestratorReviewMemoryNote = async (
   const createdAt = args.note.createdAt ?? new Date();
   const note: Required<OrchestratorReviewMemoryNote> = {
     title,
-    category: args.note.category.trim() || "active_focus",
+    category: redactMemoryText(args.note.category.trim()) || "active_focus",
     memory,
-    recallHooks: args.note.recallHooks.map((hook) => hook.trim()).filter(Boolean),
-    evidence: args.note.evidence.map((item) => item.trim()).filter(Boolean),
+    recallHooks: redactMemoryStringArray(
+      args.note.recallHooks.map((hook) => hook.trim()).filter(Boolean),
+    ),
+    evidence: redactMemoryStringArray(
+      args.note.evidence.map((item) => item.trim()).filter(Boolean),
+    ),
     createdAt,
   };
   const timestamp = toTimestampPrefix(createdAt);
@@ -227,5 +233,7 @@ export const writeOrchestratorReviewMemoryNote = async (
     }
   }
 
-  throw new Error("could not create a unique orchestrator review note filename.");
+  throw new Error(
+    "could not create a unique orchestrator review note filename.",
+  );
 };
