@@ -166,18 +166,17 @@ export const createHostRunnerHandlers = (
     const fullWindow = context.state.windowManager?.getFullWindow() ?? null;
     const canReload =
       requiresFullReload && fullWindow != null && !fullWindow.isDestroyed();
-    const suppressClientFullReload =
-      requiresFullReload ||
-      requiresRuntimeRestart === true ||
-      requiresProcessRestart === true;
+    // Vite's raw full-reload is a browser navigation, not the Electron hard
+    // reload self-mod needs. Always latch it in the Vite endpoint and let the
+    // host perform reloadIgnoringCache under the morph cover.
+    const suppressClientFullReload = true;
     try {
       const applyResult = await applyBatch({
         suppressClientFullReload,
       });
       if (
         (canReload ||
-          (!suppressClientFullReload &&
-            applyResult?.requiresClientFullReload === true)) &&
+          applyResult?.requiresClientFullReload === true) &&
         fullWindow != null &&
         !fullWindow.isDestroyed()
       ) {

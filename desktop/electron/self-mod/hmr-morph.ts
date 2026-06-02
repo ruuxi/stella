@@ -130,10 +130,10 @@ export function createHmrTransitionController(deps: {
     const applyWithoutMorph = async (
       windowForReload: BrowserWindow | null,
     ) => {
-      const suppressClientFullReload =
-        opts.requiresFullReload ||
-        opts.requiresRuntimeRestart === true ||
-        opts.requiresProcessRestart === true;
+      // Vite's raw full-reload is a browser navigation, not the Electron hard
+      // reload self-mod needs. Always latch it in the Vite endpoint and let the
+      // host perform reloadIgnoringCache under the morph cover.
+      const suppressClientFullReload = true;
       opts.reportState?.({
         phase: opts.requiresFullReload ? "reloading" : "applying",
         paused: false,
@@ -149,8 +149,7 @@ export function createHmrTransitionController(deps: {
         });
         const shouldReload =
           canReload ||
-          (!suppressClientFullReload &&
-            applyResult?.requiresClientFullReload === true);
+          applyResult?.requiresClientFullReload === true;
         const settle = createRendererSettle({
           expectReload: shouldReload,
           settleDelayMs: shouldReload
@@ -266,18 +265,17 @@ export function createHmrTransitionController(deps: {
           requiresFullReload: opts.requiresFullReload,
         });
 
-        const suppressClientFullReload =
-          opts.requiresFullReload ||
-          opts.requiresRuntimeRestart === true ||
-          opts.requiresProcessRestart === true;
+        // Vite's raw full-reload is a browser navigation, not the Electron hard
+        // reload self-mod needs. Always latch it in the Vite endpoint and let
+        // the host perform reloadIgnoringCache under the morph cover.
+        const suppressClientFullReload = true;
         const applyResult = await opts.applyBatch({
           suppressClientFullReload,
         });
 
         const requiresClientFullReload =
           opts.requiresFullReload ||
-          (!suppressClientFullReload &&
-            applyResult?.requiresClientFullReload === true);
+          applyResult?.requiresClientFullReload === true;
 
         if (requiresClientFullReload) {
           emitState({
