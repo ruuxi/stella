@@ -11,6 +11,11 @@ MACOS_MIN_VERSION="${MACOSX_DEPLOYMENT_TARGET:-14.0}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+# Pinned parakeet.cpp (C++/ggml ASR) revision used for the Intel-macOS local
+# dictation helper. Bump deliberately and re-verify a transcription.
+PARAKEET_CPP_REPO="https://github.com/mudler/parakeet.cpp"
+PARAKEET_CPP_COMMIT="9edf17c3ada66e0f881dcff155492867db7ac4cf"
+
 build_c_universal() {
   local output="$1"
   local source="$2"
@@ -78,6 +83,69 @@ build_c_app_universal() {
   if command -v codesign >/dev/null 2>&1; then
     codesign --force --sign - "$app_dir" >/dev/null 2>&1 || true
   fi
+}
+
+# parakeet_cpp_transcriber — local dictation for Intel macOS (arm64 uses the
+# CoreML helper below). Builds parakeet.cpp + ggml statically and links our
+# wrapper into one self-contained x86_64 binary. Every step is non-fatal: a
+# failure here just leaves Intel Macs on cloud dictation instead of blocking the
+# whole native build.
+build_parakeet_cpp_x64() {
+  if ! command -v cmake >/dev/null 2>&1; then
+    echo "Skipping parakeet_cpp_transcriber: cmake not on PATH."
+    return 0
+  fi
+  local src="$TMP_DIR/parakeet.cpp"
+  local log="$TMP_DIR/parakeet-cpp-build.log"
+  echo "Cloning parakeet.cpp ($PARAKEET_CPP_COMMIT)..."
+  if ! git clone --quiet "$PARAKEET_CPP_REPO" "$src" 2>"$log" \
+    || ! git -C "$src" checkout --quiet "$PARAKEET_CPP_COMMIT" 2>>"$log" \
+    || ! git -C "$src" submodule update --init --recursive --quiet 2>>"$log"; then
+    echo "WARNING: parakeet.cpp checkout failed; skipping parakeet_cpp_transcriber."
+    tail -5 "$log" 2>/dev/null || true
+    return 0
+  fi
+
+  # Register our wrapper inside the parakeet.cpp tree so CMake links it against
+  # the in-tree `parakeet` target (and its transitive ggml + BLAS graph).
+  mkdir -p "$src/examples/stella"
+  cp "src/parakeet-cpp/main.cpp" "$src/examples/stella/main.cpp"
+  cp "src/parakeet-cpp/CMakeLists.txt" "$src/examples/stella/CMakeLists.txt"
+  echo "add_subdirectory(examples/stella)" >> "$src/CMakeLists.txt"
+
+  echo "Building parakeet_cpp_transcriber (static, x86_64)..."
+  # -include cstdint: parakeet.cpp's backend.hpp uses int64_t without including
+  # <cstdint>; Apple clang pulls it in transitively but stricter toolchains do
+  # not. Force-include keeps the build compiler-portable without patching source.
+  if ! cmake -S "$src" -B "$src/build" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOS_MIN_VERSION" \
+      -DCMAKE_CXX_FLAGS="-include cstdint" \
+      -DPARAKEET_SHARED=OFF \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DPARAKEET_BUILD_CLI=OFF \
+      -DPARAKEET_BUILD_TESTS=OFF \
+      -DGGML_NATIVE=OFF \
+      -DGGML_METAL=OFF >>"$log" 2>&1 \
+    || ! cmake --build "$src/build" --target parakeet_cpp_transcriber \
+         -j"$(sysctl -n hw.ncpu)" >>"$log" 2>&1; then
+    echo "WARNING: parakeet.cpp build failed; skipping parakeet_cpp_transcriber."
+    tail -15 "$log" 2>/dev/null || true
+    return 0
+  fi
+
+  local built="$src/build/stella-helper/parakeet_cpp_transcriber"
+  if [ ! -f "$built" ]; then
+    echo "WARNING: parakeet_cpp_transcriber binary not found after build."
+    return 0
+  fi
+  cp "$built" "$OUTPUT_DIR/parakeet_cpp_transcriber"
+  chmod +x "$OUTPUT_DIR/parakeet_cpp_transcriber"
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "$OUTPUT_DIR/parakeet_cpp_transcriber" >/dev/null 2>&1 || true
+  fi
+  echo "Build successful: $OUTPUT_DIR/parakeet_cpp_transcriber (x86_64)"
 }
 
 echo "Building disclaim-spawn (macOS)..."
@@ -174,6 +242,8 @@ if [ "$(uname -m)" = "arm64" ]; then
 else
   echo "Skipping parakeet_transcriber: Parakeet Core ML is only enabled for macOS arm64."
 fi
+
+build_parakeet_cpp_x64
 
 # wakeword_listener — Rust binary, universal macOS via cargo + lipo. Skipped
 # silently if cargo is unavailable so this file is not a hard-dependency on

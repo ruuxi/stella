@@ -12,10 +12,7 @@
  */
 
 import { postServiceJson } from "@/platform/http/service-request";
-import {
-  callChatCompletion,
-  extractChatText,
-} from "@/platform/ai/llm";
+import { callChatCompletion, extractChatText } from "@/platform/ai/llm";
 import {
   acquireSharedMicrophone,
   setSharedMicrophoneKeepWarm,
@@ -85,6 +82,17 @@ export function isDictationEnhanceEnabled(): boolean {
 
 export function isLocalDictationEnabled(): boolean {
   return localStorage.getItem(DICTATION_LOCAL_KEY) !== "false";
+}
+
+/**
+ * Platforms that ship a local on-device dictation engine: macOS (CoreML on
+ * Apple Silicon, parakeet.cpp on Intel) and Windows (parakeet.cpp). The main
+ * process is the source of truth for actual availability — this is just a cheap
+ * gate to avoid an IPC round-trip on platforms with no local engine at all.
+ */
+export function isLocalDictationPlatform(): boolean {
+  const platform = window.electronAPI?.platform;
+  return platform === "darwin" || platform === "win32";
 }
 
 export function setDictationEnhancePreference(enabled: boolean): void {
@@ -224,9 +232,9 @@ export async function ensureDictationSuperFastWarm(): Promise<void> {
 }
 
 export async function warmLocalDictationModel(): Promise<void> {
-  if (window.electronAPI?.platform !== "darwin") return;
+  if (!isLocalDictationPlatform()) return;
   if (!isLocalDictationEnabled()) return;
-  await window.electronAPI.dictation?.warmLocal?.();
+  await window.electronAPI?.dictation?.warmLocal?.();
 }
 
 const ENHANCE_TRANSCRIPTION_SYSTEM_PROMPT = `
@@ -385,9 +393,7 @@ export class InworldDictationSession {
     try {
       await this.setupAudioPipeline(lease.stream);
       this.durationLimitTimer = setTimeout(() => {
-        console.warn(
-          "[dictation] hit max segment duration, auto-stopping",
-        );
+        console.warn("[dictation] hit max segment duration, auto-stopping");
         void this.stop();
       }, MAX_DICTATION_DURATION_MS);
       this.startLevelEmitter();
@@ -446,9 +452,7 @@ export class InworldDictationSession {
     }
 
     this.setState("transcribing");
-    const durationMs = Math.round(
-      (totalSamples / TARGET_SAMPLE_RATE) * 1000,
-    );
+    const durationMs = Math.round((totalSamples / TARGET_SAMPLE_RATE) * 1000);
     console.log(
       `[dictation] uploading ${totalSamples} samples (${durationMs}ms)`,
     );
@@ -482,9 +486,9 @@ export class InworldDictationSession {
   ): Promise<DictationTranscriptResult> {
     const audioBase64 = bytesToBase64(wavBytes);
     if (
-      window.electronAPI?.platform === "darwin" &&
+      isLocalDictationPlatform() &&
       isLocalDictationEnabled() &&
-      window.electronAPI.dictation?.transcribeLocal
+      window.electronAPI?.dictation?.transcribeLocal
     ) {
       try {
         const local = await window.electronAPI.dictation.transcribeLocal({
@@ -636,10 +640,7 @@ export class InworldDictationSession {
 // raw LINEAR16 isn't accepted on this endpoint.
 // ---------------------------------------------------------------------------
 
-const encodeWav16 = (
-  chunks: Int16Array[],
-  sampleRate: number,
-): Uint8Array => {
+const encodeWav16 = (chunks: Int16Array[], sampleRate: number): Uint8Array => {
   const totalSamples = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const dataSize = totalSamples * 2;
   const buffer = new ArrayBuffer(44 + dataSize);

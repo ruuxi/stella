@@ -11,6 +11,7 @@ import {
   isDictationEnhanceEnabled,
   isDictationSuperFastEnabled,
   isLocalDictationEnabled,
+  isLocalDictationPlatform,
   setDictationEnhancePreference,
   setDictationSuperFastModeEnabled,
   setDictationSuperFastPreference,
@@ -30,8 +31,7 @@ type MicrophonePermissionStatus =
 export function AudioTab() {
   const t = useT();
   const platform = window.electronAPI?.platform;
-  const arch = window.electronAPI?.arch;
-  const localDictationSupported = platform === "darwin" && arch === "arm64";
+  const localDictationSupported = isLocalDictationPlatform();
   const [localDictationUnavailableReason, setLocalDictationUnavailableReason] =
     useState<string | null>(null);
   const [micEnabled, setMicEnabled] = useState(() => isMicrophoneEnabled());
@@ -201,22 +201,25 @@ export function AudioTab() {
     setLocalDictationPreference(checked);
   }, []);
 
-  const handleDictationSoundEffectsToggle = useCallback((checked: boolean) => {
-    const previous = dictationSoundEffects;
-    setDictationSoundEffects(checked);
-    setSavingDictationSoundEffects(true);
-    void window.electronAPI?.dictation
-      ?.setSoundEffectsEnabled?.(checked)
-      .then((result) => {
-        setDictationSoundEffects(result.enabled);
-      })
-      .catch(() => {
-        setDictationSoundEffects(previous);
-      })
-      .finally(() => {
-        setSavingDictationSoundEffects(false);
-      });
-  }, [dictationSoundEffects]);
+  const handleDictationSoundEffectsToggle = useCallback(
+    (checked: boolean) => {
+      const previous = dictationSoundEffects;
+      setDictationSoundEffects(checked);
+      setSavingDictationSoundEffects(true);
+      void window.electronAPI?.dictation
+        ?.setSoundEffectsEnabled?.(checked)
+        .then((result) => {
+          setDictationSoundEffects(result.enabled);
+        })
+        .catch(() => {
+          setDictationSoundEffects(previous);
+        })
+        .finally(() => {
+          setSavingDictationSoundEffects(false);
+        });
+    },
+    [dictationSoundEffects],
+  );
 
   useEffect(() => {
     if (!localDictationSupported) return;

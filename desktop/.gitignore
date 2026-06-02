@@ -33,6 +33,9 @@ public/vendor/pdfjs/
 # Local Parakeet/Core ML dictation model cache.
 resources/parakeet/*
 !resources/parakeet/.gitkeep
+# parakeet.cpp GGUF cache (Windows + Intel macOS local dictation).
+resources/parakeet-cpp/*
+!resources/parakeet-cpp/.gitkeep
 native/src/parakeet-helper/.build/
 
 # Editor directories and files

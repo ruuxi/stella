@@ -4,6 +4,11 @@
 $outputDir = Join-Path $PSScriptRoot "out\win32"
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
+# Pinned parakeet.cpp (C++/ggml ASR) revision for the Windows local dictation
+# helper. Keep in sync with desktop/native/build.sh.
+$ParakeetCppRepo = "https://github.com/mudler/parakeet.cpp"
+$ParakeetCppCommit = "9edf17c3ada66e0f881dcff155492867db7ac4cf"
+
 $defaultLibs = @("user32.lib", "gdi32.lib", "gdiplus.lib", "ole32.lib", "oleaut32.lib", "uuid.lib")
 $defaultGccLibs = @("-luser32", "-lgdi32", "-lgdiplus", "-lole32", "-loleaut32", "-luuid")
 $windowInfoLibs = $defaultLibs + @("dwmapi.lib")
@@ -132,6 +137,70 @@ foreach ($t in $optionalTargets) {
         Write-Host "  WARNING: optional helper failed to build (non-fatal): $($t.out)"
     }
 }
+
+# parakeet_cpp_transcriber.exe — local on-device dictation (parakeet.cpp / ggml).
+# Best-effort and fully non-fatal: a failure here just leaves Windows users on
+# cloud dictation rather than blocking the required native tarball.
+function Build-ParakeetCpp {
+    $cmake = Get-Command cmake -ErrorAction SilentlyContinue
+    if (-not $cmake) { Write-Host "Skipping parakeet_cpp_transcriber: cmake not on PATH."; return }
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $git) { Write-Host "Skipping parakeet_cpp_transcriber: git not on PATH."; return }
+
+    $work = Join-Path $env:TEMP ("parakeet-cpp-" + [System.Guid]::NewGuid().ToString("N"))
+    $src = Join-Path $work "parakeet.cpp"
+    $log = Join-Path $work "build.log"
+    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    try {
+        Write-Host "Cloning parakeet.cpp ($ParakeetCppCommit)..."
+        & git clone --quiet $ParakeetCppRepo $src 2>&1 | Out-File -FilePath $log -Encoding utf8
+        if ($LASTEXITCODE -ne 0) { Write-Host "  WARNING: clone failed (non-fatal)"; return }
+        & git -C $src checkout --quiet $ParakeetCppCommit 2>&1 | Add-Content $log
+        if ($LASTEXITCODE -ne 0) { Write-Host "  WARNING: checkout failed (non-fatal)"; return }
+        & git -C $src submodule update --init --recursive --quiet 2>&1 | Add-Content $log
+        if ($LASTEXITCODE -ne 0) { Write-Host "  WARNING: submodule init failed (non-fatal)"; return }
+
+        $stella = Join-Path $src "examples\stella"
+        New-Item -ItemType Directory -Force -Path $stella | Out-Null
+        Copy-Item -Force (Join-Path $PSScriptRoot "src\parakeet-cpp\main.cpp") (Join-Path $stella "main.cpp")
+        Copy-Item -Force (Join-Path $PSScriptRoot "src\parakeet-cpp\CMakeLists.txt") (Join-Path $stella "CMakeLists.txt")
+        Add-Content -Path (Join-Path $src "CMakeLists.txt") -Value "add_subdirectory(examples/stella)"
+
+        Write-Host "Building parakeet_cpp_transcriber (static, x64)..."
+        # /FIcstdint: parakeet.cpp's backend.hpp uses int64_t without including
+        # <cstdint>; force-include keeps the build robust across MSVC versions.
+        # Static CRT (/MT) so the shipped helper needs no VC++ redistributable.
+        & cmake -S $src -B (Join-Path $src "build") -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_CXX_FLAGS="/FIcstdint" `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            -DPARAKEET_SHARED=OFF `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DPARAKEET_BUILD_CLI=OFF `
+            -DPARAKEET_BUILD_TESTS=OFF `
+            -DGGML_NATIVE=OFF 2>&1 | Add-Content $log
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  WARNING: cmake configure failed (non-fatal)"
+            Get-Content $log -Tail 15 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+            return
+        }
+        & cmake --build (Join-Path $src "build") --config Release --target parakeet_cpp_transcriber 2>&1 | Add-Content $log
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  WARNING: cmake build failed (non-fatal)"
+            Get-Content $log -Tail 15 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+            return
+        }
+
+        $built = Join-Path $src "build\stella-helper\parakeet_cpp_transcriber.exe"
+        if (-not (Test-Path $built)) { Write-Host "  WARNING: binary not found after build (non-fatal)"; return }
+        Copy-Item -Force $built (Join-Path $outputDir "parakeet_cpp_transcriber.exe")
+        Write-Host "  Build successful: parakeet_cpp_transcriber.exe"
+    } finally {
+        Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+    }
+}
+Write-Host "Building parakeet_cpp_transcriber.exe..."
+Build-ParakeetCpp
 
 # wakeword_listener — Rust binary, x86_64 Windows via cargo. Skipped silently
 # when cargo is unavailable so non-Rust contributors aren't blocked.
