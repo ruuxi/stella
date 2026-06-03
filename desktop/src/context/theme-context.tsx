@@ -28,7 +28,13 @@ type GradientColor = "relative" | "strong";
 
 interface ThemeReadValue {
   theme: Theme;
+  /** The effective active theme id ("custom" whenever Custom is unpopulated). */
   themeId: string;
+  /**
+   * The id a picker should show as selected. While Custom is unpopulated this
+   * is the stock theme it's displaying (its base); otherwise it's the active id.
+   */
+  selectedThemeId: string;
   colorMode: ColorMode;
   resolvedColorMode: "light" | "dark";
   /**
@@ -63,6 +69,8 @@ const ThemeReadContext = createContext<ThemeReadValue | null>(null);
 const ThemeControlContext = createContext<ThemeControlValue | null>(null);
 
 const THEME_STORAGE_KEY = "stella-theme-id";
+// The stock theme the Custom overlay displays while it is unpopulated.
+const CUSTOM_BASE_STORAGE_KEY = "stella-custom-base";
 const COLOR_MODE_STORAGE_KEY = "stella-color-mode";
 const GRADIENT_MODE_STORAGE_KEY = "stella-gradient-mode";
 const GRADIENT_COLOR_STORAGE_KEY = "stella-gradient-color";
@@ -156,11 +164,13 @@ function persistAndBroadcast(key: string, value: string) {
 
 interface PersistedThemeState {
   themeId: string;
+  customBase: string | null;
   colorMode: ColorMode;
   gradientMode: GradientMode;
   gradientColor: GradientColor;
   systemMode: "light" | "dark";
   setThemeId: (id: string) => void;
+  setCustomBase: (id: string) => void;
   setColorMode: (mode: ColorMode) => void;
   setGradientMode: (mode: GradientMode) => void;
   setGradientColor: (color: GradientColor) => void;
@@ -170,6 +180,7 @@ function useThemePersistence(
   clearPreviews: () => void,
 ): PersistedThemeState {
   const [themeId, setThemeIdRaw] = useState(() => readStorage(THEME_STORAGE_KEY, defaultTheme.id));
+  const [customBase, setCustomBaseRaw] = useState<string | null>(() => localStorage.getItem(CUSTOM_BASE_STORAGE_KEY));
   const [colorMode, setColorModeRaw] = useState(() => readStorage<ColorMode>(COLOR_MODE_STORAGE_KEY, "light"));
   const [gradientMode, setGradientModeRaw] = useState(() => readStorage<GradientMode>(GRADIENT_MODE_STORAGE_KEY, "soft"));
   const [gradientColor, setGradientColorRaw] = useState(() => readStorage<GradientColor>(GRADIENT_COLOR_STORAGE_KEY, "relative"));
@@ -198,6 +209,7 @@ function useThemePersistence(
     if (!window.electronAPI) return;
     return window.electronAPI.theme.onChange((_event, data) => {
       if (data.key === THEME_STORAGE_KEY) { setThemeIdRaw(data.value); clearPreviews(); }
+      else if (data.key === CUSTOM_BASE_STORAGE_KEY) { setCustomBaseRaw(data.value); clearPreviews(); }
       else if (data.key === COLOR_MODE_STORAGE_KEY) setColorModeRaw(data.value as ColorMode);
       else if (data.key === GRADIENT_MODE_STORAGE_KEY) { setGradientModeRaw(data.value as GradientMode); clearPreviews(); }
       else if (data.key === GRADIENT_COLOR_STORAGE_KEY) { setGradientColorRaw(data.value as GradientColor); clearPreviews(); }
@@ -207,6 +219,7 @@ function useThemePersistence(
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === THEME_STORAGE_KEY && e.newValue) { setThemeIdRaw(e.newValue); clearPreviews(); }
+      else if (e.key === CUSTOM_BASE_STORAGE_KEY && e.newValue) { setCustomBaseRaw(e.newValue); clearPreviews(); }
       else if (e.key === COLOR_MODE_STORAGE_KEY && e.newValue) setColorModeRaw(e.newValue as ColorMode);
       else if (e.key === GRADIENT_MODE_STORAGE_KEY && e.newValue) { setGradientModeRaw(e.newValue as GradientMode); clearPreviews(); }
       else if (e.key === GRADIENT_COLOR_STORAGE_KEY && e.newValue) { setGradientColorRaw(e.newValue as GradientColor); clearPreviews(); }
@@ -216,11 +229,12 @@ function useThemePersistence(
   }, [clearPreviews]);
 
   const setThemeId = useCallback((id: string) => { setThemeIdRaw(id); persistAndBroadcast(THEME_STORAGE_KEY, id); }, []);
+  const setCustomBase = useCallback((id: string) => { setCustomBaseRaw(id); persistAndBroadcast(CUSTOM_BASE_STORAGE_KEY, id); }, []);
   const setColorMode = useCallback((mode: ColorMode) => { setColorModeRaw(mode); persistAndBroadcast(COLOR_MODE_STORAGE_KEY, mode); }, []);
   const setGradientMode = useCallback((mode: GradientMode) => { setGradientModeRaw(mode); persistAndBroadcast(GRADIENT_MODE_STORAGE_KEY, mode); }, []);
   const setGradientColor = useCallback((color: GradientColor) => { setGradientColorRaw(color); persistAndBroadcast(GRADIENT_COLOR_STORAGE_KEY, color); }, []);
 
-  return { themeId, colorMode, gradientMode, gradientColor, systemMode, setThemeId, setColorMode, setGradientMode, setGradientColor };
+  return { themeId, customBase, colorMode, gradientMode, gradientColor, systemMode, setThemeId, setCustomBase, setColorMode, setGradientMode, setGradientColor };
 }
 
 // ─── useThemePreview — temporary preview state ───────────────────────────
@@ -271,16 +285,35 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const persisted = useThemePersistence(preview.clearAll);
   const availableThemes = useSyncExternalStore(subscribeThemes, getThemesSnapshot, getThemesSnapshot);
 
-  const activeThemeId = preview.previewThemeId ?? persisted.themeId;
+  // ─ Custom overlay two-phase model ─
+  // Phase 1 (Custom unpopulated): the user is always on Custom; picking a theme
+  // only changes the base it displays. Phase 2 (an agent populated Custom): the
+  // stored id is literal, so picking a stock theme actually leaves Custom.
+  const customTheme = getThemeById("custom");
+  const customPopulated = customTheme?.populated === true;
+
+  // The base Custom displays: the user's saved pick, else a legacy stored stock
+  // id, else Custom's declared default base.
+  const customBaseId =
+    persisted.customBase && getThemeById(persisted.customBase)
+      ? persisted.customBase
+      : persisted.themeId !== "custom" && getThemeById(persisted.themeId)
+        ? persisted.themeId
+        : customTheme?.base ?? defaultTheme.id;
+
+  const effectiveActiveId = customPopulated ? persisted.themeId : "custom";
+  const selectedThemeId = customPopulated ? persisted.themeId : customBaseId;
+
+  const activeThemeId = preview.previewThemeId ?? effectiveActiveId;
   const theme = getThemeById(activeThemeId) ?? defaultTheme;
   const userResolvedColorMode = persisted.colorMode === "system" ? persisted.systemMode : persisted.colorMode;
-  // Overlay themes (Custom) inherit colors and forced mode from their base;
+  // Custom inherits colors and forced mode from the base it currently displays;
   // themes with `forcedMode` (Pearl, Noir) ignore the user's Light/Dark choice
-  // and the Gradient controls — they're standardized single-mode surfaces with
-  // no gradient blob.
+  // and the Gradient controls — standardized single-mode surfaces, no blob.
   const { colors, baseThemeId, forcedMode } = resolveThemeColors(
     theme,
     userResolvedColorMode === "dark",
+    theme.id === "custom" ? customBaseId : undefined,
   );
   const resolvedColorMode = forcedMode ?? userResolvedColorMode;
   const effectiveGradientMode = forcedMode
@@ -288,21 +321,40 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     : preview.previewGradientMode ?? persisted.gradientMode;
   const effectiveGradientColor = preview.previewGradientColor ?? persisted.gradientColor;
 
+  // Normalize legacy/stock selections onto Custom while it is unpopulated, so
+  // the instant a redesign populates Custom the user is already on it.
+  const { themeId: rawThemeId, setCustomBase, setThemeId } = persisted;
+  useEffect(() => {
+    if (customPopulated) return;
+    if (rawThemeId === "custom") return;
+    setCustomBase(rawThemeId);
+    setThemeId("custom");
+  }, [customPopulated, rawThemeId, setCustomBase, setThemeId]);
+
   useEffect(() => {
     applyThemeToDocument(colors, resolvedColorMode === "dark", theme.id, baseThemeId);
   }, [colors, resolvedColorMode, theme.id, baseThemeId]);
 
   const readValue = useMemo<ThemeReadValue>(
     () => ({
-      theme, themeId: persisted.themeId, colorMode: persisted.colorMode, resolvedColorMode, forcedMode,
+      theme, themeId: effectiveActiveId, selectedThemeId, colorMode: persisted.colorMode, resolvedColorMode, forcedMode,
       gradientMode: effectiveGradientMode, gradientColor: effectiveGradientColor, colors, themes: availableThemes,
     }),
-    [theme, persisted.themeId, persisted.colorMode, resolvedColorMode, forcedMode, effectiveGradientMode, effectiveGradientColor, colors, availableThemes],
+    [theme, effectiveActiveId, selectedThemeId, persisted.colorMode, resolvedColorMode, forcedMode, effectiveGradientMode, effectiveGradientColor, colors, availableThemes],
   );
 
   const controlValue = useMemo<ThemeControlValue>(
     () => ({
-      setTheme: (id: string) => { persisted.setThemeId(id); preview.cancelThemePreview(); },
+      setTheme: (id: string) => {
+        if (customPopulated) {
+          persisted.setThemeId(id);
+        } else {
+          // Phase 1: picking a theme just changes what Custom displays.
+          persisted.setCustomBase(id);
+          if (persisted.themeId !== "custom") persisted.setThemeId("custom");
+        }
+        preview.cancelThemePreview();
+      },
       setColorMode: persisted.setColorMode,
       setGradientMode: (mode: GradientMode) => { persisted.setGradientMode(mode); preview.cancelGradientModePreview(); },
       setGradientColor: (color: GradientColor) => { persisted.setGradientColor(color); preview.cancelGradientColorPreview(); },
@@ -314,7 +366,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       cancelGradientColorPreview: preview.cancelGradientColorPreview,
       cancelPreview: preview.clearAll,
     }),
-    [persisted, preview],
+    [persisted, preview, customPopulated],
   );
 
   return (
