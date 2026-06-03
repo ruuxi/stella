@@ -34,6 +34,14 @@ type WindowManagerOptions = {
   externalLinkService: ExternalLinkService
   onUpdateUiState: (partial: Partial<UiState>) => void
   onMiniHidden?: () => void
+  /**
+   * Whether a genuine app quit is in progress. When true, the Windows
+   * full-window close handler lets the close proceed instead of diverting
+   * it into a minimize-to-tray.
+   */
+  isQuitting?: () => boolean
+  /** Invoked when the Windows full window is hidden to the tray via close. */
+  onMinimizeFullToTray?: () => void
 }
 
 const compactSize = MINI_SHELL_SIZE
@@ -667,8 +675,16 @@ export class WindowManager {
     window.on('close', (event) => {
       if (process.platform !== 'win32' || mode !== 'full') return
 
+      // A real quit (tray "Quit Stella", before-quit cleanup, relaunch) must
+      // be allowed to close the window normally.
+      if (this.options.isQuitting?.()) return
+
+      // Otherwise, the Windows "X" minimizes Stella to the system tray rather
+      // than quitting — the app keeps running in the background.
       event.preventDefault()
-      app.quit()
+      this.hideWindow(window)
+      this.syncLastActiveWindowMode()
+      this.options.onMinimizeFullToTray?.()
     })
     window.on('hide', () => {
       this.syncLastActiveWindowMode()

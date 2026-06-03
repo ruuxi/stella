@@ -6,6 +6,7 @@ import { getDevServerUrl } from "../dev-url.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import { PetWindowController } from "../windows/pet-window.js";
 import { WindowManager } from "../windows/window-manager.js";
+import { TrayController } from "../windows/tray-controller.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import { configureNotificationActivationHandling } from "../services/notification-service.js";
 import { configureStellaSessionPermissions } from "./session-permissions.js";
@@ -168,8 +169,26 @@ const initializeWindowShell = (context: BootstrapContext) => {
       externalLinkService: services.externalLinkService,
       onUpdateUiState: (partial) => services.uiStateService.update(partial),
       onMiniHidden: () => services.selectionWatcherService.hideChip(),
+      isQuitting: () => state.isQuitting,
+      onMinimizeFullToTray: () => state.trayController?.notifyMinimizedToTray(),
     }),
   );
+
+  // Windows keeps Stella alive in the system tray after the user closes the
+  // main window. macOS already keeps the app running via the dock, so the
+  // tray is Windows-only.
+  if (process.platform === "win32") {
+    const trayController = new TrayController({
+      electronDir: config.electronDir,
+      onShowWindow: () => state.windowManager?.showWindow("full"),
+      onQuit: () => {
+        state.isQuitting = true;
+        app.quit();
+      },
+    });
+    trayController.create();
+    state.trayController = trayController;
+  }
 
   services.uiStateService.bind({
     broadcastTarget: {

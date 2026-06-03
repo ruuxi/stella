@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import { PetWindowController } from "../windows/pet-window.js";
+import type { TrayController } from "../windows/tray-controller.js";
 import type { ChronicleController } from "../services/chronicle-controller.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
@@ -69,6 +70,7 @@ export type BootstrapState = {
   mobileBridgeResource: MobileBridgeResource | null;
   officePreviewBridgeStop: (() => void) | null;
   windowManager: WindowManager | null;
+  trayController: TrayController | null;
 };
 
 export type BootstrapServices = {
@@ -199,6 +201,7 @@ export const createBootstrapContext = (
     mobileBridgeResource: null,
     officePreviewBridgeStop: null,
     windowManager: null,
+    trayController: null,
   };
 
   const lifecycle = new BootstrapLifecycleBindings(state);
