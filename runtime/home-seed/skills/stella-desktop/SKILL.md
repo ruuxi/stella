@@ -16,50 +16,29 @@ so there is no point making changes to it.
 
 ## Surface map (for app-wide visual changes)
 
-An open-ended visual request — "redesign Stella", "re-theme it", "give it an
-editorial / X feel" — means **the whole interface**, not just the landing
-chrome. Restyling the home cover, nav labels, and workspace contents list is
-a fraction of the app; the surfaces the user actually lives in are the chat,
-composer, and menus. Cover the full inventory below, and if you intend to
-stop short of any of it, say so up front and confirm scope — don't report a
-partial pass as the finished redesign.
-
-The cohesive lever is the **shared tokens**, not restyling components one by
-one. Most surfaces inherit from these, so start here:
-
-- **Tokens** (colors, `--accent`, `--text-*`, radius): `desktop/src/index.css`
-— the `:root`, `.dark`, and `:root[data-theme="pearl"|"noir"]` blocks plus
-the `@theme inline` block. Any palette/accent/radius change belongs here so
-it carries through light/dark and every theme automatically.
-- **Fonts / type scale**: `desktop/src/shared/styles/fonts.css`.
-- **App-wide base + component styles**: `desktop/src/shared/styles/app-base.css`,
-`app-components.css`.
-
-Per-surface (each `.tsx` has a colocated `.css`):
+For broad Stella UI changes, these are the main surfaces to inspect:
 
 - **Shell chrome / nav / account**: `desktop/src/shell/ShellTopBar.tsx`,
 `shell/sidebar/ShellTopBarNav.tsx`, `shell/sidebar/ShellTopBarAccount.tsx`.
 - **Home cover + greeting + launcher**: `desktop/src/app/home/HomeContent.tsx`.
-- **Chat (the part users read most)**: `desktop/src/app/chat/` —
+- **Chat**: `desktop/src/app/chat/` —
 `ChatColumn.tsx`, `ConversationEvents.tsx`, `MessageRow.tsx`,
-`UserMessageBody.tsx`, `Markdown.tsx`. Body/reading text is sans on purpose;
-editorial type belongs in framing (eyebrows, dates, headers), not message
-bodies.
+`UserMessageBody.tsx`, `Markdown.tsx`.
 - **Composer**: `desktop/src/app/chat/Composer.tsx` +
-`features/chat/ComposerPrimitives.tsx`. Its pill→expanded shape is driven by
-**live measurement** — restyle borders/placeholder/chrome, but don't change
-type metrics or padding that feed the geometry, and don't make typed text
-serif.
-- **Compact chat surface**: `desktop/src/shell/ChatSidebar.tsx` (must mirror
-the full chat — don't fork its look).
+`features/chat/ComposerPrimitives.tsx`.
+- **Compact chat surface**: `desktop/src/shell/ChatSidebar.tsx`.
 - **Display sidebar + tabs** (media, canvas, activity):
 `desktop/src/shell/DisplaySidebar.tsx`, `shell/display/`.
-- **Menus / dialogs / buttons** (shared, so one change ripples app-wide —
-this is a feature, not a reason to skip them): `desktop/src/ui/`
-(`dropdown-menu`, `dialog`, `popover`, `pill`, `button`, `select`),
-`shell/context-menu/StellaContextMenu.tsx`, `shell/overlay/RadialDial.tsx`.
+- **Menus / dialogs / buttons**: `desktop/src/ui/` (`dropdown-menu`,
+`dialog`, `popover`, `pill`, `button`, `select`),
+`desktop/src/shell/context-menu/StellaContextMenu.tsx`,
+`desktop/src/shell/overlay/RadialDial.tsx`.
 - **Other app routes**: `desktop/src/app/{settings,store,social,pets,apps,media}/`,
 each with its own `App.tsx` + css.
+
+For aesthetic redesigns, prefer creating a named theme and applying
+theme-scoped styling so the selected theme controls the look. Use global
+component changes only for layout or behavior that should apply across themes.
 
 For background image or custom theme requests, make the image visible through
 the active theme surface, not hidden behind `ShiftingGradient`. Stella's UI is
