@@ -95,8 +95,6 @@ jobs:
           mkdir -p "$helper_dir"
           tar -cf - -C "$helper_source_dir" . | tar -xf - -C "$helper_dir"
 
-          mkdir -p release-root/state/outputs
-
           node <<'NODE'
           const { createHash } = require("node:crypto");
           const { readdirSync, statSync, readFileSync, writeFileSync } = require("node:fs");
