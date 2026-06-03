@@ -1,9 +1,84 @@
 ---
 name: stella-desktop
-description: Minimal map of Stella's Electron desktop app — the few things you can't figure out from reading the code.
+description: Use this skill before modifying Stella, the desktop app and runtime the user is talking to you on. It provides necessary guidance and rules.
 ---
 
 # Modifying Stella Desktop
+
+## Operating rules
+
+- Never launch Stella's dev servers for testing. Stella is already running
+for the user; starting another desktop/runtime dev server can interrupt the
+active session. Use typecheck, lint, focused tests, and code inspection
+instead.
+- Never adjust onboarding unless specifically told. The user cannot see it,
+so there is no point making changes to it.
+
+## Surface map (for app-wide visual changes)
+
+An open-ended visual request — "redesign Stella", "re-theme it", "give it an
+editorial / X feel" — means **the whole interface**, not just the landing
+chrome. Restyling the home cover, nav labels, and workspace contents list is
+a fraction of the app; the surfaces the user actually lives in are the chat,
+composer, and menus. Cover the full inventory below, and if you intend to
+stop short of any of it, say so up front and confirm scope — don't report a
+partial pass as the finished redesign.
+
+The cohesive lever is the **shared tokens**, not restyling components one by
+one. Most surfaces inherit from these, so start here:
+
+- **Tokens** (colors, `--accent`, `--text-*`, radius): `desktop/src/index.css`
+— the `:root`, `.dark`, and `:root[data-theme="pearl"|"noir"]` blocks plus
+the `@theme inline` block. Any palette/accent/radius change belongs here so
+it carries through light/dark and every theme automatically.
+- **Fonts / type scale**: `desktop/src/shared/styles/fonts.css`.
+- **App-wide base + component styles**: `desktop/src/shared/styles/app-base.css`,
+`app-components.css`.
+
+Per-surface (each `.tsx` has a colocated `.css`):
+
+- **Shell chrome / nav / account**: `desktop/src/shell/ShellTopBar.tsx`,
+`shell/sidebar/ShellTopBarNav.tsx`, `shell/sidebar/ShellTopBarAccount.tsx`.
+- **Home cover + greeting + launcher**: `desktop/src/app/home/HomeContent.tsx`.
+- **Chat (the part users read most)**: `desktop/src/app/chat/` —
+`ChatColumn.tsx`, `ConversationEvents.tsx`, `MessageRow.tsx`,
+`UserMessageBody.tsx`, `Markdown.tsx`. Body/reading text is sans on purpose;
+editorial type belongs in framing (eyebrows, dates, headers), not message
+bodies.
+- **Composer**: `desktop/src/app/chat/Composer.tsx` +
+`features/chat/ComposerPrimitives.tsx`. Its pill→expanded shape is driven by
+**live measurement** — restyle borders/placeholder/chrome, but don't change
+type metrics or padding that feed the geometry, and don't make typed text
+serif.
+- **Compact chat surface**: `desktop/src/shell/ChatSidebar.tsx` (must mirror
+the full chat — don't fork its look).
+- **Display sidebar + tabs** (media, canvas, activity):
+`desktop/src/shell/DisplaySidebar.tsx`, `shell/display/`.
+- **Menus / dialogs / buttons** (shared, so one change ripples app-wide —
+this is a feature, not a reason to skip them): `desktop/src/ui/`
+(`dropdown-menu`, `dialog`, `popover`, `pill`, `button`, `select`),
+`shell/context-menu/StellaContextMenu.tsx`, `shell/overlay/RadialDial.tsx`.
+- **Other app routes**: `desktop/src/app/{settings,store,social,pets,apps,media}/`,
+each with its own `App.tsx` + css.
+
+For background image or custom theme requests, make the image visible through
+the active theme surface, not hidden behind `ShiftingGradient`. Stella's UI is
+glass-heavy, so tune the background treatment and foreground surfaces together:
+dim or blur busy imagery, strengthen translucent shells where needed, and add
+fit-to-content assistant message bubbles if readability requires them. Preserve
+the requested aesthetic rather than simply making every panel opaque.
+
+## Validation
+
+Run from the Stella install root (the directory containing `desktop/` and
+`runtime/`):
+
+```bash
+bunx tsgo -p desktop/tsconfig.app.json --noEmit   # renderer (workspace-local TS 7)
+bun run electron:typecheck                        # main + preload
+bun run lint
+bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
+```
 
 ## Non-obvious gotchas
 
@@ -22,17 +97,6 @@ from it must flow through `UiState`, not router state.
 Everything else (chat route, sidebars) reads it via
 `useChatRuntime()`. Mounting it elsewhere double-instantiates the
 streaming subscription.
-## Validation
-
-Run from the Stella install root (the directory containing `desktop/` and
-`runtime/`):
-
-```bash
-bunx tsgo -p desktop/tsconfig.app.json --noEmit   # renderer (workspace-local TS 7)
-bun run electron:typecheck                        # main + preload
-bun run lint
-bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
-```
 
 ## Backlinks
 
