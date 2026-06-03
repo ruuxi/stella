@@ -14,6 +14,7 @@ import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { NicknameDialog } from "@/global/auth/NicknameDialog";
 import { ChatColumn } from "@/app/chat/ChatColumn";
+import { setActiveLocalConversationId } from "@/features/chat/services/local-chat-store";
 import {
   DisplaySidebar,
   type DisplaySidebarHandle,
@@ -81,6 +82,15 @@ function RootLayout() {
       setConversationId(routerConversationId);
     }
   }, [routerConversationId, setConversationId, state.conversationId]);
+
+  // Single writer for the durable active-conversation pointer. The router
+  // (`/chat?c=<id>`) is the live source of truth; whenever it changes we
+  // mirror the id into SQLite so the next boot restores exactly this
+  // conversation — surviving both renderer hard reloads and full restarts.
+  useEffect(() => {
+    if (!routerConversationId) return;
+    void setActiveLocalConversationId(routerConversationId);
+  }, [routerConversationId]);
 
   useLastLocationRestore(router);
   usePersistLastLocation(router);

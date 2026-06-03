@@ -1954,6 +1954,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("localChat:getOrCreateDefaultConversationId"),
     createNewDefaultConversationId: () =>
       ipcRenderer.invoke("localChat:createNewDefaultConversationId"),
+    setActiveConversationId: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke("localChat:setActiveConversationId", payload),
     listEvents: (payload: { conversationId: string; maxItems?: number }) =>
       ipcRenderer.invoke("localChat:listEvents", payload),
     listMessages: (payload: {

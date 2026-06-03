@@ -45,6 +45,18 @@ export const registerLocalChatHandlers = (
   });
 
   ipcMain.handle(
+    "localChat:setActiveConversationId",
+    async (event, payload: { conversationId?: string }) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:setActiveConversationId",
+        (client) =>
+          client.setActiveConversationId(payload?.conversationId ?? ""),
+      ),
+  );
+
+  ipcMain.handle(
     "localChat:listEvents",
     async (
       event,

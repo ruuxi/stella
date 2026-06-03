@@ -36,6 +36,20 @@ export const getOrCreateLocalConversationId = async (): Promise<string> =>
 export const createNewLocalConversationId = async (): Promise<string> =>
   getLocalChatApi().createNewDefaultConversationId();
 
+/**
+ * Record `conversationId` as the durable active-conversation pointer. This
+ * is the single source of truth the app restores from on boot, so it's
+ * written whenever the router's active conversation changes.
+ */
+export const setActiveLocalConversationId = async (
+  conversationId: string,
+): Promise<void> => {
+  if (!conversationId) return;
+  const api = window.electronAPI?.localChat;
+  if (!api) return;
+  await api.setActiveConversationId({ conversationId });
+};
+
 export const listLocalEvents = async (
   conversationId: string,
   maxItems = 200,

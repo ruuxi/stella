@@ -1236,6 +1236,23 @@ export class SessionStore {
     return created;
   }
 
+  /**
+   * Point the durable "active conversation" pointer at `conversationId`.
+   * This is the single durable source of truth the desktop restores from on
+   * boot (renderer hard-reload and full restart alike); the renderer writes
+   * it whenever the active conversation changes. Unlike
+   * `createNewDefaultConversationId`, this never mints a new id — it records
+   * the conversation the user is actually viewing.
+   */
+  setActiveDefaultConversationId(conversationIdInput: string): void {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const now = Date.now();
+    this.withTransaction(() => {
+      this.upsertSession(conversationId, now);
+      this.setSetting(DEFAULT_CONVERSATION_SETTING_KEY, conversationId);
+    });
+  }
+
   listEvents(
     conversationIdInput: string,
     maxItems = 200,

@@ -1375,6 +1375,14 @@ export type ElectronLocalChatApi = {
   getOrCreateDefaultConversationId: () => Promise<string>;
   createNewDefaultConversationId: () => Promise<string>;
   /**
+   * Record the conversation the user is actively viewing as the durable
+   * "active conversation" pointer (the single source of truth restored on
+   * boot). Does not mint a new id.
+   */
+  setActiveConversationId: (payload: {
+    conversationId: string;
+  }) => Promise<{ ok: true }>;
+  /**
    * Raw event-stream read kept for the few non-timeline consumers that
    * look for specific auxiliary event types (the welcome dialog reads
    * `assistant_message`), and for the mobile bridge which proxies the
