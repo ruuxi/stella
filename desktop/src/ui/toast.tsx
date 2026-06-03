@@ -1,6 +1,5 @@
 import * as React from "react";
 import { X } from "lucide-react";
-import { NativeWebsiteOverlayRegistrar } from "@/shared/lib/native-website-overlay";
 
 interface ToastContextValue {
   toasts: Toast[];
@@ -140,7 +139,6 @@ function ToastRegion() {
 
   return (
     <div data-component="toast-region">
-      {toasts.length > 0 ? <NativeWebsiteOverlayRegistrar /> : null}
       <ul data-slot="toast-list">
         {toasts.map((toast) => (
           <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
