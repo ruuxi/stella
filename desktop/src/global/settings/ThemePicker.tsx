@@ -54,7 +54,7 @@ export function ThemePicker({
   side = "top",
   align = "end",
 }: ThemePickerProps) {
-  const { themeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
+  const { selectedThemeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
   const {
     setTheme,
     setColorMode,
@@ -80,16 +80,6 @@ export function ThemePicker({
     [themes]
   );
 
-  // When the active theme is an empty overlay, it's invisible passthrough to
-  // its base, so highlight the base instead of an entry that isn't shown.
-  const activeTheme = useMemo(
-    () => themes.find((t) => t.id === themeId),
-    [themes, themeId]
-  );
-  const selectedThemeId =
-    activeTheme && isHiddenOverlay(activeTheme)
-      ? activeTheme.base ?? themeId
-      : themeId;
 
   const triggerElement =
     trigger && isValidElement<ThemePickerTriggerProps>(trigger) ? trigger : null;

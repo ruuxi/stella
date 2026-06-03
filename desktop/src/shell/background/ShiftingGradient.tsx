@@ -248,7 +248,10 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       return;
     }
 
-    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}-${forcedMode ?? ""}`;
+    // Include a palette signature: the Custom overlay keeps a constant
+    // `theme.id` while its displayed base (and thus colors) changes, so the id
+    // alone can't detect a base swap between two non-forced themes.
+    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}-${forcedMode ?? ""}-${colors.background}-${colors.primary}-${colors.interactive}`;
     const settingsChanged = prevKeyRef.current !== key;
 
     if (!settingsChanged) {

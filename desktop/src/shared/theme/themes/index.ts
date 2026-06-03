@@ -59,15 +59,19 @@ export const defaultTheme = themes.find((t) => t.id === "custom")!;
 export const resolveThemeColors = (
   theme: Theme,
   isDark: boolean,
+  baseOverrideId?: string,
 ): { colors: ThemeColors; baseThemeId?: string; forcedMode?: "light" | "dark" } => {
-  if (!theme.base) {
+  if (!theme.base && !baseOverrideId) {
     const dark = theme.forcedMode ? theme.forcedMode === "dark" : isDark;
     return {
       colors: dark ? theme.dark : theme.light,
       forcedMode: theme.forcedMode,
     };
   }
-  const baseTheme = getThemeById(theme.base);
+  // Overlay: inherit from the runtime base override (the base the user has
+  // Custom displaying) when present, else the theme's declared base.
+  const baseId = baseOverrideId ?? theme.base;
+  const baseTheme = baseId ? getThemeById(baseId) : undefined;
   const forcedMode = theme.forcedMode ?? baseTheme?.forcedMode;
   const resolvedDark = forcedMode ? forcedMode === "dark" : isDark;
   const baseColors = baseTheme
@@ -80,7 +84,7 @@ export const resolveThemeColors = (
   const modeOverrides = resolvedDark ? theme.overrides?.dark : theme.overrides?.light;
   return {
     colors: modeOverrides ? { ...baseColors, ...modeOverrides } : baseColors,
-    baseThemeId: baseTheme?.id ?? theme.base,
+    baseThemeId: baseTheme?.id ?? baseId,
     forcedMode,
   };
 };
