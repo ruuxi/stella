@@ -36,16 +36,30 @@ For broad Stella UI changes, these are the main surfaces to inspect:
 - **Other app routes**: `desktop/src/app/{settings,store,social,pets,apps,media}/`,
 each with its own `App.tsx` + css.
 
-For aesthetic redesigns, prefer creating a named theme and applying
-theme-scoped styling so the selected theme controls the look. Use global
-component changes only for layout or behavior that should apply across themes.
+### Aesthetic redesigns go in the Custom theme
 
-For background image or custom theme requests, make the image visible through
-the active theme surface, not hidden behind `ShiftingGradient`. Stella's UI is
-glass-heavy, so tune the background treatment and foreground surfaces together:
-dim or blur busy imagery, strengthen translucent shells where needed, and add
-fit-to-content assistant message bubbles if readability requires them. Preserve
-the requested aesthetic rather than simply making every panel opaque.
+Every user is on the built-in **Custom** overlay theme
+(`desktop/src/shared/theme/themes/custom.ts`), which inherits a base theme
+until it is populated. Write redesigns and personal look changes into Custom so
+they show immediately — the user is already on it — and survive switching
+palettes. Never create a new named theme or scope styling to a non-active
+`[data-theme="…"]`: that strands the change until the user selects it in
+Settings, which is the wrong experience.
+
+- **Colors**: add entries to `overrides.light` / `overrides.dark`, then set
+`populated: true` so Custom surfaces in the picker.
+- **Structure, typography, backgrounds**: target `:root[data-theme="custom"]`
+in CSS. The base theme's tuning still applies via `data-base-theme`, so empty
+Custom stays identical to its base.
+- Reserve theme-agnostic (ungated) global CSS for layout/behavior that should
+hold across every palette.
+
+For background-image looks, make the image visible through the Custom surface,
+not hidden behind `ShiftingGradient`. Stella's UI is glass-heavy, so tune the
+background treatment and foreground surfaces together: dim or blur busy imagery,
+strengthen translucent shells where needed, and add fit-to-content assistant
+message bubbles if readability requires them. Preserve the requested aesthetic
+rather than simply making every panel opaque.
 
 ## Validation
 
