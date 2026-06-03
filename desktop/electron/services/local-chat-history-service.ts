@@ -124,6 +124,11 @@ export class LocalChatHistoryService {
     return this.getStore().createNewDefaultConversationId();
   }
 
+  setActiveConversationId(conversationId: string): { ok: true } {
+    this.getStore().setActiveDefaultConversationId(conversationId);
+    return { ok: true };
+  }
+
   listEvents(args: {
     conversationId: string;
     maxItems?: number;
