@@ -401,7 +401,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --sidebar-ring: var(--ring);
 }
 
-:root[data-theme="pearl"] {
+:root[data-theme="pearl"],
+:root[data-base-theme="pearl"] {
   --border-strong: color-mix(in srgb, var(--foreground) 14%, var(--background));
   --border-base: color-mix(in srgb, var(--foreground) 9%, var(--background));
   --border-weak: color-mix(in srgb, var(--foreground) 5%, var(--background));
@@ -422,7 +423,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --surface-overlay: color-mix(in srgb, var(--foreground) 4%, var(--background));
 }
 
-:root[data-theme="noir"] {
+:root[data-theme="noir"],
+:root[data-base-theme="noir"] {
   --border-strong: color-mix(in srgb, var(--foreground) 18%, var(--background));
   --border-base: color-mix(in srgb, var(--foreground) 11%, var(--background));
   --border-weak: color-mix(in srgb, var(--foreground) 7%, var(--background));

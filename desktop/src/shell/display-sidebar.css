@@ -177,7 +177,9 @@
 }
 
 :root[data-theme="pearl"] .display-sidebar-inner,
-:root[data-theme="noir"] .display-sidebar-inner {
+:root[data-theme="noir"] .display-sidebar-inner,
+:root[data-base-theme="pearl"] .display-sidebar-inner,
+:root[data-base-theme="noir"] .display-sidebar-inner {
   background: var(--background);
   box-shadow: none;
 }

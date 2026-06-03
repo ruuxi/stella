@@ -12,6 +12,7 @@ import {
   getThemeById,
   defaultTheme,
   registerTheme,
+  resolveThemeColors,
   subscribeThemes,
   getThemesSnapshot,
   type Theme,
@@ -30,6 +31,12 @@ interface ThemeReadValue {
   themeId: string;
   colorMode: ColorMode;
   resolvedColorMode: "light" | "dark";
+  /**
+   * The effective forced appearance, resolved through overlay themes (so the
+   * Custom overlay reports its base theme's forced mode). Undefined for normal
+   * themes that follow the user's Light/Dark choice.
+   */
+  forcedMode?: "light" | "dark";
   gradientMode: GradientMode;
   gradientColor: GradientColor;
   colors: ThemeColors;
@@ -64,11 +71,24 @@ function getSystemColorMode(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function applyThemeToDocument(colors: ThemeColors, isDark: boolean, themeId: string) {
+function applyThemeToDocument(
+  colors: ThemeColors,
+  isDark: boolean,
+  themeId: string,
+  baseThemeId?: string,
+) {
   const root = document.documentElement;
 
   root.classList.toggle("dark", isDark);
   root.dataset.theme = themeId;
+  // Overlay themes (Custom) inherit the base theme's CSS tuning via
+  // `data-base-theme`, while `data-theme="custom"` stays available for any
+  // custom styling written on top.
+  if (baseThemeId && baseThemeId !== themeId) {
+    root.dataset.baseTheme = baseThemeId;
+  } else {
+    delete root.dataset.baseTheme;
+  }
   root.style.setProperty("color-scheme", isDark ? "dark" : "light");
   root.style.setProperty("--text-mix-blend-mode", isDark ? "plus-lighter" : "multiply");
 
@@ -254,26 +274,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const activeThemeId = preview.previewThemeId ?? persisted.themeId;
   const theme = getThemeById(activeThemeId) ?? defaultTheme;
   const userResolvedColorMode = persisted.colorMode === "system" ? persisted.systemMode : persisted.colorMode;
-  // Themes with `forcedMode` (Pearl, Noir) ignore the user's Light/Dark
-  // choice and the Gradient controls — they're standardized single-mode
-  // surfaces with no gradient blob.
-  const resolvedColorMode = theme.forcedMode ?? userResolvedColorMode;
-  const colors = resolvedColorMode === "dark" ? theme.dark : theme.light;
-  const effectiveGradientMode = theme.forcedMode
+  // Overlay themes (Custom) inherit colors and forced mode from their base;
+  // themes with `forcedMode` (Pearl, Noir) ignore the user's Light/Dark choice
+  // and the Gradient controls — they're standardized single-mode surfaces with
+  // no gradient blob.
+  const { colors, baseThemeId, forcedMode } = resolveThemeColors(
+    theme,
+    userResolvedColorMode === "dark",
+  );
+  const resolvedColorMode = forcedMode ?? userResolvedColorMode;
+  const effectiveGradientMode = forcedMode
     ? "flat"
     : preview.previewGradientMode ?? persisted.gradientMode;
   const effectiveGradientColor = preview.previewGradientColor ?? persisted.gradientColor;
 
   useEffect(() => {
-    applyThemeToDocument(colors, resolvedColorMode === "dark", theme.id);
-  }, [colors, resolvedColorMode, theme.id]);
+    applyThemeToDocument(colors, resolvedColorMode === "dark", theme.id, baseThemeId);
+  }, [colors, resolvedColorMode, theme.id, baseThemeId]);
 
   const readValue = useMemo<ThemeReadValue>(
     () => ({
-      theme, themeId: persisted.themeId, colorMode: persisted.colorMode, resolvedColorMode,
+      theme, themeId: persisted.themeId, colorMode: persisted.colorMode, resolvedColorMode, forcedMode,
       gradientMode: effectiveGradientMode, gradientColor: effectiveGradientColor, colors, themes: availableThemes,
     }),
-    [theme, persisted.themeId, persisted.colorMode, resolvedColorMode, effectiveGradientMode, effectiveGradientColor, colors, availableThemes],
+    [theme, persisted.themeId, persisted.colorMode, resolvedColorMode, forcedMode, effectiveGradientMode, effectiveGradientColor, colors, availableThemes],
   );
 
   const controlValue = useMemo<ThemeControlValue>(

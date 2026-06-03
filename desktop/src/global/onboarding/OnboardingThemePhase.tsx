@@ -105,7 +105,12 @@ export function OnboardingThemePhase({
   const [hasSelectedGradientColor, setHasSelectedGradientColor] = useState(false);
 
   const selectedTheme = useMemo(() => getThemeById(themeId), [themeId]);
-  const forcedMode = selectedTheme?.forcedMode;
+  // Overlay themes (Custom) inherit their forced appearance from the base.
+  const forcedMode = useMemo(() => {
+    if (!selectedTheme) return undefined;
+    if (selectedTheme.forcedMode) return selectedTheme.forcedMode;
+    return selectedTheme.base ? getThemeById(selectedTheme.base)?.forcedMode : undefined;
+  }, [selectedTheme]);
 
   // rAF-coalesce theme preview hover. `previewTheme(id)` writes CSS
   // variables on `:root` and triggers a full-tree style recalc; sweeping
