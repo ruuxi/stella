@@ -5,6 +5,7 @@ import { configurePiRuntime, getOrCreateDeviceId } from '@/platform/electron/dev
 import { router } from '@/router'
 import { readPersistedLastLocation } from '@/shared/lib/last-location'
 import { useBootstrapState } from './bootstrap-state'
+import { getPersistedChatConversationId } from './conversation-bootstrap-location'
 
 const CONVERSATION_BOOTSTRAP_TIMEOUT_MS = 45_000
 const CONVERSATION_BOOTSTRAP_RETRY_MS = 350
@@ -43,8 +44,15 @@ export const useConversationBootstrap = () => {
       try {
         while (!cancelled) {
           try {
+            const persistedLocation = readPersistedLastLocation()
+            const persistedConversationId =
+              getPersistedChatConversationId(persistedLocation)
+            const localConversationIdPromise =
+              persistedConversationId
+                ? Promise.resolve(persistedConversationId)
+                : getOrCreateLocalConversationId()
             const [localConversationId] = await Promise.all([
-              getOrCreateLocalConversationId(),
+              localConversationIdPromise,
               settleRuntimeAndRestoreShortcut(),
             ])
 
@@ -58,7 +66,7 @@ export const useConversationBootstrap = () => {
             // otherwise the bootstrap races the route restore and pulls the
             // user back to home on every launch.
             setConversationId(localConversationId)
-            if (isChatLocation(readPersistedLastLocation())) {
+            if (isChatLocation(persistedLocation)) {
               try {
                 await router.navigate({
                   to: '/chat',
