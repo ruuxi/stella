@@ -266,7 +266,6 @@ export function ProviderModelPanel({
   const isProviderConnected = useCallback(
     (providerKey: string) => {
       if (providerKey === STELLA_PROVIDER_KEY) return true;
-      if (providerKey === GROK_PROVIDER_KEY) return true;
       if (findApiKey(credentials.apiKeys, providerKey)) return true;
       if (findOauthCredential(credentials.oauthCredentials, providerKey))
         return true;
@@ -763,10 +762,15 @@ function ProviderPane({
       : undefined);
   const providerDisabled = disabled;
   const isGrok = tab.key === GROK_PROVIDER_KEY;
-  const connected =
-    isStella || isGrok || Boolean(apiKey) || Boolean(oauthCredential);
+  const connected = isStella || Boolean(apiKey) || Boolean(oauthCredential);
   const isLocal = tab.key === LOCAL_PROVIDER_KEY;
-  const requiresAuth = !isStella && !isLocal && !connected && Boolean(llmEntry);
+  const usesExternalLogin = isGrok;
+  const requiresAuth =
+    !isStella &&
+    !isLocal &&
+    !usesExternalLogin &&
+    !connected &&
+    Boolean(llmEntry);
   const supportsApiKey =
     Boolean(llmEntry) && !isApiKeyOnlyPlaceholder(llmEntry?.placeholder ?? "");
   const supportsOAuth = Boolean(oauthProvider);
