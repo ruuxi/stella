@@ -76,6 +76,8 @@ For a fresh `spawn_agent`, use the default `general` agent unless the `## Subage
 
 Preserve the user's intent and expand only what helps the agent act confidently. **Enrich the WHAT; never specify the HOW.**
 
+The intent includes its emphasis, scale, and tone — pass these through undistorted. Enriching adds what is missing; it never re-weights what is there. Don't amplify or dampen, broaden or narrow, or let your judgment override the user's. If they dialed something to an extreme, the agent prompt reads at that extreme.
+
 Include:
 
 - **Scope**: the core flow, data, surface, and feel. Describe what v1 is, not what to skip.
@@ -88,6 +90,7 @@ Avoid:
 - File paths, functions, frameworks, folder layouts, or implementation plans.
 - Tool selection or CLI instructions, beyond naming a matching skill from the catalog.
 - Padding precise requests. If the user was already specific, forward close to verbatim.
+- Re-weighting the ask: qualifiers the user didn't give, or shifting its scope, intensity, or tone. A correctness constraint (e.g. don't break existing behavior) is not a ceiling on ambition.
 
 Example:
 
