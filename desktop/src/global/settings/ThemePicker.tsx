@@ -7,6 +7,7 @@ import {
   type ReactElement,
 } from "react";
 import { useTheme, useThemeControl } from "@/context/theme-context";
+import { isHiddenOverlay } from "@/shared/theme/themes";
 import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "@/ui/popover";
 import { Button } from "@/ui/button";
 import { Check } from "lucide-react";
@@ -69,10 +70,26 @@ export function ThemePicker({
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setOpen = controlledOnOpenChange || setInternalOpen;
 
+  // Empty overlay themes (an unpopulated Custom) stay out of the list until
+  // they actually carry changes.
   const sortedThemes = useMemo(
-    () => [...themes].sort((a, b) => a.name.localeCompare(b.name)),
+    () =>
+      [...themes]
+        .filter((t) => !isHiddenOverlay(t))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [themes]
   );
+
+  // When the active theme is an empty overlay, it's invisible passthrough to
+  // its base, so highlight the base instead of an entry that isn't shown.
+  const activeTheme = useMemo(
+    () => themes.find((t) => t.id === themeId),
+    [themes, themeId]
+  );
+  const selectedThemeId =
+    activeTheme && isHiddenOverlay(activeTheme)
+      ? activeTheme.base ?? themeId
+      : themeId;
 
   const triggerElement =
     trigger && isValidElement<ThemePickerTriggerProps>(trigger) ? trigger : null;
@@ -188,7 +205,7 @@ export function ThemePicker({
               onMouseLeave={() => cancelThemePreview()}
             >
               {sortedThemes.map((t) => {
-                const isSelected = t.id === themeId;
+                const isSelected = t.id === selectedThemeId;
                 return (
                   <Button
                     key={t.id}

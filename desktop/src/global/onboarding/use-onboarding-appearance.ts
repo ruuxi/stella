@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useTheme, useThemeControl } from "@/context/theme-context";
+import { isHiddenOverlay } from "@/shared/theme/themes";
 import {
   DEFAULT_PERSONALITY_VOICE_ID,
   PERSONALITY_VOICES,
@@ -45,9 +46,11 @@ export function useOnboardingAppearance({
     };
   }, []);
 
-  const { theme: activeTheme, themeId, themes, colorMode, gradientMode, gradientColor } =
+  const { themeId, themes, colorMode, gradientMode, gradientColor, forcedMode } =
     useTheme();
-  const isForcedTheme = activeTheme.forcedMode !== undefined;
+  // Overlay themes (Custom) inherit their forced mode from the base; the
+  // context resolves this for us.
+  const isForcedTheme = forcedMode !== undefined;
   const {
     setTheme,
     setColorMode,
@@ -59,7 +62,10 @@ export function useOnboardingAppearance({
   } = useThemeControl();
 
   const sortedThemes = useMemo(
-    () => [...themes].sort((a, b) => a.name.localeCompare(b.name)),
+    () =>
+      [...themes]
+        .filter((t) => !isHiddenOverlay(t))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [themes],
   );
 

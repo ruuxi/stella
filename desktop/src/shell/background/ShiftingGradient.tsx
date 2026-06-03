@@ -185,7 +185,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   lightweight = false,
   contained = false,
 }: ShiftingGradientProps) {
-  const { resolvedColorMode, theme, colors } = useTheme();
+  const { resolvedColorMode, theme, colors, forcedMode } = useTheme();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -248,7 +248,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
       return;
     }
 
-    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}-${theme.forcedMode ?? ""}`;
+    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}-${forcedMode ?? ""}`;
     const settingsChanged = prevKeyRef.current !== key;
 
     if (!settingsChanged) {
@@ -270,7 +270,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     // Forced-mode themes (Pearl, Noir) want a clean, flat single-color
     // surface — no blob at all, otherwise the brand-derived palette
     // tints the whole canvas (Pearl ends up gray, Noir muddied).
-    const blobs = theme.forcedMode ? [] : generateBlobs(palette, mode);
+    const blobs = forcedMode ? [] : generateBlobs(palette, mode);
     blobsRef.current = blobs;
 
     const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
@@ -280,7 +280,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
 
     renderGradient(ctx, w, h, bg, blobs, 0.25);
 
-  }, [theme.id, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors]);
+  }, [theme.id, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors, forcedMode]);
 
   // First-render fallback only. We intentionally do NOT re-render on
   // window/parent resize: the blob positions are normalized fractions

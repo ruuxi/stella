@@ -1,6 +1,8 @@
 export {
   getThemeById,
   defaultTheme,
+  resolveThemeColors,
+  isHiddenOverlay,
   subscribeThemes,
   getThemesSnapshot,
   registerTheme,
