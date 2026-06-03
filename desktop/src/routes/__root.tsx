@@ -15,6 +15,7 @@ import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { NicknameDialog } from "@/global/auth/NicknameDialog";
 import { ChatColumn } from "@/app/chat/ChatColumn";
 import { setActiveLocalConversationId } from "@/features/chat/services/local-chat-store";
+import { writeActiveConversationIdCache } from "@/features/chat/services/active-conversation-cache";
 import {
   DisplaySidebar,
   type DisplaySidebarHandle,
@@ -83,12 +84,15 @@ function RootLayout() {
     }
   }, [routerConversationId, setConversationId, state.conversationId]);
 
-  // Single writer for the durable active-conversation pointer. The router
+  // Single writer for the active-conversation pointer. The router
   // (`/chat?c=<id>`) is the live source of truth; whenever it changes we
-  // mirror the id into SQLite so the next boot restores exactly this
-  // conversation — surviving both renderer hard reloads and full restarts.
+  // mirror the id into SQLite (durable, cross-process) and a synchronous
+  // `localStorage` cache (fast boot read). Together they let the next boot
+  // restore exactly this conversation — surviving both renderer hard reloads
+  // and full restarts — without the empty-state flash an IPC-only read causes.
   useEffect(() => {
     if (!routerConversationId) return;
+    writeActiveConversationIdCache(routerConversationId);
     void setActiveLocalConversationId(routerConversationId);
   }, [routerConversationId]);
 
