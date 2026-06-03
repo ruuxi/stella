@@ -81,6 +81,17 @@ export class MiniWindowController {
         })
       },
       afterCreate: (window) => {
+        if (process.platform === 'win32') {
+          // The mini window's whole purpose is to float above other apps.
+          // Without this it materializes as a plain window that Windows tucks
+          // behind whatever app currently owns the foreground, so the user
+          // either sees nothing or has to click the taskbar button to raise
+          // it. `WindowManager` re-applies the user's always-on-top
+          // preference on every show; this just seeds the correct state at
+          // construction so the first summon already floats.
+          window.setAlwaysOnTop(true, 'screen-saver')
+          return
+        }
         if (process.platform !== 'darwin') return
         // `skipTransformProcessType: true` is critical here. Without it,
         // Electron calls `TransformProcessType` on NSApplication to normalize

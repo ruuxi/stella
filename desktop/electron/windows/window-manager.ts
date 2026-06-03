@@ -1070,6 +1070,8 @@ export class WindowManager {
       if (process.platform === 'darwin') {
         window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
         window.setAlwaysOnTop(this.miniAlwaysOnTop, 'screen-saver')
+      } else if (process.platform === 'win32') {
+        window.setAlwaysOnTop(this.miniAlwaysOnTop, 'screen-saver')
       }
     }
 
@@ -1151,9 +1153,18 @@ export class WindowManager {
         return
       }
 
-      app.focus({ steal: true })
+      // Windows (and Linux): the mini is a regular window, so Windows' own
+      // foreground lock can refuse a focus steal from a background process
+      // and merely flash the taskbar button instead of raising the window.
+      // Promoting it into the topmost band first guarantees it paints above
+      // the currently-foreground app even when the OS denies the focus
+      // change, then we attempt the focus on top of that.
+      if (process.platform === 'win32' && this.miniAlwaysOnTop) {
+        window.setAlwaysOnTop(true, 'screen-saver')
+      }
       window.show()
       window.moveTop()
+      app.focus({ steal: true })
       window.focus()
       return
     }
