@@ -547,7 +547,7 @@ export const createAgentOrchestration = (
         if (!hasGuardedShellSessions()) return;
         const sessionIds = [...guardedShellSessionLeases.keys()];
         console.warn(
-          "[self-mod-hmr] mutating shell session still running at finalize; killing guarded shell sessions and cancelling self-mod apply.",
+          "[self-mod-hmr] mutating shell session still running at finalize; killing guarded shell sessions before self-mod apply.",
         );
         await Promise.allSettled(
           sessionIds.map((sessionId) => context.toolHost.killShell(sessionId)),
@@ -862,7 +862,6 @@ export const createAgentOrchestration = (
         }
         if (hasGuardedShellSessions()) {
           await killGuardedShellSessions();
-          subagentSucceeded = false;
         }
         await releaseGuardedShellSessions();
         if (shouldAttachSelfModLifecycle) {

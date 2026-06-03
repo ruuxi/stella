@@ -899,7 +899,7 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(context.selfModLifecycle.finalizeRun).toHaveBeenCalledTimes(1);
   });
 
-  it("kills still-running guarded shell sessions and cancels self-mod finalize", async () => {
+  it("kills still-running guarded shell sessions and still finalizes self-mod", async () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "running_shell";
@@ -945,11 +945,11 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(context.toolHost.killShell).toHaveBeenCalledWith("session-1");
     expect(releaseOrder).toEqual(["kill-start", "kill-end", "guard-end"]);
     expect(context.toolHost.killAllShells).not.toHaveBeenCalled();
-    expect(context.selfModLifecycle.finalizeRun).not.toHaveBeenCalled();
-    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+    expect(context.selfModLifecycle.finalizeRun).toHaveBeenCalledTimes(1);
+    expect(context.selfModLifecycle.cancelRun).not.toHaveBeenCalled();
   });
 
-  it("releases one shell mutation guard for a parallel batch with multiple running sessions", async () => {
+  it("kills parallel guarded shell sessions and still finalizes self-mod", async () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "parallel_running_shell";
@@ -987,8 +987,8 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(context.toolHost.killShell).toHaveBeenCalledWith("session-1");
     expect(context.toolHost.killShell).toHaveBeenCalledWith("session-2");
     expect(context.toolHost.killAllShells).not.toHaveBeenCalled();
-    expect(context.selfModLifecycle.finalizeRun).not.toHaveBeenCalled();
-    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+    expect(context.selfModLifecycle.finalizeRun).toHaveBeenCalledTimes(1);
+    expect(context.selfModLifecycle.cancelRun).not.toHaveBeenCalled();
   });
 
   it("does not run mutating shell commands when the shell mutation guard fails", async () => {
