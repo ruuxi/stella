@@ -1,0 +1,41 @@
+/*
+ * Layout for the ShiftingGradient component. Co-located with the component
+ * and imported by it, so any window that renders <ShiftingGradient/> gets
+ * these rules automatically — no dependency on a globally-loaded stylesheet.
+ *
+ * (Content that should paint *above* the gradient owns its own
+ * `position: relative; z-index: 1` at the consuming surface, e.g. the
+ * full shell's `.full-body`/`.composer` or the mini's `.mini-chat-content`.)
+ */
+.shifting-gradient {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Fills the nearest positioned ancestor instead of the viewport (sidebars,
+   the mini window, etc.). */
+.shifting-gradient--contained {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.gradient-base {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.gradient-grain {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  background-size: 120px 120px;
+  pointer-events: none;
+}

@@ -1,17 +1,15 @@
-import { createContext, useContext, useMemo } from 'react'
+import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useAuthSessionState } from '@/global/auth/hooks/use-auth-session-state'
+import {
+  ChatStoreContextProvider,
+  LocalChatStoreProvider,
+  useChatStore,
+  type ChatStorageMode,
+  type ChatStoreContextValue,
+} from './chat-store-context'
 
-type ChatStorageMode = 'cloud' | 'local'
-
-type ChatStoreContextValue = {
-  storageMode: ChatStorageMode
-  isLocalStorage: boolean
-  cloudFeaturesEnabled: boolean
-  isAuthenticated: boolean
-}
-
-const ChatStoreContext = createContext<ChatStoreContextValue | null>(null)
+export { LocalChatStoreProvider, useChatStore }
 
 export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
   const { hasConnectedAccount } = useAuthSessionState()
@@ -35,13 +33,9 @@ export const ChatStoreProvider = ({ children }: { children: ReactNode }) => {
     ],
   )
 
-  return <ChatStoreContext.Provider value={value}>{children}</ChatStoreContext.Provider>
-}
-
-export const useChatStore = () => {
-  const context = useContext(ChatStoreContext)
-  if (!context) {
-    throw new Error('useChatStore must be used within ChatStoreProvider')
-  }
-  return context
+  return (
+    <ChatStoreContextProvider value={value}>
+      {children}
+    </ChatStoreContextProvider>
+  )
 }

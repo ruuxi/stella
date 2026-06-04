@@ -119,3 +119,5 @@ export const useUiState = () => {
   }
   return context
 }
+
+export const useOptionalUiState = () => useContext(UiStateContext)

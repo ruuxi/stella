@@ -404,10 +404,11 @@ export const UserMessageRow = memo(
 
 type AssistantRowProps = {
   row: AssistantRowViewModel;
+  conversationId?: string | null;
 };
 
 export const AssistantMessageRow = memo(
-  function AssistantMessageRow({ row }: AssistantRowProps) {
+  function AssistantMessageRow({ row, conversationId }: AssistantRowProps) {
     const text = row.text;
     const hasText = text.trim().length > 0;
     const hasOfficePreview = Boolean(row.officePreviewRef);
@@ -464,6 +465,7 @@ export const AssistantMessageRow = memo(
           )}
           {row.inlineImagePayloads && row.inlineImagePayloads.length > 0 ? (
             <InlineGeneratedImageStrip
+              conversationId={conversationId}
               payloads={row.inlineImagePayloads.filter(
                 (
                   payload,
@@ -496,5 +498,7 @@ export const AssistantMessageRow = memo(
       </div>
     );
   },
-  (prev, next) => eventRowEqual(prev.row, next.row),
+  (prev, next) =>
+    prev.conversationId === next.conversationId &&
+    eventRowEqual(prev.row, next.row),
 );

@@ -402,6 +402,9 @@ const SHELL_SNAPSHOT_ROOTS = [
 ]
 const SHELL_SNAPSHOT_EXPLICIT_FILES = [
   'desktop/index.html',
+  'desktop/mini.html',
+  'desktop/overlay.html',
+  'desktop/pet.html',
 ]
 const SHELL_SNAPSHOT_EXCLUDED_DIRS = new Set([
   'node_modules',
@@ -1295,12 +1298,23 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
+        mini: path.resolve(__dirname, 'mini.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
         pet: path.resolve(__dirname, 'pet.html'),
       },
       output: {
         manualChunks(id: string) {
+          const normalized = id.replace(/\\/g, '/')
+          if (normalized.includes('/node_modules/react/')) {
+            return 'vendor-react'
+          }
+          if (normalized.includes('/node_modules/react-dom/')) {
+            return 'vendor-react-dom'
+          }
           const packageName = packageNameFromModuleId(id)
+          if (packageName === 'convex') {
+            return undefined
+          }
           return packageName ? packageChunkName(packageName) : undefined
         },
       },

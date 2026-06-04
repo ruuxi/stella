@@ -1,36 +1,5 @@
-/* Shifting Gradient Background */
-.shifting-gradient {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.shifting-gradient--contained {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 0;
-}
-
-.gradient-base {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.gradient-grain {
-  position: absolute;
-  inset: 0;
-  background-repeat: repeat;
-  background-size: 120px 120px;
-  pointer-events: none;
-}
-
-/* Content should be above gradient */
+/* Content should be above the ShiftingGradient (its own CSS is co-located in
+   `shell/background/ShiftingGradient.css`). */
 .window-header,
 .full-body,
 .full-body-main,

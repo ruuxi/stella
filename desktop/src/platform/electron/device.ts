@@ -1,16 +1,11 @@
 import { getElectronApi } from "./electron";
+import { writeLocalDeviceId } from "./device-id";
 import {
   readConfiguredConvexSiteUrl,
   readConfiguredConvexUrl,
 } from "@/shared/lib/convex-urls";
 
-const DEVICE_ID_KEY = "Stella.deviceId";
-
-let cachedDeviceId: string | null = null;
-
-const writeLocalDeviceId = (deviceId: string) => {
-  window.localStorage.setItem(DEVICE_ID_KEY, deviceId);
-};
+export { getDeviceIdOrNull, getOrCreateDeviceId } from "./device-id";
 
 export const configurePiRuntime = async () => {
   const api = getElectronApi();
@@ -29,7 +24,6 @@ export const configurePiRuntime = async () => {
       convexSiteUrl,
     });
     if (response?.deviceId) {
-      cachedDeviceId = response.deviceId;
       writeLocalDeviceId(response.deviceId);
     }
   } catch (err) {
@@ -37,33 +31,5 @@ export const configurePiRuntime = async () => {
       "[device] configurePiRuntime failed:",
       (err as Error).message,
     );
-  }
-};
-
-export const getOrCreateDeviceId = async () => {
-  if (cachedDeviceId) {
-    return cachedDeviceId;
-  }
-
-  const api = getElectronApi();
-  if (!api?.system?.getDeviceId) {
-    throw new Error("Stella device identity is unavailable.");
-  }
-
-  const fromHost = await api.system.getDeviceId();
-  if (!fromHost) {
-    throw new Error("Stella device identity is unavailable.");
-  }
-
-  cachedDeviceId = fromHost;
-  writeLocalDeviceId(fromHost);
-  return fromHost;
-};
-
-export const getDeviceIdOrNull = async (): Promise<string | null> => {
-  try {
-    return await getOrCreateDeviceId();
-  } catch {
-    return null;
   }
 };

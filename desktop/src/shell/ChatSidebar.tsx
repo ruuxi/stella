@@ -80,7 +80,9 @@ export type ChatPanelOpenRequest = ChatSidebarOpenOptions & {
 
 interface ChatPanelTabProps {
   openRequest?: ChatPanelOpenRequest | null;
+  variant?: "mini" | "sidebar";
   messages: MessageRecord[];
+  conversationId?: string | null;
   activities: EventRecord[];
   latestMessageTimestampMs: number | null;
   isStreaming: boolean;
@@ -106,8 +108,10 @@ interface ChatPanelTabProps {
 export function ChatPanelTab(
     {
       openRequest,
+      variant = "sidebar",
       wideLayout = false,
       messages,
+      conversationId,
       activities,
       latestMessageTimestampMs,
       isStreaming,
@@ -341,7 +345,7 @@ export function ChatPanelTab(
 
     return (
       <div
-        className={`chat-panel-tab${wideLayout ? " chat-panel-tab--wide" : ""}`}
+        className={`chat-panel-tab chat-panel-tab--${variant}${wideLayout ? " chat-panel-tab--wide" : ""}`}
         {...dropHandlers}
       >
         <div
@@ -353,9 +357,10 @@ export function ChatPanelTab(
           <div className="chat-sidebar-main">
             <CompactConversationSurface
               className="chat-sidebar-messages"
-              variant="sidebar"
+              variant={variant}
               scroll={sidebarScrollApi}
               messages={messages}
+              conversationId={conversationId}
               isStreaming={isStreaming}
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}

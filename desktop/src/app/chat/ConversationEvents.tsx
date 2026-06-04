@@ -31,6 +31,7 @@ const justSentActiveUntil = new Map<string, number>();
 
 type Props = {
   messages: MessageRecord[];
+  conversationId?: string | null;
   maxItems?: number;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
@@ -96,6 +97,7 @@ function useOneShotIds(ids: readonly string[], durationMs: number): Set<string> 
 
 export const ConversationEvents = memo(function ConversationEvents({
   messages,
+  conversationId,
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
@@ -136,6 +138,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   return (
     <ChatTimeline
       rows={rows}
+      conversationId={conversationId}
       hasOlderEvents={hasOlderMessages}
       isLoadingOlder={isLoadingOlder}
       isLoadingHistory={isLoadingHistory}

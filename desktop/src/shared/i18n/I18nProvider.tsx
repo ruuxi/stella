@@ -7,8 +7,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/api";
 import {
   type Catalog,
   getEagerCatalog,
@@ -99,11 +97,22 @@ const applyDocumentLocale = (locale: Locale) => {
   root.dataset.stellaTextDir = localeDir(locale);
 };
 
-interface I18nProviderProps {
+export interface I18nProviderProps {
   children: ReactNode;
 }
 
-export function I18nProvider({ children }: I18nProviderProps) {
+type PersistRemoteLocale = (locale: Locale) => void | Promise<unknown>;
+
+export interface I18nProviderBaseProps extends I18nProviderProps {
+  remotePreference?: unknown;
+  persistRemoteLocale?: PersistRemoteLocale;
+}
+
+export function I18nProviderBase({
+  children,
+  remotePreference,
+  persistRemoteLocale,
+}: I18nProviderBaseProps) {
   const [locale, setLocaleState] = useState<Locale>(initialLocale);
   const [catalog, setCatalog] = useState<Catalog | undefined>(() =>
     getEagerCatalog(locale),
@@ -147,30 +156,28 @@ export function I18nProvider({ children }: I18nProviderProps) {
   // external state we're syncing with — setting state in this effect
   // is exactly the "subscribe + setState" shape the lint rule
   // exempts.
-  const remotePreference = useQuery(api.data.preferences.getLocale, {});
   useEffect(() => {
     if (remotePreference === undefined) return;
     if (!remotePreference) return;
+    if (typeof remotePreference !== "string") return;
     if (!isSupportedLocale(remotePreference)) return;
     if (remotePreference === locale) return;
     setLocaleState(remotePreference);
     writePersistedLocale(remotePreference);
   }, [remotePreference, locale]);
 
-  const saveRemoteLocale = useMutation(api.data.preferences.setLocale);
-
   const setLocale = useCallback(
     (next: Locale) => {
       if (!isSupportedLocale(next)) return;
       setLocaleState(next);
       writePersistedLocale(next);
-      // Best-effort sync to Convex; signed-out users just keep the
+      // Best-effort remote sync; signed-out/local-only surfaces just keep the
       // localStorage value.
-      void saveRemoteLocale({ locale: next }).catch(() => {
+      void Promise.resolve(persistRemoteLocale?.(next)).catch(() => {
         /* signed-out / network — preference still lives locally */
       });
     },
-    [saveRemoteLocale],
+    [persistRemoteLocale],
   );
 
   const t = useCallback(
@@ -197,6 +204,10 @@ export function I18nProvider({ children }: I18nProviderProps) {
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+export function LocalI18nProvider({ children }: I18nProviderProps) {
+  return <I18nProviderBase>{children}</I18nProviderBase>;
 }
 
 export function useI18n(): I18nContextValue {

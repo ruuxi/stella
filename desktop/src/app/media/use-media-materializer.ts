@@ -12,7 +12,7 @@
  * single payload stream.
  */
 
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/api"
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state"
@@ -29,132 +29,20 @@ import {
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload"
 import { showToast } from "@/ui/toast"
 import { friendlyImageGenerationFailure } from "./media-error-copy"
+import {
+  failedNotifiedJobs,
+  materializedJobs,
+  persistFailedNotifiedJobs,
+  persistMaterializedJobs,
+  publishMaterializedMediaPayload,
+} from "./media-materializer-state"
 
-const MATERIALIZED_KEY = "stella-media-materialized-jobs"
-const MATERIALIZED_PAYLOADS_KEY = "stella-media-materialized-payloads"
-const FAILED_NOTIFIED_KEY = "stella-media-failed-notified-jobs"
-const MATERIALIZED_CAP = 1000
-
-const loadFromStorage = (key = MATERIALIZED_KEY): string[] => {
-  if (typeof localStorage === "undefined") return []
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as string[] | { jobIds?: string[] }
-    const ids = Array.isArray(parsed) ? parsed : parsed.jobIds
-    return ids ?? []
-  } catch {
-    return []
-  }
-}
-
-const persistToStorage = (ids: Set<string>, key = MATERIALIZED_KEY): void => {
-  if (typeof localStorage === "undefined") return
-  try {
-    const trimmed = Array.from(ids).slice(-MATERIALIZED_CAP)
-    localStorage.setItem(key, JSON.stringify(trimmed))
-  } catch {
-    // Best-effort; no-op on quota errors.
-  }
-}
-
-const loadPayloadsFromStorage = (): Map<string, DisplayPayload> => {
-  const map = new Map<string, DisplayPayload>()
-  if (typeof localStorage === "undefined") return map
-  try {
-    const raw = localStorage.getItem(MATERIALIZED_PAYLOADS_KEY)
-    if (!raw) return map
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return map
-    for (const entry of parsed) {
-      if (!entry || typeof entry !== "object") continue
-      const record = entry as { jobId?: unknown; payload?: unknown }
-      if (typeof record.jobId !== "string") continue
-      const payload = record.payload
-      if (!payload || typeof payload !== "object") continue
-      if ((payload as { kind?: unknown }).kind !== "media") continue
-      map.set(record.jobId, payload as DisplayPayload)
-    }
-  } catch {
-    return new Map()
-  }
-  return map
-}
-
-const persistPayloadsToStorage = (
-  payloads: Map<string, DisplayPayload>,
-): void => {
-  if (typeof localStorage === "undefined") return
-  try {
-    const entries = Array.from(payloads.entries()).slice(-MATERIALIZED_CAP)
-    localStorage.setItem(
-      MATERIALIZED_PAYLOADS_KEY,
-      JSON.stringify(
-        entries.map(([jobId, payload]) => ({
-          jobId,
-          payload,
-        })),
-      ),
-    )
-  } catch {
-    // Best-effort; no-op on quota errors.
-  }
-}
-
-// Module-scoped, mutated through `markMediaJobMaterialized` and the
-// materializer hook. Sharing the same Set across both means no race window
-// where one writer's mark is invisible to the other (which would happen if
-// each side maintained its own `loadFromStorage()` snapshot).
-const materializedJobs: Set<string> = new Set(loadFromStorage())
-const failedNotifiedJobs: Set<string> = new Set(
-  loadFromStorage(FAILED_NOTIFIED_KEY),
-)
-const materializedPayloadsByJobId = loadPayloadsFromStorage()
-const materializedPayloadListeners = new Set<() => void>()
-
-export const publishMaterializedMediaPayload = (payload: DisplayPayload): void => {
-  if (payload.kind === "media" && payload.jobId) {
-    materializedPayloadsByJobId.set(payload.jobId, payload)
-    persistPayloadsToStorage(materializedPayloadsByJobId)
-  }
-  for (const listener of materializedPayloadListeners) listener()
-}
-
-export const useMaterializedMediaPayload = (
-  jobId: string | undefined,
-): DisplayPayload | null =>
-  useSyncExternalStore(
-    (listener) => {
-      materializedPayloadListeners.add(listener)
-      return () => materializedPayloadListeners.delete(listener)
-    },
-    () => (jobId ? (materializedPayloadsByJobId.get(jobId) ?? null) : null),
-    () => null,
-  )
-
-export const useMaterializedMediaPayloadSnapshot = (): ReadonlyMap<
-  string,
-  DisplayPayload
-> =>
-  useSyncExternalStore(
-    (listener) => {
-      materializedPayloadListeners.add(listener)
-      return () => materializedPayloadListeners.delete(listener)
-    },
-    () => materializedPayloadsByJobId,
-    () => new Map(),
-  )
-
-/**
- * Mark a jobId as already-handled so the materializer skips it. Use this
- * from any UI that materializes its own jobs (e.g. MediaStudio) so we don't
- * double-download or pop the workspace panel over the user's active surface.
- */
-export const markMediaJobMaterialized = (jobId: string): void => {
-  if (materializedJobs.has(jobId)) return
-  materializedJobs.add(jobId)
-  persistToStorage(materializedJobs)
-}
+export {
+  markMediaJobMaterialized,
+  publishMaterializedMediaPayload,
+  useMaterializedMediaPayload,
+  useMaterializedMediaPayloadSnapshot,
+} from "./media-materializer-state"
 
 const toMediaAsset = (output: OutputMedia): MediaAsset | null => {
   switch (output.kind) {
@@ -285,7 +173,7 @@ export const useMediaMaterializer = ({
 
           publishMaterializedMediaPayload(payload)
           materializedJobs.add(job.jobId)
-          persistToStorage(materializedJobs)
+          persistMaterializedJobs()
 
           if (payload.asset.kind === "image") {
             openDisplayPayloadTab(payload, {
@@ -318,7 +206,7 @@ export const useMediaMaterializer = ({
       if (!IMAGE_CAPABILITIES.has(job.capability)) continue
       if (failedNotifiedJobs.has(job.jobId)) continue
       failedNotifiedJobs.add(job.jobId)
-      persistToStorage(failedNotifiedJobs, FAILED_NOTIFIED_KEY)
+      persistFailedNotifiedJobs()
       showToast({
         title: friendlyImageGenerationFailure(job.error),
         variant: "error",
