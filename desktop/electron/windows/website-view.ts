@@ -72,6 +72,20 @@ export class WebsiteViewController {
 
   constructor(private readonly options: WebsiteViewControllerOptions) {}
 
+  /** Opaque backing color for the view. Only ever visible for the brief
+   *  moment before the embedded page paints its own background, so we just
+   *  match the desktop shell's light/dark base to avoid a flash. Mirrors the
+   *  `backgroundColor` the full window itself is created with. */
+  private backdropColorFor(theme: WebsiteViewTheme | null): string {
+    return theme?.mode === "dark" ? "#101016" : "#f2f4f8";
+  }
+
+  private applyBackdropColor() {
+    const view = this.view;
+    if (!view || view.webContents.isDestroyed()) return;
+    view.setBackgroundColor(this.backdropColorFor(this.latestTheme));
+  }
+
   private ensureView() {
     if (this.view && !this.view.webContents.isDestroyed()) {
       return this.view;
@@ -87,11 +101,15 @@ export class WebsiteViewController {
       },
     });
 
-    // Transparent backing surface: the embedded website paints its own
-    // body transparent in `data-embedded="true"` mode so the desktop's
-    // shifting-gradient theme canvas underneath is visible. Without this,
-    // Chromium's default opaque white frame would block it.
-    view.setBackgroundColor("#00000000");
+    // Opaque backing surface. A translucent WebContentsView forces
+    // Chromium off the fast Direct Composition path on Windows, which made
+    // the embedded Store/Billing scroll and interact with noticeable lag.
+    // Instead the website paints its own theme-matched gradient in
+    // `data-embedded="true"` mode (see the website's embedded styles), so an
+    // opaque backing surface is invisible while restoring smooth
+    // compositing. The color only shows for the brief moment before the page
+    // paints, so we just match the desktop shell's light/dark base.
+    view.setBackgroundColor(this.backdropColorFor(this.latestTheme));
 
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (this.options.isAllowedUrl(url)) {
@@ -186,6 +204,9 @@ export class WebsiteViewController {
     if (params?.theme) {
       this.latestTheme = params.theme;
     }
+    // Keep the opaque backing color in sync with the (possibly newly
+    // arrived) theme so a dark-mode open never flashes the light base.
+    this.applyBackdropColor();
     const target = this.options.getUrl(params);
     const current = view.webContents.getURL();
     // The route is the only navigation-worthy part of the URL — theme
@@ -210,6 +231,7 @@ export class WebsiteViewController {
    */
   setTheme(theme: WebsiteViewTheme) {
     this.latestTheme = theme;
+    this.applyBackdropColor();
     this.sendTheme(theme);
   }
 
