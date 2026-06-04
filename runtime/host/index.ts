@@ -1455,16 +1455,14 @@ export class StellaRuntimeHost {
     return { ok: true };
   }
 
-  async warmWorker() {
+  /**
+   * Proactively spawn the worker process without forcing a model-catalog
+   * fetch. The worker self-warms its catalog on init/configure (debounced),
+   * so this is just the process spin-up — kept off the open burst by the
+   * caller (deferred-startup) so it doesn't contend with first paint.
+   */
+  async ensureWorkerStarted() {
     await this.workerController.ensureStarted();
-    await this.requestWorker<{ ok: true }>(
-      METHOD_NAMES.INTERNAL_WORKER_WARM_MODEL_CATALOG,
-      {},
-      {
-        ensureWorker: true,
-        recordActivity: false,
-      },
-    ).catch(() => undefined);
     return { ok: true };
   }
 

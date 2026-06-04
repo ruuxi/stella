@@ -21,6 +21,7 @@ import { showStellaNotification } from "../services/notification-service.js";
 import { getActiveBrowserTabForBundleId } from "../active-browser-tab.js";
 import { listRecentApps } from "../recent-apps.js";
 import { requestMacPermission } from "../utils/macos-permissions.js";
+import { getMainLogger } from "../observability/main-logger.js";
 
 const IDLE_HMR_STATE: SelfModHmrState = {
   phase: "idle",
@@ -222,10 +223,26 @@ const connectHostRunner = async (context: BootstrapContext) => {
     broadcastScheduleUpdated(context);
   });
 
+  const logger = getMainLogger();
+  const connectBeganAt = Math.round(process.uptime() * 1000);
+  logger?.process("startup.host-runner.connect", { elapsedMs: connectBeganAt });
   await runner.start();
-  await runner.warmWorker();
+  // Proactively spawn the worker (off the open burst, since connectHostRunner
+  // runs from the deferred-startup sequence). The worker self-warms its model
+  // catalog on init, so the first chat stays fast without a blocking warm.
+  await runner.ensureWorkerStarted();
+  const workerStartedAt = Math.round(process.uptime() * 1000);
+  logger?.process("startup.host-runner.worker-spawned", {
+    elapsedMs: workerStartedAt,
+    sinceConnectMs: workerStartedAt - connectBeganAt,
+  });
   const health = await runner.host.health();
   state.deviceId = health.deviceId;
+  const readyAt = Math.round(process.uptime() * 1000);
+  logger?.process("startup.host-runner.ready", {
+    elapsedMs: readyAt,
+    sinceConnectMs: readyAt - connectBeganAt,
+  });
 };
 
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {

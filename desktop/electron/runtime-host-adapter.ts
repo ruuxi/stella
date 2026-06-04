@@ -425,11 +425,11 @@ export class RuntimeHostAdapter {
     await this.host.stop(options);
   }
 
-  async warmWorker() {
+  async ensureWorkerStarted() {
     if (!this.started) {
       return;
     }
-    await this.host.warmWorker();
+    await this.host.ensureWorkerStarted();
     this.lastRuntimeHealth = await this.host.health();
     this.lastHealth = await this.host.healthCheck();
     this.emitAvailabilityChange();

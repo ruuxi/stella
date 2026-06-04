@@ -1,5 +1,6 @@
 import { ChronicleController } from "../services/chronicle-controller.js";
 import { type BootstrapContext } from "./context.js";
+import { getMainLogger } from "../observability/main-logger.js";
 
 // Chronicle refreshes the rolling 10-min summary once per minute and the
 // rolling 6-hour summary once per hour.
@@ -82,6 +83,19 @@ const createDeferredStartupTasks = (
   };
 
   return [
+    {
+      // Spin up the runtime worker (and warm the model catalog) only after
+      // the renderer has painted, so the spawn + catalog fetch don't contend
+      // with first paint. `startHostRunner` is idempotent and the worker is
+      // spawned on demand if a chat beats this, so deferring is safe.
+      label: "host-runner",
+      run: () => {
+        getMainLogger()?.process("startup.host-runner.kickoff", {
+          elapsedMs: Math.round(process.uptime() * 1000),
+        });
+        state.startHostRunner?.();
+      },
+    },
     {
       label: "overlay-window",
       run: () => {
