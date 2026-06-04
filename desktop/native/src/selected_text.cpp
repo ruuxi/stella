@@ -184,34 +184,38 @@ static bool tryGetSelection(
     return found;
 }
 
-static void emitEmpty()
+static std::string buildEmpty()
 {
-    fwrite("{}", 1, 2, stdout);
+    return "{}";
 }
 
-static void emit(const std::string& text, const RectBounds& rect)
+static std::string buildResult(const std::string& text, const RectBounds& rect)
 {
-    std::string textLiteral = jsonEscape(text);
+    std::string out = "{\"text\":";
+    out += jsonEscape(text);
     if (rect.valid) {
         char buf[128];
         int n = sprintf_s(
             buf, sizeof(buf),
             ",\"rect\":{\"x\":%ld,\"y\":%ld,\"w\":%ld,\"h\":%ld}}",
             rect.x, rect.y, rect.w, rect.h);
-        fwrite("{\"text\":", 1, 8, stdout);
-        fwrite(textLiteral.data(), 1, textLiteral.size(), stdout);
-        if (n > 0) fwrite(buf, 1, (size_t)n, stdout);
+        if (n > 0) out.append(buf, (size_t)n);
+        else out += "}";
     } else {
-        fwrite("{\"text\":", 1, 8, stdout);
-        fwrite(textLiteral.data(), 1, textLiteral.size(), stdout);
-        fwrite("}", 1, 1, stdout);
+        out += "}";
     }
+    return out;
 }
 
-int main()
+// Do all the UI Automation work and return the JSON line. Every call here is a
+// synchronous cross-process COM call into the focused app's UIA provider, which
+// can block for a long time (Chromium/Electron build their accessibility tree
+// lazily; games and unresponsive apps may never answer). This runs on a worker
+// thread so the deadline in main() can bound it — see the watchdog there.
+static std::string computeSelectionJson()
 {
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (FAILED(hr)) { emitEmpty(); return 0; }
+    if (FAILED(hr)) return buildEmpty();
 
     IUIAutomation* uia = nullptr;
     hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER,
@@ -219,8 +223,7 @@ int main()
     if (FAILED(hr) || !uia)
     {
         CoUninitialize();
-        emitEmpty();
-        return 0;
+        return buildEmpty();
     }
 
     // Get the focused element
@@ -230,8 +233,7 @@ int main()
     {
         uia->Release();
         CoUninitialize();
-        emitEmpty();
-        return 0;
+        return buildEmpty();
     }
 
     // Walk up from focused element looking for a TextPattern with selection.
@@ -243,6 +245,7 @@ int main()
     IUIAutomationElement* current = focused;
     current->AddRef();
 
+    std::string result;
     bool emitted = false;
     for (int depth = 0; depth < 15 && current; depth++)
     {
@@ -250,7 +253,7 @@ int main()
         RectBounds rect{ false, 0, 0, 0, 0 };
         if (tryGetSelection(current, text, rect))
         {
-            emit(text, rect);
+            result = buildResult(text, rect);
             emitted = true;
             current->Release();
             current = nullptr;
@@ -267,11 +270,69 @@ int main()
     }
 
     if (current) current->Release();
-    if (!emitted) emitEmpty();
+    if (!emitted) result = buildEmpty();
 
     if (walker) walker->Release();
     focused->Release();
     uia->Release();
     CoUninitialize();
+    return result;
+}
+
+// The worker thread fully populates g_result before signaling, so the main
+// thread only ever reads it after WaitForSingleObject reports success.
+static std::string g_result;
+static HANDLE g_doneEvent = NULL;
+
+static DWORD WINAPI selectionWorker(LPVOID)
+{
+    g_result = computeSelectionJson();
+    SetEvent(g_doneEvent);
     return 0;
+}
+
+// Bound the UIA work below the caller's process-kill timeout (1s) so we exit
+// cleanly with a result instead of hanging until we're SIGTERM'd. A killed
+// spawn on Windows costs a full process launch plus the kill-timeout wait, and
+// selected_text runs after text selections, so a stuck UIA provider would
+// otherwise churn the machine. 700ms leaves headroom for process startup.
+static const DWORD SELECTION_DEADLINE_MS = 700;
+
+static void writeOut(const std::string& s)
+{
+    fwrite(s.data(), 1, s.size(), stdout);
+    fflush(stdout);
+}
+
+int main()
+{
+    g_doneEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    HANDLE worker =
+        g_doneEvent ? CreateThread(NULL, 0, selectionWorker, NULL, 0, NULL)
+                    : NULL;
+
+    // If we can't spin up the watchdog, fall back to running inline — no worse
+    // than the previous (unbounded) behavior.
+    if (!g_doneEvent || !worker)
+    {
+        if (worker) CloseHandle(worker);
+        if (g_doneEvent) CloseHandle(g_doneEvent);
+        writeOut(computeSelectionJson());
+        return 0;
+    }
+
+    DWORD waited = WaitForSingleObject(g_doneEvent, SELECTION_DEADLINE_MS);
+    if (waited == WAIT_OBJECT_0)
+    {
+        writeOut(g_result);
+        CloseHandle(worker);
+        CloseHandle(g_doneEvent);
+        return 0;
+    }
+
+    // Deadline hit: UIA is stuck in the worker. Emit empty and hard-exit so the
+    // blocked thread (mid cross-process call) is torn down with the process
+    // rather than left hanging until the parent's kill timeout.
+    writeOut(buildEmpty());
+    ExitProcess(0);
 }
