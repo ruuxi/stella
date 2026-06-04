@@ -2,28 +2,36 @@ import { app, nativeImage } from 'electron'
 import fs from 'fs'
 import path from 'path'
 
-const resolveProjectRoot = (electronDir: string) => path.resolve(electronDir, '..', '..')
+// Compiled main lives at desktop/dist-electron/desktop/electron, so the desktop
+// package root (which holds build/, public/, dist/) is three levels up.
+const resolveDesktopRoot = (electronDir: string) => path.resolve(electronDir, '..', '..', '..')
 
 const resolveDockIconPath = (electronDir: string) => {
-  const projectRoot = resolveProjectRoot(electronDir)
+  const desktopRoot = resolveDesktopRoot(electronDir)
   const preferredPaths = [
-    path.join(projectRoot, 'build', 'icon.png'),
-    path.join(projectRoot, 'dist', 'stella-app-icon.png'),
-    path.join(projectRoot, 'public', 'stella-app-icon.png'),
+    path.join(desktopRoot, 'build', 'icon.png'),
+    path.join(desktopRoot, 'dist', 'stella-app-icon.png'),
+    path.join(desktopRoot, 'public', 'stella-app-icon.png'),
   ]
 
   return preferredPaths.find((candidatePath) => fs.existsSync(candidatePath)) ?? preferredPaths[0]
 }
 
 export const resolveAppIconPath = (electronDir: string) => {
-  const projectRoot = resolveProjectRoot(electronDir)
-  const packagedIconPath = path.join(projectRoot, 'dist', 'stella-app-icon.png')
+  const desktopRoot = resolveDesktopRoot(electronDir)
+  const candidates =
+    process.platform === 'win32'
+      ? [
+          path.join(desktopRoot, 'build', 'icon.ico'),
+          path.join(desktopRoot, 'dist', 'stella-app-icon.png'),
+          path.join(desktopRoot, 'public', 'stella-app-icon.png'),
+        ]
+      : [
+          path.join(desktopRoot, 'dist', 'stella-app-icon.png'),
+          path.join(desktopRoot, 'public', 'stella-app-icon.png'),
+        ]
 
-  if (fs.existsSync(packagedIconPath)) {
-    return packagedIconPath
-  }
-
-  return path.join(projectRoot, 'public', 'stella-app-icon.png')
+  return candidates.find((candidatePath) => fs.existsSync(candidatePath)) ?? candidates[candidates.length - 1]
 }
 
 export const applyDockIcon = (electronDir: string) => {
