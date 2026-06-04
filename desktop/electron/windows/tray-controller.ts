@@ -9,11 +9,14 @@ type TrayControllerOptions = {
 }
 
 const resolveTrayIconPath = (electronDir: string): string | null => {
-  const projectRoot = path.resolve(electronDir, '..', '..')
+  // Compiled main lives at desktop/dist-electron/desktop/electron, so the
+  // desktop package root (which holds build/, public/, dist/) is three up.
+  const desktopRoot = path.resolve(electronDir, '..', '..', '..')
   const candidates = [
-    path.join(projectRoot, 'build', 'icon.ico'),
-    path.join(projectRoot, 'build', 'icon.png'),
-    path.join(projectRoot, 'public', 'stella-app-icon.png'),
+    path.join(desktopRoot, 'build', 'icon.ico'),
+    path.join(desktopRoot, 'build', 'icon.png'),
+    path.join(desktopRoot, 'dist', 'stella-app-icon.png'),
+    path.join(desktopRoot, 'public', 'stella-app-icon.png'),
   ]
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null
 }
