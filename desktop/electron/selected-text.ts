@@ -1,7 +1,12 @@
 import { runNativeHelper } from './native-helper.js'
 import { hasMacPermission } from './utils/macos-permissions.js'
 
-const TIMEOUT_MS = 1000
+// UIA-only is quick; the clipboard fallback adds a synthetic Ctrl+C plus a
+// short clipboard poll, so it needs a larger ceiling. The helper self-bounds
+// under both via an internal watchdog, so we rarely wait the whole budget --
+// these are just the process-kill safety nets.
+const UIA_ONLY_TIMEOUT_MS = 1000
+const CLIPBOARD_FALLBACK_TIMEOUT_MS = 1800
 
 export type SelectedTextRect = {
   x: number
@@ -95,12 +100,13 @@ export const getSelectedText = async (
 ): Promise<SelectedTextResult | null> => {
   if (!hasMacPermission('accessibility')) return null
 
-  const args = options?.allowClipboardFallback === false
-    ? ['--no-clipboard-fallback']
-    : []
+  const clipboardAllowed = options?.allowClipboardFallback !== false
+  const args = clipboardAllowed ? [] : ['--no-clipboard-fallback']
 
   const stdout = await runNativeHelper('selected_text', args, {
-    timeout: TIMEOUT_MS,
+    timeout: clipboardAllowed
+      ? CLIPBOARD_FALLBACK_TIMEOUT_MS
+      : UIA_ONLY_TIMEOUT_MS,
     maxBuffer: 512 * 1024,
   })
   if (stdout == null) return null

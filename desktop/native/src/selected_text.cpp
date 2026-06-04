@@ -16,6 +16,8 @@
 #include <UIAutomationClient.h>
 #include <cstdio>
 #include <cmath>
+#include <cstring>
+#include <cwchar>
 #include <string>
 
 static std::string toUtf8(const std::wstring& ws)
@@ -207,15 +209,16 @@ static std::string buildResult(const std::string& text, const RectBounds& rect)
     return out;
 }
 
-// Do all the UI Automation work and return the JSON line. Every call here is a
-// synchronous cross-process COM call into the focused app's UIA provider, which
-// can block for a long time (Chromium/Electron build their accessibility tree
-// lazily; games and unresponsive apps may never answer). This runs on a worker
-// thread so the deadline in main() can bound it — see the watchdog there.
-static std::string computeSelectionJson()
+// UI Automation pass: returns the JSON line if a selection was found, or an
+// empty string when nothing was found. Every call here is a synchronous
+// cross-process COM call into the focused app's UIA provider, which can block
+// for a long time (Chromium/Electron build their accessibility tree lazily;
+// games and unresponsive apps may never answer). It runs on a worker thread so
+// the deadline in main() can bound it (see the watchdog there).
+static std::string computeSelectionViaUia()
 {
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (FAILED(hr)) return buildEmpty();
+    if (FAILED(hr)) return "";
 
     IUIAutomation* uia = nullptr;
     hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER,
@@ -223,7 +226,7 @@ static std::string computeSelectionJson()
     if (FAILED(hr) || !uia)
     {
         CoUninitialize();
-        return buildEmpty();
+        return "";
     }
 
     // Get the focused element
@@ -233,7 +236,7 @@ static std::string computeSelectionJson()
     {
         uia->Release();
         CoUninitialize();
-        return buildEmpty();
+        return "";
     }
 
     // Walk up from focused element looking for a TextPattern with selection.
@@ -246,7 +249,6 @@ static std::string computeSelectionJson()
     current->AddRef();
 
     std::string result;
-    bool emitted = false;
     for (int depth = 0; depth < 15 && current; depth++)
     {
         std::string text;
@@ -254,7 +256,6 @@ static std::string computeSelectionJson()
         if (tryGetSelection(current, text, rect))
         {
             result = buildResult(text, rect);
-            emitted = true;
             current->Release();
             current = nullptr;
             break;
@@ -270,8 +271,6 @@ static std::string computeSelectionJson()
     }
 
     if (current) current->Release();
-    if (!emitted) result = buildEmpty();
-
     if (walker) walker->Release();
     focused->Release();
     uia->Release();
@@ -279,24 +278,164 @@ static std::string computeSelectionJson()
     return result;
 }
 
+// Ctrl+C means "interrupt", not "copy", in a console/terminal, so we must never
+// inject it there. Detect the foreground window's class against the common
+// console/terminal hosts and skip the clipboard fallback when it matches.
+static bool isConsoleLikeForeground()
+{
+    HWND fg = GetForegroundWindow();
+    if (!fg) return false;
+    wchar_t cls[256] = {};
+    if (GetClassNameW(fg, cls, 256) <= 0) return false;
+    static const wchar_t* kConsoleClasses[] = {
+        L"ConsoleWindowClass",            // conhost: cmd.exe, classic PowerShell
+        L"CASCADIA_HOSTING_WINDOW_CLASS", // Windows Terminal
+        L"VirtualConsoleClass",           // ConEmu / Cmder
+        L"mintty",                        // Git Bash / Cygwin / MSYS2
+        L"PuTTY",                         // PuTTY
+    };
+    for (const wchar_t* candidate : kConsoleClasses)
+    {
+        if (wcscmp(cls, candidate) == 0) return true;
+    }
+    return false;
+}
+
+static std::wstring readClipboardUnicode()
+{
+    std::wstring out;
+    if (!OpenClipboard(NULL)) return out;
+    HANDLE handle = GetClipboardData(CF_UNICODETEXT);
+    if (handle)
+    {
+        const wchar_t* p = static_cast<const wchar_t*>(GlobalLock(handle));
+        if (p)
+        {
+            out = p;
+            GlobalUnlock(handle);
+        }
+    }
+    CloseClipboard();
+    return out;
+}
+
+static void setClipboardUnicode(const std::wstring& text)
+{
+    if (!OpenClipboard(NULL)) return;
+    EmptyClipboard();
+    const size_t bytes = (text.size() + 1) * sizeof(wchar_t);
+    HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (mem)
+    {
+        void* dst = GlobalLock(mem);
+        if (dst)
+        {
+            memcpy(dst, text.c_str(), bytes);
+            GlobalUnlock(mem);
+            // On success the system owns `mem`; only free it if the set failed.
+            if (!SetClipboardData(CF_UNICODETEXT, mem)) GlobalFree(mem);
+        }
+        else
+        {
+            GlobalFree(mem);
+        }
+    }
+    CloseClipboard();
+}
+
+static void clearClipboard()
+{
+    if (OpenClipboard(NULL))
+    {
+        EmptyClipboard();
+        CloseClipboard();
+    }
+}
+
+static void sendCtrlC()
+{
+    INPUT inputs[4] = {};
+    inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_CONTROL;
+    inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = 'C';
+    inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = 'C';
+    inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+    inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = VK_CONTROL;
+    inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(4, inputs, sizeof(INPUT));
+}
+
+// Clipboard fallback for apps whose UIA provider doesn't expose a selection
+// (Chromium/Electron, custom text views): synthesize Ctrl+C, read the copied
+// text, then restore the prior clipboard. We only touch the clipboard if Ctrl+C
+// actually changed it, so a no-op copy never clobbers an image/file already
+// sitting on the clipboard. Prior non-text content can't be restored (we only
+// snapshot text), which is an accepted trade-off. Returns the JSON line, or "".
+static std::string getSelectionViaClipboard()
+{
+    const std::wstring saved = readClipboardUnicode();
+    const bool hadText = !saved.empty();
+    const DWORD seqBefore = GetClipboardSequenceNumber();
+
+    sendCtrlC();
+
+    std::wstring copied;
+    bool changed = false;
+    for (int i = 0; i < 50; i++) // up to ~500ms for the app to populate it
+    {
+        Sleep(10);
+        if (GetClipboardSequenceNumber() != seqBefore)
+        {
+            changed = true;
+            copied = readClipboardUnicode();
+            break;
+        }
+    }
+
+    if (!changed)
+    {
+        // Ctrl+C produced nothing (no selection / not copyable). Leave the
+        // clipboard exactly as we found it.
+        return "";
+    }
+
+    if (hadText) setClipboardUnicode(saved);
+    else clearClipboard();
+
+    const size_t start = copied.find_first_not_of(L" \t\r\n");
+    if (start == std::wstring::npos) return "";
+    const size_t end = copied.find_last_not_of(L" \t\r\n");
+    const std::string utf8 = toUtf8(copied.substr(start, end - start + 1));
+    if (utf8.empty()) return "";
+    RectBounds noRect{ false, 0, 0, 0, 0 };
+    return buildResult(utf8, noRect);
+}
+
+// UIA first (fast, side-effect-free). If it finds nothing and the clipboard
+// fallback is allowed (and the foreground isn't a console), synthesize Ctrl+C.
+static std::string computeSelectionJson(bool clipboardAllowed)
+{
+    std::string uia = computeSelectionViaUia();
+    if (!uia.empty()) return uia;
+    if (clipboardAllowed && !isConsoleLikeForeground())
+    {
+        std::string viaClipboard = getSelectionViaClipboard();
+        if (!viaClipboard.empty()) return viaClipboard;
+    }
+    return buildEmpty();
+}
+
 // The worker thread fully populates g_result before signaling, so the main
 // thread only ever reads it after WaitForSingleObject reports success.
 static std::string g_result;
 static HANDLE g_doneEvent = NULL;
+static bool g_clipboardAllowed = true;
 
 static DWORD WINAPI selectionWorker(LPVOID)
 {
-    g_result = computeSelectionJson();
+    g_result = computeSelectionJson(g_clipboardAllowed);
     SetEvent(g_doneEvent);
     return 0;
 }
-
-// Bound the UIA work below the caller's process-kill timeout (1s) so we exit
-// cleanly with a result instead of hanging until we're SIGTERM'd. A killed
-// spawn on Windows costs a full process launch plus the kill-timeout wait, and
-// selected_text runs after text selections, so a stuck UIA provider would
-// otherwise churn the machine. 700ms leaves headroom for process startup.
-static const DWORD SELECTION_DEADLINE_MS = 700;
 
 static void writeOut(const std::string& s)
 {
@@ -304,24 +443,39 @@ static void writeOut(const std::string& s)
     fflush(stdout);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+    for (int i = 1; i < argc; i++)
+    {
+        if (strcmp(argv[i], "--no-clipboard-fallback") == 0)
+        {
+            g_clipboardAllowed = false;
+        }
+    }
+
+    // Bound the work below the caller's process-kill timeout so we exit cleanly
+    // with a result instead of hanging until we're SIGTERM'd (a killed spawn on
+    // Windows costs a full process launch plus the kill-timeout wait, and this
+    // runs after text selections). UIA-only is quick; the clipboard fallback
+    // adds a synthetic Ctrl+C + clipboard poll, so it gets more headroom.
+    const DWORD deadlineMs = g_clipboardAllowed ? 1500 : 700;
+
     g_doneEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
     HANDLE worker =
         g_doneEvent ? CreateThread(NULL, 0, selectionWorker, NULL, 0, NULL)
                     : NULL;
 
-    // If we can't spin up the watchdog, fall back to running inline — no worse
-    // than the previous (unbounded) behavior.
+    // If we can't spin up the watchdog, fall back to running inline (no worse
+    // than the previous, unbounded behavior).
     if (!g_doneEvent || !worker)
     {
         if (worker) CloseHandle(worker);
         if (g_doneEvent) CloseHandle(g_doneEvent);
-        writeOut(computeSelectionJson());
+        writeOut(computeSelectionJson(g_clipboardAllowed));
         return 0;
     }
 
-    DWORD waited = WaitForSingleObject(g_doneEvent, SELECTION_DEADLINE_MS);
+    DWORD waited = WaitForSingleObject(g_doneEvent, deadlineMs);
     if (waited == WAIT_OBJECT_0)
     {
         writeOut(g_result);
@@ -330,9 +484,9 @@ int main()
         return 0;
     }
 
-    // Deadline hit: UIA is stuck in the worker. Emit empty and hard-exit so the
-    // blocked thread (mid cross-process call) is torn down with the process
-    // rather than left hanging until the parent's kill timeout.
+    // Deadline hit: the work is stuck in the worker. Emit empty and hard-exit so
+    // the blocked thread is torn down with the process rather than left hanging
+    // until the parent's kill timeout.
     writeOut(buildEmpty());
     ExitProcess(0);
 }
