@@ -47,7 +47,13 @@ import { rotateLogIfOversized } from "../observability/rotate-file.js";
  */
 
 const START_POLL_INTERVAL_MS = 50;
-const START_TIMEOUT_MS = 10_000;
+// The Bun worker cold-starts by loading the bundled kernel entry, which on
+// low-end Windows machines has been observed at ~9.5s (worker startupMs≈9466).
+// A 10s budget left effectively no margin, so a slightly slower boot timed out
+// and triggered a spawn-retry cascade (worker not "ready" until ~40s, plus a
+// failed startup source-history record that waits on it). 30s gives ample
+// headroom on slow machines while still surfacing a genuinely stuck worker.
+const START_TIMEOUT_MS = 30_000;
 const SOCKET_CONNECT_TIMEOUT_MS = 1_000;
 const HOST_LOCK_TIMEOUT_MS = 75_000;
 const WORKER_READY_PROBE_ID = "__stella_runtime_ready_probe__";
