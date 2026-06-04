@@ -32,8 +32,11 @@
       color-mix(in srgb, var(--surface-raised-stronger-non-alpha, var(--background)) 92%, transparent),
       color-mix(in srgb, var(--background) 84%, transparent)
     );
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  /* Cheap blur radius — the global 40px + saturate(180%) glass blur is a
+     heavy backdrop pass that stutters on weaker Windows GPUs, and this
+     placeholder only flashes briefly over the Store/Billing area. */
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
