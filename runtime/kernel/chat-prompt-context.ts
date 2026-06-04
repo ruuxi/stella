@@ -60,6 +60,24 @@ const buildAppSelectionSnippet = (
 
   const label = selection.label?.trim() || "Selected area";
   const attrs: string[] = [`label="${escapeXmlAttribute(label)}"`];
+  if (selection.surface?.trim()) {
+    attrs.push(`surface="${escapeXmlAttribute(selection.surface.trim())}"`);
+  }
+  if (selection.anchor?.kind?.trim()) {
+    attrs.push(
+      `anchor-kind="${escapeXmlAttribute(selection.anchor.kind.trim())}"`,
+    );
+  }
+  if (selection.anchor?.role?.trim()) {
+    attrs.push(
+      `anchor-role="${escapeXmlAttribute(selection.anchor.role.trim())}"`,
+    );
+  }
+  if (selection.anchor?.path?.trim()) {
+    attrs.push(
+      `anchor-path="${escapeXmlAttribute(selection.anchor.path.trim())}"`,
+    );
+  }
   if (selection.source?.filePath) {
     const loc =
       typeof selection.source.lineNumber === "number"

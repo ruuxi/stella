@@ -42,6 +42,34 @@ describe("buildChatPromptMessages", () => {
     );
   });
 
+  it("carries Stella area surface and anchor metadata in hidden context", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "Change this",
+      chatContext: {
+        window: null,
+        appSelection: {
+          label: "Workspace Actions",
+          snapshot: "[button] Select area",
+          bounds: { x: 10, y: 20, width: 120, height: 80 },
+          surface: "stella-ui",
+          anchor: {
+            kind: "dom",
+            tag: "section",
+            role: "region",
+            path: "main > aside[role=complementary] > section",
+          },
+        },
+      } satisfies ChatContext,
+    });
+
+    const hidden = result.promptMessages?.[0]?.text ?? "";
+    expect(hidden).toContain("<selected-stella-area");
+    expect(hidden).toContain('surface="stella-ui"');
+    expect(hidden).toContain('anchor-kind="dom"');
+    expect(hidden).toContain('anchor-role="region"');
+    expect(hidden).toContain("main &gt; aside[role=complementary]");
+  });
+
   it("includes active window accessibility text only in hidden context", () => {
     const result = buildChatPromptMessages({
       userPrompt: "What is selected?",

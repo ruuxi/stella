@@ -36,15 +36,26 @@ export type SelectionTarget = {
   bounds: ComposerAreaSelection["bounds"];
   label: string;
   snapshot: string;
+  surface: NonNullable<ComposerAreaSelection["surface"]>;
+  anchor?: ComposerAreaSelection["anchor"];
   source?: ComposerAreaSelection["source"];
   stack?: ComposerAreaSelection["stack"];
+};
+
+type SelectionSurfaceAdapter = {
+  surface: NonNullable<ComposerAreaSelection["surface"]>;
+  resolve: (x: number, y: number) => SelectionTarget | null;
 };
 
 const isVisible = (element: Element): boolean => {
   const rect = element.getBoundingClientRect();
   if (rect.width < 8 || rect.height < 8) return false;
   const style = window.getComputedStyle(element);
-  return style.visibility !== "hidden" && style.display !== "none" && style.opacity !== "0";
+  return (
+    style.visibility !== "hidden" &&
+    style.display !== "none" &&
+    style.opacity !== "0"
+  );
 };
 
 const textOf = (element: Element): string =>
@@ -52,7 +63,8 @@ const textOf = (element: Element): string =>
 
 const isMeaningfulElement = (element: Element): boolean => {
   if (!isVisible(element)) return false;
-  if (element.closest("[data-composer-area-select-ignore='true']")) return false;
+  if (element.closest("[data-composer-area-select-ignore='true']"))
+    return false;
 
   const tag = element.tagName.toLowerCase();
   if (["html", "body"].includes(tag)) return false;
@@ -76,8 +88,12 @@ const scoreCandidate = (element: Element): number => {
   if (element.hasAttribute("aria-label")) score += 65;
   if (element.querySelector("h1,h2,h3,h4,h5,h6")) score += 45;
   if (element.matches("button,[role='button'],[role='listitem']")) score += 35;
-  if (element.matches("main,section,article,aside,nav,form,[role='region']")) score += 30;
-  if (typeof element.className === "string" && STRUCTURAL_CLASS_RE.test(element.className)) {
+  if (element.matches("main,section,article,aside,nav,form,[role='region']"))
+    score += 30;
+  if (
+    typeof element.className === "string" &&
+    STRUCTURAL_CLASS_RE.test(element.className)
+  ) {
     score += 20;
   }
 
@@ -107,11 +123,15 @@ const resolveElementAtPoint = (x: number, y: number): Element | null => {
   }
 
   if (candidates.length === 0) {
-    const fallback = initial.closest<HTMLElement>("main, [role='main'], .content-area");
+    const fallback = initial.closest<HTMLElement>(
+      "main, [role='main'], .content-area",
+    );
     return fallback && isVisible(fallback) ? fallback : null;
   }
 
-  return candidates.sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null;
+  return (
+    candidates.sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null
+  );
 };
 
 const getAccessibleLabel = (element: Element): string => {
@@ -151,6 +171,48 @@ const getAccessibleLabel = (element: Element): string => {
 const truncate = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 
+const getElementRole = (element: Element): string | undefined => {
+  const explicit = element.getAttribute("role")?.trim();
+  if (explicit) return explicit;
+  const tag = element.tagName.toLowerCase();
+  if (tag === "button") return "button";
+  if (tag === "a" && element.hasAttribute("href")) return "link";
+  if (tag === "nav") return "navigation";
+  if (tag === "main") return "main";
+  if (tag === "aside") return "complementary";
+  if (tag === "form") return "form";
+  return undefined;
+};
+
+const buildElementPath = (element: Element): string => {
+  const parts: string[] = [];
+  let current: Element | null = element;
+
+  while (
+    current &&
+    current !== document.documentElement &&
+    current !== document.body
+  ) {
+    const tag = current.tagName.toLowerCase();
+    const label = current.getAttribute("data-stella-label")?.trim();
+    const action = current.getAttribute("data-stella-action")?.trim();
+    const role = getElementRole(current);
+    const segment = [
+      tag,
+      role ? `[role=${role}]` : "",
+      label ? `[label=${truncate(label, 32)}]` : "",
+      action ? `[action=${truncate(action, 32)}]` : "",
+    ]
+      .filter(Boolean)
+      .join("");
+    parts.unshift(segment);
+    if (parts.length >= 5) break;
+    current = current.parentElement;
+  }
+
+  return parts.join(" > ");
+};
+
 const formatElementLine = (element: Element, depth: number): string | null => {
   const tag = element.tagName.toLowerCase();
   if (SKIP_TAGS.has(tag) || !isVisible(element)) return null;
@@ -158,13 +220,20 @@ const formatElementLine = (element: Element, depth: number): string | null => {
   const indent = "  ".repeat(Math.min(depth, 4));
   const label = getAccessibleLabel(element);
 
-  if (element.matches("button,[role='button']")) return `${indent}[button] ${label}`;
+  if (element.matches("button,[role='button']"))
+    return `${indent}[button] ${label}`;
   if (element.matches("a[href]")) return `${indent}[link] ${label}`;
-  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement
+  ) {
     const value = element.value || element.placeholder || label;
     return `${indent}[input] ${truncate(value, 120)}`;
   }
-  if (element.hasAttribute("aria-label") || element.hasAttribute("data-stella-label")) {
+  if (
+    element.hasAttribute("aria-label") ||
+    element.hasAttribute("data-stella-label")
+  ) {
     return `${indent}[${label}]`;
   }
 
@@ -192,11 +261,12 @@ const buildSnapshot = (root: Element): string => {
   };
 
   walk(root, 0);
-  const snapshot = lines.join("\n").trim() || truncate(textOf(root), SNAPSHOT_MAX_CHARS);
+  const snapshot =
+    lines.join("\n").trim() || truncate(textOf(root), SNAPSHOT_MAX_CHARS);
   return truncate(snapshot, SNAPSHOT_MAX_CHARS);
 };
 
-export const resolveComposerAreaSelection = (
+const resolveStellaUiSelection = (
   x: number,
   y: number,
 ): SelectionTarget | null => {
@@ -211,6 +281,14 @@ export const resolveComposerAreaSelection = (
     element,
     label: getAccessibleLabel(element),
     snapshot,
+    surface: "stella-ui",
+    anchor: {
+      kind: "dom",
+      label: getAccessibleLabel(element),
+      tag: element.tagName.toLowerCase(),
+      ...(getElementRole(element) ? { role: getElementRole(element) } : {}),
+      path: buildElementPath(element),
+    },
     bounds: {
       x: Math.round(rect.x),
       y: Math.round(rect.y),
@@ -219,3 +297,23 @@ export const resolveComposerAreaSelection = (
     },
   };
 };
+
+const SURFACE_ADAPTERS: SelectionSurfaceAdapter[] = [
+  {
+    surface: "stella-ui",
+    resolve: resolveStellaUiSelection,
+  },
+];
+
+export const resolveStellaAnnotationTarget = (
+  x: number,
+  y: number,
+): SelectionTarget | null => {
+  for (const adapter of SURFACE_ADAPTERS) {
+    const target = adapter.resolve(x, y);
+    if (target) return target;
+  }
+  return null;
+};
+
+export const resolveComposerAreaSelection = resolveStellaAnnotationTarget;
