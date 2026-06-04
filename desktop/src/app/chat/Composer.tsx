@@ -5,7 +5,10 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
-import { ComposerContextRow, ComposerSuggestionContextRow } from "./ComposerContextRow";
+import {
+  ComposerContextRow,
+  ComposerSuggestionContextRow,
+} from "./ComposerContextRow";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import {
   AssistantReplyPeek,
@@ -22,7 +25,10 @@ import {
   deriveComposerState,
   hasAttachedComposerChips,
 } from "@/features/chat/composer-context";
-import { useScreenshotPreview, ScreenshotPreviewOverlay } from "./ScreenshotPreview";
+import {
+  useScreenshotPreview,
+  ScreenshotPreviewOverlay,
+} from "./ScreenshotPreview";
 import { useDictation } from "@/features/dictation/hooks/use-dictation";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
 import {
@@ -44,6 +50,7 @@ type ComposerProps = {
   conversationId: string | null;
   onSend: () => void;
   onStop: () => void;
+  onSelectArea?: () => void;
   isDragOver?: boolean;
   indicator?: InlineWorkingIndicatorMountProps;
   replyPeek?: AssistantReplyPeekProps | null;
@@ -62,6 +69,7 @@ export function Composer({
   conversationId,
   onSend,
   onStop,
+  onSelectArea,
   isDragOver = false,
   indicator,
   replyPeek,
@@ -71,8 +79,11 @@ export function Composer({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const shellContentRef = useRef<HTMLDivElement | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
-  const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
-    useScreenshotPreview(chatContext);
+  const {
+    screenshot: previewScreenshot,
+    previewIndex: previewScreenshotIndex,
+    setPreviewIndex: setPreviewScreenshotIndex,
+  } = useScreenshotPreview(chatContext);
 
   const onSendRef = useRef(onSend);
   useEffect(() => {
@@ -124,10 +135,7 @@ export function Composer({
   // (e.g. cleared by the parent after send, or set by dictation).
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
-      updateComposerTextareaExpansion(
-        textareaRef.current,
-        setComposerExpanded,
-      );
+      updateComposerTextareaExpansion(textareaRef.current, setComposerExpanded);
     });
     return () => cancelAnimationFrame(raf);
   }, [message]);
@@ -174,6 +182,7 @@ export function Composer({
               className="composer-add-button"
               title="Add"
               setChatContext={setChatContext}
+              onSelectArea={onSelectArea}
             />
 
             {dictationInline ? (
@@ -217,6 +226,7 @@ export function Composer({
                       className="composer-add-button composer-add-button--toolbar"
                       title="Add"
                       setChatContext={setChatContext}
+                      onSelectArea={onSelectArea}
                     />
                   </div>
 
@@ -224,11 +234,13 @@ export function Composer({
                     <ComposerMicButton
                       className="composer-mic"
                       isTranscribing={dictation.isTranscribing}
-                      disabled={
-                        isStreaming || dictation.isTranscribing
-                      }
+                      disabled={isStreaming || dictation.isTranscribing}
                       onClick={dictation.toggle}
-                      title={dictation.error ? `Dictation: ${dictation.error}` : undefined}
+                      title={
+                        dictation.error
+                          ? `Dictation: ${dictation.error}`
+                          : undefined
+                      }
                     />
                     {isStreaming && (
                       <ComposerStopButton

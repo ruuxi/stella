@@ -6,37 +6,78 @@
   cursor: crosshair;
 }
 
+.composer-area-select-overlay[data-state="annotating"] {
+  pointer-events: auto;
+  cursor: default;
+}
+
 .composer-area-select-scrim {
   position: absolute;
   inset: 0;
-  background: color-mix(in oklch, black 12%, transparent);
+  z-index: 0;
+  background: color-mix(in oklch, oklch(0.18 0.01 255) 12%, transparent);
+}
+
+.composer-area-select-overlay[data-state="annotating"]
+  .composer-area-select-scrim {
+  background: color-mix(in oklch, oklch(0.18 0.01 255) 8%, transparent);
 }
 
 .composer-area-select-ring {
   position: fixed;
-  border: 2px solid color-mix(in oklch, var(--primary, #5aa9ff) 78%, white);
+  z-index: 1;
+  pointer-events: none;
+  border: 2px solid
+    color-mix(
+      in oklch,
+      var(--primary, oklch(0.7 0.12 250)) 78%,
+      oklch(0.98 0.006 250)
+    );
   border-radius: 10px;
   box-shadow:
-    0 0 0 1px color-mix(in oklch, black 35%, transparent),
-    0 0 24px color-mix(in oklch, var(--primary, #5aa9ff) 26%, transparent);
-  background: color-mix(in oklch, var(--primary, #5aa9ff) 5%, transparent);
+    0 0 0 1px color-mix(in oklch, oklch(0.18 0.01 255) 35%, transparent),
+    0 0 24px
+      color-mix(in oklch, var(--primary, oklch(0.7 0.12 250)) 26%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--primary, oklch(0.7 0.12 250)) 5%,
+    transparent
+  );
 }
 
-.composer-area-select-label {
-  position: absolute;
-  left: 8px;
-  top: -30px;
-  max-width: min(280px, calc(100vw - 24px));
-  padding: 5px 9px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--primary, #5aa9ff) 45%, transparent);
-  background: var(--surface-raised-stronger-non-alpha, var(--popover));
-  color: var(--text-strong);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.composer-area-annotation {
+  position: fixed;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.composer-area-annotation__shell {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 100%;
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  box-shadow:
+    var(--shadow-md),
+    var(--panel-surface-highlight),
+    0 16px 38px color-mix(in oklch, oklch(0.18 0.01 255) 22%, transparent);
+}
+
+.composer-area-annotation__form {
+  width: 100%;
+}
+
+.composer-area-annotation__input {
+  max-height: min(160px, calc(100vh - 96px));
+}
+
+.composer-area-annotation__cancel {
+  width: 30px;
+  height: 30px;
+  cursor: default;
+}
+
+.composer-area-annotation .composer-submit {
+  width: 30px;
+  height: 30px;
 }

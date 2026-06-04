@@ -14,6 +14,7 @@ import { useUiState } from "@/context/ui-state";
 import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
 import { NicknameDialog } from "@/global/auth/NicknameDialog";
 import { ChatColumn } from "@/app/chat/ChatColumn";
+import { ComposerAreaSelectOverlay } from "@/app/chat/ComposerAreaSelectOverlay";
 import { setActiveLocalConversationId } from "@/features/chat/services/local-chat-store";
 import { writeActiveConversationIdCache } from "@/features/chat/services/active-conversation-cache";
 import {
@@ -430,6 +431,13 @@ function RootChrome() {
       </StellaContextMenu>
 
       <DisplaySidebar ref={displaySidebarRef} />
+
+      <ComposerAreaSelectOverlay
+        active={chat.annotation.active}
+        requestId={chat.annotation.requestId}
+        onCancel={chat.annotation.cancel}
+        onSubmit={chat.annotation.submit}
+      />
 
       <FullShellDialogs
         activeDialog={activeDialog ?? null}

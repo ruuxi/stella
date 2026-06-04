@@ -26,7 +26,6 @@ import {
 } from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
-import { ComposerAreaSelectOverlay } from "./ComposerAreaSelectOverlay";
 import { HomeContent } from "@/app/home/HomeContent";
 import { ChatWorkspaceStrip } from "./ChatWorkspaceStrip";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
@@ -69,7 +68,6 @@ export const ChatColumn = memo(function ChatColumn({
   onDismissHome,
 }: ChatColumnProps) {
   const isDraggingRef = useRef(false);
-  const [areaSelectActive, setAreaSelectActive] = useState(false);
   const dragStartRef = useRef<{ y: number; scrollTop: number } | null>(null);
 
   /**
@@ -217,6 +215,7 @@ export const ChatColumn = memo(function ChatColumn({
         conversationId={conversationId}
         onSend={composer.onSend}
         onStop={composer.onStop}
+        onSelectArea={composer.onSelectArea}
         isDragOver={isDragOver}
         indicator={indicatorProps}
         replyPeek={replyPeek}
@@ -307,7 +306,7 @@ export const ChatColumn = memo(function ChatColumn({
         <ChatWorkspaceStrip
           forceHidden={hideRightContextPanel}
           onNewChat={composer.onNewChat}
-          onSelectArea={() => setAreaSelectActive(true)}
+          onSelectArea={composer.onSelectArea}
         />
 
         {/* Custom scrollbar thumb overlay — pinned to the right edge of
@@ -326,11 +325,6 @@ export const ChatColumn = memo(function ChatColumn({
             onPointerCancel={handleThumbUp}
           />
         </div>
-        <ComposerAreaSelectOverlay
-          active={areaSelectActive}
-          setChatContext={composer.setChatContext}
-          onCancel={() => setAreaSelectActive(false)}
-        />
       </div>
 
       {homeVisible && (

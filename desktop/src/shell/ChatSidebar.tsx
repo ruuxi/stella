@@ -1,10 +1,4 @@
-import {
-  useState,
-  useRef,
-  useCallback,
-  useEffect,
-  useMemo,
-} from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { CompactConversationSurface } from "@/features/chat/CompactConversationSurface";
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
@@ -13,7 +7,6 @@ import {
   ComposerSuggestionContextRow,
 } from "@/app/chat/ComposerContextRow";
 import { ComposerAddMenu } from "@/app/chat/ComposerAddMenu";
-import { ComposerAreaSelectOverlay } from "@/app/chat/ComposerAreaSelectOverlay";
 import {
   ComposerMicButton,
   ComposerSubmitButton,
@@ -32,11 +25,18 @@ import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-sessio
 import { useFooterTasks } from "@/features/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
-import { useScreenshotPreview, ScreenshotPreviewOverlay } from "@/app/chat/ScreenshotPreview";
+import {
+  useScreenshotPreview,
+  ScreenshotPreviewOverlay,
+} from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
-import type { EventRecord, TaskItem } from "@/features/chat/lib/event-transforms";
+import type {
+  EventRecord,
+  TaskItem,
+} from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
+import type { AnnotationSubmitPayload } from "./use-full-shell-chat";
 import { useCapturedChatContext } from "./use-captured-chat-context";
 import {
   updateComposerTextareaExpansion,
@@ -45,6 +45,7 @@ import {
 import { AssistantReplyPeek } from "@/app/chat/AssistantReplyPeek";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
 import { ChatWorkspaceStrip } from "@/app/chat/ChatWorkspaceStrip";
+import { useChatRuntime } from "@/context/use-chat-runtime";
 import "./chat-sidebar.css";
 
 // Legend List sums numeric paddings into its content length; passing
@@ -66,6 +67,20 @@ const WIDE_PANEL_CONTENT_STYLE = {
   paddingTop: 16,
   paddingBottom: 4,
 } as const;
+
+const buildAnnotationChatContext = (
+  selection: AnnotationSubmitPayload["selection"],
+  base?: ChatContext | null,
+): ChatContext => ({
+  ...(base ?? {
+    window: null,
+    browserUrl: null,
+    selectedText: null,
+    regionScreenshots: [],
+  }),
+  selectedText: null,
+  appSelection: selection,
+});
 
 interface ChatSidebarOpenOptions {
   /** When provided, attaches/replaces the current chat context before opening. */
@@ -105,254 +120,282 @@ interface ChatPanelTabProps {
   wideLayout?: boolean;
 }
 
-export function ChatPanelTab(
-    {
-      openRequest,
-      variant = "sidebar",
-      wideLayout = false,
-      messages,
-      conversationId,
-      activities,
-      latestMessageTimestampMs,
-      isStreaming,
-      runtimeStatusText,
-      pendingUserMessageId,
-      queuedUserMessages,
-      liveTasks,
-      hasOlderMessages,
-      isLoadingOlder,
-      isInitialLoading,
-      onLoadOlder,
-      onSend,
-      onStop,
-      onNewChat,
-    }: ChatPanelTabProps,
-  ) {
-    const [inputText, setInputText] = useState("");
-    const [sidebarExpanded, setSidebarExpanded] = useState(false);
-    const [areaSelectActive, setAreaSelectActive] = useState(false);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
+export function ChatPanelTab({
+  openRequest,
+  variant = "sidebar",
+  wideLayout = false,
+  messages,
+  conversationId,
+  activities,
+  latestMessageTimestampMs,
+  isStreaming,
+  runtimeStatusText,
+  pendingUserMessageId,
+  queuedUserMessages,
+  liveTasks,
+  hasOlderMessages,
+  isLoadingOlder,
+  isInitialLoading,
+  onLoadOlder,
+  onSend,
+  onStop,
+  onNewChat,
+}: ChatPanelTabProps) {
+  const [inputText, setInputText] = useState("");
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const startAnnotation = useChatRuntime().annotation.start;
 
-    /*
-     * Own scroll-management instance for the sidebar list. Mirrors the
-     * full chat (`useFullShellChat` → `useChatScrollManagement`) so the
-     * sidebar gets the same Legend-List-backed at-bottom tracking and
-     * thumb behavior as the home full chat.
-     */
-    const sidebarScroll = useChatScrollManagement({
-      hasOlderEvents: hasOlderMessages,
-      isLoadingOlder,
-      onLoadOlder,
-      surface: "compact",
-    });
+  /*
+   * Own scroll-management instance for the sidebar list. Mirrors the
+   * full chat (`useFullShellChat` → `useChatScrollManagement`) so the
+   * sidebar gets the same Legend-List-backed at-bottom tracking and
+   * thumb behavior as the home full chat.
+   */
+  const sidebarScroll = useChatScrollManagement({
+    hasOlderEvents: hasOlderMessages,
+    isLoadingOlder,
+    onLoadOlder,
+    surface: "compact",
+  });
 
-    const assistantReplyPeek = useAssistantReplyPeek({
-      messages,
+  const assistantReplyPeek = useAssistantReplyPeek({
+    messages,
+    isFollowingLatest: sidebarScroll.isFollowingLatest,
+  });
+
+  const sidebarScrollApi = useMemo<ChatColumnScroll>(
+    () => ({
+      listRef: sidebarScroll.listRef,
+      onListScroll: sidebarScroll.onListScroll,
+      onStartReached: sidebarScroll.onStartReached,
+      showScrollButton: sidebarScroll.showScrollButton,
+      isAtBottom: sidebarScroll.isAtBottom,
       isFollowingLatest: sidebarScroll.isFollowingLatest,
-    });
+      getIsFollowing: sidebarScroll.getIsFollowing,
+      scrollToBottom: sidebarScroll.scrollToBottom,
+      thumbState: sidebarScroll.thumbState,
+    }),
+    [
+      sidebarScroll.listRef,
+      sidebarScroll.onListScroll,
+      sidebarScroll.onStartReached,
+      sidebarScroll.showScrollButton,
+      sidebarScroll.isAtBottom,
+      sidebarScroll.isFollowingLatest,
+      sidebarScroll.getIsFollowing,
+      sidebarScroll.scrollToBottom,
+      sidebarScroll.thumbState,
+    ],
+  );
 
-    const sidebarScrollApi = useMemo<ChatColumnScroll>(
-      () => ({
-        listRef: sidebarScroll.listRef,
-        onListScroll: sidebarScroll.onListScroll,
-        onStartReached: sidebarScroll.onStartReached,
-        showScrollButton: sidebarScroll.showScrollButton,
-        isAtBottom: sidebarScroll.isAtBottom,
-        isFollowingLatest: sidebarScroll.isFollowingLatest,
-        getIsFollowing: sidebarScroll.getIsFollowing,
-        scrollToBottom: sidebarScroll.scrollToBottom,
-        thumbState: sidebarScroll.thumbState,
-      }),
-      [
-        sidebarScroll.listRef,
-        sidebarScroll.onListScroll,
-        sidebarScroll.onStartReached,
-        sidebarScroll.showScrollButton,
-        sidebarScroll.isAtBottom,
-        sidebarScroll.isFollowingLatest,
-        sidebarScroll.getIsFollowing,
-        sidebarScroll.scrollToBottom,
-        sidebarScroll.thumbState,
-      ],
-    );
+  const appSessionStartedAtMs = useAgentSessionStartedAt();
+  const runningTool = useMemo(
+    () => getCurrentRunningTool(messages),
+    [messages],
+  );
+  const footerTasks = useFooterTasks({
+    activities,
+    latestMessageTimestampMs,
+    liveTasks,
+    appSessionStartedAtMs,
+  });
+  useReadAloud(messages);
+  const hasActiveWork =
+    footerTasks.length > 0 ||
+    Boolean(isStreaming) ||
+    Boolean(runtimeStatusText);
+  const suggestionIndicatorProps: InlineWorkingIndicatorMountProps = {
+    active: hasActiveWork,
+    tasks: footerTasks,
+    runningTool: runningTool?.tool,
+    runningToolId: runningTool?.id,
+    isStreaming,
+    status: runtimeStatusText ?? null,
+  };
 
-    const appSessionStartedAtMs = useAgentSessionStartedAt();
-    const runningTool = useMemo(
-      () => getCurrentRunningTool(messages),
-      [messages],
-    );
-    const footerTasks = useFooterTasks({
-      activities,
-      latestMessageTimestampMs,
-      liveTasks,
-      appSessionStartedAtMs,
-    });
-    useReadAloud(messages);
-    const hasActiveWork =
-      footerTasks.length > 0 ||
-      Boolean(isStreaming) ||
-      Boolean(runtimeStatusText);
-    const suggestionIndicatorProps: InlineWorkingIndicatorMountProps = {
-      active: hasActiveWork,
-      tasks: footerTasks,
-      runningTool: runningTool?.tool,
-      runningToolId: runningTool?.id,
-      isStreaming,
-      status: runtimeStatusText ?? null,
-    };
+  const { chatContext, setChatContext, selectedText, setSelectedText } =
+    useCapturedChatContext();
+  const {
+    screenshot: previewScreenshot,
+    previewIndex: previewScreenshotIndex,
+    setPreviewIndex: setPreviewScreenshotIndex,
+  } = useScreenshotPreview(chatContext);
 
-    const { chatContext, setChatContext, selectedText, setSelectedText } =
-      useCapturedChatContext();
-    const { screenshot: previewScreenshot, previewIndex: previewScreenshotIndex, setPreviewIndex: setPreviewScreenshotIndex } =
-      useScreenshotPreview(chatContext);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const shellContentRef = useRef<HTMLDivElement | null>(null);
 
-    const formRef = useRef<HTMLFormElement | null>(null);
-    const shellRef = useRef<HTMLDivElement | null>(null);
-    const shellContentRef = useRef<HTMLDivElement | null>(null);
+  const { isDragOver, dropHandlers } = useFileDrop({
+    setChatContext,
+    disabled: isStreaming,
+  });
 
-    const { isDragOver, dropHandlers } = useFileDrop({
-      setChatContext,
-      disabled: isStreaming,
-    });
+  const submitFromDictationRef = useRef<() => void>(() => {});
 
-    const submitFromDictationRef = useRef<() => void>(() => {});
+  const submitAnnotation = useCallback(
+    ({ text, selection }: AnnotationSubmitPayload) => {
+      const trimmedText = text.trim();
+      if (!trimmedText) return;
 
-    const dictation = useDictation({
-      message: inputText,
-      setMessage: setInputText,
-      disabled: isStreaming,
-      onTranscriptCommitted: () => {
-        requestAnimationFrame(() => {
-          inputRef.current?.focus();
-        });
-      },
-      onCommit: () => {
-        submitFromDictationRef.current();
-      },
-    });
-
-    useEffect(() => {
-      if (!openRequest) return;
-      if (openRequest.chatContext !== undefined) {
-        setChatContext(openRequest.chatContext);
-      }
-      if (typeof openRequest.prefillText === "string") {
-        setInputText(openRequest.prefillText);
-      }
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }, [openRequest, setChatContext]);
-
-    useEffect(() => {
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === "Escape") {
-          setInputText("");
-        }
-      };
-
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }, []);
-
-    useAnimatedComposerShell({
-      active: true,
-      shellRef,
-      contentRef: shellContentRef,
-      formRef,
-      syncOnNextFrame: true,
-    });
-
-    const sendCurrentMessage = useCallback(() => {
-      const { canSubmit, trimmedMessage } = deriveComposerState({
-        message: inputText,
-        chatContext,
-      });
-      if (!canSubmit) return;
-      // Follow-latch (intent) wins over the physical near-bottom
-      // pixel check: after a short reply the user is visually at the
-      // bottom but ~150px above the absolute content end (off-screen
-      // trailing-region footer). A pure pixel check would skip the
-      // next send's nudge in that window.
       const shouldNudgeAfterSend = sidebarScroll.getIsFollowing();
-      onSend(trimmedMessage, chatContext, selectedText);
-      setInputText("");
-      setChatContext(null);
-      setSelectedText(null);
-      setSidebarExpanded(false);
+      onSend(
+        trimmedText,
+        buildAnnotationChatContext(selection, chatContext),
+        null,
+      );
       if (isStreaming) {
-        // Queued follow-up — no new user row lands in the event
-        // list, just a chip in the trailing region. Keep that footer
-        // stack framed without falling through to the prior turn's
-        // user bubble.
         if (shouldNudgeAfterSend) {
           sidebarScroll.nudgeQueuedMessagesIntoView();
         }
       } else if (shouldNudgeAfterSend) {
-        // Routes the small post-send bump through the same lerp loop
-        // as streaming auto-follow so the two motions blend rather
-        // than fight via separate concurrent rAF tweens.
         sidebarScroll.nudgeAfterSend();
       } else {
         sidebarScroll.releaseFollow();
       }
-    }, [
-      inputText,
-      chatContext,
-      isStreaming,
-      onSend,
-      selectedText,
-      setChatContext,
-      setSelectedText,
-      sidebarScroll,
-    ]);
+    },
+    [chatContext, isStreaming, onSend, sidebarScroll],
+  );
 
-    const handleSubmit = useCallback(
-      (event: React.FormEvent) => {
-        event.preventDefault();
-        sendCurrentMessage();
-      },
-      [sendCurrentMessage],
-    );
+  const handleSelectArea = useCallback(() => {
+    startAnnotation({ submit: submitAnnotation });
+  }, [startAnnotation, submitAnnotation]);
 
-    const submitFromDictation = useCallback(() => {
-      sendCurrentMessage();
-    }, [sendCurrentMessage]);
+  const dictation = useDictation({
+    message: inputText,
+    setMessage: setInputText,
+    disabled: isStreaming,
+    onTranscriptCommitted: () => {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    },
+    onCommit: () => {
+      submitFromDictationRef.current();
+    },
+  });
 
-    useEffect(() => {
-      submitFromDictationRef.current = submitFromDictation;
-    }, [submitFromDictation]);
+  useEffect(() => {
+    if (!openRequest) return;
+    if (openRequest.chatContext !== undefined) {
+      setChatContext(openRequest.chatContext);
+    }
+    if (typeof openRequest.prefillText === "string") {
+      setInputText(openRequest.prefillText);
+    }
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [openRequest, setChatContext]);
 
-    const composerState = deriveComposerState({
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setInputText("");
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useAnimatedComposerShell({
+    active: true,
+    shellRef,
+    contentRef: shellContentRef,
+    formRef,
+    syncOnNextFrame: true,
+  });
+
+  const sendCurrentMessage = useCallback(() => {
+    const { canSubmit, trimmedMessage } = deriveComposerState({
       message: inputText,
       chatContext,
-      selectedText,
     });
-    const hasText = inputText.trim().length > 0;
-    const dictationBelow = dictation.isRecordingVisible && hasText;
-    const dictationInline = dictation.isRecordingVisible && !hasText;
-    const formExpanded = sidebarExpanded || dictationBelow;
+    if (!canSubmit) return;
+    // Follow-latch (intent) wins over the physical near-bottom
+    // pixel check: after a short reply the user is visually at the
+    // bottom but ~150px above the absolute content end (off-screen
+    // trailing-region footer). A pure pixel check would skip the
+    // next send's nudge in that window.
+    const shouldNudgeAfterSend = sidebarScroll.getIsFollowing();
+    onSend(trimmedMessage, chatContext, selectedText);
+    setInputText("");
+    setChatContext(null);
+    setSelectedText(null);
+    setSidebarExpanded(false);
+    if (isStreaming) {
+      // Queued follow-up — no new user row lands in the event
+      // list, just a chip in the trailing region. Keep that footer
+      // stack framed without falling through to the prior turn's
+      // user bubble.
+      if (shouldNudgeAfterSend) {
+        sidebarScroll.nudgeQueuedMessagesIntoView();
+      }
+    } else if (shouldNudgeAfterSend) {
+      // Routes the small post-send bump through the same lerp loop
+      // as streaming auto-follow so the two motions blend rather
+      // than fight via separate concurrent rAF tweens.
+      sidebarScroll.nudgeAfterSend();
+    } else {
+      sidebarScroll.releaseFollow();
+    }
+  }, [
+    inputText,
+    chatContext,
+    isStreaming,
+    onSend,
+    selectedText,
+    setChatContext,
+    setSelectedText,
+    sidebarScroll,
+  ]);
 
-    // Keep the pill shape in sync when `inputText` changes outside of
-    // onChange (e.g. cleared by send, or set by dictation).
-    useEffect(() => {
-      const raf = requestAnimationFrame(() => {
-        updateComposerTextareaExpansion(
-          inputRef.current,
-          setSidebarExpanded,
-        );
-      });
-      return () => cancelAnimationFrame(raf);
-    }, [inputText]);
+  const handleSubmit = useCallback(
+    (event: React.FormEvent) => {
+      event.preventDefault();
+      sendCurrentMessage();
+    },
+    [sendCurrentMessage],
+  );
 
-    return (
+  const submitFromDictation = useCallback(() => {
+    sendCurrentMessage();
+  }, [sendCurrentMessage]);
+
+  useEffect(() => {
+    submitFromDictationRef.current = submitFromDictation;
+  }, [submitFromDictation]);
+
+  const composerState = deriveComposerState({
+    message: inputText,
+    chatContext,
+    selectedText,
+  });
+  const hasText = inputText.trim().length > 0;
+  const dictationBelow = dictation.isRecordingVisible && hasText;
+  const dictationInline = dictation.isRecordingVisible && !hasText;
+  const formExpanded = sidebarExpanded || dictationBelow;
+
+  // Keep the pill shape in sync when `inputText` changes outside of
+  // onChange (e.g. cleared by send, or set by dictation).
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      updateComposerTextareaExpansion(inputRef.current, setSidebarExpanded);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [inputText]);
+
+  return (
+    <div
+      className={`chat-panel-tab chat-panel-tab--${variant}${wideLayout ? " chat-panel-tab--wide" : ""}`}
+      {...dropHandlers}
+    >
       <div
-        className={`chat-panel-tab chat-panel-tab--${variant}${wideLayout ? " chat-panel-tab--wide" : ""}`}
-        {...dropHandlers}
+        className={
+          wideLayout
+            ? "full-body-row chat-panel-tab__row"
+            : "chat-panel-tab__body"
+        }
       >
-        <div
-          className={
-            wideLayout ? "full-body-row chat-panel-tab__row" : "chat-panel-tab__body"
-          }
-        >
         <div className="chat-sidebar-inner">
           <div className="chat-sidebar-main">
             <CompactConversationSurface
@@ -397,7 +440,10 @@ export function ChatPanelTab(
                 ref={shellRef}
                 className={`chat-sidebar-shell${isDragOver ? " chat-sidebar-shell--drag-over" : ""}`}
               >
-                <div ref={shellContentRef} className="chat-sidebar-shell-content">
+                <div
+                  ref={shellContentRef}
+                  className="chat-sidebar-shell-content"
+                >
                   {hasAttachedComposerChips(chatContext, selectedText) && (
                     <div className="composer-attached-strip composer-attached-strip--mini">
                       <ComposerContextRow
@@ -425,6 +471,7 @@ export function ChatPanelTab(
                       className="composer-add-button"
                       title="Add"
                       setChatContext={setChatContext}
+                      onSelectArea={handleSelectArea}
                     />
 
                     {dictationInline ? (
@@ -468,6 +515,7 @@ export function ChatPanelTab(
                               className="composer-add-button composer-add-button--toolbar"
                               title="Add"
                               setChatContext={setChatContext}
+                              onSelectArea={handleSelectArea}
                             />
                           </div>
 
@@ -475,11 +523,13 @@ export function ChatPanelTab(
                             <ComposerMicButton
                               className="composer-mic"
                               isTranscribing={dictation.isTranscribing}
-                              disabled={
-                                isStreaming || dictation.isTranscribing
-                              }
+                              disabled={isStreaming || dictation.isTranscribing}
                               onClick={dictation.toggle}
-                              title={dictation.error ? `Dictation: ${dictation.error}` : undefined}
+                              title={
+                                dictation.error
+                                  ? `Dictation: ${dictation.error}`
+                                  : undefined
+                              }
                             />
                             {isStreaming && (
                               <ComposerStopButton
@@ -521,22 +571,17 @@ export function ChatPanelTab(
           <ChatWorkspaceStrip
             embeddedInDisplayPanel
             onNewChat={onNewChat}
-            onSelectArea={() => setAreaSelectActive(true)}
+            onSelectArea={handleSelectArea}
           />
         ) : null}
-        </div>
-        {previewScreenshot && previewScreenshotIndex !== null && (
-          <ScreenshotPreviewOverlay
-            screenshot={previewScreenshot}
-            index={previewScreenshotIndex}
-            onClose={() => setPreviewScreenshotIndex(null)}
-          />
-        )}
-        <ComposerAreaSelectOverlay
-          active={areaSelectActive}
-          setChatContext={setChatContext}
-          onCancel={() => setAreaSelectActive(false)}
-        />
       </div>
-    );
+      {previewScreenshot && previewScreenshotIndex !== null && (
+        <ScreenshotPreviewOverlay
+          screenshot={previewScreenshot}
+          index={previewScreenshotIndex}
+          onClose={() => setPreviewScreenshotIndex(null)}
+        />
+      )}
+    </div>
+  );
 }

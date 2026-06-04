@@ -16,7 +16,7 @@
  */
 import { useCallback, useRef, useState } from "react";
 import type { ChangeEvent, Dispatch, SetStateAction } from "react";
-import { Camera, PanelRight, Paperclip } from "lucide-react";
+import { Camera, PanelRight, Paperclip, Scan } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +39,7 @@ type ComposerAddMenuProps = {
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
   className?: string;
   title?: string;
+  onSelectArea?: () => void;
 };
 
 const FILE_NAME_MAX_DISPLAY = 28;
@@ -64,6 +65,7 @@ export function ComposerAddMenu({
   setChatContext,
   className,
   title,
+  onSelectArea,
 }: ComposerAddMenuProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -100,6 +102,11 @@ export function ComposerAddMenu({
       console.warn("[composer-add-menu] capture failed:", error);
     }
   }, []);
+
+  const handleSelectArea = useCallback(() => {
+    setMenuOpen(false);
+    onSelectArea?.();
+  }, [onSelectArea]);
 
   const handleAttachWindow = useCallback(async () => {
     const api = getElectronApi();
@@ -178,6 +185,14 @@ export function ComposerAddMenu({
             </span>
             Capture
           </DropdownMenuItem>
+          {onSelectArea ? (
+            <DropdownMenuItem onSelect={handleSelectArea}>
+              <span data-slot="dropdown-menu-item-icon">
+                <Scan size={14} strokeWidth={1.75} />
+              </span>
+              Select area
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem onSelect={handleAttachWindow}>
             <span data-slot="dropdown-menu-item-icon">
               <PanelRight size={14} strokeWidth={1.75} />

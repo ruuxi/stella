@@ -1,18 +1,25 @@
-import type { Dispatch, RefObject, SetStateAction } from 'react'
-import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from '@legendapp/list/react'
-import type { TaskProgressSummaries } from '@/features/chat/hooks/use-task-progress-summaries'
-import type { QueuedUserMessage } from '@/features/chat/hooks/use-streaming-chat'
-import type { EventRecord, TaskItem } from '@/features/chat/lib/event-transforms'
-import type { MessageRecord } from '../../../../runtime/contracts/local-chat.js'
+import type { Dispatch, RefObject, SetStateAction } from "react";
+import type {
+  LegendListRef,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+} from "@legendapp/list/react";
+import type { TaskProgressSummaries } from "@/features/chat/hooks/use-task-progress-summaries";
+import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
+import type {
+  EventRecord,
+  TaskItem,
+} from "@/features/chat/lib/event-transforms";
+import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 
-export type { EventRecord }
-import type { ChatContext } from '@/shared/types/electron'
+export type { EventRecord };
+import type { ChatContext } from "@/shared/types/electron";
 
 type ChatColumnThumbState = {
-  top: number
-  height: number
-  visible: boolean
-}
+  top: number;
+  height: number;
+  visible: boolean;
+};
 
 export type ChatColumnConversation = {
   /**
@@ -21,7 +28,7 @@ export type ChatColumnConversation = {
    * message on `toolEvents`, so the timeline renderer doesn't walk a
    * flat event stream.
    */
-  messages: MessageRecord[]
+  messages: MessageRecord[];
   /**
    * Agent-lifecycle activity for the conversation. Fed by
    * `useConversationActivity` in local mode and a `displayEvents` filter
@@ -35,12 +42,12 @@ export type ChatColumnConversation = {
    * completion rule without the message stream.
    */
   activity: {
-    activities: EventRecord[]
-    latestMessageTimestampMs: number | null
-    hasOlder: boolean
-    isLoadingOlder: boolean
-    loadOlder: () => void
-  }
+    activities: EventRecord[];
+    latestMessageTimestampMs: number | null;
+    hasOlder: boolean;
+    isLoadingOlder: boolean;
+    loadOlder: () => void;
+  };
   /**
    * File-carrying events (`tool_result` / `agent-completed` whose
    * payload has a non-empty `fileChanges` or `producedFiles` array)
@@ -50,41 +57,42 @@ export type ChatColumnConversation = {
    * read from this rather than scanning `events`.
    */
   files: {
-    files: EventRecord[]
-    hasOlder: boolean
-    isLoadingOlder: boolean
-    loadOlder: () => void
-  }
+    files: EventRecord[];
+    hasOlder: boolean;
+    isLoadingOlder: boolean;
+    loadOlder: () => void;
+  };
   streaming: {
-    reasoningText: string
-    isStreaming: boolean
-    runtimeStatusText?: string | null
-    pendingUserMessageId: string | null
-    queuedUserMessages: QueuedUserMessage[]
-    liveTasks?: TaskItem[]
-    taskProgressSummaries: TaskProgressSummaries
-  }
+    reasoningText: string;
+    isStreaming: boolean;
+    runtimeStatusText?: string | null;
+    pendingUserMessageId: string | null;
+    queuedUserMessages: QueuedUserMessage[];
+    liveTasks?: TaskItem[];
+    taskProgressSummaries: TaskProgressSummaries;
+  };
   history: {
-    hasOlderMessages: boolean
-    isLoadingOlder: boolean
-    isInitialLoading: boolean
-  }
-}
+    hasOlderMessages: boolean;
+    isLoadingOlder: boolean;
+    isInitialLoading: boolean;
+  };
+};
 
 export type ChatColumnComposer = {
-  message: string
-  setMessage: Dispatch<SetStateAction<string>>
-  chatContext: ChatContext | null
-  setChatContext: Dispatch<SetStateAction<ChatContext | null>>
-  selectedText: string | null
-  setSelectedText: Dispatch<SetStateAction<string | null>>
-  canSubmit: boolean
-  focusRequestId?: number
-  requestFocus?: () => void
-  onSend: () => void
-  onStop: () => void
-  onNewChat: () => void | Promise<void>
-}
+  message: string;
+  setMessage: Dispatch<SetStateAction<string>>;
+  chatContext: ChatContext | null;
+  setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
+  selectedText: string | null;
+  setSelectedText: Dispatch<SetStateAction<string | null>>;
+  canSubmit: boolean;
+  focusRequestId?: number;
+  requestFocus?: () => void;
+  onSelectArea?: () => void;
+  onSend: () => void;
+  onStop: () => void;
+  onNewChat: () => void | Promise<void>;
+};
 
 /**
  * Scroll API for chat surfaces.
@@ -96,27 +104,27 @@ export type ChatColumnComposer = {
  * via the list's imperative API.
  */
 export type ChatColumnScroll = {
-  listRef: RefObject<LegendListRef | null>
-  onListScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
+  listRef: RefObject<LegendListRef | null>;
+  onListScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /** Forwarded to Legend List's `onStartReached` for older-history pagination. */
-  onStartReached: () => void
-  showScrollButton: boolean
+  onStartReached: () => void;
+  showScrollButton: boolean;
   /** True when the user is at (or within ~1px of) the newest-content edge. */
-  isAtBottom: boolean
+  isAtBottom: boolean;
   /** True while stream/send auto-follow is armed (intent latch, not raw scrollTop). */
-  isFollowingLatest: boolean
-  getIsFollowing: () => boolean
-  scrollToBottom: (behavior?: 'instant' | 'smooth') => void
-  thumbState: ChatColumnThumbState
-}
+  isFollowingLatest: boolean;
+  getIsFollowing: () => boolean;
+  scrollToBottom: (behavior?: "instant" | "smooth") => void;
+  thumbState: ChatColumnThumbState;
+};
 
 export type ChatColumnProps = {
-  conversation: ChatColumnConversation
-  composer: ChatColumnComposer
-  scroll: ChatColumnScroll
-  composerEntering?: boolean
-  conversationId: string | null
-  hideRightContextPanel?: boolean
-  showHomeContent?: boolean
-  onDismissHome?: () => void
-}
+  conversation: ChatColumnConversation;
+  composer: ChatColumnComposer;
+  scroll: ChatColumnScroll;
+  composerEntering?: boolean;
+  conversationId: string | null;
+  hideRightContextPanel?: boolean;
+  showHomeContent?: boolean;
+  onDismissHome?: () => void;
+};

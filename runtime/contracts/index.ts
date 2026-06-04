@@ -30,6 +30,14 @@ export type ChatContext = {
     label: string;
     snapshot: string;
     bounds: WindowBounds;
+    surface?: string;
+    anchor?: {
+      kind: string;
+      label?: string;
+      tag?: string;
+      role?: string;
+      path?: string;
+    };
     source?: {
       filePath?: string;
       lineNumber?: number;
