@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/api";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { isHiddenOverlay } from "@/shared/theme/themes";
 import {
@@ -9,23 +7,10 @@ import {
   type PersonalityVoice,
 } from "../../../../runtime/extensions/stella-runtime/personality/voices.js";
 
-type ExpressionStyle = "emoji" | "none";
-
-type UseOnboardingAppearanceArgs = {
-  isAuthenticated?: boolean;
-};
-
-export function useOnboardingAppearance({
-  isAuthenticated,
-}: UseOnboardingAppearanceArgs) {
-  const [expressionStyle, setExpressionStyle] =
-    useState<ExpressionStyle>("none");
+export function useOnboardingAppearance() {
   const [personalityVoiceId, setPersonalityVoiceIdState] = useState<
     string | null
   >(null);
-  const saveExpressionStyle = useMutation(
-    api.data.preferences.setExpressionStyle,
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -80,18 +65,6 @@ export function useOnboardingAppearance({
     [cancelPreview, setTheme],
   );
 
-  const selectExpressionStyle = useCallback(
-    (style: ExpressionStyle) => {
-      setExpressionStyle(style);
-      if (isAuthenticated) {
-        void saveExpressionStyle({ style }).catch(() => {
-          // Expression style sync is best-effort only.
-        });
-      }
-    },
-    [isAuthenticated, saveExpressionStyle],
-  );
-
   const selectPersonalityVoice = useCallback((voiceId: string) => {
     setPersonalityVoiceIdState(voiceId);
     const api = window.electronAPI?.system;
@@ -107,7 +80,6 @@ export function useOnboardingAppearance({
 
   return {
     colorMode,
-    expressionStyle,
     gradientColor,
     gradientMode,
     isForcedTheme,
@@ -118,7 +90,6 @@ export function useOnboardingAppearance({
     themeId,
     cancelThemePreview,
     previewTheme,
-    selectExpressionStyle,
     selectPersonalityVoice,
     selectTheme,
     setColorMode,
