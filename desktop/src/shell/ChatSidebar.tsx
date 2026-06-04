@@ -1,4 +1,11 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import {
+  useState,
+  useRef,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+} from "react";
 import { CompactConversationSurface } from "@/features/chat/CompactConversationSurface";
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
@@ -45,7 +52,7 @@ import {
 import { AssistantReplyPeek } from "@/app/chat/AssistantReplyPeek";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
 import { ChatWorkspaceStrip } from "@/app/chat/ChatWorkspaceStrip";
-import { useChatRuntime } from "@/context/use-chat-runtime";
+import { ChatRuntimeContext } from "@/context/chat-runtime-context";
 import "./chat-sidebar.css";
 
 // Legend List sums numeric paddings into its content length; passing
@@ -144,7 +151,11 @@ export function ChatPanelTab({
   const [inputText, setInputText] = useState("");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const startAnnotation = useChatRuntime().annotation.start;
+  // The mini window mounts ChatPanelTab without a ChatRuntimeProvider, so
+  // read the runtime optionally. Area annotation is a full-window feature;
+  // when there's no provider the "Select area" action is simply omitted.
+  const chatRuntime = useContext(ChatRuntimeContext);
+  const startAnnotation = chatRuntime?.annotation.start;
 
   /*
    * Own scroll-management instance for the sidebar list. Mirrors the
@@ -257,8 +268,9 @@ export function ChatPanelTab({
     [chatContext, isStreaming, onSend, sidebarScroll],
   );
 
-  const handleSelectArea = useCallback(() => {
-    startAnnotation({ submit: submitAnnotation });
+  const handleSelectArea = useMemo(() => {
+    if (!startAnnotation) return undefined;
+    return () => startAnnotation({ submit: submitAnnotation });
   }, [startAnnotation, submitAnnotation]);
 
   const dictation = useDictation({

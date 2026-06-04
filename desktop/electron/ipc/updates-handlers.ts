@@ -68,6 +68,7 @@ import {
   getFileLogger,
   type LogFields,
 } from "../../../runtime/observability/file-logger.js";
+import { waitForConnectedRunner } from "./runtime-availability.js";
 
 const INSTALL_MANIFEST_BASENAME = "stella-install.json";
 const RELEASE_MANIFEST_BASENAME = "stella-release.json";
@@ -212,6 +213,9 @@ export type UpdatesHandlersOptions = {
   getStellaRoot: () => string | null;
   getStellaHome: () => string | null;
   getStellaHostRunner?: () => StellaHostRunner | null;
+  onStellaHostRunnerChanged?: (
+    listener: (runner: StellaHostRunner | null) => void,
+  ) => () => void;
   assertPrivilegedSender: (
     event: IpcMainInvokeEvent,
     channel: string,
@@ -1996,8 +2000,26 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         );
         return { ok: false, reason: "source-history-unavailable" };
       }
-      const runner = options.getStellaHostRunner?.() ?? null;
-      if (!runner) {
+      // Recording source history is best-effort telemetry that runs at
+      // launch (and right after an update applies). The runtime worker may
+      // still be cold-starting — or mid-restart from the update that just
+      // touched runtime files — so wait for it to connect before issuing the
+      // RPC instead of racing a parallel spawn (which times out the worker
+      // readiness poll and logs a spurious hard error). If it never connects
+      // within the budget, soft-skip; the renderer re-attempts next launch.
+      let runner: StellaHostRunner;
+      try {
+        runner = await waitForConnectedRunner(
+          () => options.getStellaHostRunner?.() ?? null,
+          {
+            timeoutMs: UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
+            unavailableMessage: "Runtime not available.",
+            ...(options.onStellaHostRunnerChanged
+              ? { onRunnerChanged: options.onStellaHostRunnerChanged }
+              : {}),
+          },
+        );
+      } catch {
         logDesktopUpdateWarn(
           "desktop-update.record-source-history.unavailable",
           {
