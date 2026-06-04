@@ -6,12 +6,10 @@ import {
 } from "../agent-runtime.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { getOrCreateOrchestratorSession } from "../agent-runtime/orchestrator-session.js";
-import {
-  resolveRunnerLlmRoute,
-  resolveRunnerLlmRouteWithMetadata,
-} from "./model-selection.js";
+import { resolveAgentModelRoute, type BuildAgentContextArgs } from "./context.js";
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
 import type { RunnerContext } from "./types.js";
+import type { ResolvedLlmRoute } from "../model-routing.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -30,18 +28,9 @@ import type {
   ProducedFileRecord,
 } from "../../contracts/file-changes.js";
 
-type BuildAgentContext = (args: {
-  conversationId: string;
-  agentType: string;
-  runId: string;
-  threadId?: string;
-  toolWorkspaceRoot?: string;
-  selfModMetadata?: {
-    packageId?: string;
-    releaseNumber?: number;
-    mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
-  };
-}) => Promise<LocalAgentContext>;
+type BuildAgentContext = (
+  args: BuildAgentContextArgs,
+) => Promise<LocalAgentContext>;
 
 const waitForBackgroundAgentsForRootRun = async (
   context: RunnerContext,
@@ -220,7 +209,7 @@ export type PreparedOrchestratorRun = {
   toolWorkspaceRoot?: string;
   selfModMetadata?: OrchestratorSelfModMetadata;
   agentContext: LocalAgentContext;
-  resolvedLlm: ReturnType<typeof resolveRunnerLlmRoute>;
+  resolvedLlm: ResolvedLlmRoute;
   abortController: AbortController;
   /**
    * Memory-review user-turn counter AFTER incrementing for this run.
@@ -260,6 +249,15 @@ export const prepareOrchestratorRun = async (args: {
   args.context.state.activeRunAbortControllers.set(args.runId, abortController);
 
   try {
+    const resolvedAgentModel = await resolveAgentModelRoute(
+      args.context,
+      args.agentType,
+      args.modelOverride,
+    );
+    const resolvedLlm = resolvedAgentModel.resolvedLlm;
+    if (abortController.signal.aborted) {
+      throw new Error("Run canceled.");
+    }
     const agentContext = await args.buildAgentContext({
       conversationId: args.conversationId,
       agentType: args.agentType,
@@ -270,22 +268,11 @@ export const prepareOrchestratorRun = async (args: {
       ...(args.toolWorkspaceRoot
         ? { toolWorkspaceRoot: args.toolWorkspaceRoot }
         : {}),
+      ...resolvedAgentModel,
     });
     if (abortController.signal.aborted) {
       throw new Error("Run canceled.");
     }
-    const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
-      args.context,
-      args.agentType,
-      args.modelOverride ?? agentContext.model,
-    );
-    if (abortController.signal.aborted) {
-      throw new Error("Run canceled.");
-    }
-    if (args.modelOverride) {
-      agentContext.model = args.modelOverride;
-    }
-
     // Increment the memory-review counter only on real user-driven turns
     // for agents that declare the `triggersMemoryReview` capability.
     // Synthetic task-callback turns (uiVisibility === "hidden") and

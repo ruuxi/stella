@@ -1,4 +1,3 @@
-import { BrowserWindow } from "electron";
 import {
   getOrCreateDeviceIdentity,
   resetDeviceIdentity as resetStoredDeviceIdentity,
@@ -224,11 +223,7 @@ const connectHostRunner = async (context: BootstrapContext) => {
   });
 
   await runner.start();
-  if (state.appReady && BrowserWindow.getFocusedWindow()) {
-    runner.setHostFocused(true);
-  } else {
-    runner.setHostFocused(false);
-  }
+  await runner.warmWorker();
   const health = await runner.host.health();
   state.deviceId = health.deviceId;
 };

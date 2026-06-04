@@ -10,7 +10,6 @@ import {
   createRuntimeUnavailableError,
   type JsonRpcPeer,
 } from "../protocol/rpc-peer.js";
-import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import type {
   AgentHealth,
   RuntimeActiveRun,
@@ -229,8 +228,6 @@ export type RuntimeWorkerLifecycleControllerOptions = {
   fetchHealth: (
     connection: WorkerConnection,
   ) => Promise<WorkerHealthSnapshot | null>;
-  idleTimeoutMs?: number;
-  idleRecheckMs?: number;
   /**
    * Decide whether `stop(reason)` should also kill the underlying worker
    * process via SIGTERM/SIGKILL, or whether closing the IPC channel is
@@ -252,34 +249,14 @@ export type RuntimeWorkerLifecycleControllerOptions = {
   killWorker?: () => Promise<void>;
 };
 
-const shouldKeepWorkerAlive = (health: WorkerHealthSnapshot) => {
-  const social =
-    health.socialSessions ?? createEmptySocialSessionServiceSnapshot();
-  const socialPinned =
-    social.sessionCount > 0 || Boolean(social.processingTurnId);
-  const voicePinned =
-    Boolean(health.voiceBusy) || (health.pendingVoiceRequestCount ?? 0) > 0;
-
-  return Boolean(
-    health.activeRun ||
-      health.activeAgentCount > 0 ||
-      socialPinned ||
-      voicePinned,
-  );
-};
-
 export class RuntimeWorkerLifecycleController {
   private connection: WorkerConnection | null = null;
   private startupPromise: Promise<void> | null = null;
   private stopPromise: Promise<void> | null = null;
   private stoppingPid: number | null = null;
-  private idleTimer: NodeJS.Timeout | null = null;
   private state: WorkerLifecycleState = "idle";
-  private activeExecutionRequests = 0;
   private inFlightWorkerRequests = 0;
   private inFlightDrainWaiter: InFlightDrainWaiter | null = null;
-  private lastExecutionActivityAt = 0;
-  private hostFocused = true;
 
   constructor(
     private readonly options: RuntimeWorkerLifecycleControllerOptions,
@@ -296,14 +273,6 @@ export class RuntimeWorkerLifecycleController {
   private getLivePeer() {
     const peer = this.connection?.peer;
     return peer && !peer.isClosed() ? peer : null;
-  }
-
-  private clearIdleTimer() {
-    if (!this.idleTimer) {
-      return;
-    }
-    clearTimeout(this.idleTimer);
-    this.idleTimer = null;
   }
 
   private setState(nextState: WorkerLifecycleState) {
@@ -342,10 +311,6 @@ export class RuntimeWorkerLifecycleController {
     }
     const waiter = this.getOrCreateInFlightDrainWaiter();
     await Promise.race([waiter.promise, delay(timeoutMs)]);
-  }
-
-  private noteExecutionActivity() {
-    this.lastExecutionActivityAt = Date.now();
   }
 
   async ensureStarted() {
@@ -407,8 +372,6 @@ export class RuntimeWorkerLifecycleController {
         await this.options.initializeConnection(connection);
         await this.options.onConnectionStarted(connection);
         this.setState("running");
-        this.noteExecutionActivity();
-        this.scheduleIdleEvaluation();
       } catch (error) {
         if (this.connection?.pid === connection.pid) {
           this.connection = null;
@@ -436,7 +399,6 @@ export class RuntimeWorkerLifecycleController {
       await this.stopPromise;
       return;
     }
-    this.clearIdleTimer();
     const connection = this.connection;
     if (!connection) return;
     if (reason !== "idle") {
@@ -483,10 +445,6 @@ export class RuntimeWorkerLifecycleController {
       throw createRuntimeUnavailableError("Runtime worker is not running.");
     }
     this.incrementInFlightWorkerRequests();
-    if (options.recordActivity) {
-      this.activeExecutionRequests += 1;
-      this.noteExecutionActivity();
-    }
     try {
       return await execute(peer);
     } catch (error) {
@@ -504,27 +462,7 @@ export class RuntimeWorkerLifecycleController {
       throw error;
     } finally {
       this.decrementInFlightWorkerRequests();
-      if (options.recordActivity) {
-        this.activeExecutionRequests = Math.max(
-          0,
-          this.activeExecutionRequests - 1,
-        );
-        this.noteExecutionActivity();
-      }
-      this.scheduleIdleEvaluation();
     }
-  }
-
-  setHostFocused(focused: boolean) {
-    if (this.hostFocused === focused) {
-      return;
-    }
-    this.hostFocused = focused;
-    if (focused) {
-      this.clearIdleTimer();
-      return;
-    }
-    this.scheduleIdleEvaluation(this.options.idleTimeoutMs ?? 0);
   }
 
   async getHealth(args: { ensureWorker: boolean }) {
@@ -536,52 +474,4 @@ export class RuntimeWorkerLifecycleController {
     return await this.options.fetchHealth(connection);
   }
 
-  private scheduleIdleEvaluation(
-    delayMs = 0,
-  ) {
-    if (
-      !this.getLivePeer() ||
-      !this.options.isHostStarted() ||
-      this.state !== "running"
-    ) {
-      return;
-    }
-    if (this.hostFocused) {
-      this.clearIdleTimer();
-      return;
-    }
-    this.clearIdleTimer();
-    this.idleTimer = setTimeout(() => {
-      this.idleTimer = null;
-      void this.evaluateIdle();
-    }, delayMs);
-    this.idleTimer.unref?.();
-  }
-
-  private async evaluateIdle() {
-    if (
-      !this.getLivePeer() ||
-      !this.options.isHostStarted() ||
-      this.state !== "running"
-    ) {
-      return;
-    }
-    if (this.inFlightWorkerRequests > 0 || this.activeExecutionRequests > 0) {
-      this.scheduleIdleEvaluation(this.options.idleRecheckMs ?? 30_000);
-      return;
-    }
-    if (this.hostFocused) {
-      this.clearIdleTimer();
-      return;
-    }
-    const health = await this.getHealth({ ensureWorker: false }).catch(
-      () => null,
-    );
-    if (!health) return;
-    if (shouldKeepWorkerAlive(health)) {
-      this.scheduleIdleEvaluation(this.options.idleRecheckMs ?? 30_000);
-      return;
-    }
-    await this.stop("idle");
-  }
 }

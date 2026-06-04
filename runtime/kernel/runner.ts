@@ -2,6 +2,7 @@ import {
   buildAgentContext,
   createRunnerContext,
   getConfiguredModel,
+  resolveAgentModelRoute,
   resolveAgent,
 } from "./runner/context.js";
 import { createConvexSession } from "./runner/convex-session.js";
@@ -14,6 +15,7 @@ import {
   deleteConnectorAccessTokens,
   loadConnectorAccessToken,
 } from "./connectors/oauth.js";
+import { AGENT_IDS } from "../contracts/agent-runtime.js";
 import type {
   RunnerPublicApi,
   StellaHostRunnerOptions,
@@ -141,16 +143,37 @@ export const createStellaHostRunner = (
   const storeOperations = createStoreOperations(context, {
     ensureStoreClient: convexSession.ensureStoreClient,
   });
+  const buildAgentContextWithResolvedRoute = async (
+    args:
+      | Parameters<typeof buildAgentContext>[1]
+      | Omit<Parameters<typeof buildAgentContext>[1], "resolvedLlm">,
+  ) => {
+    if ("resolvedLlm" in args && args.resolvedLlm) {
+      return await buildAgentContext(context, args);
+    }
+    const resolved = await resolveAgentModelRoute(
+      context,
+      args.agentType,
+      "model" in args ? args.model : undefined,
+    );
+    return await buildAgentContext(context, {
+      ...args,
+      ...resolved,
+    });
+  };
   const orchestratorController = createOrchestratorController(context, {
-    buildAgentContext: (args) => buildAgentContext(context, args),
+    buildAgentContext: buildAgentContextWithResolvedRoute,
     resolveAgent: (agentType) => resolveAgent(context, agentType),
     getConfiguredModel: (agentType, agent) =>
       getConfiguredModel(context, agentType, agent as never),
   });
   const taskOrchestration = createAgentOrchestration(context, {
-    buildAgentContext: (args) => buildAgentContext(context, args),
+    buildAgentContext: buildAgentContextWithResolvedRoute,
     sendMessage: orchestratorController.sendMessage,
   });
+  const warmModelCatalog = async (): Promise<void> => {
+    await resolveAgentModelRoute(context, AGENT_IDS.ORCHESTRATOR);
+  };
 
   const runtimeInitialization = createRuntimeInitialization(context, {
     disposeConvexClient: convexSession.disposeConvexClient,
@@ -187,6 +210,7 @@ export const createStellaHostRunner = (
         onUpdate,
       ),
     agentHealthCheck: orchestratorController.agentHealthCheck,
+    warmModelCatalog,
     webSearch: convexSession.webSearch,
     listStorePackages: storeOperations.listStorePackages,
     getStorePackage: storeOperations.getStorePackage,

@@ -6,6 +6,7 @@ import { persistThreadPayloadMessage } from "../agent-runtime/thread-memory.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { AgentMessage } from "../agent-core/types.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
+import type { BuildAgentContextArgs } from "./context.js";
 import type {
   ActiveOrchestratorSession,
   AgentCallbacks,
@@ -47,13 +48,9 @@ const asMetadataRecord = (
 export const createOrchestratorController = (
   context: RunnerContext,
   deps: {
-    buildAgentContext: (args: {
-      conversationId: string;
-      agentType: string;
-      runId: string;
-      threadId?: string;
-      selfModMetadata?: import("../tools/types.js").AgentToolRequest["selfModMetadata"];
-    }) => Promise<LocalAgentContext>;
+    buildAgentContext: (
+      args: BuildAgentContextArgs,
+    ) => Promise<LocalAgentContext>;
     resolveAgent: (agentType: string) => unknown;
     getConfiguredModel: (
       agentType: string,

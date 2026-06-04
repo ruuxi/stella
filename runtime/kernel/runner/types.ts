@@ -409,6 +409,7 @@ export type RunnerPublicApi = {
     onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
   agentHealthCheck: () => AgentHealth;
+  warmModelCatalog: () => Promise<void>;
   webSearch: (
     query: string,
     options?: { category?: string },
