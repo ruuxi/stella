@@ -72,6 +72,21 @@ const FOLLOW_LERP_FACTOR_MAX = 0.65
 const FOLLOW_LERP_FACTOR_SCALE = 0.005
 const FOLLOW_HARD_SNAP_PX = 240
 /**
+ * Gentle one-shot motion profile for the post-send nudge.
+ *
+ * Stream auto-follow wants to be snappy (and even hard-snaps past
+ * `FOLLOW_HARD_SNAP_PX`) so streamed text never lags below the
+ * viewport. The post-send reframe has no such pressure — it's a single
+ * settle into the reading position — so it reads better as a slow,
+ * smooth ease-out. A low constant factor gives an exponential ease-out
+ * that decelerates into the target over ~20–30 frames, and we skip the
+ * hard snap entirely so even a tall just-sent bubble eases instead of
+ * teleporting. If a stream chunk arrives mid-nudge, its (non-gentle)
+ * `setTarget` clears the gentle flag and the snappy follow takes over —
+ * the two motions blend on the same loop instead of fighting.
+ */
+const FOLLOW_GENTLE_LERP_FACTOR = 0.12
+/**
  * Minimum per-frame step when the lerp would otherwise produce a
  * sub-pixel movement. Prevents the loop from stalling near the target
  * because of scrollTop rounding (most engines floor to integer at
@@ -122,6 +137,12 @@ type ChatScrollManagementOptions = {
 type FollowTargetOptions = {
   /** Post-send positioning may scroll up to reveal a tall user bubble. */
   allowBackward?: boolean
+  /**
+   * Use the slow ease-out motion profile (post-send nudge) instead of
+   * the snappy stream-follow lerp. Cleared automatically when a later
+   * non-gentle `setTarget` (e.g. a streaming chunk) retargets the loop.
+   */
+  gentle?: boolean
 }
 
 type FollowApi = {
@@ -378,11 +399,13 @@ export function useChatScrollManagement({
       // new value on its next frame.
       let followTarget: number | null = null
       let followRaf = 0
+      let followGentle = false
 
       const stopLoop = () => {
         if (followRaf) cancelAnimationFrame(followRaf)
         followRaf = 0
         followTarget = null
+        followGentle = false
       }
 
       const stepFollow = () => {
@@ -409,21 +432,26 @@ export function useChatScrollManagement({
         // resumed conversation jumping to the latest reply) — just
         // land on the target. Trying to lerp hundreds of px would
         // leave the streaming text invisible for many frames while
-        // the loop crawls.
-        if (absDiff > FOLLOW_HARD_SNAP_PX) {
+        // the loop crawls. The gentle post-send nudge opts out: it has
+        // no streaming pressure, so a tall reframe should ease rather
+        // than teleport.
+        if (!followGentle && absDiff > FOLLOW_HARD_SNAP_PX) {
           attached.scrollTop = target
           followTarget = null
           return
         }
-        // Adaptive lerp: smooth on small diffs (typical word-by-word
-        // streaming), snappier on larger diffs so a chunk that lands
-        // 80–200px below the viewport catches up in a couple frames
-        // instead of taking ~half a second and leaving text below
+        // Gentle: constant low factor → smooth ease-out into the target.
+        // Otherwise adaptive lerp: smooth on small diffs (typical
+        // word-by-word streaming), snappier on larger diffs so a chunk
+        // that lands 80–200px below the viewport catches up in a couple
+        // frames instead of taking ~half a second and leaving text below
         // the viewport bottom the whole time.
-        const factor = Math.min(
-          FOLLOW_LERP_FACTOR_MAX,
-          FOLLOW_LERP_FACTOR_BASE + absDiff * FOLLOW_LERP_FACTOR_SCALE,
-        )
+        const factor = followGentle
+          ? FOLLOW_GENTLE_LERP_FACTOR
+          : Math.min(
+              FOLLOW_LERP_FACTOR_MAX,
+              FOLLOW_LERP_FACTOR_BASE + absDiff * FOLLOW_LERP_FACTOR_SCALE,
+            )
         const lerpStep = diff * factor
         const stepPx =
           Math.abs(lerpStep) >= FOLLOW_MIN_STEP_PX
@@ -453,14 +481,15 @@ export function useChatScrollManagement({
           return
         }
         followTarget = clamped
+        followGentle = Boolean(options.gentle)
         if (!followRaf) followRaf = requestAnimationFrame(stepFollow)
       }
 
-      const nudgeBy = (delta: number) => {
+      const nudgeBy = (delta: number, options: FollowTargetOptions = {}) => {
         if (!attached) return
         if (!followRef.current) return
         const base = followTarget !== null ? followTarget : attached.scrollTop
-        setTarget(base + delta)
+        setTarget(base + delta, options)
       }
 
       const scrollLatestUserMessageIntoView = () => {
@@ -475,7 +504,7 @@ export function useChatScrollManagement({
             return rows.length > 0 ? rows[rows.length - 1]! : null
           })()
         if (!userRow) {
-          nudgeBy(POST_SEND_USER_MESSAGE_BREATHING_PX)
+          nudgeBy(POST_SEND_USER_MESSAGE_BREATHING_PX, { gentle: true })
           return
         }
         // Use offsetTop/offsetHeight (layout geometry) rather than
@@ -506,7 +535,7 @@ export function useChatScrollManagement({
           rowHeight <= availableForRow
             ? rowBottom - attached.clientHeight + readingSpaceBelow
             : rowTop
-        setTarget(target, { allowBackward: true })
+        setTarget(target, { allowBackward: true, gentle: true })
       }
 
       const scrollQueuedMessagesIntoView = () => {
@@ -660,13 +689,27 @@ export function useChatScrollManagement({
       return true
     }
 
-    if (!tryAttach()) {
-      const poll = () => {
-        if (tryAttach()) return
-        frame = requestAnimationFrame(poll)
+    // Persistent attach watcher. `tryAttach` cleans up and re-binds
+    // whenever the live scroll node differs from the one we're attached
+    // to, so this loop handles two cases with the same code path:
+    //   1. Initial mount — the scroll node may not exist for a few frames
+    //      after the list mounts; poll every frame until it appears.
+    //   2. Remount — navigating to home content unmounts the LegendList
+    //      and returning remounts it with a *new* scroll DOM node. Without
+    //      re-attaching, `followApi`/the wheel listeners stay bound to the
+    //      old detached node and every `scrollTop` write (send-nudge and
+    //      stream auto-follow) silently no-ops. Once attached we only need
+    //      to notice the swap, so throttle the check to keep this cheap.
+    const ATTACH_CHECK_INTERVAL_MS = 120
+    let lastAttachCheck = 0
+    const watch = (now: number) => {
+      if (!attached || now - lastAttachCheck >= ATTACH_CHECK_INTERVAL_MS) {
+        lastAttachCheck = now
+        tryAttach()
       }
-      frame = requestAnimationFrame(poll)
+      frame = requestAnimationFrame(watch)
     }
+    frame = requestAnimationFrame(watch)
 
     return () => {
       cancelAnimationFrame(frame)
