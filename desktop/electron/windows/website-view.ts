@@ -224,6 +224,34 @@ export class WebsiteViewController {
   }
 
   /**
+   * Warm the embedded view ahead of the user actually opening it. Creates
+   * the `WebContentsView` and kicks off `loadURL` for the target route
+   * *without* attaching it to any window, so the expensive cold-start work
+   * (spinning up the renderer process, fetching the remote bundle, React
+   * hydration, Convex connect, first paint) all happens offscreen. A later
+   * `show()` for the same route key then short-circuits the reload and just
+   * attaches the already-loaded view — turning a multi-second cold open into
+   * an instant attach. This matters most on Windows, where the renderer +
+   * GPU spin-up is slower and the transparent compositing path makes the
+   * cold first paint visibly laggy.
+   *
+   * Idempotent: if the view is already loading/loaded the same route this is
+   * a no-op, so it's safe to call from multiple warm-up triggers.
+   */
+  prewarm(params?: WebsiteViewParams) {
+    const view = this.ensureView();
+    if (params?.theme) {
+      // Cache so `did-finish-load` replays it and the offscreen first paint
+      // already matches the desktop theme (no light-gradient flash on show).
+      this.latestTheme = params.theme;
+    }
+    const target = this.options.getUrl(params);
+    const current = view.webContents.getURL();
+    if (routeKeyOf(current) === routeKeyOf(target)) return;
+    void view.webContents.loadURL(target);
+  }
+
+  /**
    * Push a fresh set of theme tokens to the embedded website without
    * reloading. Safe to call before the view exists — the most recent
    * theme is cached and re-sent once the view is created so a renderer
@@ -280,6 +308,24 @@ export class WebsiteViewController {
   destroy() {
     this.hide();
     this.detachResizeTracking();
+    if (this.view && !this.view.webContents.isDestroyed()) {
+      this.view.webContents.close();
+    }
+    this.view = null;
+  }
+
+  /**
+   * Tear down the underlying `WebContentsView` (closing its renderer
+   * process) while leaving resize tracking attached to the owning window.
+   * `ensureView()` recreates the view lazily on the next `show()`/`prewarm()`
+   * and the still-installed resize listeners re-sync its bounds. The cached
+   * `latestTheme` is preserved so the re-warmed first paint matches the
+   * desktop theme. Used by the main process's idle-destroy timer to drop the
+   * resident store/billing renderer once the surface has been closed for a
+   * while; `destroy()` stays the full teardown for window/app shutdown.
+   */
+  disposeView() {
+    this.hide();
     if (this.view && !this.view.webContents.isDestroyed()) {
       this.view.webContents.close();
     }

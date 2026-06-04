@@ -89,6 +89,13 @@ type StoreHandlersOptions = {
     embedded?: boolean;
     theme?: WebsiteViewThemePayload;
   }) => void;
+  prewarmStoreWebView?: (params?: {
+    route?: "store" | "billing";
+    tab?: string;
+    packageId?: string;
+    embedded?: boolean;
+    theme?: WebsiteViewThemePayload;
+  }) => void;
   hideStoreWebView?: () => void;
   setStoreWebViewLayout?: (
     layout: { x: number; y: number; width: number; height: number } | null,
@@ -277,6 +284,31 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     ) => {
       assertPrivilegedRequest(options, event, "storeWeb:show");
       options.showStoreWebView?.({
+        route: payload?.route,
+        tab: payload?.tab,
+        packageId: payload?.packageId ?? payload?.package,
+        embedded: payload?.embedded === true,
+        theme: sanitizeWebsiteViewTheme(payload?.theme),
+      });
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    "storeWeb:prewarm",
+    async (
+      event,
+      payload?: {
+        route?: "store" | "billing";
+        tab?: string;
+        package?: string;
+        packageId?: string;
+        embedded?: boolean;
+        theme?: unknown;
+      },
+    ) => {
+      assertPrivilegedRequest(options, event, "storeWeb:prewarm");
+      options.prewarmStoreWebView?.({
         route: payload?.route,
         tab: payload?.tab,
         packageId: payload?.packageId ?? payload?.package,

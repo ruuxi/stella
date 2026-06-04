@@ -47,3 +47,20 @@ export const normalizeStoreTab = (value: unknown): StoreTab => {
   }
   return DEFAULT_STORE_TAB;
 };
+
+/**
+ * localStorage key for the last-active Store tab. The URL `?tab=` param is
+ * the source of truth while inside Store; this persists across visits so
+ * reopening Store lands where the user left off, and lets the warm-up path
+ * preload the same tab the open will land on (so the prewarmed view isn't
+ * thrown away by a route-key mismatch).
+ */
+export const LAST_STORE_TAB_KEY = "stella.store.lastTab";
+
+export const readStoredStoreTab = (): StoreTab => {
+  try {
+    return normalizeStoreTab(window.localStorage?.getItem(LAST_STORE_TAB_KEY));
+  } catch {
+    return DEFAULT_STORE_TAB;
+  }
+};
