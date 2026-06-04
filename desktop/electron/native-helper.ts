@@ -15,6 +15,29 @@ type RunNativeHelperOptions = {
 const FAILURE_LOG_THROTTLE_MS = 30_000
 const lastFailureLogAt = new Map<string, number>()
 
+// Circuit breaker. A helper that's simply broken on this machine (e.g. a
+// crashing/hanging win32 `.exe`) must not be re-spawned on every cursor-move
+// / context refresh — each failed spawn costs a full process launch plus the
+// kill-timeout wait, which on Windows shows up as continuous system-wide lag.
+// After N consecutive failures we stop spawning the helper for a cooldown,
+// then allow a single probe; success closes the circuit, another failure
+// re-opens it. This caps a broken helper to ~one spawn per cooldown instead
+// of one per call.
+const CIRCUIT_FAILURE_THRESHOLD = 3
+const CIRCUIT_COOLDOWN_MS = 60_000
+
+type HelperCircuit = { consecutiveFailures: number; openUntil: number }
+const circuits = new Map<string, HelperCircuit>()
+
+const getCircuit = (helperName: string): HelperCircuit => {
+  let circuit = circuits.get(helperName)
+  if (!circuit) {
+    circuit = { consecutiveFailures: 0, openUntil: 0 }
+    circuits.set(helperName, circuit)
+  }
+  return circuit
+}
+
 export const runNativeHelper = (
   helperName: string,
   args: string[],
@@ -22,6 +45,12 @@ export const runNativeHelper = (
 ): Promise<string | null> => {
   const helperPath = resolveNativeHelperPath(helperName)
   if (!helperPath) {
+    return Promise.resolve(null)
+  }
+
+  const circuit = getCircuit(helperName)
+  if (circuit.openUntil > Date.now()) {
+    // Circuit open — skip the spawn entirely until the cooldown elapses.
     return Promise.resolve(null)
   }
 
@@ -37,6 +66,13 @@ export const runNativeHelper = (
       },
       (error, stdout) => {
         if (error) {
+          circuit.consecutiveFailures += 1
+          if (
+            circuit.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD &&
+            circuit.openUntil <= Date.now()
+          ) {
+            circuit.openUntil = Date.now() + CIRCUIT_COOLDOWN_MS
+          }
           const now = Date.now()
           const last = lastFailureLogAt.get(helperName) ?? 0
           if (now - last >= FAILURE_LOG_THROTTLE_MS) {
@@ -45,6 +81,9 @@ export const runNativeHelper = (
               helper: helperName,
               code: (error as NodeJS.ErrnoException).code,
               killed: (error as { killed?: boolean }).killed,
+              consecutiveFailures: circuit.consecutiveFailures,
+              circuitOpenMs:
+                circuit.openUntil > now ? circuit.openUntil - now : 0,
               error,
             })
           }
@@ -52,6 +91,8 @@ export const runNativeHelper = (
           resolve(null)
           return
         }
+        circuit.consecutiveFailures = 0
+        circuit.openUntil = 0
         resolve(typeof stdout === 'string' ? stdout.trim() || null : null)
       },
     )

@@ -76,7 +76,12 @@ const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers";
 const DEFAULT_NATIVE_HELPERS_MANIFEST_URL = `${DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL}/current.json`;
 const UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS = 120_000;
-const UPDATE_SOURCE_HISTORY_TIMEOUT_MS = 20_000;
+// Recording source history is best-effort and runs at launch, racing the Bun
+// worker's cold-start. On slow Windows machines the worker isn't ready for
+// ~25-40s, so a 20s budget timed out and logged a hard error every launch
+// after an update. Give it enough headroom to outlast a slow cold-start so it
+// completes quietly instead of failing and re-attempting next launch.
+const UPDATE_SOURCE_HISTORY_TIMEOUT_MS = 45_000;
 
 class DesktopUpdateRuntimeTimeoutError extends Error {
   constructor(
