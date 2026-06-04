@@ -126,7 +126,6 @@ export type PublicApiType = {
       "getSyncMode": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "setSyncMode": FunctionReference<'mutation', 'public', { mode: 'on' | 'off'; }, any, string | undefined>;
       "setPreferredBrowser": FunctionReference<'mutation', 'public', { browser: 'none' | 'arc' | 'brave' | 'chrome' | 'edge' | 'firefox' | 'opera' | 'safari' | 'vivaldi'; }, any, string | undefined>;
-      "setExpressionStyle": FunctionReference<'mutation', 'public', { style: 'emoji' | 'none'; }, any, string | undefined>;
       "getLocale": FunctionReference<'query', 'public', {}, any, string | undefined>;
       "setLocale": FunctionReference<'mutation', 'public', { locale: 'id' | 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'nl' | 'ru' | 'ja' | 'zh-Hans' | 'zh-Hant' | 'ko' | 'pl' | 'sv' | 'nb' | 'da' | 'fi' | 'cs' | 'el' | 'tr' | 'ro' | 'hu' | 'ar' | 'hi' | 'vi' | 'th' | 'he'; }, any, string | undefined>;
     };

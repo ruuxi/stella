@@ -98,8 +98,6 @@ export type LocalPreferences = {
   assistantPropagatedAgents: string[];
   /** Reasoning effort overrides keyed by agent type. */
   reasoningEfforts: Record<string, ReasoningEffort>;
-  /** Expression style: "none" | "emoji" | undefined (default) */
-  expressionStyle?: string;
   /**
    * Selected personality voice id (see PERSONALITY_VOICES catalog).
    * Undefined falls back to the default voice.
@@ -206,7 +204,6 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   modelOverrides: {},
   assistantPropagatedAgents: [],
   reasoningEfforts: {},
-  expressionStyle: undefined,
   personalityVoiceId: undefined,
   agentRuntimeEngine: "default",
   codexModel: DEFAULT_CODEX_MODEL,
@@ -261,7 +258,6 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.assistantPropagatedAgents,
       ),
       reasoningEfforts: normalizeReasoningEfforts(parsed.reasoningEfforts),
-      expressionStyle: parsed.expressionStyle,
       personalityVoiceId:
         typeof parsed.personalityVoiceId === "string" &&
         parsed.personalityVoiceId.trim().length > 0
@@ -358,10 +354,6 @@ export const getReasoningEffort = (
 ): ReasoningEffort => {
   const prefs = loadLocalPreferences(stellaHome);
   return normalizeReasoningEffort(prefs.reasoningEfforts[agentType]);
-};
-
-export const getExpressionStyle = (stellaHome: string): string | undefined => {
-  return loadLocalPreferences(stellaHome).expressionStyle;
 };
 
 export const getPersonalityVoiceId = (

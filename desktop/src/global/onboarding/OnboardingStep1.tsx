@@ -174,7 +174,7 @@ export const OnboardingStep1 = ({
     phase,
   });
 
-  const appearance = useOnboardingAppearance({ isAuthenticated });
+  const appearance = useOnboardingAppearance();
   const handleMemoryContinue = useOnboardingMemory(nextSplitStep);
 
   useEffect(() => {
