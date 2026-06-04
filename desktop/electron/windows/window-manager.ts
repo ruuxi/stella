@@ -46,6 +46,11 @@ type WindowManagerOptions = {
 
 const compactSize = MINI_SHELL_SIZE
 const MINI_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
+// The store/billing `WebContentsView` is a full resident renderer (remote
+// website bundle). Drop it after the surface has been closed for a while so
+// users who aren't in Store/Billing don't carry it; a later hover re-warms it
+// via `prewarmStoreWebView`. Mirrors the mini-window idle-destroy lifecycle.
+const STORE_WEB_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
 const MINI_ATTACH_GAP = 8
 const MINI_ATTACH_MIN_TARGET_WIDTH = 320
 
@@ -165,6 +170,7 @@ export class WindowManager {
   private miniShouldRestoreExternalApp = false
   private miniAlwaysOnTop = true
   private miniIdleDestroyTimer: ReturnType<typeof setTimeout> | null = null
+  private storeWebIdleDestroyTimer: ReturnType<typeof setTimeout> | null = null
   private readonly websiteViewController: WebsiteViewController
   private readonly transientReloadStateByMode = new Map<
     ShellWindowMode,
@@ -224,6 +230,7 @@ export class WindowManager {
       onClosed: () => {
         this.cancelTransientReload('full')
         this.cancelUnresponsiveWatchdog('full')
+        this.cancelStoreWebIdleDestroy()
         this.syncLastActiveWindowMode()
       },
     })
@@ -439,6 +446,7 @@ export class WindowManager {
   }
 
   showStoreWebView(params?: WebsiteViewParams) {
+    this.cancelStoreWebIdleDestroy()
     const fullWindow = this.getFullWindow() ?? this.createFullWindow()
     this.websiteViewController.show(fullWindow, {
       route: params?.route ?? 'store',
@@ -449,8 +457,36 @@ export class WindowManager {
     })
   }
 
+  prewarmStoreWebView(params?: WebsiteViewParams) {
+    this.cancelStoreWebIdleDestroy()
+    this.websiteViewController.prewarm({
+      route: params?.route ?? 'store',
+      tab: params?.tab,
+      packageId: params?.packageId,
+      embedded: params?.embedded,
+      theme: params?.theme,
+    })
+  }
+
   hideStoreWebView() {
     this.websiteViewController.hide()
+    this.scheduleStoreWebIdleDestroy()
+  }
+
+  private cancelStoreWebIdleDestroy() {
+    if (!this.storeWebIdleDestroyTimer) {
+      return
+    }
+    clearTimeout(this.storeWebIdleDestroyTimer)
+    this.storeWebIdleDestroyTimer = null
+  }
+
+  private scheduleStoreWebIdleDestroy() {
+    this.cancelStoreWebIdleDestroy()
+    this.storeWebIdleDestroyTimer = setTimeout(() => {
+      this.storeWebIdleDestroyTimer = null
+      this.websiteViewController.disposeView()
+    }, STORE_WEB_IDLE_DESTROY_DELAY_MS)
   }
 
   setStoreWebViewLayout(layout: WebsiteViewLayout | null) {

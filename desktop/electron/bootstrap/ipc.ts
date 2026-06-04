@@ -390,6 +390,8 @@ export const registerBootstrapIpcHandlers = (
     },
     getStoreAuthToken: () => services.authService.getConvexAuthToken(),
     showStoreWebView: (params) => state.windowManager?.showStoreWebView(params),
+    prewarmStoreWebView: (params) =>
+      state.windowManager?.prewarmStoreWebView(params),
     hideStoreWebView: () => state.windowManager?.hideStoreWebView(),
     setStoreWebViewLayout: (layout) =>
       state.windowManager?.setStoreWebViewLayout(layout),

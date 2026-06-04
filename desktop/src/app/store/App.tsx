@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   DEFAULT_STORE_TAB,
+  LAST_STORE_TAB_KEY,
   normalizeStoreTab,
-  type StoreTab,
+  readStoredStoreTab,
 } from "@/features/store/store-tabs";
 import { openStoreDisplayTab } from "@/features/workspace-display/default-tabs";
 import {
@@ -31,21 +32,6 @@ import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-webs
 import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
 import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";
 import { showToast, type ToastOptions } from "@/ui/toast";
-
-// Persist the last-active Store tab so clicking the global sidebar's Store
-// icon reopens to wherever the user was last (Discover by default). The URL
-// query param is still the source of truth while inside Store; this only
-// fires when no `?tab=` is present on entry.
-const LAST_STORE_TAB_KEY = "stella.store.lastTab";
-
-const readStoredTab = (): StoreTab => {
-  try {
-    const raw = window.localStorage?.getItem(LAST_STORE_TAB_KEY);
-    return normalizeStoreTab(raw);
-  } catch {
-    return DEFAULT_STORE_TAB;
-  }
-};
 
 const getPetState = () => ({
   installedPetIds: Array.from(readInstalledPetIds()),
@@ -262,7 +248,7 @@ export function StoreApp() {
       return;
     }
     if (search.tab) return;
-    const stored = readStoredTab();
+    const stored = readStoredStoreTab();
     if (stored === DEFAULT_STORE_TAB) return;
     void navigate({ to: "/store", search: { tab: stored }, replace: true });
   }, [navigate, search.tab, urlIsLegacy, requestedTab]);

@@ -1,3 +1,7 @@
+import type { EmbeddedWebsiteTheme } from "@/shared/types/electron";
+import { readStoredStoreTab } from "@/features/store/store-tabs";
+import { readEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
+
 type PreloadKey =
   | "auth"
   | "billing"
@@ -53,6 +57,40 @@ export const preloadSocialNewChatDialog = () =>
 export const preloadStoreApp = () =>
   runOnce("store", () => import("@/app/store/App"));
 
+/**
+ * Read the embedded theme for an offscreen prewarm without a React context.
+ * The resolved color mode is reflected on `:root` as the `dark` class (see
+ * `applyThemeToDocument`), and `readEmbeddedWebsiteTheme` snapshots the live
+ * CSS custom properties — so the prewarmed first paint already matches the
+ * desktop theme instead of flashing the website's default light gradient.
+ */
+const readStoreWebPrewarmTheme = (): EmbeddedWebsiteTheme => {
+  const isDark =
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("dark");
+  return readEmbeddedWebsiteTheme(isDark ? "dark" : "light");
+};
+
+/**
+ * Warm the native Store `WebContentsView` in the main process on nav-intent
+ * (hover/focus of the Store sidebar entry) so the first open is an instant
+ * attach rather than a cold renderer spin-up + remote fetch + hydrate.
+ *
+ * Deliberately NOT guarded by `runOnce`: the main process tears the view
+ * down on an idle timer once Store/Billing has been closed for a while, so
+ * a later hover must be able to re-warm it. The main `storeWeb:prewarm`
+ * handler is idempotent (route-key guard + idempotent `ensureView`), so
+ * repeat hovers while already warm are cheap no-ops.
+ */
+export const prewarmStoreWebView = () => {
+  void window.electronAPI?.storeWeb?.prewarm?.({
+    route: "store",
+    tab: readStoredStoreTab(),
+    embedded: true,
+    theme: readStoreWebPrewarmTheme(),
+  });
+};
+
 export const preloadAllNavSurfaces = () => {
   preloadAuthDialog();
   preloadBillingScreen();
@@ -69,6 +107,10 @@ export const preloadAllNavSurfaces = () => {
 export const preloadNavSurfaceRoute = (appId: string) => {
   if (appId === "store") {
     preloadStoreApp();
+    // Store renders the embedded website webview — warm it on nav-intent so
+    // the open is an instant attach, and so users who never hover Store never
+    // pay for a resident webview renderer.
+    prewarmStoreWebView();
   } else if (appId === "social") {
     preloadSocialApp();
   }

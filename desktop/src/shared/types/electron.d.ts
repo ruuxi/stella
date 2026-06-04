@@ -1288,6 +1288,14 @@ export type ElectronStoreWebApi = {
     embedded?: boolean;
     theme?: EmbeddedWebsiteTheme;
   }) => Promise<{ ok: boolean }>;
+  prewarm: (payload?: {
+    route?: "store" | "billing";
+    tab?: string;
+    package?: string;
+    packageId?: string;
+    embedded?: boolean;
+    theme?: EmbeddedWebsiteTheme;
+  }) => Promise<{ ok: boolean }>;
   hide: () => Promise<{ ok: boolean }>;
   setLayout: (payload: {
     x: number;
