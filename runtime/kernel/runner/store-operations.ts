@@ -17,7 +17,6 @@ export const createStoreOperations = (
     ensureStoreClient: () => any;
   },
 ): StoreOperations => {
-  const RELEASE_DIFF_INLINE_BYTES = 1_500_000;
   const RELEASE_DIFF_MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
   const toSharedStorePackage = (value: unknown): StorePackageRecord | null => {
@@ -97,29 +96,6 @@ export const createStoreOperations = (
     ) {
       return null;
     }
-    const parsedCommits: StoreReleaseCommit[] = Array.isArray(record.commits)
-      ? record.commits
-          .map((entry: unknown): StoreReleaseCommit | null => {
-            if (!entry || typeof entry !== "object") return null;
-            const commitRecord = entry as Record<string, unknown>;
-            if (
-              typeof commitRecord.hash !== "string" ||
-              typeof commitRecord.subject !== "string" ||
-              typeof commitRecord.diff !== "string"
-            ) {
-              return null;
-            }
-            return {
-              hash: commitRecord.hash,
-              subject: commitRecord.subject,
-              diff: commitRecord.diff,
-            };
-          })
-          .filter(
-            (entry: StoreReleaseCommit | null): entry is StoreReleaseCommit =>
-              entry !== null,
-          )
-      : [];
     const gitArtifact =
       record.gitArtifact &&
       typeof record.gitArtifact === "object" &&
@@ -138,6 +114,17 @@ export const createStoreOperations = (
       typeof diffRefRecord.sha256 === "string" &&
       typeof diffRefRecord.sizeBytes === "number"
         ? (diffRefRecord as StoreReleaseDiffRef)
+        : undefined;
+    const commitsDiffRefRecord =
+      record.commitsDiffRef && typeof record.commitsDiffRef === "object"
+        ? (record.commitsDiffRef as Record<string, unknown>)
+        : null;
+    const commitsDiffRef =
+      commitsDiffRefRecord?.kind === "r2" &&
+      typeof commitsDiffRefRecord.r2Key === "string" &&
+      typeof commitsDiffRefRecord.sha256 === "string" &&
+      typeof commitsDiffRefRecord.sizeBytes === "number"
+        ? (commitsDiffRefRecord as StoreReleaseDiffRef)
         : undefined;
     const validManifestCategories = new Set([
       "apps-games",
@@ -177,10 +164,9 @@ export const createStoreOperations = (
             : {}),
       },
       blueprintMarkdown: record.blueprintMarkdown,
-      ...(parsedCommits.length > 0 ? { commits: parsedCommits } : {}),
       ...(gitArtifact ? { gitArtifact } : {}),
-      ...(typeof record.diff === "string" ? { diff: record.diff } : {}),
       ...(diffRef ? { diffRef } : {}),
+      ...(commitsDiffRef ? { commitsDiffRef } : {}),
       createdAt: record.createdAt,
     };
   };
@@ -276,16 +262,16 @@ export const createStoreOperations = (
     }
   };
 
-  const uploadLargeDiff = async (args: {
+  // Squashed diffs and the per-commit diff bundle are always stored in R2 —
+  // never inline on the release document — so release docs stay small and
+  // list/detail subscriptions stay cheap. Both go through this single
+  // presigned-upload path.
+  const uploadDiffBytes = async (args: {
     client: any;
     packageId: string;
-    diff: string;
-  }): Promise<{ diff?: string; diffRef?: StoreReleaseDiffRef }> => {
-    const bytes = new TextEncoder().encode(args.diff);
-    if (bytes.byteLength <= RELEASE_DIFF_INLINE_BYTES) {
-      return { diff: args.diff };
-    }
-    if (bytes.byteLength > RELEASE_DIFF_MAX_UPLOAD_BYTES) {
+    bytes: Uint8Array;
+  }): Promise<StoreReleaseDiffRef> => {
+    if (args.bytes.byteLength > RELEASE_DIFF_MAX_UPLOAD_BYTES) {
       throw new Error(
         "Store feature diff is too large to publish safely. Reduce the selected feature scope and try again.",
       );
@@ -300,8 +286,8 @@ export const createStoreOperations = (
       ).data.store_git_artifacts.prepareDiffUpload,
       {
         packageId: args.packageId,
-        sha256: hashBytes(bytes),
-        sizeBytes: bytes.byteLength,
+        sha256: hashBytes(args.bytes),
+        sizeBytes: args.bytes.byteLength,
       },
     )) as { ref?: unknown; uploadUrl?: unknown };
     const ref =
@@ -318,7 +304,7 @@ export const createStoreOperations = (
       headers: {
         "content-type": "text/x-diff; charset=utf-8",
       },
-      body: bytes,
+      body: args.bytes,
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
@@ -326,8 +312,34 @@ export const createStoreOperations = (
         `Store diff upload failed (${response.status})${detail ? `: ${detail}` : ""}`,
       );
     }
-    return { diffRef: ref };
+    return ref;
   };
+
+  const uploadDiff = async (args: {
+    client: any;
+    packageId: string;
+    diff: string;
+  }): Promise<StoreReleaseDiffRef> =>
+    await uploadDiffBytes({
+      client: args.client,
+      packageId: args.packageId,
+      bytes: new TextEncoder().encode(args.diff),
+    });
+
+  // Per-commit reference diffs are serialized into a single JSON bundle and
+  // uploaded as one R2 object. Hydrated back via `getReleaseCommits`.
+  const uploadCommitsBundle = async (args: {
+    client: any;
+    packageId: string;
+    commits: StoreReleaseCommit[];
+  }): Promise<StoreReleaseDiffRef> =>
+    await uploadDiffBytes({
+      client: args.client,
+      packageId: args.packageId,
+      bytes: new TextEncoder().encode(
+        JSON.stringify({ version: 1, commits: args.commits }),
+      ),
+    });
 
   const hydrateReleaseDiff = async (
     client: any,
@@ -352,11 +364,63 @@ export const createStoreOperations = (
     return diff ? { ...release, diff } : release;
   };
 
+  const hydrateReleaseCommits = async (
+    client: any,
+    release: StorePackageReleaseRecord | null,
+  ): Promise<StorePackageReleaseRecord | null> => {
+    if (
+      !release ||
+      (release.commits && release.commits.length > 0) ||
+      !release.commitsDiffRef
+    ) {
+      return release;
+    }
+    const raw = (await client.action(
+      (
+        context.convexApi as {
+          data: {
+            store_git_artifacts: { getReleaseCommits: unknown };
+          };
+        }
+      ).data.store_git_artifacts.getReleaseCommits,
+      {
+        packageId: release.packageId,
+        releaseNumber: release.releaseNumber,
+      },
+    )) as unknown;
+    const commits = Array.isArray(raw)
+      ? raw
+          .map((entry): StoreReleaseCommit | null => {
+            if (!entry || typeof entry !== "object") return null;
+            const commitRecord = entry as Record<string, unknown>;
+            if (
+              typeof commitRecord.hash !== "string" ||
+              typeof commitRecord.subject !== "string" ||
+              typeof commitRecord.diff !== "string"
+            ) {
+              return null;
+            }
+            return {
+              hash: commitRecord.hash,
+              subject: commitRecord.subject,
+              diff: commitRecord.diff,
+            };
+          })
+          .filter(
+            (entry): entry is StoreReleaseCommit => entry !== null,
+          )
+      : [];
+    return commits.length > 0 ? { ...release, commits } : release;
+  };
+
   const hydrateReleaseArtifact = async (
     client: any,
     release: StorePackageReleaseRecord | null,
   ): Promise<StorePackageReleaseRecord | null> =>
-    await hydrateReleaseDiff(client, release);
+    await hydrateReleaseCommits(
+      client,
+      await hydrateReleaseDiff(client, release),
+    );
 
   const listStorePackages = async (): Promise<StorePackageRecord[]> => {
     const client = deps.ensureStoreClient();
@@ -446,13 +510,22 @@ export const createStoreOperations = (
       client,
       objects: args.gitObjectUploads ?? [],
     });
-    const diffStorage = args.artifact.diff
-      ? await uploadLargeDiff({
+    const diffRef = args.artifact.diff
+      ? await uploadDiff({
           client,
           packageId: args.packageId,
           diff: args.artifact.diff,
         })
-      : {};
+      : undefined;
+    const commitsDiffRef =
+      commits.length > 0
+        ? await uploadCommitsBundle({
+            client,
+            packageId: args.packageId,
+            commits,
+          })
+        : undefined;
+    const commitsMeta = commits.map(({ hash, subject }) => ({ hash, subject }));
     const result = (await client.action(
       (
         context.convexApi as {
@@ -470,8 +543,9 @@ export const createStoreOperations = (
         ...(args.artifact.gitArtifact
           ? { gitArtifact: args.artifact.gitArtifact }
           : {}),
-        ...diffStorage,
-        ...(commits.length > 0 ? { commits } : {}),
+        ...(diffRef ? { diffRef } : {}),
+        ...(commitsDiffRef ? { commitsDiffRef } : {}),
+        ...(commitsMeta.length > 0 ? { commits: commitsMeta } : {}),
       },
     )) as {
       package?: unknown;
@@ -496,13 +570,22 @@ export const createStoreOperations = (
       client,
       objects: args.gitObjectUploads ?? [],
     });
-    const diffStorage = args.artifact.diff
-      ? await uploadLargeDiff({
+    const diffRef = args.artifact.diff
+      ? await uploadDiff({
           client,
           packageId: args.packageId,
           diff: args.artifact.diff,
         })
-      : {};
+      : undefined;
+    const commitsDiffRef =
+      commits.length > 0
+        ? await uploadCommitsBundle({
+            client,
+            packageId: args.packageId,
+            commits,
+          })
+        : undefined;
+    const commitsMeta = commits.map(({ hash, subject }) => ({ hash, subject }));
     const result = (await client.action(
       (
         context.convexApi as {
@@ -517,8 +600,9 @@ export const createStoreOperations = (
         ...(args.artifact.gitArtifact
           ? { gitArtifact: args.artifact.gitArtifact }
           : {}),
-        ...diffStorage,
-        ...(commits.length > 0 ? { commits } : {}),
+        ...(diffRef ? { diffRef } : {}),
+        ...(commitsDiffRef ? { commitsDiffRef } : {}),
+        ...(commitsMeta.length > 0 ? { commits: commitsMeta } : {}),
       },
     )) as {
       package?: unknown;
