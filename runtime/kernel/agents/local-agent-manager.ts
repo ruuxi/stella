@@ -57,6 +57,7 @@ import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import type { ReasoningEffort } from "../preferences/local-preferences.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import type { RuntimeActiveRun } from "../../protocol/index.js";
+import type { ResolvedLlmRoute } from "../model-routing.js";
 import {
   type SubagentSession,
   getOrCreateSubagentSession,
@@ -71,6 +72,7 @@ export type LocalAgentContext = {
   shouldInjectDynamicReminder?: boolean;
   toolsAllowlist?: string[];
   model?: string;
+  resolvedLlm?: ResolvedLlmRoute;
   reasoningEffort?: ReasoningEffort;
   agentDepth?: number;
   maxAgentDepth: number;

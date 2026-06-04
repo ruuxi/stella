@@ -13,7 +13,7 @@ import { registerMorphHandlers } from "../ipc/morph-handlers.js";
 import { registerNativeIntegrationHandlers } from "../ipc/native-integration-handlers.js";
 import { registerOnboardingHandlers } from "../ipc/onboarding-handlers.js";
 import { registerPetHandlers } from "../ipc/pet-handlers.js";
-import { BrowserWindow, ipcMain } from "electron";
+import { ipcMain } from "electron";
 import {
   cleanupPetVoiceSession,
   togglePetVoice,
@@ -148,9 +148,6 @@ export const registerBootstrapIpcHandlers = (
       if (ready) {
         scheduleGlobalInputHooksAfterAppReady(context);
         schedulePostReadyNativeServices();
-        if (BrowserWindow.getFocusedWindow()) {
-          state.stellaHostRunner?.setHostFocused(true);
-        }
       }
     },
     deactivateVoiceModes: () => services.uiStateService.deactivateVoiceModes(),

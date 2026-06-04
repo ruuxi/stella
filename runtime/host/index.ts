@@ -243,7 +243,6 @@ type WorkerInitializationState = {
 
 const AGENT_EVENT_BUFFER_LIMIT = 1_000;
 const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1_000;
-const WORKER_UNFOCUSED_IDLE_TIMEOUT_MS = 5 * 60 * 1_000;
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = ".stella-runtime-reload-state.json";
 const DEVICE_HEARTBEAT_INTERVAL_MS = 30_000;
 const SYNTHETIC_RUN_EVENT_SEQ_FLOOR = 1e10;
@@ -462,7 +461,6 @@ export class StellaRuntimeHost {
         this.workerHealthCache = snapshot;
         return snapshot;
       },
-      idleTimeoutMs: WORKER_UNFOCUSED_IDLE_TIMEOUT_MS,
     });
   }
 
@@ -1459,11 +1457,15 @@ export class StellaRuntimeHost {
 
   async warmWorker() {
     await this.workerController.ensureStarted();
+    await this.requestWorker<{ ok: true }>(
+      METHOD_NAMES.INTERNAL_WORKER_WARM_MODEL_CATALOG,
+      {},
+      {
+        ensureWorker: true,
+        recordActivity: false,
+      },
+    ).catch(() => undefined);
     return { ok: true };
-  }
-
-  setHostFocused(focused: boolean) {
-    this.workerController.setHostFocused(focused);
   }
 
   async healthCheck() {

@@ -60,6 +60,7 @@ import {
   sanitizeStellaBase,
 } from "./shared.js";
 import { resolveRunnerLlmRouteWithMetadata } from "./model-selection.js";
+import type { ResolvedLlmRoute } from "../model-routing.js";
 import { getResponseLanguageSystemPrompt } from "./locale-prompt.js";
 import {
   APPLY_PATCH_TOOL_NAME,
@@ -679,28 +680,52 @@ export const getConfiguredModel = (
   return modelFromPrefs ?? agent?.model;
 };
 
-export const buildAgentContext = async (
+export type ResolvedAgentModelRoute = {
+  agent?: ParsedAgentLike;
+  model?: string;
+  resolvedLlm: ResolvedLlmRoute;
+};
+
+export const resolveAgentModelRoute = async (
   context: RunnerContext,
-  args: {
-    conversationId: string;
-    agentType: string;
-    runId: string;
-    threadId?: string;
-    toolWorkspaceRoot?: string;
-    selfModMetadata?: {
-      packageId?: string;
-      releaseNumber?: number;
-      mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
-    };
-  },
-): Promise<LocalAgentContext> => {
-  const agent = resolveAgent(context, args.agentType);
-  const model = getConfiguredModel(context, args.agentType, agent);
+  agentType: string,
+  modelOverride?: string,
+): Promise<ResolvedAgentModelRoute> => {
+  const agent = resolveAgent(context, agentType);
+  const configuredModel = getConfiguredModel(context, agentType, agent);
+  const model = modelOverride ?? configuredModel;
   const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
     context,
-    args.agentType,
+    agentType,
     model,
   );
+  return {
+    ...(agent ? { agent } : {}),
+    ...(model ? { model } : {}),
+    resolvedLlm,
+  };
+};
+
+export type BuildAgentContextArgs = {
+  conversationId: string;
+  agentType: string;
+  runId: string;
+  threadId?: string;
+  toolWorkspaceRoot?: string;
+  selfModMetadata?: {
+    packageId?: string;
+    releaseNumber?: number;
+    mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+  };
+} & ResolvedAgentModelRoute;
+
+export const buildAgentContext = async (
+  context: RunnerContext,
+  args: BuildAgentContextArgs,
+): Promise<LocalAgentContext> => {
+  const agent = args.agent;
+  const model = args.model;
+  const resolvedLlm = args.resolvedLlm;
   const threadKey = buildRuntimeThreadKey({
     conversationId: args.conversationId,
     agentType: args.agentType,
@@ -847,6 +872,7 @@ export const buildAgentContext = async (
     connectorTransitionReminderText,
     toolsAllowlist,
     model,
+    resolvedLlm,
     reasoningEffort: getReasoningEffort(context.stellaHome, args.agentType),
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: readCoreMemory(context.stellaHome),

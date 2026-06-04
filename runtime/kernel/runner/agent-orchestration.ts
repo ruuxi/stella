@@ -440,18 +440,20 @@ export const createAgentOrchestration = (
           return result?.authenticated ? result.token : null;
         },
       };
-      const resolvedLlm = await withStellaModelCatalogMetadata({
-        route: resolveLlmRoute({
-          stellaRoot: context.stellaRoot,
-          modelName: agentContext.model,
+      const resolvedLlm =
+        agentContext.resolvedLlm ??
+        (await withStellaModelCatalogMetadata({
+          route: resolveLlmRoute({
+            stellaRoot: context.stellaRoot,
+            modelName: agentContext.model,
+            agentType,
+            site,
+          }),
           agentType,
           site,
-        }),
-        agentType,
-        site,
-        deviceId: context.deviceId,
-        modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
-      });
+          deviceId: context.deviceId,
+          modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
+        }));
       const runnerCallbacks =
         (rootRunId ? context.state.runCallbacksByRunId.get(rootRunId) : null) ??
         context.state.conversationCallbacks.get(conversationId) ??
@@ -887,6 +889,7 @@ export const createAgentOrchestration = (
               });
               oneShotContext.maxAgentDepth = agentContext.maxAgentDepth;
               oneShotContext.agentDepth = agentContext.agentDepth;
+              const oneShotResolvedLlm = oneShotContext.resolvedLlm ?? resolvedLlm;
               const result = await runSubagentTask({
                 conversationId,
                 userMessageId: oneShotRunId,
@@ -903,7 +906,7 @@ export const createAgentOrchestration = (
                 }),
                 deviceId: context.deviceId,
                 stellaHome: context.stellaHome,
-                resolvedLlm,
+                resolvedLlm: oneShotResolvedLlm,
                 store: context.runtimeStore,
                 suppressCompletionSideEffects: true,
                 compactionScheduler: context.state.compactionScheduler,

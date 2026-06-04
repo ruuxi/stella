@@ -435,18 +435,6 @@ export class RuntimeHostAdapter {
     this.emitAvailabilityChange();
   }
 
-  setHostFocused(focused: boolean) {
-    this.host.setHostFocused(focused);
-    if (focused) {
-      void this.warmWorker().catch((error) => {
-        console.warn(
-          "[stella-runtime-adapter] Failed to warm runtime worker:",
-          error,
-        );
-      });
-    }
-  }
-
   private queueRuntimeConfigPatch(patch: {
     convexUrl?: string | null;
     convexSiteUrl?: string | null;

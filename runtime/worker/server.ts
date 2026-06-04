@@ -1687,11 +1687,35 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         applyConfigPatch(pendingConfigPatch);
         pendingConfigPatch = null;
       }
+      // Warm the catalog against whatever config the worker initialized
+      // with so a restart/reattach (module-level catalog cache is empty in
+      // a fresh worker process) doesn't make the next chat pay the cold
+      // fetch. Best-effort.
+      scheduleModelCatalogWarm();
       return result;
     },
   );
 
   let pendingConfigPatch: Partial<WorkerInitializationState> | null = null;
+
+  // Re-warm the Stella model catalog whenever an input to its cache key
+  // changes. The catalog cache is keyed by auth identity + device +
+  // `modelCatalogUpdatedAt`, and `modelCatalogUpdatedAt` is only ever
+  // pushed down by the renderer after it mounts — i.e. after the host's
+  // one-shot startup warm has already run with a `null` updated-at. Without
+  // this, the startup warm caches under the wrong key and the first real
+  // chat still pays the cold catalog fetch. Debounced so a `configure` call
+  // touching multiple fields only warms once, and best-effort so a network
+  // failure never affects config application.
+  let warmTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleModelCatalogWarm = () => {
+    if (!state.runner) return;
+    if (warmTimer) clearTimeout(warmTimer);
+    warmTimer = setTimeout(() => {
+      warmTimer = null;
+      void state.runner?.warmModelCatalog().catch(() => undefined);
+    }, 50);
+  };
 
   const applyConfigPatch = (patch: Partial<WorkerInitializationState>) => {
     if (!state.init) return;
@@ -1715,6 +1739,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
     if (patch.modelCatalogUpdatedAt !== undefined) {
       state.runner?.setModelCatalogUpdatedAt(patch.modelCatalogUpdatedAt);
+    }
+    // Auth identity and the catalog version are the two cache-key inputs
+    // the runtime controls; re-warm when either moves.
+    if (patch.authToken !== undefined || patch.modelCatalogUpdatedAt !== undefined) {
+      scheduleModelCatalogWarm();
     }
   };
 
@@ -1756,6 +1785,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       socialSessions,
     };
   });
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_WARM_MODEL_CATALOG,
+    async () => {
+      await ensureRunner().warmModelCatalog();
+      return { ok: true };
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_GET_ACTIVE,
