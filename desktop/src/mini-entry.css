@@ -26,6 +26,7 @@ html[data-stella-window="mini"] #root {
 .mini-chat-shell {
   position: relative;
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -36,15 +37,159 @@ html[data-stella-window="mini"] #root {
     var(--background);
 }
 
-.mini-chat-drag-strip {
-  position: absolute;
-  inset: 0 0 auto 0;
-  z-index: 4;
-  height: 34px;
+.mini-window-topbar {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex: 0 0 34px;
+  min-height: 34px;
+  padding: 0 8px 0 74px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   -webkit-app-region: drag;
 }
 
-.mini-chat-content {
+.mini-window-topbar__drag,
+.mini-window-topbar__spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.mini-window-topbar[data-display-open="true"] .mini-window-topbar__drag {
+  flex: 0 1 10px;
+}
+
+.mini-window-topbar__tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag;
+  --mini-tablist-fade: 24px;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - var(--mini-tablist-fade)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - var(--mini-tablist-fade)),
+    transparent 100%
+  );
+}
+
+.mini-window-topbar__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mini-display-tab {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 27px;
+  max-width: 150px;
+  padding: 3px 4px 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--text-base);
+  background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+.mini-display-tab:hover {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.mini-display-tab--active {
+  color: var(--text-strong);
+  border-color: color-mix(in oklch, var(--foreground) 9%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.mini-display-tab__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.mini-display-tab__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-display-tab__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: color-mix(in oklch, currentColor 62%, transparent);
+  background: transparent;
+}
+
+.mini-display-tab__close:hover {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.mini-window-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.mini-window-topbar__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: color-mix(in oklch, var(--foreground) 78%, transparent);
+  background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+.mini-window-topbar__button:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.mini-window-topbar__button[aria-pressed="true"] {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+}
+
+.mini-chat-body {
   /* Sit above the ShiftingGradient canvas (z-index: 0) in `.mini-chat-shell`. */
   position: relative;
   z-index: 1;
@@ -52,10 +197,17 @@ html[data-stella-window="mini"] #root {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding-top: 30px;
+  overflow: hidden;
 }
 
-.mini-chat-content :is(button, input, textarea, select, a, [role="button"]) {
+.mini-chat-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.mini-chat-body :is(button, input, textarea, select, a, [role="button"]) {
   -webkit-app-region: no-drag;
 }
 
@@ -81,8 +233,35 @@ html[data-stella-window="mini"] #root {
   min-height: 40px;
 }
 
-.mini-chat-content .chat-sidebar-input {
-  font-size: 13px;
+.mini-chat-content .chat-conversation-surface--mini {
+  --chat-text-size: 15px;
+}
+
+.mini-chat-body[data-display-panel-open="true"] .mini-chat-content {
+  display: none;
+}
+
+.mini-chat-body .display-sidebar {
+  height: 100%;
+}
+
+.mini-chat-body .display-sidebar--open {
+  width: 100%;
+  flex: 1;
+  margin-left: 0;
+  box-shadow: none;
+}
+
+.mini-chat-body .display-sidebar-inner {
+  width: 100%;
+  padding-top: 0;
+  border-left: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.mini-chat-body .display-sidebar__resize-handle {
+  display: none;
 }
 
 @media (prefers-color-scheme: dark) {

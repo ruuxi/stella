@@ -47,6 +47,7 @@ export interface DisplaySidebarHandle {
 
 type DisplaySidebarProps = {
   onOpenChange?: (open: boolean) => void;
+  portalTarget?: Element | null;
 };
 
 const DISPLAY_PANEL_DEFAULT_MIN_WIDTH = 380;
@@ -126,7 +127,7 @@ const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
 export const DisplaySidebar = forwardRef<
   DisplaySidebarHandle,
   DisplaySidebarProps
->(function DisplaySidebar({ onOpenChange }, ref) {
+>(function DisplaySidebar({ onOpenChange, portalTarget }, ref) {
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
   const activeTab = useActiveDisplayTab();
@@ -372,7 +373,8 @@ export const DisplaySidebar = forwardRef<
     [panelOpen],
   );
 
-  const portalTarget = document.querySelector(".full-body") ?? document.body;
+  const resolvedPortalTarget =
+    portalTarget ?? document.querySelector(".full-body") ?? document.body;
 
   return createPortal(
     <aside
@@ -403,6 +405,6 @@ export const DisplaySidebar = forwardRef<
         </div>
       </div>
     </aside>,
-    portalTarget,
+    resolvedPortalTarget,
   );
 });
