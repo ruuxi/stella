@@ -447,9 +447,15 @@ export type StorePackageReleaseRecord = {
   releaseNumber: number;
   manifest: StoreReleaseManifest;
   blueprintMarkdown: string;
-  /** Reference diffs the install agent uses; absent on legacy releases. */
+  /**
+   * Per-commit reference diffs the install agent uses. Stored in R2
+   * (`commitsDiffRef`); only present here after on-demand hydration.
+   */
   commits?: StoreReleaseCommit[];
+  /** R2 reference for the per-commit diff bundle. */
+  commitsDiffRef?: StoreReleaseDiffRef;
   gitArtifact?: StoreReleaseGitArtifact;
+  /** Squashed diff; stored in R2 (`diffRef`), present only after hydration. */
   diff?: string;
   diffRef?: StoreReleaseDiffRef;
   createdAt: number;
