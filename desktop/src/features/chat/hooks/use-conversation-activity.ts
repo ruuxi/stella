@@ -23,7 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useChatStore } from "@/context/chat-store";
+import { useChatStore } from "@/context/chat-store-context";
 import {
   subscribeToLocalActivityWindow,
   type LocalActivityWindowSnapshot,

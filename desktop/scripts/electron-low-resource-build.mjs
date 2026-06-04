@@ -35,6 +35,7 @@ const ignoredPathSegments = new Set([
 
 const requiredOutputs = [
   "desktop/dist/index.html",
+  "desktop/dist/mini.html",
   "desktop/dist/overlay.html",
   "desktop/dist/pet.html",
   "desktop/dist-electron/desktop/electron/main.js",

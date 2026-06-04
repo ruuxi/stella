@@ -1,4 +1,3 @@
-import { router } from '@/router'
 import { BYOK_TOAST_ACTION } from '@/global/billing/byok-action'
 import type { ToastOptions } from '@/ui/toast'
 
@@ -6,16 +5,20 @@ const normalizeErrorText = (value: string | null | undefined): string =>
   (value ?? '').trim()
 
 const openBilling = () => {
-  void router.navigate({ to: '/billing' })
+  void import('@/router').then(({ router }) => {
+    void router.navigate({ to: '/billing' })
+  })
 }
 
 const openSignInDialog = () => {
-  void router.navigate({
-    to: '.',
-    search: (prev: { dialog?: 'auth' | 'connect' }) => ({
-      ...prev,
-      dialog: 'auth' as const,
-    }),
+  void import('@/router').then(({ router }) => {
+    void router.navigate({
+      to: '.',
+      search: (prev: { dialog?: 'auth' | 'connect' }) => ({
+        ...prev,
+        dialog: 'auth' as const,
+      }),
+    })
   })
 }
 

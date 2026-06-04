@@ -64,6 +64,7 @@ import { Spinner } from "@/ui/spinner";
 
 type ChatTimelineProps = {
   rows: EventRowViewModel[];
+  conversationId?: string | null;
   hasOlderEvents?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -129,6 +130,7 @@ type TimelineListItem = { id: string; row: EventRowViewModel };
 const renderRow = (
   row: EventRowViewModel,
   onOpenAttachment?: (attachment: Attachment) => void,
+  conversationId?: string | null,
 ) => {
   if (row.kind === "user") {
     return (
@@ -139,11 +141,18 @@ const renderRow = (
       />
     );
   }
-  return <AssistantMessageRow key={row.id} row={row} />;
+  return (
+    <AssistantMessageRow
+      key={row.id}
+      row={row}
+      conversationId={conversationId}
+    />
+  );
 };
 
 export const ChatTimeline = memo(function ChatTimeline({
   rows,
+  conversationId,
   hasOlderEvents,
   isLoadingOlder,
   isLoadingHistory,
@@ -167,8 +176,8 @@ export const ChatTimeline = memo(function ChatTimeline({
 
   const renderItem = useCallback(
     ({ item }: LegendListRenderItemProps<TimelineListItem>) =>
-      renderRow(item.row, onOpenAttachment),
-    [onOpenAttachment],
+      renderRow(item.row, onOpenAttachment, conversationId),
+    [conversationId, onOpenAttachment],
   );
 
   const keyExtractor = useCallback((item: TimelineListItem) => item.id, []);

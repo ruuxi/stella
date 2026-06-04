@@ -119,6 +119,9 @@ const RENDERER_TEXT_ASSET_SUFFIXES = new Set<string>([
 
 const FULL_WINDOW_RELOAD_FILES = new Set<string>([
   "desktop/index.html",
+  "desktop/mini.html",
+  "desktop/overlay.html",
+  "desktop/pet.html",
 ]);
 
 const SIDEBAR_APP_METADATA_RE = /^desktop\/src\/app\/[^/]+\/metadata\.ts$/;

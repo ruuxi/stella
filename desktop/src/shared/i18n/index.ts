@@ -1,5 +1,6 @@
+export { I18nProvider } from "./RemoteI18nProvider";
 export {
-  I18nProvider,
+  LocalI18nProvider,
   useI18n,
   useLocale,
   useT,

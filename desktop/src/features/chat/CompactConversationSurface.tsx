@@ -26,6 +26,7 @@ type CompactConversationSurfaceProps = {
    */
   scroll: ChatColumnScroll;
   messages: MessageRecord[];
+  conversationId?: string | null;
   maxItems?: number;
   isStreaming: boolean;
   runtimeStatusText?: string | null;
@@ -46,6 +47,7 @@ export function CompactConversationSurface({
   variant,
   scroll,
   messages,
+  conversationId,
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
@@ -72,6 +74,7 @@ export function CompactConversationSurface({
         >
           <ConversationEvents
             messages={messages}
+            conversationId={conversationId}
             maxItems={maxItems}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}

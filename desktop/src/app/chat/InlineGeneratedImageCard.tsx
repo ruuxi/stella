@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, type CSSProperties } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/api";
 import {
-  markMediaJobMaterialized,
-  publishMaterializedMediaPayload,
+  Suspense,
+  lazy,
+  useCallback,
+  useMemo,
+  type CSSProperties,
+} from "react";
+import {
   useMaterializedMediaPayload,
   useMaterializedMediaPayloadSnapshot,
-} from "@/app/media/use-media-materializer";
-import { extractOutput, saveOutputToStella } from "@/app/media/media-store";
+} from "@/app/media/media-materializer-state";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
@@ -15,7 +16,7 @@ import { notifyAssistantScrollFollowLayoutChange } from "@/shell/chat-scroll-fol
 import { friendlyImageGenerationFailure } from "@/app/media/media-error-copy";
 import "./inline-generated-image-card.css";
 
-type InlineGeneratedImagePayload = Extract<DisplayPayload, { kind: "media" }>;
+export type InlineGeneratedImagePayload = Extract<DisplayPayload, { kind: "media" }>;
 
 type StripTileSpec = {
   key: string;
@@ -27,7 +28,7 @@ type StripTileSpec = {
 const filenameOf = (filePath: string): string =>
   filePath.split(/[\\/]/).pop() ?? filePath;
 
-type MediaJobLookup = {
+export type MediaJobLookup = {
   jobId: string;
   capability: string;
   request?: {
@@ -45,53 +46,7 @@ type MediaJobLookup = {
   updatedAt: number;
 } | null;
 
-const normalizeNumImages = (value: unknown): number | null => {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  const rounded = Math.floor(value);
-  return rounded >= 1 ? Math.min(rounded, 4) : null;
-};
-
-const numImagesFromJobRequest = (
-  input: Record<string, unknown> | undefined,
-): number | null => normalizeNumImages(input?.num_images);
-
-const mediaPayloadFromJob = async (
-  job: Exclude<MediaJobLookup, null>,
-): Promise<InlineGeneratedImagePayload | null> => {
-  if (job.output === undefined) return null;
-  const extracted = extractOutput(job.output);
-  if (extracted.kind === "unknown") return null;
-  const saved = await saveOutputToStella(extracted, job.jobId);
-  switch (saved.kind) {
-    case "image": {
-      const filePaths = saved.localPaths?.filter(
-        (p): p is string => typeof p === "string" && p.length > 0,
-      );
-      if (!filePaths || filePaths.length === 0) return null;
-      return {
-        kind: "media",
-        asset: { kind: "image", filePaths },
-        jobId: job.jobId,
-        capability: job.capability,
-        ...(job.request?.prompt ? { prompt: job.request.prompt } : {}),
-        ...(job.request?.aspectRatio
-          ? { aspectRatio: job.request.aspectRatio }
-          : {}),
-        ...(requestedSizeFromInput(job.request?.input)
-          ? { requestedSize: requestedSizeFromInput(job.request?.input)! }
-          : {}),
-        ...(numImagesFromJobRequest(job.request?.input)
-          ? { numImages: numImagesFromJobRequest(job.request?.input)! }
-          : {}),
-        createdAt: job.completedAt ?? job.updatedAt,
-      };
-    }
-    default:
-      return null;
-  }
-};
-
-const requestedSizeFromInput = (
+export const requestedSizeFromInput = (
   input: Record<string, unknown> | undefined,
 ): { width: number; height: number } | null => {
   const imageSize = input?.image_size;
@@ -224,8 +179,10 @@ const countLoadedStripTiles = (
 /** Renders every inline image for a turn in one row (strip or single card). */
 export const InlineGeneratedImageStrip = ({
   payloads,
+  conversationId,
 }: {
   payloads: InlineGeneratedImagePayload[];
+  conversationId?: string | null;
 }) => {
   const materializedByJobId = useMaterializedMediaPayloadSnapshot();
   const tiles = useMemo(
@@ -269,6 +226,7 @@ export const InlineGeneratedImageStrip = ({
         <InlineGeneratedImageCard
           key={tile.key}
           payload={tile.payload}
+          conversationId={conversationId}
           imageIndex={tile.imageIndex}
           materializeJob={tile.materializeJob}
           layout={isStrip ? "strip" : "single"}
@@ -279,50 +237,73 @@ export const InlineGeneratedImageStrip = ({
   );
 };
 
-export const InlineGeneratedImageCard = ({
-  payload,
-  imageIndex = 0,
-  materializeJob = true,
-  layout = "single",
-  sharedStripPending = false,
-}: {
+export type InlineGeneratedImageCardProps = {
   payload: InlineGeneratedImagePayload;
   imageIndex?: number;
   materializeJob?: boolean;
   layout?: "single" | "strip";
   sharedStripPending?: boolean;
-}) => {
-  const materializedPayload = useMaterializedMediaPayload(payload.jobId);
-  const hasResolvedAssets =
-    payload.asset.kind === "image" && payload.asset.filePaths.length > 0;
-  const job = useQuery(
-    api.media_jobs.getByJobId,
+  conversationId?: string | null;
+};
+
+const LazyInlineGeneratedImageCardWithJob = lazy(() =>
+  import("./InlineGeneratedImageCardWithJob").then((module) => ({
+    default: module.InlineGeneratedImageCardWithJob,
+  })),
+);
+
+const isMiniRenderer = (): boolean =>
+  typeof document !== "undefined" &&
+  document.documentElement.dataset.stellaWindow === "mini";
+
+const needsRemoteJobLookup = ({
+  payload,
+  materializeJob = true,
+}: InlineGeneratedImageCardProps): boolean =>
+  Boolean(
     payload.jobId &&
       materializeJob &&
-      !materializedPayload &&
-      !hasResolvedAssets
-      ? { jobId: payload.jobId }
-      : "skip",
-  ) as MediaJobLookup | undefined;
+      payload.asset.kind === "image" &&
+      payload.asset.filePaths.length === 0,
+  );
 
-  useEffect(() => {
-    if (!materializeJob) return;
-    if (!job || job.status !== "succeeded" || !job.output) return;
-    let cancelled = false;
-    void (async () => {
-      const completedPayload = await mediaPayloadFromJob(job);
-      if (cancelled || !completedPayload) return;
-      publishMaterializedMediaPayload(completedPayload);
-      openDisplayPayloadTab(completedPayload, {
-        activate: false,
-      });
-      markMediaJobMaterialized(job.jobId);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [job, materializeJob]);
+export const InlineGeneratedImageCard = (props: InlineGeneratedImageCardProps) => {
+  if (isMiniRenderer() || !needsRemoteJobLookup(props)) {
+    return <InlineGeneratedImageCardLocal {...props} />;
+  }
 
+  return (
+    <Suspense fallback={<InlineGeneratedImageCardLocal {...props} />}>
+      <LazyInlineGeneratedImageCardWithJob {...props} />
+    </Suspense>
+  );
+};
+
+const InlineGeneratedImageCardLocal = (
+  props: InlineGeneratedImageCardProps,
+) => {
+  const materializedPayload = useMaterializedMediaPayload(props.payload.jobId);
+  return (
+    <InlineGeneratedImageCardFrame
+      {...props}
+      job={undefined}
+      materializedPayload={materializedPayload}
+    />
+  );
+};
+
+export const InlineGeneratedImageCardFrame = ({
+  payload,
+  imageIndex = 0,
+  layout = "single",
+  sharedStripPending = false,
+  conversationId,
+  job,
+  materializedPayload,
+}: InlineGeneratedImageCardProps & {
+  job: MediaJobLookup | undefined;
+  materializedPayload: DisplayPayload | null;
+}) => {
   const effectivePayload = useMemo(() => {
     const merged =
       materializedPayload?.kind === "media" &&
@@ -353,10 +334,12 @@ export const InlineGeneratedImageCard = ({
   const { files, error, loading } = useDisplayFileBlobs(
     filePaths,
     "Image preview requires the Electron host runtime.",
+    conversationId,
   );
   const primaryFile = files[0] ?? null;
   const primaryPath = filePaths[0];
   const jobFailed = job?.status === "failed" || job?.status === "canceled";
+  const canOpenDisplayPanel = !isMiniRenderer();
   const frameStyle = {
     "--inline-generated-image-aspect-ratio": previewAspectRatio(
       effectivePayload,
@@ -365,9 +348,9 @@ export const InlineGeneratedImageCard = ({
   } as CSSProperties;
 
   const handleClick = useCallback(() => {
-    if (!isImage || filePaths.length === 0) return;
+    if (!canOpenDisplayPanel || !isImage || filePaths.length === 0) return;
     openDisplayPayloadTab(effectivePayload);
-  }, [effectivePayload, filePaths.length, isImage]);
+  }, [canOpenDisplayPanel, effectivePayload, filePaths.length, isImage]);
 
   if (!isImage) return null;
 
@@ -399,7 +382,14 @@ export const InlineGeneratedImageCard = ({
       type="button"
       className={buttonClassName}
       onClick={handleClick}
-      title={jobFailed ? "Image generation failed" : "Open in panel"}
+      title={
+        jobFailed
+          ? "Image generation failed"
+          : canOpenDisplayPanel
+            ? "Open in panel"
+            : "Image"
+      }
+      aria-disabled={canOpenDisplayPanel ? undefined : true}
       aria-label={
         sharedStripPending
           ? undefined

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useUiState } from "@/context/ui-state";
+import { useOptionalUiState } from "@/context/ui-state";
 
 type DisplayFileReadResult =
   | {
@@ -160,10 +160,13 @@ const release = (filePath: string, entry: CacheEntry) => {
 export function useDisplayFileBytes(
   filePath: string,
   unavailableMessage?: string,
+  conversationIdOverride?: string | null,
 ) {
-  const {
-    state: { conversationId },
-  } = useUiState();
+  const uiState = useOptionalUiState();
+  const conversationId =
+    conversationIdOverride !== undefined
+      ? conversationIdOverride
+      : (uiState?.state.conversationId ?? null);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
@@ -207,10 +210,13 @@ export function useDisplayFileBytes(
 export function useDisplayFileBlobs(
   filePaths: string[],
   unavailableMessage?: string,
+  conversationIdOverride?: string | null,
 ) {
-  const {
-    state: { conversationId },
-  } = useUiState();
+  const uiState = useOptionalUiState();
+  const conversationId =
+    conversationIdOverride !== undefined
+      ? conversationIdOverride
+      : (uiState?.state.conversationId ?? null);
   const [files, setFiles] = useState<(DisplayFileBlob | null)[]>(() =>
     filePaths.map(() => null),
   );

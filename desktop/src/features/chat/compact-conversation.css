@@ -53,6 +53,22 @@
  * collapses to 0 and the sidebar can't scroll.
  */
 .chat-viewport-region:has(> .chat-conversation-surface) {
+  /*
+   * Self-contained sizing so compact surfaces lay out correctly even in
+   * windows that never load `full-shell.layout.css` (the mini window).
+   * The full chat's `.chat-viewport-region` gets these same properties from
+   * `full-shell.layout.css`; scoping them to `:has(> .chat-conversation-surface)`
+   * limits them to compact surfaces (the full chat hosts the LegendList
+   * directly, with no `.chat-conversation-surface` wrapper) and the values
+   * are identical, so the sidebar/orb are unaffected. Without these, the
+   * region collapses to 0 height (no scrolling messages) and the
+   * `min-height: 100%` surface shoves the composer off-screen.
+   */
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  container-type: size;
   display: flex;
   flex-direction: column;
 }

@@ -8,6 +8,7 @@ import { useTheme } from "@/context/theme-context";
 import { cssToRgb } from "@/shared/lib/color";
 import { generateGradientTokens } from "@/shared/theme/color";
 import { cn } from "@/shared/lib/utils";
+import "./ShiftingGradient.css";
 
 type RGB = { r: number; g: number; b: number };
 

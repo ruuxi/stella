@@ -1,4 +1,4 @@
-import { createAuthClient } from "better-auth/react";
+import { createAuthClient } from "better-auth/client";
 import {
   convexClient,
   crossDomainClient,
