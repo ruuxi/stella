@@ -169,7 +169,6 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_INITIALIZE: "internal.worker.initialize",
   INTERNAL_WORKER_CONFIGURE: "internal.worker.configure",
   INTERNAL_WORKER_HEALTH: "internal.worker.health",
-  INTERNAL_WORKER_WARM_MODEL_CATALOG: "internal.worker.warmModelCatalog",
   INTERNAL_WORKER_GET_ACTIVE: "internal.worker.getActive",
   INTERNAL_WORKER_START_CHAT: "internal.worker.startChat",
   INTERNAL_WORKER_CANCEL: "internal.worker.cancel",

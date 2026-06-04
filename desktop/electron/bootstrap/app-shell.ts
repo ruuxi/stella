@@ -16,6 +16,7 @@ import {
   getMobileBroadcast,
 } from "./context.js";
 import { startDeferredStartup } from "./deferred-startup.js";
+import { getMainLogger } from "../observability/main-logger.js";
 
 const DEFAULT_STELLA_WEB_URL = "https://stella.sh";
 
@@ -219,6 +220,9 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
 
   if (fullWindow) {
     fullWindow.webContents.once("did-finish-load", () => {
+      getMainLogger()?.process("startup.first-paint", {
+        elapsedMs: Math.round(process.uptime() * 1000),
+      });
       void startDeferredStartup(context);
     });
   }

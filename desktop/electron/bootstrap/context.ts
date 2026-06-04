@@ -45,6 +45,11 @@ export type BootstrapState = {
   appReady: boolean;
   appSessionStartedAt: number;
   deferredStartupSequence: Promise<void> | null;
+  /** Kicks off the host runner (worker spawn + model-catalog warm). Set
+   *  during bootstrap and invoked from the deferred-startup sequence so the
+   *  worker spins up after the renderer's first paint rather than during the
+   *  open burst. Idempotent. */
+  startHostRunner: (() => void) | null;
   deviceId: string | null;
   hmrTransitionController: ReturnType<
     typeof createHmrTransitionController
@@ -181,6 +186,7 @@ export const createBootstrapContext = (
     appReady: false,
     appSessionStartedAt: Date.now(),
     deferredStartupSequence: null,
+    startHostRunner: null,
     deviceId: null,
     hmrTransitionController: null,
     isQuitting: false,

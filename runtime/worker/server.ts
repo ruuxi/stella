@@ -3,6 +3,7 @@ import { existsSync, promises as fsPromises } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { WorkerPeerLike } from "./peer-broker.js";
+import { getFileLogger } from "../observability/file-logger.js";
 import {
   METHOD_NAMES,
   NOTIFICATION_NAMES,
@@ -1698,22 +1699,30 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
 
   let pendingConfigPatch: Partial<WorkerInitializationState> | null = null;
 
-  // Re-warm the Stella model catalog whenever an input to its cache key
-  // changes. The catalog cache is keyed by auth identity + device +
-  // `modelCatalogUpdatedAt`, and `modelCatalogUpdatedAt` is only ever
-  // pushed down by the renderer after it mounts — i.e. after the host's
-  // one-shot startup warm has already run with a `null` updated-at. Without
-  // this, the startup warm caches under the wrong key and the first real
-  // chat still pays the cold catalog fetch. Debounced so a `configure` call
-  // touching multiple fields only warms once, and best-effort so a network
-  // failure never affects config application.
+  // Warm the Stella model catalog in the background whenever an input to its
+  // cache key changes. The catalog cache is keyed by auth identity + device +
+  // `modelCatalogUpdatedAt`. `modelCatalogUpdatedAt` is pushed down by the
+  // renderer after it mounts, so the warm fired at worker init (under a
+  // `null` updated-at) is followed by one under the real key once config
+  // arrives — both off the open burst, since the worker itself now spawns
+  // after first paint. Debounced so a `configure` call touching multiple
+  // fields only warms once, and best-effort so a network failure never
+  // affects config application.
   let warmTimer: ReturnType<typeof setTimeout> | null = null;
   const scheduleModelCatalogWarm = () => {
     if (!state.runner) return;
     if (warmTimer) clearTimeout(warmTimer);
     warmTimer = setTimeout(() => {
       warmTimer = null;
-      void state.runner?.warmModelCatalog().catch(() => undefined);
+      const warmStartedAt = Date.now();
+      void state.runner
+        ?.warmModelCatalog()
+        .then(() => {
+          getFileLogger()?.process("startup.catalog-warmed", {
+            ms: Date.now() - warmStartedAt,
+          });
+        })
+        .catch(() => undefined);
     }, 50);
   };
 
@@ -1785,14 +1794,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       socialSessions,
     };
   });
-
-  peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_WARM_MODEL_CATALOG,
-    async () => {
-      await ensureRunner().warmModelCatalog();
-      return { ok: true };
-    },
-  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_GET_ACTIVE,
