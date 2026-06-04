@@ -40,7 +40,7 @@ export const INTEGRATIONS: Integration[] = [
       </svg>
     ),
     botLink: "https://discord.com/oauth2/authorize?client_id=1466921030873518161&integration_type=1&scope=applications.commands",
-    instructions: "Install the Stella app to your Discord account, then DM @Stella with /link <code below>.",
+    instructions: "Install the Stella app to your Discord account, run /link with the code once, then DM @Stella normally.",
   },
   {
     provider: "slack",
