@@ -489,7 +489,9 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   box-shadow: var(--shadow-overlay);
 }
 
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
   [data-component="dropdown-menu-content"].display-tab-add-menu {
     background: var(--popover, var(--background));
   }
@@ -621,7 +623,8 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   transform: translateX(0);
 }
 
-.onboarding-layout[data-demo] .onboarding-demo-area[data-visible="true"]::before {
+.onboarding-layout[data-demo]
+  .onboarding-demo-area[data-visible="true"]::before {
   content: "Live Demo";
   position: absolute;
   top: -34px;
@@ -722,6 +725,9 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
      row's right edge (past the workspace strip) rather than sitting
      at the inside edge of the centered chat column. */
   position: relative;
+  /* Contain the home-overlay's z-index so it layers above the chat content
+     here without leaking above app-level chrome (display sidebar, dialogs). */
+  isolation: isolate;
 }
 
 /* Chat column — fills the chat panel or content area */
@@ -732,6 +738,44 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+/* Home content is an overlay over the persistently-mounted chat (it does
+   NOT replace it), so returning to chat never unmounts the LegendList —
+   scroll position is preserved and there's no remount flash.
+
+   The chat layer (messages + composer + workspace strip + scrollbar) is a
+   single flex-row unit that simply fades its opacity under the overlay.
+   Fading the layer as a whole — rather than toggling the workspace strip's
+   own visibility — keeps the strip from re-running its 460ms width/slide
+   animation on every home↔chat switch. opacity (not display:none) also
+   keeps the scroll node mounted and measurable while hidden. */
+.full-body-chat-layer {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  /* Anchor for the absolutely-positioned `.chat-scrollbar`. */
+  position: relative;
+  transition: opacity 220ms ease;
+}
+
+.full-body-chat-layer--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.full-body-home-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+
+/* During the leave fade, let clicks fall through to the revealed chat. */
+.full-body-home-overlay.full-body-main--home-leaving {
+  pointer-events: none;
 }
 
 /* Viewport region — scroll container + overlay controls (scrollbar, scroll-to-bottom).
@@ -784,7 +828,9 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
     black calc(100% - 56px),
     transparent 100%
   );
-  transition: mask-image 160ms ease, -webkit-mask-image 160ms ease;
+  transition:
+    mask-image 160ms ease,
+    -webkit-mask-image 160ms ease;
 }
 
 .session-content::-webkit-scrollbar {
@@ -956,8 +1002,10 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 }
 
 /* Hide Stella during shortcuts phases */
-.new-session-view:has(.onboarding-dialogue[data-phase="shortcuts-global"]) .onboarding-stella-animation,
-.new-session-view:has(.onboarding-dialogue[data-phase="shortcuts-local"]) .onboarding-stella-animation {
+.new-session-view:has(.onboarding-dialogue[data-phase="shortcuts-global"])
+  .onboarding-stella-animation,
+.new-session-view:has(.onboarding-dialogue[data-phase="shortcuts-local"])
+  .onboarding-stella-animation {
   opacity: 0;
   pointer-events: none;
   transition:
@@ -982,7 +1030,6 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   border: 2px solid var(--border-strong);
   min-width: 140px;
 }
-
 
 .new-session-directory {
   display: flex;

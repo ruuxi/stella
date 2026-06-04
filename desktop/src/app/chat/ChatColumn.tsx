@@ -15,7 +15,15 @@
  * `getState()` snapshot rather than reading `scrollTop` from a manual
  * div.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { ComposerAreaSelectOverlay } from "./ComposerAreaSelectOverlay";
@@ -174,47 +182,118 @@ export const ChatColumn = memo(function ChatColumn({
     isStreaming: conversation.streaming.isStreaming,
     status: conversation.streaming.runtimeStatusText,
   };
-  const shouldShowHomeContent = homeVisible;
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext: composer.setChatContext,
     disabled: conversation.streaming.isStreaming,
   });
 
-  const composerElement = (
-    <Composer
-      message={composer.message}
-      setMessage={composer.setMessage}
-      chatContext={composer.chatContext}
-      setChatContext={composer.setChatContext}
-      selectedText={composer.selectedText}
-      setSelectedText={composer.setSelectedText}
-      isStreaming={conversation.streaming.isStreaming}
-      canSubmit={composer.canSubmit}
-      focusRequestId={composer.focusRequestId}
-      conversationId={conversationId}
-      onSend={composer.onSend}
-      onStop={composer.onStop}
-      isDragOver={isDragOver}
-      indicator={indicatorProps}
-      replyPeek={
-        assistantReplyPeek.visible
-          ? {
-              text: assistantReplyPeek.previewText,
-              onJumpToBottom: () => scrollToBottom("smooth"),
-              onDismiss: assistantReplyPeek.dismiss,
-            }
-          : null
-      }
-    />
-  );
-
-  if (shouldShowHomeContent) {
+  /**
+   * Two synced instances of the (fully controlled) composer: one pinned at
+   * the bottom of the persistently-mounted chat, one centered inside the
+   * home overlay. Both read the same lifted state, so their content,
+   * context chips, and submittability stay identical — only their on-screen
+   * position differs. `focusRequestId` is routed to whichever surface is
+   * currently active so focus lands on the visible composer, and the
+   * off-surface wrapper is `inert` so it stays out of the tab order and
+   * can't capture Enter/clicks while hidden.
+   */
+  const renderComposer = (
+    surface: "chat" | "home",
+    replyPeek: ComponentProps<typeof Composer>["replyPeek"],
+  ) => {
+    const isActiveSurface =
+      surface === "home" ? showHomeContent : !showHomeContent;
     return (
+      <Composer
+        message={composer.message}
+        setMessage={composer.setMessage}
+        chatContext={composer.chatContext}
+        setChatContext={composer.setChatContext}
+        selectedText={composer.selectedText}
+        setSelectedText={composer.setSelectedText}
+        isStreaming={conversation.streaming.isStreaming}
+        canSubmit={composer.canSubmit}
+        focusRequestId={isActiveSurface ? composer.focusRequestId : undefined}
+        conversationId={conversationId}
+        onSend={composer.onSend}
+        onStop={composer.onStop}
+        isDragOver={isDragOver}
+        indicator={indicatorProps}
+        replyPeek={replyPeek}
+      />
+    );
+  };
+
+  const chatReplyPeek = assistantReplyPeek.visible
+    ? {
+        text: assistantReplyPeek.previewText,
+        onJumpToBottom: () => scrollToBottom("smooth"),
+        onDismiss: assistantReplyPeek.dismiss,
+      }
+    : null;
+
+  // Home content is an overlay ON TOP of the always-mounted chat, not a
+  // replacement for it — so navigating home and back never unmounts the
+  // LegendList. That preserves the user's scroll position and removes the
+  // remount flash. The chat content cross-fades under the overlay via
+  // opacity (which keeps the scroll node mounted + measurable, unlike
+  // `display:none`), while the overlay's own children run their existing
+  // enter/leave fades.
+  return (
+    <div className="full-body-row">
+      {/* The whole chat layer (messages + composer + workspace strip +
+          scrollbar) fades as one unit under the home overlay. Hiding the
+          layer wholesale — rather than toggling the workspace strip's own
+          `forceHidden` — avoids re-running the strip's 460ms width/slide
+          animation on every home↔chat switch. */}
       <div
-        className={`full-body-main full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
-        {...dropHandlers}
+        className={`full-body-chat-layer${showHomeContent ? " full-body-chat-layer--hidden" : ""}`}
+        inert={showHomeContent || undefined}
       >
-        <HomeContent onDismissHome={onDismissHome}>
+        <div className="full-body-main" {...dropHandlers}>
+          {/* Viewport region: list + overlay scroll-to-bottom.
+            The custom scrollbar deliberately hangs off the layer (sibling
+            below) rather than the viewport region so it pins to the
+            right edge of the entire chat surface — past the workspace
+            strip — instead of sitting at the inside edge of the
+            centered chat column. */}
+          <div className="chat-viewport-region">
+            <ConversationEvents
+              messages={conversation.messages}
+              pendingUserMessageId={conversation.streaming.pendingUserMessageId}
+              queuedUserMessages={conversation.streaming.queuedUserMessages}
+              hasOlderMessages={conversation.history.hasOlderMessages}
+              isLoadingOlder={conversation.history.isLoadingOlder}
+              isLoadingHistory={conversation.history.isInitialLoading}
+              listRef={listRef}
+              onListScroll={onListScroll}
+              onStartReached={scroll.onStartReached}
+              className="session-content"
+              contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
+              estimatedItemSize={140}
+            />
+
+            {showScrollButton && !assistantReplyPeek.visible && (
+              <button
+                className="scroll-to-bottom"
+                onClick={() => scrollToBottom("smooth")}
+                aria-label="Scroll to bottom"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {/* Composer: normal flow below the scroll viewport */}
           <div
             className={
               composerEntering
@@ -222,96 +301,53 @@ export const ChatColumn = memo(function ChatColumn({
                 : "composer-wrap"
             }
           >
-            {composerElement}
+            {renderComposer("chat", chatReplyPeek)}
           </div>
-        </HomeContent>
-      </div>
-    );
-  }
-
-  return (
-    <div className="full-body-row">
-      <div className="full-body-main" {...dropHandlers}>
-        {/* Viewport region: list + overlay scroll-to-bottom.
-            The custom scrollbar deliberately hangs off the row (sibling
-            below) rather than the viewport region so it pins to the
-            right edge of the entire chat surface — past the workspace
-            strip — instead of sitting at the inside edge of the
-            centered chat column. */}
-        <div className="chat-viewport-region">
-          <ConversationEvents
-            messages={conversation.messages}
-            pendingUserMessageId={conversation.streaming.pendingUserMessageId}
-            queuedUserMessages={conversation.streaming.queuedUserMessages}
-            hasOlderMessages={conversation.history.hasOlderMessages}
-            isLoadingOlder={conversation.history.isLoadingOlder}
-            isLoadingHistory={conversation.history.isInitialLoading}
-            listRef={listRef}
-            onListScroll={onListScroll}
-            onStartReached={scroll.onStartReached}
-            className="session-content"
-            contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
-            estimatedItemSize={140}
-          />
-
-          {showScrollButton && !assistantReplyPeek.visible && (
-            <button
-              className="scroll-to-bottom"
-              onClick={() => scrollToBottom("smooth")}
-              aria-label="Scroll to bottom"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-          )}
         </div>
+        <ChatWorkspaceStrip
+          forceHidden={hideRightContextPanel}
+          onNewChat={composer.onNewChat}
+          onSelectArea={() => setAreaSelectActive(true)}
+        />
 
-        {/* Composer: normal flow below the scroll viewport */}
-        <div
-          className={
-            composerEntering
-              ? "composer-wrap composer-wrap--entering"
-              : "composer-wrap"
-          }
-        >
-          {composerElement}
-        </div>
-      </div>
-      <ChatWorkspaceStrip
-        forceHidden={hideRightContextPanel}
-        onNewChat={composer.onNewChat}
-        onSelectArea={() => setAreaSelectActive(true)}
-      />
-
-      {/* Custom scrollbar thumb overlay — pinned to the right edge of
-          the row (past the workspace strip) so it tracks the app side
+        {/* Custom scrollbar thumb overlay — pinned to the right edge of
+          the layer (past the workspace strip) so it tracks the app side
           rather than the inside edge of the chat column. */}
-      <div className="chat-scrollbar">
-        <div
-          className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
-          style={{
-            top: `${thumbState.top}px`,
-            height: `${thumbState.height}px`,
-          }}
-          onPointerDown={handleThumbDown}
-          onPointerMove={handleThumbMove}
-          onPointerUp={handleThumbUp}
-          onPointerCancel={handleThumbUp}
+        <div className="chat-scrollbar">
+          <div
+            className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
+            style={{
+              top: `${thumbState.top}px`,
+              height: `${thumbState.height}px`,
+            }}
+            onPointerDown={handleThumbDown}
+            onPointerMove={handleThumbMove}
+            onPointerUp={handleThumbUp}
+            onPointerCancel={handleThumbUp}
+          />
+        </div>
+        <ComposerAreaSelectOverlay
+          active={areaSelectActive}
+          setChatContext={composer.setChatContext}
+          onCancel={() => setAreaSelectActive(false)}
         />
       </div>
-      <ComposerAreaSelectOverlay
-        active={areaSelectActive}
-        setChatContext={composer.setChatContext}
-        onCancel={() => setAreaSelectActive(false)}
-      />
+
+      {homeVisible && (
+        <div
+          className={`full-body-home-overlay full-body-main--home${homeLeaving ? " full-body-main--home-leaving" : ""}`}
+          {...dropHandlers}
+        >
+          <HomeContent onDismissHome={onDismissHome}>
+            <div
+              className="composer-wrap"
+              inert={showHomeContent ? undefined : true}
+            >
+              {renderComposer("home", null)}
+            </div>
+          </HomeContent>
+        </div>
+      )}
     </div>
   );
 });
