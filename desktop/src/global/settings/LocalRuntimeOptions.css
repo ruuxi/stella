@@ -69,7 +69,7 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   transition:
     background 120ms ease,
     color 120ms ease;

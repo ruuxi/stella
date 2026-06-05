@@ -10,7 +10,7 @@
   font: inherit;
   font-size: 12px;
   line-height: 1;
-  cursor: pointer;
+  cursor: default;
   transition:
     background 120ms ease,
     border-color 120ms ease,

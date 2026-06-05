@@ -110,7 +110,7 @@
 }
 
 .media-tab__hero-prompt--truncatable {
-  cursor: pointer;
+  cursor: default;
 }
 
 .media-tab__hero-prompt--truncatable:hover {
@@ -123,7 +123,7 @@
   overflow-y: auto;
   max-height: 8.5em;
   scrollbar-width: thin;
-  cursor: pointer;
+  cursor: default;
 }
 
 .media-tab__hero-actions {
@@ -144,7 +144,7 @@
   border-radius: 6px;
   display: grid;
   place-items: center;
-  cursor: pointer;
+  cursor: default;
   transition:
     background 0.15s ease,
     color 0.15s ease,
@@ -340,7 +340,7 @@
   color: var(--text-weak);
   display: grid;
   place-items: center;
-  cursor: pointer;
+  cursor: default;
   transition: color 0.15s ease;
 }
 
@@ -366,7 +366,7 @@
   color: var(--text-weak);
   display: grid;
   place-items: center;
-  cursor: pointer;
+  cursor: default;
   transition:
     color 0.15s ease,
     border-color 0.15s ease,
@@ -398,7 +398,7 @@
   width: 52px;
   height: 52px;
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
   transition: border-color 0.15s ease;
 }
 
@@ -461,7 +461,7 @@
   color: var(--text-strong);
   display: grid;
   place-items: center;
-  cursor: pointer;
+  cursor: default;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -516,7 +516,7 @@
   margin-bottom: -1px;
   border-radius: 0;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   white-space: nowrap;
   transition:
     color 0.15s ease,
@@ -601,7 +601,7 @@
   color: var(--text-base);
   display: grid;
   place-items: center;
-  cursor: pointer;
+  cursor: default;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -646,7 +646,7 @@
   color: var(--primary-foreground, var(--background));
   display: grid;
   place-items: center;
-  cursor: pointer;
+  cursor: default;
   flex: 0 0 auto;
   transition:
     opacity 0.15s ease,

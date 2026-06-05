@@ -61,7 +61,7 @@
   border-radius: 10px;
   border: 1px solid var(--border-weak);
   background: color-mix(in srgb, var(--card) 20%, transparent);
-  cursor: pointer;
+  cursor: default;
   transition: background 120ms ease, border-color 120ms ease;
 }
 

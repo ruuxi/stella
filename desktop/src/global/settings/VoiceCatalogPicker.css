@@ -57,7 +57,7 @@
   letter-spacing: 0.02em;
   text-transform: none;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   transition:
     background 120ms ease,
     color 120ms ease;
@@ -103,7 +103,7 @@
   border: none;
   background: transparent;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -134,7 +134,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  cursor: pointer;
+  cursor: default;
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -277,7 +277,7 @@
   border-radius: 999px;
   background: color-mix(in oklch, var(--text-strong) 12%, transparent);
   outline: none;
-  cursor: pointer;
+  cursor: default;
 }
 
 .voice-catalog-speed-slider::-webkit-slider-thumb {
@@ -289,7 +289,7 @@
   background: var(--text-strong);
   border: 2px solid var(--background, #fff);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-  cursor: pointer;
+  cursor: default;
   transition: transform 120ms ease;
 }
 

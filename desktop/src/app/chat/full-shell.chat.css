@@ -283,7 +283,7 @@
   font-weight: 500;
   line-height: 1;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   border-radius: 6px;
   transition: color 0.12s ease, background 0.12s ease;
 }
@@ -443,7 +443,7 @@
 }
 
 button.event-context-chip--overflow {
-  cursor: pointer;
+  cursor: default;
 }
 
 .event-window-badge-hovercard:hover .event-context-chip,
@@ -494,7 +494,7 @@ button.event-context-chip--overflow:focus-visible {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-base);
   object-fit: cover;
-  cursor: pointer;
+  cursor: default;
   transition: transform 0.15s ease;
 }
 
@@ -532,7 +532,7 @@ button.event-context-chip--overflow:focus-visible {
   border: 1px solid var(--border-base);
   background: var(--surface-raised-stronger-non-alpha);
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   display: flex;
   align-items: center;
   justify-content: center;

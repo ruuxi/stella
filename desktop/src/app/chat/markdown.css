@@ -230,7 +230,7 @@
   background: var(--surface-raised, var(--card));
   border: 1px solid var(--border-weak, var(--border));
   border-radius: 4px;
-  cursor: pointer;
+  cursor: default;
   opacity: 0;
   transition: opacity 0.15s ease, background 0.15s ease;
   z-index: 1;

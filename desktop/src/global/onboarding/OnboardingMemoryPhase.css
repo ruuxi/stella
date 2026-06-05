@@ -450,7 +450,7 @@
   border-radius: 100px;
   border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
   background: none;
-  cursor: pointer;
+  cursor: default;
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;

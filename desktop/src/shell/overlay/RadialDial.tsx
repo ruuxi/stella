@@ -428,7 +428,7 @@ export function RadialDial({
                   className="wedge-path"
                   style={{
                     transition: 'fill 0.15s ease, stroke 0.15s ease',
-                    cursor: 'pointer',
+                    cursor: 'default',
                   }}
                 />
               </g>

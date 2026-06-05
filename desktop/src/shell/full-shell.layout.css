@@ -398,7 +398,7 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   background: none;
   color: inherit;
   font: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 .shell-topbar-tab__title {
@@ -421,7 +421,7 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   border-radius: 5px;
   background: transparent;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   opacity: 0;
   pointer-events: none;
   transition:
@@ -458,7 +458,7 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   border-radius: 6px;
   background: transparent;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   opacity: 0.7;
   transition:
     opacity 120ms ease,
@@ -913,7 +913,7 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   z-index: 4;
   width: min(420px, 34vw);
   height: clamp(92px, 16vh, 160px);
-  cursor: pointer;
+  cursor: default;
   pointer-events: auto;
   -webkit-app-region: no-drag;
   transition:
@@ -925,7 +925,7 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 }
 
 .onboarding-stella-animation[data-expanded="true"] {
-  cursor: pointer;
+  cursor: default;
 }
 
 /* Split mode: parked at the smaller left-hand position. Opacity is

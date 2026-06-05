@@ -130,7 +130,7 @@
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
-  cursor: pointer;
+  cursor: default;
   transition:
     border-color 120ms ease,
     background-color 120ms ease,
@@ -161,7 +161,7 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
+  cursor: default;
   transition:
     background-color 120ms ease,
     color 120ms ease,
@@ -216,7 +216,7 @@
     background-color 140ms ease,
     border-color 140ms ease;
   text-align: center;
-  cursor: pointer;
+  cursor: default;
 }
 
 .pets-card:hover {
@@ -397,7 +397,7 @@
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-base);
-  cursor: pointer;
+  cursor: default;
   opacity: 0;
   transition:
     opacity 120ms ease,
@@ -546,7 +546,7 @@
   border-radius: 12px;
   background: transparent;
   color: var(--text-base);
-  cursor: pointer;
+  cursor: default;
   transition:
     background-color 120ms ease,
     border-color 120ms ease;
@@ -696,7 +696,7 @@
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 11.5px;
-  cursor: pointer;
+  cursor: default;
   text-transform: capitalize;
   transition:
     border-color 120ms ease,
@@ -783,7 +783,7 @@
   border: 1px solid var(--border-base);
   background: var(--surface-raised);
   color: var(--text-base);
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   transition:
     border-color 120ms ease,

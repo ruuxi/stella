@@ -728,7 +728,7 @@
 }
 
 .radial-dial-interactive__wedge {
-  cursor: pointer;
+  cursor: default;
   outline: none;
 }
 
