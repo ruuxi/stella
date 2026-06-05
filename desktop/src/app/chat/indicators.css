@@ -61,62 +61,63 @@
   to { opacity: 0; transform: translateY(-4px); }
 }
 
-/* Inline working indicator — Claude-style. Renders as the next sibling
- * after the latest animating assistant row (handled by `ChatTimeline`),
- * so as text streams in line by line the indicator naturally moves down
- * each line. On a brand-new turn a fresh placeholder row mounts with a
- * different React key, the previous indicator unmounts (fades out at
- * its position), and a new one mounts inside the new turn's anchor
- * (fades in at the new position) — driven entirely by the enter/exit
- * animations below.
+/* Inline working indicator — Claude-style. Rendered at the top of the
+ * `ChatTimeline` footer (`.event-list-working-indicator`), so it reads as
+ * the line directly below the streaming/last assistant message. As text
+ * streams in line by line the footer (and this indicator) flows down with
+ * the growing message, with queued messages stacking beneath it.
  *
- * The legacy floating `thinking-footer-overlay` and `sticky-thinking-footer`
- * surfaces are gone: there is no longer any absolutely-positioned strip
- * over the bottom of the scroll viewport, so no `--chat-content-bottom-clear`
- * inset is needed to clear it. */
+ * It is NOT pinned to the viewport: the footer's bottom-floor reading area
+ * sits below the indicator, so it scrolls with content (the user can
+ * scroll up past it) rather than floating over the chat. When the runtime
+ * reports work, `active` is true and the indicator is shown; when there is
+ * no work at all it plays the hold + grow-out exit and then collapses to
+ * nothing (see `.event-list-working-indicator:has(--vacated)`), re-entering
+ * under the next pending turn.
+ *
+ * The legacy floating `thinking-footer-overlay` / `sticky-thinking-footer`
+ * surfaces and the composer-context-row placement are both gone. */
 .inline-working-indicator {
   display: flex;
   align-items: center;
   width: 100%;
   /* Reserve a stable row height equal to a normal `.working-indicator`
-   * pill so the gutter below the assistant message stays put after the
-   * grow-out exit completes. Without this, unmounting the indicator's
-   * inner contents would collapse the row and shift the chat. */
+   * pill so the indicator's line doesn't jitter while the label/shimmer
+   * swaps. The collapse-to-nothing on idle is handled by the footer
+   * wrapper's `:has(--vacated)` rule below, not here. */
   min-height: 36px;
   pointer-events: none;
-  /* Mount + cross-turn fade-in. Same easing family as `SwapText` so the
-   * label transitions and the indicator entrance read as one motion. */
+  /* Mount + re-entry fade-in. Same easing family as `SwapText` so the
+   * label transitions and the indicator entrance read as one motion.
+   * Re-runs whenever the footer wrapper flips back from `display: none`
+   * (idle → active again). */
   animation: inline-indicator-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  /* Anchor to the viewport bottom once the assistant message grows past
-   * the viewport. Without this, the indicator's natural slot sits at
-   * the very bottom of scroll content; every new streamed line would
-   * push that slot down by ~one line, then Legend's
-   * `maintainScrollAtEnd` rAF-deferred scroll would pull it back, and
-   * the indicator visibly bobbed each frame. Sticky pins it relative
-   * to the viewport instead, so the rAF scroll lag is invisible. The
-   * `bottom: 56px` matches the `.session-content` bottom mask fade so
-   * the indicator sits just above the fade region. While the assistant
-   * is short enough that the indicator's natural slot is above this
-   * line, sticky is inert — the indicator flows normally. */
-  position: sticky;
-  bottom: 56px;
-  z-index: 1;
 }
 
 .chat-viewport-region--sidebar .inline-working-indicator,
 .chat-viewport-region--mini .inline-working-indicator,
 .chat-viewport-region--orb .inline-working-indicator {
-  /* Compact-pill height in the sidebar/mini/orb, matching the smaller
-   * `--compact-chat-item-padding` density. */
+  /* Compact-pill height + tighter density in the sidebar/mini/orb,
+   * matching the smaller `--compact-chat-item-padding`. */
   min-height: 30px;
-  /* Compact surfaces have a tighter bottom inset; the chat viewport
-   * isn't masked the same way, so a smaller stick offset reads as
-   * tucked-in rather than floating. */
-  bottom: 24px;
+  padding: 0;
+}
+
+/* Footer slot for the indicator: a small line of breathing room above so
+ * it sits a touch below the assistant message rather than flush against
+ * it. When the inner indicator has fully exited (`--vacated`) the slot is
+ * removed from flow entirely so an idle chat carries no ghost gutter — the
+ * trailing region's own `min-height` keeps the reading area. */
+.event-list-working-indicator {
+  padding-top: 4px;
+}
+
+.event-list-working-indicator:has(.inline-working-indicator--vacated) {
+  display: none;
 }
 
 /* Once the inner content has been removed (post grow-out), the wrapper
- * stays mounted at its reserved height and goes inert. */
+ * goes inert. */
 .inline-working-indicator--vacated {
   animation: none;
 }
@@ -124,14 +125,6 @@
 .inline-working-indicator__indicator {
   background: transparent;
   border: none;
-  padding: 0;
-}
-
-.chat-viewport-region--sidebar .inline-working-indicator,
-.chat-viewport-region--mini .inline-working-indicator,
-.chat-viewport-region--orb .inline-working-indicator {
-  /* Compact surfaces left-align with tighter density to match the
-   * surrounding bubbles' `--compact-chat-item-padding`. */
   padding: 0;
 }
 

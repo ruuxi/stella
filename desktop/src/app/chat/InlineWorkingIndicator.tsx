@@ -1,20 +1,25 @@
 /**
- * Inline working indicator — the Claude-style "next-line" indicator that
- * lives as the next sibling after the latest animating assistant row.
+ * Inline working indicator — the Claude-style "next-line" indicator.
+ *
+ * Mounted (persistently) at the top of the `ChatTimeline` footer
+ * (`.event-list-working-indicator`), so it reads as the line directly
+ * below the streaming/last assistant message and above any queued user
+ * messages.
  *
  * Behavior:
  *  - Renders just below the streaming assistant bubble so as text streams
- *    in line by line the indicator naturally moves down with each new
- *    line (the bubble grows, this sibling moves with it).
+ *    in line by line the footer (and this indicator) flows down with the
+ *    growing message.
  *  - When the work finishes (`active` flips false), the indicator stays
  *    on screen for `EXIT_HOLD_MS` showing its last-known label, then
- *    plays a grow-out/fade for `EXIT_ANIMATION_MS` before unmount. The
- *    parent passes the indicator unconditionally and toggles `active`
- *    so React doesn't rip the node out before the exit animation runs.
- *  - When a brand-new turn begins (the host row remounts under a new
- *    React key), this component remounts at the new anchor and plays
- *    its enter animation; the previous instance keeps animating its
- *    exit at the old DOM position.
+ *    plays a grow-out/fade for `EXIT_ANIMATION_MS`. The parent mounts the
+ *    indicator unconditionally and toggles `active` so React doesn't rip
+ *    the node out before the exit animation runs.
+ *  - Once fully exited, the inner content is removed (`--vacated`); the
+ *    footer wrapper's `:has(--vacated)` rule then collapses the slot so an
+ *    idle chat carries no ghost gutter. When the next pending turn arrives
+ *    `active` flips back true, the wrapper un-hides, and the enter
+ *    animation re-runs.
  *
  * The component owns the multi-task rotation interval so the parent
  * timeline doesn't have to.

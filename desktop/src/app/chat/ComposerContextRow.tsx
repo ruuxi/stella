@@ -3,10 +3,6 @@ import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { getElectronApi } from "@/platform/electron/electron";
 import {
-  InlineWorkingIndicator,
-  type InlineWorkingIndicatorMountProps,
-} from "./InlineWorkingIndicator";
-import {
   ComposerAppSelectionContextSection,
   ComposerCaptureContextSection,
   ComposerFileContextSection,
@@ -89,13 +85,11 @@ export function ComposerContextRow({
 type ComposerSuggestionRowProps = {
   chatContext: ChatContext | null;
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
-  indicator?: InlineWorkingIndicatorMountProps;
 };
 
 export function ComposerSuggestionContextRow({
   chatContext,
   setChatContext,
-  indicator,
 }: ComposerSuggestionRowProps) {
   const { lanes, dismissSlot } = useAutoContextChips(true);
   const rowRef = useRef<HTMLDivElement | null>(null);
@@ -215,17 +209,11 @@ export function ComposerSuggestionContextRow({
   // reserved (CSS `min-height`), even when every lane is empty or hidden.
   // This stops the composer from popping up when the last suggestion fades
   // out and back down when the first one fades in.
-  const resolvedIndicator: InlineWorkingIndicatorMountProps =
-    indicator ?? { active: false, tasks: [] };
-
   return (
     <div
       ref={rowRef}
       className="composer-context-actions composer-context-actions--suggestions"
     >
-      <div className="composer-context-working-indicator">
-        <InlineWorkingIndicator {...resolvedIndicator} />
-      </div>
       <div className="composer-context-suggestion-lanes">
         {lanes.map((lane, index) => (
           <SuggestionLaneView

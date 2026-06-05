@@ -217,7 +217,6 @@ export const ChatColumn = memo(function ChatColumn({
         onStop={composer.onStop}
         onSelectArea={composer.onSelectArea}
         isDragOver={isDragOver}
-        indicator={indicatorProps}
         replyPeek={replyPeek}
       />
     );
@@ -261,6 +260,7 @@ export const ChatColumn = memo(function ChatColumn({
               messages={conversation.messages}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
               queuedUserMessages={conversation.streaming.queuedUserMessages}
+              indicator={indicatorProps}
               hasOlderMessages={conversation.history.hasOlderMessages}
               isLoadingOlder={conversation.history.isLoadingOlder}
               isLoadingHistory={conversation.history.isInitialLoading}

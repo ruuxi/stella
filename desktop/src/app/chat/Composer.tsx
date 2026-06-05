@@ -9,7 +9,6 @@ import {
   ComposerContextRow,
   ComposerSuggestionContextRow,
 } from "./ComposerContextRow";
-import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import {
   AssistantReplyPeek,
   type AssistantReplyPeekProps,
@@ -52,7 +51,6 @@ type ComposerProps = {
   onStop: () => void;
   onSelectArea?: () => void;
   isDragOver?: boolean;
-  indicator?: InlineWorkingIndicatorMountProps;
   replyPeek?: AssistantReplyPeekProps | null;
 };
 
@@ -71,7 +69,6 @@ export function Composer({
   onStop,
   onSelectArea,
   isDragOver = false,
-  indicator,
   replyPeek,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -149,7 +146,6 @@ export function Composer({
         <ComposerSuggestionContextRow
           chatContext={chatContext}
           setChatContext={setChatContext}
-          indicator={indicator}
         />
       </div>
       <div

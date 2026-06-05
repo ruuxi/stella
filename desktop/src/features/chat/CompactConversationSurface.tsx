@@ -4,6 +4,7 @@ import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js"
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { ConversationEvents } from "@/app/chat/ConversationEvents";
+import type { InlineWorkingIndicatorMountProps } from "@/app/chat/InlineWorkingIndicator";
 import "@/app/chat/full-shell.chat.css";
 import "./compact-conversation.css";
 
@@ -33,6 +34,8 @@ type CompactConversationSurfaceProps = {
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
   liveTasks?: TaskItem[];
+  /** Working/agent indicator rendered below the last assistant message. */
+  indicator?: InlineWorkingIndicatorMountProps;
   hasOlderMessages?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -51,6 +54,7 @@ export function CompactConversationSurface({
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
+  indicator,
   hasOlderMessages,
   isLoadingOlder,
   isLoadingHistory,
@@ -78,6 +82,7 @@ export function CompactConversationSurface({
             maxItems={maxItems}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}
+            indicator={indicator}
             hasOlderMessages={hasOlderMessages}
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}
