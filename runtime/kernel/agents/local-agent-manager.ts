@@ -77,6 +77,7 @@ export type LocalAgentContext = {
   agentDepth?: number;
   maxAgentDepth: number;
   coreMemory?: string;
+  personality?: string;
   threadHistory?: Array<{
     timestamp?: number;
     role: string;

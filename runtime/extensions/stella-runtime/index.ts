@@ -8,7 +8,6 @@ import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.h
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
 import { createMemoryReviewHook } from "./hooks/memory-review.hook.js";
 import { createOpenPanelCadenceReportsHook } from "./hooks/open-panel-cadence-reports.hook.js";
-import { createPersonalityHook } from "./hooks/personality.hook.js";
 import { createRevertNoticeHook } from "./hooks/revert-notice.hook.js";
 import { createSelfModHooks } from "./hooks/self-mod.hook.js";
 import { createStaleUserReminderHook } from "./hooks/stale-user-reminder.hook.js";
@@ -23,7 +22,6 @@ const AGENTS_DIR = new URL("./agents/", import.meta.url);
  * hardcoded calls inside the kernel:
  *
  *   - Agent prompt registration (markdown agents under `./agents/`)
- *   - Personality injection
  *   - Self-mod baseline + detect-applied
  *   - Stale-user reminder
  *   - Dynamic memory reminder
@@ -51,8 +49,6 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   ): void => {
     pi.on(hook.event, hook.handler, hook.filter);
   };
-
-  register(createPersonalityHook({ stellaHome: services.stellaHome }));
 
   for (const hook of createSelfModHooks({
     stellaRoot: services.stellaRoot,

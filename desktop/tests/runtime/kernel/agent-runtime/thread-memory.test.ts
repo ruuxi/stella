@@ -110,6 +110,39 @@ describe("buildStartupPromptMessages", () => {
     expect(promptText).toContain("***");
   });
 
+  it("injects personality as a startup doc ahead of core memory on the first turn", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [],
+        personality: "# Voice\nWarm and concise.",
+        coreMemory: "remembered user context",
+      },
+    });
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.customType).toBe("bootstrap.startup_doc");
+    expect(messages[0]?.text).toContain('path="~/.stella/personality.md"');
+    expect(messages[0]?.text).toContain("Warm and concise.");
+    expect(messages[1]?.text).toContain('path="~/.stella/core-memory.md"');
+  });
+
+  it("omits the personality startup doc once the thread has history", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [{ role: "assistant", content: "Earlier reply" }],
+        personality: "# Voice\nWarm and concise.",
+      },
+    });
+
+    expect(messages).toEqual([]);
+  });
+
   it("does not assemble dynamic memory", async () => {
     const messages = await buildStartupPromptMessages({
       context: {
