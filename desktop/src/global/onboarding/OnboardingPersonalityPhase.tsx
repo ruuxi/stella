@@ -1,65 +1,54 @@
-import type { PersonalityVoice } from "../../../../runtime/extensions/stella-runtime/personality/voices.js";
+import type {
+  PersonalityId,
+  PersonalityOption,
+} from "../../../../runtime/contracts/personality.js";
 
 type PersonalityPhaseProps = {
-  personalityVoices: readonly PersonalityVoice[];
-  personalityVoiceId: string | null;
-  defaultPersonalityVoiceId: string;
+  personalityOptions: readonly PersonalityOption[];
+  personalityVoiceId: PersonalityId | null;
+  defaultPersonalityVoiceId: PersonalityId;
   splitTransitionActive: boolean;
   onFinish: () => void;
-  onSelectVoice: (voiceId: string) => void;
+  onSelectVoice: (voiceId: PersonalityId) => void;
 };
 
 export function OnboardingPersonalityPhase({
-  personalityVoices,
+  personalityOptions,
   personalityVoiceId,
   defaultPersonalityVoiceId,
   splitTransitionActive,
   onFinish,
   onSelectVoice,
 }: PersonalityPhaseProps) {
-  const activeVoiceId = personalityVoiceId ?? null;
-  const activeVoice =
-    personalityVoices.find((voice) => voice.id === activeVoiceId) ??
-    personalityVoices.find(
-      (voice) => voice.id === defaultPersonalityVoiceId,
-    ) ??
-    null;
+  const activeId = personalityVoiceId ?? defaultPersonalityVoiceId;
+  const activeOption =
+    personalityOptions.find((option) => option.id === activeId) ?? null;
 
   return (
     <div className="onboarding-step-content">
       <div className="onboarding-pills onboarding-pill-stagger">
-        {personalityVoices.map((voice) => (
+        {personalityOptions.map((option) => (
           <button
-            key={voice.id}
+            key={option.id}
             type="button"
             className="onboarding-pill"
-            data-active={activeVoiceId === voice.id}
-            onClick={() => onSelectVoice(voice.id)}
+            data-active={activeId === option.id}
+            onClick={() => onSelectVoice(option.id)}
           >
-            {voice.label}
+            {option.id === defaultPersonalityVoiceId
+              ? `${option.label} (default)`
+              : option.label}
           </button>
         ))}
       </div>
 
-      <p
-        className="onboarding-voice-description"
-        data-visible={activeVoiceId !== null || undefined}
-        aria-hidden={activeVoiceId === null}
-      >
-        {activeVoice ? activeVoice.description : ""}
-      </p>
-
-      <p
-        className="onboarding-personality-preview"
-        data-visible={activeVoiceId !== null || undefined}
-        aria-hidden={activeVoiceId === null}
-      >
-        {activeVoice ? activeVoice.sampleLine : ""}
+      <p className="onboarding-voice-description" data-visible>
+        {activeOption ? activeOption.description : ""}
       </p>
 
       <button
         className="onboarding-confirm"
-        data-visible={activeVoiceId !== null}
+        data-visible
         disabled={splitTransitionActive}
         onClick={onFinish}
       >

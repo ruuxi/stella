@@ -62,7 +62,6 @@ The factory's second argument is `ExtensionServices`. Use it for runtime-owned s
 
 Stella-specific behavior should live in `runtime/extensions/stella-runtime/`, not as hardcoded branches in the kernel. Existing hooks there cover:
 
-- Personality injection
 - Self-mod baseline capture and detect-applied
 - Stale-user and dynamic-memory reminders
 - Memory injection cadence and bundle assembly

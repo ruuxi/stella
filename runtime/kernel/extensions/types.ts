@@ -390,7 +390,7 @@ export interface ExtensionRegistrationApi {
  *
  * The second argument carries runtime services (see
  * `runtime/kernel/extensions/services.ts`) that bundled-as-extension
- * hooks like personality + self-mod need access to at registration
+ * hooks like self-mod + memory need access to at registration
  * time. Third-party extensions are free to ignore the services arg —
  * but the field is non-optional in the type so the loader can always
  * pass it without conditional plumbing.

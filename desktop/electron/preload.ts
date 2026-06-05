@@ -105,6 +105,8 @@ import {
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_GET_WAKE_WORD,
   IPC_PREFERENCES_SET_WAKE_WORD,
+  IPC_PREFERENCES_GET_PERSONALITY_VOICE,
+  IPC_PREFERENCES_SET_PERSONALITY_VOICE,
   IPC_SHELL_SAVE_FILE_AS,
   IPC_SHELL_LIST_OPENERS,
   IPC_SHELL_OPEN_WITH,
@@ -1201,17 +1203,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
         enabled: boolean;
       }>,
     getPersonalityVoice: () =>
-      ipcRenderer.invoke("preferences:getPersonalityVoice") as Promise<
+      ipcRenderer.invoke(IPC_PREFERENCES_GET_PERSONALITY_VOICE) as Promise<
         string | null
       >,
     setPersonalityVoice: (voiceId: string) =>
       ipcRenderer.invoke(
-        "preferences:setPersonalityVoice",
+        IPC_PREFERENCES_SET_PERSONALITY_VOICE,
         voiceId,
-      ) as Promise<{
-        ok: boolean;
-        voiceId: string;
-      }>,
+      ) as Promise<{ ok: boolean; voiceId: string }>,
     getBackupStatus: () => ipcRenderer.invoke(IPC_BACKUP_GET_STATUS),
     backUpNow: () => ipcRenderer.invoke(IPC_BACKUP_RUN_NOW),
     listBackups: (limit?: number) =>

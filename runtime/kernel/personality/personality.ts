@@ -1,78 +1,49 @@
 /**
- * `~/.stella/personality.md` — Stella's selected voice/register, injected as
- * a hidden startup doc on the first orchestrator turn (the same path core
- * memory takes) rather than into the system prompt every turn.
+ * `~/.stella/PERSONALITY.md` — Stella's selected voice/register, injected as a
+ * hidden startup doc on the first orchestrator turn (the same path core memory
+ * takes) rather than into the system prompt every turn.
  *
  * Lifecycle:
- * - Seeded on first run from the bundled template + the user's voice
- *   preference (or the default voice if no preference).
- * - Overwritten when the user picks a different voice in onboarding/settings.
- * - Read into the agent context at turn start; injected as a startup doc on
- *   the conversation's first turn, then replayed from persisted history.
- *   A new voice (or hand edit) therefore takes effect on the next fresh
+ * - Seeded on first read from the selected preset (or the Stella default when
+ *   no preference is set).
+ * - Overwritten when the user picks a preset in onboarding or settings.
+ * - Read into the agent context at turn start; injected as a startup doc on the
+ *   conversation's first turn, then replayed from persisted history. A new
+ *   preset (or hand edit) therefore takes effect on the next fresh
  *   conversation, not mid-thread.
  *
- * The file is plain markdown so power users can edit it freely. On each
- * read we use whatever is on disk verbatim — never re-compose from the
- * template if the file already exists.
+ * The file is plain markdown so power users can edit it freely. On each read we
+ * use whatever is on disk verbatim — never re-compose from a preset if the file
+ * already exists.
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   ensurePrivateDirSync,
   writePrivateFileSync,
 } from "../shared/private-fs.js";
 import {
-  DEFAULT_PERSONALITY_VOICE_ID,
-  findPersonalityVoice,
-} from "../../extensions/stella-runtime/personality/voices.js";
+  PERSONALITY_TEMPLATES,
+  coercePersonalityId,
+  type PersonalityId,
+} from "../../contracts/personality.js";
+import { getPersonalityVoiceId } from "../preferences/local-preferences.js";
 
-const PERSONALITY_FILE_RELATIVE = "personality.md";
-const VOICE_TOKEN = "{{voice}}";
-
-const BUNDLED_TEMPLATE_URLS = [
-  new URL(
-    "../../extensions/stella-runtime/personality/template.md",
-    import.meta.url,
-  ),
-  new URL(
-    "../extensions/stella-runtime/personality/template.md",
-    import.meta.url,
-  ),
-];
+const PERSONALITY_FILE_RELATIVE = "PERSONALITY.md";
 
 const personalityFilePath = (stellaHome: string): string =>
   path.join(stellaHome, PERSONALITY_FILE_RELATIVE);
 
-const readBundledTemplate = (): string => {
-  let lastError: unknown;
-  for (const templateUrl of BUNDLED_TEMPLATE_URLS) {
-    try {
-      return fs.readFileSync(fileURLToPath(templateUrl), "utf-8");
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError;
-};
-
-const composePersonalityContent = (voiceId: string | undefined): string => {
-  const template = readBundledTemplate();
-  const voice = findPersonalityVoice(voiceId);
-  return template.replace(VOICE_TOKEN, voice.promptBlock.trim()).trim() + "\n";
-};
+const composePersonalityContent = (id: PersonalityId): string =>
+  PERSONALITY_TEMPLATES[id].trim() + "\n";
 
 /**
- * Read the persisted personality file. Seeds it on first access using the
- * supplied voice id (or the default voice) so the orchestrator always has
- * a personality prefix to prepend.
+ * Read the persisted personality file, seeding it on first access from the
+ * user's preset preference (or the Stella default) so the orchestrator always
+ * has a personality to inject.
  */
-export const readOrSeedPersonality = (
-  stellaHome: string,
-  voiceId: string | undefined,
-): string => {
+export const readOrSeedPersonality = (stellaHome: string): string => {
   const filePath = personalityFilePath(stellaHome);
   try {
     const existing = fs.readFileSync(filePath, "utf-8").trim();
@@ -84,7 +55,7 @@ export const readOrSeedPersonality = (
   }
 
   const seeded = composePersonalityContent(
-    voiceId ?? DEFAULT_PERSONALITY_VOICE_ID,
+    coercePersonalityId(getPersonalityVoiceId(stellaHome)),
   );
   try {
     const dir = path.dirname(filePath);
@@ -99,15 +70,14 @@ export const readOrSeedPersonality = (
 };
 
 /**
- * Overwrite `~/.stella/personality.md` with the template interpolated against
- * the given voice id. Used when the user picks a voice in onboarding or
- * changes it in settings.
+ * Overwrite `~/.stella/PERSONALITY.md` with the given preset. Used when the
+ * user picks a personality in onboarding or settings.
  */
-export const writePersonalityForVoice = (
+export const writePersonality = (
   stellaHome: string,
-  voiceId: string,
+  id: PersonalityId,
 ): string => {
-  const content = composePersonalityContent(voiceId);
+  const content = composePersonalityContent(id);
   const filePath = personalityFilePath(stellaHome);
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {

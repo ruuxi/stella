@@ -32,8 +32,8 @@ export type AgentCapabilities = {
   /** Follow-up queue mode for this agent's runs. Defaults to "one-at-a-time". */
   followUpMode?: "all" | "one-at-a-time";
   /**
-   * Load the user's personality voice into the agent context so it is
-   * injected as a hidden `~/.stella/personality.md` startup doc on the
+   * Load the user's selected personality preset into the agent context so it
+   * is injected as a hidden `~/.stella/PERSONALITY.md` startup doc on the
    * first turn (then replayed from history), mirroring core memory.
    */
   injectsPersonality?: boolean;

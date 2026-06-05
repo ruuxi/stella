@@ -6,7 +6,6 @@ import {
   getAgentRuntimeEngine,
   getMaxAgentConcurrency,
   getModelOverride,
-  getPersonalityVoiceId,
   getReasoningEffort,
 } from "../preferences/local-preferences.js";
 import { readOrSeedPersonality } from "../personality/personality.js";
@@ -881,10 +880,7 @@ export const buildAgentContext = async (
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: readCoreMemory(context.stellaHome),
     personality: agentHasCapability(args.agentType, "injectsPersonality")
-      ? readOrSeedPersonality(
-          context.stellaHome,
-          getPersonalityVoiceId(context.stellaHome),
-        )
+      ? readOrSeedPersonality(context.stellaHome)
       : undefined,
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,

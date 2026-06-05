@@ -8,7 +8,7 @@ import type { AgentMessage } from "../agent-core/types.js";
 /**
  * Runtime services exposed to extension factories.
  *
- * Stella-runtime hooks (personality, self-mod, …) need access to
+ * Stella-runtime hooks (self-mod, memory, …) need access to
  * stable per-runtime values — `stellaHome`, `stellaRoot`,
  * `selfModMonitor`, and the SQLite store — that can't be reconstructed
  * from per-emit hook payloads alone. The loader threads this object

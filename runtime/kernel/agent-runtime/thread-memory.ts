@@ -30,8 +30,7 @@ import { redactMemoryText } from "../memory/redaction.js";
 const logger = createRuntimeLogger("agent-runtime.thread-memory");
 const LIFE_REGISTRY_DISPLAY_PATH = "~/.stella/registry.md";
 const LIFE_CORE_MEMORY_DISPLAY_PATH = "~/.stella/core-memory.md";
-const LIFE_PERSONALITY_DISPLAY_PATH = "~/.stella/personality.md";
-
+const LIFE_PERSONALITY_DISPLAY_PATH = "~/.stella/PERSONALITY.md";
 export const buildRunThreadKey = ({
   conversationId,
   agentType,

@@ -20,6 +20,7 @@ import {
   getLocalModelPreferences,
   getOnboardingCompleted,
   getPersonalityVoiceId,
+  setPersonalityVoiceId,
   getPreventComputerSleep,
   getReadAloudEnabled,
   setReadAloudEnabled,
@@ -32,17 +33,19 @@ import {
   normalizeRealtimeVoicePreferences,
   saveLocalPreferences,
   setOnboardingCompleted,
-  setPersonalityVoiceId,
   updateLocalModelPreferences,
   type CadenceReportsPreferences,
   type LocalModelPreferencesSnapshot,
   type ReasoningEffort,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
 import { coerceAgentRuntimeEngine } from "../../../runtime/contracts/agent-engine.js";
+import {
+  coercePersonalityId,
+  isKnownPersonalityId,
+} from "../../../runtime/contracts/personality.js";
+import { writePersonality } from "../../../runtime/kernel/personality/personality.js";
 import { listCodexAppServerModels } from "../../../runtime/kernel/integrations/codex-agent-runtime.js";
 import { listClaudeCodeModels } from "../../../runtime/kernel/integrations/claude-code-session-runtime.js";
-import { writePersonalityForVoice } from "../../../runtime/kernel/personality/personality.js";
-import { isKnownPersonalityVoiceId } from "../../../runtime/extensions/stella-runtime/personality/voices.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { BackupService } from "../services/backup-service.js";
@@ -106,6 +109,8 @@ import {
   IPC_SHELL_SAVE_FILE_AS,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
+  IPC_PREFERENCES_GET_PERSONALITY_VOICE,
+  IPC_PREFERENCES_SET_PERSONALITY_VOICE,
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_LIST_CODEX_MODELS,
   IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
@@ -126,8 +131,6 @@ import {
   IPC_PREFERENCES_SET_READ_ALOUD,
   IPC_PREFERENCES_GET_CADENCE_REPORTS,
   IPC_PREFERENCES_SET_CADENCE_REPORTS,
-  IPC_PREFERENCES_GET_PERSONALITY_VOICE,
-  IPC_PREFERENCES_SET_PERSONALITY_VOICE,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -2067,19 +2070,19 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return { voiceId: null };
-      if (!isKnownPersonalityVoiceId(voiceId)) {
-        throw new Error("Unknown personality voice id.");
+      if (!stellaRoot) return { ok: false, voiceId: "" };
+      if (!isKnownPersonalityId(voiceId)) {
+        throw new Error("Unknown personality preset id.");
       }
-      const normalized = String(voiceId).trim().toLowerCase();
+      const normalized = coercePersonalityId(voiceId);
       setPersonalityVoiceId(stellaRoot, normalized);
       try {
-        writePersonalityForVoice(stellaRoot, normalized);
+        writePersonality(stellaRoot, normalized);
       } catch {
         // Best-effort — the seed pass on the next orchestrator turn will
         // re-compose from the preference if the file is missing.
       }
-      return { voiceId: normalized };
+      return { ok: true, voiceId: normalized };
     },
   );
 

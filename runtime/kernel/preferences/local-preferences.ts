@@ -31,6 +31,10 @@ import {
   coerceAgentRuntimeEngine,
   type AgentRuntimeEngine,
 } from "../../contracts/agent-engine.js";
+import {
+  isKnownPersonalityId,
+  type PersonalityId,
+} from "../../contracts/personality.js";
 
 type AgentEngine = AgentRuntimeEngine;
 export const DEFAULT_CODEX_MODEL = "gpt-5.5";
@@ -98,11 +102,6 @@ export type LocalPreferences = {
   assistantPropagatedAgents: string[];
   /** Reasoning effort overrides keyed by agent type. */
   reasoningEfforts: Record<string, ReasoningEffort>;
-  /**
-   * Selected personality voice id (see PERSONALITY_VOICES catalog).
-   * Undefined falls back to the default voice.
-   */
-  personalityVoiceId?: string;
   /** Runtime engine shared by every local CLI-backed agent. */
   agentRuntimeEngine: AgentEngine;
   /** Codex model id used when the Codex engine is selected. */
@@ -172,6 +171,12 @@ export type LocalPreferences = {
   onboardingCompleted: boolean;
   /** Wake-word detection threshold (0–1). Higher = stricter. */
   wakeWordThreshold: number;
+  /**
+   * Selected personality preset id (see PERSONALITY_OPTIONS). Drives which
+   * preset seeds `~/.stella/PERSONALITY.md`. Undefined falls back to the
+   * Stella default.
+   */
+  personalityVoiceId?: PersonalityId;
 };
 
 export type LocalModelPreferencesSnapshot = Pick<
@@ -204,7 +209,6 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   modelOverrides: {},
   assistantPropagatedAgents: [],
   reasoningEfforts: {},
-  personalityVoiceId: undefined,
   agentRuntimeEngine: "default",
   codexModel: DEFAULT_CODEX_MODEL,
   codexReasoningEffort: "default",
@@ -229,6 +233,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   chronicleEnabled: false,
   chroniclePendingEnable: false,
   cadenceReports: DEFAULT_CADENCE_REPORTS,
+  personalityVoiceId: undefined,
 };
 
 const LEGACY_STELLA_DEFAULT_MODEL = "stella/default";
@@ -258,11 +263,6 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.assistantPropagatedAgents,
       ),
       reasoningEfforts: normalizeReasoningEfforts(parsed.reasoningEfforts),
-      personalityVoiceId:
-        typeof parsed.personalityVoiceId === "string" &&
-        parsed.personalityVoiceId.trim().length > 0
-          ? parsed.personalityVoiceId.trim()
-          : DEFAULT_PREFERENCES.personalityVoiceId,
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
       codexModel: normalizeCodexModel(parsed.codexModel),
       codexReasoningEffort: normalizeReasoningEffort(
@@ -313,6 +313,9 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
         parsed.chronicleEnabled !== true &&
         parsed.chroniclePendingEnable === true,
       cadenceReports: normalizeCadenceReports(parsed.cadenceReports),
+      personalityVoiceId: isKnownPersonalityId(parsed.personalityVoiceId)
+        ? parsed.personalityVoiceId
+        : DEFAULT_PREFERENCES.personalityVoiceId,
     };
     _cached = prefs;
     _cachedMtime = stat.mtimeMs;
@@ -354,27 +357,6 @@ export const getReasoningEffort = (
 ): ReasoningEffort => {
   const prefs = loadLocalPreferences(stellaHome);
   return normalizeReasoningEffort(prefs.reasoningEfforts[agentType]);
-};
-
-export const getPersonalityVoiceId = (
-  stellaHome: string,
-): string | undefined => {
-  return loadLocalPreferences(stellaHome).personalityVoiceId;
-};
-
-export const setPersonalityVoiceId = (
-  stellaHome: string,
-  voiceId: string | undefined,
-): void => {
-  const prefs = loadLocalPreferences(stellaHome);
-  const next: LocalPreferences = {
-    ...prefs,
-    personalityVoiceId:
-      typeof voiceId === "string" && voiceId.trim().length > 0
-        ? voiceId.trim()
-        : undefined,
-  };
-  saveLocalPreferences(stellaHome, next);
 };
 
 export const getAgentRuntimeEngine = (stellaHome: string): AgentEngine => {
@@ -566,6 +548,19 @@ export const setChronicleMemoryPreference = (
     chroniclePendingEnable:
       value.enabled === true ? false : value.pendingEnable === true,
   });
+};
+
+export const getPersonalityVoiceId = (
+  stellaHome: string,
+): PersonalityId | undefined =>
+  loadLocalPreferences(stellaHome).personalityVoiceId;
+
+export const setPersonalityVoiceId = (
+  stellaHome: string,
+  id: PersonalityId,
+): void => {
+  const prefs = loadLocalPreferences(stellaHome);
+  saveLocalPreferences(stellaHome, { ...prefs, personalityVoiceId: id });
 };
 
 export const getOnboardingCompleted = (stellaHome: string): boolean =>
