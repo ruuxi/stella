@@ -358,7 +358,7 @@ const fetchSnapshot = async (): Promise<FetchSnapshotResult> => {
 
   let apps: RecentAppChip[] = []
   try {
-    const result = await api.home.listRecentApps(8)
+    const result = await api.home.listRecentApps(LANE_COUNT)
     apps = (result?.apps ?? []).map<RecentAppChip>((app) => ({
       kind: "app",
       pid: app.pid,

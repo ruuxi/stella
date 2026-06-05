@@ -9,6 +9,10 @@ import type { RecentApp } from '../src/shared/contracts/home.js'
 // scope, per-element AX timeouts, diagnostics in warnings).
 const HELPER_NAME = 'home_apps'
 const RECENT_APPS_CACHE_MS = 2_500
+const WINDOWS_RECENT_APPS_CACHE_MS = 10_000
+const WINDOWS_NATIVE_HELPER_TIMEOUT_MS = 1_000
+const WINDOWS_NATIVE_SLOW_SUCCESS_THRESHOLD_MS = 750
+const WINDOWS_NATIVE_SLOW_SUCCESS_BACKOFF_MS = 60_000
 
 type RawListedApp = {
   name?: string
@@ -225,6 +229,7 @@ type WinProcess = {
 }
 
 const windowsIconCache = new Map<string, string | null>()
+let windowsRecentAppsNativeBackoffUntil = 0
 
 const execAsync = (
   command: string,
@@ -301,19 +306,32 @@ const listRecentAppsWindows = async (
 const listRecentAppsWindowsNative = async (
   limit: number,
 ): Promise<RecentApp[] | null> => {
-  const result = await runNativeHelperDetailed('recent_apps', [], {
-    timeout: 3_000,
-    maxBuffer: 4 * 1024 * 1024,
-    onError: () => {
-      // Missing/old binary → caller falls back to PowerShell; not an error.
+  const now = Date.now()
+  if (windowsRecentAppsNativeBackoffUntil > now) {
+    return []
+  }
+
+  const result = await runNativeHelperDetailed(
+    'recent_apps',
+    [`--limit=${limit}`],
+    {
+      timeout: WINDOWS_NATIVE_HELPER_TIMEOUT_MS,
+      maxBuffer: 4 * 1024 * 1024,
+      onError: () => {
+        // Missing/old binary → caller falls back to PowerShell; not an error.
+      },
     },
-  })
+  )
   if (
     result.timedOut ||
     result.killed ||
     result.skippedReason === 'circuit-open'
   ) {
     return []
+  }
+  if (result.durationMs >= WINDOWS_NATIVE_SLOW_SUCCESS_THRESHOLD_MS) {
+    windowsRecentAppsNativeBackoffUntil =
+      Date.now() + WINDOWS_NATIVE_SLOW_SUCCESS_BACKOFF_MS
   }
   const stdout = result.stdout
   if (!stdout) return null
@@ -453,8 +471,12 @@ export const listRecentApps = async (
   recentAppsInFlight.set(cacheKey, promise)
   try {
     const value = await promise
+    const cacheTtlMs =
+      process.platform === 'win32'
+        ? WINDOWS_RECENT_APPS_CACHE_MS
+        : RECENT_APPS_CACHE_MS
     recentAppsCache.set(cacheKey, {
-      expiresAt: Date.now() + RECENT_APPS_CACHE_MS,
+      expiresAt: Date.now() + cacheTtlMs,
       value,
     })
     return value
