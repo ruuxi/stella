@@ -8,6 +8,13 @@ export type RealtimeTransportKind =
   | "xai-websocket"
   | "inworld-webrtc";
 
+export type RealtimeSessionTool = {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+};
+
 export interface VoiceSessionToken {
   /**
    * Which provider authenticated the connection — used for usage
@@ -54,6 +61,8 @@ export interface ProviderTokenContext {
   conversationId?: string;
   /** Full system prompt to inject at session start. */
   instructions: string;
+  /** Function tools exposed to the realtime voice orchestrator. */
+  tools?: RealtimeSessionTool[];
 }
 
 export interface ProviderModule {

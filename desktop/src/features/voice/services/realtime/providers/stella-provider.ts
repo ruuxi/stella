@@ -32,8 +32,10 @@ import {
   stellaProxiedSdpFetcher,
 } from "../transports/sdp-fetchers";
 import { XaiWebSocketTransport } from "../transports/xai-websocket-transport";
+import { buildOpenAIRealtimeSessionConfig } from "./openai-provider";
 import type {
   ProviderModule,
+  RealtimeSessionTool,
   RealtimeTransportKind,
   VoiceSessionToken,
 } from "./types";
@@ -189,6 +191,7 @@ export const stellaProvider: ProviderModule = {
         model: token.model,
         voice: token.voice,
         instructions: ctx.instructions,
+        tools: ctx.tools,
       });
     }
 
@@ -208,6 +211,7 @@ export const stellaProvider: ProviderModule = {
           model: token.model || DEFAULT_INWORLD_REALTIME_MODEL,
           voice: token.voice,
           instructions: ctx.instructions,
+          tools: ctx.tools,
           speed: token.speed,
         }),
         iceServers: token.iceServers,
@@ -223,6 +227,7 @@ export const stellaProvider: ProviderModule = {
         "https://api.openai.com/v1/realtime/calls",
         token.clientSecret,
       ),
+      initialSessionConfig: buildOpenAIRealtimeSessionConfig(token, ctx),
     });
   },
 };
@@ -237,12 +242,14 @@ export const buildInworldSessionConfig = (opts: {
   model: string;
   voice: string;
   instructions: string;
+  tools?: RealtimeSessionTool[];
   /** TTS playback speed. Defaults to DEFAULT_INWORLD_REALTIME_SPEED. */
   speed?: number;
 }): Record<string, unknown> => ({
   type: "realtime",
   model: opts.model,
   instructions: opts.instructions,
+  ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
   output_modalities: ["audio", "text"],
   audio: {
     input: {

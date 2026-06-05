@@ -729,6 +729,47 @@ describe("deriveTurnInlineImagePayloads", () => {
     ]);
   });
 
+  it("creates inline image payloads from voice-service-shaped image_gen results", () => {
+    const result = deriveTurnInlineImagePayloads([
+      event({
+        _id: "ig-voice",
+        type: "tool_result",
+        timestamp: 120,
+        payload: {
+          toolName: "image_gen",
+          agentType: "orchestrator",
+          result: {
+            jobId: "job-voice",
+            capability: "text_to_image",
+            prompt: "voice generated scene",
+            numImages: 2,
+            status: "submitted",
+          },
+          details: {
+            jobId: "job-voice",
+            capability: "text_to_image",
+            prompt: "voice generated scene",
+            numImages: 2,
+            status: "submitted",
+          },
+        },
+      }),
+    ]);
+
+    expect(result).toEqual([
+      {
+        kind: "media",
+        asset: { kind: "image", filePaths: [] },
+        jobId: "job-voice",
+        capability: "text_to_image",
+        prompt: "voice generated scene",
+        numImages: 2,
+        presentation: "inline-image",
+        createdAt: 120,
+      },
+    ]);
+  });
+
   it("returns one payload per orchestrator image_gen call", () => {
     const result = deriveTurnInlineImagePayloads([
       event({

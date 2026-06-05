@@ -111,6 +111,47 @@ describe("groupEventsIntoMessages", () => {
     ]);
   });
 
+  it("does not anchor tools to hidden assistant messages", () => {
+    const events: EventRecord[] = [
+      event({ _id: "u1", type: "user_message", timestamp: 1 }),
+      event({
+        _id: "hidden-tool-marker",
+        type: "assistant_message",
+        timestamp: 2,
+        payload: {
+          text: "[TOOL CALL: html]",
+          metadata: { ui: { visibility: "hidden" } },
+        },
+      }),
+      event({
+        _id: "tool-req",
+        type: "tool_request",
+        timestamp: 3,
+        payload: { toolName: "html" },
+      }),
+      event({
+        _id: "tool-res",
+        type: "tool_result",
+        timestamp: 4,
+        payload: { toolName: "html" },
+      }),
+      event({ _id: "a1", type: "assistant_message", timestamp: 5 }),
+    ];
+
+    const messages = groupEventsIntoMessages(events);
+
+    expect(messages.map((m) => m._id)).toEqual([
+      "u1",
+      "hidden-tool-marker",
+      "a1",
+    ]);
+    expect(messages[1]!.toolEvents).toEqual([]);
+    expect(messages[2]!.toolEvents.map((e) => e._id)).toEqual([
+      "tool-req",
+      "tool-res",
+    ]);
+  });
+
   it("keeps secondary assistants in the turn (agent terminal notices) with empty toolEvents", () => {
     const events: EventRecord[] = [
       event({ _id: "u1", type: "user_message", timestamp: 1 }),

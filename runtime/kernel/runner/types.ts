@@ -50,6 +50,8 @@ import type {
   RuntimeAttachmentRef,
   RuntimeAutomationTurnRequest,
   RuntimeAutomationTurnResult,
+  RuntimeVoiceOrchestratorConfig,
+  RuntimeVoiceOrchestratorConfigRequest,
   RuntimePromptMessage,
   StorePublishArgs,
 } from "../../protocol/index.js";
@@ -464,6 +466,10 @@ export type RunnerPublicApi = {
     role: "user" | "assistant";
     content: string;
   }) => void;
+  notifyOrchestratorHistoryChanged: (conversationId: string) => void;
+  getVoiceOrchestratorConfig: (
+    payload: RuntimeVoiceOrchestratorConfigRequest,
+  ) => Promise<RuntimeVoiceOrchestratorConfig>;
   convexAction: (ref: unknown, args: unknown) => Promise<unknown>;
   googleWorkspaceGetAuthStatus: () => Promise<{
     connected: boolean;

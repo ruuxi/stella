@@ -259,6 +259,60 @@ describe("session-store", () => {
     ]);
   });
 
+  it("does not anchor tool outputs to hidden assistant messages", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    const userA = store.appendEvent({
+      conversationId,
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "show this in HTML" },
+    });
+    const hiddenAssistant = store.appendEvent({
+      conversationId,
+      type: "assistant_message",
+      timestamp: 1_001,
+      payload: {
+        text: "[TOOL CALL: html]",
+        metadata: { ui: { visibility: "hidden" } },
+      },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "tool_request",
+      timestamp: 1_002,
+      payload: { toolName: "html" },
+    });
+    store.appendEvent({
+      conversationId,
+      type: "tool_result",
+      timestamp: 1_003,
+      payload: { toolName: "html" },
+    });
+    const assistantA = store.appendEvent({
+      conversationId,
+      type: "assistant_message",
+      timestamp: 1_004,
+      payload: { text: "Done." },
+    });
+
+    const { messages } = store.listMessages(conversationId, {
+      maxVisibleMessages: 10,
+    });
+
+    expect(messages.map((m) => m._id)).toEqual([
+      userA._id,
+      hiddenAssistant._id,
+      assistantA._id,
+    ]);
+    expect(messages[1]?.toolEvents).toEqual([]);
+    expect(messages[2]?.toolEvents.map((e) => e.type)).toEqual([
+      "tool_request",
+      "tool_result",
+    ]);
+  });
+
   it("reports visibleMessageCount excluding UI-hidden user messages", () => {
     const { store } = createTestContext();
     const conversationId = store.getOrCreateDefaultConversationId();

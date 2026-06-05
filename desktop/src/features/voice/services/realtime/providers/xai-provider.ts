@@ -18,6 +18,7 @@ export const xaiProvider: ProviderModule = {
     }
     const result = await voiceApi.createXaiSession({
       instructions: ctx.instructions,
+      tools: ctx.tools,
     });
     return {
       provider: "xai",
@@ -35,6 +36,7 @@ export const xaiProvider: ProviderModule = {
       model: token.model,
       voice: token.voice,
       instructions: ctx.instructions,
+      tools: ctx.tools,
     });
   },
 };
