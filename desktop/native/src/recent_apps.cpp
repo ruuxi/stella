@@ -45,6 +45,27 @@ static bool isWindowCloaked(HWND hwnd)
     return SUCCEEDED(result) && cloaked;
 }
 
+static std::string getWindowTitle(HWND hwnd)
+{
+    char title[512] = {};
+    DWORD_PTR copied = 0;
+    LRESULT ok = SendMessageTimeoutA(
+        hwnd,
+        WM_GETTEXT,
+        static_cast<WPARAM>(sizeof(title)),
+        reinterpret_cast<LPARAM>(title),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK,
+        80,
+        &copied
+    );
+    if (!ok || copied == 0)
+    {
+        return "";
+    }
+    title[sizeof(title) - 1] = '\0';
+    return std::string(title);
+}
+
 struct AppEntry
 {
     DWORD pid;
@@ -81,13 +102,11 @@ static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM /*lparam*/)
         return TRUE;
     }
 
-    int titleLen = GetWindowTextLengthA(hwnd);
-    if (titleLen <= 0)
+    std::string title = getWindowTitle(hwnd);
+    if (title.empty())
     {
         return TRUE;
     }
-    std::vector<char> titleBuf(static_cast<size_t>(titleLen) + 1, 0);
-    GetWindowTextA(hwnd, titleBuf.data(), titleLen + 1);
 
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
@@ -135,7 +154,7 @@ static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM /*lparam*/)
     AppEntry entry;
     entry.pid = pid;
     entry.name = name;
-    entry.title = std::string(titleBuf.data());
+    entry.title = title;
     entry.exePath = exePath;
     entry.active = (pid == g_foregroundPid && g_foregroundPid != 0);
     g_entries.push_back(entry);
