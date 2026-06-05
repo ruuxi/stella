@@ -30,6 +30,25 @@ const DEFAULT_RUNTIME_STATE: VoiceRuntimeSnapshot = {
   outputLevel: 0,
 };
 
+export const shouldPersistVoiceTranscriptToHistory = (
+  event: VoiceSessionEvent,
+): event is Extract<
+  VoiceSessionEvent,
+  { type: "user-transcript" | "assistant-transcript" }
+> =>
+  (event.type === "user-transcript" ||
+    event.type === "assistant-transcript") &&
+  event.isFinal &&
+  event.text.trim().length > 0;
+
+export const formatVoiceSessionDuration = (durationMs: number): string => {
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+};
+
 // ---------------------------------------------------------------------------
 // VoiceSessionManager — extracted session lifecycle logic (no React imports)
 // ---------------------------------------------------------------------------
@@ -64,6 +83,7 @@ export class VoiceSessionManager {
   private userSpeaking = false;
   private aborted = false;
   private startInFlight = false;
+  private activeVoiceStartedAt: number | null = null;
 
   constructor(deps: VoiceSessionManagerDeps) {
     this.deps = deps;
@@ -72,6 +92,9 @@ export class VoiceSessionManager {
   /** Boot the session lifecycle. */
   start(): void {
     this.aborted = false;
+    if (this.deps.inputActiveRef.current) {
+      this.beginVisibleVoiceSession();
+    }
     void this.startSession();
   }
 
@@ -79,6 +102,7 @@ export class VoiceSessionManager {
   stop(): void {
     this.aborted = true;
     this.startInFlight = false;
+    this.endVisibleVoiceSession();
     this.deps.analyserRef.current = null;
     this.deps.outputAnalyserRef.current = null;
     this.assistantSpeaking = false;
@@ -92,6 +116,7 @@ export class VoiceSessionManager {
   /** Forward conversationId / inputActive changes to the live session. */
   updateSession(conversationId: string, inputActive: boolean): void {
     const session = this.sessionRef.current;
+    this.syncVisibleVoiceSessionState(inputActive);
     if (!session) return;
     session.setConversationId(conversationId);
     session.setInputActive(inputActive);
@@ -191,23 +216,64 @@ export class VoiceSessionManager {
     );
   }
 
-  private persistTranscript(role: "user" | "assistant", text: string): void {
+  private persistVoiceTranscript(
+    role: "user" | "assistant",
+    text: string,
+    uiVisibility: "visible" | "hidden",
+    voiceSession?: { durationMs: number },
+  ): void {
     const cid = this.deps.conversationIdRef.current;
     if (!cid) return;
 
-    // 1. Persist to JSONL store (orchestrator context) via IPC
     try {
       window.electronAPI?.voice.persistTranscript?.({
         conversationId: cid,
         role,
         text,
-        uiVisibility: "hidden",
+        uiVisibility,
+        ...(voiceSession ? { voiceSession } : {}),
       });
     } catch (err) {
       console.debug(
         "[VoiceSessionManager] Voice persistence failed:",
         (err as Error).message,
       );
+    }
+  }
+
+  private persistHiddenVoiceTranscript(
+    role: "user" | "assistant",
+    text: string,
+  ): void {
+    this.persistVoiceTranscript(role, text, "hidden");
+  }
+
+  private beginVisibleVoiceSession(now = Date.now()): void {
+    if (this.activeVoiceStartedAt !== null) return;
+    this.activeVoiceStartedAt = now;
+  }
+
+  private endVisibleVoiceSession(now = Date.now()): void {
+    const startedAt = this.activeVoiceStartedAt;
+    if (startedAt === null) return;
+    this.activeVoiceStartedAt = null;
+    const durationMs = Math.max(0, now - startedAt);
+    const duration = formatVoiceSessionDuration(durationMs);
+    // The text body is the model-history fallback; the chat surface renders
+    // the structured `voiceSession` metadata as a polished summary card.
+    this.persistVoiceTranscript(
+      "assistant",
+      ["Voice session", "", `Duration: ${duration}`].join("\n"),
+      "visible",
+      { durationMs },
+    );
+  }
+
+  private syncVisibleVoiceSessionState(inputActive: boolean): void {
+    if (inputActive) {
+      this.beginVisibleVoiceSession();
+    } else {
+      this.endVisibleVoiceSession();
     }
   }
 
@@ -279,14 +345,11 @@ export class VoiceSessionManager {
         return;
       }
 
-      if (event.type === "user-transcript" && event.isFinal && event.text) {
-        this.persistTranscript("user", event.text);
-      } else if (
-        event.type === "assistant-transcript" &&
-        event.isFinal &&
-        event.text
-      ) {
-        this.persistTranscript("assistant", event.text);
+      if (shouldPersistVoiceTranscriptToHistory(event)) {
+        this.persistHiddenVoiceTranscript(
+          event.type === "user-transcript" ? "user" : "assistant",
+          event.text,
+        );
       }
     });
   }

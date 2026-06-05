@@ -142,6 +142,7 @@ const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
   !(row.sourceDiffPayloads?.length) &&
   !row.selfModApplied &&
   !row.scheduleReceipt &&
+  !row.voiceSession &&
   !row.customSlot
 
 /** Merge sequential one-by-one image_gen rows into a single inline strip. */
@@ -327,13 +328,17 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         })
         const selfModApplied = payload?.selfModApplied
         const officePreviewRef = getOfficePreviewRef(toolEvents)
+        const voiceSession = payload?.metadata?.voiceSession
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
           runtimeMetadata?.isStreaming !== false
         const row: AssistantRowViewModel = {
           kind: 'assistant',
           id: stableKey,
-          text,
+          // The voice-session summary card replaces the text body entirely,
+          // so the raw "Voice session\n\nDuration: …" model-history fallback
+          // never renders as markdown.
+          text: voiceSession ? '' : text,
           cacheKey: stableKey,
           ...(isStreamingOverlay ? { isStreaming: true } : {}),
           ...(responseTarget ? { responseTarget } : {}),
@@ -348,6 +353,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(getScheduleReceipt(toolEvents)
             ? { scheduleReceipt: getScheduleReceipt(toolEvents) }
             : {}),
+          ...(voiceSession ? { voiceSession } : {}),
         }
         computed.push(row)
       }

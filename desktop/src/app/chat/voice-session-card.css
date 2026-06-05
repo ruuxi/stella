@@ -1,0 +1,40 @@
+/* ============================================================
+   Voice session summary pill — the polished, compact replacement
+   for the plain "Voice session / Duration: …" assistant text a
+   realtime voice session writes when it ends. Sized to read as a
+   single-line affordance, never a full-width card.
+   ============================================================ */
+
+.voice-session-pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  width: fit-content;
+  gap: 8px;
+  padding: 7px 13px 7px 11px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: 13px;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+.voice-session-pill__icon {
+  flex-shrink: 0;
+  color: var(--text-weak);
+}
+
+.voice-session-pill__label {
+  font-weight: 500;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-session-pill__meta {
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+}

@@ -22,6 +22,10 @@ import type {
   AgentRunFinishOutcome,
   TaskLifecycleStatus,
 } from "../contracts/agent-runtime.js";
+import type {
+  FileChangeRecord,
+  ProducedFileRecord,
+} from "../contracts/file-changes.js";
 
 export type {
   AgentHealth,
@@ -108,6 +112,8 @@ export const METHOD_NAMES = {
   SEARCH_WEB: "search.web",
   VOICE_PERSIST_TRANSCRIPT: "voice.persistTranscript",
   VOICE_ORCHESTRATOR_CHAT: "voice.orchestratorChat",
+  VOICE_ORCHESTRATOR_CONFIG: "voice.orchestratorConfig",
+  VOICE_EXECUTE_TOOL: "voice.executeTool",
   VOICE_WEB_SEARCH: "voice.webSearch",
   THREAD_APPEND_MESSAGE: "thread.appendMessage",
   LOCAL_CHAT_GET_OR_CREATE_DEFAULT:
@@ -195,6 +201,9 @@ export const METHOD_NAMES = {
     "internal.worker.voice.persistTranscript",
   INTERNAL_WORKER_VOICE_ORCHESTRATOR_CHAT:
     "internal.worker.voice.orchestratorChat",
+  INTERNAL_WORKER_VOICE_ORCHESTRATOR_CONFIG:
+    "internal.worker.voice.orchestratorConfig",
+  INTERNAL_WORKER_VOICE_EXECUTE_TOOL: "internal.worker.voice.executeTool",
   INTERNAL_WORKER_VOICE_WEB_SEARCH: "internal.worker.voice.webSearch",
   INTERNAL_WORKER_LIST_STORE_PACKAGES: "internal.worker.listStorePackages",
   INTERNAL_WORKER_GET_STORE_PACKAGE: "internal.worker.getStorePackage",
@@ -441,12 +450,54 @@ export type RuntimeVoiceTranscriptPayload = {
   role: "user" | "assistant";
   text: string;
   uiVisibility?: "visible" | "hidden";
+  /** Present only on the visible end-of-session summary message. */
+  voiceSession?: { durationMs: number };
 };
 
 export type RuntimeVoiceChatPayload = {
   requestId: string;
   conversationId: string;
   message: string;
+};
+
+export type RuntimeVoiceToolMetadata = {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+};
+
+export type RuntimeVoiceOrchestratorConfigRequest = {
+  conversationId: string;
+};
+
+export type RuntimeVoiceHistoryItem = {
+  role: string;
+  content: string;
+  timestamp?: number;
+  toolCallId?: string;
+};
+
+export type RuntimeVoiceOrchestratorConfig = {
+  instructions: string;
+  tools: RuntimeVoiceToolMetadata[];
+  history?: RuntimeVoiceHistoryItem[];
+};
+
+export type RuntimeVoiceToolCallPayload = {
+  requestId: string;
+  conversationId: string;
+  callId: string;
+  name: string;
+  args: Record<string, unknown>;
+};
+
+export type RuntimeVoiceToolCallResult = {
+  output: string;
+  details?: unknown;
+  fileChanges?: FileChangeRecord[];
+  producedFiles?: ProducedFileRecord[];
+  error?: string;
 };
 
 export type RuntimeVoiceActionCompletedPayload = {

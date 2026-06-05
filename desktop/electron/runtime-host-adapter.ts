@@ -13,6 +13,8 @@ import type {
   RuntimeSocialSessionStatus,
   RuntimeVoiceActionCompletedPayload,
   RuntimeVoiceChatPayload,
+  RuntimeVoiceOrchestratorConfigRequest,
+  RuntimeVoiceToolCallPayload,
   SelfModFeatureSummary,
   StellaReleaseArtifactRef,
   StoreReleaseGitArtifact,
@@ -706,6 +708,7 @@ export class RuntimeHostAdapter {
     role: "user" | "assistant";
     text: string;
     uiVisibility?: "visible" | "hidden";
+    voiceSession?: { durationMs: number };
   }) {
     return this.host.persistVoiceTranscript(args);
   }
@@ -848,6 +851,14 @@ export class RuntimeHostAdapter {
       unsubscribe();
       throw error;
     }
+  }
+
+  getVoiceOrchestratorConfig(payload: RuntimeVoiceOrchestratorConfigRequest) {
+    return this.host.voiceOrchestratorConfig(payload);
+  }
+
+  executeVoiceTool(payload: RuntimeVoiceToolCallPayload) {
+    return this.host.voiceExecuteTool(payload);
   }
 
   webSearch(query: string, options?: { category?: string }) {
