@@ -17,6 +17,13 @@ import {
   loadLocalPreferences,
   saveLocalPreferences,
 } from "../preferences/local-preferences.js";
+import {
+  computeStateDiff,
+  formatStateDiffBlock,
+  shouldUseDiffOnly,
+  type StateDiff,
+  type StateDiffTarget,
+} from "./stella-computer-state-diff.js";
 
 type Rect = {
   x: number;
@@ -99,6 +106,17 @@ type ActionPayload = {
   screenshot?: Screenshot | null;
   appInstructions?: string | null;
   snapshotText?: string | null;
+  settle?: AutomationSettle | null;
+};
+
+type AutomationSettle = {
+  observed: boolean;
+  quietMs: number;
+  waitedMs: number;
+  eventCount: number;
+  timedOut: boolean;
+  reason?: string | null;
+  lastEventAt?: string | null;
 };
 
 type ListedAppPayload = {
@@ -1359,33 +1377,77 @@ const formatBundleSpecificStateNote = (snapshot: SnapshotDocument) => {
   );
 };
 
-const formatAppStateBlock = (snapshot: SnapshotDocument) => {
-  process.stdout.write("<app_state>\n");
+const appStateLines = (snapshot: SnapshotDocument) => {
+  const lines: string[] = ["<app_state>"];
   const appLabel = snapshot.bundleId
     ? `App=${snapshot.bundleId} (pid ${snapshot.pid})`
     : `App=${snapshot.appName} (pid ${snapshot.pid})`;
-  process.stdout.write(`${appLabel}\n`);
+  lines.push(appLabel);
   if (snapshot.windowTitle) {
-    process.stdout.write(`Window: "${snapshot.windowTitle}", App: ${snapshot.appName}.\n`);
+    lines.push(`Window: "${snapshot.windowTitle}", App: ${snapshot.appName}.`);
   }
   for (const node of snapshot.nodes) {
-    process.stdout.write(`${formatNodeLines(node).join("\n")}\n`);
+    lines.push(...formatNodeLines(node));
   }
   if (snapshot.selectedText) {
-    process.stdout.write(`\nSelected text: [${snapshot.selectedText}]\n`);
+    lines.push("", `Selected text: [${snapshot.selectedText}]`);
   } else if (snapshot.focusedSummary) {
-    process.stdout.write(`\nThe focused UI element is ${snapshot.focusedSummary}.\n`);
+    lines.push("", `The focused UI element is ${snapshot.focusedSummary}.`);
   } else {
     const focused = findFocusedElement(snapshot.nodes);
     if (focused) {
-      process.stdout.write(`\nThe focused UI element is ${focused.index} ${focused.role}.\n`);
+      lines.push("", `The focused UI element is ${focused.index} ${focused.role}.`);
     }
   }
   const bundleNote = formatBundleSpecificStateNote(snapshot);
   if (bundleNote) {
-    process.stdout.write(`\n${bundleNote}\n`);
+    lines.push("", bundleNote);
   }
-  process.stdout.write("</app_state>\n");
+  lines.push("</app_state>");
+  return lines;
+};
+
+const formatAppStateBlock = (snapshot: SnapshotDocument) => {
+  process.stdout.write(`${appStateLines(snapshot).join("\n")}\n`);
+};
+
+const diffTargetFromSnapshot = (
+  snapshot: SnapshotDocument,
+  lineCount: number,
+): StateDiffTarget => ({
+  appName: snapshot.appName,
+  bundleId: snapshot.bundleId ?? null,
+  pid: snapshot.pid,
+  windowTitle: snapshot.windowTitle ?? null,
+  windowId: snapshot.windowId ?? null,
+  capturedAt: snapshot.capturedAt ?? null,
+  nodeCount: snapshot.nodeCount,
+  lineCount,
+});
+
+const snapshotDiff = (
+  previous: SnapshotDocument | null,
+  current: SnapshotDocument,
+): StateDiff => {
+  const previousLines = previous ? appStateLines(previous) : null;
+  const currentLines = appStateLines(current);
+  return computeStateDiff({
+    previousLines,
+    currentLines,
+    previousTarget: previous
+      ? diffTargetFromSnapshot(previous, previousLines?.length ?? 0)
+      : null,
+    currentTarget: diffTargetFromSnapshot(current, currentLines.length),
+  });
+};
+
+const formatActionSettle = (settle?: AutomationSettle | null) => {
+  if (!settle) return;
+  const reason = settle.reason ? ` reason=${settle.reason}` : "";
+  const source = settle.observed ? "AX quiet" : "fixed post-action wait";
+  process.stdout.write(
+    `Action settle: ${source}; waited=${settle.waitedMs}ms quiet=${settle.quietMs}ms events=${settle.eventCount} timed_out=${settle.timedOut ? "true" : "false"}${reason}\n`,
+  );
 };
 
 const formatSnapshot = (snapshot: SnapshotDocument) => {
@@ -1399,13 +1461,25 @@ const formatSnapshot = (snapshot: SnapshotDocument) => {
   printWarnings(snapshot.warnings);
 };
 
-const formatAction = (payload: ActionPayload, snapshot: SnapshotDocument | null) => {
+const formatAction = (
+  payload: ActionPayload,
+  snapshot: SnapshotDocument | null,
+  stateDiff: StateDiff | null,
+) => {
   process.stdout.write(
     payload.message.replace(/\bAX[A-Za-z]+\b/g, (action) => humanActionName(action)),
   );
   process.stdout.write("\n");
+  formatActionSettle(payload.settle);
   if (snapshot) {
-    formatAppStateBlock(snapshot);
+    if (stateDiff && shouldUseDiffOnly(stateDiff)) {
+      process.stdout.write(formatStateDiffBlock(stateDiff));
+    } else {
+      if (stateDiff) {
+        process.stdout.write(formatStateDiffBlock(stateDiff));
+      }
+      formatAppStateBlock(snapshot);
+    }
   }
   process.stdout.write(formatScreenshotMarker(payload.screenshot, payload.screenshotPath));
   printWarnings(payload.warnings);
@@ -2420,6 +2494,8 @@ const runCommand = async (
     effectiveCommand === "snapshot"
       ? getOptionValue(initialHelperArgs.slice(1), "--state") ?? sessionPaths.statePath
       : selectedStatePath;
+  const previousSnapshotForDiff =
+    effectiveCommand !== "list-apps" ? readSnapshotDocument(statePathForCommand) : null;
 
   validateHidAccess(effectiveCommand, initialHelperArgs.slice(1), jsonMode);
   ensureCommandPaths(effectiveCommand, initialHelperArgs.slice(1));
@@ -2501,11 +2577,19 @@ const runCommand = async (
       syncSessionTargetSnapshot(sessionPaths, statePathForCommand);
     }
 
+    const currentSnapshotForDiff =
+      parsed.ok && effectiveCommand !== "list-apps"
+        ? readSnapshotDocument(statePathForCommand) ??
+          (effectiveCommand === "snapshot" ? (parsed as SnapshotDocument) : null)
+        : null;
+    const stateDiff =
+      currentSnapshotForDiff && effectiveCommand !== "list-apps"
+        ? snapshotDiff(previousSnapshotForDiff, currentSnapshotForDiff)
+        : null;
+
     if (jsonMode) {
-      process.stdout.write(result.stdout);
-      if (!result.stdout.endsWith("\n")) {
-        process.stdout.write("\n");
-      }
+      const jsonPayload = stateDiff ? { ...parsed, stateDiff } : parsed;
+      process.stdout.write(`${JSON.stringify(jsonPayload, null, 2)}\n`);
       return result.status === 0 ? 0 : 1;
     }
 
@@ -2517,9 +2601,15 @@ const runCommand = async (
     if (effectiveCommand === "list-apps") {
       formatListApps(parsed as ListAppsPayload);
     } else if (effectiveCommand === "snapshot") {
-      formatSnapshot(readSnapshotDocument(statePathForCommand) ?? parsed as SnapshotDocument);
+      formatSnapshot(
+        readSnapshotDocument(statePathForCommand) ?? (parsed as SnapshotDocument),
+      );
     } else {
-      formatAction(parsed as ActionPayload, readSnapshotDocument(statePathForCommand));
+      formatAction(
+        parsed as ActionPayload,
+        currentSnapshotForDiff,
+        stateDiff,
+      );
     }
 
     return 0;

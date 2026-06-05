@@ -7,6 +7,13 @@ import path from "node:path";
 import { resolveNativeHelperPath } from "./native-helper.js";
 import { resolveStatePath } from "./shared.js";
 import { sanitizeStellaComputerSessionId } from "../tools/stella-computer-session.js";
+import {
+  computeStateDiff,
+  formatStateDiffBlock,
+  shouldUseDiffOnly,
+  type StateDiff,
+  type StateDiffTarget,
+} from "./stella-computer-state-diff.js";
 
 type WinFrame = {
   x: number;
@@ -90,6 +97,14 @@ type WinHelperResponse = {
     session?: string;
     reason?: string;
     dispatch?: string;
+    settle?: {
+      observed?: boolean;
+      quietMs?: number;
+      waitedMs?: number;
+      eventCount?: number;
+      timedOut?: boolean;
+      reason?: string | null;
+    };
   };
   windows?: WinWindowRecord[];
 };
@@ -676,39 +691,94 @@ const formatScreenshotMarker = (
   return `[stella-attach-image]${dims}${sizeKb} inline=image/png ${path}\n`;
 };
 
+const winSnapshotLines = (snapshot: WinSnapshot) => {
+  const lines: string[] = ["<app_state>"];
+  const appRef = snapshot.app.bundleIdentifier || snapshot.app.name;
+  lines.push(`App=${appRef} (pid ${snapshot.app.pid})`);
+  const title = snapshot.windowTitle || snapshot.app.name;
+  lines.push(`Window: "${title}", App: ${snapshot.app.name}.`);
+  if (snapshot.capture?.method) {
+    const warning = snapshot.capture.warning
+      ? ` (${snapshot.capture.warning})`
+      : "";
+    lines.push(`Screenshot capture: ${snapshot.capture.method}${warning}`);
+  }
+  for (const warning of snapshot.warnings ?? []) {
+    lines.push(`Warning: ${warning}`);
+  }
+  for (const line of snapshot.treeLines ?? []) {
+    lines.push(line);
+  }
+  if (snapshot.selectedText) {
+    lines.push("", `Selected text: [${snapshot.selectedText}]`);
+  } else if (snapshot.focusedSummary) {
+    lines.push("", `The focused UI element is ${snapshot.focusedSummary}.`);
+  }
+  lines.push("</app_state>");
+  return lines;
+};
+
+const winDiffTargetFromSnapshot = (
+  snapshot: WinSnapshot,
+  lineCount: number,
+): StateDiffTarget => ({
+  appName: snapshot.app.name,
+  bundleId: snapshot.app.bundleIdentifier ?? null,
+  pid: snapshot.app.pid,
+  windowTitle: snapshot.windowTitle ?? null,
+  windowId: snapshot.windowId ?? null,
+  capturedAt: null,
+  nodeCount: snapshot.elements?.length ?? snapshot.treeLines?.length ?? null,
+  lineCount,
+});
+
+const winSnapshotDiff = (
+  previous: WinSnapshot | null,
+  current: WinSnapshot,
+): StateDiff => {
+  const previousLines = previous ? winSnapshotLines(previous) : null;
+  const currentLines = winSnapshotLines(current);
+  return computeStateDiff({
+    previousLines,
+    currentLines,
+    previousTarget: previous
+      ? winDiffTargetFromSnapshot(previous, previousLines?.length ?? 0)
+      : null,
+    currentTarget: winDiffTargetFromSnapshot(current, currentLines.length),
+  });
+};
+
 const formatSnapshot = (
   sessionId: string,
   app: string,
   snapshot: WinSnapshot,
 ) => {
-  process.stdout.write("<app_state>\n");
-  const appRef = snapshot.app.bundleIdentifier || snapshot.app.name;
-  process.stdout.write(`App=${appRef} (pid ${snapshot.app.pid})\n`);
-  const title = snapshot.windowTitle || snapshot.app.name;
-  process.stdout.write(`Window: "${title}", App: ${snapshot.app.name}.\n`);
-  if (snapshot.capture?.method) {
-    const warning = snapshot.capture.warning
-      ? ` (${snapshot.capture.warning})`
-      : "";
-    process.stdout.write(
-      `Screenshot capture: ${snapshot.capture.method}${warning}\n`,
-    );
-  }
-  for (const warning of snapshot.warnings ?? []) {
-    process.stdout.write(`Warning: ${warning}\n`);
-  }
-  for (const line of snapshot.treeLines ?? []) {
-    process.stdout.write(`${line}\n`);
-  }
-  if (snapshot.selectedText) {
-    process.stdout.write(`\nSelected text: [${snapshot.selectedText}]\n`);
-  } else if (snapshot.focusedSummary) {
-    process.stdout.write(
-      `\nThe focused UI element is ${snapshot.focusedSummary}.\n`,
-    );
-  }
-  process.stdout.write("</app_state>\n");
+  process.stdout.write(`${winSnapshotLines(snapshot).join("\n")}\n`);
   process.stdout.write(formatScreenshotMarker(sessionId, app, snapshot));
+};
+
+const formatActionReceipt = (
+  receipt: WinHelperResponse["receipt"] | undefined,
+  fallbackDispatch: string | undefined,
+) => {
+  if (!receipt) return;
+  process.stdout.write(
+    `Action receipt: route=${receipt.route ?? "unknown"} dispatch=${
+      receipt.dispatch ?? fallbackDispatch ?? "background"
+    } background_safe=${
+      receipt.background_safe === true ? "true" : "false"
+    } cursor_moved=${receipt.cursor_moved === true ? "true" : "false"} foreground_changed=${
+      receipt.foreground_changed === true ? "true" : "false"
+    }\n`,
+  );
+  if (receipt.settle) {
+    const settle = receipt.settle;
+    const source = settle.observed ? "UIA quiet" : "fixed post-action wait";
+    const reason = settle.reason ? ` reason=${settle.reason}` : "";
+    process.stdout.write(
+      `Action settle: ${source}; waited=${settle.waitedMs ?? 0}ms quiet=${settle.quietMs ?? 0}ms events=${settle.eventCount ?? 0} timed_out=${settle.timedOut === true ? "true" : "false"}${reason}\n`,
+    );
+  }
 };
 
 const emitJson = (value: unknown) => {
@@ -742,6 +812,7 @@ const runSnapshot = async (
   jsonMode: boolean,
   windowId?: number,
 ) => {
+  const previous = readSnapshot(sessionId, app);
   const response = await runWindowsHelper(sessionId, {
     tool: "get_app_state",
     app,
@@ -752,9 +823,10 @@ const runSnapshot = async (
       response.error || "Windows runtime did not return an app snapshot.",
     );
   }
+  const stateDiff = winSnapshotDiff(previous, response.snapshot);
   rememberSnapshot(sessionId, app, response.snapshot);
   if (jsonMode) {
-    emitJson(response.snapshot);
+    emitJson({ ...response.snapshot, stateDiff });
   } else {
     formatSnapshot(sessionId, app, response.snapshot);
   }
@@ -766,32 +838,31 @@ const runAction = async (
   request: WinHelperRequest,
   jsonMode: boolean,
 ) => {
+  const previous = readSnapshot(sessionId, app);
   const response = await runWindowsHelper(sessionId, request);
   if (!response.ok || !response.snapshot) {
     throw new Error(
       response.error || "Windows runtime did not return an app snapshot.",
     );
   }
+  const stateDiff = winSnapshotDiff(previous, response.snapshot);
   rememberSnapshot(sessionId, app, response.snapshot);
   if (jsonMode) {
     emitJson({
       receipt: response.receipt ?? null,
       snapshot: response.snapshot,
+      stateDiff,
     });
   } else {
-    if (response.receipt) {
-      process.stdout.write(
-        `Action receipt: route=${response.receipt.route ?? "unknown"} dispatch=${
-          response.receipt.dispatch ?? request.dispatch ?? "background"
-        } background_safe=${
-          response.receipt.background_safe === true ? "true" : "false"
-        } cursor_moved=${response.receipt.cursor_moved === true ? "true" : "false"} foreground_changed=${
-          response.receipt.foreground_changed === true ? "true" : "false"
-        }\n`,
-      );
-    }
+    formatActionReceipt(response.receipt, request.dispatch);
     process.stdout.write(`${request.tool} completed.\n`);
-    formatSnapshot(sessionId, app, response.snapshot);
+    if (shouldUseDiffOnly(stateDiff)) {
+      process.stdout.write(formatStateDiffBlock(stateDiff));
+      process.stdout.write(formatScreenshotMarker(sessionId, app, response.snapshot));
+    } else {
+      process.stdout.write(formatStateDiffBlock(stateDiff));
+      formatSnapshot(sessionId, app, response.snapshot);
+    }
   }
 };
 

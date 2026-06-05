@@ -324,6 +324,8 @@ struct Snapshot {
     bool captureOccluded = false;
 };
 
+static const int postActionSettleMs = 120;
+
 static bool envFlag(const char* name) {
     char buffer[32] = {};
     DWORD len = GetEnvironmentVariableA(name, buffer, sizeof(buffer));
@@ -1894,7 +1896,7 @@ static ActionProbe captureProbe() {
     return probe;
 }
 
-static std::string receiptJson(const ActionProbe& before, const std::string& route, const std::string& dispatch) {
+static std::string receiptJson(const ActionProbe& before, const std::string& route, const std::string& dispatch, int settleMs) {
     POINT after = {};
     bool afterKnown = !!GetCursorPos(&after);
     bool cursorMoved = !before.cursorKnown || !afterKnown || before.cursor.x != after.x || before.cursor.y != after.y;
@@ -1905,7 +1907,9 @@ static std::string receiptJson(const ActionProbe& before, const std::string& rou
         << ",\"lane\":\"same_session\",\"background_safe\":" << ((!cursorMoved && !foregroundChanged) ? "true" : "false")
         << ",\"cursor_moved\":" << (cursorMoved ? "true" : "false")
         << ",\"foreground_changed\":" << (foregroundChanged ? "true" : "false")
-        << ",\"session\":\"parent\"}";
+        << ",\"session\":\"parent\""
+        << ",\"settle\":{\"observed\":false,\"quietMs\":0,\"waitedMs\":" << settleMs
+        << ",\"eventCount\":0,\"timedOut\":false,\"reason\":\"fixed-post-action-delay\"}}";
     return out.str();
 }
 
@@ -2377,9 +2381,9 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
         throw std::runtime_error("unsupportedTool(\"" + tool + "\")");
     }
 
-    Sleep(120);
+    Sleep(postActionSettleMs);
     Snapshot refreshed = buildSnapshot(uia, app, hwndValue(process.hwnd));
-    std::string response = "{\"ok\":true,\"receipt\":" + receiptJson(probe, route, dispatch) + ",\"snapshot\":" + snapshotJson(refreshed) + "}";
+    std::string response = "{\"ok\":true,\"receipt\":" + receiptJson(probe, route, dispatch, postActionSettleMs) + ",\"snapshot\":" + snapshotJson(refreshed) + "}";
     safeRelease(element);
     safeRelease(root);
     return response;
