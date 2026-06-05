@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: Read, create, edit, or review PDF files when text extraction, visual rendering, layout fidelity, forms, page operations, or final PDF quality checks matter. Use for PDF inspection, conversion, generation, page rendering, annotation review, and polished PDF deliverables.
+description: Read, create, edit, or review PDF files when text extraction, visual rendering, layout fidelity, forms, page operations, OCR of scanned documents, or final PDF quality checks matter. Use for PDF inspection, conversion, generation, page rendering, annotation review, scanned-document OCR, and polished PDF deliverables.
 ---
 
 # PDF
@@ -57,6 +57,17 @@ with open("output.pdf", "wb") as f:
     writer.write(f)
 PY
 ```
+
+## Scanned PDFs and OCR
+
+`pdfplumber`/`pypdf` only read embedded text. On a scanned PDF (pages are images) they return empty or garbage — that's the signal you need OCR. Reach for `marker-pdf` when the PDF is scanned, contains equations or forms, or has a complex multi-column layout that needs reading-order detection.
+
+```bash
+python3 -m pip install marker-pdf
+marker_single input.pdf --output_dir tmp/pdfs/ocr     # Markdown output (OCR if needed)
+```
+
+`marker-pdf` is heavy: it pulls in PyTorch (~3-5GB) and downloads ~2.5GB of models to `~/.cache/huggingface/` on first run. Before installing, check there's enough free disk. If there isn't, tell the user plainly and offer alternatives: free up space, or fall back to `pdfplumber` (which works for text-based PDFs but not scans or equations).
 
 ## Dependencies
 
