@@ -33,7 +33,7 @@
   border: none;
   padding: 10px 12px;
   font-family: inherit;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   color: var(--text-strong);
   border-radius: 10px;

@@ -47,7 +47,7 @@
   font-size: 14px;
   font-weight: 650;
   letter-spacing: 0;
-  cursor: pointer;
+  cursor: default;
   transition:
     background-color 160ms ease,
     border-color 160ms ease,

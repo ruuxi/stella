@@ -473,12 +473,9 @@ html[data-stella-window="mini"] #stella-mini-boot {
     scroll-behavior: auto !important;
     transition-duration: 0.001ms !important;
   }
-  /* Tailwind v4 preflight resets `button { cursor: default }` to mimic the
-   * native macOS convention. We want pointer affordance on real buttons
-   * across the app - settings, onboarding, dialogs, etc. - so put it back. */
-  button:not(:disabled) {
-    cursor: pointer;
-  }
+  /* Follow the native macOS convention: hovering interactive elements shows
+   * the arrow, never the pointing-hand. Tailwind v4 preflight already resets
+   * `button { cursor: default }`, so we deliberately don't override it. */
 }
 
 /* Transparent backgrounds for gradient to show through */

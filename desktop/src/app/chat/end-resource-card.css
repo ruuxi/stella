@@ -38,7 +38,7 @@
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   transition: transform 60ms ease;
 }
 
@@ -119,7 +119,7 @@
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--text-base) 35%, transparent);
   text-underline-offset: 3px;
-  cursor: pointer;
+  cursor: default;
   max-width: 100%;
 }
 

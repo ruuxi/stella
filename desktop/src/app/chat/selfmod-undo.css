@@ -10,7 +10,7 @@
   border: 1px solid var(--border-base);
   background: var(--surface-raised);
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   transition:
     background 150ms,
     color 150ms;

@@ -325,7 +325,7 @@ html[data-stella-window="pet"] #root {
   background: var(--button-secondary-base);
   color: var(--text-base);
   box-shadow: var(--shadow-sm);
-  cursor: pointer;
+  cursor: default;
   /* Hidden by default so the resting pet is just the sprite. */
   opacity: 0;
   pointer-events: none;
@@ -421,7 +421,7 @@ html[data-stella-window="pet"] #root {
   background: transparent;
   border: none;
   color: inherit;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   font-size: 12px;
   font-family: inherit;

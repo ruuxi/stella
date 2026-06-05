@@ -121,7 +121,7 @@
 }
 
 .wedge-path {
-  cursor: pointer;
+  cursor: default;
 }
 
 .radial-wedge-content {
@@ -189,7 +189,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  cursor: pointer;
+  cursor: default;
 }
 
 .dictation-overlay .composer-dictation-waveform {

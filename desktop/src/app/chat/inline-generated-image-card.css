@@ -157,7 +157,7 @@
   border-radius: 16px;
   background: color-mix(in srgb, var(--card) 20%, transparent);
   overflow: hidden;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   transition:
     border-color 140ms ease,

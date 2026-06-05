@@ -204,7 +204,7 @@
   padding: 6px 4px 0;
   border: none;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   transition: opacity 0.2s ease;
 }
 

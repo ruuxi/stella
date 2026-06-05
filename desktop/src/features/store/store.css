@@ -92,7 +92,7 @@
 }
 
 .store-card[data-clickable="true"] {
-  cursor: pointer;
+  cursor: default;
 }
 
 /* --- Card Body --- */
@@ -240,7 +240,7 @@
     transparent
   );
   color: var(--interactive, var(--primary, oklch(0.62 0.18 250)));
-  cursor: pointer;
+  cursor: default;
   transition:
     opacity 0.15s ease,
     background 0.2s ease,
@@ -268,7 +268,7 @@
   padding: 8px 10px;
   border-radius: 10px;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   transition: background 120ms ease;
   outline: none;
 }
@@ -385,7 +385,7 @@
   border: none;
   background: transparent;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
   display: inline-flex;
   align-items: center;
   justify-content: center;

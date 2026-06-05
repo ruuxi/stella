@@ -1763,7 +1763,7 @@
     font-weight: 650;
     color: var(--text-strong);
     opacity: 0.95;
-    cursor: pointer;
+    cursor: default;
     user-select: none;
     z-index: 30;
     box-shadow:

@@ -42,7 +42,7 @@
   font-size: 13px;
   line-height: 1.25;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .assistant-reply-peek__body:hover {
@@ -67,7 +67,7 @@
   border-left: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
   background: transparent;
   color: var(--text-weak);
-  cursor: pointer;
+  cursor: default;
 }
 
 .assistant-reply-peek__dismiss:hover {
