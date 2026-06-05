@@ -638,7 +638,7 @@
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1.55;
   letter-spacing: -0.01em;
 }

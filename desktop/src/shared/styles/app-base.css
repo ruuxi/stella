@@ -22,7 +22,7 @@
   color: var(--foreground);
   font-family: var(--font-family-sans);
   font-feature-settings: var(--font-family-sans--font-feature-settings, normal);
-  font-weight: var(--font-family-sans--default-weight, 400);
+  font-weight: var(--font-family-sans--default-weight, 500);
   font-size: clamp(1rem, 1.4vw, 1.4rem);
   line-height: 1.45;
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);

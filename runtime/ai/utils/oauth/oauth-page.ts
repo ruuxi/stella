@@ -84,7 +84,7 @@ function renderPage(options: {
     h1 {
       font-family: "Cormorant Garamond", Georgia, serif;
       font-size: 22px;
-      font-weight: 400;
+      font-weight: 500;
       letter-spacing: -0.02em;
       line-height: 1.2;
       color: #1d1d1f;

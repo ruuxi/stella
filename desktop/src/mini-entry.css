@@ -14,7 +14,7 @@ html[data-stella-window="mini"] #root {
   color: var(--foreground);
   font-family: var(--font-family-sans);
   font-feature-settings: var(--font-family-sans--font-feature-settings, normal);
-  font-weight: var(--font-family-sans--default-weight, 400);
+  font-weight: var(--font-family-sans--default-weight, 500);
   letter-spacing: var(--font-family-sans--default-letter-spacing, 0);
 }
 

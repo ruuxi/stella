@@ -17,7 +17,7 @@
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 11px;
-  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1;
 }
