@@ -177,6 +177,7 @@ export class MouseHookManager {
   private started = false;
   private uiohookListenersAttached = false;
   private uiohookStarted = false;
+  private mousemoveListenerAttached = false;
   private pressedKeycodes = new Set<number>();
   private radialActive = false;
   private radialTriggerKey: RadialTriggerCode;
@@ -296,6 +297,7 @@ export class MouseHookManager {
     if (hadActiveRadial) {
       this.events.onRadialHide();
       this.radialActive = false;
+      this.detachMousemove();
     }
   }
 
@@ -305,7 +307,13 @@ export class MouseHookManager {
 
     uIOhook.on("keydown", this.handleKeydown);
     uIOhook.on("keyup", this.handleKeyup);
-    uIOhook.on("mousemove", this.handleMousemove);
+    // `mousemove` is intentionally NOT attached here. It is the only event
+    // that fires continuously during normal use, and the radial is its sole
+    // consumer (only while the dial is open). Subscribing for the whole
+    // session means every global mouse-move crosses the native→JS boundary
+    // onto the main thread for a handler that no-ops 99% of the time — and on
+    // Windows the WH_MOUSE_LL hook makes any main-thread stall delay system-
+    // wide input. Attach only while the radial is active (see attachMousemove).
     uIOhook.on("mousedown", this.handleMousedown);
     if (this.events.onLeftMouseUp) {
       uIOhook.on("mouseup", this.handleMouseup);
@@ -317,9 +325,22 @@ export class MouseHookManager {
     this.uiohookListenersAttached = false;
     uIOhook.off("keydown", this.handleKeydown);
     uIOhook.off("keyup", this.handleKeyup);
-    uIOhook.off("mousemove", this.handleMousemove);
+    this.detachMousemove();
     uIOhook.off("mousedown", this.handleMousedown);
     uIOhook.off("mouseup", this.handleMouseup);
+  }
+
+  /** Subscribe to global mouse-move events — only while the radial is open. */
+  private attachMousemove() {
+    if (this.mousemoveListenerAttached) return;
+    this.mousemoveListenerAttached = true;
+    uIOhook.on("mousemove", this.handleMousemove);
+  }
+
+  private detachMousemove() {
+    if (!this.mousemoveListenerAttached) return;
+    this.mousemoveListenerAttached = false;
+    uIOhook.off("mousemove", this.handleMousemove);
   }
 
   private readonly handleKeydown = (event: UiohookKeyboardEvent) => {
@@ -391,6 +412,7 @@ export class MouseHookManager {
     // from incomplete → complete. Holding any extra keys does not retrigger.
     if (radialTriggerPressed && !this.radialActive) {
       this.radialActive = true;
+      this.attachMousemove();
       this.events.onRadialShow();
     }
 
@@ -442,6 +464,7 @@ export class MouseHookManager {
       this.events.onTriggerUp();
       this.events.onRadialHide();
       this.radialActive = false;
+      this.detachMousemove();
     }
 
     if (!this.doubleTapDetector) return;
