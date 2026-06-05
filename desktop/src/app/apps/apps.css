@@ -163,7 +163,7 @@
   color: var(--foreground);
   font: inherit;
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: -0.01em;
   cursor: default;
   transition:
@@ -254,7 +254,7 @@
 .apps-card__label {
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: 22px;
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1.1;
   letter-spacing: -0.02em;
   /* Truncate gracefully on narrow cards. */

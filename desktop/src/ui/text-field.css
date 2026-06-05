@@ -7,7 +7,7 @@
   color: var(--foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 14px;
-  font-weight: var(--font-family-sans--default-weight, 400);
+  font-weight: var(--font-family-sans--default-weight, 500);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.43;
 }
@@ -31,7 +31,7 @@
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
 }
@@ -82,7 +82,7 @@
   color: var(--destructive);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--emphasis-weight, 500);
+  font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
 }
@@ -92,7 +92,7 @@
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 12px;
-  font-weight: var(--font-family-sans--default-weight, 400);
+  font-weight: var(--font-family-sans--default-weight, 500);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
 }

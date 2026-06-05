@@ -46,7 +46,7 @@
 .social-sidebar-title {
   font-family: var(--social-serif);
   font-size: 1.5rem;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
@@ -371,7 +371,7 @@
 .social-chat-header-name {
   font-family: var(--social-serif);
   font-size: 1.3rem;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
@@ -983,7 +983,7 @@
 .social-empty-title {
   font-family: var(--social-serif);
   font-size: 1.6rem;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
@@ -1047,7 +1047,7 @@
   box-shadow: none;
   font-family: inherit;
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 500;
   cursor: default;
   transition:
     background 0.15s ease,

@@ -33,7 +33,7 @@
   padding: 10px 0 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.55;
   color: var(--text-base);
@@ -479,7 +479,7 @@
   padding: 12px 16px;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-strong);
   background: color-mix(in srgb, var(--background) 60%, transparent);
   border: 1px solid var(--border-weak);
@@ -545,7 +545,7 @@
 .connect-pair-sub {
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.55;
   color: var(--text-base);
@@ -588,7 +588,7 @@
 .connect-pair-timer {
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--text-weak);
 }
