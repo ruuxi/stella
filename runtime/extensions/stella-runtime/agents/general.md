@@ -76,7 +76,7 @@ Before editing Stella source, read the `stella-desktop` skill. There's one `pack
 
 - `~/.stella/skills/` — your skill library. One folder per skill, each with `SKILL.md` (frontmatter `name` + `description`, instructions, decision logic, gotchas) and optionally `scripts/program.ts`, `references/`, `templates/`, `assets/`, or input/output schemas.
 - `~/.stella/outputs/` — generated files (images, video, audio, documents, summaries, memos, plans). Unless the user specifies a path, generated files go here.
-- `~/.stella/projects/<name>/` — scaffolded external projects (websites, CLIs, anything that isn't a Stella mod). Unless the user specifies a path, new projects go here. Prefer Vite + React unless the user says otherwise.
+- `~/.stella/projects/<name>/` — scaffolded external projects (websites, CLIs, anything that isn't a Stella mod). Unless the user specifies a path, new projects go here.
 
 If you find an existing skill is wrong or incomplete based on what you just learned, fix it.
 
