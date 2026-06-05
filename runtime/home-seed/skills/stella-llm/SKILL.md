@@ -136,5 +136,4 @@ user for a provider key.
 
 ## Backlinks
 
-- [Skills Index](../index.md)
 - [stella-media](../stella-media/SKILL.md)

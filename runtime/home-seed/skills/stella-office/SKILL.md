@@ -356,7 +356,3 @@ stella-office pptx help
 - `--index` is **0-based**: `--index 0` means the first position
 - After modifications, verify with `validate` and/or `view issues`
 - When unsure, run `stella-office <format> <command> [element[.property]]` instead of guessing
-
-## Backlinks
-
-- [Skills Index](../index.md)

@@ -34,6 +34,7 @@ import { resolveLlmRoute } from "../model-routing.js";
 import { resolveAgent } from "../runner/context.js";
 import { createRunnerSiteConfig } from "../runner/model-selection.js";
 import { getExploreModel } from "../preferences/local-preferences.js";
+import { renderFullSkillCatalogBlock } from "../shared/skill-catalog.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RunnerContext } from "../runner/types.js";
 import {
@@ -252,6 +253,20 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
       error: error instanceof Error ? error.message : String(error),
     });
     return FALLBACK_FINDINGS;
+  }
+
+  // Explore's whole job is skill selection, so it always gets the full catalog
+  // inline (not the placeholder) — that's why it can pick from the list instead
+  // of grepping the skills tree to rediscover what already has a description.
+  try {
+    const catalogBlock = await renderFullSkillCatalogBlock(context.stellaHome);
+    if (catalogBlock.trim()) {
+      exploreSystemPrompt = `${exploreSystemPrompt}\n\n${catalogBlock}`;
+    }
+  } catch (error) {
+    logger.debug("explore.skill-catalog.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   const modelName = getExploreModel(context.stellaHome);

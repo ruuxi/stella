@@ -12,7 +12,7 @@ Run this protocol periodically or on demand to review skill health and prune sta
 
 ### 1. Orient
 
-Read the full skill layer: `skills/index.md`, every `skills/<name>/SKILL.md`. Skim `memories/MEMORY.md` for recent task patterns that may indicate drift. Form hypotheses about what feels stale or missing. No searching yet.
+Read the full skill layer: every `skills/<name>/SKILL.md`. Skim `memories/MEMORY.md` for recent task patterns that may indicate drift. Form hypotheses about what feels stale or missing. No searching yet.
 
 ### 2. Signal
 
@@ -39,18 +39,15 @@ Evaluate the health and relevance of saved skills:
 - **Demote brittle programs.** If a skill's `scripts/program.ts` keeps failing while the `SKILL.md` instructions still work, consider deleting the program and falling back to instruction-only.
 - **Promote stable patterns.** If a skill has been re-derived from `SKILL.md` reliably across multiple sessions, freeze a `scripts/program.ts` so future runs skip the re-derivation cost. Future agents should run it as a plain shell entrypoint when the skill instructs them to do so.
 
-### 5. Prune and Index
+### 5. Prune
 
-Tighten memory for the next cold start:
+Tighten the skill layer for the next cold start:
 
-- Remove stale entries from `skills/index.md`
-- Add references to newly important skills
 - Delete skill folders that are unused or derivable in seconds from live sources
-- Verify the index matches actual folders on disk
 
 ## Boundaries
 
-- This protocol touches `skills/` and `skills/index.md`
+- This protocol touches `skills/`
 - Never modify `memories/` — that's owned by the background Dream agent
 - Never modify `raw/` — it is an immutable record
 - Never touch project code, tests, or config

@@ -4,7 +4,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  INLINE_SKILL_CATALOG_THRESHOLD,
   buildSkillCatalogPromptState,
+  renderFullSkillCatalogBlock,
   renderSkillCatalogBlock,
 } from "../../../../../runtime/kernel/shared/skill-catalog.js";
 
@@ -65,5 +67,31 @@ describe("skill catalog", () => {
     expect(block).toContain("`create-stella-app`");
     expect(block).not.toContain("stella-browser");
     expect(block).not.toContain("pdf");
+  });
+
+  it("renders every skill inline above the threshold for Explore", async () => {
+    const stellaRoot = await createStellaRoot();
+    const count = INLINE_SKILL_CATALOG_THRESHOLD + 5;
+    for (let i = 0; i < count; i += 1) {
+      await writeSkill(
+        stellaRoot,
+        `skill-${String(i).padStart(3, "0")}`,
+        `Does thing ${i}.`,
+      );
+    }
+
+    // The budget-aware renderer degrades to a placeholder above the threshold.
+    const placeholder = await renderSkillCatalogBlock(stellaRoot);
+    expect(placeholder).toContain("over the inline limit");
+
+    // Explore's renderer always inlines every entry instead.
+    const full = await renderFullSkillCatalogBlock(stellaRoot);
+    expect(full).not.toContain("over the inline limit");
+    expect(full).toContain("`skill-000`");
+    expect(full).toContain(`\`skill-${String(count - 1).padStart(3, "0")}\``);
+    const entryLines = full
+      .split("\n")
+      .filter((line) => line.startsWith("- `skill-"));
+    expect(entryLines).toHaveLength(count);
   });
 });
