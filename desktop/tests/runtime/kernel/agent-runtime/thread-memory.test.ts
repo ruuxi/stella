@@ -124,7 +124,7 @@ describe("buildStartupPromptMessages", () => {
 
     expect(messages).toHaveLength(2);
     expect(messages[0]?.customType).toBe("bootstrap.startup_doc");
-    expect(messages[0]?.text).toContain('path="~/.stella/personality.md"');
+    expect(messages[0]?.text).toContain('path="~/.stella/PERSONALITY.md"');
     expect(messages[0]?.text).toContain("Warm and concise.");
     expect(messages[1]?.text).toContain('path="~/.stella/core-memory.md"');
   });

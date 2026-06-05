@@ -12,10 +12,7 @@ const repoRootDir = path.resolve(desktopDir, "..");
 const outdir = "dist-electron";
 const buildOnce = process.argv.includes("--once");
 const nodeTarget = `node${process.versions.node.split(".")[0]}`;
-const runtimeStaticAssetRoots = [
-  "runtime/extensions/stella-runtime/agents",
-  "runtime/extensions/stella-runtime/personality",
-];
+const runtimeStaticAssetRoots = ["runtime/extensions/stella-runtime/agents"];
 const electronRuntimeEntryPoints = [
   "desktop/electron/main.ts",
   "runtime/worker/entry.ts",

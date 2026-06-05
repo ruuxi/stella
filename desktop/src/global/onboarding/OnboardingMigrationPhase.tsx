@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { ThirdPartyMigrationWizard } from "@/global/migration/ThirdPartyMigrationWizard";
+import type { ThirdPartyMigrationReport } from "@/shared/contracts/migration";
 
 type OnboardingMigrationPhaseProps = {
   splitTransitionActive: boolean;
   onContinue: () => void;
+  onImported?: (report: ThirdPartyMigrationReport) => void;
 };
 
 export function OnboardingMigrationPhase({
   splitTransitionActive,
   onContinue,
+  onImported,
 }: OnboardingMigrationPhaseProps) {
   const [imported, setImported] = useState(false);
 
@@ -23,7 +26,10 @@ export function OnboardingMigrationPhase({
         <ThirdPartyMigrationWizard
           hideWhenEmpty
           onEmpty={onContinue}
-          onImported={() => setImported(true)}
+          onImported={(report) => {
+            setImported(true);
+            onImported?.(report);
+          }}
         />
       </div>
 
