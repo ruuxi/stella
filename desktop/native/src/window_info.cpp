@@ -54,6 +54,27 @@ static bool isWindowCloaked(HWND hwnd)
     return SUCCEEDED(result) && cloaked;
 }
 
+static std::string getWindowTitle(HWND hwnd)
+{
+    char title[512] = {};
+    DWORD_PTR copied = 0;
+    LRESULT ok = SendMessageTimeoutA(
+        hwnd,
+        WM_GETTEXT,
+        static_cast<WPARAM>(sizeof(title)),
+        reinterpret_cast<LPARAM>(title),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK,
+        80,
+        &copied
+    );
+    if (!ok || copied == 0)
+    {
+        return "";
+    }
+    title[sizeof(title) - 1] = '\0';
+    return std::string(title);
+}
+
 static void parseExcludePidsArg(const char* arg, std::vector<DWORD>& excluded)
 {
     const char* prefix = "--exclude-pids=";
@@ -234,8 +255,7 @@ static std::string windowInfoJsonAtPoint(POINT pt, const std::vector<DWORD>& exc
         return "null";
     }
 
-    char title[512] = {};
-    GetWindowTextA(hwnd, title, sizeof(title));
+    std::string title = getWindowTitle(hwnd);
 
     RECT rect = {};
     GetWindowRect(hwnd, &rect);
@@ -265,7 +285,7 @@ static std::string windowInfoJsonAtPoint(POINT pt, const std::vector<DWORD>& exc
     int h = rect.bottom - rect.top;
 
     std::string out = "{\"title\":\"";
-    out += escapeJson(title);
+    out += escapeJson(title.c_str());
     out += "\",\"process\":\"";
     out += escapeJson(exeName);
     out += "\",\"pid\":";
@@ -455,8 +475,7 @@ int main(int argc, char* argv[])
     if (root) hwnd = root;
 
     // Title
-    char title[512] = {};
-    GetWindowTextA(hwnd, title, sizeof(title));
+    std::string title = getWindowTitle(hwnd);
 
     // Bounds
     RECT rect = {};
@@ -515,7 +534,7 @@ int main(int argc, char* argv[])
     }
 
     printf("{\"title\":\"%s\",\"process\":\"%s\",\"pid\":%lu,\"bounds\":{\"x\":%ld,\"y\":%ld,\"width\":%d,\"height\":%d},\"moved\":%s}\n",
-           escapeJson(title).c_str(),
+           escapeJson(title.c_str()).c_str(),
            escapeJson(exeName).c_str(),
            pid,
            outputRect.left, outputRect.top, w, h,
