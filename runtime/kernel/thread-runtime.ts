@@ -5,6 +5,7 @@ import type {
 } from "./storage/shared.js";
 import type { RuntimeStore } from "./storage/runtime-store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
+import { AGENT_IDS } from "../contracts/agent-runtime.js";
 
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 const THREAD_COMPACTION_SYSTEM_PROMPT = "Output ONLY the summary content.";
@@ -39,6 +40,7 @@ type StoredThreadMessage = {
   content: string;
   toolCallId?: string;
   payload?: RuntimeThreadMessage["payload"];
+  customMessage?: RuntimeThreadMessage["customMessage"];
 };
 
 type ThreadCheckpoint = {
@@ -594,6 +596,47 @@ export type ThreadCompactionResult = {
   compacted: boolean;
 };
 
+/**
+ * Count the contiguous bootstrap startup docs (personality, core memory) at
+ * the very top of a thread. These are hidden `runtimeInternal` messages
+ * injected once on the first turn and persisted as `bootstrap.*` custom
+ * messages — they must stay pinned at the top across compactions.
+ */
+export const countLeadingBootstrapStartupDocs = (
+  messages: StoredThreadMessage[],
+): number => {
+  let count = 0;
+  for (const message of messages) {
+    const customType = message.customMessage?.customType;
+    if (
+      message.role === "runtimeInternal" &&
+      typeof customType === "string" &&
+      customType.startsWith("bootstrap.")
+    ) {
+      count += 1;
+      continue;
+    }
+    break;
+  }
+  return count;
+};
+
+/**
+ * Head-message protection differs by agent role. Subagents are short-lived
+ * task sessions, so we pin a fixed window of leading messages to keep their
+ * task framing intact. The orchestrator is one long-lived conversation where
+ * the first user turn is just old history — only its bootstrap startup docs
+ * (personality + core memory) stay pinned at the top; everything after them is
+ * fair game for compaction.
+ */
+export const resolveCompactionProtectHeadMessages = (
+  agentType: string,
+  messages: StoredThreadMessage[],
+): number =>
+  agentType === AGENT_IDS.ORCHESTRATOR
+    ? countLeadingBootstrapStartupDocs(messages)
+    : THREAD_COMPACTION_PROTECT_HEAD_MESSAGES;
+
 export const maybeCompactRuntimeThread = async (args: {
   store: RuntimeStore;
   threadKey: string;
@@ -618,7 +661,7 @@ export const maybeCompactRuntimeThread = async (args: {
       : THREAD_COMPACTION_MIN_TAIL_MESSAGES;
   const splitMessages = splitThreadMessagesForCompaction(
     storedMessages,
-    THREAD_COMPACTION_PROTECT_HEAD_MESSAGES,
+    resolveCompactionProtectHeadMessages(args.agentType, storedMessages),
     THREAD_COMPACTION_KEEP_RECENT_TOKENS,
     preserveLastN,
   );

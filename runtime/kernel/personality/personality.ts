@@ -1,12 +1,16 @@
 /**
- * `~/.stella/personality.md` — the dynamic prefix to the orchestrator system
- * prompt. Owns Stella's identity intro and her selected voice.
+ * `~/.stella/personality.md` — Stella's selected voice/register, injected as
+ * a hidden startup doc on the first orchestrator turn (the same path core
+ * memory takes) rather than into the system prompt every turn.
  *
  * Lifecycle:
  * - Seeded on first run from the bundled template + the user's voice
  *   preference (or the default voice if no preference).
  * - Overwritten when the user picks a different voice in onboarding/settings.
- * - Read live on every orchestrator turn and prepended to the system prompt.
+ * - Read into the agent context at turn start; injected as a startup doc on
+ *   the conversation's first turn, then replayed from persisted history.
+ *   A new voice (or hand edit) therefore takes effect on the next fresh
+ *   conversation, not mid-thread.
  *
  * The file is plain markdown so power users can edit it freely. On each
  * read we use whatever is on disk verbatim — never re-compose from the
