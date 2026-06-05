@@ -100,6 +100,10 @@ export const OnboardingStep1 = ({
   const [showMigrationPhase, setShowMigrationPhase] = useState(false);
   const [migrationDetectionResolved, setMigrationDetectionResolved] =
     useState(false);
+  // When a personality is imported from another tool, its file becomes
+  // ~/.stella/PERSONALITY.md. Skip the personality-selection phase so the
+  // onboarding picker doesn't overwrite the imported personality.
+  const [personalityImported, setPersonalityImported] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const probe = async () => {
@@ -142,10 +146,12 @@ export const OnboardingStep1 = ({
     if (!discoveryWelcomeExpected) skipped.add("enter");
     if (!showEnginePhase) skipped.add("engine");
     if (!migrationDetectionResolved || !showMigrationPhase) skipped.add("import");
+    if (personalityImported) skipped.add("personality");
     return skipped.size > 0 ? skipped : undefined;
   }, [
     discoveryWelcomeExpected,
     migrationDetectionResolved,
+    personalityImported,
     showEnginePhase,
     showMigrationPhase,
   ]);
@@ -254,6 +260,16 @@ export const OnboardingStep1 = ({
           <OnboardingMigrationPhase
             splitTransitionActive={leaving}
             onContinue={nextSplitStep}
+            onImported={(report) => {
+              if (
+                report.items.some(
+                  (item) =>
+                    item.kind === "personality" && item.status === "imported",
+                )
+              ) {
+                setPersonalityImported(true);
+              }
+            }}
           />
         );
       case "permissions":
