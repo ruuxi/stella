@@ -3,7 +3,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { synthesizeCoreMemory } from "@/global/onboarding/services/synthesis";
+import {
+  generateWelcomeHtml,
+  synthesizeCoreMemory,
+} from "@/global/onboarding/services/synthesis";
 import { buildOnboardingFirstReport } from "@/global/onboarding/services/first-report";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { showToast } from "@/ui/toast";
@@ -154,6 +157,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           result.formattedSections,
           {
             includeAuth: hasConnectedAccount,
+            includeWelcomeHtml: false,
           },
         );
         if (!synthesisResult.coreMemory) {
@@ -211,13 +215,9 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
 
         if (synthesisResult.welcomeMessage) {
           try {
-            const firstReport = buildOnboardingFirstReport(
-              synthesisResult.welcomeHtml,
-            );
             await window.electronAPI?.localChat.persistDiscoveryWelcome?.({
               conversationId: activeConversationId,
               message: synthesisResult.welcomeMessage,
-              firstReport,
             });
           } catch (error) {
             console.error(
@@ -230,6 +230,30 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         completed = true;
         synthesizedRef.current = true;
         setWelcomeStatus("ready");
+
+        const persistWelcomeHtml = async () => {
+          try {
+            const htmlResult = synthesisResult.welcomeHtml
+              ? { welcomeHtml: synthesisResult.welcomeHtml }
+              : await generateWelcomeHtml(synthesisResult.coreMemory, {
+                  includeAuth: hasConnectedAccount,
+                });
+            const firstReport = buildOnboardingFirstReport(
+              htmlResult.welcomeHtml,
+            );
+            await window.electronAPI?.localChat.persistDiscoveryWelcome?.({
+              conversationId: activeConversationId,
+              message: "",
+              firstReport,
+            });
+          } catch (error) {
+            console.error(
+              "[onboarding-discovery] Failed to persist discovery welcome HTML.",
+              error,
+            );
+          }
+        };
+        void persistWelcomeHtml();
       } catch (error) {
         reportDiscoveryFailure("Discovery failed unexpectedly.", error);
       } finally {

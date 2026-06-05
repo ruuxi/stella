@@ -3,6 +3,8 @@ import type { AuthService } from "../services/auth-service.js";
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
+  OnboardingWelcomeHtmlRequest,
+  OnboardingWelcomeHtmlResponse,
 } from "../../src/shared/contracts/onboarding.js";
 
 type OnboardingHandlersOptions = {
@@ -142,7 +144,36 @@ export const registerOnboardingHandlers = (
         "/api/synthesize",
         {
           formattedSections: payload?.formattedSections ?? {},
+          includeWelcomeHtml: payload?.includeWelcomeHtml,
           ...(payload?.promptConfig ?? {}),
+        },
+        {
+          includeAuth: payload?.includeAuth ?? true,
+        },
+      );
+    },
+  );
+
+  ipcMain.handle(
+    "onboarding:generateWelcomeHtml",
+    async (
+      event,
+      payload: OnboardingWelcomeHtmlRequest,
+    ) => {
+      if (
+        !options.assertPrivilegedSender(event, "onboarding:generateWelcomeHtml")
+      ) {
+        throw new Error(
+          "Blocked untrusted onboarding:generateWelcomeHtml request.",
+        );
+      }
+
+      return await invokeOnboardingJson<OnboardingWelcomeHtmlResponse>(
+        options.authService,
+        options.getDeviceId,
+        "/api/synthesize/welcome-html",
+        {
+          coreMemory: payload?.coreMemory ?? "",
         },
         {
           includeAuth: payload?.includeAuth ?? true,

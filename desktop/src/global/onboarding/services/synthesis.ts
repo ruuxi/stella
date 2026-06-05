@@ -7,12 +7,16 @@
 
 import { getSynthesisPromptConfig } from "@/prompts";
 import type { DiscoveryCategory } from "../../../../../runtime/contracts/discovery.js";
-import type { OnboardingSynthesisResponse } from "@/shared/contracts/onboarding";
+import type {
+  OnboardingSynthesisResponse,
+  OnboardingWelcomeHtmlResponse,
+} from "@/shared/contracts/onboarding";
 
 type SynthesisResult = OnboardingSynthesisResponse;
 
 type SynthesisRequestOptions = {
   includeAuth?: boolean;
+  includeWelcomeHtml?: boolean;
 };
 
 export async function synthesizeCoreMemory(
@@ -29,6 +33,24 @@ export async function synthesizeCoreMemory(
   return await onboardingApi.synthesizeCoreMemory({
     formattedSections: formattedSections as Record<string, string>,
     promptConfig: getSynthesisPromptConfig() as Record<string, unknown>,
+    includeAuth: options.includeAuth ?? true,
+    includeWelcomeHtml: options.includeWelcomeHtml ?? true,
+  });
+}
+
+export async function generateWelcomeHtml(
+  coreMemory: string,
+  options: Pick<SynthesisRequestOptions, "includeAuth"> = {},
+): Promise<OnboardingWelcomeHtmlResponse> {
+  const onboardingApi = window.electronAPI?.onboarding;
+  if (!onboardingApi?.generateWelcomeHtml) {
+    throw new Error(
+      "Onboarding welcome HTML IPC is unavailable in this renderer context.",
+    );
+  }
+
+  return await onboardingApi.generateWelcomeHtml({
+    coreMemory,
     includeAuth: options.includeAuth ?? true,
   });
 }
