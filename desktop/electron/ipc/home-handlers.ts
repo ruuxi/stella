@@ -16,7 +16,7 @@ type HomeHandlersOptions = {
   ) => boolean;
 };
 
-const DEFAULT_LIMIT = 6;
+const DEFAULT_LIMIT = 3;
 
 export const registerHomeHandlers = (options: HomeHandlersOptions) => {
   registerPrivilegedHandle(

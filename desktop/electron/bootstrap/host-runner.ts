@@ -76,7 +76,7 @@ export const createHostRunnerHandlers = (
       },
     ),
   getAppBrowserContext: async () => {
-    const apps = (await listRecentApps(8)) ?? [];
+    const apps = (await listRecentApps(3)) ?? [];
     const activeApp = apps.find((app) => app.isActive && app.bundleId);
     const activeBrowserTab = activeApp?.bundleId
       ? await getActiveBrowserTabForBundleId(activeApp.bundleId)

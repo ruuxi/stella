@@ -13,6 +13,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dwmapi.h>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -45,6 +46,41 @@ static bool isWindowCloaked(HWND hwnd)
     return SUCCEEDED(result) && cloaked;
 }
 
+static const DWORD TITLE_TIMEOUT_MS = 20;
+static const ULONGLONG ENUM_BUDGET_MS = 350;
+static const size_t DEFAULT_REQUEST_LIMIT = 3;
+static const size_t MIN_RAW_ENTRY_LIMIT = 3;
+static const size_t MAX_RAW_ENTRY_LIMIT = 32;
+
+static size_t clampSize(size_t value, size_t minValue, size_t maxValue)
+{
+    if (value < minValue) return minValue;
+    if (value > maxValue) return maxValue;
+    return value;
+}
+
+static size_t parseRequestedLimit(int argc, char* argv[])
+{
+    const char prefix[] = "--limit=";
+    const size_t prefixLen = sizeof(prefix) - 1;
+    for (int i = 1; i < argc; ++i)
+    {
+        const char* arg = argv[i];
+        if (!arg || strncmp(arg, prefix, prefixLen) != 0)
+        {
+            continue;
+        }
+        char* end = nullptr;
+        unsigned long parsed = strtoul(arg + prefixLen, &end, 10);
+        if (end == arg + prefixLen || parsed == 0)
+        {
+            continue;
+        }
+        return clampSize(static_cast<size_t>(parsed), 1, MAX_RAW_ENTRY_LIMIT);
+    }
+    return DEFAULT_REQUEST_LIMIT;
+}
+
 static std::string getWindowTitle(HWND hwnd)
 {
     char title[512] = {};
@@ -55,7 +91,7 @@ static std::string getWindowTitle(HWND hwnd)
         static_cast<WPARAM>(sizeof(title)),
         reinterpret_cast<LPARAM>(title),
         SMTO_ABORTIFHUNG | SMTO_BLOCK,
-        80,
+        TITLE_TIMEOUT_MS,
         &copied
     );
     if (!ok || copied == 0)
@@ -77,9 +113,21 @@ struct AppEntry
 
 static std::vector<AppEntry> g_entries;
 static DWORD g_foregroundPid = 0;
+static ULONGLONG g_startedAt = 0;
+static size_t g_rawEntryLimit = MIN_RAW_ENTRY_LIMIT;
+
+static bool hasElapsedBudget()
+{
+    return g_startedAt != 0 && GetTickCount64() - g_startedAt >= ENUM_BUDGET_MS;
+}
 
 static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM /*lparam*/)
 {
+    if (g_entries.size() >= g_rawEntryLimit || hasElapsedBudget())
+    {
+        return FALSE;
+    }
+
     if (!IsWindowVisible(hwnd))
     {
         return TRUE;
@@ -98,12 +146,6 @@ static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM /*lparam*/)
     }
     LONG exStyle = GetWindowLongA(hwnd, GWL_EXSTYLE);
     if (exStyle & WS_EX_TOOLWINDOW)
-    {
-        return TRUE;
-    }
-
-    std::string title = getWindowTitle(hwnd);
-    if (title.empty())
     {
         return TRUE;
     }
@@ -150,6 +192,16 @@ static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM /*lparam*/)
     {
         name = name.substr(0, dot);
     }
+    if (name.empty())
+    {
+        return TRUE;
+    }
+
+    std::string title;
+    if (!hasElapsedBudget())
+    {
+        title = getWindowTitle(hwnd);
+    }
 
     AppEntry entry;
     entry.pid = pid;
@@ -158,11 +210,19 @@ static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM /*lparam*/)
     entry.exePath = exePath;
     entry.active = (pid == g_foregroundPid && g_foregroundPid != 0);
     g_entries.push_back(entry);
-    return TRUE;
+    return g_entries.size() < g_rawEntryLimit && !hasElapsedBudget();
 }
 
-int main(int /*argc*/, char* /*argv*/[])
+int main(int argc, char* argv[])
 {
+    size_t requestedLimit = parseRequestedLimit(argc, argv);
+    g_rawEntryLimit = clampSize(
+        requestedLimit * 3,
+        MIN_RAW_ENTRY_LIMIT,
+        MAX_RAW_ENTRY_LIMIT
+    );
+    g_startedAt = GetTickCount64();
+
     HWND foreground = GetForegroundWindow();
     if (foreground)
     {
