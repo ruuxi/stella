@@ -117,6 +117,17 @@ struct ActionPayload: Codable {
     let screenshot: Screenshot?
     let appInstructions: String?
     let snapshotText: String?
+    let settle: AutomationSettle?
+}
+
+struct AutomationSettle: Codable {
+    let observed: Bool
+    let quietMs: Int
+    let waitedMs: Int
+    let eventCount: Int
+    let timedOut: Bool
+    let reason: String?
+    let lastEventAt: String?
 }
 
 struct ListedAppPayload: Codable {
@@ -952,8 +963,8 @@ func derivedFailureScreenshotPath(for statePath: String) -> String {
     return stem + "-failure.png"
 }
 
-func isoTimestamp() -> String {
-    ISO8601DateFormatter().string(from: Date())
+func isoTimestamp(_ date: Date = Date()) -> String {
+    ISO8601DateFormatter().string(from: date)
 }
 
 func rectFrom(position: CGPoint?, size: CGSize?) -> Rect? {
@@ -2210,6 +2221,68 @@ final class AutomationObserverManager {
         }
         observed.lastEventAt = Date()
         observed.eventCounts[notification, default: 0] += 1
+    }
+
+    private func totalEventCount(_ observed: ObservedAutomationTarget) -> Int {
+        observed.eventCounts.values.reduce(0, +)
+    }
+
+    func waitForQuiet(pid: Int32, quietMs: Int = 120, timeoutMs: Int = 700) -> AutomationSettle {
+        guard let observed = observedTargets[pid] else {
+            return AutomationSettle(
+                observed: false,
+                quietMs: 0,
+                waitedMs: 0,
+                eventCount: 0,
+                timedOut: false,
+                reason: "not-observed",
+                lastEventAt: nil
+            )
+        }
+
+        let start = Date()
+        let deadline = start.addingTimeInterval(Double(timeoutMs) / 1000.0)
+        let initialPumpDeadline = start.addingTimeInterval(0.02)
+        while Date() < initialPumpDeadline {
+            _ = RunLoop.current.run(
+                mode: .default,
+                before: [initialPumpDeadline, Date(timeIntervalSinceNow: 0.005)].min() ?? initialPumpDeadline
+            )
+        }
+
+        var timedOut = false
+        while true {
+            let now = Date()
+            if let lastEventAt = observed.lastEventAt {
+                let quietForMs = now.timeIntervalSince(lastEventAt) * 1000.0
+                if quietForMs >= Double(quietMs) {
+                    break
+                }
+                if now >= deadline {
+                    timedOut = true
+                    break
+                }
+                let quietDeadline = lastEventAt.addingTimeInterval(Double(quietMs) / 1000.0)
+                let nextPump = Date(timeIntervalSinceNow: 0.02)
+                _ = RunLoop.current.run(
+                    mode: .default,
+                    before: [deadline, quietDeadline, nextPump].min() ?? deadline
+                )
+            } else {
+                break
+            }
+        }
+
+        let waitedMs = Int(Date().timeIntervalSince(start) * 1000.0)
+        return AutomationSettle(
+            observed: true,
+            quietMs: quietMs,
+            waitedMs: waitedMs,
+            eventCount: totalEventCount(observed),
+            timedOut: timedOut,
+            reason: timedOut ? "ax-observer-timeout" : "ax-observer-quiet",
+            lastEventAt: observed.lastEventAt.map { isoTimestamp($0) }
+        )
     }
 }
 
@@ -7161,7 +7234,10 @@ func refreshSnapshotAfterAction(
     snapshot: SnapshotDocument?,
     captureScreenshot: Bool,
     inlineScreenshot: Bool
-) -> (SnapshotDocument?, [String]) {
+) -> (SnapshotDocument?, [String], AutomationSettle?) {
+    let settle = snapshot.map {
+        AutomationObserverManager.shared.waitForQuiet(pid: $0.pid)
+    }
     let options = SnapshotOptions(
         pid: snapshot?.pid,
         appName: snapshot?.appName,
@@ -7194,11 +7270,12 @@ func refreshSnapshotAfterAction(
                 }
             }
         }
-        return (refreshed, extraWarnings)
+        return (refreshed, extraWarnings, settle)
     } catch {
         return (
             nil,
-            ["Failed to refresh the desktop snapshot after the action: \(error.localizedDescription)"]
+            ["Failed to refresh the desktop snapshot after the action: \(error.localizedDescription)"],
+            settle
         )
     }
 }
@@ -7472,7 +7549,8 @@ func actionSuccessPayload(
     matchedRef: String?,
     usedAction: String?,
     warnings: [String],
-    refreshedSnapshot: SnapshotDocument?
+    refreshedSnapshot: SnapshotDocument?,
+    settle: AutomationSettle? = nil
 ) -> ActionPayload {
     ActionPayload(
         ok: true,
@@ -7485,7 +7563,8 @@ func actionSuccessPayload(
         screenshotPath: refreshedSnapshot?.screenshotPath,
         screenshot: refreshedSnapshot?.screenshot,
         appInstructions: refreshedSnapshot?.appInstructions,
-        snapshotText: nil
+        snapshotText: nil,
+        settle: settle
     )
 }
 
@@ -7658,7 +7737,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         if usedAction == "coordinate-fallback" {
             warnings.append("Coordinate-targeted click can interfere with active user input.")
         }
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -7673,7 +7752,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: ref,
                 usedAction: usedAction,
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "fill":
@@ -7716,7 +7796,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         if fillUsedAction == "keystroke" {
             warnings.append("AXValue rejected by element; fell back to keystroke fill.")
         }
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -7731,7 +7811,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: ref,
                 usedAction: fillUsedAction ?? "AXValue",
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "focus":
@@ -7764,7 +7845,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         }
         var warnings = resolved.warnings
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -7779,7 +7860,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: ref,
                 usedAction: "AXFocused",
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "secondary-action", "perform-secondary-action":
@@ -7828,7 +7910,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         }
         var warnings = resolved.warnings
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -7843,7 +7925,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: ref,
                 usedAction: resolvedActionName,
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "scroll":
@@ -7894,7 +7977,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         }
         var warnings = resolved.warnings
         warnings.append(contentsOf: scrollWarnings)
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -7910,7 +7993,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: ref,
                 usedAction: usedAction,
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "click-point":
@@ -7978,7 +8062,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         if usedAction == "global-coordinate-fallback" || usedAction == "system-events" {
             warnings.append("Global click injection can interfere with active user input.")
         }
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -7993,7 +8077,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: nil,
                 usedAction: usedAction ?? "coordinate",
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "drag":
@@ -8037,7 +8122,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         var warnings = [
             "Drag currently uses global pointer injection and can interfere with active user input."
         ]
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -8052,7 +8137,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: nil,
                 usedAction: "drag",
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "drag-element":
@@ -8181,7 +8267,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         }
         var warnings = sourceResolved.warnings
         warnings.append("Content drag uses real NSDraggingSession: the destination app sees a typed drop, but the user's cursor does move during the drag.")
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -8196,7 +8282,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: sourceRef,
                 usedAction: "NSDraggingSession:\(usedKind)",
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "type":
@@ -8226,7 +8313,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         }
         var warnings = ["Typed input goes to the currently focused element."]
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -8241,7 +8328,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: nil,
                 usedAction: "unicode",
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     case "press":
@@ -8271,7 +8359,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         }
         var warnings = ["Key presses go to the currently focused app."]
-        let (refreshedSnapshot, refreshWarnings) = refreshSnapshotAfterAction(
+        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
             statePath: options.statePath,
             snapshot: snapshot,
             captureScreenshot: options.captureScreenshot,
@@ -8286,7 +8374,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 matchedRef: nil,
                 usedAction: keySpec,
                 warnings: warnings,
-                refreshedSnapshot: refreshedSnapshot
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle
             )
         )
     default:
