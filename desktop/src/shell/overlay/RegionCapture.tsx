@@ -31,6 +31,12 @@ type VacuumState = {
 };
 
 const MIN_SELECTION_SIZE = 6;
+// Window-attach hover preview throttling. Each preview probe is a native
+// `window_info` spawn on the main side (a full CreateProcess on Windows), so we
+// trail at ~10/s instead of one-per-frame and skip probes when the cursor has
+// barely moved since the last one — the previous highlight is still valid.
+const HOVER_PREVIEW_DEBOUNCE_MS = 100;
+const HOVER_PREVIEW_MOVE_THRESHOLD_PX = 6;
 type RegionCaptureMode = "capture" | "window-attach";
 
 export function RegionCapture({
@@ -51,6 +57,7 @@ export function RegionCapture({
     useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hoverPointRef = useRef<Point | null>(null);
+  const lastProbedPointRef = useRef<Point | null>(null);
   const hoverPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -77,26 +84,33 @@ export function RegionCapture({
       hoverPreviewTimerRef.current = null;
     }
     hoverPointRef.current = null;
+    lastProbedPointRef.current = null;
     overlayApi?.hideWindowHighlight?.();
   }, [overlayApi]);
 
   const previewWindowAtPoint = useCallback(
     (point: Point) => {
-      if (
-        hoverPointRef.current &&
-        hoverPointRef.current.x === point.x &&
-        hoverPointRef.current.y === point.y
-      ) {
-        return;
-      }
       hoverPointRef.current = point;
-      if (hoverPreviewTimerRef.current) {
-        clearTimeout(hoverPreviewTimerRef.current);
-      }
+      // A trailing probe is already scheduled; it will pick up the latest
+      // point when it fires, so don't stack a spawn per mouse-move event.
+      if (hoverPreviewTimerRef.current) return;
       hoverPreviewTimerRef.current = setTimeout(() => {
         hoverPreviewTimerRef.current = null;
-        overlayApi?.previewWindowHighlightAtPoint?.(point);
-      }, 16);
+        const latest = hoverPointRef.current;
+        if (!latest) return;
+        const prev = lastProbedPointRef.current;
+        if (
+          prev &&
+          Math.abs(prev.x - latest.x) + Math.abs(prev.y - latest.y) <
+            HOVER_PREVIEW_MOVE_THRESHOLD_PX
+        ) {
+          // Cursor barely moved since the last probe — existing highlight is
+          // still valid, so skip the spawn entirely.
+          return;
+        }
+        lastProbedPointRef.current = latest;
+        overlayApi?.previewWindowHighlightAtPoint?.(latest);
+      }, HOVER_PREVIEW_DEBOUNCE_MS);
     },
     [overlayApi],
   );

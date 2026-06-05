@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <iostream>
 #include <gdiplus.h>
 
 #pragma comment(lib, "gdiplus.lib")
@@ -362,8 +363,132 @@ static bool captureWindowToFile(HWND hwnd, const wchar_t* filePath)
     return saved;
 }
 
+// ── Persistent daemon mode ──────────────────────────────────────────────
+// `window_info.exe --serve` keeps the process alive and answers many
+// read-only point / batch queries over stdin/stdout, so the desktop avoids a
+// CreateProcess (and its per-spawn Defender scan) for every hover/morph probe
+// on Windows. Protocol is line-delimited:
+//   request:  <id>\t<token>\t<token>...   (tokens mirror the one-shot CLI:
+//                                           "<x> <y> [--exclude-pids=..]" or
+//                                           "--points=x,y;.. [--exclude-pids=..]")
+//   response: <id>\t<json>\n              (object, "null", or array — the same
+//                                           shapes the one-shot helper prints)
+// Screenshots and --set-bounds intentionally stay one-shot spawns (rare, and
+// they need GDI+/window-state side effects), so the daemon stays simple.
+static std::string serveHandleTokens(const std::vector<std::string>& tokens)
+{
+    std::vector<DWORD> excluded;
+    std::vector<POINT> points;
+    bool hasPoints = false;
+    long coords[2] = {0, 0};
+    int coordCount = 0;
+
+    for (const std::string& token : tokens)
+    {
+        if (token.empty())
+        {
+            continue;
+        }
+        const char* arg = token.c_str();
+        if (strncmp(arg, "--points=", 9) == 0)
+        {
+            parsePointsArg(arg, points);
+            hasPoints = true;
+            continue;
+        }
+        if (strncmp(arg, "--exclude-pids=", 15) == 0)
+        {
+            parseExcludePidsArg(arg, excluded);
+            continue;
+        }
+        if (coordCount < 2)
+        {
+            char* end = nullptr;
+            long value = strtol(arg, &end, 10);
+            if (end != arg)
+            {
+                coords[coordCount++] = value;
+            }
+        }
+    }
+
+    if (hasPoints)
+    {
+        std::string out = "[";
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            if (i)
+            {
+                out += ",";
+            }
+            out += windowInfoJsonAtPoint(points[i], excluded);
+        }
+        out += "]";
+        return out;
+    }
+
+    if (coordCount == 2)
+    {
+        POINT pt;
+        pt.x = coords[0];
+        pt.y = coords[1];
+        return windowInfoJsonAtPoint(pt, excluded);
+    }
+
+    return "{\"error\":\"bad request\"}";
+}
+
+static int runServeLoop()
+{
+    std::string line;
+    while (std::getline(std::cin, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+        {
+            line.pop_back();
+        }
+        if (line.empty())
+        {
+            continue;
+        }
+
+        const size_t tab = line.find('\t');
+        if (tab == std::string::npos)
+        {
+            continue;
+        }
+
+        const std::string id = line.substr(0, tab);
+        std::vector<std::string> tokens;
+        size_t start = tab + 1;
+        while (true)
+        {
+            const size_t next = line.find('\t', start);
+            if (next == std::string::npos)
+            {
+                tokens.push_back(line.substr(start));
+                break;
+            }
+            tokens.push_back(line.substr(start, next - start));
+            start = next + 1;
+        }
+
+        const std::string json = serveHandleTokens(tokens);
+        printf("%s\t%s\n", id.c_str(), json.c_str());
+        fflush(stdout);
+    }
+    return 0;
+}
+
 int main(int argc, char* argv[])
 {
+    // Persistent daemon: serve point/batch queries over stdin/stdout instead
+    // of one CreateProcess per call (Windows spawn + AV scan is the hot cost).
+    if (argc >= 2 && strcmp(argv[1], "--serve") == 0)
+    {
+        return runServeLoop();
+    }
+
     // Batch mode: `window_info.exe --points=x1,y1;x2,y2;...` answers many
     // points from a single process invocation, printing a JSON array (one
     // entry per point in order; null when no window is found). Mirrors the
