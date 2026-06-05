@@ -172,4 +172,53 @@ describe("stella-computer shell bootstrap", () => {
       args: ["status", "--job-id", "job-test", "--json"],
     });
   });
+
+  it("injects stella-x-api with Stella auth for command runs", async () => {
+    const tempDir = createTempDir();
+    const fakeXApiCliPath = path.join(tempDir, "fake-stella-x-api.js");
+    writeFileSync(
+      fakeXApiCliPath,
+      `console.log(JSON.stringify({
+  cli: process.env.STELLA_X_API_CLI ?? null,
+  baseUrl: process.env.STELLA_X_API_BASE_URL ?? null,
+  tokenPresent: Boolean(process.env.STELLA_X_API_AUTH_TOKEN),
+  args: process.argv.slice(2),
+}));`,
+      "utf-8",
+    );
+
+    const state = createShellState(tempDir, {
+      stellaXApiCliPath: fakeXApiCliPath,
+      getStellaSiteAuth: () => ({
+        baseUrl: "https://stella.example",
+        authToken: "token-test",
+      }),
+    });
+    const context: ToolContext = {
+      conversationId: "conversation-test",
+      deviceId: "device-test",
+      requestId: "request-test",
+      runId: "run-test",
+      agentType: "general",
+      stellaRoot: tempDir,
+      storageMode: "local",
+    };
+    const result = await handleBash(
+      state,
+      {
+        command: "stella-x-api whoami --json",
+        working_directory: tempDir,
+        timeout: 10_000,
+      },
+      context,
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(String(result.result))).toEqual({
+      cli: fakeXApiCliPath,
+      baseUrl: "https://stella.example",
+      tokenPresent: true,
+      args: ["whoami", "--json"],
+    });
+  });
 });

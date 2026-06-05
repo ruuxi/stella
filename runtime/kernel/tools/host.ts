@@ -94,6 +94,7 @@ export const createToolHost = ({
   stellaComputerCliPath,
   stellaConnectCliPath,
   stellaMediaCliPath,
+  stellaXApiCliPath,
   cliBridgeSocketPath,
   requestCredential,
   agentApi,
@@ -120,6 +121,7 @@ export const createToolHost = ({
     stellaComputerCliPath,
     stellaConnectCliPath,
     stellaMediaCliPath,
+    stellaXApiCliPath,
     getStellaSiteAuth,
     cliBridgeSocketPath,
   });
@@ -164,6 +166,7 @@ export const createToolHost = ({
     stellaComputerCliPath,
     stellaConnectCliPath,
     stellaMediaCliPath,
+    stellaXApiCliPath,
     requestCredential,
     agentApi,
     sourceImportApi,

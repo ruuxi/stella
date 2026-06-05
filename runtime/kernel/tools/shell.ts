@@ -44,6 +44,7 @@ export type ShellState = {
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
   stellaMediaCliPath?: string;
+  stellaXApiCliPath?: string;
   windowsCliShimDir?: string;
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
   /**
@@ -62,6 +63,7 @@ type ShellStateOptions = {
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
   stellaMediaCliPath?: string;
+  stellaXApiCliPath?: string;
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
   cliBridgeSocketPath?: string;
 };
@@ -91,6 +93,11 @@ const WINDOWS_CLI_SHIMS = [
     command: "stella-media",
     optionKey: "stellaMediaCliPath",
     envVar: "STELLA_MEDIA_CLI",
+  },
+  {
+    command: "stella-x-api",
+    optionKey: "stellaXApiCliPath",
+    envVar: "STELLA_X_API_CLI",
   },
 ] as const;
 
@@ -535,6 +542,7 @@ export function createShellState(
     stellaComputerCliPath: options?.stellaComputerCliPath,
     stellaConnectCliPath: options?.stellaConnectCliPath,
     stellaMediaCliPath: options?.stellaMediaCliPath,
+    stellaXApiCliPath: options?.stellaXApiCliPath,
     getStellaSiteAuth: options?.getStellaSiteAuth,
     ...(windowsCliShimDir ? { windowsCliShimDir } : {}),
     cliBridgeSocketPath: options?.cliBridgeSocketPath,
@@ -571,6 +579,7 @@ const buildProtectedCommand = (
     stellaComputerCliPath?: string;
     stellaConnectCliPath?: string;
     stellaMediaCliPath?: string;
+    stellaXApiCliPath?: string;
   },
 ) => {
   if (!deferredDeleteHelperPath) {
@@ -595,6 +604,10 @@ const buildProtectedCommand = (
   const stellaMediaCli =
     options?.stellaMediaCliPath && existsSync(options.stellaMediaCliPath)
       ? options.stellaMediaCliPath
+      : "";
+  const stellaXApiCli =
+    options?.stellaXApiCliPath && existsSync(options.stellaXApiCliPath)
+      ? options.stellaXApiCliPath
       : "";
 
   // Dynamically detect python-like invocations (python, python3, python3.11, py, etc.)
@@ -679,8 +692,9 @@ ${stellaOfficeBin ? `stella-office() { "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "
 ${stellaComputerCli ? `stella-computer() { "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
 ${stellaConnectCli ? `stella-connect() { "$STELLA_NODE_BIN" "$STELLA_CONNECT_CLI" "$@"; }` : ""}
 ${stellaMediaCli ? `stella-media() { "$STELLA_NODE_BIN" "$STELLA_MEDIA_CLI" "$@"; }` : ""}
+${stellaXApiCli ? `stella-x-api() { "$STELLA_NODE_BIN" "$STELLA_X_API_CLI" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${stellaMediaCli ? " stella-media" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${stellaMediaCli ? " stella-media" : ""}${stellaXApiCli ? " stella-x-api" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -770,6 +784,7 @@ const buildShellEnv = (
     stellaComputerCliPath?: string;
     stellaConnectCliPath?: string;
     stellaMediaCliPath?: string;
+    stellaXApiCliPath?: string;
     windowsCliShimDir?: string;
     cliBridgeSocketPath?: string;
   },
@@ -796,6 +811,9 @@ const buildShellEnv = (
       : {}),
     ...(options?.stellaMediaCliPath
       ? { STELLA_MEDIA_CLI: options.stellaMediaCliPath }
+      : {}),
+    ...(options?.stellaXApiCliPath
+      ? { STELLA_X_API_CLI: options.stellaXApiCliPath }
       : {}),
     ...(options?.cliBridgeSocketPath
       ? { STELLA_CLI_BRIDGE_SOCK: options.cliBridgeSocketPath }
@@ -1043,6 +1061,9 @@ const shouldUseStellaComputer = (command: string): boolean =>
 const shouldUseStellaMedia = (command: string): boolean =>
   /\bstella-media\b/.test(command);
 
+const shouldUseStellaXApi = (command: string): boolean =>
+  /\bstella-x-api\b/.test(command);
+
 export const startShell = (
   state: ShellState,
   command: string,
@@ -1283,6 +1304,14 @@ const resolveManagedShellCommand = (
     }
     if (context?.deviceId) {
       envOverrides.STELLA_DEVICE_ID = context.deviceId;
+    }
+  }
+
+  if (shouldUseStellaXApi(command)) {
+    const siteAuth = state.getStellaSiteAuth?.();
+    if (siteAuth) {
+      envOverrides.STELLA_X_API_BASE_URL = siteAuth.baseUrl;
+      envOverrides.STELLA_X_API_AUTH_TOKEN = siteAuth.authToken;
     }
   }
 
