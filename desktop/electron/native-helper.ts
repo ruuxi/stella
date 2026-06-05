@@ -12,7 +12,7 @@ type RunNativeHelperOptions = {
 export type NativeHelperRunResult = {
   stdout: string | null
   skipped: boolean
-  skippedReason: 'missing' | 'circuit-open' | null
+  skippedReason: 'missing' | 'circuit-open' | 'in-flight' | null
   error: Error | null
   killed: boolean
   timedOut: boolean
@@ -37,9 +37,17 @@ const lastFailureLogAt = new Map<string, number>()
 // of one per call.
 const CIRCUIT_FAILURE_THRESHOLD = 3
 const CIRCUIT_COOLDOWN_MS = 60_000
+const WIN32_SLOW_SUCCESS_COOLDOWN_MS = 60_000
+const WIN32_SLOW_SUCCESS_THRESHOLD_MS = 1_000
+const WIN32_HIGH_RISK_HELPERS = new Set([
+  'recent_apps',
+  'selected_text',
+  'window_info',
+])
 
 type HelperCircuit = { consecutiveFailures: number; openUntil: number }
 const circuits = new Map<string, HelperCircuit>()
+const inFlightWin32Helpers = new Set<string>()
 
 const getCircuit = (helperName: string): HelperCircuit => {
   let circuit = circuits.get(helperName)
@@ -100,9 +108,26 @@ export const runNativeHelperDetailed = (
       circuitOpenMs: circuit.openUntil - beforeSpawn,
     })
   }
+  const shouldBackpressure =
+    process.platform === 'win32' && WIN32_HIGH_RISK_HELPERS.has(helperName)
+  if (shouldBackpressure && inFlightWin32Helpers.has(helperName)) {
+    return Promise.resolve({
+      stdout: null,
+      skipped: true,
+      skippedReason: 'in-flight',
+      error: null,
+      killed: false,
+      timedOut: false,
+      durationMs: 0,
+      circuitOpenMs: 0,
+    })
+  }
 
   return new Promise((resolve) => {
     const startedAt = Date.now()
+    if (shouldBackpressure) {
+      inFlightWin32Helpers.add(helperName)
+    }
     execFile(
       helperPath,
       args,
@@ -115,6 +140,9 @@ export const runNativeHelperDetailed = (
       (error, stdout) => {
         const now = Date.now()
         const durationMs = now - startedAt
+        if (shouldBackpressure) {
+          inFlightWin32Helpers.delete(helperName)
+        }
         if (error) {
           const typedError = error as NodeJS.ErrnoException & {
             killed?: boolean
@@ -162,6 +190,15 @@ export const runNativeHelperDetailed = (
         }
         circuit.consecutiveFailures = 0
         circuit.openUntil = 0
+        if (
+          shouldBackpressure &&
+          durationMs >= WIN32_SLOW_SUCCESS_THRESHOLD_MS
+        ) {
+          circuit.openUntil = Math.max(
+            circuit.openUntil,
+            now + WIN32_SLOW_SUCCESS_COOLDOWN_MS,
+          )
+        }
         if (durationMs >= SLOW_HELPER_LOG_THRESHOLD_MS) {
           getFileLogger()?.process('native.helper.slow', {
             helper: helperName,
@@ -177,7 +214,8 @@ export const runNativeHelperDetailed = (
           killed: false,
           timedOut: false,
           durationMs,
-          circuitOpenMs: 0,
+          circuitOpenMs:
+            circuit.openUntil > now ? circuit.openUntil - now : 0,
         })
       },
     )

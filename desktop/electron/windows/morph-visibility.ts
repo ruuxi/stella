@@ -32,6 +32,7 @@ export type MorphVisibilityDecision = {
     | 'unsupported-platform'
     | 'visible-enough'
     | 'mostly-covered'
+    | 'probe-failed'
   visibleRatio?: number
   visibleSamples?: number
   totalSamples?: number
@@ -171,13 +172,18 @@ export async function shouldShowMorphForWindow(
     )
   } else {
     const batchQuery = options?.queryWindowInfoBatch ?? getWindowInfoBatchAtPoints
-    infos =
-      (await batchQuery(nativePoints)) ??
-      (await Promise.all(
+    const batchInfos = await batchQuery(nativePoints)
+    if (batchInfos) {
+      infos = batchInfos
+    } else if (platform === 'win32') {
+      return { showMorph: false, reason: 'probe-failed' }
+    } else {
+      infos = await Promise.all(
         nativePoints.map((point) =>
           getWindowInfoAtPoint(point.x, point.y),
         ),
-      ))
+      )
+    }
   }
 
   const results = infos.map((info) =>
