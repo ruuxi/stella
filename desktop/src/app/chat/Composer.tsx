@@ -52,6 +52,7 @@ type ComposerProps = {
   onSelectArea?: () => void;
   isDragOver?: boolean;
   replyPeek?: AssistantReplyPeekProps | null;
+  suggestionsActive?: boolean;
 };
 
 export function Composer({
@@ -70,6 +71,7 @@ export function Composer({
   onSelectArea,
   isDragOver = false,
   replyPeek,
+  suggestionsActive = true,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -144,6 +146,7 @@ export function Composer({
       <div className="composer-context-peek-anchor">
         {replyPeek ? <AssistantReplyPeek {...replyPeek} /> : null}
         <ComposerSuggestionContextRow
+          active={suggestionsActive}
           chatContext={chatContext}
           setChatContext={setChatContext}
         />

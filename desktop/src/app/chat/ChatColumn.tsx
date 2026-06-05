@@ -218,6 +218,7 @@ export const ChatColumn = memo(function ChatColumn({
         onSelectArea={composer.onSelectArea}
         isDragOver={isDragOver}
         replyPeek={replyPeek}
+        suggestionsActive={isActiveSurface}
       />
     );
   };

@@ -83,15 +83,17 @@ export function ComposerContextRow({
 // ---------------------------------------------------------------------------
 
 type ComposerSuggestionRowProps = {
+  active?: boolean;
   chatContext: ChatContext | null;
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
 };
 
 export function ComposerSuggestionContextRow({
+  active = true,
   chatContext,
   setChatContext,
 }: ComposerSuggestionRowProps) {
-  const { lanes, dismissSlot } = useAutoContextChips(true);
+  const { lanes, dismissSlot } = useAutoContextChips(active);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const [hiddenLaneIndexes, setHiddenLaneIndexes] = useState<Set<number>>(
     () => new Set(),
