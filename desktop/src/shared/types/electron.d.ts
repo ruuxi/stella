@@ -65,6 +65,8 @@ import type {
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
+  OnboardingWelcomeHtmlRequest,
+  OnboardingWelcomeHtmlResponse,
 } from "../contracts/onboarding";
 import type {
   RuntimeSocialSessionStatus,
@@ -1167,6 +1169,9 @@ export type ElectronOnboardingApi = {
   synthesizeCoreMemory: (
     payload: OnboardingSynthesisRequest,
   ) => Promise<OnboardingSynthesisResponse>;
+  generateWelcomeHtml: (
+    payload: OnboardingWelcomeHtmlRequest,
+  ) => Promise<OnboardingWelcomeHtmlResponse>;
   complete: () => Promise<{ ok: boolean }>;
   reset: () => Promise<{ ok: boolean }>;
 };

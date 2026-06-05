@@ -53,6 +53,8 @@ import {
 import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
+  OnboardingWelcomeHtmlRequest,
+  OnboardingWelcomeHtmlResponse,
 } from "../src/shared/contracts/onboarding.js";
 import type { DiscoveryKnowledgeSeedPayload } from "../../runtime/contracts/discovery.js";
 import {
@@ -1625,6 +1627,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
         "onboarding:synthesizeCoreMemory",
         payload,
       ) as Promise<OnboardingSynthesisResponse>,
+    generateWelcomeHtml: (payload: OnboardingWelcomeHtmlRequest) =>
+      ipcRenderer.invoke(
+        "onboarding:generateWelcomeHtml",
+        payload,
+      ) as Promise<OnboardingWelcomeHtmlResponse>,
   },
 
   discovery: {
