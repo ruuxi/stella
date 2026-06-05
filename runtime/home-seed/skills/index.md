@@ -31,6 +31,7 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 
 - [humanizer](humanizer/SKILL.md) — strip AI-isms from text and add real human voice; use before publishing user-facing prose or when asked to de-slop writing
 - [youtube-content](youtube-content/SKILL.md) — fetch a YouTube transcript and turn it into summaries, chapters, threads, blog posts, or quotes
+- [x-api](x-api/SKILL.md) — use X (Twitter) through Stella's connected account and the `stella-x-api` CLI
 - [apple-reminders](apple-reminders/SKILL.md) — manage Apple Reminders via the `remindctl` CLI, syncing to the user's Apple devices (macOS only)
 - [apple-notes](apple-notes/SKILL.md) — manage Apple Notes via the `memo` CLI, syncing to the user's Apple devices (macOS only)
 

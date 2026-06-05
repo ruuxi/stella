@@ -170,6 +170,7 @@ export type ToolHostOptions = {
   stellaComputerCliPath?: string;
   stellaConnectCliPath?: string;
   stellaMediaCliPath?: string;
+  stellaXApiCliPath?: string;
   cliBridgeSocketPath?: string;
   agentApi?: AgentToolApi;
   sourceImportApi?: SourceImportToolApi;
