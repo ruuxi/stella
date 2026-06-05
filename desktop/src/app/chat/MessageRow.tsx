@@ -46,6 +46,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
+import { VoiceSessionCard } from "@/app/chat/VoiceSessionCard";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
 import { eventRowEqual } from "@/features/chat/lib/row-equality";
@@ -419,6 +420,7 @@ export const AssistantMessageRow = memo(
     const hasScheduleReceipt = Boolean(
       row.scheduleReceipt && row.scheduleReceipt.affected.length > 0,
     );
+    const hasVoiceSession = Boolean(row.voiceSession);
 
     if (
       !hasText &&
@@ -427,7 +429,8 @@ export const AssistantMessageRow = memo(
       !hasInlineImages &&
       !hasSelfMod &&
       !hasCustomSlot &&
-      !hasScheduleReceipt
+      !hasScheduleReceipt &&
+      !hasVoiceSession
     ) {
       // Reserve a scroll-follow target before the first token lands;
       // otherwise `followActiveAssistantRow` can't find
@@ -453,6 +456,9 @@ export const AssistantMessageRow = memo(
         data-scroll-follow-key={row.id}
       >
         <div className="event-item assistant">
+          {hasVoiceSession && row.voiceSession && (
+            <VoiceSessionCard durationMs={row.voiceSession.durationMs} />
+          )}
           {hasText && (
             <Markdown
               text={text}

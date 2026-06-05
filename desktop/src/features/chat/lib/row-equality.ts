@@ -242,6 +242,7 @@ const assistantRowEqual = (
   sourceDiffPayloadsEqual(a.sourceDiffPayloads, b.sourceDiffPayloads) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
+  (a.voiceSession?.durationMs ?? null) === (b.voiceSession?.durationMs ?? null) &&
   // Compare a stable key for the custom slot (the ReactNode itself
   // changes identity on each render of the Store thread). Surfaces
   // that mount a custom slot must supply a key derived from the

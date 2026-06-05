@@ -7,6 +7,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { AgentResponseTarget } from "@/features/chat/streaming/streaming-types";
 import type { SelfModApplied } from "@/features/chat/self-mod-types";
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
+import type { VoiceSessionSummaryMetadata } from "../../../../runtime/contracts/local-chat.js";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 
 export type UserRowViewModel = {
@@ -70,6 +71,12 @@ export type AssistantRowViewModel = {
     affected: ScheduleToolAffectedRef[];
     summary?: string;
   };
+  /**
+   * Present on the visible assistant message a realtime voice session
+   * writes when it ends. Renders the polished "Voice session" summary
+   * card in place of the message text body.
+   */
+  voiceSession?: VoiceSessionSummaryMetadata;
   /**
    * Optional renderer for surface-specific row attachments (e.g. the Store
    * thread's draft confirmation card). Mounted after the markdown body and

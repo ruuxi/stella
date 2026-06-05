@@ -66,7 +66,12 @@ import type {
   OnboardingSynthesisRequest,
   OnboardingSynthesisResponse,
 } from "../contracts/onboarding";
-import type { RuntimeSocialSessionStatus } from "../../../../runtime/protocol/index.js";
+import type {
+  RuntimeSocialSessionStatus,
+  RuntimeVoiceOrchestratorConfig,
+  RuntimeVoiceToolCallPayload,
+  RuntimeVoiceToolCallResult,
+} from "../../../../runtime/protocol/index.js";
 import type {
   OfficePreviewRef as SharedOfficePreviewRef,
   OfficePreviewSnapshot as SharedOfficePreviewSnapshot,
@@ -441,16 +446,26 @@ export type ElectronVoiceApi = {
     role: "user" | "assistant";
     text: string;
     uiVisibility?: "visible" | "hidden";
+    voiceSession?: { durationMs: number };
   }) => void;
   orchestratorChat: (payload: {
     conversationId: string;
     message: string;
   }) => Promise<string>;
+  getOrchestratorConfig: (payload: {
+    conversationId: string;
+  }) => Promise<RuntimeVoiceOrchestratorConfig>;
+  executeTool: (
+    payload: RuntimeVoiceToolCallPayload,
+  ) => Promise<RuntimeVoiceToolCallResult>;
   webSearch: (payload: { query: string; category?: string }) => Promise<{
     text: string;
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
-  createOpenAISession: (payload: { instructions?: string }) => Promise<{
+  createOpenAISession: (payload: {
+    instructions?: string;
+    tools?: RuntimeVoiceOrchestratorConfig["tools"];
+  }) => Promise<{
     provider: "openai";
     clientSecret: string;
     model: string;
@@ -458,7 +473,10 @@ export type ElectronVoiceApi = {
     expiresAt?: number;
     sessionId?: string;
   }>;
-  createXaiSession: (payload: { instructions?: string }) => Promise<{
+  createXaiSession: (payload: {
+    instructions?: string;
+    tools?: RuntimeVoiceOrchestratorConfig["tools"];
+  }) => Promise<{
     provider: "xai";
     clientSecret: string;
     model: string;

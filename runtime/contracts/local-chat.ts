@@ -112,6 +112,18 @@ export type MessageMetadata = {
     source?: string;
     targetAgentId?: string;
   };
+  /**
+   * Set on the single visible assistant message a realtime voice session
+   * writes when it ends. Lets the chat surface render a polished
+   * "Voice session" summary card instead of parsing the duration back out
+   * of the message text.
+   */
+  voiceSession?: VoiceSessionSummaryMetadata;
+};
+
+export type VoiceSessionSummaryMetadata = {
+  /** Total wall-clock length of the voice session, in milliseconds. */
+  durationMs: number;
 };
 
 /**

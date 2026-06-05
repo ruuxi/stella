@@ -4,12 +4,17 @@ import {
   type AgentStreamEventType,
 } from "../../contracts/agent-runtime.js";
 import { prepareStoredLocalChatPayload } from "../../kernel/storage/local-chat-payload.js";
+import type { MessageMetadata } from "../../contracts/local-chat.js";
 import type {
   RuntimeAgentEventPayload,
   RuntimePromptMessage,
   RuntimeVoiceAgentEventPayload,
   RuntimeVoiceChatPayload,
   RuntimeVoiceHmrStatePayload,
+  RuntimeVoiceOrchestratorConfig,
+  RuntimeVoiceOrchestratorConfigRequest,
+  RuntimeVoiceToolCallPayload,
+  RuntimeVoiceToolCallResult,
   RuntimeWebSearchResult,
 } from "../../protocol/index.js";
 import type {
@@ -23,6 +28,13 @@ import type {
 import type { AgentLifecycleEvent } from "../../kernel/agents/local-agent-manager.js";
 import type { SelfModHmrState } from "../../contracts/index.js";
 import type { ChatStore } from "../../kernel/storage/chat-store.js";
+import type { ToolContext, ToolResult } from "../../kernel/tools/types.js";
+import { textFromUnknown } from "../../kernel/agent-runtime/shared.js";
+import {
+  sanitizeToolError,
+  sanitizeToolResult,
+  sanitizeToolVisibleText,
+} from "../../kernel/tools/safety.js";
 
 type VoiceRunner = {
   handleLocalChat: (
@@ -50,6 +62,15 @@ type VoiceRunner = {
     role: "user" | "assistant";
     content: string;
   }) => void;
+  notifyOrchestratorHistoryChanged: (conversationId: string) => void;
+  getVoiceOrchestratorConfig: (
+    payload: RuntimeVoiceOrchestratorConfigRequest,
+  ) => Promise<RuntimeVoiceOrchestratorConfig>;
+  executeTool: (
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    context: ToolContext,
+  ) => Promise<ToolResult>;
   webSearch: (
     query: string,
     options?: { category?: string },
@@ -60,6 +81,11 @@ type PendingVoiceRequest = {
   payload: RuntimeVoiceChatPayload;
   resolve: (value: string) => void;
   reject: (error: Error) => void;
+};
+
+type VoiceToolCatalogCacheEntry = {
+  config: RuntimeVoiceOrchestratorConfig;
+  cachedAt: number;
 };
 
 type VoiceRuntimeServiceOptions = {
@@ -74,9 +100,40 @@ type VoiceRuntimeServiceOptions = {
 const normalizeError = (error: unknown) =>
   error instanceof Error ? error : new Error(String(error ?? "Unknown voice runtime error"));
 
+const VOICE_TOOL_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
+const MODEL_VISIBLE_TOOL_RESULT_MAX_CHARS = 30_000;
+const THREAD_VISIBLE_JSON_MAX_CHARS = 12_000;
+
+const truncate = (value: string, maxChars: number): string =>
+  value.length <= maxChars ? value : `${value.slice(0, maxChars)}...(truncated)`;
+
+const stringifyBounded = (value: unknown, maxChars: number): string => {
+  if (typeof value === "string") return truncate(value.trim(), maxChars);
+  try {
+    return truncate(JSON.stringify(value), maxChars);
+  } catch {
+    return truncate(String(value), maxChars);
+  }
+};
+
+const formatModelVisibleToolOutput = (result: ToolResult): string => {
+  if (result.error) {
+    return `Error: ${sanitizeToolError(result.error)}`;
+  }
+  return sanitizeToolVisibleText(
+    truncate(textFromUnknown(sanitizeToolResult(result.result)), MODEL_VISIBLE_TOOL_RESULT_MAX_CHARS),
+  );
+};
+
+const asObjectRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
 export class VoiceRuntimeService {
   private pendingVoiceRequest: PendingVoiceRequest | null = null;
   private voiceRequestActive = false;
+  private toolConfigCache = new Map<string, VoiceToolCatalogCacheEntry>();
 
   constructor(private readonly options: VoiceRuntimeServiceOptions) {}
 
@@ -85,16 +142,28 @@ export class VoiceRuntimeService {
     role: "user" | "assistant";
     text: string;
     uiVisibility?: "visible" | "hidden";
+    voiceSession?: { durationMs: number };
   }) {
     this.ensureRunner().appendThreadMessage({
       threadKey: payload.conversationId,
       role: payload.role,
       content: payload.text,
     });
+    this.ensureRunner().notifyOrchestratorHistoryChanged(
+      payload.conversationId,
+    );
     const chatStore = this.options.getChatStore();
     if (chatStore) {
       const timestamp = Date.now();
       const type = payload.role === "user" ? "user_message" : "assistant_message";
+      const metadata: MessageMetadata = {};
+      if (payload.uiVisibility) {
+        metadata.ui = { visibility: payload.uiVisibility };
+      }
+      if (payload.voiceSession) {
+        metadata.voiceSession = { durationMs: payload.voiceSession.durationMs };
+      }
+      const hasMetadata = Object.keys(metadata).length > 0;
       chatStore.appendEvent({
         conversationId: payload.conversationId,
         type,
@@ -107,15 +176,7 @@ export class VoiceRuntimeService {
           payload: {
             text: payload.text,
             source: "voice",
-            ...(payload.uiVisibility
-              ? {
-                  metadata: {
-                    ui: {
-                      visibility: payload.uiVisibility,
-                    },
-                  },
-                }
-              : {}),
+            ...(hasMetadata ? { metadata } : {}),
           },
           timestamp,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
@@ -133,6 +194,68 @@ export class VoiceRuntimeService {
     return await this.ensureRunner().webSearch(payload.query, {
       category: payload.category,
     });
+  }
+
+  async getOrchestratorConfig(
+    payload: RuntimeVoiceOrchestratorConfigRequest,
+  ): Promise<RuntimeVoiceOrchestratorConfig> {
+    const config = await this.ensureRunner().getVoiceOrchestratorConfig(
+      payload,
+    );
+    this.toolConfigCache.set(payload.conversationId, {
+      config,
+      cachedAt: Date.now(),
+    });
+    return config;
+  }
+
+  async executeTool(
+    payload: RuntimeVoiceToolCallPayload,
+  ): Promise<RuntimeVoiceToolCallResult> {
+    const runner = this.ensureRunner();
+    const config = await this.resolveToolConfig(payload.conversationId);
+    const allowedToolNames = config.tools.map((tool) => tool.name);
+    const allowed = new Set(allowedToolNames);
+    const runId = payload.requestId || `voice:${payload.callId}`;
+
+    this.recordVoiceToolRequest(payload);
+
+    let result: ToolResult;
+    if (!allowed.has(payload.name)) {
+      result = {
+        error: `${payload.name} is not available to the voice orchestrator.`,
+      };
+    } else {
+      result = await runner.executeTool(
+        payload.name,
+        payload.args,
+        {
+          conversationId: payload.conversationId,
+          deviceId: this.options.getDeviceId() ?? "unknown",
+          requestId: payload.callId,
+          runId,
+          rootRunId: runId,
+          agentType: "orchestrator",
+          storageMode: "local",
+          allowedToolNames,
+        },
+      );
+    }
+
+    const output = formatModelVisibleToolOutput(result);
+    this.recordVoiceToolResult(payload, result, output);
+    const details = sanitizeToolResult(result.details ?? result.result);
+    return {
+      output,
+      details,
+      ...(result.fileChanges?.length
+        ? { fileChanges: result.fileChanges }
+        : {}),
+      ...(result.producedFiles?.length
+        ? { producedFiles: result.producedFiles }
+        : {}),
+      ...(result.error ? { error: sanitizeToolError(result.error) } : {}),
+    };
   }
 
   async orchestratorChat(payload: RuntimeVoiceChatPayload) {
@@ -169,6 +292,112 @@ export class VoiceRuntimeService {
       throw new Error("Stella runtime not initialized");
     }
     return runner;
+  }
+
+  private async resolveToolConfig(
+    conversationId: string,
+  ): Promise<RuntimeVoiceOrchestratorConfig> {
+    const cached = this.toolConfigCache.get(conversationId);
+    if (
+      cached &&
+      Date.now() - cached.cachedAt < VOICE_TOOL_CONFIG_CACHE_TTL_MS
+    ) {
+      return cached.config;
+    }
+    return await this.getOrchestratorConfig({ conversationId });
+  }
+
+  private appendLocalToolEvent(args: {
+    conversationId: string;
+    type: "tool_request" | "tool_result";
+    requestId: string;
+    payload: Record<string, unknown>;
+  }) {
+    const chatStore = this.options.getChatStore();
+    if (!chatStore) return;
+    chatStore.appendEvent({
+      conversationId: args.conversationId,
+      type: args.type,
+      requestId: args.requestId,
+      timestamp: Date.now(),
+      payload: {
+        ...args.payload,
+        source: "voice",
+        requestId: args.requestId,
+      },
+    });
+    this.options.onLocalChatUpdated();
+  }
+
+  private recordVoiceToolRequest(payload: RuntimeVoiceToolCallPayload) {
+    const runner = this.ensureRunner();
+    runner.appendThreadMessage({
+      threadKey: payload.conversationId,
+      role: "assistant",
+      content: [
+        `[Tool call] ${payload.name}`,
+        `request_id: ${payload.callId}`,
+        `args: ${stringifyBounded(payload.args, THREAD_VISIBLE_JSON_MAX_CHARS)}`,
+      ].join("\n"),
+    });
+    runner.notifyOrchestratorHistoryChanged(payload.conversationId);
+    this.appendLocalToolEvent({
+      conversationId: payload.conversationId,
+      type: "tool_request",
+      requestId: payload.callId,
+      payload: {
+        toolName: payload.name,
+        args: payload.args,
+      },
+    });
+  }
+
+  private recordVoiceToolResult(
+    payload: RuntimeVoiceToolCallPayload,
+    result: ToolResult,
+    output: string,
+  ) {
+    const runner = this.ensureRunner();
+    const details = sanitizeToolResult(result.details ?? result.result);
+    const detailRecord = asObjectRecord(details);
+    const content = result.error
+      ? [
+          `[Tool result] ${payload.name}`,
+          `request_id: ${payload.callId}`,
+          `error: ${sanitizeToolError(result.error)}`,
+        ].join("\n")
+      : [
+          `[Tool result] ${payload.name}`,
+          `request_id: ${payload.callId}`,
+          `result: ${stringifyBounded(output, THREAD_VISIBLE_JSON_MAX_CHARS)}`,
+        ].join("\n");
+    runner.appendThreadMessage({
+      threadKey: payload.conversationId,
+      role: "user",
+      content,
+    });
+    runner.notifyOrchestratorHistoryChanged(payload.conversationId);
+    this.appendLocalToolEvent({
+      conversationId: payload.conversationId,
+      type: "tool_result",
+      requestId: payload.callId,
+      payload: {
+        toolName: payload.name,
+        result: detailRecord ?? details ?? output,
+        resultPreview: output,
+        ...(detailRecord ? { details: detailRecord, ...detailRecord } : {}),
+        ...(result.fileChanges?.length
+          ? { fileChanges: result.fileChanges }
+          : {}),
+        ...(result.producedFiles?.length
+          ? { producedFiles: result.producedFiles }
+          : {}),
+        agentType: "orchestrator",
+        ...(result.error
+          ? { error: sanitizeToolError(result.error) }
+          : {}),
+      },
+    });
   }
 
   private async drainVoiceQueue() {

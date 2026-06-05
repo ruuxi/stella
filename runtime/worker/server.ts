@@ -17,6 +17,7 @@ import {
   type RuntimeOneShotCompletionRequest,
   type RuntimeOneShotCompletionResult,
   type RuntimeSelfModRevertResult,
+  type RuntimeVoiceToolCallPayload,
   type StorePublishArgs,
   type StorePublishSelectedFeaturesArgs,
   type RuntimeLocalAgentRequest,
@@ -2688,6 +2689,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           role: "user" | "assistant";
           text: string;
           uiVisibility?: "visible" | "hidden";
+          voiceSession?: { durationMs: number };
         },
       );
     },
@@ -2702,6 +2704,26 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           conversationId: string;
           message: string;
         },
+      );
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_VOICE_ORCHESTRATOR_CONFIG,
+    async (params) => {
+      return await ensureVoiceService().getOrchestratorConfig(
+        params as {
+          conversationId: string;
+        },
+      );
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_VOICE_EXECUTE_TOOL,
+    async (params) => {
+      return await ensureVoiceService().executeTool(
+        params as RuntimeVoiceToolCallPayload,
       );
     },
   );

@@ -20,11 +20,18 @@ import {
   DEFAULT_OPENAI_REALTIME_VOICE,
   DEFAULT_XAI_REALTIME_VOICE,
 } from "../../../runtime/contracts/realtime-voice-catalog.js";
+import { AGENT_STREAM_EVENT_TYPES } from "../../../runtime/contracts/agent-runtime.js";
 import { getLocalLlmCredential } from "../../../runtime/kernel/storage/llm-credentials.js";
 import { getLocalLlmOAuthApiKey } from "../../../runtime/kernel/storage/llm-oauth-credentials.js";
 import { redactMemoryText } from "../../../runtime/kernel/memory/redaction.js";
+import type {
+  RuntimeVoiceToolCallPayload,
+  RuntimeVoiceToolCallResult,
+} from "../../../runtime/protocol/index.js";
 import {
   IPC_VOICE_CREATE_OPENAI_SESSION,
+  IPC_VOICE_EXECUTE_TOOL,
+  IPC_VOICE_ORCHESTRATOR_CONFIG,
   IPC_VOICE_CREATE_XAI_SESSION,
   IPC_VOICE_CREATE_INWORLD_SESSION,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -132,6 +139,88 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       fullWindow.webContents.send("agent:event", eventPayload);
     }
     options.getBroadcastToMobile?.()?.("agent:event", eventPayload);
+  };
+
+  const emitVoiceDisplayPayload = (payload: Record<string, unknown>) => {
+    for (const window of options.windowManager.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      window.webContents.send("display:update", payload);
+    }
+    options.getBroadcastToMobile?.()?.("display:update", payload);
+  };
+
+  const asRecord = (value: unknown): Record<string, unknown> | null =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+
+  const errorMessage = (value: unknown): string =>
+    value instanceof Error ? value.message : String(value ?? "Unknown error");
+
+  const htmlDisplayPayloadFromVoiceTool = (
+    payload: RuntimeVoiceToolCallPayload,
+    result: RuntimeVoiceToolCallResult,
+  ): Record<string, unknown> | null => {
+    if (payload.name !== "html" || result.error) return null;
+    const details = asRecord(result.details);
+    const filePath =
+      typeof details?.filePath === "string" && details.filePath.trim()
+        ? details.filePath.trim()
+        : "";
+    if (!filePath) return null;
+    return {
+      kind: "canvas-html",
+      filePath,
+      ...(typeof details?.title === "string" && details.title.trim()
+        ? { title: details.title.trim() }
+        : {}),
+      ...(typeof details?.slug === "string" && details.slug.trim()
+        ? { slug: details.slug.trim() }
+        : {}),
+      ...(typeof details?.createdAt === "number" &&
+      Number.isFinite(details.createdAt)
+        ? { createdAt: details.createdAt }
+        : {}),
+    };
+  };
+
+  const emitVoiceToolStart = (payload: RuntimeVoiceToolCallPayload) => {
+    emitVoiceAgentEvent({
+      type: AGENT_STREAM_EVENT_TYPES.TOOL_START,
+      runId: payload.requestId || `voice:${payload.callId}`,
+      conversationId: payload.conversationId,
+      requestId: payload.requestId,
+      seq: nextTaskEventSeq(),
+      agentType: "orchestrator",
+      toolCallId: payload.callId,
+      toolName: payload.name,
+      args: payload.args,
+    });
+  };
+
+  const emitVoiceToolEnd = (
+    payload: RuntimeVoiceToolCallPayload,
+    result: RuntimeVoiceToolCallResult,
+  ) => {
+    emitVoiceAgentEvent({
+      type: AGENT_STREAM_EVENT_TYPES.TOOL_END,
+      runId: payload.requestId || `voice:${payload.callId}`,
+      conversationId: payload.conversationId,
+      requestId: payload.requestId,
+      seq: nextTaskEventSeq(),
+      agentType: "orchestrator",
+      toolCallId: payload.callId,
+      toolName: payload.name,
+      resultPreview: result.output,
+      ...(result.details !== undefined ? { details: result.details } : {}),
+      ...(result.fileChanges?.length
+        ? { fileChanges: result.fileChanges }
+        : {}),
+      ...(result.producedFiles?.length
+        ? { producedFiles: result.producedFiles }
+        : {}),
+      ...(result.error ? { error: result.error } : {}),
+    });
   };
 
   const emitVoiceHmrState = (state: unknown) => {
@@ -247,6 +336,12 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       _event,
       payload: {
         instructions?: string;
+        tools?: Array<{
+          type: "function";
+          name: string;
+          description: string;
+          parameters: Record<string, unknown>;
+        }>;
       },
     ) => {
       const preferences = getRealtimeVoicePreferences(options.stellaRoot);
@@ -283,6 +378,9 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
                 typeof payload?.instructions === "string"
                   ? payload.instructions
                   : undefined,
+              ...(payload?.tools?.length
+                ? { tools: payload.tools, tool_choice: "auto" }
+                : {}),
               audio: {
                 output: {
                   voice,
@@ -338,6 +436,12 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
       _event,
       payload: {
         instructions?: string;
+        tools?: Array<{
+          type: "function";
+          name: string;
+          description: string;
+          parameters: Record<string, unknown>;
+        }>;
       },
     ) => {
       const preferences = getRealtimeVoicePreferences(options.stellaRoot);
@@ -387,6 +491,9 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
                 type: "realtime",
                 model,
                 instructions,
+                ...(payload?.tools?.length
+                  ? { tools: payload.tools, tool_choice: "auto" }
+                  : {}),
                 voice,
               },
             }),
@@ -494,6 +601,7 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
         role: "user" | "assistant";
         text: string;
         uiVisibility?: "visible" | "hidden";
+        voiceSession?: { durationMs: number };
       },
     ) => {
       console.log(
@@ -562,6 +670,50 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
           emitVoiceAgentEvent({ ...event, type: "run-finished" });
         },
       });
+    },
+  );
+
+  ipcMain.handle(
+    IPC_VOICE_ORCHESTRATOR_CONFIG,
+    async (_event, payload: { conversationId: string }) => {
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime not initialized");
+      }
+      return await stellaHostRunner.getVoiceOrchestratorConfig(payload);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_VOICE_EXECUTE_TOOL,
+    async (
+      _event,
+      payload: RuntimeVoiceToolCallPayload,
+    ) => {
+      if (!options.uiState.isVoiceRtcActive) {
+        throw new Error("Voice mode is no longer active.");
+      }
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime not initialized");
+      }
+      emitVoiceToolStart(payload);
+      try {
+        const result = await stellaHostRunner.executeVoiceTool(payload);
+        emitVoiceToolEnd(payload, result);
+        const displayPayload = htmlDisplayPayloadFromVoiceTool(payload, result);
+        if (displayPayload) {
+          emitVoiceDisplayPayload(displayPayload);
+        }
+        return result;
+      } catch (error) {
+        const message = errorMessage(error);
+        emitVoiceToolEnd(payload, {
+          output: `Error: ${message}`,
+          error: message,
+        });
+        throw error;
+      }
     },
   );
 

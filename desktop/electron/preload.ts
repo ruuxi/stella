@@ -119,10 +119,17 @@ import {
   IPC_UPDATES_ROLLBACK_CANCELED,
   IPC_UPDATES_TRY_APPLY_CLEAN,
   IPC_VOICE_CREATE_OPENAI_SESSION,
+  IPC_VOICE_EXECUTE_TOOL,
+  IPC_VOICE_ORCHESTRATOR_CONFIG,
   IPC_VOICE_CREATE_XAI_SESSION,
   IPC_VOICE_CREATE_INWORLD_SESSION,
 } from "../src/shared/contracts/ipc-channels.js";
-import type { RuntimeSocialSessionStatus } from "../../runtime/protocol/index.js";
+import type {
+  RuntimeSocialSessionStatus,
+  RuntimeVoiceOrchestratorConfig,
+  RuntimeVoiceToolCallPayload,
+  RuntimeVoiceToolCallResult,
+} from "../../runtime/protocol/index.js";
 
 // ---------------------------------------------------------------------------
 // IPC listener helpers — eliminate boilerplate for the 3 common patterns.
@@ -563,15 +570,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
       role: "user" | "assistant";
       text: string;
       uiVisibility?: "visible" | "hidden";
+      voiceSession?: { durationMs: number };
     }) => ipcRenderer.send("voice:persistTranscript", payload),
     orchestratorChat: (payload: { conversationId: string; message: string }) =>
       ipcRenderer.invoke("voice:orchestratorChat", payload) as Promise<string>,
+    getOrchestratorConfig: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke(
+        IPC_VOICE_ORCHESTRATOR_CONFIG,
+        payload,
+      ) as Promise<RuntimeVoiceOrchestratorConfig>,
+    executeTool: (payload: RuntimeVoiceToolCallPayload) =>
+      ipcRenderer.invoke(
+        IPC_VOICE_EXECUTE_TOOL,
+        payload,
+      ) as Promise<RuntimeVoiceToolCallResult>,
     webSearch: (payload: { query: string; category?: string }) =>
       ipcRenderer.invoke("voice:webSearch", payload) as Promise<{
         text: string;
         results: Array<{ title: string; url: string; snippet: string }>;
       }>,
-    createOpenAISession: (payload: { instructions?: string }) =>
+    createOpenAISession: (payload: {
+      instructions?: string;
+      tools?: RuntimeVoiceOrchestratorConfig["tools"];
+    }) =>
       ipcRenderer.invoke(IPC_VOICE_CREATE_OPENAI_SESSION, payload) as Promise<{
         provider: "openai";
         clientSecret: string;
@@ -580,7 +601,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
         expiresAt?: number;
         sessionId?: string;
       }>,
-    createXaiSession: (payload: { instructions?: string }) =>
+    createXaiSession: (payload: {
+      instructions?: string;
+      tools?: RuntimeVoiceOrchestratorConfig["tools"];
+    }) =>
       ipcRenderer.invoke(IPC_VOICE_CREATE_XAI_SESSION, payload) as Promise<{
         provider: "xai";
         clientSecret: string;
