@@ -100,7 +100,8 @@ export const getSelectedText = async (
 ): Promise<SelectedTextResult | null> => {
   if (!hasMacPermission('accessibility')) return null
 
-  const clipboardAllowed = options?.allowClipboardFallback !== false
+  const clipboardAllowed =
+    process.platform !== 'win32' && options?.allowClipboardFallback !== false
   const args = clipboardAllowed ? [] : ['--no-clipboard-fallback']
 
   const stdout = await runNativeHelper('selected_text', args, {
