@@ -27,6 +27,13 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 - [user-profile](user-profile/SKILL.md) — structured onboarding memory for the user, including projects, apps, interests, and environment
 - [stella-design](stella-design/SKILL.md) — frontend design quality guidance for Stella desktop UI and Stella-created apps
 
+## Content and Productivity
+
+- [humanizer](humanizer/SKILL.md) — strip AI-isms from text and add real human voice; use before publishing user-facing prose or when asked to de-slop writing
+- [youtube-content](youtube-content/SKILL.md) — fetch a YouTube transcript and turn it into summaries, chapters, threads, blog posts, or quotes
+- [apple-reminders](apple-reminders/SKILL.md) — manage Apple Reminders via the `remindctl` CLI, syncing to the user's Apple devices (macOS only)
+- [apple-notes](apple-notes/SKILL.md) — manage Apple Notes via the `memo` CLI, syncing to the user's Apple devices (macOS only)
+
 ## Product and Integration Docs
 
 - [stella-desktop](stella-desktop/SKILL.md) — Stella's own Electron desktop app (processes, routing, sidebar apps, dialogs, UI state)

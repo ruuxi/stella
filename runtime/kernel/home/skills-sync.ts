@@ -35,7 +35,7 @@ const USER_PROFILE_SKILL_ID = "user-profile";
 const MANIFEST_VERSION = 1 as const;
 const PLATFORM_SKILL_IDS: Partial<Record<NodeJS.Platform, readonly string[]>> =
   {
-    darwin: ["stella-computer-macos"],
+    darwin: ["stella-computer-macos", "apple-reminders", "apple-notes"],
     win32: ["stella-computer-windows"],
   };
 const PLATFORM_EXCLUSIVE_SKILL_IDS = new Set(
