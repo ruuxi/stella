@@ -17,6 +17,7 @@ Each skill is a folder. The folder name is the skill ID. Inside:
 - [stella-browser](stella-browser/SKILL.md) — browser automation through Stella's Chrome extension bridge
 - [stella-office](stella-office/SKILL.md) — office document creation and editing
 - [stella-media](stella-media/SKILL.md) — image, video, audio, music, and 3D generation through Stella's managed media gateway
+- [stella-llm](stella-llm/SKILL.md) — language model calls through Stella's managed auth and provider relay
 - [pdf](pdf/SKILL.md) — PDF reading, generation, page operations, and render-based quality checks
 - [skill-creator](skill-creator/SKILL.md) — create and update Stella skills
 - [stella-computer-macos](stella-computer-macos/SKILL.md) — macOS desktop-app automation through the `stella-computer` CLI
