@@ -227,6 +227,8 @@ export const METHOD_NAMES = {
     "internal.worker.selfMod.externalFinish",
   INTERNAL_WORKER_SOURCE_PACK_HISTORY_RECORD:
     "internal.worker.sourcePackHistory.record",
+  INTERNAL_WORKER_SOURCE_HISTORY_HAS_COMMIT:
+    "internal.worker.sourceHistory.hasCommit",
   INTERNAL_WORKER_KILL_ALL_SHELLS: "internal.worker.killAllShells",
   INTERNAL_WORKER_KILL_SHELL_BY_PORT: "internal.worker.killShellByPort",
   INTERNAL_WORKER_LOCAL_CHAT_GET_OR_CREATE_DEFAULT:

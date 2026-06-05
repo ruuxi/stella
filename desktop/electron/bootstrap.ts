@@ -4,6 +4,8 @@ import { fileURLToPath } from 'url'
 import {
   AUTH_PROTOCOL,
   HARD_RESET_MUTABLE_HOME_PATHS,
+  STARTUP_FIRST_PAINT_FALLBACK_MS,
+  STARTUP_RUNTIME_WARMUP_DELAY_MS,
   STARTUP_STAGE_DELAY_MS,
   STELLA_APP_NAME,
   STELLA_SESSION_PARTITION,
@@ -108,6 +110,8 @@ export const bootstrapMainProcess = () => {
     useDevServer,
     sessionPartition: STELLA_SESSION_PARTITION,
     startupStageDelayMs: STARTUP_STAGE_DELAY_MS,
+    startupFirstPaintFallbackMs: STARTUP_FIRST_PAINT_FALLBACK_MS,
+    startupRuntimeWarmupDelayMs: STARTUP_RUNTIME_WARMUP_DELAY_MS,
   })
 
   if (!initializeBootstrapSingleInstance(context)) {

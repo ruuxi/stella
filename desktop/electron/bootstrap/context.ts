@@ -39,6 +39,8 @@ export type BootstrapConfig = {
   useDevServer: boolean;
   sessionPartition: string;
   startupStageDelayMs: number;
+  startupFirstPaintFallbackMs: number;
+  startupRuntimeWarmupDelayMs: number;
 };
 
 export type BootstrapState = {

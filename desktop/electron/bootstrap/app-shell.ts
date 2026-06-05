@@ -210,6 +210,18 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
   state.windowManager!.createInitialWindows();
 
   const fullWindow = state.windowManager!.getFullWindow();
+  let deferredStartupTriggered = false;
+  const triggerDeferredStartup = (trigger: "first-paint" | "fallback") => {
+    if (deferredStartupTriggered) {
+      return;
+    }
+    deferredStartupTriggered = true;
+    getMainLogger()?.process("startup.deferred-startup.trigger", {
+      trigger,
+      elapsedMs: Math.round(process.uptime() * 1000),
+    });
+    void startDeferredStartup(context);
+  };
 
   // The cold-boot deep-link OTT (`stella://auth/callback?ott=…`) sits in
   // `authService.pendingAuthCallback` waiting for the renderer to pull it via
@@ -223,14 +235,14 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
       getMainLogger()?.process("startup.first-paint", {
         elapsedMs: Math.round(process.uptime() * 1000),
       });
-      void startDeferredStartup(context);
+      triggerDeferredStartup("first-paint");
     });
   }
 
   state.windowManager!.showWindow("full");
   context.state.processRuntime.setManagedTimeout(() => {
-    void startDeferredStartup(context);
-  }, config.startupStageDelayMs);
+    triggerDeferredStartup("fallback");
+  }, config.startupFirstPaintFallbackMs);
 
   // If Accessibility was off at startup, deferred startup skips the hook; when
   // the user enables it in System Settings and returns to Stella, retry start.
