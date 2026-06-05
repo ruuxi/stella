@@ -17,6 +17,7 @@ import type { Attachment } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import { useEventRows } from "@/features/chat/hooks/use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
+import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 
 const USER_MESSAGE_ENTER_MS = 360;
@@ -35,6 +36,8 @@ type Props = {
   maxItems?: number;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  /** Working/agent indicator rendered below the last assistant message. */
+  indicator?: InlineWorkingIndicatorMountProps;
   hasOlderMessages?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
@@ -101,6 +104,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
+  indicator,
   hasOlderMessages,
   isLoadingOlder,
   isLoadingHistory,
@@ -144,6 +148,7 @@ export const ConversationEvents = memo(function ConversationEvents({
       isLoadingHistory={isLoadingHistory}
       onOpenAttachment={onOpenAttachment}
       queuedUserMessages={queuedUserMessages}
+      indicator={indicator}
       listRef={listRef}
       onListScroll={onListScroll}
       onStartReached={onStartReached}

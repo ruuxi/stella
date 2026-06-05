@@ -59,6 +59,10 @@ import {
 import type { EventRowViewModel } from "@/features/chat/conversation-row-types";
 import type { Attachment } from "@/features/chat/lib/event-transforms";
 import { ComposerQueuedMessages } from "./ComposerQueuedMessages";
+import {
+  InlineWorkingIndicator,
+  type InlineWorkingIndicatorMountProps,
+} from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import { Spinner } from "@/ui/spinner";
 
@@ -77,6 +81,14 @@ type ChatTimelineProps = {
   extraTail?: React.ReactNode;
   onOpenAttachment?: (attachment: Attachment) => void;
   queuedUserMessages?: QueuedUserMessage[];
+  /**
+   * Claude-style working/agent indicator. Rendered on its own line at the
+   * top of the trailing region — directly below the streaming/last
+   * assistant message and above any queued user messages. Toggling
+   * `active` false plays the hold + grow-out exit; the indicator collapses
+   * to nothing when fully idle and re-enters under the next pending turn.
+   */
+  indicator?: InlineWorkingIndicatorMountProps;
   /**
    * Ref to the underlying Legend List instance. Surfaces (full chat,
    * sidebar) own their own scroll-management hook and forward the ref
@@ -160,6 +172,7 @@ export const ChatTimeline = memo(function ChatTimeline({
   extraTail,
   onOpenAttachment,
   queuedUserMessages,
+  indicator,
   listRef,
   onListScroll,
   onStartReached,
@@ -196,26 +209,34 @@ export const ChatTimeline = memo(function ChatTimeline({
   }, [hasOlderEvents, isLoadingOlder]);
 
   /**
-   * Footer: bottom-floor min-height + queued user messages, plus any
-   * surface-specific `extraTail` node. The min-height
-   * pre-allocates the empty reading area below the just-sent user bubble
-   * (and below short streaming replies) without reserving the full
-   * viewport. Living here — rather than wrapping the latest user/assistant
-   * rows in a re-keyed synthetic list item — means rows never migrate
-   * between virtualized contexts on send, so their measured sizes don't
-   * collapse into `estimatedItemSize` for a frame and `scrollHeight`
-   * doesn't dip back below the user's current `scrollTop`.
+   * Footer: the Claude-style working indicator, the queued user-message
+   * stack, any surface-specific `extraTail` node, and a bottom-floor
+   * `min-height`. The indicator sits first so it reads as the line
+   * directly below the streaming/last assistant row, with queued messages
+   * stacking beneath it. The min-height pre-allocates the empty reading
+   * area below the just-sent user bubble (and below short streaming
+   * replies) without reserving the full viewport. Living here — rather
+   * than wrapping the latest user/assistant rows in a re-keyed synthetic
+   * list item — means rows never migrate between virtualized contexts on
+   * send, so their measured sizes don't collapse into `estimatedItemSize`
+   * for a frame and `scrollHeight` doesn't dip back below the user's
+   * current `scrollTop`.
    */
   const ListFooter = useMemo(
     () => (
       <div className="event-list-trailing-region">
+        {indicator ? (
+          <div className="event-list-working-indicator">
+            <InlineWorkingIndicator {...indicator} />
+          </div>
+        ) : null}
         <ComposerQueuedMessages messages={queuedUserMessages ?? []} />
         {extraTail && (
           <div className="event-list-extra-tail">{extraTail}</div>
         )}
       </div>
     ),
-    [extraTail, queuedUserMessages],
+    [extraTail, indicator, queuedUserMessages],
   );
 
   if (isLoadingHistory && rows.length === 0) {

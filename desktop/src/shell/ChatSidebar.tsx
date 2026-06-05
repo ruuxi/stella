@@ -216,7 +216,7 @@ export function ChatPanelTab({
     footerTasks.length > 0 ||
     Boolean(isStreaming) ||
     Boolean(runtimeStatusText);
-  const suggestionIndicatorProps: InlineWorkingIndicatorMountProps = {
+  const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,
     tasks: footerTasks,
     runningTool: runningTool?.tool,
@@ -421,6 +421,7 @@ export function ChatPanelTab({
               pendingUserMessageId={pendingUserMessageId}
               queuedUserMessages={queuedUserMessages}
               liveTasks={liveTasks}
+              indicator={indicatorProps}
               hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlder}
               isLoadingHistory={isInitialLoading}
@@ -444,7 +445,6 @@ export function ChatPanelTab({
                 <ComposerSuggestionContextRow
                   chatContext={chatContext}
                   setChatContext={setChatContext}
-                  indicator={suggestionIndicatorProps}
                 />
               </div>
 
