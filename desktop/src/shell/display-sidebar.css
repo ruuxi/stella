@@ -16,32 +16,12 @@
   transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
   /* Scope layout to this subtree so width-driven reflows don't cascade
      into siblings (and vice-versa). Crucial during the slide because the
-     panel can host heavy content (HTML viewer, PDF). Paint containment
-     is intentionally omitted so the soft left-edge shadow on the open
-     state can render outside this box (paint containment would clip
-     even the element's own box-shadow). overflow:hidden still clips
-     descendants for the slide reveal but does not clip our own shadow. */
+     panel can host heavy content (HTML viewer, PDF). */
   contain: layout;
 }
 
 .display-sidebar--open {
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
-  /* Soft Apple-style depth on the left edge so the panel reads as
-     floating over the content beneath it. Thin hairline + wider
-     low-opacity diffusion. */
-  /* Layered like a real macOS window shadow: a near-edge ambient layer
-     for the "contact" line, then a wider, very low-opacity cast layer
-     that diffuses naturally instead of banding. No heavy negative
-     spread (which is what made the previous version read as a gradient
-     stripe rather than a shadow). */
-  /* Shadow-as-border: a tight, all-around 1px halo acts as the
-     visible left edge (top/bottom/right sit against the window
-     chrome so the halo only reads on the left), plus a wider
-     left-biased cast for floating depth. */
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.04),
-    -1px 0 2px rgba(15, 23, 42, 0.02),
-    -6px 0 18px rgba(15, 23, 42, 0.025);
 }
 
 /* Expanded mode overlays the content area instead of participating in the
@@ -54,9 +34,6 @@
   width: auto;
   flex: none;
   margin-left: 0;
-  /* Expanded covers the full content area — nothing for the left-edge
-     shadow to land on, drop it to avoid a stray line at the viewport edge. */
-  box-shadow: none;
 }
 
 /* Expanded mode overlays the content area but `.display-sidebar-inner` is
@@ -151,7 +128,6 @@
   flex-direction: column;
   height: 100%;
   background: var(--panel-surface-bg-gradient);
-  box-shadow: var(--panel-surface-highlight);
   padding-top: var(--shell-topbar-height, 38px);
   box-sizing: border-box;
   /* Stay at the panel's "open" width even while the outer is animating
@@ -159,9 +135,8 @@
      the "roll away" effect on close instead of letting content reflow. */
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   min-width: 0;
-  /* Left edge is drawn by the outer `.display-sidebar--open` shadow
-     halo (shadow-as-border trick) so there's no real border here. */
-  border-left: none;
+  border-left: 1px solid
+    color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
   border-radius: 0 0 0 var(--display-sidebar-bottom-left-radius);
   transform: translate3d(12px, 0, 0);
   opacity: 0;
@@ -197,10 +172,7 @@
 
 .display-sidebar--expanded .display-sidebar-inner {
   width: 100%;
-  /* Expanded mode hides the content area underneath, so there's nothing
-     for the left-edge shadow to land on — drop it to avoid a stray line
-     against the empty background. */
-  box-shadow: none;
+  border-left: none;
 }
 
 /*
