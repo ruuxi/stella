@@ -43,7 +43,6 @@ Do not add auxiliary docs such as `README.md`, `CHANGELOG.md`, or installation g
 3. Create `runtime/home-seed/skills/<name>/SKILL.md` for bundled source skills, or `skills/<name>/SKILL.md` inside Stella home for user-local skills.
 4. Add only the resource folders that are actually useful.
 5. Validate frontmatter and folder shape.
-6. Update `runtime/home-seed/skills/index.md` when a bundled skill should be discoverable from the index.
 
 When initializing from this skill's helper script, target Stella's skill root:
 

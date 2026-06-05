@@ -219,3 +219,32 @@ export const renderSkillCatalogBlock = async (
   const state = await buildSkillCatalogPromptState(stellaRoot, options);
   return state.block;
 };
+
+/**
+ * Render every skill as an inline catalog, ignoring the inline/placeholder
+ * threshold. Used by the Explore agent, whose entire job is skill selection —
+ * it should always see the full catalog rather than the placeholder, even
+ * (especially) when the count is above {@link INLINE_SKILL_CATALOG_THRESHOLD}.
+ * Omits the general-agent "how to use" footer; Explore has its own usage rules.
+ */
+export const renderFullSkillCatalogBlock = async (
+  stellaRoot: string,
+  options: SkillCatalogRenderOptions = {},
+): Promise<string> => {
+  const entries = await listSkillCatalogEntries(stellaRoot, options);
+  const lines = ["<skills>", "## Available skills"];
+  if (entries.length === 0) {
+    lines.push("- No saved skills yet.");
+  } else {
+    for (const entry of entries) {
+      const suffix = entry.hasProgram
+        ? " Includes optional `scripts/program.ts`."
+        : "";
+      lines.push(
+        `- \`${entry.id}\` — ${entry.description} (path: ${entry.path})${suffix}`,
+      );
+    }
+  }
+  lines.push("</skills>");
+  return lines.join("\n");
+};

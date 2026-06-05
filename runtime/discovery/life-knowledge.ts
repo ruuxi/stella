@@ -100,7 +100,6 @@ const buildKnowledgePage = (
         "",
         `- [${USER_PROFILE_TITLE}](SKILL.md)`,
         `- Raw: [${rawPage.title}](${rawRelPath(rawPage.fileName)})`,
-        "- [Skills Index](../index.md)",
       );
     }
   } else {
@@ -109,7 +108,6 @@ const buildKnowledgePage = (
       "## Backlinks",
       "",
       `- [${USER_PROFILE_TITLE}](SKILL.md)`,
-      "- [Skills Index](../index.md)",
     );
   }
 
@@ -156,10 +154,6 @@ const buildSkillFile = (
     ...(rawLinks.length > 0
       ? rawLinks
       : ["- No raw discovery data was captured."]),
-    "",
-    "## Backlinks",
-    "",
-    "- [Skills Index](../index.md)",
   ].join("\n");
 };
 

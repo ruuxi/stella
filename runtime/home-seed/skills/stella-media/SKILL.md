@@ -36,5 +36,4 @@ The 401 body has `code: "auth_required"` and an `action` string. Stop the job, s
 
 ## Backlinks
 
-- [Skills Index](../index.md)
 - [general-agent](../../../runtime/extensions/stella-runtime/agents/general.md)

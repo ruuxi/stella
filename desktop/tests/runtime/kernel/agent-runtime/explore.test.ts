@@ -42,12 +42,14 @@ describe("sanitizeExploreToolArgs", () => {
     await mkdir(path.join(rootPath, "skills"), { recursive: true });
     const result = await sanitizeExploreToolArgs(
       "Read",
-      { file_path: "~/.stella/skills/index.md" },
+      { file_path: "~/.stella/skills/user-profile/SKILL.md" },
       rootPath,
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.args.file_path).toBe(path.join(rootPath, "skills", "index.md"));
+    expect(result.args.file_path).toBe(
+      path.join(rootPath, "skills", "user-profile", "SKILL.md"),
+    );
   });
 
   it("rejects Read paths outside the Stella home", async () => {

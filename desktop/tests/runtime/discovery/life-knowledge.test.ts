@@ -16,27 +16,6 @@ const createTempHome = async () => {
   );
   tempDirs.push(dir);
   await fs.mkdir(path.join(dir, "skills"), { recursive: true });
-  await fs.writeFile(
-    path.join(dir, "skills", "index.md"),
-    [
-      "# Skills Index",
-      "",
-      "## Entries",
-      "",
-      "- [stella-computer](stella-computer/SKILL.md): browser and desktop-app operating guidance.",
-      "- [user-profile](user-profile/SKILL.md): structured onboarding memory for the user, including projects, apps, interests, and environment.",
-      "",
-      "## Related Abilities",
-      "",
-      "- [stella-browser](stella-browser/SKILL.md)",
-      "",
-      "## Backlinks",
-      "",
-      "- [Skills Index](index.md)",
-      "",
-    ].join("\n"),
-    "utf-8",
-  );
   return dir;
 };
 
@@ -138,13 +117,6 @@ describe("life knowledge discovery writer", () => {
     expect(rawDev).toContain("Development Environment (Raw)");
     expect(rawDev).toContain("/Users/rahulnanda/projects/stella");
     expect(rawDev).toContain("847 files");
-
-    // Index already includes the static user-profile entry.
-    const skillsIndex = await fs.readFile(
-      path.join(stellaHome, "skills", "index.md"),
-      "utf-8",
-    );
-    expect(skillsIndex).toContain("[user-profile](user-profile/SKILL.md)");
   });
 
   it("skips summary pages when categoryAnalyses is absent", async () => {
@@ -185,28 +157,4 @@ describe("life knowledge discovery writer", () => {
     ).rejects.toThrow();
   });
 
-  it("does not modify static skills index entries on repeated writes", async () => {
-    const stellaHome = await createTempHome();
-    const payload: DiscoveryKnowledgeSeedPayload = {
-      coreMemory: "[who]\n- Test user.\n",
-      formattedSections: {},
-    };
-    const initialSkillsIndex = await fs.readFile(
-      path.join(stellaHome, "skills", "index.md"),
-      "utf-8",
-    );
-
-    await writeDiscoveryKnowledge(stellaHome, payload);
-    await writeDiscoveryKnowledge(stellaHome, payload);
-
-    const skillsIndex = await fs.readFile(
-      path.join(stellaHome, "skills", "index.md"),
-      "utf-8",
-    );
-
-    expect(skillsIndex).toBe(initialSkillsIndex);
-    expect(
-      skillsIndex.match(/\[user-profile\]\(user-profile\/SKILL\.md\)/g)?.length,
-    ).toBe(1);
-  });
 });
