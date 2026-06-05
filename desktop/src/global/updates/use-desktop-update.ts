@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
 import type {
-  DesktopReleaseSourceHistoryRef,
   InstallManifestSnapshot,
   StellaReleaseArtifactRef,
 } from "@/shared/types/electron";
@@ -109,46 +108,6 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   const updateAvailable = Boolean(
     publishedCommit && installedCommit && publishedCommit !== installedCommit,
   );
-
-  const historyAttemptedFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (!installManifest || !installedCommit) return;
-    const releaseTag =
-      installManifest.installState?.desktopReleaseTag ??
-      installManifest.desktopReleaseTag;
-    if (!releaseTag) return;
-    const latestMatchesInstall =
-      currentRelease?.commit === installedCommit &&
-      currentRelease.tag === releaseTag;
-    const sourceHistoryRef: DesktopReleaseSourceHistoryRef | null =
-      latestMatchesInstall &&
-      currentRelease.sourceHistoryUrl &&
-      currentRelease.sourceHistorySha256 &&
-      typeof currentRelease.sourceHistorySize === "number"
-        ? {
-            kind: "url",
-            url: currentRelease.sourceHistoryUrl,
-            sha256: currentRelease.sourceHistorySha256,
-            sizeBytes: currentRelease.sourceHistorySize,
-          }
-        : null;
-    const historyKey = `${installedCommit}:${releaseTag}:${sourceHistoryRef?.sha256 ?? "manifest"}`;
-    if (historyAttemptedFor.current === historyKey) return;
-    const recordSourceHistory =
-      window.electronAPI?.updates?.recordSourceHistory;
-    if (!recordSourceHistory) return;
-    historyAttemptedFor.current = historyKey;
-    void recordSourceHistory({
-      targetCommit: installedCommit,
-      releaseTag,
-      ...(sourceHistoryRef ? { sourceHistoryRef } : {}),
-    }).catch((error) => {
-      console.warn(
-        "[updates] Failed to record official desktop source history:",
-        error,
-      );
-    });
-  }, [installManifest, installedCommit, currentRelease]);
 
   // If the install-update agent restarted Electron before the renderer's
   // run-finished handler could record the applied commit, the manifest is

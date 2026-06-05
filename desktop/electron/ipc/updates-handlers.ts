@@ -76,11 +76,9 @@ const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers";
 const DEFAULT_NATIVE_HELPERS_MANIFEST_URL = `${DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL}/current.json`;
 const UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS = 120_000;
-// Recording source history is best-effort and runs at launch, racing the Bun
-// worker's cold-start. On slow Windows machines the worker isn't ready for
-// ~25-40s, so a 20s budget timed out and logged a hard error every launch
-// after an update. Give it enough headroom to outlast a slow cold-start so it
-// completes quietly instead of failing and re-attempting next launch.
+// Recording source history is best-effort and may run after launch or after an
+// update. Keep it out of renderer startup and wait for real runtime readiness
+// before issuing the worker RPC.
 const UPDATE_SOURCE_HISTORY_TIMEOUT_MS = 45_000;
 
 class DesktopUpdateRuntimeTimeoutError extends Error {
@@ -290,6 +288,14 @@ const parseUpdateAttemptSnapshot = (
 
 type GitRunResult = { exitCode: number; stdout: string; stderr: string };
 type ProcessRunResult = { exitCode: number; stdout: string; stderr: string };
+type ReleaseManifestSnapshot = {
+  tag: string | null;
+  commit: string | null;
+  sourceHistoryRef: DesktopReleaseSourceHistoryRef | null;
+};
+type OfficialSourceHistoryRecordResult =
+  | { ok: true; revisionId: string }
+  | { ok: false; reason: string };
 
 const runGit = (cwd: string, args: string[]): Promise<GitRunResult> =>
   new Promise((resolve, reject) => {
@@ -887,19 +893,25 @@ const tryParseManifest = (
 
 const readReleaseManifest = async (
   stellaRoot: string,
-): Promise<{ tag: string | null; commit: string | null }> => {
+): Promise<ReleaseManifestSnapshot> => {
   try {
     const raw = await fs.readFile(
       path.join(stellaRoot, "stella-release.json"),
       "utf-8",
     );
     const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const commit = asString(parsed.commit);
     return {
       tag: asString(parsed.tag),
-      commit: asString(parsed.commit),
+      commit,
+      sourceHistoryRef: commit
+        ? sourceHistoryRefFromDesktopReleaseManifest(parsed, {
+            targetCommit: commit,
+          })
+        : null,
     };
   } catch {
-    return { tag: null, commit: null };
+    return { tag: null, commit: null, sourceHistoryRef: null };
   }
 };
 
@@ -1073,6 +1085,233 @@ const fetchDesktopReleaseSourceHistoryRef = async (args: {
   return sourceHistoryRefFromDesktopReleaseManifest(manifest, {
     targetCommit: args.targetCommit,
   });
+};
+
+const createOfficialSourceHistoryReconciler = (
+  options: UpdatesHandlersOptions,
+) => {
+  const inFlight = new Map<
+    string,
+    Promise<OfficialSourceHistoryRecordResult>
+  >();
+
+  const resolveInstalledRelease = async (args?: {
+    targetCommit?: string | null;
+    releaseTag?: string | null;
+    sourceHistoryRef?: DesktopReleaseSourceHistoryRef | null;
+  }): Promise<{
+    targetCommit: string;
+    releaseTag: string;
+    sourceHistoryRef: DesktopReleaseSourceHistoryRef | null;
+  } | null> => {
+    const targetCommit = asString(args?.targetCommit);
+    const releaseTag = asString(args?.releaseTag);
+    if (targetCommit && releaseTag) {
+      let sourceHistoryRef = args?.sourceHistoryRef ?? null;
+      if (!sourceHistoryRef) {
+        const stellaRoot = options.getStellaRoot();
+        if (stellaRoot) {
+          const release = await readReleaseManifest(stellaRoot);
+          if (release.commit === targetCommit && release.tag === releaseTag) {
+            sourceHistoryRef = release.sourceHistoryRef;
+          }
+        }
+      }
+      return {
+        targetCommit,
+        releaseTag,
+        sourceHistoryRef,
+      };
+    }
+
+    const stellaRoot = options.getStellaRoot();
+    if (!stellaRoot) {
+      return null;
+    }
+    const release = await readReleaseManifest(stellaRoot);
+    if (!release.commit || !release.tag) {
+      return null;
+    }
+    return {
+      targetCommit: release.commit,
+      releaseTag: release.tag,
+      sourceHistoryRef: release.sourceHistoryRef,
+    };
+  };
+
+  const waitForReadyRunner = async (fields: LogFields) => {
+    let runner = options.getStellaHostRunner?.() ?? null;
+    if (!runner) {
+      runner = await waitForConnectedRunner(
+        () => options.getStellaHostRunner?.() ?? null,
+        {
+          timeoutMs: UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
+          unavailableMessage: "Runtime not available.",
+          ...(options.onStellaHostRunnerChanged
+            ? { onRunnerChanged: options.onStellaHostRunnerChanged }
+            : {}),
+        },
+      );
+    }
+
+    await withDesktopUpdateTimeout(
+      "official.wait-runtime-ready",
+      UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
+      runner.waitUntilReady(UPDATE_SOURCE_HISTORY_TIMEOUT_MS),
+      fields,
+    );
+    return runner;
+  };
+
+  const record = async (args?: {
+    targetCommit?: string | null;
+    releaseTag?: string | null;
+    sourceHistoryRef?: DesktopReleaseSourceHistoryRef | null;
+    reason?: string;
+  }): Promise<OfficialSourceHistoryRecordResult> => {
+    const release = await resolveInstalledRelease(args);
+    if (!release) {
+      logDesktopUpdateWarn("desktop-update.record-source-history.unavailable", {
+        reason: args?.reason ?? "installed-release-unavailable",
+      });
+      return { ok: false, reason: "installed-release-unavailable" };
+    }
+
+    const key = `${release.targetCommit}:${release.releaseTag}:${release.sourceHistoryRef?.sha256 ?? "manifest"}`;
+    const existing = inFlight.get(key);
+    if (existing) {
+      return await existing;
+    }
+
+    const promise = (async (): Promise<OfficialSourceHistoryRecordResult> => {
+      const startedAt = Date.now();
+      const reason = args?.reason ?? "manual";
+      const baseFields = {
+        releaseTag: release.releaseTag,
+        targetCommit: shortCommit(release.targetCommit),
+        reason,
+      };
+      logDesktopUpdateProcess("desktop-update.record-source-history.start", {
+        ...baseFields,
+        hasSourceHistoryRef: Boolean(release.sourceHistoryRef),
+      });
+
+      let runner: StellaHostRunner;
+      try {
+        runner = await waitForReadyRunner(baseFields);
+      } catch {
+        logDesktopUpdateWarn(
+          "desktop-update.record-source-history.unavailable",
+          {
+            ...baseFields,
+            elapsedMs: Date.now() - startedAt,
+            reason: "runtime-unavailable",
+          },
+        );
+        return { ok: false, reason: "runtime-unavailable" };
+      }
+
+      const existing = await withDesktopUpdateTimeout(
+        "official.check-history",
+        UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
+        runner.hasSourceRevisionForCommit(release.targetCommit),
+        baseFields,
+      ).catch((error) => {
+        logDesktopUpdateWarn(
+          "desktop-update.record-source-history.check-failed",
+          {
+            ...baseFields,
+            error,
+          },
+        );
+        return null;
+      });
+      if (existing?.exists) {
+        const revisionId = existing.revisionId ?? `git:${release.targetCommit}`;
+        logDesktopUpdateProcess(
+          "desktop-update.record-source-history.skipped",
+          {
+            ...baseFields,
+            revisionId,
+            elapsedMs: Date.now() - startedAt,
+            reason: "already-recorded",
+          },
+        );
+        return { ok: true, revisionId };
+      }
+
+      let sourceHistoryRef = release.sourceHistoryRef;
+      if (!sourceHistoryRef) {
+        sourceHistoryRef = await fetchDesktopReleaseSourceHistoryRef({
+          releaseTag: release.releaseTag,
+          targetCommit: release.targetCommit,
+        });
+      }
+      if (!sourceHistoryRef) {
+        logDesktopUpdateWarn(
+          "desktop-update.record-source-history.unavailable",
+          {
+            ...baseFields,
+            elapsedMs: Date.now() - startedAt,
+            reason: "source-history-unavailable",
+          },
+        );
+        return { ok: false, reason: "source-history-unavailable" };
+      }
+
+      try {
+        const sourcePack =
+          await fetchDesktopSourceHistoryPack(sourceHistoryRef);
+        await withDesktopUpdateTimeout(
+          "official.record-history",
+          UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
+          recordDesktopUpdateSourceHistory(runner, {
+            sourcePack,
+            releaseTag: release.releaseTag,
+            targetCommit: release.targetCommit,
+            origin: "official",
+          }),
+          baseFields,
+        );
+        logDesktopUpdateProcess("desktop-update.record-source-history.done", {
+          ...baseFields,
+          revisionId: sourcePack.revisionId,
+          elapsedMs: Date.now() - startedAt,
+        });
+        return { ok: true, revisionId: sourcePack.revisionId };
+      } catch (error) {
+        logDesktopUpdateError(
+          "desktop-update.record-source-history.failed",
+          error,
+          {
+            ...baseFields,
+            elapsedMs: Date.now() - startedAt,
+          },
+        );
+        throw error;
+      }
+    })().finally(() => {
+      inFlight.delete(key);
+    });
+    inFlight.set(key, promise);
+    return await promise;
+  };
+
+  const schedule = (
+    reason: string,
+    args?: {
+      targetCommit?: string | null;
+      releaseTag?: string | null;
+      sourceHistoryRef?: DesktopReleaseSourceHistoryRef | null;
+    },
+  ) => {
+    const timer = setTimeout(() => {
+      void record({ ...(args ?? {}), reason }).catch(() => undefined);
+    }, 0);
+    timer.unref?.();
+  };
+
+  return { record, schedule };
 };
 
 const writeFileAtomic = async (filePath: string, content: string) => {
@@ -1781,6 +2020,16 @@ const tryApplyCleanDesktopUpdate = async (
 };
 
 export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
+  const officialSourceHistory = createOfficialSourceHistoryReconciler(options);
+  options.onStellaHostRunnerChanged?.((runner) => {
+    if (runner) {
+      officialSourceHistory.schedule("runner-ready");
+    }
+  });
+  if (options.getStellaHostRunner?.()) {
+    officialSourceHistory.schedule("runner-ready");
+  }
+
   ipcMain.handle(
     IPC_UPDATES_GET_INSTALL_MANIFEST,
     async (event): Promise<InstallManifestSnapshot | null> => {
@@ -1872,6 +2121,12 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
               : {}),
           },
         );
+        if (result.status === "applied") {
+          officialSourceHistory.schedule("clean-update-applied", {
+            targetCommit,
+            releaseTag,
+          });
+        }
         logDesktopUpdateProcess("desktop-update.try-clean.done", {
           releaseTag,
           targetCommit: shortCommit(targetCommit),
@@ -1981,97 +2236,12 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!releaseTag) {
         throw new Error("releaseTag is required.");
       }
-      const startedAt = Date.now();
-      logDesktopUpdateProcess("desktop-update.record-source-history.start", {
+      return await officialSourceHistory.record({
+        targetCommit,
         releaseTag,
-        targetCommit: shortCommit(targetCommit),
-        hasSourceHistoryRef: Boolean(payload?.sourceHistoryRef),
+        sourceHistoryRef: payload?.sourceHistoryRef ?? null,
+        reason: "ipc",
       });
-      let sourceHistoryRef = payload?.sourceHistoryRef ?? null;
-      if (!sourceHistoryRef) {
-        sourceHistoryRef = await fetchDesktopReleaseSourceHistoryRef({
-          releaseTag,
-          targetCommit,
-        });
-      }
-      if (!sourceHistoryRef) {
-        logDesktopUpdateWarn(
-          "desktop-update.record-source-history.unavailable",
-          {
-            releaseTag,
-            targetCommit: shortCommit(targetCommit),
-            elapsedMs: Date.now() - startedAt,
-          },
-        );
-        return { ok: false, reason: "source-history-unavailable" };
-      }
-      // Recording source history is best-effort telemetry that runs at
-      // launch (and right after an update applies). The runtime worker may
-      // still be cold-starting — or mid-restart from the update that just
-      // touched runtime files — so wait for it to connect before issuing the
-      // RPC instead of racing a parallel spawn (which times out the worker
-      // readiness poll and logs a spurious hard error). If it never connects
-      // within the budget, soft-skip; the renderer re-attempts next launch.
-      let runner: StellaHostRunner;
-      try {
-        runner = await waitForConnectedRunner(
-          () => options.getStellaHostRunner?.() ?? null,
-          {
-            timeoutMs: UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
-            unavailableMessage: "Runtime not available.",
-            ...(options.onStellaHostRunnerChanged
-              ? { onRunnerChanged: options.onStellaHostRunnerChanged }
-              : {}),
-          },
-        );
-      } catch {
-        logDesktopUpdateWarn(
-          "desktop-update.record-source-history.unavailable",
-          {
-            releaseTag,
-            targetCommit: shortCommit(targetCommit),
-            elapsedMs: Date.now() - startedAt,
-            reason: "runtime-unavailable",
-          },
-        );
-        return { ok: false, reason: "runtime-unavailable" };
-      }
-      try {
-        const sourcePack =
-          await fetchDesktopSourceHistoryPack(sourceHistoryRef);
-        await withDesktopUpdateTimeout(
-          "official.record-history",
-          UPDATE_SOURCE_HISTORY_TIMEOUT_MS,
-          recordDesktopUpdateSourceHistory(runner, {
-            sourcePack,
-            releaseTag,
-            targetCommit,
-            origin: "official",
-          }),
-          {
-            releaseTag,
-            targetCommit: shortCommit(targetCommit),
-          },
-        );
-        logDesktopUpdateProcess("desktop-update.record-source-history.done", {
-          releaseTag,
-          targetCommit: shortCommit(targetCommit),
-          revisionId: sourcePack.revisionId,
-          elapsedMs: Date.now() - startedAt,
-        });
-        return { ok: true, revisionId: sourcePack.revisionId };
-      } catch (error) {
-        logDesktopUpdateError(
-          "desktop-update.record-source-history.failed",
-          error,
-          {
-            releaseTag,
-            targetCommit: shortCommit(targetCommit),
-            elapsedMs: Date.now() - startedAt,
-          },
-        );
-        throw error;
-      }
     },
   );
 
@@ -2171,9 +2341,23 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
               "The install-update agent did not create an update commit.",
             );
           }
-          return await writeAppliedReleasePointer(stellaRoot, commit, tag);
+          const manifest = await writeAppliedReleasePointer(
+            stellaRoot,
+            commit,
+            tag,
+          );
+          officialSourceHistory.schedule("applied-commit-recorded", {
+            targetCommit: commit,
+            releaseTag: tag,
+          });
+          return manifest;
         }
-        return await writeAppliedCommit(stellaRoot, commit, tag);
+        const manifest = await writeAppliedCommit(stellaRoot, commit, tag);
+        officialSourceHistory.schedule("applied-commit-recorded", {
+          targetCommit: commit,
+          releaseTag: tag,
+        });
+        return manifest;
       } catch (error) {
         await writeUpdateAttemptState(stellaRoot, {
           status: "failed",

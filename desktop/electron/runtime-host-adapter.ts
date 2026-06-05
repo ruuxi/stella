@@ -913,6 +913,10 @@ export class RuntimeHostAdapter {
     return this.host.recordSourcePackHistory(payload);
   }
 
+  hasSourceRevisionForCommit(commitHash: string) {
+    return this.host.hasSourceRevisionForCommit(commitHash);
+  }
+
   getStorePackage(packageId: string) {
     return this.host.getStorePackage(packageId);
   }

@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { app as electronApp } from 'electron'
-import { runNativeHelper } from './native-helper.js'
+import { runNativeHelper, runNativeHelperDetailed } from './native-helper.js'
 import type { RecentApp } from '../src/shared/contracts/home.js'
 
 // Dedicated home-suggestion helper. Lives in `home_apps.swift` (separate
@@ -291,23 +291,31 @@ const listRecentAppsWindows = async (
   if (limit <= 0) return []
   // Prefer the native EnumWindows helper (a single in-process walk, no
   // PowerShell cold start). Fall back to the PowerShell snapshot when the
-  // helper is absent/old or returns nothing, so this path is never worse than
-  // the prior behavior.
+  // helper is absent/old or returns malformed output; helper timeouts should
+  // not cascade into a second slow process launch.
   const native = await listRecentAppsWindowsNative(limit)
-  if (native && native.length > 0) return native
+  if (native !== null) return native
   return listRecentAppsWindowsPowerShell(limit)
 }
 
 const listRecentAppsWindowsNative = async (
   limit: number,
 ): Promise<RecentApp[] | null> => {
-  const stdout = await runNativeHelper('recent_apps', [], {
+  const result = await runNativeHelperDetailed('recent_apps', [], {
     timeout: 3_000,
     maxBuffer: 4 * 1024 * 1024,
     onError: () => {
       // Missing/old binary → caller falls back to PowerShell; not an error.
     },
   })
+  if (
+    result.timedOut ||
+    result.killed ||
+    result.skippedReason === 'circuit-open'
+  ) {
+    return []
+  }
+  const stdout = result.stdout
   if (!stdout) return null
   let parsed: WinProcess[]
   try {

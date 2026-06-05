@@ -58,18 +58,6 @@ export const ShellTopBarUpdatePill = () => {
         ...(currentRelease.artifactRefs
           ? { artifactRefs: currentRelease.artifactRefs }
           : {}),
-        ...(currentRelease.sourceHistoryUrl &&
-        currentRelease.sourceHistorySha256 &&
-        typeof currentRelease.sourceHistorySize === "number"
-          ? {
-              sourceHistoryRef: {
-                kind: "url",
-                url: currentRelease.sourceHistoryUrl,
-                sha256: currentRelease.sourceHistorySha256,
-                sizeBytes: currentRelease.sourceHistorySize,
-              },
-            }
-          : {}),
         onAppliedCommit: refreshManifest,
         onFinished: (event) => {
           if (event.outcome !== "completed") {

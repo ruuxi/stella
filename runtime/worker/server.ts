@@ -777,6 +777,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     commitHash?: string | null;
   }) => {
     const sourceHistory = ensureSourceHistoryStore();
+    if (
+      args.commitHash &&
+      sourceHistory.findRevisionByCommit(args.commitHash)
+    ) {
+      return;
+    }
     const lastRevisionId =
       args.sourcePack.changeSets[args.sourcePack.changeSets.length - 1]
         ?.revisionId;
@@ -3336,6 +3342,30 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         ...(payload.commitHash ? { commitHash: payload.commitHash } : {}),
       });
       return { ok: true };
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SOURCE_HISTORY_HAS_COMMIT,
+    async (params) => {
+      if (!state.init) {
+        throw new Error("Worker has not been initialized.");
+      }
+      const payload = params as { commitHash?: unknown };
+      const commitHash =
+        typeof payload?.commitHash === "string"
+          ? payload.commitHash.trim()
+          : "";
+      if (!commitHash) {
+        throw new Error("Source history commit lookup requires a commitHash.");
+      }
+      const record =
+        ensureSourceHistoryStore().findRevisionByCommit(commitHash);
+      return {
+        ok: true,
+        exists: Boolean(record),
+        revisionId: record?.revisionId ?? null,
+      };
     },
   );
 

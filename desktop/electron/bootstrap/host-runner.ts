@@ -227,6 +227,18 @@ const connectHostRunner = async (context: BootstrapContext) => {
   const connectBeganAt = Math.round(process.uptime() * 1000);
   logger?.process("startup.host-runner.connect", { elapsedMs: connectBeganAt });
   await runner.start();
+  if (context.config.startupRuntimeWarmupDelayMs > 0) {
+    logger?.process("startup.host-runner.worker-warmup-delayed", {
+      delayMs: context.config.startupRuntimeWarmupDelayMs,
+      elapsedMs: Math.round(process.uptime() * 1000),
+    });
+    const completed = await state.processRuntime.wait(
+      context.config.startupRuntimeWarmupDelayMs,
+    );
+    if (!completed || state.isQuitting) {
+      return;
+    }
+  }
   // Proactively spawn the worker (off the open burst, since connectHostRunner
   // runs from the deferred-startup sequence). The worker self-warms its model
   // catalog on init, so the first chat stays fast without a blocking warm.

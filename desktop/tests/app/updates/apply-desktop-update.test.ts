@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildInstallUpdatePrompt,
-  recordOfficialDesktopUpdateSourceHistory,
-} from "@/global/updates/apply-desktop-update";
+import { buildInstallUpdatePrompt } from "@/global/updates/apply-desktop-update";
 
 describe("buildInstallUpdatePrompt", () => {
   it("embeds source-pack conflict JSON so the install-update agent can resolve without reading state files", () => {
@@ -60,55 +57,5 @@ describe("buildInstallUpdatePrompt", () => {
     expect(prompt).toContain("exact final content");
     expect(prompt).not.toContain("git fetch");
     expect(prompt).not.toContain("Read the conflict JSON first");
-  });
-});
-
-describe("recordOfficialDesktopUpdateSourceHistory", () => {
-  it("records official release history with a provided source-history ref", async () => {
-    const calls: unknown[] = [];
-
-    await recordOfficialDesktopUpdateSourceHistory({
-      updatesApi: {
-        recordSourceHistory: async (payload) => {
-          calls.push(payload);
-          return { ok: true, revisionId: "sha256:history" };
-        },
-      },
-      targetCommit: "b".repeat(40),
-      releaseTag: "desktop-v1.2.3",
-      sourceHistoryRef: {
-        kind: "url",
-        url: "https://pub.example/desktop/releases/desktop-v1.2.3/source-history.json",
-        sha256: `sha256:${"a".repeat(64)}`,
-        sizeBytes: 123,
-      },
-    });
-
-    expect(calls).toEqual([
-      {
-        targetCommit: "b".repeat(40),
-        releaseTag: "desktop-v1.2.3",
-        sourceHistoryRef: {
-          kind: "url",
-          url: "https://pub.example/desktop/releases/desktop-v1.2.3/source-history.json",
-          sha256: `sha256:${"a".repeat(64)}`,
-          sizeBytes: 123,
-        },
-      },
-    ]);
-  });
-
-  it("does not fail the update flow when history recording fails", async () => {
-    await expect(
-      recordOfficialDesktopUpdateSourceHistory({
-        updatesApi: {
-          recordSourceHistory: async () => {
-            throw new Error("offline");
-          },
-        },
-        targetCommit: "b".repeat(40),
-        releaseTag: "desktop-v1.2.3",
-      }),
-    ).resolves.toBeUndefined();
   });
 });

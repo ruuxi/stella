@@ -1840,6 +1840,18 @@ export class StellaRuntimeHost {
     );
   }
 
+  async hasSourceRevisionForCommit(commitHash: string) {
+    return await this.requestWorker<{
+      ok: true;
+      exists: boolean;
+      revisionId: string | null;
+    }>(
+      METHOD_NAMES.INTERNAL_WORKER_SOURCE_HISTORY_HAS_COMMIT,
+      { commitHash },
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
   async listStorePackages() {
     return await this.requestWorker<StorePackageRecord[]>(
       METHOD_NAMES.INTERNAL_WORKER_LIST_STORE_PACKAGES,
