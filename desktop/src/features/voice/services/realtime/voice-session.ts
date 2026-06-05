@@ -7,8 +7,8 @@
  *   - Server event routing (transcripts, tool calls, response.done).
  *   - Echo guard: monitors mic + assistant output analysers and applies a
  *     soft input mute when the assistant's voice is leaking into the mic.
- *   - Tool dispatch for `perform_action`, `web_search`, `look_at_screen`,
- *     `no_response`, `goodbye`/`close`.
+ *   - Direct runtime tool dispatch for the resolved orchestrator tool catalog,
+ *     plus `no_response` and goodbye/close session controls.
  *   - Local-chat sync: surfaces user/assistant messages and delegated-
  *     agent state changes from the text chat into the voice conversation.
  *   - Usage reporting (Stella-managed path only).
@@ -32,12 +32,12 @@ import { postServiceJson } from "@/platform/http/service-request";
 import { getVoiceSessionPromptConfig } from "@/prompts";
 import {
   formatRealtimeSystemMessage,
-  formatScreenLookFailedSystemReminder,
   formatVoiceActionCompletedSystemReminder,
-  formatVoiceActionErrorSystemReminder,
-  formatWebSearchFailedSystemReminder,
-  formatWebSearchSystemReminder,
 } from "../../../../../../runtime/contracts/system-reminders.js";
+import type {
+  RuntimeVoiceHistoryItem,
+  RuntimeVoiceToolMetadata,
+} from "../../../../../../runtime/protocol/index.js";
 import { computeAnalyserEnergy } from "@/features/voice/services/audio-energy";
 import type { EventRecord } from "../../../../../../runtime/contracts/local-chat.js";
 import { createRealtimeTransport } from "./providers/provider-registry";
@@ -105,6 +105,28 @@ const ECHO_GUARD_RELEASE_MS = 180;
 const VOICE_CONTEXT_SYNC_EVENT_LIMIT = 80;
 const STELLA_VOICE_LEASE_HEARTBEAT_MS = 15_000;
 const STELLA_VOICE_LEASE_EXPIRY_SKEW_MS = 1_000;
+const VOICE_SESSION_CONTROL_TOOLS: RuntimeVoiceToolMetadata[] = [
+  {
+    type: "function",
+    name: "no_response",
+    description:
+      "Use when the latest audio should not get a spoken response: silence, background noise, side conversation, filler sounds, thinking aloud, or an unfinished sentence.",
+    parameters: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    type: "function",
+    name: "goodbye",
+    description:
+      "Use when the user clearly ends the voice session, such as saying bye, goodbye, see you later, or goodnight. Say one short goodbye first, then call this tool.",
+    parameters: {
+      type: "object",
+      properties: {},
+    },
+  },
+];
 
 const VOICE_SYNC_IGNORED_EVENT_TYPES = new Set([
   "agent-started",
@@ -167,15 +189,99 @@ function shouldGateVoiceInputForEcho({
   return !userLikelyBargingIn;
 }
 
-const buildVoiceSessionInstructions = async (): Promise<string> => {
+const mergeVoiceSessionTools = (
+  tools: RuntimeVoiceToolMetadata[] | undefined,
+): RuntimeVoiceToolMetadata[] => {
+  const out: RuntimeVoiceToolMetadata[] = [];
+  const seen = new Set<string>();
+  for (const tool of [...(tools ?? []), ...VOICE_SESSION_CONTROL_TOOLS]) {
+    if (seen.has(tool.name)) continue;
+    seen.add(tool.name);
+    out.push(tool);
+  }
+  return out;
+};
+
+const formatVoiceHistoryRole = (role: string): string => {
+  switch (role) {
+    case "user":
+      return "User";
+    case "assistant":
+      return "Stella";
+    case "toolResult":
+      return "Tool result";
+    case "runtimeInternal":
+      return "Runtime note";
+    default:
+      return role.trim() || "Message";
+  }
+};
+
+const formatVoiceHistoryTimestamp = (timestamp: unknown): string => {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+    return "";
+  }
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return ` @ ${date.toISOString()}`;
+};
+
+export const buildVoiceConversationHistoryBlock = (
+  history: RuntimeVoiceHistoryItem[] | undefined,
+): string | null => {
+  const entries = (history ?? [])
+    .map((item) => {
+      const content = item.content.trim();
+      if (!content) return null;
+      const label = formatVoiceHistoryRole(item.role);
+      const timestamp = formatVoiceHistoryTimestamp(item.timestamp);
+      const indented = content
+        .split("\n")
+        .map((line) => `  ${line}`)
+        .join("\n");
+      return `[${label}${timestamp}]\n${indented}`;
+    })
+    .filter((item): item is string => item !== null);
+
+  if (entries.length === 0) return null;
+  return [
+    '<conversation_history source="stella-chat" newest_last="true">',
+    "These are prior messages and tool results in the current Stella conversation. Treat them as already-known chat history, not as a new request.",
+    ...entries,
+    "</conversation_history>",
+  ].join("\n\n");
+};
+
+const buildVoiceSessionInstructions = async (
+  orchestratorInstructions?: string,
+  history?: RuntimeVoiceHistoryItem[],
+): Promise<string> => {
   const coreMemory = await Promise.resolve(
     window.electronAPI?.voice.getCoreMemory?.(),
   ).catch(() => null);
   const trimmed = coreMemory?.trim();
   const base = getVoiceSessionPromptConfig().basePrompt;
-  return trimmed
-    ? `${base}\n\n<memory_file path="~/.stella/core-memory.md">\n${trimmed}\n</memory_file>`
-    : base;
+  const sections = [base];
+  const trimmedOrchestratorInstructions = orchestratorInstructions?.trim();
+  if (trimmedOrchestratorInstructions) {
+    sections.push(
+      [
+        "<text_orchestrator_context>",
+        trimmedOrchestratorInstructions,
+        "</text_orchestrator_context>",
+      ].join("\n"),
+    );
+  }
+  const historyBlock = buildVoiceConversationHistoryBlock(history);
+  if (historyBlock) {
+    sections.push(historyBlock);
+  }
+  if (trimmed) {
+    sections.push(
+      `<memory_file path="~/.stella/core-memory.md">\n${trimmed}\n</memory_file>`,
+    );
+  }
+  return sections.join("\n\n");
 };
 
 // ---------------------------------------------------------------------------
@@ -186,6 +292,9 @@ export class RealtimeVoiceSession {
   private transport: RealtimeTransport | null = null;
   private sessionToken: VoiceSessionToken | null = null;
   private sessionProvider: RealtimeProviderKey = "stella";
+  private readonly requestId =
+    globalThis.crypto?.randomUUID?.() ??
+    `voice-session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   private destroyed = false;
   private inputActive = false;
@@ -207,9 +316,6 @@ export class RealtimeVoiceSession {
   private _state: VoiceSessionState = "idle";
   private listeners = new Set<VoiceSessionListener>();
   private conversationId: string | null = null;
-
-  // Last finalized user transcript, used as fallback context for voice tools.
-  private lastUserTranscript = "";
 
   constructor() {
     this.unsubscribeActionCompleted =
@@ -284,12 +390,27 @@ export class RealtimeVoiceSession {
     this.setState("connecting");
 
     try {
-      const instructions = await buildVoiceSessionInstructions();
+      const orchestratorConfig =
+        await window.electronAPI?.voice
+          .getOrchestratorConfig?.({ conversationId })
+          .catch((err) => {
+            console.debug(
+              "[realtime-voice] Failed to load orchestrator config:",
+              (err as Error).message,
+            );
+            return null;
+          });
+      const tools = mergeVoiceSessionTools(orchestratorConfig?.tools);
+      const instructions = await buildVoiceSessionInstructions(
+        orchestratorConfig?.instructions,
+        orchestratorConfig?.history,
+      );
       if (this.destroyed) return;
 
       const { transport, token, providerKey } = await createRealtimeTransport({
         conversationId,
         instructions,
+        tools,
       });
       if (this.destroyed) {
         await transport.disconnect().catch(() => undefined);
@@ -315,12 +436,16 @@ export class RealtimeVoiceSession {
         return;
       }
 
+      await this.syncLocalChatContext({
+        markExisting: true,
+        includeVoiceSource: true,
+        suppressAnnouncements: true,
+      });
       await transport.setMicEnabled(this.inputActive);
 
       getVoiceRuntimeState().activeSession = this;
       this.startLeaseReporting();
       this.setState("connected");
-      void this.syncLocalChatContext({ markExisting: true });
     } catch (err) {
       if (this.destroyed) return;
       await this.transport?.disconnect().catch(() => undefined);
@@ -439,15 +564,19 @@ export class RealtimeVoiceSession {
 
   private syncLocalChatContext(options?: {
     markExisting?: boolean;
+    injectExisting?: boolean;
+    includeVoiceSource?: boolean;
+    suppressAnnouncements?: boolean;
   }): Promise<void> {
     this.localChatSyncPromise = this.localChatSyncPromise
       .catch(() => undefined)
       .then(async () => {
-        if (
-          this.destroyed ||
-          this._state !== "connected" ||
-          !this.conversationId
-        ) {
+        const markOnly =
+          options?.markExisting === true && options.injectExisting !== true;
+        if (this.destroyed || !this.conversationId) {
+          return;
+        }
+        if (!markOnly && this._state !== "connected") {
           return;
         }
         const api = window.electronAPI?.localChat;
@@ -476,7 +605,7 @@ export class RealtimeVoiceSession {
           return a._id.localeCompare(b._id);
         });
 
-        if (options?.markExisting) {
+        if (markOnly) {
           for (const event of events) {
             this.syncedLocalEventIds.add(event._id);
           }
@@ -486,7 +615,10 @@ export class RealtimeVoiceSession {
         for (const event of events) {
           if (this.syncedLocalEventIds.has(event._id)) continue;
           this.syncedLocalEventIds.add(event._id);
-          this.injectLocalChatEvent(event);
+          this.injectLocalChatEvent(event, {
+            includeVoiceSource: options?.includeVoiceSource === true,
+            suppressAnnouncement: options?.suppressAnnouncements === true,
+          });
         }
       })
       .catch((err) => {
@@ -499,8 +631,16 @@ export class RealtimeVoiceSession {
     return this.localChatSyncPromise;
   }
 
-  private injectLocalChatEvent(event: EventRecord) {
-    const mapped = this.mapLocalChatEventForVoice(event);
+  private injectLocalChatEvent(
+    event: EventRecord,
+    options?: {
+      includeVoiceSource?: boolean;
+      suppressAnnouncement?: boolean;
+    },
+  ) {
+    const mapped = this.mapLocalChatEventForVoice(event, {
+      includeVoiceSource: options?.includeVoiceSource === true,
+    });
     if (!mapped) return;
 
     this.sendEvent({
@@ -516,13 +656,14 @@ export class RealtimeVoiceSession {
         ],
       },
     });
-    if (mapped.announce) {
+    if (mapped.announce && !options?.suppressAnnouncement) {
       this.sendEvent({ type: "response.create" });
     }
   }
 
   private mapLocalChatEventForVoice(
     event: EventRecord,
+    options?: { includeVoiceSource?: boolean },
   ): { text: string; announce: boolean } | null {
     if (VOICE_SYNC_IGNORED_EVENT_TYPES.has(event.type)) return null;
 
@@ -530,9 +671,15 @@ export class RealtimeVoiceSession {
     if (event.type === "user_message" || event.type === "assistant_message") {
       const text = typeof payload.text === "string" ? payload.text.trim() : "";
       if (!text) return null;
-      if (payload.source === "voice") return null;
-      const speaker =
-        event.type === "user_message" ? "User" : "Text orchestrator";
+      const isVoiceSource = payload.source === "voice";
+      if (isVoiceSource && !options?.includeVoiceSource) return null;
+      const speaker = isVoiceSource
+        ? event.type === "user_message"
+          ? "Prior voice user"
+          : "Prior voice assistant"
+        : event.type === "user_message"
+          ? "User"
+          : "Text orchestrator";
       return {
         text: `${speaker} message in the synced chat context: ${text}`,
         announce: false,
@@ -772,7 +919,6 @@ export class RealtimeVoiceSession {
       case "conversation.item.input_audio_transcription.completed": {
         const transcript = (event as { transcript?: string }).transcript;
         if (transcript) {
-          this.lastUserTranscript = transcript;
           this.emit({
             type: "user-transcript",
             text: transcript,
@@ -850,207 +996,27 @@ export class RealtimeVoiceSession {
   // Function call execution
   // ---------------------------------------------------------------------------
 
-  private runPerformActionAsync(message: string): void {
+  private async runRuntimeToolCall(
+    name: string,
+    args: Record<string, unknown>,
+    callId: string,
+  ): Promise<string> {
     const api = window.electronAPI?.voice;
-    if (!api?.orchestratorChat || !this.conversationId) {
-      console.warn(
-        "[realtime-voice] Cannot delegate to orchestrator: missing IPC or conversation ID",
-      );
-      return;
+    if (!api?.executeTool || !this.conversationId) {
+      throw new Error("Stella runtime tools are not available.");
     }
-
-    api
-      .orchestratorChat({
-        conversationId: this.conversationId,
-        message,
-      })
-      .then((reply) => {
-        const spokenResult = reply.trim();
-        window.electronAPI?.voice.persistTranscript?.({
-          conversationId: this.conversationId ?? "voice-rtc",
-          role: "assistant",
-          text: `[ORCHESTRATOR TURN ENDED] ${spokenResult || "(empty)"}`,
-          uiVisibility: "hidden",
-        });
-      })
-      .catch((err) => {
-        console.error("[realtime-voice] Orchestrator delegation error:", err);
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: formatVoiceActionErrorSystemReminder(
-                  (err as Error).message,
-                ),
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
-      });
-  }
-
-  private runWebSearchAsync(query: string, category?: string): void {
-    const api = window.electronAPI?.voice;
-    if (!api?.webSearch) {
-      console.warn("[realtime-voice] Cannot run web search: missing IPC");
-      return;
-    }
-
-    api
-      .webSearch({ query, category })
-      .then((result) => {
-        window.electronAPI?.voice.persistTranscript?.({
-          conversationId: this.conversationId ?? "voice-rtc",
-          role: "assistant",
-          text: `[WEB SEARCH] ${query} → ${result.results.length} results`,
-          uiVisibility: "hidden",
-        });
-
-        let resultText: string;
-        if (result.results.length === 0) {
-          resultText = `Web search for "${query}" returned no results.`;
-        } else {
-          const summary = result.results
-            .slice(0, 5)
-            .map((r) => `${r.title}: ${r.snippet}`)
-            .join("\n\n");
-          resultText = `Web search results for "${query}":\n\n${summary}`;
-        }
-
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: formatWebSearchSystemReminder(resultText),
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
-      })
-      .catch((err) => {
-        console.error("[realtime-voice] Web search error:", err);
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: formatWebSearchFailedSystemReminder(
-                  (err as Error).message,
-                ),
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
-      });
-  }
-
-  private runLookAtScreenAsync(query: string): void {
-    const captureApi = window.electronAPI?.capture;
-    if (!captureApi?.visionScreenshots) {
-      console.warn("[realtime-voice] Cannot look at screen: missing IPC");
-      return;
-    }
-
-    (async () => {
-      try {
-        const screenshots = await captureApi.visionScreenshots();
-        if (!Array.isArray(screenshots) || screenshots.length === 0) {
-          throw new Error("Screen capture returned no images");
-        }
-
-        const content: Array<
-          | { type: "input_text"; text: string }
-          | {
-              type: "input_image";
-              image_url: string;
-              detail?: "auto" | "low" | "high";
-            }
-        > = [
-          {
-            type: "input_text",
-            text:
-              `The user asked: "${query || this.lastUserTranscript || "Look at my screen."}"\n` +
-              "Use the attached screenshot(s) to answer naturally and conversationally. " +
-              "If the user is asking where something is or what to click, describe its location clearly in words.",
-          },
-        ];
-
-        for (const screenshot of screenshots.slice(0, 3)) {
-          const coordinateSpace = screenshot.coordinateSpace;
-          content.push({
-            type: "input_text",
-            text:
-              `${screenshot.label}. ` +
-              `Image dimensions: ${coordinateSpace.targetWidth}x${coordinateSpace.targetHeight} pixels. ` +
-              `Use screen ${screenshot.screenNumber} for this image.`,
-          });
-          content.push({
-            type: "input_image",
-            image_url: screenshot.dataUrl,
-            detail: "auto",
-          });
-        }
-
-        window.electronAPI?.voice.persistTranscript?.({
-          conversationId: this.conversationId ?? "voice-rtc",
-          role: "assistant",
-          text: `[SCREEN LOOK] ${query || this.lastUserTranscript || "(no query)"} → ${screenshots.length} screenshots`,
-          uiVisibility: "hidden",
-        });
-
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content,
-          },
-        });
-        this.sendEvent({ type: "response.create" });
-      } catch (err) {
-        console.error("[realtime-voice] Screen guide error:", err);
-        this.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: formatScreenLookFailedSystemReminder(
-                  (err as Error).message,
-                ),
-              },
-            ],
-          },
-        });
-        this.sendEvent({ type: "response.create" });
-      }
-    })();
+    const result = await api.executeTool({
+      requestId: this.requestId,
+      conversationId: this.conversationId,
+      callId,
+      name,
+      args,
+    });
+    return result.output || (result.error ? `Error: ${result.error}` : "ok");
   }
 
   private async handleFunctionCall(item: Record<string, unknown>) {
     const name = item.name as string;
-    window.electronAPI?.voice.persistTranscript?.({
-      conversationId: this.conversationId ?? "voice-rtc",
-      role: "assistant",
-      text: `[TOOL CALL: ${name}]`,
-      uiVisibility: "hidden",
-    });
     const callId = item.call_id as string;
     const argsStr = item.arguments as string;
 
@@ -1095,15 +1061,7 @@ export class RealtimeVoiceSession {
         this.setInputActive(false);
         window.electronAPI?.ui.setState({ isVoiceRtcActive: false });
         return;
-      } else if (name === "web_search") {
-        const query = (args.query as string) || this.lastUserTranscript || "";
-        result = "Searching now.";
-        this.runWebSearchAsync(query, args.category as string | undefined);
-      } else if (name === "look_at_screen") {
-        const query = (args.query as string) || this.lastUserTranscript || "";
-        result = "Let me take a look.";
-        this.runLookAtScreenAsync(query);
-      } else if (name === "perform_action") {
+      } else {
         if (!this.inputActive) {
           result =
             "Voice mode is no longer active. Do not call tools or continue this voice-only action.";
@@ -1118,13 +1076,7 @@ export class RealtimeVoiceSession {
           });
           return;
         }
-        const message =
-          this.lastUserTranscript || (args.message as string) || "";
-        result =
-          "Stella is working on this now. Do not say it is complete yet. You will receive a message later when the work is genuinely done or has failed.";
-        this.runPerformActionAsync(message);
-      } else {
-        throw new Error(`Unknown tool: ${name}`);
+        result = await this.runRuntimeToolCall(name, args, callId);
       }
     } catch (err) {
       result = `Error: ${(err as Error).message}`;
@@ -1141,13 +1093,7 @@ export class RealtimeVoiceSession {
       },
     });
 
-    if (
-      name !== "perform_action" &&
-      name !== "web_search" &&
-      name !== "look_at_screen"
-    ) {
-      this.sendEvent({ type: "response.create" });
-    }
+    this.sendEvent({ type: "response.create" });
   }
 
   // ---------------------------------------------------------------------------

@@ -59,6 +59,7 @@ export const inworldProvider: ProviderModule = {
         model: token.model || DEFAULT_INWORLD_REALTIME_MODEL,
         voice: token.voice,
         instructions: ctx.instructions,
+        tools: ctx.tools,
         speed: token.speed,
       }),
       iceServers: token.iceServers,

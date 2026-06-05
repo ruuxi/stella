@@ -1839,6 +1839,7 @@ export class SessionStore {
       if (row.type === "assistant_message") {
         const message: LocalChatMessageRecord = { ...row, toolEvents: [] };
         messages.push(message);
+        const hidden = isUiHiddenChatMessagePayload(row.payload ?? null);
         // Tools that fired before any assistant in this turn attach to
         // the FIRST assistant (preserves the prior inline-artifact
         // behavior for tools called before any reply text). Tools that
@@ -1846,15 +1847,15 @@ export class SessionStore {
         // recently seen — so an orchestrator run that does
         // preamble → tools → post-tool answer renders linearly with
         // tool-derived artifacts on the preamble bubble.
-        if (pendingPreAssistantTools.length > 0) {
+        if (!hidden && pendingPreAssistantTools.length > 0) {
           message.toolEvents = [
             ...message.toolEvents,
             ...pendingPreAssistantTools,
           ];
           pendingPreAssistantTools = [];
         }
-        currentAssistant = message;
-        if (!isUiHiddenChatMessagePayload(row.payload ?? null)) {
+        if (!hidden) {
+          currentAssistant = message;
           visibleMessageCount += 1;
         }
         continue;

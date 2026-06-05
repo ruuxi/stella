@@ -48,6 +48,16 @@ export class PiSessionCore {
     this.pendingHistoryRefresh = true;
   }
 
+  /**
+   * External conversation writers (for example realtime voice) append into
+   * the same durable thread without going through this live Agent instance.
+   * Refresh at the next turn boundary so switching surfaces keeps context.
+   */
+  notifyHistoryChanged(): void {
+    if (!this.agent) return;
+    this.pendingHistoryRefresh = true;
+  }
+
   protected setResolvedLlm(resolvedLlm: ResolvedLlmRoute): void {
     this.currentResolvedLlm = resolvedLlm;
   }

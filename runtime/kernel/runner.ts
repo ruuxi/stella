@@ -10,6 +10,8 @@ import { createOrchestratorController } from "./runner/orchestrator.js";
 import { createRuntimeInitialization } from "./runner/runtime-initialization.js";
 import { createStoreOperations } from "./runner/store-operations.js";
 import { createAgentOrchestration } from "./runner/agent-orchestration.js";
+import { buildRuntimeSystemPrompt } from "./agent-runtime/run-preparation.js";
+import { getRuntimeToolMetadata } from "./agent-runtime/tool-adapters.js";
 import { loadGoogleWorkspaceTools } from "./google-workspace/load-google-workspace-tools.js";
 import {
   deleteConnectorAccessTokens,
@@ -33,6 +35,38 @@ export {
 } from "./runner/remote-turn-auth.js";
 
 import type { ToolResult } from "./tools/types.js";
+import type { RuntimeRunCallbacks } from "./agent-runtime/types.js";
+import type { RuntimeVoiceHistoryItem } from "../protocol/index.js";
+
+const VOICE_ORCHESTRATOR_HISTORY_LIMIT = 80;
+
+const buildVoiceHistoryItems = (
+  threadHistory:
+    | Array<{
+        timestamp?: number;
+        role: string;
+        content: string;
+        toolCallId?: string;
+      }>
+    | undefined,
+): RuntimeVoiceHistoryItem[] => {
+  const entries = (threadHistory ?? []).slice(-VOICE_ORCHESTRATOR_HISTORY_LIMIT);
+  const history: RuntimeVoiceHistoryItem[] = [];
+  for (const entry of entries) {
+    const content = entry.content.trim();
+    if (!content) continue;
+    history.push({
+      role: entry.role,
+      content,
+      ...(typeof entry.timestamp === "number" &&
+      Number.isFinite(entry.timestamp)
+        ? { timestamp: entry.timestamp }
+        : {}),
+      ...(entry.toolCallId ? { toolCallId: entry.toolCallId } : {}),
+    });
+  }
+  return history;
+};
 
 type GoogleWorkspaceAuthResult = {
   connected: boolean;
@@ -175,6 +209,14 @@ export const createStellaHostRunner = (
     await resolveAgentModelRoute(context, AGENT_IDS.ORCHESTRATOR);
   };
 
+  const noopRuntimeCallbacks: RuntimeRunCallbacks = {
+    onStream: () => {},
+    onToolStart: () => {},
+    onToolEnd: () => {},
+    onError: () => {},
+    onEnd: () => {},
+  };
+
   const runtimeInitialization = createRuntimeInitialization(context, {
     disposeConvexClient: convexSession.disposeConvexClient,
     shutdownTasks: taskOrchestration.shutdown,
@@ -246,6 +288,62 @@ export const createStellaHostRunner = (
         ...args,
         timestamp: Date.now(),
       });
+    },
+    notifyOrchestratorHistoryChanged: (conversationId: string) => {
+      context.state.orchestratorSessions
+        .get(conversationId)
+        ?.notifyHistoryChanged();
+    },
+    getVoiceOrchestratorConfig: async ({ conversationId }) => {
+      const agentType = AGENT_IDS.ORCHESTRATOR;
+      const runId = `voice-session:${Date.now()}`;
+      const resolved = await resolveAgentModelRoute(context, agentType);
+      const agentContext = await buildAgentContext(context, {
+        conversationId,
+        agentType,
+        runId,
+        ...resolved,
+      });
+      const instructions = await buildRuntimeSystemPrompt({
+        runId,
+        conversationId,
+        userMessageId: runId,
+        agentType,
+        userPrompt: "",
+        uiVisibility: "hidden",
+        agentContext,
+        callbacks: noopRuntimeCallbacks,
+        toolExecutor: async () => ({ error: "Voice config has no executor." }),
+        toolCatalog: context.toolHost.getToolCatalog(agentType, {
+          model: resolved.resolvedLlm.toolPolicyModel ?? resolved.resolvedLlm.model,
+          agentEngine: agentContext.agentEngine,
+        }),
+        deviceId: context.deviceId,
+        stellaHome: context.stellaHome,
+        resolvedLlm: resolved.resolvedLlm,
+        store: context.runtimeStore,
+        compactionScheduler: context.state.compactionScheduler,
+        stellaRoot: context.stellaRoot,
+        hookEmitter: context.hookEmitter,
+      });
+      const toolCatalog = context.toolHost.getToolCatalog(agentType, {
+        model: resolved.resolvedLlm.toolPolicyModel ?? resolved.resolvedLlm.model,
+        agentEngine: agentContext.agentEngine,
+      });
+      const history = buildVoiceHistoryItems(agentContext.threadHistory);
+      return {
+        instructions,
+        tools: getRuntimeToolMetadata({
+          toolsAllowlist: agentContext.toolsAllowlist,
+          toolCatalog,
+        }).map((tool) => ({
+          type: "function" as const,
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        })),
+        ...(history.length > 0 ? { history } : {}),
+      };
     },
     convexAction: async (ref: unknown, args: unknown): Promise<unknown> => {
       const client = convexSession.ensureConvexClient();

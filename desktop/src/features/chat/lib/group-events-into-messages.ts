@@ -28,6 +28,7 @@ import type {
   EventRecord,
   MessageRecord,
 } from "../../../../../runtime/contracts/local-chat.js";
+import { isUiHiddenChatMessagePayload } from "../../../../../runtime/chat-event-visibility.js";
 
 const isTurnDecorationEvent = (event: EventRecord): boolean =>
   event.type === "tool_request" ||
@@ -82,19 +83,22 @@ export const groupEventsIntoMessages = (
     if (event.type === "assistant_message") {
       const message = toMessageRecord(event);
       messages.push(message);
+      const hidden = isUiHiddenChatMessagePayload(event.payload ?? null);
       // Tools that fired before any assistant in this turn belong to
       // the first assistant message (so e.g. an `image_gen` tool fired
       // before the preamble text still surfaces as an inline artifact
       // on the preamble bubble). Tools that fire after this assistant
       // attach to whichever assistant is current at that moment.
-      if (pendingPreAssistantTools.length > 0) {
+      if (!hidden && pendingPreAssistantTools.length > 0) {
         message.toolEvents = [
           ...message.toolEvents,
           ...pendingPreAssistantTools,
         ];
         pendingPreAssistantTools = [];
       }
-      currentAssistant = message;
+      if (!hidden) {
+        currentAssistant = message;
+      }
       continue;
     }
     if (isTurnDecorationEvent(event)) {

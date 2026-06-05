@@ -8,9 +8,28 @@
 
 import { OpenAIWebRTCTransport } from "../transports/openai-webrtc-transport";
 import { bearerSdpFetcher } from "../transports/sdp-fetchers";
-import type { ProviderModule, VoiceSessionToken } from "./types";
+import type {
+  ProviderModule,
+  ProviderTokenContext,
+  VoiceSessionToken,
+} from "./types";
 
 const OPENAI_SDP_ENDPOINT = "https://api.openai.com/v1/realtime/calls";
+
+export const buildOpenAIRealtimeSessionConfig = (
+  token: Pick<VoiceSessionToken, "model" | "voice">,
+  ctx: ProviderTokenContext,
+): Record<string, unknown> => ({
+  type: "realtime",
+  model: token.model,
+  instructions: ctx.instructions,
+  ...(ctx.tools?.length ? { tools: ctx.tools, tool_choice: "auto" } : {}),
+  audio: {
+    output: {
+      voice: token.voice,
+    },
+  },
+});
 
 export const openaiProvider: ProviderModule = {
   async fetchToken(ctx): Promise<VoiceSessionToken> {
@@ -20,6 +39,7 @@ export const openaiProvider: ProviderModule = {
     }
     const result = await voiceApi.createOpenAISession({
       instructions: ctx.instructions,
+      tools: ctx.tools,
     });
     return {
       provider: "openai",
@@ -32,11 +52,12 @@ export const openaiProvider: ProviderModule = {
     };
   },
 
-  createTransport(token) {
+  createTransport(token, ctx) {
     return new OpenAIWebRTCTransport({
       provider: "openai",
       model: token.model,
       sdpFetch: bearerSdpFetcher(OPENAI_SDP_ENDPOINT, token.clientSecret),
+      initialSessionConfig: buildOpenAIRealtimeSessionConfig(token, ctx),
     });
   },
 };

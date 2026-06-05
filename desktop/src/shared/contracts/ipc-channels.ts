@@ -116,6 +116,9 @@ export const IPC_THEME_LIST_INSTALLED = "theme:listInstalled" as const;
 
 export const IPC_VOICE_PERSIST_TRANSCRIPT = "voice:persistTranscript" as const;
 export const IPC_VOICE_ORCHESTRATOR_CHAT = "voice:orchestratorChat" as const;
+export const IPC_VOICE_ORCHESTRATOR_CONFIG =
+  "voice:orchestratorConfig" as const;
+export const IPC_VOICE_EXECUTE_TOOL = "voice:executeTool" as const;
 export const IPC_VOICE_WEB_SEARCH = "voice:webSearch" as const;
 export const IPC_VOICE_CREATE_OPENAI_SESSION =
   "voice:createOpenAISession" as const;
