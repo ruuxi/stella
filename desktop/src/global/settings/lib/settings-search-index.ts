@@ -119,9 +119,9 @@ export const SETTINGS_SEARCH_ENTRY_DEFS: SettingsSearchEntryDef[] = [
   },
   {
     tab: "general",
-    titleKey: "settings.voice.title",
+    titleKey: "settings.voice.personality.label",
     descriptionKey: "settings.search.descriptions.voice",
-    keywords: ["personality", "tone", "stella voice", "accent"],
+    keywords: ["personality", "tone", "professional", "stella voice", "voice"],
   },
   {
     tab: "general",

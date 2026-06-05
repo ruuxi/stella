@@ -317,7 +317,7 @@ export const OnboardingStep1 = ({
       case "personality":
         return (
           <OnboardingPersonalityPhase
-            personalityVoices={appearance.personalityVoices}
+            personalityOptions={appearance.personalityOptions}
             personalityVoiceId={appearance.personalityVoiceId}
             defaultPersonalityVoiceId={appearance.defaultPersonalityVoiceId}
             splitTransitionActive={leaving}

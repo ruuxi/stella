@@ -148,7 +148,7 @@ export const createRuntimeInitialization = (
   };
 
   const initializeRuntime = () => {
-    // Stella's lifecycle hooks (personality, self-mod, …) live in the
+    // Stella's lifecycle hooks (self-mod, memory, …) live in the
     // stella-runtime extension and register through the same loader path
     // as user extensions. There's no separate "bundled" registration
     // step — the loader is the one place hooks/tools/providers/agents

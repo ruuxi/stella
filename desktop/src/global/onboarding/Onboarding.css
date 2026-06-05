@@ -462,6 +462,19 @@
   transform: translateX(clamp(-200px, -9vw, -120px));
 }
 
+.onboarding-dialogue[data-phase="personality"] .onboarding-split-right {
+  justify-content: center;
+  align-items: center;
+}
+
+.onboarding-dialogue[data-phase="personality"] .onboarding-split-stage {
+  align-items: center;
+}
+
+.onboarding-dialogue[data-phase="personality"] .onboarding-split-title {
+  text-align: center;
+}
+
 /* The split-right pane has its own `translateX(...)` positioning per
  * phase, so we can't put a translate/scale into this keyframe — it
  * would fight the positioning rule. Disclosure is opacity-only so the
@@ -474,19 +487,6 @@
   to {
     opacity: 1;
   }
-}
-
-.onboarding-dialogue[data-phase="personality"] .onboarding-split-right {
-  justify-content: center;
-  align-items: center;
-}
-
-.onboarding-dialogue[data-phase="personality"] .onboarding-split-stage {
-  align-items: center;
-}
-
-.onboarding-dialogue[data-phase="personality"] .onboarding-split-title {
-  text-align: center;
 }
 
 /* Capabilities phase: full-width auto-cycling showcase (title → frame → continue).
@@ -945,42 +945,6 @@
   line-height: 1.4;
 }
 
-/* ═══ Personality preview ═══ */
-
-.onboarding-personality-preview {
-  --onboarding-collapse-gap: 20px;
-  box-sizing: border-box;
-  font-size: 14px;
-  font-weight: 300;
-  letter-spacing: 0.02em;
-  color: var(--foreground);
-  line-height: 1.5;
-  margin: 0;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  border-left: 2px solid color-mix(in oklch, var(--foreground) 15%, transparent);
-  /* Collapsed default — see `.onboarding-confirm` for the same grow-in
-   * pattern (single `height: 0 → auto` + matched margin/opacity on one
-   * curve so the layout reflows in lockstep). */
-  height: 0;
-  margin-top: calc(-1 * var(--onboarding-collapse-gap));
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    height var(--onboarding-duration-enter) var(--onboarding-ease-soft),
-    margin-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
-    opacity var(--onboarding-duration-enter) var(--onboarding-ease-soft);
-}
-
-.onboarding-personality-preview[data-visible="true"] {
-  height: auto;
-  margin-top: 0;
-  opacity: 0.6;
-  pointer-events: auto;
-}
-
 .onboarding-voice-description {
   --onboarding-collapse-gap: 16px;
   box-sizing: border-box;
@@ -1324,11 +1288,6 @@
 .onboarding-dialogue[data-phase="personality"] .onboarding-pill {
   padding: 10px 18px;
   font-size: 15px;
-}
-
-.onboarding-dialogue[data-phase="personality"] .onboarding-personality-preview {
-  font-size: 16px;
-  line-height: 1.55;
 }
 
 .onboarding-discovery-warning {
@@ -2878,7 +2837,6 @@
    * smooth transition, but keep the layout collapse so the parent stage
    * still re-centers when they appear. */
   .onboarding-confirm,
-  .onboarding-personality-preview,
   .onboarding-shortcut-result-description,
   .onboarding-fda-note {
     transition: none !important;

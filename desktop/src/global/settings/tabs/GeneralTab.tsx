@@ -34,9 +34,11 @@ import {
   DialogTitle,
 } from "@/ui/dialog";
 import {
-  DEFAULT_PERSONALITY_VOICE_ID,
-  PERSONALITY_VOICES,
-} from "../../../../../runtime/extensions/stella-runtime/personality/voices.js";
+  DEFAULT_PERSONALITY_ID,
+  PERSONALITY_OPTIONS,
+  isKnownPersonalityId,
+  type PersonalityId,
+} from "../../../../../runtime/contracts/personality.js";
 import { getSettingsErrorMessage } from "./shared";
 
 const SETTINGS_PERMISSION_RESTART_KINDS = ["screen"] as const;
@@ -86,16 +88,15 @@ export function GeneralTab() {
   const [soundNotificationsError, setSoundNotificationsError] = useState<
     string | null
   >(null);
-  const [personalityVoiceId, setPersonalityVoiceIdState] = useState<string>(
-    DEFAULT_PERSONALITY_VOICE_ID,
-  );
+  const [personalityVoiceId, setPersonalityVoiceIdState] =
+    useState<PersonalityId>(DEFAULT_PERSONALITY_ID);
   const [personalityVoiceLoaded, setPersonalityVoiceLoaded] = useState(false);
   const [isSavingPersonalityVoice, setIsSavingPersonalityVoice] =
     useState(false);
-  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
   const [personalityVoiceError, setPersonalityVoiceError] = useState<
     string | null
   >(null);
+  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
   const initialPermissionStatus = useMemo<DesktopPermissionStatus>(
     () => ({
       accessibility: platform === "darwin" ? false : true,
@@ -272,9 +273,7 @@ export function GeneralTab() {
           await window.electronAPI?.system?.getPersonalityVoice?.();
         if (!cancelled) {
           setPersonalityVoiceIdState(
-            typeof current === "string" && current.trim().length > 0
-              ? current
-              : DEFAULT_PERSONALITY_VOICE_ID,
+            isKnownPersonalityId(current) ? current : DEFAULT_PERSONALITY_ID,
           );
           setPersonalityVoiceError(null);
         }
@@ -295,7 +294,7 @@ export function GeneralTab() {
   }, [t]);
 
   const handlePersonalityVoiceChange = useCallback(
-    async (nextVoiceId: string) => {
+    async (nextVoiceId: PersonalityId) => {
       const systemApi = window.electronAPI?.system;
       if (!systemApi?.setPersonalityVoice) {
         setPersonalityVoiceError(t("settings.errors.voiceUnavailable"));
@@ -307,7 +306,7 @@ export function GeneralTab() {
       setIsSavingPersonalityVoice(true);
       try {
         const result = await systemApi.setPersonalityVoice(nextVoiceId);
-        if (typeof result?.voiceId === "string" && result.voiceId.length > 0) {
+        if (isKnownPersonalityId(result?.voiceId)) {
           setPersonalityVoiceIdState(result.voiceId);
         }
       } catch (error) {
@@ -781,7 +780,9 @@ export function GeneralTab() {
           onChange: (checked) => void handleLockedComputerUseChange(checked),
         })}
         <div className="settings-card">
-          <h3 className="settings-card-title">{t("settings.voice.title")}</h3>
+          <h3 className="settings-card-title">
+            {t("settings.voice.personality.label")}
+          </h3>
           {personalityVoiceError ? (
             <p
               className="settings-card-desc settings-card-desc--error"
@@ -793,11 +794,13 @@ export function GeneralTab() {
           <div className="settings-row">
             <div className="settings-row-info">
               <div className="settings-row-label">
-                {t("settings.voice.personality.label")}
+                {PERSONALITY_OPTIONS.find(
+                  (option) => option.id === personalityVoiceId,
+                )?.label ?? ""}
               </div>
               <div className="settings-row-sublabel">
-                {PERSONALITY_VOICES.find(
-                  (voice) => voice.id === personalityVoiceId,
+                {PERSONALITY_OPTIONS.find(
+                  (option) => option.id === personalityVoiceId,
                 )?.description ?? ""}
               </div>
             </div>
@@ -807,12 +810,14 @@ export function GeneralTab() {
                 value={personalityVoiceId}
                 disabled={!personalityVoiceLoaded || isSavingPersonalityVoice}
                 aria-label={t("settings.voice.personality.label")}
-                onValueChange={(value) =>
-                  void handlePersonalityVoiceChange(value)
-                }
-                options={PERSONALITY_VOICES.map((voice) => ({
-                  value: voice.id,
-                  label: voice.label,
+                onValueChange={(value) => {
+                  if (isKnownPersonalityId(value)) {
+                    void handlePersonalityVoiceChange(value);
+                  }
+                }}
+                options={PERSONALITY_OPTIONS.map((option) => ({
+                  value: option.id,
+                  label: option.label,
                 }))}
               />
             </div>

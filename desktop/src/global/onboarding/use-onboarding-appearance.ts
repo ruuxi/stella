@@ -2,15 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTheme, useThemeControl } from "@/context/theme-context";
 import { isHiddenOverlay } from "@/shared/theme/themes";
 import {
-  DEFAULT_PERSONALITY_VOICE_ID,
-  PERSONALITY_VOICES,
-  type PersonalityVoice,
-} from "../../../../runtime/extensions/stella-runtime/personality/voices.js";
+  DEFAULT_PERSONALITY_ID,
+  PERSONALITY_OPTIONS,
+  isKnownPersonalityId,
+  type PersonalityId,
+  type PersonalityOption,
+} from "../../../../runtime/contracts/personality.js";
 
 export function useOnboardingAppearance() {
-  const [personalityVoiceId, setPersonalityVoiceIdState] = useState<
-    string | null
-  >(null);
+  const [personalityVoiceId, setPersonalityVoiceIdState] =
+    useState<PersonalityId | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -19,7 +20,9 @@ export function useOnboardingAppearance() {
         const current =
           (await window.electronAPI?.system?.getPersonalityVoice?.()) ?? null;
         if (!cancelled) {
-          setPersonalityVoiceIdState(current);
+          setPersonalityVoiceIdState(
+            isKnownPersonalityId(current) ? current : null,
+          );
         }
       } catch {
         // Preference load is best-effort; fall back to null (no selection yet).
@@ -65,7 +68,7 @@ export function useOnboardingAppearance() {
     [cancelPreview, setTheme],
   );
 
-  const selectPersonalityVoice = useCallback((voiceId: string) => {
+  const selectPersonalityVoice = useCallback((voiceId: PersonalityId) => {
     setPersonalityVoiceIdState(voiceId);
     const api = window.electronAPI?.system;
     if (!api?.setPersonalityVoice) return;
@@ -75,8 +78,8 @@ export function useOnboardingAppearance() {
     });
   }, []);
 
-  const personalityVoices =
-    useMemo<readonly PersonalityVoice[]>(() => PERSONALITY_VOICES, []);
+  const personalityOptions =
+    useMemo<readonly PersonalityOption[]>(() => PERSONALITY_OPTIONS, []);
 
   return {
     colorMode,
@@ -84,8 +87,8 @@ export function useOnboardingAppearance() {
     gradientMode,
     isForcedTheme,
     personalityVoiceId,
-    personalityVoices,
-    defaultPersonalityVoiceId: DEFAULT_PERSONALITY_VOICE_ID,
+    personalityOptions,
+    defaultPersonalityVoiceId: DEFAULT_PERSONALITY_ID,
     sortedThemes,
     themeId,
     cancelThemePreview,
