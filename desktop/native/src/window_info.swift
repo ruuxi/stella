@@ -244,6 +244,70 @@ func setAXWindowBounds(pid: Int, title: String, oldBounds: CGRect, newBounds: CG
     return (moved, axFrame(window))
 }
 
+// Persistent daemon: `window_info --serve` answers point/batch queries over
+// stdin/stdout so the desktop avoids a process spawn (Swift + framework load,
+// ~40ms each) per hover/morph probe. Read-only only — screenshots and
+// --set-bounds stay one-shot (they need ScreenCaptureKit / AX side effects).
+// Protocol mirrors the Windows daemon:
+//   request:  <id>\t<token>\t<token>...   (tokens mirror the one-shot CLI)
+//   response: <id>\t<json>\n
+func serveResponse(forTokens tokens: [String]) -> String {
+    let slice = tokens[...]
+    let excludedPids = parseExcludedPids(slice)
+
+    if let batchPoints = parsePoints(slice) {
+        guard let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return "[]"
+        }
+        let items = batchPoints.map { point in
+            windowJson(at: point, in: windowList, excludedPids: excludedPids) ?? "null"
+        }
+        return "[" + items.joined(separator: ",") + "]"
+    }
+
+    var coords: [Double] = []
+    for token in tokens {
+        if token.hasPrefix("--") { continue }
+        if let value = Double(token) {
+            coords.append(value)
+            if coords.count == 2 { break }
+        }
+    }
+    guard coords.count == 2 else { return "{\"error\":\"bad request\"}" }
+
+    guard let windowList = CGWindowListCopyWindowInfo(
+        [.optionOnScreenOnly, .excludeDesktopElements],
+        kCGNullWindowID
+    ) as? [[String: Any]] else {
+        return "{\"error\":\"failed to get window list\"}"
+    }
+    return windowJson(
+        at: CGPoint(x: coords[0], y: coords[1]),
+        in: windowList,
+        excludedPids: excludedPids
+    ) ?? "null"
+}
+
+if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "--serve" {
+    // stdout is block-buffered when piped; make it unbuffered so each response
+    // reaches the desktop client immediately instead of timing out.
+    setvbuf(stdout, nil, _IONBF, 0)
+    while let line = readLine(strippingNewline: true) {
+        if line.isEmpty { continue }
+        guard let tabIndex = line.firstIndex(of: "\t") else { continue }
+        let id = String(line[line.startIndex..<tabIndex])
+        let rest = String(line[line.index(after: tabIndex)...])
+        let tokens = rest
+            .split(separator: "\t", omittingEmptySubsequences: false)
+            .map(String.init)
+        print("\(id)\t\(serveResponse(forTokens: tokens))")
+    }
+    exit(0)
+}
+
 // Batch mode: `window_info --points=x1,y1;x2,y2;...` answers many points from
 // a single window-list copy and prints a JSON array (one entry per point, in
 // order; null when no window is found). Used by the morph-visibility gate so a

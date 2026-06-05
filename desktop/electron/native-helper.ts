@@ -49,6 +49,36 @@ type HelperCircuit = { consecutiveFailures: number; openUntil: number }
 const circuits = new Map<string, HelperCircuit>()
 const inFlightWin32Helpers = new Set<string>()
 
+// Global Win32 spawn governor. Every helper invocation is a full
+// `CreateProcess`, which on Windows is scanned by Defender and shows up as
+// system-wide (not just Stella) lag when several callers fire at once (capture
+// probes, the morph-visibility sample grid, context polls). Serialize win32
+// spawns so concurrent callers queue behind a single in-flight process instead
+// of stampeding the OS process-creation path. macOS `fork` is cheap, so this
+// only gates win32.
+const WIN32_MAX_CONCURRENT_SPAWNS = 1
+let win32ActiveSpawns = 0
+const win32SpawnWaiters: Array<() => void> = []
+
+const acquireWin32SpawnSlot = (): Promise<void> => {
+  if (win32ActiveSpawns < WIN32_MAX_CONCURRENT_SPAWNS) {
+    win32ActiveSpawns += 1
+    return Promise.resolve()
+  }
+  return new Promise<void>((resolve) => {
+    win32SpawnWaiters.push(() => {
+      win32ActiveSpawns += 1
+      resolve()
+    })
+  })
+}
+
+const releaseWin32SpawnSlot = () => {
+  win32ActiveSpawns = Math.max(0, win32ActiveSpawns - 1)
+  const next = win32SpawnWaiters.shift()
+  if (next) next()
+}
+
 const getCircuit = (helperName: string): HelperCircuit => {
   let circuit = circuits.get(helperName)
   if (!circuit) {
@@ -74,14 +104,28 @@ const helperTimedOutOrKilled = (error: Error): boolean => {
   )
 }
 
-export const runNativeHelperDetailed = (
+const circuitOpenResult = (circuit: HelperCircuit): NativeHelperRunResult => {
+  const now = Date.now()
+  return {
+    stdout: null,
+    skipped: true,
+    skippedReason: 'circuit-open',
+    error: null,
+    killed: false,
+    timedOut: false,
+    durationMs: 0,
+    circuitOpenMs: circuit.openUntil > now ? circuit.openUntil - now : 0,
+  }
+}
+
+export const runNativeHelperDetailed = async (
   helperName: string,
   args: string[],
   options: RunNativeHelperOptions,
 ): Promise<NativeHelperRunResult> => {
   const helperPath = resolveNativeHelperPath(helperName)
   if (!helperPath) {
-    return Promise.resolve({
+    return {
       stdout: null,
       skipped: true,
       skippedReason: 'missing',
@@ -90,28 +134,18 @@ export const runNativeHelperDetailed = (
       timedOut: false,
       durationMs: 0,
       circuitOpenMs: 0,
-    })
+    }
   }
 
   const circuit = getCircuit(helperName)
-  const beforeSpawn = Date.now()
-  if (circuit.openUntil > beforeSpawn) {
+  if (circuit.openUntil > Date.now()) {
     // Circuit open — skip the spawn entirely until the cooldown elapses.
-    return Promise.resolve({
-      stdout: null,
-      skipped: true,
-      skippedReason: 'circuit-open',
-      error: null,
-      killed: false,
-      timedOut: false,
-      durationMs: 0,
-      circuitOpenMs: circuit.openUntil - beforeSpawn,
-    })
+    return circuitOpenResult(circuit)
   }
   const shouldBackpressure =
     process.platform === 'win32' && WIN32_HIGH_RISK_HELPERS.has(helperName)
   if (shouldBackpressure && inFlightWin32Helpers.has(helperName)) {
-    return Promise.resolve({
+    return {
       stdout: null,
       skipped: true,
       skippedReason: 'in-flight',
@@ -120,14 +154,29 @@ export const runNativeHelperDetailed = (
       timedOut: false,
       durationMs: 0,
       circuitOpenMs: 0,
-    })
+    }
+  }
+  // Mark in-flight at enqueue time (not at spawn time) so a duplicate call
+  // sheds while this one waits behind the governor, not only while it runs.
+  if (shouldBackpressure) {
+    inFlightWin32Helpers.add(helperName)
   }
 
-  return new Promise((resolve) => {
+  const useGovernor = process.platform === 'win32'
+  if (useGovernor) {
+    await acquireWin32SpawnSlot()
+  }
+  // The circuit may have opened while we waited for a spawn slot; re-check so a
+  // freshly-broken helper doesn't get spawned anyway after queueing.
+  if (circuit.openUntil > Date.now()) {
+    if (shouldBackpressure) inFlightWin32Helpers.delete(helperName)
+    if (useGovernor) releaseWin32SpawnSlot()
+    return circuitOpenResult(circuit)
+  }
+
+  try {
+    return await new Promise<NativeHelperRunResult>((resolve) => {
     const startedAt = Date.now()
-    if (shouldBackpressure) {
-      inFlightWin32Helpers.add(helperName)
-    }
     execFile(
       helperPath,
       args,
@@ -140,9 +189,6 @@ export const runNativeHelperDetailed = (
       (error, stdout) => {
         const now = Date.now()
         const durationMs = now - startedAt
-        if (shouldBackpressure) {
-          inFlightWin32Helpers.delete(helperName)
-        }
         if (error) {
           const typedError = error as NodeJS.ErrnoException & {
             killed?: boolean
@@ -219,7 +265,11 @@ export const runNativeHelperDetailed = (
         })
       },
     )
-  })
+    })
+  } finally {
+    if (shouldBackpressure) inFlightWin32Helpers.delete(helperName)
+    if (useGovernor) releaseWin32SpawnSlot()
+  }
 }
 
 export const runNativeHelper = async (
