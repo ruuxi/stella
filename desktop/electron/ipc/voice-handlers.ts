@@ -235,32 +235,6 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
   };
 
-  const emitVoiceActionCompleted = (payload: {
-    conversationId: string;
-    status: "completed" | "failed";
-    message: string;
-  }) => {
-    for (const window of options.windowManager.getAllWindows()) {
-      if (window.isDestroyed()) continue;
-      window.webContents.send("voice:actionCompleted", payload);
-    }
-    options.getBroadcastToMobile?.()?.("voice:actionCompleted", payload);
-  };
-
-  let unsubscribeVoiceActionCompleted: (() => void) | null = null;
-  const bindVoiceActionCompletion = (runner: StellaHostRunner | null) => {
-    unsubscribeVoiceActionCompleted?.();
-    unsubscribeVoiceActionCompleted = null;
-    if (!runner) return;
-    unsubscribeVoiceActionCompleted = runner.onVoiceActionCompleted(
-      (payload) => {
-        emitVoiceActionCompleted(payload);
-      },
-    );
-  };
-  bindVoiceActionCompletion(options.getStellaHostRunner());
-  options.onStellaHostRunnerChanged?.(bindVoiceActionCompletion);
-
   const broadcastRuntimeState = () => {
     const windows = options.windowManager.getAllWindows();
     const petWindow = options.getPetWindow?.() ?? null;

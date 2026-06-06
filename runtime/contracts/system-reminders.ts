@@ -26,14 +26,6 @@ export const formatAgentTerminalStateSystemReminder = (lines: string[]): string 
     ...lines,
   ].join("\n");
 
-export const formatVoiceActionCompletedSystemReminder = (
-  statusText: string,
-  message: string,
-): string =>
-  formatRealtimeSystemMessage(
-    `${statusText} Tell the user naturally and briefly: "${message}"`,
-  );
-
 export const formatVoiceActionErrorSystemReminder = (message: string): string =>
   formatRealtimeSystemMessage(
     `the action failed with error: "${message}". Let the user know briefly.`,

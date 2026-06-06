@@ -42,7 +42,6 @@ import { createSourceImportTool } from "./source-import.js";
 import { strReplaceTool } from "./str-replace.js";
 import { createAgentTools } from "./task.js";
 import { viewImageTool } from "./view-image.js";
-import { createVoiceActionCompleteTool } from "./voice-action-complete.js";
 import { createWebTool } from "./web.js";
 import { writeTool } from "./write.js";
 import { createWriteStdinTool } from "./write-stdin.js";
@@ -103,11 +102,6 @@ export const buildBuiltinTools = (
 
   // Orchestrator coordination surface
   tools.push(createHtmlTool({ stellaHome: options.stellaHome ?? options.stellaRoot }));
-  tools.push(
-    createVoiceActionCompleteTool({
-      notifyVoiceActionComplete: options.notifyVoiceActionComplete,
-    }),
-  );
   tools.push(createContextTool({ contextProvider: options.contextProvider }));
   tools.push(
     createScheduleTool({

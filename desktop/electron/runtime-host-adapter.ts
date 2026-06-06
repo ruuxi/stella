@@ -11,7 +11,6 @@ import type {
   RuntimeAutomationTurnRequest,
   RuntimeHealthSnapshot,
   RuntimeSocialSessionStatus,
-  RuntimeVoiceActionCompletedPayload,
   RuntimeVoiceChatPayload,
   RuntimeVoiceOrchestratorConfigRequest,
   RuntimeVoiceToolCallPayload,
@@ -1011,12 +1010,6 @@ export class RuntimeHostAdapter {
     ) => void,
   ) {
     return this.host.on("local-chat-updated", listener);
-  }
-
-  onVoiceActionCompleted(
-    listener: (payload: RuntimeVoiceActionCompletedPayload) => void,
-  ) {
-    return this.host.on("voice-action-completed", listener);
   }
 
   createSocialSession(payload: { roomId: string; workspaceLabel?: string }) {

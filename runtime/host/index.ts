@@ -51,7 +51,6 @@ import {
   type RuntimeLocalAgentSnapshot,
   type RuntimeOneShotCompletionRequest,
   type RuntimeOneShotCompletionResult,
-  type RuntimeVoiceActionCompletedPayload,
   type RuntimeVoiceAgentEventPayload,
   type RuntimeVoiceChatPayload,
   type RuntimeVoiceHmrStatePayload,
@@ -101,7 +100,6 @@ type RuntimeHostEvents = {
   "run-self-mod-hmr-state": { runId?: string; state: SelfModHmrState };
   "voice-agent-event": RuntimeVoiceAgentEventPayload;
   "voice-self-mod-hmr-state": RuntimeVoiceHmrStatePayload;
-  "voice-action-completed": RuntimeVoiceActionCompletedPayload;
   "local-chat-updated": LocalChatUpdatedPayload | null;
   "schedule-updated": void;
 };
@@ -2835,15 +2833,6 @@ export class StellaRuntimeHost {
         this.events.emit(
           "voice-agent-event",
           params as RuntimeVoiceAgentEventPayload,
-        );
-      },
-    );
-    peer.registerNotificationHandler(
-      NOTIFICATION_NAMES.VOICE_ACTION_COMPLETED,
-      (params) => {
-        this.events.emit(
-          "voice-action-completed",
-          params as RuntimeVoiceActionCompletedPayload,
         );
       },
     );

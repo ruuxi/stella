@@ -666,11 +666,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       micLevel: number;
       outputLevel: number;
     }) => ipcRenderer.send("voice:runtimeState", state),
-    onActionCompleted: onIpc<{
-      conversationId: string;
-      status: "completed" | "failed";
-      message: string;
-    }>("voice:actionCompleted"),
     setRtcShortcut: (shortcut: string) =>
       ipcRenderer.invoke("voice-rtc:setShortcut", shortcut) as Promise<{
         ok: boolean;

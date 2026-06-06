@@ -389,7 +389,6 @@ export const createRunnerContext = ({
   selfModHmrController,
   requestCredential,
   requestRuntimeAuthRefresh,
-  notifyVoiceActionComplete,
   scheduleApi,
   sourceImportApi,
 
@@ -462,7 +461,6 @@ export const createRunnerContext = ({
     stellaXApiCliPath,
     cliBridgeSocketPath,
     requestCredential,
-    notifyVoiceActionComplete,
     getSubagentTypes: () =>
       collectSubagentRoster(context.state.loadedAgents).map(
         (entry) => entry.type,
@@ -620,7 +618,6 @@ export const createRunnerContext = ({
     selfModHmrController,
     requestCredential,
     requestRuntimeAuthRefresh,
-    notifyVoiceActionComplete,
     scheduleApi,
 
     fashionApi: resolvedFashionApi,

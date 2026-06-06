@@ -498,13 +498,6 @@ export type ElectronVoiceApi = {
     callback: (state: VoiceRuntimeSnapshot) => void,
   ) => () => void;
   pushRuntimeState: (state: VoiceRuntimeSnapshot) => void;
-  onActionCompleted: (
-    callback: (payload: {
-      conversationId: string;
-      status: "completed" | "failed";
-      message: string;
-    }) => void,
-  ) => () => void;
   setRtcShortcut: (
     shortcut: string,
   ) => Promise<VoiceShortcutRegistrationResult>;
