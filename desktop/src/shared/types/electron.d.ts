@@ -1795,6 +1795,44 @@ export type ElectronApi = {
     }>;
     wipeMemories: () => Promise<{ ok: boolean; reason?: string }>;
   };
+  meetings: {
+    status: () => Promise<{
+      available: boolean;
+      running?: boolean;
+      recording?: boolean;
+      paused?: boolean;
+      sessionId?: string | null;
+      startedAtMs?: number | null;
+      segmentSeconds?: number;
+      screenPermission?: boolean;
+      micPermission?: boolean;
+    }>;
+    start: (payload?: {
+      sessionId?: string;
+      segmentSeconds?: number;
+    }) => Promise<{
+      ok: boolean;
+      sessionId?: string;
+      dir?: string;
+      segmentSeconds?: number;
+      system?: boolean;
+      mic?: boolean;
+      startedAtMs?: number;
+      reason?: string;
+    }>;
+    pause: () => Promise<{ ok: boolean }>;
+    resume: () => Promise<{ ok: boolean }>;
+    stop: () => Promise<{
+      ok: boolean;
+      sessionId?: string;
+      dir?: string;
+      durationMs?: number;
+      systemSegments?: number;
+      micSegments?: number;
+      reason?: string;
+    }>;
+    openFolder: (payload?: { sessionId?: string }) => Promise<{ ok: boolean }>;
+  };
   schedule: ElectronScheduleApi;
   store: ElectronStoreApi;
   fashion: ElectronFashionApi;

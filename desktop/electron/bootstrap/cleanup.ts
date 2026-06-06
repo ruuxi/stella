@@ -60,6 +60,16 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
       context.state.chronicleController = null;
     },
   );
+  // Meeting capture finalizes any in-flight recording (patches WAV headers,
+  // writes session.json) before the daemon exits.
+  processRuntime.registerCleanup(
+    "before-quit",
+    "meeting-capture-daemon",
+    async () => {
+      await context.state.meetingCaptureController?.shutdown();
+      context.state.meetingCaptureController = null;
+    },
+  );
   // The desktop_automation daemon is a long-lived child process spawned
   // on demand by stella-computer. macOS doesn't reload an executable
   // under a live process, so without killing it on quit a rebuilt
