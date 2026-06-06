@@ -10,12 +10,21 @@ import type { RuntimePromptMessage } from "../../protocol/index.js";
 export interface ToolDefinition {
   /** Tool name (must be unique). */
   name: string;
+  /** Human-readable label surfaced to the UI. */
+  label?: string;
+  /** User-facing status text while the tool is running. */
+  workingText?: string;
   /** One-line description for the LLM. */
   description: string;
   /** Which agent types can use this tool. Omit for all. */
   agentTypes?: string[];
   /** JSON Schema for tool parameters. */
   parameters: Record<string, unknown>;
+  /** Hidden until discovered by runtime tool search. */
+  deferred?: {
+    searchTerms?: readonly string[];
+    requiredConnectorProvider?: string;
+  };
   /** Execute the tool. */
   execute(
     args: Record<string, unknown>,
@@ -212,6 +221,7 @@ export type ToolExecutionStartPayload = HookRuntimeContext & {
   agentType: string;
   toolCallId: string;
   toolName: string;
+  statusText?: string;
   args: Record<string, unknown>;
 };
 

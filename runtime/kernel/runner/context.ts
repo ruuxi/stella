@@ -227,13 +227,19 @@ const buildConnectorTransitionReminder = (
 
   if (currentSurface.isConnector) {
     const providerLabel = currentSurface.provider ?? "an external chat channel";
-    return [
+    const connectorLines = [
       `The user just switched to messaging you from ${providerLabel} (not the desktop app).`,
       "Reply in plain text only — no markdown, no headers, no bullet lists, no code blocks. Write like a normal text message.",
       "Do not call the `html` tool (HTML/canvas artifacts only render in the desktop sidebar — type the answer in chat instead).",
       "After calling `image_gen`, do not narrate or describe the image you just made — the generated file is delivered to the user's chat directly when it finishes, separately from your text reply. Saying \"here's the image\" reads as broken because the image arrives later as its own message.",
       "Keep replies short and conversational.",
-    ].join(" ");
+    ];
+    if (currentSurface.provider === "linq") {
+      connectorLines.push(
+        "The user is texting through Linq/iMessage. Search for and use the iMessage tools when you need intentional native chat affordances such as reactions, rich media or rich links, contact card sharing, voice memos, or message effects. Typing indicators and read receipts are handled automatically by Stella.",
+      );
+    }
+    return connectorLines.join(" ");
   }
 
   // connector → desktop
@@ -486,6 +492,8 @@ export const createRunnerContext = ({
       const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
       return baseUrl && authToken ? { baseUrl, authToken } : null;
     },
+    actionConvex: async (ref, args) =>
+      (await convexAction(ref, args)) as unknown,
     queryConvex: async (ref, args) => {
       const deploymentUrl = sanitizeConvexDeploymentUrl(
         context.state?.convexDeploymentUrl ?? envConvexDeploymentUrl,

@@ -225,6 +225,7 @@ export const createRunEventRecorder = ({
     recordToolStart(args: {
       toolCallId: string;
       toolName: string;
+      statusText?: string;
       toolArgs: Record<string, unknown>;
     }): RuntimeToolStartEvent {
       const seq = nextSeq();
@@ -244,6 +245,7 @@ export const createRunEventRecorder = ({
         seq,
         toolCallId: args.toolCallId,
         toolName: args.toolName,
+        ...(args.statusText ? { statusText: args.statusText } : {}),
         args: args.toolArgs,
         ...(uiVisibility ? { uiVisibility } : {}),
       };
@@ -561,10 +563,15 @@ export const subscribeRuntimeAgentEvents = ({
         toolName: event.toolName,
         toolCallId: event.toolCallId,
         args: event.args,
+        statusText: event.statusText,
       });
+      if (event.statusText) {
+        callbacks?.onStatus?.(recorder.recordStatus(event.statusText));
+      }
       const toolStartEvent = recorder.recordToolStart({
         toolCallId: event.toolCallId,
         toolName: event.toolName,
+        ...(event.statusText ? { statusText: event.statusText } : {}),
         toolArgs: (event.args as Record<string, unknown>) ?? {},
       });
       callbacks?.onToolStart?.(toolStartEvent);
@@ -576,6 +583,7 @@ export const subscribeRuntimeAgentEvents = ({
           agentType,
           toolCallId: event.toolCallId,
           toolName: event.toolName,
+          ...(event.statusText ? { statusText: event.statusText } : {}),
           args: (event.args as Record<string, unknown>) ?? {},
         },
         { agentType, tool: event.toolName },

@@ -121,6 +121,8 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("DisplayGuidelines")).toBe(false);
     expect(orchestratorTools.has("image_gen")).toBe(true);
     expect(orchestratorTools.has("web")).toBe(true);
+    expect(orchestratorTools.has("tool_search")).toBe(true);
+    expect(orchestratorTools.has("linq_send_message")).toBe(false);
     expect(orchestratorTools.has("Memory")).toBe(false);
     expect(orchestratorTools.has("MemoryNote")).toBe(false);
     expect(orchestratorTools.has("askQuestion")).toBe(false);
@@ -154,6 +156,7 @@ describe("orchestrator direct tool surface", () => {
       host.getToolCatalog("general").map((tool) => tool.name),
     );
     expect(generalTools.has("spawn_agent")).toBe(false);
+    expect(generalTools.has("linq_send_message")).toBe(false);
     expect(generalTools.has("Display")).toBe(false);
     expect(generalTools.has("DisplayGuidelines")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
@@ -227,6 +230,23 @@ describe("orchestrator direct tool surface", () => {
     expect(fashionTools.has("FashionMarkOutfitReady")).toBe(true);
     expect(fashionTools.has("Fashion")).toBe(false);
     expect(fashionTools.has("image_gen")).toBe(true);
+  });
+
+  it("keeps deferred Linq tools hidden unless explicitly requested by the runtime", async () => {
+    const { host } = await createTestHost();
+
+    const visibleTools = new Set(
+      host.getToolCatalog("orchestrator").map((tool) => tool.name),
+    );
+    const runtimeTools = new Set(
+      host
+        .getToolCatalog("orchestrator", { includeDeferred: true })
+        .map((tool) => tool.name),
+    );
+
+    expect(visibleTools.has("linq_send_message")).toBe(false);
+    expect(runtimeTools.has("linq_send_message")).toBe(true);
+    expect(runtimeTools.has("linq_react_to_message")).toBe(true);
   });
 
   it("executes import_source for the orchestrator and rejects other agents", async () => {

@@ -24,6 +24,18 @@ export const STELLA_LOCAL_TOOLS = [
   TOOL_IDS.NO_RESPONSE,
 ] as const;
 
+const TOOL_SEARCH_TOOL_NAME = "tool_search";
+
+const formatToolLabel = (toolName: string): string =>
+  toolName
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase()) || toolName;
+
+const formatToolWorkingText = (metadata: ToolMetadata): string =>
+  metadata.workingText ?? `Running ${metadata.label ?? formatToolLabel(metadata.name)}`;
+
 export const getRequestedRuntimeToolNames = (
   toolsAllowlist?: string[],
 ): string[] =>
@@ -184,6 +196,34 @@ type ImageBlock = { type: "image"; mimeType: string; data: string };
 const normalizeAttachImagePath = (filePath: string) =>
   /^[A-Za-z]:\\\\/.test(filePath) ? filePath.replace(/\\\\/g, "\\") : filePath;
 
+const tokenizeToolSearch = (value: string): string[] =>
+  value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+
+const clampToolSearchLimit = (value: unknown): number => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 6;
+  return Math.max(1, Math.min(12, Math.floor(value)));
+};
+
+const scoreDeferredTool = (tool: ToolMetadata, queryTokens: string[]) => {
+  const haystack = [
+    tool.name,
+    tool.description,
+    ...(tool.deferred?.searchTerms ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+  let score = 0;
+  for (const token of queryTokens) {
+    if (tool.name.toLowerCase().includes(token)) score += 5;
+    if (haystack.includes(token)) score += 2;
+  }
+  return score;
+};
+
 // Exported for tests. See `desktop/tests/runtime/kernel/agent-runtime/stella-attach-image.test.ts`.
 export const extractAttachImageBlocks = async (
   text: string,
@@ -247,6 +287,8 @@ type RuntimeToolContextArgs = {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
 };
 
@@ -373,6 +415,8 @@ export const createPiTools = (opts: {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
   toolsAllowlist?: string[];
   toolCatalog?: ToolMetadata[];
@@ -390,6 +434,7 @@ export const createPiTools = (opts: {
   const catalog = new Map<string, ToolMetadata>(
     (opts.toolCatalog ?? []).map((tool) => [tool.name, tool]),
   );
+  const deferredTools = [...catalog.values()].filter((tool) => tool.deferred);
   const activeTools: AgentTool[] = [];
   const activeToolNames = new Set<string>();
 
@@ -397,16 +442,90 @@ export const createPiTools = (opts: {
     const entry = catalog.get(toolName);
     const metadata: ToolMetadata = entry ?? {
       name: toolName,
+      label: formatToolLabel(toolName),
       description: `${toolName} tool`,
       parameters: AnyToolArgsSchema as Record<string, unknown>,
     };
     const tool: AgentTool = {
       name: toolName,
-      label: toolName,
+      label: metadata.label ?? formatToolLabel(toolName),
+      workingText: formatToolWorkingText(metadata),
       description: metadata.description,
       parameters: metadata.parameters as typeof AnyToolArgsSchema,
       execute: async (toolCallId, params, signal, onUpdate) => {
         const args = (params as Record<string, unknown>) ?? {};
+        if (toolName === TOOL_SEARCH_TOOL_NAME) {
+          const query = typeof args.query === "string" ? args.query.trim() : "";
+          if (!query) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Error: tool_search requires a non-empty query.",
+                },
+              ],
+              details: { error: "missing_query" },
+            };
+          }
+          const queryTokens = tokenizeToolSearch(query);
+          const connectorProvider = opts.connectorDeliveryTarget?.provider;
+          const matches = deferredTools
+            .filter((tool) => {
+              const requiredProvider = tool.deferred?.requiredConnectorProvider;
+              return !requiredProvider || requiredProvider === connectorProvider;
+            })
+            .map((tool) => ({ tool, score: scoreDeferredTool(tool, queryTokens) }))
+            .filter((entry) => entry.score > 0)
+            .sort((left, right) => {
+              if (right.score !== left.score) return right.score - left.score;
+              return left.tool.name.localeCompare(right.tool.name);
+            })
+            .slice(0, clampToolSearchLimit(args.limit));
+
+          for (const { tool } of matches) {
+            if (activeToolNames.has(tool.name)) continue;
+            activeToolNames.add(tool.name);
+            activeTools.push(registerTool(tool.name));
+          }
+
+          const toolNames = matches.map(({ tool }) => tool.name);
+          onUpdate?.({
+            content: [
+              {
+                type: "text",
+                text:
+                  toolNames.length > 0
+                    ? `Found ${toolNames.length} matching tool${toolNames.length === 1 ? "" : "s"}.`
+                    : "No matching tools found.",
+              },
+            ],
+            details: {
+              statusText:
+                toolNames.length > 0
+                  ? `Found ${toolNames.length} matching tool${toolNames.length === 1 ? "" : "s"}`
+                  : "No matching tools found",
+            },
+          });
+          const unavailableHint =
+            connectorProvider === "linq"
+              ? ""
+              : " Linq/iMessage tools are only available while replying to a Linq connector conversation.";
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  toolNames.length > 0
+                    ? `Exposed deferred tools for the next call: ${toolNames.join(", ")}.`
+                    : `No deferred tools matched "${query}".${unavailableHint}`,
+              },
+            ],
+            details: {
+              query,
+              exposedTools: toolNames,
+            },
+          };
+        }
         const toolResult = await executeRuntimeToolCall({
           toolCallId,
           toolName,
@@ -423,7 +542,7 @@ export const createPiTools = (opts: {
           agentDepth: opts.agentDepth,
           maxAgentDepth: opts.maxAgentDepth,
           connectorDeliveryTarget: opts.connectorDeliveryTarget,
-          allowedToolNames: requested,
+          allowedToolNames: [...activeToolNames],
           store: opts.store,
           toolExecutor: opts.toolExecutor,
           hookEmitter: opts.hookEmitter,

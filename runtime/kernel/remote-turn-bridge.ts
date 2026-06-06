@@ -9,6 +9,7 @@ export type RemoteTurnRequestEvent = {
   type: string;
   requestId?: string;
   payload?: Record<string, unknown>;
+  channelEnvelope?: Record<string, unknown>;
 };
 
 type RemoteTurnRunResult =
@@ -42,12 +43,15 @@ type RemoteTurnBridgeDeps = {
     agentType?: string;
     modelOverride?: string;
     provider?: string;
+    externalMessageId?: string;
     attachments?: Array<{
       url: string;
       mimeType?: string;
       kind?: string;
       name?: string;
       size?: number;
+      transcript?: string;
+      extractedText?: string;
     }>;
   }) => Promise<RemoteTurnRunResult>;
   claimRemoteTurn?: (args: {
@@ -82,6 +86,8 @@ type RuntimeAttachment = {
   kind?: string;
   name?: string;
   size?: number;
+  transcript?: string;
+  extractedText?: string;
 };
 
 /**
@@ -106,15 +112,91 @@ const getRuntimeAttachments = (value: unknown): RuntimeAttachment[] => {
         typeof sizeRaw === "number" && Number.isFinite(sizeRaw) && sizeRaw >= 0
           ? sizeRaw
           : undefined;
+      const transcript = getTrimmedString(record?.transcript) || undefined;
+      const extractedText =
+        getTrimmedString(record?.extractedText) || undefined;
       return {
         url,
         ...(mimeType ? { mimeType } : {}),
         ...(kind ? { kind } : {}),
         ...(name ? { name } : {}),
         ...(size !== undefined ? { size } : {}),
+        ...(transcript ? { transcript } : {}),
+        ...(extractedText ? { extractedText } : {}),
       };
     })
     .filter((entry): entry is RuntimeAttachment => Boolean(entry));
+};
+
+const isAttachmentOnlyPlaceholder = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === "[attachment]" ||
+    normalized === "[audio]" ||
+    normalized === "[voice message]" ||
+    normalized === "the user sent an attachment."
+  );
+};
+
+const isAudioAttachment = (attachment: RuntimeAttachment): boolean => {
+  const mimeType = attachment.mimeType?.toLowerCase() ?? "";
+  const kind = attachment.kind?.toLowerCase() ?? "";
+  return (
+    mimeType.startsWith("audio/") ||
+    kind.includes("audio") ||
+    kind.includes("voice")
+  );
+};
+
+const userPromptWithAttachmentContext = (
+  userPrompt: string,
+  attachments: RuntimeAttachment[],
+): string => {
+  const audioAttachments = attachments.filter(isAudioAttachment);
+  const textAttachments = attachments.filter((attachment) =>
+    Boolean(attachment.extractedText),
+  );
+
+  const transcriptBlocks = audioAttachments
+    .map((attachment, index) => {
+      if (!attachment.transcript) return null;
+      const label =
+        audioAttachments.length === 1
+          ? "Voice message transcript"
+          : `Voice message ${index + 1} transcript`;
+      return `${label}:\n${attachment.transcript}`;
+    })
+    .filter((block): block is string => Boolean(block));
+
+  const textBlocks = textAttachments
+    .map((attachment, index) => {
+      if (!attachment.extractedText) return null;
+      const label =
+        attachment.name ||
+        (textAttachments.length === 1
+          ? "Attached file text"
+          : `Attached file ${index + 1} text`);
+      return `${label}:\n${attachment.extractedText}`;
+    })
+    .filter((block): block is string => Boolean(block));
+
+  const contextBlocks = [...transcriptBlocks, ...textBlocks];
+  if (contextBlocks.length > 0) {
+    const contextText = contextBlocks.join("\n\n");
+    return isAttachmentOnlyPlaceholder(userPrompt)
+      ? contextText
+      : `${userPrompt}\n\n${contextText}`;
+  }
+
+  if (audioAttachments.length > 0) {
+    const fallback = "The user sent an audio attachment, but it could not be transcribed.";
+    return isAttachmentOnlyPlaceholder(userPrompt)
+      ? fallback
+      : `${userPrompt}\n\n${fallback}`;
+  }
+
+  return userPrompt;
 };
 
 const isConnectorRequest = (payload: Record<string, unknown> | null): boolean => {
@@ -233,12 +315,19 @@ export const createRemoteTurnBridge = (
         const userPrompt = getTrimmedString(payload?.text);
         const agentType = getTrimmedString(payload?.agentType) || undefined;
         const provider = getTrimmedString(payload?.provider) || undefined;
+        const channelEnvelope = asRecord(event.channelEnvelope);
+        const externalMessageId =
+          getTrimmedString(channelEnvelope?.externalMessageId) || undefined;
         const deliveryMeta = asRecord(payload?.deliveryMeta);
         const modelOverride =
           getTrimmedString(deliveryMeta?.mobileModel) || undefined;
         const attachments = getRuntimeAttachments(payload?.mediaRefs);
+        const effectiveUserPrompt = userPromptWithAttachmentContext(
+          userPrompt,
+          attachments,
+        );
 
-        if (!conversationId || (!userPrompt && attachments.length === 0)) {
+        if (!conversationId || (!effectiveUserPrompt && attachments.length === 0)) {
           pending.delete(requestId);
           deps.log?.(
             "warn",
@@ -261,10 +350,11 @@ export const createRemoteTurnBridge = (
         const result = await deps.runLocalTurn({
           requestId,
           conversationId,
-          userPrompt: userPrompt || "The user sent an attachment.",
+          userPrompt: effectiveUserPrompt || "The user sent an attachment.",
           agentType,
           modelOverride,
           provider,
+          externalMessageId,
           attachments,
         });
 

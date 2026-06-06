@@ -26,6 +26,8 @@ export type NormalizedOrchestratorRunInput = {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
 };
 
@@ -117,6 +119,8 @@ export const normalizeAutomationRunInput = (payload: {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
 }): NormalizedOrchestratorRunInput => ({
   conversationId: payload.conversationId.trim(),
@@ -135,6 +139,15 @@ export const normalizeAutomationRunInput = (payload: {
         connectorDeliveryTarget: {
           requestId: payload.connectorDeliveryTarget.requestId.trim(),
           conversationId: payload.connectorDeliveryTarget.conversationId.trim(),
+          ...(payload.connectorDeliveryTarget.provider?.trim()
+            ? { provider: payload.connectorDeliveryTarget.provider.trim() }
+            : {}),
+          ...(payload.connectorDeliveryTarget.externalMessageId?.trim()
+            ? {
+                externalMessageId:
+                  payload.connectorDeliveryTarget.externalMessageId.trim(),
+              }
+            : {}),
         },
       }
     : {}),

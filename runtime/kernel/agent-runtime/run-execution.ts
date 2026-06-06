@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentMessage } from "../agent-core/types.js";
+import { Buffer } from "node:buffer";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type {
   RuntimeAttachmentRef,
@@ -41,6 +42,47 @@ const configuredTimeoutMs = (
   if (!raw) return fallbackMs;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
+};
+
+const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
+
+const attachmentMimeType = (attachment: RuntimeAttachmentRef): string =>
+  attachment.mimeType?.trim().toLowerCase() ?? "";
+
+const isRemoteImageAttachment = (attachment: RuntimeAttachmentRef): boolean =>
+  /^https?:\/\//i.test(attachment.url) &&
+  (attachmentMimeType(attachment).startsWith("image/") ||
+    attachment.kind?.toLowerCase() === "image");
+
+const materializeRemoteImageAttachment = async (
+  attachment: RuntimeAttachmentRef,
+): Promise<RuntimeAttachmentRef> => {
+  if (!isRemoteImageAttachment(attachment)) return attachment;
+  try {
+    const response = await fetch(attachment.url);
+    if (!response.ok) return attachment;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_REMOTE_IMAGE_BYTES) return attachment;
+    const mimeType =
+      attachmentMimeType(attachment) ||
+      response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ||
+      "";
+    if (!mimeType.startsWith("image/")) return attachment;
+    return {
+      ...attachment,
+      mimeType,
+      url: `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
+    };
+  } catch {
+    return attachment;
+  }
+};
+
+const materializePromptAttachments = async (
+  attachments?: RuntimeAttachmentRef[],
+): Promise<RuntimeAttachmentRef[] | undefined> => {
+  if (!attachments?.length) return attachments;
+  return await Promise.all(attachments.map(materializeRemoteImageAttachment));
 };
 
 export const executeRuntimeAgentPrompt = async (args: {
@@ -130,10 +172,17 @@ export const executeRuntimeAgentPrompt = async (args: {
   try {
     const promptInputs =
       args.promptMessages && args.promptMessages.length > 0
-        ? args.promptMessages
+        ? await Promise.all(
+            args.promptMessages.map(async (message) => ({
+              ...message,
+              attachments: await materializePromptAttachments(
+                message.attachments,
+              ),
+            })),
+          )
         : [{
             text: args.promptText ?? "",
-            attachments: args.attachments,
+            attachments: await materializePromptAttachments(args.attachments),
           }];
     const promptTimestamp = now();
     const promptMessages = promptInputs.map((message, index) => ({

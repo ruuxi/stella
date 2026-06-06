@@ -35,6 +35,8 @@ export type ToolContext = {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
 };
 
@@ -72,8 +74,14 @@ export type ToolHandlerExtras = {
 
 export type ToolMetadata = {
   name: string;
+  label?: string;
+  workingText?: string;
   description: string;
   parameters: Record<string, unknown>;
+  deferred?: {
+    searchTerms?: readonly string[];
+    requiredConnectorProvider?: string;
+  };
   /**
    * Optional declarative gate: when set, only the listed agent types may see
    * the tool in their catalog and run it via executeTool. Replaces in-line
@@ -199,6 +207,14 @@ export type ToolHostOptions = {
    * such as media job completion.
    */
   queryConvex?: (
+    ref: unknown,
+    args: Record<string, unknown>,
+  ) => Promise<unknown>;
+  /**
+   * Optional authenticated Convex action bridge for tools that need to invoke
+   * backend-owned side effects, such as connector delivery affordances.
+   */
+  actionConvex?: (
     ref: unknown,
     args: Record<string, unknown>,
   ) => Promise<unknown>;
@@ -426,6 +442,10 @@ export type ToolHandler = (
 export type ToolDefinition = {
   /** Tool name surfaced to the model (e.g. `web`, `exec_command`). */
   name: string;
+  /** Human-readable label surfaced to the UI. */
+  label?: string;
+  /** User-facing status text while the tool is running. */
+  workingText?: string;
   /** Description string shown in the model's tool list. */
   description: string;
   /** JSON Schema for tool arguments. */
@@ -444,6 +464,15 @@ export type ToolDefinition = {
    * specific that an unconditional snippet would be misleading.
    */
   promptSnippet?: string;
+  /**
+   * Hidden-by-default tools are not exposed in the initial model catalog.
+   * The runtime `tool_search` surface can discover and add them to the live
+   * tool list when the current context supports them.
+   */
+  deferred?: {
+    searchTerms?: readonly string[];
+    requiredConnectorProvider?: string;
+  };
   /** Handler invoked when the model calls the tool. */
   execute: ToolHandler;
 };

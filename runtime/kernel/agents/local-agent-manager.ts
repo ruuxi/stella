@@ -242,6 +242,7 @@ type LocalAgentManagerOpts = {
       seq: number;
       toolCallId: string;
       toolName: string;
+      statusText?: string;
     }) => void;
     onToolEnd?: (event: {
       runId: string;
@@ -831,6 +832,7 @@ export class LocalAgentManager implements AgentToolApi {
           if (task.controller.signal.aborted || task.status === "canceled") {
             return;
           }
+          const statusText = ev.statusText ?? `Running ${ev.toolName}`;
           this.opts.onAgentEvent?.({
             type: "agent-progress",
             conversationId: task.conversationId,
@@ -839,7 +841,7 @@ export class LocalAgentManager implements AgentToolApi {
             agentType: task.agentType,
             description: task.description,
             parentAgentId: task.parentAgentId,
-            statusText: `Using ${ev.toolName}`,
+            statusText,
           });
           logWorkingIndicatorTrace(
             "[stella:working-indicator:agent-progress]",
@@ -848,7 +850,7 @@ export class LocalAgentManager implements AgentToolApi {
               conversationId: task.conversationId,
               rootRunId: task.rootRunId,
               description: task.description,
-              statusText: `Using ${ev.toolName}`,
+              statusText,
             },
           );
         },

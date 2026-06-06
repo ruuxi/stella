@@ -58,6 +58,7 @@ export type PublicApiType = {
       "verifyLinqLinkCode": FunctionReference<'mutation', 'public', { code: string; phoneNumber: string; }, any, string | undefined>;
     };
     "linq": {
+      "executeLinqConnectorTool": FunctionReference<'action', 'public', { conversationId: Id<'conversations'>; payload: Value; operation: string; requestId: string; }, any, string | undefined>;
       "sendLinqLinkSms": FunctionReference<'action', 'public', { phoneNumber: string; }, any, string | undefined>;
     };
     "utils": {

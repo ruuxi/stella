@@ -1048,6 +1048,7 @@ export class StellaRuntimeHost {
         agentType,
         modelOverride,
         provider,
+        externalMessageId,
         attachments,
       }) => {
         const localConversationId = this.configCache.cloudSyncEnabled
@@ -1072,36 +1073,67 @@ export class StellaRuntimeHost {
             text: userPrompt,
             source: "connector",
             ...(provider ? { provider } : {}),
+            ...(provider === "linq" && externalMessageId
+              ? { linqMessageId: externalMessageId }
+              : {}),
             ...(attachments?.length ? { attachments } : {}),
           },
         });
-        const result = await this.requestWorker<RuntimeAutomationTurnResult>(
-          METHOD_NAMES.INTERNAL_WORKER_RUN_AUTOMATION,
-          {
-            conversationId: localConversationId,
-            userPrompt,
-            ...(agentType ? { agentType } : {}),
-            ...(modelOverride ? { modelOverride } : {}),
-            ...(attachments?.length ? { attachments } : {}),
-            connectorDeliveryTarget: {
-              requestId,
-              conversationId,
-            },
-          },
-          {
-            ensureWorker: true,
-            recordActivity: true,
-            retryOnceOnDisconnect: true,
-          },
-        );
-        if (result.status === "ok" && result.finalText) {
-          await this.appendLocalChatEvent({
-            conversationId: localConversationId,
-            type: "assistant_message",
-            payload: { text: result.finalText, source: "connector" },
+        const isLinqTurn = provider === "linq";
+        if (isLinqTurn) {
+          await this.executeLinqConnectorLifecycleOperation({
+            requestId,
+            conversationId,
+            operation: "read",
+            payload: {},
+          });
+          await this.executeLinqConnectorLifecycleOperation({
+            requestId,
+            conversationId,
+            operation: "typing",
+            payload: { action: "start" },
           });
         }
-        return result;
+        try {
+          const result = await this.requestWorker<RuntimeAutomationTurnResult>(
+            METHOD_NAMES.INTERNAL_WORKER_RUN_AUTOMATION,
+            {
+              conversationId: localConversationId,
+              userPrompt,
+              ...(agentType ? { agentType } : {}),
+              ...(modelOverride ? { modelOverride } : {}),
+              ...(attachments?.length ? { attachments } : {}),
+              connectorDeliveryTarget: {
+                requestId,
+                conversationId,
+                ...(provider ? { provider } : {}),
+                ...(externalMessageId ? { externalMessageId } : {}),
+              },
+            },
+            {
+              ensureWorker: true,
+              recordActivity: true,
+              retryOnceOnDisconnect: true,
+            },
+          );
+          if (result.status === "ok" && result.finalText) {
+            await this.appendLocalChatEvent({
+              conversationId: localConversationId,
+              type: "assistant_message",
+              payload: { text: result.finalText, source: "connector" },
+            });
+          }
+          return result;
+        } finally {
+          if (isLinqTurn) {
+            await this.executeLinqConnectorLifecycleOperation({
+              requestId,
+              conversationId,
+              operation: "typing",
+              payload: { action: "stop" },
+            });
+          }
+        }
       },
       claimRemoteTurn: async ({ requestId, conversationId }) => {
         const client = this.ensureHostConvexClient();
@@ -1144,6 +1176,38 @@ export class StellaRuntimeHost {
         logger(message, error);
       },
     });
+  }
+
+  private async executeLinqConnectorLifecycleOperation(args: {
+    requestId: string;
+    conversationId: string;
+    operation: "read" | "typing";
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    const client = this.ensureHostConvexClient();
+    if (!client) {
+      return;
+    }
+    try {
+      await (client as any).action(
+        (
+          anyApi as unknown as {
+            channels: { linq: { executeLinqConnectorTool: unknown } };
+          }
+        ).channels.linq.executeLinqConnectorTool,
+        {
+          requestId: args.requestId,
+          conversationId: args.conversationId,
+          operation: args.operation,
+          payload: args.payload,
+        },
+      );
+    } catch (error) {
+      console.warn(
+        `[runtime-host] Linq ${args.operation} lifecycle operation failed:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   private async sendConnectorFollowup(args: {

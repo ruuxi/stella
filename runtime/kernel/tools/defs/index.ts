@@ -32,6 +32,7 @@ import { createFashionControlTools } from "./fashion-control.js";
 import { grepTool } from "./grep.js";
 import { createHtmlTool } from "./html.js";
 import { createImageGenTool } from "./image-gen.js";
+import { createLinqImessageTools } from "./linq-imessage.js";
 import { createMultiToolUseParallelTool } from "./multi-tool-use-parallel.js";
 import { readTool } from "./read.js";
 import { createRequestCredentialTool } from "./request-credential.js";
@@ -41,6 +42,7 @@ import { createScriptDraftTool } from "./script-draft.js";
 import { createSourceImportTool } from "./source-import.js";
 import { strReplaceTool } from "./str-replace.js";
 import { createAgentTools } from "./task.js";
+import { toolSearchTool } from "./tool-search.js";
 import { viewImageTool } from "./view-image.js";
 import { createWebTool } from "./web.js";
 import { writeTool } from "./write.js";
@@ -99,6 +101,7 @@ export const buildBuiltinTools = (
     }),
   );
   tools.push(createWebTool({ webSearch: options.webSearch }));
+  tools.push(toolSearchTool);
 
   // Orchestrator coordination surface
   tools.push(createHtmlTool({ stellaHome: options.stellaHome ?? options.stellaRoot }));
@@ -128,6 +131,12 @@ export const buildBuiltinTools = (
 
   // Fashion subagent surface
   tools.push(...createFashionControlTools({ fashionApi: options.fashionApi }));
+
+  // Deferred connector affordances. These stay hidden from initial model
+  // catalogs and are exposed by `tool_search` only in matching contexts.
+  tools.push(
+    ...createLinqImessageTools({ actionConvex: options.actionConvex }),
+  );
 
   // Subagent file/search/dream surface
   // Read & Grep have unrestricted handlers in the host; StrReplace and Dream
