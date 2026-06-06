@@ -60,32 +60,6 @@ export type { ToolContext, ToolHandlerExtras, ToolResult };
 
 export type ToolHost = ReturnType<typeof createToolHost>;
 
-const ORCHESTRATOR_DIRECT_TOOL_NAMES = new Set([
-  "Context",
-  "Schedule",
-  "Store",
-  "import_source",
-  "spawn_agent",
-  "send_input",
-  "pause_agent",
-  "html",
-]);
-
-const SOCIAL_SESSION_TOOL_NAMES = new Set([
-  "Read",
-  "Grep",
-  APPLY_PATCH_TOOL_NAME,
-  WRITE_TOOL_NAME,
-  EDIT_TOOL_NAME,
-  "multi_tool_use_parallel",
-]);
-
-const WORKER_ONLY_TOOL_NAMES = new Set<string>();
-
-const GENERAL_EXCLUDED_TOOL_NAMES = new Set(["image_gen"]);
-
-const SUBAGENT_USER_FACING_TOOL_NAMES: Record<string, ReadonlySet<string>> = {};
-
 export const createToolHost = ({
   stellaRoot,
   stellaHome,
@@ -256,15 +230,6 @@ export const createToolHost = ({
       context,
     });
 
-    if (
-      context.agentType === AGENT_IDS.GENERAL &&
-      GENERAL_EXCLUDED_TOOL_NAMES.has(toolName)
-    ) {
-      return {
-        error: `${toolName} is not available to the General agent.`,
-      } satisfies ToolResult;
-    }
-
     // Declarative agent-type gate. Mirrors the catalog filter so a tool that
     // declares `agentTypes` is rejected here too, defending against
     // hallucinated tool names and against any future catalog filter bypass.
@@ -369,9 +334,6 @@ export const createToolHost = ({
       agentEngine?: FileEditAgentEngine;
     },
   ) => {
-    const subagentExtras = agentType
-      ? SUBAGENT_USER_FACING_TOOL_NAMES[agentType]
-      : undefined;
     const fileEditToolFamily = getFileEditToolFamily({
       agentType,
       model: options?.model,
@@ -379,27 +341,26 @@ export const createToolHost = ({
     });
     return Array.from(toolCatalog.values())
       .filter((tool) => {
-        // Declarative `agentTypes` is consulted first so a tool with an
-        // explicit gate cannot leak through the legacy name-set checks below.
+        // A tool's `agentTypes` is the single audience gate: a tool with no
+        // `agentTypes` is available to every agent, and the per-agent
+        // frontmatter `tools:` allowlist (applied downstream in
+        // tool-adapters) decides what each agent is actually offered.
         if (!isAgentAllowedForTool(tool, agentType)) return false;
-        return fileEditToolFamily === "write_edit" &&
+        // Swap the file-edit tool family to the agent's engine: Claude Code
+        // wants Write/Edit, Stella wants apply_patch.
+        if (
+          fileEditToolFamily === "write_edit" &&
           tool.name === APPLY_PATCH_TOOL_NAME
-          ? false
-          : fileEditToolFamily === "apply_patch" &&
-              (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME)
-            ? false
-            : agentType === AGENT_IDS.GENERAL &&
-                GENERAL_EXCLUDED_TOOL_NAMES.has(tool.name)
-              ? false
-              : WORKER_ONLY_TOOL_NAMES.has(tool.name) &&
-                  agentType !== AGENT_IDS.GENERAL
-                ? false
-                : agentType === AGENT_IDS.SOCIAL_SESSION
-                  ? SOCIAL_SESSION_TOOL_NAMES.has(tool.name)
-                  : agentType === AGENT_IDS.ORCHESTRATOR ||
-                    (subagentExtras !== undefined &&
-                      subagentExtras.has(tool.name)) ||
-                    !ORCHESTRATOR_DIRECT_TOOL_NAMES.has(tool.name);
+        ) {
+          return false;
+        }
+        if (
+          fileEditToolFamily === "apply_patch" &&
+          (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME)
+        ) {
+          return false;
+        }
+        return true;
       })
       .map((tool) => {
         if (tool.name !== "spawn_agent") {
