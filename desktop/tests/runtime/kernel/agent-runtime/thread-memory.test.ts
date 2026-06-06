@@ -10,6 +10,8 @@ import {
   buildHistorySource,
   buildStartupPromptMessages,
 } from "../../../../../runtime/kernel/agent-runtime/thread-memory.js";
+import { buildDefaultTransformContext } from "../../../../../runtime/kernel/agent-runtime/shared.js";
+import type { AgentMessage } from "../../../../../runtime/kernel/agent-core/types.js";
 
 describe("buildSystemPrompt", () => {
   it("adds structured file-editing guidance when apply_patch is available", () => {
@@ -129,13 +131,45 @@ describe("buildStartupPromptMessages", () => {
     expect(messages[1]?.text).toContain('path="~/.stella/core-memory.md"');
   });
 
-  it("omits the personality startup doc once the thread has history", async () => {
+  it("injects startup docs into existing threads that do not have them yet", async () => {
     const messages = await buildStartupPromptMessages({
       context: {
         systemPrompt: "system",
         dynamicContext: "",
         maxAgentDepth: 1,
         threadHistory: [{ role: "assistant", content: "Earlier reply" }],
+        personality: "# Voice\nWarm and concise.",
+        coreMemory: "remembered user context",
+      },
+    });
+
+    const promptText = messages.map((message) => message.text).join("\n");
+    expect(promptText).toContain('path="~/.stella/PERSONALITY.md"');
+    expect(promptText).toContain('path="~/.stella/core-memory.md"');
+  });
+
+  it("omits startup docs that are already persisted in thread history", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [
+          {
+            role: "runtimeInternal",
+            content: "startup docs",
+            customMessage: {
+              customType: "bootstrap.startup_doc",
+              display: false,
+              content: [
+                {
+                  type: "text",
+                  text: '<startup_doc path="~/.stella/PERSONALITY.md">\n# Voice\nWarm and concise.\n</startup_doc>',
+                },
+              ],
+            },
+          },
+        ],
         personality: "# Voice\nWarm and concise.",
       },
     });
@@ -293,5 +327,49 @@ describe("buildHistorySource", () => {
     expect(replayedText.indexOf("old user")).toBeLessThan(
       replayedText.indexOf("new memory"),
     );
+  });
+});
+
+describe("buildDefaultTransformContext", () => {
+  it("preserves bootstrap startup docs when pruning oversized context", async () => {
+    const transform = buildDefaultTransformContext({
+      model: { contextWindow: 20_000 },
+    } as Parameters<typeof buildDefaultTransformContext>[0]);
+    const personality: AgentMessage = {
+      role: "runtimeInternal",
+      content: [
+        {
+          type: "text",
+          text: '<startup_doc path="~/.stella/PERSONALITY.md">\nWarm and concise.\n</startup_doc>',
+        },
+      ],
+      timestamp: 1,
+      customType: "bootstrap.startup_doc",
+    };
+    const oldContext: AgentMessage = {
+      role: "user",
+      content: [{ type: "text", text: "old context ".repeat(20_000) }],
+      timestamp: 2,
+    };
+    const currentPrompt: AgentMessage = {
+      role: "user",
+      content: [{ type: "text", text: "current user prompt" }],
+      timestamp: 3,
+    };
+
+    const pruned = await transform([personality, oldContext, currentPrompt]);
+    const prunedText = pruned
+      .flatMap((message) =>
+        Array.isArray(message.content)
+          ? message.content.map((block) =>
+              block.type === "text" ? block.text : "",
+            )
+          : [message.content],
+      )
+      .join("\n");
+
+    expect(pruned).toContain(personality);
+    expect(prunedText).toContain("Warm and concise.");
+    expect(prunedText).toContain("current user prompt");
   });
 });

@@ -31,6 +31,7 @@ const logger = createRuntimeLogger("agent-runtime.thread-memory");
 const LIFE_REGISTRY_DISPLAY_PATH = "~/.stella/registry.md";
 const LIFE_CORE_MEMORY_DISPLAY_PATH = "~/.stella/core-memory.md";
 const LIFE_PERSONALITY_DISPLAY_PATH = "~/.stella/PERSONALITY.md";
+const BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE = "bootstrap.startup_doc";
 export const buildRunThreadKey = ({
   conversationId,
   agentType,
@@ -374,6 +375,40 @@ const buildStartupDocMessage = (
   ].join("\n");
 };
 
+export const isBootstrapStartupDocMessage = (
+  message: Pick<AgentMessage, "role"> & { customType?: string },
+): boolean =>
+  message.role === "runtimeInternal" &&
+  message.customType === BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE;
+
+const customMessageContentText = (
+  content: RuntimeThreadCustomMessageEntry["content"],
+): string => {
+  if (typeof content === "string") {
+    return content;
+  }
+  return content
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("\n");
+};
+
+const hasPersistedStartupDoc = (
+  context: LocalAgentContext,
+  displayPath: string,
+): boolean =>
+  context.threadHistory?.some((entry) => {
+    const customMessage = entry.customMessage;
+    if (
+      entry.role !== "runtimeInternal" ||
+      customMessage?.customType !== BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE
+    ) {
+      return false;
+    }
+    return customMessageContentText(customMessage.content).includes(
+      `path="${displayPath}"`,
+    );
+  }) ?? false;
+
 export type OrchestratorPromptMessage = RuntimePromptMessage;
 
 const createInternalPromptMessage = (
@@ -404,48 +439,54 @@ export const buildStartupPromptMessages = async (args: {
   includeRegistry?: boolean;
 }): Promise<RuntimePromptMessage[]> => {
   const messages: RuntimePromptMessage[] = [];
-  const shouldIncludeStartupDocs = !args.context.threadHistory?.length;
   const shouldIncludeRegistry = args.includeRegistry ?? false;
 
-  if (shouldIncludeStartupDocs) {
-    const personality = args.context.personality?.trim();
-    if (personality) {
+  const personality = args.context.personality?.trim();
+  if (
+    personality &&
+    !hasPersistedStartupDoc(args.context, LIFE_PERSONALITY_DISPLAY_PATH)
+  ) {
+    messages.push(
+      createInternalPromptMessage(
+        buildStartupDocMessage(LIFE_PERSONALITY_DISPLAY_PATH, personality),
+        "hidden",
+        BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
+      ),
+    );
+  }
+
+  if (
+    shouldIncludeRegistry &&
+    !hasPersistedStartupDoc(args.context, LIFE_REGISTRY_DISPLAY_PATH)
+  ) {
+    const registryContent = await readRegistryContent({
+      stellaHome: args.stellaHome,
+    });
+    if (registryContent) {
       messages.push(
         createInternalPromptMessage(
-          buildStartupDocMessage(LIFE_PERSONALITY_DISPLAY_PATH, personality),
+          buildStartupDocMessage(LIFE_REGISTRY_DISPLAY_PATH, registryContent),
           "hidden",
-          "bootstrap.startup_doc",
+          BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
         ),
       );
     }
+  }
 
-    if (shouldIncludeRegistry) {
-      const registryContent = await readRegistryContent({
-        stellaHome: args.stellaHome,
-      });
-      if (registryContent) {
-        messages.push(
-          createInternalPromptMessage(
-            buildStartupDocMessage(LIFE_REGISTRY_DISPLAY_PATH, registryContent),
-            "hidden",
-            "bootstrap.startup_doc",
-          ),
-        );
-      }
-    }
-
-    const coreMemory = args.context.coreMemory
-      ? redactMemoryText(args.context.coreMemory.trim())
-      : "";
-    if (coreMemory) {
-      messages.push(
-        createInternalPromptMessage(
-          buildStartupDocMessage(LIFE_CORE_MEMORY_DISPLAY_PATH, coreMemory),
-          "hidden",
-          "bootstrap.startup_doc",
-        ),
-      );
-    }
+  const coreMemory = args.context.coreMemory
+    ? redactMemoryText(args.context.coreMemory.trim())
+    : "";
+  if (
+    coreMemory &&
+    !hasPersistedStartupDoc(args.context, LIFE_CORE_MEMORY_DISPLAY_PATH)
+  ) {
+    messages.push(
+      createInternalPromptMessage(
+        buildStartupDocMessage(LIFE_CORE_MEMORY_DISPLAY_PATH, coreMemory),
+        "hidden",
+        BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
+      ),
+    );
   }
 
   return messages;
