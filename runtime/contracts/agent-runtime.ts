@@ -37,6 +37,11 @@ export type AgentCapabilities = {
    * first turn (then replayed from history), mirroring core memory.
    */
   injectsPersonality?: boolean;
+  /**
+   * Load the user's core memory into the agent context so it is injected as a
+   * hidden `~/.stella/core-memory.md` startup doc on the first turn.
+   */
+  injectsCoreMemory?: boolean;
   /** Inject the dynamic memory bundle on the every-Nth-turn cadence. */
   injectsDynamicMemory?: boolean;
   /** Inject runtime reminder hidden messages. */
@@ -94,6 +99,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       steeringMode: "all",
       followUpMode: "all",
       injectsPersonality: true,
+      injectsCoreMemory: true,
       injectsDynamicMemory: true,
       injectsRuntimeReminders: true,
       injectsSkillCatalog: true,
