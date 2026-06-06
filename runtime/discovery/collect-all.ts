@@ -49,10 +49,6 @@ import {
   formatMessagesNotesForSynthesis,
 } from "./messages-notes.js";
 import {
-  collectEditorState,
-  formatEditorStateForSynthesis,
-} from "./editor-state.js";
-import {
   collectFirefoxData,
   formatFirefoxDataForSynthesis,
 } from "./firefox-data.js";
@@ -78,7 +74,6 @@ import type {
   SystemSignals,
   MessagesNotesSignals,
 } from "./discovery-types.js";
-import type { EditorStateSignals } from "./editor-state.js";
 import type { FirefoxSignals } from "./firefox-data.js";
 import type { SteamLibrarySignals } from "./steam-library.js";
 import type { MusicLibrarySignals } from "./music-library.js";
@@ -136,7 +131,6 @@ type ExtendedUserSignals = AllUserSignals & {
   devEnvironment?: DevEnvironmentSignals;
   systemSignals?: SystemSignals;
   messagesNotes?: MessagesNotesSignals;
-  editorState?: EditorStateSignals | null;
   steamLibrary?: SteamLibrarySignals | null;
   musicLibrary?: MusicLibrarySignals | null;
 };
@@ -226,11 +220,6 @@ export const collectAllUserSignals = async (
           wslDetected: false,
         };
       });
-    tasks.editorState = () =>
-      collectEditorState().catch((e) => {
-        log("Editor state collection failed:", e);
-        return null;
-      });
   }
 
   if (categories.includes("apps_system")) {
@@ -293,7 +282,6 @@ export const collectAllUserSignals = async (
     safari: results.safari as SafariData | null | undefined,
     firefox: results.firefox as FirefoxSignals | null | undefined,
     devEnvironment: results.devEnv as DevEnvironmentSignals | undefined,
-    editorState: results.editorState as EditorStateSignals | null | undefined,
     systemSignals: results.system as SystemSignals | undefined,
     messagesNotes: results.messagesNotes as MessagesNotesSignals | undefined,
     steamLibrary: results.steam as SteamLibrarySignals | null | undefined,
@@ -361,11 +349,6 @@ const formatSignalsForSynthesisWithSections = async (
         data.devEnvironment,
       );
       if (devEnvSection) categorySections.push(devEnvSection);
-    }
-
-    if (data.editorState) {
-      const editorSection = formatEditorStateForSynthesis(data.editorState);
-      if (editorSection) categorySections.push(editorSection);
     }
 
     const categoryFormatted = joinSections(categorySections);

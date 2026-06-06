@@ -1425,43 +1425,110 @@ export const coreMemoryExists = async (StellaHome: string): Promise<boolean> => 
   }
   return false;
 };
-const fetchUserLocationLine = async (): Promise<string | null> => {
+// IP geolocation providers, tried in order. Each maps its response shape onto
+// the same city/region/postal/country fields. Multiple providers guard against
+// any single one being down or rate-limiting the user's IP.
+type LocationProvider = {
+  url: string;
+  extract: (body: Record<string, unknown>) => {
+    city?: unknown;
+    region?: unknown;
+    postal?: unknown;
+    country?: unknown;
+  };
+};
+
+const LOCATION_PROVIDERS: LocationProvider[] = [
+  {
+    url: "https://ipwho.is/",
+    extract: (b) => ({
+      city: b.city,
+      region: b.region,
+      postal: b.postal,
+      country: b.country,
+    }),
+  },
+  {
+    // GeoJS: keyless, no per-IP rate limit. Returns no postal code.
+    url: "https://get.geojs.io/v1/ip/geo.json",
+    extract: (b) => ({
+      city: b.city,
+      region: b.region,
+      postal: undefined,
+      country: b.country,
+    }),
+  },
+];
+
+const asTrimmed = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const fetchLocationFromProvider = async (
+  provider: LocationProvider,
+  deadline: number,
+): Promise<string | null> => {
+  const budget = deadline - Date.now();
+  if (budget <= 0) return null;
   const controller = new AbortController();
-  // Generous timeout: this runs once at first launch when DNS/network may be
-  // cold (and a VPN can add latency), so a tight 3s window dropped it too often.
-  const timer = setTimeout(() => controller.abort(), 8_000);
+  const timer = setTimeout(() => controller.abort(), Math.min(budget, 5_000));
   try {
-    const response = await fetch("https://ipwho.is/", {
+    const response = await fetch(provider.url, {
       signal: controller.signal,
       headers: { accept: "application/json" },
     });
     if (!response.ok) {
-      log(`Location lookup HTTP ${response.status}`);
+      log(`Location lookup ${provider.url} HTTP ${response.status}`);
       return null;
     }
-    const body = (await response.json()) as {
-      success?: boolean;
-      city?: string;
-      region?: string;
-      postal?: string;
-      country?: string;
-    };
-    if (body.success === false) return null;
-    const city = body.city?.trim();
-    const region = body.region?.trim();
-    const postal = body.postal?.trim();
-    const country = body.country?.trim();
+    const body = (await response.json()) as Record<string, unknown>;
+    // ipwho.is uses `success:false`; ipapi.co uses `error:true` on failure.
+    if (body.success === false || body.error === true) return null;
+    const fields = provider.extract(body);
+    const city = asTrimmed(fields.city);
+    const region = asTrimmed(fields.region);
+    const postal = asTrimmed(fields.postal);
+    const country = asTrimmed(fields.country);
     if (!city || !country) return null;
     // "City, Region postal, Country" — postal hugs the region when present.
     const cityRegion = region ? `${city}, ${region}` : city;
     const cityRegionPostal = postal ? `${cityRegion} ${postal}` : cityRegion;
     return `${cityRegionPostal}, ${country}`;
   } catch (error) {
-    log("Location lookup failed:", error);
+    log(`Location lookup ${provider.url} failed:`, error);
     return null;
   } finally {
     clearTimeout(timer);
   }
+};
+
+/**
+ * Resolve the user's coarse location via IP geolocation. The app's very first
+ * network call can hit cold DNS/TLS (and a VPN adds latency), so a single
+ * best-effort request dropped location too often — and once core memory is
+ * written without it, it never retries. Retries across providers within a
+ * bounded total budget so a transient blip doesn't permanently lose location,
+ * while still failing fast (and not blocking onboarding) when truly offline.
+ */
+const fetchUserLocationLine = async (): Promise<string | null> => {
+  const deadline = Date.now() + 12_000;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    for (const provider of LOCATION_PROVIDERS) {
+      if (Date.now() >= deadline) break;
+      const line = await fetchLocationFromProvider(provider, deadline);
+      if (line) return line;
+    }
+    attempt += 1;
+    if (Date.now() < deadline) await sleep(Math.min(500 * attempt, 1_500));
+  }
+  log("Location lookup exhausted retries");
+  return null;
 };
 
 /**
