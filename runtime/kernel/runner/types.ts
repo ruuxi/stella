@@ -143,11 +143,6 @@ export type StellaHostRunnerOptions = {
   requestRuntimeAuthRefresh?: (payload: {
     source: RuntimeAuthRefreshSource;
   }) => Promise<HostRuntimeAuthRefreshResult>;
-  notifyVoiceActionComplete?: (payload: {
-    conversationId: string;
-    status: "completed" | "failed";
-    message: string;
-  }) => Promise<void> | void;
   scheduleApi?: ScheduleToolApi;
   sourceImportApi?: SourceImportToolApi;
   fashionApi?: FashionToolApi;

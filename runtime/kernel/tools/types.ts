@@ -226,11 +226,6 @@ export type ToolHostOptions = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
-  notifyVoiceActionComplete?: (payload: {
-    conversationId: string;
-    status: "completed" | "failed";
-    message: string;
-  }) => Promise<void> | void;
 };
 
 export type FashionShopProduct = {

@@ -618,14 +618,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     peer.notify(NOTIFICATION_NAMES.VOICE_SELF_MOD_HMR_STATE, payload);
   };
 
-  const emitVoiceActionCompleted = (payload: {
-    conversationId: string;
-    status: "completed" | "failed";
-    message: string;
-  }) => {
-    peer.notify(NOTIFICATION_NAMES.VOICE_ACTION_COMPLETED, payload);
-  };
-
   const hasActiveWork = (): boolean => {
     // Keep this in sync with host-side shouldKeepWorkerAlive plus
     // worker-only work that the host cannot observe after disconnect
@@ -1472,9 +1464,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       // failed (state.cliBridgeServer === null) the CLI gracefully falls
       // back to exit-2 `auth_required` instead of dialing a dead socket.
       cliBridgeSocketPath: state.cliBridgeServer?.socketPath,
-      notifyVoiceActionComplete: (payload) => {
-        emitVoiceActionCompleted(payload);
-      },
     };
 
     // Install the morph-cover revert handler. Lives here (inside

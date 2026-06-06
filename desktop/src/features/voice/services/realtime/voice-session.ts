@@ -32,7 +32,6 @@ import { postServiceJson } from "@/platform/http/service-request";
 import { getVoiceSessionPromptConfig } from "@/prompts";
 import {
   formatRealtimeSystemMessage,
-  formatVoiceActionCompletedSystemReminder,
 } from "../../../../../../runtime/contracts/system-reminders.js";
 import type {
   RuntimeVoiceHistoryItem,
@@ -67,12 +66,6 @@ export type VoiceSessionEvent =
   | { type: "user-speaking-end" };
 
 type VoiceSessionListener = (event: VoiceSessionEvent) => void;
-
-type VoiceActionCompletedPayload = {
-  conversationId: string;
-  status: "completed" | "failed";
-  message: string;
-};
 
 type VoiceRuntimeState = {
   activeSession: { disconnect: () => Promise<void> } | null;
@@ -305,7 +298,6 @@ export class RealtimeVoiceSession {
   private inputEnergyBuffer: Uint8Array | null = null;
   private outputEnergyBuffer: Uint8Array | null = null;
 
-  private unsubscribeActionCompleted: (() => void) | null = null;
   private unsubscribeLocalChatUpdated: (() => void) | null = null;
   private syncedLocalEventIds = new Set<string>();
   private localChatSyncPromise: Promise<void> = Promise.resolve();
@@ -318,10 +310,6 @@ export class RealtimeVoiceSession {
   private conversationId: string | null = null;
 
   constructor() {
-    this.unsubscribeActionCompleted =
-      window.electronAPI?.voice.onActionCompleted?.((payload) => {
-        this.handleVoiceActionCompleted(payload);
-      }) ?? null;
     this.unsubscribeLocalChatUpdated =
       window.electronAPI?.localChat.onUpdated?.(() => {
         void this.syncLocalChatContext();
@@ -822,45 +810,6 @@ export class RealtimeVoiceSession {
     this.setState("error", "Realtime voice lease expired");
   }
 
-  private handleVoiceActionCompleted(payload: VoiceActionCompletedPayload) {
-    if (this.destroyed) return;
-    if (!this.inputActive) return;
-    if (
-      !this.conversationId ||
-      payload.conversationId !== this.conversationId
-    ) {
-      return;
-    }
-
-    const message = payload.message.trim();
-    if (!message) return;
-
-    const statusText =
-      payload.status === "completed"
-        ? "The delegated action is complete."
-        : "The delegated action failed.";
-    window.electronAPI?.voice.persistTranscript?.({
-      conversationId: this.conversationId,
-      role: "assistant",
-      text: `[VOICE ACTION ${payload.status.toUpperCase()}] ${message}`,
-      uiVisibility: "hidden",
-    });
-    this.sendEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: formatVoiceActionCompletedSystemReminder(statusText, message),
-          },
-        ],
-      },
-    });
-    this.sendEvent({ type: "response.create" });
-  }
-
   private handleServerEvent(event: Record<string, unknown>) {
     const type = event.type as string;
 
@@ -1108,8 +1057,6 @@ export class RealtimeVoiceSession {
     this.recentOutputActiveUntil = 0;
     this.softInputMuted = false;
 
-    this.unsubscribeActionCompleted?.();
-    this.unsubscribeActionCompleted = null;
     this.unsubscribeLocalChatUpdated?.();
     this.unsubscribeLocalChatUpdated = null;
     this.syncedLocalEventIds.clear();
