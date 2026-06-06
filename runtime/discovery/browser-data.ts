@@ -14,6 +14,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
+import { pathToFileURL } from "node:url";
 import type {
   BrowserType,
   DomainVisit,
@@ -22,6 +23,7 @@ import type {
   PreferredBrowserProfile,
   BrowserProfile,
   ClusterKeyword,
+  SearchQuery,
 } from "../contracts/index.js";
 
 export type {
@@ -32,6 +34,7 @@ export type {
   PreferredBrowserProfile,
   BrowserProfile,
   ClusterKeyword,
+  SearchQuery,
 }
 
 export type BrowserCollectionOptions = {
@@ -56,7 +59,11 @@ type SqliteDatabase = {
 
 const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
   const { Database } = await import("bun:sqlite");
-  return new Database(dbPath, { readonly: true }) as SqliteDatabase;
+  // Read the live DB directly via an immutable URI: skips locking (no
+  // SQLITE_BUSY while the browser runs) and reads the main file without its
+  // WAL sidecars (no SQLITE_CANTOPEN). Best-effort one-time snapshot.
+  const uri = `${pathToFileURL(dbPath).href}?immutable=1`;
+  return new Database(uri, { readonly: true }) as SqliteDatabase;
 };
 
 const log = (...args: unknown[]) => console.error("[browser-data]", ...args);
@@ -1001,96 +1008,6 @@ const findBrowserWithOptions = async (
 };
 
 /**
- * Copy the history database to a temporary location
- * (Browsers lock the original file while running)
- * 
- * Also copies WAL files (-wal, -shm) if they exist, as Chrome uses
- * Write-Ahead Logging and recent data may be in these files.
- */
-const copyHistoryDatabase = async (
-  historyPath: string,
-  StellaHome: string
-): Promise<string> => {
-  const cacheDir = path.join(StellaHome, "cache");
-  await fs.mkdir(cacheDir, { recursive: true });
-
-  const timestamp = Date.now();
-  const tempPath = path.join(cacheDir, `browser_history_${timestamp}.db`);
-  
-  // Copy main database file
-  await fs.copyFile(historyPath, tempPath);
-  log(`Copied history to: ${tempPath}`);
-
-  // Copy WAL files in parallel for complete data (Chrome uses Write-Ahead Logging)
-  await Promise.all(
-    ["-wal", "-shm"].map(async (ext) => {
-      try {
-        await fs.copyFile(historyPath + ext, tempPath + ext);
-        log(`Copied WAL file: ${ext}`);
-      } catch {
-        // WAL file doesn't exist or can't be copied - that's OK
-      }
-    })
-  );
-
-  return tempPath;
-};
-
-/**
- * Default age after which an on-disk history clone is considered orphaned.
- * Collection runs finish in seconds, so anything older than this can only
- * be a leftover from a process that died mid-collection before its
- * `finally` cleanup ran.
- */
-const ORPHANED_CLONE_MAX_AGE_MS = 60 * 60 * 1000;
-
-const CLONE_FILE_PREFIX = "browser_history_";
-
-/**
- * Delete leftover history clones (`browser_history_*.db` plus `-wal`/`-shm`
- * sidecars) under `<baseDir>/cache`. The normal collection paths clean up
- * their own clone in a `finally` block, but a hard crash mid-collection
- * (or a process killed before the un-awaited unlink ran) can orphan a
- * clone permanently. Age-gating keeps this safe to call concurrently with
- * an in-flight collection: a clone younger than `maxAgeMs` is left alone.
- */
-export const sweepOrphanedBrowserDbClones = async (
-  baseDir: string,
-  maxAgeMs: number = ORPHANED_CLONE_MAX_AGE_MS,
-): Promise<number> => {
-  const cacheDir = path.join(baseDir, "cache");
-  let entries: string[];
-  try {
-    entries = await fs.readdir(cacheDir);
-  } catch {
-    // No cache directory yet — nothing to sweep.
-    return 0;
-  }
-
-  const cutoff = Date.now() - maxAgeMs;
-  let removed = 0;
-  await Promise.all(
-    entries.map(async (entry) => {
-      if (!entry.startsWith(CLONE_FILE_PREFIX)) return;
-      const fullPath = path.join(cacheDir, entry);
-      try {
-        const stat = await fs.stat(fullPath);
-        if (stat.mtimeMs > cutoff) return;
-        await fs.unlink(fullPath);
-        removed += 1;
-      } catch {
-        // Already gone or unreadable — ignore.
-      }
-    }),
-  );
-
-  if (removed > 0) {
-    log(`Swept ${removed} orphaned browser db clone file(s) from ${cacheDir}`);
-  }
-  return removed;
-};
-
-/**
  * Run cluster query (may not exist in all browsers)
  */
 const queryClusterDomains = (db: SqliteDatabase): string[] => {
@@ -1135,6 +1052,83 @@ LIMIT 30
 `;
 
 type DomainRow = { domain: string; visits: number };
+
+// ---------------------------------------------------------------------------
+// Search Themes
+// ---------------------------------------------------------------------------
+
+const SEARCH_QUERIES_LIMIT = 15;
+
+// Broad SQL prefilter; JS validates the host and extracts the real query param.
+const SEARCH_QUERY_URL_FILTER = `
+SELECT url, visit_count
+FROM urls
+WHERE visit_count > 0
+  AND (
+    url LIKE '%/search?%q=%'
+    OR url LIKE '%/results?%search_query=%'
+    OR url LIKE '%duckduckgo.com/?%q=%'
+  )
+ORDER BY visit_count DESC
+LIMIT 800
+`;
+
+// Search-engine host → the query-string param holding the user's text.
+const SEARCH_HOST_PARAMS: { match: (host: string) => boolean; param: string }[] =
+  [
+    { match: (h) => h.includes("google."), param: "q" },
+    { match: (h) => h.endsWith("bing.com"), param: "q" },
+    { match: (h) => h.endsWith("duckduckgo.com"), param: "q" },
+    { match: (h) => h.endsWith("brave.com"), param: "q" },
+    { match: (h) => h.endsWith("youtube.com"), param: "search_query" },
+    { match: (h) => h.includes("search.yahoo."), param: "p" },
+    { match: (h) => h.endsWith("ecosia.org"), param: "q" },
+    { match: (h) => h.endsWith("startpage.com"), param: "query" },
+  ];
+
+/**
+ * Extract the user's recurring search queries from history. Operates on the
+ * live history DB (cross-platform), parses the query text out of
+ * search-engine URLs, and aggregates by frequency. Counts feed ranking only —
+ * the synthesis output lists themes without raw numbers.
+ */
+const querySearchQueries = (db: SqliteDatabase): SearchQuery[] => {
+  let rows: { url: string; visit_count: number }[];
+  try {
+    rows = db.prepare(SEARCH_QUERY_URL_FILTER).all() as {
+      url: string;
+      visit_count: number;
+    }[];
+  } catch (error) {
+    log("Search query extraction failed:", error);
+    return [];
+  }
+
+  const counts = new Map<string, { display: string; count: number }>();
+  for (const row of rows) {
+    let parsed: URL;
+    try {
+      parsed = new URL(row.url);
+    } catch {
+      continue;
+    }
+    const host = parsed.hostname.toLowerCase();
+    const spec = SEARCH_HOST_PARAMS.find((s) => s.match(host));
+    if (!spec) continue;
+    const raw = parsed.searchParams.get(spec.param)?.trim();
+    // Skip empty, single-char, or absurdly long values (rarely real queries).
+    if (!raw || raw.length < 2 || raw.length > 80) continue;
+    const key = raw.toLowerCase();
+    const existing = counts.get(key);
+    if (existing) existing.count += row.visit_count || 1;
+    else counts.set(key, { display: raw, count: row.visit_count || 1 });
+  }
+
+  return Array.from(counts.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, SEARCH_QUERIES_LIMIT)
+    .map((entry) => ({ query: entry.display, count: entry.count }));
+};
 
 const queryRecentDomains = (
   db: SqliteDatabase,
@@ -1327,12 +1321,10 @@ export const collectBrowserData = async (
     return emptyBrowserData(options.selectedBrowser ?? null);
   }
 
-  let tempDbPath: string | null = null;
   let db: SqliteDatabase | null = null;
 
   try {
-    tempDbPath = await copyHistoryDatabase(browser.historyPath, StellaHome);
-    db = await openDatabase(tempDbPath);
+    db = await openDatabase(browser.historyPath);
 
     // Run queries
     const clusterDomains = queryClusterDomains(db);
@@ -1340,6 +1332,7 @@ export const collectBrowserData = async (
     const rawAllTimeDomains = queryAllTimeDomains(db);
     const thirtyDaysAgo = toChromeTime(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
     const clusterKeywords = queryClusterKeywords(db, thirtyDaysAgo);
+    const searchQueries = querySearchQueries(db);
 
     // Soft dedupe: exclude domains from all-time that already appear in recent
     const recentDomainSet = new Set(recentDomains.map((d) => d.domain.toLowerCase()));
@@ -1372,18 +1365,13 @@ export const collectBrowserData = async (
       allTimeDomains,
       domainDetails,
       clusterKeywords,
+      searchQueries,
     };
   } catch (error) {
     log("Error collecting browser data:", error);
     return emptyBrowserData(browser.type);
   } finally {
     db?.close?.();
-    if (tempDbPath) {
-      for (const suffix of ["", "-wal", "-shm"]) {
-        fs.unlink(tempDbPath + suffix).catch(() => {});
-      }
-      log("Cleaned up temp database");
-    }
   }
 };
 
@@ -1400,12 +1388,10 @@ export const collectBrowserActivityWindows = async (
     }));
   }
 
-  let tempDbPath: string | null = null;
   let db: SqliteDatabase | null = null;
 
   try {
-    tempDbPath = await copyHistoryDatabase(browser.historyPath, StellaHome);
-    db = await openDatabase(tempDbPath);
+    db = await openDatabase(browser.historyPath);
     return windows.map((window) => ({
       ...window,
       data: buildBrowserDataWindow(db!, browser.type, window.sinceMs),
@@ -1418,12 +1404,6 @@ export const collectBrowserActivityWindows = async (
     }));
   } finally {
     db?.close?.();
-    if (tempDbPath) {
-      for (const suffix of ["", "-wal", "-shm"]) {
-        fs.unlink(tempDbPath + suffix).catch(() => {});
-      }
-      log("Cleaned up temp database");
-    }
   }
 };
 
@@ -1447,13 +1427,18 @@ export const coreMemoryExists = async (StellaHome: string): Promise<boolean> => 
 };
 const fetchUserLocationLine = async (): Promise<string | null> => {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3_000);
+  // Generous timeout: this runs once at first launch when DNS/network may be
+  // cold (and a VPN can add latency), so a tight 3s window dropped it too often.
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const response = await fetch("https://ipwho.is/", {
       signal: controller.signal,
       headers: { accept: "application/json" },
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      log(`Location lookup HTTP ${response.status}`);
+      return null;
+    }
     const body = (await response.json()) as {
       success?: boolean;
       city?: string;
@@ -1532,6 +1517,11 @@ export const formatBrowserDataForSynthesis = (data: BrowserData): string => {
       sections.push(`\n**${domain}**`);
       sections.push(titles.map((t) => `- ${t.title} (${t.visitCount})`).join("\n"));
     }
+  }
+
+  if (data.searchQueries && data.searchQueries.length > 0) {
+    sections.push("\n### Recent Searches");
+    sections.push(data.searchQueries.map((s) => `- ${s.query}`).join("\n"));
   }
 
   if (data.clusterKeywords?.length > 0) {

@@ -104,29 +104,26 @@ export type DockPin = {
   path: string;
 };
 
-export type FilesystemSignals = {
-  downloadsExtensions: Record<string, number>; // extension → count
-  documentsFolders: string[]; // top-level folder names
-  desktopFileTypes: Record<string, number>; // extension → count
-};
-
-export type StartupItem = {
-  name: string;
-  path: string;
-};
-
 export type UserIdentitySignal = {
   username?: string;
   fullName?: string;
   homeDirectory?: string;
 };
 
+export type DeviceSignals = {
+  os: string; // e.g. "macOS 15.5" | "Windows 11"
+  arch: string; // e.g. "Apple Silicon (arm64)" | "x64"
+  model?: string; // hardware model, e.g. "MacBookPro18,3"
+  cpu?: string; // CPU brand string
+  cpuCores?: number;
+  memoryGB?: number;
+};
+
 export type SystemSignals = {
   userIdentity: UserIdentitySignal | null;
   dockPins: DockPin[];
   appUsage: AppUsageSummary[];
-  filesystem: FilesystemSignals;
-  startupItems: StartupItem[];
+  device: DeviceSignals | null;
 };
 
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
+import { pathToFileURL } from "node:url";
 
 const log = (...args: unknown[]) => console.error("[music-library]", ...args);
 
@@ -206,7 +207,10 @@ const isSqliteDatabaseFile = async (dbPath: string): Promise<boolean> => {
 
 const collectFromAppleMusicDb = async (dbPath: string): Promise<MusicLibrarySignals> => {
   const { Database } = await import("bun:sqlite");
-  const db = new Database(dbPath, { readonly: true }) as SqliteDatabase;
+  // Read the live DB directly via an immutable URI: skips locking and reads
+  // the main file without its WAL sidecars. Best-effort one-time snapshot.
+  const uri = `${pathToFileURL(dbPath).href}?immutable=1`;
+  const db = new Database(uri, { readonly: true }) as SqliteDatabase;
 
   try {
     // Total tracks

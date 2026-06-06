@@ -11,6 +11,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
+import { pathToFileURL } from "node:url";
 
 const log = (...args: unknown[]) => console.error("[editor-state]", ...args);
 
@@ -82,7 +83,11 @@ type SqliteDatabase = {
 
 const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
   const { Database } = await import("bun:sqlite");
-  return new Database(dbPath, { readonly: true }) as SqliteDatabase;
+  // Read the live DB directly via an immutable URI: editors (Cursor/VS Code)
+  // hold a WAL lock on state.vscdb while running; immutable skips locking and
+  // reads the main file without its sidecars.
+  const uri = `${pathToFileURL(dbPath).href}?immutable=1`;
+  return new Database(uri, { readonly: true }) as SqliteDatabase;
 };
 
 // ---------------------------------------------------------------------------

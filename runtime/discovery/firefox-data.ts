@@ -8,12 +8,14 @@
  * Firefox uses its own SQLite schema (moz_places, moz_historyvisits, etc.)
  * which differs from Chromium browsers.
  *
- * The database must be copied before reading because Firefox holds a WAL lock.
+ * The live database is read directly via an immutable URI (Firefox holds a WAL
+ * lock while running; immutable skips locking and ignores the WAL).
  */
 
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
+import { pathToFileURL } from "node:url";
 
 const log = (...args: unknown[]) => console.error("[firefox-data]", ...args);
 
@@ -113,7 +115,10 @@ type SqliteDatabase = {
 
 const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
   const { Database } = await import("bun:sqlite");
-  return new Database(dbPath, { readonly: true }) as SqliteDatabase;
+  // Read the live DB directly via an immutable URI: skips locking and reads
+  // the main file without its WAL sidecars. Best-effort one-time snapshot.
+  const uri = `${pathToFileURL(dbPath).href}?immutable=1`;
+  return new Database(uri, { readonly: true }) as SqliteDatabase;
 };
 
 // ---------------------------------------------------------------------------
@@ -157,9 +162,7 @@ LIMIT 100
 // Main Collection
 // ---------------------------------------------------------------------------
 
-export const collectFirefoxData = async (
-  stellaHome: string,
-): Promise<FirefoxSignals | null> => {
+export const collectFirefoxData = async (): Promise<FirefoxSignals | null> => {
   const profilePath = await findActiveProfile();
   if (!profilePath) {
     log("No Firefox profile found");
@@ -168,26 +171,11 @@ export const collectFirefoxData = async (
 
   log(`Found Firefox profile at: ${profilePath}`);
 
-  // Copy the database (Firefox holds WAL lock while running)
   const sourcePath = path.join(profilePath, "places.sqlite");
-  const tempDir = path.join(stellaHome, "tmp");
-  await fs.mkdir(tempDir, { recursive: true });
-  const tempPath = path.join(tempDir, `firefox_places_${Date.now()}.sqlite`);
 
   let db: SqliteDatabase | null = null;
   try {
-    await fs.copyFile(sourcePath, tempPath);
-
-    // Also copy WAL/SHM if they exist (for consistency)
-    for (const ext of ["-wal", "-shm"]) {
-      try {
-        await fs.copyFile(sourcePath + ext, tempPath + ext);
-      } catch {
-        // optional files
-      }
-    }
-
-    db = await openDatabase(tempPath);
+    db = await openDatabase(sourcePath);
 
     // Query domains
     const domainRows = db.prepare(DOMAINS_QUERY).all() as {
@@ -226,19 +214,6 @@ export const collectFirefoxData = async (
     return null;
   } finally {
     db?.close?.();
-    // Clean up temp file
-    try {
-      await fs.unlink(tempPath);
-    } catch {
-      // temp file may already be gone
-    }
-    for (const ext of ["-wal", "-shm"]) {
-      try {
-        await fs.unlink(tempPath + ext);
-      } catch {
-        // sidecar file may not exist
-      }
-    }
   }
 };
 

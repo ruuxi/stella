@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
+import { pathToFileURL } from "node:url";
 import type {
   MessagesNotesSignals,
   ContactFrequency,
@@ -25,33 +26,29 @@ type SqliteDatabase = {
 };
 const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
   const { Database } = await import("bun:sqlite");
-  return new Database(dbPath, { readonly: true }) as SqliteDatabase;
+  // Read the live DB directly via an immutable URI: skips locking and reads
+  // the main file without its WAL sidecars. Best-effort one-time snapshot.
+  const uri = `${pathToFileURL(dbPath).href}?immutable=1`;
+  return new Database(uri, { readonly: true }) as SqliteDatabase;
 };
 
 /**
  * Collect iMessage metadata (contacts and group chats)
  * macOS only - requires Full Disk Access
  */
-async function collectIMessageMetadata(
-  stellaHome: string
-): Promise<{ contacts: ContactFrequency[]; groupChats: GroupChat[] }> {
+async function collectIMessageMetadata(): Promise<{
+  contacts: ContactFrequency[];
+  groupChats: GroupChat[];
+}> {
   if (process.platform !== "darwin") {
     return { contacts: [], groupChats: [] };
   }
 
   const sourceDb = path.join(os.homedir(), "Library/Messages/chat.db");
-  const cacheDir = path.join(stellaHome, "cache");
-  const cachedDb = path.join(cacheDir, "messages.db");
 
   try {
-    // Ensure cache directory exists
-    await fs.mkdir(cacheDir, { recursive: true });
-
-    // Copy database to cache
-    await fs.copyFile(sourceDb, cachedDb);
-
-    // Open database
-    const db = await openDatabase(cachedDb);
+    // Open the live database directly
+    const db = await openDatabase(sourceDb);
 
     try {
       // Query contact frequency (NO message body - only handle + count)
@@ -108,8 +105,6 @@ async function collectIMessageMetadata(
       return { contacts, groupChats };
     } finally {
       db.close();
-      // Delete cached copy
-      await fs.unlink(cachedDb).catch(() => {});
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EPERM" || (error as NodeJS.ErrnoException).code === "EACCES") {
@@ -117,8 +112,6 @@ async function collectIMessageMetadata(
     } else {
       log("Error collecting iMessage metadata:", error);
     }
-    // Clean up cache on error
-    await fs.unlink(cachedDb).catch(() => {});
     return { contacts: [], groupChats: [] };
   }
 }
@@ -127,7 +120,7 @@ async function collectIMessageMetadata(
  * Collect Apple Notes metadata (folders and counts)
  * macOS only - requires Full Disk Access
  */
-async function collectAppleNotes(stellaHome: string): Promise<NoteFolder[]> {
+async function collectAppleNotes(): Promise<NoteFolder[]> {
   if (process.platform !== "darwin") {
     return [];
   }
@@ -136,14 +129,9 @@ async function collectAppleNotes(stellaHome: string): Promise<NoteFolder[]> {
     os.homedir(),
     "Library/Group Containers/group.com.apple.notes/NoteStore.sqlite"
   );
-  const cacheDir = path.join(stellaHome, "cache");
-  const cachedDb = path.join(cacheDir, "notes.db");
 
   try {
-    await fs.mkdir(cacheDir, { recursive: true });
-    await fs.copyFile(sourceDb, cachedDb);
-
-    const db = await openDatabase(cachedDb);
+    const db = await openDatabase(sourceDb);
 
     try {
       // Try primary query first
@@ -202,7 +190,6 @@ async function collectAppleNotes(stellaHome: string): Promise<NoteFolder[]> {
       return folders;
     } finally {
       db.close();
-      await fs.unlink(cachedDb).catch(() => {});
     }
   } catch (error) {
     const code = getErrorCode(error);
@@ -213,37 +200,44 @@ async function collectAppleNotes(stellaHome: string): Promise<NoteFolder[]> {
     } else {
       log("Error collecting Apple Notes:", error);
     }
-    await fs.unlink(cachedDb).catch(() => {});
     return [];
   }
 }
 
+// Reminders lists managed by the OS/Siri, not the user — filtered out.
+const REMINDERS_SYSTEM_LISTS = new Set(["SiriFoundInApps"]);
+
 /**
- * Collect Reminders metadata
- * macOS only
+ * Collect Reminders metadata (list names + active item counts).
+ *
+ * macOS only. Modern Reminders keeps one SQLite store per account under the
+ * group container (Data-local.sqlite + Data-<accountUUID>.sqlite), so we read
+ * every store and merge by list name. Schema: ZREMCDBASELIST holds the lists
+ * (ZNAME), ZREMCDREMINDER holds items linked via ZLIST. The legacy
+ * ~/Library/Reminders path is kept as a fallback for old macOS.
  */
-async function collectReminders(stellaHome: string): Promise<NoteFolder[]> {
+async function collectReminders(): Promise<NoteFolder[]> {
   if (process.platform !== "darwin") {
     return [];
   }
 
-  // Try multiple possible locations
   const possiblePaths = [
-    path.join(os.homedir(), "Library/Reminders/Container_v1/Stores"),
     path.join(
       os.homedir(),
       "Library/Group Containers/group.com.apple.reminders/Container_v1/Stores"
     ),
+    path.join(os.homedir(), "Library/Reminders/Container_v1/Stores"),
   ];
 
-  let sourceDb: string | null = null;
-
+  let storesDir: string | null = null;
+  let storeFiles: string[] = [];
   for (const basePath of possiblePaths) {
     try {
       const files = await fs.readdir(basePath);
-      const sqliteFile = files.find((f) => f.endsWith(".sqlite"));
-      if (sqliteFile) {
-        sourceDb = path.join(basePath, sqliteFile);
+      const sqliteFiles = files.filter((f) => f.endsWith(".sqlite"));
+      if (sqliteFiles.length > 0) {
+        storesDir = basePath;
+        storeFiles = sqliteFiles;
         break;
       }
     } catch {
@@ -251,69 +245,70 @@ async function collectReminders(stellaHome: string): Promise<NoteFolder[]> {
     }
   }
 
-  if (!sourceDb) {
+  if (!storesDir) {
     log("Reminders database not found");
     return [];
   }
 
-  const cacheDir = path.join(stellaHome, "cache");
-  const cachedDb = path.join(cacheDir, "reminders.db");
+  // List name -> active reminder count, merged across account stores.
+  const listCounts = new Map<string, number>();
 
-  try {
-    await fs.mkdir(cacheDir, { recursive: true });
-    await fs.copyFile(sourceDb, cachedDb);
-
-    const db = await openDatabase(cachedDb);
-
+  for (let index = 0; index < storeFiles.length; index += 1) {
+    const sourceDb = path.join(storesDir, storeFiles[index]);
     try {
-      const query = `
-        SELECT
-          ZTITLE as name,
-          (SELECT COUNT(*) FROM ZREMCDREMINDER r WHERE r.ZLIST = l.Z_PK) as note_count
-        FROM ZREMCDLIST l
-        WHERE ZTITLE IS NOT NULL
-        ORDER BY note_count DESC
-      `;
-
-      const rows = db.prepare(query).all() as Array<{ name: string; note_count: number }>;
-
-      const reminders: NoteFolder[] = rows.map((row) => ({
-        name: row.name,
-        noteCount: row.note_count,
-      }));
-
-      log(`Collected ${reminders.length} reminder lists`);
-
-      return reminders;
-    } finally {
-      db.close();
-      await fs.unlink(cachedDb).catch(() => {});
+      const db = await openDatabase(sourceDb);
+      try {
+        const query = `
+          SELECT
+            l.ZNAME as name,
+            (
+              SELECT COUNT(*) FROM ZREMCDREMINDER r
+              WHERE r.ZLIST = l.Z_PK AND r.ZMARKEDFORDELETION = 0
+            ) as note_count
+          FROM ZREMCDBASELIST l
+          WHERE l.ZNAME IS NOT NULL
+            AND l.ZMARKEDFORDELETION = 0
+        `;
+        const rows = db.prepare(query).all() as Array<{
+          name: string;
+          note_count: number;
+        }>;
+        for (const row of rows) {
+          if (!row.name || REMINDERS_SYSTEM_LISTS.has(row.name)) continue;
+          listCounts.set(
+            row.name,
+            (listCounts.get(row.name) ?? 0) + row.note_count
+          );
+        }
+      } finally {
+        db.close();
+      }
+    } catch (error) {
+      log(`Error collecting Reminders from ${storeFiles[index]}:`, error);
     }
-  } catch (error) {
-    log("Error collecting Reminders:", error);
-    await fs.unlink(cachedDb).catch(() => {});
-    return [];
   }
+
+  const reminders: NoteFolder[] = Array.from(listCounts.entries())
+    .map(([name, noteCount]) => ({ name, noteCount }))
+    .sort((a, b) => b.noteCount - a.noteCount);
+
+  log(`Collected ${reminders.length} reminder lists`);
+  return reminders;
 }
 
 /**
  * Collect Calendar metadata
  * macOS only - requires Full Disk Access
  */
-async function collectCalendar(stellaHome: string): Promise<CalendarSummary[]> {
+async function collectCalendar(): Promise<CalendarSummary[]> {
   if (process.platform !== "darwin") {
     return [];
   }
 
   const sourceDb = path.join(os.homedir(), "Library/Calendars/Calendar.sqlitedb");
-  const cacheDir = path.join(stellaHome, "cache");
-  const cachedDb = path.join(cacheDir, "calendar.db");
 
   try {
-    await fs.mkdir(cacheDir, { recursive: true });
-    await fs.copyFile(sourceDb, cachedDb);
-
-    const db = await openDatabase(cachedDb);
+    const db = await openDatabase(sourceDb);
 
     try {
       // Query for calendar names and event counts
@@ -365,7 +360,6 @@ async function collectCalendar(stellaHome: string): Promise<CalendarSummary[]> {
       return calendars;
     } finally {
       db.close();
-      await fs.unlink(cachedDb).catch(() => {});
     }
   } catch (error) {
     const code = getErrorCode(error);
@@ -376,7 +370,6 @@ async function collectCalendar(stellaHome: string): Promise<CalendarSummary[]> {
     } else {
       log("Error collecting Calendar:", error);
     }
-    await fs.unlink(cachedDb).catch(() => {});
     return [];
   }
 }
@@ -385,7 +378,7 @@ async function collectCalendar(stellaHome: string): Promise<CalendarSummary[]> {
  * Collect Windows Sticky Notes metadata
  * Windows only
  */
-async function collectStickyNotes(stellaHome: string): Promise<NoteFolder[]> {
+async function collectStickyNotes(): Promise<NoteFolder[]> {
   if (process.platform !== "win32") {
     return [];
   }
@@ -408,13 +401,8 @@ async function collectStickyNotes(stellaHome: string): Promise<NoteFolder[]> {
     }
 
     const sourceDb = path.join(packagesDir, stickyNotesDir, "LocalState/plum.sqlite");
-    const cacheDir = path.join(stellaHome, "cache");
-    const cachedDb = path.join(cacheDir, "stickynotes.db");
 
-    await fs.mkdir(cacheDir, { recursive: true });
-    await fs.copyFile(sourceDb, cachedDb);
-
-    const db = await openDatabase(cachedDb);
+    const db = await openDatabase(sourceDb);
 
     try {
       // Try primary query first
@@ -439,7 +427,6 @@ async function collectStickyNotes(stellaHome: string): Promise<NoteFolder[]> {
       return notes;
     } finally {
       db.close();
-      await fs.unlink(cachedDb).catch(() => {});
     }
   } catch (error) {
     log("Error collecting Sticky Notes:", error);
@@ -450,15 +437,15 @@ async function collectStickyNotes(stellaHome: string): Promise<NoteFolder[]> {
 /**
  * Main collection function
  */
-export async function collectMessagesNotes(stellaHome: string): Promise<MessagesNotesSignals> {
+export async function collectMessagesNotes(): Promise<MessagesNotesSignals> {
   const platform = process.platform;
 
   if (platform === "darwin") {
     const [imsg, notes, reminders, calendars] = await Promise.all([
-      withTimeout(collectIMessageMetadata(stellaHome), 10000, { contacts: [], groupChats: [] }),
-      withTimeout(collectAppleNotes(stellaHome), 5000, []),
-      withTimeout(collectReminders(stellaHome), 5000, []),
-      withTimeout(collectCalendar(stellaHome), 5000, []),
+      withTimeout(collectIMessageMetadata(), 10000, { contacts: [], groupChats: [] }),
+      withTimeout(collectAppleNotes(), 5000, []),
+      withTimeout(collectReminders(), 5000, []),
+      withTimeout(collectCalendar(), 5000, []),
     ]);
     return {
       contacts: imsg.contacts,
@@ -469,7 +456,7 @@ export async function collectMessagesNotes(stellaHome: string): Promise<Messages
   }
 
   if (platform === "win32") {
-    const stickyNotes = await withTimeout(collectStickyNotes(stellaHome), 5000, []);
+    const stickyNotes = await withTimeout(collectStickyNotes(), 5000, []);
     return { contacts: [], groupChats: [], noteFolders: stickyNotes, calendars: [] };
   }
 

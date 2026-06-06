@@ -22,6 +22,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec, execFile } from "child_process";
+import { pathToFileURL } from "node:url";
 
 import type { DevProject } from "./types.js";
 
@@ -669,7 +670,10 @@ const collectFromEditors = async (
 
     let db: SqliteDatabase | null = null;
     try {
-      db = new Database(config.dbPath, { readonly: true }) as SqliteDatabase;
+      // Read the live DB directly via an immutable URI: editors hold a WAL
+      // lock on state.vscdb while running; immutable skips locking.
+      const uri = `${pathToFileURL(config.dbPath).href}?immutable=1`;
+      db = new Database(uri, { readonly: true }) as SqliteDatabase;
 
       const getKey = (key: string): string | null => {
         const row = db!
@@ -974,6 +978,180 @@ const scoreProject = async (
 };
 
 // ---------------------------------------------------------------------------
+// Tech Detection (languages + frameworks per project)
+// ---------------------------------------------------------------------------
+
+// Framework labels keyed by their npm dependency name. Ordered so the most
+// specific match wins when several are present (Next.js before React, etc.).
+const PACKAGE_FRAMEWORKS: { dep: string; label: string }[] = [
+  { dep: "next", label: "Next.js" },
+  { dep: "react-native", label: "React Native" },
+  { dep: "expo", label: "Expo" },
+  { dep: "@remix-run/react", label: "Remix" },
+  { dep: "@sveltejs/kit", label: "SvelteKit" },
+  { dep: "nuxt", label: "Nuxt" },
+  { dep: "astro", label: "Astro" },
+  { dep: "@angular/core", label: "Angular" },
+  { dep: "svelte", label: "Svelte" },
+  { dep: "vue", label: "Vue" },
+  { dep: "solid-js", label: "Solid" },
+  { dep: "react", label: "React" },
+  { dep: "electron", label: "Electron" },
+  { dep: "@tauri-apps/api", label: "Tauri" },
+  { dep: "convex", label: "Convex" },
+  { dep: "@nestjs/core", label: "NestJS" },
+  { dep: "fastify", label: "Fastify" },
+  { dep: "express", label: "Express" },
+  { dep: "vite", label: "Vite" },
+];
+
+const PYTHON_FRAMEWORKS: { needle: string; label: string }[] = [
+  { needle: "django", label: "Django" },
+  { needle: "flask", label: "Flask" },
+  { needle: "fastapi", label: "FastAPI" },
+];
+
+const readJsonSafe = async (
+  filePath: string,
+): Promise<Record<string, unknown> | null> => {
+  try {
+    const raw = await fs.readFile(filePath, "utf-8");
+    if (raw.length > 512 * 1024) return null;
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+// Child dirs that never hold the "real" project manifest when scanning a
+// monorepo/app-in-subdir layout.
+const TECH_SCAN_SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".github",
+  "dist",
+  "build",
+  "out",
+  "target",
+  ".next",
+  "vendor",
+  "app-store-screenshots",
+]);
+
+/** Detect languages/frameworks from the manifests directly inside `dir`. */
+const detectTechAtDir = async (
+  dir: string,
+  entries: string[],
+): Promise<Set<string>> => {
+  const has = (name: string) => entries.includes(name);
+  const tech = new Set<string>();
+
+  if (has("package.json")) {
+    const pkg = await readJsonSafe(path.join(dir, "package.json"));
+    const depNames = new Set([
+      ...Object.keys(
+        (pkg?.dependencies as Record<string, unknown> | undefined) ?? {},
+      ),
+      ...Object.keys(
+        (pkg?.devDependencies as Record<string, unknown> | undefined) ?? {},
+      ),
+    ]);
+    tech.add(
+      has("tsconfig.json") || depNames.has("typescript")
+        ? "TypeScript"
+        : "JavaScript",
+    );
+    for (const { dep, label } of PACKAGE_FRAMEWORKS) {
+      if (depNames.has(dep)) tech.add(label);
+    }
+  }
+
+  if (has("Cargo.toml")) tech.add("Rust");
+  if (has("src-tauri")) tech.add("Tauri");
+  if (has("go.mod")) tech.add("Go");
+
+  if (has("pyproject.toml") || has("requirements.txt")) {
+    tech.add("Python");
+    if (has("requirements.txt")) {
+      try {
+        const reqs = (
+          await fs.readFile(path.join(dir, "requirements.txt"), "utf-8")
+        ).toLowerCase();
+        for (const { needle, label } of PYTHON_FRAMEWORKS) {
+          if (reqs.includes(needle)) tech.add(label);
+        }
+      } catch {
+        // requirements unreadable — language is still recorded.
+      }
+    }
+  }
+
+  if (
+    has("Package.swift") ||
+    entries.some((e) => e.endsWith(".xcodeproj") || e.endsWith(".xcworkspace"))
+  ) {
+    tech.add("Swift");
+  }
+
+  if (has("Gemfile")) {
+    tech.add("Ruby");
+    try {
+      const gemfile = (
+        await fs.readFile(path.join(dir, "Gemfile"), "utf-8")
+      ).toLowerCase();
+      if (gemfile.includes("rails")) tech.add("Rails");
+    } catch {
+      // Gemfile unreadable — language is still recorded.
+    }
+  }
+
+  if (has("composer.json")) tech.add("PHP");
+  if (has("build.gradle.kts")) tech.add("Kotlin");
+  else if (has("pom.xml") || has("build.gradle")) tech.add("Java");
+
+  return tech;
+};
+
+/**
+ * Detect a project's languages + frameworks from its manifest files. Bounded
+ * and cheap (a readdir + a few small file reads), cross-platform. Reads
+ * manifests rather than scanning every source file. When the repo root has no
+ * manifest (monorepo / app-in-subdir like `mobile/`), falls back to a bounded
+ * one-level scan of immediate child directories.
+ */
+const detectProjectTech = async (projectPath: string): Promise<string[]> => {
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(projectPath);
+  } catch {
+    return [];
+  }
+
+  const tech = await detectTechAtDir(projectPath, entries);
+  if (tech.size > 0) return Array.from(tech);
+
+  const childDirs = entries
+    .filter((e) => !e.startsWith(".") && !TECH_SCAN_SKIP_DIRS.has(e))
+    .slice(0, 12);
+  for (const child of childDirs) {
+    const childPath = path.join(projectPath, child);
+    try {
+      const childStat = await fs.stat(childPath);
+      if (!childStat.isDirectory()) continue;
+      const childEntries = await fs.readdir(childPath);
+      for (const t of await detectTechAtDir(childPath, childEntries)) {
+        tech.add(t);
+      }
+    } catch {
+      continue;
+    }
+    if (tech.size >= 6) break;
+  }
+
+  return Array.from(tech);
+};
+
+// ---------------------------------------------------------------------------
 // Main Collection
 // ---------------------------------------------------------------------------
 
@@ -1060,11 +1238,14 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
       a.path.localeCompare(b.path),
   );
 
-  const limited = scored.slice(0, MAX_RESULTS).map((project) => ({
-    name: project.name,
-    path: project.path,
-    lastActivity: project.lastActivity,
-  }));
+  const limited = await Promise.all(
+    scored.slice(0, MAX_RESULTS).map(async (project) => ({
+      name: project.name,
+      path: project.path,
+      lastActivity: project.lastActivity,
+      tech: await detectProjectTech(project.path),
+    })),
+  );
 
   log(
     `Found ${limited.length} active projects above score ${MIN_PROJECT_SCORE}`,
@@ -1111,7 +1292,9 @@ export const formatDevProjectsForSynthesis = (
           const age = daysAgo(p.lastActivity);
           const recency =
             age === 0 ? "today" : age === 1 ? "yesterday" : `${age}d ago`;
-          return `- ${p.name} (${p.path}) (${recency})`;
+          const tech =
+            p.tech && p.tech.length > 0 ? ` — ${p.tech.join(", ")}` : "";
+          return `- ${p.name} (${p.path}) (${recency})${tech}`;
         })
         .join("\n"),
   );

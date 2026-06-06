@@ -163,6 +163,11 @@ export type ClusterKeyword = {
   lastVisit: number;
 };
 
+export type SearchQuery = {
+  query: string;
+  count: number;
+};
+
 export type BrowserData = {
   browser: BrowserType | null;
   clusterDomains: string[];
@@ -170,6 +175,7 @@ export type BrowserData = {
   allTimeDomains: DomainVisit[];
   domainDetails: Record<string, DomainDetail[]>;
   clusterKeywords: ClusterKeyword[];
+  searchQueries?: SearchQuery[];
 };
 
 export type BrowserDataResult = {
@@ -192,6 +198,8 @@ export type DevProject = {
   name: string;
   path: string;
   lastActivity: number;
+  /** Detected languages/frameworks, e.g. ["TypeScript", "React", "Convex"]. */
+  tech?: string[];
 };
 
 export type CommandFrequency = {
@@ -216,7 +224,6 @@ export type AllUserSignals = {
   browser: BrowserData;
   devProjects: DevProject[];
   shell: ShellAnalysis;
-  apps: DiscoveredApp[];
 };
 
 export type AllUserSignalsResult = {
