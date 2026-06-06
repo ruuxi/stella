@@ -18,7 +18,10 @@ import {
   getAgentSteeringMode,
   getLocalCliWorkingDirectory,
 } from "../../contracts/agent-runtime.js";
-import { stripStaleImageBlocks } from "./thread-memory.js";
+import {
+  isBootstrapStartupDocMessage,
+  stripStaleImageBlocks,
+} from "./thread-memory.js";
 
 const MAX_RESULT_PREVIEW = 200;
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
@@ -257,6 +260,28 @@ export const buildDefaultTransformContext = (
     );
     if (totalTokens <= maxTokens) {
       return stripped;
+    }
+    const pinnedStartupDocs = stripped.filter(isBootstrapStartupDocMessage);
+    if (pinnedStartupDocs.length > 0) {
+      const pinnedDocSet = new Set<AgentMessage>(pinnedStartupDocs);
+      const pinnedTokens = pinnedStartupDocs.reduce(
+        (sum, message) => sum + estimateAgentMessageTokens(message),
+        0,
+      );
+      const remainingBudget = maxTokens - pinnedTokens;
+      if (remainingBudget > 0) {
+        const recentUnpinned = selectRecentByTokenBudget({
+          itemsNewestFirst: stripped
+            .filter((message) => !pinnedDocSet.has(message))
+            .reverse(),
+          maxTokens: remainingBudget,
+          estimateTokens: estimateAgentMessageTokens,
+        });
+        const recentSet = new Set<AgentMessage>(recentUnpinned);
+        return stripped.filter(
+          (message) => pinnedDocSet.has(message) || recentSet.has(message),
+        );
+      }
     }
     const selected = selectRecentByTokenBudget({
       itemsNewestFirst: [...stripped].reverse(),
