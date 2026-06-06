@@ -3,6 +3,7 @@ import { OverlayWindowController } from "../windows/overlay-window.js";
 import { PetWindowController } from "../windows/pet-window.js";
 import type { TrayController } from "../windows/tray-controller.js";
 import type { ChronicleController } from "../services/chronicle-controller.js";
+import type { MeetingCaptureController } from "../services/meeting-capture-controller.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { AuthService } from "../services/auth-service.js";
 import type { CaptureService } from "../services/capture-service.js";
@@ -65,6 +66,7 @@ export type BootstrapState = {
    *  registration on app exit (or explicitly during tests). */
   petHandlersDispose: (() => void) | null;
   chronicleController: ChronicleController | null;
+  meetingCaptureController: MeetingCaptureController | null;
   processRuntime: ProcessRuntime;
   scheduleUpdateUnsubscribe: (() => void) | null;
   globalInputHooksStarted: boolean;
@@ -197,6 +199,7 @@ export const createBootstrapContext = (
     petController: null,
     petHandlersDispose: null,
     chronicleController: null,
+    meetingCaptureController: null,
     processRuntime,
     scheduleUpdateUnsubscribe: null,
     globalInputHooksStarted: false,

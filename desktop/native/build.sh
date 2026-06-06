@@ -234,6 +234,16 @@ build_swift_universal "chronicle" "src/chronicle.swift" \
   -framework Vision
 echo "Build successful: $OUTPUT_DIR/chronicle"
 
+echo "Building meeting_capture (macOS)..."
+build_swift_universal "meeting_capture" "src/meeting_capture.swift" \
+  -framework AVFoundation \
+  -framework AppKit \
+  -framework CoreAudio \
+  -framework CoreMedia \
+  -framework Foundation \
+  -framework ScreenCaptureKit
+echo "Build successful: $OUTPUT_DIR/meeting_capture"
+
 if [ "$(uname -m)" = "arm64" ]; then
   echo "Building parakeet_transcriber (macOS arm64)..."
   swift build -c release --package-path src/parakeet-helper

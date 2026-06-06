@@ -4,6 +4,7 @@ import { registerBrowserHandlers } from "../ipc/browser-handlers.js";
 import { registerDiscoveryHandlers } from "../ipc/discovery-handlers.js";
 import { registerCaptureHandlers } from "../ipc/capture-handlers.js";
 import { registerChronicleHandlers } from "../ipc/chronicle-handlers.js";
+import { registerMeetingCaptureHandlers } from "../ipc/meeting-capture-handlers.js";
 import { registerDisplayHandlers } from "../ipc/display-handlers.js";
 import { registerHomeHandlers } from "../ipc/home-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
@@ -228,6 +229,16 @@ export const registerBootstrapIpcHandlers = (
         };
       }
     },
+  });
+
+  registerMeetingCaptureHandlers({
+    getStellaHome: lifecycle.getStellaHome,
+    getController: () => state.meetingCaptureController,
+    setController: (controller) => {
+      state.meetingCaptureController = controller;
+    },
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
   registerExternalOpenerHandlers({

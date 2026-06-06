@@ -1824,6 +1824,50 @@ contextBridge.exposeInMainWorld("electronAPI", {
       }>,
   },
 
+  meetings: {
+    status: () =>
+      ipcRenderer.invoke("meetings:status") as Promise<{
+        available: boolean;
+        running?: boolean;
+        recording?: boolean;
+        paused?: boolean;
+        sessionId?: string | null;
+        startedAtMs?: number | null;
+        segmentSeconds?: number;
+        screenPermission?: boolean;
+        micPermission?: boolean;
+      }>,
+    start: (payload?: { sessionId?: string; segmentSeconds?: number }) =>
+      ipcRenderer.invoke("meetings:start", payload ?? {}) as Promise<{
+        ok: boolean;
+        sessionId?: string;
+        dir?: string;
+        segmentSeconds?: number;
+        system?: boolean;
+        mic?: boolean;
+        startedAtMs?: number;
+        reason?: string;
+      }>,
+    pause: () =>
+      ipcRenderer.invoke("meetings:pause") as Promise<{ ok: boolean }>,
+    resume: () =>
+      ipcRenderer.invoke("meetings:resume") as Promise<{ ok: boolean }>,
+    stop: () =>
+      ipcRenderer.invoke("meetings:stop") as Promise<{
+        ok: boolean;
+        sessionId?: string;
+        dir?: string;
+        durationMs?: number;
+        systemSegments?: number;
+        micSegments?: number;
+        reason?: string;
+      }>,
+    openFolder: (payload?: { sessionId?: string }) =>
+      ipcRenderer.invoke("meetings:openFolder", payload ?? {}) as Promise<{
+        ok: boolean;
+      }>,
+  },
+
   schedule: {
     listCronJobs: () => ipcRenderer.invoke("schedule:listCronJobs"),
     listHeartbeats: () => ipcRenderer.invoke("schedule:listHeartbeats"),
