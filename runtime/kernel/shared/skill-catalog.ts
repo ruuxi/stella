@@ -67,7 +67,9 @@ const listSkillDirectoryIds = async (stellaRoot: string): Promise<string[]> => {
     return [];
   }
   return entries
-    .filter((entry) => entry.isDirectory())
+    // Skip dot-prefixed entries so lifecycle bookkeeping (`.archive/`,
+    // `.usage.json`, `.bundled-manifest.json`) never renders as a fake skill.
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b));
 };

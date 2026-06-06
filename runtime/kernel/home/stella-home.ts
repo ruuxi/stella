@@ -14,6 +14,26 @@ import {
   summarizeAgentsSync,
   type AgentsSyncReport,
 } from "./agents-sync.js";
+import {
+  applySkillLifecycleTransitions,
+  summarizeSkillLifecycle,
+} from "./skill-lifecycle.js";
+
+/** List bundled skill ids (subdirs of the shipped catalogue), skipping dotfiles. */
+const listBundledSkillIds = async (
+  bundledSkillsDir: string,
+): Promise<Set<string>> => {
+  try {
+    const entries = await fs.readdir(bundledSkillsDir, { withFileTypes: true });
+    return new Set(
+      entries
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+        .map((entry) => entry.name),
+    );
+  } catch {
+    return new Set();
+  }
+};
 
 export type StellaHome = {
   stellaRoot: string;
@@ -122,6 +142,25 @@ export const ensureStellaHomeSeeded = async (
   const summary = summarizeSkillsSync(skillsSync);
   if (summary !== "no-op") {
     console.log(`[stella-home] skills sync: ${summary}`);
+  }
+
+  // Deterministic, code-only skill aging runs right after reconcile so bundled
+  // ids are known. Bundled skills are reconcile-owned and never aged here;
+  // only agent/user-authored skills move active → stale → archived by recency.
+  // Idempotent and safe per boot.
+  try {
+    const bundledSkillIds = await listBundledSkillIds(bundledSkillsDir);
+    const lifecycle = await applySkillLifecycleTransitions(homeSkillsDir, {
+      bundledSkillIds,
+    });
+    const lifecycleSummary = summarizeSkillLifecycle(lifecycle);
+    if (lifecycleSummary !== "no-op") {
+      console.log(`[stella-home] skills lifecycle: ${lifecycleSummary}`);
+    }
+  } catch (error) {
+    console.warn(
+      `[stella-home] skills lifecycle skipped: ${(error as Error).message}`,
+    );
   }
 
   const agentsSync = await reconcileBundledAgents(
