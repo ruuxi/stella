@@ -69,6 +69,32 @@ describe("skill catalog", () => {
     expect(block).not.toContain("pdf");
   });
 
+  it("ignores dot-prefixed lifecycle bookkeeping dirs", async () => {
+    const stellaRoot = await createStellaRoot();
+    await writeSkill(stellaRoot, "pdf", "Work with PDFs.");
+    // Lifecycle artifacts that share the skills dir must never look like skills.
+    await mkdir(path.join(stellaRoot, "skills", ".archive", "old-skill"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(stellaRoot, "skills", ".archive", "old-skill", "SKILL.md"),
+      "archived",
+      "utf-8",
+    );
+    await writeFile(
+      path.join(stellaRoot, "skills", ".usage.json"),
+      "{}",
+      "utf-8",
+    );
+
+    const state = await buildSkillCatalogPromptState(stellaRoot);
+    expect(state.entries.map((entry) => entry.id)).toEqual(["pdf"]);
+    expect(state.totalSkills).toBe(1);
+    const block = await renderSkillCatalogBlock(stellaRoot);
+    expect(block).not.toContain(".archive");
+    expect(block).not.toContain("old-skill");
+  });
+
   it("renders every skill inline above the threshold for Explore", async () => {
     const stellaRoot = await createStellaRoot();
     const count = INLINE_SKILL_CATALOG_THRESHOLD + 5;

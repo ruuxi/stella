@@ -158,7 +158,10 @@ const atomicWrite = async (
   const tmp = `${target}.tmp.${process.pid}`;
   const serialized = `${JSON.stringify(map, null, 2)}\n`;
   await fs.mkdir(skillsDir, { recursive: true });
-  await fs.writeFile(tmp, serialized, { encoding: "utf-8", mode: USAGE_FILE_MODE });
+  await fs.writeFile(tmp, serialized, {
+    encoding: "utf-8",
+    mode: USAGE_FILE_MODE,
+  });
   await fs.rename(tmp, target);
   await fs.chmod(target, USAGE_FILE_MODE).catch(() => {});
 };
