@@ -5,6 +5,7 @@
  * wait for, download, or open it itself.
  */
 
+import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import { createMediaToolHandlers } from "../media.js";
 import type { ToolDefinition, ToolHandler } from "../types.js";
 
@@ -19,6 +20,10 @@ export const createImageGenTool = (
   const handler = handlers.image_gen as ToolHandler;
   return {
     name: "image_gen",
+    // Audience declaration: image generation is for the orchestrator and the
+    // Fashion agent. The General agent (and any other subagent) is denied at
+    // both the catalog filter and executeTool via this gate.
+    agentTypes: [AGENT_IDS.ORCHESTRATOR, AGENT_IDS.FASHION],
     description:
       "Submit a still image job through Stella's managed media gateway. Returns immediately with a jobId; the completed image is saved under ~/.stella/media/outputs/ and shown in the sidebar later. Do not wait for, download, or open it yourself. Required: prompt.",
     promptSnippet:

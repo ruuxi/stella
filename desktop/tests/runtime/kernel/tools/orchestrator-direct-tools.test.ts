@@ -210,7 +210,7 @@ describe("orchestrator direct tool surface", () => {
       makeToolContext("general"),
     );
     expect(generalImageResult.error).toContain(
-      "image_gen is not available to the General agent",
+      "image_gen is only available to the orchestrator",
     );
 
     // Store agent now lives on the backend — the local runtime exposes
