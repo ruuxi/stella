@@ -24,7 +24,7 @@ import type { AgentMessage } from "../agent-core/types.js";
  * Splitting the services type out keeps the import graph cycle-free.
  */
 export type ExtensionServices = {
-  /** Mutable user-data root (today the same as `stellaRoot`; will diverge if user data moves to ~/.stella). */
+  /** Mutable user-data home (`~/.stella`): personality, skills, memory, and the live agent prompts under `agents/`. */
   stellaHome: string;
   /** Repo root for self-mod git operations. */
   stellaRoot: string;

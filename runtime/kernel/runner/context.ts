@@ -28,6 +28,7 @@ import {
 } from "../runtime-threads.js";
 import { anyApi } from "convex/server";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
+import { loadHomeAgentSystemPrompt } from "../agents/home-agent-prompt.js";
 import { renderSkillCatalogBlock } from "../shared/skill-catalog.js";
 import type {
   RunnerContext,
@@ -862,9 +863,19 @@ export const buildAgentContext = async (
     );
   }
 
+  // Read the live prompt from `~/.stella/agents/` so edits take effect on the
+  // next turn (mtime-gated — unchanged files are not re-read). Falls back to
+  // the registered/bundled prompt when there's no home prompt for this type.
+  const homeSystemPrompt = await loadHomeAgentSystemPrompt(
+    context.stellaHome,
+    args.agentType,
+  );
+
   return {
     systemPrompt:
-      agent?.systemPrompt || defaultPromptForAgentType(args.agentType),
+      homeSystemPrompt ??
+      agent?.systemPrompt ??
+      defaultPromptForAgentType(args.agentType),
     dynamicContext: dynamicContextSections.join("\n\n"),
     orchestratorReminderText: activeThreadsPrompt || undefined,
     shouldInjectDynamicReminder: reminderState.shouldInjectDynamicReminder,
