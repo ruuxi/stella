@@ -1,3 +1,4 @@
+import path from "node:path";
 import { loadParsedAgentsFromDir } from "../../kernel/agents/markdown-agent-loader.js";
 import type {
   ExtensionFactory,
@@ -12,8 +13,6 @@ import { createRevertNoticeHook } from "./hooks/revert-notice.hook.js";
 import { createSelfModHooks } from "./hooks/self-mod.hook.js";
 import { createStaleUserReminderHook } from "./hooks/stale-user-reminder.hook.js";
 import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record.hook.js";
-
-const AGENTS_DIR = new URL("./agents/", import.meta.url);
 
 /**
  * Stella's runtime extension.
@@ -36,7 +35,13 @@ const AGENTS_DIR = new URL("./agents/", import.meta.url);
  * selfModMonitor, store) supplied by the runtime at registration time.
  */
 const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
-  for (const agent of loadParsedAgentsFromDir(AGENTS_DIR)) {
+  // Agent prompts are reconciled into `${stellaHome}/agents/` on startup
+  // (see `agents-sync.ts`), so the live, user-editable copies load from there.
+  // The bundled defaults in `agents.ts` remain the merge base, so the runtime
+  // still has every agent even before the first reconcile.
+  for (const agent of loadParsedAgentsFromDir(
+    path.join(services.stellaHome, "agents"),
+  )) {
     pi.registerAgent(agent);
   }
 

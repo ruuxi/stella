@@ -29,11 +29,11 @@ afterEach(async () => {
 
 const writeSkillFile = async (
   root: string,
-  skillId: string,
+  id: string,
   rel: string,
   content: string,
 ) => {
-  const full = path.join(root, skillId, rel);
+  const full = path.join(root, id, rel);
   await mkdir(path.dirname(full), { recursive: true });
   await writeFile(full, content, "utf-8");
 };
@@ -45,13 +45,13 @@ const readManifest = async (homeSkillsDir: string) => {
   );
   return JSON.parse(raw) as {
     version: number;
-    skills: Record<string, string>;
+    entries: Record<string, string>;
   };
 };
 
 const skillFiles = async (
   homeSkillsDir: string,
-  skillId: string,
+  id: string,
 ): Promise<string[]> => {
   const walk = async (dir: string, prefix: string): Promise<string[]> => {
     let entries;
@@ -72,7 +72,7 @@ const skillFiles = async (
     }
     return out.sort((a, b) => a.localeCompare(b));
   };
-  return walk(path.join(homeSkillsDir, skillId), "");
+  return walk(path.join(homeSkillsDir, id), "");
 };
 
 describe("reconcileBundledSkills", () => {
@@ -90,7 +90,7 @@ describe("reconcileBundledSkills", () => {
       readFile(path.join(home, "alpha", "SKILL.md"), "utf-8"),
     ).resolves.toBe("alpha v1");
     const manifest = await readManifest(home);
-    expect(Object.keys(manifest.skills).sort()).toEqual(["alpha", "beta"]);
+    expect(Object.keys(manifest.entries).sort()).toEqual(["alpha", "beta"]);
   });
 
   it("seeds only the current platform computer skill", async () => {
@@ -117,10 +117,10 @@ describe("reconcileBundledSkills", () => {
 
     expect(report.actions).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: "seed", skillId: "alpha" }),
+        expect.objectContaining({ type: "seed", id: "alpha" }),
         expect.objectContaining({
           type: "seed",
-          skillId: "stella-computer-windows",
+          id: "stella-computer-windows",
         }),
       ]),
     );
@@ -131,7 +131,7 @@ describe("reconcileBundledSkills", () => {
       readFile(path.join(home, "stella-computer-macos", "SKILL.md"), "utf-8"),
     ).rejects.toThrow();
     const manifest = await readManifest(home);
-    expect(Object.keys(manifest.skills).sort()).toEqual([
+    expect(Object.keys(manifest.entries).sort()).toEqual([
       "alpha",
       "stella-computer-windows",
     ]);
@@ -163,11 +163,11 @@ describe("reconcileBundledSkills", () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: "seed",
-          skillId: "stella-computer-windows",
+          id: "stella-computer-windows",
         }),
         expect.objectContaining({
           type: "remove-obsolete",
-          skillId: "stella-computer-macos",
+          id: "stella-computer-macos",
         }),
       ]),
     );
@@ -192,7 +192,7 @@ describe("reconcileBundledSkills", () => {
     const report = await reconcileBundledSkills(bundled, home);
 
     expect(report.actions).toEqual([
-      expect.objectContaining({ type: "update", skillId: "alpha" }),
+      expect.objectContaining({ type: "update", id: "alpha" }),
     ]);
     await expect(
       readFile(path.join(home, "alpha", "SKILL.md"), "utf-8"),
@@ -220,7 +220,7 @@ describe("reconcileBundledSkills", () => {
     expect(report.actions).toEqual([
       expect.objectContaining({
         type: "skip-user-modified",
-        skillId: "alpha",
+        id: "alpha",
         reason: "diverged",
       }),
     ]);
@@ -231,7 +231,7 @@ describe("reconcileBundledSkills", () => {
     // The user's modified skill must not be tracked in the manifest, or a
     // later revert would silently re-sync without their consent.
     const manifest = await readManifest(home);
-    expect(manifest.skills.alpha).toBeUndefined();
+    expect(manifest.entries.alpha).toBeUndefined();
   });
 
   it("deletes obsolete files inside an unmodified skill when the bundle removes them", async () => {
@@ -257,7 +257,7 @@ describe("reconcileBundledSkills", () => {
     const report = await reconcileBundledSkills(bundled, home);
 
     expect(report.actions).toEqual([
-      expect.objectContaining({ type: "update", skillId: "alpha" }),
+      expect.objectContaining({ type: "update", id: "alpha" }),
     ]);
     expect(await skillFiles(home, "alpha")).toEqual(["SKILL.md"]);
   });
@@ -278,13 +278,13 @@ describe("reconcileBundledSkills", () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: "remove-obsolete",
-          skillId: "obsolete",
+          id: "obsolete",
         }),
       ]),
     );
     await expect(readdir(path.join(home, "obsolete"))).rejects.toThrow();
     const manifest = await readManifest(home);
-    expect(manifest.skills.obsolete).toBeUndefined();
+    expect(manifest.entries.obsolete).toBeUndefined();
   });
 
   it("keeps a user-modified obsolete skill but stops tracking it", async () => {
@@ -306,14 +306,14 @@ describe("reconcileBundledSkills", () => {
     expect(report.actions).toEqual([
       expect.objectContaining({
         type: "skip-obsolete-user-modified",
-        skillId: "obsolete",
+        id: "obsolete",
       }),
     ]);
     await expect(
       readFile(path.join(home, "obsolete", "SKILL.md"), "utf-8"),
     ).resolves.toBe("user edits");
     const manifest = await readManifest(home);
-    expect(manifest.skills.obsolete).toBeUndefined();
+    expect(manifest.entries.obsolete).toBeUndefined();
   });
 
   it("ignores user-authored skills with no bundled counterpart and no manifest entry", async () => {
@@ -328,10 +328,10 @@ describe("reconcileBundledSkills", () => {
 
     expect(report.actions).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: "seed", skillId: "alpha" }),
+        expect.objectContaining({ type: "seed", id: "alpha" }),
         expect.objectContaining({
-          type: "ignore-user-skill",
-          skillId: "gmail",
+          type: "ignore-user-entry",
+          id: "gmail",
         }),
       ]),
     );
@@ -339,7 +339,7 @@ describe("reconcileBundledSkills", () => {
       readFile(path.join(home, "gmail", "SKILL.md"), "utf-8"),
     ).resolves.toBe("user skill");
     const manifest = await readManifest(home);
-    expect(manifest.skills.gmail).toBeUndefined();
+    expect(manifest.entries.gmail).toBeUndefined();
   });
 
   it("never touches user-profile, even if it sits in the bundle", async () => {
@@ -353,7 +353,7 @@ describe("reconcileBundledSkills", () => {
 
     expect(
       report.actions.find((a) =>
-        "skillId" in a ? a.skillId === "user-profile" : false,
+        "id" in a ? a.id === "user-profile" : false,
       ),
     ).toBeUndefined();
     await expect(
@@ -372,7 +372,7 @@ describe("reconcileBundledSkills", () => {
 
     let report = await reconcileBundledSkills(bundled, home);
     expect(report.actions).toEqual([
-      expect.objectContaining({ type: "adopt-identical", skillId: "alpha" }),
+      expect.objectContaining({ type: "adopt-identical", id: "alpha" }),
     ]);
 
     // Next boot: bundle bumps to v2. Because we adopted the hash, the user
@@ -380,7 +380,7 @@ describe("reconcileBundledSkills", () => {
     await writeSkillFile(bundled, "alpha", "SKILL.md", "alpha v2");
     report = await reconcileBundledSkills(bundled, home);
     expect(report.actions).toEqual([
-      expect.objectContaining({ type: "update", skillId: "alpha" }),
+      expect.objectContaining({ type: "update", id: "alpha" }),
     ]);
     await expect(
       readFile(path.join(home, "alpha", "SKILL.md"), "utf-8"),
@@ -400,7 +400,7 @@ describe("reconcileBundledSkills", () => {
     expect(report.actions).toEqual([
       expect.objectContaining({
         type: "skip-user-modified",
-        skillId: "alpha",
+        id: "alpha",
         reason: "no-manifest",
       }),
     ]);
@@ -408,7 +408,40 @@ describe("reconcileBundledSkills", () => {
       readFile(path.join(home, "alpha", "SKILL.md"), "utf-8"),
     ).resolves.toBe("user-edited");
     const manifest = await readManifest(home);
-    expect(manifest.skills.alpha).toBeUndefined();
+    expect(manifest.entries.alpha).toBeUndefined();
+  });
+
+  it("reads a legacy `skills` manifest so already-installed users still get updates", async () => {
+    const bundled = await tempDir("stella-bundled-");
+    const home = await tempDir("stella-home-skills-");
+
+    // Seed alpha v1, then rewrite the manifest into the pre-rename shape
+    // (`{ version, skills }`) to simulate an install created before the
+    // generic `entries` key existed.
+    await writeSkillFile(bundled, "alpha", "SKILL.md", "alpha v1");
+    await reconcileBundledSkills(bundled, home);
+    const seeded = await readManifest(home);
+    await writeFile(
+      path.join(home, ".bundled-manifest.json"),
+      `${JSON.stringify({ version: seeded.version, skills: seeded.entries }, null, 2)}\n`,
+      "utf-8",
+    );
+
+    // Bundle bumps to v2; the user never touched their local copy. The legacy
+    // hashes must be honored so this lands as an update, not a no-manifest skip.
+    await writeSkillFile(bundled, "alpha", "SKILL.md", "alpha v2");
+    const report = await reconcileBundledSkills(bundled, home);
+
+    expect(report.actions).toEqual([
+      expect.objectContaining({ type: "update", id: "alpha" }),
+    ]);
+    await expect(
+      readFile(path.join(home, "alpha", "SKILL.md"), "utf-8"),
+    ).resolves.toBe("alpha v2");
+
+    // And the manifest self-heals onto the canonical `entries` shape.
+    const migrated = await readManifest(home);
+    expect(migrated.entries.alpha).toBeDefined();
   });
 
   it("is a no-op when bundle and home already agree under a current manifest", async () => {

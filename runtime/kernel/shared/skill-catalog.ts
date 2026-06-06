@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { extractFrontmatter } from "../frontmatter.js";
+import { statSignature } from "./fs-signature.js";
 
 export const INLINE_SKILL_CATALOG_THRESHOLD = 50;
 
@@ -80,6 +81,16 @@ const filterSkillDirectoryIds = (
   return skillIds.filter((skillId) => !omitted.has(skillId));
 };
 
+// Per-SKILL.md cache so an unchanged skill is never re-read or re-parsed on a
+// later turn. The directory listing still runs each turn (cheap, and needed to
+// detect added/removed skills); only the file read + frontmatter parse is gated
+// behind an mtime+size signature that also folds in `scripts/program.ts`
+// presence (a program add/remove changes the rendered entry).
+const skillEntryCache = new Map<
+  string,
+  { sig: string; entry: SkillCatalogEntry }
+>();
+
 const readSkillCatalogEntry = async (
   skillsRoot: string,
   skillId: string,
@@ -88,13 +99,24 @@ const readSkillCatalogEntry = async (
   const skillPath = path.join(skillDir, SKILL_FILENAME);
   const programPath = path.join(skillDir, PROGRAM_FILENAME);
 
-  const [docs, hasProgram] = await Promise.all([
-    fs.readFile(skillPath, "utf-8").catch(() => ""),
+  const [skillSig, hasProgram] = await Promise.all([
+    statSignature(skillPath),
     fs
       .stat(programPath)
       .then(() => true)
       .catch(() => false),
   ]);
+
+  const sig = `${skillSig ?? "missing"}:${hasProgram}`;
+  const cached = skillEntryCache.get(skillPath);
+  if (cached && cached.sig === sig) {
+    return cached.entry;
+  }
+
+  const docs =
+    skillSig === null
+      ? ""
+      : await fs.readFile(skillPath, "utf-8").catch(() => "");
 
   const parsed = docs ? extractFrontmatter(docs) : { metadata: {}, body: "" };
   const looseHeader = docs ? parseLooseHeader(docs) : {};
@@ -107,13 +129,15 @@ const readSkillCatalogEntry = async (
     asNonEmptyString(looseHeader.description) ??
     skillId;
 
-  return {
+  const entry: SkillCatalogEntry = {
     id: skillId,
     name,
     description,
     path: path.posix.join("~/.stella", SKILLS_DIR_NAME, skillId, SKILL_FILENAME),
     hasProgram,
   };
+  skillEntryCache.set(skillPath, { sig, entry });
+  return entry;
 };
 
 export const listSkillCatalogEntries = async (

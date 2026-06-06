@@ -1,4 +1,5 @@
 import { watch as fsWatch, type FSWatcher } from "node:fs";
+import path from "node:path";
 import {
   loadBundledAgents,
   mergeBundledAndExtensionAgents,
@@ -274,7 +275,7 @@ export const createRuntimeInitialization = (
    * when a change lands, the watcher schedules a retry on a short timer
    * so the reload eventually applies after the in-flight run completes.
    */
-  let extensionWatcher: FSWatcher | null = null;
+  let resourceWatchers: FSWatcher[] = [];
   let extensionDebounce: NodeJS.Timeout | null = null;
   let extensionRetry: NodeJS.Timeout | null = null;
   const FILE_WATCH_DEBOUNCE_MS = 500;
@@ -300,37 +301,48 @@ export const createRuntimeInitialization = (
   };
 
   const startExtensionWatcher = () => {
-    if (extensionWatcher) return;
-    try {
-      extensionWatcher = fsWatch(
-        context.paths.extensionsPath,
-        { recursive: true },
-        (_eventType, filename) => {
-          // Ignore renames into the directory of dotfiles / build
-          // artifacts. The loader filters by suffix anyway, but
-          // skipping early reduces wakeups.
-          if (
-            filename &&
-            (filename.startsWith(".") || filename.endsWith("~"))
-          ) {
-            return;
-          }
-          scheduleExtensionReload();
-        },
-      );
-      extensionWatcher.on("error", (error) => {
-        logger.warn("extensions.watch.error", {
-          error: error instanceof Error ? error.message : String(error),
+    if (resourceWatchers.length > 0) return;
+    // Watch both the extension code tree and the user-editable agent prompts
+    // under `~/.stella/agents/`. A change in either triggers the same reload,
+    // which re-registers agents with fresh prompt body AND frontmatter
+    // (tools / model / maxAgentDepth) — so prompt edits apply without a
+    // restart, mirroring pi's watch→reload model.
+    const watchPaths = [
+      context.paths.extensionsPath,
+      path.join(context.stellaHome, "agents"),
+    ];
+    for (const watchPath of watchPaths) {
+      try {
+        const watcher = fsWatch(
+          watchPath,
+          { recursive: true },
+          (_eventType, filename) => {
+            // Ignore renames into the directory of dotfiles / build
+            // artifacts. The loader filters by suffix anyway, but
+            // skipping early reduces wakeups.
+            if (
+              filename &&
+              (filename.startsWith(".") || filename.endsWith("~"))
+            ) {
+              return;
+            }
+            scheduleExtensionReload();
+          },
+        );
+        watcher.on("error", (error) => {
+          logger.warn("extensions.watch.error", {
+            error: error instanceof Error ? error.message : String(error),
+            path: watchPath,
+          });
         });
-      });
-      logger.info("extensions.watch.started", {
-        path: context.paths.extensionsPath,
-      });
-    } catch (error) {
-      logger.warn("extensions.watch.start-failed", {
-        error: error instanceof Error ? error.message : String(error),
-        path: context.paths.extensionsPath,
-      });
+        resourceWatchers.push(watcher);
+        logger.info("extensions.watch.started", { path: watchPath });
+      } catch (error) {
+        logger.warn("extensions.watch.start-failed", {
+          error: error instanceof Error ? error.message : String(error),
+          path: watchPath,
+        });
+      }
     }
   };
 
@@ -343,14 +355,14 @@ export const createRuntimeInitialization = (
       clearTimeout(extensionRetry);
       extensionRetry = null;
     }
-    if (extensionWatcher) {
+    for (const watcher of resourceWatchers) {
       try {
-        extensionWatcher.close();
+        watcher.close();
       } catch {
         // Best-effort.
       }
-      extensionWatcher = null;
     }
+    resourceWatchers = [];
   };
 
   /**

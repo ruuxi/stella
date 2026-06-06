@@ -9,6 +9,11 @@ import {
   summarizeSkillsSync,
   type SkillsSyncReport,
 } from "./skills-sync.js";
+import {
+  reconcileBundledAgents,
+  summarizeAgentsSync,
+  type AgentsSyncReport,
+} from "./agents-sync.js";
 
 export type StellaHome = {
   stellaRoot: string;
@@ -18,6 +23,14 @@ export type StellaHome = {
   workspacePath: string;
   workspaceAppsPath: string;
 };
+
+/**
+ * Bundled agent prompts live in the install tree's stella-runtime extension;
+ * they're reconciled into `${stellaHome}/agents/`, which is what the runtime
+ * loads (so users can edit prompts and shipped updates still flow through).
+ */
+const resolveBundledAgentsDir = (stellaRoot: string): string =>
+  path.join(stellaRoot, "runtime", "extensions", "stella-runtime", "agents");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,7 +102,7 @@ export const resolveRuntimeStatePath = (
 export const ensureStellaHomeSeeded = async (
   stellaRoot: string,
   stellaHome: string,
-): Promise<{ skillsSync: SkillsSyncReport }> => {
+): Promise<{ skillsSync: SkillsSyncReport; agentsSync: AgentsSyncReport }> => {
   await ensureDir(stellaHome);
   const seedPath = resolveBundledStellaHomeSeedPath(stellaRoot);
   for (const entry of STELLA_HOME_SEED_ENTRIES) {
@@ -111,7 +124,16 @@ export const ensureStellaHomeSeeded = async (
     console.log(`[stella-home] skills sync: ${summary}`);
   }
 
-  return { skillsSync };
+  const agentsSync = await reconcileBundledAgents(
+    resolveBundledAgentsDir(stellaRoot),
+    path.join(stellaHome, "agents"),
+  );
+  const agentsSummary = summarizeAgentsSync(agentsSync);
+  if (agentsSummary !== "no-op") {
+    console.log(`[stella-home] agents sync: ${agentsSummary}`);
+  }
+
+  return { skillsSync, agentsSync };
 };
 
 export const resolveStellaHome = async (
