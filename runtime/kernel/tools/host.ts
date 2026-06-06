@@ -81,6 +81,7 @@ export const createToolHost = ({
   webSearch,
   getStellaSiteAuth,
   queryConvex,
+  actionConvex,
   contextProvider,
 }: ToolHostOptions) => {
   const stateRoot = stellaHome ?? stellaRoot;
@@ -150,6 +151,7 @@ export const createToolHost = ({
     webSearch,
     getStellaSiteAuth,
     queryConvex,
+    actionConvex,
     contextProvider,
     shellState,
     stateContext,
@@ -167,8 +169,11 @@ export const createToolHost = ({
   for (const tool of builtinTools) {
     toolCatalog.set(tool.name, {
       name: tool.name,
+      ...(tool.label ? { label: tool.label } : {}),
+      ...(tool.workingText ? { workingText: tool.workingText } : {}),
       description: tool.description,
       parameters: tool.parameters,
+      ...(tool.deferred ? { deferred: tool.deferred } : {}),
       ...(tool.agentTypes ? { agentTypes: tool.agentTypes } : {}),
     });
     handlers[tool.name] = (args, context, extras) =>
@@ -194,8 +199,11 @@ export const createToolHost = ({
   for (const tool of acceptedStartupExtensionTools) {
     toolCatalog.set(tool.name, {
       name: tool.name,
+      ...(tool.label ? { label: tool.label } : {}),
+      ...(tool.workingText ? { workingText: tool.workingText } : {}),
       description: tool.description,
       parameters: tool.parameters,
+      ...(tool.deferred ? { deferred: tool.deferred } : {}),
       ...(tool.agentTypes ? { agentTypes: tool.agentTypes } : {}),
     });
   }
@@ -332,6 +340,7 @@ export const createToolHost = ({
     options?: {
       model?: Pick<Model<Api>, "api" | "provider" | "id" | "name">;
       agentEngine?: FileEditAgentEngine;
+      includeDeferred?: boolean;
     },
   ) => {
     const fileEditToolFamily = getFileEditToolFamily({
@@ -346,6 +355,7 @@ export const createToolHost = ({
         // frontmatter `tools:` allowlist (applied downstream in
         // tool-adapters) decides what each agent is actually offered.
         if (!isAgentAllowedForTool(tool, agentType)) return false;
+        if (tool.deferred && options?.includeDeferred !== true) return false;
         // Swap the file-edit tool family to the agent's engine: Claude Code
         // wants Write/Edit, Stella wants apply_patch.
         if (
@@ -426,8 +436,11 @@ export const createToolHost = ({
       for (const tool of accepted) {
         toolCatalog.set(tool.name, {
           name: tool.name,
+          ...(tool.label ? { label: tool.label } : {}),
+          ...(tool.workingText ? { workingText: tool.workingText } : {}),
           description: tool.description,
           parameters: tool.parameters,
+          ...(tool.deferred ? { deferred: tool.deferred } : {}),
           ...(tool.agentTypes ? { agentTypes: tool.agentTypes } : {}),
         });
         extensionToolNames.add(tool.name);

@@ -69,6 +69,7 @@ export type RuntimeToolStartEvent = {
   seq: number;
   toolCallId: string;
   toolName: string;
+  statusText?: string;
   args: Record<string, unknown>;
   uiVisibility?: "visible" | "hidden";
 };
@@ -187,6 +188,8 @@ export type BaseRunOptions = {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   agentContext: LocalAgentContext;

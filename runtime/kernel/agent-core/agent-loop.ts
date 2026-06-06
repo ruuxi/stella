@@ -426,10 +426,12 @@ async function executeToolCallsSequential(
 
 	for (let index = 0; index < toolCalls.length; index++) {
 		const toolCall = toolCalls[index];
+		const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
 		await emit({
 			type: "tool_execution_start",
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
+			...(tool?.workingText ? { statusText: tool.workingText } : {}),
 			args: toolCall.arguments,
 		});
 
@@ -476,10 +478,12 @@ async function executeToolCallsParallel(
 
 	for (let index = 0; index < toolCalls.length; index++) {
 		const toolCall = toolCalls[index];
+		const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
 		await emit({
 			type: "tool_execution_start",
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
+			...(tool?.workingText ? { statusText: tool.workingText } : {}),
 			args: toolCall.arguments,
 		});
 

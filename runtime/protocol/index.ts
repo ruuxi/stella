@@ -406,6 +406,8 @@ export type RuntimeAttachmentRef = {
   kind?: string;
   name?: string;
   size?: number;
+  transcript?: string;
+  extractedText?: string;
 };
 
 export type RuntimePromptMessage = {
@@ -543,6 +545,8 @@ export type RuntimeAutomationTurnRequest = {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
 };
 

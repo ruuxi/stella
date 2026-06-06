@@ -130,4 +130,123 @@ describe("remote-turn mobile model override", () => {
     expect(completed).toBe(true);
     bridge.stop();
   });
+
+  it("uses transient audio transcripts as the local turn prompt", async () => {
+    let onUpdate:
+      | ((events: Array<{
+          _id: string;
+          timestamp: number;
+          type: string;
+          requestId?: string;
+          payload?: Record<string, unknown>;
+        }>) => void)
+      | null = null;
+    let capturedPrompt = "";
+
+    const bridge = createRemoteTurnBridge({
+      deviceId: "desktop-1",
+      isEnabled: () => true,
+      isRunnerBusy: () => false,
+      subscribeRemoteTurnRequests: ({ onUpdate: nextOnUpdate }) => {
+        onUpdate = nextOnUpdate;
+        return () => {};
+      },
+      claimRemoteTurn: async () => {},
+      runLocalTurn: async ({ userPrompt }) => {
+        capturedPrompt = userPrompt;
+        return { status: "ok", finalText: "done" };
+      },
+      completeConnectorTurn: async () => {},
+    });
+
+    bridge.start();
+    onUpdate?.([
+      {
+        _id: "event-1",
+        timestamp: Date.now(),
+        type: "remote_turn_request",
+        requestId: "request-1",
+        payload: {
+          conversationId: "conversation-1",
+          text: "[Audio]",
+          provider: "linq",
+          deliveryMeta: {},
+          mediaRefs: [
+            {
+              url: "https://example.test/audio.m4a",
+              kind: "audio",
+              mimeType: "audio/mp4",
+              transcript: "Please bring coffee on your way home.",
+            },
+          ],
+        },
+      },
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(capturedPrompt).toBe(
+      "Voice message transcript:\nPlease bring coffee on your way home.",
+    );
+    bridge.stop();
+  });
+
+  it("adds transient extracted file text to the local turn prompt", async () => {
+    let onUpdate:
+      | ((events: Array<{
+          _id: string;
+          timestamp: number;
+          type: string;
+          requestId?: string;
+          payload?: Record<string, unknown>;
+        }>) => void)
+      | null = null;
+    let capturedPrompt = "";
+
+    const bridge = createRemoteTurnBridge({
+      deviceId: "desktop-1",
+      isEnabled: () => true,
+      isRunnerBusy: () => false,
+      subscribeRemoteTurnRequests: ({ onUpdate: nextOnUpdate }) => {
+        onUpdate = nextOnUpdate;
+        return () => {};
+      },
+      claimRemoteTurn: async () => {},
+      runLocalTurn: async ({ userPrompt }) => {
+        capturedPrompt = userPrompt;
+        return { status: "ok", finalText: "done" };
+      },
+      completeConnectorTurn: async () => {},
+    });
+
+    bridge.start();
+    onUpdate?.([
+      {
+        _id: "event-1",
+        timestamp: Date.now(),
+        type: "remote_turn_request",
+        requestId: "request-1",
+        payload: {
+          conversationId: "conversation-1",
+          text: "[Attachment]",
+          provider: "linq",
+          deliveryMeta: {},
+          mediaRefs: [
+            {
+              url: "https://example.test/report.pdf",
+              kind: "file",
+              mimeType: "application/pdf",
+              name: "report.pdf",
+              extractedText: "Quarterly revenue was $42.",
+            },
+          ],
+        },
+      },
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(capturedPrompt).toBe("report.pdf:\nQuarterly revenue was $42.");
+    bridge.stop();
+  });
 });

@@ -2599,6 +2599,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         connectorDeliveryTarget?: {
           requestId: string;
           conversationId: string;
+          provider?: string;
+          externalMessageId?: string;
         };
       };
       const materializedImageAttachments = await materializeImageAttachments(

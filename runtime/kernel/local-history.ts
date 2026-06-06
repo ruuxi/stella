@@ -461,6 +461,14 @@ const formatTextEvent = (
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   if (!text) return null;
   const isAssistant = event.type === "assistant_message";
+  const linqMessageId =
+    !isAssistant &&
+    payload.source === "connector" &&
+    payload.provider === "linq" &&
+    typeof payload.linqMessageId === "string" &&
+    payload.linqMessageId.trim()
+      ? payload.linqMessageId.trim()
+      : "";
   const skipTs = !isAssistant &&
     tsState.prevUserTs != null &&
     event.timestamp - tsState.prevUserTs < THIRTY_MINUTES_MS;
@@ -475,7 +483,13 @@ const formatTextEvent = (
   if (isAssistant) {
     return { role: "assistant", content: body };
   }
-  return { role: "user", content: skipTs ? body : `${body}\n\n${tag}` };
+  const bodyWithMetadata = linqMessageId
+    ? `${body}\n\n[linq_message_id: ${linqMessageId}]`
+    : body;
+  return {
+    role: "user",
+    content: skipTs ? bodyWithMetadata : `${bodyWithMetadata}\n\n${tag}`,
+  };
 };
 
 const formatToolRequest = (event: LocalContextEvent): LocalHistoryMessage => {

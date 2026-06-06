@@ -299,6 +299,8 @@ export type AgentToolUpdateCallback<T = unknown> = (partialResult: AgentToolResu
 export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unknown> extends Tool<TParameters> {
 	// A human-readable label for the tool to be displayed in UI
 	label: string;
+	// User-facing status text while the tool is running.
+	workingText?: string;
 	execute: (
 		toolCallId: string,
 		params: Static<TParameters>,
@@ -331,7 +333,13 @@ export type AgentEvent =
 	| { type: "message_update"; message: AgentMessage; assistantMessageEvent: AssistantMessageEvent }
 	| { type: "message_end"; message: AgentMessage }
 	// Tool execution lifecycle
-	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: Record<string, unknown> }
+	| {
+			type: "tool_execution_start";
+			toolCallId: string;
+			toolName: string;
+			statusText?: string;
+			args: Record<string, unknown>;
+	  }
 	| {
 			type: "tool_execution_update";
 			toolCallId: string;

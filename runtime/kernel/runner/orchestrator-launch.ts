@@ -205,6 +205,8 @@ export type PreparedOrchestratorRun = {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
   toolWorkspaceRoot?: string;
   selfModMetadata?: OrchestratorSelfModMetadata;
@@ -234,6 +236,8 @@ export const prepareOrchestratorRun = async (args: {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
   selfModMetadata?: Parameters<BuildAgentContext>[0]["selfModMetadata"];
   toolWorkspaceRoot?: string;
@@ -601,6 +605,7 @@ export const launchPreparedOrchestratorRun = (args: {
         model:
           prepared.resolvedLlm.toolPolicyModel ?? prepared.resolvedLlm.model,
         agentEngine: prepared.agentContext.agentEngine,
+        includeDeferred: true,
       }),
       toolExecutor,
       deviceId: context.deviceId,
@@ -684,6 +689,8 @@ export const startPreparedOrchestratorRun = async (args: {
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
+    provider?: string;
+    externalMessageId?: string;
   };
   selfModMetadata?: Parameters<BuildAgentContext>[0]["selfModMetadata"];
   userMessageId: string;
