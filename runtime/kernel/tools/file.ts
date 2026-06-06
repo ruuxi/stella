@@ -19,6 +19,32 @@ import {
 } from "./utils.js";
 import { isBlockedPath } from "./command-safety.js";
 import { sanitizeToolVisibleText } from "./safety.js";
+import { recordSkillUse, skillIdForPath } from "../home/skill-usage.js";
+
+/**
+ * Resolve the active skills directory (`${stellaHome}/skills`) from the tool
+ * context, falling back to the `STELLA_HOME` env the runtime sets at boot.
+ * Returns null when neither is available (e.g. in isolated unit tests).
+ */
+const resolveSkillsDir = (context?: ToolContext): string | null => {
+  const home = context?.stellaHome?.trim() || process.env.STELLA_HOME?.trim();
+  return home ? path.join(home, "skills") : null;
+};
+
+/**
+ * Record skill usage when a read touches a file under a skill directory.
+ * Fire-and-forget and fully swallowed: telemetry must never affect a file read.
+ */
+const noteSkillReadBestEffort = (
+  filePath: string,
+  context?: ToolContext,
+): void => {
+  const skillsDir = resolveSkillsDir(context);
+  if (!skillsDir) return;
+  const skillId = skillIdForPath(skillsDir, filePath);
+  if (!skillId) return;
+  void recordSkillUse(skillsDir, skillId).catch(() => {});
+};
 
 export type FileToolsConfig = {
   stellaRoot?: string;
@@ -201,6 +227,7 @@ export const handleRead = async (
       offset,
       limit,
     );
+    noteSkillReadBestEffort(filePath, context);
     return {
       result: `File: ${filePath}\n${formatted.header}\n\n${formatted.body}`,
     };
