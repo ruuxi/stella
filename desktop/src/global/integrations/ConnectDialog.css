@@ -71,8 +71,8 @@
 [data-component="dialog"][data-fit]:has([data-slot="dialog-content"].connect-dialog)
   [data-slot="dialog-container"] {
   --dialog-width: 500px;
-  height: min(calc(100vh - 16px), 560px);
-  min-height: min(calc(100vh - 16px), 560px);
+  height: min(calc(100vh - 16px), 640px);
+  min-height: min(calc(100vh - 16px), 640px);
 }
 
 /* Phone pairing (QR + code) needs more vertical room than OAuth detail views */
