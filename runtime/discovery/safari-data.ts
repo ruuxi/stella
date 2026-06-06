@@ -9,6 +9,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
+import { pathToFileURL } from "node:url";
 import type { SafariData, BookmarkEntry } from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.error("[safari-data]", ...args);
@@ -20,7 +21,10 @@ type SqliteDatabase = {
 
 const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
   const { Database } = await import("bun:sqlite");
-  return new Database(dbPath, { readonly: true }) as SqliteDatabase;
+  // Read the live DB directly via an immutable URI: skips locking and reads
+  // the main file without its WAL sidecars. Best-effort one-time snapshot.
+  const uri = `${pathToFileURL(dbPath).href}?immutable=1`;
+  return new Database(uri, { readonly: true }) as SqliteDatabase;
 };
 
 const execAsync = (command: string): Promise<string> => {
@@ -40,9 +44,9 @@ const execAsync = (command: string): Promise<string> => {
  * Collect Safari browsing history (last 7 days)
  * Requires Full Disk Access to read ~/Library/Safari/History.db
  */
-export const collectSafariHistory = async (
-  stellaHome: string
-): Promise<{ domain: string; visits: number }[]> => {
+export const collectSafariHistory = async (): Promise<
+  { domain: string; visits: number }[]
+> => {
   if (process.platform !== "darwin") {
     return [];
   }
@@ -58,18 +62,10 @@ export const collectSafariHistory = async (
   }
 
   let db: SqliteDatabase | null = null;
-  let copyPath: string | null = null;
 
   try {
-    // Copy the database to avoid lock issues
-    const cacheDir = path.join(stellaHome, "cache");
-    await fs.mkdir(cacheDir, { recursive: true });
-
-    copyPath = path.join(cacheDir, "safari_history.db");
-    await fs.copyFile(historyPath, copyPath);
-
-    // Open the copy readonly
-    db = await openDatabase(copyPath);
+    // Open the live database directly readonly
+    db = await openDatabase(historyPath);
 
     // Query top domains by explicit visit rows in the last 7 days.
     // Safari history_visits.visit_time is CFAbsoluteTime (seconds since 2001-01-01).
@@ -124,9 +120,6 @@ export const collectSafariHistory = async (
     return [];
   } finally {
     db?.close?.();
-    if (copyPath) {
-      fs.unlink(copyPath).catch(() => {});
-    }
   }
 };
 
@@ -225,9 +218,7 @@ export const collectSafariBookmarks = async (): Promise<BookmarkEntry[]> => {
 /**
  * Collect Safari history and bookmarks
  */
-export const collectSafariData = async (
-  stellaHome: string
-): Promise<SafariData | null> => {
+export const collectSafariData = async (): Promise<SafariData | null> => {
   if (process.platform !== "darwin") {
     return null;
   }
@@ -235,7 +226,7 @@ export const collectSafariData = async (
   log("Collecting Safari data...");
 
   const [history, bookmarks] = await Promise.all([
-    collectSafariHistory(stellaHome),
+    collectSafariHistory(),
     collectSafariBookmarks(),
   ]);
 

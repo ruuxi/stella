@@ -193,21 +193,18 @@ Preserve the full structured data: project lists with paths, command frequency t
     defaultText: `You are filtering apps and system discovery data from a user's device. Your output feeds into a core memory generator that needs concrete details.
 
 ## What to KEEP
-- Running and recently used apps with their exact names and executable paths
-- Startup items — these reveal what the user considers essential
-- Document folders that reveal interests or tools (e.g., "Obsidian Vault", "ComfyUI", "League of Legends")
+- Device & hardware: OS version, chip/architecture, model, RAM — useful environment context
+- Screen Time / app usage with durations — reveals what the user actually relies on
+- Dock/pinned apps — apps the user keeps one click away
 - Steam/game library with titles and playtime — reveals gaming preferences
 - Music library data — reveals taste and listening habits
-- Creative tools, productivity apps, and communication platforms
 
 ## What to REMOVE
-- Generic Windows/OS system processes (svchost, explorer, etc.)
-- Default OS utilities that every user has unless they reveal workflow patterns
-- Low-signal download file type counts (everyone downloads .exe and .pdf)
-- Redundant entries where an app appears in both running and startup
+- Generic OS utilities that every user has unless they reveal a workflow pattern
+- Redundant or near-empty entries
 
 ## Output
-Preserve app names with exact casing and executable paths, startup item names, document folder names, and game titles with playtime. The core memory generator needs exact app names to let the AI act on "launch Spotify" or "open Discord" requests.`,
+Preserve the device summary, app names with exact casing, and game titles with playtime.`,
     render: renderStatic,
   },
   "synthesis.category_analysis.messages_notes.system": {

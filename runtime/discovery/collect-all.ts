@@ -25,10 +25,6 @@ import {
   formatShellAnalysisForSynthesis,
 } from "./shell-history.js";
 import {
-  discoverApps,
-  formatAppDiscoveryForSynthesis,
-} from "./app-discovery.js";
-import {
   collectBrowserBookmarks,
   formatBrowserBookmarksForSynthesis,
 } from "./browser-bookmarks.js";
@@ -202,14 +198,14 @@ export const collectAllUserSignals = async (
     // Only run Firefox/Safari if no specific browser selected, or if that browser is selected
     if (!selectedBrowser || selectedBrowser === "firefox") {
       tasks.firefox = () =>
-        collectFirefoxData(StellaHome).catch((e) => {
+        collectFirefoxData().catch((e) => {
           log("Firefox collection failed:", e);
           return null;
         });
     }
     if (!selectedBrowser || selectedBrowser === "safari") {
       tasks.safari = () =>
-        collectSafariData(StellaHome).catch((e) => {
+        collectSafariData().catch((e) => {
           log("Safari collection failed:", e);
           return null;
         });
@@ -238,20 +234,14 @@ export const collectAllUserSignals = async (
   }
 
   if (categories.includes("apps_system")) {
-    tasks.apps = () => discoverApps();
     tasks.system = () =>
-      collectSystemSignals(StellaHome).catch((e) => {
+      collectSystemSignals().catch((e) => {
         log("System signals collection failed:", e);
         return {
           userIdentity: null,
           dockPins: [],
           appUsage: [],
-          filesystem: {
-            downloadsExtensions: {},
-            documentsFolders: [],
-            desktopFileTypes: {},
-          },
-          startupItems: [],
+          device: null,
         };
       });
     tasks.steam = () =>
@@ -268,7 +258,7 @@ export const collectAllUserSignals = async (
 
   if (categories.includes("messages_notes")) {
     tasks.messagesNotes = () =>
-      collectMessagesNotes(StellaHome).catch((e) => {
+      collectMessagesNotes().catch((e) => {
         log("Messages/notes collection failed:", e);
         return { contacts: [], groupChats: [], noteFolders: [], calendars: [] };
       });
@@ -282,18 +272,6 @@ export const collectAllUserSignals = async (
 
   const elapsed = Date.now() - start;
   log(`Collection complete in ${elapsed}ms`);
-
-  // Assemble the output
-  const appResult = results.apps as
-    | {
-        apps: {
-          name: string;
-          executablePath: string;
-          source: "running" | "recent";
-          lastUsed?: number;
-        }[];
-      }
-    | undefined;
 
   return {
     // Existing signals (may be undefined if category not selected)
@@ -310,7 +288,6 @@ export const collectAllUserSignals = async (
       projectPaths: [],
       toolsUsed: [],
     },
-    apps: appResult?.apps ?? [],
     // New signals
     bookmarks: results.bookmarks as BrowserBookmarks | null | undefined,
     safari: results.safari as SafariData | null | undefined,
@@ -400,9 +377,6 @@ const formatSignalsForSynthesisWithSections = async (
   // --- Category 3: Apps & System ---
   if (categories.includes("apps_system")) {
     const categorySections: string[] = [];
-
-    const appsSection = formatAppDiscoveryForSynthesis({ apps: data.apps });
-    if (appsSection) categorySections.push(appsSection);
 
     if (data.systemSignals) {
       const systemSection = formatSystemSignalsForSynthesis(data.systemSignals);

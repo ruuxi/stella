@@ -4,29 +4,25 @@
  * Gathers behavioral data:
  * - Screen Time / app usage (knowledgeC.db on macOS, ActivitiesCache.db on Windows)
  * - Dock pins (macOS) / Taskbar pins (Windows)
- * - Startup / login items (what auto-runs — reveals essential apps)
- * - Filesystem signals (Downloads, Documents, Desktop)
+ * - OS account identity
  *
  * NO theme/accessibility/appearance signals — only behavioral data.
  */
 
-import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
+import { promises as fs } from "fs";
+import { pathToFileURL } from "node:url";
 import type {
   SystemSignals,
   DockPin,
-  StartupItem,
   AppUsageSummary,
-  FilesystemSignals,
   UserIdentitySignal,
+  DeviceSignals,
 } from "./discovery-types.js";
 
 const log = (...args: unknown[]) => console.error("[system-signals]", ...args);
-
-// Keep only strongest file-type signals for synthesis input.
-const FILESYSTEM_TOP_FILE_TYPES = 5;
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -58,7 +54,10 @@ type SqliteDatabase = {
 
 const openDatabase = async (dbPath: string): Promise<SqliteDatabase> => {
   const { Database } = await import("bun:sqlite");
-  return new Database(dbPath, { readonly: true }) as SqliteDatabase;
+  // Read the live DB directly via an immutable URI: skips locking and reads
+  // the main file without its WAL sidecars. Best-effort one-time snapshot.
+  const uri = `${pathToFileURL(dbPath).href}?immutable=1`;
+  return new Database(uri, { readonly: true }) as SqliteDatabase;
 };
 
 // ---------------------------------------------------------------------------
@@ -139,29 +138,24 @@ async function collectDockPins(): Promise<DockPin[]> {
 // App Usage
 // ---------------------------------------------------------------------------
 
-async function collectAppUsageMacOS(stellaHome: string): Promise<AppUsageSummary[]> {
+async function collectAppUsageMacOS(): Promise<AppUsageSummary[]> {
   try {
     const sourceDb = path.join(
       os.homedir(),
       "Library/Application Support/Knowledge/knowledgeC.db"
     );
 
-    // Copy to cache to avoid locking issues
-    const cacheDir = path.join(stellaHome, "cache");
-    await fs.mkdir(cacheDir, { recursive: true });
-    const cachedDb = path.join(cacheDir, "knowledgec.db");
-
+    let db: SqliteDatabase;
     try {
-      await fs.copyFile(sourceDb, cachedDb);
+      db = await openDatabase(sourceDb);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EPERM") {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EPERM" || code === "EACCES") {
         log("knowledgeC.db access denied - grant Full Disk Access");
         return [];
       }
       throw error;
     }
-
-    const db = await openDatabase(cachedDb);
 
     const query = `
       SELECT
@@ -179,9 +173,6 @@ async function collectAppUsageMacOS(stellaHome: string): Promise<AppUsageSummary
 
     const rows = db.prepare(query).all() as Array<{ app: string; total_seconds: number }>;
     db.close();
-
-    // Clean up cache
-    await fs.unlink(cachedDb).catch(() => {});
 
     // Process results
     const appUsage: AppUsageSummary[] = rows.map((row) => {
@@ -216,7 +207,7 @@ async function collectAppUsageMacOS(stellaHome: string): Promise<AppUsageSummary
   }
 }
 
-async function collectAppUsageWindows(stellaHome: string): Promise<AppUsageSummary[]> {
+async function collectAppUsageWindows(): Promise<AppUsageSummary[]> {
   try {
     const cdpBase = path.join(
       os.homedir(),
@@ -243,13 +234,7 @@ async function collectAppUsageWindows(stellaHome: string): Promise<AppUsageSumma
       return [];
     }
 
-    // Copy to cache
-    const cacheDir = path.join(stellaHome, "cache");
-    await fs.mkdir(cacheDir, { recursive: true });
-    const cachedDb = path.join(cacheDir, "activitiescache.db");
-    await fs.copyFile(dbPath, cachedDb);
-
-    const db = await openDatabase(cachedDb);
+    const db = await openDatabase(dbPath);
 
     let rows: Array<{ AppId: string; total_seconds: number }>;
     try {
@@ -280,9 +265,6 @@ async function collectAppUsageWindows(stellaHome: string): Promise<AppUsageSumma
       rows = db.prepare(fallbackQuery).all() as Array<{ AppId: string; total_seconds: number }>;
     }
     db.close();
-
-    // Clean up cache
-    await fs.unlink(cachedDb).catch(() => {});
 
     // Process results
     const appUsage: AppUsageSummary[] = rows
@@ -318,210 +300,92 @@ async function collectAppUsageWindows(stellaHome: string): Promise<AppUsageSumma
   }
 }
 
-async function collectAppUsage(stellaHome: string): Promise<AppUsageSummary[]> {
+async function collectAppUsage(): Promise<AppUsageSummary[]> {
   if (os.platform() === "darwin") {
-    return collectAppUsageMacOS(stellaHome);
+    return collectAppUsageMacOS();
   } else if (os.platform() === "win32") {
-    return collectAppUsageWindows(stellaHome);
+    return collectAppUsageWindows();
   }
   return [];
 }
 
 // ---------------------------------------------------------------------------
-// Startup / Login Items
+// Device / Hardware
 // ---------------------------------------------------------------------------
 
-/** Apps that auto-start are apps the user considers essential. */
+/**
+ * Device + hardware profile. Most fields come from Node's `os` module (instant,
+ * cross-platform); OS marketing version and hardware model are enriched per
+ * platform best-effort.
+ */
+async function collectDevice(): Promise<DeviceSignals> {
+  const platform = os.platform();
+  const cpus = os.cpus();
+  const cpu = cpus[0]?.model?.trim() || undefined;
+  const cpuCores = cpus.length || undefined;
+  const totalMem = os.totalmem();
+  const memoryGB = totalMem ? Math.round(totalMem / 1024 ** 3) : undefined;
+  const arch =
+    process.arch === "arm64"
+      ? platform === "darwin"
+        ? "Apple Silicon (arm64)"
+        : "ARM64"
+      : process.arch;
 
-async function collectStartupItemsWindows(): Promise<StartupItem[]> {
-  const items: StartupItem[] = [];
-  const seen = new Set<string>();
+  let osLabel = `${platform} ${os.release()}`;
+  let model: string | undefined;
 
-  // 1. Registry Run keys (current user)
-  try {
-    const output = await execAsync(
-      'reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" 2>nul'
-    );
-    for (const line of output.split("\n")) {
-      const m = line.trim().match(/^\s*(\S+)\s+REG_SZ\s+(.+)$/i);
-      if (m) {
-        const name = m[1].trim();
-        const valuePath = m[2].trim().replace(/^"(.+?)".*$/, "$1");
-        const key = name.toLowerCase();
-        if (!seen.has(key)) {
-          seen.add(key);
-          items.push({ name, path: valuePath });
-        }
-      }
-    }
-  } catch {
-    // Registry key may not exist
-  }
-
-  // 2. Startup folder shortcuts
-  try {
-    const startupDir = path.join(
-      process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
-      "Microsoft", "Windows", "Start Menu", "Programs", "Startup"
-    );
-    const entries = await fs.readdir(startupDir);
-    for (const entry of entries) {
-      const name = entry.replace(/\.(lnk|url)$/i, "");
-      const key = name.toLowerCase();
-      if (!seen.has(key) && !entry.startsWith("desktop.ini")) {
-        seen.add(key);
-        items.push({ name, path: path.join(startupDir, entry) });
-      }
-    }
-  } catch {
-    // Folder may not exist
-  }
-
-  return items;
-}
-
-async function collectStartupItemsMac(): Promise<StartupItem[]> {
-  const items: StartupItem[] = [];
-
-  // Read login items from backgrounditems plist (avoids osascript Automation permission dialog)
-  try {
-    const loginItemsDir = path.join(
-      os.homedir(),
-      "Library/Application Support/com.apple.backgroundtaskmanagementagent"
-    );
-    const plistPath = path.join(loginItemsDir, "backgrounditems.btm");
-    const output = await execAsync(`plutil -convert json -o - "${plistPath}" 2>/dev/null`);
-    const parsed = JSON.parse(output);
-    const loginItems = parsed?.["$objects"] ?? [];
-    for (const obj of loginItems) {
-      if (typeof obj === "string" && obj.endsWith(".app") && !obj.startsWith("$")) {
-        const name = path.basename(obj, ".app");
-        items.push({ name, path: obj });
-      }
-    }
-  } catch {
-    // Plist may not exist or format may vary
-  }
-
-  // Fallback: parse launchctl list for user agents
-  if (items.length === 0) {
+  if (platform === "darwin") {
     try {
-      const output = await execAsync(`launchctl list 2>/dev/null`);
-      for (const line of output.split("\n").slice(1)) {
-        const parts = line.trim().split(/\t+/);
-        const label = parts[2];
-        if (!label || label.startsWith("com.apple.") || label.startsWith("[")) continue;
-        const name = label.split(".").pop() ?? label;
-        items.push({ name, path: "" });
-      }
+      const product = (await execAsync("sw_vers -productVersion")).trim();
+      if (product) osLabel = `macOS ${product}`;
     } catch {
-      // launchctl may fail in restricted contexts
+      // Keep the os.release() fallback.
+    }
+    try {
+      model = (await execAsync("sysctl -n hw.model")).trim() || undefined;
+    } catch {
+      // Model is optional.
+    }
+  } else if (platform === "win32") {
+    try {
+      const caption = (
+        await execAsync(
+          'powershell -NoProfile -Command "(Get-CimInstance Win32_OperatingSystem).Caption"'
+        )
+      ).trim();
+      if (caption) osLabel = caption;
+    } catch {
+      // Keep the os.release() fallback.
+    }
+    try {
+      const winModel = (
+        await execAsync(
+          'powershell -NoProfile -Command "(Get-CimInstance Win32_ComputerSystem).Model"'
+        )
+      ).trim();
+      model = winModel || undefined;
+    } catch {
+      // Model is optional.
     }
   }
 
-  return items;
-}
-
-async function collectStartupItems(): Promise<StartupItem[]> {
-  if (os.platform() === "win32") return collectStartupItemsWindows();
-  if (os.platform() === "darwin") return collectStartupItemsMac();
-  return [];
-}
-
-// ---------------------------------------------------------------------------
-// Filesystem Signals
-// ---------------------------------------------------------------------------
-
-async function collectFilesystemSignals(): Promise<FilesystemSignals> {
-  const home = os.homedir();
-
-  // Scan Downloads, Documents, Desktop in parallel
-  const [downloadsExtensions, documentsFolders, desktopFileTypes] = await Promise.all([
-    // Downloads
-    (async (): Promise<Record<string, number>> => {
-      try {
-        const files = await fs.readdir(path.join(home, "Downloads"));
-        const extensions: Record<string, number> = {};
-        for (const file of files) {
-          if (file.startsWith(".")) continue;
-          const ext = path.extname(file).toLowerCase();
-          if (ext) extensions[ext] = (extensions[ext] || 0) + 1;
-        }
-        const sorted = Object.entries(extensions)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, FILESYSTEM_TOP_FILE_TYPES);
-        return Object.fromEntries(sorted);
-      } catch (error) {
-        log("Failed to read Downloads:", error);
-        return {};
-      }
-    })(),
-
-    // Documents — parallel stat for directory detection
-    (async (): Promise<string[]> => {
-      try {
-        const documentsPath = path.join(home, "Documents");
-        const entries = await fs.readdir(documentsPath);
-        const visible = entries.filter((e) => !e.startsWith("."));
-        const statResults = await Promise.all(
-          visible.map(async (entry) => {
-            try {
-              const stat = await fs.stat(path.join(documentsPath, entry));
-              return stat.isDirectory() ? entry : null;
-            } catch {
-              return null;
-            }
-          })
-        );
-        return statResults.filter((e): e is string => e !== null).slice(0, 20);
-      } catch (error) {
-        log("Failed to read Documents:", error);
-        return [];
-      }
-    })(),
-
-    // Desktop
-    (async (): Promise<Record<string, number>> => {
-      try {
-        const files = await fs.readdir(path.join(home, "Desktop"));
-        const extensions: Record<string, number> = {};
-        for (const file of files) {
-          if (file.startsWith(".")) continue;
-          const ext = path.extname(file).toLowerCase();
-          if (ext) extensions[ext] = (extensions[ext] || 0) + 1;
-        }
-        const sorted = Object.entries(extensions)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, FILESYSTEM_TOP_FILE_TYPES);
-        return Object.fromEntries(sorted);
-      } catch (error) {
-        log("Failed to read Desktop:", error);
-        return {};
-      }
-    })(),
-  ]);
-
-  return { downloadsExtensions, documentsFolders, desktopFileTypes };
+  return { os: osLabel, arch, model, cpu, cpuCores, memoryGB };
 }
 
 // ---------------------------------------------------------------------------
 // Main Collector
 // ---------------------------------------------------------------------------
 
-export async function collectSystemSignals(stellaHome: string): Promise<SystemSignals> {
-  const [userIdentity, dockPins, appUsage, filesystem, startupItems] = await Promise.all([
+export async function collectSystemSignals(): Promise<SystemSignals> {
+  const [userIdentity, dockPins, appUsage, device] = await Promise.all([
     withTimeout(collectUserIdentity(), 2000, null),
     withTimeout(collectDockPins(), 3000, []),
-    withTimeout(collectAppUsage(stellaHome), 10000, []),
-    withTimeout(collectFilesystemSignals(), 5000, {
-      downloadsExtensions: {},
-      documentsFolders: [],
-      desktopFileTypes: {},
-    }),
-    withTimeout(collectStartupItems(), 3000, []),
+    withTimeout(collectAppUsage(), 10000, []),
+    withTimeout(collectDevice(), 4000, null),
   ]);
 
-  return { userIdentity, dockPins, appUsage, filesystem, startupItems };
+  return { userIdentity, dockPins, appUsage, device };
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +407,20 @@ export function formatSystemSignalsForSynthesis(data: SystemSignals): string {
       identitySection.push(`Home Directory: ${data.userIdentity.homeDirectory}`);
     }
     sections.push(identitySection.join("\n"));
+  }
+
+  // Device & Hardware
+  if (data.device) {
+    const d = data.device;
+    const deviceLines = ["### Device"];
+    const head = [d.model, d.os, d.arch].filter(Boolean);
+    if (head.length > 0) deviceLines.push(head.join(" · "));
+    const specs: string[] = [];
+    if (d.cpu) specs.push(d.cpu);
+    if (d.cpuCores) specs.push(`${d.cpuCores} cores`);
+    if (d.memoryGB) specs.push(`${d.memoryGB} GB RAM`);
+    if (specs.length > 0) deviceLines.push(specs.join(", "));
+    if (deviceLines.length > 1) sections.push(deviceLines.join("\n"));
   }
 
   // Dock/Pinned Apps
@@ -567,69 +445,6 @@ export function formatSystemSignalsForSynthesis(data: SystemSignals): string {
       }
     }
     sections.push(appSection.join("\n"));
-  }
-
-  // Filesystem
-  const hasDownloads = Object.keys(data.filesystem.downloadsExtensions).length > 0;
-  const hasDocuments = data.filesystem.documentsFolders.length > 0;
-  const hasDesktop = Object.keys(data.filesystem.desktopFileTypes).length > 0;
-
-  if (hasDownloads || hasDocuments || hasDesktop) {
-    const fsSection = ["### Filesystem"];
-
-    if (hasDownloads) {
-      fsSection.push("**Downloads** (by file type)");
-      const items = Object.entries(data.filesystem.downloadsExtensions)
-        .map(([ext, count]) => `${ext} (${count})`)
-        .join(", ");
-      fsSection.push(items);
-    }
-
-    if (hasDocuments) {
-      // Filter out generic OS folders that appear on every machine
-      const OS_NOISE_FOLDERS = new Set([
-        "custom office templates",
-        "my music",
-        "my pictures",
-        "my videos",
-        "my games",
-        "my web sites",
-        "icloud~com~apple~shoebox",
-        "microsoft press content",
-      ]);
-      const meaningful = data.filesystem.documentsFolders
-        .filter((f) => !OS_NOISE_FOLDERS.has(f.toLowerCase()));
-
-      if (meaningful.length > 0) {
-        fsSection.push("**Documents Folders**");
-        fsSection.push(meaningful.join(", "));
-      }
-    }
-
-    if (hasDesktop) {
-      // Filter out always-present Windows noise types (.lnk shortcuts, .url web shortcuts)
-      const meaningfulDesktopTypes = Object.entries(data.filesystem.desktopFileTypes)
-        .filter(([ext]) => ext !== ".lnk" && ext !== ".url");
-
-      if (meaningfulDesktopTypes.length > 0) {
-        fsSection.push("**Desktop** (by file type)");
-        const items = meaningfulDesktopTypes
-          .map(([ext, count]) => `${ext} (${count})`)
-          .join(", ");
-        fsSection.push(items);
-      }
-    }
-
-    sections.push(fsSection.join("\n"));
-  }
-
-  // Startup / Login Items
-  if (data.startupItems && data.startupItems.length > 0) {
-    const startupSection = ["### Startup Items"];
-    for (const item of data.startupItems) {
-      startupSection.push(`- ${item.name}`);
-    }
-    sections.push(startupSection.join("\n"));
   }
 
   if (sections.length === 0) {

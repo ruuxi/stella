@@ -10,7 +10,7 @@ import {
   type IpcMainInvokeEvent,
 } from "electron";
 import { spawn } from "node:child_process";
-import { access, copyFile, stat } from "node:fs/promises";
+import { access, copyFile, readdir, readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -225,6 +225,34 @@ const openMacPermissionSettings = async (kind: MacPermissionSettingsKind) => {
   }
   await shell.openExternal(url);
   return { opened: true, url };
+};
+
+/**
+ * Touch a few TCC-protected paths from the main process so macOS records the
+ * Stella.app bundle as a Full Disk Access client. Until an app actually
+ * *attempts* to read protected data, it never appears in
+ * System Settings → Privacy & Security → Full Disk Access — so the user opens
+ * the pane and Stella isn't in the list, forcing them to add it by hand. The
+ * reads are expected to fail with EPERM when access hasn't been granted yet;
+ * the TCC registration side-effect is what we're after, so all errors are
+ * swallowed. Mirrors `registerStellaForScreenRecording` in macos-permissions.
+ */
+const registerStellaForFullDiskAccess = async () => {
+  if (process.platform !== "darwin") return;
+  const home = os.homedir();
+  await Promise.allSettled([
+    readFile(
+      path.join(
+        home,
+        "Library",
+        "Application Support",
+        "com.apple.TCC",
+        "TCC.db",
+      ),
+    ),
+    readdir(path.join(home, "Library", "Safari")),
+    readdir(path.join(home, "Library", "Containers", "com.apple.stocks")),
+  ]);
 };
 
 const clampHeapTraceDurationMs = (value: unknown) => {
@@ -1478,6 +1506,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       return;
     }
     if (process.platform === "darwin") {
+      // Register the Stella.app bundle with TCC first so it shows up in the
+      // Full Disk Access list, then open the pane for the user to toggle on.
+      await registerStellaForFullDiskAccess();
       await openMacPermissionSettings("full-disk-access");
     }
   });
