@@ -7,7 +7,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 0;
   flex-shrink: 0;
   padding-bottom: 14px;
@@ -27,8 +27,9 @@
 }
 
 .connect-hero-tagline {
-  text-align: center;
-  max-width: 400px;
+  text-align: left;
+  max-width: none;
+  width: 100%;
   margin: 0;
   padding: 10px 0 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
@@ -175,11 +176,11 @@
   white-space: normal;
 }
 
-/* 2-column card grid */
+/* Integration list — sidebar .sidebar-nav-item family */
 .connect-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* Grid card — sidebar .sidebar-nav-item family */
@@ -205,7 +206,7 @@
   min-height: 48px;
   padding: 10px 14px;
   border-radius: var(--radius-md);
-  justify-content: center;
+  justify-content: flex-start;
   gap: 10px;
 }
 
@@ -251,14 +252,14 @@
 
 /* Card name */
 .connect-grid-card:not(.connect-grid-card--wide) .connect-grid-card-name {
-  flex: 0 1 auto;
+  flex: 1;
   font-size: inherit;
   font-weight: inherit;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: center;
+  text-align: left;
 }
 
 /* Connected indicator — vertical glow line on right edge */
