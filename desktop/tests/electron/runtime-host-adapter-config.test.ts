@@ -6,8 +6,14 @@ import { RuntimeHostAdapter } from "../../electron/runtime-host-adapter.js";
 const createAdapter = () =>
   new RuntimeHostAdapter({
     hostHandlers: {
-      getDeviceIdentity: async () => ({ deviceId: "dev-device", publicKey: "pub" }),
-      signHeartbeatPayload: async () => ({ publicKey: "pub", signature: "sig" }),
+      getDeviceIdentity: async () => ({
+        deviceId: "dev-device",
+        publicKey: "pub",
+      }),
+      signHeartbeatPayload: async () => ({
+        publicKey: "pub",
+        signature: "sig",
+      }),
       requestCredential: async () => ({
         secretId: "secret",
         provider: "test",
@@ -86,5 +92,117 @@ describe("worker run-event acks", () => {
         seq: 43,
       }),
     ).toBe(false);
+  });
+});
+
+describe("RuntimeHostAdapter resumed chat sessions", () => {
+  const emitRunEvent = (
+    adapter: ReturnType<typeof createAdapter>,
+    event: Record<string, unknown>,
+  ) => {
+    (
+      adapter.host as unknown as {
+        events: { emit: (name: string, event: unknown) => void };
+      }
+    ).events.emit("run-event", event);
+  };
+
+  const createCallbacks = () => ({
+    onRunFinished: vi.fn(),
+    onStream: vi.fn(),
+    onToolStart: vi.fn(),
+    onToolEnd: vi.fn(),
+  });
+
+  it("routes resumed run events by conversation and run when the old request session is gone", () => {
+    const adapter = createAdapter();
+    const callbacks = createCallbacks();
+
+    adapter.attachResumedLocalChatSession(
+      {
+        conversationId: "conversation-1",
+        runId: "run-1",
+        active: true,
+      },
+      callbacks,
+    );
+
+    emitRunEvent(adapter, {
+      type: AGENT_STREAM_EVENT_TYPES.STREAM,
+      runId: "run-1",
+      seq: 1,
+      conversationId: "conversation-1",
+      chunk: "still ",
+    });
+
+    expect(callbacks.onStream).toHaveBeenCalledTimes(1);
+    expect(callbacks.onStream).toHaveBeenCalledWith(
+      expect.objectContaining({ chunk: "still " }),
+    );
+  });
+
+  it("does not double-dispatch when a resumed event still carries the original request id", () => {
+    const adapter = createAdapter();
+    const callbacks = createCallbacks();
+
+    adapter.attachResumedLocalChatSession(
+      {
+        conversationId: "conversation-1",
+        runId: "run-1",
+        requestId: "request-1",
+        active: true,
+      },
+      callbacks,
+    );
+
+    emitRunEvent(adapter, {
+      type: AGENT_STREAM_EVENT_TYPES.STREAM,
+      runId: "run-1",
+      seq: 1,
+      conversationId: "conversation-1",
+      requestId: "request-1",
+      chunk: "live",
+    });
+
+    expect(callbacks.onStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("streams a visible follow-up run that reuses the preserved request id", () => {
+    const adapter = createAdapter();
+    const callbacks = createCallbacks();
+    const onRunStarted = vi.fn();
+
+    adapter.attachResumedLocalChatSession(
+      {
+        conversationId: "conversation-1",
+        runId: "root-run",
+        requestId: "request-1",
+        active: true,
+      },
+      { ...callbacks, onRunStarted },
+    );
+
+    emitRunEvent(adapter, {
+      type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
+      runId: "follow-up-run",
+      seq: 1,
+      conversationId: "conversation-1",
+      requestId: "request-1",
+      userMessageId: "message-1",
+    });
+    emitRunEvent(adapter, {
+      type: AGENT_STREAM_EVENT_TYPES.STREAM,
+      runId: "follow-up-run",
+      seq: 2,
+      conversationId: "conversation-1",
+      requestId: "request-1",
+      userMessageId: "message-1",
+      chunk: "visible reply",
+    });
+
+    expect(onRunStarted).toHaveBeenCalledTimes(1);
+    expect(callbacks.onStream).toHaveBeenCalledWith(
+      expect.objectContaining({ chunk: "visible reply" }),
+    );
   });
 });

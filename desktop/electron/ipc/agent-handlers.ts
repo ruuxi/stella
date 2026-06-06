@@ -428,7 +428,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   ipcMain.handle(
     "agent:resume",
-    async (_event, payload: { conversationId: string; lastSeq: number }) => {
+    async (event, payload: { conversationId: string; lastSeq: number }) => {
       pruneConversationEventBuffers();
       const conversationId =
         typeof payload.conversationId === "string"
@@ -491,6 +491,193 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             // Resume can still hydrate from local chat and task snapshots.
           }
         }
+      }
+      const resumedRequestId =
+        activeRun?.requestId ??
+        events.find((agentEvent) => typeof agentEvent.requestId === "string")
+          ?.requestId ??
+        (resumeRunId ? runToRequestId.get(resumeRunId) : undefined);
+      if (resumeRunId && activeRun) {
+        const stellaHostRunner = options.getStellaHostRunner();
+        const senderWebContentsId = event.sender.id;
+        const requestId =
+          resumedRequestId ?? `resume:${conversationId}:${resumeRunId}`;
+        activeRun = {
+          ...activeRun,
+          requestId,
+        };
+        activeRunByConversation.set(conversationId, activeRun);
+        runOwners.set(resumeRunId, senderWebContentsId);
+        runToConversationId.set(resumeRunId, conversationId);
+        runToRequestId.set(resumeRunId, requestId);
+        requestOwners.set(requestId, senderWebContentsId);
+        requestToRunId.set(requestId, resumeRunId);
+        stellaHostRunner?.attachResumedLocalChatSession(
+          {
+            conversationId,
+            runId: resumeRunId,
+            requestId,
+            ...(activeRun.userMessageId
+              ? { userMessageId: activeRun.userMessageId }
+              : {}),
+            ...(activeRun.uiVisibility
+              ? { uiVisibility: activeRun.uiVisibility }
+              : {}),
+            active: true,
+          },
+          {
+            onRunStarted: (ev) => {
+              if (ev.uiVisibility === "hidden") {
+                return;
+              }
+              terminalRunIds.delete(ev.runId);
+              runOwners.set(ev.runId, senderWebContentsId);
+              runToConversationId.set(ev.runId, conversationId);
+              runToRequestId.set(ev.runId, requestId);
+              requestToRunId.set(requestId, ev.runId);
+              activeRunByConversation.set(conversationId, {
+                runId: ev.runId,
+                conversationId,
+                requestId,
+                userMessageId: ev.userMessageId,
+                uiVisibility: ev.uiVisibility,
+              });
+              emitAgentEvent(
+                {
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
+                  runId: ev.runId,
+                  conversationId,
+                  requestId,
+                  ...(ev.userMessageId
+                    ? { userMessageId: ev.userMessageId }
+                    : {}),
+                  ...(ev.uiVisibility ? { uiVisibility: ev.uiVisibility } : {}),
+                  ...(ev.agentType ? { agentType: ev.agentType } : {}),
+                },
+                senderWebContentsId,
+              );
+            },
+            onStream: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.STREAM,
+                  conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onAssistantMessage: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.ASSISTANT_MESSAGE,
+                  conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onStatus: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.STATUS,
+                  conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onToolStart: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.TOOL_START,
+                  conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onToolEnd: (ev) =>
+              emitAgentEvent(
+                {
+                  ...ev,
+                  type: AGENT_STREAM_EVENT_TYPES.TOOL_END,
+                  conversationId,
+                  requestId,
+                },
+                senderWebContentsId,
+              ),
+            onRunFinished: (ev) => {
+              if (terminalRunIds.has(ev.runId)) {
+                return;
+              }
+              terminalRunIds.add(ev.runId);
+              emitAgentEvent(
+                {
+                  type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+                  runId: ev.runId,
+                  conversationId,
+                  requestId,
+                  agentType: ev.agentType,
+                  userMessageId: ev.userMessageId,
+                  finalText: ev.finalText,
+                  persisted: ev.persisted,
+                  selfModApplied: ev.selfModApplied,
+                  error: ev.error,
+                  outcome: ev.outcome ?? AGENT_RUN_FINISH_OUTCOMES.ERROR,
+                  reason: ev.reason ?? ev.error,
+                },
+                senderWebContentsId,
+              );
+              scheduleRunCleanup(ev.runId, requestId);
+            },
+            onAgentEvent: (ev) => {
+              if (!ev.rootRunId) {
+                return;
+              }
+              emitAgentEvent(
+                {
+                  type: ev.type,
+                  runId: ev.rootRunId,
+                  rootRunId: ev.rootRunId,
+                  conversationId,
+                  requestId,
+                  userMessageId: ev.userMessageId,
+                  agentId: ev.agentId,
+                  agentType: ev.agentType,
+                  description: ev.description,
+                  parentAgentId: ev.parentAgentId,
+                  result: ev.result,
+                  error: ev.error,
+                  statusText: ev.statusText,
+                },
+                senderWebContentsId,
+              );
+            },
+            onAgentReasoning: (ev) => {
+              if (!ev.agentId) {
+                return;
+              }
+              const runId = ev.rootRunId ?? ev.runId;
+              emitAgentEvent(
+                {
+                  type: AGENT_STREAM_EVENT_TYPES.AGENT_REASONING,
+                  runId,
+                  rootRunId: runId,
+                  conversationId,
+                  requestId,
+                  userMessageId: ev.userMessageId,
+                  agentId: ev.agentId,
+                  agentType: ev.agentType,
+                  chunk: ev.chunk,
+                },
+                senderWebContentsId,
+              );
+            },
+            onSelfModHmrState: (hmrState) =>
+              emitSelfModHmrState(hmrState, senderWebContentsId),
+          },
+        );
       }
       const tasks = Array.from(tasksByRunId.entries())
         .filter(([runId]) => runToConversationId.get(runId) === conversationId)

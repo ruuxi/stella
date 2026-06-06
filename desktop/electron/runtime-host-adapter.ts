@@ -153,8 +153,12 @@ export class RuntimeHostAdapter {
           this.activeRun = null;
         }
       }
+      let dispatched = false;
       if (event.requestId) {
-        this.dispatchLocalChatSessionEvent(event.requestId, event);
+        dispatched = this.dispatchLocalChatSessionEvent(event.requestId, event);
+      }
+      if (!dispatched) {
+        this.dispatchLocalChatSessionEventByRun(event, event.requestId);
       }
     });
     this.host.on("run-self-mod-hmr-state", (payload) => {
@@ -230,13 +234,47 @@ export class RuntimeHostAdapter {
   private dispatchLocalChatSessionEvent(
     requestId: string,
     event: RuntimeAgentEventPayload,
-  ) {
+  ): boolean {
     const session = this.localChatSessions.get(requestId);
     if (!session) {
-      return;
+      return false;
     }
+    return this.dispatchEventToLocalChatSession(requestId, session, event);
+  }
+
+  private dispatchLocalChatSessionEventByRun(
+    event: RuntimeAgentEventPayload,
+    exceptRequestId?: string,
+  ): boolean {
+    const runId = event.rootRunId ?? event.runId;
+    let dispatched = false;
+    for (const [requestId, session] of this.localChatSessions.entries()) {
+      if (requestId === exceptRequestId) {
+        continue;
+      }
+      if (
+        typeof event.conversationId === "string" &&
+        event.conversationId !== session.conversationId
+      ) {
+        continue;
+      }
+      if (!session.knownRunIds.has(runId) && !session.activeRunIds.has(runId)) {
+        continue;
+      }
+      dispatched =
+        this.dispatchEventToLocalChatSession(requestId, session, event) ||
+        dispatched;
+    }
+    return dispatched;
+  }
+
+  private dispatchEventToLocalChatSession(
+    requestId: string,
+    session: LocalChatSession,
+    event: RuntimeAgentEventPayload,
+  ): boolean {
     if (this.shouldIgnoreLocalChatSessionEvent(session, event)) {
-      return;
+      return false;
     }
 
     this.clearLocalChatSessionCleanup(requestId);
@@ -305,6 +343,7 @@ export class RuntimeHostAdapter {
     }
 
     this.scheduleLocalChatSessionCleanup(requestId);
+    return true;
   }
 
   private dispatchLocalChatSessionHmrState(payload: {
@@ -589,6 +628,51 @@ export class RuntimeHostAdapter {
 
   async resumeRunEvents(payload: { runId: string; lastSeq: number }) {
     return await this.host.resumeRunEvents(payload);
+  }
+
+  attachResumedLocalChatSession(
+    payload: {
+      conversationId: string;
+      runId: string;
+      requestId?: string;
+      userMessageId?: string;
+      uiVisibility?: "visible" | "hidden";
+      active?: boolean;
+    },
+    callbacks: AgentCallbacks,
+  ) {
+    const conversationId = payload.conversationId.trim();
+    const runId = payload.runId.trim();
+    if (!conversationId || !runId) {
+      return () => {};
+    }
+    const requestId =
+      payload.requestId?.trim() || `resume:${conversationId}:${runId}`;
+    this.clearLocalChatSession(requestId);
+    this.localChatSessions.set(requestId, {
+      requestId,
+      conversationId,
+      callbacks,
+      knownRunIds: new Set([runId]),
+      activeRunIds: new Set(payload.active === false ? [] : [runId]),
+      activeTaskIds: new Set<string>(),
+      lastSeqByScope: new Map<string, number>(),
+      cleanupTimer: null,
+    });
+    if (payload.active !== false) {
+      this.activeRun = {
+        runId,
+        conversationId,
+        ...(payload.requestId ? { requestId: payload.requestId } : {}),
+        ...(payload.userMessageId
+          ? { userMessageId: payload.userMessageId }
+          : {}),
+        ...(payload.uiVisibility ? { uiVisibility: payload.uiVisibility } : {}),
+      };
+    }
+    return () => {
+      this.clearLocalChatSession(requestId);
+    };
   }
 
   cancelLocalChat(runId: string) {
