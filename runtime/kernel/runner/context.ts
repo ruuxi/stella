@@ -878,6 +878,14 @@ export const buildAgentContext = async (
     context.stellaHome,
     args.agentType,
   );
+  const injectsCoreMemory = agentHasCapability(
+    args.agentType,
+    "injectsCoreMemory",
+  );
+  const injectsPersonality = agentHasCapability(
+    args.agentType,
+    "injectsPersonality",
+  );
 
   return {
     systemPrompt:
@@ -894,8 +902,10 @@ export const buildAgentContext = async (
     resolvedLlm,
     reasoningEffort: getReasoningEffort(context.stellaHome, args.agentType),
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
-    coreMemory: readCoreMemory(context.stellaHome),
-    personality: agentHasCapability(args.agentType, "injectsPersonality")
+    coreMemory: injectsCoreMemory
+      ? readCoreMemory(context.stellaHome)
+      : undefined,
+    personality: injectsPersonality
       ? readOrSeedPersonality(context.stellaHome)
       : undefined,
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
