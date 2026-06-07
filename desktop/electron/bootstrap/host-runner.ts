@@ -4,6 +4,7 @@ import {
   signDeviceHeartbeat,
 } from "../../../runtime/kernel/home/device.js";
 import { getSoundNotificationsEnabled } from "../../../runtime/kernel/preferences/local-preferences.js";
+import { ensureStellaHomeSeeded } from "../../../runtime/kernel/home/stella-home.js";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import {
   createStellaHostRunner,
@@ -27,6 +28,33 @@ const IDLE_HMR_STATE: SelfModHmrState = {
   phase: "idle",
   paused: false,
   requiresFullReload: false,
+};
+
+// Module-level one-shot cache for the skills/agents home reconciliation. This
+// seeding used to run on the pre-window path inside `resolveStellaHome`, where
+// its ~100 awaited fs ops + sha256 over hundreds of KB contended with first
+// paint. It only needs to complete before the runtime worker reads
+// `~/.stella/skills` and `~/.stella/agents`, so we run it here — off first paint
+// — before `connectHostRunner` spawns the worker.
+//
+// `initializeStellaHostRunner` also runs on host-runner reset flows; caching the
+// first call's promise means resets don't re-pay the reconciliation. This is
+// safe because a self-mod update that changes bundled skills/agents on disk
+// implies a process restart (which resets this module state and re-seeds),
+// so an in-process reset never needs to re-sync.
+let stellaHomeSeedingPromise: Promise<void> | null = null;
+
+const ensureStellaHomeSeededOnce = (
+  stellaRoot: string,
+  stellaHomePath: string,
+): Promise<void> => {
+  if (!stellaHomeSeedingPromise) {
+    stellaHomeSeedingPromise = ensureStellaHomeSeeded(
+      stellaRoot,
+      stellaHomePath,
+    ).then(() => undefined);
+  }
+  return stellaHomeSeedingPromise;
 };
 
 export const createHostRunnerHandlers = (
@@ -264,6 +292,11 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   if (!stellaRoot || !stellaHomePath || !state.stellaWorkspacePath) {
     throw new Error("Stella root is not initialized.");
   }
+
+  // Reconcile bundled skills/agents into the home dir before the worker
+  // (spawned by connectHostRunner -> runner.start()/ensureWorkerStarted) reads
+  // them. One-shot cached so host-runner resets don't re-pay it.
+  await ensureStellaHomeSeededOnce(stellaRoot, stellaHomePath);
 
   await services.securityPolicyService.loadPolicy();
 

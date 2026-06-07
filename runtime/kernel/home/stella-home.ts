@@ -152,7 +152,14 @@ export const resolveStellaHome = async (
   process.env.STELLA_ROOT = stellaRoot;
   process.env.STELLA_HOME = statePath;
 
-  await ensureStellaHomeSeeded(stellaRoot, statePath);
+  // NOTE: `ensureStellaHomeSeeded` (skills/agents hash-history reconciliation)
+  // is intentionally NOT invoked here. It does ~100 awaited fs ops + sha256 over
+  // hundreds of KB across ~17 skill dirs + ~8 agent files, and nothing on the
+  // first-paint path consumes the seeded dirs — only the deferred runtime worker
+  // does. It is now awaited in `initializeStellaHostRunner` (host-runner.ts),
+  // off the pre-window path, before the worker that reads those dirs connects.
+  // `resolveStellaHome` keeps only the cheap path resolution + env + dir
+  // ensures that the rest of bootstrap depends on synchronously.
   await ensureDir(workspacePath);
   await ensureDir(workspaceAppsPath);
 

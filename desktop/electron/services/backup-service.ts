@@ -29,7 +29,14 @@ const execFileAsync = promisify(execFile);
 const BACKUP_INTERVAL_MS = 60 * 60 * 1000;
 const BUSY_RETRY_DELAY_MS = 60 * 1000;
 const IDLE_QUIET_PERIOD_MS = 15 * 1000;
-const INITIAL_RUN_DELAY_MS = 15 * 1000;
+// First post-launch backup is scheduled well past first paint + worker spawn.
+// `start()` is called pre-window, and the backup walks the whole git tree,
+// `git bundle create --all`, VACUUMs sqlite, and sha256+AES-encrypts every
+// file — far too heavy to land in the time-to-interactive window. It's gated by
+// isRuntimeBusy() but not by idleness/first-paint, so a generous fixed delay
+// de-contends the first-use window. The recurring interval (BACKUP_INTERVAL_MS)
+// is unaffected.
+const INITIAL_RUN_DELAY_MS = 120 * 1000;
 const EXEC_MAX_BUFFER = 32 * 1024 * 1024;
 const BACKUP_VERSION = 1;
 const ENCRYPTION_SCOPE = "continuous-backup-key";
