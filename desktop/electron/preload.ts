@@ -856,6 +856,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             featureId: string;
             files: string[];
             batchIndex: number;
+            status?: "pending" | "applied";
           };
           agentId?: string;
           description?: string;
@@ -918,6 +919,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         featureId: string;
         files: string[];
         batchIndex: number;
+        status?: "pending" | "applied";
       };
       agentId?: string;
       description?: string;
@@ -939,6 +941,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ready: boolean;
       reason?: string;
     }>("runtime:availability"),
+    selfModApply: (featureId?: string) =>
+      ipcRenderer.invoke("selfmod:apply", { featureId }),
     selfModRevert: (featureId?: string, steps?: number) =>
       ipcRenderer.invoke("selfmod:revert", { featureId, steps }),
     getCrashRecoveryStatus: () =>

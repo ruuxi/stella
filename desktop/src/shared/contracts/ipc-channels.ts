@@ -159,6 +159,7 @@ export const IPC_AGENT_SELF_MOD_HMR_STATE = "agent:selfModHmrState" as const;
  * and back.
  */
 export const IPC_RUNTIME_AVAILABILITY = "runtime:availability" as const;
+export const IPC_SELFMOD_APPLY = "selfmod:apply" as const;
 export const IPC_SELFMOD_REVERT = "selfmod:revert" as const;
 export const IPC_SELFMOD_LAST_FEATURE = "selfmod:lastFeature" as const;
 export const IPC_SELFMOD_RECENT_FEATURES = "selfmod:recentFeatures" as const;

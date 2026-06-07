@@ -253,6 +253,7 @@ export type RuntimeRunEvent = {
     featureId: string;
     files: string[];
     batchIndex: number;
+    status?: "pending" | "applied";
   };
 };
 
@@ -609,10 +610,15 @@ export const parseRuntimeSelfModApplied = (
   if (!featureId || batchIndex == null || files.length === 0) {
     return undefined;
   }
+  const status =
+    record.status === "pending" || record.status === "applied"
+      ? record.status
+      : undefined;
   return {
     featureId,
     files,
     batchIndex,
+    ...(status ? { status } : {}),
   };
 };
 

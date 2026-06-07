@@ -509,9 +509,31 @@ export const AssistantMessageRow = memo(
           ) : row.resourcePayload ? (
             <EndResourceCard payload={row.resourcePayload} />
           ) : null}
-          {row.selfModApplied && (
-            <SelfModUndoButton selfModApplied={row.selfModApplied} />
-          )}
+          {/* TEMP PREVIEW — revert: forces both card states to render so the
+              "Change Stella" (pending) and applied/"Undo" looks are visible. */}
+          <div
+            style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}
+          >
+            <SelfModUndoButton
+              selfModApplied={{
+                featureId: "preview-pending",
+                files: [
+                  "desktop/src/app/chat/MessageRow.tsx",
+                  "desktop/src/app/chat/selfmod-undo.css",
+                ],
+                batchIndex: 0,
+                status: "pending" as const,
+              }}
+            />
+            <SelfModUndoButton
+              selfModApplied={{
+                featureId: "preview-applied",
+                files: ["desktop/src/app/chat/MessageRow.tsx"],
+                batchIndex: 0,
+                status: "applied" as const,
+              }}
+            />
+          </div>
           {hasScheduleReceipt && row.scheduleReceipt && (
             <ScheduleReceiptChip
               affected={row.scheduleReceipt.affected}

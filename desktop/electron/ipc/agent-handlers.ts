@@ -60,7 +60,12 @@ type AgentEventPayload = {
   fatal?: boolean;
   finalText?: string;
   persisted?: boolean;
-  selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
+  selfModApplied?: {
+    featureId: string;
+    files: string[];
+    batchIndex: number;
+    status?: "pending" | "applied";
+  };
   agentId?: string;
   agentType?: AgentIdLike;
   rootRunId?: string;
@@ -819,6 +824,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           featureId: string;
           files: string[];
           batchIndex: number;
+          status?: "pending" | "applied";
         };
         error?: string;
         reason?: string;
@@ -1085,6 +1091,22 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       stellaHostRunner.cancelLocalChat(runId);
     }
   });
+
+  ipcMain.handle(
+    "selfmod:apply",
+    async (event, payload: { featureId?: string }) => {
+      if (!options.assertPrivilegedSender(event, "selfmod:apply")) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) {
+        throw new Error("Stella runtime not available");
+      }
+      return await stellaHostRunner.applySelfModFeature({
+        featureId: payload.featureId,
+      });
+    },
+  );
 
   ipcMain.handle(
     "selfmod:revert",
