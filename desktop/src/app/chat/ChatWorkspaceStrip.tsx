@@ -59,8 +59,8 @@ import { TextShimmer } from "./TextShimmer";
 import { WorkspaceActionsList } from "./WorkspaceActionsList";
 import "./chat-workspace-strip.css";
 
-const NOW_VISIBLE = 4;
-const DONE_VISIBLE = 4;
+const NOW_VISIBLE = 8;
+const DONE_VISIBLE = 8;
 const FILES_VISIBLE = 5;
 const UPNEXT_VISIBLE = 4;
 const EMPTY_TASKS: TaskItem[] = [];
@@ -224,11 +224,17 @@ export function ChatWorkspaceStrip({
     liveTasks,
   ]);
 
+  // Tie-break on the stable `id` so tasks that share a timestamp (e.g.
+  // agents spawned together in one turn) keep a fixed order instead of
+  // swapping positions every time the upstream merge re-runs.
   const runningTasks = useMemo(
     () =>
       [...allTasks]
         .filter((task) => task.status === "running")
-        .sort((a, b) => b.startedAtMs - a.startedAtMs)
+        .sort(
+          (a, b) =>
+            b.startedAtMs - a.startedAtMs || a.id.localeCompare(b.id),
+        )
         .slice(0, NOW_VISIBLE),
     [allTasks],
   );
@@ -240,7 +246,7 @@ export function ChatWorkspaceStrip({
         .sort((a, b) => {
           const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
           const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
-          return bTime - aTime;
+          return bTime - aTime || a.id.localeCompare(b.id);
         }),
     [allTasks],
   );
