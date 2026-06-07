@@ -26,17 +26,20 @@ const viteBinPath = resolve(
 );
 const viteDevUrlPath = resolve(desktopDir, ".vite-dev-url");
 const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");
+const ensureCacheDir = (dir) => {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    // Best-effort; if the cache dir can't be created we simply forgo the
+    // compile-cache speedup rather than fail dev startup.
+  }
+};
 // Stable per-repo V8 bytecode cache for the big (~14.5MB) electron-main bundle.
 // Lives OUTSIDE dist-electron so esbuild's clean + identical-byte rewrites do
 // not invalidate it; reused across launches and self-mod restarts so Node's V8
 // engine skips re-parsing/compiling the bundle every time.
 const v8CompileCacheDir = resolve(repoRootDir, ".stella-dev", "v8-compile-cache");
-try {
-  mkdirSync(v8CompileCacheDir, { recursive: true });
-} catch {
-  // Best-effort; if the cache dir can't be created we simply forgo the
-  // compile-cache speedup rather than fail dev startup.
-}
+ensureCacheDir(v8CompileCacheDir);
 // Node's NODE_COMPILE_CACHE writes per-Node-version subdirs named like
 // `v<node>-<arch>-<hash>-<uid>` and never reclaims the ones left behind by a
 // prior Node upgrade. Those stale trees (thousands of cache files each) only
@@ -72,12 +75,7 @@ const viteCompileCacheDir = resolve(
   ".stella-dev",
   "vite-compile-cache",
 );
-try {
-  mkdirSync(viteCompileCacheDir, { recursive: true });
-} catch {
-  // Best-effort; if the cache dir can't be created we simply forgo the
-  // compile-cache speedup rather than fail dev startup.
-}
+ensureCacheDir(viteCompileCacheDir);
 const managedScriptPaths = [
   resolve(scriptDir, "dev-electron-build.mjs"),
   resolve(scriptDir, "dev-electron.mjs"),
