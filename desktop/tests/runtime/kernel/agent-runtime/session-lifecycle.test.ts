@@ -63,8 +63,8 @@ const createOptions = (
   toolCatalog: [],
   toolExecutor: vi.fn(async () => ({ result: "ok" })),
   deviceId: "device-1",
-  stellaHome: "/tmp/stella",
-  stellaRoot: "/tmp/stella",
+  stellaDataDir: "/tmp/stella",
+  stellaAppDir: "/tmp/stella",
   resolvedLlm: {
     model,
     route: "direct-provider",

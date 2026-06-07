@@ -104,7 +104,7 @@ export const buildBuiltinTools = (
   tools.push(toolSearchTool);
 
   // Orchestrator coordination surface
-  tools.push(createHtmlTool({ stellaHome: options.stellaHome ?? options.stellaRoot }));
+  tools.push(createHtmlTool({ stellaDataDir: options.stellaDataDir ?? options.stellaAppDir }));
   tools.push(createContextTool({ contextProvider: options.contextProvider }));
   tools.push(
     createScheduleTool({
@@ -124,7 +124,7 @@ export const buildBuiltinTools = (
     ...createScheduleControlTools({ scheduleApi: options.scheduleApi }),
   );
   tools.push(
-    createScriptDraftTool({ stellaHome: options.stellaHome ?? options.stellaRoot }),
+    createScriptDraftTool({ stellaDataDir: options.stellaDataDir ?? options.stellaAppDir }),
   );
 
   // (Store agent moved to backend — no local tools.)

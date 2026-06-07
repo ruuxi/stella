@@ -5,14 +5,14 @@ const credentials = new Map<string, string>();
 const oauthCredentials = new Set<string>();
 
 vi.mock("../../../../runtime/kernel/storage/llm-credentials.js", () => ({
-  getLocalLlmCredential: (_stellaRoot: string, provider: string) =>
+  getLocalLlmCredential: (_stellaAppDir: string, provider: string) =>
     credentials.get(provider) ?? null,
 }));
 
 vi.mock("../../../../runtime/kernel/storage/llm-oauth-credentials.js", () => ({
-  hasLocalLlmOAuthCredential: (_stellaRoot: string, provider: string) =>
+  hasLocalLlmOAuthCredential: (_stellaAppDir: string, provider: string) =>
     oauthCredentials.has(provider),
-  getLocalLlmOAuthApiKey: async (_stellaRoot: string, provider: string) =>
+  getLocalLlmOAuthApiKey: async (_stellaAppDir: string, provider: string) =>
     oauthCredentials.has(provider) ? `${provider}-oauth-token` : null,
 }));
 
@@ -81,7 +81,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "openai/gpt-5.1-codex",
       agentType: "general",
       site,
@@ -104,7 +104,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: undefined,
       agentType: "general",
       site,
@@ -122,7 +122,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "stella/anthropic/claude-opus-4.6",
       agentType: "general",
       site,
@@ -142,7 +142,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "stella/designer",
       agentType: "general",
       site,
@@ -159,7 +159,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "openai/gpt-5.1-codex",
       agentType: "general",
       site: {
@@ -182,7 +182,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "openai/gpt-5.1-codex",
       agentType: "general",
       site: {
@@ -204,7 +204,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "anthropic/claude-opus-4.6",
       agentType: "general",
       site,
@@ -224,7 +224,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const anthropicRoute = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "anthropic/claude-opus-4.6",
       agentType: "general",
       site,
@@ -233,7 +233,7 @@ describe("resolveLlmRoute", () => {
     await expect(anthropicRoute.getApiKey()).resolves.toBe("anthropic-key");
 
     const openaiRoute = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "openai/gpt-5.1-codex",
       agentType: "general",
       site,
@@ -252,7 +252,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "anthropic/claude-opus-4.6",
       agentType: "general",
       site,
@@ -269,7 +269,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "openrouter/anthropic/claude-opus-4.6",
       agentType: "general",
       site,
@@ -288,7 +288,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "openai/gpt-5.1-codex",
       agentType: "general",
       site,
@@ -309,7 +309,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "anthropic/claude-opus-4.6",
       agentType: "general",
       site,
@@ -326,7 +326,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "local/llama3.2",
       agentType: "general",
       site,
@@ -346,7 +346,7 @@ describe("resolveLlmRoute", () => {
     );
 
     const resolved = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: `local/${encodeURIComponent("http://127.0.0.1:8000/v1")}/qwen3-coder`,
       agentType: "general",
       site,

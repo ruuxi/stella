@@ -76,11 +76,11 @@ export const createBootstrapResetFlows = (
       appSession.clearCache(),
     ]);
 
-    const stellaHomePath = state.stellaHomePath ?? config.stellaHomePath;
+    const stellaDataDirPath = state.stellaDataDirPath ?? config.stellaDataDirPath;
     try {
       await Promise.allSettled(
         config.hardResetMutableHomePaths.map((relativePath) =>
-          fs.rm(path.join(stellaHomePath, relativePath), {
+          fs.rm(path.join(stellaDataDirPath, relativePath), {
             recursive: true,
             force: true,
           }),
@@ -100,14 +100,14 @@ export const createBootstrapResetFlows = (
   resetLocalMessages: async () => {
     const { services, state } = context;
 
-    if (!state.stellaHomePath) {
+    if (!state.stellaDataDirPath) {
       return { ok: true };
     }
 
     await shutdownBootstrapRuntime(context);
     services.localChatHistoryService.closeForReset();
     try {
-      await resetMessageStorage(state.stellaHomePath);
+      await resetMessageStorage(state.stellaDataDirPath);
     } finally {
       services.localChatHistoryService.reopen();
     }

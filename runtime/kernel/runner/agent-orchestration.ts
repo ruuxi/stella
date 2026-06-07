@@ -364,7 +364,7 @@ export const createAgentOrchestration = (
 ) => {
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
-    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaHome),
+    getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
     resolveTaskThread: ({ conversationId, agentType, threadId }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
@@ -458,7 +458,7 @@ export const createAgentOrchestration = (
         agentContext.resolvedLlm ??
         (await withStellaModelCatalogMetadata({
           route: resolveLlmRoute({
-            stellaRoot: context.stellaRoot,
+            stellaAppDir: context.stellaAppDir,
             modelName: agentContext.model,
             agentType,
             site,
@@ -467,7 +467,7 @@ export const createAgentOrchestration = (
           site,
           deviceId: context.deviceId,
           modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
-          stellaHome: context.stellaHome,
+          stellaDataDir: context.stellaDataDir,
         }));
       const runnerCallbacks =
         (rootRunId ? context.state.runCallbacksByRunId.get(rootRunId) : null) ??
@@ -516,7 +516,7 @@ export const createAgentOrchestration = (
       let exploreFindingsBlock = "";
       if (
         agentType === AGENT_IDS.GENERAL &&
-        (await shouldUseAutomaticSkillExplore(context.stellaHome))
+        (await shouldUseAutomaticSkillExplore(context.stellaDataDir))
       ) {
         exploreFindingsBlock = await runExplore({
           context,
@@ -555,8 +555,8 @@ export const createAgentOrchestration = (
           try {
             await recordWritePaths(
               result.changedPaths.map((repoRelativePath) =>
-                context.stellaRoot
-                  ? `${context.stellaRoot}/${repoRelativePath}`
+                context.stellaAppDir
+                  ? `${context.stellaAppDir}/${repoRelativePath}`
                   : repoRelativePath,
               ),
             );
@@ -777,11 +777,11 @@ export const createAgentOrchestration = (
           }),
           toolExecutor: hmrAwareToolExecutor,
           deviceId: context.deviceId,
-          stellaHome: context.stellaHome,
+          stellaDataDir: context.stellaDataDir,
           resolvedLlm,
           store: context.runtimeStore,
           abortSignal,
-          stellaRoot: context.stellaRoot,
+          stellaAppDir: context.stellaAppDir,
           ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
           ...(subagentSession ? { subagentSession } : {}),
           compactionScheduler: context.state.compactionScheduler,
@@ -795,13 +795,13 @@ export const createAgentOrchestration = (
             : {}),
           resolveSubsidiaryLlmRoute: (subsidiaryAgentType: string) =>
             resolveLlmRoute({
-              stellaRoot: context.stellaHome,
+              stellaAppDir: context.stellaDataDir,
               // Honor any per-agent override the user set for this
               // subsidiary agent (or our Assistant-tab propagation would
               // silently hit Stella even when the user moved Assistant
               // onto BYOK).
               modelName: getModelOverride(
-                context.stellaHome,
+                context.stellaDataDir,
                 subsidiaryAgentType,
               ),
               agentType: subsidiaryAgentType,
@@ -942,13 +942,13 @@ export const createAgentOrchestration = (
                   error: "Tools are not available for this one-shot prompt.",
                 }),
                 deviceId: context.deviceId,
-                stellaHome: context.stellaHome,
+                stellaDataDir: context.stellaDataDir,
                 resolvedLlm: oneShotResolvedLlm,
                 store: context.runtimeStore,
                 suppressCompletionSideEffects: true,
                 compactionScheduler: context.state.compactionScheduler,
                 ...(abortSignal ? { abortSignal } : {}),
-                stellaRoot: context.stellaRoot,
+                stellaAppDir: context.stellaAppDir,
               });
               if (result.error) return null;
               return result.result ?? null;

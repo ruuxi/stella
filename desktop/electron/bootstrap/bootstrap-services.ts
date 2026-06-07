@@ -38,7 +38,7 @@ export const createBootstrapServices = (options: {
   const uiStateService = new UiStateService();
   const externalLinkService = new ExternalLinkService();
   const localChatHistoryService = new LocalChatHistoryService({
-    stellaRoot: config.stellaHomePath,
+    stellaAppDir: config.stellaDataDirPath,
     onUpdated: (payload) => {
       for (const window of options.getAllWindows()) {
         if (!window.isDestroyed()) {
@@ -90,7 +90,7 @@ export const createBootstrapServices = (options: {
 
   connectorCredentialService = new ConnectorCredentialService({
     windowManagerTarget: lifecycle,
-    getStellaRoot: () => lifecycle.getStellaHome(),
+    getStellaAppDir: () => lifecycle.getStellaDataDir(),
     getConvexAuthToken: () => authService.getConvexAuthToken(),
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),
   });
@@ -115,8 +115,8 @@ export const createBootstrapServices = (options: {
   });
 
   const backupService = new BackupService({
-    stellaRoot: config.stellaRoot,
-    getStellaRoot: () => state.stellaHomePath,
+    stellaAppDir: config.stellaAppDir,
+    getStellaAppDir: () => state.stellaDataDirPath,
     getRunner: () => lifecycle.getRunner(),
     getAuthToken: () => authService.getAuthToken(),
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),
@@ -171,14 +171,14 @@ export const createBootstrapServices = (options: {
 
   const radialGestureService = new RadialGestureService({
     getRadialTriggerKey: () => {
-      const stellaHomePath = state.stellaHomePath;
-      if (!stellaHomePath) return DEFAULT_RADIAL_TRIGGER_CODE;
-      return loadLocalPreferences(stellaHomePath).radialTriggerKey;
+      const stellaDataDirPath = state.stellaDataDirPath;
+      if (!stellaDataDirPath) return DEFAULT_RADIAL_TRIGGER_CODE;
+      return loadLocalPreferences(stellaDataDirPath).radialTriggerKey;
     },
     getMiniDoubleTapModifier: () => {
-      const stellaHomePath = state.stellaHomePath;
-      if (!stellaHomePath) return "Alt";
-      return loadLocalPreferences(stellaHomePath).miniDoubleTapModifier;
+      const stellaDataDirPath = state.stellaDataDirPath;
+      if (!stellaDataDirPath) return "Alt";
+      return loadLocalPreferences(stellaDataDirPath).miniDoubleTapModifier;
     },
     shouldEnable: () =>
       !uiStateService.state.suppressNativeRadialDuringOnboarding &&

@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const repoRoot = path.resolve(new URL("../..", import.meta.url).pathname);
+const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const requestPath = path.join(repoRoot, ".stella-selfmod-replay-request.json");
 const resultPath = path.join(repoRoot, ".stella-selfmod-replay-result.json");
 const delayMs = Number(process.env.STELLA_REPLAY_DELAY_MS ?? "1000");

@@ -223,7 +223,7 @@
         "wipedTitle": "Souvenirs effacés"
       },
       "enableFailures": {
-        "noStellaRoot": "La racine de l'espace de travail de Stella est indisponible.",
+        "noStellaAppDir": "La racine de l'espace de travail de Stella est indisponible.",
         "needsPermission": "L'autorisation d'enregistrement d'écran est encore requise avant que Chronicle puisse démarrer.",
         "binaryMissing": "Le binaire auxiliaire de Chronicle est manquant.",
         "startupTimeout": "Chronicle ne s'est pas connecté après le lancement.",

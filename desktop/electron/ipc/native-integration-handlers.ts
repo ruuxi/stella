@@ -19,7 +19,7 @@ import { SCOPES as GOOGLE_WORKSPACE_SCOPES } from "../../../runtime/kernel/googl
 import { assertPrivilegedRequest } from "./privileged-ipc.js";
 
 type NativeIntegrationHandlersOptions = {
-  getStellaRoot: () => string | null;
+  getStellaAppDir: () => string | null;
   requestPreregisteredOAuth?: (payload: {
     tokenKey: string;
     displayName: string;
@@ -109,9 +109,9 @@ const readId = (payload: unknown) => {
 };
 
 const requireRoot = (options: NativeIntegrationHandlersOptions) => {
-  const stellaRoot = options.getStellaRoot();
-  if (!stellaRoot) throw new Error("Stella root is unavailable.");
-  return stellaRoot;
+  const stellaAppDir = options.getStellaAppDir();
+  if (!stellaAppDir) throw new Error("Stella root is unavailable.");
+  return stellaAppDir;
 };
 
 const emptyConfiguredOAuthProviders = (): ConfiguredOAuthProviderSets => ({
@@ -361,7 +361,7 @@ const loadServerNativeConnectorCatalog = async (
 
 const ensureNativeCredential = async (
   options: NativeIntegrationHandlersOptions,
-  stellaRoot: string,
+  stellaAppDir: string,
   id: string,
 ) => {
   const configuredOAuthProviders = await loadConfiguredOAuthProviders(options);
@@ -370,7 +370,7 @@ const ensureNativeCredential = async (
   );
   const entry = getNativeConnectorCatalogEntry(id, catalog);
   if (entry?.provider === "google-workspace") {
-    if (await loadConnectorAccessToken(stellaRoot, "google-workspace")) return;
+    if (await loadConnectorAccessToken(stellaAppDir, "google-workspace")) return;
     if (!options.requestPreregisteredOAuth) {
       throw new Error("Google Workspace connection is unavailable.");
     }
@@ -461,7 +461,7 @@ const ensureNativeCredential = async (
         `${entry.name} supports OAuth, but Stella's provider setup is not ready yet.`,
       );
     }
-    if (await loadConnectorAccessToken(stellaRoot, config.tokenKey)) return;
+    if (await loadConnectorAccessToken(stellaAppDir, config.tokenKey)) return;
     const connected =
       config.flow === "device"
         ? await options.requestDeviceOAuth?.({
@@ -540,14 +540,14 @@ export const registerNativeIntegrationHandlers = (
     "nativeIntegrations:enable",
     async (event, payload: unknown) => {
       assertPrivilegedRequest(options, event, "nativeIntegrations:enable");
-      const stellaRoot = requireRoot(options);
+      const stellaAppDir = requireRoot(options);
       const id = readId(payload);
-      await ensureNativeCredential(options, stellaRoot, id);
+      await ensureNativeCredential(options, stellaAppDir, id);
       const configuredOAuthProviders =
         await loadConfiguredOAuthProviders(options);
       const serverCatalog = await loadServerNativeConnectorCatalog(options);
       return await enableNativeConnector(
-        stellaRoot,
+        stellaAppDir,
         id,
         "store",
         {
@@ -564,13 +564,13 @@ export const registerNativeIntegrationHandlers = (
     "nativeIntegrations:disable",
     async (event, payload: unknown) => {
       assertPrivilegedRequest(options, event, "nativeIntegrations:disable");
-      const stellaRoot = requireRoot(options);
+      const stellaAppDir = requireRoot(options);
       const id = readId(payload);
       const configuredOAuthProviders =
         await loadConfiguredOAuthProviders(options);
       const serverCatalog = await loadServerNativeConnectorCatalog(options);
       const result = await disableNativeConnector(
-        stellaRoot,
+        stellaAppDir,
         id,
         {
           configuredBackendProviders: configuredOAuthProviders.backend,
@@ -588,7 +588,7 @@ export const registerNativeIntegrationHandlers = (
         options.disconnectGoogleWorkspace
       ) {
         const remaining = await listNativeConnectors(
-          stellaRoot,
+          stellaAppDir,
           {},
           serverCatalog ?? undefined,
         );

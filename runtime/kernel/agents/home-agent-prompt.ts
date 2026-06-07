@@ -1,7 +1,7 @@
 /**
  * Live read of a user-editable agent system prompt from `~/.stella/agents/`.
  *
- * Agent prompts are reconciled into `${stellaHome}/agents/<id>.md` at startup
+ * Agent prompts are reconciled into `${stellaDataDir}/agents/<id>.md` at startup
  * (see `home/agents-sync.ts`) and that's what the extension loader registers.
  * But the registered prompt is captured once at load time, so a later edit to
  * the markdown wouldn't take effect until a reload. `buildAgentContext` calls
@@ -29,11 +29,11 @@ type CachedPrompt = { sig: string; body: string | undefined };
 const promptCache = new Map<string, CachedPrompt>();
 
 export const loadHomeAgentSystemPrompt = async (
-  stellaHome: string,
+  stellaDataDir: string,
   agentType: string,
 ): Promise<string | undefined> => {
   const filePath = path.join(
-    stellaHome,
+    stellaDataDir,
     AGENTS_DIR_NAME,
     `${agentType}${AGENT_PROMPT_EXTENSION}`,
   );

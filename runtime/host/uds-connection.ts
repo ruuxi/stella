@@ -23,11 +23,11 @@ import type { WorkerConnection } from "./worker-lifecycle.js";
  * next host to attach.
  *
  * `restart` callers that genuinely need a fresh worker call
- * `killUnderlyingWorker(stellaRoot)` directly.
+ * `killUnderlyingWorker(stellaAppDir)` directly.
  */
 
 export type UdsWorkerConnectionFactoryOptions = {
-  stellaRoot: string;
+  stellaAppDir: string;
   bunBinaryPath?: string;
   idleShutdownMs?: number;
   expectedProtocolVersion?: string;
@@ -97,7 +97,7 @@ export const buildUdsConnectionFactory = (
 ) => {
   return async (workerEntryPath: string): Promise<WorkerConnection> => {
     const lifecycle = await startOrAttachWorker({
-      stellaRoot: options.stellaRoot,
+      stellaAppDir: options.stellaAppDir,
       workerEntryPath,
       ...(options.bunBinaryPath ? { bunBinaryPath: options.bunBinaryPath } : {}),
       ...(options.idleShutdownMs
@@ -134,7 +134,7 @@ export const buildUdsConnectionFactory = (
  * connection; the controller's stop("restart") does that separately.
  */
 export const killDetachedWorker = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<void> => {
-  await stopRunningWorker(stellaRoot, { graceMs: 1_500 });
+  await stopRunningWorker(stellaAppDir, { graceMs: 1_500 });
 };

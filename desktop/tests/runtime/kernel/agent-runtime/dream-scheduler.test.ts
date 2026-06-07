@@ -115,7 +115,7 @@ describe("maybeSpawnDreamRun", () => {
     const rootPath = createRoot();
     let providerCalls = 0;
     const result = await maybeSpawnDreamRun({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store: {
         threadSummariesStore: {
           countUnprocessed: () => 1,
@@ -151,7 +151,7 @@ describe("maybeSpawnDreamRun", () => {
     const rootPath = createRoot();
     let providerCalls = 0;
     const result = await maybeSpawnDreamRun({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store: pendingStore(),
       resolvedLlm: buildFakeRoute({
         response: fakeAssistant("noop"),
@@ -172,7 +172,7 @@ describe("maybeSpawnDreamRun", () => {
     const rootPath = createRoot();
     let providerCalls = 0;
     const result = await maybeSpawnDreamRun({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store: pendingStore(),
       resolvedLlm: buildFakeRoute({
         response: fakeAssistant("- folded the interval batch"),
@@ -192,7 +192,7 @@ describe("maybeSpawnDreamRun", () => {
     const rootPath = createRoot();
     let providerCalls = 0;
     const result = await maybeSpawnDreamRun({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store: pendingStore(),
       resolvedLlm: buildFakeRoute({
         response: fakeAssistant("- flushed before compaction"),
@@ -212,7 +212,7 @@ describe("maybeSpawnDreamRun", () => {
     const rootPath = createRoot();
     let providerCalls = 0;
     const result = await maybeSpawnDreamRun({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store: {
         threadSummariesStore: { countUnprocessed: () => 0 },
       } as RuntimeStore,

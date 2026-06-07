@@ -40,8 +40,8 @@ type BrowserCookie = {
 };
 
 type BrowserHandlersOptions = {
-  getStellaRoot: () => string | null;
-  getStellaHome: () => string | null;
+  getStellaAppDir: () => string | null;
+  getStellaDataDir: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -162,10 +162,10 @@ const fetchWithBrowserSession = async (payload: {
 
 const assertStellaInitialized = (options: BrowserHandlersOptions) => {
   // The browser bridge is gated on the app being far enough along that a
-  // stellaRoot has been resolved; the value itself isn't needed here because
+  // stellaAppDir has been resolved; the value itself isn't needed here because
   // the stella-browser CLI lives inside the desktop tree.
-  const stellaRoot = options.getStellaRoot();
-  if (!stellaRoot?.trim()) {
+  const stellaAppDir = options.getStellaAppDir();
+  if (!stellaAppDir?.trim()) {
     throw new Error("Stella root not available; restart the app.");
   }
 };
@@ -235,12 +235,12 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
       if (!options.assertPrivilegedSender(event, IPC_MEDIA_SAVE_OUTPUT)) {
         return { ok: false, error: "Blocked untrusted request." };
       }
-      const stellaHome = options.getStellaHome();
-      if (!stellaHome) {
+      const stellaDataDir = options.getStellaDataDir();
+      if (!stellaDataDir) {
         return { ok: false, error: "Stella root not initialized" };
       }
       try {
-        const dir = path.join(stellaHome, "media", "outputs");
+        const dir = path.join(stellaDataDir, "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = resolveMediaOutputPath(dir, payload.fileName);
         const dataUriMatch = payload.url.match(/^data:([^;,]+);base64,(.+)$/is);
@@ -272,9 +272,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
     if (!options.assertPrivilegedSender(event, IPC_MEDIA_GET_DIR)) {
       return null;
     }
-    const stellaHome = options.getStellaHome();
-    if (!stellaHome) return null;
-    return path.join(stellaHome, "media");
+    const stellaDataDir = options.getStellaDataDir();
+    if (!stellaDataDir) return null;
+    return path.join(stellaDataDir, "media");
   });
 
   ipcMain.handle(

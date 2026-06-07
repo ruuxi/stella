@@ -9,7 +9,7 @@ import { hasMacPermission, requestMacPermission } from "../utils/macos-permissio
 /**
  * MeetingCaptureController owns the lifecycle of the `meeting_capture` native
  * sidecar — a Granola-style dual-stream recorder that writes rolling WAV
- * segments under `<stellaHome>/meetings/<sessionId>/`. System audio + mic are
+ * segments under `<stellaDataDir>/meetings/<sessionId>/`. System audio + mic are
  * captured via ScreenCaptureKit + AVAudioEngine on macOS, and WASAPI loopback +
  * WASAPI capture on Windows. The TS control surface is identical on both: it
  * shells out to the helper's client verbs, which talk to the daemon over an
@@ -65,14 +65,14 @@ export type MeetingStatus = {
 // socket `shutdown` didn't confirm exit, SIGTERM/SIGKILL the pidfile pid — the
 // same belt-and-suspenders teardown as desktop-automation-cleanup.ts. The
 // socket shutdown stays the primary path.
-const meetingPidFile = (stellaHome: string): string =>
-  path.join(stellaHome, "meetings", "meeting_capture.pid");
+const meetingPidFile = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "meetings", "meeting_capture.pid");
 
 export class MeetingCaptureController {
   private child: ChildProcess | null = null;
   private binPath: string | null = null;
 
-  constructor(private readonly stellaHome: string) {}
+  constructor(private readonly stellaDataDir: string) {}
 
   private resolveBin(): string | null {
     if (this.binPath) return this.binPath;
@@ -86,7 +86,7 @@ export class MeetingCaptureController {
     return await new Promise<string | null>((resolve) => {
       execFile(
         bin,
-        [...args, "--root", this.stellaHome],
+        [...args, "--root", this.stellaDataDir],
         { timeout: 10_000 },
         (error, stdout) => {
           if (error) {
@@ -137,12 +137,12 @@ export class MeetingCaptureController {
     }
 
     try {
-      await fs.mkdir(path.join(this.stellaHome, "meetings"), { recursive: true });
+      await fs.mkdir(path.join(this.stellaDataDir, "meetings"), { recursive: true });
     } catch {
       // daemon will retry creating dirs
     }
 
-    const child = spawn(bin, ["daemon", "--root", this.stellaHome], {
+    const child = spawn(bin, ["daemon", "--root", this.stellaDataDir], {
       detached: true,
       stdio: "ignore",
     });
@@ -152,7 +152,7 @@ export class MeetingCaptureController {
     // pidfile just falls back to the socket shutdown.
     if (typeof child.pid === "number") {
       try {
-        await fs.writeFile(meetingPidFile(this.stellaHome), String(child.pid));
+        await fs.writeFile(meetingPidFile(this.stellaDataDir), String(child.pid));
       } catch {
         // ignored — socket shutdown remains the primary teardown path
       }
@@ -348,9 +348,9 @@ export class MeetingCaptureController {
     // (e.g. the daemon was orphaned across a restart, so `this.child` is null),
     // reap the persisted pid — guarded against pid reuse and always dropping the
     // pidfile afterwards. See reapPidfileDaemon.
-    await reapPidfileDaemon(meetingPidFile(this.stellaHome), this.resolveBin(), [
+    await reapPidfileDaemon(meetingPidFile(this.stellaDataDir), this.resolveBin(), [
       "--root",
-      this.stellaHome,
+      this.stellaDataDir,
     ]);
   }
 }

@@ -1,6 +1,5 @@
 import path from "node:path";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -15,10 +14,7 @@ import { handleViewImage } from "../../../../../runtime/kernel/tools/view-image.
 import { createAsyncTempDirTracker } from "../../../helpers/temp.js";
 
 const tempDirs = createAsyncTempDirTracker();
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../..",
-);
+const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
 
 afterEach(() => tempDirs.cleanup());
 
@@ -51,7 +47,7 @@ describe("general agent tools", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -71,7 +67,7 @@ describe("general agent tools", () => {
       conversationId: "c1",
       deviceId: "d1",
       requestId: "r1",
-      stellaRoot: root,
+      stellaAppDir: root,
     };
 
     const started = await handleExecCommand(
@@ -149,7 +145,7 @@ describe("general agent tools", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -345,7 +341,7 @@ EOF`,
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -366,7 +362,7 @@ EOF`,
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -392,7 +388,7 @@ EOF`,
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -418,7 +414,7 @@ EOF`,
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -431,7 +427,7 @@ EOF`,
 
   it("multi_tool_use_parallel rejects write_stdin (non-parallel-safe)", async () => {
     const root = await createTempDir();
-    const host = createToolHost({ stellaRoot: root });
+    const host = createToolHost({ stellaAppDir: root });
 
     try {
       const result = await host.executeTool(
@@ -453,7 +449,7 @@ EOF`,
           deviceId: "d1",
           requestId: "r1",
           agentType: "general",
-          stellaRoot: root,
+          stellaAppDir: root,
           allowedToolNames: ["write_stdin", "multi_tool_use_parallel"],
         },
       );
@@ -470,7 +466,7 @@ EOF`,
 
   it("multi_tool_use_parallel rejects apply_patch", async () => {
     const root = await createTempDir();
-    const host = createToolHost({ stellaRoot: root });
+    const host = createToolHost({ stellaAppDir: root });
 
     try {
       const result = await host.executeTool(
@@ -491,7 +487,7 @@ EOF`,
           deviceId: "d1",
           requestId: "r1",
           agentType: "general",
-          stellaRoot: root,
+          stellaAppDir: root,
           allowedToolNames: ["apply_patch", "multi_tool_use_parallel"],
         },
       );
@@ -508,7 +504,7 @@ EOF`,
 
   it("multi_tool_use_parallel rejects the full batch before starting valid siblings", async () => {
     const root = await createTempDir();
-    const host = createToolHost({ stellaRoot: root });
+    const host = createToolHost({ stellaAppDir: root });
     const markerPath = path.join(root, "parallel-ran.txt");
 
     try {
@@ -538,7 +534,7 @@ EOF`,
           deviceId: "d1",
           requestId: "r1",
           agentType: "general",
-          stellaRoot: root,
+          stellaAppDir: root,
           allowedToolNames: [
             "exec_command",
             "apply_patch",
@@ -560,7 +556,7 @@ EOF`,
 
   it("multi_tool_use_parallel runs independent tool calls", async () => {
     const root = await createTempDir();
-    const host = createToolHost({ stellaRoot: root });
+    const host = createToolHost({ stellaAppDir: root });
 
     try {
       const result = await host.executeTool(
@@ -582,7 +578,7 @@ EOF`,
           deviceId: "d1",
           requestId: "r1",
           agentType: "general",
-          stellaRoot: root,
+          stellaAppDir: root,
           allowedToolNames: ["exec_command", "multi_tool_use_parallel"],
         },
       );
@@ -599,7 +595,7 @@ EOF`,
   it("web uses the configured search backend", async () => {
     const root = await createTempDir();
     const host = createToolHost({
-      stellaRoot: root,
+      stellaAppDir: root,
       webSearch: async (query) => ({
         text: `results for ${query}`,
         results: [
@@ -617,7 +613,7 @@ EOF`,
           deviceId: "d1",
           requestId: "r1",
           agentType: "general",
-          stellaRoot: root,
+          stellaAppDir: root,
           allowedToolNames: ["web"],
         },
       );
@@ -654,7 +650,7 @@ EOF`,
   it("RequestCredential delegates to the device callback", async () => {
     const root = await createTempDir();
     const host = createToolHost({
-      stellaRoot: root,
+      stellaAppDir: root,
       requestCredential: async (payload) => ({
         secretId: `secret:${payload.provider}`,
         provider: payload.provider,
@@ -675,7 +671,7 @@ EOF`,
           deviceId: "d1",
           requestId: "r1",
           agentType: "general",
-          stellaRoot: root,
+          stellaAppDir: root,
           allowedToolNames: ["RequestCredential"],
         },
       );

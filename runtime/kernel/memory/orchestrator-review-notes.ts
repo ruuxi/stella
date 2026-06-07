@@ -36,17 +36,17 @@ export type WriteOrchestratorReviewMemoryNoteResult = {
 
 const NOTE_SLUG_MAX_CHARS = 80;
 
-const memoriesExtensionsRoot = (stellaHome: string): string =>
-  path.join(stellaHome, "memories_extensions");
+const memoriesExtensionsRoot = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "memories_extensions");
 
-const orchestratorReviewRoot = (stellaHome: string): string =>
+const orchestratorReviewRoot = (stellaDataDir: string): string =>
   path.join(
-    memoriesExtensionsRoot(stellaHome),
+    memoriesExtensionsRoot(stellaDataDir),
     ORCHESTRATOR_REVIEW_MEMORY_EXTENSION,
   );
 
-export const orchestratorReviewNotesDir = (stellaHome: string): string =>
-  path.join(orchestratorReviewRoot(stellaHome), "notes");
+export const orchestratorReviewNotesDir = (stellaDataDir: string): string =>
+  path.join(orchestratorReviewRoot(stellaDataDir), "notes");
 
 /**
  * Read the most recent orchestrator-review candidate notes, newest first.
@@ -58,11 +58,11 @@ export const orchestratorReviewNotesDir = (stellaHome: string): string =>
  * the consolidated memory files yet).
  */
 export const readRecentOrchestratorReviewNotes = async (
-  stellaHome: string,
+  stellaDataDir: string,
   limit = 8,
 ): Promise<string[]> => {
   if (limit <= 0) return [];
-  const dir = orchestratorReviewNotesDir(stellaHome);
+  const dir = orchestratorReviewNotesDir(stellaDataDir);
   let names: string[];
   try {
     names = (await fs.readdir(dir)).filter((name) => name.endsWith(".md"));
@@ -126,15 +126,15 @@ const writeIfMissing = async (
 };
 
 export const ensureOrchestratorReviewMemoryExtension = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<void> => {
-  const extensionsRoot = memoriesExtensionsRoot(stellaHome);
-  const reviewRoot = orchestratorReviewRoot(stellaHome);
+  const extensionsRoot = memoriesExtensionsRoot(stellaDataDir);
+  const reviewRoot = orchestratorReviewRoot(stellaDataDir);
   await ensureDirectoryChain([
-    stellaHome,
+    stellaDataDir,
     extensionsRoot,
     reviewRoot,
-    orchestratorReviewNotesDir(stellaHome),
+    orchestratorReviewNotesDir(stellaDataDir),
   ]);
   await writeIfMissing(
     path.join(reviewRoot, "instructions.md"),
@@ -182,7 +182,7 @@ const formatNote = (note: Required<OrchestratorReviewMemoryNote>): string =>
   ].join("\n");
 
 export const writeOrchestratorReviewMemoryNote = async (args: {
-  stellaHome: string;
+  stellaDataDir: string;
   note: OrchestratorReviewMemoryNote;
 }): Promise<WriteOrchestratorReviewMemoryNoteResult> => {
   const title = redactMemoryText(args.note.title.trim());
@@ -194,7 +194,7 @@ export const writeOrchestratorReviewMemoryNote = async (args: {
     throw new Error("memory must not be empty.");
   }
 
-  await ensureOrchestratorReviewMemoryExtension(args.stellaHome);
+  await ensureOrchestratorReviewMemoryExtension(args.stellaDataDir);
 
   const createdAt = args.note.createdAt ?? new Date();
   const note: Required<OrchestratorReviewMemoryNote> = {
@@ -211,7 +211,7 @@ export const writeOrchestratorReviewMemoryNote = async (args: {
   };
   const timestamp = toTimestampPrefix(createdAt);
   const slug = slugify(title);
-  const notesDir = orchestratorReviewNotesDir(args.stellaHome);
+  const notesDir = orchestratorReviewNotesDir(args.stellaDataDir);
   const body = formatNote(note);
 
   for (let attempt = 0; attempt < 100; attempt += 1) {

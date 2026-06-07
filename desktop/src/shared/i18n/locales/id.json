@@ -223,7 +223,7 @@
         "wipedTitle": "Memori dihapus"
       },
       "enableFailures": {
-        "noStellaRoot": "Root ruang kerja Stella tidak tersedia.",
+        "noStellaAppDir": "Root ruang kerja Stella tidak tersedia.",
         "needsPermission": "Izin perekaman layar masih diperlukan sebelum Chronicle dapat dimulai.",
         "binaryMissing": "Berkas bantuan Chronicle tidak ada.",
         "startupTimeout": "Chronicle tidak online setelah diluncurkan.",

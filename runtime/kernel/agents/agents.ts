@@ -1,23 +1,22 @@
-import { existsSync } from "node:fs";
 import type { ParsedAgent } from "./types.js";
 import {
   BUNDLED_CORE_AGENT_IDS,
   getAgentDefinition,
 } from "../../contracts/agent-runtime.js";
 import { loadParsedAgentsFromDir } from "./markdown-agent-loader.js";
-
-const BUNDLED_AGENT_DIRS = [
-  new URL("../../extensions/stella-runtime/agents/", import.meta.url),
-  new URL("../extensions/stella-runtime/agents/", import.meta.url),
-];
+import { resolveRuntimeSourceAsset } from "../shared/runtime-paths.js";
 
 const BUNDLED_AGENT_ORDER = new Map<string, number>(
   BUNDLED_CORE_AGENT_IDS.map((agentId, index) => [agentId, index]),
 );
 
-const resolveBundledAgentDir = (): URL =>
-  BUNDLED_AGENT_DIRS.find((candidate) => existsSync(candidate)) ??
-  BUNDLED_AGENT_DIRS[0]!;
+const resolveBundledAgentDir = (): string =>
+  resolveRuntimeSourceAsset(
+    "runtime",
+    "extensions",
+    "stella-runtime",
+    "agents",
+  );
 
 export const loadBundledAgents = (): ParsedAgent[] =>
   loadParsedAgentsFromDir(resolveBundledAgentDir())

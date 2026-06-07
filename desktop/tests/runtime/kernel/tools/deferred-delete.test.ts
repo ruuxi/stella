@@ -47,13 +47,13 @@ const forcePlatform = (platform: NodeJS.Platform) => {
 
 describe("deferred-delete trash", () => {
   it("moves deleted files into Stella trash with 24h metadata", async () => {
-    const stellaHome = await createTempDir();
-    const target = path.join(stellaHome, "victim.txt");
+    const stellaDataDir = await createTempDir();
+    const target = path.join(stellaDataDir, "victim.txt");
     await writeFile(target, "keep me for now", "utf-8");
 
     const result = await trashPathsForDeferredDelete([target], {
       source: "test",
-      stellaHome,
+      stellaDataDir,
     });
 
     expect(result.errors).toEqual([]);
@@ -70,12 +70,12 @@ describe("deferred-delete trash", () => {
   });
 
   it("refuses root, home, and system-level directories before deleting", async () => {
-    const stellaHome = await createTempDir();
+    const stellaDataDir = await createTempDir();
     const result = await trashPathsForDeferredDelete(
-      [path.parse(stellaHome).root, os.homedir(), "/System"],
+      [path.parse(stellaDataDir).root, os.homedir(), "/System"],
       {
         source: "test",
-        stellaHome,
+        stellaDataDir,
         force: true,
       },
     );
@@ -89,31 +89,31 @@ describe("deferred-delete trash", () => {
   });
 
   it("purges expired trash records and leaves unexpired records alone", async () => {
-    const stellaHome = await createTempDir();
-    const expired = path.join(stellaHome, "expired.txt");
-    const fresh = path.join(stellaHome, "fresh.txt");
+    const stellaDataDir = await createTempDir();
+    const expired = path.join(stellaDataDir, "expired.txt");
+    const fresh = path.join(stellaDataDir, "fresh.txt");
     await writeFile(expired, "old", "utf-8");
     await writeFile(fresh, "new", "utf-8");
 
     const expiredResult = await trashPathsForDeferredDelete([expired], {
       source: "test",
-      stellaHome,
+      stellaDataDir,
     });
     const freshResult = await trashPathsForDeferredDelete([fresh], {
       source: "test",
-      stellaHome,
+      stellaDataDir,
     });
 
     const now = expiredResult.trashed[0]!.purgeAfter + 1;
     const freshMetadataPath = path.join(
-      getDeferredDeletePaths(stellaHome).itemsDir,
+      getDeferredDeletePaths(stellaDataDir).itemsDir,
       `${freshResult.trashed[0]!.id}.json`,
     );
     const freshRecord = JSON.parse(await readFile(freshMetadataPath, "utf-8"));
     freshRecord.purgeAfter = now + 60_000;
     await writeFile(freshMetadataPath, JSON.stringify(freshRecord), "utf-8");
 
-    const sweep = await purgeExpiredDeferredDeletes({ stellaHome, now });
+    const sweep = await purgeExpiredDeferredDeletes({ stellaDataDir, now });
 
     expect(sweep).toMatchObject({ checked: 2, purged: 1, skipped: 1 });
     await expect(
@@ -125,36 +125,36 @@ describe("deferred-delete trash", () => {
   });
 
   it("lists and force-deletes deferred trash records", async () => {
-    const stellaHome = await createTempDir();
-    const first = path.join(stellaHome, "first.txt");
-    const second = path.join(stellaHome, "second.txt");
+    const stellaDataDir = await createTempDir();
+    const first = path.join(stellaDataDir, "first.txt");
+    const second = path.join(stellaDataDir, "second.txt");
     await writeFile(first, "one", "utf-8");
     await writeFile(second, "two", "utf-8");
 
     const firstResult = await trashPathsForDeferredDelete([first], {
       source: "test",
-      stellaHome,
+      stellaDataDir,
     });
     const secondResult = await trashPathsForDeferredDelete([second], {
       source: "test",
-      stellaHome,
+      stellaDataDir,
     });
 
-    const list = await listDeferredDeletes({ stellaHome });
+    const list = await listDeferredDeletes({ stellaDataDir });
     expect(list.errors).toEqual([]);
     expect(list.items.map((item) => item.id).sort()).toEqual(
       [firstResult.trashed[0]!.id, secondResult.trashed[0]!.id].sort(),
     );
 
     const one = await purgeDeferredDelete(firstResult.trashed[0]!.id, {
-      stellaHome,
+      stellaDataDir,
     });
     expect(one).toMatchObject({ checked: 1, purged: 1, skipped: 0 });
     await expect(
       readFile(firstResult.trashed[0]!.trashPath, "utf-8"),
     ).rejects.toMatchObject({ code: "ENOENT" });
 
-    const all = await purgeAllDeferredDeletes({ stellaHome });
+    const all = await purgeAllDeferredDeletes({ stellaDataDir });
     expect(all).toMatchObject({ checked: 1, purged: 1, skipped: 0 });
     await expect(
       readFile(secondResult.trashed[0]!.trashPath, "utf-8"),
@@ -182,10 +182,10 @@ describe("Windows delete interception", () => {
   it("routes Windows native delete commands to Stella trash instead of cmd.exe", async () => {
     forcePlatform("win32");
 
-    const stellaHome = await createTempDir();
-    const stateRoot = stellaHome;
+    const stellaDataDir = await createTempDir();
+    const stateRoot = stellaDataDir;
     await mkdir(stateRoot, { recursive: true });
-    const target = path.join(stellaHome, "victim.txt");
+    const target = path.join(stellaDataDir, "victim.txt");
     await writeFile(target, "windows delete", "utf-8");
 
     const shellState = createShellState(stateRoot);
@@ -193,13 +193,13 @@ describe("Windows delete interception", () => {
       shellState,
       {
         cmd: "del victim.txt",
-        workdir: stellaHome,
+        workdir: stellaDataDir,
       },
       {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: stellaHome,
+        stellaAppDir: stellaDataDir,
       },
     );
 
@@ -212,7 +212,7 @@ describe("Windows delete interception", () => {
     });
 
     const trashFiles = await readdir(
-      getDeferredDeletePaths(stellaHome).trashDir,
+      getDeferredDeletePaths(stellaDataDir).trashDir,
     );
     expect(trashFiles).toHaveLength(1);
   });

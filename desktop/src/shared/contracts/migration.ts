@@ -42,7 +42,7 @@ export type ThirdPartyMigrationReportItem = {
 export type ThirdPartyMigrationReport = {
   source: ThirdPartyMigrationSource;
   sourceRoot: string;
-  stellaHome: string;
+  stellaDataDir: string;
   startedAt: string;
   completedAt: string;
   markdownPath: string;

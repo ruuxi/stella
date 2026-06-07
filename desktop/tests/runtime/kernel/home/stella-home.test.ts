@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ensureStellaHomeSeeded } from "../../../../../runtime/kernel/home/stella-home.js";
+import { ensureStellaDataDirSeeded } from "../../../../../runtime/kernel/home/stella-home.js";
 
 const roots = new Set<string>();
 
@@ -20,11 +20,11 @@ afterEach(async () => {
   roots.clear();
 });
 
-describe("ensureStellaHomeSeeded", () => {
+describe("ensureStellaDataDirSeeded", () => {
   it("seeds only bundled defaults into Stella home", async () => {
-    const stellaRoot = await createTempDir("stella-seed-root-");
-    const stellaHome = await createTempDir("stella-home-");
-    const seedRoot = path.join(stellaRoot, "runtime", "home-seed");
+    const stellaAppDir = await createTempDir("stella-seed-root-");
+    const stellaDataDir = await createTempDir("stella-home-");
+    const seedRoot = path.join(stellaAppDir, "runtime", "home-seed");
 
     await mkdir(path.join(seedRoot, "skills", "stella-desktop"), {
       recursive: true,
@@ -40,22 +40,22 @@ describe("ensureStellaHomeSeeded", () => {
     await writeFile(path.join(seedRoot, "preferences.json"), "{}");
     await writeFile(path.join(seedRoot, "memories", "MEMORY.md"), "old memory");
 
-    await ensureStellaHomeSeeded(stellaRoot, stellaHome);
+    await ensureStellaDataDirSeeded(stellaAppDir, stellaDataDir);
 
     await expect(
-      readFile(path.join(stellaHome, "registry.md"), "utf-8"),
+      readFile(path.join(stellaDataDir, "registry.md"), "utf-8"),
     ).rejects.toThrow();
     await expect(
       readFile(
-        path.join(stellaHome, "skills", "stella-desktop", "SKILL.md"),
+        path.join(stellaDataDir, "skills", "stella-desktop", "SKILL.md"),
         "utf-8",
       ),
     ).resolves.toBe("desktop skill");
     await expect(
-      readFile(path.join(stellaHome, "preferences.json"), "utf-8"),
+      readFile(path.join(stellaDataDir, "preferences.json"), "utf-8"),
     ).rejects.toThrow();
     await expect(
-      readFile(path.join(stellaHome, "memories", "MEMORY.md"), "utf-8"),
+      readFile(path.join(stellaDataDir, "memories", "MEMORY.md"), "utf-8"),
     ).rejects.toThrow();
   });
 });

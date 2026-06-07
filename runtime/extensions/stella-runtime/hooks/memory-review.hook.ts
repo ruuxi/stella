@@ -24,7 +24,7 @@ import { THREAD_COMPACTION_TRIGGER_TOKENS } from "../../../kernel/thread-runtime
  * fork the review without editing kernel code.
  *
  * Service deps:
- *   - `store`, `stellaHome`, `stellaRoot` (factory-time, closure).
+ *   - `store`, `stellaDataDir`, `stellaAppDir` (factory-time, closure).
  *   - `payload.services.resolvedLlm` (per-turn) — drives the review
  *     completion.
  *   - `payload.services.messagesSnapshot` (per-turn) — transcript the
@@ -33,8 +33,8 @@ import { THREAD_COMPACTION_TRIGGER_TOKENS } from "../../../kernel/thread-runtime
  *     counter to compare against threshold.
  */
 export const createMemoryReviewHook = (opts: {
-  stellaHome: string;
-  stellaRoot: string;
+  stellaDataDir: string;
+  stellaAppDir: string;
   store: RuntimeStore;
 }): HookDefinition<"agent_end"> => ({
   event: "agent_end",
@@ -69,8 +69,8 @@ export const createMemoryReviewHook = (opts: {
 
     spawnMemoryReview({
       conversationId: payload.conversationId,
-      stellaHome: opts.stellaHome,
-      stellaRoot: opts.stellaRoot,
+      stellaDataDir: opts.stellaDataDir,
+      stellaAppDir: opts.stellaAppDir,
       messagesSnapshot: services.messagesSnapshot,
       sinceMessageTs: lastReviewedMessageTs,
       resolvedLlm: services.resolvedLlm,

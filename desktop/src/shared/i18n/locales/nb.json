@@ -223,7 +223,7 @@
         "wipedTitle": "Minner slettet"
       },
       "enableFailures": {
-        "noStellaRoot": "Stellas arbeidsområde-rotmappe er utilgjengelig.",
+        "noStellaAppDir": "Stellas arbeidsområde-rotmappe er utilgjengelig.",
         "needsPermission": "Tillatelse til skjermopptak kreves fortsatt før Chronicle kan starte.",
         "binaryMissing": "Chronicle-hjelpefilen mangler.",
         "startupTimeout": "Chronicle kom ikke på nett etter oppstart.",

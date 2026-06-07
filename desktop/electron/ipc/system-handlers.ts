@@ -483,7 +483,7 @@ type SystemHandlersOptions = {
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
   ) => () => void;
-  getStellaRoot: () => string | null;
+  getStellaAppDir: () => string | null;
   externalLinkService: ExternalLinkService;
   ensurePrivilegedActionApproval: (
     action: string,
@@ -649,19 +649,19 @@ type ProcessCaptureResult = {
 
 const lockedComputerUseInstallerTimeoutMs = 120_000;
 
-const resolveLockedComputerUseHome = (stellaRoot: string | null) => {
-  if (process.env.STELLA_HOME) {
-    return path.resolve(process.env.STELLA_HOME);
+const resolveLockedComputerUseHome = (stellaAppDir: string | null) => {
+  if (process.env.STELLA_DATA_DIR) {
+    return path.resolve(process.env.STELLA_DATA_DIR);
   }
-  if (stellaRoot) {
-    return path.resolve(stellaRoot);
+  if (stellaAppDir) {
+    return path.resolve(stellaAppDir);
   }
   return path.join(os.homedir(), ".stella");
 };
 
-const readLockedComputerUseEnabled = (stellaRoot: string | null) => {
+const readLockedComputerUseEnabled = (stellaAppDir: string | null) => {
   try {
-    return loadLocalPreferences(resolveLockedComputerUseHome(stellaRoot))
+    return loadLocalPreferences(resolveLockedComputerUseHome(stellaAppDir))
       .lockedComputerUseEnabled;
   } catch {
     return false;
@@ -669,12 +669,12 @@ const readLockedComputerUseEnabled = (stellaRoot: string | null) => {
 };
 
 const writeLockedComputerUseEnabled = (
-  stellaRoot: string | null,
+  stellaAppDir: string | null,
   enabled: boolean,
 ) => {
-  const stellaHome = resolveLockedComputerUseHome(stellaRoot);
-  const prefs = loadLocalPreferences(stellaHome);
-  saveLocalPreferences(stellaHome, {
+  const stellaDataDir = resolveLockedComputerUseHome(stellaAppDir);
+  const prefs = loadLocalPreferences(stellaDataDir);
+  saveLocalPreferences(stellaDataDir, {
     ...prefs,
     lockedComputerUseEnabled: enabled,
   });
@@ -784,7 +784,7 @@ const runLockedComputerUseInstaller = async (
 };
 
 const getLockedComputerUseStatus = async (
-  stellaRoot: string | null,
+  stellaAppDir: string | null,
 ): Promise<LockedComputerUseStatus> => {
   if (process.platform !== "darwin") {
     return {
@@ -812,7 +812,7 @@ const getLockedComputerUseStatus = async (
 
   return {
     ok: true,
-    enabled: readLockedComputerUseEnabled(stellaRoot),
+    enabled: readLockedComputerUseEnabled(stellaAppDir),
     installed,
     active: false,
     locked: false,
@@ -1417,9 +1417,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted diagnostics:openLogs request.");
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return { ok: false as const, error: "no-root" };
-    const { logDir } = resolveLogPaths(stellaRoot);
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return { ok: false as const, error: "no-root" };
+    const { logDir } = resolveLogPaths(stellaAppDir);
     const opened = await shell.openPath(logDir);
     // shell.openPath returns "" on success, or an error string.
     return opened
@@ -1621,9 +1621,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:getSyncMode request.");
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return "off";
-    return getSyncMode(stellaRoot);
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return "off";
+    return getSyncMode(stellaAppDir);
   });
 
   ipcMain.handle(IPC_PREFERENCES_SET_SYNC_MODE, (event, mode: string) => {
@@ -1635,11 +1635,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:setSyncMode request.");
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return;
-    const prefs = loadLocalPreferences(stellaRoot);
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return;
+    const prefs = loadLocalPreferences(stellaAppDir);
     prefs.syncMode = mode === "off" ? "off" : "on";
-    saveLocalPreferences(stellaRoot, prefs);
+    saveLocalPreferences(stellaAppDir, prefs);
     return options.backupService.setMode(prefs.syncMode);
   });
 
@@ -1654,9 +1654,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getRadialTrigger request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return DEFAULT_RADIAL_TRIGGER_CODE;
-    return loadLocalPreferences(stellaRoot).radialTriggerKey;
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return DEFAULT_RADIAL_TRIGGER_CODE;
+    return loadLocalPreferences(stellaAppDir).radialTriggerKey;
   });
 
   ipcMain.handle(
@@ -1673,11 +1673,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextTriggerKey = normalizeRadialTriggerCode(triggerKey);
-      const stellaRoot = options.getStellaRoot();
-      if (stellaRoot) {
-        const prefs = loadLocalPreferences(stellaRoot);
+      const stellaAppDir = options.getStellaAppDir();
+      if (stellaAppDir) {
+        const prefs = loadLocalPreferences(stellaAppDir);
         prefs.radialTriggerKey = nextTriggerKey;
-        saveLocalPreferences(stellaRoot, prefs);
+        saveLocalPreferences(stellaAppDir, prefs);
       }
       options.setRadialTriggerKey(nextTriggerKey);
       return { triggerKey: nextTriggerKey };
@@ -1695,9 +1695,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getMiniDoubleTap request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return "Alt";
-    return loadLocalPreferences(stellaRoot).miniDoubleTapModifier;
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return "Alt";
+    return loadLocalPreferences(stellaAppDir).miniDoubleTapModifier;
   });
 
   ipcMain.handle(
@@ -1714,11 +1714,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextModifier = normalizeMiniDoubleTapModifier(modifier);
-      const stellaRoot = options.getStellaRoot();
-      if (stellaRoot) {
-        const prefs = loadLocalPreferences(stellaRoot);
+      const stellaAppDir = options.getStellaAppDir();
+      if (stellaAppDir) {
+        const prefs = loadLocalPreferences(stellaAppDir);
         prefs.miniDoubleTapModifier = nextModifier;
-        saveLocalPreferences(stellaRoot, prefs);
+        saveLocalPreferences(stellaAppDir, prefs);
       }
       options.setMiniDoubleTapModifier(nextModifier);
       return { modifier: nextModifier };
@@ -1734,9 +1734,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:getPreventSleep request.");
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return false;
-    return getPreventComputerSleep(stellaRoot);
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return false;
+    return getPreventComputerSleep(stellaAppDir);
   });
 
   ipcMain.handle(
@@ -1753,11 +1753,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextEnabled = enabled === true;
-      const stellaRoot = options.getStellaRoot();
-      if (stellaRoot) {
-        const prefs = loadLocalPreferences(stellaRoot);
+      const stellaAppDir = options.getStellaAppDir();
+      if (stellaAppDir) {
+        const prefs = loadLocalPreferences(stellaAppDir);
         prefs.preventComputerSleep = nextEnabled;
-        saveLocalPreferences(stellaRoot, prefs);
+        saveLocalPreferences(stellaAppDir, prefs);
       }
       setPreventComputerSleep(nextEnabled);
       return { enabled: nextEnabled };
@@ -1775,7 +1775,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getLockedComputerUse request.",
       );
     }
-    return await getLockedComputerUseStatus(options.getStellaRoot());
+    return await getLockedComputerUseStatus(options.getStellaAppDir());
   });
 
   ipcMain.handle(
@@ -1796,17 +1796,17 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
 
       const nextEnabled = enabled === true;
-      const stellaRoot = options.getStellaRoot();
-      const currentStatus = await getLockedComputerUseStatus(stellaRoot);
+      const stellaAppDir = options.getStellaAppDir();
+      const currentStatus = await getLockedComputerUseStatus(stellaAppDir);
       if (!nextEnabled) {
-        writeLockedComputerUseEnabled(stellaRoot, false);
+        writeLockedComputerUseEnabled(stellaAppDir, false);
         return {
           ...currentStatus,
           enabled: false,
         };
       }
       if (nextEnabled && currentStatus.installed) {
-        writeLockedComputerUseEnabled(stellaRoot, true);
+        writeLockedComputerUseEnabled(stellaAppDir, true);
         return {
           ...currentStatus,
           enabled: true,
@@ -1824,7 +1824,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
 
-      const status = await getLockedComputerUseStatus(stellaRoot);
+      const status = await getLockedComputerUseStatus(stellaAppDir);
       if (!status.installed) {
         throw new Error(
           installerResult.stderr ||
@@ -1832,7 +1832,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
             "Locked computer use install did not complete.",
         );
       }
-      writeLockedComputerUseEnabled(stellaRoot, nextEnabled);
+      writeLockedComputerUseEnabled(stellaAppDir, nextEnabled);
       return {
         ...status,
         enabled: true,
@@ -1856,9 +1856,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getSoundNotifications request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return true;
-    return getSoundNotificationsEnabled(stellaRoot);
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return true;
+    return getSoundNotificationsEnabled(stellaAppDir);
   });
 
   ipcMain.handle(
@@ -1875,11 +1875,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextEnabled = enabled === true;
-      const stellaRoot = options.getStellaRoot();
-      if (stellaRoot) {
-        const prefs = loadLocalPreferences(stellaRoot);
+      const stellaAppDir = options.getStellaAppDir();
+      if (stellaAppDir) {
+        const prefs = loadLocalPreferences(stellaAppDir);
         prefs.soundNotificationsEnabled = nextEnabled;
-        saveLocalPreferences(stellaRoot, prefs);
+        saveLocalPreferences(stellaAppDir, prefs);
       }
       return { enabled: nextEnabled };
     },
@@ -1894,9 +1894,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted preferences:getReadAloud request.");
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return false;
-    return getReadAloudEnabled(stellaRoot);
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return false;
+    return getReadAloudEnabled(stellaAppDir);
   });
 
   ipcMain.handle(IPC_PREFERENCES_GET_ONBOARDING_COMPLETED, (event) => {
@@ -1910,9 +1910,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getOnboardingCompleted request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return false;
-    return getOnboardingCompleted(stellaRoot);
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return false;
+    return getOnboardingCompleted(stellaAppDir);
   });
 
   ipcMain.handle(
@@ -1929,9 +1929,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         );
       }
       const nextCompleted = completed === true;
-      const stellaRoot = options.getStellaRoot();
-      if (stellaRoot) {
-        setOnboardingCompleted(stellaRoot, nextCompleted);
+      const stellaAppDir = options.getStellaAppDir();
+      if (stellaAppDir) {
+        setOnboardingCompleted(stellaAppDir, nextCompleted);
       }
       return { completed: nextCompleted };
     },
@@ -1947,9 +1947,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       throw new Error("Blocked untrusted preferences:setReadAloud request.");
     }
     const nextEnabled = enabled === true;
-    const stellaRoot = options.getStellaRoot();
-    if (stellaRoot) {
-      setReadAloudEnabled(stellaRoot, nextEnabled);
+    const stellaAppDir = options.getStellaAppDir();
+    if (stellaAppDir) {
+      setReadAloudEnabled(stellaAppDir, nextEnabled);
     }
     return { enabled: nextEnabled };
   });
@@ -1965,15 +1965,15 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getCadenceReports request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) {
       return {
         schedules: { "4h": false, daily: false, weekly: false },
         browser: null,
         profile: null,
       } satisfies CadenceReportsPreferences;
     }
-    return getCadenceReportsPreferences(stellaRoot);
+    return getCadenceReportsPreferences(stellaAppDir);
   });
 
   ipcMain.handle(
@@ -1994,9 +1994,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         browser: null,
         profile: null,
       };
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return fallback;
-      return setCadenceReportsPreferences(stellaRoot, settings ?? fallback);
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) return fallback;
+      return setCadenceReportsPreferences(stellaAppDir, settings ?? fallback);
     },
   );
 
@@ -2082,9 +2082,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getPersonalityVoice request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return null;
-    return getPersonalityVoiceId(stellaRoot) ?? null;
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return null;
+    return getPersonalityVoiceId(stellaAppDir) ?? null;
   });
 
   ipcMain.handle(
@@ -2100,15 +2100,15 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           "Blocked untrusted preferences:setPersonalityVoice request.",
         );
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return { ok: false, voiceId: "" };
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) return { ok: false, voiceId: "" };
       if (!isKnownPersonalityId(voiceId)) {
         throw new Error("Unknown personality preset id.");
       }
       const normalized = coercePersonalityId(voiceId);
-      setPersonalityVoiceId(stellaRoot, normalized);
+      setPersonalityVoiceId(stellaAppDir, normalized);
       try {
-        writePersonality(stellaRoot, normalized);
+        writePersonality(stellaAppDir, normalized);
       } catch {
         // Best-effort — the seed pass on the next orchestrator turn will
         // re-compose from the preference if the file is missing.
@@ -2128,11 +2128,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:getLocalModelPreferences request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) {
       return null;
     }
-    return getLocalModelPreferences(stellaRoot);
+    return getLocalModelPreferences(stellaAppDir);
   });
 
   ipcMain.handle(IPC_PREFERENCES_LIST_CODEX_MODELS, async (event) => {
@@ -2158,12 +2158,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         "Blocked untrusted preferences:listClaudeCodeModels request.",
       );
     }
-    const stellaRoot = options.getStellaRoot();
-    const apiKey = stellaRoot
-      ? getLocalLlmCredential(stellaRoot, "anthropic")
+    const stellaAppDir = options.getStellaAppDir();
+    const apiKey = stellaAppDir
+      ? getLocalLlmCredential(stellaAppDir, "anthropic")
       : null;
-    const oauthToken = stellaRoot
-      ? await getLocalLlmOAuthApiKey(stellaRoot, "anthropic")
+    const oauthToken = stellaAppDir
+      ? await getLocalLlmOAuthApiKey(stellaAppDir, "anthropic")
       : null;
     return listClaudeCodeModels({ apiKey, oauthToken });
   });
@@ -2181,8 +2181,8 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           "Blocked untrusted preferences:setLocalModelPreferences request.",
         );
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return null;
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) return null;
 
       const nextDefaultModels = sanitizeStringRecord(payload?.defaultModels);
       const nextOverrides = sanitizeStringRecord(payload?.modelOverrides);
@@ -2253,7 +2253,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           payload.realtimeVoice,
         );
       }
-      return updateLocalModelPreferences(stellaRoot, patch);
+      return updateLocalModelPreferences(stellaAppDir, patch);
     },
   );
 
@@ -2266,11 +2266,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted credential request.");
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) {
       return [];
     }
-    return listLocalLlmCredentials(stellaRoot);
+    return listLocalLlmCredentials(stellaAppDir);
   });
 
   ipcMain.handle("llmCredentials:listOAuthProviders", (event) => {
@@ -2297,11 +2297,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     ) {
       throw new Error("Blocked untrusted OAuth credential request.");
     }
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) {
       return [];
     }
-    return listLocalLlmOAuthCredentials(stellaRoot);
+    return listLocalLlmOAuthCredentials(stellaAppDir);
   });
 
   ipcMain.handle(
@@ -2315,8 +2315,8 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted OAuth login request.");
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) {
         throw new Error("Local Stella root is unavailable.");
       }
 
@@ -2344,7 +2344,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         },
       });
 
-      return saveLocalLlmOAuthCredential(stellaRoot, {
+      return saveLocalLlmOAuthCredential(stellaAppDir, {
         provider: provider.id,
         label: provider.name,
         credentials,
@@ -2363,12 +2363,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted OAuth credential delete.");
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) {
         return { removed: false };
       }
       return deleteLocalLlmOAuthCredential(
-        stellaRoot,
+        stellaAppDir,
         asTrimmedString(payload?.provider),
       );
     },
@@ -2392,11 +2392,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted credential write.");
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) {
         throw new Error("Local Stella root is unavailable.");
       }
-      return saveLocalLlmCredential(stellaRoot, {
+      return saveLocalLlmCredential(stellaAppDir, {
         provider: asTrimmedString(payload?.provider),
         label: asTrimmedString(payload?.label),
         plaintext: asTrimmedString(payload?.plaintext),
@@ -2415,12 +2415,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       ) {
         throw new Error("Blocked untrusted credential delete.");
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) {
         return { removed: false };
       }
       return deleteLocalLlmCredential(
-        stellaRoot,
+        stellaAppDir,
         asTrimmedString(payload?.provider),
       );
     },

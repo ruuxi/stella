@@ -1,14 +1,13 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
-const scriptDir = dirname(fileURLToPath(import.meta.url));
+const scriptDir = import.meta.dirname;
 const desktopDir = resolve(scriptDir, '..', '..');
 const repoRootDir = resolve(desktopDir, '..');
 export const stellaStatePath = resolve(
-  process.env.STELLA_HOME?.trim() || resolve(homedir(), '.stella'),
+  process.env.STELLA_DATA_DIR?.trim() || resolve(homedir(), '.stella'),
 );
 
 const runnerScriptPath = resolve(desktopDir, 'scripts', 'electron-dev-runner.mjs');

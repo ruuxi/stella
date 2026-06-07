@@ -9,11 +9,11 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("WorkerLifecycleServer", () => {
   it("delays idle shutdown while active work is in flight", async () => {
-    const stellaRoot = await mkdtemp(path.join(tmpdir(), "stella-lifecycle-"));
+    const stellaAppDir = await mkdtemp(path.join(tmpdir(), "stella-lifecycle-"));
     const shutdownReasons: string[] = [];
     let keepAlive = true;
     const lifecycle = new WorkerLifecycleServer({
-      stellaRoot,
+      stellaAppDir,
       idleShutdownMs: 10,
       shouldKeepAlive: () => keepAlive,
       onShutdown: (reason) => {
@@ -34,7 +34,7 @@ describe("WorkerLifecycleServer", () => {
       expect(shutdownReasons).toEqual(["idle"]);
     } finally {
       await lifecycle.shutdown("signal");
-      await rm(stellaRoot, { recursive: true, force: true });
+      await rm(stellaAppDir, { recursive: true, force: true });
     }
   });
 });

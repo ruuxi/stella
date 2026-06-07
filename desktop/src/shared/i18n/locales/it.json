@@ -223,7 +223,7 @@
         "wipedTitle": "Ricordi cancellati"
       },
       "enableFailures": {
-        "noStellaRoot": "La radice dell'area di lavoro di Stella non è disponibile.",
+        "noStellaAppDir": "La radice dell'area di lavoro di Stella non è disponibile.",
         "needsPermission": "È ancora richiesta l'autorizzazione alla registrazione dello schermo prima che Chronicle possa avviarsi.",
         "binaryMissing": "Il binario di supporto di Chronicle è mancante.",
         "startupTimeout": "Chronicle non si è connesso dopo l'avvio.",

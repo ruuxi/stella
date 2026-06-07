@@ -264,9 +264,9 @@ const sessionPruneIntervalMs = 24 * 60 * 60 * 1000;
 const sessionRetentionMs = 24 * 60 * 60 * 1000;
 const pruneStatePath = path.join(stateDir, "last-prune.json");
 
-const resolveStellaHome = () => {
-  if (process.env.STELLA_HOME) {
-    return path.resolve(process.env.STELLA_HOME);
+const resolveStellaDataDir = () => {
+  if (process.env.STELLA_DATA_DIR) {
+    return path.resolve(process.env.STELLA_DATA_DIR);
   }
   return resolveStatePath();
 };
@@ -2018,16 +2018,16 @@ const readLockedUseEnabled = () => {
     return true;
   }
   try {
-    return loadLocalPreferences(resolveStellaHome()).lockedComputerUseEnabled;
+    return loadLocalPreferences(resolveStellaDataDir()).lockedComputerUseEnabled;
   } catch {
     return false;
   }
 };
 
 const writeLockedUseEnabled = (enabled: boolean) => {
-  const stellaHome = resolveStellaHome();
-  const prefs = loadLocalPreferences(stellaHome);
-  saveLocalPreferences(stellaHome, {
+  const stellaDataDir = resolveStellaDataDir();
+  const prefs = loadLocalPreferences(stellaDataDir);
+  saveLocalPreferences(stellaDataDir, {
     ...prefs,
     lockedComputerUseEnabled: enabled,
   });

@@ -84,7 +84,7 @@ describe("stella-computer shell bootstrap", () => {
       runId: "run-test",
       agentId: "task-test",
       agentType: "general",
-      stellaRoot: tempDir,
+      stellaAppDir: tempDir,
       storageMode: "local",
     };
     const result = await handleBash(
@@ -150,7 +150,7 @@ describe("stella-computer shell bootstrap", () => {
       requestId: "request-test",
       runId: "run-test",
       agentType: "general",
-      stellaRoot: tempDir,
+      stellaAppDir: tempDir,
       storageMode: "local",
     };
     const result = await handleBash(
@@ -200,7 +200,7 @@ describe("stella-computer shell bootstrap", () => {
       requestId: "request-test",
       runId: "run-test",
       agentType: "general",
-      stellaRoot: tempDir,
+      stellaAppDir: tempDir,
       storageMode: "local",
     };
     const result = await handleBash(

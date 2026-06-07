@@ -223,7 +223,7 @@
         "wipedTitle": "Memories wiped"
       },
       "enableFailures": {
-        "noStellaRoot": "Stella's workspace root is unavailable.",
+        "noStellaAppDir": "Stella's workspace root is unavailable.",
         "needsPermission": "Screen Recording permission is still required before Chronicle can start.",
         "binaryMissing": "The Chronicle helper binary is missing.",
         "startupTimeout": "Chronicle did not come online after launch.",

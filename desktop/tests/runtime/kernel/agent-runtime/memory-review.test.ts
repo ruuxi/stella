@@ -246,7 +246,7 @@ describe("buildKnownMemoryContext", () => {
       "utf-8",
     );
     await writeOrchestratorReviewMemoryNote({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       note: {
         title: "Dark mode default",
         category: "user_preference",
@@ -272,7 +272,7 @@ describe("buildKnownMemoryContext", () => {
       "utf-8",
     );
     await writeOrchestratorReviewMemoryNote({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       note: {
         title: "Already redacted",
         category: "active_focus",
@@ -294,7 +294,7 @@ describe("writeOrchestratorReviewMemoryNote", () => {
     const { rootPath } = createTestContext();
 
     const result = await writeOrchestratorReviewMemoryNote({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       note: {
         title: "Read-only constraints",
         category: "user_preference",
@@ -335,7 +335,7 @@ describe("writeOrchestratorReviewMemoryNote", () => {
     const { rootPath } = createTestContext();
 
     const result = await writeOrchestratorReviewMemoryNote({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       note: {
         title: "Secret note",
         category: "active_focus",

@@ -57,9 +57,9 @@ const inFlightCatalogRequests = new Map<
   Promise<StellaModelCatalog | null>
 >();
 
-const diskCachePathForKey = (stellaHome: string, cacheKey: string): string =>
+const diskCachePathForKey = (stellaDataDir: string, cacheKey: string): string =>
   path.join(
-    stellaHome,
+    stellaDataDir,
     "cache",
     "model-catalog",
     `${createHash("sha256").update(cacheKey).digest("hex")}.json`,
@@ -112,13 +112,13 @@ const parsePersistedCatalog = (
 };
 
 const readCatalogFromDisk = async (
-  stellaHome: string | undefined,
+  stellaDataDir: string | undefined,
   cacheKey: string,
 ): Promise<StellaModelCatalog | null> => {
-  if (!stellaHome?.trim()) return null;
+  if (!stellaDataDir?.trim()) return null;
   try {
     const raw = await fs.readFile(
-      diskCachePathForKey(stellaHome, cacheKey),
+      diskCachePathForKey(stellaDataDir, cacheKey),
       "utf-8",
     );
     return parsePersistedCatalog(JSON.parse(raw), cacheKey);
@@ -128,13 +128,13 @@ const readCatalogFromDisk = async (
 };
 
 const writeCatalogToDisk = async (
-  stellaHome: string | undefined,
+  stellaDataDir: string | undefined,
   cacheKey: string,
   catalog: StellaModelCatalog,
 ): Promise<void> => {
-  if (!stellaHome?.trim()) return;
+  if (!stellaDataDir?.trim()) return;
   await writePrivateFile(
-    diskCachePathForKey(stellaHome, cacheKey),
+    diskCachePathForKey(stellaDataDir, cacheKey),
     JSON.stringify({ cacheKey, catalog }, null, 2),
   );
 };
@@ -219,7 +219,7 @@ const fetchStellaModelCatalog = async (args: {
   site: StellaSiteConfig;
   deviceId?: string;
   modelCatalogUpdatedAt?: number | null;
-  stellaHome?: string;
+  stellaDataDir?: string;
 }): Promise<StellaModelCatalog | null> => {
   const request = buildCatalogRequest(args);
   if (!request) {
@@ -236,7 +236,7 @@ const fetchStellaModelCatalog = async (args: {
     inFlight = (async () => {
       try {
         const diskCached = await readCatalogFromDisk(
-          args.stellaHome,
+          args.stellaDataDir,
           request.cacheKey,
         );
         if (diskCached) {
@@ -261,7 +261,7 @@ const fetchStellaModelCatalog = async (args: {
         };
         catalogCache.set(request.cacheKey, cloneCatalog(catalog));
         await writeCatalogToDisk(
-          args.stellaHome,
+          args.stellaDataDir,
           request.cacheKey,
           catalog,
         ).catch(() => undefined);
@@ -305,7 +305,7 @@ const resolveStellaModelAlias = async (args: {
   site: StellaSiteConfig;
   deviceId?: string;
   modelCatalogUpdatedAt?: number | null;
-  stellaHome?: string;
+  stellaDataDir?: string;
 }): Promise<string | null> => {
   if (args.route.route !== "stella") {
     return null;
@@ -321,7 +321,7 @@ const resolveStellaModelAlias = async (args: {
     site: args.site,
     deviceId: args.deviceId,
     modelCatalogUpdatedAt: args.modelCatalogUpdatedAt,
-    stellaHome: args.stellaHome,
+    stellaDataDir: args.stellaDataDir,
   });
   if (!catalog) {
     return null;
@@ -345,7 +345,7 @@ export const withStellaModelCatalogMetadata = async (args: {
   site: StellaSiteConfig;
   deviceId?: string;
   modelCatalogUpdatedAt?: number | null;
-  stellaHome?: string;
+  stellaDataDir?: string;
 }): Promise<ResolvedLlmRoute> => {
   if (args.route.route !== "stella") {
     return args.route;

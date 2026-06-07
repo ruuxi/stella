@@ -76,8 +76,8 @@ const HOME_DIRECTORY_SKIP_PREFIXES = new Set([
 ]);
 
 type BackupServiceDeps = {
-  stellaRoot: string;
-  getStellaRoot: () => string | null;
+  stellaAppDir: string;
+  getStellaAppDir: () => string | null;
   getRunner: () => StellaHostRunner | null;
   getAuthToken: () => Promise<string | null>;
   getConvexSiteUrl: () => string | null;
@@ -118,7 +118,7 @@ type BackupManifest = {
   createdAt: number;
   snapshotHash: string;
   repoRoot: string;
-  stellaHomePath: string;
+  stellaDataDirPath: string;
   entries: BackupManifestEntry[];
 };
 
@@ -465,20 +465,20 @@ export class BackupService {
   }
 
   async refreshEnabledState() {
-    const stellaHomePath = this.deps.getStellaRoot();
-    const nextEnabled = stellaHomePath
-      ? (await this.readSyncMode(stellaHomePath)) === "on"
+    const stellaDataDirPath = this.deps.getStellaAppDir();
+    const nextEnabled = stellaDataDirPath
+      ? (await this.readSyncMode(stellaDataDirPath)) === "on"
       : false;
     this.setEnabled(nextEnabled);
   }
 
   async setMode(mode: "on" | "off") {
     this.setEnabled(mode === "on");
-    const stellaHomePath = this.deps.getStellaRoot();
-    if (!stellaHomePath) {
+    const stellaDataDirPath = this.deps.getStellaAppDir();
+    if (!stellaDataDirPath) {
       return;
     }
-    await this.writeStatus(stellaHomePath, (current) => ({
+    await this.writeStatus(stellaDataDirPath, (current) => ({
       ...current,
       enabled: mode === "on",
       ...(mode === "off" ? { pendingReason: undefined } : {}),
@@ -486,19 +486,19 @@ export class BackupService {
   }
 
   async getStatus(): Promise<BackupStatus> {
-    const stellaHomePath = this.deps.getStellaRoot();
-    if (!stellaHomePath) {
+    const stellaDataDirPath = this.deps.getStellaAppDir();
+    if (!stellaDataDirPath) {
       return {
         version: BACKUP_VERSION,
         enabled: false,
       };
     }
-    return await this.readStatus(stellaHomePath);
+    return await this.readStatus(stellaDataDirPath);
   }
 
   async backupNow(): Promise<BackupNowResult> {
-    const stellaHomePath = this.deps.getStellaRoot();
-    if (!stellaHomePath) {
+    const stellaDataDirPath = this.deps.getStellaAppDir();
+    if (!stellaDataDirPath) {
       throw new Error("Local Stella home is unavailable.");
     }
     if (this.runInFlight) {
@@ -512,7 +512,7 @@ export class BackupService {
     const busy = await this.isRuntimeBusy();
     if (busy) {
       this.lastBusyAt = Date.now();
-      await this.writeStatus(stellaHomePath, (current) => ({
+      await this.writeStatus(stellaDataDirPath, (current) => ({
         ...current,
         enabled: this.enabled,
         pendingReason: "Waiting for agents to go idle before backing up.",
@@ -527,7 +527,7 @@ export class BackupService {
       this.lastBusyAt
       && Date.now() - this.lastBusyAt < IDLE_QUIET_PERIOD_MS
     ) {
-      await this.writeStatus(stellaHomePath, (current) => ({
+      await this.writeStatus(stellaDataDirPath, (current) => ({
         ...current,
         enabled: this.enabled,
         pendingReason: "Waiting for a short quiet period before backing up.",
@@ -541,7 +541,7 @@ export class BackupService {
     this.runInFlight = true;
     this.runRequested = false;
     try {
-      const result = await this.performBackup(stellaHomePath, "manual");
+      const result = await this.performBackup(stellaDataDirPath, "manual");
       if (result.status === "unchanged") {
         return {
           status: "unchanged",
@@ -557,7 +557,7 @@ export class BackupService {
         remoteUploaded: result.remoteUploaded,
       };
     } catch (error) {
-      await this.writeStatus(stellaHomePath, (current) => ({
+      await this.writeStatus(stellaDataDirPath, (current) => ({
         ...current,
         enabled: this.enabled,
         lastAttemptAt: Date.now(),
@@ -588,8 +588,8 @@ export class BackupService {
     snapshotId: string,
     runtimeOps: RestoreRuntimeOps,
   ): Promise<RestoreBackupResult> {
-    const stellaHomePath = this.deps.getStellaRoot();
-    if (!stellaHomePath) {
+    const stellaDataDirPath = this.deps.getStellaAppDir();
+    if (!stellaDataDirPath) {
       throw new Error("Local Stella home is unavailable.");
     }
     if (this.runInFlight) {
@@ -598,15 +598,15 @@ export class BackupService {
     if (await this.isRuntimeBusy()) {
       throw new Error("Stella is busy right now. Wait for active tasks to finish before restoring.");
     }
-    await this.ensureRepoRestoreSafe(stellaHomePath);
+    await this.ensureRepoRestoreSafe(stellaDataDirPath);
 
     const restoreTempRoot = path.join(
-      this.getBackupsRoot(stellaHomePath),
+      this.getBackupsRoot(stellaDataDirPath),
       "tmp",
       `restore-${snapshotId}-${Date.now()}`,
     );
     await ensurePrivateDir(restoreTempRoot);
-    await this.writeStatus(stellaHomePath, (current) => ({
+    await this.writeStatus(stellaDataDirPath, (current) => ({
       ...current,
       restoreInProgress: true,
       lastRestoreError: undefined,
@@ -705,16 +705,16 @@ export class BackupService {
       runtimeStopped = true;
 
       await this.applyRestoreFromManifest({
-        stellaHomePath,
+        stellaDataDirPath,
         manifest,
         stagedObjectsDir,
       });
       await this.persistEncryptionKey(
-        stellaHomePath,
+        stellaDataDirPath,
         remoteKey,
         manifest.snapshotId,
       );
-      await this.writeStatus(stellaHomePath, (current) => ({
+      await this.writeStatus(stellaDataDirPath, (current) => ({
         ...current,
         enabled: this.enabled,
         restoreInProgress: false,
@@ -729,7 +729,7 @@ export class BackupService {
         snapshotId: manifest.snapshotId,
       };
     } catch (error) {
-      await this.writeStatus(stellaHomePath, (current) => ({
+      await this.writeStatus(stellaDataDirPath, (current) => ({
         ...current,
         enabled: this.enabled,
         restoreInProgress: false,
@@ -837,15 +837,15 @@ export class BackupService {
       return;
     }
 
-    const stellaHomePath = this.deps.getStellaRoot();
-    if (!stellaHomePath) {
+    const stellaDataDirPath = this.deps.getStellaAppDir();
+    if (!stellaDataDirPath) {
       return;
     }
 
     const busy = await this.isRuntimeBusy();
     if (busy) {
       this.lastBusyAt = Date.now();
-      await this.writeStatus(stellaHomePath, (current) => ({
+      await this.writeStatus(stellaDataDirPath, (current) => ({
         ...current,
         enabled: true,
         pendingReason: "Waiting for agents to go idle before backing up.",
@@ -873,11 +873,11 @@ export class BackupService {
     this.runInFlight = true;
     this.runRequested = false;
     try {
-      const result = await this.performBackup(stellaHomePath, reason);
+      const result = await this.performBackup(stellaDataDirPath, reason);
       // Perf: adjust the recurring cadence based on whether anything changed.
       this.updateIdleCadence(result.status === "unchanged");
     } catch (error) {
-      await this.writeStatus(stellaHomePath, (current) => ({
+      await this.writeStatus(stellaDataDirPath, (current) => ({
         ...current,
         enabled: true,
         lastAttemptAt: Date.now(),
@@ -910,18 +910,18 @@ export class BackupService {
   }
 
   private async performBackup(
-    stellaHomePath: string,
+    stellaDataDirPath: string,
     _reason: string,
   ): Promise<BackupRunResult> {
     const snapshotId = `backup-${Date.now()}`;
-    const backupsRoot = this.getBackupsRoot(stellaHomePath);
+    const backupsRoot = this.getBackupsRoot(stellaDataDirPath);
     const manifestsDir = path.join(backupsRoot, "manifests");
     const tempRoot = path.join(backupsRoot, "tmp", snapshotId);
     await ensurePrivateDir(backupsRoot);
     await ensurePrivateDir(manifestsDir);
     await ensurePrivateDir(tempRoot);
 
-    await this.writeStatus(stellaHomePath, (current) => ({
+    await this.writeStatus(stellaDataDirPath, (current) => ({
       ...current,
       enabled: true,
       lastAttemptAt: Date.now(),
@@ -929,9 +929,9 @@ export class BackupService {
     }));
 
     try {
-      const keyMaterial = await this.loadOrCreateEncryptionKey(stellaHomePath);
+      const keyMaterial = await this.loadOrCreateEncryptionKey(stellaDataDirPath);
       const entries = await this.collectEntries({
-        stellaHomePath,
+        stellaDataDirPath,
         tempRoot,
         encryptionKey: keyMaterial.key,
       });
@@ -947,9 +947,9 @@ export class BackupService {
         ),
       );
 
-      const status = await this.readStatus(stellaHomePath);
+      const status = await this.readStatus(stellaDataDirPath);
       if (status.lastSnapshotHash === snapshotHash) {
-        await this.writeStatus(stellaHomePath, (current) => ({
+        await this.writeStatus(stellaDataDirPath, (current) => ({
           ...current,
           enabled: true,
           lastAttemptAt: Date.now(),
@@ -966,8 +966,8 @@ export class BackupService {
         snapshotId,
         createdAt: Date.now(),
         snapshotHash,
-        repoRoot: this.deps.stellaRoot,
-        stellaHomePath,
+        repoRoot: this.deps.stellaAppDir,
+        stellaDataDirPath,
         entries,
       };
       await writePrivateFile(
@@ -977,18 +977,18 @@ export class BackupService {
       let remoteUploaded = false;
       try {
         remoteUploaded = await this.uploadManifestRemote(
-          stellaHomePath,
+          stellaDataDirPath,
           manifest,
           keyMaterial,
         );
       } catch (error) {
-        await this.writeStatus(stellaHomePath, (current) => ({
+        await this.writeStatus(stellaDataDirPath, (current) => ({
           ...current,
           enabled: true,
           lastRemoteError: sanitizeError(error),
         }));
       }
-      await this.writeStatus(stellaHomePath, (current) => ({
+      await this.writeStatus(stellaDataDirPath, (current) => ({
         ...current,
         enabled: true,
         lastSuccessAt: Date.now(),
@@ -1012,7 +1012,7 @@ export class BackupService {
   }
 
   private async collectEntries(args: {
-    stellaHomePath: string;
+    stellaDataDirPath: string;
     tempRoot: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry[]> {
@@ -1021,7 +1021,7 @@ export class BackupService {
     const sqliteEntry = await this.collectSqliteEntry(args);
     const homeEntries = await this.collectDirectoryEntries({
       ...args,
-      rootPath: args.stellaHomePath,
+      rootPath: args.stellaDataDirPath,
       scope: HOME_BACKUP_SCOPE,
       shouldSkip: (relativePath, isDirectory) => {
         if (!relativePath) return false;
@@ -1066,23 +1066,23 @@ export class BackupService {
   }
 
   private async collectRepoEntries(args: {
-    stellaHomePath: string;
+    stellaDataDirPath: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry[]> {
     const relativeHome = normalizePath(
-      path.relative(this.deps.stellaRoot, args.stellaHomePath),
+      path.relative(this.deps.stellaAppDir, args.stellaDataDirPath),
     );
     const excludePrefixes =
       relativeHome && !relativeHome.startsWith("..")
         ? [relativeHome, "workspace"]
         : ["workspace"];
     const repoFiles = await listGitWorkingTreeFiles(
-      this.deps.stellaRoot,
+      this.deps.stellaAppDir,
       excludePrefixes,
     );
     const entries: BackupManifestEntry[] = [];
     for (const relativePath of repoFiles) {
-      const absolutePath = path.join(this.deps.stellaRoot, relativePath);
+      const absolutePath = path.join(this.deps.stellaAppDir, relativePath);
       const stat = await fs.stat(absolutePath).catch(() => null);
       if (!stat?.isFile()) {
         continue;
@@ -1092,7 +1092,7 @@ export class BackupService {
           absolutePath,
           manifestPath: relativePath,
           scope: "repo-worktree",
-          stellaHomePath: args.stellaHomePath,
+          stellaDataDirPath: args.stellaDataDirPath,
           encryptionKey: args.encryptionKey,
         }),
       );
@@ -1101,7 +1101,7 @@ export class BackupService {
   }
 
   private async collectGitBundleEntry(args: {
-    stellaHomePath: string;
+    stellaDataDirPath: string;
     tempRoot: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry | null> {
@@ -1117,17 +1117,17 @@ export class BackupService {
     const currentFingerprint = await this.resolveRepoRefsFingerprint();
     if (currentFingerprint) {
       const cache = await readJsonFile<BundleCache>(
-        this.getBundleCachePath(args.stellaHomePath),
+        this.getBundleCachePath(args.stellaDataDirPath),
       );
       if (
         cache?.refsFingerprint === currentFingerprint &&
         cache.entry?.objectId &&
         (await fileExists(
-          this.getObjectMetadataPath(args.stellaHomePath, cache.entry.objectId),
+          this.getObjectMetadataPath(args.stellaDataDirPath, cache.entry.objectId),
         )) &&
         (await fileExists(
           this.getObjectCiphertextPath(
-            args.stellaHomePath,
+            args.stellaDataDirPath,
             cache.entry.objectId,
           ),
         ))
@@ -1140,7 +1140,7 @@ export class BackupService {
     const { env, gitLocation } = setupEnvironment({});
     await execFileAsync(
       gitLocation,
-      ["-C", this.deps.stellaRoot, "bundle", "create", bundlePath, "--all"],
+      ["-C", this.deps.stellaAppDir, "bundle", "create", bundlePath, "--all"],
       {
         env,
         maxBuffer: EXEC_MAX_BUFFER,
@@ -1154,7 +1154,7 @@ export class BackupService {
       absolutePath: bundlePath,
       manifestPath: "repo.bundle",
       scope: "repo-git-bundle",
-      stellaHomePath: args.stellaHomePath,
+      stellaDataDirPath: args.stellaDataDirPath,
       encryptionKey: args.encryptionKey,
     });
     // Perf: record the all-refs fingerprint this bundle was built from so the
@@ -1162,7 +1162,7 @@ export class BackupService {
     // forces a re-bundle.
     if (currentFingerprint) {
       await writePrivateFile(
-        this.getBundleCachePath(args.stellaHomePath),
+        this.getBundleCachePath(args.stellaDataDirPath),
         JSON.stringify(
           { refsFingerprint: currentFingerprint, entry } satisfies BundleCache,
           null,
@@ -1181,7 +1181,7 @@ export class BackupService {
   private async resolveRepoRefsFingerprint(): Promise<string | null> {
     try {
       const refsOutput = (
-        await runGit(this.deps.stellaRoot, [
+        await runGit(this.deps.stellaAppDir, [
           "for-each-ref",
           "--format=%(refname)%00%(objectname)",
         ])
@@ -1193,7 +1193,7 @@ export class BackupService {
         .sort();
       let head = "";
       try {
-        head = (await runGit(this.deps.stellaRoot, ["rev-parse", "HEAD"]))
+        head = (await runGit(this.deps.stellaAppDir, ["rev-parse", "HEAD"]))
           .toString("utf8")
           .trim();
       } catch {
@@ -1210,11 +1210,11 @@ export class BackupService {
   }
 
   private async collectSqliteEntry(args: {
-    stellaHomePath: string;
+    stellaDataDirPath: string;
     tempRoot: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry | null> {
-    const sqlitePath = path.join(args.stellaHomePath, "stella.sqlite");
+    const sqlitePath = path.join(args.stellaDataDirPath, "stella.sqlite");
     if (!(await fileExists(sqlitePath))) {
       return null;
     }
@@ -1231,13 +1231,13 @@ export class BackupService {
       absolutePath: snapshotPath,
       manifestPath: `${HOME_BACKUP_SCOPE}/stella.sqlite`,
       scope: "sqlite",
-      stellaHomePath: args.stellaHomePath,
+      stellaDataDirPath: args.stellaDataDirPath,
       encryptionKey: args.encryptionKey,
     });
   }
 
   private async collectDirectoryEntries(args: {
-    stellaHomePath: string;
+    stellaDataDirPath: string;
     rootPath: string;
     scope: typeof HOME_BACKUP_SCOPE | "workspace";
     shouldSkip: (relativePath: string, isDirectory: boolean) => boolean;
@@ -1255,7 +1255,7 @@ export class BackupService {
           absolutePath,
           manifestPath: `${args.scope}/${relativePath}`,
           scope: args.scope,
-          stellaHomePath: args.stellaHomePath,
+          stellaDataDirPath: args.stellaDataDirPath,
           encryptionKey: args.encryptionKey,
         }),
       );
@@ -1267,7 +1267,7 @@ export class BackupService {
     absolutePath: string;
     manifestPath: string;
     scope: BackupManifestEntry["scope"];
-    stellaHomePath: string;
+    stellaDataDirPath: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry> {
     const stat = await fs.stat(args.absolutePath);
@@ -1275,7 +1275,7 @@ export class BackupService {
     const sha256 = createSha256(plaintext);
     const objectId = sha256;
     await this.writeObjectIfMissing(
-      args.stellaHomePath,
+      args.stellaDataDirPath,
       objectId,
       plaintext,
       args.encryptionKey,
@@ -1292,14 +1292,14 @@ export class BackupService {
   }
 
   private async writeObjectIfMissing(
-    stellaHomePath: string,
+    stellaDataDirPath: string,
     objectId: string,
     plaintext: Buffer,
     key: Buffer,
   ) {
-    const objectMetaPath = this.getObjectMetadataPath(stellaHomePath, objectId);
+    const objectMetaPath = this.getObjectMetadataPath(stellaDataDirPath, objectId);
     const objectCiphertextPath = this.getObjectCiphertextPath(
-      stellaHomePath,
+      stellaDataDirPath,
       objectId,
     );
     if (
@@ -1320,9 +1320,9 @@ export class BackupService {
   }
 
   private async loadOrCreateEncryptionKey(
-    stellaHomePath: string,
+    stellaDataDirPath: string,
   ): Promise<BackupKeyMaterial> {
-    const configPath = this.getBackupConfigPath(stellaHomePath);
+    const configPath = this.getBackupConfigPath(stellaDataDirPath);
     const existing = await readJsonFile<BackupConfig>(configPath);
     const restored = existing?.wrappedKey
       ? unprotectValue(ENCRYPTION_SCOPE, existing.wrappedKey)
@@ -1334,7 +1334,7 @@ export class BackupService {
           existing?.keyFingerprint?.trim() || this.createKeyFingerprint(key);
         const existingWrappedKey = existing?.wrappedKey;
         if (existingWrappedKey && existing?.keyFingerprint !== fingerprint) {
-          await this.persistBackupConfig(stellaHomePath, {
+          await this.persistBackupConfig(stellaDataDirPath, {
             version: BACKUP_VERSION,
             wrappedKey: existingWrappedKey,
             updatedAt: existing?.updatedAt ?? Date.now(),
@@ -1351,7 +1351,7 @@ export class BackupService {
     }
 
     const key = crypto.randomBytes(KEY_BYTES);
-    return await this.persistEncryptionKey(stellaHomePath, key);
+    return await this.persistEncryptionKey(stellaDataDirPath, key);
   }
 
   private createKeyFingerprint(key: Buffer) {
@@ -1359,19 +1359,19 @@ export class BackupService {
   }
 
   private async persistBackupConfig(
-    stellaHomePath: string,
+    stellaDataDirPath: string,
     config: BackupConfig,
   ) {
     await writePrivateFile(
-      this.getBackupConfigPath(stellaHomePath),
+      this.getBackupConfigPath(stellaDataDirPath),
       JSON.stringify(config, null, 2),
     );
   }
 
-  private async resetLocalBackupCache(stellaHomePath: string) {
+  private async resetLocalBackupCache(stellaDataDirPath: string) {
     for (const child of ["objects", "manifests", "tmp"]) {
       await fs
-        .rm(path.join(this.getBackupsRoot(stellaHomePath), child), {
+        .rm(path.join(this.getBackupsRoot(stellaDataDirPath), child), {
           recursive: true,
           force: true,
         })
@@ -1380,7 +1380,7 @@ export class BackupService {
   }
 
   private async persistEncryptionKey(
-    stellaHomePath: string,
+    stellaDataDirPath: string,
     key: Buffer,
     _snapshotId?: string,
   ): Promise<BackupKeyMaterial> {
@@ -1397,16 +1397,16 @@ export class BackupService {
       keyFingerprint: fingerprint,
     };
     const existing = await readJsonFile<BackupConfig>(
-      this.getBackupConfigPath(stellaHomePath),
+      this.getBackupConfigPath(stellaDataDirPath),
     );
     const previousWrappedKey = existing?.wrappedKey;
     if (
       existing?.keyFingerprint
       && existing.keyFingerprint !== nextConfig.keyFingerprint
     ) {
-      await this.resetLocalBackupCache(stellaHomePath);
+      await this.resetLocalBackupCache(stellaDataDirPath);
     }
-    await this.persistBackupConfig(stellaHomePath, nextConfig);
+    await this.persistBackupConfig(stellaDataDirPath, nextConfig);
     if (previousWrappedKey && previousWrappedKey !== wrappedKey) {
       deleteProtectedValue(ENCRYPTION_SCOPE, previousWrappedKey);
     }
@@ -1510,7 +1510,7 @@ export class BackupService {
   }
 
   private async uploadManifestRemote(
-    stellaHomePath: string,
+    stellaDataDirPath: string,
     manifest: BackupManifest,
     keyMaterial: BackupKeyMaterial,
   ): Promise<boolean> {
@@ -1538,7 +1538,7 @@ export class BackupService {
     const objects = await Promise.all(
       objectIds.map(async (objectId) => {
         const metadata = await readJsonFile<BackupObjectMetadata>(
-          this.getObjectMetadataPath(stellaHomePath, objectId),
+          this.getObjectMetadataPath(stellaDataDirPath, objectId),
         );
         if (!metadata) {
           throw new Error(`Missing local backup metadata for object ${objectId}.`);
@@ -1573,7 +1573,7 @@ export class BackupService {
 
     for (const remoteObject of prepare.missingObjects) {
       const ciphertext = await fs.readFile(
-        this.getObjectCiphertextPath(stellaHomePath, remoteObject.objectId),
+        this.getObjectCiphertextPath(stellaDataDirPath, remoteObject.objectId),
       );
       const response = await fetch(remoteObject.uploadUrl, {
         method: "PUT",
@@ -1648,7 +1648,7 @@ export class BackupService {
         }),
       },
     );
-    await this.writeStatus(stellaHomePath, (current) => ({
+    await this.writeStatus(stellaDataDirPath, (current) => ({
       ...current,
       enabled: current.enabled,
       lastRemoteSuccessAt: Date.now(),
@@ -1658,18 +1658,18 @@ export class BackupService {
     return true;
   }
 
-  private getRepoExcludePrefixes(stellaHomePath: string) {
+  private getRepoExcludePrefixes(stellaDataDirPath: string) {
     const relativeHome = normalizePath(
-      path.relative(this.deps.stellaRoot, stellaHomePath),
+      path.relative(this.deps.stellaAppDir, stellaDataDirPath),
     );
     return relativeHome && !relativeHome.startsWith("..")
       ? [relativeHome, "workspace"]
       : ["workspace"];
   }
 
-  private async ensureRepoRestoreSafe(stellaHomePath: string) {
-    const excludePrefixes = this.getRepoExcludePrefixes(stellaHomePath);
-    const porcelain = await runGit(this.deps.stellaRoot, ["status", "--porcelain", "-z"]);
+  private async ensureRepoRestoreSafe(stellaDataDirPath: string) {
+    const excludePrefixes = this.getRepoExcludePrefixes(stellaDataDirPath);
+    const porcelain = await runGit(this.deps.stellaAppDir, ["status", "--porcelain", "-z"]);
     const entries = porcelain
       .toString("utf8")
       .split("\0")
@@ -1693,7 +1693,7 @@ export class BackupService {
   }
 
   private async applyRestoreFromManifest(args: {
-    stellaHomePath: string;
+    stellaDataDirPath: string;
     manifest: BackupManifest;
     stagedObjectsDir: string;
   }) {
@@ -1714,7 +1714,7 @@ export class BackupService {
 
     await this.restoreRepoWorkingTree(
       args.stagedObjectsDir,
-      args.stellaHomePath,
+      args.stellaDataDirPath,
       repoEntries,
     );
     await this.restoreScopedDirectory({
@@ -1725,7 +1725,7 @@ export class BackupService {
       shouldSkip: () => false,
     });
     await this.restoreScopedDirectory({
-      rootPath: args.stellaHomePath,
+      rootPath: args.stellaDataDirPath,
       manifestPrefixes: [HOME_BACKUP_SCOPE],
       entries: homeEntries.filter(
         (entry) =>
@@ -1739,7 +1739,7 @@ export class BackupService {
 
     if (repoBundleEntry) {
       const restoredBundlePath = path.join(
-        this.getBackupsRoot(args.stellaHomePath),
+        this.getBackupsRoot(args.stellaDataDirPath),
         "restored",
         args.manifest.snapshotId,
         "repo.bundle",
@@ -1752,7 +1752,7 @@ export class BackupService {
     }
 
     if (sqliteEntry) {
-      const sqliteTarget = path.join(args.stellaHomePath, "stella.sqlite");
+      const sqliteTarget = path.join(args.stellaDataDirPath, "stella.sqlite");
       await ensurePrivateDir(path.dirname(sqliteTarget));
       await removeFileIfExists(`${sqliteTarget}-shm`);
       await removeFileIfExists(`${sqliteTarget}-wal`);
@@ -1763,12 +1763,12 @@ export class BackupService {
 
   private async restoreRepoWorkingTree(
     stagedObjectsDir: string,
-    stellaHomePath: string,
+    stellaDataDirPath: string,
     entries: BackupManifestEntry[],
   ) {
-    const excludePrefixes = this.getRepoExcludePrefixes(stellaHomePath);
+    const excludePrefixes = this.getRepoExcludePrefixes(stellaDataDirPath);
     const currentFiles = await listGitWorkingTreeFiles(
-      this.deps.stellaRoot,
+      this.deps.stellaAppDir,
       excludePrefixes,
     );
     const snapshotFiles = new Set(entries.map((entry) => normalizePath(entry.path)));
@@ -1777,14 +1777,14 @@ export class BackupService {
         .filter((relativePath) => !snapshotFiles.has(relativePath))
         .map(async (relativePath) => {
           await removeFileIfExists(
-            resolveInsideRoot(this.deps.stellaRoot, relativePath),
+            resolveInsideRoot(this.deps.stellaAppDir, relativePath),
           );
         }),
     );
     for (const entry of entries) {
       await this.restoreEntryToPath(
         entry,
-        resolveInsideRoot(this.deps.stellaRoot, entry.path),
+        resolveInsideRoot(this.deps.stellaAppDir, entry.path),
         stagedObjectsDir,
       );
     }
@@ -1843,10 +1843,10 @@ export class BackupService {
     }
   }
 
-  private async readStatus(stellaHomePath: string): Promise<BackupStatus> {
+  private async readStatus(stellaDataDirPath: string): Promise<BackupStatus> {
     return (
       (await readJsonFile<BackupStatus>(
-        this.getStatusPath(stellaHomePath),
+        this.getStatusPath(stellaDataDirPath),
       )) ?? {
         version: BACKUP_VERSION,
         enabled: false,
@@ -1855,57 +1855,57 @@ export class BackupService {
   }
 
   private async writeStatus(
-    stellaHomePath: string,
+    stellaDataDirPath: string,
     update: (current: BackupStatus) => BackupStatus,
   ) {
-    const next = update(await this.readStatus(stellaHomePath));
+    const next = update(await this.readStatus(stellaDataDirPath));
     next.version = BACKUP_VERSION;
     await writePrivateFile(
-      this.getStatusPath(stellaHomePath),
+      this.getStatusPath(stellaDataDirPath),
       JSON.stringify(next, null, 2),
     );
   }
 
-  private async readSyncMode(stellaHomePath: string): Promise<"on" | "off"> {
+  private async readSyncMode(stellaDataDirPath: string): Promise<"on" | "off"> {
     const prefs = await readJsonFile<{ syncMode?: string }>(
-      path.join(stellaHomePath, "preferences.json"),
+      path.join(stellaDataDirPath, "preferences.json"),
     );
     return prefs?.syncMode === "on" ? "on" : "off";
   }
 
-  private getBackupsRoot(stellaHomePath: string) {
-    return path.join(stellaHomePath, "backups");
+  private getBackupsRoot(stellaDataDirPath: string) {
+    return path.join(stellaDataDirPath, "backups");
   }
 
   private getWorkspaceRoot() {
-    return path.join(this.deps.stellaRoot, "workspace");
+    return path.join(this.deps.stellaAppDir, "workspace");
   }
 
-  private getBackupConfigPath(stellaHomePath: string) {
-    return path.join(this.getBackupsRoot(stellaHomePath), "config.json");
+  private getBackupConfigPath(stellaDataDirPath: string) {
+    return path.join(this.getBackupsRoot(stellaDataDirPath), "config.json");
   }
 
   // Perf: side file backing the git-bundle refs-fingerprint cache (see
   // BundleCache).
-  private getBundleCachePath(stellaHomePath: string) {
-    return path.join(this.getBackupsRoot(stellaHomePath), "bundle-cache.json");
+  private getBundleCachePath(stellaDataDirPath: string) {
+    return path.join(this.getBackupsRoot(stellaDataDirPath), "bundle-cache.json");
   }
 
-  private getStatusPath(stellaHomePath: string) {
-    return path.join(this.getBackupsRoot(stellaHomePath), "status.json");
+  private getStatusPath(stellaDataDirPath: string) {
+    return path.join(this.getBackupsRoot(stellaDataDirPath), "status.json");
   }
 
-  private getObjectMetadataPath(stellaHomePath: string, objectId: string) {
+  private getObjectMetadataPath(stellaDataDirPath: string, objectId: string) {
     return path.join(
-      this.getBackupsRoot(stellaHomePath),
+      this.getBackupsRoot(stellaDataDirPath),
       "objects",
       `${objectId}.json`,
     );
   }
 
-  private getObjectCiphertextPath(stellaHomePath: string, objectId: string) {
+  private getObjectCiphertextPath(stellaDataDirPath: string, objectId: string) {
     return path.join(
-      this.getBackupsRoot(stellaHomePath),
+      this.getBackupsRoot(stellaDataDirPath),
       "objects",
       `${objectId}.bin`,
     );

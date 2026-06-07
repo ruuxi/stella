@@ -67,7 +67,7 @@ function formatChronicleEnableFailure(
 ): string {
   switch (args.reason) {
     case "no-stella-root":
-      return t("settings.memory.enableFailures.noStellaRoot");
+      return t("settings.memory.enableFailures.noStellaAppDir");
     case "needs-permission":
       return t("settings.memory.enableFailures.needsPermission");
     case "binary-missing":
@@ -118,7 +118,7 @@ function formatDreamRunResult(
     case "no-runner":
       return t("settings.memory.dreamResults.noRunner");
     case "no-stella-root":
-      return t("settings.memory.enableFailures.noStellaRoot");
+      return t("settings.memory.enableFailures.noStellaAppDir");
     case "unavailable":
       return args.detail ?? t("settings.memory.dreamResults.unavailable");
     default:

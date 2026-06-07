@@ -223,7 +223,7 @@
         "wipedTitle": "تم مسح الذكريات"
       },
       "enableFailures": {
-        "noStellaRoot": "جذر مساحة عمل Stella غير متاح.",
+        "noStellaAppDir": "جذر مساحة عمل Stella غير متاح.",
         "needsPermission": "لا يزال إذن تسجيل الشاشة مطلوبًا قبل أن يتمكّن Chronicle من البدء.",
         "binaryMissing": "ملف Chronicle المساعد مفقود.",
         "startupTimeout": "لم يتصل Chronicle بعد التشغيل.",

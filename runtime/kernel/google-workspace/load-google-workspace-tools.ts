@@ -182,7 +182,7 @@ function buildHandlers(
 }
 
 export const loadGoogleWorkspaceTools = async (options: {
-  stellaRoot: string;
+  stellaAppDir: string;
   onAuthStateChanged?: (authenticated: boolean) => void;
 }): Promise<{
   tools: ToolDefinition[];
@@ -190,7 +190,7 @@ export const loadGoogleWorkspaceTools = async (options: {
   callTool: GoogleWorkspaceCallToolFn | null;
   hasStoredCredentials: boolean;
 }> => {
-  const root = path.join(options.stellaRoot, "google-workspace");
+  const root = path.join(options.stellaAppDir, "google-workspace");
   await mkdir(root, { recursive: true, mode: 0o700 });
   setGoogleWorkspaceProjectRoot(root);
 
@@ -242,7 +242,7 @@ export const loadGoogleWorkspaceTools = async (options: {
     // brokers the dialog + OAuth before any tool call lands here.
     if (
       !NON_AUTH_TOOLS.has(name) &&
-      !(await loadConnectorAccessToken(options.stellaRoot, "google-workspace"))
+      !(await loadConnectorAccessToken(options.stellaAppDir, "google-workspace"))
     ) {
       options.onAuthStateChanged?.(false);
       return {
@@ -314,7 +314,7 @@ export const loadGoogleWorkspaceTools = async (options: {
   };
 
   const hasStoredCredentials = Boolean(
-    await loadConnectorAccessToken(options.stellaRoot, "google-workspace"),
+    await loadConnectorAccessToken(options.stellaAppDir, "google-workspace"),
   );
 
   return {

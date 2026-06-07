@@ -58,7 +58,7 @@ const execFileAsync = promisify(execFile);
 type DictationHandlersOptions = {
   windowManager: WindowManager;
   getOverlayController: () => OverlayWindowController | null;
-  getStellaRoot: () => string | null;
+  getStellaAppDir: () => string | null;
   onDictationActiveChanged?: (active: boolean) => void;
 };
 
@@ -231,8 +231,8 @@ export const registerDictationHandlers = (
   let dictationActive = false;
 
   const areDictationSoundsEnabled = () => {
-    const stellaRoot = options.getStellaRoot();
-    return stellaRoot ? getDictationSoundEffectsEnabled(stellaRoot) : true;
+    const stellaAppDir = options.getStellaAppDir();
+    return stellaAppDir ? getDictationSoundEffectsEnabled(stellaAppDir) : true;
   };
 
   const playEnabledDictationSound = (sound: DictationSound) => {
@@ -655,9 +655,9 @@ export const registerDictationHandlers = (
       process.platform === "darwin"
         ? DEFAULT_DICTATION_SHORTCUT
         : DEFAULT_NON_MAC_DICTATION_SHORTCUT;
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return platformDefault;
-    const shortcut = loadLocalPreferences(stellaRoot).dictationShortcut;
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return platformDefault;
+    const shortcut = loadLocalPreferences(stellaAppDir).dictationShortcut;
     if (
       process.platform !== "darwin" &&
       shortcut === PUSH_TO_TALK_DICTATION_SHORTCUT
@@ -670,11 +670,11 @@ export const registerDictationHandlers = (
   };
 
   const saveConfiguredShortcut = (shortcut: string) => {
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) return;
-    const prefs = loadLocalPreferences(stellaRoot);
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) return;
+    const prefs = loadLocalPreferences(stellaAppDir);
     prefs.dictationShortcut = shortcut;
-    saveLocalPreferences(stellaRoot, prefs);
+    saveLocalPreferences(stellaAppDir, prefs);
   };
 
   const initial = applyDictationShortcutRegistration(loadConfiguredShortcut());
@@ -702,11 +702,11 @@ export const registerDictationHandlers = (
     "dictation:setSoundEffectsEnabled",
     (_event, enabled: boolean) => {
       const nextEnabled = enabled === true;
-      const stellaRoot = options.getStellaRoot();
-      if (stellaRoot) {
-        const prefs = loadLocalPreferences(stellaRoot);
+      const stellaAppDir = options.getStellaAppDir();
+      if (stellaAppDir) {
+        const prefs = loadLocalPreferences(stellaAppDir);
         prefs.dictationSoundEffectsEnabled = nextEnabled;
-        saveLocalPreferences(stellaRoot, prefs);
+        saveLocalPreferences(stellaAppDir, prefs);
       }
       return { enabled: nextEnabled };
     },

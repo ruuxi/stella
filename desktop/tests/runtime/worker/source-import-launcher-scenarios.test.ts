@@ -60,7 +60,7 @@ const PACKAGE_WITH_STORE_IMPORT = [
 
 type ScenarioInstall = {
   root: string;
-  stellaHome: string;
+  stellaDataDir: string;
   db: SqliteDatabase;
   store: StoreModStore;
   sourceHistory: StellaSourceHistoryStore;
@@ -120,10 +120,10 @@ const writeJson = async (
 const createLauncherStyleInstall = async (): Promise<ScenarioInstall> => {
   const parent = await mkdtemp(path.join(os.tmpdir(), "stella-launcher-flow-"));
   const repoRoot = path.join(parent, "stella");
-  const stellaHome = path.join(repoRoot, "state", "electron-user-data");
+  const stellaDataDir = path.join(repoRoot, "state", "electron-user-data");
   await mkdir(path.join(repoRoot, "desktop", "src"), { recursive: true });
   await mkdir(path.join(repoRoot, "runtime", "worker"), { recursive: true });
-  await mkdir(stellaHome, { recursive: true });
+  await mkdir(stellaDataDir, { recursive: true });
 
   await writeFile(path.join(repoRoot, "desktop", "src", "panel.ts"), PANEL_BASE);
   await writeFile(path.join(repoRoot, "runtime", "worker", "marker.ts"), "export {};\n");
@@ -158,7 +158,7 @@ const createLauncherStyleInstall = async (): Promise<ScenarioInstall> => {
   await runGit(repoRoot, ["add", "stella-release.json", "stella-install.json"]);
   await runGit(repoRoot, ["commit", "-m", "launcher install metadata"]);
 
-  const db = new DatabaseSync(getDesktopDatabasePath(stellaHome), {
+  const db = new DatabaseSync(getDesktopDatabasePath(stellaDataDir), {
     timeout: 5_000,
   }) as unknown as SqliteDatabase;
   initializeDesktopDatabase(db);
@@ -166,7 +166,7 @@ const createLauncherStyleInstall = async (): Promise<ScenarioInstall> => {
   const sourceHistory = new StellaSourceHistoryStore(db);
   const install = {
     root: repoRoot,
-    stellaHome,
+    stellaDataDir,
     db,
     store,
     sourceHistory,
@@ -329,7 +329,7 @@ describe("launcher-style source import scenarios", () => {
 
     const result = await importExternalSource({
       repoRoot: install.root,
-      stellaHome: install.stellaHome,
+      stellaDataDir: install.stellaDataDir,
       source: { kind: "git", url: `${sourceRoot}#HEAD` },
       scope: { kind: "all" },
       trust: "trusted",
@@ -425,7 +425,7 @@ describe("launcher-style source import scenarios", () => {
 
     const result = await importExternalSource({
       repoRoot: install.root,
-      stellaHome: install.stellaHome,
+      stellaDataDir: install.stellaDataDir,
       source: { kind: "git", url: `${sourceRoot}#HEAD` },
       scope: { kind: "all" },
       trust: "trusted",
@@ -476,7 +476,7 @@ describe("launcher-style source import scenarios", () => {
     await expect(
       importExternalSource({
         repoRoot: install.root,
-        stellaHome: install.stellaHome,
+        stellaDataDir: install.stellaDataDir,
         source: { kind: "local-path", path: sourceRoot },
         scope: { kind: "all" },
         trust: "untrusted",

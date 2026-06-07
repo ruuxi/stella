@@ -4,7 +4,7 @@ import {
   signDeviceHeartbeat,
 } from "../../../runtime/kernel/home/device.js";
 import { getSoundNotificationsEnabled } from "../../../runtime/kernel/preferences/local-preferences.js";
-import { ensureStellaHomeSeeded } from "../../../runtime/kernel/home/stella-home.js";
+import { ensureStellaDataDirSeeded } from "../../../runtime/kernel/home/stella-home.js";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import {
   createStellaHostRunner,
@@ -31,7 +31,7 @@ const IDLE_HMR_STATE: SelfModHmrState = {
 };
 
 // Module-level one-shot cache for the skills/agents home reconciliation. This
-// seeding used to run on the pre-window path inside `resolveStellaHome`, where
+// seeding used to run on the pre-window path inside `resolveStellaDataDir`, where
 // its ~100 awaited fs ops + sha256 over hundreds of KB contended with first
 // paint. It only needs to complete before the runtime worker reads
 // `~/.stella/skills` and `~/.stella/agents`, so we run it here — off first paint
@@ -42,19 +42,19 @@ const IDLE_HMR_STATE: SelfModHmrState = {
 // safe because a self-mod update that changes bundled skills/agents on disk
 // implies a process restart (which resets this module state and re-seeds),
 // so an in-process reset never needs to re-sync.
-let stellaHomeSeedingPromise: Promise<void> | null = null;
+let stellaDataDirSeedingPromise: Promise<void> | null = null;
 
-const ensureStellaHomeSeededOnce = (
-  stellaRoot: string,
-  stellaHomePath: string,
+const ensureStellaDataDirSeededOnce = (
+  stellaAppDir: string,
+  stellaDataDirPath: string,
 ): Promise<void> => {
-  if (!stellaHomeSeedingPromise) {
-    stellaHomeSeedingPromise = ensureStellaHomeSeeded(
-      stellaRoot,
-      stellaHomePath,
+  if (!stellaDataDirSeedingPromise) {
+    stellaDataDirSeedingPromise = ensureStellaDataDirSeeded(
+      stellaAppDir,
+      stellaDataDirPath,
     ).then(() => undefined);
   }
-  return stellaHomeSeedingPromise;
+  return stellaDataDirSeedingPromise;
 };
 
 export const createHostRunnerHandlers = (
@@ -137,9 +137,9 @@ export const createHostRunnerHandlers = (
     broadcastToWindows(context, "display:update", payload);
   },
   showNotification: ({ title, body, sound }) => {
-    const stellaRoot = context.state.stellaRoot;
-    const soundEnabled = stellaRoot
-      ? getSoundNotificationsEnabled(stellaRoot)
+    const stellaAppDir = context.state.stellaAppDir;
+    const soundEnabled = stellaAppDir
+      ? getSoundNotificationsEnabled(stellaAppDir)
       : true;
     showStellaNotification(context, {
       id: `stella-runtime-${Date.now()}`,
@@ -287,23 +287,23 @@ const connectHostRunner = async (context: BootstrapContext) => {
 
 export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   const { lifecycle, services, state } = context;
-  const stellaRoot = state.stellaRoot;
-  const stellaHomePath = state.stellaHomePath;
-  if (!stellaRoot || !stellaHomePath || !state.stellaWorkspacePath) {
+  const stellaAppDir = state.stellaAppDir;
+  const stellaDataDirPath = state.stellaDataDirPath;
+  if (!stellaAppDir || !stellaDataDirPath || !state.stellaWorkspacePath) {
     throw new Error("Stella root is not initialized.");
   }
 
   // Reconcile bundled skills/agents into the home dir before the worker
   // (spawned by connectHostRunner -> runner.start()/ensureWorkerStarted) reads
   // them. One-shot cached so host-runner resets don't re-pay it.
-  await ensureStellaHomeSeededOnce(stellaRoot, stellaHomePath);
+  await ensureStellaDataDirSeededOnce(stellaAppDir, stellaDataDirPath);
 
   await services.securityPolicyService.loadPolicy();
 
   const loadDeviceIdentity = async () =>
-    await getOrCreateDeviceIdentity(stellaHomePath);
+    await getOrCreateDeviceIdentity(stellaDataDirPath);
   const resetDeviceIdentity = async () =>
-    await resetStoredDeviceIdentity(stellaHomePath);
+    await resetStoredDeviceIdentity(stellaDataDirPath);
 
   clearHostRunnerSubscriptions(context);
   context.state.officePreviewBridgeStop?.();
@@ -316,8 +316,8 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
         clientVersion: "0.0.0",
         isDev: context.config.useDevServer,
         platform: process.platform,
-        stellaRoot,
-        stellaHomePath,
+        stellaAppDir,
+        stellaDataDirPath,
         stellaWorkspacePath: state.stellaWorkspacePath,
       },
       hostHandlers: createHostRunnerHandlers(context, {

@@ -104,11 +104,11 @@ const joinSections = (sections: string[]): string =>
   sections.filter((s) => s && s.trim().length > 0).join("\n\n");
 
 const persistSelectedCategories = async (
-  stellaHome: string,
+  stellaDataDir: string,
   categories: DiscoveryCategory[],
 ): Promise<void> => {
   try {
-    const stateDir = stellaHome;
+    const stateDir = stellaDataDir;
     const statePath = path.join(stateDir, DISCOVERY_CATEGORIES_STATE_FILE);
     await ensurePrivateDir(stateDir);
     await writePrivateFile(
@@ -145,7 +145,7 @@ type ExtendedUserSignals = AllUserSignals & {
  * (skips Firefox, Safari, and generic bookmarks scan for other browsers).
  */
 export const collectAllUserSignals = async (
-  StellaHome: string,
+  StellaDataDir: string,
   categories: DiscoveryCategory[] = DEFAULT_CATEGORIES,
   selectedBrowser?: string | null,
   selectedProfile?: string | null,
@@ -175,7 +175,7 @@ export const collectAllUserSignals = async (
 
     if (shouldCollectChromium && selectedChromiumBrowser) {
       tasks.browser = () =>
-        collectBrowserData(StellaHome, {
+        collectBrowserData(StellaDataDir, {
           selectedBrowser: selectedChromiumBrowser,
           selectedProfile: selectedChromiumProfile,
         });
@@ -415,16 +415,16 @@ const formatSignalsForSynthesisWithSections = async (
  * Collect and format all signals - for use in IPC handler
  */
 export const collectAllSignals = async (
-  StellaHome: string,
+  StellaDataDir: string,
   categories?: DiscoveryCategory[],
   selectedBrowser?: string | null,
   selectedProfile?: string | null,
 ): Promise<AllUserSignalsResult> => {
   try {
     const cats = categories ?? DEFAULT_CATEGORIES;
-    await persistSelectedCategories(StellaHome, cats);
+    await persistSelectedCategories(StellaDataDir, cats);
     const data = await collectAllUserSignals(
-      StellaHome,
+      StellaDataDir,
       cats,
       selectedBrowser,
       selectedProfile,

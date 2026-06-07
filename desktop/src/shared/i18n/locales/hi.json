@@ -223,7 +223,7 @@
         "wipedTitle": "यादें मिटा दी गईं"
       },
       "enableFailures": {
-        "noStellaRoot": "Stella के वर्कस्पेस की रूट उपलब्ध नहीं है।",
+        "noStellaAppDir": "Stella के वर्कस्पेस की रूट उपलब्ध नहीं है।",
         "needsPermission": "Chronicle के शुरू होने से पहले अभी भी स्क्रीन रिकॉर्डिंग अनुमति आवश्यक है।",
         "binaryMissing": "Chronicle सहायक बाइनरी अनुपलब्ध है।",
         "startupTimeout": "लॉन्च के बाद Chronicle ऑनलाइन नहीं हुआ।",

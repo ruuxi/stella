@@ -169,7 +169,7 @@ describe("fileChanges emission", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -197,7 +197,7 @@ describe("fileChanges emission", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -220,7 +220,7 @@ describe("fileChanges emission", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -228,7 +228,7 @@ describe("fileChanges emission", () => {
     expect(finished.producedFiles).toBeUndefined();
   });
 
-  it("exec_command snapshots stellaRoot when cwd is a subdirectory", async () => {
+  it("exec_command snapshots stellaAppDir when cwd is a subdirectory", async () => {
     const root = await createTempDir();
     const workdir = path.join(root, "desktop");
     await mkdir(workdir, { recursive: true });
@@ -246,7 +246,7 @@ describe("fileChanges emission", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -256,10 +256,10 @@ describe("fileChanges emission", () => {
     ]);
   });
 
-  it("exec_command snapshots explicit workdir when it is outside stellaRoot", async () => {
-    const stellaRoot = await createTempDir();
+  it("exec_command snapshots explicit workdir when it is outside stellaAppDir", async () => {
+    const stellaAppDir = await createTempDir();
     const externalRoot = await createTempDir();
-    const shellState = createShellState(stellaRoot);
+    const shellState = createShellState(stellaAppDir);
     const filePath = path.join(externalRoot, "external-report.pdf");
 
     const result = await handleExecCommand(
@@ -273,7 +273,7 @@ describe("fileChanges emission", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot,
+        stellaAppDir,
       },
     );
 
@@ -307,7 +307,7 @@ describe("fileChanges emission", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
+        stellaAppDir: root,
       },
     );
 
@@ -324,7 +324,7 @@ describe("fileChanges emission", () => {
       conversationId: "c1",
       deviceId: "d1",
       requestId: "r1",
-      stellaRoot: root,
+      stellaAppDir: root,
     };
     const filePath = path.join(root, "interactive-created.md");
 

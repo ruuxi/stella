@@ -62,23 +62,23 @@ const parseSseMessages = (text: string): RpcMessage[] => {
 };
 
 const resolveSecretPlaceholders = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   values: Record<string, string> = {},
 ) => {
   const resolved: Record<string, string> = {};
   for (const [key, value] of Object.entries(values)) {
-    resolved[key] = await replaceSecretPlaceholders(stellaRoot, value);
+    resolved[key] = await replaceSecretPlaceholders(stellaAppDir, value);
   }
   return resolved;
 };
 
-const replaceSecretPlaceholders = async (stellaRoot: string, value: string) => {
+const replaceSecretPlaceholders = async (stellaAppDir: string, value: string) => {
   const parts: string[] = [];
   let cursor = 0;
   for (const match of value.matchAll(/\$\{([a-zA-Z0-9_.-]+)\}/gu)) {
     parts.push(value.slice(cursor, match.index));
     parts.push(
-      (await loadConnectorAccessToken(stellaRoot, match[1])) ?? match[0],
+      (await loadConnectorAccessToken(stellaAppDir, match[1])) ?? match[0],
     );
     cursor = match.index + match[0].length;
   }
@@ -91,7 +91,7 @@ class HttpConnectorBridgeSession {
   private initialized = false;
 
   constructor(
-    private readonly stellaRoot: string,
+    private readonly stellaAppDir: string,
     private readonly server: ConnectorCommandConfig,
   ) {}
 
@@ -102,7 +102,7 @@ class HttpConnectorBridgeSession {
       ...(this.server.headers ?? {}),
     };
     const token = await loadConnectorAccessToken(
-      this.stellaRoot,
+      this.stellaAppDir,
       this.server.auth?.tokenKey,
     );
     if (token) {
@@ -276,7 +276,7 @@ class StdioConnectorBridgeSession {
   private initialized = false;
 
   constructor(
-    private readonly stellaRoot: string,
+    private readonly stellaAppDir: string,
     private readonly server: ConnectorCommandConfig,
   ) {}
 
@@ -294,7 +294,7 @@ class StdioConnectorBridgeSession {
       cwd: this.server.cwd,
       env: {
         ...process.env,
-        ...(await resolveSecretPlaceholders(this.stellaRoot, this.server.env)),
+        ...(await resolveSecretPlaceholders(this.stellaAppDir, this.server.env)),
         STELLA_CONNECTOR_BRIDGE: "1",
         STELLA_CONNECTOR_ID: this.server.id,
         STELLA_CONNECTOR_SESSION: bridgeSessionId,
@@ -305,7 +305,7 @@ class StdioConnectorBridgeSession {
     });
     const child = this.child;
     this.processRecordPromise = child.pid
-      ? writeConnectorBridgeProcessRecord(this.stellaRoot, {
+      ? writeConnectorBridgeProcessRecord(this.stellaAppDir, {
           sessionId: bridgeSessionId,
           pid: child.pid,
           ownerPid: process.pid,
@@ -475,36 +475,36 @@ const sessions = new Map<
   HttpConnectorBridgeSession | StdioConnectorBridgeSession
 >();
 
-const getSession = (stellaRoot: string, server: ConnectorCommandConfig) => {
-  const key = `${stellaRoot}:${server.id}`;
+const getSession = (stellaAppDir: string, server: ConnectorCommandConfig) => {
+  const key = `${stellaAppDir}:${server.id}`;
   const existing = sessions.get(key);
   if (existing) return existing;
   const session =
     server.transport === "stdio"
-      ? new StdioConnectorBridgeSession(stellaRoot, server)
-      : new HttpConnectorBridgeSession(stellaRoot, server);
+      ? new StdioConnectorBridgeSession(stellaAppDir, server)
+      : new HttpConnectorBridgeSession(stellaAppDir, server);
   sessions.set(key, session);
   return session;
 };
 
 export const listConnectorBridgeTools = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   server: ConnectorCommandConfig,
-) => getSession(stellaRoot, server).listTools();
+) => getSession(stellaAppDir, server).listTools();
 
 export const callConnectorBridgeTool = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   server: ConnectorCommandConfig,
   toolName: string,
   args: Record<string, unknown>,
-) => getSession(stellaRoot, server).callTool(toolName, args);
+) => getSession(stellaAppDir, server).callTool(toolName, args);
 
 export const closeConnectorBridgeSessions = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   serverIds: Iterable<string>,
 ) => {
   for (const serverId of serverIds) {
-    const key = `${stellaRoot}:${serverId}`;
+    const key = `${stellaAppDir}:${serverId}`;
     const session = sessions.get(key);
     await session?.close();
     sessions.delete(key);

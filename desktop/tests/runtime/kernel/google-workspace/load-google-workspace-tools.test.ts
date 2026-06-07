@@ -12,7 +12,7 @@ describe("loadGoogleWorkspaceTools", () => {
     try {
       const { tools, callTool, disconnect, hasStoredCredentials } =
         await loadGoogleWorkspaceTools({
-          stellaRoot: dir,
+          stellaAppDir: dir,
         });
       expect(tools.length).toBeGreaterThan(10);
       expect(callTool).toBeTypeOf("function");
@@ -43,7 +43,7 @@ describe("loadGoogleWorkspaceTools", () => {
     try {
       process.env.STELLA_DEV_INSECURE_PROTECTED_STORAGE = "1";
       await loadGoogleWorkspaceTools({
-        stellaRoot: dir,
+        stellaAppDir: dir,
       }).then(async ({ disconnect }) => {
         await saveConnectorTokenPayload(dir, "google-workspace", {
           accessToken: "access-token",

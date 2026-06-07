@@ -9,7 +9,6 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 // Electron's own postinstall (`node_modules/electron/install.js`) downloads the
 // binary fine but extracts it with `extract-zip`, which can die silently
@@ -18,7 +17,7 @@ import { fileURLToPath } from "node:url";
 // This guard verifies the install and, when broken, re-extracts the already
 // cached zip with native OS tooling instead of trusting `extract-zip`.
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const scriptDir = import.meta.dirname;
 const repoRootDir = path.resolve(scriptDir, "..", "..");
 const electronDir = path.join(repoRootDir, "node_modules", "electron");
 
@@ -213,7 +212,7 @@ export async function ensureElectronBinary() {
 }
 
 const invokedDirectly =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  process.argv[1] && path.resolve(process.argv[1]) === import.meta.filename;
 
 if (invokedDirectly) {
   ensureElectronBinary().catch((error) => {

@@ -229,18 +229,18 @@ export const buildNativeConnectorCatalog = (
   return [...serverCatalog];
 };
 
-const statePath = (stellaRoot: string) =>
-  path.join(getConnectorStateRoot(stellaRoot), STATE_FILE);
+const statePath = (stellaAppDir: string) =>
+  path.join(getConnectorStateRoot(stellaAppDir), STATE_FILE);
 
-const skillsRoot = (stellaRoot: string) =>
-  path.join(stellaRoot, "skills");
+const skillsRoot = (stellaAppDir: string) =>
+  path.join(stellaAppDir, "skills");
 
 const readState = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<NativeConnectorStateFile> => {
   try {
     const parsed = JSON.parse(
-      await fs.readFile(statePath(stellaRoot), "utf-8"),
+      await fs.readFile(statePath(stellaAppDir), "utf-8"),
     ) as NativeConnectorStateFile;
     if (parsed?.version === 1 && parsed.integrations) return parsed;
   } catch {
@@ -250,10 +250,10 @@ const readState = async (
 };
 
 const writeState = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   state: NativeConnectorStateFile,
 ) => {
-  const filePath = statePath(stellaRoot);
+  const filePath = statePath(stellaAppDir);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
 };
@@ -579,11 +579,11 @@ const getNativeConnectorOAuthSetup = (
 };
 
 export const listNativeConnectors = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   options: NativeOAuthProviderConfigOptions = {},
   catalogOverride?: NativeConnectorCatalogOverride,
 ) => {
-  const state = await readState(stellaRoot);
+  const state = await readState(stellaAppDir);
   return buildNativeConnectorCatalog(catalogOverride).map((entry) => {
     const stored = state.integrations[entry.id];
     const setup = getNativeConnectorOAuthSetup(entry, options);
@@ -603,18 +603,18 @@ export const listNativeConnectors = async (
 };
 
 export const isNativeConnectorEnabled = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   id: string,
 ) => {
-  const state = await readState(stellaRoot);
+  const state = await readState(stellaAppDir);
   return state.integrations[id]?.enabled === true;
 };
 
 const writeNativeConnectorSkill = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   entry: NativeConnectorCatalogEntry,
 ) => {
-  const skillDir = path.join(skillsRoot(stellaRoot), entry.id);
+  const skillDir = path.join(skillsRoot(stellaAppDir), entry.id);
   await fs.mkdir(skillDir, { recursive: true });
   const tools = getNativeConnectorTools(entry);
   const catalogActions = getNativeConnectorCatalogActions(entry);
@@ -714,8 +714,8 @@ ${toolLines}
   return skillPath;
 };
 
-const removeGeneratedSkill = async (stellaRoot: string, id: string) => {
-  const skillDir = path.join(skillsRoot(stellaRoot), id);
+const removeGeneratedSkill = async (stellaAppDir: string, id: string) => {
+  const skillDir = path.join(skillsRoot(stellaAppDir), id);
   const skillPath = path.join(skillDir, "SKILL.md");
   const content = await fs.readFile(skillPath, "utf-8").catch(() => null);
   if (!content?.includes(GENERATED_SKILL_MARKER)) return;
@@ -723,7 +723,7 @@ const removeGeneratedSkill = async (stellaRoot: string, id: string) => {
 };
 
 export const enableNativeConnector = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   id: string,
   source: "store" | "cli" = "cli",
   options: NativeOAuthProviderConfigOptions = {},
@@ -763,8 +763,8 @@ export const enableNativeConnector = async (
       `${entry.name} supports OAuth, but Stella's provider setup is not ready yet.`,
     );
   }
-  const skillPath = await writeNativeConnectorSkill(stellaRoot, entry);
-  const state = await readState(stellaRoot);
+  const skillPath = await writeNativeConnectorSkill(stellaAppDir, entry);
+  const state = await readState(stellaAppDir);
   const now = Date.now();
   state.integrations[id] = {
     enabled: true,
@@ -773,7 +773,7 @@ export const enableNativeConnector = async (
     source,
     skillPath,
   };
-  await writeState(stellaRoot, state);
+  await writeState(stellaAppDir, state);
   // `toolCount` mirrors what `listNativeConnectors` returns so the
   // website can drop the updated entry straight into its local state
   // without re-listing. Omitting it would briefly render "undefined
@@ -794,7 +794,7 @@ export const enableNativeConnector = async (
 };
 
 export const disableNativeConnector = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   id: string,
   options: NativeOAuthProviderConfigOptions = {},
   catalogOverride?: NativeConnectorCatalogOverride,
@@ -802,15 +802,15 @@ export const disableNativeConnector = async (
   const catalog = buildNativeConnectorCatalog(catalogOverride);
   const entry = getNativeConnectorCatalogEntry(id, catalog);
   if (!entry) throw new Error(`Unknown native integration: ${id}`);
-  const state = await readState(stellaRoot);
+  const state = await readState(stellaAppDir);
   const now = Date.now();
   state.integrations[id] = {
     ...(state.integrations[id] ?? { updatedAt: now }),
     enabled: false,
     updatedAt: now,
   };
-  await writeState(stellaRoot, state);
-  await removeGeneratedSkill(stellaRoot, id);
+  await writeState(stellaAppDir, state);
+  await removeGeneratedSkill(stellaAppDir, id);
   return {
     ...entry,
     ...getNativeConnectorOAuthSetup(entry, options),

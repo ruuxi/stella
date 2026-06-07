@@ -44,10 +44,10 @@ describe("buildSystemPrompt", () => {
 
 describe("buildStartupPromptMessages", () => {
   it("can include the registry startup doc when explicitly enabled", async () => {
-    const stellaHome = await mkdtemp(path.join(tmpdir(), "stella-registry-"));
+    const stellaDataDir = await mkdtemp(path.join(tmpdir(), "stella-registry-"));
     try {
       await writeFile(
-        path.join(stellaHome, "registry.md"),
+        path.join(stellaDataDir, "registry.md"),
         "# Life Registry\n\nregistry orientation",
       );
 
@@ -58,7 +58,7 @@ describe("buildStartupPromptMessages", () => {
           maxAgentDepth: 1,
           threadHistory: [],
         },
-        stellaHome,
+        stellaDataDir,
         includeRegistry: true,
       });
 
@@ -67,15 +67,15 @@ describe("buildStartupPromptMessages", () => {
       expect(messages[0]?.text).toContain('path="~/.stella/registry.md"');
       expect(messages[0]?.text).toContain("registry orientation");
     } finally {
-      await rm(stellaHome, { recursive: true, force: true });
+      await rm(stellaDataDir, { recursive: true, force: true });
     }
   });
 
   it("omits the registry startup doc by default", async () => {
-    const stellaHome = await mkdtemp(path.join(tmpdir(), "stella-registry-"));
+    const stellaDataDir = await mkdtemp(path.join(tmpdir(), "stella-registry-"));
     try {
       await writeFile(
-        path.join(stellaHome, "registry.md"),
+        path.join(stellaDataDir, "registry.md"),
         "# Life Registry\n\nregistry orientation",
       );
 
@@ -86,12 +86,12 @@ describe("buildStartupPromptMessages", () => {
           maxAgentDepth: 1,
           threadHistory: [],
         },
-        stellaHome,
+        stellaDataDir,
       });
 
       expect(messages).toEqual([]);
     } finally {
-      await rm(stellaHome, { recursive: true, force: true });
+      await rm(stellaDataDir, { recursive: true, force: true });
     }
   });
 
@@ -198,10 +198,10 @@ describe("buildStartupPromptMessages", () => {
 
 describe("buildSubagentPromptMessages", () => {
   it("omits the registry startup doc for General subagent prompts", async () => {
-    const stellaHome = await mkdtemp(path.join(tmpdir(), "stella-general-"));
+    const stellaDataDir = await mkdtemp(path.join(tmpdir(), "stella-general-"));
     try {
       await writeFile(
-        path.join(stellaHome, "registry.md"),
+        path.join(stellaDataDir, "registry.md"),
         "# Life Registry\n\nregistry orientation",
       );
 
@@ -213,7 +213,7 @@ describe("buildSubagentPromptMessages", () => {
           threadHistory: [],
           coreMemory: "remembered user context",
         },
-        stellaHome,
+        stellaDataDir,
         agentType: AGENT_IDS.GENERAL,
         userPrompt: "Do the work.",
       });
@@ -224,7 +224,7 @@ describe("buildSubagentPromptMessages", () => {
       expect(promptText).toContain("remembered user context");
       expect(promptText).toContain("Do the work.");
     } finally {
-      await rm(stellaHome, { recursive: true, force: true });
+      await rm(stellaDataDir, { recursive: true, force: true });
     }
   });
 });

@@ -223,7 +223,7 @@
         "wipedTitle": "Anılar silindi"
       },
       "enableFailures": {
-        "noStellaRoot": "Stella'nın çalışma alanı kök dizini kullanılamıyor.",
+        "noStellaAppDir": "Stella'nın çalışma alanı kök dizini kullanılamıyor.",
         "needsPermission": "Chronicle başlayabilmeden önce ekran kaydı izni hâlâ gerekiyor.",
         "binaryMissing": "Chronicle yardımcı dosyası eksik.",
         "startupTimeout": "Chronicle başlatıldıktan sonra çevrimiçi olmadı.",

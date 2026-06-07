@@ -33,8 +33,8 @@ export type MobileBroadcastFn = (channel: string, data: unknown) => void;
 export type BootstrapConfig = {
   authProtocol: string;
   electronDir: string;
-  stellaRoot: string;
-  stellaHomePath: string;
+  stellaAppDir: string;
+  stellaDataDirPath: string;
   hardResetMutableHomePaths: readonly string[];
   isDev: boolean;
   useDevServer: boolean;
@@ -71,8 +71,8 @@ export type BootstrapState = {
   scheduleUpdateUnsubscribe: (() => void) | null;
   globalInputHooksStarted: boolean;
   globalInputHooksStartScheduled: boolean;
-  stellaRoot: string | null;
-  stellaHomePath: string | null;
+  stellaAppDir: string | null;
+  stellaDataDirPath: string | null;
   stellaWorkspacePath: string | null;
   stellaHostRunner: StellaHostRunner | null;
   stellaBrowserBridgeService: StellaBrowserBridgeResource | null;
@@ -204,8 +204,8 @@ export const createBootstrapContext = (
     scheduleUpdateUnsubscribe: null,
     globalInputHooksStarted: false,
     globalInputHooksStartScheduled: false,
-    stellaRoot: null,
-    stellaHomePath: null,
+    stellaAppDir: null,
+    stellaDataDirPath: null,
     stellaWorkspacePath: null,
     stellaHostRunner: null,
     stellaBrowserBridgeService: null,

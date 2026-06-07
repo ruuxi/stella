@@ -223,7 +223,7 @@
         "wipedTitle": "Muistot tyhjennetty"
       },
       "enableFailures": {
-        "noStellaRoot": "Stellan työtilan juurikansio ei ole käytettävissä.",
+        "noStellaAppDir": "Stellan työtilan juurikansio ei ole käytettävissä.",
         "needsPermission": "Näytön tallennuksen käyttöoikeus vaaditaan vielä, ennen kuin Chronicle voi käynnistyä.",
         "binaryMissing": "Chroniclen aputiedosto puuttuu.",
         "startupTimeout": "Chronicle ei tullut verkkoon käynnistyksen jälkeen.",

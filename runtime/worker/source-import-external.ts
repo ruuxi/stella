@@ -144,11 +144,11 @@ const isPathInside = (candidate: string, root: string): boolean => {
 };
 
 const sourceImportRoot = (args: {
-  stellaHome: string;
+  stellaDataDir: string;
   repoRoot: string;
   id: string;
 }): string => {
-  const preferred = path.join(args.stellaHome, "raw", "source-imports", args.id);
+  const preferred = path.join(args.stellaDataDir, "raw", "source-imports", args.id);
   if (!isPathInside(preferred, args.repoRoot)) {
     return preferred;
   }
@@ -330,14 +330,14 @@ const resolveGitSource = async (args: {
 
 export const prepareExternalSourceImport = async (args: {
   repoRoot: string;
-  stellaHome: string;
+  stellaDataDir: string;
   source: SourceImportToolSource;
   scope: SourceImportToolScope;
   trust: SourceImportToolTrust;
 }): Promise<PreparedSourceImport> => {
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const importRoot = sourceImportRoot({
-    stellaHome: args.stellaHome,
+    stellaDataDir: args.stellaDataDir,
     repoRoot: args.repoRoot,
     id,
   });
@@ -588,7 +588,7 @@ export const buildExternalSourceImportPrompt = (args: {
 
 export const importExternalSource = async (args: {
   repoRoot: string;
-  stellaHome: string;
+  stellaDataDir: string;
   source: SourceImportToolSource;
   scope: SourceImportToolScope;
   trust: SourceImportToolTrust;
@@ -603,7 +603,7 @@ export const importExternalSource = async (args: {
 }): Promise<SourceImportToolResult> => {
   const prepared = await prepareExternalSourceImport({
     repoRoot: args.repoRoot,
-    stellaHome: args.stellaHome,
+    stellaDataDir: args.stellaDataDir,
     source: args.source,
     scope: args.scope,
     trust: args.trust,

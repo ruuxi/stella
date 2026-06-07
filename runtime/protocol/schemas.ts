@@ -8,7 +8,7 @@ export const initializeParamsSchema = Type.Object({
   platform: Type.String({ minLength: 1 }),
   protocolVersion: Type.String({ minLength: 1 }),
   isDev: Type.Boolean(),
-  stellaRoot: Type.String({ minLength: 1 }),
+  stellaAppDir: Type.String({ minLength: 1 }),
   stellaWorkspacePath: Type.String({ minLength: 1 }),
 });
 

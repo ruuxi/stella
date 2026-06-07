@@ -23,8 +23,8 @@ const createTempRoot = async (prefix: string) => {
   return root;
 };
 
-const createDb = (stellaHome: string): SqliteDatabase => {
-  const db = new DatabaseSync(getDesktopDatabasePath(stellaHome), {
+const createDb = (stellaDataDir: string): SqliteDatabase => {
+  const db = new DatabaseSync(getDesktopDatabasePath(stellaDataDir), {
     timeout: 5_000,
   }) as unknown as SqliteDatabase;
   initializeDesktopDatabase(db);
@@ -42,7 +42,7 @@ describe("third-party migration importers", () => {
   it("detects Hermes and imports memory, user profile, skills, personality, model config, schedules, and report idempotently", async () => {
     const home = await createTempRoot("stella-hermes-import-home");
     const hermes = path.join(home, ".hermes");
-    const stellaHome = path.join(home, ".stella");
+    const stellaDataDir = path.join(home, ".stella");
     await mkdir(path.join(hermes, "memories"), { recursive: true });
     await mkdir(path.join(hermes, "skills", "research", "researcher"), {
       recursive: true,
@@ -148,19 +148,19 @@ describe("third-party migration importers", () => {
         ?.count,
     ).toBe(1);
 
-    const db = createDb(stellaHome);
+    const db = createDb(stellaDataDir);
     try {
       const report = await runThirdPartyMigration({
         source: "hermes",
         sourceRoot: hermes,
-        stellaHome,
+        stellaDataDir,
         db,
         now: new Date("2026-05-25T10:00:00Z"),
       });
       expect(report.items.some((item) => item.kind === "channels")).toBe(true);
 
       const coreMemory = await readFile(
-        path.join(stellaHome, "core-memory.md"),
+        path.join(stellaDataDir, "core-memory.md"),
         "utf-8",
       );
       expect(coreMemory).toContain("## Imported Hermes memory");
@@ -179,7 +179,7 @@ describe("third-party migration importers", () => {
       );
 
       const importedSkill = await readFile(
-        path.join(stellaHome, "skills", "hermes-researcher", "SKILL.md"),
+        path.join(stellaDataDir, "skills", "hermes-researcher", "SKILL.md"),
         "utf-8",
       );
       expect(importedSkill).toContain("name: Researcher");
@@ -190,13 +190,13 @@ describe("third-party migration importers", () => {
       expect(importedSkill).not.toContain("author:");
 
       const prefs = JSON.parse(
-        await readFile(path.join(stellaHome, "preferences.json"), "utf-8"),
+        await readFile(path.join(stellaDataDir, "preferences.json"), "utf-8"),
       );
       expect(prefs.modelOverrides.orchestrator).toBe("openrouter/moonshotai/kimi-k2");
       expect(prefs.modelOverrides.general).toBe("openrouter/moonshotai/kimi-k2");
 
       const scheduler = JSON.parse(
-        await readFile(path.join(stellaHome, "local-scheduler.json"), "utf-8"),
+        await readFile(path.join(stellaDataDir, "local-scheduler.json"), "utf-8"),
       );
       expect(scheduler.cronJobs).toHaveLength(1);
       expect(scheduler.cronJobs[0].payload.prompt).toBe("Send a daily brief.");
@@ -219,12 +219,12 @@ describe("third-party migration importers", () => {
       await runThirdPartyMigration({
         source: "hermes",
         sourceRoot: hermes,
-        stellaHome,
+        stellaDataDir,
         db,
         now: new Date("2026-05-25T10:05:00Z"),
       });
       const coreMemoryAfterRerun = await readFile(
-        path.join(stellaHome, "core-memory.md"),
+        path.join(stellaDataDir, "core-memory.md"),
         "utf-8",
       );
       expect(coreMemoryAfterRerun).toEqual(coreMemory);
@@ -238,7 +238,7 @@ describe("third-party migration importers", () => {
     const openclaw = path.join(root, ".openclaw");
     const workspace = path.join(openclaw, "workspace-work");
     const envWorkspace = path.join(openclaw, "workspace-env");
-    const stellaHome = path.join(root, ".stella");
+    const stellaDataDir = path.join(root, ".stella");
     const previousOpenClawWorkspaceDir = process.env.OPENCLAW_WORKSPACE_DIR;
     const previousOpenClawConfigPath = process.env.OPENCLAW_CONFIG_PATH;
     process.env.OPENCLAW_CONFIG_PATH = path.join(openclaw, "custom-openclaw.json5");
@@ -398,12 +398,12 @@ describe("third-party migration importers", () => {
         ]),
       );
 
-      const db = createDb(stellaHome);
+      const db = createDb(stellaDataDir);
       try {
         const report = await runThirdPartyMigration({
           source: "openclaw",
           sourceRoot: openclaw,
-          stellaHome,
+          stellaDataDir,
           db,
         });
         expect(
@@ -414,14 +414,14 @@ describe("third-party migration importers", () => {
         ).toBe(true);
 
         const prefs = JSON.parse(
-          await readFile(path.join(stellaHome, "preferences.json"), "utf-8"),
+          await readFile(path.join(stellaDataDir, "preferences.json"), "utf-8"),
         );
         expect(prefs.modelOverrides.orchestrator).toBe(
           "anthropic/claude-opus-4-6",
         );
 
         const coreMemory = await readFile(
-          path.join(stellaHome, "core-memory.md"),
+          path.join(stellaDataDir, "core-memory.md"),
           "utf-8",
         );
         expect(coreMemory).toContain("Likes concise summaries.");
@@ -430,7 +430,7 @@ describe("third-party migration importers", () => {
         expect(coreMemory).not.toContain("Likes morning updates.");
 
         const skill = await readFile(
-          path.join(stellaHome, "skills", "openclaw-planner", "SKILL.md"),
+          path.join(stellaDataDir, "skills", "openclaw-planner", "SKILL.md"),
           "utf-8",
         );
         expect(skill).toContain("name: Planner");
@@ -457,7 +457,7 @@ describe("third-party migration importers", () => {
         await runThirdPartyMigration({
           source: "openclaw",
           sourceRoot: openclaw,
-          stellaHome,
+          stellaDataDir,
           db,
         });
         const rerunMessages = db

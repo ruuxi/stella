@@ -18,7 +18,7 @@
  * writes a fresh summary should be paired with a `triggerDreamNow` call by
  * the caller, but Dream's eligibility gate is the source of truth.
  *
- * Single-flight per (stellaHome, window) via a mkdir lock under
+ * Single-flight per (stellaDataDir, window) via a mkdir lock under
  * `~/.stella/locks/chronicle-summary-{window}/`, mirroring `dream-scheduler.ts`.
  */
 
@@ -62,29 +62,29 @@ type CaptureEntry = {
   removedLines?: string[];
 };
 
-const chronicleStateDir = (stellaHome: string): string =>
-  path.join(stellaHome, "chronicle");
+const chronicleStateDir = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "chronicle");
 
-const capturesPath = (stellaHome: string): string =>
-  path.join(chronicleStateDir(stellaHome), "captures.jsonl");
+const capturesPath = (stellaDataDir: string): string =>
+  path.join(chronicleStateDir(stellaDataDir), "captures.jsonl");
 
-const chronicleExtensionDir = (stellaHome: string): string =>
-  path.join(stellaHome, "memories_extensions", "chronicle");
+const chronicleExtensionDir = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "memories_extensions", "chronicle");
 
 const summaryFilePath = (
-  stellaHome: string,
+  stellaDataDir: string,
   window: ChronicleSummaryWindow,
 ): string =>
-  path.join(chronicleExtensionDir(stellaHome), `${window}-current.md`);
+  path.join(chronicleExtensionDir(stellaDataDir), `${window}-current.md`);
 
 const summaryMetaPath = (
-  stellaHome: string,
+  stellaDataDir: string,
   window: ChronicleSummaryWindow,
 ): string =>
-  path.join(chronicleExtensionDir(stellaHome), `${window}-current.meta.json`);
+  path.join(chronicleExtensionDir(stellaDataDir), `${window}-current.meta.json`);
 
-const instructionsFilePath = (stellaHome: string): string =>
-  path.join(chronicleExtensionDir(stellaHome), "instructions.md");
+const instructionsFilePath = (stellaDataDir: string): string =>
+  path.join(chronicleExtensionDir(stellaDataDir), "instructions.md");
 
 const INSTRUCTIONS_TEMPLATE = `# Chronicle extension
 
@@ -107,8 +107,8 @@ trust repeated patterns. Do NOT quote raw OCR text verbatim into MEMORY.md —
 it's noisy. Distill into one or two sentences per material context shift.
 `;
 
-const ensureInstructions = async (stellaHome: string): Promise<void> => {
-  const target = instructionsFilePath(stellaHome);
+const ensureInstructions = async (stellaDataDir: string): Promise<void> => {
+  const target = instructionsFilePath(stellaDataDir);
   try {
     const existing = await fsp.readFile(target, "utf-8");
     if (existing === INSTRUCTIONS_TEMPLATE) {
@@ -127,18 +127,18 @@ const ensureInstructions = async (stellaHome: string): Promise<void> => {
   }
 };
 
-const isChronicleEnabled = async (stellaHome: string): Promise<boolean> => {
-  return getChronicleEnabled(stellaHome);
+const isChronicleEnabled = async (stellaDataDir: string): Promise<boolean> => {
+  return getChronicleEnabled(stellaDataDir);
 };
 
-const lockDir = (stellaHome: string, window: ChronicleSummaryWindow): string =>
-  path.join(stellaHome, "locks", `chronicle-summary-${window}`);
+const lockDir = (stellaDataDir: string, window: ChronicleSummaryWindow): string =>
+  path.join(stellaDataDir, "locks", `chronicle-summary-${window}`);
 
 const acquireLock = (
-  stellaHome: string,
+  stellaDataDir: string,
   window: ChronicleSummaryWindow,
 ): (() => void) | null => {
-  const dir = lockDir(stellaHome, window);
+  const dir = lockDir(stellaDataDir, window);
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   try {
     fs.mkdirSync(dir);
@@ -170,7 +170,7 @@ const acquireLock = (
       const stat = fs.statSync(dir);
       if (Date.now() - stat.mtimeMs > 5 * 60 * 1000) {
         fs.rmSync(dir, { recursive: true, force: true });
-        return acquireLock(stellaHome, window);
+        return acquireLock(stellaDataDir, window);
       }
     } catch {
       // ignore
@@ -192,10 +192,10 @@ const parseEntry = (line: string): CaptureEntry | null => {
 };
 
 const readCapturesInWindow = async (
-  stellaHome: string,
+  stellaDataDir: string,
   windowMs: number,
 ): Promise<CaptureEntry[]> => {
-  const file = capturesPath(stellaHome);
+  const file = capturesPath(stellaDataDir);
   let stat: fs.Stats;
   try {
     stat = await fsp.stat(file);
@@ -278,11 +278,11 @@ const buildInputFingerprint = (
     .digest("hex");
 
 const readExistingInputFingerprint = async (
-  stellaHome: string,
+  stellaDataDir: string,
   window: ChronicleSummaryWindow,
 ): Promise<string | null> => {
   try {
-    const raw = await fsp.readFile(summaryMetaPath(stellaHome, window), "utf-8");
+    const raw = await fsp.readFile(summaryMetaPath(stellaDataDir, window), "utf-8");
     const parsed = JSON.parse(raw) as { inputFingerprint?: unknown };
     return typeof parsed.inputFingerprint === "string"
       ? parsed.inputFingerprint
@@ -372,11 +372,11 @@ export type ChronicleSummaryResult =
     };
 
 export const runChronicleSummary = async (args: {
-  stellaHome: string;
+  stellaDataDir: string;
   window: ChronicleSummaryWindow;
   resolvedLlm: ResolvedLlmRoute;
 }): Promise<ChronicleSummaryResult> => {
-  if (!(await isChronicleEnabled(args.stellaHome))) {
+  if (!(await isChronicleEnabled(args.stellaDataDir))) {
     return {
       wrote: false,
       window: args.window,
@@ -386,7 +386,7 @@ export const runChronicleSummary = async (args: {
   }
 
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaRoot: args.stellaHome,
+    stellaAppDir: args.stellaDataDir,
     modelId: args.resolvedLlm.model.id,
   });
   const apiKey = useClaudeCode
@@ -405,7 +405,7 @@ export const runChronicleSummary = async (args: {
     };
   }
 
-  const release = acquireLock(args.stellaHome, args.window);
+  const release = acquireLock(args.stellaDataDir, args.window);
   if (!release) {
     return {
       wrote: false,
@@ -416,10 +416,10 @@ export const runChronicleSummary = async (args: {
   }
 
   try {
-    await ensureInstructions(args.stellaHome);
+    await ensureInstructions(args.stellaDataDir);
 
     const entries = await readCapturesInWindow(
-      args.stellaHome,
+      args.stellaDataDir,
       WINDOW_MS[args.window],
     );
     if (entries.length === 0) {
@@ -443,7 +443,7 @@ export const runChronicleSummary = async (args: {
 
     const inputFingerprint = buildInputFingerprint(args.window, uniqueLines);
     const existingFingerprint = await readExistingInputFingerprint(
-      args.stellaHome,
+      args.stellaDataDir,
       args.window,
     );
     if (existingFingerprint === inputFingerprint) {
@@ -478,7 +478,7 @@ export const runChronicleSummary = async (args: {
       if (useClaudeCode) {
         responseText = (
           await runClaudeCodeAgentTextCompletion({
-            stellaRoot: args.stellaHome,
+            stellaAppDir: args.stellaDataDir,
             agentType: AGENT_IDS.CHRONICLE,
             stellaModel: args.resolvedLlm.model.id,
             context,
@@ -515,7 +515,7 @@ export const runChronicleSummary = async (args: {
       };
     }
 
-    const outPath = summaryFilePath(args.stellaHome, args.window);
+    const outPath = summaryFilePath(args.stellaDataDir, args.window);
     const rendered = renderSummaryFile(
       args.window,
       responseText,
@@ -538,7 +538,7 @@ export const runChronicleSummary = async (args: {
     }
     try {
       await writeFileAtomic(
-        summaryMetaPath(args.stellaHome, args.window),
+        summaryMetaPath(args.stellaDataDir, args.window),
         `${JSON.stringify(
           {
             window: args.window,

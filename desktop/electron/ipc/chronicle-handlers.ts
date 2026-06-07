@@ -11,8 +11,8 @@ import {
 import type { SqliteDatabase } from "../../../runtime/kernel/storage/shared.js";
 
 export type ChronicleHandlersOptions = {
-  getStellaRoot: () => string | null;
-  getStellaHome: () => string | null;
+  getStellaAppDir: () => string | null;
+  getStellaDataDir: () => string | null;
   getController: () => ChronicleController | null;
   setController: (controller: ChronicleController | null) => void;
   assertPrivilegedSender: (event: IpcMainInvokeEvent, channel: string) => boolean;
@@ -31,15 +31,15 @@ const ensureController = (
 ): ChronicleController | null => {
   const existing = options.getController();
   if (existing) return existing;
-  const root = options.getStellaHome();
+  const root = options.getStellaDataDir();
   if (!root) return null;
   const next = new ChronicleControllerCtor(root);
   options.setController(next);
   return next;
 };
 
-const clearDreamThreadSummaries = (stellaHome: string): void => {
-  const db = new DatabaseSync(getDesktopDatabasePath(stellaHome), {
+const clearDreamThreadSummaries = (stellaDataDir: string): void => {
+  const db = new DatabaseSync(getDesktopDatabasePath(stellaDataDir), {
     timeout: 5_000,
   }) as unknown as SqliteDatabase;
   try {
@@ -114,7 +114,7 @@ export const registerChronicleHandlers = (
     ) {
       throw new Error("Blocked untrusted chronicle:openMemoriesFolder request.");
     }
-    const root = options.getStellaHome();
+    const root = options.getStellaDataDir();
     if (!root) return { ok: false } as const;
     const dir = path.join(root, "memories");
     try {
@@ -137,7 +137,7 @@ export const registerChronicleHandlers = (
     if (!options.assertPrivilegedSender(event, "chronicle:wipeMemories")) {
       throw new Error("Blocked untrusted chronicle:wipeMemories request.");
     }
-    const root = options.getStellaHome();
+    const root = options.getStellaDataDir();
     if (!root) return { ok: false } as const;
     const controller = ensureController(options);
     let restartChronicle = false;

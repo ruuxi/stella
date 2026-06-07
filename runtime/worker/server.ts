@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { existsSync, promises as fsPromises } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolveBundledRuntimeFile } from "../kernel/shared/runtime-paths.js";
 import type { WorkerPeerLike } from "./peer-broker.js";
 import { getFileLogger } from "../observability/file-logger.js";
 import {
@@ -101,8 +101,8 @@ import { createRuntimeLogger } from "../kernel/debug.js";
 
 type WorkerInitializationState = {
   protocolVersion?: string;
-  stellaRoot: string;
-  stellaHomePath: string;
+  stellaAppDir: string;
+  stellaDataDirPath: string;
   stellaWorkspacePath: string;
   authToken: string | null;
   convexUrl: string | null;
@@ -196,12 +196,12 @@ const rollbackFailedStoreInstall = async (args: {
 };
 
 const resolveDesktopCliEntrypoint = (
-  stellaRoot: string,
+  stellaAppDir: string,
   packageName: string,
   entrypoint: string,
 ): string => {
   const desktopLocal = path.join(
-    stellaRoot,
+    stellaAppDir,
     "desktop",
     packageName,
     "bin",
@@ -211,7 +211,7 @@ const resolveDesktopCliEntrypoint = (
     return desktopLocal;
   }
 
-  return path.join(stellaRoot, packageName, "bin", entrypoint);
+  return path.join(stellaAppDir, packageName, "bin", entrypoint);
 };
 
 type AgentEventPayload = {
@@ -308,7 +308,7 @@ type WorkerState = {
    * UDS bridge the worker exposes for sidecar CLIs (`stella-connect`)
    * that need to call back into the host without speaking the full
    * runtime JSON-RPC protocol. Started on first init, restarted if
-   * the worker re-inits with a new stellaRoot, stopped on shutdown.
+   * the worker re-inits with a new stellaAppDir, stopped on shutdown.
    * See `cli-bridge-server.ts`.
    */
   cliBridgeServer: CliBridgeServer | null;
@@ -368,15 +368,8 @@ const mergePendingApplyResults = (results: ApplyResult[]): ApplyResult => ({
 });
 
 // Resolve a runtime CLI bundled into desktop/dist-electron/runtime/kernel/cli/.
-// `import.meta.url` for this file at runtime is
-// `desktop/dist-electron/runtime/worker/server.js`, so we walk up to
-// `runtime/` and then back down into `kernel/cli/`. The previous
-// `../../kernel/cli/...` form skipped the `runtime/` segment and resolved
-// to a path that does not exist on disk, surfacing as
-// `Module not found "<...>/dist-electron/kernel/cli/stella-computer.js"`
-// in agent runs.
 const resolveRuntimeCliPath = (fileName: string) =>
-  fileURLToPath(new URL(`../kernel/cli/${fileName}`, import.meta.url));
+  resolveBundledRuntimeFile(`kernel/cli/${fileName}`);
 
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -974,8 +967,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       );
     }
     const sameRuntimeRoot =
-      state.init?.stellaRoot === init.stellaRoot &&
-      state.init?.stellaHomePath === init.stellaHomePath &&
+      state.init?.stellaAppDir === init.stellaAppDir &&
+      state.init?.stellaDataDirPath === init.stellaDataDirPath &&
       state.init?.stellaWorkspacePath === init.stellaWorkspacePath;
     if (sameRuntimeRoot && state.runner) {
       applyConfigPatch(init);
@@ -998,14 +991,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
     state.init = init;
 
-    const db = createDesktopDatabase(init.stellaHomePath);
+    const db = createDesktopDatabase(init.stellaDataDirPath);
     const chatStore = new ChatStore(db);
     const runtimeStore = chatStore as RuntimeStore;
     const storeModStore = new StoreModStore(db);
     const sourceHistoryStore = new StellaSourceHistoryStore(db);
     const socialSessionStore = new SocialSessionStore(db);
     const storeModService = new StoreModService(
-      init.stellaRoot,
+      init.stellaAppDir,
       storeModStore,
       sourceHistoryStore,
     );
@@ -1017,7 +1010,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const selfModHmrController = createSelfModHmrController({
       getDevServerUrl,
       enabled: process.env.NODE_ENV === "development",
-      repoRoot: init.stellaRoot,
+      repoRoot: init.stellaAppDir,
     });
     state.selfModHmrController = selfModHmrController;
 
@@ -1029,7 +1022,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     state.storeModService = storeModService;
     state.socialSessionStore = socialSessionStore;
     state.runEventLog = runEventLog;
-    const bridgePaths = resolveRuntimePaths(init.stellaRoot);
+    const bridgePaths = resolveRuntimePaths(init.stellaAppDir);
 
     const runEventLogStartupBackfill = () => {
       if (state.runEventLog !== runEventLog) return;
@@ -1230,7 +1223,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         const absolutePaths = paths.map((filePath) =>
           path.isAbsolute(filePath)
             ? filePath
-            : path.join(init.stellaRoot, filePath),
+            : path.join(init.stellaAppDir, filePath),
         );
         if (absolutePaths.length > 0) {
           externalSelfModPathsByRun.set(runId, absolutePaths);
@@ -1307,8 +1300,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
 
     const runnerOptions: StellaHostRunnerOptions = {
       deviceId: deviceIdentity.deviceId,
-      stellaRoot: init.stellaRoot,
-      stellaHome: init.stellaHomePath,
+      stellaAppDir: init.stellaAppDir,
+      stellaDataDir: init.stellaDataDirPath,
       runtimeStore,
       getAppBrowserContext: async () =>
         (await peer.request(
@@ -1402,8 +1395,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             throw new Error("Worker has not been initialized.");
           }
           return await importExternalSource({
-            repoRoot: currentInit.stellaRoot,
-            stellaHome: currentInit.stellaHomePath,
+            repoRoot: currentInit.stellaAppDir,
+            stellaDataDir: currentInit.stellaDataDirPath,
             source: payload.source,
             scope: payload.scope,
             trust: payload.trust,
@@ -1434,8 +1427,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                   maxOutputTokens: 700,
                 },
                 runtime: {
-                  stellaRoot: currentInit.stellaRoot,
-                  stellaHome: currentInit.stellaHomePath,
+                  stellaAppDir: currentInit.stellaAppDir,
+                  stellaDataDir: currentInit.stellaDataDirPath,
                   siteBaseUrl: currentInit.convexSiteUrl,
                   getAuthToken: () => currentInit.authToken,
                   hasConnectedAccount: () =>
@@ -1604,12 +1597,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         },
       },
       stellaBrowserBinPath: resolveDesktopCliEntrypoint(
-        init.stellaRoot,
+        init.stellaAppDir,
         "stella-browser",
         "stella-browser.js",
       ),
       stellaOfficeBinPath: resolveDesktopCliEntrypoint(
-        init.stellaRoot,
+        init.stellaAppDir,
         "stella-office",
         "stella-office.js",
       ),
@@ -1630,7 +1623,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     // module-level `INTERNAL_WORKER_SELF_MOD_REVERT` handler calls it
     // via `state.revertSelfModWithMorph`.
     state.revertSelfModWithMorph = async (payload) => {
-      const repoRoot = init.stellaRoot;
+      const repoRoot = init.stellaAppDir;
       const syntheticRunId = `self-mod-revert:${crypto.randomUUID()}`;
       let runRegisteredWithHmr = false;
       let runtimeReloadPaused = false;
@@ -1795,7 +1788,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           );
         });
         const [summary] = await listGitCommitsBySelector(
-          init.stellaRoot,
+          init.stellaAppDir,
           { commitHashes: [resolvedFeatureId] },
           4_000,
         ).catch(() => []);
@@ -1916,7 +1909,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       void (async () => {
         const startupStartedAt = Date.now();
         const connectorSweep = await sweepStaleConnectorBridgeProcesses(
-          init.stellaHomePath,
+          init.stellaDataDirPath,
           { currentWorkerPid: process.pid },
         ).catch((error) => {
           console.warn(
@@ -3186,7 +3179,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
 
     const store = ensureStoreModStore();
-    const repoRoot = state.init.stellaRoot;
+    const repoRoot = state.init.stellaAppDir;
     const snapshot = store.readFeatureSnapshot();
     const commits = await collectStoreReleaseCommits({
       repoRoot,
@@ -3309,7 +3302,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         ]
           .filter(Boolean)
           .join("\n");
-        const beforeRemovalHead = await getGitHead(state.init.stellaRoot).catch(
+        const beforeRemovalHead = await getGitHead(state.init.stellaAppDir).catch(
           () => null,
         );
         const blockingResult = await runner.runBlockingLocalAgent({
@@ -3328,7 +3321,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         if (blockingResult.status !== "ok") {
           throw new Error(blockingResult.error);
         }
-        const afterRemovalHead = await getGitHead(state.init.stellaRoot).catch(
+        const afterRemovalHead = await getGitHead(state.init.stellaAppDir).catch(
           () => null,
         );
         if (!afterRemovalHead || afterRemovalHead === beforeRemovalHead) {
@@ -3368,10 +3361,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const runner = ensureRunner();
       const service = ensureStoreModService();
 
-      const headBeforeRun = await getGitHead(init.stellaRoot).catch(() => null);
+      const headBeforeRun = await getGitHead(init.stellaAppDir).catch(() => null);
       const baselineDirtyFiles = new Set(
         normalizeStoreInstallRollbackPaths(
-          await listGitDirtyFiles(init.stellaRoot).catch(() => []),
+          await listGitDirtyFiles(init.stellaAppDir).catch(() => []),
         ),
       );
       const existingInstall = service.getInstall(payload.packageId);
@@ -3395,7 +3388,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           "_",
         );
         const installRoot = path.join(
-          state.init.stellaHomePath,
+          state.init.stellaDataDirPath,
           "raw",
           "store-installs",
           `${safePackageSegment}-r${payload.releaseNumber}`,
@@ -3474,8 +3467,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             maxOutputTokens: 700,
           },
           runtime: {
-            stellaRoot: init.stellaRoot,
-            stellaHome: init.stellaHomePath,
+            stellaAppDir: init.stellaAppDir,
+            stellaDataDir: init.stellaDataDirPath,
             siteBaseUrl: init.convexSiteUrl,
             getAuthToken: () => init.authToken,
             hasConnectedAccount: () => state.init?.hasConnectedAccount ?? false,
@@ -3507,7 +3500,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
 
         if (payload.gitArtifact) {
           const fastImportResult = await tryStoreGitArtifactFastPath({
-            repoRoot: init.stellaRoot,
+            repoRoot: init.stellaAppDir,
             service,
             packageId: payload.packageId,
             releaseNumber: payload.releaseNumber,
@@ -3536,7 +3529,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             return fastImportResult.installRecord;
           }
           const authorTreePath = await materializeStoreGitArtifactReference({
-            repoRoot: init.stellaRoot,
+            repoRoot: init.stellaAppDir,
             gitArtifact: payload.gitArtifact,
             outputRoot: installRoot,
           }).catch(() => null);
@@ -3572,7 +3565,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         // Capture HEAD after the run so we can record the install commit.
         // A successful install must produce a self-mod commit; otherwise
         // the UI would show the add-on as installed with nothing to undo.
-        const headAfterRun = await getGitHead(state.init.stellaRoot).catch(
+        const headAfterRun = await getGitHead(state.init.stellaAppDir).catch(
           () => null,
         );
         const installCommitHash =
@@ -3594,7 +3587,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         return installRecord;
       } catch (error) {
         await rollbackFailedStoreInstall({
-          repoRoot: init.stellaRoot,
+          repoRoot: init.stellaAppDir,
           startingHeadCommit: headBeforeRun,
           baselineDirtyFiles,
           packageId: payload.packageId,
@@ -3905,7 +3898,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         typeof firstReport?.title === "string" ? firstReport.title.trim() : "";
       const reportHtml =
         typeof firstReport?.html === "string" ? firstReport.html : "";
-      if (reportTitle && reportHtml.trim() && state.init?.stellaHomePath) {
+      if (reportTitle && reportHtml.trim() && state.init?.stellaDataDirPath) {
         const rawSlug =
           typeof firstReport?.slug === "string" ? firstReport.slug : "";
         const slug =
@@ -3916,7 +3909,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             .slice(0, 64) || "welcome";
         const timestamp = Date.now();
         const filePath = path.join(
-          state.init.stellaHomePath,
+          state.init.stellaDataDirPath,
           "outputs",
           "html",
           `${slug}.html`,
@@ -4010,7 +4003,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         (params as
           | { selectedBrowser?: string; selectedProfile?: string }
           | undefined) ?? {};
-      const data = await collectBrowserData(state.init.stellaHomePath, {
+      const data = await collectBrowserData(state.init.stellaDataDirPath, {
         selectedBrowser: payload.selectedBrowser as
           | import("../discovery/browser-data.js").BrowserType
           | undefined,
@@ -4035,7 +4028,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             }
           | undefined) ?? {};
       return await collectAllSignals(
-        state.init.stellaHomePath,
+        state.init.stellaDataDirPath,
         payload.categories as
           | import("../contracts/discovery.js").DiscoveryCategory[]
           | undefined,
@@ -4169,7 +4162,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         // Fall back to the raw revert with no morph cover — better than
         // refusing the user's undo entirely.
         const result = await revertGitFeature({
-          repoRoot: state.init.stellaRoot,
+          repoRoot: state.init.stellaAppDir,
           featureId: payload.featureId,
           steps: payload.steps,
         });
@@ -4196,13 +4189,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
-      const dirtyFiles = await listGitDirtyFiles(state.init.stellaRoot);
+      const dirtyFiles = await listGitDirtyFiles(state.init.stellaAppDir);
       if (dirtyFiles.length > 0) {
         const mtimes = await Promise.all(
           dirtyFiles.map(async (file) => {
             try {
               const stat = await fsPromises.stat(
-                path.join(state.init!.stellaRoot, file),
+                path.join(state.init!.stellaAppDir, file),
               );
               return stat.mtimeMs;
             } catch {
@@ -4224,7 +4217,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         };
       }
       const [latestFeature = null] = await listRecentGitFeatures(
-        state.init.stellaRoot,
+        state.init.stellaAppDir,
         1,
       );
       return {
@@ -4241,7 +4234,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         throw new Error("Worker has not been initialized.");
       }
       const payload = params as { conversationId?: string } | undefined;
-      const result = await discardGitDirtyFiles(state.init.stellaRoot);
+      const result = await discardGitDirtyFiles(state.init.stellaAppDir);
       if (result.discardedFileCount > 0) {
         recordSelfModRevertNotice({
           runtimeStore: state.runtimeStore,
@@ -4262,7 +4255,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
-      return await getLastGitFeatureId(state.init.stellaRoot);
+      return await getLastGitFeatureId(state.init.stellaAppDir);
     },
   );
 
@@ -4274,7 +4267,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }
       const rawLimit = (params as { limit?: number } | undefined)?.limit;
       const limit = Number.isFinite(rawLimit) ? Number(rawLimit) : 8;
-      return await listRecentGitFeatures(state.init.stellaRoot, limit);
+      return await listRecentGitFeatures(state.init.stellaAppDir, limit);
     },
   );
 
@@ -4318,8 +4311,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       return await (await loadOneShotCompletion()).runOneShotCompletion({
         request,
         runtime: {
-          stellaRoot: init.stellaRoot,
-          stellaHome: init.stellaHomePath,
+          stellaAppDir: init.stellaAppDir,
+          stellaDataDir: init.stellaDataDirPath,
           siteBaseUrl: init.convexSiteUrl,
           getAuthToken: () => init.authToken,
           hasConnectedAccount: () => state.init?.hasConnectedAccount ?? false,

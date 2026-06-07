@@ -223,7 +223,7 @@
         "wipedTitle": "Воспоминания стёрты"
       },
       "enableFailures": {
-        "noStellaRoot": "Корневая папка рабочей области Stella недоступна.",
+        "noStellaAppDir": "Корневая папка рабочей области Stella недоступна.",
         "needsPermission": "Для запуска Chronicle всё ещё требуется разрешение на запись экрана.",
         "binaryMissing": "Вспомогательный файл Chronicle отсутствует.",
         "startupTimeout": "Chronicle не вышел в сеть после запуска.",

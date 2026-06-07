@@ -319,11 +319,11 @@ export const createStellaHostRunner = (
           agentEngine: agentContext.agentEngine,
         }),
         deviceId: context.deviceId,
-        stellaHome: context.stellaHome,
+        stellaDataDir: context.stellaDataDir,
         resolvedLlm: resolved.resolvedLlm,
         store: context.runtimeStore,
         compactionScheduler: context.state.compactionScheduler,
-        stellaRoot: context.stellaRoot,
+        stellaAppDir: context.stellaAppDir,
         hookEmitter: context.hookEmitter,
       });
       const toolCatalog = context.toolHost.getToolCatalog(agentType, {
@@ -361,7 +361,7 @@ export const createStellaHostRunner = (
       return {
         connected: Boolean(
           await loadConnectorAccessToken(
-            context.stellaHome,
+            context.stellaDataDir,
             "google-workspace",
           ),
         ),
@@ -370,7 +370,7 @@ export const createStellaHostRunner = (
 
     googleWorkspaceConnect: async () => {
       const { callTool, disconnect } = await loadGoogleWorkspaceTools({
-        stellaRoot: context.stellaHome,
+        stellaAppDir: context.stellaDataDir,
       });
       try {
         if (!callTool) return { connected: false, unavailable: true };
@@ -381,7 +381,7 @@ export const createStellaHostRunner = (
     },
 
     googleWorkspaceDisconnect: async () => {
-      await deleteConnectorAccessTokens(context.stellaHome, [
+      await deleteConnectorAccessTokens(context.stellaDataDir, [
         "google-workspace",
       ]);
       return { ok: true };
@@ -402,7 +402,7 @@ export const createStellaHostRunner = (
         const pendingThreadSummaries =
           context.runtimeStore.threadSummariesStore.countUnprocessed();
         const pendingExtensions = await countPendingDreamExtensions(
-          context.stellaHome,
+          context.stellaDataDir,
         );
         if (pendingThreadSummaries + pendingExtensions === 0) {
           return {
@@ -424,7 +424,7 @@ export const createStellaHostRunner = (
           dreamModel,
         );
         return await maybeSpawnDreamRun({
-          stellaHome: context.stellaHome,
+          stellaDataDir: context.stellaDataDir,
           store: context.runtimeStore,
           resolvedLlm,
           trigger,
@@ -462,7 +462,7 @@ export const createStellaHostRunner = (
           chronicleModel,
         );
         return await runChronicleSummary({
-          stellaHome: context.stellaHome,
+          stellaDataDir: context.stellaDataDir,
           window,
           resolvedLlm,
         });

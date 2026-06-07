@@ -5,7 +5,6 @@
 import { spawn } from "child_process";
 import path from "path";
 import os from "os";
-import { fileURLToPath } from "url";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { readdir, stat } from "fs/promises";
 import { setupEnvironment } from "dugite";
@@ -21,6 +20,7 @@ import type {
   ToolUpdateCallback,
 } from "./types.js";
 import { truncate } from "./utils.js";
+import { resolveBundledRuntimeFile } from "../shared/runtime-paths.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getInstallUpdateCommandDenialReason } from "./install-update-allowlist.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
@@ -243,16 +243,16 @@ const resolveShellSnapshotRoot = (
   context?: ToolContext,
 ): string => {
   const resolvedCwd = normalizeSnapshotRoot(cwd);
-  const resolvedStellaRoot = context?.stellaRoot?.trim()
-    ? normalizeSnapshotRoot(context.stellaRoot)
+  const resolvedStellaAppDir = context?.stellaAppDir?.trim()
+    ? normalizeSnapshotRoot(context.stellaAppDir)
     : null;
   if (
     resolvedCwd &&
-    resolvedStellaRoot &&
-    (resolvedCwd === resolvedStellaRoot ||
-      resolvedCwd.startsWith(`${resolvedStellaRoot}${path.sep}`))
+    resolvedStellaAppDir &&
+    (resolvedCwd === resolvedStellaAppDir ||
+      resolvedCwd.startsWith(`${resolvedStellaAppDir}${path.sep}`))
   ) {
-    return resolvedStellaRoot;
+    return resolvedStellaAppDir;
   }
   return resolvedCwd ?? cwd;
 };
@@ -551,18 +551,10 @@ export function createShellState(
 }
 
 const deferredDeleteHelperPath = (() => {
-  const candidates = [
-    new URL("./deferred-delete-cli.js", import.meta.url),
-    new URL("../kernel/tools/deferred-delete-cli.js", import.meta.url),
-    new URL("./deferred-delete-cli.ts", import.meta.url),
-  ];
-  for (const candidate of candidates) {
-    const filePath = fileURLToPath(candidate);
-    if (existsSync(filePath)) {
-      return filePath;
-    }
-  }
-  return "";
+  const resolved = resolveBundledRuntimeFile(
+    "kernel/tools/deferred-delete-cli.js",
+  );
+  return existsSync(resolved) ? resolved : "";
 })();
 
 const rewriteDeleteBypassPatterns = (command: string) =>
@@ -707,7 +699,7 @@ const buildShellCommand = (command: string, state: ShellState): string => {
   return buildProtectedCommand(command, state);
 };
 
-const resolveStellaHomeFromState = (state: ShellState): string | undefined => {
+const resolveStellaDataDirFromState = (state: ShellState): string | undefined => {
   const stateRoot = path.resolve(state.secretStateRoot);
   if (path.basename(stateRoot) === "state") {
     return path.dirname(stateRoot);
@@ -725,7 +717,7 @@ const maybeSweepDeferredDeletes = (state: ShellState) => {
   }
   state.lastDeferredDeleteSweepAt = now;
   void purgeExpiredDeferredDeletes({
-    stellaHome: resolveStellaHomeFromState(state),
+    stellaDataDir: resolveStellaDataDirFromState(state),
     now,
   }).catch(() => undefined);
 };
@@ -749,7 +741,7 @@ const maybeTrashNativeWindowsDeletes = async (
     cwd,
     force: /(?:^|\s)(?:\/q|\/f|-force)\b/i.test(command),
     source: "shell:windows-native",
-    stellaHome: resolveStellaHomeFromState(state),
+    stellaDataDir: resolveStellaDataDirFromState(state),
     requestId: context?.requestId,
     agentType: context?.agentType,
     conversationId: context?.conversationId,
@@ -795,7 +787,7 @@ const buildShellEnv = (
     STELLA_RUNTIME_WORKER_PID: String(process.pid),
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
     ...(options?.secretStateRoot
-      ? { STELLA_HOME: options.secretStateRoot }
+      ? { STELLA_DATA_DIR: options.secretStateRoot }
       : {}),
     ...(options?.stellaBrowserBinPath
       ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath }
@@ -1258,7 +1250,7 @@ const resolveManagedShellCommand = (
   const cwd = String(
     args.workdir ??
       args.working_directory ??
-      context?.stellaRoot ??
+      context?.stellaAppDir ??
       process.cwd(),
   );
   const envOverrides: Record<string, string> = {};
@@ -1266,12 +1258,12 @@ const resolveManagedShellCommand = (
     context?.agentId ?? context?.runId ?? context?.rootRunId;
   const stellaComputerSessionId = getStellaComputerSessionId(context);
   const localBinPaths = [
-    ...(context?.stellaHome
-      ? [path.join(path.resolve(context.stellaHome), "bin")]
+    ...(context?.stellaDataDir
+      ? [path.join(path.resolve(context.stellaDataDir), "bin")]
       : []),
     path.join(path.resolve(cwd), "node_modules", ".bin"),
-    ...(context?.stellaRoot
-      ? [path.join(path.resolve(context.stellaRoot), "node_modules", ".bin")]
+    ...(context?.stellaAppDir
+      ? [path.join(path.resolve(context.stellaAppDir), "node_modules", ".bin")]
       : []),
   ].filter(
     (entry, index, entries) =>

@@ -223,7 +223,7 @@
         "wipedTitle": "הזיכרונות נמחקו"
       },
       "enableFailures": {
-        "noStellaRoot": "תיקיית השורש של סביבת העבודה של Stella אינה זמינה.",
+        "noStellaAppDir": "תיקיית השורש של סביבת העבודה של Stella אינה זמינה.",
         "needsPermission": "עדיין נדרשת הרשאת הקלטת מסך לפני ש-Chronicle יכול להתחיל.",
         "binaryMissing": "קובץ העזר של Chronicle חסר.",
         "startupTimeout": "Chronicle לא התחבר לאחר ההפעלה.",

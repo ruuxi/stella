@@ -16,7 +16,7 @@ import {
 /**
  * Worker-side lifecycle helpers. The detached worker is responsible for:
  *
- *   1. Acquiring a per-stellaRoot lockfile so multiple workers can't
+ *   1. Acquiring a per-stellaAppDir lockfile so multiple workers can't
  *      overlap (one would lose the socket race anyway, but failing fast
  *      is friendlier than a half-broken second worker).
  *   2. Writing its pid to a discoverable file so the host can detect
@@ -34,7 +34,7 @@ import {
  */
 
 export type LifecycleServerOptions = {
-  stellaRoot: string;
+  stellaAppDir: string;
   idleShutdownMs?: number;
   /**
    * Called before self-shutdown when the last host client has been gone
@@ -80,14 +80,14 @@ export class WorkerLifecycleServer {
   private readonly idleShutdownMs: number;
 
   constructor(private readonly options: LifecycleServerOptions) {
-    this.paths = resolveRuntimePaths(options.stellaRoot);
+    this.paths = resolveRuntimePaths(options.stellaAppDir);
     this.idleShutdownMs = options.idleShutdownMs ?? DEFAULT_IDLE_SHUTDOWN_MS;
   }
 
   /**
    * Acquire the lock, write pid + root marker, and route stdout/stderr
    * to the rotating log file. Throws if another worker already holds
-   * the lock for the same stellaRoot.
+   * the lock for the same stellaAppDir.
    */
   async start(): Promise<void> {
     await fsPromises.mkdir(this.paths.rootDir, { recursive: true });
@@ -115,7 +115,7 @@ export class WorkerLifecycleServer {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "EEXIST") {
         throw new Error(
-          `Another runtime worker is already running for ${this.options.stellaRoot} (lock at ${this.paths.lockFile}).`,
+          `Another runtime worker is already running for ${this.options.stellaAppDir} (lock at ${this.paths.lockFile}).`,
         );
       }
       throw error;
@@ -133,7 +133,7 @@ export class WorkerLifecycleServer {
     );
     await fsPromises.writeFile(
       this.paths.rootMarkerFile,
-      `${this.options.stellaRoot}\n`,
+      `${this.options.stellaAppDir}\n`,
       "utf-8",
     );
     const hostExecutablePath = process.env.STELLA_HOST_EXECUTABLE_PATH;
@@ -152,7 +152,7 @@ export class WorkerLifecycleServer {
       encoding: "utf-8",
     });
     this.logStream.write(
-      `\n[${new Date().toISOString()}] worker pid=${process.pid} listening (root=${this.options.stellaRoot})\n`,
+      `\n[${new Date().toISOString()}] worker pid=${process.pid} listening (root=${this.options.stellaAppDir})\n`,
     );
     getFileLogger()?.process("worker.listening", {
       pid: process.pid,
@@ -272,9 +272,9 @@ export class WorkerLifecycleServer {
  * of an already-running worker if the lockfile is alive, else null.
  */
 export const probeRunningWorker = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<number | null> => {
-  const paths = resolveRuntimePaths(stellaRoot);
+  const paths = resolveRuntimePaths(stellaAppDir);
   if (!existsSync(paths.pidFile)) return null;
   const pid = await readPidFile(paths.pidFile);
   if (pid == null || !pidIsAlive(pid)) return null;
@@ -282,9 +282,9 @@ export const probeRunningWorker = async (
 };
 
 export const removeStaleRuntimeArtifacts = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<void> => {
-  const paths = resolveRuntimePaths(stellaRoot);
+  const paths = resolveRuntimePaths(stellaAppDir);
   const maybeFilePaths = [
     paths.pidFile,
     paths.lockFile,
@@ -302,9 +302,9 @@ export const removeStaleRuntimeArtifacts = async (
 };
 
 export const ensureRuntimeRootDir = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<RuntimePaths> => {
-  const paths = resolveRuntimePaths(stellaRoot);
+  const paths = resolveRuntimePaths(stellaAppDir);
   await fsPromises.mkdir(paths.rootDir, { recursive: true });
   return paths;
 };

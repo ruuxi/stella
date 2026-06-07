@@ -27,8 +27,8 @@ describe("agent safety guards", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
-        stellaHome: root,
+        stellaAppDir: root,
+        stellaDataDir: root,
       },
     );
 
@@ -50,8 +50,8 @@ describe("agent safety guards", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
-        stellaHome: root,
+        stellaAppDir: root,
+        stellaDataDir: root,
       },
     );
 
@@ -76,8 +76,8 @@ describe("agent safety guards", () => {
         conversationId: "c1",
         deviceId: "d1",
         requestId: "r1",
-        stellaRoot: root,
-        stellaHome: root,
+        stellaAppDir: root,
+        stellaDataDir: root,
       },
     );
 

@@ -15,51 +15,51 @@ const tempDirs = createSyncTempDirTracker();
 
 afterEach(() => tempDirs.cleanup());
 
-const makeStellaHome = () => tempDirs.create("stella-local-preferences-");
+const makeStellaDataDir = () => tempDirs.create("stella-local-preferences-");
 
 const writePreferences = (
-  stellaHome: string,
+  stellaDataDir: string,
   preferences: Record<string, unknown>,
 ) => {
-  fs.mkdirSync(stellaHome, { recursive: true });
+  fs.mkdirSync(stellaDataDir, { recursive: true });
   fs.writeFileSync(
-    path.join(stellaHome, "preferences.json"),
+    path.join(stellaDataDir, "preferences.json"),
     JSON.stringify(preferences),
   );
 };
 
 describe("loadLocalPreferences", () => {
   it("defaults wake-word listening off when the preference is missing", () => {
-    const stellaHome = makeStellaHome();
-    writePreferences(stellaHome, {});
+    const stellaDataDir = makeStellaDataDir();
+    writePreferences(stellaDataDir, {});
 
-    expect(loadLocalPreferences(stellaHome).wakeWordEnabled).toBe(false);
+    expect(loadLocalPreferences(stellaDataDir).wakeWordEnabled).toBe(false);
   });
 
   it("preserves an explicit wake-word preference", () => {
-    const enabledHome = makeStellaHome();
+    const enabledHome = makeStellaDataDir();
     writePreferences(enabledHome, { wakeWordEnabled: true });
 
     expect(loadLocalPreferences(enabledHome).wakeWordEnabled).toBe(true);
 
-    const disabledHome = makeStellaHome();
+    const disabledHome = makeStellaDataDir();
     writePreferences(disabledHome, { wakeWordEnabled: false });
 
     expect(loadLocalPreferences(disabledHome).wakeWordEnabled).toBe(false);
   });
 
   it("defaults image generation to Stella", () => {
-    const stellaHome = makeStellaHome();
-    writePreferences(stellaHome, {});
+    const stellaDataDir = makeStellaDataDir();
+    writePreferences(stellaDataDir, {});
 
-    expect(loadLocalPreferences(stellaHome).imageGeneration).toEqual({
+    expect(loadLocalPreferences(stellaDataDir).imageGeneration).toEqual({
       provider: "stella",
     });
   });
 
   it("drops the legacy Stella default model from saved model preferences", () => {
-    const stellaHome = makeStellaHome();
-    writePreferences(stellaHome, {
+    const stellaDataDir = makeStellaDataDir();
+    writePreferences(stellaDataDir, {
       defaultModels: {
         orchestrator: "stella/default",
         chronicle: " stella/light ",
@@ -71,14 +71,14 @@ describe("loadLocalPreferences", () => {
       },
     });
 
-    expect(loadLocalPreferences(stellaHome).defaultModels).toEqual({
+    expect(loadLocalPreferences(stellaDataDir).defaultModels).toEqual({
       chronicle: "stella/light",
     });
-    expect(loadLocalPreferences(stellaHome).modelOverrides).toEqual({
+    expect(loadLocalPreferences(stellaDataDir).modelOverrides).toEqual({
       general: "stella/standard",
     });
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       modelOverrides: {
         orchestrator: "stella/default",
         general: "stella/standard",
@@ -106,9 +106,9 @@ describe("loadLocalPreferences", () => {
   });
 
   it("saves image generation in the model preference snapshot", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       imageGeneration: {
         provider: "fal",
         model: "fal/openai/gpt-image-2",
@@ -119,64 +119,64 @@ describe("loadLocalPreferences", () => {
       provider: "fal",
       model: "fal/openai/gpt-image-2",
     });
-    expect(loadLocalPreferences(stellaHome).imageGeneration).toEqual(
+    expect(loadLocalPreferences(stellaDataDir).imageGeneration).toEqual(
       saved.imageGeneration,
     );
   });
 
   it("preserves the Codex runtime engine preference", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       agentRuntimeEngine: "codex_cli",
     });
 
     expect(saved.agentRuntimeEngine).toBe("codex_cli");
-    expect(loadLocalPreferences(stellaHome).agentRuntimeEngine).toBe(
+    expect(loadLocalPreferences(stellaDataDir).agentRuntimeEngine).toBe(
       "codex_cli",
     );
   });
 
   it("preserves the Codex model preference", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       codexModel: "custom-codex-model",
     });
 
     expect(saved.codexModel).toBe("custom-codex-model");
-    expect(loadLocalPreferences(stellaHome).codexModel).toBe(
+    expect(loadLocalPreferences(stellaDataDir).codexModel).toBe(
       "custom-codex-model",
     );
   });
 
   it("preserves the Codex reasoning preference", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       codexReasoningEffort: "high",
     });
 
     expect(saved.codexReasoningEffort).toBe("high");
-    expect(loadLocalPreferences(stellaHome).codexReasoningEffort).toBe("high");
+    expect(loadLocalPreferences(stellaDataDir).codexReasoningEffort).toBe("high");
   });
 
   it("preserves the Claude Code model preference", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       claudeCodeModel: "sonnet[1m]",
     });
 
     expect(saved.claudeCodeModel).toBe("sonnet[1m]");
-    expect(loadLocalPreferences(stellaHome).claudeCodeModel).toBe("sonnet[1m]");
+    expect(loadLocalPreferences(stellaDataDir).claudeCodeModel).toBe("sonnet[1m]");
   });
 
   it("defaults realtime voice to Stella", () => {
-    const stellaHome = makeStellaHome();
-    writePreferences(stellaHome, {});
+    const stellaDataDir = makeStellaDataDir();
+    writePreferences(stellaDataDir, {});
 
-    expect(loadLocalPreferences(stellaHome).realtimeVoice).toEqual({
+    expect(loadLocalPreferences(stellaDataDir).realtimeVoice).toEqual({
       provider: "stella",
     });
   });
@@ -209,9 +209,9 @@ describe("loadLocalPreferences", () => {
   });
 
   it("saves realtime voice in the model preference snapshot", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       realtimeVoice: {
         provider: "openai",
         model: "openai/gpt-realtime",
@@ -222,15 +222,15 @@ describe("loadLocalPreferences", () => {
       provider: "openai",
       model: "openai/gpt-realtime",
     });
-    expect(loadLocalPreferences(stellaHome).realtimeVoice).toEqual(
+    expect(loadLocalPreferences(stellaDataDir).realtimeVoice).toEqual(
       saved.realtimeVoice,
     );
   });
 
   it("preserves per-provider voice ids and resolves them by underlying provider", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       realtimeVoice: {
         provider: "xai",
         voices: { openai: "verse", xai: "rex" },
@@ -241,7 +241,7 @@ describe("loadLocalPreferences", () => {
       provider: "xai",
       voices: { openai: "verse", xai: "rex" },
     });
-    expect(loadLocalPreferences(stellaHome).realtimeVoice).toEqual(
+    expect(loadLocalPreferences(stellaDataDir).realtimeVoice).toEqual(
       saved.realtimeVoice,
     );
 
@@ -277,9 +277,9 @@ describe("loadLocalPreferences", () => {
   });
 
   it("persists stellaSubProvider and resolves the underlying provider", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       realtimeVoice: {
         provider: "stella",
         voices: { openai: "verse", xai: "rex" },
@@ -292,7 +292,7 @@ describe("loadLocalPreferences", () => {
       voices: { openai: "verse", xai: "rex" },
       stellaSubProvider: "xai",
     });
-    expect(loadLocalPreferences(stellaHome).realtimeVoice).toEqual(
+    expect(loadLocalPreferences(stellaDataDir).realtimeVoice).toEqual(
       saved.realtimeVoice,
     );
 
@@ -323,10 +323,10 @@ describe("loadLocalPreferences", () => {
   });
 
   it("clamps and persists inworldSpeed", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
     // In-range values round-trip unchanged.
-    let saved = updateLocalModelPreferences(stellaHome, {
+    let saved = updateLocalModelPreferences(stellaDataDir, {
       realtimeVoice: { provider: "stella", inworldSpeed: 1.25 },
     });
     expect(saved.realtimeVoice).toEqual({
@@ -335,13 +335,13 @@ describe("loadLocalPreferences", () => {
     });
 
     // Below range → clamped to 0.5.
-    saved = updateLocalModelPreferences(stellaHome, {
+    saved = updateLocalModelPreferences(stellaDataDir, {
       realtimeVoice: { provider: "stella", inworldSpeed: 0.1 },
     });
     expect(saved.realtimeVoice.inworldSpeed).toEqual(0.5);
 
     // Above range → clamped to 2.0.
-    saved = updateLocalModelPreferences(stellaHome, {
+    saved = updateLocalModelPreferences(stellaDataDir, {
       realtimeVoice: { provider: "stella", inworldSpeed: 5 },
     });
     expect(saved.realtimeVoice.inworldSpeed).toEqual(2.0);
@@ -356,9 +356,9 @@ describe("loadLocalPreferences", () => {
   });
 
   it("persists Inworld provider + voices + stellaSubProvider", () => {
-    const stellaHome = makeStellaHome();
+    const stellaDataDir = makeStellaDataDir();
 
-    const saved = updateLocalModelPreferences(stellaHome, {
+    const saved = updateLocalModelPreferences(stellaDataDir, {
       realtimeVoice: {
         provider: "stella",
         voices: { openai: "marin", xai: "rex", inworld: "Sarah" },
@@ -371,7 +371,7 @@ describe("loadLocalPreferences", () => {
       voices: { openai: "marin", xai: "rex", inworld: "Sarah" },
       stellaSubProvider: "inworld",
     });
-    expect(loadLocalPreferences(stellaHome).realtimeVoice).toEqual(
+    expect(loadLocalPreferences(stellaDataDir).realtimeVoice).toEqual(
       saved.realtimeVoice,
     );
 

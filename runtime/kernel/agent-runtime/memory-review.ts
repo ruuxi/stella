@@ -187,12 +187,12 @@ export const buildMemoryReviewUserPrompt = (
  * an empty string when nothing is available.
  */
 export const buildKnownMemoryContext = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<string> => {
   const [summary, recentNotes] = await Promise.all([
-    readMemorySummary(stellaHome).catch(() => null),
+    readMemorySummary(stellaDataDir).catch(() => null),
     readRecentOrchestratorReviewNotes(
-      stellaHome,
+      stellaDataDir,
       KNOWN_MEMORY_RECENT_NOTE_LIMIT,
     ).catch(() => [] as string[]),
   ]);
@@ -281,8 +281,8 @@ export const parseMemoryReviewCandidate = (
 
 const runReview = async (args: {
   conversationId: string;
-  stellaHome: string;
-  stellaRoot: string;
+  stellaDataDir: string;
+  stellaAppDir: string;
   messagesSnapshot: AgentMessage[];
   /** Only messages newer than this watermark are reviewed (0 = review all). */
   sinceMessageTs: number;
@@ -297,7 +297,7 @@ const runReview = async (args: {
    */
 }): Promise<boolean> => {
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaRoot: args.stellaRoot,
+    stellaAppDir: args.stellaAppDir,
     modelId: args.resolvedLlm.model.id,
   });
   const apiKey = useClaudeCode
@@ -320,7 +320,7 @@ const runReview = async (args: {
     return true;
   }
 
-  const knownMemory = await buildKnownMemoryContext(args.stellaHome).catch(
+  const knownMemory = await buildKnownMemoryContext(args.stellaDataDir).catch(
     () => "",
   );
   const reviewSystemPrompt = buildMemoryReviewSystemPrompt();
@@ -341,7 +341,7 @@ const runReview = async (args: {
   if (useClaudeCode) {
     try {
       finalText = await runClaudeCodeAgentTextCompletion({
-        stellaRoot: args.stellaRoot,
+        stellaAppDir: args.stellaAppDir,
         agentType: "memory_review",
         stellaModel: args.resolvedLlm.model.id,
         context: {
@@ -398,7 +398,7 @@ const runReview = async (args: {
 
   try {
     const written = await writeOrchestratorReviewMemoryNote({
-      stellaHome: args.stellaHome,
+      stellaDataDir: args.stellaDataDir,
       note: candidate,
     });
     logger.debug("memory-review.completed.candidate-written", {
@@ -430,8 +430,8 @@ const runReview = async (args: {
  */
 export const spawnMemoryReview = (args: {
   conversationId: string;
-  stellaHome: string;
-  stellaRoot: string;
+  stellaDataDir: string;
+  stellaAppDir: string;
   messagesSnapshot: AgentMessage[];
   sinceMessageTs: number;
   resolvedLlm: ResolvedLlmRoute;

@@ -32,8 +32,8 @@ import { getPersonalityVoiceId } from "../preferences/local-preferences.js";
 
 const PERSONALITY_FILE_RELATIVE = "PERSONALITY.md";
 
-const personalityFilePath = (stellaHome: string): string =>
-  path.join(stellaHome, PERSONALITY_FILE_RELATIVE);
+const personalityFilePath = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, PERSONALITY_FILE_RELATIVE);
 
 const composePersonalityContent = (id: PersonalityId): string =>
   PERSONALITY_TEMPLATES[id].trim() + "\n";
@@ -43,8 +43,8 @@ const composePersonalityContent = (id: PersonalityId): string =>
  * user's preset preference (or the Stella default) so the orchestrator always
  * has a personality to inject.
  */
-export const readOrSeedPersonality = (stellaHome: string): string => {
-  const filePath = personalityFilePath(stellaHome);
+export const readOrSeedPersonality = (stellaDataDir: string): string => {
+  const filePath = personalityFilePath(stellaDataDir);
   try {
     const existing = fs.readFileSync(filePath, "utf-8").trim();
     if (existing.length > 0) {
@@ -55,7 +55,7 @@ export const readOrSeedPersonality = (stellaHome: string): string => {
   }
 
   const seeded = composePersonalityContent(
-    coercePersonalityId(getPersonalityVoiceId(stellaHome)),
+    coercePersonalityId(getPersonalityVoiceId(stellaDataDir)),
   );
   try {
     const dir = path.dirname(filePath);
@@ -74,11 +74,11 @@ export const readOrSeedPersonality = (stellaHome: string): string => {
  * user picks a personality in onboarding or settings.
  */
 export const writePersonality = (
-  stellaHome: string,
+  stellaDataDir: string,
   id: PersonalityId,
 ): string => {
   const content = composePersonalityContent(id);
-  const filePath = personalityFilePath(stellaHome);
+  const filePath = personalityFilePath(stellaDataDir);
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     ensurePrivateDirSync(dir);
@@ -87,5 +87,5 @@ export const writePersonality = (
   return content.trim();
 };
 
-export const getPersonalityFilePath = (stellaHome: string): string =>
-  personalityFilePath(stellaHome);
+export const getPersonalityFilePath = (stellaDataDir: string): string =>
+  personalityFilePath(stellaDataDir);

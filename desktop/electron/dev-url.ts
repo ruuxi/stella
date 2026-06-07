@@ -1,9 +1,7 @@
 import fs from 'fs'
 import path from 'path'
-import { fileURLToPath } from 'url'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const __dirname = import.meta.dirname
 
 // The dev server URL is fixed for the process lifetime, but this thunk is
 // re-invoked on every window load. Cache the resolved URL so we don't re-probe
@@ -15,8 +13,8 @@ export function getDevServerUrl(): string {
     return cachedDevUrl
   }
   const candidates = [
-    process.env.STELLA_ROOT
-      ? path.join(process.env.STELLA_ROOT, 'desktop', '.vite-dev-url')
+    process.env.STELLA_APP_DIR
+      ? path.join(process.env.STELLA_APP_DIR, 'desktop', '.vite-dev-url')
       : null,
     path.resolve(__dirname, '../../../../desktop/.vite-dev-url'),
     path.resolve(__dirname, '../.vite-dev-url'),

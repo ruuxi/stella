@@ -1,12 +1,11 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 const require = createRequire(import.meta.url);
 const electronBinary = require("electron");
-const scriptDir = dirname(fileURLToPath(import.meta.url));
+const scriptDir = import.meta.dirname;
 const desktopDir = resolve(scriptDir, "..");
 const repoRootDir = resolve(desktopDir, "..");
 const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");

@@ -291,12 +291,12 @@ let sharedLogger: FileLogger | null = null;
  * reuse the same instance.
  */
 export const initFileLogger = (
-  stellaRoot: string,
+  stellaAppDir: string,
   component: string,
   options?: { retentionDays?: number },
 ): FileLogger => {
   if (sharedLogger) return sharedLogger;
-  const { logDir } = resolveLogPaths(stellaRoot);
+  const { logDir } = resolveLogPaths(stellaAppDir);
   sharedLogger = new FileLogger({
     logDir,
     component,

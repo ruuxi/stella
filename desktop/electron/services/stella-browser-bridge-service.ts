@@ -32,7 +32,7 @@ type ProcessRow = {
 };
 
 type StellaBrowserBridgeServiceOptions = {
-  stellaRoot: string;
+  stellaAppDir: string;
   onUnexpectedExit?: (error: string) => void;
 };
 
@@ -43,7 +43,7 @@ type DaemonResponse = {
 };
 
 export class StellaBrowserBridgeService {
-  private readonly stellaRoot: string;
+  private readonly stellaAppDir: string;
   private readonly onUnexpectedExit?: (error: string) => void;
 
   private daemonProcess: ChildProcess | null = null;
@@ -52,7 +52,7 @@ export class StellaBrowserBridgeService {
   private stopped = false;
 
   constructor(options: StellaBrowserBridgeServiceOptions) {
-    this.stellaRoot = options.stellaRoot;
+    this.stellaAppDir = options.stellaAppDir;
     this.onUnexpectedExit = options.onUnexpectedExit;
   }
 

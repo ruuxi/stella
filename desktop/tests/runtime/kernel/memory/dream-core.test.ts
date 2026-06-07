@@ -45,7 +45,7 @@ describe("dream-core", () => {
     );
 
     await dreamMarkProcessed({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store,
       threadKeys: [
         { threadId: "thread-a", runId: "run-1" },
@@ -53,7 +53,7 @@ describe("dream-core", () => {
       ],
     });
 
-    const result = await dreamList({ stellaHome: rootPath, store });
+    const result = await dreamList({ stellaDataDir: rootPath, store });
     expect(result.threadSummaries.map((entry) => entry.runId)).toEqual([
       "run-3",
     ]);
@@ -78,7 +78,7 @@ describe("dream-core", () => {
       "thread-secret",
     );
 
-    const result = await dreamList({ stellaHome: rootPath, store });
+    const result = await dreamList({ stellaDataDir: rootPath, store });
     const serialized = JSON.stringify(result.threadSummaries);
     expect(serialized).not.toContain("sk-testsecret12345678901234567890");
     expect(serialized).toContain("OPENAI_API_KEY=");
@@ -106,12 +106,12 @@ describe("dream-core", () => {
     await utimes(secondPath, sameTimestamp, sameTimestamp);
 
     await dreamMarkProcessed({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store,
       extensionPaths: [firstPath],
     });
 
-    const result = await dreamList({ stellaHome: rootPath, store });
+    const result = await dreamList({ stellaDataDir: rootPath, store });
     expect(result.extensions.map((entry) => entry.path)).toEqual([secondPath]);
   });
 
@@ -119,7 +119,7 @@ describe("dream-core", () => {
     const { rootPath, store } = createTestContext();
 
     const note = await writeOrchestratorReviewMemoryNote({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       note: {
         title: "Concise updates",
         category: "user_preference",
@@ -135,19 +135,19 @@ describe("dream-core", () => {
       "User prefers concise implementation updates.",
     );
 
-    const listed = await dreamList({ stellaHome: rootPath, store });
+    const listed = await dreamList({ stellaDataDir: rootPath, store });
     expect(
       listed.instructions.map((entry) => path.basename(entry.path)),
     ).toContain("instructions.md");
     expect(listed.extensions.map((entry) => entry.path)).toEqual([note.path]);
 
     await dreamMarkProcessed({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store,
       extensionPaths: [note.path],
     });
 
-    const afterProcessed = await dreamList({ stellaHome: rootPath, store });
+    const afterProcessed = await dreamList({ stellaDataDir: rootPath, store });
     expect(afterProcessed.extensions).toEqual([]);
   });
 });

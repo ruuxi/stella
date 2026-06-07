@@ -69,8 +69,8 @@ const createContext = () =>
     },
     runtimeStore: {},
     deviceId: "device-1",
-    stellaHome: "/tmp/stella-home",
-    stellaRoot: "/tmp/stella-root",
+    stellaDataDir: "/tmp/stella-home",
+    stellaAppDir: "/tmp/stella-root",
   }) as any;
 
 describe("startPreparedOrchestratorRun background agent handling", () => {

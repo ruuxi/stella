@@ -223,7 +223,7 @@
         "wipedTitle": "Amintiri șterse"
       },
       "enableFailures": {
-        "noStellaRoot": "Rădăcina spațiului de lucru al Stellei este indisponibilă.",
+        "noStellaAppDir": "Rădăcina spațiului de lucru al Stellei este indisponibilă.",
         "needsPermission": "Permisiunea de înregistrare a ecranului este încă necesară înainte ca Chronicle să poată porni.",
         "binaryMissing": "Fișierul ajutător Chronicle lipsește.",
         "startupTimeout": "Chronicle nu a ajuns online după lansare.",

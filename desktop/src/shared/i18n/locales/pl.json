@@ -223,7 +223,7 @@
         "wipedTitle": "Wspomnienia wymazane"
       },
       "enableFailures": {
-        "noStellaRoot": "Katalog główny obszaru roboczego Stelli jest niedostępny.",
+        "noStellaAppDir": "Katalog główny obszaru roboczego Stelli jest niedostępny.",
         "needsPermission": "Przed uruchomieniem Chronicle nadal wymagane jest uprawnienie do nagrywania ekranu.",
         "binaryMissing": "Brakuje pliku pomocniczego Chronicle.",
         "startupTimeout": "Chronicle nie połączył się po uruchomieniu.",

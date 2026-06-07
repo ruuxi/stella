@@ -124,24 +124,24 @@ export const resolvedLlmSupportsCredentiallessCalls = (
   resolved.route === "direct-provider" &&
   resolved.model.baseUrl.trim().length > 0;
 
-const getCredential = (stellaRoot: string, providerId: string): string | null =>
-  getLocalLlmCredential(stellaRoot, providerId);
+const getCredential = (stellaAppDir: string, providerId: string): string | null =>
+  getLocalLlmCredential(stellaAppDir, providerId);
 
 const hasLocalProviderAuth = (
-  stellaRoot: string,
+  stellaAppDir: string,
   providerId: string,
 ): boolean =>
-  Boolean(getCredential(stellaRoot, providerId)) ||
-  hasLocalLlmOAuthCredential(stellaRoot, providerId);
+  Boolean(getCredential(stellaAppDir, providerId)) ||
+  hasLocalLlmOAuthCredential(stellaAppDir, providerId);
 
 const getLocalProviderApiKey = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   providerId: string,
 ): Promise<string | undefined> => {
-  const apiKey = getCredential(stellaRoot, providerId)?.trim();
+  const apiKey = getCredential(stellaAppDir, providerId)?.trim();
   if (apiKey) return apiKey;
   const oauthKey = (
-    await getLocalLlmOAuthApiKey(stellaRoot, providerId)
+    await getLocalLlmOAuthApiKey(stellaAppDir, providerId)
   )?.trim();
   return oauthKey || undefined;
 };
@@ -222,7 +222,7 @@ const getDirectProviderCandidates = (
 };
 
 const resolveDirectProviderRoute = (args: {
-  stellaRoot: string;
+  stellaAppDir: string;
   provider: string;
   modelId: string;
   fullModelId: string;
@@ -270,14 +270,14 @@ const resolveDirectProviderRoute = (args: {
   }
 
   if (
-    hasLocalProviderAuth(args.stellaRoot, directProvider.credentialProvider)
+    hasLocalProviderAuth(args.stellaAppDir, directProvider.credentialProvider)
   ) {
     return {
       model: directModel,
       route: "direct-provider",
       getApiKey: () =>
         getLocalProviderApiKey(
-          args.stellaRoot,
+          args.stellaAppDir,
           directProvider.credentialProvider,
         ),
     };
@@ -308,7 +308,7 @@ const wrapAsStellaModelId = (fullModelId: string): string => {
 };
 
 const resolveMaybeLlmRoute = (args: {
-  stellaRoot: string;
+  stellaAppDir: string;
   modelName: string | undefined;
   agentType: string;
   site: StellaSiteConfig;
@@ -340,7 +340,7 @@ const resolveMaybeLlmRoute = (args: {
   // there is no master toggle. If the user has no matching credential we fall
   // through to the Stella passthrough below.
   const directProviderRoute = resolveDirectProviderRoute({
-    stellaRoot: args.stellaRoot,
+    stellaAppDir: args.stellaAppDir,
     provider: parsed.provider,
     modelId: parsed.modelId,
     fullModelId: parsed.fullModelId,
@@ -360,7 +360,7 @@ const resolveMaybeLlmRoute = (args: {
 };
 
 export const canResolveLlmRoute = (args: {
-  stellaRoot: string;
+  stellaAppDir: string;
   modelName: string | undefined;
   agentType?: string;
   site: StellaSiteConfig;
@@ -373,7 +373,7 @@ export const canResolveLlmRoute = (args: {
   );
 
 export const resolveLlmRoute = (args: {
-  stellaRoot: string;
+  stellaAppDir: string;
   modelName: string | undefined;
   agentType: string;
   site: StellaSiteConfig;

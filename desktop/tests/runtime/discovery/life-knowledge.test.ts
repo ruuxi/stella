@@ -29,7 +29,7 @@ afterEach(async () => {
 
 describe("life knowledge discovery writer", () => {
   it("writes LLM-summarized summary pages and raw signal dumps", async () => {
-    const stellaHome = await createTempHome();
+    const stellaDataDir = await createTempHome();
     const payload: DiscoveryKnowledgeSeedPayload = {
       coreMemory: "[who]\n- Rahul builds Stella.\n",
       formattedSections: {
@@ -60,33 +60,33 @@ describe("life knowledge discovery writer", () => {
       },
     };
 
-    expect(await discoveryKnowledgeExists(stellaHome)).toBe(false);
+    expect(await discoveryKnowledgeExists(stellaDataDir)).toBe(false);
 
-    await writeDiscoveryKnowledge(stellaHome, payload);
+    await writeDiscoveryKnowledge(stellaDataDir, payload);
 
-    expect(await discoveryKnowledgeExists(stellaHome)).toBe(true);
+    expect(await discoveryKnowledgeExists(stellaDataDir)).toBe(true);
 
     // Skill file (user-profile/SKILL.md) and per-category summary pages
     const skillFile = await fs.readFile(
-      path.join(stellaHome, "skills", "user-profile", "SKILL.md"),
+      path.join(stellaDataDir, "skills", "user-profile", "SKILL.md"),
       "utf-8",
     );
     const browsingSummary = await fs.readFile(
-      path.join(stellaHome, "skills", "user-profile", "browsing-bookmarks.md"),
+      path.join(stellaDataDir, "skills", "user-profile", "browsing-bookmarks.md"),
       "utf-8",
     );
     const devSummary = await fs.readFile(
-      path.join(stellaHome, "skills", "user-profile", "dev-environment.md"),
+      path.join(stellaDataDir, "skills", "user-profile", "dev-environment.md"),
       "utf-8",
     );
 
     // Raw signal dumps
     const rawBrowsing = await fs.readFile(
-      path.join(stellaHome, "raw", "discovery", "browsing-bookmarks.md"),
+      path.join(stellaDataDir, "raw", "discovery", "browsing-bookmarks.md"),
       "utf-8",
     );
     const rawDev = await fs.readFile(
-      path.join(stellaHome, "raw", "discovery", "dev-environment.md"),
+      path.join(stellaDataDir, "raw", "discovery", "dev-environment.md"),
       "utf-8",
     );
 
@@ -120,7 +120,7 @@ describe("life knowledge discovery writer", () => {
   });
 
   it("skips summary pages when categoryAnalyses is absent", async () => {
-    const stellaHome = await createTempHome();
+    const stellaDataDir = await createTempHome();
     const payload: DiscoveryKnowledgeSeedPayload = {
       coreMemory: "[who]\n- Test user.\n",
       formattedSections: {
@@ -128,18 +128,18 @@ describe("life knowledge discovery writer", () => {
       },
     };
 
-    await writeDiscoveryKnowledge(stellaHome, payload);
+    await writeDiscoveryKnowledge(stellaDataDir, payload);
 
     // SKILL.md exists
     const skillFile = await fs.readFile(
-      path.join(stellaHome, "skills", "user-profile", "SKILL.md"),
+      path.join(stellaDataDir, "skills", "user-profile", "SKILL.md"),
       "utf-8",
     );
     expect(skillFile).toContain("No summary pages are populated yet.");
 
     // Raw still written
     const rawBrowsing = await fs.readFile(
-      path.join(stellaHome, "raw", "discovery", "browsing-bookmarks.md"),
+      path.join(stellaDataDir, "raw", "discovery", "browsing-bookmarks.md"),
       "utf-8",
     );
     expect(rawBrowsing).toContain("cursor.com (5)");
@@ -148,7 +148,7 @@ describe("life knowledge discovery writer", () => {
     await expect(
       fs.access(
         path.join(
-          stellaHome,
+          stellaDataDir,
           "skills",
           "user-profile",
           "browsing-bookmarks.md",

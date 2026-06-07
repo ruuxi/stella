@@ -69,24 +69,24 @@ describe("Claude Code agent runtime selector", () => {
   });
 
   it("keeps an explicit Claude Code model preference for Stella Light agents", () => {
-    const stellaHome = fs.mkdtempSync(
+    const stellaDataDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-claude-light-model-"),
     );
     try {
-      updateLocalModelPreferences(stellaHome, {
+      updateLocalModelPreferences(stellaDataDir, {
         claudeCodeModel: "default",
       });
-      expect(getClaudeCodeAgentModelId(stellaHome, "stella/light")).toBe(
+      expect(getClaudeCodeAgentModelId(stellaDataDir, "stella/light")).toBe(
         "claude-code/haiku",
       );
-      updateLocalModelPreferences(stellaHome, {
+      updateLocalModelPreferences(stellaDataDir, {
         claudeCodeModel: "sonnet",
       });
-      expect(getClaudeCodeAgentModelId(stellaHome, "stella/light")).toBe(
+      expect(getClaudeCodeAgentModelId(stellaDataDir, "stella/light")).toBe(
         "claude-code/sonnet",
       );
     } finally {
-      fs.rmSync(stellaHome, { recursive: true, force: true });
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
     }
   });
 });

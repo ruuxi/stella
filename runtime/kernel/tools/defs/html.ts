@@ -18,7 +18,7 @@ import { fileChange } from "../../../contracts/file-changes.js";
 import type { ToolDefinition } from "../types.js";
 
 export type HtmlToolOptions = {
-  stellaHome: string;
+  stellaDataDir: string;
 };
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -36,7 +36,7 @@ const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
 export const createHtmlTool = (options: HtmlToolOptions): ToolDefinition => {
-  const { stellaHome } = options;
+  const { stellaDataDir } = options;
   return {
     name: "html",
     agentTypes: [AGENT_IDS.ORCHESTRATOR],
@@ -74,7 +74,7 @@ export const createHtmlTool = (options: HtmlToolOptions): ToolDefinition => {
       if (html.length === 0) return { error: "html is required." };
 
       const slug = SLUG_RE.test(rawSlug) ? rawSlug : slugify(rawSlug || title);
-      const dir = path.join(stellaHome, "outputs", "html");
+      const dir = path.join(stellaDataDir, "outputs", "html");
       const filePath = path.join(dir, `${slug}.html`);
 
       let kind: "add" | "update";

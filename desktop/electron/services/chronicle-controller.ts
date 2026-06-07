@@ -37,10 +37,10 @@ const CHRONICLE_STARTUP_TIMEOUT_MS = 3_000;
 const CHRONICLE_STARTUP_POLL_MS = 150;
 const CHRONICLE_EXCLUDED_BUNDLE_IDS = ["com.stella.app", "com.github.Electron"];
 
-const readConfig = async (stellaHome: string): Promise<ChronicleConfig> => {
+const readConfig = async (stellaDataDir: string): Promise<ChronicleConfig> => {
   try {
     const raw = await fs.readFile(
-      path.join(stellaHome, "config.json"),
+      path.join(stellaDataDir, "config.json"),
       "utf-8",
     );
     const parsed = JSON.parse(raw) as StellaConfig;
@@ -56,8 +56,8 @@ const readConfig = async (stellaHome: string): Promise<ChronicleConfig> => {
 // socket `stop` didn't confirm exit, SIGTERM/SIGKILL the pidfile pid — the same
 // belt-and-suspenders teardown as desktop-automation-cleanup.ts. The socket
 // stop stays the primary path.
-const chroniclePidFile = (stellaHome: string): string =>
-  path.join(stellaHome, "chronicle", "chronicle.pid");
+const chroniclePidFile = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "chronicle", "chronicle.pid");
 
 export class ChronicleController {
   private child: ChildProcess | null = null;
@@ -68,14 +68,14 @@ export class ChronicleController {
   // ticks) read enablement every minute without a per-tick disk read.
   private enabledCache: boolean | null = null;
 
-  constructor(private readonly stellaHome: string) {}
+  constructor(private readonly stellaDataDir: string) {}
 
   // Persist the Live Memory preference and keep the in-memory cache coherent.
   private writeMemoryPreference(pref: {
     enabled: boolean;
     pendingEnable: boolean;
   }): void {
-    setChronicleMemoryPreference(this.stellaHome, pref);
+    setChronicleMemoryPreference(this.stellaDataDir, pref);
     this.enabledCache = pref.enabled;
   }
 
@@ -87,7 +87,7 @@ export class ChronicleController {
    */
   isEnabledCached(): boolean {
     if (this.enabledCache === null) {
-      this.enabledCache = getChronicleEnabled(this.stellaHome) === true;
+      this.enabledCache = getChronicleEnabled(this.stellaDataDir) === true;
     }
     return this.enabledCache;
   }
@@ -106,7 +106,7 @@ export class ChronicleController {
     return await new Promise<string | null>((resolve) => {
       execFile(
         bin,
-        [command, "--root", this.stellaHome],
+        [command, "--root", this.stellaDataDir],
         { timeout: 5000 },
         (error, stdout) => {
           if (error) {
@@ -137,11 +137,11 @@ export class ChronicleController {
    * Screen Recording permission. Safe to call multiple times.
    */
   async start(): Promise<{ started: boolean; reason?: string }> {
-    const config = await readConfig(this.stellaHome);
+    const config = await readConfig(this.stellaDataDir);
     // Live Memory is opt-in: only start when the user has explicitly
     // enabled it. A pending enable (waiting on sign-in)
     // both keep the daemon dormant.
-    const enabledNow = getChronicleEnabled(this.stellaHome) === true;
+    const enabledNow = getChronicleEnabled(this.stellaDataDir) === true;
     this.enabledCache = enabledNow;
     if (!enabledNow) {
       return { started: false, reason: "disabled" };
@@ -163,14 +163,14 @@ export class ChronicleController {
     }
 
     try {
-      await fs.mkdir(path.join(this.stellaHome, "chronicle"), {
+      await fs.mkdir(path.join(this.stellaDataDir, "chronicle"), {
         recursive: true,
       });
     } catch {
       // ignored — daemon will retry creating dirs
     }
 
-    const args = ["daemon", "--root", this.stellaHome];
+    const args = ["daemon", "--root", this.stellaDataDir];
     if (typeof config.intervalMs === "number" && config.intervalMs > 0) {
       args.push("--interval-ms", String(Math.floor(config.intervalMs)));
     }
@@ -191,7 +191,7 @@ export class ChronicleController {
     // pidfile just falls back to the socket stop.
     if (typeof child.pid === "number") {
       try {
-        await fs.writeFile(chroniclePidFile(this.stellaHome), String(child.pid));
+        await fs.writeFile(chroniclePidFile(this.stellaDataDir), String(child.pid));
       } catch {
         // ignored — socket stop remains the primary teardown path
       }
@@ -228,7 +228,7 @@ export class ChronicleController {
   }
 
   async isEnabled(): Promise<boolean> {
-    return getChronicleEnabled(this.stellaHome);
+    return getChronicleEnabled(this.stellaDataDir);
   }
 
   /**
@@ -237,7 +237,7 @@ export class ChronicleController {
    * Used by the renderer to render a "Sign in to start Live Memory" banner.
    */
   async isPendingEnable(): Promise<boolean> {
-    return getChroniclePendingEnable(this.stellaHome);
+    return getChroniclePendingEnable(this.stellaDataDir);
   }
 
   /**
@@ -251,7 +251,7 @@ export class ChronicleController {
   }
 
   async status(): Promise<unknown | null> {
-    const config = await readConfig(this.stellaHome);
+    const config = await readConfig(this.stellaDataDir);
     const fps = 1000 / Math.max(config.intervalMs ?? DEFAULT_CHRONICLE_INTERVAL_MS, 1);
     const raw = await this.runCommand("status");
     if (!raw) {
@@ -289,9 +289,9 @@ export class ChronicleController {
     // the daemon was orphaned across a restart, so `this.child` is null), reap
     // the persisted pid — guarded against pid reuse and always dropping the
     // pidfile afterwards. See reapPidfileDaemon.
-    await reapPidfileDaemon(chroniclePidFile(this.stellaHome), this.resolveBin(), [
+    await reapPidfileDaemon(chroniclePidFile(this.stellaDataDir), this.resolveBin(), [
       "--root",
-      this.stellaHome,
+      this.stellaDataDir,
     ]);
   }
 

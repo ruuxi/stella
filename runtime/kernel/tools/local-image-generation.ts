@@ -194,13 +194,13 @@ const referenceToBlobInfo = async (
 };
 
 const saveImages = async (
-  stellaHome: string,
+  stellaDataDir: string,
   jobId: string,
   outputFormat: string,
   images: readonly string[],
 ): Promise<string[]> => {
   const extension = extensionFromFormat(outputFormat);
-  const outputDir = path.join(stellaHome, "media", "outputs");
+  const outputDir = path.join(stellaDataDir, "media", "outputs");
   await fs.mkdir(outputDir, { recursive: true });
   const filePaths: string[] = [];
   for (const [index, image] of images.entries()) {
@@ -430,13 +430,13 @@ const runOpenRouter = async (
 export const runLocalImageGeneration = async (
   input: LocalImageGenerationInput,
 ): Promise<ToolResult | null> => {
-  const stellaHome = input.context.stellaHome;
-  if (!stellaHome) return null;
+  const stellaDataDir = input.context.stellaDataDir;
+  if (!stellaDataDir) return null;
 
-  const preferences = getImageGenerationPreferences(stellaHome);
+  const preferences = getImageGenerationPreferences(stellaDataDir);
   if (preferences.provider === "stella") return null;
 
-  const apiKey = getLocalLlmCredential(stellaHome, preferences.provider);
+  const apiKey = getLocalLlmCredential(stellaDataDir, preferences.provider);
   if (!apiKey) {
     return {
       error: `Connect ${preferences.provider} in Settings to use it for images.`,
@@ -468,7 +468,7 @@ export const runLocalImageGeneration = async (
   const jobId = `local-${preferences.provider}-${randomUUID()}`;
   let filePaths: string[];
   try {
-    filePaths = await saveImages(stellaHome, jobId, outputFormat, generated);
+    filePaths = await saveImages(stellaDataDir, jobId, outputFormat, generated);
   } catch (error) {
     return {
       error: `image_gen saved no images: ${(error as Error).message}`,

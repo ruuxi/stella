@@ -95,18 +95,18 @@ const OAUTH_DISCOVERY_HEADER = "MCP-Protocol-Version";
 const OAUTH_DISCOVERY_VERSION = "2024-11-05";
 const CONNECTOR_TOKEN_SCOPE_PREFIX = "connector-token";
 
-const tokenFile = (stellaRoot: string) =>
-  path.join(getConnectorStateRoot(stellaRoot), ".credentials.json");
+const tokenFile = (stellaAppDir: string) =>
+  path.join(getConnectorStateRoot(stellaAppDir), ".credentials.json");
 
 const credentialScope = (tokenKey: string) =>
   `${CONNECTOR_TOKEN_SCOPE_PREFIX}:${tokenKey.trim().toLowerCase()}`;
 
 const emptyStore = (): TokenStore => ({ version: 2, tokens: {} });
 
-const readTokenStore = async (stellaRoot: string): Promise<TokenStore> => {
+const readTokenStore = async (stellaAppDir: string): Promise<TokenStore> => {
   try {
     const parsed = JSON.parse(
-      await fs.readFile(tokenFile(stellaRoot), "utf-8"),
+      await fs.readFile(tokenFile(stellaAppDir), "utf-8"),
     ) as TokenStore;
     if (
       parsed?.version === 2 &&
@@ -121,9 +121,9 @@ const readTokenStore = async (stellaRoot: string): Promise<TokenStore> => {
   return emptyStore();
 };
 
-const writeTokenStore = async (stellaRoot: string, store: TokenStore) => {
+const writeTokenStore = async (stellaAppDir: string, store: TokenStore) => {
   await writePrivateFile(
-    tokenFile(stellaRoot),
+    tokenFile(stellaAppDir),
     `${JSON.stringify(store, null, 2)}\n`,
   );
 };
@@ -148,11 +148,11 @@ const decodeTokenPayload = (
 };
 
 export const saveConnectorTokenPayload = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   tokenKey: string,
   payload: ConnectorTokenPayload,
 ) => {
-  const store = await readTokenStore(stellaRoot);
+  const store = await readTokenStore(stellaAppDir);
   const existing = store.tokens[tokenKey];
   const valueProtected = protectValue(
     credentialScope(tokenKey),
@@ -166,24 +166,24 @@ export const saveConnectorTokenPayload = async (
     ...(payload.resourceUrl ? { resourceUrl: payload.resourceUrl } : {}),
     ...(payload.scopes?.length ? { scopes: payload.scopes } : {}),
   };
-  await writeTokenStore(stellaRoot, store);
+  await writeTokenStore(stellaAppDir, store);
   if (existing?.valueProtected && existing.valueProtected !== valueProtected) {
     deleteProtectedValue(credentialScope(tokenKey), existing.valueProtected);
   }
 };
 
 export const loadConnectorTokenPayload = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   tokenKey?: string,
 ): Promise<ConnectorTokenPayload | null> => {
   if (!tokenKey) return null;
-  const store = await readTokenStore(stellaRoot);
+  const store = await readTokenStore(stellaAppDir);
   const payload = decodeTokenPayload(tokenKey, store.tokens[tokenKey]);
   if (!payload?.accessToken) return null;
   if (!payload.expiresAt || payload.expiresAt > Date.now() + 30_000) {
     return payload;
   }
-  return await refreshConnectorAccessToken(stellaRoot, tokenKey, payload);
+  return await refreshConnectorAccessToken(stellaAppDir, tokenKey, payload);
 };
 
 const normalizeScopes = (scopes?: string[]) => {
@@ -382,7 +382,7 @@ const discoverAuthorizationServerMetadata = async (
 };
 
 const refreshConnectorAccessToken = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   tokenKey: string,
   payload: ConnectorTokenPayload,
 ): Promise<ConnectorTokenPayload | null> => {
@@ -435,7 +435,7 @@ const refreshConnectorAccessToken = async (
         token.api_base_url_for_customer ??
         payload.resourceUrl,
     };
-    await saveConnectorTokenPayload(stellaRoot, tokenKey, next);
+    await saveConnectorTokenPayload(stellaAppDir, tokenKey, next);
     return next;
   }
   if (!payload.tokenEndpoint) return null;
@@ -478,26 +478,26 @@ const refreshConnectorAccessToken = async (
       token.api_base_url_for_customer ??
       payload.resourceUrl,
   };
-  await saveConnectorTokenPayload(stellaRoot, tokenKey, next);
+  await saveConnectorTokenPayload(stellaAppDir, tokenKey, next);
   return next;
 };
 
 export const loadConnectorAccessToken = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   tokenKey?: string,
 ): Promise<string | null> => {
   return (
-    (await loadConnectorTokenPayload(stellaRoot, tokenKey))?.accessToken ?? null
+    (await loadConnectorTokenPayload(stellaAppDir, tokenKey))?.accessToken ?? null
   );
 };
 
 export const saveConnectorAccessToken = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   tokenKey: string,
   accessToken: string,
   expiresAt?: number,
 ) => {
-  await saveConnectorTokenPayload(stellaRoot, tokenKey, {
+  await saveConnectorTokenPayload(stellaAppDir, tokenKey, {
     accessToken,
     expiresAt,
   });
@@ -553,7 +553,7 @@ const sleepWithAbort = async (ms: number, signal?: AbortSignal) =>
   });
 
 export const completeConnectorDeviceOAuth = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   args: {
     tokenKey: string;
     clientId: string;
@@ -598,7 +598,7 @@ export const completeConnectorDeviceOAuth = async (
       const scopes = payload.scope
         ? normalizeScopes(payload.scope.split(/\s+/u))
         : normalizeScopes(args.scopes);
-      await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
+      await saveConnectorTokenPayload(stellaAppDir, args.tokenKey, {
         accessToken: payload.access_token,
         refreshToken: payload.refresh_token,
         expiresAt: tokenExpiresAt(payload.expires_in),
@@ -621,14 +621,14 @@ export const completeConnectorDeviceOAuth = async (
 };
 
 export const deleteConnectorAccessTokens = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   tokenKeys: Iterable<string | undefined>,
 ) => {
   const keys = [
     ...new Set([...tokenKeys].filter((key): key is string => Boolean(key))),
   ];
   if (keys.length === 0) return;
-  const store = await readTokenStore(stellaRoot);
+  const store = await readTokenStore(stellaAppDir);
   let changed = false;
   for (const key of keys) {
     const existing = store.tokens[key];
@@ -637,7 +637,7 @@ export const deleteConnectorAccessTokens = async (
     delete store.tokens[key];
     changed = true;
   }
-  if (changed) await writeTokenStore(stellaRoot, store);
+  if (changed) await writeTokenStore(stellaAppDir, store);
 };
 
 const callbackIdFromResourceUrl = (resourceUrl: string) =>
@@ -805,7 +805,7 @@ const createOAuthCallbackListener = async (
   });
 
 export const connectConnectorOAuth = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   args: {
     tokenKey: string;
     resourceUrl: string;
@@ -921,7 +921,7 @@ export const connectConnectorOAuth = async (
     const grantedScopes = token.scope
       ? normalizeScopes(token.scope.split(/\s+/u))
       : scopes;
-    await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
+    await saveConnectorTokenPayload(stellaAppDir, args.tokenKey, {
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
       expiresAt: tokenExpiresAt(token.expires_in),
@@ -948,7 +948,7 @@ export const connectConnectorOAuth = async (
 };
 
 export const connectPreregisteredConnectorOAuth = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   args: {
     tokenKey: string;
     clientId: string;
@@ -1061,7 +1061,7 @@ export const connectPreregisteredConnectorOAuth = async (
     if (!callbackResult.accessToken) {
       throw new Error("OAuth callback did not include an access token.");
     }
-    await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
+    await saveConnectorTokenPayload(stellaAppDir, args.tokenKey, {
       accessToken: callbackResult.accessToken,
       expiresAt: callbackResult.expiresIn
         ? Date.now() + callbackResult.expiresIn * 1000
@@ -1153,7 +1153,7 @@ export const connectPreregisteredConnectorOAuth = async (
   };
 
   const token = await exchangeToken();
-  await saveConnectorTokenPayload(stellaRoot, args.tokenKey, {
+  await saveConnectorTokenPayload(stellaAppDir, args.tokenKey, {
     accessToken: token.access_token,
     refreshToken: token.refresh_token,
     expiresAt: firstTokenExpiresAt(token.expires_in, token.expires),

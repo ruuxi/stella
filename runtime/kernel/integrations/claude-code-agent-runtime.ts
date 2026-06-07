@@ -27,7 +27,7 @@ export type ClaudeCodeAgentRuntimeEngine = AgentRuntimeEngine;
 export const CLAUDE_CODE_LIGHT_MODEL = "haiku";
 
 export const shouldUseClaudeCodeAgentRuntime = (args: {
-  stellaRoot?: string;
+  stellaAppDir?: string;
   agentEngine?: ClaudeCodeAgentRuntimeEngine;
   modelId?: string;
 }): boolean => {
@@ -40,27 +40,27 @@ export const shouldUseClaudeCodeAgentRuntime = (args: {
   if (args.modelId && isClaudeCodeModel(args.modelId)) {
     return true;
   }
-  const stellaRoot = args.stellaRoot?.trim();
-  return stellaRoot
-    ? getAgentRuntimeEngine(stellaRoot) === "claude_code_local"
+  const stellaAppDir = args.stellaAppDir?.trim();
+  return stellaAppDir
+    ? getAgentRuntimeEngine(stellaAppDir) === "claude_code_local"
     : false;
 };
 
 export const getClaudeCodeAgentModelId = (
-  stellaRoot?: string,
+  stellaAppDir?: string,
   stellaModel?: string,
   agentType?: string,
 ): string => {
   const configuredStellaModel =
     stellaModel ??
-    (stellaRoot && agentType
-      ? getModelOverride(stellaRoot, agentType)
+    (stellaAppDir && agentType
+      ? getModelOverride(stellaAppDir, agentType)
       : undefined);
   const lightDefault =
     configuredStellaModel?.trim() === "stella/light"
       ? CLAUDE_CODE_LIGHT_MODEL
       : undefined;
-  const prefs = stellaRoot ? loadLocalPreferences(stellaRoot) : null;
+  const prefs = stellaAppDir ? loadLocalPreferences(stellaAppDir) : null;
   const preferredModel = prefs?.claudeCodeModel;
   const userSelectedModel =
     preferredModel && preferredModel !== DEFAULT_CLAUDE_CODE_MODEL
@@ -91,11 +91,11 @@ const CLAUDE_CODE_EFFORT_BY_REASONING: Record<
 };
 
 export const getClaudeCodeRuntimeEffortLevel = (
-  stellaRoot?: string,
+  stellaAppDir?: string,
 ): string | undefined => {
   const envOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL?.trim();
   if (envOverride) return envOverride;
-  const prefs = stellaRoot ? loadLocalPreferences(stellaRoot) : null;
+  const prefs = stellaAppDir ? loadLocalPreferences(stellaAppDir) : null;
   const effort = prefs?.claudeCodeReasoningEffort;
   if (!effort || effort === "default") return undefined;
   return CLAUDE_CODE_EFFORT_BY_REASONING[effort];
@@ -145,7 +145,7 @@ const toolsToMetadata = (tools: Tool[] | undefined): ToolMetadata[] =>
   }));
 
 export const runClaudeCodeAgentTextCompletion = async (args: {
-  stellaRoot: string;
+  stellaAppDir: string;
   agentType: string;
   context: Context;
   runId?: string;
@@ -161,11 +161,11 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
 }): Promise<string> => {
   const runId = args.runId ?? `claude-code:${args.agentType}:${crypto.randomUUID()}`;
   const modelId = getClaudeCodeAgentModelId(
-    args.stellaRoot,
+    args.stellaAppDir,
     args.stellaModel,
     args.agentType,
   );
-  const effortLevel = getClaudeCodeRuntimeEffortLevel(args.stellaRoot);
+  const effortLevel = getClaudeCodeRuntimeEffortLevel(args.stellaAppDir);
   const result = await runClaudeCodeTurn({
     runId,
     sessionKey: args.sessionKey ?? `${args.agentType}:one-shot:${runId}`,
@@ -175,7 +175,7 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
     systemPrompt: args.context.systemPrompt,
     cwd: resolveLocalCliCwd({
       agentType: args.agentType,
-      stellaRoot: args.stellaRoot,
+      stellaAppDir: args.stellaAppDir,
     }),
     tools: toolsToMetadata(args.context.tools),
     abortSignal: args.abortSignal,

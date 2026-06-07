@@ -382,8 +382,8 @@ export const buildOrchestratorThreadHistory = (args: {
 
 export const createRunnerContext = ({
   deviceId,
-  stellaRoot,
-  stellaHome,
+  stellaAppDir,
+  stellaDataDir,
   stellaBrowserBinPath,
   stellaOfficeBinPath,
   stellaComputerCliPath,
@@ -458,8 +458,8 @@ export const createRunnerContext = ({
     fashionApi ?? createFashionApi({ convexAction, convexApi: anyApi });
 
   const toolHost = createToolHost({
-    stellaRoot,
-    stellaHome,
+    stellaAppDir,
+    stellaDataDir,
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaComputerCliPath,
@@ -550,8 +550,8 @@ export const createRunnerContext = ({
         ...(payload.memorySearchTerms?.length
           ? { memorySearchTerms: payload.memorySearchTerms }
           : {}),
-        stellaRoot,
-        stellaHome,
+        stellaAppDir,
+        stellaDataDir,
         store: context.runtimeStore,
         localEvents,
         ...(appBrowserContext ? { appBrowserContext } : {}),
@@ -617,8 +617,8 @@ export const createRunnerContext = ({
   Object.assign(context, {
     convexApi: anyApi,
     deviceId,
-    stellaRoot,
-    stellaHome,
+    stellaAppDir,
+    stellaDataDir,
     stellaBrowserBinPath,
     stellaOfficeBinPath,
     stellaComputerCliPath,
@@ -635,7 +635,7 @@ export const createRunnerContext = ({
     appendLocalChatEvent,
     getDefaultConversationId,
     paths: {
-      extensionsPath: path.join(stellaRoot, "runtime", "extensions"),
+      extensionsPath: path.join(stellaAppDir, "runtime", "extensions"),
     },
     state: {
       convexSiteUrl: envProxyBaseUrl,
@@ -685,7 +685,7 @@ export const getConfiguredModel = (
   agentType: string,
   agent?: ParsedAgentLike,
 ): string | undefined => {
-  const modelFromPrefs = getModelOverride(context.stellaHome, agentType);
+  const modelFromPrefs = getModelOverride(context.stellaDataDir, agentType);
   return modelFromPrefs ?? agent?.model;
 };
 
@@ -827,7 +827,7 @@ export const buildAgentContext = async (
           shouldInjectDynamicReminder: false,
           reminderTokensSinceLastInjection: 0,
         };
-  const agentEngine = getAgentRuntimeEngine(context.stellaHome);
+  const agentEngine = getAgentRuntimeEngine(context.stellaDataDir);
 
   const fileEditToolFamily = getFileEditToolFamily({
     agentType: args.agentType,
@@ -861,7 +861,7 @@ export const buildAgentContext = async (
         ? { omitSkillIds: CODEX_SKILL_CATALOG_OMITTED_IDS }
         : undefined;
     dynamicContextSections.push(
-      await renderSkillCatalogBlock(context.stellaHome, skillCatalogOptions),
+      await renderSkillCatalogBlock(context.stellaDataDir, skillCatalogOptions),
     );
   }
   if (agentHasCapability(args.agentType, "injectsSubagentRoster")) {
@@ -876,7 +876,7 @@ export const buildAgentContext = async (
   // next turn (mtime-gated — unchanged files are not re-read). Falls back to
   // the registered/bundled prompt when there's no home prompt for this type.
   const homeSystemPrompt = await loadHomeAgentSystemPrompt(
-    context.stellaHome,
+    context.stellaDataDir,
     args.agentType,
   );
   const injectsCoreMemory = agentHasCapability(
@@ -901,19 +901,19 @@ export const buildAgentContext = async (
     toolsAllowlist,
     model,
     resolvedLlm,
-    reasoningEffort: getReasoningEffort(context.stellaHome, args.agentType),
+    reasoningEffort: getReasoningEffort(context.stellaDataDir, args.agentType),
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: injectsCoreMemory
-      ? readCoreMemory(context.stellaHome)
+      ? readCoreMemory(context.stellaDataDir)
       : undefined,
     personality: injectsPersonality
-      ? readOrSeedPersonality(context.stellaHome)
+      ? readOrSeedPersonality(context.stellaDataDir)
       : undefined,
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine,
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)
-      ? getMaxAgentConcurrency(context.stellaHome)
+      ? getMaxAgentConcurrency(context.stellaDataDir)
       : undefined,
   };
 };

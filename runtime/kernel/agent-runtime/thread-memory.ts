@@ -423,19 +423,19 @@ const createInternalPromptMessage = (
 });
 
 const readRegistryContent = async (args: {
-  stellaHome?: string;
+  stellaDataDir?: string;
 }): Promise<string | null> => {
-  const stellaHome = args.stellaHome?.trim();
-  if (!stellaHome) {
+  const stellaDataDir = args.stellaDataDir?.trim();
+  if (!stellaDataDir) {
     return null;
   }
-  return await readOptionalTextFile(path.join(stellaHome, "registry.md"));
+  return await readOptionalTextFile(path.join(stellaDataDir, "registry.md"));
 };
 
 export const buildStartupPromptMessages = async (args: {
   context: LocalAgentContext;
-  stellaHome?: string;
-  stellaRoot?: string;
+  stellaDataDir?: string;
+  stellaAppDir?: string;
   includeRegistry?: boolean;
 }): Promise<RuntimePromptMessage[]> => {
   const messages: RuntimePromptMessage[] = [];
@@ -460,7 +460,7 @@ export const buildStartupPromptMessages = async (args: {
     !hasPersistedStartupDoc(args.context, LIFE_REGISTRY_DISPLAY_PATH)
   ) {
     const registryContent = await readRegistryContent({
-      stellaHome: args.stellaHome,
+      stellaDataDir: args.stellaDataDir,
     });
     if (registryContent) {
       messages.push(
@@ -572,8 +572,8 @@ export const buildSubagentPromptMessages = async (args: {
   context: LocalAgentContext;
   userPrompt: string;
   promptMessages?: RuntimePromptMessage[];
-  stellaHome?: string;
-  stellaRoot?: string;
+  stellaDataDir?: string;
+  stellaAppDir?: string;
   agentType?: string;
   hookContext?: PromptHookContext;
 }): Promise<RuntimePromptMessage[]> => {
@@ -594,8 +594,8 @@ export const buildSubagentPromptMessages = async (args: {
     messages.push(
       ...(await buildStartupPromptMessages({
         context: args.context,
-        stellaHome: args.stellaHome,
-        stellaRoot: args.stellaRoot,
+        stellaDataDir: args.stellaDataDir,
+        stellaAppDir: args.stellaAppDir,
       })),
     );
     messages.push(...append);
@@ -603,8 +603,8 @@ export const buildSubagentPromptMessages = async (args: {
     messages.push(
       ...(await buildStartupPromptMessages({
         context: args.context,
-        stellaHome: args.stellaHome,
-        stellaRoot: args.stellaRoot,
+        stellaDataDir: args.stellaDataDir,
+        stellaAppDir: args.stellaAppDir,
       })),
     );
   }
@@ -622,8 +622,8 @@ export const buildOrchestratorPromptMessages = async (args: {
   context: LocalAgentContext;
   userPrompt: string;
   promptMessages?: OrchestratorPromptMessage[];
-  stellaHome?: string;
-  stellaRoot?: string;
+  stellaDataDir?: string;
+  stellaAppDir?: string;
   agentType?: string;
   hookContext?: PromptHookContext;
 }): Promise<OrchestratorPromptMessage[]> => {
@@ -665,8 +665,8 @@ export const buildOrchestratorPromptMessages = async (args: {
     messages.push(
       ...(await buildStartupPromptMessages({
         context: args.context,
-        stellaHome: args.stellaHome,
-        stellaRoot: args.stellaRoot,
+        stellaDataDir: args.stellaDataDir,
+        stellaAppDir: args.stellaAppDir,
       })),
     );
     messages.push(...append);
@@ -674,8 +674,8 @@ export const buildOrchestratorPromptMessages = async (args: {
     messages.push(
       ...(await buildStartupPromptMessages({
         context: args.context,
-        stellaHome: args.stellaHome,
-        stellaRoot: args.stellaRoot,
+        stellaDataDir: args.stellaDataDir,
+        stellaAppDir: args.stellaAppDir,
       })),
     );
   }

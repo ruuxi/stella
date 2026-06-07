@@ -25,8 +25,8 @@ import { ChronicleController as ChronicleControllerCtor } from "../services/chro
 import { hasMacPermission } from "../utils/macos-permissions.js";
 
 export type MemoryHandlersOptions = {
-  getStellaRoot: () => string | null;
-  getStellaHome: () => string | null;
+  getStellaAppDir: () => string | null;
+  getStellaDataDir: () => string | null;
   getController: () => ChronicleController | null;
   setController: (controller: ChronicleController | null) => void;
   assertPrivilegedSender: (
@@ -40,7 +40,7 @@ const ensureController = (
 ): ChronicleController | null => {
   const existing = options.getController();
   if (existing) return existing;
-  const root = options.getStellaHome();
+  const root = options.getStellaDataDir();
   if (!root) return null;
   const next = new ChronicleControllerCtor(root);
   options.setController(next);
@@ -112,7 +112,7 @@ export const registerMemoryHandlers = (
         throw new Error("Blocked untrusted memory:setEnabled request.");
       }
       const controller = ensureController(options);
-      const root = options.getStellaHome();
+      const root = options.getStellaDataDir();
       if (!controller || !root) {
         return {
           ok: false,
@@ -166,7 +166,7 @@ export const registerMemoryHandlers = (
       throw new Error("Blocked untrusted memory:promotePending request.");
     }
     const controller = ensureController(options);
-    const root = options.getStellaHome();
+    const root = options.getStellaDataDir();
     if (!controller || !root) {
       return {
         ok: false,

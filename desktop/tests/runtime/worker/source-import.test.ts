@@ -177,11 +177,11 @@ describe("trySourceImportFastPath", () => {
     const sourceRoot = await mkdtemp(
       path.join(os.tmpdir(), "stella-import-source-"),
     );
-    const stellaHome = await mkdtemp(
+    const stellaDataDir = await mkdtemp(
       path.join(os.tmpdir(), "stella-import-home-"),
     );
     extraRoots.push(sourceRoot);
-    extraRoots.push(stellaHome);
+    extraRoots.push(stellaDataDir);
     await writeFile(path.join(sourceRoot, "README.md"), "# Tool\n", "utf8");
     await writeFile(
       path.join(sourceRoot, "package.json"),
@@ -191,7 +191,7 @@ describe("trySourceImportFastPath", () => {
 
     const prepared = await prepareExternalSourceImport({
       repoRoot,
-      stellaHome,
+      stellaDataDir,
       source: { kind: "local-path", path: sourceRoot },
       scope: { kind: "feature", label: "command palette" },
       trust: "untrusted",
@@ -215,7 +215,7 @@ describe("trySourceImportFastPath", () => {
 
     const prepared = await prepareExternalSourceImport({
       repoRoot,
-      stellaHome: repoRoot,
+      stellaDataDir: repoRoot,
       source: { kind: "local-path", path: sourceRoot },
       scope: { kind: "all" },
       trust: "trusted",
@@ -234,11 +234,11 @@ describe("trySourceImportFastPath", () => {
     const sourceRoot = await mkdtemp(
       path.join(os.tmpdir(), "stella-import-related-"),
     );
-    const stellaHome = await mkdtemp(
+    const stellaDataDir = await mkdtemp(
       path.join(os.tmpdir(), "stella-import-home-"),
     );
     extraRoots.push(sourceRoot);
-    extraRoots.push(stellaHome);
+    extraRoots.push(stellaDataDir);
     await runGit(path.dirname(sourceRoot), ["clone", repoRoot, sourceRoot]);
     await runGit(sourceRoot, ["config", "user.email", "test@example.com"]);
     await runGit(sourceRoot, ["config", "user.name", "Stella Test"]);
@@ -262,7 +262,7 @@ describe("trySourceImportFastPath", () => {
 
     const result = await importExternalSource({
       repoRoot,
-      stellaHome,
+      stellaDataDir,
       source: { kind: "git", url: `${sourceRoot}#HEAD` },
       scope: { kind: "all" },
       trust: "trusted",
@@ -294,11 +294,11 @@ describe("trySourceImportFastPath", () => {
     const sourceRoot = await mkdtemp(
       path.join(os.tmpdir(), "stella-import-blocked-"),
     );
-    const stellaHome = await mkdtemp(
+    const stellaDataDir = await mkdtemp(
       path.join(os.tmpdir(), "stella-import-home-"),
     );
     extraRoots.push(sourceRoot);
-    extraRoots.push(stellaHome);
+    extraRoots.push(stellaDataDir);
     await writeFile(path.join(sourceRoot, "README.md"), "# Bad\n", "utf8");
     const service = createService();
     const runBlockingLocalAgent = vi.fn(async () => ({
@@ -310,7 +310,7 @@ describe("trySourceImportFastPath", () => {
     await expect(
       importExternalSource({
         repoRoot,
-        stellaHome,
+        stellaDataDir,
         source: { kind: "local-path", path: sourceRoot },
         scope: { kind: "all" },
         trust: "untrusted",

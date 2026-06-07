@@ -29,8 +29,8 @@ import {
 import type { LocalChatEventRecord } from "../../../runtime/kernel/storage/shared.js";
 
 type DisplayHandlersOptions = {
-  getStellaRoot: () => string | null;
-  getStellaHome: () => string | null;
+  getStellaAppDir: () => string | null;
+  getStellaDataDir: () => string | null;
   localChatHistoryService?: LocalChatHistoryService;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
@@ -157,12 +157,12 @@ export const isMobileBridgeSender = (
   event.sender.getURL() === MOBILE_BRIDGE_SENDER_URL;
 
 export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
-  const requireStellaHome = () => {
-    const stellaHome = options.getStellaHome();
-    if (!stellaHome) {
+  const requireStellaDataDir = () => {
+    const stellaDataDir = options.getStellaDataDir();
+    if (!stellaDataDir) {
       throw new Error("Stella home is unavailable.");
     }
-    return stellaHome;
+    return stellaDataDir;
   };
 
   ipcMain.handle(
@@ -267,7 +267,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
       );
     }
 
-    const htmlDir = path.join(requireStellaHome(), "outputs", "html");
+    const htmlDir = path.join(requireStellaDataDir(), "outputs", "html");
     let entries: Dirent<string>[];
     try {
       entries = await fs.readdir(htmlDir, { withFileTypes: true });
@@ -314,7 +314,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
         `Blocked untrusted ${IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS} request.`,
       );
     }
-    return await listOpenPanelReports(requireStellaHome());
+    return await listOpenPanelReports(requireStellaDataDir());
   });
 
   ipcMain.handle(
@@ -335,7 +335,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
         throw new Error("Unknown Open panel report cadence.");
       }
       return await markOpenPanelReportOpened(
-        requireStellaHome(),
+        requireStellaDataDir(),
         cadence as OpenPanelReportCadence,
       );
     },
@@ -345,7 +345,7 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
     if (!options.assertPrivilegedSender(event, IPC_DISPLAY_TRASH_LIST)) {
       throw new Error(`Blocked untrusted ${IPC_DISPLAY_TRASH_LIST} request.`);
     }
-    return await listDeferredDeletes({ stellaHome: requireStellaHome() });
+    return await listDeferredDeletes({ stellaDataDir: requireStellaDataDir() });
   });
 
   ipcMain.handle(
@@ -359,12 +359,12 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
         );
       }
 
-      const stellaHome = requireStellaHome();
+      const stellaDataDir = requireStellaDataDir();
       if (payload?.all === true) {
-        return await purgeAllDeferredDeletes({ stellaHome });
+        return await purgeAllDeferredDeletes({ stellaDataDir });
       }
       const id = typeof payload?.id === "string" ? payload.id : "";
-      return await purgeDeferredDelete(id, { stellaHome });
+      return await purgeDeferredDelete(id, { stellaDataDir });
     },
   );
 };

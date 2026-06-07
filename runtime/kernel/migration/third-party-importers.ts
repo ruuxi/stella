@@ -69,7 +69,7 @@ export type ThirdPartyMigrationReportItem = {
 export type ThirdPartyMigrationReport = {
   source: ThirdPartyMigrationSource;
   sourceRoot: string;
-  stellaHome: string;
+  stellaDataDir: string;
   startedAt: string;
   completedAt: string;
   markdownPath: string;
@@ -243,11 +243,11 @@ const loadSqliteDatabaseCtor = async (): Promise<SqliteDatabaseCtor> => {
   throw new Error("No compatible SQLite runtime is available.");
 };
 
-const importStatePath = (stellaHome: string): string =>
-  path.join(stellaHome, IMPORT_STATE_FILE);
+const importStatePath = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, IMPORT_STATE_FILE);
 
-const readImportState = async (stellaHome: string): Promise<ImportedState> => {
-  const parsed = await readJsonIfExists(importStatePath(stellaHome));
+const readImportState = async (stellaDataDir: string): Promise<ImportedState> => {
+  const parsed = await readJsonIfExists(importStatePath(stellaDataDir));
   if (isRecord(parsed) && parsed.version === 1 && isRecord(parsed.sources)) {
     return parsed as ImportedState;
   }
@@ -255,10 +255,10 @@ const readImportState = async (stellaHome: string): Promise<ImportedState> => {
 };
 
 const writeImportState = async (
-  stellaHome: string,
+  stellaDataDir: string,
   state: ImportedState,
 ): Promise<void> => {
-  const filePath = importStatePath(stellaHome);
+  const filePath = importStatePath(stellaDataDir);
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
   await fsp.writeFile(filePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
 };
@@ -816,7 +816,7 @@ const collectOpenClawSessionFileRefs = (value: unknown): string[] => {
 export const runThirdPartyMigration = async (opts: {
   source: ThirdPartyMigrationSource;
   sourceRoot?: string;
-  stellaHome: string;
+  stellaDataDir: string;
   selection?: ThirdPartyMigrationSelection;
   db?: SqliteDatabase;
   now?: Date;
@@ -824,15 +824,15 @@ export const runThirdPartyMigration = async (opts: {
   const sourceRoot = path.resolve(
     opts.sourceRoot ?? resolveDefaultMigrationSourceRoot(opts.source),
   );
-  const stellaHome = path.resolve(opts.stellaHome);
+  const stellaDataDir = path.resolve(opts.stellaDataDir);
   const selected = { ...DEFAULT_OPTIONS, ...(opts.selection ?? {}) };
   const startedAt = opts.now ?? new Date();
   const paths = await collectSourcePaths(opts.source, sourceRoot);
-  const importState = await readImportState(stellaHome);
+  const importState = await readImportState(stellaDataDir);
   const key = sourceKey(opts.source, sourceRoot);
   const items: ThirdPartyMigrationReportItem[] = [];
   const ownsDb = !opts.db;
-    const db = opts.db ?? await createMigrationDatabase(stellaHome);
+    const db = opts.db ?? await createMigrationDatabase(stellaDataDir);
 
   try {
     if (!(await pathExists(sourceRoot))) {
@@ -848,7 +848,7 @@ export const runThirdPartyMigration = async (opts: {
           source: opts.source,
           target: "memory",
           files: paths.memoryFiles,
-          stellaHome,
+          stellaDataDir,
           state: importState,
           stateKey: key,
           items,
@@ -859,7 +859,7 @@ export const runThirdPartyMigration = async (opts: {
           source: opts.source,
           target: "user",
           files: paths.userFiles,
-          stellaHome,
+          stellaDataDir,
           state: importState,
           stateKey: key,
           items,
@@ -869,7 +869,7 @@ export const runThirdPartyMigration = async (opts: {
         await importSkillDirs({
           source: opts.source,
           dirs: paths.skillDirs,
-          stellaHome,
+          stellaDataDir,
           state: importState,
           stateKey: key,
           items,
@@ -879,7 +879,7 @@ export const runThirdPartyMigration = async (opts: {
         await importPersonalityFiles({
           source: opts.source,
           files: paths.personalityFiles,
-          stellaHome,
+          stellaDataDir,
           state: importState,
           stateKey: key,
           items,
@@ -889,7 +889,7 @@ export const runThirdPartyMigration = async (opts: {
         await importModelConfig({
           source: opts.source,
           files: paths.modelConfigFiles,
-          stellaHome,
+          stellaDataDir,
           state: importState,
           stateKey: key,
           items,
@@ -910,7 +910,7 @@ export const runThirdPartyMigration = async (opts: {
         await importSchedules({
           source: opts.source,
           files: paths.scheduleFiles,
-          stellaHome,
+          stellaDataDir,
           state: importState,
           stateKey: key,
           items,
@@ -925,11 +925,11 @@ export const runThirdPartyMigration = async (opts: {
         "Channels skipped - re-enable in Stella settings (no setup required).",
     });
 
-    await writeImportState(stellaHome, importState);
+    await writeImportState(stellaDataDir, importState);
     const report = await writeMarkdownReport({
       source: opts.source,
       sourceRoot,
-      stellaHome,
+      stellaDataDir,
       startedAt,
       items,
     });
@@ -942,10 +942,10 @@ export const runThirdPartyMigration = async (opts: {
 };
 
 const createMigrationDatabase = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<SqliteDatabase> => {
   const Database = await loadSqliteDatabaseCtor();
-  const db = new Database(getDesktopDatabasePath(stellaHome), {
+  const db = new Database(getDesktopDatabasePath(stellaDataDir), {
     timeout: 5_000,
   });
   initializeDesktopDatabase(db);
@@ -968,7 +968,7 @@ const importMemoryFiles = async (args: {
   source: ThirdPartyMigrationSource;
   target: "memory" | "user";
   files: string[];
-  stellaHome: string;
+  stellaDataDir: string;
   state: ImportedState;
   stateKey: string;
   items: ThirdPartyMigrationReportItem[];
@@ -983,7 +983,7 @@ const importMemoryFiles = async (args: {
     return;
   }
 
-  const coreMemoryPath = path.join(args.stellaHome, "core-memory.md");
+  const coreMemoryPath = path.join(args.stellaDataDir, "core-memory.md");
   const existing = (await readTextIfExists(coreMemoryPath)) ?? "";
   const blocks: string[] = [];
   let added = 0;
@@ -1031,7 +1031,7 @@ const importMemoryFiles = async (args: {
 const importSkillDirs = async (args: {
   source: ThirdPartyMigrationSource;
   dirs: string[];
-  stellaHome: string;
+  stellaDataDir: string;
   state: ImportedState;
   stateKey: string;
   items: ThirdPartyMigrationReportItem[];
@@ -1040,7 +1040,7 @@ const importSkillDirs = async (args: {
     args.items.push({ kind: "skills", status: "skipped", message: "No skills found." });
     return;
   }
-  const skillsRoot = path.join(args.stellaHome, "skills");
+  const skillsRoot = path.join(args.stellaDataDir, "skills");
   await fsp.mkdir(skillsRoot, { recursive: true });
   let imported = 0;
   let skipped = 0;
@@ -1156,7 +1156,7 @@ const formatSkillFrontmatterValue = (value: string): string => {
 const importPersonalityFiles = async (args: {
   source: ThirdPartyMigrationSource;
   files: string[];
-  stellaHome: string;
+  stellaDataDir: string;
   state: ImportedState;
   stateKey: string;
   items: ThirdPartyMigrationReportItem[];
@@ -1169,7 +1169,7 @@ const importPersonalityFiles = async (args: {
     });
     return;
   }
-  const target = getPersonalityFilePath(args.stellaHome);
+  const target = getPersonalityFilePath(args.stellaDataDir);
   ensurePrivateDirSync(path.dirname(target));
   let existing = await readTextIfExists(target);
   existing ??= "";
@@ -1212,7 +1212,7 @@ const importPersonalityFiles = async (args: {
 const importModelConfig = async (args: {
   source: ThirdPartyMigrationSource;
   files: string[];
-  stellaHome: string;
+  stellaDataDir: string;
   state: ImportedState;
   stateKey: string;
   items: ThirdPartyMigrationReportItem[];
@@ -1260,8 +1260,8 @@ const importModelConfig = async (args: {
     });
     return;
   }
-  const prefs = loadLocalPreferences(args.stellaHome);
-  saveLocalPreferences(args.stellaHome, {
+  const prefs = loadLocalPreferences(args.stellaDataDir);
+  saveLocalPreferences(args.stellaDataDir, {
     ...prefs,
     modelOverrides: {
       ...prefs.modelOverrides,
@@ -1274,7 +1274,7 @@ const importModelConfig = async (args: {
     kind: "modelConfig",
     status: "imported",
     source: first,
-    target: path.join(args.stellaHome, "preferences.json"),
+    target: path.join(args.stellaDataDir, "preferences.json"),
     message: `Set Stella Assistant and General agent model to ${model}. OAuth/API keys still need review in Settings if Stella cannot reuse them automatically.`,
   });
 };
@@ -1485,7 +1485,7 @@ const sanitizeImportedSessionId = (value: string): string =>
 const importSchedules = async (args: {
   source: ThirdPartyMigrationSource;
   files: string[];
-  stellaHome: string;
+  stellaDataDir: string;
   state: ImportedState;
   stateKey: string;
   items: ThirdPartyMigrationReportItem[];
@@ -1498,7 +1498,7 @@ const importSchedules = async (args: {
     });
     return;
   }
-  const target = path.join(args.stellaHome, "local-scheduler.json");
+  const target = path.join(args.stellaDataDir, "local-scheduler.json");
   const sourceFile = args.files[0]!;
   const parsed = await readJsonLikeIfExists(sourceFile);
   const jobs = isRecord(parsed) && Array.isArray(parsed.jobs) ? parsed.jobs : [];
@@ -1512,7 +1512,7 @@ const importSchedules = async (args: {
     return;
   }
   const scheduler = new LocalSchedulerService({
-    stellaHome: args.stellaHome,
+    stellaDataDir: args.stellaDataDir,
     runnerTarget: migrationSchedulerRunnerTarget,
   });
   scheduler.start();
@@ -1645,12 +1645,12 @@ const parseImportedSchedulePayload = (
 const writeMarkdownReport = async (args: {
   source: ThirdPartyMigrationSource;
   sourceRoot: string;
-  stellaHome: string;
+  stellaDataDir: string;
   startedAt: Date;
   items: ThirdPartyMigrationReportItem[];
 }): Promise<ThirdPartyMigrationReport> => {
   const completedAt = new Date();
-  const reportDir = path.join(args.stellaHome, REPORTS_DIR);
+  const reportDir = path.join(args.stellaDataDir, REPORTS_DIR);
   await fsp.mkdir(reportDir, { recursive: true });
   const fileName = `${completedAt.toISOString().replace(/[:.]/g, "-")}-${args.source}-import.md`;
   const markdownPath = path.join(reportDir, fileName);
@@ -1661,7 +1661,7 @@ const writeMarkdownReport = async (args: {
     `# Import from ${label} Report`,
     "",
     `- Source: \`${args.sourceRoot}\``,
-    `- Stella home: \`${args.stellaHome}\``,
+    `- Stella home: \`${args.stellaDataDir}\``,
     `- Started: ${args.startedAt.toISOString()}`,
     `- Completed: ${completedAt.toISOString()}`,
     `- Source project: [${label}](${PRODUCT_REPOS[args.source]})`,
@@ -1688,7 +1688,7 @@ const writeMarkdownReport = async (args: {
   const report: ThirdPartyMigrationReport = {
     source: args.source,
     sourceRoot: args.sourceRoot,
-    stellaHome: args.stellaHome,
+    stellaDataDir: args.stellaDataDir,
     startedAt: args.startedAt.toISOString(),
     completedAt: completedAt.toISOString(),
     markdownPath,

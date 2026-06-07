@@ -1,10 +1,9 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { ensureElectronBinary } from "./ensure-electron-binary.mjs";
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const scriptDir = import.meta.dirname;
 const repoRoot = path.resolve(scriptDir, "..", "..");
 const workerEntry = path.join(
   repoRoot,

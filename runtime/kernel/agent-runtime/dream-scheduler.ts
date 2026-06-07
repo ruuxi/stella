@@ -79,20 +79,20 @@ type DreamRuntimeState = {
 
 const RUNTIME_STATE = new Map<string, DreamRuntimeState>();
 
-const stateFor = (stellaHome: string): DreamRuntimeState => {
-  let state = RUNTIME_STATE.get(stellaHome);
+const stateFor = (stellaDataDir: string): DreamRuntimeState => {
+  let state = RUNTIME_STATE.get(stellaDataDir);
   if (!state) {
     state = { inFlight: false, lastRunAt: 0, tokensAtLastRun: 0 };
-    RUNTIME_STATE.set(stellaHome, state);
+    RUNTIME_STATE.set(stellaDataDir, state);
   }
   return state;
 };
 
-const lockDir = (stellaHome: string): string =>
-  path.join(stellaHome, "locks", "dream");
+const lockDir = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "locks", "dream");
 
-const acquireLock = (stellaHome: string): (() => void) | null => {
-  const dir = lockDir(stellaHome);
+const acquireLock = (stellaDataDir: string): (() => void) | null => {
+  const dir = lockDir(stellaDataDir);
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   try {
     fs.mkdirSync(dir);
@@ -120,7 +120,7 @@ const acquireLock = (stellaHome: string): (() => void) | null => {
       const stat = fs.statSync(dir);
       if (Date.now() - stat.mtimeMs > 30 * 60 * 1000) {
         fs.rmSync(dir, { recursive: true, force: true });
-        return acquireLock(stellaHome);
+        return acquireLock(stellaDataDir);
       }
     } catch {
       // ignore
@@ -129,8 +129,8 @@ const acquireLock = (stellaHome: string): (() => void) | null => {
   }
 };
 
-const readDreamConfig = (stellaHome: string): DreamConfig => {
-  const configPath = path.join(stellaHome, "config.json");
+const readDreamConfig = (stellaDataDir: string): DreamConfig => {
+  const configPath = path.join(stellaDataDir, "config.json");
   try {
     const raw = fs.readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(raw) as { dream?: Partial<DreamConfig> };
@@ -197,12 +197,12 @@ const toToolResultMessage = (
 });
 
 const runDream = async (args: {
-  stellaHome: string;
+  stellaDataDir: string;
   store: RuntimeStore;
   resolvedLlm: ResolvedLlmRoute;
 }): Promise<void> => {
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaRoot: args.stellaHome,
+    stellaAppDir: args.stellaDataDir,
     modelId: args.resolvedLlm.model.id,
   });
   const apiKey = useClaudeCode
@@ -217,7 +217,7 @@ const runDream = async (args: {
     return;
   }
 
-  await ensureDreamMemoryLayout(args.stellaHome);
+  await ensureDreamMemoryLayout(args.stellaDataDir);
 
   const tools = buildDreamTools();
   const messages: Message[] = [
@@ -237,7 +237,7 @@ const runDream = async (args: {
   if (useClaudeCode) {
     try {
       const finalText = await runClaudeCodeAgentTextCompletion({
-        stellaRoot: args.stellaHome,
+        stellaAppDir: args.stellaDataDir,
         agentType: AGENT_IDS.DREAM,
         stellaModel: args.resolvedLlm.model.id,
         context: {
@@ -252,7 +252,7 @@ const runDream = async (args: {
             store: {
               threadSummariesStore: args.store.threadSummariesStore,
             },
-            dream: { stellaHome: args.stellaHome },
+            dream: { stellaDataDir: args.stellaDataDir },
           });
           if (!dispatch.handled) {
             return {
@@ -325,7 +325,7 @@ const runDream = async (args: {
             store: {
               threadSummariesStore: args.store.threadSummariesStore,
             },
-            dream: { stellaHome: args.stellaHome },
+            dream: { stellaDataDir: args.stellaDataDir },
           },
         );
         if (!dispatch.handled) {
@@ -370,7 +370,7 @@ export type SpawnDreamTrigger =
   | "manual";
 
 export type SpawnDreamArgs = {
-  stellaHome: string;
+  stellaDataDir: string;
   store: RuntimeStore;
   resolvedLlm: ResolvedLlmRoute;
   trigger: SpawnDreamTrigger;
@@ -408,7 +408,7 @@ export type SpawnDreamResult = {
 export const maybeSpawnDreamRun = async (
   args: SpawnDreamArgs,
 ): Promise<SpawnDreamResult> => {
-  const config = readDreamConfig(args.stellaHome);
+  const config = readDreamConfig(args.stellaDataDir);
   if (!config.enabled && args.trigger !== "manual") {
     return {
       scheduled: false,
@@ -418,7 +418,7 @@ export const maybeSpawnDreamRun = async (
     };
   }
 
-  const state = stateFor(args.stellaHome);
+  const state = stateFor(args.stellaDataDir);
   if (state.inFlight) {
     return {
       scheduled: false,
@@ -432,7 +432,7 @@ export const maybeSpawnDreamRun = async (
   let pendingExtensions = 0;
   try {
     pendingThreadSummaries = args.store.threadSummariesStore.countUnprocessed();
-    pendingExtensions = await countPendingDreamExtensions(args.stellaHome);
+    pendingExtensions = await countPendingDreamExtensions(args.stellaDataDir);
   } catch (error) {
     logger.debug("dream.count-failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -489,7 +489,7 @@ export const maybeSpawnDreamRun = async (
     };
   }
 
-  const release = acquireLock(args.stellaHome);
+  const release = acquireLock(args.stellaDataDir);
   if (!release) {
     logger.debug("dream.lock-busy");
     return {
@@ -502,7 +502,7 @@ export const maybeSpawnDreamRun = async (
   state.inFlight = true;
 
   void runDream({
-    stellaHome: args.stellaHome,
+    stellaDataDir: args.stellaDataDir,
     store: args.store,
     resolvedLlm: args.resolvedLlm,
   })

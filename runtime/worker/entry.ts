@@ -39,13 +39,13 @@ import {
 
 type ParsedArgs = {
   listenUrl: string;
-  stellaRoot: string | null;
+  stellaAppDir: string | null;
   idleShutdownMs: number | null;
 };
 
 const parseEntryArgs = (argv: string[]): ParsedArgs => {
   let listenUrl = "stdio://";
-  let stellaRoot: string | null = null;
+  let stellaAppDir: string | null = null;
   let idleShutdownMs: number | null = null;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -56,10 +56,10 @@ const parseEntryArgs = (argv: string[]): ParsedArgs => {
     } else if (arg.startsWith("--listen=")) {
       listenUrl = arg.slice("--listen=".length);
     } else if (arg === "--stella-root" && i + 1 < argv.length) {
-      stellaRoot = argv[i + 1] ?? null;
+      stellaAppDir = argv[i + 1] ?? null;
       i += 1;
     } else if (arg.startsWith("--stella-root=")) {
-      stellaRoot = arg.slice("--stella-root=".length);
+      stellaAppDir = arg.slice("--stella-root=".length);
     } else if (arg === "--idle-shutdown-ms" && i + 1 < argv.length) {
       const next = Number.parseInt(argv[i + 1] ?? "", 10);
       if (Number.isFinite(next) && next > 0) idleShutdownMs = next;
@@ -69,7 +69,7 @@ const parseEntryArgs = (argv: string[]): ParsedArgs => {
       if (Number.isFinite(next) && next > 0) idleShutdownMs = next;
     }
   }
-  return { listenUrl, stellaRoot, idleShutdownMs };
+  return { listenUrl, stellaAppDir, idleShutdownMs };
 };
 
 const main = async () => {
@@ -106,18 +106,18 @@ const main = async () => {
   let lifecycle: WorkerLifecycleServer | null = null;
   let detachedMode = false;
   if (transport.kind !== "stdio") {
-    if (!cliArgs.stellaRoot) {
+    if (!cliArgs.stellaAppDir) {
       console.error(
         "[runtime-worker] detached --listen requires --stella-root <path>",
       );
       process.exit(2);
     }
     detachedMode = true;
-    const logger = initFileLogger(cliArgs.stellaRoot, "worker");
+    const logger = initFileLogger(cliArgs.stellaAppDir, "worker");
     installGlobalErrorLogging(logger);
     logger.process("worker.starting", { pid: process.pid });
     lifecycle = new WorkerLifecycleServer({
-      stellaRoot: cliArgs.stellaRoot,
+      stellaAppDir: cliArgs.stellaAppDir,
       ...(cliArgs.idleShutdownMs ? { idleShutdownMs: cliArgs.idleShutdownMs } : {}),
       shouldKeepAlive: () => runtimeServer.hasActiveWork(),
       onShutdown: async (reason) => {

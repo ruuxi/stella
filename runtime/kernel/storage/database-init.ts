@@ -4,14 +4,14 @@ import { ensurePrivateDirSync } from "../shared/private-fs.js";
 
 const DB_FILE = "stella.sqlite";
 
-export const ensureDatabaseStateRoot = (stellaHome: string) => {
-  const stateRoot = stellaHome;
+export const ensureDatabaseStateRoot = (stellaDataDir: string) => {
+  const stateRoot = stellaDataDir;
   ensurePrivateDirSync(stateRoot);
   return stateRoot;
 };
 
-export const getDesktopDatabasePath = (stellaHome: string) =>
-  path.join(ensureDatabaseStateRoot(stellaHome), DB_FILE);
+export const getDesktopDatabasePath = (stellaDataDir: string) =>
+  path.join(ensureDatabaseStateRoot(stellaDataDir), DB_FILE);
 
 export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec("PRAGMA journal_mode = WAL;");

@@ -1,9 +1,9 @@
-import { hashStellaRoot, resolveLogDir } from "../worker/runtime-paths.js";
+import { hashStellaAppDir, resolveLogDir } from "../worker/runtime-paths.js";
 
 /**
  * Resolution of the local, machine-only diagnostics log directory.
  *
- * Keyed on the same per-stellaRoot hash the runtime worker uses so that
+ * Keyed on the same per-stellaAppDir hash the runtime worker uses so that
  * multiple Stella installs on one machine (dev tree at `~/projects/stella`
  * plus a launcher install at `~/Stella`) keep separate logs and never
  * interleave their diagnostics. Colocated with the worker's raw
@@ -25,9 +25,9 @@ export type LogPaths = {
 };
 
 export const resolveLogPaths = (
-  stellaRoot: string,
+  stellaAppDir: string,
   options?: { homeDir?: string },
 ): LogPaths => ({
-  rootHash: hashStellaRoot(stellaRoot),
-  logDir: resolveLogDir(stellaRoot, options),
+  rootHash: hashStellaAppDir(stellaAppDir),
+  logDir: resolveLogDir(stellaAppDir, options),
 });

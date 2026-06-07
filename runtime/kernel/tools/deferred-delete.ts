@@ -25,7 +25,7 @@ export type TrashPathsOptions = {
   source: string;
   cwd?: string;
   force?: boolean;
-  stellaHome?: string;
+  stellaDataDir?: string;
   requestId?: string;
   agentType?: string;
   conversationId?: string;
@@ -50,7 +50,7 @@ export type DeferredDeleteListResult = {
 };
 
 type DeferredDeletePaths = {
-  stellaHome: string;
+  stellaDataDir: string;
   baseDir: string;
   itemsDir: string;
   trashDir: string;
@@ -58,7 +58,7 @@ type DeferredDeletePaths = {
 
 type PathApi = Pick<typeof path, "resolve" | "sep">;
 
-const getStellaHome = (override?: string) => {
+const getStellaDataDir = (override?: string) => {
   if (override && override.trim().length > 0) {
     return override;
   }
@@ -66,12 +66,12 @@ const getStellaHome = (override?: string) => {
 };
 
 export const getDeferredDeletePaths = (
-  stellaHomeOverride?: string,
+  stellaDataDirOverride?: string,
 ): DeferredDeletePaths => {
-  const stellaHome = getStellaHome(stellaHomeOverride);
-  const baseDir = path.join(stellaHome, DEFERRED_DELETE_DIR);
+  const stellaDataDir = getStellaDataDir(stellaDataDirOverride);
+  const baseDir = path.join(stellaDataDir, DEFERRED_DELETE_DIR);
   return {
-    stellaHome,
+    stellaDataDir,
     baseDir,
     itemsDir: path.join(baseDir, DEFERRED_DELETE_ITEMS_DIR),
     trashDir: path.join(baseDir, DEFERRED_DELETE_TRASH_DIR),
@@ -231,7 +231,7 @@ export const trashPathsForDeferredDelete = async (
   options: TrashPathsOptions,
 ): Promise<TrashPathsResult> => {
   const result: TrashPathsResult = { trashed: [], skipped: [], errors: [] };
-  const paths = getDeferredDeletePaths(options.stellaHome);
+  const paths = getDeferredDeletePaths(options.stellaDataDir);
   await ensureDirectories(paths);
 
   for (const rawTarget of targets) {
@@ -350,9 +350,9 @@ const parseRecord = (raw: string): DeferredDeleteRecord | null => {
 };
 
 export const listDeferredDeletes = async (options?: {
-  stellaHome?: string;
+  stellaDataDir?: string;
 }): Promise<DeferredDeleteListResult> => {
-  const paths = getDeferredDeletePaths(options?.stellaHome);
+  const paths = getDeferredDeletePaths(options?.stellaDataDir);
   const result: DeferredDeleteListResult = { items: [], errors: [] };
 
   const metadataFiles = await fs.readdir(paths.itemsDir).catch(() => []);
@@ -386,9 +386,9 @@ export const listDeferredDeletes = async (options?: {
 
 export const purgeDeferredDelete = async (
   id: string,
-  options?: { stellaHome?: string },
+  options?: { stellaDataDir?: string },
 ): Promise<DeferredDeleteSweepResult> => {
-  const paths = getDeferredDeletePaths(options?.stellaHome);
+  const paths = getDeferredDeletePaths(options?.stellaDataDir);
   const summary: DeferredDeleteSweepResult = {
     checked: 0,
     purged: 0,
@@ -438,20 +438,20 @@ export const purgeDeferredDelete = async (
 };
 
 export const purgeAllDeferredDeletes = async (options?: {
-  stellaHome?: string;
+  stellaDataDir?: string;
 }): Promise<DeferredDeleteSweepResult> => {
   return await purgeExpiredDeferredDeletes({
-    stellaHome: options?.stellaHome,
+    stellaDataDir: options?.stellaDataDir,
     now: Number.MAX_SAFE_INTEGER,
   });
 };
 
 export const purgeExpiredDeferredDeletes = async (options?: {
-  stellaHome?: string;
+  stellaDataDir?: string;
   now?: number;
 }): Promise<DeferredDeleteSweepResult> => {
   const now = options?.now ?? Date.now();
-  const paths = getDeferredDeletePaths(options?.stellaHome);
+  const paths = getDeferredDeletePaths(options?.stellaDataDir);
   const summary: DeferredDeleteSweepResult = {
     checked: 0,
     purged: 0,

@@ -12,8 +12,7 @@ import {
   writeFileSync,
   watch,
 } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -26,7 +25,7 @@ const DEV_MACOS_BUNDLE_ID = 'com.stella.app'
 const DEV_MACOS_RUNTIME_DIR_NAME = '.stella-dev-runtime'
 const DEV_BARE_RELAUNCH_EXECUTABLE = 'StellaDevRelaunch'
 const LEGACY_DEV_PROTOCOL_APP_NAME = 'stella-dev-protocol-app'
-const scriptDir = dirname(fileURLToPath(import.meta.url))
+const scriptDir = import.meta.dirname
 const desktopDir = resolve(scriptDir, '..')
 const repoRootDir = resolve(desktopDir, '..')
 let electronBinary = require('electron')

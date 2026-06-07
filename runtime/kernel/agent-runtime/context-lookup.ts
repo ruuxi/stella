@@ -147,30 +147,30 @@ type MemoryFileSource = {
   includeByDefault: boolean;
 };
 
-const MEMORY_FILE_SOURCES = (stellaHome: string): MemoryFileSource[] => [
+const MEMORY_FILE_SOURCES = (stellaDataDir: string): MemoryFileSource[] => [
   {
     displayPath: "~/.stella/memories/memory_summary.md",
-    path: path.join(stellaHome, "memories", "memory_summary.md"),
+    path: path.join(stellaDataDir, "memories", "memory_summary.md"),
     includeByDefault: true,
   },
   {
     displayPath: "~/.stella/memories/MEMORY.md",
-    path: path.join(stellaHome, "memories", "MEMORY.md"),
+    path: path.join(stellaDataDir, "memories", "MEMORY.md"),
     includeByDefault: true,
   },
   {
     displayPath: "~/.stella/memories/raw_memories.md",
-    path: path.join(stellaHome, "memories", "raw_memories.md"),
+    path: path.join(stellaDataDir, "memories", "raw_memories.md"),
     includeByDefault: false,
   },
 ];
 
 const readMemoryFiles = async (
-  stellaHome: string,
+  stellaDataDir: string,
   opts?: { hasSearchTerms?: boolean },
 ): Promise<string> => {
   const files = [
-    ...MEMORY_FILE_SOURCES(stellaHome).filter(
+    ...MEMORY_FILE_SOURCES(stellaDataDir).filter(
       (file) =>
         file.includeByDefault &&
         (!opts?.hasSearchTerms ||
@@ -208,7 +208,7 @@ const formatLineRange = (start: number, end: number): string =>
   start === end ? String(start) : `${start}-${end}`;
 
 const readMemorySearchResults = async (
-  stellaHome: string,
+  stellaDataDir: string,
   searchTerms?: readonly string[],
 ): Promise<string> => {
   const terms = normalizeMemorySearchTerms(searchTerms);
@@ -222,7 +222,7 @@ const readMemorySearchResults = async (
   let matchCount = 0;
   let truncated = false;
 
-  for (const file of MEMORY_FILE_SOURCES(stellaHome)) {
+  for (const file of MEMORY_FILE_SOURCES(stellaDataDir)) {
     const content = await readOptionalTextFile(file.path);
     if (!content) continue;
     const lines = content.split(/\r?\n/);
@@ -283,7 +283,7 @@ const readMemorySearchResults = async (
   return blocks.join("\n\n");
 };
 
-const readChronicleFiles = async (stellaHome: string): Promise<string> => {
+const readChronicleFiles = async (stellaDataDir: string): Promise<string> => {
   const files = [
     { name: "10m-current.md", label: "last ~10 minutes" },
     { name: "6h-current.md", label: "last ~6 hours" },
@@ -292,7 +292,7 @@ const readChronicleFiles = async (stellaHome: string): Promise<string> => {
   for (const file of files) {
     const displayPath = path.posix.join(...CHRONICLE_DIR_SEGMENTS, file.name);
     const content = await readOptionalTextFile(
-      path.join(stellaHome, ...CHRONICLE_DIR_SEGMENTS, file.name),
+      path.join(stellaDataDir, ...CHRONICLE_DIR_SEGMENTS, file.name),
     );
     if (!content) continue;
     blocks.push(
@@ -326,7 +326,7 @@ export const buildContextLookupUserPrompt = async (args: {
   conversationId: string;
   lookupPrompt: string;
   memorySearchTerms?: readonly string[];
-  stellaHome: string;
+  stellaDataDir: string;
   store: ContextLookupStore;
   localEvents: LocalContextEvent[];
   appBrowserContext?: HostAppBrowserContextSnapshot;
@@ -336,13 +336,13 @@ export const buildContextLookupUserPrompt = async (args: {
   );
   const hasSearchTerms = normalizedSearchTerms.length > 0;
   const [memoryFiles, memorySearchResults, chronicleFiles] = await Promise.all([
-    readMemoryFiles(args.stellaHome, {
+    readMemoryFiles(args.stellaDataDir, {
       hasSearchTerms,
     }),
     hasSearchTerms
-      ? readMemorySearchResults(args.stellaHome, normalizedSearchTerms)
+      ? readMemorySearchResults(args.stellaDataDir, normalizedSearchTerms)
       : Promise.resolve(""),
-    readChronicleFiles(args.stellaHome),
+    readChronicleFiles(args.stellaDataDir),
   ]);
 
   const sections = [
@@ -374,8 +374,8 @@ export const runContextLookup = async (args: {
   conversationId: string;
   lookupPrompt: string;
   memorySearchTerms?: readonly string[];
-  stellaRoot: string;
-  stellaHome: string;
+  stellaAppDir: string;
+  stellaDataDir: string;
   store: RuntimeStore;
   localEvents: LocalContextEvent[];
   appBrowserContext?: HostAppBrowserContextSnapshot;
@@ -395,12 +395,12 @@ export const runContextLookup = async (args: {
   };
 
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaRoot: args.stellaRoot,
+    stellaAppDir: args.stellaAppDir,
     modelId: args.resolvedLlm.model.id,
   });
   if (useClaudeCode) {
     const text = await runClaudeCodeAgentTextCompletion({
-      stellaRoot: args.stellaRoot,
+      stellaAppDir: args.stellaAppDir,
       agentType: AGENT_IDS.ORCHESTRATOR,
       stellaModel: args.resolvedLlm.model.id,
       context,

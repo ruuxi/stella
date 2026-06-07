@@ -8,11 +8,10 @@
 
 import { spawn } from 'child_process';
 import { existsSync, accessSync, chmodSync, constants } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { platform, arch } from 'os';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = import.meta.dirname;
 
 // Map Node.js platform/arch to binary naming convention
 function getBinaryName() {

@@ -17,13 +17,13 @@ const logger = createRuntimeLogger("stella-runtime.open-panel-cadence-reports");
 // the user's main assistant choice (incl. BYOK) beats falling through to
 // the Stella default for a feature they may have moved off Stella entirely.
 const hasExplicitPreference = (
-  stellaRoot: string,
+  stellaAppDir: string,
   agentType: string,
 ): boolean =>
-  Boolean(getModelOverride(stellaRoot, agentType));
+  Boolean(getModelOverride(stellaAppDir, agentType));
 
 export const createOpenPanelCadenceReportsHook = (opts: {
-  stellaHome: string;
+  stellaDataDir: string;
   store: RuntimeStore;
 }): HookDefinition<"agent_end"> => ({
   event: "agent_end",
@@ -39,7 +39,7 @@ export const createOpenPanelCadenceReportsHook = (opts: {
       let resolvedLlm = services.resolvedLlm;
       if (services.resolveSubsidiaryLlmRoute) {
         const preferredAgent = hasExplicitPreference(
-          opts.stellaHome,
+          opts.stellaDataDir,
           AGENT_IDS.OPEN_PANEL_REPORTS,
         )
           ? AGENT_IDS.OPEN_PANEL_REPORTS
@@ -57,7 +57,7 @@ export const createOpenPanelCadenceReportsHook = (opts: {
 
       spawnOpenPanelCadenceReports({
         conversationId: payload.conversationId,
-        stellaRoot: opts.stellaHome,
+        stellaAppDir: opts.stellaDataDir,
         resolvedLlm,
         store: opts.store,
         appendLocalChatEvent: services.appendLocalChatEvent,

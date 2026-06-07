@@ -25,8 +25,8 @@ const safe = (fn: () => string): string => {
   }
 }
 
-export const initMainProcessLogging = (stellaRoot: string): FileLogger => {
-  const logger = initFileLogger(stellaRoot, 'main')
+export const initMainProcessLogging = (stellaAppDir: string): FileLogger => {
+  const logger = initFileLogger(stellaAppDir, 'main')
   if (registered) return logger
   registered = true
 
