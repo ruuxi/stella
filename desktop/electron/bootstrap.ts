@@ -13,6 +13,10 @@ import {
 } from './bootstrap/constants.js'
 import { createBootstrapContext } from './bootstrap/context.js'
 import { initMainProcessLogging } from './observability/main-logger.js'
+import {
+  getTotalSystemMemoryMb,
+  isLowMemoryWindowsDevice,
+} from './resource-profile.js'
 import { resolveRuntimeStatePath } from '../../runtime/kernel/home/stella-home.js'
 import {
   initializeBootstrapSingleInstance,
@@ -98,6 +102,11 @@ export const bootstrapMainProcess = () => {
   }
   if (process.platform === 'win32') {
     app.setAppUserModelId(STELLA_WINDOWS_APP_USER_MODEL_ID)
+  }
+  if (isLowMemoryWindowsDevice()) {
+    console.log(
+      `[resource] Low-memory Windows profile enabled (${getTotalSystemMemoryMb()} MB total)`,
+    )
   }
 
   const context = createBootstrapContext({

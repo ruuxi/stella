@@ -14,6 +14,7 @@ import "./ui/register-styles";
 import "./shared/styles/app-base.css";
 import "./shared/i18n/rtl.css";
 import "./mini-entry.css";
+import { applyLowPowerDocumentFlag } from "./shared/lib/device-perf";
 
 import { LocalChatStoreProvider } from "./context/chat-store-context";
 import { ThemeProvider, useTheme } from "./context/theme-context";
@@ -37,6 +38,7 @@ import { useConversationDisplayMessages } from "./features/chat/hooks/use-conver
 import { useConversationMessages } from "./features/chat/hooks/use-conversation-messages";
 import { useStreamingChatCore } from "./features/chat/hooks/use-streaming-chat-core";
 
+applyLowPowerDocumentFlag();
 document.documentElement.dataset.stellaWindow = "mini";
 
 const noopNotifyTierRestrictedModel = () => {};

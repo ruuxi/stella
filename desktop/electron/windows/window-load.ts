@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import { isLowMemoryWindowsDevice } from '../resource-profile.js'
 
 export type WindowLoadMode = 'full' | 'mini' | 'overlay' | 'pet'
 
@@ -18,8 +19,16 @@ const getWindowEntryFile = (windowMode: WindowLoadMode) => {
   }
 }
 
+const applyWindowQueryParams = (url: URL, windowMode: WindowLoadMode) => {
+  url.searchParams.set('window', windowMode)
+  if (isLowMemoryWindowsDevice()) {
+    url.searchParams.set('lowPower', '1')
+  }
+}
+
 export const getDevUrl = (windowMode: WindowLoadMode, getDevServerUrl: () => string) => {
   const url = new URL(getWindowEntryFile(windowMode), `${getDevServerUrl()}/`)
+  applyWindowQueryParams(url, windowMode)
   return url.toString()
 }
 
@@ -50,5 +59,10 @@ export const loadWindow = (
         return false
       }
     }) ?? candidates[0]
-  window.loadFile(filePath)
+  window.loadFile(filePath, {
+    query: {
+      window: options.mode,
+      ...(isLowMemoryWindowsDevice() ? { lowPower: '1' } : {}),
+    },
+  })
 }

@@ -22,7 +22,6 @@ import {
 } from "@/global/onboarding/use-onboarding-state";
 import { useBootstrapState } from "@/bootstrap/bootstrap-state";
 import { useWindowType } from "@/shared/hooks/use-window-type";
-import { preloadAllNavSurfaces } from "@/shell/topbar/nav-surface-preloads";
 import { router } from "@/router";
 import { ShiftingGradient } from "./background/ShiftingGradient";
 import { MorphInputAbsorber } from "./MorphInputAbsorber";
@@ -306,28 +305,6 @@ export const FullShell = () => {
     if (appReady) {
       dismissLaunchSplash();
     }
-  }, [appReady]);
-
-  useEffect(() => {
-    if (!appReady) return;
-    const scheduleIdle =
-      window.requestIdleCallback ??
-      ((callback: IdleRequestCallback) =>
-        window.setTimeout(
-          () =>
-            callback({
-              didTimeout: false,
-              timeRemaining: () => 0,
-            } as IdleDeadline),
-          1,
-        ));
-    const cancelIdle =
-      window.cancelIdleCallback ??
-      ((handle: number) => window.clearTimeout(handle));
-    const idleHandle = scheduleIdle(() => {
-      preloadAllNavSurfaces();
-    });
-    return () => cancelIdle(idleHandle);
   }, [appReady]);
 
   useEffect(() => {

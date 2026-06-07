@@ -11,6 +11,7 @@
 
   var params = new URLSearchParams(window.location.search);
   root.dataset.stellaWindow = params.get("window") === "mini" ? "mini" : "full";
+  var forceLowPower = params.get("lowPower") === "1";
 
   try {
     if (window.sessionStorage && sessionStorage.getItem("stella:morph-reload") === "1") {
@@ -65,14 +66,19 @@
     var cores =
       typeof n.hardwareConcurrency === "number" ? n.hardwareConcurrency : 0;
     var mem = typeof n.deviceMemory === "number" ? n.deviceMemory : 0;
+    var platform = typeof n.platform === "string" ? n.platform : "";
+    var userAgent = typeof n.userAgent === "string" ? n.userAgent : "";
+    var isWindows = /^Win/i.test(platform) || /\bWindows\b/i.test(userAgent);
     var reduce = false;
     if (window.matchMedia) {
       reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     }
     if (
       reduce ||
+      forceLowPower ||
       (cores > 0 && cores <= 4) ||
-      (mem > 0 && mem <= 4)
+      (mem > 0 && mem <= 4) ||
+      (isWindows && mem > 0 && mem <= 8)
     ) {
       root.setAttribute("data-low-power", "true");
     }

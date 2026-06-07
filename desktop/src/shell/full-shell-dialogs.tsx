@@ -6,10 +6,8 @@ import { lazy, Suspense } from 'react'
  *
  * Both chunks are warmed by topbar hover/focus handlers
  * (`preloadAuthDialog` / `preloadConnectDialog` in
- * `@/shell/topbar/nav-surface-preloads`) and again at idle from `FullShell` via
- * `preloadAllNavSurfaces`, so by the time the user actually sets
- * `?dialog=...` the chunk is already in memory and `Suspense` falls
- * straight through.
+ * `@/shell/topbar/nav-surface-preloads`) so `Suspense` normally falls straight
+ * through when the user actually opens the dialog.
  */
 type DialogType = 'auth' | 'connect' | null
 
