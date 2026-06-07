@@ -543,16 +543,14 @@ export class OverlayWindowController {
   ensureReadyForMorph(timeoutMs?: number) {
     // A morph is an active surface; cancel any pending idle-reclaim so the
     // window we just (re)built doesn't get torn out from under the transition.
-    this.cancelIdleDestroy()
-    return this.overlayWindow.ensureReady(timeoutMs)
+    return this.ensureReady(timeoutMs)
   }
 
   ensureReadyForDictation(timeoutMs?: number) {
     // Dictation can start recording before the pill is revealed (push-to-talk
     // delay), so callers need a ready renderer without forcing the overlay
     // visible yet.
-    this.cancelIdleDestroy()
-    return this.overlayWindow.ensureReady(timeoutMs)
+    return this.ensureReady(timeoutMs)
   }
 
   /**
@@ -610,9 +608,14 @@ export class OverlayWindowController {
     }
 
     this.activeWindowHighlight = true
+    const reqId = this.windowHighlightRequestId
     // Perf: self-create on demand so the window highlight still appears after an
     // idle reclaim (or before the overlay's first build).
     if (!(await this.ensureReady())) return
+    // A hide/newer-preview/newer-show landed while the renderer was rebuilding;
+    // don't resurrect a cleared or superseded highlight.
+    if (reqId !== this.windowHighlightRequestId || !this.activeWindowHighlight)
+      return
     this.overlayWindow.show({ inactive: true })
     if (this.activeRegionCapture) {
       this.overlayWindow.setFocusable(true)
