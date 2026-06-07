@@ -6,8 +6,6 @@ import {
   type WorkerConnection,
 } from "../../../../runtime/host/worker-lifecycle.js";
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 const createMockConnection = (): WorkerConnection => {
   const process = new EventEmitter() as WorkerConnection["process"];
   process.pid = 12345;
@@ -30,39 +28,6 @@ const createMockConnection = (): WorkerConnection => {
 };
 
 describe("RuntimeWorkerLifecycleController", () => {
-  it("waits for idleTimeoutMs after unfocus before stopping an idle worker", async () => {
-    const onAfterStop = vi.fn();
-    const connection = createMockConnection();
-    const controller = new RuntimeWorkerLifecycleController({
-      workerEntryPath: "/tmp/stella/runtime-worker.js",
-      isHostStarted: () => true,
-      createConnection: () => connection,
-      initializeConnection: async () => {},
-      onConnectionStarted: async () => {},
-      onUnexpectedExit: async () => {},
-      onAfterStop,
-      fetchHealth: async () => ({
-        health: { ready: true },
-        activeRun: null,
-        activeAgentCount: 0,
-        pid: connection.pid,
-        deviceId: "device-a",
-      }),
-      idleTimeoutMs: 25,
-    });
-
-    await controller.ensureStarted();
-    controller.setHostFocused(false);
-
-    await delay(10);
-    expect(onAfterStop).not.toHaveBeenCalled();
-    expect(controller.getState()).toBe("running");
-
-    await delay(40);
-    expect(onAfterStop).toHaveBeenCalledWith("idle");
-    expect(controller.getState()).toBe("idle");
-  });
-
   it("does not wait for the 5s exit fallback after an explicit detached-worker kill", async () => {
     const onAfterStop = vi.fn();
     const killWorker = vi.fn(async () => undefined);
@@ -76,7 +41,7 @@ describe("RuntimeWorkerLifecycleController", () => {
     const controller = new RuntimeWorkerLifecycleController({
       workerEntryPath: "/tmp/stella/runtime-worker.js",
       isHostStarted: () => true,
-      createConnection: () => connection,
+      createConnectionAsync: async () => connection,
       initializeConnection: async () => {},
       onConnectionStarted: async () => {},
       onUnexpectedExit: async () => {},

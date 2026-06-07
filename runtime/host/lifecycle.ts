@@ -25,6 +25,7 @@ import {
   removeStaleRuntimeArtifacts,
 } from "../worker/lifecycle-server.js";
 import { rotateLogIfOversized } from "../observability/rotate-file.js";
+import { getFileLogger } from "../observability/file-logger.js";
 
 /**
  * Host-side lifecycle: discover or launch the detached worker and
@@ -500,35 +501,58 @@ const findSameRootWorkerPids = async (
   return pids;
 };
 
+/**
+ * SIGTERM a worker pid, poll up to `graceMs` for a clean exit, then SIGKILL
+ * and confirm the pid is actually dead before returning. The single shared
+ * implementation behind both `stopPids` (orphan reaping) and
+ * `stopRunningWorker` (restart/teardown) — callers differ only in their grace
+ * budget. Returns whether the process is gone and whether SIGKILL was needed
+ * (the latter feeds restart-grace instrumentation).
+ */
+const killWorkerProcess = async (
+  pid: number,
+  graceMs: number,
+): Promise<{ stopped: boolean; escalatedToSigkill: boolean }> => {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    // SIGTERM failed: the pid is already gone (or not ours).
+    return { stopped: false, escalatedToSigkill: false };
+  }
+  const graceDeadline = Date.now() + graceMs;
+  while (Date.now() < graceDeadline) {
+    try {
+      process.kill(pid, 0);
+      await delay(50);
+    } catch {
+      return { stopped: true, escalatedToSigkill: false };
+    }
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    return { stopped: true, escalatedToSigkill: true };
+  }
+  const killDeadline = Date.now() + 1_000;
+  while (Date.now() < killDeadline) {
+    try {
+      process.kill(pid, 0);
+      await delay(50);
+    } catch {
+      return { stopped: true, escalatedToSigkill: true };
+    }
+  }
+  // SIGKILL was sent but the pid never confirmed dead within the budget. Report
+  // stopped:false so `worker.kill-latency` doesn't misreport a failed kill as a
+  // clean stop.
+  return { stopped: false, escalatedToSigkill: true };
+};
+
 const stopPids = async (pids: number[], graceMs = 750): Promise<void> => {
   if (pids.length === 0) return;
-  for (const pid of pids) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-      // Already gone.
-    }
-  }
-  const deadline = Date.now() + graceMs;
-  while (Date.now() < deadline) {
-    const alive = pids.filter((pid) => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    });
-    if (alive.length === 0) return;
-    await delay(50);
-  }
-  for (const pid of pids) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      // Already gone.
-    }
-  }
+  // Each pid runs its own SIGTERM→grace→SIGKILL concurrently, so the batch
+  // wall-clock is the slowest single exit rather than the sum.
+  await Promise.all(pids.map((pid) => killWorkerProcess(pid, graceMs)));
 };
 
 /**
@@ -640,34 +664,15 @@ export const stopRunningWorker = async (
 ): Promise<{ stopped: boolean; pid: number | null }> => {
   const pid = await probeRunningWorker(stellaRoot);
   if (pid == null) return { stopped: false, pid: null };
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    return { stopped: false, pid };
-  }
-  const graceMs = options?.graceMs ?? 1_500;
-  const deadline = Date.now() + graceMs;
-  while (Date.now() < deadline) {
-    try {
-      process.kill(pid, 0);
-      await delay(50);
-    } catch {
-      return { stopped: true, pid };
-    }
-  }
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch {
-    // Already gone.
-  }
-  const killDeadline = Date.now() + 1_000;
-  while (Date.now() < killDeadline) {
-    try {
-      process.kill(pid, 0);
-      await delay(50);
-    } catch {
-      return { stopped: true, pid };
-    }
-  }
-  return { stopped: true, pid };
+  const startedAt = Date.now();
+  const result = await killWorkerProcess(pid, options?.graceMs ?? 1_500);
+  // Instrumentation for the restart-grace decision: how long SIGTERM→exit
+  // actually takes, and whether the worker needed a SIGKILL escalation.
+  getFileLogger()?.process("worker.kill-latency", {
+    pid,
+    ms: Date.now() - startedAt,
+    escalatedToSigkill: result.escalatedToSigkill,
+    stopped: result.stopped,
+  });
+  return { stopped: result.stopped, pid };
 };
