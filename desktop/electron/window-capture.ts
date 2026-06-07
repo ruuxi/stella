@@ -54,6 +54,11 @@ const WINDOW_INFO_HELPER = 'window_info'
 // short TTL + in-flight dedup collapses a burst into a single spawn. The window
 // under a screen point is stable over this window, so the staleness is benign.
 const WINDOW_INFO_POINT_CACHE_MS = 200
+// Cap the dedupe cache: it's keyed per cursor pixel, so without a bound it
+// grows one entry per unique coordinate forever. The entry only backs a 200ms
+// dedupe window, so a tiny cap is plenty; we evict oldest-inserted on overflow
+// (Map preserves insertion order) so the live 200ms set is always retained.
+const WINDOW_INFO_POINT_CACHE_MAX = 256
 type WindowInfoPointCacheEntry = { expiresAt: number; value: WindowInfo | null }
 const windowInfoPointCache = new Map<string, WindowInfoPointCacheEntry>()
 const windowInfoPointInFlight = new Map<string, Promise<WindowInfo | null>>()
@@ -167,6 +172,10 @@ export const getWindowInfoAtPoint = (
   if (cached && cached.expiresAt > now) {
     return Promise.resolve(cached.value)
   }
+  // Evict on expiry rather than leaving the stale entry in the Map; otherwise
+  // a coordinate visited once keeps its entry forever even though the 200ms
+  // dedupe window is long gone.
+  if (cached) windowInfoPointCache.delete(key)
   const inFlight = windowInfoPointInFlight.get(key)
   if (inFlight) {
     return inFlight
@@ -179,6 +188,13 @@ export const getWindowInfoAtPoint = (
         expiresAt: Date.now() + WINDOW_INFO_POINT_CACHE_MS,
         value,
       })
+      // Bound total size: drop the oldest-inserted key (which is also the
+      // closest to expiry) so the cache can't grow without limit across a
+      // long session of cursor movement.
+      if (windowInfoPointCache.size > WINDOW_INFO_POINT_CACHE_MAX) {
+        const oldest = windowInfoPointCache.keys().next().value
+        if (oldest !== undefined) windowInfoPointCache.delete(oldest)
+      }
       return value
     })
     .finally(() => {
