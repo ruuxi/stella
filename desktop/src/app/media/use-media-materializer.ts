@@ -32,9 +32,9 @@ import { friendlyImageGenerationFailure } from "./media-error-copy"
 import {
   capInMemory,
   failedNotifiedJobs,
+  markMediaJobMaterialized,
   materializedJobs,
   persistFailedNotifiedJobs,
-  persistMaterializedJobs,
   publishMaterializedMediaPayload,
 } from "./media-materializer-state"
 
@@ -173,10 +173,7 @@ export const useMediaMaterializer = ({
           }
 
           publishMaterializedMediaPayload(payload)
-          materializedJobs.add(job.jobId)
-          // Bound the in-memory set, matching the persist-time cap.
-          capInMemory(materializedJobs)
-          persistMaterializedJobs()
+          markMediaJobMaterialized(job.jobId)
 
           if (payload.asset.kind === "image") {
             openDisplayPayloadTab(payload, {
