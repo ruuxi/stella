@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -8,6 +10,8 @@ import {
   STELLA_BROWSER_BRIDGE_PORT,
   STELLA_BROWSER_BRIDGE_SESSION,
   STELLA_BROWSER_BRIDGE_TOKEN,
+  STELLA_BROWSER_EXTENSION_ID,
+  STELLA_NATIVE_MESSAGING_HOST_NAME,
   getStellaBrowserSocketDir,
 } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { registerStellaNativeMessagingHost } from "../utils/register-stella-native-messaging-host.js";
@@ -586,6 +590,116 @@ const getSocketDir = getStellaBrowserSocketDir;
 
 const getSocketPath = (session: string) =>
   path.join(getSocketDir(), `${session}.sock`);
+
+/**
+ * Per-browser user-data roots that hold installed extensions under
+ * `<root>/<profile>/Extensions/<id>`. Mirrors the browser list in
+ * register-stella-native-messaging-host's installUnix/Windows helpers.
+ */
+const getChromiumUserDataRoots = (): string[] => {
+  const homedir = os.homedir();
+  const plat = os.platform();
+  if (plat === "darwin") {
+    const appSupport = path.join(homedir, "Library", "Application Support");
+    return [
+      path.join(appSupport, "Google", "Chrome"),
+      path.join(appSupport, "Microsoft Edge"),
+      path.join(appSupport, "BraveSoftware", "Brave-Browser"),
+      path.join(appSupport, "Chromium"),
+    ];
+  }
+  if (plat === "win32") {
+    const localAppData =
+      process.env.LOCALAPPDATA?.trim() ||
+      path.join(homedir, "AppData", "Local");
+    return [
+      path.join(localAppData, "Google", "Chrome", "User Data"),
+      path.join(localAppData, "Microsoft", "Edge", "User Data"),
+      path.join(localAppData, "BraveSoftware", "Brave-Browser", "User Data"),
+      path.join(localAppData, "Chromium", "User Data"),
+    ];
+  }
+  const cfg = path.join(homedir, ".config");
+  return [
+    path.join(cfg, "google-chrome"),
+    path.join(cfg, "microsoft-edge"),
+    path.join(cfg, "BraveSoftware", "Brave-Browser"),
+    path.join(cfg, "chromium"),
+  ];
+};
+
+/**
+ * Cheap, synchronous scan (readdir + existsSync only — no process spawn, no
+ * socket dial) for whether the Stella browser extension is installed in ANY
+ * Chromium profile. We enumerate every profile directory under each user-data
+ * root (Default, Profile N, and custom-named profiles) rather than a hardcoded
+ * shortlist, so a user whose extension lives in "Profile 3" or a renamed
+ * profile is still detected. (A fully custom `--user-data-dir` outside the
+ * standard roots is the only remaining miss; that case is covered by the
+ * on-demand start path in the browser IPC handlers.)
+ */
+const isStellaExtensionInstalled = (): boolean => {
+  for (const root of getChromiumUserDataRoots()) {
+    let entries;
+    try {
+      entries = readdirSync(root, { withFileTypes: true });
+    } catch {
+      continue; // Root absent/unreadable — try the next browser.
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      try {
+        if (
+          existsSync(
+            path.join(
+              root,
+              entry.name,
+              "Extensions",
+              STELLA_BROWSER_EXTENSION_ID,
+            ),
+          )
+        ) {
+          return true;
+        }
+      } catch {
+        // Ignore unreadable profile paths; keep probing the rest.
+      }
+    }
+  }
+  return false;
+};
+
+/**
+ * Cheap, synchronous check for whether the eager app-ready bridge spawn is
+ * worth it. Spawning the bridge daemon unconditionally on every launch starts
+ * an extra Electron-as-Node process that, for users without the extension, only
+ * ever retries with backoff (browser-bridge-resource onRetry) before failing —
+ * pure startup cost for no benefit. We only eager-spawn when one of two signals
+ * says the user actually uses browser automation:
+ *   (a) the native-messaging host manifest already exists in the socket dir —
+ *       written by registerStellaNativeMessagingHost on a prior successful
+ *       launch, i.e. steady state once set up; or
+ *   (b) the Stella extension directory is present in ANY Chromium profile —
+ *       first-launch signal so the bridge still starts for users who DO have the
+ *       extension but have never spawned the daemon (which is what registers the
+ *       host). Otherwise the spawn is deferred to first real use (the browser
+ *       IPC handlers start it on demand).
+ */
+export const isBrowserBridgeEagerStartWorthwhile = (): boolean => {
+  try {
+    const manifestPath = path.join(
+      getSocketDir(),
+      `${STELLA_NATIVE_MESSAGING_HOST_NAME}.json`,
+    );
+    if (existsSync(manifestPath)) {
+      return true;
+    }
+  } catch {
+    // existsSync only throws on pathological inputs; treat as "no signal".
+  }
+
+  return isStellaExtensionInstalled();
+};
 
 const getPortForSession = (session: string) => {
   let hash = 0;

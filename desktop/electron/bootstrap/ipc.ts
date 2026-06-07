@@ -49,12 +49,16 @@ import {
   startStellaBrowserBridge,
   stopMobileBridge,
 } from "./aux-runtime.js";
+import { isBrowserBridgeEagerStartWorthwhile } from "../services/stella-browser-bridge-service.js";
 import { scheduleGlobalInputHooksAfterAppReady } from "./global-input-hooks.js";
 import { randomUUID } from "crypto";
 import { startOfficePreviewBridge } from "./office-preview-bridge.js";
 
 const DEFAULT_STORE_WEB_URL = "https://stella.sh/store";
-const WINDOWS_POST_READY_NATIVE_DELAY_MS = 4_000;
+// Delay native-service startup ~4s past app-ready so the bridge/office-preview
+// spawns stay off the first-paint (TTI) path. Previously Windows-only; now
+// applied on all platforms.
+const POST_READY_NATIVE_DELAY_MS = 4_000;
 
 const readStoreWebBaseUrl = () =>
   (
@@ -87,14 +91,25 @@ export const registerBootstrapIpcHandlers = (
       return;
     }
     postReadyNativeServicesScheduled = true;
-    const delayMs =
-      process.platform === "win32" ? WINDOWS_POST_READY_NATIVE_DELAY_MS : 0;
+    // Keep native-service startup off the TTI path on every platform. Windows
+    // already deferred ~4s post-paint; apply the same delay on macOS/Linux so
+    // the bridge spawn never competes with first paint.
+    const delayMs = POST_READY_NATIVE_DELAY_MS;
     state.processRuntime.setManagedTimeout(() => {
       postReadyNativeServicesScheduled = false;
       if (!state.appReady || state.isQuitting) {
         return;
       }
-      startStellaBrowserBridge(context);
+      // Only spawn the browser-bridge daemon when a cheap precondition says the
+      // user actually uses browser automation (host already registered, or the
+      // extension is installed). Spawning unconditionally launched an extra
+      // Electron-as-Node process that, for users without the extension, just
+      // retried with backoff before failing — pure startup cost. Users who DO
+      // have the extension still get the bridge; first-time setup picks it up on
+      // the next launch once the extension/host registration is detected.
+      if (isBrowserBridgeEagerStartWorthwhile()) {
+        startStellaBrowserBridge(context);
+      }
       if (!state.officePreviewBridgeStop) {
         state.officePreviewBridgeStop = startOfficePreviewBridge(context);
       }
@@ -324,6 +339,11 @@ export const registerBootstrapIpcHandlers = (
     getStellaHome: lifecycle.getStellaHome,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
+    // On-demand fallback to the eager startup gate: if the extension wasn't
+    // detected at launch (installed mid-session, or in a custom user-data-dir),
+    // the first browser-session fetch still starts the bridge. Idempotent —
+    // reuses the existing resource if already running.
+    ensureBrowserBridgeStarted: () => startStellaBrowserBridge(context),
   });
 
   registerDiscoveryHandlers({
@@ -521,20 +541,6 @@ export const registerBootstrapIpcHandlers = (
   // `togglePetVoice`). Mic buttons stay dictation-only — voice is
   // wake-word-gated. Auto-pauses while a voice session is active so
   // the assistant cannot trigger itself.
-  const stellaHome = lifecycle.getStellaHome();
-  const wakePrefs = stellaHome
-    ? loadLocalPreferences(stellaHome)
-    : { wakeWordEnabled: false, wakeWordThreshold: 0.6 };
-  wakeword = new WakewordService({
-    threshold: wakePrefs.wakeWordThreshold,
-    onWake: (event) => {
-      if (services.uiStateService.state.isVoiceRtcActive) return;
-      console.log(
-        `[wakeword] detected "${event.model}" (score=${event.score.toFixed(3)})`,
-      );
-      togglePetVoiceImpl();
-    },
-  });
   services.uiStateService.onVoiceActiveChanged((active) => {
     wakewordPausedForVoice = active;
     if (!active) {
@@ -546,12 +552,34 @@ export const registerBootstrapIpcHandlers = (
     syncWakewordPause();
   });
   syncWakewordPause();
-  // Defer the initial enable/spawn off the pre-paint IPC-registration path.
-  // For "Hey Stella" users `setEnabled(true)` synchronously spawns the native
-  // wakeword_listener helper (ONNX model load + mic open), which we don't want
-  // blocking first paint. setEnabled is idempotent and timing-tolerant.
+  // Defer both the preferences.json read AND the enable/spawn off the pre-paint
+  // IPC-registration path. The synchronous statSync+readFileSync that fed the
+  // listener threshold used to run before first paint; loading prefs here keeps
+  // that disk read off the TTI path. The threshold is only consumed by
+  // WakewordService at spawn time, so constructing the service here loses
+  // nothing. For "Hey Stella" users `setEnabled(true)` synchronously spawns the
+  // native wakeword_listener helper (ONNX model load + mic open), which we don't
+  // want blocking first paint either. setEnabled is idempotent and
+  // timing-tolerant.
   setTimeout(() => {
-    wakeword?.setEnabled(wakePrefs.wakeWordEnabled);
+    const stellaHome = lifecycle.getStellaHome();
+    const wakePrefs = stellaHome
+      ? loadLocalPreferences(stellaHome)
+      : { wakeWordEnabled: false, wakeWordThreshold: 0.6 };
+    wakeword = new WakewordService({
+      threshold: wakePrefs.wakeWordThreshold,
+      onWake: (event) => {
+        if (services.uiStateService.state.isVoiceRtcActive) return;
+        console.log(
+          `[wakeword] detected "${event.model}" (score=${event.score.toFixed(3)})`,
+        );
+        togglePetVoiceImpl();
+      },
+    });
+    // Inherit any pause state accumulated (voice/dictation) during the deferral
+    // gap before applying the persisted enabled preference.
+    syncWakewordPause();
+    wakeword.setEnabled(wakePrefs.wakeWordEnabled);
   }, 0);
   state.processRuntime.registerCleanup("will-quit", "wakeword-service", () => {
     wakeword?.dispose();
@@ -587,7 +615,11 @@ export const registerBootstrapIpcHandlers = (
       prefs.wakeWordEnabled = next;
       saveLocalPreferences(root, prefs);
     }
-    wakeword.setEnabled(next);
+    // Null-safe: the listener is now constructed in a deferred post-registration
+    // task. The persisted preference above is the source of truth, so a toggle
+    // that lands before construction is honored when the deferred setEnabled
+    // runs; `?.` only guards the (renderer-not-yet-painted) startup race.
+    wakeword?.setEnabled(next);
     return { enabled: next };
   });
 
