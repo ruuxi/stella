@@ -67,21 +67,57 @@ const triggerDreamWhenAgentReady = (
   });
 };
 
+// Synchronous, disk-free check used by the per-tick guard below. Backed by the
+// controller's in-memory enabled cache so it reflects a runtime enable/disable
+// without reading preferences.json every tick.
+const isChronicleEnabled = (context: BootstrapContext): boolean =>
+  context.state.chronicleController?.isEnabledCached() ?? false;
+
+// Perf: the rolling-summary interval is armed once at startup and stays alive,
+// but the expensive part (asking the runner to summarize) only runs while
+// Chronicle/Live Memory is enabled. We deliberately do NOT skip arming when
+// disabled, nor self-cancel on disable: doing either breaks the common case
+// where the user turns Live Memory ON mid-session (the timer would never have
+// started, so summaries would never resume). The per-tick gate reads an
+// in-memory flag (no disk I/O), and the timer is unref'd via
+// `setManagedInterval`, so an always-disabled session only pays a no-op wakeup
+// every minute (10m) / hour (6h).
+const armChronicleTick = (
+  context: BootstrapContext,
+  window: "10m" | "6h",
+  intervalMs: number,
+): void => {
+  const runOnce = async () => {
+    if (!isChronicleEnabled(context)) return;
+    const runner = context.lifecycle.getRunner();
+    if (!runner) return;
+    try {
+      await runner.runChronicleSummaryTick(window);
+    } catch (error) {
+      console.debug(
+        `[chronicle] ${window} tick failed:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  };
+
+  void runOnce();
+  context.state.processRuntime.setManagedInterval(() => {
+    void runOnce();
+  }, intervalMs);
+};
+
 const createDeferredStartupTasks = (
   context: BootstrapContext,
 ): DeferredStartupTask[] => {
   const { config, state } = context;
-  const isChronicleEnabled = async (): Promise<boolean> => {
-    if (!state.chronicleController) {
-      return false;
-    }
-    try {
-      return await state.chronicleController.isEnabled();
-    } catch {
-      return false;
-    }
-  };
 
+  // Perf: the overlay's cold second-renderer is no longer eagerly built here.
+  // Every overlay show entrypoint (radial/voice/region-capture/screen-guide/
+  // selection-chip/morph/window-highlight) self-creates the window via
+  // `OverlayWindowController.ensureReady()`, and an idle overlay is reclaimed
+  // after OVERLAY_IDLE_DESTROY_DELAY_MS. A chat-only session therefore never
+  // pays for the second renderer; the first on-demand summon builds it.
   return [
     {
       // Spin up the runtime worker (and warm the model catalog) only after
@@ -94,16 +130,6 @@ const createDeferredStartupTasks = (
           elapsedMs: Math.round(process.uptime() * 1000),
         });
         state.startHostRunner?.();
-      },
-    },
-    {
-      // Push the overlay's cold second-renderer boot past first paint + the
-      // host-runner kickoff above, so it doesn't overlap main-window TTI +
-      // worker spawn. The overlay is only needed on-demand (radial/voice).
-      label: "overlay-window",
-      delayMs: config.startupStageDelayMs,
-      run: () => {
-        state.overlayController?.create();
       },
     },
     {
@@ -138,25 +164,7 @@ const createDeferredStartupTasks = (
       // orchestrator-driven Dream run (token-interval / pre-compaction).
       label: "chronicle-10m-tick",
       delayMs: CHRONICLE_FIRST_TICK_DELAY_MS,
-      run: () => {
-        const runOnce = async () => {
-          if (!(await isChronicleEnabled())) return;
-          const runner = context.lifecycle.getRunner();
-          if (!runner) return;
-          try {
-            await runner.runChronicleSummaryTick("10m");
-          } catch (error) {
-            console.debug(
-              "[chronicle] 10m tick failed:",
-              error instanceof Error ? error.message : String(error),
-            );
-          }
-        };
-        void runOnce();
-        context.state.processRuntime.setManagedInterval(() => {
-          void runOnce();
-        }, CHRONICLE_10M_TICK_INTERVAL_MS);
-      },
+      run: () => armChronicleTick(context, "10m", CHRONICLE_10M_TICK_INTERVAL_MS),
     },
     {
       // Chronicle 6-hour rolling summary: hourly distillation of the last
@@ -164,25 +172,7 @@ const createDeferredStartupTasks = (
       // cadence and a longer window. Also does not poke Dream.
       label: "chronicle-6h-tick",
       delayMs: CHRONICLE_FIRST_TICK_DELAY_MS,
-      run: () => {
-        const runOnce = async () => {
-          if (!(await isChronicleEnabled())) return;
-          const runner = context.lifecycle.getRunner();
-          if (!runner) return;
-          try {
-            await runner.runChronicleSummaryTick("6h");
-          } catch (error) {
-            console.debug(
-              "[chronicle] 6h tick failed:",
-              error instanceof Error ? error.message : String(error),
-            );
-          }
-        };
-        void runOnce();
-        context.state.processRuntime.setManagedInterval(() => {
-          void runOnce();
-        }, CHRONICLE_6H_TICK_INTERVAL_MS);
-      },
+      run: () => armChronicleTick(context, "6h", CHRONICLE_6H_TICK_INTERVAL_MS),
     },
   ];
 };
