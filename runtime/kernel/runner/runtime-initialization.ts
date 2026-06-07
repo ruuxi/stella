@@ -155,12 +155,21 @@ export const createRuntimeInitialization = (
     // get installed. Stella-runtime is just an extension that ships in
     // the source tree.
     const extensionsLoad = loadAndRegisterExtensions();
-    const modelsDevLoad = loadAndRegisterModelsDevCatalog();
 
-    context.state.initializationPromise = Promise.all([
-      extensionsLoad,
-      modelsDevLoad,
-    ]).then(() => {
+    // The models.dev catalog is best-effort, network-bound, and purely
+    // ADDITIVE: it only registers extra model IDs onto providers that
+    // already have a built-in template (see ai/models-dev.ts). The agent
+    // default model routes resolve against the built-in models registered
+    // eagerly from models.generated.ts at module load, so the runtime is
+    // fully functional before this fetch resolves. The host blocks on
+    // worker readiness via `waitUntilInitialized` → `initializationPromise`;
+    // gating that on a 3s network fetch needlessly delays the first
+    // chat/dream/chronicle. Kick it off in the BACKGROUND (fire-and-forget,
+    // keeping its existing error swallowing) so it populates whenever it
+    // resolves, and make readiness depend on the extensions load ONLY.
+    void loadAndRegisterModelsDevCatalog();
+
+    context.state.initializationPromise = extensionsLoad.then(() => {
       context.state.isInitialized = true;
     });
 
