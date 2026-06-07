@@ -154,6 +154,46 @@ static bool parseSetBoundsArg(const char* arg, RECT& rect)
     return true;
 }
 
+// Parse `--region=x,y,w,h` (virtual-screen physical pixels) into x/y/w/h.
+static bool parseRegionArg(const char* arg, int& x, int& y, int& w, int& h)
+{
+    const char* prefix = "--region=";
+    const size_t prefixLen = strlen(prefix);
+    if (strncmp(arg, prefix, prefixLen) != 0)
+    {
+        return false;
+    }
+
+    const char* p = arg + prefixLen;
+    long values[4] = {};
+    for (int i = 0; i < 4; ++i)
+    {
+        char* end = nullptr;
+        values[i] = strtol(p, &end, 10);
+        if (end == p)
+        {
+            return false;
+        }
+        p = end;
+        if (i < 3)
+        {
+            if (*p != ',') return false;
+            ++p;
+        }
+    }
+
+    if (values[2] <= 0 || values[3] <= 0)
+    {
+        return false;
+    }
+
+    x = static_cast<int>(values[0]);
+    y = static_cast<int>(values[1]);
+    w = static_cast<int>(values[2]);
+    h = static_cast<int>(values[3]);
+    return true;
+}
+
 static bool parsePointsArg(const char* arg, std::vector<POINT>& outPoints)
 {
     const char* prefix = "--points=";
@@ -324,6 +364,303 @@ static int GetPngEncoderClsid(CLSID* clsid)
     return -1;
 }
 
+// ── Fast capture path (base64, no temp file) ────────────────────────────
+// The desktop's hot capture paths (radial-dial "Capture" wedge, composer "+"
+// → Capture) want a window/region screenshot as fast as possible. The legacy
+// `--screenshot=path` path PNG-encodes to disk, which the host then re-reads
+// and re-encodes — three image passes plus disk I/O. These helpers instead
+// BitBlt/PrintWindow into an in-memory bitmap, JPEG-encode it (far cheaper
+// than PNG for a large window), and base64 it straight onto stdout / the
+// --serve pipe so the host consumes the data URL with no decode/re-encode.
+
+// Per-monitor DPI awareness so GetWindowRect and screen-DC BitBlt coordinates
+// are real physical pixels (the host sends physical coords = DIP * scaleFactor
+// and divides returned bounds back by scaleFactor). At 100% scale this is a
+// no-op; on HiDPI it's what makes region BitBlt land on the right pixels.
+static void enableDpiAwareness()
+{
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32)
+    {
+        // SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2 = (HANDLE)-4),
+        // Windows 10 1703+. Loaded dynamically so the helper still builds and
+        // runs on older SDKs / OSes that lack the symbol.
+        typedef BOOL(WINAPI * SetCtxFn)(HANDLE);
+        SetCtxFn setCtx =
+            reinterpret_cast<SetCtxFn>(GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
+        if (setCtx && setCtx(reinterpret_cast<HANDLE>(static_cast<INT_PTR>(-4))))
+        {
+            return;
+        }
+    }
+    SetProcessDPIAware();
+}
+
+static ULONG_PTR g_gdiplusToken = 0;
+static void ensureGdiplus()
+{
+    if (g_gdiplusToken) return;
+    Gdiplus::GdiplusStartupInput input;
+    Gdiplus::GdiplusStartup(&g_gdiplusToken, &input, NULL);
+}
+
+static int GetJpegEncoderClsid(CLSID* clsid)
+{
+    UINT num = 0, size = 0;
+    Gdiplus::GetImageEncodersSize(&num, &size);
+    if (size == 0) return -1;
+
+    std::vector<BYTE> buf(size);
+    Gdiplus::ImageCodecInfo* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
+    Gdiplus::GetImageEncoders(num, size, codecs);
+
+    for (UINT i = 0; i < num; ++i)
+    {
+        if (wcscmp(codecs[i].MimeType, L"image/jpeg") == 0)
+        {
+            *clsid = codecs[i].Clsid;
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+static std::string base64Encode(const BYTE* data, size_t len)
+{
+    static const char tbl[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((len + 2) / 3) * 4);
+    size_t i = 0;
+    for (; i + 3 <= len; i += 3)
+    {
+        unsigned n = (static_cast<unsigned>(data[i]) << 16) |
+                     (static_cast<unsigned>(data[i + 1]) << 8) |
+                     static_cast<unsigned>(data[i + 2]);
+        out += tbl[(n >> 18) & 63];
+        out += tbl[(n >> 12) & 63];
+        out += tbl[(n >> 6) & 63];
+        out += tbl[n & 63];
+    }
+    const size_t rem = len - i;
+    if (rem == 1)
+    {
+        unsigned n = static_cast<unsigned>(data[i]) << 16;
+        out += tbl[(n >> 18) & 63];
+        out += tbl[(n >> 12) & 63];
+        out += '=';
+        out += '=';
+    }
+    else if (rem == 2)
+    {
+        unsigned n = (static_cast<unsigned>(data[i]) << 16) |
+                     (static_cast<unsigned>(data[i + 1]) << 8);
+        out += tbl[(n >> 18) & 63];
+        out += tbl[(n >> 12) & 63];
+        out += tbl[(n >> 6) & 63];
+        out += '=';
+    }
+    return out;
+}
+
+// JPEG-encode an HBITMAP into a base64 string (no line wrapping, so it stays a
+// single line for the --serve protocol). Reports the encoded image dimensions.
+static bool encodeBitmapToJpegBase64(HBITMAP hbmp, std::string& outB64, int& outW, int& outH)
+{
+    ensureGdiplus();
+    Gdiplus::Bitmap bitmap(hbmp, NULL);
+    if (bitmap.GetLastStatus() != Gdiplus::Ok) return false;
+    outW = static_cast<int>(bitmap.GetWidth());
+    outH = static_cast<int>(bitmap.GetHeight());
+
+    CLSID jpegClsid;
+    if (GetJpegEncoderClsid(&jpegClsid) < 0) return false;
+
+    IStream* stream = NULL;
+    if (CreateStreamOnHGlobal(NULL, TRUE, &stream) != S_OK || !stream) return false;
+
+    ULONG quality = 80;
+    Gdiplus::EncoderParameters params;
+    params.Count = 1;
+    params.Parameter[0].Guid = Gdiplus::EncoderQuality;
+    params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
+    params.Parameter[0].NumberOfValues = 1;
+    params.Parameter[0].Value = &quality;
+
+    bool ok = false;
+    if (bitmap.Save(stream, &jpegClsid, &params) == Gdiplus::Ok)
+    {
+        STATSTG stat = {};
+        if (stream->Stat(&stat, STATFLAG_NONAME) == S_OK)
+        {
+            const SIZE_T dataLen = static_cast<SIZE_T>(stat.cbSize.QuadPart);
+            HGLOBAL hg = NULL;
+            if (GetHGlobalFromStream(stream, &hg) == S_OK && hg)
+            {
+                BYTE* ptr = static_cast<BYTE*>(GlobalLock(hg));
+                if (ptr)
+                {
+                    outB64 = base64Encode(ptr, dataLen);
+                    GlobalUnlock(hg);
+                    ok = !outB64.empty();
+                }
+            }
+        }
+    }
+
+    stream->Release();
+    return ok;
+}
+
+// BitBlt a virtual-screen rectangle (physical pixels) straight from the screen
+// DC. Far cheaper than capturing every display at full resolution and cropping
+// (what Electron's desktopCapturer does). Includes occluding windows, which is
+// correct for a user-drawn region selection.
+static bool captureRegionBase64(int x, int y, int w, int h, std::string& outB64, int& ow, int& oh)
+{
+    if (w <= 0 || h <= 0) return false;
+    HDC hdcScreen = GetDC(NULL);
+    if (!hdcScreen) return false;
+    HDC hdcMem = CreateCompatibleDC(hdcScreen);
+    HBITMAP hbmp = CreateCompatibleBitmap(hdcScreen, w, h);
+    HGDIOBJ hOld = SelectObject(hdcMem, hbmp);
+
+    // CAPTUREBLT so layered / alpha-blended windows are included.
+    BOOL ok = BitBlt(hdcMem, 0, 0, w, h, hdcScreen, x, y, SRCCOPY | CAPTUREBLT);
+    bool done = ok && encodeBitmapToJpegBase64(hbmp, outB64, ow, oh);
+
+    SelectObject(hdcMem, hOld);
+    DeleteObject(hbmp);
+    DeleteDC(hdcMem);
+    ReleaseDC(NULL, hdcScreen);
+    return done;
+}
+
+static bool captureWindowBase64(HWND hwnd, std::string& outB64, int& ow, int& oh)
+{
+    RECT rect = {};
+    if (!GetWindowRect(hwnd, &rect)) return false;
+    int w = rect.right - rect.left;
+    int h = rect.bottom - rect.top;
+    if (w <= 0 || h <= 0) return false;
+
+    HDC hdcScreen = GetDC(NULL);
+    if (!hdcScreen) return false;
+    HDC hdcMem = CreateCompatibleDC(hdcScreen);
+    HBITMAP hbmp = CreateCompatibleBitmap(hdcScreen, w, h);
+    HGDIOBJ hOld = SelectObject(hdcMem, hbmp);
+
+    // PW_RENDERFULLCONTENT (0x2) captures DWM-composited content; fall back to 0.
+    BOOL ok = PrintWindow(hwnd, hdcMem, 2);
+    if (!ok) ok = PrintWindow(hwnd, hdcMem, 0);
+    bool done = ok && encodeBitmapToJpegBase64(hbmp, outB64, ow, oh);
+
+    SelectObject(hdcMem, hOld);
+    DeleteObject(hbmp);
+    DeleteDC(hdcMem);
+    ReleaseDC(NULL, hdcScreen);
+    return done;
+}
+
+// Resolve the top-level window at a point (z-order walk, then WindowFromPoint
+// fallback), honoring PID exclusion. Mirrors the one-shot main() resolution so
+// the served --shot path picks the same window the host would.
+static HWND resolveHwndAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
+{
+    HWND hwnd = findTopLevelWindowAtPoint(pt, excludedPids);
+    if (hwnd)
+    {
+        HWND root = GetAncestor(hwnd, GA_ROOT);
+        if (root) hwnd = root;
+        return hwnd;
+    }
+
+    hwnd = WindowFromPoint(pt);
+    if (!hwnd) return NULL;
+    HWND root = GetAncestor(hwnd, GA_ROOT);
+    if (root) hwnd = root;
+    if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || isWindowCloaked(hwnd)) return NULL;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (isPidExcluded(pid, excludedPids)) return NULL;
+    return hwnd;
+}
+
+// `{title,process,pid,bounds,image,imageWidth,imageHeight}` for the window at a
+// point, or an error object. Used by both the served --shot path and the
+// one-shot --shot fallback.
+static std::string windowShotJsonAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
+{
+    HWND hwnd = resolveHwndAtPoint(pt, excludedPids);
+    if (!hwnd) return "{\"error\":\"no window at point\"}";
+
+    std::string b64;
+    int iw = 0, ih = 0;
+    if (!captureWindowBase64(hwnd, b64, iw, ih)) return "{\"error\":\"capture failed\"}";
+
+    std::string title = getWindowTitle(hwnd);
+    RECT rect = {};
+    GetWindowRect(hwnd, &rect);
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    char processName[MAX_PATH] = {};
+    if (pid)
+    {
+        HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (hProc)
+        {
+            DWORD size = MAX_PATH;
+            QueryFullProcessImageNameA(hProc, 0, processName, &size);
+            CloseHandle(hProc);
+        }
+    }
+    const char* exeName = processName;
+    for (const char* p = processName; *p; ++p)
+    {
+        if (*p == '\\' || *p == '/') exeName = p + 1;
+    }
+
+    std::string out = "{\"title\":\"";
+    out += escapeJson(title.c_str());
+    out += "\",\"process\":\"";
+    out += escapeJson(exeName);
+    out += "\",\"pid\":";
+    out += std::to_string(static_cast<unsigned long>(pid));
+    out += ",\"bounds\":{\"x\":";
+    out += std::to_string(static_cast<long>(rect.left));
+    out += ",\"y\":";
+    out += std::to_string(static_cast<long>(rect.top));
+    out += ",\"width\":";
+    out += std::to_string(rect.right - rect.left);
+    out += ",\"height\":";
+    out += std::to_string(rect.bottom - rect.top);
+    out += "},\"image\":\"data:image/jpeg;base64,";
+    out += b64;
+    out += "\",\"imageWidth\":";
+    out += std::to_string(iw);
+    out += ",\"imageHeight\":";
+    out += std::to_string(ih);
+    out += "}";
+    return out;
+}
+
+// `{image,imageWidth,imageHeight}` for a virtual-screen rectangle.
+static std::string regionShotJson(int x, int y, int w, int h)
+{
+    std::string b64;
+    int iw = 0, ih = 0;
+    if (!captureRegionBase64(x, y, w, h, b64, iw, ih)) return "{\"error\":\"capture failed\"}";
+
+    std::string out = "{\"image\":\"data:image/jpeg;base64,";
+    out += b64;
+    out += "\",\"imageWidth\":";
+    out += std::to_string(iw);
+    out += ",\"imageHeight\":";
+    out += std::to_string(ih);
+    out += "}";
+    return out;
+}
+
 static bool captureWindowToFile(HWND hwnd, const wchar_t* filePath)
 {
     RECT rect = {};
@@ -373,13 +710,17 @@ static bool captureWindowToFile(HWND hwnd, const wchar_t* filePath)
 //                                           "--points=x,y;.. [--exclude-pids=..]")
 //   response: <id>\t<json>\n              (object, "null", or array — the same
 //                                           shapes the one-shot helper prints)
-// Screenshots and --set-bounds intentionally stay one-shot spawns (rare, and
-// they need GDI+/window-state side effects), so the daemon stays simple.
+// Read-only captures are also served: `--shot <x> <y>` returns the window at a
+// point with an inline base64 JPEG, and `--region=x,y,w,h` returns a base64
+// JPEG of a screen rect — both as single-line JSON (base64 has no tab/newline),
+// so the radial/menu capture paths cost a pipe write instead of a spawn. Only
+// `--set-bounds` (which mutates window state) stays a one-shot spawn.
 static std::string serveHandleTokens(const std::vector<std::string>& tokens)
 {
     std::vector<DWORD> excluded;
     std::vector<POINT> points;
     bool hasPoints = false;
+    bool wantShot = false;
     long coords[2] = {0, 0};
     int coordCount = 0;
 
@@ -390,6 +731,20 @@ static std::string serveHandleTokens(const std::vector<std::string>& tokens)
             continue;
         }
         const char* arg = token.c_str();
+        // Region capture: `--region=x,y,w,h` → base64 JPEG of that screen rect.
+        {
+            int rx = 0, ry = 0, rw = 0, rh = 0;
+            if (parseRegionArg(arg, rx, ry, rw, rh))
+            {
+                return regionShotJson(rx, ry, rw, rh);
+            }
+        }
+        // Window capture at point: `--shot <x> <y> [--exclude-pids=..]`.
+        if (strcmp(arg, "--shot") == 0)
+        {
+            wantShot = true;
+            continue;
+        }
         if (strncmp(arg, "--points=", 9) == 0)
         {
             parsePointsArg(arg, points);
@@ -410,6 +765,18 @@ static std::string serveHandleTokens(const std::vector<std::string>& tokens)
                 coords[coordCount++] = value;
             }
         }
+    }
+
+    if (wantShot)
+    {
+        if (coordCount != 2)
+        {
+            return "{\"error\":\"bad request\"}";
+        }
+        POINT pt;
+        pt.x = coords[0];
+        pt.y = coords[1];
+        return windowShotJsonAtPoint(pt, excluded);
     }
 
     if (hasPoints)
@@ -482,11 +849,46 @@ static int runServeLoop()
 
 int main(int argc, char* argv[])
 {
+    // Physical-pixel coordinates everywhere (see enableDpiAwareness). Must run
+    // before any window/screen query so bounds and BitBlt rects are correct on
+    // HiDPI; no-op at 100% scale.
+    enableDpiAwareness();
+
     // Persistent daemon: serve point/batch queries over stdin/stdout instead
     // of one CreateProcess per call (Windows spawn + AV scan is the hot cost).
     if (argc >= 2 && strcmp(argv[1], "--serve") == 0)
     {
         return runServeLoop();
+    }
+
+    // One-shot region capture: `window_info --region=x,y,w,h` prints
+    // `{image,imageWidth,imageHeight}`. Daemon-less fallback for the region
+    // path so it never has to fall all the way back to desktopCapturer.
+    for (int i = 1; i < argc; ++i)
+    {
+        int rx = 0, ry = 0, rw = 0, rh = 0;
+        if (parseRegionArg(argv[i], rx, ry, rw, rh))
+        {
+            printf("%s\n", regionShotJson(rx, ry, rw, rh).c_str());
+            return 0;
+        }
+    }
+
+    // One-shot window capture: `window_info --shot <x> <y> [--exclude-pids=..]`
+    // prints `{title,process,pid,bounds,image,...}`. Daemon-less fallback for
+    // the window-click capture path (no temp file, JPEG base64 inline).
+    if (argc >= 4 && strcmp(argv[1], "--shot") == 0)
+    {
+        POINT pt;
+        pt.x = atol(argv[2]);
+        pt.y = atol(argv[3]);
+        std::vector<DWORD> shotExcluded;
+        for (int i = 4; i < argc; ++i)
+        {
+            parseExcludePidsArg(argv[i], shotExcluded);
+        }
+        printf("%s\n", windowShotJsonAtPoint(pt, shotExcluded).c_str());
+        return 0;
     }
 
     // Batch mode: `window_info.exe --points=x1,y1;x2,y2;...` answers many
