@@ -46,6 +46,12 @@ type BrowserHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
+  // Idempotently ensures the browser-bridge daemon is running. Called on the
+  // first browser-session fetch so that users whose extension wasn't detected
+  // by the eager startup scan (installed mid-session, or in a custom Chromium
+  // user-data-dir) still get the bridge — and thus the native-messaging host
+  // registration — without needing to restart Stella.
+  ensureBrowserBridgeStarted?: () => void;
 };
 
 const runStellaBrowserJson = (
@@ -193,6 +199,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         throw new Error("Blocked untrusted request.");
       }
       assertStellaInitialized(options);
+      options.ensureBrowserBridgeStarted?.();
       return fetchWithBrowserSession({
         url: payload.url,
         responseType: "json",
@@ -208,6 +215,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         throw new Error("Blocked untrusted request.");
       }
       assertStellaInitialized(options);
+      options.ensureBrowserBridgeStarted?.();
       return fetchWithBrowserSession({
         url: payload.url,
         responseType: "text",
