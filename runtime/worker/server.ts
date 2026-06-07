@@ -765,14 +765,20 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     return state.runner;
   };
 
-  const ensureRunnerInitialized = async () => {
+  const joinRunnerBuild = async () => {
     // The runner is built in the background after the worker reports ready, so
-    // the first turn can arrive before state.runner exists. Join the shared
-    // build promise, then ensureRunner() returns it (or throws if it failed or
-    // was superseded).
+    // the first request can arrive before state.runner exists. Join the shared
+    // build promise (swallow its error; ensureRunner() then surfaces the real
+    // failure or returns the built runner).
     if (!state.runner && state.runnerReadyPromise) {
       await state.runnerReadyPromise.catch(() => undefined);
     }
+  };
+
+  const ensureRunnerInitialized = async () => {
+    // Join the background build (see joinRunnerBuild), then ensureRunner()
+    // returns the runner or throws if it failed or was superseded.
+    await joinRunnerBuild();
     const runner = ensureRunner();
     await runner.waitUntilInitialized();
     return runner;
@@ -2788,9 +2794,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     async (params) => {
       // Don't drop the message if the runner is still building (post-ready
       // window) — wait for the background build, then append.
-      if (!state.runner && state.runnerReadyPromise) {
-        await state.runnerReadyPromise.catch(() => undefined);
-      }
+      await joinRunnerBuild();
       ensureRunner().appendThreadMessage(
         params as {
           threadKey: string;
@@ -3232,8 +3236,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         }
 
         const reviewResult = await (
-        await loadOneShotCompletion()
-      ).runOneShotCompletion({
+          await loadOneShotCompletion()
+        ).runOneShotCompletion({
           request: {
             agentType: "store_install_review",
             fallbackAgentTypes: ["general"],
