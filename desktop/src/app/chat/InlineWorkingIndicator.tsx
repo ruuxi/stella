@@ -7,79 +7,66 @@
  * messages.
  *
  * Behavior:
- *  - Renders just below the streaming assistant bubble so as text streams
- *    in line by line the footer (and this indicator) flows down with the
- *    growing message.
- *  - When the work finishes (`active` flips false), the indicator stays
- *    on screen for `EXIT_HOLD_MS` showing its last-known label, then
- *    plays a grow-out/fade for `EXIT_ANIMATION_MS`. The parent mounts the
+ *  - While the assistant is reasoning (no answer text yet) it reads
+ *    "Thinking"; while a tool is running it shows that tool's friendly
+ *    status. The moment answer text starts streaming, the indicator
+ *    exits — it does NOT trail the growing message line by line.
+ *  - Running agents ("tasks") are NOT surfaced here anymore; they live in
+ *    the composer's task chip. This indicator only ever shows the
+ *    orchestrator's own thinking / tool work.
+ *  - When the work finishes (`active` flips false) the indicator plays a
+ *    short grow-out/fade for `EXIT_ANIMATION_MS` showing its last-known
+ *    label, then removes its inner content. The parent mounts the
  *    indicator unconditionally and toggles `active` so React doesn't rip
- *    the node out before the exit animation runs.
+ *    the node out before the exit animation runs. If `active` flips back
+ *    true mid-exit, the exit is canceled and live updates resume.
  *  - Once fully exited, the inner content is removed (`--vacated`); the
  *    footer wrapper's `:has(--vacated)` rule then collapses the slot so an
- *    idle chat carries no ghost gutter. When the next pending turn arrives
- *    `active` flips back true, the wrapper un-hides, and the enter
- *    animation re-runs.
- *
- * The component owns the multi-task rotation interval so the parent
- * timeline doesn't have to.
+ *    idle chat carries no ghost gutter.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import { WorkingIndicator } from "./WorkingIndicator";
-import {
-  getStickyThinkingFooterState,
-  TASK_ROTATE_MS,
-} from "./sticky-thinking-footer-state";
 import "./indicators.css";
 
 export type InlineWorkingIndicatorProps = {
-  tasks: TaskItem[];
   runningTool?: string;
   /** Stable id of the in-flight tool call; seeds the friendly status
    * label so it doesn't churn on every re-render. */
   runningToolId?: string;
-  isStreaming?: boolean;
+  /** Run-level orchestrator status (spawn / pause / compaction, etc.). */
   status?: string | null;
 };
 
 export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
   /**
-   * `true` while the runtime is reporting active work. Flipping to
-   * `false` triggers the hold + grow-out exit; the component stays
-   * mounted until the exit completes. If `active` flips back to true
-   * mid-hold (e.g. another tool kicks off), the exit is canceled and
-   * the indicator resumes live updates.
+   * `true` while the orchestrator is thinking or running a tool (and not
+   * yet streaming answer text). Flipping to `false` triggers the grow-out
+   * exit; the component stays mounted until the exit completes. If
+   * `active` flips back to true mid-exit, the exit is canceled and the
+   * indicator resumes live updates.
    */
   active: boolean;
 };
 
 /**
- * Hold the indicator on screen for a beat after `active` flips false,
- * then play a longer grow-out/fade-out so it doesn't snap away the
- * instant the assistant finishes. The hold is invisible — the shimmer
- * and label just settle for a moment before the indicator gracefully
- * shrinks and fades.
+ * Exit timing. There's no hold beat anymore (the indicator used to linger
+ * to show a "Done · task" state) — once work stops we want the indicator
+ * gone promptly, with just a short grow-out so it doesn't snap away.
  */
-const EXIT_HOLD_MS = 300;
-const EXIT_ANIMATION_MS = 480;
+const EXIT_ANIMATION_MS = 240;
 
 export function InlineWorkingIndicator({
   active,
-  tasks,
   runningTool,
   runningToolId,
-  isStreaming,
   status,
 }: InlineWorkingIndicatorMountProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  // Snapshot the live props the moment `active` flips false so the
-  // exit animation displays a stable last-known label / shimmer state
-  // even though upstream tasks/streaming flags clear out.
+  // Snapshot the live props the moment `active` flips false so the exit
+  // animation displays a stable last-known label even though upstream
+  // tool/status flags clear out.
   const liveProps = useMemo<InlineWorkingIndicatorProps>(
-    () => ({ tasks, runningTool, runningToolId, isStreaming, status }),
-    [isStreaming, runningTool, runningToolId, status, tasks],
+    () => ({ runningTool, runningToolId, status }),
+    [runningTool, runningToolId, status],
   );
   const frozenPropsRef = useRef<InlineWorkingIndicatorProps>(liveProps);
 
@@ -91,56 +78,22 @@ export function InlineWorkingIndicator({
 
   const displayProps = active ? liveProps : frozenPropsRef.current;
 
-  const indicatorState = useMemo(
-    () =>
-      getStickyThinkingFooterState({
-        tasks: displayProps.tasks,
-        activeIndex,
-        isStreaming: displayProps.isStreaming,
-        status: displayProps.status,
-      }),
-    [activeIndex, displayProps.isStreaming, displayProps.status, displayProps.tasks],
-  );
-  const { activeTask, displayTasks } = indicatorState;
-
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [displayTasks.length]);
-
-  useEffect(() => {
-    if (displayTasks.length <= 1) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % displayTasks.length);
-    }, TASK_ROTATE_MS);
-
-    return () => window.clearInterval(intervalId);
-  }, [displayTasks]);
-
-  // Stay mounted until the exit animation finishes. Two staged
-  // timeouts: hold → leave → unmount. If `active` flips back to true
-  // mid-hold or mid-animation, cancel both and resume live updates.
+  // Stay mounted until the exit animation finishes. If `active` flips back
+  // to true mid-animation, cancel the exit and resume live updates.
   const [renderShell, setRenderShell] = useState(active);
   const [leaving, setLeaving] = useState(false);
-  const exitHoldTimerRef = useRef<number | null>(null);
-  const exitUnmountTimerRef = useRef<number | null>(null);
+  const exitTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const clearTimers = () => {
-      if (exitHoldTimerRef.current !== null) {
-        window.clearTimeout(exitHoldTimerRef.current);
-        exitHoldTimerRef.current = null;
-      }
-      if (exitUnmountTimerRef.current !== null) {
-        window.clearTimeout(exitUnmountTimerRef.current);
-        exitUnmountTimerRef.current = null;
+    const clearTimer = () => {
+      if (exitTimerRef.current !== null) {
+        window.clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
       }
     };
 
     if (active) {
-      clearTimers();
+      clearTimer();
       setLeaving(false);
       setRenderShell(true);
       return;
@@ -148,18 +101,15 @@ export function InlineWorkingIndicator({
 
     if (!renderShell) return;
 
-    exitHoldTimerRef.current = window.setTimeout(() => {
-      exitHoldTimerRef.current = null;
-      setLeaving(true);
-      exitUnmountTimerRef.current = window.setTimeout(() => {
-        exitUnmountTimerRef.current = null;
-        setRenderShell(false);
-        setLeaving(false);
-      }, EXIT_ANIMATION_MS);
-    }, EXIT_HOLD_MS);
+    setLeaving(true);
+    exitTimerRef.current = window.setTimeout(() => {
+      exitTimerRef.current = null;
+      setRenderShell(false);
+      setLeaving(false);
+    }, EXIT_ANIMATION_MS);
 
     return () => {
-      clearTimers();
+      clearTimer();
     };
   }, [active, renderShell]);
 
@@ -169,8 +119,7 @@ export function InlineWorkingIndicator({
   // remains after the grow-out exit completes (no layout shift). A new
   // turn replaces the wrapper entirely (different React key in
   // `ChatTimeline`), at which point the new wrapper occupies the slot.
-  const showInner =
-    renderShell && (indicatorState.shouldRender || leaving);
+  const showInner = renderShell;
 
   return (
     <div
@@ -180,11 +129,10 @@ export function InlineWorkingIndicator({
       {showInner && (
         <WorkingIndicator
           className="inline-working-indicator__indicator"
-          status={indicatorState.status}
-          tasks={activeTask ? [activeTask] : undefined}
+          status={displayProps.status ?? undefined}
           toolName={displayProps.runningTool}
           toolCallId={displayProps.runningToolId}
-          isReasoning={!activeTask}
+          isReasoning={!displayProps.runningTool}
         />
       )}
     </div>

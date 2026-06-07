@@ -106,6 +106,7 @@ export function useFullShellChat({
     reasoningText,
     streamingAssistants,
     isStreaming,
+    isStreamingResponseText,
     pendingUserMessageId,
     queuedUserMessages,
     sendMessage,
@@ -413,6 +414,7 @@ export function useFullShellChat({
       streaming: {
         reasoningText,
         isStreaming,
+        isStreamingResponseText,
         runtimeStatusText,
         pendingUserMessageId,
         queuedUserMessages,
@@ -445,6 +447,7 @@ export function useFullShellChat({
       reasoningText,
       runtimeStatusText,
       isStreaming,
+      isStreamingResponseText,
       taskProgressSummaries,
     ],
   );

@@ -349,6 +349,14 @@ export function useStreamingChatCore({
     ],
   )
 
+  // True once the in-flight run has emitted any visible assistant text.
+  // Drives the inline working indicator's "Thinking → gone" handoff: the
+  // indicator shows while the assistant is reasoning / running a tool, and
+  // disappears the moment answer text starts streaming.
+  const isStreamingResponseText = streamingAssistants.some(
+    (overlay) => overlay.text.trim().length > 0,
+  )
+
   return {
     liveTasks,
     optimisticEvents,
@@ -357,6 +365,7 @@ export function useStreamingChatCore({
     reasoningText,
     streamingAssistants,
     isStreaming,
+    isStreamingResponseText,
     pendingUserMessageId,
     sendMessage,
     cancelCurrentStream,

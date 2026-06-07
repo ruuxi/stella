@@ -128,14 +128,14 @@
   padding: 0;
 }
 
-/* Grow-out + fade exit. Slightly longer than the entrance so the
- * indicator settles for a beat before melting away — matches the
- * 1s `EXIT_HOLD_MS` + 480ms `EXIT_ANIMATION_MS` in
- * `InlineWorkingIndicator.tsx`. The scale collapses toward the top
- * edge of the indicator so it looks like it's tucking up under the
- * just-completed assistant message rather than drifting off below. */
+/* Grow-out + fade exit. Short and prompt — once the assistant starts
+ * streaming answer text (or work otherwise stops) the indicator gets out
+ * of the way rather than trailing the message. Duration matches
+ * `EXIT_ANIMATION_MS` in `InlineWorkingIndicator.tsx`. The scale collapses
+ * toward the top edge so it looks like it's tucking up under the message
+ * rather than drifting off below. */
 .inline-working-indicator--leaving {
-  animation: inline-indicator-out 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: inline-indicator-out 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
   transform-origin: left top;
 }
 

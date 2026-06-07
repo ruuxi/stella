@@ -445,6 +445,7 @@ function MiniChatSurface() {
     runtimeStatusText,
     streamingAssistants,
     isStreaming,
+    isStreamingResponseText,
     pendingUserMessageId,
     queuedUserMessages,
     sendMessage,
@@ -523,6 +524,7 @@ function MiniChatSurface() {
               activities={activities}
               latestMessageTimestampMs={latestMessageTimestampMs}
               isStreaming={isStreaming}
+              isStreamingResponseText={isStreamingResponseText}
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}
               queuedUserMessages={queuedUserMessages}
