@@ -16,6 +16,7 @@ import {
   type RuntimeChatPayload,
   type RuntimeOneShotCompletionRequest,
   type RuntimeOneShotCompletionResult,
+  type RuntimeSelfModApplyResult,
   type RuntimeSelfModRevertResult,
   type RuntimeVoiceToolCallPayload,
   type StorePublishArgs,
@@ -62,6 +63,7 @@ import {
   detectSelfModAppliedSince,
   getLastGitFeatureId,
   getGitHead,
+  listGitCommitsBySelector,
   listGitDirtyFiles,
   listFilesForCommit,
   listRecentGitFeatures,
@@ -231,7 +233,12 @@ type AgentEventPayload = {
   fatal?: boolean;
   finalText?: string;
   persisted?: boolean;
-  selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
+  selfModApplied?: {
+    featureId: string;
+    files: string[];
+    batchIndex: number;
+    status?: "pending" | "applied";
+  };
   agentId?: string;
   agentType?: AgentIdLike;
   rootRunId?: string;
@@ -262,6 +269,8 @@ type WorkerState = {
   runnerReadyPromise: Promise<RuntimeRunner> | null;
   deviceId: string | null;
   selfModHmrController: SelfModHmrController | null;
+  pendingSelfModApplies: Map<string, PendingSelfModApply>;
+  visibleSelfModRootRunIds: Set<string>;
   /**
    * Worker-internal handler that wraps `revertGitFeature` with the
    * self-mod HMR lifecycle (snapshot pre-revert files, register run,
@@ -276,6 +285,12 @@ type WorkerState = {
         featureId?: string;
         steps?: number;
       }) => Promise<RuntimeSelfModRevertResult>)
+    | null;
+  applySelfModWithMorph:
+    | ((args: {
+        featureId?: string;
+        cumulative?: boolean;
+      }) => Promise<RuntimeSelfModApplyResult>)
     | null;
   beginExternalSelfModWithMorph:
     | ((args: { runId: string; paths: string[] }) => Promise<{ ok: true }>)
@@ -315,6 +330,43 @@ type PendingApplyBatch = {
   requiresRuntimeRestart: boolean;
   requiresProcessRestart: boolean;
 };
+
+type PendingSelfModApply = {
+  featureId: string;
+  applyResult: ApplyResult;
+  conversationId: string;
+  assistantMessageEventId?: string;
+};
+
+type StoredSelfModApplied = {
+  featureId?: string;
+  files?: string[];
+  batchIndex?: number;
+  status?: "pending" | "applied";
+};
+
+// Combine several deferred apply batches into a single transition so a
+// cumulative "Update" raises one morph cover and triggers one worker restart
+// (rather than one per pending change). `results` must be in commit order:
+// later entries' runs apply last, so they win for any overlapping path.
+const mergePendingApplyResults = (results: ApplyResult[]): ApplyResult => ({
+  appliedRuns: results.flatMap((result) => result.appliedRuns),
+  restartRelevantRunIds: [
+    ...new Set(results.flatMap((result) => result.restartRelevantRunIds)),
+  ],
+  hasRestartRelevantPaths: results.some(
+    (result) => result.hasRestartRelevantPaths,
+  ),
+  hasRuntimeRestartRelevantPaths: results.some(
+    (result) => result.hasRuntimeRestartRelevantPaths,
+  ),
+  hasProcessRestartRelevantPaths: results.some(
+    (result) => result.hasProcessRestartRelevantPaths,
+  ),
+  hasFullReloadRelevantPaths: results.some(
+    (result) => result.hasFullReloadRelevantPaths,
+  ),
+});
 
 // Resolve a runtime CLI bundled into desktop/dist-electron/runtime/kernel/cli/.
 // `import.meta.url` for this file at runtime is
@@ -490,6 +542,9 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.storeModService = null;
   state.socialSessionStore = null;
   state.selfModHmrController = null;
+  state.pendingSelfModApplies.clear();
+  state.visibleSelfModRootRunIds.clear();
+  state.applySelfModWithMorph = null;
   state.runEventLog?.stop();
   state.runEventLog = null;
   await state.cliBridgeServer?.stop().catch(() => undefined);
@@ -515,7 +570,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     runnerReadyPromise: null,
     deviceId: null,
     selfModHmrController: null,
+    pendingSelfModApplies: new Map(),
+    visibleSelfModRootRunIds: new Set(),
     revertSelfModWithMorph: null,
+    applySelfModWithMorph: null,
     beginExternalSelfModWithMorph: null,
     finishExternalSelfModWithMorph: null,
     runEventLog: null,
@@ -746,12 +804,56 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   const attachSelfModToAssistantMessage = (args: {
     conversationId: string;
     eventId: string;
-    selfModApplied: { featureId: string; files: string[]; batchIndex: number };
+    selfModApplied: {
+      featureId: string;
+      files: string[];
+      batchIndex: number;
+      status?: "pending" | "applied";
+    };
   }): void => {
     const updated = ensureChatStore().mergeEventPayload({
       conversationId: args.conversationId,
       eventId: args.eventId,
       patch: { selfModApplied: args.selfModApplied },
+    });
+    if (updated) {
+      notifyLocalChatUpdated(peer, args.conversationId, updated);
+    }
+  };
+
+  const patchSelfModApplyStatus = (args: {
+    conversationId: string;
+    eventId?: string;
+    featureId: string;
+    status: "pending" | "applied";
+  }): void => {
+    const current = state.chatStore
+      ?.listEvents(args.conversationId, 500)
+      .find((event) => {
+        if (args.eventId) {
+          return event._id === args.eventId;
+        }
+        const payload = event.payload as
+          | { selfModApplied?: StoredSelfModApplied }
+          | undefined;
+        return payload?.selfModApplied?.featureId === args.featureId;
+      });
+    const currentPayload = current?.payload as
+      | { selfModApplied?: StoredSelfModApplied }
+      | undefined;
+    const currentSelfMod = currentPayload?.selfModApplied;
+    if (!current || currentSelfMod?.featureId !== args.featureId) {
+      return;
+    }
+    const updated = ensureChatStore().mergeEventPayload({
+      conversationId: args.conversationId,
+      eventId: current._id,
+      patch: {
+        selfModApplied: {
+          ...currentSelfMod,
+          status: args.status,
+        },
+      },
     });
     if (updated) {
       notifyLocalChatUpdated(peer, args.conversationId, updated);
@@ -1405,6 +1507,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         },
         finalizeRun: async ({
           runId,
+          rootRunId,
           succeeded,
           conversationId,
           threadKey,
@@ -1416,7 +1519,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           // (For most cases the disk hasn't moved between write and
           // commit, but this ordering is cheaper to reason about than
           // racing them.)
-          await storeModService.finalizeSelfModRun({
+          const finalized = await storeModService.finalizeSelfModRun({
             runId,
             succeeded,
             ...(conversationId ? { conversationId } : {}),
@@ -1460,6 +1563,19 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             // Run is held — another active run still owns at least one
             // touched path. Reload pause stays in place; it'll be
             // released once the held batch finally drains and applies.
+            return;
+          }
+          const applyRootRunId =
+            rootRunId ?? selfModRunRootIds.get(runId) ?? runId;
+          const shouldDeferApply =
+            Boolean(finalized?.commitHash) &&
+            state.visibleSelfModRootRunIds.has(applyRootRunId);
+          if (shouldDeferApply && finalized?.commitHash) {
+            state.pendingSelfModApplies.set(finalized.commitHash, {
+              featureId: finalized.commitHash,
+              applyResult: decision,
+              conversationId,
+            });
             return;
           }
           await dispatchApplyBatch(decision);
@@ -1655,6 +1771,75 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         selfModRunRootIds.delete(syntheticRunId);
         throw err;
       }
+    };
+
+    state.applySelfModWithMorph = async ({ featureId, cumulative }) => {
+      const resolvedFeatureId = featureId?.trim();
+      if (!resolvedFeatureId) {
+        throw new Error("Self-mod feature id is required.");
+      }
+      // Cumulative apply (the user clicked "Update"): git is linear and the
+      // disk already holds the combined state, so bring Stella fully up to
+      // date — drain every pending change in commit order, merge them into a
+      // single transition (one morph cover, one worker restart, all reload
+      // pauses released together), and flip every pending card to "applied".
+      // Single apply is used for the cardless auto-apply path so it can't drag
+      // along other changes the user is still deciding on. `Map` preserves
+      // insertion order, which matches commit order here.
+      const entries = cumulative
+        ? [...state.pendingSelfModApplies.values()]
+        : ((): PendingSelfModApply[] => {
+            const one = state.pendingSelfModApplies.get(resolvedFeatureId);
+            return one ? [one] : [];
+          })();
+
+      if (entries.length === 0) {
+        // Stash lost (e.g. the worker restarted since staging). The committed
+        // change is already on disk; adopt it with a clean reload and a
+        // best-effort status patch.
+        await selfModHmrController.forceResumeAll().catch((error) => {
+          console.warn(
+            "[self-mod-hmr] Failed to resume deferred self-mod state after apply miss:",
+            (error as Error).message,
+          );
+        });
+        const [summary] = await listGitCommitsBySelector(
+          init.stellaRoot,
+          { commitHashes: [resolvedFeatureId] },
+          4_000,
+        ).catch(() => []);
+        if (summary?.conversationId) {
+          patchSelfModApplyStatus({
+            conversationId: summary.conversationId,
+            featureId: resolvedFeatureId,
+            status: "applied",
+          });
+        }
+        return {
+          featureId: resolvedFeatureId,
+          applied: false,
+          message: "Pending self-mod apply was not found.",
+        };
+      }
+
+      for (const entry of entries) {
+        state.pendingSelfModApplies.delete(entry.featureId);
+      }
+      await dispatchApplyBatch(
+        mergePendingApplyResults(entries.map((entry) => entry.applyResult)),
+      );
+      for (const entry of entries) {
+        patchSelfModApplyStatus({
+          conversationId: entry.conversationId,
+          eventId: entry.assistantMessageEventId,
+          featureId: entry.featureId,
+          status: "applied",
+        });
+      }
+      return {
+        featureId: resolvedFeatureId,
+        applied: true,
+      };
     };
 
     // Build the runner in the background instead of on the worker-ready path:
@@ -2187,6 +2372,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             }
             lastVisibleRunId = ev.runId;
             lastVisibleRequestId = requestId;
+            if (
+              (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) ===
+              AGENT_IDS.ORCHESTRATOR
+            ) {
+              state.visibleSelfModRootRunIds.add(ev.runId);
+            }
             emitRunEvent({
               ...ev,
               type: AGENT_STREAM_EVENT_TYPES.RUN_STARTED,
@@ -2324,6 +2515,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           onError: (ev) => {
             const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
             hiddenSystemRunIds.delete(ev.runId);
+            state.visibleSelfModRootRunIds.delete(ev.runId);
             if (isHiddenRun) {
               if (lastVisibleRunId) {
                 if (hasActiveAgentForRootRun(lastVisibleRunId)) {
@@ -2430,6 +2622,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           onEnd: (ev) => {
             const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
             hiddenSystemRunIds.delete(ev.runId);
+            state.visibleSelfModRootRunIds.delete(ev.runId);
             if (
               (ev.agentType ?? AGENT_IDS.ORCHESTRATOR) ===
               AGENT_IDS.ORCHESTRATOR
@@ -2449,11 +2642,40 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               // against the alternative of a floating-button-only
               // empty bubble.
               if (ev.selfModApplied && lastAssistantMessageEventId) {
+                const pending = state.pendingSelfModApplies.get(
+                  ev.selfModApplied.featureId,
+                );
+                const selfModApplied = {
+                  ...ev.selfModApplied,
+                  status: pending
+                    ? "pending"
+                    : (ev.selfModApplied.status ?? "applied"),
+                } as const;
+                if (pending) {
+                  pending.assistantMessageEventId = lastAssistantMessageEventId;
+                }
                 attachSelfModToAssistantMessage({
                   conversationId: payload.conversationId,
                   eventId: lastAssistantMessageEventId,
-                  selfModApplied: ev.selfModApplied,
+                  selfModApplied,
                 });
+              } else if (ev.selfModApplied) {
+                const pending = state.pendingSelfModApplies.get(
+                  ev.selfModApplied.featureId,
+                );
+                if (pending) {
+                  void state
+                    .applySelfModWithMorph?.({
+                      featureId: ev.selfModApplied.featureId,
+                      cumulative: false,
+                    })
+                    .catch((error) => {
+                      console.warn(
+                        "[self-mod-hmr] Failed to apply visible no-card self-mod:",
+                        (error as Error).message,
+                      );
+                    });
+                }
               }
             }
             if (isHiddenRun) {
@@ -2485,6 +2707,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           onInterrupted: (ev) => {
             const isHiddenRun = hiddenSystemRunIds.has(ev.runId);
             hiddenSystemRunIds.delete(ev.runId);
+            state.visibleSelfModRootRunIds.delete(ev.runId);
             if (isHiddenRun) {
               if (lastVisibleRunId) {
                 emitRunEvent({
@@ -3930,6 +4153,30 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         state.socialSessionService?.getSnapshot() ??
         createEmptySocialSessionServiceSnapshot()
       );
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY,
+    async (params) => {
+      const payload = params as { featureId?: string };
+      if (!state.applySelfModWithMorph) {
+        await state.selfModHmrController?.forceResumeAll().catch((error) => {
+          console.warn(
+            "[self-mod-hmr] Failed to resume deferred self-mod state without apply handler:",
+            (error as Error).message,
+          );
+        });
+        return {
+          featureId: payload.featureId,
+          applied: false,
+          message: "Self-mod apply handler is not available.",
+        };
+      }
+      return await state.applySelfModWithMorph({
+        featureId: payload.featureId,
+        cumulative: true,
+      });
     },
   );
 

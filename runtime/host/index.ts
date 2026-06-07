@@ -46,6 +46,7 @@ import {
   type RuntimeDiscardUnfinishedResult,
   type RuntimeHealthSnapshot,
   type RuntimeSocialSessionStatus,
+  type RuntimeSelfModApplyResult,
   type RuntimeSelfModRevertResult,
   type RuntimeLocalAgentRequest,
   type RuntimeLocalAgentSnapshot,
@@ -2367,6 +2368,17 @@ export class StellaRuntimeHost {
   async revertSelfModFeature(payload: { featureId?: string; steps?: number }) {
     return await this.requestWorker<RuntimeSelfModRevertResult>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT,
+      payload,
+      {
+        ensureWorker: true,
+        recordActivity: true,
+      },
+    );
+  }
+
+  async applySelfModFeature(payload: { featureId?: string }) {
+    return await this.requestWorker<RuntimeSelfModApplyResult>(
+      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY,
       payload,
       {
         ensureWorker: true,

@@ -68,6 +68,7 @@ export type SelfModAppliedPayload = {
   featureId: string;
   files: string[];
   batchIndex: number;
+  status?: "pending" | "applied";
 };
 
 export type GitRollbackSinceResult =

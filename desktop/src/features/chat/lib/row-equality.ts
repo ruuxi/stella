@@ -81,6 +81,9 @@ const selfModAppliedEqual = (
   if (a.featureId !== b.featureId || a.batchIndex !== b.batchIndex) {
     return false;
   }
+  if ((a.status ?? "applied") !== (b.status ?? "applied")) {
+    return false;
+  }
   if (a.files.length !== b.files.length) {
     return false;
   }

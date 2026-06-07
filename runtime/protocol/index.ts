@@ -144,6 +144,7 @@ export const METHOD_NAMES = {
   PROJECTS_REGISTER_DIRECTORY: "projects.registerDirectory",
   PROJECTS_START: "projects.start",
   PROJECTS_STOP: "projects.stop",
+  SELF_MOD_APPLY: "selfMod.apply",
   SELF_MOD_REVERT: "selfMod.revert",
   SELF_MOD_CRASH_RECOVERY_STATUS: "selfMod.crashRecoveryStatus",
   SELF_MOD_DISCARD_UNFINISHED: "selfMod.discardUnfinished",
@@ -278,6 +279,7 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_DREAM_TRIGGER_NOW: "internal.worker.dream.triggerNow",
   INTERNAL_WORKER_CHRONICLE_SUMMARY_TICK:
     "internal.worker.chronicle.summaryTick",
+  INTERNAL_WORKER_SELF_MOD_APPLY: "internal.worker.selfMod.apply",
   INTERNAL_WORKER_SELF_MOD_REVERT: "internal.worker.selfMod.revert",
   INTERNAL_WORKER_SELF_MOD_CRASH_RECOVERY_STATUS:
     "internal.worker.selfMod.crashRecoveryStatus",
@@ -568,6 +570,12 @@ export type RuntimeSelfModRevertResult = {
   files?: string[];
 };
 
+export type RuntimeSelfModApplyResult = {
+  featureId?: string;
+  applied: boolean;
+  message?: string;
+};
+
 export type RuntimeCrashRecoveryStatus =
   | {
       kind: "dirty";
@@ -640,7 +648,12 @@ export type RuntimeAgentEventPayload = {
   fatal?: boolean;
   finalText?: string;
   persisted?: boolean;
-  selfModApplied?: { featureId: string; files: string[]; batchIndex: number };
+  selfModApplied?: {
+    featureId: string;
+    files: string[];
+    batchIndex: number;
+    status?: "pending" | "applied";
+  };
   agentId?: string;
   agentType?: string;
   description?: string;

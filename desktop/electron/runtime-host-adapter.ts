@@ -1126,6 +1126,10 @@ export class RuntimeHostAdapter {
     return this.host.revertSelfModFeature(payload);
   }
 
+  applySelfModFeature(payload: { featureId?: string }) {
+    return this.host.applySelfModFeature(payload);
+  }
+
   getCrashRecoveryStatus() {
     return this.host.getCrashRecoveryStatus();
   }
