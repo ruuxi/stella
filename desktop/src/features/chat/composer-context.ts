@@ -5,6 +5,7 @@ type ComposerContextState = {
   hasScreenshotContext: boolean;
   hasFileContext: boolean;
   hasAppSelectionContext: boolean;
+  hasActivityContext: boolean;
   hasWindowContext: boolean;
   hasVisibleWindowContext: boolean;
   hasSelectedTextContext: boolean;
@@ -56,6 +57,7 @@ export const hasAttachedComposerChips = (
 ): boolean => {
   if (selectedText) return true;
   if (!chatContext) return false;
+  if (chatContext.activity) return true;
   if (chatContext.window) return true;
   if (chatContext.appSelection) return true;
   if (chatContext.browserUrl) return true;
@@ -77,6 +79,7 @@ export const resolveComposerContextState = (
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasFileContext = Boolean(chatContext?.files?.length);
   const hasAppSelectionContext = Boolean(chatContext?.appSelection?.snapshot);
+  const hasActivityContext = Boolean(chatContext?.activity?.id);
   const hasWindowContext = windowContextEnabled;
   const hasSelectedTextContext = Boolean(selectedText);
   const hasPendingCaptureContext = Boolean(chatContext?.capturePending);
@@ -84,6 +87,7 @@ export const resolveComposerContextState = (
     hasScreenshotContext
       || hasFileContext
       || hasAppSelectionContext
+      || hasActivityContext
       || hasWindowContext
       || hasSelectedTextContext,
   );
@@ -92,6 +96,7 @@ export const resolveComposerContextState = (
     hasScreenshotContext,
     hasFileContext,
     hasAppSelectionContext,
+    hasActivityContext,
     hasWindowContext,
     hasVisibleWindowContext,
     hasSelectedTextContext,
@@ -117,6 +122,9 @@ const resolveComposerPlaceholder = ({
   }
   if (contextState.hasAppSelectionContext) {
     return "Ask about the selected area...";
+  }
+  if (contextState.hasActivityContext) {
+    return "Ask about this activity...";
   }
   if (contextState.hasWindowContext) {
     return "Ask about this window...";
@@ -170,6 +178,12 @@ export const clearComposerWindowContext = (setChatContext: SetChatContext) => {
 export const clearComposerAppSelectionContext = (setChatContext: SetChatContext) => {
   setChatContext((prev) => (
     prev ? { ...prev, appSelection: null } : prev
+  ));
+};
+
+export const clearComposerActivityContext = (setChatContext: SetChatContext) => {
+  setChatContext((prev) => (
+    prev ? { ...prev, activity: null } : prev
   ));
 };
 

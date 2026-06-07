@@ -70,6 +70,34 @@ describe("buildChatPromptMessages", () => {
     expect(hidden).toContain("main &gt; aside[role=complementary]");
   });
 
+  it("carries selected activity metadata in hidden context", () => {
+    const result = buildChatPromptMessages({
+      userPrompt: "What happened here?",
+      chatContext: {
+        window: null,
+        activity: {
+          id: "agent-123",
+          label: "Fix composer chip",
+          agentType: "general",
+          status: "completed",
+          runId: "run-456",
+          anchorTurnId: "turn-789",
+          startedAtMs: 1000,
+          completedAtMs: 2000,
+          lastUpdatedAtMs: 2000,
+        },
+      } satisfies ChatContext,
+    });
+
+    const hidden = result.promptMessages?.[0]?.text ?? "";
+    expect(result.activityLabel).toBe("Fix composer chip");
+    expect(hidden).toContain("<selected-activity");
+    expect(hidden).toContain('id="agent-123"');
+    expect(hidden).toContain('run-id="run-456"');
+    expect(hidden).toContain('anchor-turn-id="turn-789"');
+    expect(hidden).toContain('status="completed"');
+  });
+
   it("includes active window accessibility text only in hidden context", () => {
     const result = buildChatPromptMessages({
       userPrompt: "What is selected?",

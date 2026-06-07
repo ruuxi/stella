@@ -55,6 +55,7 @@ import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import { useChatWorkspaceStripStore } from "@/features/chat/chat-workspace-strip-store";
+import type { ChatContext } from "@/shared/types/electron";
 import { TextShimmer } from "./TextShimmer";
 import { WorkspaceActionsList } from "./WorkspaceActionsList";
 import "./chat-workspace-strip.css";
@@ -138,7 +139,31 @@ function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
   }
 }
 
-function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
+const taskToActivityContext = (
+  task: TaskItem,
+): NonNullable<ChatContext["activity"]> => ({
+  id: task.id,
+  label: (getTaskDisplayText(task) || task.description || "Activity").trim(),
+  agentType: task.agentType,
+  status: task.status,
+  ...(task.runId ? { runId: task.runId } : {}),
+  ...(task.anchorTurnId ? { anchorTurnId: task.anchorTurnId } : {}),
+  startedAtMs: task.startedAtMs,
+  ...(typeof task.completedAtMs === "number"
+    ? { completedAtMs: task.completedAtMs }
+    : {}),
+  lastUpdatedAtMs: task.lastUpdatedAtMs,
+});
+
+function TasksList({
+  tasks,
+  selectedActivityId,
+  onSelectTask,
+}: {
+  tasks: ReadonlyArray<TaskItem>;
+  selectedActivityId?: string | null;
+  onSelectTask: (task: TaskItem) => void;
+}) {
   return (
     <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks">
       {tasks.map((task) => {
@@ -148,20 +173,29 @@ function TasksList({ tasks }: { tasks: ReadonlyArray<TaskItem> }) {
             key={task.id}
             className="chat-workspace-strip__task-row"
             data-status={task.status}
+            data-selected={selectedActivityId === task.id ? "true" : undefined}
+            title={label}
           >
-            <span
-              className="chat-workspace-strip__task-icon-wrap"
-              aria-hidden="true"
+            <button
+              type="button"
+              className="chat-workspace-strip__task-button"
+              onClick={() => onSelectTask(task)}
+              aria-label={`Use ${label || "activity"} as context`}
             >
-              <TaskStatusIcon status={task.status} />
-            </span>
-            <span className="chat-workspace-strip__task-label">
-              {task.status === "running" ? (
-                <TextShimmer text={label} durationMs={2000} />
-              ) : (
-                label
-              )}
-            </span>
+              <span
+                className="chat-workspace-strip__task-icon-wrap"
+                aria-hidden="true"
+              >
+                <TaskStatusIcon status={task.status} />
+              </span>
+              <span className="chat-workspace-strip__task-label">
+                {task.status === "running" ? (
+                  <TextShimmer text={label} durationMs={2000} />
+                ) : (
+                  label
+                )}
+              </span>
+            </button>
           </li>
         );
       })}
@@ -281,6 +315,19 @@ export function ChatWorkspaceStrip({
   const handleOpenFile = (entry: ConversationFileEntry) => {
     openDisplayPayloadTab(entry.payload);
   };
+  const handleSelectTask = (task: TaskItem) => {
+    const activityContext = taskToActivityContext(task);
+    chat.composer.setChatContext((prev) => ({
+      ...(prev ?? {
+        window: null,
+        browserUrl: null,
+        selectedText: null,
+        regionScreenshots: [],
+      }),
+      activity: activityContext,
+    }));
+    chat.composer.requestFocus?.();
+  };
   const hidden =
     forceHidden || !stripVisible || (panelOpen && !embeddedInDisplayPanel);
 
@@ -319,7 +366,11 @@ export function ChatWorkspaceStrip({
                   }
                   historyLabel={`View all activity (${doneTasks.length})`}
                 >
-                  <TasksList tasks={visibleActivityTasks} />
+                  <TasksList
+                    tasks={visibleActivityTasks}
+                    selectedActivityId={chat.composer.chatContext?.activity?.id}
+                    onSelectTask={handleSelectTask}
+                  />
                 </WorkspaceSection>
               </>
             )}
@@ -427,6 +478,10 @@ export function ChatWorkspaceStrip({
         schedules={schedules}
         conversationId={conversationId}
         nowMs={nowMs}
+        onSelectTask={(task) => {
+          handleSelectTask(task);
+          setHistorySection(null);
+        }}
         onOpenSchedule={(entry) => {
           setOpenScheduleEntry(entry);
         }}

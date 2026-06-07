@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { getElectronApi } from "@/platform/electron/electron";
 import {
+  ComposerActivityContextSection,
   ComposerAppSelectionContextSection,
   ComposerCaptureContextSection,
   ComposerFileContextSection,
@@ -65,6 +66,11 @@ export function ComposerContextRow({
         setChatContext={setChatContext}
       />
       <ComposerAppSelectionContextSection
+        variant={variant}
+        chatContext={chatContext}
+        setChatContext={setChatContext}
+      />
+      <ComposerActivityContextSection
         variant={variant}
         chatContext={chatContext}
         setChatContext={setChatContext}

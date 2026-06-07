@@ -285,7 +285,7 @@ export function AskStellaSelectionChip() {
         capture.setContext(chatContext);
       }
 
-      dispatchComposeText({ text, chatContext, selectedText: text });
+      dispatchComposeText({ text: "", chatContext, selectedText: text });
 
       window.setTimeout(() => {
         pendingClickRef.current = false;

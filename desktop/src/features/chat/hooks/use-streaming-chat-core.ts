@@ -49,13 +49,15 @@ const buildContextMessageMetadata = (
   base?: MessageMetadata,
 ): MessageMetadata | undefined => {
   const appSelectionLabel = chatContext?.appSelection?.label?.trim()
-  if (!appSelectionLabel) return base
+  const activityLabel = chatContext?.activity?.label?.trim()
+  if (!appSelectionLabel && !activityLabel) return base
 
   return {
     ...(base ?? {}),
     context: {
       ...(base?.context ?? {}),
-      appSelectionLabel,
+      ...(appSelectionLabel ? { appSelectionLabel } : {}),
+      ...(activityLabel ? { activityLabel } : {}),
     },
   }
 }

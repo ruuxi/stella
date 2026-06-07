@@ -29,7 +29,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { AppWindowMac, Crop, Paperclip } from "lucide-react";
+import { AppWindowMac, ClipboardList, Crop, Paperclip } from "lucide-react";
 import { ChipPreviewPortal } from "@/app/chat/ChipPreviewPortal";
 import { useHoverPreview } from "@/app/chat/use-hover-preview";
 import type {
@@ -273,6 +273,7 @@ export const UserMessageRow = memo(
   function UserMessageRow({ row, onOpenAttachment }: UserRowProps) {
     const { text, windowLabel, attachments, channelEnvelope } = row;
     const appSelectionLabel = row.appSelectionLabel?.trim();
+    const activityLabel = row.activityLabel?.trim();
     const windowPreviewImageUrl = sanitizeAttachmentImageUrl(
       row.windowPreviewImageUrl,
     );
@@ -305,6 +306,24 @@ export const UserMessageRow = memo(
             />
             <span className="event-context-chip__label">
               {appSelectionLabel}
+            </span>
+          </span>
+        ),
+      });
+    }
+    if (activityLabel) {
+      chips.push({
+        key: "activity",
+        node: (
+          <span className="event-context-chip event-context-chip--activity">
+            <ClipboardList
+              className="event-context-chip__icon"
+              size={13}
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
+            <span className="event-context-chip__label">
+              {activityLabel}
             </span>
           </span>
         ),

@@ -4,6 +4,7 @@ import { cn } from "@/shared/lib/utils";
 import { ChipPreviewPortal } from "./ChipPreviewPortal";
 import { useHoverPreview } from "./use-hover-preview";
 import {
+  clearComposerActivityContext,
   clearComposerAppSelectionContext,
   clearComposerSelectedTextContext,
   clearComposerWindowContext,
@@ -159,6 +160,36 @@ export function AppSelectionChip({
       }}
     >
       <span className={cn(textClassName)}>{truncateChipLabel(label)}</span>
+    </button>
+  );
+}
+
+type ActivityContextChipProps = {
+  activity: NonNullable<ChatContext["activity"]>;
+  setChatContext: SetChatContext;
+  className?: string;
+  textClassName?: string;
+};
+
+export function ActivityContextChip({
+  activity,
+  setChatContext,
+  className,
+  textClassName,
+}: ActivityContextChipProps) {
+  const label = activity.label || "Activity";
+  const displayLabel = truncateChipLabel(label, 28);
+  return (
+    <button
+      type="button"
+      className={cn(className)}
+      title={`${label} — click to remove activity`}
+      onClick={(event) => {
+        clearComposerActivityContext(setChatContext);
+        event.currentTarget.blur();
+      }}
+    >
+      <span className={cn(textClassName)}>{displayLabel}</span>
     </button>
   );
 }

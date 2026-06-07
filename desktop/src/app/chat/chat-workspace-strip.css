@@ -212,16 +212,44 @@
 }
 
 .chat-workspace-strip__task-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
   min-width: 0;
-  padding: 1px 0;
+}
+
+.chat-workspace-strip__task-button {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  margin: 0 -6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 13px;
   font-weight: 400;
-  line-height: 1.4;
+  line-height: 1.35;
   color: var(--text-base);
+  text-align: left;
+  cursor: default;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
+}
+
+.chat-workspace-strip__task-button:hover,
+.chat-workspace-strip__task-button:focus-visible,
+.chat-workspace-strip__task-row[data-selected="true"]
+  .chat-workspace-strip__task-button {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-strong);
+}
+
+.chat-workspace-strip__task-button:focus-visible {
+  outline: none;
 }
 
 .chat-workspace-strip__task-icon-wrap {
@@ -258,8 +286,17 @@
 .chat-workspace-strip__task-label {
   flex: 1;
   min-width: 0;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-workspace-strip__task-label .text-shimmer {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @keyframes chat-workspace-strip__spin {
