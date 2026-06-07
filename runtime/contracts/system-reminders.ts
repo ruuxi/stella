@@ -7,10 +7,6 @@ export const wrapSystemReminder = (text: string): string =>
 export const wrapInternalSystemReminder = (text: string): string =>
   `<${INTERNAL_SYSTEM_REMINDER_TAG}>${text.trim()}</${INTERNAL_SYSTEM_REMINDER_TAG}>`;
 
-export const TASK_LIFECYCLE_WAKE_PROMPT = wrapInternalSystemReminder(
-  "Continue from the latest task lifecycle update.",
-);
-
 export const formatTimestampSystemReminder = (text: string): string =>
   `<${SYSTEM_REMINDER_TAG}>${text}</${SYSTEM_REMINDER_TAG}>`;
 

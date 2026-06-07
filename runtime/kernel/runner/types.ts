@@ -183,7 +183,6 @@ export type RuntimeSendMessageInput = {
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
   customType?: string;
   display?: boolean;
-  wakePrompt?: string;
 };
 
 export type RuntimeSendUserMessageInput = RuntimeSendMessageInput & {

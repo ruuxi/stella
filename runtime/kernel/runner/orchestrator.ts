@@ -415,7 +415,6 @@ export const createOrchestratorController = (
       return;
     }
 
-    const wakePrompt = input.wakePrompt?.trim();
     await executeOrQueueSystemOrchestratorTurn({
       hasActiveRun: Boolean(context.state.activeOrchestratorRunId),
       queueOrchestratorTurn,
@@ -428,14 +427,6 @@ export const createOrchestratorController = (
             ...(input.display !== undefined ? { display: input.display } : {}),
           },
         ];
-        if (wakePrompt) {
-          promptMessages.push({
-            text: wakePrompt,
-            messageType: "message",
-            customType: "runtime.wake_prompt",
-            display: false,
-          });
-        }
         await startStreamingOrchestratorTurn(
           {
             conversationId: input.conversationId,
