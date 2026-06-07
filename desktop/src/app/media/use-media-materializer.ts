@@ -30,6 +30,7 @@ import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload
 import { showToast } from "@/ui/toast"
 import { friendlyImageGenerationFailure } from "./media-error-copy"
 import {
+  capInMemory,
   failedNotifiedJobs,
   materializedJobs,
   persistFailedNotifiedJobs,
@@ -173,6 +174,8 @@ export const useMediaMaterializer = ({
 
           publishMaterializedMediaPayload(payload)
           materializedJobs.add(job.jobId)
+          // Bound the in-memory set, matching the persist-time cap.
+          capInMemory(materializedJobs)
           persistMaterializedJobs()
 
           if (payload.asset.kind === "image") {
@@ -206,6 +209,8 @@ export const useMediaMaterializer = ({
       if (!IMAGE_CAPABILITIES.has(job.capability)) continue
       if (failedNotifiedJobs.has(job.jobId)) continue
       failedNotifiedJobs.add(job.jobId)
+      // Bound the in-memory set, matching the persist-time cap.
+      capInMemory(failedNotifiedJobs)
       persistFailedNotifiedJobs()
       showToast({
         title: friendlyImageGenerationFailure(job.error),

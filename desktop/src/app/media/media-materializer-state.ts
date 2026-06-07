@@ -19,6 +19,19 @@ const loadFromStorage = (key = MATERIALIZED_KEY): string[] => {
   }
 };
 
+// Enforce MATERIALIZED_CAP in memory (not just on persist). Maps/Sets keep
+// insertion order, so deleting the first key evicts the oldest entry, keeping
+// the live collection bounded mid-session without changing what gets persisted.
+export const capInMemory = (
+  collection: Set<string> | Map<string, unknown>,
+): void => {
+  while (collection.size > MATERIALIZED_CAP) {
+    const oldest = collection.keys().next().value;
+    if (oldest === undefined) break;
+    collection.delete(oldest);
+  }
+};
+
 const persistToStorage = (ids: Set<string>, key = MATERIALIZED_KEY): void => {
   if (typeof localStorage === "undefined") return;
   try {
@@ -94,6 +107,8 @@ export const persistFailedNotifiedJobs = (): void => {
 export const publishMaterializedMediaPayload = (payload: DisplayPayload): void => {
   if (payload.kind === "media" && payload.jobId) {
     materializedPayloadsByJobId.set(payload.jobId, payload);
+    // Bound the in-memory payload map, matching the persist-time cap.
+    capInMemory(materializedPayloadsByJobId);
     persistPayloadsToStorage(materializedPayloadsByJobId);
   }
   for (const listener of materializedPayloadListeners) listener();
@@ -132,5 +147,7 @@ export const useMaterializedMediaPayloadSnapshot = (): ReadonlyMap<
 export const markMediaJobMaterialized = (jobId: string): void => {
   if (materializedJobs.has(jobId)) return;
   materializedJobs.add(jobId);
+  // Bound the in-memory set, matching the persist-time cap.
+  capInMemory(materializedJobs);
   persistMaterializedJobs();
 };
