@@ -68,6 +68,22 @@ export class AuthService {
     | null = null;
   private runtimeAuthRefreshRequestId: string | null = null;
   private runtimeAuthRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  // Optimistic-session-hydration state. `cachedSessionServed` latches once the
+  // persisted session blob has been returned to a caller without a network
+  // round-trip; the next read then awaits authoritative revalidation. Any write
+  // to the session/cookie storage keys clears the latch (see setAuthStorageItem)
+  // so post-mutation reads (sign-in, sign-out, cookie apply) stay authoritative.
+  private cachedSessionServed = false;
+  private betterAuthRevalidation: Promise<unknown> | null = null;
+  // True only while the background revalidation is writing its own result, so
+  // that bookkeeping write does NOT reset the optimistic latch (only genuine
+  // external mutations — sign-in, sign-out, cookie apply — should).
+  private revalidationInFlight = false;
+  // The most recent authoritative revalidation result, returned to the
+  // renderer's follow-up read once a fire-and-forget revalidation has settled
+  // (avoids a redundant network round-trip). Reset on any external mutation.
+  private lastRevalidatedResult: unknown | null = null;
+  private hasRevalidatedResult = false;
 
   constructor(private readonly options: AuthServiceOptions) {}
 
@@ -182,6 +198,21 @@ export class AuthService {
     if (!normalizedKey) {
       return;
     }
+    // External mutations of the persisted session/cookie invalidate the
+    // optimistic cache latch so the next session read is authoritative
+    // (sign-in, sign-out, cookie apply). The background revalidation's own
+    // session-blob write is excluded so it can't reset the latch mid-sequence
+    // and cause a follow-up read to re-serve the cache instead of awaiting the
+    // authoritative result.
+    if (
+      !this.revalidationInFlight &&
+      (normalizedKey === BETTER_AUTH_SESSION_DATA_STORAGE_KEY ||
+        normalizedKey === BETTER_AUTH_COOKIE_STORAGE_KEY)
+    ) {
+      this.cachedSessionServed = false;
+      this.hasRevalidatedResult = false;
+      this.lastRevalidatedResult = null;
+    }
     const storage = { ...this.readAuthStorage() };
     if (typeof value === "string") {
       storage[normalizedKey] = value;
@@ -249,7 +280,32 @@ export class AuthService {
     return response;
   }
 
-  async getBetterAuthSession() {
+  private readPersistedBetterAuthSession(): unknown | null {
+    const stored = this.getAuthStorageItem(BETTER_AUTH_SESSION_DATA_STORAGE_KEY);
+    if (!stored) {
+      return null;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stored);
+    } catch {
+      // Corrupt blob — drop it so we don't keep serving garbage, and fall
+      // through to an authoritative network read.
+      this.setAuthStorageItem(BETTER_AUTH_SESSION_DATA_STORAGE_KEY, null);
+      return null;
+    }
+    // Better Auth returns null (no JSON object) for an unauthenticated session;
+    // only treat a real session object as a valid cache hit.
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return parsed;
+  }
+
+  // Authoritative network read. Writes the persisted session blob on success
+  // and clears it on an auth-error downgrade (401/403/404) so a stale session
+  // can never outlive a rejected revalidation.
+  private async fetchBetterAuthSessionFromNetwork(): Promise<unknown | null> {
     const response = await this.authFetch("/get-session", {
       method: "GET",
       headers: { accept: "application/json" },
@@ -271,8 +327,96 @@ export class AuthService {
         BETTER_AUTH_SESSION_DATA_STORAGE_KEY,
         JSON.stringify(data),
       );
+    } else {
+      // Authenticated-but-empty response means no active session; clear the
+      // persisted blob so the optimistic path doesn't resurrect it.
+      this.setAuthStorageItem(BETTER_AUTH_SESSION_DATA_STORAGE_KEY, null);
     }
     return data;
+  }
+
+  // Single-flight background revalidation. Swallows transient/network errors so
+  // a flaky network does NOT log the user out (only an explicit auth-error
+  // status, handled inside fetchBetterAuthSessionFromNetwork, downgrades). The
+  // resolved value reflects the persisted-blob mutation it performs, so a later
+  // optimistic read returns the up-to-date session.
+  private revalidateBetterAuthSession(): Promise<unknown> {
+    if (this.betterAuthRevalidation) {
+      return this.betterAuthRevalidation;
+    }
+    this.revalidationInFlight = true;
+    const revalidation = this.fetchBetterAuthSessionFromNetwork()
+      .catch((error) => {
+        console.debug(
+          "[auth] Better Auth session revalidation failed:",
+          (error as Error).message,
+        );
+        // Keep the last-known persisted session on transient failure.
+        return this.readPersistedBetterAuthSession();
+      })
+      .then((result) => {
+        // Record the authoritative result so the renderer's follow-up read can
+        // return it without another network round-trip (unless an external
+        // mutation has since invalidated it via setAuthStorageItem).
+        this.lastRevalidatedResult = result;
+        this.hasRevalidatedResult = true;
+        return result;
+      })
+      .finally(() => {
+        this.revalidationInFlight = false;
+        this.betterAuthRevalidation = null;
+      });
+    this.betterAuthRevalidation = revalidation;
+    return revalidation;
+  }
+
+  // Consume the recorded authoritative result for the current read cycle and
+  // reset the optimistic latches so the next cycle revalidates afresh.
+  private consumeRevalidatedResult(): unknown | null {
+    const result = this.lastRevalidatedResult;
+    this.hasRevalidatedResult = false;
+    this.lastRevalidatedResult = null;
+    this.cachedSessionServed = false;
+    return result;
+  }
+
+  // Optimistic session hydration. Returns the persisted session immediately on
+  // the first read so `isAuthenticated` can flip without a network round-trip,
+  // while revalidating in the background. The renderer re-reads to obtain the
+  // authoritative (revalidated) value — see refreshAuthSession in
+  // src/global/auth/services/auth-session.ts.
+  //
+  // NOTE: the IPC channel (IPC_AUTH_GET_SESSION) is one-shot request/response
+  // and AuthService has no broadcast channel, so the "later" update is delivered
+  // by the renderer's follow-up read rather than a push. The latches
+  // (cachedSessionServed / hasRevalidatedResult) make the second read return the
+  // authoritative revalidation instead of re-serving the cache.
+  async getBetterAuthSession(): Promise<unknown | null> {
+    // A background revalidation is in flight: this is the renderer's
+    // authoritative follow-up read — join it (covers downgrades, where the
+    // persisted blob has been cleared, without spawning a redundant request),
+    // then consume the cycle's recorded result so the next cycle revalidates.
+    if (this.betterAuthRevalidation) {
+      const result = await this.betterAuthRevalidation;
+      this.consumeRevalidatedResult();
+      return result;
+    }
+    // A revalidation already settled this cycle: hand its authoritative result to
+    // the follow-up read once (no second network round-trip), then consume it.
+    // External mutations also clear this via setAuthStorageItem.
+    if (this.hasRevalidatedResult) {
+      return this.consumeRevalidatedResult();
+    }
+    const cached = this.readPersistedBetterAuthSession();
+    if (cached && !this.cachedSessionServed) {
+      this.cachedSessionServed = true;
+      // Fire-and-forget; the renderer's follow-up read awaits / re-reads this.
+      void this.revalidateBetterAuthSession();
+      return cached;
+    }
+    // No cache to serve optimistically (cold + signed out, or cache already
+    // consumed) — return the authoritative network result.
+    return await this.revalidateBetterAuthSession();
   }
 
   async signInAnonymous() {
