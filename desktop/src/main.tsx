@@ -8,7 +8,10 @@ import "./shared/i18n/rtl.css";
 
 import "./platform/dev/vite-error-recovery";
 import "./shared/lib/interface-preferences";
+import { applyLowPowerDocumentFlag } from "./shared/lib/device-perf";
 import "./shared/lib/native-font-smoothing";
+
+applyLowPowerDocumentFlag();
 import { installRendererErrorReporting } from "./platform/diagnostics/report-error";
 import { App } from "./App.tsx";
 import { AppProviders } from "./context/AppProviders";
