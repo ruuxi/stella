@@ -94,7 +94,6 @@ export const registerBootstrapIpcHandlers = (
     // Keep native-service startup off the TTI path on every platform. Windows
     // already deferred ~4s post-paint; apply the same delay on macOS/Linux so
     // the bridge spawn never competes with first paint.
-    const delayMs = POST_READY_NATIVE_DELAY_MS;
     state.processRuntime.setManagedTimeout(() => {
       postReadyNativeServicesScheduled = false;
       if (!state.appReady || state.isQuitting) {
@@ -113,7 +112,7 @@ export const registerBootstrapIpcHandlers = (
       if (!state.officePreviewBridgeStop) {
         state.officePreviewBridgeStop = startOfficePreviewBridge(context);
       }
-    }, delayMs);
+    }, POST_READY_NATIVE_DELAY_MS);
   };
 
   const dispatchStoreWebLocalAction = (
@@ -561,7 +560,7 @@ export const registerBootstrapIpcHandlers = (
   // native wakeword_listener helper (ONNX model load + mic open), which we don't
   // want blocking first paint either. setEnabled is idempotent and
   // timing-tolerant.
-  setTimeout(() => {
+  state.processRuntime.setManagedTimeout(() => {
     const stellaHome = lifecycle.getStellaHome();
     const wakePrefs = stellaHome
       ? loadLocalPreferences(stellaHome)
