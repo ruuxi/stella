@@ -222,22 +222,37 @@
 }
 
 .shell-topbar-window-controls {
+  box-sizing: border-box;
+  /* 3 × 24px buttons + 2 × 2px gaps + 2 × 8px padding. Pinned so the
+     cluster can collapse to width 0 when hidden (animating from `auto`
+     would not transition). */
+  width: 92px;
   height: 100%;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 0 8px;
+  overflow: hidden;
   -webkit-app-region: no-drag;
-  /* Match the display panel's open/close easing so the cluster fades
+  /* Match the display panel's open/close easing so the cluster collapses
      in sync with the sliding sidebar rather than snapping out. */
   transition:
     opacity 320ms cubic-bezier(0.32, 0.72, 0.16, 1),
-    transform 320ms cubic-bezier(0.32, 0.72, 0.16, 1);
+    width 320ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    padding 320ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    margin 320ms cubic-bezier(0.32, 0.72, 0.16, 1);
 }
 
+/* When the display panel is open the custom window controls hide. Collapse
+   the cluster's width/padding (and cancel the parent flex gap via negative
+   margin) so it leaves no blank gutter at the top-right corner — otherwise
+   the panel's expand/close buttons get pushed ~92px inward on Windows. */
 .shell-topbar-window-controls[data-hidden="true"] {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  margin-left: -6px;
   opacity: 0;
-  transform: translateX(8px);
   pointer-events: none;
 }
 

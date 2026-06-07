@@ -226,13 +226,7 @@ export const ShellTopBar = ({
                   aria-pressed={panelExpanded}
                   title={panelExpanded ? "Restore panel size" : "Expand panel"}
                 >
-                  {isWin ? (
-                    panelExpanded ? (
-                      <WindowsRestoreIcon />
-                    ) : (
-                      <WindowsMaximizeIcon />
-                    )
-                  ) : panelExpanded ? (
+                  {panelExpanded ? (
                     <Minimize2 size={14} strokeWidth={1.75} />
                   ) : (
                     <Maximize2 size={14} strokeWidth={1.75} />
