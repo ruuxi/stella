@@ -339,6 +339,28 @@ class OverlayWindow {
     this.reloadTimer = null
   }
 
+  /**
+   * Perf: drop the second renderer process when the overlay has gone idle,
+   * WITHOUT marking the controller dead. Unlike `destroy()`, this leaves
+   * `this.destroyed` false so the next show entrypoint can rebuild the window
+   * via `ensureReady()` — mirroring the mini/store idle-destroy lifecycle that
+   * reclaims an unused resident renderer and re-warms it on demand. Hiding
+   * (fadeOut) alone keeps a transparent, screen-spanning, always-on-top
+   * layered surface resident for the whole session; this actually frees it.
+   */
+  reclaimForIdle() {
+    if (this.destroyed) return
+    this.clearReloadTimer()
+    if (this.window) {
+      this.window.removeAllListeners('close')
+      if (!this.window.isDestroyed()) {
+        this.window.destroy()
+      }
+      this.window = null
+    }
+    this.ready = false
+  }
+
   /** Idempotent — calling more than once is a no-op after the first.
    *  After this returns, `create()` refuses to materialize the window
    *  again (the controller is treated as dead). */
@@ -381,6 +403,13 @@ export type SelectionChipPayload = {
   requestId: number
 }
 
+// Perf: after the overlay has been idle (no active feature) this long, drop
+// its renderer process. The next show entrypoint rebuilds it via
+// `ensureReady()`. Mirrors `MINI_IDLE_DESTROY_DELAY_MS` /
+// `STORE_WEB_IDLE_DESTROY_DELAY_MS` in window-manager.ts so a chat-only
+// session doesn't carry a resident second renderer it never uses.
+const OVERLAY_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
+
 export class OverlayWindowController {
   private readonly overlayWindow: OverlayWindow
   private destroyed = false
@@ -402,6 +431,10 @@ export class OverlayWindowController {
   private activeSelectionChip = false
   private currentSelectionChipRequestId: number | null = null
   private selectionChipClickHandler: ((requestId: number) => void) | null = null
+  // Perf: idle-reclaim timer for the overlay renderer (see
+  // OVERLAY_IDLE_DESTROY_DELAY_MS). Armed when the overlay goes idle, cancelled
+  // the moment any surface becomes active again.
+  private idleDestroyTimer: ReturnType<typeof setTimeout> | null = null
 
   private readonly handleRadialAnimDone = () => {
     if (this.radialHideTimeout) {
@@ -433,14 +466,14 @@ export class OverlayWindowController {
   ) => {
     this.windowHighlightRequestId += 1
     if (!payload) {
-      this.setWindowHighlight(null)
+      void this.setWindowHighlight(null)
       return
     }
     if ('bounds' in payload) {
-      this.setWindowHighlight(payload.bounds, payload.tone ?? 'default')
+      void this.setWindowHighlight(payload.bounds, payload.tone ?? 'default')
       return
     }
-    this.setWindowHighlight(payload, 'default')
+    void this.setWindowHighlight(payload, 'default')
   }
   private readonly handleOverlayHideWindowHighlight = () => {
     this.windowHighlightRequestId += 1
@@ -460,7 +493,7 @@ export class OverlayWindowController {
       excludePids: [process.pid],
     }).then((info) => {
       if (requestId !== this.windowHighlightRequestId) return
-      this.setWindowHighlight(info?.bounds ?? null, 'default')
+      void this.setWindowHighlight(info?.bounds ?? null, 'default')
     })
   }
   private readonly handleOverlaySelectionChipClicked = (
@@ -508,7 +541,51 @@ export class OverlayWindowController {
     return this.overlayWindow.create()
   }
   ensureReadyForMorph(timeoutMs?: number) {
+    // A morph is an active surface; cancel any pending idle-reclaim so the
+    // window we just (re)built doesn't get torn out from under the transition.
+    this.cancelIdleDestroy()
     return this.overlayWindow.ensureReady(timeoutMs)
+  }
+
+  ensureReadyForDictation(timeoutMs?: number) {
+    // Dictation can start recording before the pill is revealed (push-to-talk
+    // delay), so callers need a ready renderer without forcing the overlay
+    // visible yet.
+    this.cancelIdleDestroy()
+    return this.overlayWindow.ensureReady(timeoutMs)
+  }
+
+  /**
+   * Perf prerequisite for idle-reclaim: every show entrypoint funnels through
+   * here so the overlay self-creates on demand even if it was never created or
+   * was idle-destroyed. Cancels the pending idle-reclaim first (a surface is
+   * about to become active) and waits for the renderer to be ready before the
+   * caller shows it — otherwise `OverlayWindow.show()` no-ops on a null/not-yet
+   * -ready window and the surface would silently fail to appear.
+   */
+  private async ensureReady(timeoutMs?: number) {
+    this.cancelIdleDestroy()
+    return this.overlayWindow.ensureReady(timeoutMs)
+  }
+
+  private cancelIdleDestroy() {
+    if (!this.idleDestroyTimer) {
+      return
+    }
+    clearTimeout(this.idleDestroyTimer)
+    this.idleDestroyTimer = null
+  }
+
+  private scheduleIdleDestroy() {
+    this.cancelIdleDestroy()
+    this.idleDestroyTimer = setTimeout(() => {
+      this.idleDestroyTimer = null
+      // Re-check: a surface may have re-activated between scheduling and firing.
+      if (this.isAnyActive) {
+        return
+      }
+      this.overlayWindow.reclaimForIdle()
+    }, OVERLAY_IDLE_DESTROY_DELAY_MS)
   }
 
   private get isAnyActive() {
@@ -523,7 +600,7 @@ export class OverlayWindowController {
     )
   }
 
-  private setWindowHighlight(
+  private async setWindowHighlight(
     bounds: { x: number; y: number; width: number; height: number } | null,
     tone: 'default' | 'subtle' = 'default',
   ) {
@@ -533,6 +610,9 @@ export class OverlayWindowController {
     }
 
     this.activeWindowHighlight = true
+    // Perf: self-create on demand so the window highlight still appears after an
+    // idle reclaim (or before the overlay's first build).
+    if (!(await this.ensureReady())) return
     this.overlayWindow.show({ inactive: true })
     if (this.activeRegionCapture) {
       this.overlayWindow.setFocusable(true)
@@ -561,9 +641,13 @@ export class OverlayWindowController {
   private hideOverlayIfIdle() {
     if (this.isAnyActive) return
     this.overlayWindow.fadeOut()
+    // Perf: hidden alone keeps the renderer resident; arm the idle-reclaim so
+    // an unused overlay frees its process after a grace period. The next show
+    // entrypoint rebuilds it via `ensureReady()`.
+    this.scheduleIdleDestroy()
   }
 
-  private showSurface(options: {
+  private async showSurface(options: {
     setActive: () => void
     channel: string
     payload?: unknown
@@ -573,6 +657,9 @@ export class OverlayWindowController {
     sendBeforeShow?: boolean
   }) {
     options.setActive()
+    // Perf: self-create the overlay on demand so the surface still appears
+    // after an idle reclaim (or before the first build).
+    if (!(await this.ensureReady())) return
     if (options.focusable !== undefined) {
       this.overlayWindow.setFocusable(options.focusable)
     }
@@ -612,7 +699,7 @@ export class OverlayWindowController {
   private radialHideTimeout: ReturnType<typeof setTimeout> | null = null
   private static readonly CLOSE_ANIM_FALLBACK = 350
 
-  showRadial(options?: {
+  async showRadial(options?: {
     compactFocused?: boolean
     miniAlwaysOnTop?: boolean
   }) {
@@ -623,7 +710,10 @@ export class OverlayWindowController {
 
     this.activeRadial = true
 
-    if (!this.overlayWindow.getWindow()) return
+    // Perf: self-create the overlay on demand (it may have been idle-destroyed
+    // or never built). Replaces the old `if (!getWindow()) return` no-op so the
+    // radial still summons after an idle reclaim.
+    if (!(await this.ensureReady())) return
     this.overlayWindow.show({ inactive: true })
 
     const cursorDip = screen.getCursorScreenPoint()
@@ -696,8 +786,8 @@ export class OverlayWindowController {
 
   // ─── Region Capture ───────────────────────────────────────────────────
 
-  startRegionCapture(options?: { mode?: 'capture' | 'window-attach' }) {
-    this.showSurface({
+  async startRegionCapture(options?: { mode?: 'capture' | 'window-attach' }) {
+    await this.showSurface({
       setActive: () => {
         this.activeRegionCapture = true
       },
@@ -738,8 +828,11 @@ export class OverlayWindowController {
 
   // ─── Dictation ─────────────────────────────────────────────────────────
 
-  showDictation(screenX: number, screenY: number) {
+  async showDictation(screenX: number, screenY: number) {
     this.activeDictation = true
+    // Perf: self-create on demand so dictation still summons after an idle
+    // reclaim (or before the overlay's first build).
+    if (!(await this.ensureReady())) return false
     this.overlayWindow.show({ inactive: true })
     this.overlayWindow.refreshOverlayOriginFromContentBounds()
     const origin = this.overlayWindow.getOverlayOrigin()
@@ -747,6 +840,7 @@ export class OverlayWindowController {
       x: screenX - origin.x,
       y: screenY - origin.y,
     })
+    return true
   }
 
   hideDictation() {
@@ -757,7 +851,7 @@ export class OverlayWindowController {
 
   // ─── Screen Guide ────────────────────────────────────────────────────
 
-  showScreenGuide(
+  async showScreenGuide(
     annotations: Array<{
       id: string
       label: string
@@ -766,6 +860,9 @@ export class OverlayWindowController {
     }>,
   ) {
     this.activeScreenGuide = true
+    // Perf: self-create on demand so the screen guide still appears after an
+    // idle reclaim (or before the overlay's first build).
+    if (!(await this.ensureReady())) return
     this.overlayWindow.show({ inactive: true })
     const origin = this.overlayWindow.getOverlayOrigin()
     const adjusted = annotations.map((a) => ({
@@ -786,9 +883,12 @@ export class OverlayWindowController {
 
   // ─── Selection Chip ("Ask Stella" pill above text selection) ──────────
 
-  showSelectionChip(payload: SelectionChipPayload) {
+  async showSelectionChip(payload: SelectionChipPayload) {
     this.activeSelectionChip = true
     this.currentSelectionChipRequestId = payload.requestId
+    // Perf: self-create on demand so the selection chip still appears after an
+    // idle reclaim (or before the overlay's first build).
+    if (!(await this.ensureReady())) return
     this.overlayWindow.show({ inactive: true })
     const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.send('overlay:showSelectionChip', {
@@ -866,7 +966,7 @@ export class OverlayWindowController {
     return this.activeMorphTransitionId
   }
 
-  startMorphForward(
+  async startMorphForward(
     transitionId: string,
     screenshotDataUrl: string,
     bounds: { x: number; y: number; width: number; height: number },
@@ -885,6 +985,12 @@ export class OverlayWindowController {
       trackedWindow.on('move', this.handleMorphWindowBoundsChanged)
       trackedWindow.on('resize', this.handleMorphWindowBoundsChanged)
     }
+    // Perf: self-create on demand so a morph still works after an idle reclaim
+    // even on the onboarding path, which (unlike the HMR path) does not call
+    // `ensureReadyForMorph()` first. For an already-warm overlay this resolves
+    // immediately. Morph state is set synchronously above so callers that read
+    // `getActiveMorphTransitionId()` right after still observe this transition.
+    if (!(await this.ensureReady())) return
     this.overlayWindow.show({ inactive: true })
     const origin = this.overlayWindow.getOverlayOrigin()
     this.overlayWindow.send('overlay:morphForward', {
@@ -984,6 +1090,8 @@ export class OverlayWindowController {
       clearTimeout(this.radialHideTimeout)
       this.radialHideTimeout = null
     }
+    // Clear the idle-reclaim timer so it can't fire after teardown.
+    this.cancelIdleDestroy()
     this.overlayWindow.destroy()
   }
 }
