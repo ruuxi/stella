@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
-import { promises as fs, readFileSync } from "node:fs";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { systemPreferences } from "electron";
 import { resolveNativeHelperPath } from "../native-helper-path.js";
-import { pidMatchesHelperBinary } from "./helper-pid-guard.js";
+import { reapPidfileDaemon } from "./helper-pid-guard.js";
 import { hasMacPermission, requestMacPermission } from "../utils/macos-permissions.js";
 
 /**
@@ -67,30 +67,6 @@ export type MeetingStatus = {
 // socket shutdown stays the primary path.
 const meetingPidFile = (stellaHome: string): string =>
   path.join(stellaHome, "meetings", "meeting_capture.pid");
-
-const readPidFile = (filePath: string): number | null => {
-  try {
-    const raw = readFileSync(filePath, "utf8").trim();
-    if (!raw) return null;
-    const pid = Number.parseInt(raw, 10);
-    return Number.isFinite(pid) && pid > 0 ? pid : null;
-  } catch {
-    return null;
-  }
-};
-
-const isProcessAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // Exists but unsignalable → treat as alive so we still attempt SIGTERM.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-};
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class MeetingCaptureController {
   private child: ChildProcess | null = null;
@@ -370,40 +346,11 @@ export class MeetingCaptureController {
 
     // Fallback: if the socket shutdown didn't actually take the process down
     // (e.g. the daemon was orphaned across a restart, so `this.child` is null),
-    // SIGTERM the persisted pid, give it a beat, then SIGKILL — then drop the
-    // pidfile so the next launch never reaps a recycled pid.
-    //
-    // Guard against pid REUSE: a stale pidfile from an unclean prior quit can
-    // point at an unrelated process the OS recycled the pid for. Only signal it
-    // when we can confirm the live process is actually our meeting_capture
-    // helper (command-line/image match); otherwise leave it and drop the file.
-    const pidFile = meetingPidFile(this.stellaHome);
-    const pid = readPidFile(pidFile);
-    const bin = this.resolveBin();
-    if (
-      pid !== null &&
-      isProcessAlive(pid) &&
-      bin !== null &&
-      pidMatchesHelperBinary(pid, bin, ["--root", this.stellaHome])
-    ) {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {
-        // already gone
-      }
-      await sleep(150);
-      if (isProcessAlive(pid)) {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {
-          // already gone
-        }
-      }
-    }
-    try {
-      await fs.rm(pidFile, { force: true });
-    } catch {
-      // ignored — stale pidfile is harmless (next shutdown re-checks liveness)
-    }
+    // reap the persisted pid — guarded against pid reuse and always dropping the
+    // pidfile afterwards. See reapPidfileDaemon.
+    await reapPidfileDaemon(meetingPidFile(this.stellaHome), this.resolveBin(), [
+      "--root",
+      this.stellaHome,
+    ]);
   }
 }
