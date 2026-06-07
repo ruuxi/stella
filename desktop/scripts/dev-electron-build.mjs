@@ -15,12 +15,17 @@ const nodeTarget = `node${process.versions.node.split(".")[0]}`;
 const runtimeStaticAssetRoots = ["runtime/extensions/stella-runtime/agents"];
 const electronRuntimeEntryPoints = [
   "desktop/electron/main.ts",
-  "runtime/worker/entry.ts",
   "runtime/kernel/cli/stella-computer.ts",
   "runtime/kernel/cli/stella-connect.ts",
   "runtime/kernel/cli/stella-media.ts",
   "runtime/kernel/tools/deferred-delete-cli.ts",
 ];
+// The worker builds on its own so we can code-split it: the heavy runner
+// subgraph is lazily imported in server.ts, and splitting lands it in a
+// separate chunk instead of inflating entry.js — so the worker reaches "ready"
+// without parsing it. Kept apart from main/CLIs to limit splitting's blast
+// radius to the worker.
+const workerEntryPoints = ["runtime/worker/entry.ts"];
 const preloadEntryPoints = ["desktop/electron/preload.ts"];
 const storeWebPreloadEntryPoints = ["desktop/electron/store-web-preload.ts"];
 
@@ -52,6 +57,25 @@ const createBuildOptions = () => [
     entryPoints: electronRuntimeEntryPoints,
     external: ["electron"],
     format: "esm",
+    logLevel: "info",
+    outbase: ".",
+    outdir: path.join("desktop", outdir),
+    packages: "external",
+    platform: "node",
+    target: nodeTarget,
+    tsconfig: path.join("desktop", "tsconfig.electron.json"),
+  },
+  {
+    absWorkingDir: repoRootDir,
+    bundle: true,
+    entryPoints: workerEntryPoints,
+    external: ["electron"],
+    format: "esm",
+    // Split the lazily-imported runner subgraph into its own chunk(s). Chunks
+    // sit next to entry.js (under runtime/worker/chunks/) so Bun resolves them
+    // relatively at runtime; entry.js stays at its existing path.
+    splitting: true,
+    chunkNames: "runtime/worker/chunks/[name]-[hash]",
     logLevel: "info",
     outbase: ".",
     outdir: path.join("desktop", outdir),
