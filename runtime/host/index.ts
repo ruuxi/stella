@@ -3109,17 +3109,21 @@ export class StellaRuntimeHost {
 
   private startDevWatcher(workerEntryPath: string) {
     if (!this.options.initializeParams.isDev || this.watcher) return;
-    const distElectronRoot = path.resolve(
-      path.dirname(workerEntryPath),
-      "..",
-      "..",
-    );
+    // Watch only the bundled `runtime/` subtree, not the whole dist-electron
+    // tree (which also holds the 14.6MB main.js and the CLI bundles).
+    // `shouldReloadRuntime` only ever matches "runtime/..." paths, so a single
+    // esbuild rebuild that rewrites main.js no longer wakes this watcher and
+    // cold-respawns the worker. The watch callback's `filename` is relative to
+    // the watched root, so re-prefix it with "runtime/" to keep the matcher's
+    // contract intact.
+    const runtimeBundleRoot = path.resolve(path.dirname(workerEntryPath), "..");
     this.watcher = watch(
-      distElectronRoot,
+      runtimeBundleRoot,
       { recursive: true },
       (_eventType, filename) => {
         if (typeof filename !== "string" || !filename.endsWith(".js")) return;
-        if (!shouldReloadRuntime(filename.replace(/\\/g, "/"))) return;
+        const runtimeRelative = `runtime/${filename.replace(/\\/g, "/")}`;
+        if (!shouldReloadRuntime(runtimeRelative)) return;
         void this.scheduleRuntimeReload();
       },
     );

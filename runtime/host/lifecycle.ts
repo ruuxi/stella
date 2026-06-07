@@ -342,6 +342,18 @@ const spawnDetachedWorker = (
   mkdirSync(paths.logDir, { recursive: true });
   rotateLogIfOversized(paths.logFile);
   const logFd = openSync(paths.logFile, "a");
+  // bun ignores NODE_COMPILE_CACHE, so every cold spawn re-parses the ~2.5MB
+  // kernel entry bundle from scratch. Point bun's runtime transpiler cache at a
+  // dedicated per-root dir so re-spawns (the common Electron-restart churn case)
+  // skip re-transpiling. Best-effort: if the dir can't be created we simply fall
+  // back to the uncached spawn, so behavior is otherwise unchanged.
+  let transpilerCachePath: string | undefined;
+  try {
+    transpilerCachePath = join(paths.rootDir, "bun-transpiler-cache");
+    mkdirSync(transpilerCachePath, { recursive: true });
+  } catch {
+    transpilerCachePath = undefined;
+  }
   let child: ChildProcess;
   try {
     if (options.env?.NODE_ENV === "development") {
@@ -352,6 +364,9 @@ const spawnDetachedWorker = (
       stdio: ["ignore", logFd, logFd],
       env: {
         ...process.env,
+        ...(transpilerCachePath
+          ? { BUN_RUNTIME_TRANSPILER_CACHE_PATH: transpilerCachePath }
+          : {}),
         ...(options.env ?? {}),
         ...(options.hostExecutablePath
           ? { STELLA_HOST_EXECUTABLE_PATH: options.hostExecutablePath }
