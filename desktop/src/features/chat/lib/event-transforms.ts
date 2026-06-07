@@ -562,7 +562,9 @@ const sortFooterTasks = (tasks: TaskItem[]): TaskItem[] =>
     if (aCompleted !== bCompleted) {
       return aCompleted ? 1 : -1
     }
-    return a.startedAtMs - b.startedAtMs
+    // Tie-break on the stable `id` so same-timestamp tasks keep a fixed
+    // order instead of swapping when this re-runs against a re-merged list.
+    return a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id)
   })
 
 export function getFooterTasksFromEvents(
