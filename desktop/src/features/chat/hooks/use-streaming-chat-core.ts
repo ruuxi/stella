@@ -354,7 +354,7 @@ export function useStreamingChatCore({
   // indicator shows while the assistant is reasoning / running a tool, and
   // disappears the moment answer text starts streaming.
   const isStreamingResponseText = streamingAssistants.some(
-    (overlay) => overlay.text.trim().length > 0,
+    (overlay) => /\S/.test(overlay.text),
   )
 
   return {
