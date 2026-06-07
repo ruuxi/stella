@@ -154,6 +154,29 @@ export function ChatPanelTab({
   const [inputText, setInputText] = useState("");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Perf: the auto-context suggestion strip polls native window/AX
+  // enumeration on an interval. Only treat the composer surface as "active"
+  // (and thus pollable) while this window is focused and visible — otherwise
+  // a backgrounded/hidden renderer (full or mini) keeps spawning the macOS
+  // helper + osascript for chips nobody can see. The hook also self-gates on
+  // visibility, but unmounting the poll setup here avoids even arming it.
+  const [surfaceActive, setSurfaceActive] = useState(
+    () =>
+      typeof document === "undefined" ||
+      (!document.hidden && document.hasFocus()),
+  );
+  useEffect(() => {
+    const sync = () => setSurfaceActive(!document.hidden && document.hasFocus());
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
+    window.addEventListener("blur", sync);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("blur", sync);
+    };
+  }, []);
   // The mini window mounts ChatPanelTab without a ChatRuntimeProvider, so
   // read the runtime optionally. Area annotation is a full-window feature;
   // when there's no provider the "Select area" action is simply omitted.
@@ -451,6 +474,7 @@ export function ChatPanelTab({
                   />
                 ) : null}
                 <ComposerSuggestionContextRow
+                  active={surfaceActive}
                   chatContext={chatContext}
                   setChatContext={setChatContext}
                   tasks={runningTasks}

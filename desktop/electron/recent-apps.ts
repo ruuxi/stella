@@ -8,6 +8,13 @@ import type { RecentApp } from '../src/shared/contracts/home.js'
 // renderer-UI concerns: MRU sort, AX title fallback, regular-apps-only
 // scope, per-element AX timeouts, diagnostics in warnings).
 const HELPER_NAME = 'home_apps'
+// Perf: the dominant CPU win is the renderer-side focus/visibility gate, which
+// stops the ~5s poll entirely while Stella is hidden/blurred. This cache only
+// dedupes redundant spawns from concurrent callers (e.g. multiple surfaces) or
+// timer jitter. Keep the TTL BELOW the ~5s poll interval (POLL_INTERVAL_MS) so
+// each foreground poll still refetches and a real foreground-app change shows
+// up on the very next poll — a TTL >= the interval would make alternate polls
+// serve stale data and double the visible refresh latency.
 const RECENT_APPS_CACHE_MS = 2_500
 const WINDOWS_RECENT_APPS_CACHE_MS = 10_000
 const WINDOWS_NATIVE_HELPER_TIMEOUT_MS = 1_000

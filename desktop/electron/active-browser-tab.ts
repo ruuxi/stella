@@ -87,6 +87,12 @@ const KNOWN_BROWSERS: BrowserSpec[] = [
 const BUNDLE_ID_TO_BROWSER = new Map(
   KNOWN_BROWSERS.map((spec) => [spec.bundleId, spec] as const),
 )
+// Perf: the dominant CPU win is the renderer-side focus/visibility gate, which
+// stops the ~5s poll entirely while Stella is hidden/blurred. This cache only
+// dedupes redundant osascript spawns from concurrent callers or timer jitter.
+// Keep the TTL BELOW the ~5s poll interval so each foreground poll refetches and
+// a real tab/URL change shows up on the very next poll — a TTL >= the interval
+// would make alternate polls serve stale data and double the refresh latency.
 const ACTIVE_TAB_CACHE_MS = 1_500
 const activeTabCache = new Map<
   string,
