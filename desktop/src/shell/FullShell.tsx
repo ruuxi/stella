@@ -69,6 +69,21 @@ const OnboardingCanvas = lazy(() =>
 
 const CREATION_PHASE_INDEX = SPLIT_STEP_ORDER.indexOf("creation");
 
+// Mirror of `readLocalOnboardingCompleted` in
+// `@/global/onboarding/use-onboarding-state` (the same read backing the
+// onboarding `getSnapshot`). Kept in sync by key + comparison so the
+// synchronous returning-user fast path below can't diverge from the
+// onboarding hydration snapshot. The key constant
+// (`stella-onboarding-complete`) is intentionally duplicated here because
+// the helper is not exported.
+const readLocalOnboardingCompleted = () => {
+  try {
+    return localStorage.getItem("stella-onboarding-complete") === "true";
+  } catch {
+    return false;
+  }
+};
+
 const dismissLaunchSplash = () => {
   const launch = document.getElementById("stella-launch");
   if (!launch) return;
@@ -257,7 +272,16 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme();
   const { completed: onboardingDone, hydrated: onboardingHydrated } =
     useOnboardingState();
-  const [hasEnteredApp, setHasEnteredApp] = useState(false);
+  // Returning users resolve `onboardingDone` synchronously from localStorage,
+  // so seed `hasEnteredApp` synchronously too — otherwise the chat-surface /
+  // RouterProvider mount is deferred to a separate macrotask by the
+  // setTimeout(0) effect below. The splash stays up until `appReady`, so there
+  // is no flash. The onboarding -> app transition still defers via the
+  // `onEnteredApp` path. (Mini windows are excluded; they gate on
+  // `isMiniWindow` in `appReady` directly.)
+  const [hasEnteredApp, setHasEnteredApp] = useState(
+    () => !isMiniWindow && readLocalOnboardingCompleted(),
+  );
   const { runtimeStatus, retryRuntimeBootstrap } = useBootstrapState();
 
   const onboardingResolved = onboardingHydrated || onboardingDone;

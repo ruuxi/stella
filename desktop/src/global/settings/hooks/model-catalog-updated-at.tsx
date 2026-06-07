@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/api";
+import { useAuthBootstrapState } from "@/global/auth/DesktopConvexAuthProvider";
 
 /**
  * Single source of truth for the model-catalog updated-at marker.
@@ -25,10 +26,15 @@ export function ModelCatalogUpdatedAtProvider({
 }: {
   children: ReactNode;
 }) {
+  // Gate the catalog marker subscription until runtime auth resolves so it does
+  // not open against an unauthenticated client on first paint. `null` until it
+  // loads, which is the existing pre-load contract for this provider.
+  const { runtimeAuthReady } = useAuthBootstrapState();
   const updatedAt =
-    (useQuery(api.stella_models.getModelCatalogUpdatedAt, {}) as
-      | number
-      | undefined) ?? null;
+    (useQuery(
+      api.stella_models.getModelCatalogUpdatedAt,
+      runtimeAuthReady ? {} : "skip",
+    ) as number | undefined) ?? null;
 
   const lastSentRef = useRef<number | null | undefined>(undefined);
   useEffect(() => {

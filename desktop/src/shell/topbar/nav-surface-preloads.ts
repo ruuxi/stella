@@ -91,17 +91,49 @@ export const prewarmStoreWebView = () => {
   });
 };
 
+/**
+ * Number of preload `import()`s kicked off per idle tick. Firing all ~10 at
+ * once contends for dev-server transform throughput right after TTI; spreading
+ * them across successive idle callbacks keeps each tick cheap while still
+ * warming the full set quickly.
+ */
+const PRELOAD_BATCH_SIZE = 3;
+
+const scheduleIdleTick = (callback: () => void): void => {
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(() => callback());
+    return;
+  }
+  window.setTimeout(callback, 0);
+};
+
 export const preloadAllNavSurfaces = () => {
-  preloadAuthDialog();
-  preloadBillingScreen();
-  preloadConnectDialog();
-  preloadModelsPicker();
-  preloadSettingsScreen();
-  preloadSocialApp();
-  preloadSocialChatPane();
-  preloadSocialFriendsDialog();
-  preloadSocialNewChatDialog();
-  preloadStoreApp();
+  // Preserve the full set of surfaces — drained in small batches below.
+  const loaders: Array<() => void> = [
+    preloadAuthDialog,
+    preloadBillingScreen,
+    preloadConnectDialog,
+    preloadModelsPicker,
+    preloadSettingsScreen,
+    preloadSocialApp,
+    preloadSocialChatPane,
+    preloadSocialFriendsDialog,
+    preloadSocialNewChatDialog,
+    preloadStoreApp,
+  ];
+
+  let index = 0;
+  const drainBatch = () => {
+    const end = Math.min(index + PRELOAD_BATCH_SIZE, loaders.length);
+    for (; index < end; index += 1) {
+      loaders[index]();
+    }
+    if (index < loaders.length) {
+      scheduleIdleTick(drainBatch);
+    }
+  };
+
+  scheduleIdleTick(drainBatch);
 };
 
 export const preloadNavSurfaceRoute = (appId: string) => {

@@ -79,6 +79,24 @@ function getSystemColorMode(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+// Module-level single-entry memo for the OKLCH gradient math. The inputs only
+// change when the palette or light/dark mode changes, so on mount (and on
+// unrelated re-renders that re-run the apply effect) we reuse the last result
+// instead of recomputing. Cached by a structural signature of the exact inputs
+// passed to `generateGradientTokens`.
+type GradientPalette = Parameters<typeof generateGradientTokens>[0];
+let gradientTokensCacheSignature: string | null = null;
+let gradientTokensCacheValue: ReturnType<typeof generateGradientTokens> | null =
+  null;
+function getGradientTokens(palette: GradientPalette, isDark: boolean) {
+  const signature = `${isDark ? "d" : "l"}|${palette.primary}|${palette.success}|${palette.warning}|${palette.info}|${palette.interactive}`;
+  if (signature !== gradientTokensCacheSignature || !gradientTokensCacheValue) {
+    gradientTokensCacheSignature = signature;
+    gradientTokensCacheValue = generateGradientTokens(palette, isDark);
+  }
+  return gradientTokensCacheValue;
+}
+
 function applyThemeToDocument(
   colors: ThemeColors,
   isDark: boolean,
@@ -128,7 +146,7 @@ function applyThemeToDocument(
   root.style.setProperty("--spinner-color-3", colors.warning);
   root.style.setProperty("--spinner-color-4", colors.info);
 
-  const gradientTokens = generateGradientTokens(
+  const gradientTokens = getGradientTokens(
     {
       primary: colors.primary,
       success: colors.success,
