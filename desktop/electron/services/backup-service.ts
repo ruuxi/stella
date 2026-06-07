@@ -27,6 +27,14 @@ import type {
 const execFileAsync = promisify(execFile);
 
 const BACKUP_INTERVAL_MS = 60 * 60 * 1000;
+// Perf: after several consecutive no-op (unchanged) runs the hourly cadence is
+// pure waste — each tick still walks the home/workspace trees and re-hashes
+// files only to discover nothing changed. Once we cross IDLE_NOOP_BACKOFF_RUNS
+// in a row we re-arm the interval at the slower BACKUP_IDLE_INTERVAL_MS; any
+// run that actually produces a snapshot resets the streak and the interval back
+// to the normal cadence, so responsiveness to real changes is preserved.
+const BACKUP_IDLE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const IDLE_NOOP_BACKOFF_RUNS = 3;
 const BUSY_RETRY_DELAY_MS = 60 * 1000;
 const IDLE_QUIET_PERIOD_MS = 15 * 1000;
 // First post-launch backup is scheduled well past first paint + worker spawn.
@@ -128,6 +136,20 @@ type BackupKeyMaterial = {
   key: Buffer;
   fingerprint: string;
   hostname: string;
+};
+
+// Perf: caches the manifest entry produced by the last successful
+// `git bundle create --all` together with the repo HEAD it was built from.
+// When HEAD is unchanged we reuse the cached entry instead of re-bundling the
+// whole history (and re-AES-encrypting the bundle), which is the heaviest part
+// of an idle-hour backup. Stored as a side file (not in BackupStatusSnapshot,
+// which is a shared contract) so it survives restarts.
+type BundleCache = {
+  // Fingerprint of ALL refs the bundle packs (heads, tags, remotes) + HEAD —
+  // not just HEAD, because `git bundle --all` includes every ref, so a new tag
+  // or branch with HEAD unchanged must still invalidate the cache.
+  refsFingerprint: string;
+  entry: BackupManifestEntry;
 };
 
 type BackupRunResult =
@@ -410,6 +432,11 @@ export class BackupService {
   private runInFlight = false;
   private runRequested = false;
   private lastBusyAt: number | null = null;
+  // Perf: counts consecutive no-op (unchanged) scheduled runs so the interval
+  // can back off to BACKUP_IDLE_INTERVAL_MS while nothing is changing. Reset to
+  // 0 whenever a run actually produces a snapshot.
+  private consecutiveNoopRuns = 0;
+  private intervalCadenceMs = BACKUP_INTERVAL_MS;
   private cancelInterval: (() => void) | null = null;
   private cancelPendingRun: (() => void) | null = null;
   private cancelBusyRetry: (() => void) | null = null;
@@ -736,10 +763,50 @@ export class BackupService {
       return;
     }
 
+    // Perf: a fresh enable starts at the normal cadence with a clean no-op
+    // streak; the back-off only engages after repeated unchanged runs.
+    this.consecutiveNoopRuns = 0;
+    this.intervalCadenceMs = BACKUP_INTERVAL_MS;
+    this.armInterval();
+    this.scheduleRun(INITIAL_RUN_DELAY_MS, "startup");
+  }
+
+  // Perf: (re)arms the recurring backup interval at the current cadence. Used to
+  // switch between the normal and idle cadences without altering run semantics.
+  private armInterval() {
+    if (!this.started || !this.enabled) {
+      return;
+    }
+    this.cancelInterval?.();
     this.cancelInterval = this.deps.processRuntime.setManagedInterval(() => {
       this.requestRun("scheduled");
-    }, BACKUP_INTERVAL_MS);
-    this.scheduleRun(INITIAL_RUN_DELAY_MS, "startup");
+    }, this.intervalCadenceMs);
+  }
+
+  // Perf: track consecutive no-op runs and slow/restore the recurring cadence.
+  // A changed/uploaded backup immediately restores the normal cadence so real
+  // edits are still captured within the hour; sustained idleness backs off to
+  // the slower cadence to stop re-walking trees every hour for nothing.
+  private updateIdleCadence(wasNoop: boolean) {
+    if (!this.started || !this.enabled) {
+      return;
+    }
+    if (!wasNoop) {
+      this.consecutiveNoopRuns = 0;
+      if (this.intervalCadenceMs !== BACKUP_INTERVAL_MS) {
+        this.intervalCadenceMs = BACKUP_INTERVAL_MS;
+        this.armInterval();
+      }
+      return;
+    }
+    this.consecutiveNoopRuns += 1;
+    if (
+      this.consecutiveNoopRuns >= IDLE_NOOP_BACKOFF_RUNS &&
+      this.intervalCadenceMs !== BACKUP_IDLE_INTERVAL_MS
+    ) {
+      this.intervalCadenceMs = BACKUP_IDLE_INTERVAL_MS;
+      this.armInterval();
+    }
   }
 
   private scheduleRun(delayMs: number, reason: string) {
@@ -806,7 +873,9 @@ export class BackupService {
     this.runInFlight = true;
     this.runRequested = false;
     try {
-      await this.performBackup(stellaHomePath, reason);
+      const result = await this.performBackup(stellaHomePath, reason);
+      // Perf: adjust the recurring cadence based on whether anything changed.
+      this.updateIdleCadence(result.status === "unchanged");
     } catch (error) {
       await this.writeStatus(stellaHomePath, (current) => ({
         ...current,
@@ -1036,6 +1105,37 @@ export class BackupService {
     tempRoot: string;
     encryptionKey: Buffer;
   }): Promise<BackupManifestEntry | null> {
+    // Perf: `git bundle create --all` walks the entire history and the result
+    // is then sha256+AES-encrypted — by far the heaviest step of a backup. The
+    // bundle only changes when a packed ref moves, so fingerprint ALL refs (not
+    // just HEAD — `--all` includes tags/branches/remotes) and reuse the
+    // previously captured entry when the fingerprint is unchanged AND its
+    // encrypted object is still present locally. Correctness is preserved: any
+    // ref change, a missing/pruned object (e.g. after a key rotation that clears
+    // the cache), or a fingerprint failure all fall through to a full re-bundle,
+    // and the first-ever backup has no cache so it always bundles.
+    const currentFingerprint = await this.resolveRepoRefsFingerprint();
+    if (currentFingerprint) {
+      const cache = await readJsonFile<BundleCache>(
+        this.getBundleCachePath(args.stellaHomePath),
+      );
+      if (
+        cache?.refsFingerprint === currentFingerprint &&
+        cache.entry?.objectId &&
+        (await fileExists(
+          this.getObjectMetadataPath(args.stellaHomePath, cache.entry.objectId),
+        )) &&
+        (await fileExists(
+          this.getObjectCiphertextPath(
+            args.stellaHomePath,
+            cache.entry.objectId,
+          ),
+        ))
+      ) {
+        return cache.entry;
+      }
+    }
+
     const bundlePath = path.join(args.tempRoot, "repo.bundle");
     const { env, gitLocation } = setupEnvironment({});
     await execFileAsync(
@@ -1050,13 +1150,63 @@ export class BackupService {
     if (!(await fileExists(bundlePath))) {
       return null;
     }
-    return await this.captureFile({
+    const entry = await this.captureFile({
       absolutePath: bundlePath,
       manifestPath: "repo.bundle",
       scope: "repo-git-bundle",
       stellaHomePath: args.stellaHomePath,
       encryptionKey: args.encryptionKey,
     });
+    // Perf: record the all-refs fingerprint this bundle was built from so the
+    // next idle run can skip re-bundling. Best-effort — a write failure just
+    // forces a re-bundle.
+    if (currentFingerprint) {
+      await writePrivateFile(
+        this.getBundleCachePath(args.stellaHomePath),
+        JSON.stringify(
+          { refsFingerprint: currentFingerprint, entry } satisfies BundleCache,
+          null,
+          2,
+        ),
+      ).catch(() => undefined);
+    }
+    return entry;
+  }
+
+  // Perf: cheap fingerprint of every named ref `git bundle --all` would pack,
+  // used to decide whether the previous bundle can be reused. Include both ref
+  // names and object ids so branch/tag renames invalidate the cached bundle.
+  // Fold in HEAD too (covers a detached HEAD not pointed at by any ref). Returns
+  // null when nothing can be resolved so callers fall back to a full re-bundle.
+  private async resolveRepoRefsFingerprint(): Promise<string | null> {
+    try {
+      const refsOutput = (
+        await runGit(this.deps.stellaRoot, [
+          "for-each-ref",
+          "--format=%(refname)%00%(objectname)",
+        ])
+      )
+        .toString("utf8")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .sort();
+      let head = "";
+      try {
+        head = (await runGit(this.deps.stellaRoot, ["rev-parse", "HEAD"]))
+          .toString("utf8")
+          .trim();
+      } catch {
+        // Detached/unborn HEAD — refs alone still fingerprint the bundle.
+      }
+      if (refsOutput.length === 0 && !head) {
+        return null;
+      }
+      const material = `${refsOutput.join("\n")}\nHEAD:${head}`;
+      return crypto.createHash("sha256").update(material).digest("hex");
+    } catch {
+      return null;
+    }
   }
 
   private async collectSqliteEntry(args: {
@@ -1733,6 +1883,12 @@ export class BackupService {
 
   private getBackupConfigPath(stellaHomePath: string) {
     return path.join(this.getBackupsRoot(stellaHomePath), "config.json");
+  }
+
+  // Perf: side file backing the git-bundle refs-fingerprint cache (see
+  // BundleCache).
+  private getBundleCachePath(stellaHomePath: string) {
+    return path.join(this.getBackupsRoot(stellaHomePath), "bundle-cache.json");
   }
 
   private getStatusPath(stellaHomePath: string) {
