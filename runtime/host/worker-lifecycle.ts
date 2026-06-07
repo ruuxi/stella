@@ -1,11 +1,5 @@
-import {
-  execFile,
-  spawn,
-  type ChildProcessWithoutNullStreams,
-} from "node:child_process";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { promisify } from "node:util";
-import { attachJsonRpcPeerToStreams } from "../protocol/jsonl.js";
 import {
   createRuntimeUnavailableError,
   type JsonRpcPeer,
@@ -41,57 +35,6 @@ type InFlightDrainWaiter = {
   promise: Promise<void>;
 };
 
-const execFileAsync = promisify(execFile);
-
-const findWorkerProcessIds = async (
-  workerEntryPath: string,
-): Promise<number[]> => {
-  if (process.platform === "win32") {
-    return [];
-  }
-
-  try {
-    const { stdout } = await execFileAsync("pgrep", ["-f", workerEntryPath], {
-      windowsHide: true,
-    });
-    return stdout
-      .split(/\s+/)
-      .map((value) => Number(value))
-      .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
-  } catch {
-    return [];
-  }
-};
-
-const stopProcessId = async (pid: number) => {
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    return;
-  }
-
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 1_500) {
-    try {
-      process.kill(pid, 0);
-      await delay(100);
-    } catch {
-      return;
-    }
-  }
-
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch {
-    // Best-effort stale worker cleanup.
-  }
-};
-
-const stopStaleWorkerProcesses = async (workerEntryPath: string) => {
-  const pids = await findWorkerProcessIds(workerEntryPath);
-  await Promise.allSettled(pids.map(stopProcessId));
-};
-
 export const waitForWorkerProcessExit = async (
   child: ChildProcessWithoutNullStreams,
   timeoutMs = 1_500,
@@ -118,28 +61,6 @@ export const waitForWorkerProcessExit = async (
       finish();
     }, timeoutMs);
     timeout.unref?.();
-  });
-};
-
-/**
- * Wait for the connection's `exit` event without sending any signal.
- * Used by the UDS path's "soft restart" branch where the worker pid was
- * already SIGTERM'd by an external `killWorker()` callback.
- */
-export const waitForWorkerExitEvent = async (
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs = 5_000,
-) => {
-  await new Promise<void>((resolve) => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
-    child.once("exit", finish);
-    const timer = setTimeout(finish, timeoutMs);
-    timer.unref?.();
   });
 };
 
@@ -175,49 +96,18 @@ export const disconnectWorker = async (
   });
 };
 
-const createWorkerConnection = (workerEntryPath: string) => {
-  const child = spawn("bun", ["run", workerEntryPath], {
-    env: { ...process.env },
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
-  child.stderr.on("data", (chunk) => {
-    process.stderr.write(chunk);
-  });
-
-  const { peer } = attachJsonRpcPeerToStreams({
-    input: child.stdout,
-    output: child.stdin,
-    onError: (error) => {
-      console.error("[runtime-host] worker RPC error:", error);
-    },
-  });
-
-  return {
-    process: child,
-    peer,
-    pid: child.pid ?? 0,
-  } satisfies WorkerConnection;
-};
-
 export type RuntimeWorkerLifecycleControllerOptions = {
   workerEntryPath: string;
   isHostStarted: () => boolean;
   /**
-   * Sync connection factory. Used by tests that mock the connection
-   * directly. Production uses `createConnectionAsync` (the detached-UDS
-   * spawn path).
-   */
-  createConnection?: (workerEntryPath: string) => WorkerConnection;
-  /**
-   * Async connection factory. Production path: spawns or attaches to the
+   * Connection factory. Production path: spawns or attaches to the
    * detached worker via `runtime/host/lifecycle.ts`, then wraps the
    * resulting Unix-domain-socket in a JsonRpcPeer. Returns a
    * `WorkerConnection` whose `process.kill()` only kills the worker if
    * `killWorkerOnStop?.(reason)` is true (so an Electron restart leaves
-   * the worker running for the next host).
+   * the worker running for the next host). Tests inject a mock here.
    */
-  createConnectionAsync?: (
+  createConnectionAsync: (
     workerEntryPath: string,
   ) => Promise<WorkerConnection>;
   initializeConnection: (connection: WorkerConnection) => Promise<void>;
@@ -330,17 +220,11 @@ export class RuntimeWorkerLifecycleController {
 
     this.setState("starting");
     this.startupPromise = (async () => {
-      // The detached-UDS path manages its own lifecycle (single-instance
-      // via flock, idempotent attach), so we only sweep stale stdio
-      // children when the host is still using the legacy spawn factory.
-      if (!this.options.createConnectionAsync) {
-        await stopStaleWorkerProcesses(this.options.workerEntryPath);
-      }
-      const connection = this.options.createConnectionAsync
-        ? await this.options.createConnectionAsync(this.options.workerEntryPath)
-        : (this.options.createConnection ?? createWorkerConnection)(
-            this.options.workerEntryPath,
-          );
+      // The detached-UDS factory manages its own lifecycle (single-instance
+      // via flock, idempotent attach), so there is no stale-child sweep here.
+      const connection = await this.options.createConnectionAsync(
+        this.options.workerEntryPath,
+      );
       this.connection = connection;
       this.stoppingPid = null;
 

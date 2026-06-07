@@ -338,6 +338,14 @@ export class StellaRuntimeHost {
   private reloadTimer: NodeJS.Timeout | null = null;
   private scheduledRuntimeReload = false;
   private deferredRuntimeReload = false;
+  // Coalescing for the dev-watcher / self-mod reload path only: while a
+  // scheduled reload's restart is queued or running, further reload requests
+  // collapse into a single trailing re-run instead of stacking one full restart
+  // per file event. This does NOT guard direct restartWorker() callers (e.g.
+  // the runtime.restartWorker IPC action) — those run their own full restart;
+  // the controller's stop/start promises keep concurrent calls safe.
+  private restartInProgress = false;
+  private restartRequestedDuringRestart = false;
   private readonly pausedRuntimeReloadRuns = new Set<string>();
   private reloadQueue = Promise.resolve();
   private configCache: RuntimeConfigureParams = {};
@@ -576,10 +584,27 @@ export class StellaRuntimeHost {
       if (!shouldReload) {
         return;
       }
+      // If a restart is already queued or running, don't stack another — mark
+      // a single trailing re-run that fires (debounced) once it completes.
+      if (this.restartInProgress) {
+        this.restartRequestedDuringRestart = true;
+        return;
+      }
+      this.restartInProgress = true;
       this.reloadQueue = this.reloadQueue
         .catch(() => undefined)
         .then(async () => {
-          await this.restartWorker();
+          try {
+            await this.restartWorker();
+          } finally {
+            this.restartInProgress = false;
+            if (this.restartRequestedDuringRestart) {
+              this.restartRequestedDuringRestart = false;
+              setTimeout(() => {
+                void this.scheduleRuntimeReload();
+              }, 0);
+            }
+          }
         });
     }, 150);
   }
@@ -1664,6 +1689,8 @@ export class StellaRuntimeHost {
     this.pausedRuntimeReloadRuns.clear();
     this.deferredRuntimeReload = false;
     this.scheduledRuntimeReload = false;
+    this.restartInProgress = false;
+    this.restartRequestedDuringRestart = false;
     if (this.reloadTimer) clearTimeout(this.reloadTimer);
     this.reloadTimer = null;
     this.watcher?.close();
@@ -1696,9 +1723,21 @@ export class StellaRuntimeHost {
   }
 
   async restartWorker() {
+    const startedAt = Date.now();
     this.events.emit("runtime-reloading", { reason: "worker-restart" });
     await this.workerController.stop("restart");
+    const stoppedAt = Date.now();
     await this.workerController.ensureStarted();
+    const readyAt = Date.now();
+    // Restart-latency breakdown: stopMs (drain + kill grace) vs startMs (spawn
+    // + cold parse + ready probe + init handshake). Pairs with the worker-side
+    // `worker.kill-latency` and `startup.post-ready-complete` lines.
+    getFileLogger()?.process("host.worker-restart-latency", {
+      stopMs: stoppedAt - startedAt,
+      startMs: readyAt - stoppedAt,
+      totalMs: readyAt - startedAt,
+      generation: this.workerGeneration,
+    });
     return { ok: true };
   }
 

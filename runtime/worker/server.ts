@@ -1679,21 +1679,27 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             `[connector-bridge] Stopped ${connectorSweep.stopped} stale connector helper(s).`,
           );
         }
-        runEventLogStartupBackfill();
-        await selfModHmrController.forceResumeAll().catch((error) => {
-          console.warn(
-            "[self-mod-hmr] Failed to clear stale Vite state during worker initialization:",
-            (error as Error).message,
-          );
-          return false;
-        });
-        await startCliBridge();
-        await runner.waitUntilInitialized().catch((error) => {
-          console.warn(
-            "[runtime-worker] Runner initialization finished with an error:",
-            (error as Error).message,
-          );
-        });
+        // The connector sweep above must finish before anything can spawn new
+        // connector helpers, so it stays a serial pre-step. The remaining
+        // startup tasks are independent of one another — run them concurrently
+        // instead of serially to shorten worker warm-up.
+        await Promise.allSettled([
+          (async () => runEventLogStartupBackfill())(),
+          selfModHmrController.forceResumeAll().catch((error) => {
+            console.warn(
+              "[self-mod-hmr] Failed to clear stale Vite state during worker initialization:",
+              (error as Error).message,
+            );
+            return false;
+          }),
+          startCliBridge(),
+          runner.waitUntilInitialized().catch((error) => {
+            console.warn(
+              "[runtime-worker] Runner initialization finished with an error:",
+              (error as Error).message,
+            );
+          }),
+        ]);
         getFileLogger()?.process("startup.post-ready-complete", {
           ms: Date.now() - startupStartedAt,
         });
