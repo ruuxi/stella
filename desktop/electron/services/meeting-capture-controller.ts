@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 import { systemPreferences } from "electron";
 import { resolveNativeHelperPath } from "../native-helper-path.js";
+import { pidMatchesHelperBinary } from "./helper-pid-guard.js";
 import { hasMacPermission, requestMacPermission } from "../utils/macos-permissions.js";
 
 /**
@@ -57,6 +58,39 @@ export type MeetingStatus = {
   screenPermission: boolean;
   micPermission: boolean;
 };
+
+// The daemon is spawned detached + unref'd and the in-memory child handle is
+// dropped on spawn error, so on quit we can't rely on `this.child` alone to
+// reap it (orphan risk). Persist the pid to a file at spawn time and, if the
+// socket `shutdown` didn't confirm exit, SIGTERM/SIGKILL the pidfile pid — the
+// same belt-and-suspenders teardown as desktop-automation-cleanup.ts. The
+// socket shutdown stays the primary path.
+const meetingPidFile = (stellaHome: string): string =>
+  path.join(stellaHome, "meetings", "meeting_capture.pid");
+
+const readPidFile = (filePath: string): number | null => {
+  try {
+    const raw = readFileSync(filePath, "utf8").trim();
+    if (!raw) return null;
+    const pid = Number.parseInt(raw, 10);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+};
+
+const isProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // Exists but unsignalable → treat as alive so we still attempt SIGTERM.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class MeetingCaptureController {
   private child: ChildProcess | null = null;
@@ -137,6 +171,16 @@ export class MeetingCaptureController {
       stdio: "ignore",
     });
     this.child = child;
+    // Persist the pid so quit can reap the daemon even after the in-memory
+    // handle is dropped (spawn error / process restart). Best-effort: a missing
+    // pidfile just falls back to the socket shutdown.
+    if (typeof child.pid === "number") {
+      try {
+        await fs.writeFile(meetingPidFile(this.stellaHome), String(child.pid));
+      } catch {
+        // ignored — socket shutdown remains the primary teardown path
+      }
+    }
     let spawnErrorMessage: string | null = null;
     child.on("error", (error) => {
       spawnErrorMessage = error.message;
@@ -312,6 +356,8 @@ export class MeetingCaptureController {
 
   /** Finalize any active recording and stop the daemon. Used on app quit. */
   async shutdown(): Promise<void> {
+    // Primary path: ask the daemon to finalize + shut itself down over the
+    // socket.
     await this.runCommand(["shutdown"]);
     if (this.child && !this.child.killed) {
       try {
@@ -321,5 +367,43 @@ export class MeetingCaptureController {
       }
     }
     this.child = null;
+
+    // Fallback: if the socket shutdown didn't actually take the process down
+    // (e.g. the daemon was orphaned across a restart, so `this.child` is null),
+    // SIGTERM the persisted pid, give it a beat, then SIGKILL — then drop the
+    // pidfile so the next launch never reaps a recycled pid.
+    //
+    // Guard against pid REUSE: a stale pidfile from an unclean prior quit can
+    // point at an unrelated process the OS recycled the pid for. Only signal it
+    // when we can confirm the live process is actually our meeting_capture
+    // helper (command-line/image match); otherwise leave it and drop the file.
+    const pidFile = meetingPidFile(this.stellaHome);
+    const pid = readPidFile(pidFile);
+    const bin = this.resolveBin();
+    if (
+      pid !== null &&
+      isProcessAlive(pid) &&
+      bin !== null &&
+      pidMatchesHelperBinary(pid, bin, ["--root", this.stellaHome])
+    ) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+      await sleep(150);
+      if (isProcessAlive(pid)) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    }
+    try {
+      await fs.rm(pidFile, { force: true });
+    } catch {
+      // ignored — stale pidfile is harmless (next shutdown re-checks liveness)
+    }
   }
 }
