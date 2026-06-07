@@ -450,6 +450,7 @@ export const createAgentOrchestration = (
           site,
           deviceId: context.deviceId,
           modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
+          stellaHome: context.stellaHome,
         }));
       const runnerCallbacks =
         (rootRunId ? context.state.runCallbacksByRunId.get(rootRunId) : null) ??
@@ -887,7 +888,8 @@ export const createAgentOrchestration = (
               });
               oneShotContext.maxAgentDepth = agentContext.maxAgentDepth;
               oneShotContext.agentDepth = agentContext.agentDepth;
-              const oneShotResolvedLlm = oneShotContext.resolvedLlm ?? resolvedLlm;
+              const oneShotResolvedLlm =
+                oneShotContext.resolvedLlm ?? resolvedLlm;
               const result = await runSubagentTask({
                 conversationId,
                 userMessageId: oneShotRunId,

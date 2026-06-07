@@ -1,7 +1,13 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveLlmRoute } from "../../../../runtime/kernel/model-routing.js";
-import { withStellaModelCatalogMetadata } from "../../../../runtime/kernel/stella-model-catalog.js";
+import {
+  invalidateStellaModelCatalogCache,
+  withStellaModelCatalogMetadata,
+} from "../../../../runtime/kernel/stella-model-catalog.js";
 import { getFileEditToolFamily } from "../../../../runtime/kernel/tools/file-edit-policy.js";
 
 const originalFetch = globalThis.fetch;
@@ -14,6 +20,7 @@ const site = (token: string) => ({
 describe("Stella model catalog metadata", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    invalidateStellaModelCatalogCache();
     vi.restoreAllMocks();
   });
 
@@ -206,5 +213,59 @@ describe("Stella model catalog metadata", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(first.toolPolicyModel?.id).toBe("anthropic/claude-opus-4.6");
     expect(second.toolPolicyModel?.id).toBe("openai/gpt-5.5");
+  });
+
+  it("loads a matching catalog from disk after the in-memory cache is gone", async () => {
+    const stellaHome = await mkdtemp(
+      path.join(os.tmpdir(), "stella-model-catalog-"),
+    );
+    try {
+      const fetchMock = vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            data: [],
+            defaults: [
+              {
+                agentType: "general",
+                model: "stella/standard",
+                resolvedModel: "openai/gpt-5.5",
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      });
+      globalThis.fetch = fetchMock as typeof fetch;
+      const route = resolveLlmRoute({
+        stellaRoot: "/tmp/stella",
+        modelName: undefined,
+        agentType: "general",
+        site: site("token-disk"),
+      });
+
+      const first = await withStellaModelCatalogMetadata({
+        route,
+        agentType: "general",
+        site: site("token-disk"),
+        deviceId: "device-d",
+        modelCatalogUpdatedAt: 3,
+        stellaHome,
+      });
+      invalidateStellaModelCatalogCache();
+      const second = await withStellaModelCatalogMetadata({
+        route,
+        agentType: "general",
+        site: site("token-disk"),
+        deviceId: "device-d",
+        modelCatalogUpdatedAt: 3,
+        stellaHome,
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(first.toolPolicyModel?.id).toBe("openai/gpt-5.5");
+      expect(second.toolPolicyModel?.id).toBe("openai/gpt-5.5");
+    } finally {
+      await rm(stellaHome, { recursive: true, force: true });
+    }
   });
 });

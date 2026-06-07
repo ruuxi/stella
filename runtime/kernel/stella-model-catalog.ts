@@ -1,11 +1,14 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import type { Api, Model } from "../ai/types.js";
 import {
   STELLA_DEFAULT_MODEL,
   STELLA_MODELS_PATH,
   normalizeStellaSiteUrl,
 } from "../contracts/stella-api.js";
+import { writePrivateFile } from "./shared/private-fs.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 import {
   STELLA_PROVIDER,
@@ -49,7 +52,92 @@ type CatalogCacheEntry = StellaModelCatalog;
 type ModelIdentity = Pick<Model<Api>, "api" | "provider" | "id" | "name">;
 
 const catalogCache = new Map<string, CatalogCacheEntry>();
-const inFlightCatalogRequests = new Map<string, Promise<StellaModelCatalog | null>>();
+const inFlightCatalogRequests = new Map<
+  string,
+  Promise<StellaModelCatalog | null>
+>();
+
+const diskCachePathForKey = (stellaHome: string, cacheKey: string): string =>
+  path.join(
+    stellaHome,
+    "cache",
+    "model-catalog",
+    `${createHash("sha256").update(cacheKey).digest("hex")}.json`,
+  );
+
+const cloneCatalog = (catalog: StellaModelCatalog): StellaModelCatalog => ({
+  models: catalog.models,
+  defaults: catalog.defaults,
+});
+
+const isCatalogModel = (value: unknown): value is CatalogModel => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<CatalogModel>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.provider === "string" &&
+    (candidate.upstreamModel === undefined ||
+      typeof candidate.upstreamModel === "string")
+  );
+};
+
+const isCatalogDefault = (value: unknown): value is CatalogDefaultModel => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<CatalogDefaultModel>;
+  return (
+    typeof candidate.agentType === "string" &&
+    typeof candidate.model === "string" &&
+    typeof candidate.resolvedModel === "string"
+  );
+};
+
+const parsePersistedCatalog = (
+  value: unknown,
+  cacheKey: string,
+): StellaModelCatalog | null => {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as {
+    cacheKey?: unknown;
+    catalog?: { models?: unknown; defaults?: unknown };
+  };
+  if (candidate.cacheKey !== cacheKey) return null;
+  const models = candidate.catalog?.models;
+  const defaults = candidate.catalog?.defaults;
+  if (!Array.isArray(models) || !Array.isArray(defaults)) return null;
+  if (!models.every(isCatalogModel) || !defaults.every(isCatalogDefault)) {
+    return null;
+  }
+  return { models, defaults };
+};
+
+const readCatalogFromDisk = async (
+  stellaHome: string | undefined,
+  cacheKey: string,
+): Promise<StellaModelCatalog | null> => {
+  if (!stellaHome?.trim()) return null;
+  try {
+    const raw = await fs.readFile(
+      diskCachePathForKey(stellaHome, cacheKey),
+      "utf-8",
+    );
+    return parsePersistedCatalog(JSON.parse(raw), cacheKey);
+  } catch {
+    return null;
+  }
+};
+
+const writeCatalogToDisk = async (
+  stellaHome: string | undefined,
+  cacheKey: string,
+  catalog: StellaModelCatalog,
+): Promise<void> => {
+  if (!stellaHome?.trim()) return;
+  await writePrivateFile(
+    diskCachePathForKey(stellaHome, cacheKey),
+    JSON.stringify({ cacheKey, catalog }, null, 2),
+  );
+};
 
 export const invalidateStellaModelCatalogCache = (): void => {
   catalogCache.clear();
@@ -77,7 +165,9 @@ const getJwtCacheIdentity = (authorization: string | undefined): string => {
         ? payload.aud
         : "";
     const isAnonymous =
-      typeof payload.isAnonymous === "boolean" ? String(payload.isAnonymous) : "";
+      typeof payload.isAnonymous === "boolean"
+        ? String(payload.isAnonymous)
+        : "";
     return [
       "auth:jwt",
       issuer,
@@ -95,7 +185,11 @@ const buildCatalogRequest = (args: {
   site: StellaSiteConfig;
   deviceId?: string;
   modelCatalogUpdatedAt?: number | null;
-}): { endpoint: string; headers: Record<string, string>; cacheKey: string } | null => {
+}): {
+  endpoint: string;
+  headers: Record<string, string>;
+  cacheKey: string;
+} | null => {
   const baseUrl = args.site.baseUrl?.trim();
   const authToken = args.site.getAuthToken()?.trim();
   if (!baseUrl || !authToken) {
@@ -125,6 +219,7 @@ const fetchStellaModelCatalog = async (args: {
   site: StellaSiteConfig;
   deviceId?: string;
   modelCatalogUpdatedAt?: number | null;
+  stellaHome?: string;
 }): Promise<StellaModelCatalog | null> => {
   const request = buildCatalogRequest(args);
   if (!request) {
@@ -133,16 +228,21 @@ const fetchStellaModelCatalog = async (args: {
 
   const cached = catalogCache.get(request.cacheKey);
   if (cached) {
-    return {
-      models: cached.models,
-      defaults: cached.defaults,
-    };
+    return cloneCatalog(cached);
   }
 
   let inFlight = inFlightCatalogRequests.get(request.cacheKey);
   if (!inFlight) {
     inFlight = (async () => {
       try {
+        const diskCached = await readCatalogFromDisk(
+          args.stellaHome,
+          request.cacheKey,
+        );
+        if (diskCached) {
+          catalogCache.set(request.cacheKey, diskCached);
+          return cloneCatalog(diskCached);
+        }
         const res = await fetch(request.endpoint, { headers: request.headers });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
@@ -162,6 +262,11 @@ const fetchStellaModelCatalog = async (args: {
         catalogCache.set(request.cacheKey, {
           ...catalog,
         });
+        await writeCatalogToDisk(
+          args.stellaHome,
+          request.cacheKey,
+          catalog,
+        ).catch(() => undefined);
         return catalog;
       } catch {
         return null;
@@ -202,6 +307,7 @@ const resolveStellaModelAlias = async (args: {
   site: StellaSiteConfig;
   deviceId?: string;
   modelCatalogUpdatedAt?: number | null;
+  stellaHome?: string;
 }): Promise<string | null> => {
   if (args.route.route !== "stella") {
     return null;
@@ -217,6 +323,7 @@ const resolveStellaModelAlias = async (args: {
     site: args.site,
     deviceId: args.deviceId,
     modelCatalogUpdatedAt: args.modelCatalogUpdatedAt,
+    stellaHome: args.stellaHome,
   });
   if (!catalog) {
     return null;
@@ -229,7 +336,9 @@ const resolveStellaModelAlias = async (args: {
     );
   }
 
-  return catalog.models.find((model) => model.id === modelId)?.upstreamModel ?? null;
+  return (
+    catalog.models.find((model) => model.id === modelId)?.upstreamModel ?? null
+  );
 };
 
 export const withStellaModelCatalogMetadata = async (args: {
@@ -238,6 +347,7 @@ export const withStellaModelCatalogMetadata = async (args: {
   site: StellaSiteConfig;
   deviceId?: string;
   modelCatalogUpdatedAt?: number | null;
+  stellaHome?: string;
 }): Promise<ResolvedLlmRoute> => {
   if (args.route.route !== "stella") {
     return args.route;
