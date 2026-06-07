@@ -7,6 +7,26 @@
 
 import { AGENT_IDS, type AgentIdLike } from "../../../../runtime/contracts/agent-runtime.js";
 
+/**
+ * Explicit opt-in for trace diagnostics. Stella ships as a Vite dev server,
+ * so `import.meta.env.DEV` is TRUE for real users and would leave these
+ * listeners (and their memory growth) running in production. Gate on an
+ * explicit flag instead so production stays off by default while developers
+ * can still enable tracing via build env or a localStorage key.
+ */
+export function isTraceDiagnosticsEnabled(): boolean {
+  if (import.meta.env.VITE_STELLA_TRACE === "1") return true;
+  try {
+    return (
+      typeof localStorage !== "undefined" &&
+      localStorage.getItem("stella:trace") === "1"
+    );
+  } catch {
+    // localStorage can throw in restricted contexts (e.g. some windows).
+    return false;
+  }
+}
+
 type TraceCategory =
   | "orchestrator"
   | "agent"
@@ -35,7 +55,11 @@ let entries: TraceEntry[] = [];
 let nextId = 1;
 const toolStartTimes = new Map<string, number>();
 
-// Track which runId belongs to which agent type
+// Track which runId belongs to which agent type. Bounded so a long-lived
+// renderer that registers many runs cannot grow this map without limit
+// (entries are evicted on run-finished, with an LRU cap as a backstop for
+// runs that never emit a terminal event). Same semantics, no unbounded growth.
+const MAX_RUN_AGENTS = 500;
 const runIdToAgent = new Map<string, string>();
 
 export function addTrace(
@@ -244,5 +268,21 @@ export function traceAssistantMessage(text: string, userMessageId?: string) {
 }
 
 export function registerRunAgent(runId: string, agentType: AgentIdLike) {
+  // Re-insert to refresh LRU recency (Map preserves insertion order).
+  runIdToAgent.delete(runId);
   runIdToAgent.set(runId, agentType);
+  // Backstop eviction for runs that never emit a terminal event: drop the
+  // oldest mapping once over the cap. Bounded growth, identical lookups.
+  if (runIdToAgent.size > MAX_RUN_AGENTS) {
+    const oldest = runIdToAgent.keys().next().value;
+    if (oldest !== undefined) runIdToAgent.delete(oldest);
+  }
+}
+
+/**
+ * Evict a run's agent mapping once its run has finished. Called from the
+ * trace IPC listener on RUN_FINISHED so completed runs don't accumulate.
+ */
+export function unregisterRunAgent(runId: string) {
+  runIdToAgent.delete(runId);
 }
