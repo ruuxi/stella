@@ -47,6 +47,18 @@ export const useSelfModTaintMonitor = () => {
     const checkForTaintedSelfModFeatures = async () => {
       if (cancelled) return
 
+      // Defensive perf guard: this hook is currently unmounted, but if a
+      // future mount lands it would otherwise poll IPC every 60s in *every*
+      // window. Skip the IPC round-trip when the window is hidden or
+      // unfocused — a backgrounded/blurred window has no UI surface to show
+      // the toast, so there's nothing to lose by deferring to the next tick.
+      if (
+        (typeof document !== 'undefined' && document.hidden) ||
+        (typeof document !== 'undefined' && document.hasFocus && !document.hasFocus())
+      ) {
+        return
+      }
+
       try {
         const activeRun = await agentApi.getActiveRun?.()
         if (activeRun) return

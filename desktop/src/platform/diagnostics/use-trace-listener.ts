@@ -36,6 +36,7 @@ import {
   traceUserMessage,
   traceAssistantMessage,
   registerRunAgent,
+  unregisterRunAgent,
   addTrace,
   formatTraceSnippet,
 } from "@/platform/diagnostics/trace-store";
@@ -84,6 +85,11 @@ export function useTraceIpcListener(enabled: boolean) {
               `${event.outcome ?? "completed"} ${(event.finalText ?? "").slice(0, 160)}`.trim(),
             );
           }
+          // Run is terminal — drop its runId→agent mapping so completed
+          // runs don't accumulate in the trace store (memory). The trace
+          // entries above already captured the agent, so lookup loss after
+          // this point is fine.
+          unregisterRunAgent(event.runId);
           break;
         case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
           traceTaskStarted(
@@ -117,6 +123,12 @@ export function useTraceIpcListener(enabled: boolean) {
   }, [enabled]);
 }
 
+// Cap on the de-dup id set so a long-lived conversation can't grow it
+// without bound. Set preserves insertion order, so trimming from the front
+// drops the oldest seen ids; re-tracing one of those is harmless (idempotent
+// trace entries by id are still deduped within MAX_ENTRIES upstream).
+const MAX_SEEN_IDS = 5000;
+
 /**
  * Monitors the conversation event feed and emits trace entries for
  * task lifecycle events (sub-agent delegation), tool requests/results
@@ -133,6 +145,13 @@ export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
     for (const event of events) {
       if (seen.has(event._id)) continue;
       seen.add(event._id);
+      // Bound the set within a single (long) conversation: evict oldest ids
+      // once over the cap. Preserves de-dup for recent events, the only ones
+      // that re-appear in the rebuilt `events` list each tick.
+      if (seen.size > MAX_SEEN_IDS) {
+        const oldest = seen.values().next().value;
+        if (oldest !== undefined) seen.delete(oldest);
+      }
 
       if (isAgentStartedEvent(event)) {
         const p = event.payload;

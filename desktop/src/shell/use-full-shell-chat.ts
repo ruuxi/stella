@@ -30,7 +30,12 @@ type UseFullShellChatOptions = {
   activeConversationId: string | null;
   /** True when the user is currently on the `/chat` route. */
   isOnChatRoute: boolean;
-  isDev: boolean;
+  /**
+   * Explicit opt-in for trace diagnostics. NOT `import.meta.env.DEV`: Stella
+   * ships as a Vite dev server so DEV is TRUE in production. Defaults OFF via
+   * `isTraceDiagnosticsEnabled()` at the call site.
+   */
+  traceEnabled: boolean;
 };
 
 export type AnnotationSubmitPayload = {
@@ -64,7 +69,7 @@ const buildAnnotationChatContext = (
 export function useFullShellChat({
   activeConversationId,
   isOnChatRoute,
-  isDev,
+  traceEnabled,
 }: UseFullShellChatOptions) {
   const { setConversationId } = useUiState();
   const [message, setMessage] = useState("");
@@ -135,14 +140,17 @@ export function useFullShellChat({
     latestMessageTimestampMs,
   });
 
-  useTraceIpcListener(isDev);
+  useTraceIpcListener(traceEnabled);
 
-  // Dev-only event trace consumes the union of activity + message + the
+  // Opt-in event trace consumes the union of activity + message + the
   // per-turn tool events. The hook's internal `seenIds` set keeps it
   // idempotent across re-runs, so we can rebuild the list cheaply on
-  // every tick without double-firing trace entries.
+  // every tick without double-firing trace entries. Gated on `traceEnabled`
+  // (explicit opt-in) rather than `import.meta.env.DEV`, which is TRUE in
+  // Stella's dev-server-as-production build, so the array stays empty for
+  // real users.
   const traceEvents = useMemo<EventRecord[]>(() => {
-    if (!isDev) return [];
+    if (!traceEnabled) return [];
     const out: EventRecord[] = [];
     for (const event of activities) out.push(event);
     for (const message of persistedMessages) {
@@ -150,8 +158,8 @@ export function useFullShellChat({
       for (const toolEvent of message.toolEvents) out.push(toolEvent);
     }
     return out;
-  }, [activities, isDev, persistedMessages]);
-  useTraceEventMonitor(isDev, traceEvents);
+  }, [activities, traceEnabled, persistedMessages]);
+  useTraceEventMonitor(traceEnabled, traceEvents);
 
   const hasMessages = displayMessages.length > 0;
 
