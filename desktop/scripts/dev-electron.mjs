@@ -675,9 +675,60 @@ const terminateStaleWindowsDevApp = async () => {
   clearDevAppPid()
 }
 
+// SIGTERM-then-SIGKILL a detached app's process group (it is its own group
+// leader because startApp spawns it detached), mirroring the escalation used
+// for the full ps-scan path below.
+const terminateDarwinPidTree = async (pid) => {
+  const signalGroup = (signal) => {
+    try {
+      process.kill(-pid, signal)
+      return
+    } catch {
+      // Fall back to the direct pid if the group send fails (e.g. the
+      // leader already exited but a child lingers).
+    }
+    try {
+      process.kill(pid, signal)
+    } catch {
+      // Ignore races if the process already exited.
+    }
+  }
+
+  signalGroup('SIGTERM')
+
+  const deadline = Date.now() + staleAppShutdownTimeoutMs
+  while (Date.now() < deadline) {
+    if (!isPidAlive(pid)) {
+      return
+    }
+    await wait(staleAppShutdownPollMs)
+  }
+
+  if (isPidAlive(pid)) {
+    signalGroup('SIGKILL')
+  }
+}
+
 const terminateStaleDevApps = async () => {
   if (process.platform === 'win32') {
     await terminateStaleWindowsDevApp()
+    return
+  }
+
+  // Fast path: a clean restart writes the launched app's pid and clears it on
+  // a clean exit, so a surviving pid file points straight at the stale tree.
+  // Terminate just that pid tree and skip the full `ps -ax` image-path scan.
+  // Only fall back to the scan when the pid file is absent — matching the
+  // sibling runner's "unexpected absence means something leaked" heuristic.
+  const recordedPid = readDevAppPid()
+  if (recordedPid !== null) {
+    if (recordedPid !== process.pid && isPidAlive(recordedPid)) {
+      logError(
+        `found stale dev Stella process (${recordedPid}); terminating tree before launch.`,
+      )
+      await terminateDarwinPidTree(recordedPid)
+    }
+    clearDevAppPid()
     return
   }
 
@@ -952,6 +1003,12 @@ const shutdown = async (exitCode) => {
 
 await waitOn({
   resources: requiredFiles.map((filePath) => `file:${filePath}`),
+  // wait-on defaults to a 750ms stability window (250ms poll) even once the
+  // files already exist. Tighten it to a small buffer: window:100 still guards
+  // against a half-written .vite-dev-url (which the later settle gate does not
+  // re-validate) while shaving ~650ms off the common already-built case.
+  window: 100,
+  interval: 50,
 })
 
 await terminateStaleDevApps()
@@ -980,9 +1037,17 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
   }
   lastBuildHashes.set(absPath, currentHash)
 
+  // Reaching here means the content gate confirmed a genuine byte change
+  // (or a brand-new restart-relevant output). On a cold start the initial
+  // esbuild watch emit is byte-identical to the seeded hash and never gets
+  // this far, so a change inside the startup `watchReady` window means
+  // Electron launched against stale artifacts (e.g. a warm restart where
+  // dist-electron was not wiped) and the in-flight rebuild just produced
+  // fresh bytes. Honor that immediately instead of swallowing it, otherwise
+  // stale main/preload code keeps running with no auto-restart. We still arm
+  // the watchReady timer to preserve its later role.
   if (!watchReady) {
     scheduleWatchReady()
-    return
   }
 
   if (isRuntimeReloadPaused()) {
