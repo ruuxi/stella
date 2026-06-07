@@ -7,7 +7,9 @@ import { UiStateProvider } from "./context/ui-state";
 import { OverlayRoot } from "./shell/overlay/OverlayRoot";
 import { DeferredVoiceRuntime } from "./features/voice/runtime/DeferredVoiceRuntime";
 import { ToastProvider } from "./ui/toast";
+import { applyLowPowerDocumentFlag } from "./shared/lib/device-perf";
 
+applyLowPowerDocumentFlag();
 document.documentElement.dataset.stellaWindow = "overlay";
 
 createRoot(document.getElementById("root")!).render(

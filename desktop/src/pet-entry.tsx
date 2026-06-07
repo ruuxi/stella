@@ -11,7 +11,9 @@ import { ToastProvider } from "./ui/toast";
 import { PetOverlay } from "./shell/pet/PetOverlay";
 import type { PetOverlayStatus } from "./shared/contracts/pet";
 import { writePetOpenPreference } from "./shell/pet/pet-preferences";
+import { applyLowPowerDocumentFlag } from "./shared/lib/device-perf";
 
+applyLowPowerDocumentFlag();
 document.documentElement.dataset.stellaWindow = "pet";
 
 const IDLE_PET_STATUS: PetOverlayStatus = {

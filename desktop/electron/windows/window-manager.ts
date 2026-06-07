@@ -21,6 +21,10 @@ import {
 import { getMainLogger } from '../observability/main-logger.js'
 import type { UiState } from '../types.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
+import {
+  getTotalSystemMemoryMb,
+  isLowMemoryWindowsDevice,
+} from '../resource-profile.js'
 
 type WindowManagerOptions = {
   electronDir: string
@@ -46,12 +50,18 @@ type WindowManagerOptions = {
 }
 
 const compactSize = MINI_SHELL_SIZE
-const MINI_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
+const LOW_MEMORY_WINDOWS_IDLE_DESTROY_DELAY_MS = 30 * 1000
+const DEFAULT_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
+const MINI_IDLE_DESTROY_DELAY_MS = isLowMemoryWindowsDevice()
+  ? LOW_MEMORY_WINDOWS_IDLE_DESTROY_DELAY_MS
+  : DEFAULT_IDLE_DESTROY_DELAY_MS
 // The store/billing `WebContentsView` is a full resident renderer (remote
 // website bundle). Drop it after the surface has been closed for a while so
 // users who aren't in Store/Billing don't carry it; a later hover re-warms it
 // via `prewarmStoreWebView`. Mirrors the mini-window idle-destroy lifecycle.
-const STORE_WEB_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
+const STORE_WEB_IDLE_DESTROY_DELAY_MS = isLowMemoryWindowsDevice()
+  ? LOW_MEMORY_WINDOWS_IDLE_DESTROY_DELAY_MS
+  : DEFAULT_IDLE_DESTROY_DELAY_MS
 const MINI_ATTACH_GAP = 8
 const MINI_ATTACH_MIN_TARGET_WIDTH = 320
 
@@ -459,6 +469,12 @@ export class WindowManager {
   }
 
   prewarmStoreWebView(params?: WebsiteViewParams) {
+    if (isLowMemoryWindowsDevice()) {
+      getMainLogger()?.process('store.prewarm.skipped-low-memory-windows', {
+        totalMemoryMb: getTotalSystemMemoryMb(),
+      })
+      return
+    }
     this.cancelStoreWebIdleDestroy()
     this.websiteViewController.prewarm({
       route: params?.route ?? 'store',
