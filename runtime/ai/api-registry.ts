@@ -64,7 +64,6 @@ interface ApiProviderInternal {
 }
 
 type RegisteredApiProvider = {
-	api: Api;
 	/**
 	 * Resolved internal provider. Present immediately for eager
 	 * registrations; populated on first load for lazy registrations and
@@ -123,7 +122,6 @@ export function registerApiProvider<TApi extends Api, TOptions extends StreamOpt
 	sourceId?: string,
 ): void {
 	apiProviderRegistry.set(provider.api, {
-		api: provider.api,
 		resolved: toInternalProvider(provider.api, {
 			stream: provider.stream,
 			streamSimple: provider.streamSimple,
@@ -142,7 +140,6 @@ export function registerLazyApiProvider<TApi extends Api, TOptions extends Strea
 ): void {
 	const { api, load } = provider;
 	apiProviderRegistry.set(api, {
-		api,
 		load: async () => toInternalProvider(api, await load()),
 		sourceId,
 	});
