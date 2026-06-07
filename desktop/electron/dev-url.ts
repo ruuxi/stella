@@ -5,7 +5,15 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// The dev server URL is fixed for the process lifetime, but this thunk is
+// re-invoked on every window load. Cache the resolved URL so we don't re-probe
+// candidate paths + re-read the .vite-dev-url file each time.
+let cachedDevUrl: string | null = null
+
 export function getDevServerUrl(): string {
+  if (cachedDevUrl) {
+    return cachedDevUrl
+  }
   const candidates = [
     process.env.STELLA_ROOT
       ? path.join(process.env.STELLA_ROOT, 'desktop', '.vite-dev-url')
@@ -22,5 +30,7 @@ export function getDevServerUrl(): string {
   if (!url) {
     throw new Error(`Vite dev server URL file is empty: ${devUrlFile}`)
   }
+  // Cache only after validation so a transient empty/partial file is never cached.
+  cachedDevUrl = url
   return url
 }

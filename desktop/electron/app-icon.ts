@@ -1,6 +1,11 @@
-import { app, nativeImage } from 'electron'
+import { app, nativeImage, type NativeImage } from 'electron'
 import fs from 'fs'
 import path from 'path'
+
+// applyDockIcon is called twice across startup (before and after init) as a
+// deliberate macOS dock-reset defense. The PNG decode is identical each time,
+// so cache the decoded image per path — only the dock.setIcon re-apply repeats.
+const decodedIconCache = new Map<string, NativeImage>()
 
 // Compiled main lives at desktop/dist-electron/desktop/electron, so the desktop
 // package root (which holds build/, public/, dist/) is three levels up.
@@ -44,9 +49,13 @@ export const applyDockIcon = (electronDir: string) => {
     return
   }
 
-  const iconImage = nativeImage.createFromPath(iconPath)
-  if (iconImage.isEmpty()) {
-    return
+  let iconImage = decodedIconCache.get(iconPath)
+  if (!iconImage) {
+    iconImage = nativeImage.createFromPath(iconPath)
+    if (iconImage.isEmpty()) {
+      return
+    }
+    decodedIconCache.set(iconPath, iconImage)
   }
 
   app.dock.setIcon(iconImage)
