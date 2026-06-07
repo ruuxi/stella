@@ -108,6 +108,8 @@ interface ChatPanelTabProps {
   activities: EventRecord[];
   latestMessageTimestampMs: number | null;
   isStreaming: boolean;
+  /** True once the in-flight run has streamed any visible assistant text. */
+  isStreamingResponseText?: boolean;
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
@@ -136,6 +138,7 @@ export function ChatPanelTab({
   activities,
   latestMessageTimestampMs,
   isStreaming,
+  isStreamingResponseText,
   runtimeStatusText,
   pendingUserMessageId,
   queuedUserMessages,
@@ -211,17 +214,22 @@ export function ChatPanelTab({
     liveTasks,
     appSessionStartedAtMs,
   });
+  // Running agents power the composer's task chip; the inline indicator no
+  // longer carries them.
+  const runningTasks = useMemo(
+    () => footerTasks.filter((task) => task.status === "running"),
+    [footerTasks],
+  );
   useReadAloud(messages);
+  // Inline indicator = the orchestrator's own thinking / tool work only.
+  // Exits the moment answer text starts streaming (no line-by-line trailing).
   const hasActiveWork =
-    footerTasks.length > 0 ||
-    Boolean(isStreaming) ||
-    Boolean(runtimeStatusText);
+    Boolean(isStreaming) &&
+    (!isStreamingResponseText || Boolean(runningTool));
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,
-    tasks: footerTasks,
     runningTool: runningTool?.tool,
     runningToolId: runningTool?.id,
-    isStreaming,
     status: runtimeStatusText ?? null,
   };
 
@@ -445,6 +453,7 @@ export function ChatPanelTab({
                 <ComposerSuggestionContextRow
                   chatContext={chatContext}
                   setChatContext={setChatContext}
+                  tasks={runningTasks}
                 />
               </div>
 

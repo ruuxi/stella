@@ -20,6 +20,8 @@ import {
   type SuggestionSlot,
 } from "@/features/chat/hooks/use-auto-context-chips";
 import { truncateChipLabel } from "@/features/chat/composer-context";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
+import { ComposerTasksChip } from "./ComposerTasksChip";
 
 // ---------------------------------------------------------------------------
 // Attached chips — context the user has committed to sending. Lives INSIDE
@@ -86,15 +88,19 @@ type ComposerSuggestionRowProps = {
   active?: boolean;
   chatContext: ChatContext | null;
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
+  /** Currently-running agents ("tasks"). Surfaced as the leading chip. */
+  tasks?: TaskItem[];
 };
 
 export function ComposerSuggestionContextRow({
   active = true,
   chatContext,
   setChatContext,
+  tasks,
 }: ComposerSuggestionRowProps) {
   const { lanes, dismissSlot } = useAutoContextChips(active);
   const rowRef = useRef<HTMLDivElement | null>(null);
+  const lanesRef = useRef<HTMLDivElement | null>(null);
   const [hiddenLaneIndexes, setHiddenLaneIndexes] = useState<Set<number>>(
     () => new Set(),
   );
@@ -135,7 +141,8 @@ export function ComposerSuggestionContextRow({
 
   useLayoutEffect(() => {
     const row = rowRef.current;
-    if (!row) return;
+    const lanesEl = lanesRef.current;
+    if (!row || !lanesEl) return;
 
     let frame = 0;
 
@@ -143,12 +150,15 @@ export function ComposerSuggestionContextRow({
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const laneEls = Array.from(
-          row.querySelectorAll<HTMLElement>(
+          lanesEl.querySelectorAll<HTMLElement>(
             ".composer-context-suggestion-lane",
           ),
         );
-        const availableWidth = row.clientWidth;
-        const styles = window.getComputedStyle(row);
+        // Measure against the lanes container, not the whole row: the
+        // leading task chip occupies part of the row, so the lanes only
+        // get the remaining width.
+        const availableWidth = lanesEl.clientWidth;
+        const styles = window.getComputedStyle(lanesEl);
         const gap =
           Number.parseFloat(styles.columnGap || styles.gap || "0") || 0;
         const nextHidden = new Set<number>();
@@ -201,6 +211,10 @@ export function ComposerSuggestionContextRow({
 
     const observer = new ResizeObserver(syncVisibleLanes);
     observer.observe(row);
+    // Also observe the lanes container so overflow recomputes while the
+    // leading task chip animates in/out (which changes how much width the
+    // lanes have without changing the row's own size).
+    observer.observe(lanesEl);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
@@ -216,7 +230,8 @@ export function ComposerSuggestionContextRow({
       ref={rowRef}
       className="composer-context-actions composer-context-actions--suggestions"
     >
-      <div className="composer-context-suggestion-lanes">
+      <ComposerTasksChip tasks={tasks ?? []} />
+      <div ref={lanesRef} className="composer-context-suggestion-lanes">
         {lanes.map((lane, index) => (
           <SuggestionLaneView
             key={`lane-${index}`}

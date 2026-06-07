@@ -66,6 +66,9 @@ function ChatDisplayTab({
         chat.conversation.activity.latestMessageTimestampMs
       }
       isStreaming={chat.conversation.isStreaming}
+      isStreamingResponseText={
+        chat.conversation.streaming.isStreamingResponseText
+      }
       runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
       pendingUserMessageId={chat.conversation.pendingUserMessageId}
       queuedUserMessages={chat.conversation.streaming.queuedUserMessages}

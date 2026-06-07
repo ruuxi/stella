@@ -167,17 +167,24 @@ export const ChatColumn = memo(function ChatColumn({
     liveTasks: conversation.streaming.liveTasks,
     appSessionStartedAtMs,
   });
+  // Running agents power the composer's task chip; the inline indicator no
+  // longer carries them.
+  const runningTasks = useMemo(
+    () => footerTasks.filter((task) => task.status === "running"),
+    [footerTasks],
+  );
   useReadAloud(conversation.messages);
+  // Inline indicator = the orchestrator's own thinking / tool work only.
+  // Show it while reasoning ("Thinking") or while a tool runs, and let it
+  // exit the moment answer text starts streaming (no line-by-line trailing).
+  const isStreaming = Boolean(conversation.streaming.isStreaming);
   const hasActiveWork =
-    footerTasks.length > 0 ||
-    Boolean(conversation.streaming.isStreaming) ||
-    Boolean(conversation.streaming.runtimeStatusText);
+    isStreaming &&
+    (!conversation.streaming.isStreamingResponseText || Boolean(runningTool));
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,
-    tasks: footerTasks,
     runningTool: runningTool?.tool,
     runningToolId: runningTool?.id,
-    isStreaming: conversation.streaming.isStreaming,
     status: conversation.streaming.runtimeStatusText,
   };
   const { isDragOver, dropHandlers } = useFileDrop({
@@ -219,6 +226,7 @@ export const ChatColumn = memo(function ChatColumn({
         isDragOver={isDragOver}
         replyPeek={replyPeek}
         suggestionsActive={isActiveSurface}
+        tasks={runningTasks}
       />
     );
   };

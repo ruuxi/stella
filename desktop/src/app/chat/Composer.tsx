@@ -5,6 +5,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import {
   ComposerContextRow,
   ComposerSuggestionContextRow,
@@ -53,6 +54,8 @@ type ComposerProps = {
   isDragOver?: boolean;
   replyPeek?: AssistantReplyPeekProps | null;
   suggestionsActive?: boolean;
+  /** Currently-running agents, surfaced as the leading context chip. */
+  tasks?: TaskItem[];
 };
 
 export function Composer({
@@ -72,6 +75,7 @@ export function Composer({
   isDragOver = false,
   replyPeek,
   suggestionsActive = true,
+  tasks,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -149,6 +153,7 @@ export function Composer({
           active={suggestionsActive}
           chatContext={chatContext}
           setChatContext={setChatContext}
+          tasks={tasks}
         />
       </div>
       <div

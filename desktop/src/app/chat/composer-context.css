@@ -18,6 +18,10 @@
   position: relative;
   flex-wrap: nowrap;
   overflow: hidden;
+  /* No row gap: the leading task chip supplies its own trailing space
+   * (which collapses with it), so a collapsed chip leaves no phantom gap
+   * before the suggestion lanes. */
+  gap: 0;
   padding: 0 4px 4px 20px;
   min-height: calc(24px + 4px);
   align-items: center;
