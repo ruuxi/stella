@@ -87,17 +87,20 @@ let pendingRestartWhilePaused = false
 const expectedExits = new WeakSet()
 
 /**
- * Last-seen content hash for every restart-relevant build output under
- * `dist-electron/`. The fs watcher fires on mtime/write events, but
- * the dev compiler watchers can rewrite byte-identical output as a side
- * effect of unrelated package-manager operations — `bunx --package <pkg> tsc …`
- * taps the tsconfig graph + bun cache enough that output can flush even
+ * Last-seen `{ size, mtimeMs, hash }` fingerprint for every restart-relevant
+ * build output under `dist-electron/`. The fs watcher fires on mtime/write
+ * events, but the dev compiler watchers can rewrite byte-identical output as a
+ * side effect of unrelated package-manager operations — `bunx --package <pkg>
+ * tsc …` taps the tsconfig graph + bun cache enough that output can flush even
  * though the source is unchanged.
  *
  * Without a content gate, that spurious rewrite tears down Electron
- * (and the in-flight self-mod morph cover with it) for nothing. We
- * record the hash on every observed change and skip the restart when
- * the new bytes match the previous emit.
+ * (and the in-flight self-mod morph cover with it) for nothing. The `hash`
+ * stays the source of truth for the gate so a byte-identical rewrite (same
+ * bytes, fresh mtime) is still suppressed; the `size`/`mtimeMs` pair is only a
+ * cheap pre-check that lets us skip re-reading multi-MB outputs (notably the
+ * big main.js) when stat proves the file is unchanged — avoiding the second
+ * full read the first post-cold-start watcher tick would otherwise pay.
  *
  * `null` here means "the file has been deleted"; `undefined` means
  * "we have not seen this path before".
@@ -109,6 +112,18 @@ const readHash = (filePath) => {
     return null
   }
   return createHash('md5').update(readFileSync(filePath)).digest('hex')
+}
+
+// Cheap stat fingerprint used to short-circuit the multi-MB content read when
+// size+mtime prove the file is unchanged since we last hashed it. Returns null
+// when the file is missing (mirrors readHash's deletion semantics).
+const readBuildStat = (filePath) => {
+  try {
+    const stats = statSync(filePath)
+    return { size: stats.size, mtimeMs: stats.mtimeMs }
+  } catch {
+    return null
+  }
 }
 
 const sleep = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms))
@@ -181,7 +196,17 @@ const seedLastBuildHashes = () => {
       const relPath = path.relative(watchedDir, absPath)
       if (!shouldRestartElectronForBuildPath(relPath)) continue
       const hash = readHash(absPath)
-      if (hash != null) lastBuildHashes.set(absPath, hash)
+      if (hash == null) continue
+      // Capture the stat fingerprint next to the hash so the first watcher tick
+      // after cold start can skip re-reading the (multi-MB) file when size+mtime
+      // still match — the content gate's byte-identical suppression is unchanged
+      // because `hash` remains the comparison key whenever stat does differ.
+      const stat = readBuildStat(absPath)
+      lastBuildHashes.set(absPath, {
+        hash,
+        size: stat?.size,
+        mtimeMs: stat?.mtimeMs,
+      })
     }
   }
   visit(watchedDir)
@@ -1028,14 +1053,40 @@ watcher = watch(watchedDir, { recursive: true }, (_eventType, filename) => {
   // for those is the visible failure that kills self-mod morph
   // covers.
   const absPath = path.join(watchedDir, filename)
-  const currentHash = readHash(absPath)
-  const previousHash = lastBuildHashes.has(absPath)
+  const previousEntry = lastBuildHashes.has(absPath)
     ? lastBuildHashes.get(absPath)
     : undefined
+  // Cheap stat pre-check: when size+mtime are byte-for-byte the same as the
+  // last entry we recorded, the content is unchanged, so skip the multi-MB
+  // re-read entirely (this is the redundant second read the first post-seed
+  // tick used to pay). Only when stat differs do we fall back to hashing,
+  // which still suppresses byte-identical rewrites that bump only mtime.
+  if (
+    previousEntry != null &&
+    previousEntry.mtimeMs !== undefined &&
+    previousEntry.size !== undefined
+  ) {
+    const currentStat = readBuildStat(absPath)
+    if (
+      currentStat &&
+      currentStat.size === previousEntry.size &&
+      currentStat.mtimeMs === previousEntry.mtimeMs
+    ) {
+      return
+    }
+  }
+  const currentHash = readHash(absPath)
+  const previousHash = previousEntry === undefined ? undefined : previousEntry?.hash ?? null
   if (previousHash !== undefined && currentHash === previousHash) {
     return
   }
-  lastBuildHashes.set(absPath, currentHash)
+  const currentStat = currentHash == null ? null : readBuildStat(absPath)
+  lastBuildHashes.set(
+    absPath,
+    currentHash == null
+      ? null
+      : { hash: currentHash, size: currentStat?.size, mtimeMs: currentStat?.mtimeMs },
+  )
 
   // Reaching here means the content gate confirmed a genuine byte change
   // (or a brand-new restart-relevant output). On a cold start the initial

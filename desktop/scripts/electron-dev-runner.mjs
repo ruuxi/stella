@@ -2,6 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -32,6 +33,47 @@ const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");
 const v8CompileCacheDir = resolve(repoRootDir, ".stella-dev", "v8-compile-cache");
 try {
   mkdirSync(v8CompileCacheDir, { recursive: true });
+} catch {
+  // Best-effort; if the cache dir can't be created we simply forgo the
+  // compile-cache speedup rather than fail dev startup.
+}
+// Node's NODE_COMPILE_CACHE writes per-Node-version subdirs named like
+// `v<node>-<arch>-<hash>-<uid>` and never reclaims the ones left behind by a
+// prior Node upgrade. Those stale trees (thousands of cache files each) only
+// grow on disk and are never read again, so prune any subdir whose
+// `v<node>-<arch>` prefix doesn't match this process. One-time readdir + rm on
+// startup; best-effort so a cleanup error never blocks dev launch.
+try {
+  const currentCacheVersionPrefix = `v${process.versions.node}-${process.arch}`;
+  for (const entry of readdirSync(v8CompileCacheDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    if (entry.name.startsWith(`${currentCacheVersionPrefix}-`)) {
+      continue;
+    }
+    try {
+      rmSync(resolve(v8CompileCacheDir, entry.name), {
+        force: true,
+        recursive: true,
+      });
+    } catch {
+      // Best-effort per-entry prune; skip anything we can't remove.
+    }
+  }
+} catch {
+  // Best-effort; a missing/unreadable cache dir just means nothing to prune.
+}
+// Dedicated V8 bytecode cache for the long-lived `vite` child, kept separate
+// from the electron-main cache so the two processes don't churn one shared
+// dir. Lets V8 reuse Vite's own compiled bytecode across launches/restarts.
+const viteCompileCacheDir = resolve(
+  repoRootDir,
+  ".stella-dev",
+  "vite-compile-cache",
+);
+try {
+  mkdirSync(viteCompileCacheDir, { recursive: true });
 } catch {
   // Best-effort; if the cache dir can't be created we simply forgo the
   // compile-cache speedup rather than fail dev startup.
@@ -122,15 +164,29 @@ async function stopOrphanedDevChildren() {
   if (process.platform === "win32") {
     let output = "";
     try {
+      // PowerShell string literal escape: single-quote → doubled.
       const escapedNeedles = managedCommandNeedles.map((needle) =>
         needle.replace(/'/g, "''"),
       );
+      // Push needle filtering INTO WMI via a server-side -Filter (CommandLine
+      // LIKE '%needle%' OR …) so PowerShell does not stream every process's
+      // full command line back — the slowest part of the prior ForEach-Object
+      // scan. The WQL pattern is intentionally left permissive: any LIKE
+      // metacharacters in a path ('%', '_', '[') stay as wildcards, so the
+      // filter can only over-match, never drop a real orphan. The unchanged
+      // client-side Contains() pass below restores the exact original
+      // substring-match semantics, so the same needles and kill behavior hold.
+      // (Same coarse-prefilter + precise-Contains idiom as findPreviewProcessIds
+      // in desktop/electron/bootstrap/office-preview-bridge.ts.)
+      const filterClause = escapedNeedles
+        .map((needle) => `CommandLine LIKE '%${needle}%'`)
+        .join(" OR ");
       const script = [
         "$ErrorActionPreference = 'SilentlyContinue'",
         `$needles = @(${escapedNeedles.map((needle) => `'${needle}'`).join(",")})`,
         "$currentPid = $PID",
         "$matches = @()",
-        "Get-CimInstance Win32_Process | ForEach-Object {",
+        `Get-CimInstance Win32_Process -Filter "${filterClause}" | ForEach-Object {`,
         "  $line = [string]$_.CommandLine",
         "  if ($line -and [int]$_.ProcessId -ne $currentPid) {",
         "    foreach ($needle in $needles) {",
@@ -250,9 +306,13 @@ const processSpecs = [
     command: process.execPath,
     args: [viteBinPath],
     cwd: desktopDir,
+    // NODE_COMPILE_CACHE lets V8 reuse Vite's own bytecode across launches and
+    // self-mod restarts, mirroring the electron-main spec below; the dedicated
+    // dir keeps it from contending with the electron-main compile cache.
     env: {
       ...process.env,
       NODE_ENV: "development",
+      NODE_COMPILE_CACHE: viteCompileCacheDir,
     },
   },
   {
