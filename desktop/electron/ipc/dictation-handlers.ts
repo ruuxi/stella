@@ -407,8 +407,11 @@ export const registerDictationHandlers = (
     activeOverlayRoute = route;
     setDictationSourceActive(`overlay:${sessionId}`, true);
     const position = getOverlayDictationPosition();
-    overlay.showDictation(position.x, position.y);
-    overlay.send("dictation:overlayStart", { sessionId });
+    void overlay.showDictation(position.x, position.y).then((shown) => {
+      if (!shown) return;
+      if (activeOverlaySessionId !== sessionId) return;
+      overlay.send("dictation:overlayStart", { sessionId });
+    }).catch(() => undefined);
     if (muteTiming === "afterStartCue") {
       muteOutputForDictationAfterStartCue();
     } else {
@@ -422,7 +425,7 @@ export const registerDictationHandlers = (
     const overlay = options.getOverlayController();
     if (!overlay) return;
     const position = getOverlayDictationPosition();
-    overlay.showDictation(position.x, position.y);
+    void overlay.showDictation(position.x, position.y).catch(() => undefined);
   };
 
   const startOverlayPushToTalk = (
@@ -433,7 +436,11 @@ export const registerDictationHandlers = (
     const sessionId = randomUUID();
     activeOverlaySessionId = sessionId;
     setDictationSourceActive(`overlay:${sessionId}`, true);
-    overlay.send("dictation:overlayStart", { sessionId });
+    void overlay.ensureReadyForDictation().then((ready) => {
+      if (!ready) return;
+      if (activeOverlaySessionId !== sessionId) return;
+      overlay.send("dictation:overlayStart", { sessionId });
+    }).catch(() => undefined);
     if (muteTiming === "afterStartCue") {
       muteOutputForDictationAfterStartCue();
     } else {
