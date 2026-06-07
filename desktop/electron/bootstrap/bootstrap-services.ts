@@ -15,7 +15,6 @@ import { UiStateService } from "../services/ui-state-service.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import { loadLocalPreferences } from "../../../runtime/kernel/preferences/local-preferences.js";
-import { setPreventComputerSleep } from "../ipc/system-handlers.js";
 import { DEFAULT_RADIAL_TRIGGER_CODE } from "../../src/shared/lib/radial-trigger.js";
 import type { ChatContext } from "../../../runtime/contracts/index.js";
 import type {
@@ -62,9 +61,9 @@ export const createBootstrapServices = (options: {
   });
   let connectorCredentialService: ConnectorCredentialService | null = null;
 
-  setPreventComputerSleep(
-    loadLocalPreferences(config.stellaHomePath).preventComputerSleep,
-  );
+  // NOTE: setPreventComputerSleep is applied post-appReady in
+  // registerBootstrapIpcHandlers (ipc.ts) so the first preferences.json read
+  // and the power toggle don't run on the synchronous pre-paint path.
 
   const authService = new AuthService({
     authProtocol: config.authProtocol,

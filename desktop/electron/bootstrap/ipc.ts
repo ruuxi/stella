@@ -32,7 +32,10 @@ import { registerOfficePreviewHandlers } from "../ipc/office-preview-handlers.js
 import { registerFashionHandlers } from "../ipc/fashion-handlers.js";
 import { registerScheduleHandlers } from "../ipc/schedule-handlers.js";
 import { registerStoreHandlers } from "../ipc/store-handlers.js";
-import { registerSystemHandlers } from "../ipc/system-handlers.js";
+import {
+  registerSystemHandlers,
+  setPreventComputerSleep,
+} from "../ipc/system-handlers.js";
 import { registerExternalOpenerHandlers } from "../ipc/external-opener-handlers.js";
 import { registerUiHandlers } from "../ipc/ui-handlers.js";
 import { registerUpdatesHandlers } from "../ipc/updates-handlers.js";
@@ -147,6 +150,12 @@ export const registerBootstrapIpcHandlers = (
     setAppReady: (ready) => {
       state.appReady = ready;
       if (ready) {
+        // Apply the preventComputerSleep power toggle here rather than during
+        // synchronous bootstrap — it's not needed for the window to appear and
+        // forces the first preferences.json read off the pre-paint path.
+        setPreventComputerSleep(
+          loadLocalPreferences(config.stellaHomePath).preventComputerSleep,
+        );
         scheduleGlobalInputHooksAfterAppReady(context);
         schedulePostReadyNativeServices();
       }
@@ -537,7 +546,13 @@ export const registerBootstrapIpcHandlers = (
     syncWakewordPause();
   });
   syncWakewordPause();
-  wakeword.setEnabled(wakePrefs.wakeWordEnabled);
+  // Defer the initial enable/spawn off the pre-paint IPC-registration path.
+  // For "Hey Stella" users `setEnabled(true)` synchronously spawns the native
+  // wakeword_listener helper (ONNX model load + mic open), which we don't want
+  // blocking first paint. setEnabled is idempotent and timing-tolerant.
+  setTimeout(() => {
+    wakeword?.setEnabled(wakePrefs.wakeWordEnabled);
+  }, 0);
   state.processRuntime.registerCleanup("will-quit", "wakeword-service", () => {
     wakeword?.dispose();
   });
