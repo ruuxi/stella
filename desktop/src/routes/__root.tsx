@@ -11,8 +11,6 @@ import { z } from "zod";
 import { ChatRuntimeProvider } from "@/context/chat-runtime";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
-import { WelcomeDialog } from "@/global/onboarding/WelcomeDialog";
-import { NicknameDialog } from "@/global/auth/NicknameDialog";
 import { ChatColumn } from "@/app/chat/ChatColumn";
 import { ComposerAreaSelectOverlay } from "@/app/chat/ComposerAreaSelectOverlay";
 import { setActiveLocalConversationId } from "@/features/chat/services/local-chat-store";
@@ -26,6 +24,34 @@ import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
 // and only from event/async callbacks — never synchronously on mount.
 const DisplaySidebar = lazy(() =>
   import("@/shell/DisplaySidebar").then((m) => ({ default: m.DisplaySidebar })),
+);
+// These dialogs are rarely seen on first interaction (onboarding welcome,
+// nickname prompt, post-OAuth confirmation, billing upgrade) and each already
+// renders null until its own open/visibility state flips. In a dev-server-in-prod
+// app every static import is a separate first-paint transform, so they are
+// lazy-loaded — wrapped in <Suspense fallback={null}> at their conditional mount
+// sites — to keep them off the always-eager shell's first-paint graph. Behavior
+// is unchanged: each dialog still renders null until its own state opens, so
+// nothing visual depends on the deferred chunk and there is no fallback flash.
+const WelcomeDialog = lazy(() =>
+  import("@/global/onboarding/WelcomeDialog").then((m) => ({
+    default: m.WelcomeDialog,
+  })),
+);
+const NicknameDialog = lazy(() =>
+  import("@/global/auth/NicknameDialog").then((m) => ({
+    default: m.NicknameDialog,
+  })),
+);
+const ProviderConnectedDialog = lazy(() =>
+  import("@/global/settings/ProviderConnectedDialog").then((m) => ({
+    default: m.ProviderConnectedDialog,
+  })),
+);
+const SubscriptionUpgradeDialog = lazy(() =>
+  import("@/global/billing/SubscriptionUpgradeDialog").then((m) => ({
+    default: m.SubscriptionUpgradeDialog,
+  })),
 );
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import {
@@ -51,8 +77,6 @@ import {
 } from "@/features/workspace-display/default-tabs";
 import { ModelCatalogUpdatedAtProvider } from "@/global/settings/hooks/model-catalog-updated-at";
 import { useRestrictedStellaModelReset } from "@/global/settings/hooks/use-restricted-stella-model-reset";
-import { ProviderConnectedDialog } from "@/global/settings/ProviderConnectedDialog";
-import { SubscriptionUpgradeDialog } from "@/global/billing/SubscriptionUpgradeDialog";
 import { MobileActivityNotificationsBridge } from "@/global/mobile/MobileActivityNotificationsBridge";
 import { useDictationToggleBridge } from "@/shell/root-chrome/use-dictation-toggle-bridge";
 import { useDisplayPayloadRouting } from "@/shell/root-chrome/use-display-payload-routing";
@@ -452,17 +476,28 @@ function RootChrome() {
         onDialogOpenChange={handleDialogOpenChange}
       />
 
-      <WelcomeDialog
-        conversationId={conversationId}
-        onConnect={showConnectDialog}
-        onSignIn={showAuthDialog}
-      />
+      {/* Suspense fallback={null} mirrors the lazy DisplaySidebar above: the
+          deferred chunk stays off the first-paint graph, and each dialog still
+          renders null until its own open state flips — no flash, no behavior change. */}
+      <Suspense fallback={null}>
+        <WelcomeDialog
+          conversationId={conversationId}
+          onConnect={showConnectDialog}
+          onSignIn={showAuthDialog}
+        />
+      </Suspense>
 
-      <NicknameDialog />
+      <Suspense fallback={null}>
+        <NicknameDialog />
+      </Suspense>
 
-      <ProviderConnectedDialog />
+      <Suspense fallback={null}>
+        <ProviderConnectedDialog />
+      </Suspense>
 
-      <SubscriptionUpgradeDialog />
+      <Suspense fallback={null}>
+        <SubscriptionUpgradeDialog />
+      </Suspense>
     </>
   );
 }
