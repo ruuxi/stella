@@ -97,7 +97,11 @@ const createDeferredStartupTasks = (
       },
     },
     {
+      // Push the overlay's cold second-renderer boot past first paint + the
+      // host-runner kickoff above, so it doesn't overlap main-window TTI +
+      // worker spawn. The overlay is only needed on-demand (radial/voice).
       label: "overlay-window",
+      delayMs: config.startupStageDelayMs,
       run: () => {
         state.overlayController?.create();
       },
