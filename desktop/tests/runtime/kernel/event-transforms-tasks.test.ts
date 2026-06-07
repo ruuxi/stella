@@ -238,4 +238,30 @@ describe("mergeFooterTasks", () => {
     expect(merged[0]?.status).toBe("completed");
     expect(merged[0]?.outputPreview).toBe("Done");
   });
+
+  it("preserves persisted status text when live state only has a generic placeholder", () => {
+    const persistedTasks = extractTasksFromEvents([
+      event("1", 100, "agent-started", {
+        agentId: "agent-1",
+        description: "Build Tic Tac Toe app in Stella",
+        agentType: "general",
+        statusText: "Build Tic Tac Toe app in Stella",
+      }),
+    ]);
+
+    const [task] = mergeFooterTasks(persistedTasks, [
+      {
+        id: "agent-1",
+        description: "Task",
+        agentType: "general",
+        status: "running",
+        startedAtMs: 100,
+        lastUpdatedAtMs: 200,
+      },
+    ]);
+
+    expect(task?.description).toBe("Build Tic Tac Toe app in Stella");
+    expect(task?.statusText).toBe("Build Tic Tac Toe app in Stella");
+    expect(getTaskDisplayText(task!)).toBe("Build Tic Tac Toe app in Stella");
+  });
 });
