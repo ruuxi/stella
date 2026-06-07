@@ -48,6 +48,14 @@ const BUNDLED_STELLA_HOME_SEED_DIR = path.resolve(__dirname, '..', 'runtime', 'h
 // its write bursts on every electron rebuild (heavier ReadDirectoryChangesW
 // churn on Windows). Keep Vite out of it entirely.
 const DIST_ELECTRON_DIR = path.resolve(__dirname, 'dist-electron')
+// Large build/artifact trees that never participate in renderer HMR. Without
+// these, Vite's chokidar root watcher (rooted at desktop/) subscribes to
+// ~14.5k files under native/ (5.8GB, incl. the 5.2GB wakeword model tree) and
+// release/ (1.2GB packaged installers) — a needless recursive readdirp walk +
+// stat-per-file at startup and (on Windows) ongoing ReadDirectoryChangesW churn.
+// Nothing under these is a renderer module, so prune them from the watch tree.
+const NATIVE_DIR = path.resolve(__dirname, 'native')
+const RELEASE_DIR = path.resolve(__dirname, 'release')
 const VITE_WORKSPACE_ROOT = searchForWorkspaceRoot(__dirname)
 
 const normalizeWatchedFilePath = (filePath: string) =>
@@ -1283,6 +1291,35 @@ export default defineConfig({
   ],
   base: './',
   optimizeDeps: {
+    // Front-load prebundling of the heavy/transitive deps deterministically on
+    // first launch. Without this, dep discovery is entirely on-demand: a cold
+    // cache (fresh clone, dep bump, cache invalidation) lets the first markdown
+    // /chart/PDF render discover an unoptimized dep at runtime, which makes Vite
+    // emit a full-reload ("optimized dependencies changed. reloading") that
+    // yanks the renderer mid-session. mermaid (~75MB) and katex come in
+    // transitively via streamdown; recharts/react-pdf are large leaf deps.
+    include: [
+      'streamdown',
+      'mermaid',
+      'katex',
+      'recharts',
+      'react-pdf',
+      'motion',
+      'lucide-react',
+      '@tanstack/react-router',
+      '@tanstack/react-table',
+      'convex/react',
+      '@legendapp/list/react',
+      'zod',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-switch',
+    ],
+    // Cover every window's HTML entry in the cold dep scan (not just index.html),
+    // so the overlay/pet/mini spines don't trigger a separate re-optimize when
+    // first opened.
+    entries: ['index.html', 'overlay.html', 'pet.html', 'mini.html'],
     rolldownOptions: {
       transform: {
         target: 'esnext',
@@ -1326,10 +1363,28 @@ export default defineConfig({
     // transforms against the renderer's initial request (and window creation).
     warmup: {
       clientFiles: [
+        // First-paint spine.
         './src/main.tsx',
         './src/App.tsx',
         './src/context/AppProviders.tsx',
         './src/shell/FullShell.tsx',
+        // The chat surface is the primary (eager, non-lazy) first interaction;
+        // pre-transform its long static chain in parallel instead of
+        // serializing it against the renderer's first requests.
+        './src/router.tsx',
+        './src/routes/__root.tsx',
+        './src/app/home/HomeContent.tsx',
+        './src/app/chat/ChatColumn.tsx',
+        './src/app/chat/ChatTimeline.tsx',
+        './src/app/chat/ConversationEvents.tsx',
+        './src/app/chat/Composer.tsx',
+        './src/app/chat/MessageRow.tsx',
+        // Secondary windows are opened deferred (after first paint); warming
+        // their entries during the post-paint idle window means they open
+        // instantly instead of cold-transforming on creation.
+        './src/overlay-entry.tsx',
+        './src/pet-entry.tsx',
+        './src/mini-entry.tsx',
       ],
     },
     // Pin to a single IPv4 loopback port and publish that exact address via
@@ -1353,6 +1408,12 @@ export default defineConfig({
       ignored: [
         `${BUNDLED_STELLA_HOME_SEED_DIR.replace(/\\/g, '/')}/**`,
         `${DIST_ELECTRON_DIR.replace(/\\/g, '/')}/**`,
+        // Native build outputs (5.8GB, incl. the 5.2GB wakeword model tree) and
+        // packaged installers (1.2GB) — ~14.5k files that never participate in
+        // renderer HMR. Keeping Vite's watcher out of them avoids a large
+        // startup readdirp walk + stat-per-file and ongoing Windows watch churn.
+        `${NATIVE_DIR.replace(/\\/g, '/')}/**`,
+        `${RELEASE_DIR.replace(/\\/g, '/')}/**`,
         normalizeWatchedFilePath(DEV_URL_FILE),
         normalizeWatchedFilePath(SELF_MOD_RUNTIME_RELOAD_STATE_FILE),
       ],
