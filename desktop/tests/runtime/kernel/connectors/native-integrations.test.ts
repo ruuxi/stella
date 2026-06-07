@@ -11,7 +11,7 @@ import {
   getNativeConnectorCatalogEntry,
   listNativeConnectors,
 } from "../../../../../runtime/kernel/connectors/native-integrations.js";
-import { OAUTH_PROVIDER_CATALOG } from "../../../../../runtime/kernel/connectors/oauth-provider-catalog.js";
+import { getOAuthProviderCatalog } from "../../../../../runtime/kernel/connectors/oauth-provider-catalog.js";
 import { getNativeOAuthProviderConfig } from "../../../../../runtime/kernel/connectors/native-oauth-provider-config.js";
 
 const roots: string[] = [];
@@ -231,15 +231,16 @@ describe("native OAuth integration readiness", () => {
       "zoominfo",
     ];
 
-    expect(OAUTH_PROVIDER_CATALOG.every((entry) => entry.auth[0] === "OAUTH2"))
+    const oauthProviderCatalog = getOAuthProviderCatalog();
+    expect(oauthProviderCatalog.every((entry) => entry.auth[0] === "OAUTH2"))
       .toBe(true);
     expect(
-      OAUTH_PROVIDER_CATALOG.filter((entry) =>
+      oauthProviderCatalog.filter((entry) =>
         entry.auth.some((auth) => auth.includes("API_KEY")),
       ),
     ).toEqual([]);
     expect(
-      OAUTH_PROVIDER_CATALOG.filter((entry) => excludedIds.includes(entry.id)),
+      oauthProviderCatalog.filter((entry) => excludedIds.includes(entry.id)),
     ).toEqual([]);
 
     const connectors = await listNativeConnectors(root);

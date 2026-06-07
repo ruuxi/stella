@@ -15,7 +15,7 @@ import {
   type NativeOAuthProviderConfig,
   type NativeOAuthProviderConfigOptions,
 } from "./native-oauth-provider-config.js";
-import { OAUTH_PROVIDER_CATALOG } from "./oauth-provider-catalog.js";
+import { getOAuthProviderCatalog } from "./oauth-provider-catalog.js";
 import { getConnectorStateRoot } from "./state.js";
 import type { ConnectorToolInfo } from "./types.js";
 import type { OAuthCatalogTool } from "./oauth-provider-catalog.js";
@@ -186,34 +186,46 @@ const GOOGLE_WORKSPACE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
   },
 ];
 
-const FALLBACK_OAUTH_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] =
-  OAUTH_PROVIDER_CATALOG.filter(
-    (entry) =>
-      !isExistingGoogleIntegration(entry.id) &&
-      !isBackendOwnedCommunicationIntegration(entry.id) &&
-      !isApiKeyOnlyIntegration(entry.id),
-  ).map((entry) => ({
-    id: entry.id,
-    name: entry.name,
-    category: entry.category,
-    auth: entry.auth,
-    catalogToolCount: entry.catalogToolCount,
-    availability: "ready" as const,
-    provider: "oauth-catalog" as const,
-    description: entry.description,
-    sourceUrl: entry.sourceUrl,
-    connectable: false,
-  }));
+// Lazily derived from the on-disk OAuth catalog so the ~8MB JSON is only
+// read+parsed when the connector catalog is first needed (an IPC call), not at
+// module import time. Memoized after first build.
+let cachedNativeConnectorCatalog: NativeConnectorCatalogEntry[] | null = null;
 
-export const NATIVE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
-  ...GOOGLE_WORKSPACE_CONNECTOR_CATALOG,
-  ...FALLBACK_OAUTH_CONNECTOR_CATALOG,
-];
+const getNativeConnectorCatalog = (): NativeConnectorCatalogEntry[] => {
+  if (cachedNativeConnectorCatalog) {
+    return cachedNativeConnectorCatalog;
+  }
+  const fallbackOAuthCatalog: NativeConnectorCatalogEntry[] =
+    getOAuthProviderCatalog()
+      .filter(
+        (entry) =>
+          !isExistingGoogleIntegration(entry.id) &&
+          !isBackendOwnedCommunicationIntegration(entry.id) &&
+          !isApiKeyOnlyIntegration(entry.id),
+      )
+      .map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        category: entry.category,
+        auth: entry.auth,
+        catalogToolCount: entry.catalogToolCount,
+        availability: "ready" as const,
+        provider: "oauth-catalog" as const,
+        description: entry.description,
+        sourceUrl: entry.sourceUrl,
+        connectable: false,
+      }));
+  cachedNativeConnectorCatalog = [
+    ...GOOGLE_WORKSPACE_CONNECTOR_CATALOG,
+    ...fallbackOAuthCatalog,
+  ];
+  return cachedNativeConnectorCatalog;
+};
 
 export const buildNativeConnectorCatalog = (
   serverCatalog?: NativeConnectorCatalogOverride,
 ): NativeConnectorCatalogEntry[] => {
-  if (serverCatalog === undefined) return NATIVE_CONNECTOR_CATALOG;
+  if (serverCatalog === undefined) return getNativeConnectorCatalog();
   return [...serverCatalog];
 };
 
@@ -248,7 +260,7 @@ const writeState = async (
 
 export const getNativeConnectorCatalogEntry = (
   id: string,
-  catalog: NativeConnectorCatalogOverride = NATIVE_CONNECTOR_CATALOG,
+  catalog: NativeConnectorCatalogOverride = getNativeConnectorCatalog(),
 ) => catalog.find((entry) => entry.id === id);
 
 export const getNativeConnectorOAuthConfig = (
@@ -256,7 +268,7 @@ export const getNativeConnectorOAuthConfig = (
 ) => entry.oauthConfig ?? getNativeOAuthProviderConfig(entry.id);
 
 const getOAuthCatalogProvider = (id: string) =>
-  OAUTH_PROVIDER_CATALOG.find((entry) => entry.id === id);
+  getOAuthProviderCatalog().find((entry) => entry.id === id);
 
 const normalizeOAuthCatalogToolName = (tool: OAuthCatalogTool) => {
   const raw = tool.title?.trim() || tool.name.trim();
