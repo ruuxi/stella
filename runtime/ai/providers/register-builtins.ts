@@ -1,74 +1,110 @@
-import { clearApiProviders, registerApiProvider } from "../api-registry.js";
-import { streamBedrock, streamSimpleBedrock } from "./amazon-bedrock.js";
-import { streamAnthropic, streamSimpleAnthropic } from "./anthropic.js";
-import { streamAzureOpenAIResponses, streamSimpleAzureOpenAIResponses } from "./azure-openai-responses.js";
-import { streamGoogle, streamSimpleGoogle } from "./google.js";
-import { streamGoogleGeminiCli, streamSimpleGoogleGeminiCli } from "./google-gemini-cli.js";
-import { streamGoogleVertex, streamSimpleGoogleVertex } from "./google-vertex.js";
-import { streamMistral, streamSimpleMistral } from "./mistral.js";
-import { streamOpenAICodexResponses, streamSimpleOpenAICodexResponses } from "./openai-codex-responses.js";
-import { streamOpenAICompletions, streamSimpleOpenAICompletions } from "./openai-completions.js";
-import { streamOpenAIResponses, streamSimpleOpenAIResponses } from "./openai-responses.js";
+import { clearApiProviders, registerLazyApiProvider } from "../api-registry.js";
+
+// NOTE: provider implementation modules are imported LAZILY (via the
+// `load` closures below) rather than statically. Each module statically
+// imports its heavy SDK (@anthropic-ai/sdk, openai, @google/genai,
+// @mistralai/mistralai, @aws-sdk/client-bedrock-runtime, …); pulling that
+// whole graph in eagerly would have to be parsed+evaluated before the
+// worker can answer INTERNAL_WORKER_INITIALIZE. Registering loader
+// closures keeps boot cheap — the SDK for a given api is only imported
+// when `stream()` is first called for it (see ai/stream.ts +
+// api-registry.ts `resolveApiProviderInternal`).
 
 export function registerBuiltInApiProviders(): void {
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "anthropic-messages",
-		stream: streamAnthropic,
-		streamSimple: streamSimpleAnthropic,
+		load: async () => {
+			const { streamAnthropic, streamSimpleAnthropic } = await import("./anthropic.js");
+			return { stream: streamAnthropic, streamSimple: streamSimpleAnthropic };
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "openai-completions",
-		stream: streamOpenAICompletions,
-		streamSimple: streamSimpleOpenAICompletions,
+		load: async () => {
+			const { streamOpenAICompletions, streamSimpleOpenAICompletions } = await import(
+				"./openai-completions.js"
+			);
+			return { stream: streamOpenAICompletions, streamSimple: streamSimpleOpenAICompletions };
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "mistral-conversations",
-		stream: streamMistral,
-		streamSimple: streamSimpleMistral,
+		load: async () => {
+			const { streamMistral, streamSimpleMistral } = await import("./mistral.js");
+			return { stream: streamMistral, streamSimple: streamSimpleMistral };
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "openai-responses",
-		stream: streamOpenAIResponses,
-		streamSimple: streamSimpleOpenAIResponses,
+		load: async () => {
+			const { streamOpenAIResponses, streamSimpleOpenAIResponses } = await import(
+				"./openai-responses.js"
+			);
+			return { stream: streamOpenAIResponses, streamSimple: streamSimpleOpenAIResponses };
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "azure-openai-responses",
-		stream: streamAzureOpenAIResponses,
-		streamSimple: streamSimpleAzureOpenAIResponses,
+		load: async () => {
+			const { streamAzureOpenAIResponses, streamSimpleAzureOpenAIResponses } = await import(
+				"./azure-openai-responses.js"
+			);
+			return {
+				stream: streamAzureOpenAIResponses,
+				streamSimple: streamSimpleAzureOpenAIResponses,
+			};
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "openai-codex-responses",
-		stream: streamOpenAICodexResponses,
-		streamSimple: streamSimpleOpenAICodexResponses,
+		load: async () => {
+			const { streamOpenAICodexResponses, streamSimpleOpenAICodexResponses } = await import(
+				"./openai-codex-responses.js"
+			);
+			return {
+				stream: streamOpenAICodexResponses,
+				streamSimple: streamSimpleOpenAICodexResponses,
+			};
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "google-generative-ai",
-		stream: streamGoogle,
-		streamSimple: streamSimpleGoogle,
+		load: async () => {
+			const { streamGoogle, streamSimpleGoogle } = await import("./google.js");
+			return { stream: streamGoogle, streamSimple: streamSimpleGoogle };
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "google-gemini-cli",
-		stream: streamGoogleGeminiCli,
-		streamSimple: streamSimpleGoogleGeminiCli,
+		load: async () => {
+			const { streamGoogleGeminiCli, streamSimpleGoogleGeminiCli } = await import(
+				"./google-gemini-cli.js"
+			);
+			return { stream: streamGoogleGeminiCli, streamSimple: streamSimpleGoogleGeminiCli };
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "google-vertex",
-		stream: streamGoogleVertex,
-		streamSimple: streamSimpleGoogleVertex,
+		load: async () => {
+			const { streamGoogleVertex, streamSimpleGoogleVertex } = await import("./google-vertex.js");
+			return { stream: streamGoogleVertex, streamSimple: streamSimpleGoogleVertex };
+		},
 	});
 
-	registerApiProvider({
+	registerLazyApiProvider({
 		api: "bedrock-converse-stream",
-		stream: streamBedrock,
-		streamSimple: streamSimpleBedrock,
+		load: async () => {
+			const { streamBedrock, streamSimpleBedrock } = await import("./amazon-bedrock.js");
+			return { stream: streamBedrock, streamSimple: streamSimpleBedrock };
+		},
 	});
 }
 

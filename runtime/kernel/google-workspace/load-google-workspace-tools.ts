@@ -16,13 +16,20 @@ import {
 import type { ToolDefinition } from "../extensions/types.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import { setGoogleWorkspaceProjectRoot } from "./paths.js";
-import { AuthManager } from "./AuthManager.js";
 import { SCOPES } from "./scopes.js";
-import { DriveService } from "./DriveService.js";
-import { DocsService } from "./DocsService.js";
-import { CalendarService } from "./CalendarService.js";
-import { GmailService } from "./GmailService.js";
-import { PeopleService } from "./PeopleService.js";
+// The service modules below statically `import { google } from "googleapis"`,
+// which is very slow to require (googleapis builds clients for hundreds of
+// APIs). Import them only as TYPES here and dynamically `await import()` the
+// runtime modules inside `loadGoogleWorkspaceTools` so the googleapis graph
+// is parsed only when an agent actually loads Workspace tools — not at worker
+// boot (server.ts instantiates the runner during INTERNAL_WORKER_INITIALIZE).
+import type { AuthManager } from "./AuthManager.js";
+import type { DriveService } from "./DriveService.js";
+import type { DocsService } from "./DocsService.js";
+import type { CalendarService } from "./CalendarService.js";
+import type { GmailService } from "./GmailService.js";
+import type { PeopleService } from "./PeopleService.js";
+// TimeService is googleapis-free, so it stays an eager value import.
 import { TimeService } from "./TimeService.js";
 import { formatGoogleWorkspaceCallToolResult } from "./format-google-workspace-result.js";
 import { GOOGLE_WORKSPACE_TOOL_METADATA } from "./google-workspace-tool-metadata.js";
@@ -186,6 +193,25 @@ export const loadGoogleWorkspaceTools = async (options: {
   const root = path.join(options.stellaRoot, "google-workspace");
   await mkdir(root, { recursive: true, mode: 0o700 });
   setGoogleWorkspaceProjectRoot(root);
+
+  // Lazily pull the googleapis-bearing service modules now (this is the
+  // first point we actually need real clients). See the import-type note
+  // at the top of this file.
+  const [
+    { AuthManager },
+    { DriveService },
+    { DocsService },
+    { CalendarService },
+    { GmailService },
+    { PeopleService },
+  ] = await Promise.all([
+    import("./AuthManager.js"),
+    import("./DriveService.js"),
+    import("./DocsService.js"),
+    import("./CalendarService.js"),
+    import("./GmailService.js"),
+    import("./PeopleService.js"),
+  ]);
 
   const authManager = new AuthManager(SCOPES);
   const drive = new DriveService(authManager);
