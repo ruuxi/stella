@@ -23,13 +23,13 @@ afterEach(async () => {
 
 describe("collectAllSignals", () => {
   it("persists selected categories under Stella home", async () => {
-    const stellaHome = await createTempHome();
+    const stellaDataDir = await createTempHome();
 
-    await collectAllSignals(stellaHome, []);
+    await collectAllSignals(stellaDataDir, []);
 
     const persisted = JSON.parse(
       await fs.readFile(
-        path.join(stellaHome, "discovery_categories.json"),
+        path.join(stellaDataDir, "discovery_categories.json"),
         "utf-8",
       ),
     ) as { categories?: unknown; updatedAt?: unknown };

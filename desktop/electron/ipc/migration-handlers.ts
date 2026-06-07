@@ -14,7 +14,7 @@ import {
 } from "../../src/shared/contracts/ipc-channels.js";
 
 type MigrationHandlersOptions = {
-  getStellaHome: () => string | null;
+  getStellaDataDir: () => string | null;
   assertPrivilegedSender: (
     event: IpcMainInvokeEvent,
     channel: string,
@@ -81,14 +81,14 @@ export const registerMigrationHandlers = (
       if (!options.assertPrivilegedSender(event, IPC_MIGRATION_RUN)) {
         throw new Error("Blocked untrusted migration request.");
       }
-      const stellaHome = options.getStellaHome();
-      if (!stellaHome) {
+      const stellaDataDir = options.getStellaDataDir();
+      if (!stellaDataDir) {
         throw new Error("Stella home is not ready yet.");
       }
       return await runThirdPartyMigration({
         source: assertSource(payload?.source),
         sourceRoot: normalizeSourceRoot(payload?.sourceRoot),
-        stellaHome,
+        stellaDataDir,
         selection: normalizeSelection(payload?.selection),
       });
     },

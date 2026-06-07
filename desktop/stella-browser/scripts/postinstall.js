@@ -8,12 +8,11 @@
  */
 
 import { existsSync, mkdirSync, chmodSync, createWriteStream, unlinkSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { platform, arch } from 'os';
 import { get } from 'https';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = import.meta.dirname;
 const projectRoot = join(__dirname, '..');
 const binDir = join(projectRoot, 'bin');
 

@@ -9,20 +9,20 @@ import {
 
 describe("ripgrep resolver", () => {
   const originalPath = process.env.PATH;
-  const originalStellaRoot = process.env.STELLA_ROOT;
-  const originalStellaHome = process.env.STELLA_HOME;
+  const originalStellaAppDir = process.env.STELLA_APP_DIR;
+  const originalStellaDataDir = process.env.STELLA_DATA_DIR;
 
   afterEach(() => {
     process.env.PATH = originalPath;
-    if (originalStellaRoot === undefined) {
-      delete process.env.STELLA_ROOT;
+    if (originalStellaAppDir === undefined) {
+      delete process.env.STELLA_APP_DIR;
     } else {
-      process.env.STELLA_ROOT = originalStellaRoot;
+      process.env.STELLA_APP_DIR = originalStellaAppDir;
     }
-    if (originalStellaHome === undefined) {
-      delete process.env.STELLA_HOME;
+    if (originalStellaDataDir === undefined) {
+      delete process.env.STELLA_DATA_DIR;
     } else {
-      process.env.STELLA_HOME = originalStellaHome;
+      process.env.STELLA_DATA_DIR = originalStellaDataDir;
     }
     clearRipgrepPathCacheForTests();
   });
@@ -34,15 +34,15 @@ describe("ripgrep resolver", () => {
     await mkdir(path.dirname(source), { recursive: true });
     await writeFile(source, "#!/bin/sh\necho bundled-rg\n", { mode: 0o755 });
     process.env.PATH = "";
-    delete process.env.STELLA_ROOT;
-    delete process.env.STELLA_HOME;
+    delete process.env.STELLA_APP_DIR;
+    delete process.env.STELLA_DATA_DIR;
 
     const resolved = await resolveRipgrepPath({
       conversationId: "c",
       deviceId: "d",
       requestId: "r",
-      stellaRoot: root,
-      stellaHome: home,
+      stellaAppDir: root,
+      stellaDataDir: home,
     });
 
     const target = path.join(home, "bin", "rg");

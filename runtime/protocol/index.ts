@@ -346,8 +346,8 @@ export type RuntimeInitializeParams = {
   platform: NodeJS.Platform;
   protocolVersion: string;
   isDev: boolean;
-  stellaRoot: string;
-  stellaHomePath: string;
+  stellaAppDir: string;
+  stellaDataDirPath: string;
   stellaWorkspacePath: string;
 };
 

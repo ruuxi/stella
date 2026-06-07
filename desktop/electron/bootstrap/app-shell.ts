@@ -2,7 +2,7 @@ import { app } from "electron";
 import { mkdirSync, writeFileSync } from "fs";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import path from "path";
-import { resolveStellaHome } from "../../../runtime/kernel/home/stella-home.js";
+import { resolveStellaDataDir } from "../../../runtime/kernel/home/stella-home.js";
 import { getDevServerUrl } from "../dev-url.js";
 import { OverlayWindowController } from "../windows/overlay-window.js";
 import { PetWindowController } from "../windows/pet-window.js";
@@ -130,21 +130,21 @@ const storeWebOrigin = (value: string) => {
 
 const initializeBootstrapLocalState = async (context: BootstrapContext) => {
   const { config, lifecycle, services, state } = context;
-  const stellaHome = await resolveStellaHome(
+  const stellaDataDir = await resolveStellaDataDir(
     app,
-    config.stellaRoot,
-    config.stellaHomePath,
+    config.stellaAppDir,
+    config.stellaDataDirPath,
   );
 
-  lifecycle.setStellaRoot(stellaHome.stellaRoot);
-  lifecycle.setStellaHome(stellaHome.statePath);
-  state.stellaRoot = stellaHome.stellaRoot;
-  state.stellaHomePath = stellaHome.statePath;
-  state.stellaWorkspacePath = stellaHome.workspacePath;
+  lifecycle.setStellaAppDir(stellaDataDir.stellaAppDir);
+  lifecycle.setStellaDataDir(stellaDataDir.statePath);
+  state.stellaAppDir = stellaDataDir.stellaAppDir;
+  state.stellaDataDirPath = stellaDataDir.statePath;
+  state.stellaWorkspacePath = stellaDataDir.workspacePath;
   services.backupService.start();
 
   services.securityPolicyService.setSecurityPolicyPath(
-    path.join(stellaHome.statePath, "security_policy.json"),
+    path.join(stellaDataDir.statePath, "security_policy.json"),
   );
 };
 

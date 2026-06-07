@@ -117,12 +117,12 @@ const resolveStateScopedPath = async (
 export const sanitizeExploreToolArgs = async (
   toolName: typeof EXPLORE_TOOL_NAMES[number],
   toolArgs: Record<string, unknown>,
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<
   | { ok: true; args: Record<string, unknown> }
   | { ok: false; error: string }
 > => {
-  if (!stellaHome.trim()) {
+  if (!stellaDataDir.trim()) {
     return {
       ok: false,
       error: "Explore requires a Stella home so it can stay inside ~/.stella/.",
@@ -134,7 +134,7 @@ export const sanitizeExploreToolArgs = async (
     if (!rawPath) {
       return { ok: false, error: "Read requires a non-empty file_path." };
     }
-    const safePath = await resolveStateScopedPath(rawPath, stellaHome);
+    const safePath = await resolveStateScopedPath(rawPath, stellaDataDir);
     if (!safePath) {
       return {
         ok: false,
@@ -152,8 +152,8 @@ export const sanitizeExploreToolArgs = async (
 
   const rawPath = typeof toolArgs.path === "string" && toolArgs.path.trim()
     ? toolArgs.path.trim()
-    : stellaHome;
-  const safePath = await resolveStateScopedPath(rawPath, stellaHome);
+    : stellaDataDir;
+  const safePath = await resolveStateScopedPath(rawPath, stellaDataDir);
   if (!safePath) {
     return {
       ok: false,
@@ -259,7 +259,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
   // inline (not the placeholder) — that's why it can pick from the list instead
   // of grepping the skills tree to rediscover what already has a description.
   try {
-    const catalogBlock = await renderFullSkillCatalogBlock(context.stellaHome);
+    const catalogBlock = await renderFullSkillCatalogBlock(context.stellaDataDir);
     if (catalogBlock.trim()) {
       exploreSystemPrompt = `${exploreSystemPrompt}\n\n${catalogBlock}`;
     }
@@ -269,11 +269,11 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
     });
   }
 
-  const modelName = getExploreModel(context.stellaHome);
+  const modelName = getExploreModel(context.stellaDataDir);
 
   if (
     shouldUseClaudeCodeAgentRuntime({
-      stellaRoot: context.stellaRoot,
+      stellaAppDir: context.stellaAppDir,
     })
   ) {
     const tools = buildExploreTools();
@@ -293,7 +293,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
     try {
       const text = await withTimeout(
         runClaudeCodeAgentTextCompletion({
-          stellaRoot: context.stellaRoot,
+          stellaAppDir: context.stellaAppDir,
           agentType: AGENT_IDS.EXPLORE,
           stellaModel: modelName,
           context: {
@@ -311,7 +311,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
             const sanitized = await sanitizeExploreToolArgs(
               toolName as typeof EXPLORE_TOOL_NAMES[number],
               toolArgs,
-              context.stellaHome,
+              context.stellaDataDir,
             );
             if (!sanitized.ok) {
               return { error: sanitized.error };
@@ -324,7 +324,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
                 deviceId: context.deviceId,
                 requestId: `explore-${Date.now()}`,
                 agentType: AGENT_IDS.EXPLORE,
-                stellaRoot: context.stellaRoot,
+                stellaAppDir: context.stellaAppDir,
               },
               toolSignal ?? abortController.signal,
             );
@@ -347,7 +347,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
   let resolvedLlm;
   try {
     resolvedLlm = resolveLlmRoute({
-      stellaRoot: context.stellaHome,
+      stellaAppDir: context.stellaDataDir,
       modelName,
       agentType: AGENT_IDS.EXPLORE,
       site: createRunnerSiteConfig(context),
@@ -434,7 +434,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
           const sanitized = await sanitizeExploreToolArgs(
             toolCall.name as typeof EXPLORE_TOOL_NAMES[number],
             (toolCall.arguments as Record<string, unknown>) ?? {},
-            context.stellaHome,
+            context.stellaDataDir,
           );
           if (!sanitized.ok) {
             messages.push(
@@ -450,7 +450,7 @@ export const runExplore = async (args: RunExploreArgs): Promise<string> => {
               deviceId: context.deviceId,
               requestId: `explore-${Date.now()}`,
               agentType: AGENT_IDS.EXPLORE,
-              stellaRoot: context.stellaRoot,
+              stellaAppDir: context.stellaAppDir,
             },
             abortController.signal,
           );

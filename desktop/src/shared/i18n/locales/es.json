@@ -223,7 +223,7 @@
         "wipedTitle": "Memorias borradas"
       },
       "enableFailures": {
-        "noStellaRoot": "La raíz del espacio de trabajo de Stella no está disponible.",
+        "noStellaAppDir": "La raíz del espacio de trabajo de Stella no está disponible.",
         "needsPermission": "Aún se necesita el permiso de grabación de pantalla para que Chronicle pueda iniciarse.",
         "binaryMissing": "Falta el binario auxiliar de Chronicle.",
         "startupTimeout": "Chronicle no se conectó tras el lanzamiento.",

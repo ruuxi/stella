@@ -1,6 +1,5 @@
 import { spawn } from "child_process";
 import path from "path";
-import { fileURLToPath } from "url";
 import { trashPathsForDeferredDelete } from "./deferred-delete.js";
 
 type DeleteArgs = {
@@ -395,8 +394,7 @@ const isDirectExecution = () => {
   if (!/^deferred-delete-cli\.(?:js|ts)$/.test(path.basename(invoked))) {
     return false;
   }
-  const current = fileURLToPath(import.meta.url);
-  return current === invoked;
+  return import.meta.filename === invoked;
 };
 
 if (isDirectExecution()) {

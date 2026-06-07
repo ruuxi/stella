@@ -9,7 +9,7 @@ import type { AgentMessage } from "../agent-core/types.js";
  * Runtime services exposed to extension factories.
  *
  * Stella-runtime hooks (self-mod, memory, …) need access to
- * stable per-runtime values — `stellaHome`, `stellaRoot`,
+ * stable per-runtime values — `stellaDataDir`, `stellaAppDir`,
  * `selfModMonitor`, and the SQLite store — that can't be reconstructed
  * from per-emit hook payloads alone. The loader threads this object
  * into every `ExtensionFactory` invocation so factories can close over
@@ -25,9 +25,9 @@ import type { AgentMessage } from "../agent-core/types.js";
  */
 export type ExtensionServices = {
   /** Mutable user-data home (`~/.stella`): personality, skills, memory, and the live agent prompts under `agents/`. */
-  stellaHome: string;
+  stellaDataDir: string;
   /** Repo root for self-mod git operations. */
-  stellaRoot: string;
+  stellaAppDir: string;
   /** Self-mod monitor — null in headless test runtimes. */
   selfModMonitor: SelfModMonitor | null;
   /** Runtime SQLite store. Hooks that need to read/write per-conversation counters or thread summaries reach in here. */

@@ -13,15 +13,15 @@ type RequestPayload = {
   action?: "detect" | "preview" | "run";
   source?: ThirdPartyMigrationSource;
   sourceRoot?: string;
-  stellaHome?: string;
+  stellaDataDir?: string;
   selection?: ThirdPartyMigrationSelection;
 };
 
 const payload = JSON.parse(process.argv[2] ?? "{}") as RequestPayload;
 
-const stellaHome =
-  payload.stellaHome ??
-  process.env.STELLA_HOME ??
+const stellaDataDir =
+  payload.stellaDataDir ??
+  process.env.STELLA_DATA_DIR ??
   path.join(os.homedir(), ".stella");
 
 const main = async () => {
@@ -40,7 +40,7 @@ const main = async () => {
     return await runThirdPartyMigration({
       source: payload.source,
       sourceRoot: payload.sourceRoot,
-      stellaHome,
+      stellaDataDir,
       selection: payload.selection,
     });
   }

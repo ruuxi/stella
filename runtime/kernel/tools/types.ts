@@ -23,8 +23,8 @@ export type ToolContext = {
   runId?: string;
   rootRunId?: string;
   agentType?: string;
-  stellaRoot?: string;
-  stellaHome?: string;
+  stellaAppDir?: string;
+  stellaDataDir?: string;
   toolWorkspaceRoot?: string;
   storageMode?: "cloud" | "local";
   agentId?: string;
@@ -173,7 +173,7 @@ export type AgentToolApi = {
 };
 
 export type ToolHostOptions = {
-  stellaRoot: string;
+  stellaAppDir: string;
   stellaBrowserBinPath?: string;
   stellaOfficeBinPath?: string;
   stellaComputerCliPath?: string;
@@ -232,11 +232,11 @@ export type ToolHostOptions = {
     signal?: AbortSignal;
   }) => Promise<string>;
   /**
-   * Optional ThreadSummariesStore + stellaHome used by the background Dream
+   * Optional ThreadSummariesStore + stellaDataDir used by the background Dream
    * agent's consolidation pass.
    */
   threadSummariesStore?: import("../memory/thread-summaries-store.js").ThreadSummariesStore;
-  stellaHome?: string;
+  stellaDataDir?: string;
   requestCredential?: (payload: {
     provider: string;
     label?: string;

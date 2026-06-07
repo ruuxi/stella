@@ -146,15 +146,15 @@ const pathMatchesPrefix = (normalized: string, prefix: string): boolean => {
   );
 };
 
-const stellaHomesForContext = (context?: {
-  stellaHome?: string;
-  stellaRoot?: string;
+const stellaDataDirsForContext = (context?: {
+  stellaDataDir?: string;
+  stellaAppDir?: string;
 }): string[] => {
   const homes = [
-    context?.stellaHome,
-    process.env.STELLA_HOME,
+    context?.stellaDataDir,
+    process.env.STELLA_DATA_DIR,
     path.join(os.homedir(), ".stella"),
-    context?.stellaRoot,
+    context?.stellaAppDir,
   ].filter((entry): entry is string => Boolean(entry && entry.trim()));
   return [...new Set(homes.map((entry) => path.resolve(entry)))];
 };
@@ -175,9 +175,9 @@ const isSensitiveHomePath = (normalized: string): boolean => {
 
 const isSensitiveStellaPath = (
   normalized: string,
-  context?: { stellaHome?: string; stellaRoot?: string },
+  context?: { stellaDataDir?: string; stellaAppDir?: string },
 ): boolean => {
-  for (const home of stellaHomesForContext(context)) {
+  for (const home of stellaDataDirsForContext(context)) {
     for (const rel of STELLA_CREDENTIAL_FILES) {
       if (normalized === normalizePath(path.join(home, rel))) {
         return true;
@@ -198,7 +198,7 @@ const isSensitiveStellaPath = (
  */
 export const isBlockedPath = (
   filePath: string,
-  context?: { stellaHome?: string; stellaRoot?: string },
+  context?: { stellaDataDir?: string; stellaAppDir?: string },
 ): string | null => {
   const normalized = normalizePath(filePath);
 

@@ -39,14 +39,14 @@ export type DreamListResult = {
   instructions: Array<{ extension: string; path: string }>;
 };
 
-const memoriesDir = (stellaHome: string): string =>
-  path.join(stellaHome, "memories");
+const memoriesDir = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "memories");
 
-const extensionsDir = (stellaHome: string): string =>
-  path.join(stellaHome, "memories_extensions");
+const extensionsDir = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "memories_extensions");
 
-const watermarkPath = (stellaHome: string): string =>
-  path.join(memoriesDir(stellaHome), DREAM_WATERMARK_FILE);
+const watermarkPath = (stellaDataDir: string): string =>
+  path.join(memoriesDir(stellaDataDir), DREAM_WATERMARK_FILE);
 
 const toExtensionFileKey = (root: string, filePath: string): string =>
   path.relative(root, filePath).split(path.sep).join("/");
@@ -68,10 +68,10 @@ const normalizePath = async (target: string): Promise<string> => {
 };
 
 export const readDreamWatermark = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<DreamWatermark> => {
   try {
-    const raw = await fs.readFile(watermarkPath(stellaHome), "utf-8");
+    const raw = await fs.readFile(watermarkPath(stellaDataDir), "utf-8");
     const parsed = JSON.parse(raw) as Partial<DreamWatermark> | null;
     return {
       thread_summaries:
@@ -101,26 +101,26 @@ export const readDreamWatermark = async (
 };
 
 export const writeDreamWatermark = async (
-  stellaHome: string,
+  stellaDataDir: string,
   watermark: DreamWatermark,
 ): Promise<void> => {
-  const dir = memoriesDir(stellaHome);
+  const dir = memoriesDir(stellaDataDir);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(
-    watermarkPath(stellaHome),
+    watermarkPath(stellaDataDir),
     `${JSON.stringify(watermark, null, 2)}\n`,
     "utf-8",
   );
 };
 
 const listExtensionFiles = async (
-  stellaHome: string,
+  stellaDataDir: string,
   watermark: DreamWatermark,
 ): Promise<{
   entries: DreamExtensionEntry[];
   instructions: Array<{ extension: string; path: string }>;
 }> => {
-  const root = extensionsDir(stellaHome);
+  const root = extensionsDir(stellaDataDir);
   let extensions: string[];
   try {
     const dirents = await fs.readdir(root, { withFileTypes: true });
@@ -188,12 +188,12 @@ const listExtensionFiles = async (
 };
 
 export const dreamList = async (args: {
-  stellaHome: string;
+  stellaDataDir: string;
   store: ThreadSummariesStore;
   sinceWatermark?: number;
   limit?: number;
 }): Promise<DreamListResult> => {
-  const watermark = await readDreamWatermark(args.stellaHome);
+  const watermark = await readDreamWatermark(args.stellaDataDir);
   // Thread summaries are already durable queue rows with processed_by_dream_at.
   // Do not apply the persisted watermark by default or we can skip rows that
   // share the same millisecond timestamp as a partially processed batch.
@@ -204,7 +204,7 @@ export const dreamList = async (args: {
   });
 
   const { entries, instructions } = await listExtensionFiles(
-    args.stellaHome,
+    args.stellaDataDir,
     watermark,
   );
 
@@ -223,7 +223,7 @@ export const dreamList = async (args: {
 };
 
 export type DreamMarkProcessedArgs = {
-  stellaHome: string;
+  stellaDataDir: string;
   store: ThreadSummariesStore;
   threadKeys?: Array<{ threadId: string; runId: string }>;
   threadIds?: string[];
@@ -242,7 +242,7 @@ export const dreamMarkProcessed = async (
       : {}),
   });
 
-  const current = await readDreamWatermark(args.stellaHome);
+  const current = await readDreamWatermark(args.stellaDataDir);
   const nextThreadWatermark =
     typeof args.watermark === "number"
       ? Math.max(current.thread_summaries, args.watermark)
@@ -255,7 +255,7 @@ export const dreamMarkProcessed = async (
     extension_files: { ...current.extension_files },
   };
 
-  const extensionsRoot = await normalizePath(extensionsDir(args.stellaHome));
+  const extensionsRoot = await normalizePath(extensionsDir(args.stellaDataDir));
   for (const filePath of args.extensionPaths ?? []) {
     const normalizedFilePath = await normalizePath(filePath);
     if (!isWithinDirectory(normalizedFilePath, extensionsRoot)) {
@@ -278,15 +278,15 @@ export const dreamMarkProcessed = async (
     }
   }
 
-  await writeDreamWatermark(args.stellaHome, next);
+  await writeDreamWatermark(args.stellaDataDir, next);
 
   return { updated: baseUpdate.updated, watermark: next };
 };
 
 export const countPendingDreamExtensions = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<number> => {
-  const watermark = await readDreamWatermark(stellaHome);
-  const { entries } = await listExtensionFiles(stellaHome, watermark);
+  const watermark = await readDreamWatermark(stellaDataDir);
+  const { entries } = await listExtensionFiles(stellaDataDir, watermark);
   return entries.length;
 };

@@ -1,13 +1,10 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const APPS_DIR = fileURLToPath(new URL("../../src/app", import.meta.url));
-const ROUTES_DIR = fileURLToPath(new URL("../../src/routes", import.meta.url));
-const ROUTE_TREE_PATH = fileURLToPath(
-  new URL("../../src/routeTree.gen.ts", import.meta.url),
-);
+const APPS_DIR = join(import.meta.dirname, "../../src/app");
+const ROUTES_DIR = join(import.meta.dirname, "../../src/routes");
+const ROUTE_TREE_PATH = join(import.meta.dirname, "../../src/routeTree.gen.ts");
 
 // Only feature folders with a `metadata.ts` are sidebar apps; matches the
 // runtime `import.meta.glob` filter.

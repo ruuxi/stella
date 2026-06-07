@@ -78,7 +78,7 @@ describe("buildContextLookupUserPrompt", () => {
       conversationId: "conv-1",
       lookupPrompt:
         "Find context for what the user means by 'this' in the current app.",
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store,
       appBrowserContext: {
         apps: [
@@ -179,7 +179,7 @@ describe("buildContextLookupUserPrompt", () => {
       conversationId: "conv-1",
       lookupPrompt: "What did we decide about the mini window?",
       memorySearchTerms: ["mini window", "pinned"],
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       store,
       localEvents: [],
     });

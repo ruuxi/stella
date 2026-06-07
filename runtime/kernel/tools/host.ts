@@ -61,8 +61,8 @@ export type { ToolContext, ToolHandlerExtras, ToolResult };
 export type ToolHost = ReturnType<typeof createToolHost>;
 
 export const createToolHost = ({
-  stellaRoot,
-  stellaHome,
+  stellaAppDir,
+  stellaDataDir,
   stellaBrowserBinPath: _stellaBrowserBinPath,
   stellaOfficeBinPath: _stellaOfficeBinPath,
   stellaComputerCliPath,
@@ -84,10 +84,10 @@ export const createToolHost = ({
   actionConvex,
   contextProvider,
 }: ToolHostOptions) => {
-  const stateRoot = stellaHome ?? stellaRoot;
+  const stateRoot = stellaDataDir ?? stellaAppDir;
   const toolCatalog = new Map<string, ToolMetadata>();
 
-  setFileToolsConfig({ stellaRoot });
+  setFileToolsConfig({ stellaAppDir });
 
   const shellState: ShellState = createShellState(stateRoot, {
     stellaBrowserBinPath: _stellaBrowserBinPath,
@@ -134,7 +134,7 @@ export const createToolHost = ({
   // description + handler; they're the single source of truth for everything
   // the model sees.
   const builtinTools: BuiltinToolDefinition[] = buildBuiltinTools({
-    stellaRoot,
+    stellaAppDir,
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaComputerCliPath,

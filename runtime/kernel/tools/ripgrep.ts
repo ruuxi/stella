@@ -2,8 +2,7 @@ import { createWriteStream, promises as fs } from "fs";
 import path from "path";
 import { pipeline } from "stream/promises";
 import { spawn } from "child_process";
-import { fileURLToPath } from "url";
-import { resolveDefaultStellaHomePath } from "../home/stella-home.js";
+import { resolveDefaultStellaDataDir } from "../home/stella-home.js";
 import type { ToolContext } from "./types.js";
 
 const RIPGREP_VERSION = "15.1.0";
@@ -18,8 +17,7 @@ const PLATFORM = {
   "x64-win32": { platform: "x86_64-pc-windows-msvc", extension: "zip" },
 } as const;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = import.meta.dirname;
 
 let cachedRipgrepPath: string | null = null;
 let pendingResolve: Promise<string | null> | null = null;
@@ -66,18 +64,18 @@ const findOnPath = async (): Promise<string | null> => {
 };
 
 const resolveStellaBinDir = (context?: ToolContext): string => {
-  const stellaHome =
-    context?.stellaHome?.trim() ||
-    process.env.STELLA_HOME?.trim() ||
-    resolveDefaultStellaHomePath();
-  return path.join(path.resolve(stellaHome), "bin");
+  const stellaDataDir =
+    context?.stellaDataDir?.trim() ||
+    process.env.STELLA_DATA_DIR?.trim() ||
+    resolveDefaultStellaDataDir();
+  return path.join(path.resolve(stellaDataDir), "bin");
 };
 
 const bundledCandidates = (context?: ToolContext): string[] => {
   const platformPackage = `sdk-${process.platform}-${process.arch === "x64" ? "x64" : process.arch}`;
   const roots = [
-    context?.stellaRoot,
-    process.env.STELLA_ROOT,
+    context?.stellaAppDir,
+    process.env.STELLA_APP_DIR,
     path.resolve(__dirname, "..", "..", ".."),
   ].filter((entry): entry is string => Boolean(entry?.trim()));
   return roots.flatMap((root) => [

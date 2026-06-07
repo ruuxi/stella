@@ -65,17 +65,17 @@ const RAW_MEMORIES_TEMPLATE = `# Raw memories
 <!-- DREAM:RAW_PROCESSED_END -->
 `;
 
-export const memoriesRoot = (stellaHome: string): string =>
-  path.join(stellaHome, "memories");
+export const memoriesRoot = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "memories");
 
-export const memoryFilePath = (stellaHome: string): string =>
-  path.join(memoriesRoot(stellaHome), MEMORY_FILE);
+export const memoryFilePath = (stellaDataDir: string): string =>
+  path.join(memoriesRoot(stellaDataDir), MEMORY_FILE);
 
-export const memorySummaryPath = (stellaHome: string): string =>
-  path.join(memoriesRoot(stellaHome), MEMORY_SUMMARY_FILE);
+export const memorySummaryPath = (stellaDataDir: string): string =>
+  path.join(memoriesRoot(stellaDataDir), MEMORY_SUMMARY_FILE);
 
-export const rawMemoriesPath = (stellaHome: string): string =>
-  path.join(memoriesRoot(stellaHome), RAW_MEMORIES_FILE);
+export const rawMemoriesPath = (stellaDataDir: string): string =>
+  path.join(memoriesRoot(stellaDataDir), RAW_MEMORIES_FILE);
 
 const writeIfMissing = async (target: string, contents: string): Promise<void> => {
   try {
@@ -86,30 +86,30 @@ const writeIfMissing = async (target: string, contents: string): Promise<void> =
 };
 
 export const ensureDreamMemoryLayout = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<void> => {
-  const root = memoriesRoot(stellaHome);
+  const root = memoriesRoot(stellaDataDir);
   await fs.mkdir(root, { recursive: true });
-  await writeIfMissing(memoryFilePath(stellaHome), MEMORY_TEMPLATE);
-  await writeIfMissing(memorySummaryPath(stellaHome), MEMORY_SUMMARY_TEMPLATE);
-  await writeIfMissing(rawMemoriesPath(stellaHome), RAW_MEMORIES_TEMPLATE);
+  await writeIfMissing(memoryFilePath(stellaDataDir), MEMORY_TEMPLATE);
+  await writeIfMissing(memorySummaryPath(stellaDataDir), MEMORY_SUMMARY_TEMPLATE);
+  await writeIfMissing(rawMemoriesPath(stellaDataDir), RAW_MEMORIES_TEMPLATE);
 };
 
 export const readMemoryFile = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<string | null> => {
   try {
-    return await fs.readFile(memoryFilePath(stellaHome), "utf-8");
+    return await fs.readFile(memoryFilePath(stellaDataDir), "utf-8");
   } catch {
     return null;
   }
 };
 
 export const readMemorySummary = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<string | null> => {
   try {
-    return await fs.readFile(memorySummaryPath(stellaHome), "utf-8");
+    return await fs.readFile(memorySummaryPath(stellaDataDir), "utf-8");
   } catch {
     return null;
   }

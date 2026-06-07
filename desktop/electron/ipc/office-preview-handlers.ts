@@ -22,8 +22,8 @@ import {
 import type { LocalChatEventRecord } from "../../../runtime/kernel/storage/shared.js";
 
 type OfficePreviewHandlersOptions = {
-  getStellaRoot: () => string | null;
-  getStellaHome: () => string | null;
+  getStellaAppDir: () => string | null;
+  getStellaDataDir: () => string | null;
   localChatHistoryService?: LocalChatHistoryService;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
@@ -224,8 +224,8 @@ export const registerOfficePreviewHandlers = (
         throw new Error("Blocked untrusted office preview request.");
       }
 
-      const stellaHome = options.getStellaHome();
-      if (!stellaHome?.trim()) {
+      const stellaDataDir = options.getStellaDataDir();
+      if (!stellaDataDir?.trim()) {
         return [];
       }
 
@@ -234,7 +234,7 @@ export const registerOfficePreviewHandlers = (
         payload,
         IPC_OFFICE_PREVIEW_LIST,
       );
-      const snapshots = await listOfficePreviewSnapshots(stellaHome);
+      const snapshots = await listOfficePreviewSnapshots(stellaDataDir);
       return mobilePolicy
         ? filterOfficePreviewSnapshotsForMobile(snapshots, mobilePolicy)
         : snapshots;
@@ -251,9 +251,9 @@ export const registerOfficePreviewHandlers = (
         throw new Error("Blocked untrusted office preview request.");
       }
 
-      const stellaRoot = options.getStellaRoot();
-      const stellaHome = options.getStellaHome();
-      if (!stellaRoot?.trim() || !stellaHome?.trim()) {
+      const stellaAppDir = options.getStellaAppDir();
+      const stellaDataDir = options.getStellaDataDir();
+      if (!stellaAppDir?.trim() || !stellaDataDir?.trim()) {
         throw new Error("Office preview requires an initialized Stella root.");
       }
       const requestedPath =
@@ -292,12 +292,12 @@ export const registerOfficePreviewHandlers = (
       const sessionId = randomUUID();
       const title = path.basename(sourcePath);
       const ref: OfficePreviewRef = { sessionId, title, sourcePath };
-      const sessionDir = path.join(stellaHome, PREVIEW_ROOT_DIRNAME, sessionId);
+      const sessionDir = path.join(stellaDataDir, PREVIEW_ROOT_DIRNAME, sessionId);
       const startedAt = Date.now();
       await writeManifest(sessionDir, ref, format, "starting", startedAt);
 
       const binaryPath = path.join(
-        stellaRoot,
+        stellaAppDir,
         "desktop",
         "stella-office",
         "bin",

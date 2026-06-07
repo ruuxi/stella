@@ -223,7 +223,7 @@
         "wipedTitle": "Vzpomínky vymazány"
       },
       "enableFailures": {
-        "noStellaRoot": "Kořen pracovního prostoru Stelly není dostupný.",
+        "noStellaAppDir": "Kořen pracovního prostoru Stelly není dostupný.",
         "needsPermission": "Před spuštěním Chronicle je stále vyžadováno oprávnění k záznamu obrazovky.",
         "binaryMissing": "Pomocný soubor Chronicle chybí.",
         "startupTimeout": "Chronicle se po spuštění nepřipojil.",

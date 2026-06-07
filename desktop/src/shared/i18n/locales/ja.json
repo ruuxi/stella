@@ -223,7 +223,7 @@
         "wipedTitle": "メモリを消去しました"
       },
       "enableFailures": {
-        "noStellaRoot": "Stella のワークスペースのルートを利用できません。",
+        "noStellaAppDir": "Stella のワークスペースのルートを利用できません。",
         "needsPermission": "Chronicle を開始する前に、まだ画面収録の許可が必要です。",
         "binaryMissing": "Chronicle のヘルパーバイナリがありません。",
         "startupTimeout": "起動後、Chronicle がオンラインになりませんでした。",

@@ -36,8 +36,8 @@ import type {
 const logger = createRuntimeLogger("agent-runtime.one-shot-completion");
 
 export type OneShotCompletionRuntimeContext = {
-  stellaRoot: string;
-  stellaHome: string;
+  stellaAppDir: string;
+  stellaDataDir: string;
   siteBaseUrl: string | null;
   getAuthToken: () => string | null;
   hasConnectedAccount: () => boolean;
@@ -49,15 +49,15 @@ export type OneShotCompletionRuntimeContext = {
 };
 
 const resolveModelName = (
-  stellaHome: string,
+  stellaDataDir: string,
   agentType: string,
   fallbackAgentTypes: readonly string[] | undefined,
 ): string | undefined => {
-  const direct = getModelOverride(stellaHome, agentType);
+  const direct = getModelOverride(stellaDataDir, agentType);
   if (direct) return direct;
   if (!fallbackAgentTypes) return undefined;
   for (const fallback of fallbackAgentTypes) {
-    const override = getModelOverride(stellaHome, fallback);
+    const override = getModelOverride(stellaDataDir, fallback);
     if (override) return override;
   }
   return undefined;
@@ -74,12 +74,12 @@ export const runOneShotCompletion = async (args: {
   }
 
   const modelName = resolveModelName(
-    runtime.stellaHome,
+    runtime.stellaDataDir,
     request.agentType,
     request.fallbackAgentTypes,
   );
   const route = resolveLlmRoute({
-    stellaRoot: runtime.stellaHome,
+    stellaAppDir: runtime.stellaDataDir,
     modelName,
     agentType: request.agentType,
     site: {
@@ -94,7 +94,7 @@ export const runOneShotCompletion = async (args: {
   });
 
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaRoot: runtime.stellaHome,
+    stellaAppDir: runtime.stellaDataDir,
     modelId: route.model.id,
   });
 
@@ -122,7 +122,7 @@ export const runOneShotCompletion = async (args: {
   try {
     if (useClaudeCode) {
       const text = await runClaudeCodeAgentTextCompletion({
-        stellaRoot: runtime.stellaRoot,
+        stellaAppDir: runtime.stellaAppDir,
         agentType: request.agentType,
         stellaModel: modelName ?? route.model.id,
         context,

@@ -1,7 +1,6 @@
 import path from "path";
 import os from "os";
 import { promises as fs } from "fs";
-import { fileURLToPath } from "url";
 import type { App } from "electron";
 import { ensurePrivateDir } from "../shared/private-fs.js";
 import {
@@ -15,9 +14,9 @@ import {
   type AgentsSyncReport,
 } from "./agents-sync.js";
 
-export type StellaHome = {
-  stellaRoot: string;
-  stellaHome: string;
+export type StellaDataDir = {
+  stellaAppDir: string;
+  stellaDataDir: string;
   extensionsPath: string;
   statePath: string;
   workspacePath: string;
@@ -26,14 +25,13 @@ export type StellaHome = {
 
 /**
  * Bundled agent prompts live in the install tree's stella-runtime extension;
- * they're reconciled into `${stellaHome}/agents/`, which is what the runtime
+ * they're reconciled into `${stellaDataDir}/agents/`, which is what the runtime
  * loads (so users can edit prompts and shipped updates still flow through).
  */
-const resolveBundledAgentsDir = (stellaRoot: string): string =>
-  path.join(stellaRoot, "runtime", "extensions", "stella-runtime", "agents");
+const resolveBundledAgentsDir = (stellaAppDir: string): string =>
+  path.join(stellaAppDir, "runtime", "extensions", "stella-runtime", "agents");
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = import.meta.dirname;
 
 const ensureDir = async (dirPath: string) => {
   await ensurePrivateDir(dirPath);
@@ -68,12 +66,12 @@ const copyPathIfMissing = async (sourcePath: string, targetPath: string) => {
 // `skills/` is intentionally NOT a one-shot seed entry — it goes through
 // hash-history reconciliation in `skills-sync.ts` so shipped skill updates
 // reach existing users without trampling local edits.
-const STELLA_HOME_SEED_ENTRIES = [
+const STELLA_DATA_SEED_ENTRIES = [
   "DREAM.md",
   path.join("outputs", "README.md"),
 ] as const;
 
-export const resolveStellaRoot = (app?: App, explicitRoot?: string): string => {
+export const resolveStellaAppDir = (app?: App, explicitRoot?: string): string => {
   const normalizedExplicitRoot = explicitRoot?.trim();
   if (normalizedExplicitRoot) {
     return normalizedExplicitRoot;
@@ -83,11 +81,11 @@ export const resolveStellaRoot = (app?: App, explicitRoot?: string): string => {
     : path.resolve(__dirname, "..", "..", "..");
 };
 
-export const resolveDefaultStellaHomePath = (): string =>
+export const resolveDefaultStellaDataDir = (): string =>
   path.join(os.homedir(), ".stella");
 
-export const resolveBundledStellaHomeSeedPath = (stellaRoot: string): string =>
-  path.join(stellaRoot, "runtime", "home-seed");
+export const resolveStellaDataSeedDir = (stellaAppDir: string): string =>
+  path.join(stellaAppDir, "runtime", "home-seed");
 
 export const resolveRuntimeStatePath = (
   _app?: App,
@@ -95,26 +93,26 @@ export const resolveRuntimeStatePath = (
   explicitStatePath?: string,
 ): string => {
   const configuredStatePath =
-    explicitStatePath?.trim() || process.env.STELLA_HOME?.trim();
-  return path.resolve(configuredStatePath || resolveDefaultStellaHomePath());
+    explicitStatePath?.trim() || process.env.STELLA_DATA_DIR?.trim();
+  return path.resolve(configuredStatePath || resolveDefaultStellaDataDir());
 };
 
-export const ensureStellaHomeSeeded = async (
-  stellaRoot: string,
-  stellaHome: string,
+export const ensureStellaDataDirSeeded = async (
+  stellaAppDir: string,
+  stellaDataDir: string,
 ): Promise<{ skillsSync: SkillsSyncReport; agentsSync: AgentsSyncReport }> => {
-  await ensureDir(stellaHome);
-  const seedPath = resolveBundledStellaHomeSeedPath(stellaRoot);
-  for (const entry of STELLA_HOME_SEED_ENTRIES) {
+  await ensureDir(stellaDataDir);
+  const seedPath = resolveStellaDataSeedDir(stellaAppDir);
+  for (const entry of STELLA_DATA_SEED_ENTRIES) {
     const sourcePath = path.join(seedPath, entry);
     if (!(await pathExists(sourcePath))) {
       continue;
     }
-    await copyPathIfMissing(sourcePath, path.join(stellaHome, entry));
+    await copyPathIfMissing(sourcePath, path.join(stellaDataDir, entry));
   }
 
   const bundledSkillsDir = path.join(seedPath, "skills");
-  const homeSkillsDir = path.join(stellaHome, "skills");
+  const homeSkillsDir = path.join(stellaDataDir, "skills");
   const skillsSync = await reconcileBundledSkills(
     bundledSkillsDir,
     homeSkillsDir,
@@ -125,8 +123,8 @@ export const ensureStellaHomeSeeded = async (
   }
 
   const agentsSync = await reconcileBundledAgents(
-    resolveBundledAgentsDir(stellaRoot),
-    path.join(stellaHome, "agents"),
+    resolveBundledAgentsDir(stellaAppDir),
+    path.join(stellaDataDir, "agents"),
   );
   const agentsSummary = summarizeAgentsSync(agentsSync);
   if (agentsSummary !== "no-op") {
@@ -136,36 +134,36 @@ export const ensureStellaHomeSeeded = async (
   return { skillsSync, agentsSync };
 };
 
-export const resolveStellaHome = async (
+export const resolveStellaDataDir = async (
   app: App,
   explicitRoot?: string,
   explicitStatePath?: string,
-): Promise<StellaHome> => {
-  const stellaRoot = resolveStellaRoot(app, explicitRoot);
-  const runtimeRoot = path.join(stellaRoot, "runtime");
-  const workspacePath = path.join(stellaRoot, "workspace");
+): Promise<StellaDataDir> => {
+  const stellaAppDir = resolveStellaAppDir(app, explicitRoot);
+  const runtimeRoot = path.join(stellaAppDir, "runtime");
+  const workspacePath = path.join(stellaAppDir, "workspace");
 
   const extensionsPath = path.join(runtimeRoot, "extensions");
-  const statePath = resolveRuntimeStatePath(app, stellaRoot, explicitStatePath);
+  const statePath = resolveRuntimeStatePath(app, stellaAppDir, explicitStatePath);
   const workspaceAppsPath = path.join(workspacePath, "apps");
 
-  process.env.STELLA_ROOT = stellaRoot;
-  process.env.STELLA_HOME = statePath;
+  process.env.STELLA_APP_DIR = stellaAppDir;
+  process.env.STELLA_DATA_DIR = statePath;
 
-  // NOTE: `ensureStellaHomeSeeded` (skills/agents hash-history reconciliation)
+  // NOTE: `ensureStellaDataDirSeeded` (skills/agents hash-history reconciliation)
   // is intentionally NOT invoked here. It does ~100 awaited fs ops + sha256 over
   // hundreds of KB across ~17 skill dirs + ~8 agent files, and nothing on the
   // first-paint path consumes the seeded dirs — only the deferred runtime worker
   // does. It is now awaited in `initializeStellaHostRunner` (host-runner.ts),
   // off the pre-window path, before the worker that reads those dirs connects.
-  // `resolveStellaHome` keeps only the cheap path resolution + env + dir
+  // `resolveStellaDataDir` keeps only the cheap path resolution + env + dir
   // ensures that the rest of bootstrap depends on synchronously.
   await ensureDir(workspacePath);
   await ensureDir(workspaceAppsPath);
 
   return {
-    stellaRoot,
-    stellaHome: statePath,
+    stellaAppDir,
+    stellaDataDir: statePath,
     extensionsPath,
     statePath,
     workspacePath,

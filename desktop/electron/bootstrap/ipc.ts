@@ -168,7 +168,7 @@ export const registerBootstrapIpcHandlers = (
         // synchronous bootstrap — it's not needed for the window to appear and
         // forces the first preferences.json read off the pre-paint path.
         setPreventComputerSleep(
-          loadLocalPreferences(config.stellaHomePath).preventComputerSleep,
+          loadLocalPreferences(config.stellaDataDirPath).preventComputerSleep,
         );
         scheduleGlobalInputHooksAfterAppReady(context);
         schedulePostReadyNativeServices();
@@ -195,8 +195,8 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerMemoryHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaAppDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     getController: () => state.chronicleController,
     setController: (controller) => {
       state.chronicleController = controller;
@@ -206,14 +206,14 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerMigrationHandlers({
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
   registerChronicleHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaAppDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     getController: () => state.chronicleController,
     setController: (controller) => {
       state.chronicleController = controller;
@@ -221,8 +221,8 @@ export const registerBootstrapIpcHandlers = (
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     triggerDreamNow: async () => {
-      const stellaRoot = lifecycle.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = lifecycle.getStellaAppDir();
+      if (!stellaAppDir) {
         return {
           ok: false,
           reason: "no-stella-root",
@@ -255,7 +255,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerMeetingCaptureHandlers({
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     getController: () => state.meetingCaptureController,
     setController: (controller) => {
       state.meetingCaptureController = controller;
@@ -274,7 +274,7 @@ export const registerBootstrapIpcHandlers = (
     backupService: services.backupService,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
-    getStellaRoot: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaDataDir,
     externalLinkService: services.externalLinkService,
     ensurePrivilegedActionApproval: (action, message, detail, event) =>
       services.securityPolicyService.ensureApproval(
@@ -334,8 +334,8 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerBrowserHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaAppDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     // On-demand fallback to the eager startup gate: if the extension wasn't
@@ -360,16 +360,16 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerOfficePreviewHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaAppDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     localChatHistoryService: services.localChatHistoryService,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });
 
   registerDisplayHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaAppDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     localChatHistoryService: services.localChatHistoryService,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
@@ -380,7 +380,7 @@ export const registerBootstrapIpcHandlers = (
     getAppSessionStartedAt: () => state.appSessionStartedAt,
     isHostAuthAuthenticated: () =>
       services.authService.getHostAuthAuthenticated(),
-    stellaRoot: config.stellaRoot,
+    stellaAppDir: config.stellaAppDir,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,
@@ -403,8 +403,8 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerStoreHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaAppDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     getStellaHostRunner: lifecycle.getRunner,
     getFullWindow: () => state.windowManager?.getFullWindow() ?? null,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
@@ -444,8 +444,8 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerFashionHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaAppDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
@@ -453,7 +453,7 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerNativeIntegrationHandlers({
-    getStellaRoot: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaDataDir,
     requestPreregisteredOAuth: (payload) =>
       services.connectorCredentialService.requestPreregisteredOAuth(payload),
     requestDeviceOAuth: (payload) =>
@@ -472,8 +472,8 @@ export const registerBootstrapIpcHandlers = (
   });
 
   registerUpdatesHandlers({
-    getStellaRoot: lifecycle.getStellaRoot,
-    getStellaHome: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaAppDir,
+    getStellaDataDir: lifecycle.getStellaDataDir,
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     assertPrivilegedSender: (event, channel) =>
@@ -504,8 +504,8 @@ export const registerBootstrapIpcHandlers = (
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     getBroadcastToMobile: lazyMobileBroadcast,
     getOverlayController: () => state.overlayController ?? null,
-    stellaRoot: state.stellaRoot!,
-    stellaHomePath: state.stellaHomePath!,
+    stellaAppDir: state.stellaAppDir!,
+    stellaDataDirPath: state.stellaDataDirPath!,
   });
 
   // Register dictation first so we can pass `startPetDictation` into
@@ -514,7 +514,7 @@ export const registerBootstrapIpcHandlers = (
   const dictationPushToTalk = registerDictationHandlers({
     windowManager: state.windowManager!,
     getOverlayController: () => state.overlayController ?? null,
-    getStellaRoot: lifecycle.getStellaHome,
+    getStellaAppDir: lifecycle.getStellaDataDir,
     onDictationActiveChanged: (active) => {
       wakewordPausedForDictation = active;
       syncWakewordPause();
@@ -561,9 +561,9 @@ export const registerBootstrapIpcHandlers = (
   // want blocking first paint either. setEnabled is idempotent and
   // timing-tolerant.
   state.processRuntime.setManagedTimeout(() => {
-    const stellaHome = lifecycle.getStellaHome();
-    const wakePrefs = stellaHome
-      ? loadLocalPreferences(stellaHome)
+    const stellaDataDir = lifecycle.getStellaDataDir();
+    const wakePrefs = stellaDataDir
+      ? loadLocalPreferences(stellaDataDir)
       : { wakeWordEnabled: false, wakeWordThreshold: 0.6 };
     wakeword = new WakewordService({
       threshold: wakePrefs.wakeWordThreshold,
@@ -593,7 +593,7 @@ export const registerBootstrapIpcHandlers = (
     ) {
       throw new Error("Blocked untrusted preferences:getWakeWord request.");
     }
-    const root = lifecycle.getStellaHome();
+    const root = lifecycle.getStellaDataDir();
     if (!root) return false;
     return loadLocalPreferences(root).wakeWordEnabled;
   });
@@ -608,7 +608,7 @@ export const registerBootstrapIpcHandlers = (
       throw new Error("Blocked untrusted preferences:setWakeWord request.");
     }
     const next = enabled === true;
-    const root = lifecycle.getStellaHome();
+    const root = lifecycle.getStellaDataDir();
     if (root) {
       const prefs = loadLocalPreferences(root);
       prefs.wakeWordEnabled = next;

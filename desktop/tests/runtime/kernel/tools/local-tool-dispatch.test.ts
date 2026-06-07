@@ -40,7 +40,7 @@ describe("dispatchLocalTool", () => {
       { file_path: notePath },
       {
         conversationId: "c1",
-        dream: { stellaHome: rootPath },
+        dream: { stellaDataDir: rootPath },
       },
     );
 
@@ -67,7 +67,7 @@ describe("dispatchLocalTool", () => {
       },
       {
         conversationId: "c1",
-        dream: { stellaHome: rootPath },
+        dream: { stellaDataDir: rootPath },
       },
     );
 

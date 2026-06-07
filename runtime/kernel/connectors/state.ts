@@ -11,29 +11,29 @@ const readJson = async <T = unknown>(filePath: string): Promise<T | null> => {
   }
 };
 
-export const getConnectorStateRoot = (stellaRoot: string) =>
-  path.join(stellaRoot, "connectors");
+export const getConnectorStateRoot = (stellaAppDir: string) =>
+  path.join(stellaAppDir, "connectors");
 
-export const getConfiguredCommandsPath = (stellaRoot: string) =>
-  path.join(getConnectorStateRoot(stellaRoot), "commands.json");
+export const getConfiguredCommandsPath = (stellaAppDir: string) =>
+  path.join(getConnectorStateRoot(stellaAppDir), "commands.json");
 
-export const getConfiguredApiConnectorsPath = (stellaRoot: string) =>
-  path.join(getConnectorStateRoot(stellaRoot), "api-connectors.json");
+export const getConfiguredApiConnectorsPath = (stellaAppDir: string) =>
+  path.join(getConnectorStateRoot(stellaAppDir), "api-connectors.json");
 
 export const listConfiguredConnectorCommands = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<ConnectorCommandConfig[]> => {
   const configured = await readJson<{ commands?: ConnectorCommandConfig[] }>(
-    getConfiguredCommandsPath(stellaRoot),
+    getConfiguredCommandsPath(stellaAppDir),
   );
   return Array.isArray(configured?.commands) ? configured.commands : [];
 };
 
 export const saveConfiguredConnectorCommands = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   commands: ConnectorCommandConfig[],
 ) => {
-  const filePath = getConfiguredCommandsPath(stellaRoot);
+  const filePath = getConfiguredCommandsPath(stellaAppDir);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(
     filePath,
@@ -43,30 +43,30 @@ export const saveConfiguredConnectorCommands = async (
 };
 
 export const listConfiguredApiConnectors = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<ApiConnectorConfig[]> => {
   const configured = await readJson<{ apis?: ApiConnectorConfig[] }>(
-    getConfiguredApiConnectorsPath(stellaRoot),
+    getConfiguredApiConnectorsPath(stellaAppDir),
   );
   return Array.isArray(configured?.apis) ? configured.apis : [];
 };
 
 export const saveConfiguredApiConnectors = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   apis: ApiConnectorConfig[],
 ) => {
-  const filePath = getConfiguredApiConnectorsPath(stellaRoot);
+  const filePath = getConfiguredApiConnectorsPath(stellaAppDir);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, `${JSON.stringify({ apis }, null, 2)}\n`, "utf-8");
 };
 
 export const removeConfiguredConnector = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   id: string,
 ): Promise<{ removedCommands: ConnectorCommandConfig[]; removedApis: ApiConnectorConfig[] }> => {
   const [commands, apis] = await Promise.all([
-    listConfiguredConnectorCommands(stellaRoot),
-    listConfiguredApiConnectors(stellaRoot),
+    listConfiguredConnectorCommands(stellaAppDir),
+    listConfiguredApiConnectors(stellaAppDir),
   ]);
   const removedCommands = commands.filter((command) => command.id === id);
   const removedApis = apis.filter((api) => api.id === id);
@@ -76,13 +76,13 @@ export const removeConfiguredConnector = async (
   await Promise.all([
     removedCommands.length > 0
       ? saveConfiguredConnectorCommands(
-          stellaRoot,
+          stellaAppDir,
           commands.filter((command) => command.id !== id),
         )
       : Promise.resolve(),
     removedApis.length > 0
       ? saveConfiguredApiConnectors(
-          stellaRoot,
+          stellaAppDir,
           apis.filter((api) => api.id !== id),
         )
       : Promise.resolve(),

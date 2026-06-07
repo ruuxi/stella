@@ -37,8 +37,8 @@ import {
 import { waitForConnectedRunner } from "./runtime-availability.js";
 
 type FashionHandlerOptions = PrivilegedIpcOptions & {
-  getStellaRoot: () => string | null;
-  getStellaHome: () => string | null;
+  getStellaAppDir: () => string | null;
+  getStellaDataDir: () => string | null;
   getStellaHostRunner: () => StellaHostRunner | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
@@ -201,7 +201,7 @@ const getBodyPhotoInfo = async (
 
 export const registerFashionHandlers = (options: FashionHandlerOptions) => {
   const requireRoot = () => {
-    const root = options.getStellaHome();
+    const root = options.getStellaDataDir();
     if (!root) throw new Error("Stella root not initialized.");
     return root;
   };

@@ -50,15 +50,15 @@ const normalizeProvider = (provider: string) => provider.trim().toLowerCase();
 const credentialScope = (provider: string) =>
   `${LLM_OAUTH_SCOPE_PREFIX}:${normalizeProvider(provider)}`;
 
-const getStatePath = (stellaRoot: string) => stellaRoot;
+const getStatePath = (stellaAppDir: string) => stellaAppDir;
 
-export const getLlmOAuthCredentialStorePath = (stellaRoot: string) =>
-  path.join(getStatePath(stellaRoot), LLM_OAUTH_CREDENTIALS_FILE);
+export const getLlmOAuthCredentialStorePath = (stellaAppDir: string) =>
+  path.join(getStatePath(stellaAppDir), LLM_OAUTH_CREDENTIALS_FILE);
 
 const readCredentialFile = (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): StoredLlmOAuthCredentialFile => {
-  const filePath = getLlmOAuthCredentialStorePath(stellaRoot);
+  const filePath = getLlmOAuthCredentialStorePath(stellaAppDir);
   try {
     const raw = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw) as StoredLlmOAuthCredentialFile;
@@ -81,10 +81,10 @@ const readCredentialFile = (
 };
 
 const writeCredentialFile = (
-  stellaRoot: string,
+  stellaAppDir: string,
   payload: StoredLlmOAuthCredentialFile,
 ): void => {
-  const filePath = getLlmOAuthCredentialStorePath(stellaRoot);
+  const filePath = getLlmOAuthCredentialStorePath(stellaAppDir);
   ensurePrivateDirSync(path.dirname(filePath));
   writePrivateFileSync(filePath, JSON.stringify(payload, null, 2));
 };
@@ -114,9 +114,9 @@ const decodeCredentials = (
 };
 
 export const listLocalLlmOAuthCredentials = (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): LocalLlmOAuthCredentialSummary[] => {
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   return Object.values(file.credentials)
     .map((record) => ({
       provider: record.provider,
@@ -128,16 +128,16 @@ export const listLocalLlmOAuthCredentials = (
 };
 
 export const hasLocalLlmOAuthCredential = (
-  stellaRoot: string,
+  stellaAppDir: string,
   provider: string,
 ): boolean => {
   const normalizedProvider = normalizeProvider(provider);
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   return Boolean(file.credentials[normalizedProvider]);
 };
 
 export const saveLocalLlmOAuthCredential = (
-  stellaRoot: string,
+  stellaAppDir: string,
   payload: { provider: string; label: string; credentials: OAuthCredentials },
 ): LocalLlmOAuthCredentialSummary => {
   const provider = normalizeProvider(payload.provider);
@@ -147,7 +147,7 @@ export const saveLocalLlmOAuthCredential = (
   }
 
   const label = payload.label.trim() || oauthProvider.name;
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   const now = Date.now();
   const existing = file.credentials[provider];
   const valueProtected = protectValue(
@@ -161,7 +161,7 @@ export const saveLocalLlmOAuthCredential = (
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  writeCredentialFile(stellaRoot, file);
+  writeCredentialFile(stellaAppDir, file);
   if (existing?.valueProtected && existing.valueProtected !== valueProtected) {
     deleteProtectedValue(credentialScope(provider), existing.valueProtected);
   }
@@ -175,20 +175,20 @@ export const saveLocalLlmOAuthCredential = (
 };
 
 export const deleteLocalLlmOAuthCredential = (
-  stellaRoot: string,
+  stellaAppDir: string,
   provider: string,
 ): { removed: boolean } => {
   const normalizedProvider = normalizeProvider(provider);
   if (!normalizedProvider) return { removed: false };
 
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   const existing = file.credentials[normalizedProvider];
   if (!existing) {
     return { removed: false };
   }
 
   delete file.credentials[normalizedProvider];
-  writeCredentialFile(stellaRoot, file);
+  writeCredentialFile(stellaAppDir, file);
   deleteProtectedValue(
     credentialScope(normalizedProvider),
     existing.valueProtected,
@@ -197,11 +197,11 @@ export const deleteLocalLlmOAuthCredential = (
 };
 
 export const getLocalLlmOAuthApiKey = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   provider: string,
 ): Promise<string | null> => {
   const normalizedProvider = normalizeProvider(provider);
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   const record = file.credentials[normalizedProvider];
   if (!record) return null;
 
@@ -217,7 +217,7 @@ export const getLocalLlmOAuthApiKey = async (
   if (!result) return null;
 
   if (result.newCredentials !== credentials) {
-    saveLocalLlmOAuthCredential(stellaRoot, {
+    saveLocalLlmOAuthCredential(stellaAppDir, {
       provider: normalizedProvider,
       label: record.label,
       credentials: result.newCredentials,

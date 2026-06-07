@@ -1,6 +1,5 @@
 import { app, crashReporter, Menu } from 'electron'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import {
   AUTH_PROTOCOL,
   HARD_RESET_MUTABLE_HOME_PATHS,
@@ -22,10 +21,9 @@ import {
   initializeBootstrapSingleInstance,
   registerBootstrapLifecycle,
 } from './bootstrap/lifecycle.js'
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const stellaRoot = path.resolve(__dirname, '..', '..', '..', '..')
-const stellaHomePath = resolveRuntimeStatePath(undefined, stellaRoot)
+const __dirname = import.meta.dirname
+const stellaAppDir = path.resolve(__dirname, '..', '..', '..', '..')
+const stellaDataDirPath = resolveRuntimeStatePath(undefined, stellaAppDir)
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const useDevServer = isDev && process.env.STELLA_STATIC_PREVIEW !== '1'
@@ -48,7 +46,7 @@ const configureDevUserDataPath = () => {
     return
   }
 
-  const devUserDataPath = path.join(stellaHomePath, 'electron-user-data')
+  const devUserDataPath = path.join(stellaDataDirPath, 'electron-user-data')
   app.setPath('userData', devUserDataPath)
   app.setPath('sessionData', path.join(devUserDataPath, 'session-data'))
 }
@@ -87,7 +85,7 @@ const startLocalCrashReporter = () => {
 
 export const bootstrapMainProcess = () => {
   app.setName(STELLA_APP_NAME)
-  initMainProcessLogging(stellaRoot)
+  initMainProcessLogging(stellaAppDir)
   installDevBrokenPipeGuards()
   configureDevKeychainBehavior()
   configureDevUserDataPath()
@@ -112,8 +110,8 @@ export const bootstrapMainProcess = () => {
   const context = createBootstrapContext({
     authProtocol: AUTH_PROTOCOL,
     electronDir: __dirname,
-    stellaRoot,
-    stellaHomePath,
+    stellaAppDir,
+    stellaDataDirPath,
     hardResetMutableHomePaths: HARD_RESET_MUTABLE_HOME_PATHS,
     isDev,
     useDevServer,

@@ -43,7 +43,7 @@ const createTestHost = async (
   const sourceImports: Array<Record<string, unknown>> = [];
 
   const host = createToolHost({
-    stellaRoot: rootPath,
+    stellaAppDir: rootPath,
     agentApi: {
       createAgent: async (request) => {
         createdTasks.push({

@@ -58,8 +58,8 @@ const parseLooseHeader = (
   return out;
 };
 
-const listSkillDirectoryIds = async (stellaRoot: string): Promise<string[]> => {
-  const skillsRoot = path.join(stellaRoot, SKILLS_DIR_NAME);
+const listSkillDirectoryIds = async (stellaAppDir: string): Promise<string[]> => {
+  const skillsRoot = path.join(stellaAppDir, SKILLS_DIR_NAME);
   let entries;
   try {
     entries = await fs.readdir(skillsRoot, { withFileTypes: true });
@@ -141,12 +141,12 @@ const readSkillCatalogEntry = async (
 };
 
 export const listSkillCatalogEntries = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   options: SkillCatalogRenderOptions = {},
 ): Promise<SkillCatalogEntry[]> => {
-  const skillsRoot = path.join(stellaRoot, SKILLS_DIR_NAME);
+  const skillsRoot = path.join(stellaAppDir, SKILLS_DIR_NAME);
   const skillIds = filterSkillDirectoryIds(
-    await listSkillDirectoryIds(stellaRoot),
+    await listSkillDirectoryIds(stellaAppDir),
     options,
   );
   return await Promise.all(
@@ -155,9 +155,9 @@ export const listSkillCatalogEntries = async (
 };
 
 export const shouldUseAutomaticSkillExplore = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<boolean> => {
-  const skillIds = await listSkillDirectoryIds(stellaRoot);
+  const skillIds = await listSkillDirectoryIds(stellaAppDir);
   return skillIds.length > INLINE_SKILL_CATALOG_THRESHOLD;
 };
 
@@ -211,11 +211,11 @@ const renderPlaceholderSkillCatalogBlock = (totalSkills: number): string =>
   ].join("\n");
 
 export const buildSkillCatalogPromptState = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   options: SkillCatalogRenderOptions = {},
 ): Promise<SkillCatalogPromptState> => {
   const skillIds = filterSkillDirectoryIds(
-    await listSkillDirectoryIds(stellaRoot),
+    await listSkillDirectoryIds(stellaAppDir),
     options,
   );
   if (skillIds.length > INLINE_SKILL_CATALOG_THRESHOLD) {
@@ -227,7 +227,7 @@ export const buildSkillCatalogPromptState = async (
     };
   }
 
-  const entries = await listSkillCatalogEntries(stellaRoot, options);
+  const entries = await listSkillCatalogEntries(stellaAppDir, options);
   return {
     mode: "inline",
     totalSkills: entries.length,
@@ -237,10 +237,10 @@ export const buildSkillCatalogPromptState = async (
 };
 
 export const renderSkillCatalogBlock = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   options: SkillCatalogRenderOptions = {},
 ): Promise<string> => {
-  const state = await buildSkillCatalogPromptState(stellaRoot, options);
+  const state = await buildSkillCatalogPromptState(stellaAppDir, options);
   return state.block;
 };
 
@@ -252,10 +252,10 @@ export const renderSkillCatalogBlock = async (
  * Omits the general-agent "how to use" footer; Explore has its own usage rules.
  */
 export const renderFullSkillCatalogBlock = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   options: SkillCatalogRenderOptions = {},
 ): Promise<string> => {
-  const entries = await listSkillCatalogEntries(stellaRoot, options);
+  const entries = await listSkillCatalogEntries(stellaAppDir, options);
   const lines = ["<skills>", "## Available skills"];
   if (entries.length === 0) {
     lines.push("- No saved skills yet.");

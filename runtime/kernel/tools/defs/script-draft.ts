@@ -35,7 +35,7 @@ import type { ToolDefinition } from "../types.js";
 
 export type ScriptDraftToolOptions = {
   /** Stella home root (e.g. `~/.stella`). Required. */
-  stellaHome: string;
+  stellaDataDir: string;
 };
 
 const formatResult = (params: {
@@ -87,7 +87,7 @@ export const createScriptDraftTool = (
       return { error: "code is required." };
     }
 
-    const dir = scheduleScriptsDir(options.stellaHome);
+    const dir = scheduleScriptsDir(options.stellaDataDir);
     await ensurePrivateDir(dir);
     const scriptPath = path.join(dir, `${crypto.randomUUID()}.ts`);
     await writePrivateFile(scriptPath, code);

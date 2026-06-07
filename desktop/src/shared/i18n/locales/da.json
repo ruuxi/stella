@@ -223,7 +223,7 @@
         "wipedTitle": "Minder slettet"
       },
       "enableFailures": {
-        "noStellaRoot": "Stellas arbejdsområdes rodmappe er ikke tilgængelig.",
+        "noStellaAppDir": "Stellas arbejdsområdes rodmappe er ikke tilgængelig.",
         "needsPermission": "Tilladelse til skærmoptagelse kræves stadig, før Chronicle kan starte.",
         "binaryMissing": "Chronicles hjælpefil mangler.",
         "startupTimeout": "Chronicle kom ikke online efter start.",

@@ -2,8 +2,8 @@
  * Hash-history reconciliation of bundled skills into Stella home.
  *
  * Stella ships a default skill catalogue at
- * `${stellaRoot}/runtime/home-seed/skills/`. Users carry their own copy at
- * `${stellaHome}/skills/`. Each skill (`<id>/` directory) is reconciled as a
+ * `${stellaAppDir}/runtime/home-seed/skills/`. Users carry their own copy at
+ * `${stellaDataDir}/skills/`. Each skill (`<id>/` directory) is reconciled as a
  * unit so shipped updates reach users who haven't edited that skill, while
  * local edits are preserved. The reconciliation algorithm itself lives in
  * `bundled-sync.ts` — this module just supplies the skill-specific policy

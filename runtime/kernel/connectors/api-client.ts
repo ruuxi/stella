@@ -31,9 +31,9 @@ const resolveConnectorUrl = (baseUrl: string, path: string) => {
   return url;
 };
 
-const buildAuthHeader = async (stellaRoot: string, api: ApiConnectorConfig) => {
+const buildAuthHeader = async (stellaAppDir: string, api: ApiConnectorConfig) => {
   if (!api.auth || api.auth.type === "none") return {};
-  const token = await loadConnectorAccessToken(stellaRoot, api.auth.tokenKey);
+  const token = await loadConnectorAccessToken(stellaAppDir, api.auth.tokenKey);
   if (!token) {
     throw new ConnectorAuthError(
       0,
@@ -55,7 +55,7 @@ const buildAuthHeader = async (stellaRoot: string, api: ApiConnectorConfig) => {
 };
 
 export const callApiConnector = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   api: ApiConnectorConfig,
   args: {
     method?: string;
@@ -73,7 +73,7 @@ export const callApiConnector = async (
   for (const [key, value] of Object.entries(args.query ?? {})) {
     url.searchParams.set(key, String(value));
   }
-  const authHeaders = await buildAuthHeader(stellaRoot, api);
+  const authHeaders = await buildAuthHeader(stellaAppDir, api);
   const response = await fetch(url, {
     method,
     headers: {

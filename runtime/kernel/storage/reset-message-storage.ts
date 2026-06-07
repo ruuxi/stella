@@ -7,8 +7,8 @@ const SQLITE_BASENAMES = [
   "stella.sqlite-wal",
 ] as const;
 
-export const resetMessageStorage = async (stellaHome: string): Promise<void> => {
-  const stateRoot = stellaHome;
+export const resetMessageStorage = async (stellaDataDir: string): Promise<void> => {
+  const stateRoot = stellaDataDir;
 
   await Promise.allSettled([
     ...SQLITE_BASENAMES.map((basename) =>

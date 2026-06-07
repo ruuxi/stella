@@ -24,11 +24,11 @@ const shouldRun = (agentType: string, isUserTurn?: boolean): boolean =>
  * The detection only runs on `outcome === "success"`; error / interrupted
  * runs still hit `agent_end` so the cache can be reclaimed.
  *
- * Lives in the stella-runtime extension; `stellaRoot` and
+ * Lives in the stella-runtime extension; `stellaAppDir` and
  * `selfModMonitor` are supplied by the extension factory's services arg.
  */
 export const createSelfModHooks = (opts: {
-  stellaRoot: string;
+  stellaAppDir: string;
   selfModMonitor: SelfModMonitor | null;
 }): HookDefinition[] => {
   // Per-runId baseline cache. Cleaned up at agent_end (success or error
@@ -39,12 +39,12 @@ export const createSelfModHooks = (opts: {
   const beforeAgentStart: HookDefinition<"before_agent_start"> = {
     event: "before_agent_start",
     async handler(payload) {
-      if (!opts.selfModMonitor || !opts.stellaRoot) return;
+      if (!opts.selfModMonitor || !opts.stellaAppDir) return;
       if (!shouldRun(payload.agentType, payload.isUserTurn)) return;
       if (!payload.runId) return;
 
       try {
-        const head = await opts.selfModMonitor.getBaselineHead(opts.stellaRoot);
+        const head = await opts.selfModMonitor.getBaselineHead(opts.stellaAppDir);
         baselines.set(payload.runId, head);
       } catch {
         // Avoid attributing unrelated changes when baseline capture fails.
@@ -64,7 +64,7 @@ export const createSelfModHooks = (opts: {
         : null;
       const hadEntry = baselines.delete(payload.runId);
 
-      if (!opts.selfModMonitor || !opts.stellaRoot) return;
+      if (!opts.selfModMonitor || !opts.stellaAppDir) return;
       if (!shouldRun(payload.agentType, payload.isUserTurn)) return;
       // Treats undefined as non-success so a third-party emitter that
       // omits `outcome` doesn't accidentally trigger the expensive
@@ -74,7 +74,7 @@ export const createSelfModHooks = (opts: {
 
       try {
         const applied = await opts.selfModMonitor.detectAppliedSince({
-          repoRoot: opts.stellaRoot,
+          repoRoot: opts.stellaAppDir,
           sinceHead: baseline,
         });
         if (applied) {

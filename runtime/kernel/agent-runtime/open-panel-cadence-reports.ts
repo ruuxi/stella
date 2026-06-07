@@ -152,11 +152,11 @@ const EMIT_REPORT_TOOL: Tool = {
   } as unknown as Tool["parameters"],
 };
 
-const reportsDir = (stellaRoot: string) =>
-  path.join(stellaRoot, "open-panel-reports");
+const reportsDir = (stellaAppDir: string) =>
+  path.join(stellaAppDir, "open-panel-reports");
 
-const indexPath = (stellaRoot: string) =>
-  path.join(reportsDir(stellaRoot), "index.json");
+const indexPath = (stellaAppDir: string) =>
+  path.join(reportsDir(stellaAppDir), "index.json");
 
 const truncate = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max)}...(truncated)`;
@@ -187,10 +187,10 @@ export const listOpenPanelReportCadences = (): readonly CadenceConfig[] =>
   CADENCES;
 
 export const readOpenPanelReportIndex = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<ReportIndex> => {
   try {
-    const raw = await fs.readFile(indexPath(stellaRoot), "utf-8");
+    const raw = await fs.readFile(indexPath(stellaAppDir), "utf-8");
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return emptyIndex();
@@ -229,12 +229,12 @@ export const readOpenPanelReportIndex = async (
 };
 
 const writeOpenPanelReportIndex = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   index: ReportIndex,
 ): Promise<void> => {
-  await fs.mkdir(reportsDir(stellaRoot), { recursive: true });
+  await fs.mkdir(reportsDir(stellaAppDir), { recursive: true });
   await fs.writeFile(
-    indexPath(stellaRoot),
+    indexPath(stellaAppDir),
     JSON.stringify(index, null, 2),
     "utf-8",
   );
@@ -325,24 +325,24 @@ const setCheckedSlot = (
 };
 
 export const listOpenPanelReports = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<OpenPanelReportRecord[]> => {
-  const index = await readOpenPanelReportIndex(stellaRoot);
+  const index = await readOpenPanelReportIndex(stellaAppDir);
   return CADENCES.map((cadence) => index.reports[cadence.id]).filter(
     (entry): entry is OpenPanelReportRecord => Boolean(entry),
   );
 };
 
 export const markOpenPanelReportOpened = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   cadence: OpenPanelReportCadence,
 ): Promise<OpenPanelReportRecord | null> => {
-  const index = await readOpenPanelReportIndex(stellaRoot);
+  const index = await readOpenPanelReportIndex(stellaAppDir);
   const report = index.reports[cadence];
   if (!report) return null;
   const next = { ...report, openedAt: Date.now() };
   index.reports[cadence] = next;
-  await writeOpenPanelReportIndex(stellaRoot, index);
+  await writeOpenPanelReportIndex(stellaAppDir, index);
   return next;
 };
 
@@ -523,12 +523,12 @@ const buildUserPrompt = (args: {
 };
 
 const outputPathForCadence = (
-  stellaRoot: string,
+  stellaAppDir: string,
   cadence: OpenPanelReportCadence,
-): string => path.join(stellaRoot, "outputs", "html", `report-${cadence}.html`);
+): string => path.join(stellaAppDir, "outputs", "html", `report-${cadence}.html`);
 
 const generateReport = async (args: {
-  stellaRoot: string;
+  stellaAppDir: string;
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
   cadence: CadenceConfig;
@@ -539,7 +539,7 @@ const generateReport = async (args: {
   activity: string;
 }): Promise<OpenPanelReportRecord | null> => {
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaRoot: args.stellaRoot,
+    stellaAppDir: args.stellaAppDir,
     modelId: args.resolvedLlm.model.id,
   });
   const apiKey = useClaudeCode
@@ -581,7 +581,7 @@ const generateReport = async (args: {
     if (useClaudeCode) {
       let captured = "";
       const finalText = await runClaudeCodeAgentTextCompletion({
-        stellaRoot: args.stellaRoot,
+        stellaAppDir: args.stellaAppDir,
         agentType: AGENT_IDS.OPEN_PANEL_REPORTS,
         stellaModel: args.resolvedLlm.model.id,
         context,
@@ -626,7 +626,7 @@ const generateReport = async (args: {
     return null;
   }
 
-  const filePath = outputPathForCadence(args.stellaRoot, args.cadence.id);
+  const filePath = outputPathForCadence(args.stellaAppDir, args.cadence.id);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, html, "utf-8");
 
@@ -643,15 +643,15 @@ const generateReport = async (args: {
 
 export const spawnOpenPanelCadenceReports = (deps: {
   conversationId: string;
-  stellaRoot: string;
+  stellaAppDir: string;
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
   appendLocalChatEvent: (args: LocalChatAppendEventArgs) => void;
 }): void => {
   void (async () => {
     const nowMs = Date.now();
-    const config = getCadenceReportsPreferences(deps.stellaRoot);
-    const index = await readOpenPanelReportIndex(deps.stellaRoot);
+    const config = getCadenceReportsPreferences(deps.stellaAppDir);
+    const index = await readOpenPanelReportIndex(deps.stellaAppDir);
     const nextIndex = {
       ...index,
       checkedSlots: { ...(index.checkedSlots ?? {}) },
@@ -673,7 +673,7 @@ export const spawnOpenPanelCadenceReports = (deps: {
       return slotAt > previousSlotAt;
     });
     if (shouldWriteBaseline) {
-      await writeOpenPanelReportIndex(deps.stellaRoot, nextIndex);
+      await writeOpenPanelReportIndex(deps.stellaAppDir, nextIndex);
     }
     if (due.length === 0) return;
 
@@ -705,7 +705,7 @@ export const spawnOpenPanelCadenceReports = (deps: {
         limit: MAX_THREAD_SUMMARIES,
       });
       const browserWindows = await collectBrowserActivityWindows(
-        deps.stellaRoot,
+        deps.stellaAppDir,
         dueWithActivity.map(({ cadence }) => ({
           id: cadence.id,
           label: cadence.label,
@@ -735,9 +735,9 @@ export const spawnOpenPanelCadenceReports = (deps: {
             activity,
           });
           if (!report) {
-            const latestIndex = await readOpenPanelReportIndex(deps.stellaRoot);
+            const latestIndex = await readOpenPanelReportIndex(deps.stellaAppDir);
             setCheckedSlot(latestIndex, cadence.id, slotAt);
-            await writeOpenPanelReportIndex(deps.stellaRoot, latestIndex);
+            await writeOpenPanelReportIndex(deps.stellaAppDir, latestIndex);
             continue;
           }
           const bytes = Buffer.byteLength(
@@ -780,21 +780,21 @@ export const spawnOpenPanelCadenceReports = (deps: {
               agentType: AGENT_IDS.ORCHESTRATOR,
             },
           });
-          const latestIndex = await readOpenPanelReportIndex(deps.stellaRoot);
+          const latestIndex = await readOpenPanelReportIndex(deps.stellaAppDir);
           setCheckedSlot(latestIndex, cadence.id, slotAt);
           latestIndex.reports[cadence.id] = {
             ...report,
             openedAt: latestIndex.reports[cadence.id]?.openedAt,
           };
-          await writeOpenPanelReportIndex(deps.stellaRoot, latestIndex);
+          await writeOpenPanelReportIndex(deps.stellaAppDir, latestIndex);
           logger.debug("open-panel-report.generated", {
             cadence: cadence.id,
             filePath: report.filePath,
           });
         } catch (error) {
-          const latestIndex = await readOpenPanelReportIndex(deps.stellaRoot);
+          const latestIndex = await readOpenPanelReportIndex(deps.stellaAppDir);
           setCheckedSlot(latestIndex, cadence.id, slotAt);
-          await writeOpenPanelReportIndex(deps.stellaRoot, latestIndex);
+          await writeOpenPanelReportIndex(deps.stellaAppDir, latestIndex);
           logger.debug("open-panel-report.failed", {
             cadence: cadence.id,
             error: error instanceof Error ? error.message : String(error),

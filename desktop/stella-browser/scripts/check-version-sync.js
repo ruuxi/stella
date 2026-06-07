@@ -6,10 +6,9 @@
  */
 
 import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = import.meta.dirname;
 const rootDir = join(__dirname, '..');
 
 // Read package.json version

@@ -223,7 +223,7 @@
         "wipedTitle": "Herinneringen gewist"
       },
       "enableFailures": {
-        "noStellaRoot": "De werkruimte-hoofdmap van Stella is niet beschikbaar.",
+        "noStellaAppDir": "De werkruimte-hoofdmap van Stella is niet beschikbaar.",
         "needsPermission": "De machtiging voor schermopname is nog steeds vereist voordat Chronicle kan starten.",
         "binaryMissing": "Het Chronicle-hulpbestand ontbreekt.",
         "startupTimeout": "Chronicle kwam na het starten niet online.",

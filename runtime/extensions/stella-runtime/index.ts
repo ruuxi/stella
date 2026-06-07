@@ -31,16 +31,16 @@ import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record
  * Lives in `runtime/extensions/stella-runtime/` so power users can fork
  * any of these behaviors in place. The kernel has no special "bundled"
  * tier anymore — this extension goes through the same loader path as
- * any third-party extension, with `services` (stellaHome, stellaRoot,
+ * any third-party extension, with `services` (stellaDataDir, stellaAppDir,
  * selfModMonitor, store) supplied by the runtime at registration time.
  */
 const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
-  // Agent prompts are reconciled into `${stellaHome}/agents/` on startup
+  // Agent prompts are reconciled into `${stellaDataDir}/agents/` on startup
   // (see `agents-sync.ts`), so the live, user-editable copies load from there.
   // The bundled defaults in `agents.ts` remain the merge base, so the runtime
   // still has every agent even before the first reconcile.
   for (const agent of loadParsedAgentsFromDir(
-    path.join(services.stellaHome, "agents"),
+    path.join(services.stellaDataDir, "agents"),
   )) {
     pi.registerAgent(agent);
   }
@@ -56,7 +56,7 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   };
 
   for (const hook of createSelfModHooks({
-    stellaRoot: services.stellaRoot,
+    stellaAppDir: services.stellaAppDir,
     selfModMonitor: services.selfModMonitor,
   })) {
     register(hook);
@@ -76,20 +76,20 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   register(createRevertNoticeHook({ store: services.store }));
   register(
     createMemoryReviewHook({
-      stellaHome: services.stellaHome,
-      stellaRoot: services.stellaRoot,
+      stellaDataDir: services.stellaDataDir,
+      stellaAppDir: services.stellaAppDir,
       store: services.store,
     }),
   );
   register(
     createDreamSchedulerNotifyHook({
-      stellaHome: services.stellaHome,
+      stellaDataDir: services.stellaDataDir,
       store: services.store,
     }),
   );
   register(
     createOpenPanelCadenceReportsHook({
-      stellaHome: services.stellaHome,
+      stellaDataDir: services.stellaDataDir,
       store: services.store,
     }),
   );

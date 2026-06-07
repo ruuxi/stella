@@ -4,9 +4,8 @@ import {
 } from "esbuild";
 import { existsSync, promises as fsPromises, watch as watchFs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const scriptDir = import.meta.dirname;
 const desktopDir = path.resolve(scriptDir, "..");
 const repoRootDir = path.resolve(desktopDir, "..");
 const outdir = "dist-electron";

@@ -26,7 +26,7 @@ const createAdapter = () =>
       clientVersion: "0.0.0",
       isDev: false,
       platform: process.platform,
-      stellaRoot: "/tmp/stella-test",
+      stellaAppDir: "/tmp/stella-test",
       stellaWorkspacePath: "/tmp/stella-test",
     },
   });

@@ -223,7 +223,7 @@
         "wipedTitle": "메모리가 지워짐"
       },
       "enableFailures": {
-        "noStellaRoot": "Stella의 작업 공간 루트를 사용할 수 없습니다.",
+        "noStellaAppDir": "Stella의 작업 공간 루트를 사용할 수 없습니다.",
         "needsPermission": "Chronicle을 시작하려면 여전히 화면 기록 권한이 필요합니다.",
         "binaryMissing": "Chronicle 도우미 바이너리가 없습니다.",
         "startupTimeout": "실행 후 Chronicle이 온라인 상태가 되지 않았습니다.",

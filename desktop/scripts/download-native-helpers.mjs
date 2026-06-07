@@ -24,15 +24,13 @@ import {
 } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const DEFAULT_MANIFEST_URL =
   process.env.STELLA_NATIVE_HELPERS_MANIFEST_URL ??
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers/current.json";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = import.meta.dirname;
 const repoRoot = path.resolve(__dirname, "..", "..");
 
 const args = process.argv.slice(2);

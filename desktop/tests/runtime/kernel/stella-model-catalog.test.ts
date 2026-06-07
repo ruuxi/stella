@@ -42,7 +42,7 @@ describe("Stella model catalog metadata", () => {
     }) as typeof fetch;
 
     const route = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: undefined,
       agentType: "general",
       site: site("token-default"),
@@ -87,7 +87,7 @@ describe("Stella model catalog metadata", () => {
     }) as typeof fetch;
 
     const route = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "stella/soda",
       agentType: "general",
       site: site("token-soda"),
@@ -114,7 +114,7 @@ describe("Stella model catalog metadata", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     const route = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: "stella/anthropic/claude-opus-4.6",
       agentType: "general",
       site: site("token-passthrough"),
@@ -190,7 +190,7 @@ describe("Stella model catalog metadata", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     const route = resolveLlmRoute({
-      stellaRoot: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
       modelName: undefined,
       agentType: "general",
       site: site("token-updated-at"),
@@ -216,7 +216,7 @@ describe("Stella model catalog metadata", () => {
   });
 
   it("loads a matching catalog from disk after the in-memory cache is gone", async () => {
-    const stellaHome = await mkdtemp(
+    const stellaDataDir = await mkdtemp(
       path.join(os.tmpdir(), "stella-model-catalog-"),
     );
     try {
@@ -237,7 +237,7 @@ describe("Stella model catalog metadata", () => {
       });
       globalThis.fetch = fetchMock as typeof fetch;
       const route = resolveLlmRoute({
-        stellaRoot: "/tmp/stella",
+        stellaAppDir: "/tmp/stella",
         modelName: undefined,
         agentType: "general",
         site: site("token-disk"),
@@ -249,7 +249,7 @@ describe("Stella model catalog metadata", () => {
         site: site("token-disk"),
         deviceId: "device-d",
         modelCatalogUpdatedAt: 3,
-        stellaHome,
+        stellaDataDir,
       });
       invalidateStellaModelCatalogCache();
       const second = await withStellaModelCatalogMetadata({
@@ -258,14 +258,14 @@ describe("Stella model catalog metadata", () => {
         site: site("token-disk"),
         deviceId: "device-d",
         modelCatalogUpdatedAt: 3,
-        stellaHome,
+        stellaDataDir,
       });
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(first.toolPolicyModel?.id).toBe("openai/gpt-5.5");
       expect(second.toolPolicyModel?.id).toBe("openai/gpt-5.5");
     } finally {
-      await rm(stellaHome, { recursive: true, force: true });
+      await rm(stellaDataDir, { recursive: true, force: true });
     }
   });
 });

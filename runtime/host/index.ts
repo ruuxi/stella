@@ -2,10 +2,10 @@ import { EventEmitter } from "node:events";
 import { existsSync, promises as fs, watch, type FSWatcher } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { readConfiguredConvexUrl } from "../kernel/convex-urls.js";
+import { resolveBundledRuntimeFile } from "../kernel/shared/runtime-paths.js";
 import { getFileLogger } from "../observability/file-logger.js";
 import { LocalSchedulerService } from "../kernel/local-scheduler-service.js";
 import { createRemoteTurnBridge } from "../kernel/remote-turn-bridge.js";
@@ -249,8 +249,8 @@ export type StellaRuntimeHostOptions = {
 
 type WorkerInitializationState = {
   protocolVersion: string;
-  stellaRoot: string;
-  stellaHomePath: string;
+  stellaAppDir: string;
+  stellaDataDirPath: string;
   stellaWorkspacePath: string;
   authToken: string | null;
   convexUrl: string | null;
@@ -404,9 +404,9 @@ export class StellaRuntimeHost {
   private hostRemoteTurnCancelUnsubscribe: (() => void) | null = null;
 
   constructor(private readonly options: StellaRuntimeHostOptions) {
-    const stellaRoot = this.options.initializeParams.stellaRoot;
+    const stellaAppDir = this.options.initializeParams.stellaAppDir;
     const udsFactory = buildUdsConnectionFactory({
-      stellaRoot,
+      stellaAppDir,
       expectedProtocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
       hostExecutablePath: process.execPath,
       onError: (error) => {
@@ -421,7 +421,7 @@ export class StellaRuntimeHost {
       // host to attach; only "restart" actually kills the pid.
       killWorkerOnStop: (reason) => reason === "restart",
       killWorker: async () => {
-        await killDetachedWorker(stellaRoot);
+        await killDetachedWorker(stellaAppDir);
       },
       createConnectionAsync: udsFactory,
       initializeConnection: async (connection) => {
@@ -507,7 +507,7 @@ export class StellaRuntimeHost {
 
   private getRuntimeReloadStateFilePath() {
     return path.join(
-      this.options.initializeParams.stellaRoot,
+      this.options.initializeParams.stellaAppDir,
       SELF_MOD_RUNTIME_RELOAD_STATE_FILE,
     );
   }
@@ -2460,7 +2460,7 @@ export class StellaRuntimeHost {
 
   async coreMemoryExists() {
     const { coreMemoryExists } = await import("../discovery/browser-data.js");
-    return await coreMemoryExists(this.options.initializeParams.stellaHomePath);
+    return await coreMemoryExists(this.options.initializeParams.stellaDataDirPath);
   }
 
   async discoveryKnowledgeExists() {
@@ -2468,7 +2468,7 @@ export class StellaRuntimeHost {
       "../discovery/life-knowledge.js"
     );
     return await discoveryKnowledgeExists(
-      this.options.initializeParams.stellaHomePath,
+      this.options.initializeParams.stellaDataDirPath,
     );
   }
 
@@ -2478,7 +2478,7 @@ export class StellaRuntimeHost {
   ) {
     const { writeCoreMemory } = await import("../discovery/browser-data.js");
     await writeCoreMemory(
-      this.options.initializeParams.stellaHomePath,
+      this.options.initializeParams.stellaDataDirPath,
       content,
       options,
     );
@@ -2489,7 +2489,7 @@ export class StellaRuntimeHost {
       "../discovery/life-knowledge.js"
     );
     await writeDiscoveryKnowledge(
-      this.options.initializeParams.stellaHomePath,
+      this.options.initializeParams.stellaDataDirPath,
       payload,
     );
   }
@@ -2541,7 +2541,7 @@ export class StellaRuntimeHost {
 
     const showNotificationHandler = this.options.hostHandlers.showNotification;
     const scheduler = new LocalSchedulerService({
-      stellaHome: this.options.initializeParams.stellaHomePath,
+      stellaDataDir: this.options.initializeParams.stellaDataDirPath,
       runnerTarget: {
         getRunner: () => ({
           runAutomationTurn: async (payload) =>
@@ -2702,8 +2702,8 @@ export class StellaRuntimeHost {
   private buildWorkerInitializationState(): WorkerInitializationState {
     return {
       protocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
-      stellaRoot: this.options.initializeParams.stellaRoot,
-      stellaHomePath: this.options.initializeParams.stellaHomePath,
+      stellaAppDir: this.options.initializeParams.stellaAppDir,
+      stellaDataDirPath: this.options.initializeParams.stellaDataDirPath,
       stellaWorkspacePath: this.options.initializeParams.stellaWorkspacePath,
       authToken: this.configCache.authToken ?? null,
       convexUrl: this.configCache.convexUrl ?? null,
@@ -3185,26 +3185,7 @@ const resolveDefaultWorkerEntryPath = (options: StellaRuntimeHostOptions) => {
   if (options.workerEntryPath) {
     return options.workerEntryPath;
   }
-
-  const currentModuleDir = path.dirname(fileURLToPath(import.meta.url));
-  const bundledCandidates = [
-    path.resolve(currentModuleDir, "..", "..", "runtime", "worker", "entry.js"),
-    path.join(
-      options.initializeParams.stellaRoot,
-      "desktop",
-      "dist-electron",
-      "runtime",
-      "worker",
-      "entry.js",
-    ),
-  ];
-  for (const bundledPath of bundledCandidates) {
-    if (existsSync(bundledPath)) {
-      return bundledPath;
-    }
-  }
-
-  return path.resolve(currentModuleDir, "..", "worker", "entry.js");
+  return resolveBundledRuntimeFile("worker/entry.js");
 };
 
 const shouldReloadRuntime = (normalizedFilename: string): boolean => {

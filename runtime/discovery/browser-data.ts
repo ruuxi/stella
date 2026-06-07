@@ -1311,7 +1311,7 @@ const buildBrowserDataWindow = (
  * Collect browser data from the user's default browser
  */
 export const collectBrowserData = async (
-  StellaHome: string,
+  StellaDataDir: string,
   options: BrowserCollectionOptions = {},
 ): Promise<BrowserData> => {
   log("Starting browser data collection...");
@@ -1376,7 +1376,7 @@ export const collectBrowserData = async (
 };
 
 export const collectBrowserActivityWindows = async (
-  StellaHome: string,
+  StellaDataDir: string,
   windows: BrowserActivityWindowRequest[],
   options: BrowserCollectionOptions = {},
 ): Promise<BrowserActivityWindow[]> => {
@@ -1410,10 +1410,10 @@ export const collectBrowserActivityWindows = async (
 /**
  * Check if core memory already exists
  */
-export const coreMemoryExists = async (StellaHome: string): Promise<boolean> => {
+export const coreMemoryExists = async (StellaDataDir: string): Promise<boolean> => {
   const candidatePaths = [
-    path.join(StellaHome, "core-memory.md"),
-    path.join(StellaHome, "CORE_MEMORY.MD"),
+    path.join(StellaDataDir, "core-memory.md"),
+    path.join(StellaDataDir, "CORE_MEMORY.MD"),
   ];
   for (const coreMemoryPath of candidatePaths) {
     try {
@@ -1539,11 +1539,11 @@ const fetchUserLocationLine = async (): Promise<string | null> => {
  * country.
  */
 export const writeCoreMemory = async (
-  StellaHome: string,
+  StellaDataDir: string,
   content: string,
   options?: { includeLocation?: boolean }
 ): Promise<void> => {
-  const statePath = StellaHome;
+  const statePath = StellaDataDir;
   await fs.mkdir(statePath, { recursive: true });
   const coreMemoryPath = path.join(statePath, "core-memory.md");
   const location = options?.includeLocation

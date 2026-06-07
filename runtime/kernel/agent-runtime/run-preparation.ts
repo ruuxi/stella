@@ -71,11 +71,11 @@ export const createRuntimePromptAgentMessage = (
 
 const appendCurrentWorkingDirectory = (
   systemPrompt: string,
-  opts: Pick<OrchestratorRunOptions, "agentType" | "stellaRoot">,
+  opts: Pick<OrchestratorRunOptions, "agentType" | "stellaAppDir">,
 ): string => {
   const cwd = resolveLocalCliCwd({
     agentType: opts.agentType,
-    stellaRoot: opts.stellaRoot,
+    stellaAppDir: opts.stellaAppDir,
   });
   if (!cwd) {
     return systemPrompt;

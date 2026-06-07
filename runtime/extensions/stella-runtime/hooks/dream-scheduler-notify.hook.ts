@@ -23,13 +23,13 @@ const logger = createRuntimeLogger("stella-runtime.dream-notify");
  * orchestrator-driven Dream run.
  *
  * Service deps:
- *   - `store`, `stellaHome` (factory-time, closure).
+ *   - `store`, `stellaDataDir` (factory-time, closure).
  *   - `payload.services.resolvedLlm` + `orchestratorTokenEstimate` (per-turn).
  *   - The `dream-scheduler` module is dynamically imported inside the handler
  *     to keep it off the runtime worker's cold-start path.
  */
 export const createDreamSchedulerNotifyHook = (opts: {
-  stellaHome: string;
+  stellaDataDir: string;
   store: RuntimeStore;
 }): HookDefinition<"agent_end"> => ({
   event: "agent_end",
@@ -61,7 +61,7 @@ export const createDreamSchedulerNotifyHook = (opts: {
         "../../../kernel/agent-runtime/dream-scheduler.js"
       );
       void maybeSpawnDreamRun({
-        stellaHome: opts.stellaHome,
+        stellaDataDir: opts.stellaDataDir,
         store: opts.store,
         resolvedLlm: services.resolvedLlm,
         trigger,

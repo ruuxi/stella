@@ -26,7 +26,7 @@ import {
 } from "./local-chat-artifacts.js";
 
 type LocalChatHistoryServiceOptions = {
-  stellaRoot: string;
+  stellaAppDir: string;
   onUpdated?: (payload: LocalChatUpdatedPayload | null) => void;
 };
 
@@ -66,20 +66,20 @@ const openNodeSqliteDatabase = (dbPath: string): SqliteDatabase =>
 export class LocalChatHistoryService {
   private db: SqliteDatabase | null = null;
   private store: SessionStore | null = null;
-  private readonly stellaRoot: string;
+  private readonly stellaAppDir: string;
   private readonly onUpdated?: (
     payload: LocalChatUpdatedPayload | null,
   ) => void;
   private resetInProgress = false;
 
   constructor(options: LocalChatHistoryServiceOptions) {
-    this.stellaRoot = options.stellaRoot;
+    this.stellaAppDir = options.stellaAppDir;
     this.onUpdated = options.onUpdated;
     this.open();
   }
 
   private open(): void {
-    const db = openNodeSqliteDatabase(getDesktopDatabasePath(this.stellaRoot));
+    const db = openNodeSqliteDatabase(getDesktopDatabasePath(this.stellaAppDir));
     initializeDesktopDatabase(db);
     this.db = db;
     this.store = new SessionStore(db);
@@ -221,7 +221,7 @@ export class LocalChatHistoryService {
     if (firstReport) {
       const timestamp = Date.now();
       const filePath = path.join(
-        this.stellaRoot,
+        this.stellaAppDir,
         "outputs",
         "html",
         `${firstReport.slug}.html`,

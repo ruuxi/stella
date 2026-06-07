@@ -550,8 +550,8 @@ const resolveApplyPatchCwd = (
   if (typeof argCwd === "string" && argCwd.trim()) {
     return path.resolve(expandHomePath(argCwd.trim()));
   }
-  if (context?.stellaRoot && context.stellaRoot.trim()) {
-    return context.stellaRoot;
+  if (context?.stellaAppDir && context.stellaAppDir.trim()) {
+    return context.stellaAppDir;
   }
   return process.cwd();
 };

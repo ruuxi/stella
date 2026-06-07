@@ -4,9 +4,9 @@ import path from 'path'
 const FALLBACK_PORT = 57314
 
 export function getDevServerUrl(): string {
-  const stellaRoot = process.env.STELLA_ROOT?.trim()
-  if (stellaRoot) {
-    const devUrlFile = path.join(stellaRoot, 'desktop', '.vite-dev-url')
+  const stellaAppDir = process.env.STELLA_APP_DIR?.trim()
+  if (stellaAppDir) {
+    const devUrlFile = path.join(stellaAppDir, 'desktop', '.vite-dev-url')
     try {
       const url = fs.readFileSync(devUrlFile, 'utf-8').trim()
       if (url) return url

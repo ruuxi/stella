@@ -45,13 +45,13 @@ const normalizeProvider = (provider: string) => provider.trim().toLowerCase();
 const credentialScope = (provider: string) =>
   `${LLM_CREDENTIAL_SCOPE_PREFIX}:${normalizeProvider(provider)}`;
 
-const getStatePath = (stellaRoot: string) => stellaRoot;
+const getStatePath = (stellaAppDir: string) => stellaAppDir;
 
-export const getLlmCredentialStorePath = (stellaRoot: string) =>
-  path.join(getStatePath(stellaRoot), LLM_CREDENTIALS_FILE);
+export const getLlmCredentialStorePath = (stellaAppDir: string) =>
+  path.join(getStatePath(stellaAppDir), LLM_CREDENTIALS_FILE);
 
-const readCredentialFile = (stellaRoot: string): StoredLlmCredentialFile => {
-  const filePath = getLlmCredentialStorePath(stellaRoot);
+const readCredentialFile = (stellaAppDir: string): StoredLlmCredentialFile => {
+  const filePath = getLlmCredentialStorePath(stellaAppDir);
   try {
     const raw = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw) as StoredLlmCredentialFile;
@@ -74,18 +74,18 @@ const readCredentialFile = (stellaRoot: string): StoredLlmCredentialFile => {
 };
 
 const writeCredentialFile = (
-  stellaRoot: string,
+  stellaAppDir: string,
   payload: StoredLlmCredentialFile,
 ): void => {
-  const filePath = getLlmCredentialStorePath(stellaRoot);
+  const filePath = getLlmCredentialStorePath(stellaAppDir);
   ensurePrivateDirSync(path.dirname(filePath));
   writePrivateFileSync(filePath, JSON.stringify(payload, null, 2));
 };
 
 export const listLocalLlmCredentials = (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): LocalLlmCredentialSummary[] => {
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   return Object.values(file.credentials)
     .map((record) => ({
       provider: record.provider,
@@ -97,11 +97,11 @@ export const listLocalLlmCredentials = (
 };
 
 export const getLocalLlmCredential = (
-  stellaRoot: string,
+  stellaAppDir: string,
   provider: string,
 ): string | null => {
   const normalizedProvider = normalizeProvider(provider);
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   const record = file.credentials[normalizedProvider];
   if (!record) {
     return null;
@@ -114,7 +114,7 @@ export const getLocalLlmCredential = (
 };
 
 export const saveLocalLlmCredential = (
-  stellaRoot: string,
+  stellaAppDir: string,
   payload: { provider: string; label: string; plaintext: string },
 ): LocalLlmCredentialSummary => {
   const provider = normalizeProvider(payload.provider);
@@ -127,7 +127,7 @@ export const saveLocalLlmCredential = (
     throw new Error("Missing API key.");
   }
 
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   const now = Date.now();
   const existing = file.credentials[provider];
   const valueProtected = protectValue(credentialScope(provider), plaintext);
@@ -138,7 +138,7 @@ export const saveLocalLlmCredential = (
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  writeCredentialFile(stellaRoot, file);
+  writeCredentialFile(stellaAppDir, file);
   if (existing?.valueProtected && existing.valueProtected !== valueProtected) {
     deleteProtectedValue(credentialScope(provider), existing.valueProtected);
   }
@@ -152,7 +152,7 @@ export const saveLocalLlmCredential = (
 };
 
 export const deleteLocalLlmCredential = (
-  stellaRoot: string,
+  stellaAppDir: string,
   provider: string,
 ): { removed: boolean } => {
   const normalizedProvider = normalizeProvider(provider);
@@ -160,14 +160,14 @@ export const deleteLocalLlmCredential = (
     return { removed: false };
   }
 
-  const file = readCredentialFile(stellaRoot);
+  const file = readCredentialFile(stellaAppDir);
   const existing = file.credentials[normalizedProvider];
   if (!existing) {
     return { removed: false };
   }
 
   delete file.credentials[normalizedProvider];
-  writeCredentialFile(stellaRoot, file);
+  writeCredentialFile(stellaAppDir, file);
   deleteProtectedValue(
     credentialScope(normalizedProvider),
     existing.valueProtected,

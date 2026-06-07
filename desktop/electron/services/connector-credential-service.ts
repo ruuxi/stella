@@ -43,7 +43,7 @@ type PendingMeta = {
   oauthStarted?: boolean;
   oauthFlow?: {
     type: "mcp" | "preregistered" | "device";
-    stellaRoot: string;
+    stellaAppDir: string;
     tokenKey: string;
     resourceUrl?: string;
     clientId?: string;
@@ -93,7 +93,7 @@ export class ConnectorCredentialService {
   constructor(
     private readonly options: {
       windowManagerTarget: WindowManagerTarget<BrowserWindow>;
-      getStellaRoot: () => string | null;
+      getStellaAppDir: () => string | null;
       getConvexAuthToken?: () => Promise<string | null>;
       getConvexSiteUrl?: () => string | null;
     },
@@ -199,8 +199,8 @@ export class ConnectorCredentialService {
     verificationUri?: string;
     description?: string;
   }): Promise<ConnectorCredentialOutcome> {
-    const stellaRoot = this.options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaAppDir = this.options.getStellaAppDir();
+    if (!stellaAppDir) {
       return { ok: false, reason: "unsupported" };
     }
     const oauthAbort = new AbortController();
@@ -283,8 +283,8 @@ export class ConnectorCredentialService {
       authorization: Awaited<ReturnType<typeof beginConnectorDeviceOAuth>>;
     };
   }): Promise<ConnectorCredentialOutcome> {
-    const stellaRoot = this.options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaAppDir = this.options.getStellaAppDir();
+    if (!stellaAppDir) {
       return { ok: false, reason: "unsupported" };
     }
 
@@ -335,7 +335,7 @@ export class ConnectorCredentialService {
         payload.preregisteredOAuth
           ? {
               type: "preregistered",
-              stellaRoot,
+              stellaAppDir,
               tokenKey: payload.tokenKey,
               clientId: payload.preregisteredOAuth.clientId,
               authorizationEndpoint:
@@ -365,7 +365,7 @@ export class ConnectorCredentialService {
               payload.deviceOAuth
             ? {
                 type: "device",
-                stellaRoot,
+                stellaAppDir,
                 tokenKey: payload.tokenKey,
                 clientId: payload.deviceOAuth.clientId,
                 deviceAuthorizationEndpoint:
@@ -382,7 +382,7 @@ export class ConnectorCredentialService {
                 payload.resourceUrl
               ? {
                   type: "mcp",
-                  stellaRoot,
+                  stellaAppDir,
                   tokenKey: payload.tokenKey,
                   resourceUrl: payload.resourceUrl,
                   oauthClientId: payload.oauthClientId,
@@ -566,7 +566,7 @@ export class ConnectorCredentialService {
   private async runOauthFlow(args: {
     requestId: string;
     type: "mcp" | "preregistered" | "device";
-    stellaRoot: string;
+    stellaAppDir: string;
     tokenKey: string;
     resourceUrl?: string;
     clientId?: string;
@@ -602,7 +602,7 @@ export class ConnectorCredentialService {
         const verificationUri =
           args.verificationUri || args.authorization?.verification_uri;
         if (verificationUri) await shell.openExternal(verificationUri);
-        await completeConnectorDeviceOAuth(args.stellaRoot, {
+        await completeConnectorDeviceOAuth(args.stellaAppDir, {
           tokenKey: args.tokenKey,
           clientId: args.clientId!,
           tokenEndpoint: args.tokenEndpoint!,
@@ -626,7 +626,7 @@ export class ConnectorCredentialService {
         ) {
           throw new Error("Stella backend OAuth exchange is unavailable.");
         }
-        await connectPreregisteredConnectorOAuth(args.stellaRoot, {
+        await connectPreregisteredConnectorOAuth(args.stellaAppDir, {
           tokenKey: args.tokenKey,
           clientId: args.clientId!,
           authorizationEndpoint: args.authorizationEndpoint!,
@@ -661,7 +661,7 @@ export class ConnectorCredentialService {
           signal: args.signal,
         });
       } else {
-        await connectConnectorOAuth(args.stellaRoot, {
+        await connectConnectorOAuth(args.stellaAppDir, {
           tokenKey: args.tokenKey,
           resourceUrl: args.resourceUrl!,
           oauthClientId: args.oauthClientId,
@@ -727,8 +727,8 @@ export class ConnectorCredentialService {
     if (!value) {
       return { ok: false as const, error: "value is required." };
     }
-    const stellaRoot = this.options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaAppDir = this.options.getStellaAppDir();
+    if (!stellaAppDir) {
       this.pending.resolve(payload.requestId, {
         ok: false,
         reason: "unsupported",
@@ -737,7 +737,7 @@ export class ConnectorCredentialService {
       return { ok: false as const, error: "Stella root is unavailable." };
     }
     try {
-      await saveConnectorAccessToken(stellaRoot, meta.tokenKey, value);
+      await saveConnectorAccessToken(stellaAppDir, meta.tokenKey, value);
     } catch (error) {
       // Persistence failure (filesystem ENOSPC, EACCES, etc.) is
       // recoverable: keep the pending entry + meta alive so the modal's

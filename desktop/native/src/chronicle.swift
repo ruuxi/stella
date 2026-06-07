@@ -1,23 +1,23 @@
 // chronicle - Background screen capture + OCR sidecar for Stella.
 //
 // One process model:
-//   $ chronicle daemon --root <stellaHome> [--interval-ms 4000] [--max-strings 60]
+//   $ chronicle daemon --root <stellaDataDir> [--interval-ms 4000] [--max-strings 60]
 //
 // Lifecycle commands (sent to the running daemon over AF_UNIX):
-//   $ chronicle start  --root <stellaHome>
-//   $ chronicle pause  --root <stellaHome>
-//   $ chronicle resume --root <stellaHome>
-//   $ chronicle stop   --root <stellaHome>
-//   $ chronicle status --root <stellaHome>
+//   $ chronicle start  --root <stellaDataDir>
+//   $ chronicle pause  --root <stellaDataDir>
+//   $ chronicle resume --root <stellaDataDir>
+//   $ chronicle stop   --root <stellaDataDir>
+//   $ chronicle status --root <stellaDataDir>
 //
-// State layout (all under <stellaHome>/chronicle/):
+// State layout (all under <stellaDataDir>/chronicle/):
 //   chronicle.sock            AF_UNIX command socket
 //   chronicle.pid             Daemon pid (cleaned up on graceful exit)
 //   chronicle.state.json      { running: bool, paused: bool, lastCaptureAt: ISO }
 //   captures.jsonl            One line per OCR delta:
 //                             { ts, displayId, addedLines: [..], removedLines: [..] }
 //   summaries/<YYYY-MM-DD>.md Rolled daily summary (also mirrored to
-//                             <stellaHome>/memories_extensions/chronicle/<DATE>.md)
+//                             <stellaDataDir>/memories_extensions/chronicle/<DATE>.md)
 //
 // Permissions: requires Screen Recording (CGPreflightScreenCaptureAccess);
 // the daemon refuses to start without it. The Electron host is responsible
@@ -58,7 +58,7 @@ func todayDateString() -> String {
 
 struct ChronicleArgs {
     var command: String = ""
-    var stellaHome: String = ""
+    var stellaDataDir: String = ""
     var intervalMs: Int = 4000
     var maxStrings: Int = 60
     var excludedBundleIds: [String] = []
@@ -74,10 +74,10 @@ func parseArgs() -> ChronicleArgs {
     while i < raw.count {
         let arg = raw[i]
         if arg == "--root", i + 1 < raw.count {
-            args.stellaHome = raw[i + 1]
+            args.stellaDataDir = raw[i + 1]
             i += 2
         } else if arg.hasPrefix("--root=") {
-            args.stellaHome = String(arg.dropFirst("--root=".count))
+            args.stellaDataDir = String(arg.dropFirst("--root=".count))
             i += 1
         } else if arg == "--interval-ms", i + 1 < raw.count {
             args.intervalMs = Int(raw[i + 1]) ?? args.intervalMs
@@ -600,11 +600,11 @@ func sendCommand(_ paths: ChroniclePaths, _ command: String) {
 // MARK: - Main
 
 let args = parseArgs()
-if args.stellaHome.isEmpty {
-    eprint("chronicle: --root <stellaHome> is required")
+if args.stellaDataDir.isEmpty {
+    eprint("chronicle: --root <stellaDataDir> is required")
     exit(64)
 }
-let paths = ChroniclePaths(root: args.stellaHome)
+let paths = ChroniclePaths(root: args.stellaDataDir)
 
 switch args.command {
 case "daemon":
@@ -634,6 +634,6 @@ case "ping":
     sendCommand(paths, "ping")
 default:
     eprint("chronicle: unknown command '\(args.command)'")
-    eprint("Usage: chronicle {daemon|start|pause|resume|stop|status|ping} --root <stellaHome>")
+    eprint("Usage: chronicle {daemon|start|pause|resume|stop|status|ping} --root <stellaDataDir>")
     exit(64)
 }

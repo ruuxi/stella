@@ -21,13 +21,13 @@ import { isBlockedPath } from "./command-safety.js";
 import { sanitizeToolVisibleText } from "./safety.js";
 
 export type FileToolsConfig = {
-  stellaRoot?: string;
+  stellaAppDir?: string;
 };
 
 const fileToolsConfig: FileToolsConfig = {};
 
 export function setFileToolsConfig(config: FileToolsConfig) {
-  fileToolsConfig.stellaRoot = config.stellaRoot;
+  fileToolsConfig.stellaAppDir = config.stellaAppDir;
 }
 
 const isPathInsideRoot = (candidate: string, root: string): boolean => {
@@ -50,8 +50,8 @@ export const resolveFilePath = (
     ? path.resolve(expandedPath)
     : path.resolve(
         scopedRoot ??
-          context?.stellaRoot ??
-          fileToolsConfig.stellaRoot ??
+          context?.stellaAppDir ??
+          fileToolsConfig.stellaAppDir ??
           process.cwd(),
         expandedPath,
       );

@@ -1,9 +1,8 @@
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { arch, platform } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-export const __dirname = dirname(fileURLToPath(import.meta.url));
+export const __dirname = import.meta.dirname;
 export const projectRoot = join(__dirname, "..");
 export const binDir = join(projectRoot, "bin");
 export const officeCliRoot = join(projectRoot, "vendor", "officecli");

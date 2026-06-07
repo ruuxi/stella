@@ -2,12 +2,11 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyStellaSourcePack } from "../../../../runtime/kernel/self-mod/stella-source-control.js";
 
 const scriptPath = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
+  import.meta.dirname,
   "../../../scripts/generate-desktop-source-pack.mjs",
 );
 

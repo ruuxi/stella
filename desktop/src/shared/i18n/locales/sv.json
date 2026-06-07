@@ -223,7 +223,7 @@
         "wipedTitle": "Minnen raderade"
       },
       "enableFailures": {
-        "noStellaRoot": "Stellas arbetsytas rotmapp är inte tillgänglig.",
+        "noStellaAppDir": "Stellas arbetsytas rotmapp är inte tillgänglig.",
         "needsPermission": "Behörighet för skärminspelning krävs fortfarande innan Chronicle kan starta.",
         "binaryMissing": "Chronicles hjälpprogram saknas.",
         "startupTimeout": "Chronicle kom inte online efter start.",

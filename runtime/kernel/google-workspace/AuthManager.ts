@@ -18,7 +18,7 @@ const TOKEN_KEY = "google-workspace";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
-const stellaRootFromProjectRoot = () => {
+const stellaAppDirFromProjectRoot = () => {
   const projectRoot = getProjectRoot();
   const suffix = "/google-workspace";
   if (!projectRoot.endsWith(suffix)) {
@@ -52,8 +52,8 @@ export class AuthManager {
   }
 
   public async getAuthenticatedClient(): Promise<Auth.OAuth2Client> {
-    const stellaRoot = stellaRootFromProjectRoot();
-    const payload = await loadConnectorTokenPayload(stellaRoot, TOKEN_KEY);
+    const stellaAppDir = stellaAppDirFromProjectRoot();
+    const payload = await loadConnectorTokenPayload(stellaAppDir, TOKEN_KEY);
     if (!payload?.accessToken) {
       throw new Error("Google Workspace is not connected.");
     }
@@ -76,8 +76,8 @@ export class AuthManager {
       token_type: "Bearer",
     });
     client.on("tokens", async (tokens) => {
-      const current = await loadConnectorTokenPayload(stellaRoot, TOKEN_KEY);
-      await saveConnectorTokenPayload(stellaRoot, TOKEN_KEY, {
+      const current = await loadConnectorTokenPayload(stellaAppDir, TOKEN_KEY);
+      await saveConnectorTokenPayload(stellaAppDir, TOKEN_KEY, {
         accessToken: tokens.access_token ?? current?.accessToken ?? payload.accessToken,
         refreshToken:
           tokens.refresh_token ?? current?.refreshToken ?? payload.refreshToken ?? undefined,
@@ -97,14 +97,14 @@ export class AuthManager {
 
   public async clearAuth(): Promise<void> {
     this.client = null;
-    await deleteConnectorAccessTokens(stellaRootFromProjectRoot(), [TOKEN_KEY]);
+    await deleteConnectorAccessTokens(stellaAppDirFromProjectRoot(), [TOKEN_KEY]);
   }
 
   public async refreshToken(): Promise<void> {
     this.onStatusUpdate?.("Refreshing Google Workspace connection...");
     const client = await this.getAuthenticatedClient();
     const response = await client.refreshAccessToken();
-    await saveConnectorTokenPayload(stellaRootFromProjectRoot(), TOKEN_KEY, {
+    await saveConnectorTokenPayload(stellaAppDirFromProjectRoot(), TOKEN_KEY, {
       accessToken: response.credentials.access_token ?? "",
       refreshToken:
         response.credentials.refresh_token ??

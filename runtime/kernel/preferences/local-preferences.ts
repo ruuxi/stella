@@ -241,11 +241,11 @@ const LEGACY_STELLA_DEFAULT_MODEL = "stella/default";
 let _cached: LocalPreferences | null = null;
 let _cachedMtime: number | null = null;
 
-const prefsPath = (stellaHome: string) =>
-  path.join(stellaHome, "preferences.json");
+const prefsPath = (stellaDataDir: string) =>
+  path.join(stellaDataDir, "preferences.json");
 
-export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
-  const filePath = prefsPath(stellaHome);
+export const loadLocalPreferences = (stellaDataDir: string): LocalPreferences => {
+  const filePath = prefsPath(stellaDataDir);
 
   try {
     const stat = fs.statSync(filePath);
@@ -326,10 +326,10 @@ export const loadLocalPreferences = (stellaHome: string): LocalPreferences => {
 };
 
 export const saveLocalPreferences = (
-  stellaHome: string,
+  stellaDataDir: string,
   prefs: LocalPreferences,
 ): void => {
-  const filePath = prefsPath(stellaHome);
+  const filePath = prefsPath(stellaDataDir);
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     ensurePrivateDirSync(dir);
@@ -344,49 +344,49 @@ export const saveLocalPreferences = (
 };
 
 export const getModelOverride = (
-  stellaHome: string,
+  stellaDataDir: string,
   agentType: string,
 ): string | undefined => {
-  const prefs = loadLocalPreferences(stellaHome);
+  const prefs = loadLocalPreferences(stellaDataDir);
   return prefs.modelOverrides[agentType];
 };
 
 export const getReasoningEffort = (
-  stellaHome: string,
+  stellaDataDir: string,
   agentType: string,
 ): ReasoningEffort => {
-  const prefs = loadLocalPreferences(stellaHome);
+  const prefs = loadLocalPreferences(stellaDataDir);
   return normalizeReasoningEffort(prefs.reasoningEfforts[agentType]);
 };
 
-export const getAgentRuntimeEngine = (stellaHome: string): AgentEngine => {
-  return loadLocalPreferences(stellaHome).agentRuntimeEngine;
+export const getAgentRuntimeEngine = (stellaDataDir: string): AgentEngine => {
+  return loadLocalPreferences(stellaDataDir).agentRuntimeEngine;
 };
 
-export const getMaxAgentConcurrency = (stellaHome: string): number => {
-  return loadLocalPreferences(stellaHome).maxAgentConcurrency;
+export const getMaxAgentConcurrency = (stellaDataDir: string): number => {
+  return loadLocalPreferences(stellaDataDir).maxAgentConcurrency;
 };
 
 export const getImageGenerationPreferences = (
-  stellaHome: string,
+  stellaDataDir: string,
 ): ImageGenerationPreferences => {
   return normalizeImageGenerationPreferences(
-    loadLocalPreferences(stellaHome).imageGeneration,
+    loadLocalPreferences(stellaDataDir).imageGeneration,
   );
 };
 
 export const getRealtimeVoicePreferences = (
-  stellaHome: string,
+  stellaDataDir: string,
 ): RealtimeVoicePreferences => {
   return normalizeRealtimeVoicePreferences(
-    loadLocalPreferences(stellaHome).realtimeVoice,
+    loadLocalPreferences(stellaDataDir).realtimeVoice,
   );
 };
 
 export const getLocalModelPreferences = (
-  stellaHome: string,
+  stellaDataDir: string,
 ): LocalModelPreferencesSnapshot => {
-  const prefs = loadLocalPreferences(stellaHome);
+  const prefs = loadLocalPreferences(stellaDataDir);
   return {
     defaultModels: { ...prefs.defaultModels },
     modelOverrides: { ...prefs.modelOverrides },
@@ -404,10 +404,10 @@ export const getLocalModelPreferences = (
 };
 
 export const updateLocalModelPreferences = (
-  stellaHome: string,
+  stellaDataDir: string,
   patch: Partial<LocalModelPreferencesSnapshot>,
 ): LocalModelPreferencesSnapshot => {
-  const prefs = loadLocalPreferences(stellaHome);
+  const prefs = loadLocalPreferences(stellaDataDir);
   const next: LocalPreferences = {
     ...prefs,
     defaultModels:
@@ -459,8 +459,8 @@ export const updateLocalModelPreferences = (
         ? prefs.realtimeVoice
         : normalizeRealtimeVoicePreferences(patch.realtimeVoice),
   };
-  saveLocalPreferences(stellaHome, next);
-  return getLocalModelPreferences(stellaHome);
+  saveLocalPreferences(stellaDataDir, next);
+  return getLocalModelPreferences(stellaDataDir);
 };
 
 /**
@@ -471,78 +471,78 @@ export const updateLocalModelPreferences = (
  * Explore is meant to be a fast cheap pass over ~/.stella/. Users who want to
  * spend more should set modelOverrides["explore"] explicitly.
  */
-export const getExploreModel = (stellaHome: string): string | undefined => {
-  const prefs = loadLocalPreferences(stellaHome);
+export const getExploreModel = (stellaDataDir: string): string | undefined => {
+  const prefs = loadLocalPreferences(stellaDataDir);
   return prefs.modelOverrides["explore"];
 };
 
-export const getSyncMode = (stellaHome: string): "on" | "off" => {
-  return loadLocalPreferences(stellaHome).syncMode;
+export const getSyncMode = (stellaDataDir: string): "on" | "off" => {
+  return loadLocalPreferences(stellaDataDir).syncMode;
 };
 
-export const getPreventComputerSleep = (stellaHome: string): boolean => {
-  return loadLocalPreferences(stellaHome).preventComputerSleep;
+export const getPreventComputerSleep = (stellaDataDir: string): boolean => {
+  return loadLocalPreferences(stellaDataDir).preventComputerSleep;
 };
 
-export const getLockedComputerUseEnabled = (stellaHome: string): boolean => {
-  return loadLocalPreferences(stellaHome).lockedComputerUseEnabled;
+export const getLockedComputerUseEnabled = (stellaDataDir: string): boolean => {
+  return loadLocalPreferences(stellaDataDir).lockedComputerUseEnabled;
 };
 
-export const getSoundNotificationsEnabled = (stellaHome: string): boolean => {
-  return loadLocalPreferences(stellaHome).soundNotificationsEnabled;
+export const getSoundNotificationsEnabled = (stellaDataDir: string): boolean => {
+  return loadLocalPreferences(stellaDataDir).soundNotificationsEnabled;
 };
 
 export const getDictationSoundEffectsEnabled = (
-  stellaHome: string,
+  stellaDataDir: string,
 ): boolean => {
-  return loadLocalPreferences(stellaHome).dictationSoundEffectsEnabled;
+  return loadLocalPreferences(stellaDataDir).dictationSoundEffectsEnabled;
 };
 
-export const getReadAloudEnabled = (stellaHome: string): boolean => {
-  return loadLocalPreferences(stellaHome).readAloudEnabled;
+export const getReadAloudEnabled = (stellaDataDir: string): boolean => {
+  return loadLocalPreferences(stellaDataDir).readAloudEnabled;
 };
 
 export const setReadAloudEnabled = (
-  stellaHome: string,
+  stellaDataDir: string,
   enabled: boolean,
 ): void => {
-  const prefs = loadLocalPreferences(stellaHome);
-  saveLocalPreferences(stellaHome, { ...prefs, readAloudEnabled: enabled });
+  const prefs = loadLocalPreferences(stellaDataDir);
+  saveLocalPreferences(stellaDataDir, { ...prefs, readAloudEnabled: enabled });
 };
 
 export const getCadenceReportsPreferences = (
-  stellaHome: string,
+  stellaDataDir: string,
 ): CadenceReportsPreferences => {
-  return loadLocalPreferences(stellaHome).cadenceReports;
+  return loadLocalPreferences(stellaDataDir).cadenceReports;
 };
 
 export const setCadenceReportsPreferences = (
-  stellaHome: string,
+  stellaDataDir: string,
   value: CadenceReportsPreferences,
 ): CadenceReportsPreferences => {
-  const prefs = loadLocalPreferences(stellaHome);
+  const prefs = loadLocalPreferences(stellaDataDir);
   const next = normalizeCadenceReports(value);
-  saveLocalPreferences(stellaHome, { ...prefs, cadenceReports: next });
+  saveLocalPreferences(stellaDataDir, { ...prefs, cadenceReports: next });
   return next;
 };
 
-export const getChronicleEnabled = (stellaHome: string): boolean => {
-  return loadLocalPreferences(stellaHome).chronicleEnabled;
+export const getChronicleEnabled = (stellaDataDir: string): boolean => {
+  return loadLocalPreferences(stellaDataDir).chronicleEnabled;
 };
 
-export const getChroniclePendingEnable = (stellaHome: string): boolean => {
-  const prefs = loadLocalPreferences(stellaHome);
+export const getChroniclePendingEnable = (stellaDataDir: string): boolean => {
+  const prefs = loadLocalPreferences(stellaDataDir);
   return (
     prefs.chronicleEnabled !== true && prefs.chroniclePendingEnable === true
   );
 };
 
 export const setChronicleMemoryPreference = (
-  stellaHome: string,
+  stellaDataDir: string,
   value: { enabled: boolean; pendingEnable?: boolean },
 ): void => {
-  const prefs = loadLocalPreferences(stellaHome);
-  saveLocalPreferences(stellaHome, {
+  const prefs = loadLocalPreferences(stellaDataDir);
+  saveLocalPreferences(stellaDataDir, {
     ...prefs,
     chronicleEnabled: value.enabled,
     chroniclePendingEnable:
@@ -551,27 +551,27 @@ export const setChronicleMemoryPreference = (
 };
 
 export const getPersonalityVoiceId = (
-  stellaHome: string,
+  stellaDataDir: string,
 ): PersonalityId | undefined =>
-  loadLocalPreferences(stellaHome).personalityVoiceId;
+  loadLocalPreferences(stellaDataDir).personalityVoiceId;
 
 export const setPersonalityVoiceId = (
-  stellaHome: string,
+  stellaDataDir: string,
   id: PersonalityId,
 ): void => {
-  const prefs = loadLocalPreferences(stellaHome);
-  saveLocalPreferences(stellaHome, { ...prefs, personalityVoiceId: id });
+  const prefs = loadLocalPreferences(stellaDataDir);
+  saveLocalPreferences(stellaDataDir, { ...prefs, personalityVoiceId: id });
 };
 
-export const getOnboardingCompleted = (stellaHome: string): boolean =>
-  loadLocalPreferences(stellaHome).onboardingCompleted;
+export const getOnboardingCompleted = (stellaDataDir: string): boolean =>
+  loadLocalPreferences(stellaDataDir).onboardingCompleted;
 
 export const setOnboardingCompleted = (
-  stellaHome: string,
+  stellaDataDir: string,
   completed: boolean,
 ): void => {
-  const prefs = loadLocalPreferences(stellaHome);
-  saveLocalPreferences(stellaHome, {
+  const prefs = loadLocalPreferences(stellaDataDir);
+  saveLocalPreferences(stellaDataDir, {
     ...prefs,
     onboardingCompleted: completed,
   });

@@ -99,7 +99,7 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
         conversationId: "conversation-1",
         deviceId: "device-1",
         requestId: "request-1",
-        stellaRoot: runtime.root,
+        stellaAppDir: runtime.root,
       };
       if (runtime.mode === "send_input_then_apply_patch" && runCount === 1) {
         const result = await opts.toolExecutor(
@@ -317,8 +317,8 @@ const createTestContext = (root: string, hmrController: unknown) => {
     getAgentRecord: () => null,
   };
   return {
-    stellaRoot: root,
-    stellaHome: root,
+    stellaAppDir: root,
+    stellaDataDir: root,
     deviceId: "device-1",
     runtimeStore,
     appendLocalChatEvent: vi.fn(),
@@ -345,7 +345,7 @@ const createTestContext = (root: string, hmrController: unknown) => {
         if (toolName === "apply_patch") {
           return handleApplyPatch(args, {
             ...context,
-            stellaRoot: root,
+            stellaAppDir: root,
           });
         }
         if (
@@ -387,7 +387,7 @@ const createTestContext = (root: string, hmrController: unknown) => {
         ) {
           return handleExecCommand(createShellState(root), args, {
             ...context,
-            stellaRoot: root,
+            stellaAppDir: root,
           });
         }
         return Promise.resolve({ result: "ok" });

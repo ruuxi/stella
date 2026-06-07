@@ -278,24 +278,24 @@ describe("Codex agent runtime", () => {
   it("keeps an explicit Codex model preference for Stella Light agents", () => {
     const previousModel = process.env.STELLA_CODEX_MODEL;
     delete process.env.STELLA_CODEX_MODEL;
-    const stellaHome = fs.mkdtempSync(
+    const stellaDataDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-codex-light-model-"),
     );
     try {
-      updateLocalModelPreferences(stellaHome, {
+      updateLocalModelPreferences(stellaDataDir, {
         codexModel: "gpt-5.5",
       });
-      expect(getCodexRuntimePreferences(stellaHome, "stella/light").model).toBe(
+      expect(getCodexRuntimePreferences(stellaDataDir, "stella/light").model).toBe(
         "gpt-5.4-mini",
       );
-      updateLocalModelPreferences(stellaHome, {
+      updateLocalModelPreferences(stellaDataDir, {
         codexModel: "custom-codex-model",
       });
-      expect(getCodexRuntimePreferences(stellaHome, "stella/light").model).toBe(
+      expect(getCodexRuntimePreferences(stellaDataDir, "stella/light").model).toBe(
         "custom-codex-model",
       );
     } finally {
-      fs.rmSync(stellaHome, { recursive: true, force: true });
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
       if (previousModel === undefined) {
         delete process.env.STELLA_CODEX_MODEL;
       } else {

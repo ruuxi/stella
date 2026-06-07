@@ -17,7 +17,7 @@ export type LocalToolStore = {
 };
 
 export type LocalDreamConfig = {
-  stellaHome: string;
+  stellaDataDir: string;
 };
 
 const isWithinDirectory = (candidate: string, root: string): boolean => {
@@ -42,7 +42,7 @@ const resolveDreamToolPath = async (
 ): Promise<string> => {
   const candidate = path.isAbsolute(filePath)
     ? filePath
-    : path.resolve(dream.stellaHome, filePath);
+    : path.resolve(dream.stellaDataDir, filePath);
   return await normalizePath(candidate);
 };
 
@@ -52,8 +52,8 @@ const ensureDreamReadPath = async (
 ): Promise<string> => {
   const resolved = await resolveDreamToolPath(dream, filePath);
   const [memoriesRoot, extensionsRoot] = await Promise.all([
-    normalizePath(path.join(dream.stellaHome, "memories")),
-    normalizePath(path.join(dream.stellaHome, "memories_extensions")),
+    normalizePath(path.join(dream.stellaDataDir, "memories")),
+    normalizePath(path.join(dream.stellaDataDir, "memories_extensions")),
   ]);
   if (
     isWithinDirectory(resolved, memoriesRoot) ||
@@ -72,9 +72,9 @@ const ensureDreamWritePath = async (
 ): Promise<string> => {
   const resolved = await resolveDreamToolPath(dream, filePath);
   const allowedFiles = await Promise.all([
-    normalizePath(memoryFilePath(dream.stellaHome)),
-    normalizePath(memorySummaryPath(dream.stellaHome)),
-    normalizePath(rawMemoriesPath(dream.stellaHome)),
+    normalizePath(memoryFilePath(dream.stellaDataDir)),
+    normalizePath(memorySummaryPath(dream.stellaDataDir)),
+    normalizePath(rawMemoriesPath(dream.stellaDataDir)),
   ]);
   if (allowedFiles.includes(resolved)) {
     return resolved;
@@ -267,7 +267,7 @@ export async function dispatchLocalTool(
           : undefined;
       const limit = typeof args.limit === "number" ? args.limit : undefined;
       const result = await dreamList({
-        stellaHome: dream.stellaHome,
+        stellaDataDir: dream.stellaDataDir,
         store: summariesStore,
         ...(sinceWatermark !== undefined ? { sinceWatermark } : {}),
         ...(limit !== undefined ? { limit } : {}),
@@ -279,7 +279,7 @@ export async function dispatchLocalTool(
     }
     if (action === "markProcessed") {
       const result = await dreamMarkProcessed({
-        stellaHome: dream.stellaHome,
+        stellaDataDir: dream.stellaDataDir,
         store: summariesStore,
         ...(isThreadKeyArray(args.threadKeys)
           ? { threadKeys: args.threadKeys }

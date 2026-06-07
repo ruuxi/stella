@@ -61,10 +61,10 @@ export const now = () => Date.now();
 
 export const resolveLocalCliCwd = ({
   agentType,
-  stellaRoot,
+  stellaAppDir,
 }: {
   agentType: string;
-  stellaRoot?: string;
+  stellaAppDir?: string;
 }): string | undefined => {
   if (getLocalCliWorkingDirectory(agentType) === "home") {
     const homeDirectory = os.homedir().trim();
@@ -72,9 +72,9 @@ export const resolveLocalCliCwd = ({
       return homeDirectory;
     }
   }
-  const normalizedStellaRoot = stellaRoot?.trim();
-  return normalizedStellaRoot && normalizedStellaRoot.length > 0
-    ? normalizedStellaRoot
+  const normalizedStellaAppDir = stellaAppDir?.trim();
+  return normalizedStellaAppDir && normalizedStellaAppDir.length > 0
+    ? normalizedStellaAppDir
     : undefined;
 };
 

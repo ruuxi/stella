@@ -223,7 +223,7 @@
         "wipedTitle": "已清除記憶"
       },
       "enableFailures": {
-        "noStellaRoot": "Stella 的工作區根目錄無法使用。",
+        "noStellaAppDir": "Stella 的工作區根目錄無法使用。",
         "needsPermission": "在 Chronicle 啟動前仍需要螢幕錄製權限。",
         "binaryMissing": "缺少 Chronicle 輔助程式檔案。",
         "startupTimeout": "Chronicle 啟動後未上線。",

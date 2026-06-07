@@ -223,7 +223,7 @@
         "wipedTitle": "Memórias apagadas"
       },
       "enableFailures": {
-        "noStellaRoot": "A raiz do espaço de trabalho da Stella está indisponível.",
+        "noStellaAppDir": "A raiz do espaço de trabalho da Stella está indisponível.",
         "needsPermission": "A permissão de gravação de tela ainda é necessária antes que o Chronicle possa iniciar.",
         "binaryMissing": "O binário auxiliar do Chronicle está ausente.",
         "startupTimeout": "O Chronicle não ficou online após o lançamento.",

@@ -40,7 +40,7 @@ const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   STELLA_REPO_ROOT,
   '.stella-runtime-reload-state.json',
 )
-const BUNDLED_STELLA_HOME_SEED_DIR = path.resolve(__dirname, '..', 'runtime', 'home-seed')
+const BUNDLED_STELLA_DATA_SEED_DIR = path.resolve(__dirname, '..', 'runtime', 'home-seed')
 // esbuild owns this tree (the Electron-main/preload bundles); the dev script
 // runs its own purpose-built recursive watcher over it. Vite's default
 // auto-ignore only covers build.outDir ('dist'), so without this entry Vite's
@@ -1406,7 +1406,7 @@ export default defineConfig({
     },
     watch: {
       ignored: [
-        `${BUNDLED_STELLA_HOME_SEED_DIR.replace(/\\/g, '/')}/**`,
+        `${BUNDLED_STELLA_DATA_SEED_DIR.replace(/\\/g, '/')}/**`,
         `${DIST_ELECTRON_DIR.replace(/\\/g, '/')}/**`,
         // Native build outputs (5.8GB, incl. the 5.2GB wakeword model tree) and
         // packaged installers (1.2GB) — ~14.5k files that never participate in

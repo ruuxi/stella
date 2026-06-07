@@ -133,7 +133,7 @@ type ExternalOrchestratorEngine = "claude_code_local";
 const shouldUseClaudeCodeRuntime = (opts: BaseRunOptions): boolean => {
   const primaryModelId = opts.agentContext.model ?? opts.resolvedLlm.model.id;
   return shouldUseClaudeCodeAgentRuntime({
-    stellaRoot: opts.stellaRoot,
+    stellaAppDir: opts.stellaAppDir,
     agentEngine: opts.agentContext.agentEngine,
     modelId: primaryModelId,
   });
@@ -419,7 +419,7 @@ const runClaudeHostedTurn = async (args: {
 
   const localCliCwd = resolveLocalCliCwd({
     agentType: args.opts.agentType,
-    stellaRoot: args.opts.stellaRoot,
+    stellaAppDir: args.opts.stellaAppDir,
   });
   const sessionKey = args.opts.agentContext.activeThreadId
     ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
@@ -483,7 +483,7 @@ const runClaudeHostedTurn = async (args: {
       conversationId: args.opts.conversationId,
       agentType: args.opts.agentType,
       deviceId: args.opts.deviceId,
-      stellaRoot: args.opts.stellaRoot,
+      stellaAppDir: args.opts.stellaAppDir,
       toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
       agentDepth: args.opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: args.opts.agentContext.maxAgentDepth,
@@ -530,7 +530,7 @@ const runClaudeHostedTurn = async (args: {
     ? buildClaudePromptFromMessages(promptMessagesWithHistory)
     : undefined;
   const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
-    args.opts.stellaRoot,
+    args.opts.stellaAppDir,
   );
 
   let finalResult = await runClaudeCodeTurn({
@@ -538,7 +538,7 @@ const runClaudeHostedTurn = async (args: {
     sessionKey,
     persistedSessionId,
     modelId: getClaudeCodeAgentModelId(
-      args.opts.stellaRoot,
+      args.opts.stellaAppDir,
       args.opts.agentContext.model,
       args.opts.agentType,
     ),
@@ -591,7 +591,7 @@ const runClaudeHostedTurn = async (args: {
       sessionKey,
       persistedSessionId: finalResult.sessionId,
       modelId: getClaudeCodeAgentModelId(
-        args.opts.stellaRoot,
+        args.opts.stellaAppDir,
         args.opts.agentContext.model,
         args.opts.agentType,
       ),
@@ -671,7 +671,7 @@ const runCodexHostedTurn = async (args: {
 
   const localCliCwd = resolveLocalCliCwd({
     agentType: args.opts.agentType,
-    stellaRoot: args.opts.stellaRoot,
+    stellaAppDir: args.opts.stellaAppDir,
   });
   const sessionKey = args.opts.agentContext.activeThreadId
     ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
@@ -735,7 +735,7 @@ const runCodexHostedTurn = async (args: {
       conversationId: args.opts.conversationId,
       agentType: args.opts.agentType,
       deviceId: args.opts.deviceId,
-      stellaRoot: args.opts.stellaRoot,
+      stellaAppDir: args.opts.stellaAppDir,
       toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
       agentDepth: args.opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: args.opts.agentContext.maxAgentDepth,
@@ -779,8 +779,8 @@ const runCodexHostedTurn = async (args: {
     prompt,
     systemPrompt: args.systemPrompt,
     cwd: localCliCwd,
-    stellaHome: args.opts.stellaHome,
-    stellaRoot: args.opts.stellaRoot,
+    stellaDataDir: args.opts.stellaDataDir,
+    stellaAppDir: args.opts.stellaAppDir,
     stellaModel: args.opts.agentContext.model,
     attachments: args.opts.attachments,
     abortSignal: args.opts.abortSignal,
@@ -820,8 +820,8 @@ const runCodexHostedTurn = async (args: {
       prompt: queuedPrompt,
       systemPrompt: args.systemPrompt,
       cwd: localCliCwd,
-      stellaHome: args.opts.stellaHome,
-      stellaRoot: args.opts.stellaRoot,
+      stellaDataDir: args.opts.stellaDataDir,
+      stellaAppDir: args.opts.stellaAppDir,
       stellaModel: args.opts.agentContext.model,
       attachments: queuedAttachments,
       abortSignal: args.opts.abortSignal,
@@ -898,8 +898,8 @@ export const runExternalOrchestratorTurn = async (
       context: opts.agentContext,
       userPrompt: opts.userPrompt,
       promptMessages: opts.promptMessages,
-      stellaHome: opts.stellaHome,
-      stellaRoot: opts.stellaRoot,
+      stellaDataDir: opts.stellaDataDir,
+      stellaAppDir: opts.stellaAppDir,
       agentType: opts.agentType,
       hookContext: {
         ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
@@ -960,8 +960,8 @@ export const runExternalSubagentTurn = async (
         context: opts.agentContext,
         userPrompt: opts.userPrompt,
         promptMessages: opts.promptMessages,
-        stellaHome: opts.stellaHome,
-        stellaRoot: opts.stellaRoot,
+        stellaDataDir: opts.stellaDataDir,
+        stellaAppDir: opts.stellaAppDir,
         agentType: opts.agentType,
         hookContext: {
           ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
@@ -1008,8 +1008,8 @@ export const runExternalSubagentTurn = async (
       context: opts.agentContext,
       userPrompt: opts.userPrompt,
       promptMessages: opts.promptMessages,
-      stellaHome: opts.stellaHome,
-      stellaRoot: opts.stellaRoot,
+      stellaDataDir: opts.stellaDataDir,
+      stellaAppDir: opts.stellaAppDir,
       agentType: opts.agentType,
       hookContext: {
         ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),

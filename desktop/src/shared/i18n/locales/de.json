@@ -223,7 +223,7 @@
         "wipedTitle": "Erinnerungen gelöscht"
       },
       "enableFailures": {
-        "noStellaRoot": "Das Arbeitsbereich-Stammverzeichnis von Stella ist nicht verfügbar.",
+        "noStellaAppDir": "Das Arbeitsbereich-Stammverzeichnis von Stella ist nicht verfügbar.",
         "needsPermission": "Die Berechtigung zur Bildschirmaufnahme ist weiterhin erforderlich, bevor Chronicle starten kann.",
         "binaryMissing": "Die Chronicle-Hilfsdatei fehlt.",
         "startupTimeout": "Chronicle ist nach dem Start nicht online gegangen.",

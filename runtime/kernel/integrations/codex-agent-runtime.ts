@@ -525,10 +525,10 @@ const normalizeCodexRuntimeReasoningEffort = (
 };
 
 export const getCodexRuntimePreferences = (
-  stellaHome?: string,
+  stellaDataDir?: string,
   stellaModel?: string,
 ): { model: string; reasoningEffort?: CodexReasoningEffort } => {
-  const prefs = stellaHome ? loadLocalPreferences(stellaHome) : null;
+  const prefs = stellaDataDir ? loadLocalPreferences(stellaDataDir) : null;
   const lightDefault =
     stellaModel?.trim() === "stella/light" ? CODEX_LIGHT_MODEL : undefined;
   const preferredModel = prefs?.codexModel;
@@ -1237,8 +1237,8 @@ export const runCodexAgentTurn = async (request: {
   prompt: string;
   systemPrompt?: string;
   cwd?: string;
-  stellaHome?: string;
-  stellaRoot?: string;
+  stellaDataDir?: string;
+  stellaAppDir?: string;
   stellaModel?: string;
   attachments?: RuntimeAttachmentRef[];
   abortSignal?: AbortSignal;
@@ -1261,7 +1261,7 @@ export const runCodexAgentTurn = async (request: {
   reuseAppServer?: boolean;
 }): Promise<CodexAgentTurnResult> => {
   const { model, reasoningEffort } = getCodexRuntimePreferences(
-    request.stellaHome,
+    request.stellaDataDir,
     request.stellaModel,
   );
   const { input, cleanupDir } = buildCodexUserInput({
@@ -1413,7 +1413,7 @@ export const runCodexAgentTurn = async (request: {
           }
           appendUniqueFileChanges(
             fileChanges,
-            fileChangesFromCodexItem(item, request.cwd ?? request.stellaRoot),
+            fileChangesFromCodexItem(item, request.cwd ?? request.stellaAppDir),
           );
           return;
         }

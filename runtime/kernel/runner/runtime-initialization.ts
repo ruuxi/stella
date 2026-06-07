@@ -108,8 +108,8 @@ export const createRuntimeInitialization = (
    * close over the services they need at registration time.
    */
   const buildExtensionServices = (): ExtensionServices => ({
-    stellaHome: context.stellaHome,
-    stellaRoot: context.stellaRoot,
+    stellaDataDir: context.stellaDataDir,
+    stellaAppDir: context.stellaAppDir,
     selfModMonitor: context.selfModMonitor ?? null,
     store: context.runtimeStore,
   });
@@ -317,7 +317,7 @@ export const createRuntimeInitialization = (
     // restart, mirroring pi's watch→reload model.
     const watchPaths = [
       context.paths.extensionsPath,
-      path.join(context.stellaHome, "agents"),
+      path.join(context.stellaDataDir, "agents"),
     ];
     for (const watchPath of watchPaths) {
       try {

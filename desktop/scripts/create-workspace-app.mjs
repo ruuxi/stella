@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { dirname, join, resolve, sep } from 'path'
-import { fileURLToPath } from 'url'
+import { join, resolve, sep } from 'path'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+const __dirname = import.meta.dirname
 
 // Parse arguments: <app-name> [--template <template-name>]
 const args = process.argv.slice(2)

@@ -223,7 +223,7 @@
         "wipedTitle": "Emlékek törölve"
       },
       "enableFailures": {
-        "noStellaRoot": "A Stella munkaterületének gyökere nem érhető el.",
+        "noStellaAppDir": "A Stella munkaterületének gyökere nem érhető el.",
         "needsPermission": "A Chronicle elindítása előtt még szükség van a képernyőrögzítési engedélyre.",
         "binaryMissing": "A Chronicle segédfájlja hiányzik.",
         "startupTimeout": "A Chronicle az indítás után nem csatlakozott.",

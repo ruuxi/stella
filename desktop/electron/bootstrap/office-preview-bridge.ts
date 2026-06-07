@@ -49,8 +49,8 @@ const asString = (value: unknown): string =>
 const asNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
-const resolvePreviewRoot = (stellaHome: string) =>
-  path.join(stellaHome, PREVIEW_ROOT_DIRNAME);
+const resolvePreviewRoot = (stellaDataDir: string) =>
+  path.join(stellaDataDir, PREVIEW_ROOT_DIRNAME);
 
 const readSnapshotFromSessionDir = async (
   sessionDir: string,
@@ -96,9 +96,9 @@ const readSnapshotFromSessionDir = async (
 };
 
 export const listOfficePreviewSnapshots = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<OfficePreviewSnapshot[]> => {
-  const previewRoot = resolvePreviewRoot(stellaHome);
+  const previewRoot = resolvePreviewRoot(stellaDataDir);
 
   // No per-call mkdir: the bridge ensures the root once at start. If it does
   // not exist yet, treat it as "no sessions" rather than recreating it on
@@ -244,8 +244,8 @@ const findPreviewProcessIds = async (sessionId: string): Promise<number[]> => {
   }
 };
 
-export const stopOfficePreviewSessions = async (stellaHome: string) => {
-  const snapshots = await listOfficePreviewSnapshots(stellaHome).catch(
+export const stopOfficePreviewSessions = async (stellaDataDir: string) => {
+  const snapshots = await listOfficePreviewSnapshots(stellaDataDir).catch(
     () => [],
   );
   const activeSnapshots = snapshots.filter(
@@ -263,8 +263,8 @@ export const stopOfficePreviewSessions = async (stellaHome: string) => {
 export const startOfficePreviewBridge = (
   context: BootstrapContext,
 ): (() => void) => {
-  const stellaHome = context.state.stellaHomePath;
-  if (!stellaHome) {
+  const stellaDataDir = context.state.stellaDataDirPath;
+  if (!stellaDataDir) {
     return () => {};
   }
 
@@ -274,7 +274,7 @@ export const startOfficePreviewBridge = (
   // active/idle state actually flips, not on every scan.
   let currentIntervalMs = 0;
   const lastDeliveredAt = new Map<string, number>();
-  const previewRoot = resolvePreviewRoot(stellaHome);
+  const previewRoot = resolvePreviewRoot(stellaDataDir);
   let watcher: FSWatcher | null = null;
   let watchKickTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -335,7 +335,7 @@ export const startOfficePreviewBridge = (
 
   const scan = async () => {
     try {
-      const snapshots = await listOfficePreviewSnapshots(stellaHome);
+      const snapshots = await listOfficePreviewSnapshots(stellaDataDir);
       if (stopped) {
         return;
       }

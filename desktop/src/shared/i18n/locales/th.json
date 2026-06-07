@@ -223,7 +223,7 @@
         "wipedTitle": "ลบความทรงจำแล้ว"
       },
       "enableFailures": {
-        "noStellaRoot": "ไม่สามารถใช้รูทของพื้นที่ทำงานของ Stella ได้",
+        "noStellaAppDir": "ไม่สามารถใช้รูทของพื้นที่ทำงานของ Stella ได้",
         "needsPermission": "ยังต้องมีสิทธิ์บันทึกหน้าจอก่อนที่ Chronicle จะเริ่มได้",
         "binaryMissing": "ไฟล์ช่วยเหลือของ Chronicle หายไป",
         "startupTimeout": "Chronicle ไม่ออนไลน์หลังจากเปิด",

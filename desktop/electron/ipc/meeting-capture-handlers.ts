@@ -5,7 +5,7 @@ import type { MeetingCaptureController } from "../services/meeting-capture-contr
 import { MeetingCaptureController as MeetingCaptureControllerCtor } from "../services/meeting-capture-controller.js";
 
 export type MeetingCaptureHandlersOptions = {
-  getStellaHome: () => string | null;
+  getStellaDataDir: () => string | null;
   getController: () => MeetingCaptureController | null;
   setController: (controller: MeetingCaptureController | null) => void;
   assertPrivilegedSender: (event: IpcMainInvokeEvent, channel: string) => boolean;
@@ -16,7 +16,7 @@ const ensureController = (
 ): MeetingCaptureController | null => {
   const existing = options.getController();
   if (existing) return existing;
-  const home = options.getStellaHome();
+  const home = options.getStellaDataDir();
   if (!home) return null;
   const next = new MeetingCaptureControllerCtor(home);
   options.setController(next);
@@ -87,7 +87,7 @@ export const registerMeetingCaptureHandlers = (
     if (!options.assertPrivilegedSender(event, "meetings:openFolder")) {
       throw new Error("Blocked untrusted meetings:openFolder request.");
     }
-    const home = options.getStellaHome();
+    const home = options.getStellaDataDir();
     if (!home) return { ok: false } as const;
     const dir = payload?.sessionId
       ? path.join(home, "meetings", payload.sessionId)

@@ -46,8 +46,8 @@ describe("runtime host device identity recovery", () => {
         clientVersion: "0.0.0",
         isDev: false,
         platform: process.platform,
-        stellaRoot: "/tmp/stella-test",
-        stellaHomePath: "/tmp/stella-test-home",
+        stellaAppDir: "/tmp/stella-test",
+        stellaDataDirPath: "/tmp/stella-test-home",
         stellaWorkspacePath: "/tmp/stella-test/workspace",
       },
     });

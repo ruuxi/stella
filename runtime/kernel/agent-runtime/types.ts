@@ -203,11 +203,11 @@ export type BaseRunOptions = {
     onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
   deviceId: string;
-  stellaHome: string;
+  stellaDataDir: string;
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
   abortSignal?: AbortSignal;
-  stellaRoot?: string;
+  stellaAppDir?: string;
   toolWorkspaceRoot?: string;
   selfModMonitor?: SelfModMonitor | null;
   hookEmitter?: HookEmitter;

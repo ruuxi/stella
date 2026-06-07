@@ -10,7 +10,7 @@ const SUBSTITUTION_EXPRESSION_PATTERN = /^[a-z]*s([^\w\s]).*\1.*\1[a-z]*$/i;
 export const resolveToolPath = (
   rawPath: unknown,
   args: Record<string, unknown>,
-  context?: Pick<ToolContext, "stellaRoot">,
+  context?: Pick<ToolContext, "stellaAppDir">,
 ): string | null => {
   if (typeof rawPath !== "string" || rawPath.trim().length === 0) return null;
   const expanded = expandHomePath(rawPath.trim());
@@ -19,13 +19,13 @@ export const resolveToolPath = (
   const base =
     typeof rawWorkdir === "string" && rawWorkdir.trim().length > 0
       ? path.resolve(expandHomePath(rawWorkdir.trim()))
-      : (context?.stellaRoot ?? process.cwd());
+      : (context?.stellaAppDir ?? process.cwd());
   return path.resolve(base, expanded);
 };
 
 export const inferShellMentionedPaths = (
   args: Record<string, unknown>,
-  context?: Pick<ToolContext, "stellaRoot">,
+  context?: Pick<ToolContext, "stellaAppDir">,
 ): string[] => {
   const command =
     typeof args.cmd === "string"

@@ -12,7 +12,7 @@ import {
 
 const roots = new Set<string>();
 
-const createStellaRoot = async () => {
+const createStellaAppDir = async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "stella-skill-catalog-"));
   roots.add(root);
   return root;
@@ -26,11 +26,11 @@ afterEach(async () => {
 });
 
 const writeSkill = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   skillId: string,
   description: string,
 ) => {
-  const skillDir = path.join(stellaRoot, "skills", skillId);
+  const skillDir = path.join(stellaAppDir, "skills", skillId);
   await mkdir(skillDir, { recursive: true });
   await writeFile(
     path.join(skillDir, "SKILL.md"),
@@ -48,15 +48,15 @@ const writeSkill = async (
 
 describe("skill catalog", () => {
   it("omits configured skill ids from the prompt block", async () => {
-    const stellaRoot = await createStellaRoot();
-    await writeSkill(stellaRoot, "create-stella-app", "Create Stella apps.");
-    await writeSkill(stellaRoot, "stella-browser", "Control browser tabs.");
-    await writeSkill(stellaRoot, "pdf", "Work with PDFs.");
+    const stellaAppDir = await createStellaAppDir();
+    await writeSkill(stellaAppDir, "create-stella-app", "Create Stella apps.");
+    await writeSkill(stellaAppDir, "stella-browser", "Control browser tabs.");
+    await writeSkill(stellaAppDir, "pdf", "Work with PDFs.");
 
-    const state = await buildSkillCatalogPromptState(stellaRoot, {
+    const state = await buildSkillCatalogPromptState(stellaAppDir, {
       omitSkillIds: ["stella-browser", "pdf"],
     });
-    const block = await renderSkillCatalogBlock(stellaRoot, {
+    const block = await renderSkillCatalogBlock(stellaAppDir, {
       omitSkillIds: ["stella-browser", "pdf"],
     });
 
@@ -70,22 +70,22 @@ describe("skill catalog", () => {
   });
 
   it("renders every skill inline above the threshold for Explore", async () => {
-    const stellaRoot = await createStellaRoot();
+    const stellaAppDir = await createStellaAppDir();
     const count = INLINE_SKILL_CATALOG_THRESHOLD + 5;
     for (let i = 0; i < count; i += 1) {
       await writeSkill(
-        stellaRoot,
+        stellaAppDir,
         `skill-${String(i).padStart(3, "0")}`,
         `Does thing ${i}.`,
       );
     }
 
     // The budget-aware renderer degrades to a placeholder above the threshold.
-    const placeholder = await renderSkillCatalogBlock(stellaRoot);
+    const placeholder = await renderSkillCatalogBlock(stellaAppDir);
     expect(placeholder).toContain("over the inline limit");
 
     // Explore's renderer always inlines every entry instead.
-    const full = await renderFullSkillCatalogBlock(stellaRoot);
+    const full = await renderFullSkillCatalogBlock(stellaAppDir);
     expect(full).not.toContain("over the inline limit");
     expect(full).toContain("`skill-000`");
     expect(full).toContain(`\`skill-${String(count - 1).padStart(3, "0")}\``);

@@ -24,14 +24,14 @@ export type ConnectorBridgeProcessRecord = {
   processGroup: boolean;
 };
 
-const processRecordsDir = (stellaRoot: string) =>
-  path.join(getConnectorStateRoot(stellaRoot), PROCESS_RECORDS_DIRNAME);
+const processRecordsDir = (stellaAppDir: string) =>
+  path.join(getConnectorStateRoot(stellaAppDir), PROCESS_RECORDS_DIRNAME);
 
 const processRecordPath = (
-  stellaRoot: string,
+  stellaAppDir: string,
   sessionId: string,
   pid: number,
-) => path.join(processRecordsDir(stellaRoot), `${pid}-${sessionId}.json`);
+) => path.join(processRecordsDir(stellaAppDir), `${pid}-${sessionId}.json`);
 
 const isPidAlive = (pid: number) => {
   try {
@@ -104,14 +104,14 @@ export const stopConnectorBridgeProcess = async (
 };
 
 export const writeConnectorBridgeProcessRecord = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   record: ConnectorBridgeProcessRecord,
 ): Promise<string | null> => {
   try {
-    const dir = processRecordsDir(stellaRoot);
+    const dir = processRecordsDir(stellaAppDir);
     await fs.mkdir(dir, { recursive: true });
     const filePath = processRecordPath(
-      stellaRoot,
+      stellaAppDir,
       record.sessionId,
       record.pid,
     );
@@ -300,10 +300,10 @@ const processIdentityMatchesRecord = async (
 };
 
 export const sweepStaleConnectorBridgeProcesses = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   options?: { currentWorkerPid?: number },
 ): Promise<{ scanned: number; stopped: number; removed: number }> => {
-  const dir = processRecordsDir(stellaRoot);
+  const dir = processRecordsDir(stellaAppDir);
   let entries: string[];
   try {
     entries = await fs.readdir(dir);

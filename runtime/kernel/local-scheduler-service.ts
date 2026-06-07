@@ -58,7 +58,7 @@ export type LocalSchedulerNotifier = (params: {
 }) => void
 
 type LocalSchedulerServiceOptions = {
-  stellaHome: string
+  stellaDataDir: string
   runnerTarget: StellaHostRunnerTarget
   showNotification?: LocalSchedulerNotifier
 }
@@ -555,8 +555,8 @@ export class LocalSchedulerService {
   private tickInFlight = false
 
   constructor(private readonly options: LocalSchedulerServiceOptions) {
-    this.statePath = path.join(options.stellaHome, 'local-scheduler.json')
-    this.scriptsDir = scheduleScriptsDir(options.stellaHome)
+    this.statePath = path.join(options.stellaDataDir, 'local-scheduler.json')
+    this.scriptsDir = scheduleScriptsDir(options.stellaDataDir)
   }
 
   /**

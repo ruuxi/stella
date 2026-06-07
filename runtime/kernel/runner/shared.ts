@@ -35,10 +35,10 @@ export const defaultPromptForAgentType = (agentType: string): string => {
   return DEFAULT_SUBAGENT_PROMPT;
 };
 
-export const readCoreMemory = (stellaHome: string): string | undefined => {
+export const readCoreMemory = (stellaDataDir: string): string | undefined => {
   const candidatePaths = [
-    path.join(stellaHome, "core-memory.md"),
-    path.join(stellaHome, "CORE_MEMORY.MD"),
+    path.join(stellaDataDir, "core-memory.md"),
+    path.join(stellaDataDir, "CORE_MEMORY.MD"),
   ];
   for (const filePath of candidatePaths) {
     try {

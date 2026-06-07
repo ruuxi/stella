@@ -165,7 +165,7 @@ describe("chronicle-summarizer", () => {
   it("skips when no captures.jsonl exists", async () => {
     const { rootPath } = createTestContext();
     const result = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant("- noise")),
     });
@@ -185,7 +185,7 @@ describe("chronicle-summarizer", () => {
       },
     ]);
     const result = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant("- summary")),
     });
@@ -204,7 +204,7 @@ describe("chronicle-summarizer", () => {
       },
     ]);
     const result = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant("- summary")),
     });
@@ -228,7 +228,7 @@ describe("chronicle-summarizer", () => {
       },
     ]);
     const result = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant("- summary")),
     });
@@ -248,7 +248,7 @@ describe("chronicle-summarizer", () => {
       },
     ]);
     const result = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant("NO_SIGNAL")),
     });
@@ -281,7 +281,7 @@ describe("chronicle-summarizer", () => {
     ]);
     const summaryBody = "- User is editing Stella's chronicle pipeline";
     const result = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant(summaryBody)),
     });
@@ -339,7 +339,7 @@ describe("chronicle-summarizer", () => {
     );
 
     const first = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: route,
     });
@@ -351,7 +351,7 @@ describe("chronicle-summarizer", () => {
       "utf-8",
     );
     const second = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: route,
     });
@@ -376,7 +376,7 @@ describe("chronicle-summarizer", () => {
       },
     ]);
     const result = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant("- summary"), {
         route: "direct-provider",
@@ -396,7 +396,7 @@ describe("chronicle-summarizer", () => {
       },
     ]);
     const result = await runChronicleSummary({
-      stellaHome: rootPath,
+      stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant("ignored"), {
         route: "stella",

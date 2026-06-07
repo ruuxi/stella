@@ -8,7 +8,7 @@
 // downstream transcriber clean "you vs them" speaker separation for free.
 //
 // On-disk layout matches the macOS helper exactly so the downstream consumer is
-// platform-agnostic (all under <stellaHome>\meetings\):
+// platform-agnostic (all under <stellaDataDir>\meetings\):
 //   meeting_capture.pid           Daemon pid (best-effort, cleaned on exit)
 //   meeting_capture.state.json    { running, recording, paused, sessionId, startedAtMs, segmentSeconds }
 //   <sessionId>\session.json      { sessionId, startedAtMs, endedAtMs, segmentSeconds, streams: {...} }
@@ -166,7 +166,7 @@ static void removeFileW(const std::wstring& path)
 
 struct MeetingArgs {
     std::wstring command;
-    std::wstring stellaHome;
+    std::wstring stellaDataDir;
     std::wstring sessionId;
     bool hasSessionId = false;
     int segmentSeconds = 30;
@@ -190,8 +190,8 @@ static MeetingArgs parseArgs()
     };
     while (i < raw.size()) {
         const std::wstring& a = raw[i];
-        if (a == L"--root" && i + 1 < raw.size()) { args.stellaHome = raw[i + 1]; i += 2; }
-        else if (eq(a, L"--root=")) { args.stellaHome = a.substr(7); i += 1; }
+        if (a == L"--root" && i + 1 < raw.size()) { args.stellaDataDir = raw[i + 1]; i += 2; }
+        else if (eq(a, L"--root=")) { args.stellaDataDir = a.substr(7); i += 1; }
         else if (a == L"--session-id" && i + 1 < raw.size()) { args.sessionId = raw[i + 1]; args.hasSessionId = true; i += 2; }
         else if (eq(a, L"--session-id=")) { args.sessionId = a.substr(13); args.hasSessionId = true; i += 1; }
         else if (a == L"--segment-seconds" && i + 1 < raw.size()) { args.segmentSeconds = _wtoi(raw[i + 1].c_str()); i += 2; }
@@ -989,13 +989,13 @@ static int sendCommand(const MeetingPaths& paths, const std::string& command)
 int main()
 {
     MeetingArgs args = parseArgs();
-    if (args.stellaHome.empty()) {
-        fprintf(stderr, "meeting_capture: --root <stellaHome> is required\n");
+    if (args.stellaDataDir.empty()) {
+        fprintf(stderr, "meeting_capture: --root <stellaDataDir> is required\n");
         return 64;
     }
 
     MeetingPaths paths;
-    paths.root = args.stellaHome;
+    paths.root = args.stellaDataDir;
 
     std::string cmd = utf8(args.command);
     if (cmd == "daemon") {
@@ -1019,6 +1019,6 @@ int main()
     }
 
     fprintf(stderr, "meeting_capture: unknown command '%s'\n", cmd.c_str());
-    fprintf(stderr, "Usage: meeting_capture {daemon|start|pause|resume|stop|status|ping|shutdown} --root <stellaHome>\n");
+    fprintf(stderr, "Usage: meeting_capture {daemon|start|pause|resume|stop|status|ping|shutdown} --root <stellaDataDir>\n");
     return 64;
 }

@@ -223,7 +223,7 @@
         "wipedTitle": "Đã xóa ký ức"
       },
       "enableFailures": {
-        "noStellaRoot": "Thư mục gốc không gian làm việc của Stella không khả dụng.",
+        "noStellaAppDir": "Thư mục gốc không gian làm việc của Stella không khả dụng.",
         "needsPermission": "Vẫn cần quyền quay màn hình trước khi Chronicle có thể khởi động.",
         "binaryMissing": "Thiếu tệp trợ giúp Chronicle.",
         "startupTimeout": "Chronicle không trực tuyến sau khi khởi chạy.",

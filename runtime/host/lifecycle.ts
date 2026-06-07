@@ -43,7 +43,7 @@ import { getFileLogger } from "../observability/file-logger.js";
  *      spawn a fresh detached worker pointed at the same paths and poll
  *      until it answers a lightweight RPC readiness probe.
  *
- * Lifecycle ops are serialized per-stellaRoot via a flock-style file
+ * Lifecycle ops are serialized per-stellaAppDir via a flock-style file
  * (`runtime.host.lock`) so concurrent host starts don't race the spawn.
  */
 
@@ -70,7 +70,7 @@ export type LifecycleConnection = {
 };
 
 export type LifecycleStartOptions = {
-  stellaRoot: string;
+  stellaAppDir: string;
   workerEntryPath: string;
   bunBinaryPath?: string;
   idleShutdownMs?: number;
@@ -333,7 +333,7 @@ const spawnDetachedWorker = (
     "--listen",
     runtimeIpcListenUrl(paths.socketPath),
     "--stella-root",
-    options.stellaRoot,
+    options.stellaAppDir,
   ];
   if (options.idleShutdownMs && options.idleShutdownMs > 0) {
     args.push("--idle-shutdown-ms", String(options.idleShutdownMs));
@@ -409,7 +409,7 @@ const pollForWorkerReady = async (
 
 const findSameRootWorkerPids = async (
   workerEntryPath: string,
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<number[]> => {
   if (process.platform === "win32") {
     const powerShellLiteral = (value: string) =>
@@ -423,7 +423,7 @@ const findSameRootWorkerPids = async (
     const script = [
       "$ErrorActionPreference = 'SilentlyContinue'",
       `$entries = ${powerShellArray(uniquePathVariants(workerEntryPath))}`,
-      `$roots = ${powerShellArray(uniquePathVariants(stellaRoot))}`,
+      `$roots = ${powerShellArray(uniquePathVariants(stellaAppDir))}`,
       `$currentPid = ${process.pid}`,
       "$stellaPids = @()",
       "$processes = Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%--stella-root%'\"",
@@ -492,8 +492,8 @@ const findSameRootWorkerPids = async (
       pid > 0 &&
       pid !== process.pid &&
       args.includes(workerEntryPath) &&
-      (args.includes(`--stella-root ${stellaRoot}`) ||
-        args.includes(`--stella-root=${stellaRoot}`))
+      (args.includes(`--stella-root ${stellaAppDir}`) ||
+        args.includes(`--stella-root=${stellaAppDir}`))
     ) {
       pids.push(pid);
     }
@@ -557,18 +557,18 @@ const stopPids = async (pids: number[], graceMs = 750): Promise<void> => {
 
 /**
  * Resolve a connected socket to the runtime worker, spawning a new
- * worker if one is not already running for `stellaRoot`. Idempotent
+ * worker if one is not already running for `stellaAppDir`. Idempotent
  * across hosts thanks to the host-side lock.
  */
 export const startOrAttachWorker = async (
   options: LifecycleStartOptions,
 ): Promise<LifecycleConnection> => {
-  const paths = resolveRuntimePaths(options.stellaRoot);
+  const paths = resolveRuntimePaths(options.stellaAppDir);
   await fsPromises.mkdir(paths.rootDir, { recursive: true });
   const hostLockFile = `${paths.lockFile}.host`;
   const fd = await acquireHostLock(hostLockFile);
   try {
-    const existingPid = await probeRunningWorker(options.stellaRoot);
+    const existingPid = await probeRunningWorker(options.stellaAppDir);
     if (existingPid != null) {
       const executableMatches = await hostExecutableMatches(
         paths,
@@ -578,8 +578,8 @@ export const startOrAttachWorker = async (
         console.warn(
           `[runtime-host] Existing worker executable mismatch; restarting detached worker (pid=${existingPid}). In-flight work cannot be preserved across host bundle changes.`,
         );
-        await stopRunningWorker(options.stellaRoot);
-        await removeStaleRuntimeArtifacts(options.stellaRoot);
+        await stopRunningWorker(options.stellaAppDir);
+        await removeStaleRuntimeArtifacts(options.stellaAppDir);
       } else {
         const ready = await tryConnectReadySocket(
           paths.socketPath,
@@ -593,8 +593,8 @@ export const startOrAttachWorker = async (
           console.warn(
             `[runtime-host] Existing worker protocol mismatch; restarting detached worker (pid=${existingPid}). In-flight work cannot be preserved across protocol changes.`,
           );
-          await stopRunningWorker(options.stellaRoot);
-          await removeStaleRuntimeArtifacts(options.stellaRoot);
+          await stopRunningWorker(options.stellaAppDir);
+          await removeStaleRuntimeArtifacts(options.stellaAppDir);
         } else {
           // Pid is alive but socket isn't reachable — likely a worker that's
           // still binding the socket. Wait briefly before declaring it stale.
@@ -611,7 +611,7 @@ export const startOrAttachWorker = async (
           // the OS may have reused that pid for an unrelated process.
           const orphanPids = await findSameRootWorkerPids(
             options.workerEntryPath,
-            options.stellaRoot,
+            options.stellaAppDir,
           );
           if (!orphanPids.includes(existingPid)) {
             console.warn(
@@ -620,11 +620,11 @@ export const startOrAttachWorker = async (
           }
           if (orphanPids.length > 0) {
             console.warn(
-              `[runtime-host] Reaping ${orphanPids.length} stale runtime worker(s) for ${options.stellaRoot} before spawning a fresh worker.`,
+              `[runtime-host] Reaping ${orphanPids.length} stale runtime worker(s) for ${options.stellaAppDir} before spawning a fresh worker.`,
             );
             await stopPids(orphanPids);
           }
-          await removeStaleRuntimeArtifacts(options.stellaRoot);
+          await removeStaleRuntimeArtifacts(options.stellaAppDir);
         }
       }
     } else {
@@ -637,7 +637,7 @@ export const startOrAttachWorker = async (
       // shutdown removes the pidfile; a crash leaves a stale one, which is
       // handled by the stale-pidfile branch above); spawning a fresh worker
       // binds the socket and supersedes it regardless.
-      await removeStaleRuntimeArtifacts(options.stellaRoot);
+      await removeStaleRuntimeArtifacts(options.stellaAppDir);
     }
 
     spawnDetachedWorker(options, paths);
@@ -646,7 +646,7 @@ export const startOrAttachWorker = async (
       START_TIMEOUT_MS,
       options.expectedProtocolVersion,
     );
-    const newPid = (await probeRunningWorker(options.stellaRoot)) ?? 0;
+    const newPid = (await probeRunningWorker(options.stellaAppDir)) ?? 0;
     return { socket, pid: newPid, paths, spawned: true };
   } finally {
     await releaseHostLock(hostLockFile, fd);
@@ -659,10 +659,10 @@ export const startOrAttachWorker = async (
  * by `runtime restart` flows that want a synchronous tear-down.
  */
 export const stopRunningWorker = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   options?: { graceMs?: number },
 ): Promise<{ stopped: boolean; pid: number | null }> => {
-  const pid = await probeRunningWorker(stellaRoot);
+  const pid = await probeRunningWorker(stellaAppDir);
   if (pid == null) return { stopped: false, pid: null };
   const startedAt = Date.now();
   const result = await killWorkerProcess(pid, options?.graceMs ?? 1_500);

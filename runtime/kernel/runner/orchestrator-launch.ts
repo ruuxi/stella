@@ -399,8 +399,8 @@ export const launchPreparedOrchestratorRun = (args: {
       try {
         await recordWritePaths(
           result.changedPaths.map((repoRelativePath) =>
-            context.stellaRoot
-              ? `${context.stellaRoot}/${repoRelativePath}`
+            context.stellaAppDir
+              ? `${context.stellaAppDir}/${repoRelativePath}`
               : repoRelativePath,
           ),
         );
@@ -649,11 +649,11 @@ export const launchPreparedOrchestratorRun = (args: {
       }),
       toolExecutor,
       deviceId: context.deviceId,
-      stellaHome: context.stellaHome,
+      stellaDataDir: context.stellaDataDir,
       resolvedLlm: prepared.resolvedLlm,
       store: context.runtimeStore,
       abortSignal: prepared.abortController.signal,
-      stellaRoot: context.stellaRoot,
+      stellaAppDir: context.stellaAppDir,
       ...(prepared.toolWorkspaceRoot
         ? { toolWorkspaceRoot: prepared.toolWorkspaceRoot }
         : {}),

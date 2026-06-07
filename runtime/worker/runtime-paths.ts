@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * Per-stellaRoot resolution of the on-disk worker lifecycle artifacts.
+ * Per-stellaAppDir resolution of the on-disk worker lifecycle artifacts.
  *
  * We key everything on a content-derived hash of the absolute root path
  * so that multiple Stella installs on the same machine (e.g. dev tree at
@@ -16,7 +16,7 @@ import path from "node:path";
  *     ├── runtime.pid      <- pid of the currently-running worker
  *     ├── runtime.sock     <- Unix domain socket the host connects to on POSIX
  *     ├── host-executable.txt <- Electron executable path that spawned it
- *     └── root.txt         <- the literal stellaRoot, for debugging
+ *     └── root.txt         <- the literal stellaAppDir, for debugging
  *   ~/.stella/logs/<rootHash>/      <- human-readable logs (colocated)
  *     ├── runtime.log      <- worker stdout/stderr (rotating)
  *     ├── error-YYYY-MM-DD.txt   <- crashes / uncaught errors
@@ -36,19 +36,19 @@ const RUNTIME_SUBDIR = "runtime";
 const LOGS_SUBDIR = "logs";
 
 /**
- * Per-stellaRoot directory for human-readable logs (worker stdout/stderr
+ * Per-stellaAppDir directory for human-readable logs (worker stdout/stderr
  * plus the diagnostic error/process channels). Single source of truth shared
  * with `runtime/observability/log-paths.ts`.
  */
 export const resolveLogDir = (
-  stellaRoot: string,
+  stellaAppDir: string,
   options?: { homeDir?: string },
 ): string =>
   path.join(
     options?.homeDir ?? os.homedir(),
     RUNTIME_DIR_NAME,
     LOGS_SUBDIR,
-    hashStellaRoot(stellaRoot),
+    hashStellaAppDir(stellaAppDir),
   );
 
 export type RuntimePaths = {
@@ -74,8 +74,8 @@ export type RuntimePaths = {
   rootMarkerFile: string;
 };
 
-export const hashStellaRoot = (stellaRoot: string): string => {
-  const normalized = path.resolve(stellaRoot);
+export const hashStellaAppDir = (stellaAppDir: string): string => {
+  const normalized = path.resolve(stellaAppDir);
   return crypto
     .createHash("sha256")
     .update(normalized)
@@ -98,17 +98,17 @@ export const runtimeIpcListenUrl = (socketPath: string): string =>
     : `unix://${socketPath}`;
 
 export const resolveRuntimePaths = (
-  stellaRoot: string,
+  stellaAppDir: string,
   options?: { platform?: NodeJS.Platform; homeDir?: string },
 ): RuntimePaths => {
-  const rootHash = hashStellaRoot(stellaRoot);
+  const rootHash = hashStellaAppDir(stellaAppDir);
   const baseDir = path.join(
     options?.homeDir ?? os.homedir(),
     RUNTIME_DIR_NAME,
     RUNTIME_SUBDIR,
   );
   const rootDir = path.join(baseDir, rootHash);
-  const logDir = resolveLogDir(stellaRoot, options);
+  const logDir = resolveLogDir(stellaAppDir, options);
   const platform = options?.platform ?? process.platform;
   const socketPath =
     platform === "win32"

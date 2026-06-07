@@ -13,11 +13,10 @@ import {
   writeFileSync,
 } from "fs";
 import { arch, platform } from "os";
-import { basename, dirname, extname, join, resolve } from "path";
-import { fileURLToPath } from "url";
+import { basename, extname, join, resolve } from "path";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const CURRENT_FILE_PATH = fileURLToPath(import.meta.url);
+const __dirname = import.meta.dirname;
+const CURRENT_FILE_PATH = import.meta.filename;
 const PREVIEW_ROOT_DIRNAME = "office-previews";
 const PREVIEW_MANIFEST_NAME = "session.json";
 const PREVIEW_HTML_NAME = "preview.html";
@@ -92,7 +91,7 @@ function getBinaryPath() {
 }
 
 function resolveStateRoot() {
-  const stateRoot = process.env.STELLA_HOME?.trim();
+  const stateRoot = process.env.STELLA_DATA_DIR?.trim();
   if (!stateRoot) {
     throw new Error(
       "Inline office previews are only available from Stella's runtime shell.",

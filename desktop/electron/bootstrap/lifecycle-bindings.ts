@@ -1,7 +1,7 @@
 import type { BootstrapState } from "./context.js";
 import type {
   PiRunnerTarget,
-  StellaRootTarget,
+  StellaAppDirTarget,
   StellaHostRunnerTarget,
   WindowManagerTarget,
 } from "../../../runtime/kernel/lifecycle-targets.js";
@@ -9,7 +9,7 @@ import type {
 export class BootstrapLifecycleBindings
   implements
     WindowManagerTarget,
-    StellaRootTarget,
+    StellaAppDirTarget,
     StellaHostRunnerTarget,
     PiRunnerTarget
 {
@@ -25,16 +25,16 @@ export class BootstrapLifecycleBindings
     this.state.windowManager = windowManager;
   };
 
-  readonly getStellaRoot = () => this.state.stellaRoot;
+  readonly getStellaAppDir = () => this.state.stellaAppDir;
 
-  readonly setStellaRoot = (stellaRoot: string | null) => {
-    this.state.stellaRoot = stellaRoot;
+  readonly setStellaAppDir = (stellaAppDir: string | null) => {
+    this.state.stellaAppDir = stellaAppDir;
   };
 
-  readonly getStellaHome = () => this.state.stellaHomePath;
+  readonly getStellaDataDir = () => this.state.stellaDataDirPath;
 
-  readonly setStellaHome = (stellaHomePath: string | null) => {
-    this.state.stellaHomePath = stellaHomePath;
+  readonly setStellaDataDir = (stellaDataDirPath: string | null) => {
+    this.state.stellaDataDirPath = stellaDataDirPath;
   };
 
   readonly getRunner = () => this.state.stellaHostRunner;

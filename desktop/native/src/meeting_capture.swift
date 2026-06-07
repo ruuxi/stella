@@ -12,18 +12,18 @@
 // reloading, or crashing — same daemon model as `chronicle`.
 //
 // One process model:
-//   $ meeting_capture daemon --root <stellaHome> [--segment-seconds 30]
+//   $ meeting_capture daemon --root <stellaDataDir> [--segment-seconds 30]
 //
 // Lifecycle commands (sent to the running daemon over AF_UNIX):
-//   $ meeting_capture start    --root <stellaHome> [--session-id <id>] [--segment-seconds N]
-//   $ meeting_capture pause    --root <stellaHome>
-//   $ meeting_capture resume   --root <stellaHome>
-//   $ meeting_capture stop     --root <stellaHome>   # ends recording, daemon lives on
-//   $ meeting_capture status   --root <stellaHome>
-//   $ meeting_capture ping     --root <stellaHome>
-//   $ meeting_capture shutdown --root <stellaHome>   # finalize + exit
+//   $ meeting_capture start    --root <stellaDataDir> [--session-id <id>] [--segment-seconds N]
+//   $ meeting_capture pause    --root <stellaDataDir>
+//   $ meeting_capture resume   --root <stellaDataDir>
+//   $ meeting_capture stop     --root <stellaDataDir>   # ends recording, daemon lives on
+//   $ meeting_capture status   --root <stellaDataDir>
+//   $ meeting_capture ping     --root <stellaDataDir>
+//   $ meeting_capture shutdown --root <stellaDataDir>   # finalize + exit
 //
-// State layout (all under <stellaHome>/meetings/):
+// State layout (all under <stellaDataDir>/meetings/):
 //   meeting_capture.sock          AF_UNIX command socket
 //   meeting_capture.pid           Daemon pid (cleaned up on graceful exit)
 //   meeting_capture.state.json    { running, recording, paused, sessionId, startedAtMs, segmentSeconds }
@@ -79,7 +79,7 @@ func jsonLine(_ values: [String: Any]) -> String {
 
 struct MeetingArgs {
     var command: String = ""
-    var stellaHome: String = ""
+    var stellaDataDir: String = ""
     var sessionId: String?
     var segmentSeconds: Int = 30
 }
@@ -94,10 +94,10 @@ func parseArgs() -> MeetingArgs {
     while i < raw.count {
         let arg = raw[i]
         if arg == "--root", i + 1 < raw.count {
-            args.stellaHome = raw[i + 1]
+            args.stellaDataDir = raw[i + 1]
             i += 2
         } else if arg.hasPrefix("--root=") {
-            args.stellaHome = String(arg.dropFirst("--root=".count))
+            args.stellaDataDir = String(arg.dropFirst("--root=".count))
             i += 1
         } else if arg == "--session-id", i + 1 < raw.count {
             args.sessionId = raw[i + 1]
@@ -980,11 +980,11 @@ func sendCommand(_ paths: MeetingPaths, _ command: String) {
 // MARK: - Main
 
 let args = parseArgs()
-if args.stellaHome.isEmpty {
-    eprint("meeting_capture: --root <stellaHome> is required")
+if args.stellaDataDir.isEmpty {
+    eprint("meeting_capture: --root <stellaDataDir> is required")
     exit(64)
 }
-let paths = MeetingPaths(root: args.stellaHome)
+let paths = MeetingPaths(root: args.stellaDataDir)
 
 switch args.command {
 case "daemon":
@@ -1006,6 +1006,6 @@ case "shutdown":
     sendCommand(paths, "shutdown")
 default:
     eprint("meeting_capture: unknown command '\(args.command)'")
-    eprint("Usage: meeting_capture {daemon|start|pause|resume|stop|status|ping|shutdown} --root <stellaHome>")
+    eprint("Usage: meeting_capture {daemon|start|pause|resume|stop|status|ping|shutdown} --root <stellaDataDir>")
     exit(64)
 }

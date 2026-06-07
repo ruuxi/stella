@@ -65,11 +65,11 @@ const knowledgePages: KnowledgePageDef[] = [
 const normalizeContent = (value: string): string =>
   value.trim().replace(/\n{3,}/g, "\n\n");
 
-const topicDir = (stellaHome: string) =>
-  path.join(stellaHome, "skills", USER_PROFILE_SLUG);
+const topicDir = (stellaDataDir: string) =>
+  path.join(stellaDataDir, "skills", USER_PROFILE_SLUG);
 
-const rawDiscoveryDir = (stellaHome: string) =>
-  path.join(stellaHome, "raw", RAW_DISCOVERY_DIR);
+const rawDiscoveryDir = (stellaDataDir: string) =>
+  path.join(stellaDataDir, "raw", RAW_DISCOVERY_DIR);
 
 const rawRelPath = (fileName: string) =>
   `../../raw/${RAW_DISCOVERY_DIR}/${fileName}`;
@@ -158,10 +158,10 @@ const buildSkillFile = (
 };
 
 export const discoveryKnowledgeExists = async (
-  stellaHome: string,
+  stellaDataDir: string,
 ): Promise<boolean> => {
   try {
-    await fs.access(path.join(topicDir(stellaHome), "SKILL.md"));
+    await fs.access(path.join(topicDir(stellaDataDir), "SKILL.md"));
     return true;
   } catch {
     return false;
@@ -169,11 +169,11 @@ export const discoveryKnowledgeExists = async (
 };
 
 export const writeDiscoveryKnowledge = async (
-  stellaHome: string,
+  stellaDataDir: string,
   payload: DiscoveryKnowledgeSeedPayload,
 ): Promise<void> => {
-  const skillRoot = topicDir(stellaHome);
-  const rawRoot = rawDiscoveryDir(stellaHome);
+  const skillRoot = topicDir(stellaDataDir);
+  const rawRoot = rawDiscoveryDir(stellaDataDir);
   await Promise.all([
     fs.mkdir(skillRoot, { recursive: true }),
     fs.mkdir(rawRoot, { recursive: true }),

@@ -214,8 +214,8 @@ export type InstallManifestSnapshot = {
 };
 
 export type UpdatesHandlersOptions = {
-  getStellaRoot: () => string | null;
-  getStellaHome: () => string | null;
+  getStellaAppDir: () => string | null;
+  getStellaDataDir: () => string | null;
   getStellaHostRunner?: () => StellaHostRunner | null;
   onStellaHostRunnerChanged?: (
     listener: (runner: StellaHostRunner | null) => void,
@@ -226,11 +226,11 @@ export type UpdatesHandlersOptions = {
   ) => boolean;
 };
 
-const manifestPathFromRoot = (stellaRoot: string): string =>
-  path.join(stellaRoot, INSTALL_MANIFEST_BASENAME);
+const manifestPathFromRoot = (stellaAppDir: string): string =>
+  path.join(stellaAppDir, INSTALL_MANIFEST_BASENAME);
 
-const releaseManifestPathFromRoot = (stellaRoot: string): string =>
-  path.join(stellaRoot, RELEASE_MANIFEST_BASENAME);
+const releaseManifestPathFromRoot = (stellaAppDir: string): string =>
+  path.join(stellaAppDir, RELEASE_MANIFEST_BASENAME);
 
 const asString = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
@@ -370,14 +370,14 @@ const candidateBunCommands = (): string[] => {
 };
 
 const readInstalledNativeHelpersSha = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<string | null> => {
   const platformDir = nativeHelperPlatformDir();
   if (!platformDir) return null;
   try {
     const raw = await fs.readFile(
       path.join(
-        stellaRoot,
+        stellaAppDir,
         "desktop",
         "native",
         "out",
@@ -406,7 +406,7 @@ const getNativeHelpersManifestUrl = (): string => {
 };
 
 const refreshNativeHelpers = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   _releaseTag?: string,
   artifactRefs?: StellaReleaseArtifactRef[],
 ): Promise<{ manifestUrl: string; stdout: string; stderr: string }> => {
@@ -417,7 +417,7 @@ const refreshNativeHelpers = async (
   const manifestUrl =
     releaseNativeRef?.manifestUrl ?? getNativeHelpersManifestUrl();
   const scriptPath = path.join(
-    stellaRoot,
+    stellaAppDir,
     "desktop",
     "scripts",
     "download-native-helpers.mjs",
@@ -434,7 +434,7 @@ const refreshNativeHelpers = async (
   for (const bunCommand of candidateBunCommands()) {
     let result: ProcessRunResult;
     try {
-      result = await runProcess(stellaRoot, bunCommand, [
+      result = await runProcess(stellaAppDir, bunCommand, [
         scriptPath,
         "--manifest-url",
         manifestUrl,
@@ -534,7 +534,7 @@ const gitFailureDetail = (result: GitRunResult, fallback: string): string => {
 };
 
 const runDesktopUpdateDependencyInstall = async (args: {
-  stellaRoot: string;
+  stellaAppDir: string;
   changedFiles: string[];
   runId: string;
   releaseTag: string;
@@ -548,7 +548,7 @@ const runDesktopUpdateDependencyInstall = async (args: {
     runId: args.runId,
     releaseTag: args.releaseTag,
   });
-  await runStorePublishDependencyInstall(args.stellaRoot);
+  await runStorePublishDependencyInstall(args.stellaAppDir);
   logDesktopUpdateProcess("desktop-update.dependencies.install.done", {
     runId: args.runId,
     releaseTag: args.releaseTag,
@@ -556,17 +556,17 @@ const runDesktopUpdateDependencyInstall = async (args: {
   return true;
 };
 
-const readHeadCommit = async (stellaRoot: string): Promise<string> => {
-  const result = await runGit(stellaRoot, ["rev-parse", "HEAD"]);
+const readHeadCommit = async (stellaAppDir: string): Promise<string> => {
+  const result = await runGit(stellaAppDir, ["rev-parse", "HEAD"]);
   if (result.exitCode !== 0) {
     throw new Error(gitFailureDetail(result, "Could not read current HEAD."));
   }
   return result.stdout.trim();
 };
 
-const hasMergeInProgress = async (stellaRoot: string): Promise<boolean> => {
+const hasMergeInProgress = async (stellaAppDir: string): Promise<boolean> => {
   try {
-    await fs.access(path.join(stellaRoot, ".git", "MERGE_HEAD"));
+    await fs.access(path.join(stellaAppDir, ".git", "MERGE_HEAD"));
     return true;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
@@ -575,9 +575,9 @@ const hasMergeInProgress = async (stellaRoot: string): Promise<boolean> => {
 };
 
 const hasTrackedWorkingTreeChanges = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<boolean> => {
-  const status = await runGit(stellaRoot, [
+  const status = await runGit(stellaAppDir, [
     "status",
     "--porcelain",
     "--untracked-files=no",
@@ -590,9 +590,9 @@ const hasTrackedWorkingTreeChanges = async (
   return status.stdout.trim().length > 0;
 };
 
-const abortMergeIfNeeded = async (stellaRoot: string) => {
-  if (!(await hasMergeInProgress(stellaRoot))) return;
-  await runGit(stellaRoot, ["merge", "--abort"]).catch(() => undefined);
+const abortMergeIfNeeded = async (stellaAppDir: string) => {
+  if (!(await hasMergeInProgress(stellaAppDir))) return;
+  await runGit(stellaAppDir, ["merge", "--abort"]).catch(() => undefined);
 };
 
 const updateCommitSubjectPolicy = (releaseTag: string | null) => {
@@ -602,7 +602,7 @@ const updateCommitSubjectPolicy = (releaseTag: string | null) => {
 };
 
 const rollbackCanceledDesktopUpdate = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   args: {
     startingHeadCommit: string;
     releaseTag: string | null;
@@ -624,7 +624,7 @@ const rollbackCanceledDesktopUpdate = async (
   });
 
   const result = await rollbackGitChangesSince({
-    repoRoot: stellaRoot,
+    repoRoot: stellaAppDir,
     startingHeadCommit,
     changedFiles: args.changedFiles,
     isOwnedCommitSubject: updateCommitSubjectPolicy(args.releaseTag),
@@ -654,22 +654,22 @@ const rollbackCanceledDesktopUpdate = async (
 };
 
 const writeAppliedCommit = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   commit: string,
   tag: string | null,
 ): Promise<InstallManifestSnapshot | null> => {
-  const verification = await verifyMergeApplied(stellaRoot, commit);
+  const verification = await verifyMergeApplied(stellaAppDir, commit);
   if (!verification.ok) {
     throw new Error(verification.reason);
   }
-  const manifestPath = manifestPathFromRoot(stellaRoot);
+  const manifestPath = manifestPathFromRoot(stellaAppDir);
   let parsed: Record<string, unknown> | null = null;
   try {
     const raw = await fs.readFile(manifestPath, "utf-8");
     parseManifest(raw);
     parsed = JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    const recovered = await readManifestWithRecovery(stellaRoot);
+    const recovered = await readManifestWithRecovery(stellaAppDir);
     if (recovered) {
       parsed = {
         version: recovered.version,
@@ -697,7 +697,7 @@ const writeAppliedCommit = async (
   if (tag) {
     parsed.desktopReleaseTag = tag;
   }
-  const nativeHelpersSha = await readInstalledNativeHelpersSha(stellaRoot);
+  const nativeHelpersSha = await readInstalledNativeHelpersSha(stellaAppDir);
   parsed.installState = {
     status: "complete",
     desktopReleaseTag: tag ?? asString(parsed.desktopReleaseTag),
@@ -719,7 +719,7 @@ const writeAppliedCommit = async (
   const next = `${JSON.stringify(parsed, null, 2)}\n`;
   parseManifest(next);
   await writeFileAtomic(manifestPath, next);
-  await writeAppliedReleaseManifest(stellaRoot, commit, tag).catch((error) => {
+  await writeAppliedReleaseManifest(stellaAppDir, commit, tag).catch((error) => {
     logDesktopUpdateWarn("desktop-update.release-manifest.write-failed", {
       tag: tag ?? undefined,
       commit: shortCommit(commit),
@@ -730,18 +730,18 @@ const writeAppliedCommit = async (
 };
 
 const writeAppliedReleasePointer = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   commit: string,
   tag: string | null,
 ): Promise<InstallManifestSnapshot | null> => {
-  const manifestPath = manifestPathFromRoot(stellaRoot);
+  const manifestPath = manifestPathFromRoot(stellaAppDir);
   let parsed: Record<string, unknown> | null = null;
   try {
     const raw = await fs.readFile(manifestPath, "utf-8");
     parseManifest(raw);
     parsed = JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    const recovered = await readManifestWithRecovery(stellaRoot);
+    const recovered = await readManifestWithRecovery(stellaAppDir);
     if (recovered) {
       parsed = {
         version: recovered.version,
@@ -763,8 +763,8 @@ const writeAppliedReleasePointer = async (
   if (tag) {
     parsed.desktopReleaseTag = tag;
   }
-  const nativeHelpersSha = await readInstalledNativeHelpersSha(stellaRoot);
-  const localHeadCommit = await readHeadCommit(stellaRoot).catch(() => null);
+  const nativeHelpersSha = await readInstalledNativeHelpersSha(stellaAppDir);
+  const localHeadCommit = await readHeadCommit(stellaAppDir).catch(() => null);
   parsed.installState = {
     status: "complete",
     desktopReleaseTag: tag ?? asString(parsed.desktopReleaseTag),
@@ -786,7 +786,7 @@ const writeAppliedReleasePointer = async (
   const next = `${JSON.stringify(parsed, null, 2)}\n`;
   parseManifest(next);
   await writeFileAtomic(manifestPath, next);
-  await writeAppliedReleaseManifest(stellaRoot, commit, tag).catch((error) => {
+  await writeAppliedReleaseManifest(stellaAppDir, commit, tag).catch((error) => {
     logDesktopUpdateWarn("desktop-update.release-manifest.write-failed", {
       tag: tag ?? undefined,
       commit: shortCommit(commit),
@@ -813,10 +813,10 @@ const writeAppliedReleasePointer = async (
  * caught up with target.
  */
 const verifyMergeApplied = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   targetCommit: string,
 ): Promise<VerifyResult> => {
-  const gitDir = await runGit(stellaRoot, ["rev-parse", "--git-dir"]);
+  const gitDir = await runGit(stellaAppDir, ["rev-parse", "--git-dir"]);
   if (gitDir.exitCode !== 0) {
     return {
       ok: false,
@@ -824,7 +824,7 @@ const verifyMergeApplied = async (
     };
   }
   try {
-    await fs.access(path.join(stellaRoot, ".git", "MERGE_HEAD"));
+    await fs.access(path.join(stellaAppDir, ".git", "MERGE_HEAD"));
     return {
       ok: false,
       reason:
@@ -838,7 +838,7 @@ const verifyMergeApplied = async (
       };
     }
   }
-  const isAncestor = await runGit(stellaRoot, [
+  const isAncestor = await runGit(stellaAppDir, [
     "merge-base",
     "--is-ancestor",
     targetCommit,
@@ -850,7 +850,7 @@ const verifyMergeApplied = async (
       reason: `Stella could not confirm the update was applied. The update agent finished, but this install is still not on ${targetCommit.slice(0, 8)}. Please try Update again.`,
     };
   }
-  const headRev = await runGit(stellaRoot, ["rev-parse", "HEAD"]);
+  const headRev = await runGit(stellaAppDir, ["rev-parse", "HEAD"]);
   if (headRev.exitCode !== 0) {
     return {
       ok: false,
@@ -894,11 +894,11 @@ const tryParseManifest = (
 };
 
 const readReleaseManifest = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<ReleaseManifestSnapshot> => {
   try {
     const raw = await fs.readFile(
-      path.join(stellaRoot, "stella-release.json"),
+      path.join(stellaAppDir, "stella-release.json"),
       "utf-8",
     );
     const parsed = JSON.parse(raw) as Record<string, unknown>;
@@ -918,10 +918,10 @@ const readReleaseManifest = async (
 };
 
 const recoverManifest = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<InstallManifestSnapshot | null> => {
   const tracked = await readGitFile(
-    stellaRoot,
+    stellaAppDir,
     `HEAD:${INSTALL_MANIFEST_BASENAME}`,
   );
   if (tracked) {
@@ -929,12 +929,12 @@ const recoverManifest = async (
     if (parsed) return parsed;
   }
 
-  const release = await readReleaseManifest(stellaRoot);
-  const head = await runGit(stellaRoot, ["rev-parse", "HEAD"]);
+  const release = await readReleaseManifest(stellaAppDir);
+  const head = await runGit(stellaAppDir, ["rev-parse", "HEAD"]);
   return {
     version: "recovered",
     platform: process.platform,
-    installPath: stellaRoot,
+    installPath: stellaAppDir,
     installedAt: new Date().toISOString(),
     desktopReleaseTag: release.tag,
     desktopReleaseCommit:
@@ -946,9 +946,9 @@ const recoverManifest = async (
 };
 
 const readManifestWithRecovery = async (
-  stellaRoot: string,
+  stellaAppDir: string,
 ): Promise<InstallManifestSnapshot | null> => {
-  const manifestPath = manifestPathFromRoot(stellaRoot);
+  const manifestPath = manifestPathFromRoot(stellaAppDir);
   try {
     const raw = await fs.readFile(manifestPath, "utf-8");
     const parsed = tryParseManifest(raw, manifestPath);
@@ -960,11 +960,11 @@ const readManifestWithRecovery = async (
       (err as Error).message,
     );
   }
-  return await recoverManifest(stellaRoot);
+  return await recoverManifest(stellaAppDir);
 };
 
 const writeUpdateAttemptState = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   args: {
     status: "updating" | "failed";
     targetCommit: string;
@@ -972,14 +972,14 @@ const writeUpdateAttemptState = async (
     reason?: string | null;
   },
 ): Promise<void> => {
-  const manifestPath = manifestPathFromRoot(stellaRoot);
+  const manifestPath = manifestPathFromRoot(stellaAppDir);
   let parsed: Record<string, unknown> | null = null;
   try {
     const raw = await fs.readFile(manifestPath, "utf-8");
     parseManifest(raw);
     parsed = JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    const recovered = await readManifestWithRecovery(stellaRoot);
+    const recovered = await readManifestWithRecovery(stellaAppDir);
     if (recovered) {
       parsed = {
         version: recovered.version,
@@ -1111,9 +1111,9 @@ const createOfficialSourceHistoryReconciler = (
     if (targetCommit && releaseTag) {
       let sourceHistoryRef = args?.sourceHistoryRef ?? null;
       if (!sourceHistoryRef) {
-        const stellaRoot = options.getStellaRoot();
-        if (stellaRoot) {
-          const release = await readReleaseManifest(stellaRoot);
+        const stellaAppDir = options.getStellaAppDir();
+        if (stellaAppDir) {
+          const release = await readReleaseManifest(stellaAppDir);
           if (release.commit === targetCommit && release.tag === releaseTag) {
             sourceHistoryRef = release.sourceHistoryRef;
           }
@@ -1126,11 +1126,11 @@ const createOfficialSourceHistoryReconciler = (
       };
     }
 
-    const stellaRoot = options.getStellaRoot();
-    if (!stellaRoot) {
+    const stellaAppDir = options.getStellaAppDir();
+    if (!stellaAppDir) {
       return null;
     }
-    const release = await readReleaseManifest(stellaRoot);
+    const release = await readReleaseManifest(stellaAppDir);
     if (!release.commit || !release.tag) {
       return null;
     }
@@ -1337,7 +1337,7 @@ const writeFileAtomic = async (filePath: string, content: string) => {
 };
 
 export const writeAppliedReleaseManifest = async (
-  stellaRoot: string,
+  stellaAppDir: string,
   commit: string,
   tag: string | null,
   options?: { releaseManifestBaseUrl?: string },
@@ -1362,7 +1362,7 @@ export const writeAppliedReleaseManifest = async (
     throw new Error("Release manifest schemaVersion is invalid.");
   }
   await writeFileAtomic(
-    releaseManifestPathFromRoot(stellaRoot),
+    releaseManifestPathFromRoot(stellaAppDir),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
   return true;
@@ -1382,8 +1382,8 @@ const buildSourcePackAppliedChangesForAgent = (
   }));
 
 const tryApplySourcePackDesktopUpdate = async (
-  stellaRoot: string,
-  stellaHome: string,
+  stellaAppDir: string,
+  stellaDataDir: string,
   runner: StellaHostRunner | null,
   args: {
     baseCommit: string;
@@ -1398,7 +1398,7 @@ const tryApplySourcePackDesktopUpdate = async (
     baseCommit: shortCommit(args.baseCommit),
     targetCommit: shortCommit(args.targetCommit),
   });
-  if (await hasMergeInProgress(stellaRoot)) {
+  if (await hasMergeInProgress(stellaAppDir)) {
     logDesktopUpdateWarn("desktop-update.source-pack.needs-agent", {
       releaseTag: args.releaseTag,
       reason: "merge-in-progress",
@@ -1440,10 +1440,10 @@ const tryApplySourcePackDesktopUpdate = async (
   }
 
   const preflight = await preflightSourcePackImport({
-    repoRoot: stellaRoot,
+    repoRoot: stellaAppDir,
     sourcePack,
     inspectDirtyTree: async () => {
-      const dirty = await hasTrackedWorkingTreeChanges(stellaRoot);
+      const dirty = await hasTrackedWorkingTreeChanges(stellaAppDir);
       return dirty
         ? {
             dirty: true,
@@ -1452,7 +1452,7 @@ const tryApplySourcePackDesktopUpdate = async (
         : { dirty: false };
     },
     isPathTracked: async (sourcePath) => {
-      const result = await runGit(stellaRoot, [
+      const result = await runGit(stellaAppDir, [
         "ls-files",
         "--error-unmatch",
         "--",
@@ -1503,7 +1503,7 @@ const tryApplySourcePackDesktopUpdate = async (
       conflictCount: preflight.sourceApply.conflicts.length,
     });
     const conflictRoot = path.join(
-      stellaHome,
+      stellaDataDir,
       "raw",
       "desktop-updates",
       args.releaseTag.replace(/[^a-z0-9_.-]/gi, "_"),
@@ -1531,7 +1531,7 @@ const tryApplySourcePackDesktopUpdate = async (
         status: "needs-agent",
         reason:
           "Stella source-pack merge reported conflicts, but the handoff was too large for the install-update agent. Falling back to Git update.",
-        headCommit: await readHeadCommit(stellaRoot),
+        headCommit: await readHeadCommit(stellaAppDir),
         changedFiles: preflight.sourcePaths,
       };
     }
@@ -1546,7 +1546,7 @@ const tryApplySourcePackDesktopUpdate = async (
     return {
       status: "needs-agent",
       reason: `Stella source-pack merge reported conflicts. Conflict details were written to ${conflictFile}.`,
-      headCommit: await readHeadCommit(stellaRoot),
+      headCommit: await readHeadCommit(stellaAppDir),
       changedFiles: preflight.sourcePaths,
       sourcePackFile,
       sourcePackConflictFile: conflictFile,
@@ -1560,16 +1560,16 @@ const tryApplySourcePackDesktopUpdate = async (
       targetCommit: shortCommit(args.targetCommit),
     });
     await recordSourceHistory();
-    await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
+    await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedReleasePointer(
-      stellaRoot,
+      stellaAppDir,
       args.targetCommit,
       args.releaseTag,
     );
     return {
       status: "applied",
       manifest,
-      headCommit: await readHeadCommit(stellaRoot),
+      headCommit: await readHeadCommit(stellaAppDir),
       changedFiles: [],
       dependencyInstallRan: false,
       nativeHelpersRefreshed: true,
@@ -1580,7 +1580,7 @@ const tryApplySourcePackDesktopUpdate = async (
     return {
       status: "needs-agent",
       reason: "Stella runtime is not available for the update morph.",
-      headCommit: await readHeadCommit(stellaRoot),
+      headCommit: await readHeadCommit(stellaAppDir),
       changedFiles: preflight.sourceApply.appliedPaths,
     };
   }
@@ -1620,7 +1620,7 @@ const tryApplySourcePackDesktopUpdate = async (
       });
     }
     const { dependencyInstallRan } = await applyCleanSourceImportToWorkingTree({
-      repoRoot: stellaRoot,
+      repoRoot: stellaAppDir,
       sourcePaths: preflight.sourcePaths,
       sourceApply: preflight.sourceApply,
     });
@@ -1636,7 +1636,7 @@ const tryApplySourcePackDesktopUpdate = async (
       changedFileCount: preflight.sourceApply.appliedPaths.length,
     });
 
-    const addResult = await runGit(stellaRoot, [
+    const addResult = await runGit(stellaAppDir, [
       "add",
       "-A",
       "--",
@@ -1647,7 +1647,7 @@ const tryApplySourcePackDesktopUpdate = async (
         gitFailureDetail(addResult, "Could not stage source-pack update."),
       );
     }
-    const commitResult = await runGit(stellaRoot, [
+    const commitResult = await runGit(stellaAppDir, [
       "commit",
       "-m",
       `Update to ${args.releaseTag}`,
@@ -1666,17 +1666,17 @@ const tryApplySourcePackDesktopUpdate = async (
 
     await runner.finishExternalSelfMod({ runId, succeeded: true });
     hmrRunStarted = false;
-    await recordSourceHistory(await readHeadCommit(stellaRoot));
-    await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
+    await recordSourceHistory(await readHeadCommit(stellaAppDir));
+    await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedReleasePointer(
-      stellaRoot,
+      stellaAppDir,
       args.targetCommit,
       args.releaseTag,
     );
     return {
       status: "applied",
       manifest,
-      headCommit: await readHeadCommit(stellaRoot),
+      headCommit: await readHeadCommit(stellaAppDir),
       changedFiles: preflight.sourceApply.appliedPaths,
       dependencyInstallRan,
       nativeHelpersRefreshed: true,
@@ -1698,8 +1698,8 @@ const tryApplySourcePackDesktopUpdate = async (
 };
 
 const tryApplyCleanDesktopUpdate = async (
-  stellaRoot: string,
-  stellaHome: string,
+  stellaAppDir: string,
+  stellaDataDir: string,
   runner: StellaHostRunner | null,
   args: {
     baseCommit: string;
@@ -1718,8 +1718,8 @@ const tryApplyCleanDesktopUpdate = async (
   if (args.sourcePackRef) {
     try {
       const sourcePackResult = await tryApplySourcePackDesktopUpdate(
-        stellaRoot,
-        stellaHome,
+        stellaAppDir,
+        stellaDataDir,
         runner,
         {
           targetCommit: args.targetCommit,
@@ -1764,7 +1764,7 @@ const tryApplyCleanDesktopUpdate = async (
     }
   }
 
-  if (await hasMergeInProgress(stellaRoot)) {
+  if (await hasMergeInProgress(stellaAppDir)) {
     logDesktopUpdateWarn("desktop-update.fast.needs-agent", {
       releaseTag: args.releaseTag,
       reason: "merge-in-progress",
@@ -1775,7 +1775,7 @@ const tryApplyCleanDesktopUpdate = async (
     };
   }
 
-  if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
+  if (await hasTrackedWorkingTreeChanges(stellaAppDir)) {
     logDesktopUpdateWarn("desktop-update.fast.needs-agent", {
       releaseTag: args.releaseTag,
       reason: "tracked-local-changes",
@@ -1790,7 +1790,7 @@ const tryApplyCleanDesktopUpdate = async (
     releaseTag: args.releaseTag,
     targetCommit: shortCommit(args.targetCommit),
   });
-  const fetchResult = await runGit(stellaRoot, [
+  const fetchResult = await runGit(stellaAppDir, [
     "fetch",
     "--filter=blob:none",
     "--no-tags",
@@ -1807,7 +1807,7 @@ const tryApplyCleanDesktopUpdate = async (
     targetCommit: shortCommit(args.targetCommit),
   });
 
-  const alreadyApplied = await runGit(stellaRoot, [
+  const alreadyApplied = await runGit(stellaAppDir, [
     "merge-base",
     "--is-ancestor",
     args.targetCommit,
@@ -1818,23 +1818,23 @@ const tryApplyCleanDesktopUpdate = async (
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
     });
-    await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
+    await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedCommit(
-      stellaRoot,
+      stellaAppDir,
       args.targetCommit,
       args.releaseTag,
     );
     return {
       status: "applied",
       manifest,
-      headCommit: await readHeadCommit(stellaRoot),
+      headCommit: await readHeadCommit(stellaAppDir),
       changedFiles: [],
       dependencyInstallRan: false,
       nativeHelpersRefreshed: true,
     };
   }
 
-  const mergeTree = await runGit(stellaRoot, [
+  const mergeTree = await runGit(stellaAppDir, [
     "merge-tree",
     "--write-tree",
     "HEAD",
@@ -1845,7 +1845,7 @@ const tryApplyCleanDesktopUpdate = async (
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
     });
-    const conflictChangedResult = await runGit(stellaRoot, [
+    const conflictChangedResult = await runGit(stellaAppDir, [
       "diff",
       "--name-only",
       "HEAD",
@@ -1858,7 +1858,7 @@ const tryApplyCleanDesktopUpdate = async (
     return {
       status: "needs-agent",
       reason: "Git reported merge conflicts.",
-      headCommit: await readHeadCommit(stellaRoot),
+      headCommit: await readHeadCommit(stellaAppDir),
       changedFiles: conflictChangedFiles,
     };
   }
@@ -1874,7 +1874,7 @@ const tryApplyCleanDesktopUpdate = async (
     };
   }
 
-  const changedResult = await runGit(stellaRoot, [
+  const changedResult = await runGit(stellaAppDir, [
     "diff",
     "--name-only",
     "HEAD",
@@ -1904,7 +1904,7 @@ const tryApplyCleanDesktopUpdate = async (
         return {
           status: "needs-agent",
           reason: "Stella runtime is not available for the update morph.",
-          headCommit: await readHeadCommit(stellaRoot),
+          headCommit: await readHeadCommit(stellaAppDir),
           changedFiles,
         };
       }
@@ -1931,7 +1931,7 @@ const tryApplyCleanDesktopUpdate = async (
       targetCommit: shortCommit(args.targetCommit),
       changedFileCount: changedFiles.length,
     });
-    const mergeResult = await runGit(stellaRoot, [
+    const mergeResult = await runGit(stellaAppDir, [
       "merge",
       "--no-edit",
       "-m",
@@ -1939,7 +1939,7 @@ const tryApplyCleanDesktopUpdate = async (
       args.targetCommit,
     ]);
     if (mergeResult.exitCode !== 0) {
-      await abortMergeIfNeeded(stellaRoot);
+      await abortMergeIfNeeded(stellaAppDir);
       if (hmrRunStarted && runner) {
         await runner
           .finishExternalSelfMod({ runId, succeeded: false })
@@ -1967,7 +1967,7 @@ const tryApplyCleanDesktopUpdate = async (
     });
 
     const dependencyInstallRan = await runDesktopUpdateDependencyInstall({
-      stellaRoot,
+      stellaAppDir,
       changedFiles,
       runId,
       releaseTag: args.releaseTag,
@@ -1985,16 +1985,16 @@ const tryApplyCleanDesktopUpdate = async (
       changedFileCount: changedFiles.length,
       dependencyInstallRan,
     });
-    await refreshNativeHelpers(stellaRoot, args.releaseTag, args.artifactRefs);
+    await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs);
     const manifest = await writeAppliedCommit(
-      stellaRoot,
+      stellaAppDir,
       args.targetCommit,
       args.releaseTag,
     );
     return {
       status: "applied",
       manifest,
-      headCommit: await readHeadCommit(stellaRoot),
+      headCommit: await readHeadCommit(stellaAppDir),
       changedFiles,
       dependencyInstallRan,
       nativeHelpersRefreshed: true,
@@ -2042,9 +2042,9 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
           "Blocked untrusted updates:getInstallManifest request.",
         );
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) return null;
-      return await readManifestWithRecovery(stellaRoot);
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) return null;
+      return await readManifestWithRecovery(stellaAppDir);
     },
   );
 
@@ -2077,16 +2077,16 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!releaseTag) {
         throw new Error("releaseTag is required.");
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) {
         throw new Error("Stella install directory is unavailable.");
       }
-      const stellaHome = options.getStellaHome();
-      if (!stellaHome) {
+      const stellaDataDir = options.getStellaDataDir();
+      if (!stellaDataDir) {
         throw new Error("Stella home directory is unavailable.");
       }
       const startedAt = Date.now();
-      await writeUpdateAttemptState(stellaRoot, {
+      await writeUpdateAttemptState(stellaAppDir, {
         status: "updating",
         targetCommit,
         targetTag: releaseTag,
@@ -2108,8 +2108,8 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       });
       try {
         const result = await tryApplyCleanDesktopUpdate(
-          stellaRoot,
-          stellaHome,
+          stellaAppDir,
+          stellaDataDir,
           options.getStellaHostRunner?.() ?? null,
           {
             baseCommit,
@@ -2142,7 +2142,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         });
         return result;
       } catch (error) {
-        await writeUpdateAttemptState(stellaRoot, {
+        await writeUpdateAttemptState(stellaAppDir, {
           status: "failed",
           targetCommit,
           targetTag: releaseTag,
@@ -2195,12 +2195,12 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       if (!releaseTag) {
         throw new Error("releaseTag is required.");
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) {
         throw new Error("Stella install directory is unavailable.");
       }
       const result = await refreshNativeHelpers(
-        stellaRoot,
+        stellaAppDir,
         releaseTag,
         Array.isArray(payload.artifactRefs) ? payload.artifactRefs : undefined,
       );
@@ -2264,8 +2264,8 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
           "Blocked untrusted updates:rollbackCanceledUpdate request.",
         );
       }
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) {
         throw new Error("Stella install directory is unavailable.");
       }
       const startingHeadCommit = asString(payload?.startingHeadCommit);
@@ -2279,7 +2279,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
           )
         : [];
       try {
-        return await rollbackCanceledDesktopUpdate(stellaRoot, {
+        return await rollbackCanceledDesktopUpdate(stellaAppDir, {
           startingHeadCommit,
           releaseTag,
           changedFiles,
@@ -2321,8 +2321,8 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         throw new Error("commit is required.");
       }
       const tag = asString(payload?.tag);
-      const stellaRoot = options.getStellaRoot();
-      if (!stellaRoot) {
+      const stellaAppDir = options.getStellaAppDir();
+      if (!stellaAppDir) {
         throw new Error("Stella install directory is unavailable.");
       }
       try {
@@ -2331,20 +2331,20 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
           if (!startingHeadCommit) {
             throw new Error("startingHeadCommit is required.");
           }
-          if (await hasMergeInProgress(stellaRoot)) {
+          if (await hasMergeInProgress(stellaAppDir)) {
             throw new Error("A merge is still in progress in the install tree.");
           }
-          if (await hasTrackedWorkingTreeChanges(stellaRoot)) {
+          if (await hasTrackedWorkingTreeChanges(stellaAppDir)) {
             throw new Error("The install tree still has tracked local changes.");
           }
-          const currentHead = await readHeadCommit(stellaRoot);
+          const currentHead = await readHeadCommit(stellaAppDir);
           if (currentHead === startingHeadCommit) {
             throw new Error(
               "The install-update agent did not create an update commit.",
             );
           }
           const manifest = await writeAppliedReleasePointer(
-            stellaRoot,
+            stellaAppDir,
             commit,
             tag,
           );
@@ -2354,14 +2354,14 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
           });
           return manifest;
         }
-        const manifest = await writeAppliedCommit(stellaRoot, commit, tag);
+        const manifest = await writeAppliedCommit(stellaAppDir, commit, tag);
         officialSourceHistory.schedule("applied-commit-recorded", {
           targetCommit: commit,
           releaseTag: tag,
         });
         return manifest;
       } catch (error) {
-        await writeUpdateAttemptState(stellaRoot, {
+        await writeUpdateAttemptState(stellaAppDir, {
           status: "failed",
           targetCommit: commit,
           targetTag: tag,
