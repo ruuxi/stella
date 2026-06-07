@@ -25,7 +25,6 @@ import type {
   AgentLifecycleEvent,
 } from "../agents/local-agent-manager.js";
 import { AGENT_IDS, isLocalCliAgentId } from "../../contracts/agent-runtime.js";
-import { TASK_LIFECYCLE_WAKE_PROMPT } from "../../contracts/system-reminders.js";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
@@ -343,7 +342,6 @@ export const createAgentOrchestration = (
       responseTarget?: import("../../protocol/index.js").RuntimeAgentEventPayload["responseTarget"];
       customType?: string;
       display?: boolean;
-      wakePrompt?: string;
     }) => Promise<void>;
   },
 ) => {
@@ -391,7 +389,6 @@ export const createAgentOrchestration = (
         callbackRunId: event.rootRunId,
         customType: "runtime.task_lifecycle",
         display: false,
-        wakePrompt: TASK_LIFECYCLE_WAKE_PROMPT,
         responseTarget: createAgentLifecycleResponseTarget({
           agentId: event.agentId,
           eventType: event.type,
