@@ -57,4 +57,24 @@
     var route = lastLocation.split(/[?#]/)[0].split("/")[1] || "home";
     root.dataset.stellaBootRoute = route;
   }
+
+  // Low-power devices: drop blur entrances, decorative infinite loops, and
+  // backdrop-filter glass before React paints. Mirrors shared/lib/device-perf.ts.
+  try {
+    var n = navigator;
+    var cores =
+      typeof n.hardwareConcurrency === "number" ? n.hardwareConcurrency : 0;
+    var mem = typeof n.deviceMemory === "number" ? n.deviceMemory : 0;
+    var reduce = false;
+    if (window.matchMedia) {
+      reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    }
+    if (
+      reduce ||
+      (cores > 0 && cores <= 4) ||
+      (mem > 0 && mem <= 4)
+    ) {
+      root.setAttribute("data-low-power", "true");
+    }
+  } catch (_error) {}
 })();

@@ -1,0 +1,200 @@
+/**
+ * Low-power / reduced-motion performance overrides.
+ *
+ * Activated when `html[data-low-power]` is set by `stella-boot.js`
+ * (≤4 cores or ≤4GB RAM, or system reduced-motion). Drops the three cost
+ * categories that hurt weak GPUs most:
+ *   1. `filter: blur()` entrance transitions
+ *   2. Decorative infinite CSS/SVG animations
+ *   3. `backdrop-filter` glass sampling
+ *
+ * Functional spinners, loading shimmers, and streaming indicators are left
+ * alone — see comments on each block.
+ */
+
+html[data-low-power] {
+  --glass-blur: none;
+  --panel-glass-blur: none;
+  /* More opaque fills when backdrop sampling is off so panels stay readable. */
+  --glass-bg: color-mix(in srgb, var(--background) 86%, transparent);
+  --panel-glass-bg: color-mix(in srgb, var(--background) 90%, transparent);
+}
+
+/* ── Backdrop-filter: disable glass sampling app-wide ─────────────── */
+
+html[data-low-power] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ── Blur entrances: keep motion, drop the expensive filter pass ───── */
+
+html[data-low-power] .onboarding-moment,
+html[data-low-power] .onboarding-split-right,
+html[data-low-power] .onboarding-split-stage,
+html[data-low-power] .onboarding-mock-window,
+html[data-low-power] .onboarding-dialogue,
+html[data-low-power] .onboarding-start-button,
+html[data-low-power] .onboarding-shortcut-surface::after,
+html[data-low-power] .onboarding-confirm,
+html[data-low-power] .onboarding-confirm-row,
+html[data-low-power] .onboarding-engine-step,
+html[data-low-power] .onboarding-enter-step__status,
+html[data-low-power] .onboarding-enter-step__suggestion,
+html[data-low-power] .composer-queued-message,
+html[data-low-power] .inline-working-indicator,
+html[data-low-power] .inline-working-indicator--leaving,
+html[data-low-power] .inline-generated-image-cards--strip-pending::before,
+html[data-low-power] .inline-generated-image-card__placeholder::before,
+html[data-low-power] .assistant-reply-peek,
+html[data-low-power] .pet-overlay-aura,
+html[data-low-power] .sam-mochi {
+  filter: none !important;
+}
+
+html[data-low-power] .onboarding-moment,
+html[data-low-power] .onboarding-split-right,
+html[data-low-power] .onboarding-split-stage,
+html[data-low-power] .onboarding-mock-window {
+  animation-name: stella-low-power-fade-in !important;
+  animation-duration: 280ms !important;
+  animation-timing-function: ease-out !important;
+  animation-iteration-count: 1 !important;
+  animation-fill-mode: both !important;
+  transform: none !important;
+}
+
+@keyframes stella-low-power-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Decorative infinite animations (marketing mocks, demos) ──────── */
+
+/* Connect hero (Phone settings / Connect dialog) */
+html[data-low-power] .anim-phone-group,
+html[data-low-power] .anim-monitor-group,
+html[data-low-power] .anim-cursor,
+html[data-low-power] .anim-cursor-phone,
+html[data-low-power] .anim-click-ripple,
+html[data-low-power] .anim-click-ripple-phone,
+html[data-low-power] .anim-signal-line,
+html[data-low-power] .anim-pulse {
+  animation: none !important;
+}
+
+/* Onboarding capabilities carousel */
+html[data-low-power]
+  .onboarding-cap-scene[data-active]
+  .onboarding-cap-bridge__line::after,
+html[data-low-power]
+  .onboarding-cap-scene[data-active]
+  .onboarding-cap-together__cursor[data-color="a"],
+html[data-low-power]
+  .onboarding-cap-scene[data-active]
+  .onboarding-cap-together__cursor[data-color="b"],
+html[data-low-power]
+  .onboarding-cap-scene[data-active]
+  .onboarding-cap-voice__ring {
+  animation: none !important;
+}
+
+/* Onboarding memory / voice demos */
+html[data-low-power]
+  .onboarding-dialogue[data-phase="memory"]
+  .onboarding-memory-mock__pill-dot,
+html[data-low-power]
+  .onboarding-dialogue[data-phase="voice"]
+  .onboarding-voice-app__caret,
+html[data-low-power]
+  .onboarding-dialogue[data-phase="voice"]
+  .onboarding-voice-waveform__bar {
+  animation: none !important;
+}
+
+/* Radial voice result demo */
+html[data-low-power] .radial-result-voice__bars span {
+  animation: none !important;
+}
+
+/* Stella app mock cozy / studio demos */
+html[data-low-power] .sam-body[data-create-app="true"] .sam-studio-meter-bar,
+html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy .sam-cozy-cat-body,
+html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy .sam-cozy-cat-tail,
+html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy-zzz-1,
+html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy-zzz-2,
+html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy-zzz-3,
+html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy-heart,
+html[data-low-power] .sam-mochi__drop {
+  animation: none !important;
+}
+
+/* Display-sidebar / store / social empty-state SVG illustrations */
+html[data-low-power] .anim-float-1,
+html[data-low-power] .anim-float-2,
+html[data-low-power] .anim-window,
+html[data-low-power] .anim-cursor,
+html[data-low-power] .anim-cursor-a,
+html[data-low-power] .anim-cursor-b,
+html[data-low-power] .anim-block,
+html[data-low-power] .anim-sparkle,
+html[data-low-power] .anim-box,
+html[data-low-power] .anim-item-1,
+html[data-low-power] .anim-item-2,
+html[data-low-power] .anim-item-3,
+html[data-low-power] .anim-photo,
+html[data-low-power] .anim-video,
+html[data-low-power] .anim-audio,
+html[data-low-power] .anim-play,
+html[data-low-power] .anim-bin,
+html[data-low-power] .anim-lid,
+html[data-low-power] .anim-paper-1,
+html[data-low-power] .anim-paper-2,
+html[data-low-power] .anim-dust,
+html[data-low-power] .anim-sidebar,
+html[data-low-power] .anim-card,
+html[data-low-power] .anim-body,
+html[data-low-power] .anim-roof,
+html[data-low-power] .anim-ripple {
+  animation: none !important;
+}
+
+/* Pet overlay decoration */
+html[data-low-power] .pet-overlay-aura[data-visible="true"],
+html[data-low-power] .pet-overlay-status-pill__bar {
+  animation: none !important;
+}
+
+/* Generated-image card ambient drift + heavy blur wash */
+html[data-low-power] .inline-generated-image-cards--strip-pending::before,
+html[data-low-power] .inline-generated-image-card__placeholder::before {
+  animation: none !important;
+}
+
+/* Creature idle breathing (WorkingIndicator / onboarding) */
+html[data-low-power] .stella-animation-container:not(
+    .stella-animation-container--paused
+  ) {
+  animation: none !important;
+}
+
+/* Onboarding enter dots — decorative hold animation */
+html[data-low-power] .onboarding-enter-step__dots > span {
+  animation: none !important;
+  opacity: 0.55;
+}
+
+/* Topbar update trace — decorative chrome */
+html[data-low-power] .shell-topbar-update-pill[data-state="active"]::before {
+  animation: none !important;
+}
+
+/* Launch splash dots */
+html[data-low-power] .stella-launch__dots span {
+  animation: none !important;
+  opacity: 0.55;
+}
