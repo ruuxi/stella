@@ -635,11 +635,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const pendingApplyPinned = pendingApplyBatches.size > 0;
     return Boolean(
       state.runner?.getActiveOrchestratorRun() ||
-      (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
-      requestPinned ||
-      pendingApplyPinned ||
-      socialPinned ||
-      voicePinned,
+        (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
+        requestPinned ||
+        pendingApplyPinned ||
+        socialPinned ||
+        voicePinned,
     );
   };
 
@@ -729,6 +729,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       throw new Error("Runtime worker is not ready.");
     }
     return state.runner;
+  };
+
+  const ensureRunnerInitialized = async () => {
+    const runner = ensureRunner();
+    await runner.waitUntilInitialized();
+    return runner;
   };
 
   const ensureChatStore = () => {
@@ -844,21 +850,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     if (!sameRuntimeRoot) {
       await releasePendingApplyBatches("worker initialization");
     }
-    const connectorSweep = await sweepStaleConnectorBridgeProcesses(
-      init.stellaHomePath,
-      { currentWorkerPid: process.pid },
-    ).catch((error) => {
-      console.warn(
-        "[connector-bridge] Failed to sweep stale connector helpers:",
-        (error as Error).message,
-      );
-      return null;
-    });
-    if (connectorSweep?.stopped) {
-      console.warn(
-        `[connector-bridge] Stopped ${connectorSweep.stopped} stale connector helper(s).`,
-      );
-    }
     state.init = init;
 
     const db = createDesktopDatabase(init.stellaHomePath);
@@ -873,24 +864,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       sourceHistoryStore,
     );
     const runEventLog = new RunEventLog(db);
-    for (const buffered of runEventLog.listBufferedRuns()) {
-      if (buffered.hasTerminalEvent) continue;
-      runEventLog.append({
-        runId: buffered.runId,
-        seq: Number.MAX_SAFE_INTEGER,
-        payload: {
-          type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
-          runId: buffered.runId,
-          seq: Number.MAX_SAFE_INTEGER,
-          conversationId: buffered.conversationId,
-          outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
-          reason: "worker_restart",
-          error: "Stella restarted before this run could finish.",
-          rootRunId: buffered.runId,
-        },
-      });
-    }
-    runEventLog.startBackgroundSweep();
     const deviceIdentity = await peer.request<HostDeviceIdentity>(
       METHOD_NAMES.HOST_DEVICE_IDENTITY_GET,
     );
@@ -901,13 +874,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       repoRoot: init.stellaRoot,
     });
     state.selfModHmrController = selfModHmrController;
-    await selfModHmrController.forceResumeAll().catch((error) => {
-      console.warn(
-        "[self-mod-hmr] Failed to clear stale Vite state during worker initialization:",
-        (error as Error).message,
-      );
-      return false;
-    });
 
     state.db = db;
     state.chatStore = chatStore;
@@ -917,78 +883,104 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     state.storeModService = storeModService;
     state.socialSessionStore = socialSessionStore;
     state.runEventLog = runEventLog;
-
-    // Spin up the CLI bridge socket so sidecar CLIs invoked from
-    // `exec_command` (today just `stella-connect`) can call back into
-    // the host for credential dialogs. The socket path is injected into
-    // PTY shells as `STELLA_CLI_BRIDGE_SOCK` (see runtime/kernel/tools/
-    // shell.ts). If startup fails we log + continue — the CLI gracefully
-    // falls back to exit-2 `auth_required` when the socket isn't there.
     const bridgePaths = resolveRuntimePaths(init.stellaRoot);
-    try {
-      state.cliBridgeServer = await startCliBridgeServer({
-        socketPath: bridgePaths.cliBridgeSocketPath,
-        log: (message, error) => {
-          if (error) {
-            console.warn(`[cli-bridge] ${message}:`, error);
-          } else {
-            console.warn(`[cli-bridge] ${message}`);
-          }
-        },
-        handlers: {
-          requestConnectorCredential: async (params) => {
-            try {
-              return await peer.request<
-                | { ok: true }
-                | {
-                    ok: false;
-                    reason: "cancelled" | "timeout" | "unsupported" | string;
-                  }
-              >(METHOD_NAMES.HOST_CONNECTOR_CREDENTIAL_REQUEST, params, {
-                retryOnDisconnect: true,
-              });
-            } catch (error) {
-              return {
-                ok: false,
-                reason: (error as Error).message || "host_unreachable",
-              };
+
+    const runEventLogStartupBackfill = () => {
+      if (state.runEventLog !== runEventLog) return;
+      for (const buffered of runEventLog.listBufferedRuns()) {
+        if (buffered.hasTerminalEvent) continue;
+        runEventLog.append({
+          runId: buffered.runId,
+          seq: Number.MAX_SAFE_INTEGER,
+          payload: {
+            type: AGENT_STREAM_EVENT_TYPES.RUN_FINISHED,
+            runId: buffered.runId,
+            seq: Number.MAX_SAFE_INTEGER,
+            conversationId: buffered.conversationId,
+            outcome: AGENT_RUN_FINISH_OUTCOMES.ERROR,
+            reason: "worker_restart",
+            error: "Stella restarted before this run could finish.",
+            rootRunId: buffered.runId,
+          },
+        });
+      }
+      runEventLog.startBackgroundSweep();
+    };
+
+    const startCliBridge = async () => {
+      if (state.db !== db) return;
+      try {
+        const cliBridgeServer = await startCliBridgeServer({
+          socketPath: bridgePaths.cliBridgeSocketPath,
+          log: (message, error) => {
+            if (error) {
+              console.warn(`[cli-bridge] ${message}:`, error);
+            } else {
+              console.warn(`[cli-bridge] ${message}`);
             }
           },
-          getStellaSiteAuth: () => {
-            const baseUrl =
-              state.init?.convexSiteUrl?.trim() ?? init.convexSiteUrl?.trim();
-            const authToken =
-              state.init?.authToken?.trim() ?? init.authToken?.trim();
-            if (!baseUrl || !authToken) {
-              return { ok: false, reason: "not_signed_in" };
-            }
-            return { ok: true, baseUrl, authToken };
+          handlers: {
+            requestConnectorCredential: async (params) => {
+              try {
+                return await peer.request<
+                  | { ok: true }
+                  | {
+                      ok: false;
+                      reason: "cancelled" | "timeout" | "unsupported" | string;
+                    }
+                >(METHOD_NAMES.HOST_CONNECTOR_CREDENTIAL_REQUEST, params, {
+                  retryOnDisconnect: true,
+                });
+              } catch (error) {
+                return {
+                  ok: false,
+                  reason: (error as Error).message || "host_unreachable",
+                };
+              }
+            },
+            getStellaSiteAuth: () => {
+              const baseUrl =
+                state.init?.convexSiteUrl?.trim() ?? init.convexSiteUrl?.trim();
+              const authToken =
+                state.init?.authToken?.trim() ?? init.authToken?.trim();
+              if (!baseUrl || !authToken) {
+                return { ok: false, reason: "not_signed_in" };
+              }
+              return { ok: true, baseUrl, authToken };
+            },
+            requestDesktopPermission: async ({ kind }) => {
+              try {
+                const result = await peer.request<{
+                  granted: boolean;
+                  alreadyGranted: boolean;
+                }>(METHOD_NAMES.HOST_SYSTEM_REQUEST_PERMISSION, kind, {
+                  retryOnDisconnect: true,
+                });
+                return { ok: true, ...result };
+              } catch (error) {
+                return {
+                  ok: false,
+                  reason: (error as Error).message || "host_unreachable",
+                };
+              }
+            },
           },
-          requestDesktopPermission: async ({ kind }) => {
-            try {
-              const result = await peer.request<{
-                granted: boolean;
-                alreadyGranted: boolean;
-              }>(METHOD_NAMES.HOST_SYSTEM_REQUEST_PERMISSION, kind, {
-                retryOnDisconnect: true,
-              });
-              return { ok: true, ...result };
-            } catch (error) {
-              return {
-                ok: false,
-                reason: (error as Error).message || "host_unreachable",
-              };
-            }
-          },
-        },
-      });
-    } catch (error) {
-      console.warn(
-        "[cli-bridge] Failed to start CLI bridge server:",
-        (error as Error).message,
-      );
-      state.cliBridgeServer = null;
-    }
+        });
+        if (state.db !== db) {
+          await cliBridgeServer.stop().catch(() => undefined);
+          return;
+        }
+        state.cliBridgeServer = cliBridgeServer;
+      } catch (error) {
+        console.warn(
+          "[cli-bridge] Failed to start CLI bridge server:",
+          (error as Error).message,
+        );
+        if (state.db === db) {
+          state.cliBridgeServer = null;
+        }
+      }
+    };
 
     // ---- self-mod apply orchestration ----
     // The worker server owns morph orchestration: each finalize/cancel that
@@ -1320,7 +1312,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               return review.text;
             },
             runBlockingLocalAgent: async (request) =>
-              await ensureRunner().runBlockingLocalAgent(request),
+              await (
+                await ensureRunnerInitialized()
+              ).runBlockingLocalAgent(request),
             ...(payload.signal ? { signal: payload.signal } : {}),
             log: (event, fields) => logger.info(event, fields),
           });
@@ -1460,10 +1454,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       stellaConnectCliPath: resolveRuntimeCliPath("stella-connect.js"),
       stellaMediaCliPath: resolveRuntimeCliPath("stella-media.js"),
       stellaXApiCliPath: resolveRuntimeCliPath("stella-x-api.js"),
-      // Only advertise the bridge socket once it's listening. If startup
-      // failed (state.cliBridgeServer === null) the CLI gracefully falls
-      // back to exit-2 `auth_required` instead of dialing a dead socket.
-      cliBridgeSocketPath: state.cliBridgeServer?.socketPath,
+      // The bridge listens in post-ready startup. Advertise the stable socket
+      // path up front so shells spawned after the bridge comes online can call
+      // back into the host without rebuilding the runner.
+      cliBridgeSocketPath: bridgePaths.cliBridgeSocketPath,
     };
 
     // Install the morph-cover revert handler. Lives here (inside
@@ -1623,7 +1617,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     runner.setCloudSyncEnabled(init.cloudSyncEnabled);
     runner.setModelCatalogUpdatedAt(init.modelCatalogUpdatedAt);
     runner.start();
-    await runner.waitUntilInitialized();
 
     const socialSessionService = new SocialSessionService({
       getWorkspaceRoot: () => init.stellaWorkspacePath,
@@ -1667,6 +1660,45 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         emitVoiceSelfModHmrState(payload);
       },
     });
+
+    setTimeout(() => {
+      void (async () => {
+        const startupStartedAt = Date.now();
+        const connectorSweep = await sweepStaleConnectorBridgeProcesses(
+          init.stellaHomePath,
+          { currentWorkerPid: process.pid },
+        ).catch((error) => {
+          console.warn(
+            "[connector-bridge] Failed to sweep stale connector helpers:",
+            (error as Error).message,
+          );
+          return null;
+        });
+        if (connectorSweep?.stopped) {
+          console.warn(
+            `[connector-bridge] Stopped ${connectorSweep.stopped} stale connector helper(s).`,
+          );
+        }
+        runEventLogStartupBackfill();
+        await selfModHmrController.forceResumeAll().catch((error) => {
+          console.warn(
+            "[self-mod-hmr] Failed to clear stale Vite state during worker initialization:",
+            (error as Error).message,
+          );
+          return false;
+        });
+        await startCliBridge();
+        await runner.waitUntilInitialized().catch((error) => {
+          console.warn(
+            "[runtime-worker] Runner initialization finished with an error:",
+            (error as Error).message,
+          );
+        });
+        getFileLogger()?.process("startup.post-ready-complete", {
+          ms: Date.now() - startupStartedAt,
+        });
+      })();
+    }, 0);
 
     return {
       protocolVersion: STELLA_RUNTIME_PROTOCOL_VERSION,
@@ -1748,7 +1780,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
     // Auth identity and the catalog version are the two cache-key inputs
     // the runtime controls; re-warm when either moves.
-    if (patch.authToken !== undefined || patch.modelCatalogUpdatedAt !== undefined) {
+    if (
+      patch.authToken !== undefined ||
+      patch.modelCatalogUpdatedAt !== undefined
+    ) {
       scheduleModelCatalogWarm();
     }
   };
@@ -1953,7 +1988,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         mergedAttachmentCount: mergedAttachments.length,
         hasWindowScreenshotAttachment: Boolean(windowScreenshotAttachment),
       });
-      const result = await ensureRunner().handleLocalChat(
+      const result = await (
+        await ensureRunnerInitialized()
+      ).handleLocalChat(
         {
           conversationId: payload.conversationId,
           userMessageId,
@@ -2417,7 +2454,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         throw new Error("message is required.");
       }
 
-      const delivered = await ensureRunner().executeTool(
+      const delivered = await (
+        await ensureRunnerInitialized()
+      ).executeTool(
         "send_input",
         {
           thread_id: threadId,
@@ -2606,7 +2645,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const materializedImageAttachments = await materializeImageAttachments(
         payload.attachments,
       );
-      return await ensureRunner().runAutomationTurn({
+      return await (
+        await ensureRunnerInitialized()
+      ).runAutomationTurn({
         ...payload,
         ...(materializedImageAttachments.length > 0
           ? {
@@ -2623,7 +2664,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     METHOD_NAMES.INTERNAL_WORKER_RUN_BLOCKING_AGENT,
     async (params) => {
       const payload = params as RuntimeLocalAgentRequest;
-      return await ensureRunner().runBlockingLocalAgent({
+      return await (
+        await ensureRunnerInitialized()
+      ).runBlockingLocalAgent({
         ...payload,
         agentType: payload.agentType ?? "general",
       });
@@ -2634,7 +2677,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     METHOD_NAMES.INTERNAL_WORKER_CREATE_BACKGROUND_AGENT,
     async (params) => {
       const payload = params as RuntimeLocalAgentRequest;
-      return await ensureRunner().createBackgroundAgent({
+      return await (
+        await ensureRunnerInitialized()
+      ).createBackgroundAgent({
         ...payload,
         agentType: payload.agentType ?? "general",
       });
@@ -2671,7 +2716,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         query: string;
         category?: string;
       };
-      return await ensureRunner().webSearch(payload.query, {
+      return await (
+        await ensureRunnerInitialized()
+      ).webSearch(payload.query, {
         category: payload.category,
       });
     },
