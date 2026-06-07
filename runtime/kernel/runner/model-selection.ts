@@ -49,6 +49,7 @@ export const resolveRunnerLlmRouteWithMetadata = async (
     site,
     deviceId: context.deviceId,
     modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
+    stellaHome: context.stellaHome,
   });
 };
 
