@@ -65,7 +65,7 @@ export const attachJsonRpcPeerToStreams = (args: {
         output.cork?.();
         process.nextTick(flushCork);
       }
-      args.output.write(`${JSON.stringify(message)}\n`);
+      output.write(`${JSON.stringify(message)}\n`);
     },
     {
       requestTimeoutMs: args.requestTimeoutMs,
