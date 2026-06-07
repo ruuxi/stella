@@ -31,6 +31,31 @@ const MODIFIER_KEYCODES: Record<
   Shift: new Set([LEFT_SHIFT, RIGHT_SHIFT]),
 };
 
+// Candidate uIOhook keycodes that any radial trigger can possibly watch:
+// every single-key trigger uses a code in 1..57, and the SystemChord adds the
+// extended Option/Alt + Cmd/Meta codes. Probed once per trigger change to
+// precompute `watchedRadialKeycodes`; never read on the per-event hot path.
+const RADIAL_TRIGGER_CANDIDATE_KEYCODES: readonly number[] = [
+  ...Array.from({ length: 57 }, (_, i) => i + 1),
+  RIGHT_ALT,
+  LEFT_META,
+  RIGHT_META,
+];
+
+// Modifier keycodes a chord trigger may use. Watched wholesale when the trigger
+// is a chord (see recomputeWatchedRadialKeycodes); over-inclusive on purpose so
+// the hot-path early-return can never miss a chord-participating key.
+const RADIAL_TRIGGER_MODIFIER_KEYCODES: readonly number[] = [
+  LEFT_ALT,
+  RIGHT_ALT,
+  LEFT_META,
+  RIGHT_META,
+  LEFT_CONTROL,
+  RIGHT_CONTROL,
+  LEFT_SHIFT,
+  RIGHT_SHIFT,
+];
+
 const LEFT_MOUSE_BUTTON = 1;
 
 // Max time (ms) between the first Alt keyup and the second Alt keydown for
@@ -126,6 +151,13 @@ class DoubleTapModifierDetector {
     return MODIFIER_KEYCODES[this.modifier]?.has(keycode) ?? false;
   }
 
+  // Cheap predicate for the keydown/keyup hot-path early-return: when the
+  // double-tap modifier is "Off" the detector ignores every key, so callers
+  // can skip per-event work entirely. Mirrors the "Off" guard in isModifierKey.
+  isWatching() {
+    return this.modifier !== "Off";
+  }
+
   notifyModifierKeydown(now: number) {
     if (this.state === "first-up") {
       if (now - this.firstTapUpAt <= DOUBLE_TAP_WINDOW_MS) {
@@ -181,6 +213,12 @@ export class MouseHookManager {
   private pressedKeycodes = new Set<number>();
   private radialActive = false;
   private radialTriggerKey: RadialTriggerCode;
+  // Precomputed set of keycodes that the *current* radial trigger reacts to.
+  // Built only when the trigger changes (constructor / setRadialTriggerKey), so
+  // the keydown/keyup hot-path can decide relevance with a single Set lookup
+  // instead of calling matchesTriggerKey() (which scans pressedKeycodes) on
+  // every system-wide keystroke.
+  private watchedRadialKeycodes: Set<number> = new Set();
   private readonly doubleTapDetector: DoubleTapModifierDetector | null;
   private lastLeftDownPoint: { x: number; y: number } | null = null;
   private dictationKeyDownAt: number | null = null;
@@ -194,6 +232,7 @@ export class MouseHookManager {
   ) {
     this.events = events;
     this.radialTriggerKey = radialTriggerKey;
+    this.recomputeWatchedRadialKeycodes();
     this.doubleTapDetector = events.onDoubleTapModifier
       ? new DoubleTapModifierDetector(
           miniDoubleTapModifier,
@@ -246,6 +285,46 @@ export class MouseHookManager {
 
   setRadialTriggerKey(radialTriggerKey: RadialTriggerCode) {
     this.radialTriggerKey = radialTriggerKey;
+    this.recomputeWatchedRadialKeycodes();
+  }
+
+  // Rebuild the set of keycodes the current trigger reacts to, using only the
+  // existing isRadialTriggerPressed() contract so detection stays byte-for-byte
+  // identical to matchesTriggerKey(). Off the hot path: only runs on trigger
+  // change.
+  //   - Single-key triggers: a key is watched iff pressing it alone satisfies
+  //     the trigger (single reused 1-element probe set → no per-call alloc).
+  //   - Chord triggers: no single key satisfies them, so we instead detect the
+  //     chord (full candidate set passes, no singleton does) and watch every
+  //     modifier candidate. Over-inclusion here is always safe — it only makes
+  //     the hot-path early-return fire slightly less often, never wrong.
+  private recomputeWatchedRadialKeycodes() {
+    const watched = new Set<number>();
+    const probe = new Set<number>();
+    for (const keycode of RADIAL_TRIGGER_CANDIDATE_KEYCODES) {
+      probe.clear();
+      probe.add(keycode);
+      if (
+        isRadialTriggerPressed(this.radialTriggerKey, probe, process.platform)
+      ) {
+        watched.add(keycode);
+      }
+    }
+    if (watched.size === 0) {
+      const allCandidates = new Set(RADIAL_TRIGGER_CANDIDATE_KEYCODES);
+      if (
+        isRadialTriggerPressed(
+          this.radialTriggerKey,
+          allCandidates,
+          process.platform,
+        )
+      ) {
+        for (const keycode of RADIAL_TRIGGER_MODIFIER_KEYCODES) {
+          watched.add(keycode);
+        }
+      }
+    }
+    this.watchedRadialKeycodes = watched;
   }
 
   setMiniDoubleTapModifier(modifier: MiniDoubleTapModifier) {
@@ -261,6 +340,26 @@ export class MouseHookManager {
       this.radialTriggerKey,
       this.pressedKeycodes,
       process.platform,
+    );
+  }
+
+  // Hot-path gate: returns true when this keystroke cannot affect any gesture,
+  // so handleKeydown/handleKeyup can bail before any allocation, Set mutation,
+  // matchesTriggerKey() scan, isDictationPushToTalkEnabled?.() call or Date.now()
+  // — the common case while the user types in another app. A key is irrelevant
+  // only when (a) it is not part of the radial trigger (so it cannot start/end
+  // the radial, and skipping it cannot leave stale pressedKeycodes), (b) it is
+  // not Alt (so it cannot start/stop push-to-talk dictation), (c) the double-tap
+  // detector is not watching, (d) no dictation press is in flight, and (e) the
+  // radial is not currently open. When any feature IS live the full handler runs
+  // unchanged. Cheap: only Set lookups and field reads.
+  private isIrrelevantHotPathKey(keycode: number): boolean {
+    return (
+      !this.watchedRadialKeycodes.has(keycode) &&
+      !MODIFIER_KEYCODES.Alt.has(keycode) &&
+      this.doubleTapDetector?.isWatching() !== true &&
+      this.dictationKeyDownAt === null &&
+      !this.radialActive
     );
   }
 
@@ -349,6 +448,9 @@ export class MouseHookManager {
       this.suppressActiveGestures();
       return;
     }
+    // Perf: skip the per-event gesture work for keystrokes that cannot affect
+    // any gesture (kept identical when a feature is live). See isIrrelevantHotPathKey.
+    if (this.isIrrelevantHotPathKey(event.keycode)) return;
     const wasAlreadyDown = this.pressedKeycodes.has(event.keycode);
     this.pressedKeycodes.add(event.keycode);
     const isAlt = MODIFIER_KEYCODES.Alt.has(event.keycode);
@@ -436,6 +538,9 @@ export class MouseHookManager {
       this.suppressActiveGestures();
       return;
     }
+    // Perf: skip the per-event gesture work for keystrokes that cannot affect
+    // any gesture (kept identical when a feature is live). See isIrrelevantHotPathKey.
+    if (this.isIrrelevantHotPathKey(event.keycode)) return;
     const wasTriggerHeld = this.matchesTriggerKey();
     this.pressedKeycodes.delete(event.keycode);
     const isAlt = MODIFIER_KEYCODES.Alt.has(event.keycode);
