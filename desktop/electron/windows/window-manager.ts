@@ -1293,11 +1293,24 @@ export class WindowManager {
         this.setLastActiveWindowMode('mini')
 
         if (
-          fullWasHiddenBeforeRaise &&
           fullWindow &&
           !fullWindow.isDestroyed() &&
-          fullWindow.isVisible()
+          fullWindow.isVisible() &&
+          (process.platform === 'win32' || fullWasHiddenBeforeRaise)
         ) {
+          // Windows: the mini replaces the full shell as the active surface
+          // (unlike macOS, where the mini is an NSPanel that floats over the
+          // full window and we deliberately leave it alone). Leaving the full
+          // window visible behind the mini forced the user to dismiss it
+          // separately — and dismissing via its "X" routes through the
+          // close→minimize-to-tray handler, which is what surfaced as
+          // "opening the mini sent the full window to the tray." Hide it
+          // cleanly with `window.hide()` (never `close()`), so opening the
+          // mini just hides the full shell; `showWindow('full')` restores it.
+          //
+          // On macOS/Linux we keep the original behavior: only re-hide the
+          // full window if it was already hidden before the raise (focusAndRaise
+          // can un-hide owned windows as a side effect).
           this.hideWindow(fullWindow, { preserveExternalFocus: true })
         }
       }

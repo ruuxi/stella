@@ -83,6 +83,27 @@ const includesAny = (
   matchers: readonly string[],
 ): boolean => matchers.some((matcher) => normalized.includes(matcher))
 
+/**
+ * True when an error reason is a Stella usage/limit/auth condition that needs a
+ * sign-in / upgrade CTA (anon cap reached, plan limit, rate limit, expired
+ * session). Used to decide whether a *stopped* run or a *failed* start is a
+ * "you've run out / need to sign in" situation versus a transient hiccup — so
+ * we can surface the right actionable toast in both spots, not just on the next
+ * send.
+ */
+export const isStellaLimitOrAuthReason = (
+  reason: string | null | undefined,
+): boolean => {
+  const normalized = normalizeErrorText(reason).toLowerCase()
+  if (!normalized) return false
+  return (
+    includesAny(normalized, signInRequiredMatchers) ||
+    includesAny(normalized, billingMatchers) ||
+    includesAny(normalized, rateLimitMatchers) ||
+    includesAny(normalized, authMatchers)
+  )
+}
+
 export const resolveStellaProviderErrorToast = (
   reason: string | null | undefined,
 ): ToastOptions => {

@@ -30,6 +30,12 @@
   background-clip: padding-box;
   border: 1px solid var(--border-weak);
   overflow: hidden;
+  /* These dialogs use `fit` (auto-height container with no viewport cap), so a
+     long feedback message, a vertically-resized textarea, or simply a short
+     window (e.g. the mini shell) could push the action buttons off-screen with
+     no way to scroll to them. Cap to the viewport so the inner body can scroll
+     instead of clipping. */
+  max-height: calc(100vh - 16px);
 }
 
 .sidebar-feedback-dialog [data-slot="dialog-header"],
@@ -84,11 +90,20 @@
   gap: 10px;
   padding: 4px 28px 24px;
   align-self: stretch;
+  /* Keep the actions pinned below the scrollable body so they never get
+     compressed away when the dialog is height-capped. */
+  flex-shrink: 0;
 }
 
 .sidebar-feedback-body {
   padding: 16px 28px 10px;
   align-self: stretch;
+  /* Take the leftover height and scroll internally so the textarea / long
+     message never pushes the Send button out of the (now height-capped)
+     dialog. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar-feedback-body [data-slot="input-wrapper"] {

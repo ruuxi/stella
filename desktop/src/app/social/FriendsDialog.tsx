@@ -12,6 +12,7 @@ import { TextField } from "@/ui/text-field";
 import { Avatar } from "@/ui/avatar";
 import { useSocialFriends } from "./hooks/use-social-friends";
 import { useSocialProfile } from "./hooks/use-social-profile";
+import { getSocialActionErrorMessage } from "./social-errors";
 
 type FriendsDialogProps = {
   open: boolean;
@@ -62,7 +63,10 @@ export function FriendsDialog({
     } catch (err) {
       setStatus({
         type: "error",
-        text: err instanceof Error ? err.message : "Something went wrong",
+        text: getSocialActionErrorMessage(
+          "Couldn't send that friend request. Check the username and try again.",
+          err,
+        ),
       });
     } finally {
       setSending(false);

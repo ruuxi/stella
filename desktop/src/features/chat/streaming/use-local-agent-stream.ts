@@ -26,6 +26,10 @@ import {
 import type { AttachmentRef } from './chat-types'
 import type { ChatContext } from '@/shared/types/electron'
 import { resolveAgentNotReadyToast } from './agent-stream-errors'
+import {
+  isStellaLimitOrAuthReason,
+  resolveStellaProviderErrorToast,
+} from './stella-provider-error-toast'
 
 // Re-export for callers/tests that still import the helper from here.
 export { reconcileTerminalTaskKeysFromResumeTasks } from './store'
@@ -440,15 +444,25 @@ export function useLocalAgentStream({
               current === args.userMessageEventId ? null : current,
             )
           }
-          const toast = resolveAgentNotReadyToast(
-            (error as Error).message || null,
-          )
-          showToast({
-            title: toast.title,
-            description:
-              toast.description || (error as Error).message || 'Please try again.',
-            variant: 'error',
-          })
+          const reason = (error as Error).message || null
+          // A queued / follow-up message whose start fails because the user hit
+          // an anonymous cap or usage/auth limit must show the same actionable
+          // "Sign in to keep using Stella" toast as the live send path — not the
+          // generic "Stella is still starting up". `resolveAgentNotReadyToast`
+          // only understands local startup hiccups, so route real backend
+          // limit/auth reasons through the provider-error resolver (which
+          // carries the Sign in / Upgrade / BYOK CTAs).
+          if (isStellaLimitOrAuthReason(reason)) {
+            showToast(resolveStellaProviderErrorToast(reason))
+          } else {
+            const toast = resolveAgentNotReadyToast(reason)
+            showToast({
+              title: toast.title,
+              description:
+                toast.description || reason || 'Please try again.',
+              variant: 'error',
+            })
+          }
           args.onStartFailed?.()
         })
     },
