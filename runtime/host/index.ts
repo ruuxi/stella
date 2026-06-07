@@ -1350,11 +1350,8 @@ export class StellaRuntimeHost {
     ) {
       return;
     }
-    // Buffers are only ever armed for telegram (gated in
-    // armConnectorStreamBuffer), so any present buffer is necessarily telegram.
-    // If a second provider is added there, re-introduce a provider check here.
     const buffer = this.connectorStreamBuffersByRequestId.get(event.requestId);
-    if (!buffer) {
+    if (!buffer || buffer.provider !== "telegram") {
       return;
     }
     buffer.text += event.chunk;
