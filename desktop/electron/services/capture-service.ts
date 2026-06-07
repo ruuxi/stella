@@ -336,15 +336,34 @@ export class CaptureService {
       height: Math.floor(display.size.height * scaleFactor),
     }
 
-    const sources = await desktopCapturer.getSources({
+    const pickSource = (sources: Electron.DesktopCapturerSource[]) => {
+      const preferred = sources.find(
+        (source) => source.display_id === String(display.id),
+      )
+      return preferred ?? sources[0] ?? null
+    }
+
+    let sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize,
     })
+    let source = pickSource(sources)
 
-    const preferred = sources.find(
-      (source) => source.display_id === String(display.id),
-    )
-    const source = preferred ?? sources[0]
+    // Opening/closing the mini window (an always-on-top screen-saver-level
+    // panel) can briefly perturb the desktop source list — `getSources` has
+    // been observed returning an empty list or a source whose thumbnail hasn't
+    // been populated yet right after a window z-order change, which surfaced as
+    // "capture sometimes doesn't work after opening the mini." A single short
+    // retry lets the compositor settle and almost always yields a valid frame.
+    if (!source || source.thumbnail.isEmpty()) {
+      await new Promise((r) => setTimeout(r, 120))
+      sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize,
+      })
+      source = pickSource(sources)
+    }
+
     if (!source) {
       return null
     }

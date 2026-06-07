@@ -26,7 +26,10 @@ import {
   AGENT_STREAM_EVENT_TYPES,
 } from '../../../../../runtime/contracts/agent-runtime.js'
 import { toRunTaskId, type StreamStoreAction } from './store'
-import { resolveStellaProviderErrorToast } from './stella-provider-error-toast'
+import {
+  isStellaLimitOrAuthReason,
+  resolveStellaProviderErrorToast,
+} from './stella-provider-error-toast'
 import type {
   AgentResponseTarget,
   AgentStreamEvent,
@@ -231,10 +234,24 @@ export function useAgentEventHandler({
         })
         if (
           conversationId === activeConversationIdRef.current &&
-          args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR &&
           source === 'live'
         ) {
-          showToast(resolveStellaProviderErrorToast(args.reason || event.error))
+          const finishReason = args.reason || event.error
+          if (args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR) {
+            showToast(resolveStellaProviderErrorToast(finishReason))
+          } else if (
+            args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED &&
+            isStellaLimitOrAuthReason(finishReason)
+          ) {
+            // A run that *stops mid-flight* because the user ran out of free
+            // anonymous previews / hit a usage limit can surface as a cancel
+            // rather than an error. Without this the user is left staring at a
+            // halted agent with no explanation — the sign-in toast otherwise
+            // only appeared the next time they sent a message. Only toast when
+            // the reason actually names a limit/auth issue so ordinary
+            // user-initiated cancels stay silent.
+            showToast(resolveStellaProviderErrorToast(finishReason))
+          }
         }
         if (
           conversationId === activeConversationIdRef.current &&

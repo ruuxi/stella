@@ -2,6 +2,7 @@ import {
   isTerminalTaskLifecycleStatus,
   type TaskLifecycleStatus,
 } from '../../../../../runtime/contracts/agent-runtime.js'
+import { humanizeToolStatusText } from '../status-utils'
 import type {
   FileChangeRecord,
   ProducedFileRecord,
@@ -138,6 +139,12 @@ export function normalizeTaskDisplayStatusText(
   if (!statusText) return undefined
   const trimmed = statusText.trim()
   if (!trimmed) return undefined
+  // Spawned agents stream a raw `Running <toolName>` status (and legacy
+  // `Using <toolName>`); rewrite those to a friendly verb so the bare tool
+  // identifier never reaches the working indicator. Returns null for genuine
+  // human-readable phrases, which fall through unchanged below.
+  const humanized = humanizeToolStatusText(trimmed)
+  if (humanized) return humanized
   if (NOISY_STATUS_TEXT_PATTERN.test(trimmed)) return undefined
   if (LEGACY_CONTROL_ONLY_STATUS_TEXT.has(trimmed)) return undefined
   return trimmed

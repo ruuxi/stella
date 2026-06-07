@@ -26,6 +26,8 @@ import {
 } from "@/features/dictation/services/inworld-dictation";
 import { appendRollingLevel } from "@/features/dictation/rolling-levels";
 import { getClaimedDictationComposer } from "@/features/dictation/active-composer";
+import { showToast } from "@/ui/toast";
+import { SIGN_IN_TOAST_ACTION } from "@/shared/lib/auth-cta";
 
 export const DICTATION_TOGGLE_EVENT = "stella:dictation-toggle";
 
@@ -236,6 +238,36 @@ export const useDictation = ({
               errMessage,
             );
             setError(errMessage);
+            // Surface a toast so a failed dictation isn't silent. Local
+            // (Parakeet) transcription falls back to the managed API, which
+            // needs the user signed in — when that returns 401/unauthorized the
+            // user previously got zero feedback and assumed dictation was just
+            // broken. Detect the auth case and route it to the sign-in toast;
+            // everything else (mic permission, pipeline, transcription
+            // failures) gets a generic "didn't work" so the user still knows
+            // something happened.
+            const normalized = errMessage.toLowerCase();
+            const needsSignIn =
+              /\b401\b|\b403\b|unauthor|unauthenticated|sign[\s-]?in|not signed in/.test(
+                normalized,
+              );
+            if (needsSignIn) {
+              showToast({
+                title: "Sign in to use dictation",
+                description:
+                  "Dictation needs you signed in to Stella when on-device transcription isn't available. Sign in to keep going.",
+                variant: "error",
+                duration: 8000,
+                action: SIGN_IN_TOAST_ACTION,
+              });
+            } else {
+              showToast({
+                title: "Dictation didn't work",
+                description:
+                  "Stella couldn't transcribe that. Please try again.",
+                variant: "error",
+              });
+            }
             onErrorRef.current?.(errMessage);
           }
           if (next === "idle" || next === "error") {

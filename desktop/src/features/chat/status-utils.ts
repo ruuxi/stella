@@ -93,7 +93,225 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
     "Putting it on hold",
     "Standing by",
   ],
+
+  // ── General-agent + subagent tools ──────────────────────────────────────
+  // These run inside spawned agents. Until now the runtime streamed a raw
+  // `Running <toolName>` status (see local-agent-manager.ts), which leaked the
+  // bare tool identifier into the working indicator. `humanizeToolStatusText`
+  // below maps those onto these friendly verbs; anything not listed falls back
+  // to a neutral phrase rather than the raw name. Keep the FIRST entry the best
+  // canonical verb — the task-indicator path picks it deterministically (no
+  // seed), so position 0 is what users usually see.
+  exec_command: [
+    "Running it",
+    "Working on it",
+    "Running a command",
+    "Getting it done",
+    "On it",
+    "Handling it",
+    "Making it happen",
+    "Just a sec",
+  ],
+  bash: [
+    "Running it",
+    "Working on it",
+    "Running a command",
+    "Getting it done",
+    "On it",
+    "Handling it",
+  ],
+  read: [
+    "Reading",
+    "Looking it over",
+    "Taking a look",
+    "Reading through",
+    "Checking the file",
+    "Skimming it",
+    "Pulling it up",
+    "Having a read",
+  ],
+  write: [
+    "Writing",
+    "Saving it",
+    "Writing it out",
+    "Putting it down",
+    "Drafting the file",
+    "Getting it written",
+    "Setting it up",
+  ],
+  edit: [
+    "Editing",
+    "Making changes",
+    "Tweaking it",
+    "Updating it",
+    "Refining it",
+    "Adjusting things",
+    "Touching it up",
+  ],
+  apply_patch: [
+    "Making changes",
+    "Applying the changes",
+    "Editing the code",
+    "Patching it",
+    "Wiring it up",
+    "Putting it together",
+    "Updating the code",
+  ],
+  str_replace: [
+    "Editing",
+    "Making changes",
+    "Tweaking it",
+    "Updating the text",
+    "Swapping things out",
+    "Refining it",
+  ],
+  grep: [
+    "Searching",
+    "Looking it up",
+    "Hunting it down",
+    "Scanning through",
+    "Finding it",
+    "Digging in",
+    "Searching the files",
+  ],
+  glob: [
+    "Looking for files",
+    "Finding files",
+    "Scanning the folder",
+    "Searching files",
+    "Tracking files down",
+    "Browsing files",
+  ],
+  view_image: [
+    "Taking a look",
+    "Viewing the image",
+    "Checking the image",
+    "Looking at it",
+    "Studying the picture",
+    "Examining it",
+  ],
+  write_stdin: [
+    "Sending input",
+    "Typing it in",
+    "Passing it along",
+    "Feeding it in",
+    "Responding",
+    "Sending it over",
+  ],
+  tool_search: [
+    "Finding the right tool",
+    "Looking for tools",
+    "Picking a tool",
+    "Searching tools",
+    "Lining up the tools",
+    "Choosing how",
+  ],
+  request_credential: [
+    "Asking for access",
+    "Requesting access",
+    "Getting permission",
+    "Lining up access",
+    "Checking access",
+    "Asking to connect",
+  ],
+  multi_tool_use_parallel: [
+    "Juggling a few things",
+    "Doing several things",
+    "Working in parallel",
+    "Handling a few things",
+    "Multitasking",
+    "Running things together",
+  ],
+  dream: [
+    "Thinking it over",
+    "Mulling it over",
+    "Reflecting",
+    "Turning it over",
+    "Working it out",
+    "Connecting the dots",
+  ],
+  import_source: [
+    "Pulling it in",
+    "Importing it",
+    "Bringing it in",
+    "Loading the source",
+    "Fetching it",
+    "Reading it in",
+  ],
+  script_draft: [
+    "Drafting",
+    "Sketching it out",
+    "Writing the script",
+    "Putting it together",
+    "Outlining it",
+    "Drafting the steps",
+  ],
+  html: [
+    "Building it",
+    "Putting it together",
+    "Laying it out",
+    "Designing it",
+    "Mocking it up",
+    "Drafting the page",
+  ],
+  task: [
+    "On it",
+    "Handling it",
+    "Working on it",
+    "Taking care of it",
+    "Getting it done",
+    "Making it happen",
+  ],
+
+  // Schedule subagent
+  cron_add: ["Scheduling it", "Setting it up", "Adding it", "Penciling it in", "Booking it"],
+  cron_list: ["Checking the schedule", "Looking at what's planned", "Reviewing the schedule", "Pulling up the schedule"],
+  cron_remove: ["Clearing it", "Removing it", "Canceling it", "Taking it off the schedule"],
+  cron_run: ["Running it", "Kicking it off", "Triggering it", "Setting it in motion"],
+  cron_update: ["Updating the schedule", "Adjusting it", "Rescheduling", "Tweaking the timing"],
+  heartbeat_get: ["Checking in", "Taking a pulse", "Checking status", "Seeing how it's going"],
+  heartbeat_run: ["Running a check", "Checking in", "Taking a pulse", "Testing it"],
+  heartbeat_upsert: ["Saving the status", "Updating the check-in", "Logging it", "Recording it"],
+
+  // Fashion subagent
+  fashion_search_products: ["Browsing pieces", "Hunting for looks", "Searching the racks", "Finding options", "Pulling pieces"],
+  fashion_get_product_details: ["Checking the details", "Looking it up", "Reading the specs", "Studying the piece"],
+  fashion_get_context: ["Checking your style", "Reading your taste", "Pulling your preferences", "Getting the vibe"],
+  fashion_create_outfit: ["Styling a look", "Putting a look together", "Building the outfit", "Pulling it together", "Crafting the fit"],
+  fashion_create_checkout: ["Setting up checkout", "Getting the order ready", "Building the cart", "Prepping the order"],
+  fashion_mark_outfit_ready: ["Finishing the look", "Wrapping it up", "Finalizing the fit", "Calling it ready"],
+  fashion_mark_outfit_failed: ["Reworking it", "Noting the issue", "Adjusting course", "Trying again"],
+
+  // iMessage / Linq subagent
+  linq_send_message: ["Texting them", "Sending the message", "Firing off a text", "Writing back", "Replying"],
+  linq_react_to_message: ["Reacting", "Adding a reaction", "Tapping back", "Responding"],
+  linq_send_voice_memo: ["Recording a memo", "Sending a voice note", "Recording it", "Sending audio"],
+  linq_share_contact_card: ["Sharing the contact", "Sending the card", "Passing it along", "Sharing details"],
 };
+
+// Verb-prefixed tool status emitted by spawned agents — e.g. the runtime's
+// `Running <toolName>` fallback (local-agent-manager.ts), plus legacy
+// `Using <toolName>`. Capturing group 1 is the bare tool identifier.
+const RAW_TOOL_STATUS_PATTERN =
+  /^(?:running|using|executing|calling|invoking)\s+([A-Za-z0-9_.:-]+)$/i;
+
+/**
+ * Turn a raw `Running <toolName>` / `Using <toolName>` status string into a
+ * friendly verb so the bare tool identifier never reaches the UI. Returns
+ * `null` when the text isn't one of those single-token tool statuses (so
+ * genuine human-readable phrases pass through untouched). For a recognized
+ * pattern with an UNmapped tool, returns a neutral fallback verb rather than
+ * the raw name — leaking the identifier is exactly the bug we're fixing.
+ */
+export function humanizeToolStatusText(
+  statusText: string | undefined,
+): string | null {
+  if (!statusText) return null;
+  const match = RAW_TOOL_STATUS_PATTERN.exec(statusText.trim());
+  if (!match) return null;
+  const toolName = match[1]!;
+  return computeStatus({ toolName });
+}
 
 const IDLE_VARIATIONS: readonly string[] = [
   "Thinking",

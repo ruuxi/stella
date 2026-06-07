@@ -7,6 +7,49 @@ import {
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
 import { computeAnalyserEnergy } from "@/features/voice/services/audio-energy";
+import { showToast } from "@/ui/toast";
+import {
+  OPEN_SETTINGS_TOAST_ACTION,
+  SIGN_IN_TOAST_ACTION,
+} from "@/shared/lib/auth-cta";
+
+/**
+ * Realtime voice retries transient connection blips silently, so we only want
+ * to interrupt the user with a toast when the failure is something *they* must
+ * act on — they aren't signed in, or the chosen provider isn't connected.
+ * These are the messages the voice backend raises (voice-handlers.ts), e.g.
+ * "Connect OpenAI in Settings to use it for voice." Anything else stays silent
+ * and rides the existing auto-retry.
+ */
+const VOICE_NEEDS_SIGN_IN = /sign[\s-]?in|not signed in|log[\s-]?in/i;
+const VOICE_NEEDS_SETUP =
+  /connect .* in settings|in settings|api key|not configured|no .* key|add .* key|unauthor|unauthenticated|\b401\b|\b403\b/i;
+
+const resolveVoiceErrorToast = (
+  errorMessage: string | undefined,
+): Parameters<typeof showToast>[0] | null => {
+  const message = (errorMessage ?? "").trim();
+  if (!message) return null;
+  if (VOICE_NEEDS_SIGN_IN.test(message)) {
+    return {
+      title: "Sign in to use voice",
+      description: message,
+      variant: "error",
+      duration: 8000,
+      action: SIGN_IN_TOAST_ACTION,
+    };
+  }
+  if (VOICE_NEEDS_SETUP.test(message)) {
+    return {
+      title: "Voice needs setup",
+      description: message,
+      variant: "error",
+      duration: 8000,
+      action: OPEN_SETTINGS_TOAST_ACTION,
+    };
+  }
+  return null;
+};
 
 type RuntimeVoiceState = {
   sessionState: VoiceSessionState;
@@ -73,6 +116,10 @@ export function VoiceRuntimeRoot() {
   const speakingRef = useRef(false);
   const userSpeakingRef = useRef(false);
   const sessionStateRef = useRef<VoiceSessionState>("idle");
+  // Dedupe the actionable voice-error toast: the manager re-emits "error" on
+  // every retry tick, so only toast once per distinct error message until the
+  // session recovers (leaves the error state).
+  const lastVoiceErrorToastRef = useRef<string | null>(null);
   const resolvedConversationId = state.conversationId ?? bootConversationId;
 
   const publishRuntimeState = (patch: Partial<RuntimeVoiceState>) => {
@@ -232,8 +279,21 @@ export function VoiceRuntimeRoot() {
       inputActiveRef,
       analyserRef,
       outputAnalyserRef,
-      onStateChange: (sessionState) => {
+      onStateChange: (sessionState, errorMessage) => {
         sessionStateRef.current = sessionState;
+        if (sessionState === "error") {
+          // Only interrupt the user when the failure is theirs to fix (not
+          // signed in / provider not connected). Otherwise the silent
+          // auto-retry handles it. Dedupe per distinct message so retries
+          // don't restack the toast.
+          const toast = resolveVoiceErrorToast(errorMessage);
+          if (toast && lastVoiceErrorToastRef.current !== (errorMessage ?? "")) {
+            lastVoiceErrorToastRef.current = errorMessage ?? "";
+            showToast(toast);
+          }
+        } else {
+          lastVoiceErrorToastRef.current = null;
+        }
         publishRuntimeState({
           sessionState,
           isConnected: sessionState === "connected",

@@ -145,6 +145,16 @@ class OverlayWindow {
     })
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
+    // The overlay is a transparent, screen-spanning utility layer (radial dial,
+    // region-capture chrome, morph "glim" transition, window highlights). It
+    // must never show up in Stella's own screen captures — otherwise a capture
+    // taken while the overlay is up records the overlay window itself. On
+    // Windows the region-capture suspend (`fadeOut`) races DWM compositing, so
+    // the overlay could still bleed into the grab. `setContentProtection`
+    // (WDA_EXCLUDEFROMCAPTURE on Windows 10 2004+, NSWindowSharingNone on
+    // macOS) excludes it from every capture path regardless of timing, while
+    // leaving it fully visible to the user.
+    this.window.setContentProtection(true)
     if (process.platform === 'darwin') {
       // Keep the overlay attached to the active Space on macOS. Without this,
       // the hidden panel stays bound to whichever Space it first materialized

@@ -176,7 +176,15 @@ export async function shouldShowMorphForWindow(
     if (batchInfos) {
       infos = batchInfos
     } else if (platform === 'win32') {
-      return { showMorph: false, reason: 'probe-failed' }
+      // The native helper couldn't answer the occlusion probe (missing/old
+      // binary or a transient failure). The window already passed the
+      // destroyed / hidden / minimized checks above, so the only thing we
+      // can't confirm is whether another app is covering it. Suppressing the
+      // morph here meant Windows users never saw the transition at all
+      // whenever the helper was unavailable (the "glim" animation looked
+      // broken). Prefer showing it — a brief overlay over a covered window is
+      // a far smaller papercut than the animation silently never playing.
+      return { showMorph: true, reason: 'probe-failed' }
     } else {
       infos = await Promise.all(
         nativePoints.map((point) =>

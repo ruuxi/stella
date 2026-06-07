@@ -1,9 +1,52 @@
-import { BrowserWindow, type RenderProcessGoneDetails } from 'electron'
+import { BrowserWindow, screen, type RenderProcessGoneDetails } from 'electron'
 import { resolveAppIconPath } from '../app-icon.js'
 import { FULL_SHELL_MIN_SIZE } from '../layout-constants.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
 import type { ShellWindowDidFailLoadDetails } from './shell-window-factory.js'
 import { ShellWindowController } from './shell-window-controller.js'
+
+const FULL_SHELL_DEFAULT_SIZE = { width: 1400, height: 940 } as const
+
+/**
+ * The default 1400×940 can exceed the usable screen on Windows/Linux, where the
+ * taskbar/panel eats into the display. `screen.workArea` already excludes that
+ * chrome (and the macOS menu bar), so clamping the initial size to it keeps the
+ * bottom of the shell on screen instead of hidden behind the taskbar. We also
+ * center within the work area so a clamped window doesn't start flush against an
+ * edge. macOS keeps Electron's default centering (no explicit x/y) since the
+ * 940px height comfortably fits under the menu bar on supported displays.
+ */
+const resolveFullWindowInitialBounds = (): {
+  width: number
+  height: number
+  x?: number
+  y?: number
+} => {
+  const { width: dw, height: dh } = FULL_SHELL_DEFAULT_SIZE
+  if (process.platform === 'darwin') {
+    return { width: dw, height: dh }
+  }
+  try {
+    const workArea = screen.getPrimaryDisplay().workArea
+    const width = Math.max(
+      FULL_SHELL_MIN_SIZE.width,
+      Math.min(dw, workArea.width),
+    )
+    const height = Math.max(
+      FULL_SHELL_MIN_SIZE.height,
+      Math.min(dh, workArea.height),
+    )
+    const x = Math.round(workArea.x + Math.max(0, (workArea.width - width) / 2))
+    const y = Math.round(
+      workArea.y + Math.max(0, (workArea.height - height) / 2),
+    )
+    return { width, height, x, y }
+  } catch {
+    // `screen` can throw if queried before the app is ready; fall back to the
+    // raw default rather than block window creation.
+    return { width: dw, height: dh }
+  }
+}
 
 type FullWindowControllerOptions = {
   electronDir: string
@@ -31,10 +74,13 @@ export class FullWindowController {
         const isMac = process.platform === 'darwin'
         const useNativeVibrancy = isMac && process.env.STELLA_STATIC_PREVIEW !== '1'
         const windowIcon = !isMac ? resolveAppIconPath(this.options.electronDir) : undefined
+        const initialBounds = resolveFullWindowInitialBounds()
 
         return new BrowserWindow({
-          width: 1400,
-          height: 940,
+          width: initialBounds.width,
+          height: initialBounds.height,
+          x: initialBounds.x,
+          y: initialBounds.y,
           minWidth: FULL_SHELL_MIN_SIZE.width,
           minHeight: FULL_SHELL_MIN_SIZE.height,
           // Keep the full shell opaque. Transparent BrowserWindows are

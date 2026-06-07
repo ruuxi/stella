@@ -20,8 +20,6 @@ const WINDOWS_RECENT_APPS_CACHE_MS = 10_000
 const WINDOWS_NATIVE_HELPER_TIMEOUT_MS = 1_000
 const WINDOWS_NATIVE_SLOW_SUCCESS_THRESHOLD_MS = 750
 const WINDOWS_NATIVE_SLOW_SUCCESS_BACKOFF_MS = 60_000
-const WINDOWS_RECENT_APPS_ENABLED =
-  process.env.STELLA_WIN32_RECENT_APPS === '1'
 
 type RawListedApp = {
   name?: string
@@ -303,10 +301,6 @@ const listRecentAppsWindows = async (
   limit: number,
 ): Promise<RecentApp[] | null> => {
   if (limit <= 0) return []
-  // Windows helper probes have shown machine-wide stalls on some systems even
-  // when the helper is timeout-bound. Keep Windows auto-context suggestions off
-  // until this can be replaced with a non-spawning, push/cached signal.
-  if (!WINDOWS_RECENT_APPS_ENABLED) return []
 
   // Prefer the native EnumWindows helper (a single in-process walk, no
   // PowerShell cold start). Fall back to the PowerShell snapshot when the
