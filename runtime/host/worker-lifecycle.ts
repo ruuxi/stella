@@ -73,6 +73,19 @@ export const disconnectWorker = async (
   child: ChildProcessWithoutNullStreams,
   timeoutMs = 1_500,
 ) => {
+  // Fast path: the process already exited (e.g. an explicit killWorker() just
+  // confirmed it dead, so its socket is already closing). The shim's `exit`
+  // event has likely fired before we could attach a listener, which would make
+  // the loop below sit out the entire timeout fallback waiting for an event
+  // that won't come again. Closing stdin is a no-op on a dead socket.
+  if (child.exitCode != null || child.signalCode != null) {
+    try {
+      child.stdin?.end();
+    } catch {
+      // Best effort.
+    }
+    return;
+  }
   await new Promise<void>((resolve) => {
     let settled = false;
     const finish = () => {
