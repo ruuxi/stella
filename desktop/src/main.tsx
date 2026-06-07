@@ -10,14 +10,13 @@ import "./platform/dev/vite-error-recovery";
 import "./shared/lib/interface-preferences";
 import { applyLowPowerDocumentFlag } from "./shared/lib/device-perf";
 import "./shared/lib/native-font-smoothing";
-
-applyLowPowerDocumentFlag();
 import { installRendererErrorReporting } from "./platform/diagnostics/report-error";
 import { App } from "./App.tsx";
 import { AppProviders } from "./context/AppProviders";
 import { DesktopConvexAuthProvider } from "./global/auth/DesktopConvexAuthProvider";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 
+applyLowPowerDocumentFlag();
 installRendererErrorReporting();
 
 const requestedWindow = new URLSearchParams(window.location.search).get(
