@@ -69,6 +69,7 @@ import {
   type LogFields,
 } from "../../../runtime/observability/file-logger.js";
 import { waitForConnectedRunner } from "./runtime-availability.js";
+import { invalidateNativeHelperPathCache } from "../native-helper-path.js";
 
 const INSTALL_MANIFEST_BASENAME = "stella-install.json";
 const RELEASE_MANIFEST_BASENAME = "stella-release.json";
@@ -454,6 +455,7 @@ const refreshNativeHelpers = async (
           : `Native helper refresh failed with exit code ${result.exitCode}.`,
       );
     }
+    invalidateNativeHelperPathCache();
     return { manifestUrl, stdout: result.stdout, stderr: result.stderr };
   }
   throw new Error(

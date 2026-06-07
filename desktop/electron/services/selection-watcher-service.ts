@@ -14,6 +14,16 @@ const MIN_TEXT_CHARS = 2
  * so the round-trip would just slow every click down by ~250ms.
  */
 const DRAG_DISTANCE_THRESHOLD = 6
+/**
+ * Coalescing window for the macOS clipboard-fallback probe. The synthetic-
+ * Cmd+C pasteboard round-trip is the expensive, side-effectful spawn; in
+ * apps that never expose `AXSelectedText` (Slack, terminals) every drag
+ * would otherwise re-pay it back-to-back. Skipping a fresh fallback within
+ * this window dedupes overlapping helper spawns without affecting the cheap
+ * AX-only pass, so genuine new selections are still detected promptly.
+ * Windows already short-circuits this path via its non-drag governor.
+ */
+const MAC_CLIPBOARD_FALLBACK_COALESCE_MS = 600
 
 export type SelectionChipPayload = {
   text: string
@@ -66,6 +76,11 @@ export class SelectionWatcherService {
   private currentText: string | null = null
   private autoHideTimer: ReturnType<typeof setTimeout> | null = null
   private escRegistered = false
+  // macOS-only backpressure for the expensive clipboard-fallback spawn:
+  // `true` while a fallback probe is mid-flight, and the timestamp of the
+  // last one so a rapid burst of drags can't stack synthetic-Cmd+C helpers.
+  private macFallbackInFlight = false
+  private macLastFallbackAt = 0
 
   constructor(private readonly deps: SelectionWatcherDeps) {}
 
@@ -148,7 +163,28 @@ export class SelectionWatcherService {
         // Slack, terminals, Electron-based custom text views). Gated
         // on the user actually dragging so plain clicks never pay the
         // ~250ms clipboard-round-trip cost.
-        result = await getSelectedText({ allowClipboardFallback: true })
+        //
+        // macOS perf guard: dedupe/debounce this expensive spawn so a
+        // rapid burst of qualifying drags can't stack overlapping
+        // synthetic-Cmd+C helpers. Skip if a fallback is already in
+        // flight or one ran within the coalesce window; the cheap
+        // AX-only pass above still runs every time, so a genuine new
+        // selection in AX-aware apps is unaffected. (win32 has its own
+        // non-drag governor and never reaches this branch.)
+        const now = Date.now()
+        const skipFallback =
+          process.platform === 'darwin' &&
+          (this.macFallbackInFlight ||
+            now - this.macLastFallbackAt < MAC_CLIPBOARD_FALLBACK_COALESCE_MS)
+        if (!skipFallback) {
+          this.macFallbackInFlight = true
+          try {
+            result = await getSelectedText({ allowClipboardFallback: true })
+          } finally {
+            this.macFallbackInFlight = false
+            this.macLastFallbackAt = Date.now()
+          }
+        }
       }
     } catch (error) {
       console.warn('[selection-watcher] getSelectedText failed', error)

@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 import { resolveNativeHelperPath } from "../native-helper-path.js";
+import { pidMatchesHelperBinary } from "./helper-pid-guard.js";
 import { hasMacPermission, requestMacPermission } from "../utils/macos-permissions.js";
 import {
   getChronicleEnabled,
@@ -49,11 +50,71 @@ const readConfig = async (stellaHome: string): Promise<ChronicleConfig> => {
   }
 };
 
+// The daemon is spawned detached + unref'd and the in-memory child handle is
+// dropped on spawn error, so on quit we can't rely on `this.child` alone to
+// reap it (orphan risk). Persist the pid to a file at spawn time and, if the
+// socket `stop` didn't confirm exit, SIGTERM/SIGKILL the pidfile pid — the same
+// belt-and-suspenders teardown as desktop-automation-cleanup.ts. The socket
+// stop stays the primary path.
+const chroniclePidFile = (stellaHome: string): string =>
+  path.join(stellaHome, "chronicle", "chronicle.pid");
+
+const readPidFile = (filePath: string): number | null => {
+  try {
+    const raw = readFileSync(filePath, "utf8").trim();
+    if (!raw) return null;
+    const pid = Number.parseInt(raw, 10);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+};
+
+const isProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // Exists but unsignalable → treat as alive so we still attempt SIGTERM.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export class ChronicleController {
   private child: ChildProcess | null = null;
   private binPath: string | null = null;
+  // In-memory mirror of the on-disk "Live Memory enabled" preference. This
+  // controller is the only writer of that preference in the main process, so
+  // the cache stays authoritative and lets hot callers (the rolling-summary
+  // ticks) read enablement every minute without a per-tick disk read.
+  private enabledCache: boolean | null = null;
 
   constructor(private readonly stellaHome: string) {}
+
+  // Persist the Live Memory preference and keep the in-memory cache coherent.
+  private writeMemoryPreference(pref: {
+    enabled: boolean;
+    pendingEnable: boolean;
+  }): void {
+    setChronicleMemoryPreference(this.stellaHome, pref);
+    this.enabledCache = pref.enabled;
+  }
+
+  /**
+   * Synchronous, disk-free read of whether Live Memory is currently enabled.
+   * Reflects runtime toggles (setEnabled updates the cache), so callers that
+   * poll frequently — the chronicle summary ticks — observe an enable/disable
+   * that happens mid-session without re-reading preferences.json each time.
+   */
+  isEnabledCached(): boolean {
+    if (this.enabledCache === null) {
+      this.enabledCache = getChronicleEnabled(this.stellaHome) === true;
+    }
+    return this.enabledCache;
+  }
 
   private resolveBin(): string | null {
     if (this.binPath) return this.binPath;
@@ -104,7 +165,9 @@ export class ChronicleController {
     // Live Memory is opt-in: only start when the user has explicitly
     // enabled it. A pending enable (waiting on sign-in)
     // both keep the daemon dormant.
-    if (getChronicleEnabled(this.stellaHome) !== true) {
+    const enabledNow = getChronicleEnabled(this.stellaHome) === true;
+    this.enabledCache = enabledNow;
+    if (!enabledNow) {
       return { started: false, reason: "disabled" };
     }
     if (process.platform !== "darwin") {
@@ -147,6 +210,16 @@ export class ChronicleController {
       stdio: "ignore",
     });
     this.child = child;
+    // Persist the pid so quit can reap the daemon even after the in-memory
+    // handle is dropped (spawn error / process restart). Best-effort: a missing
+    // pidfile just falls back to the socket stop.
+    if (typeof child.pid === "number") {
+      try {
+        await fs.writeFile(chroniclePidFile(this.stellaHome), String(child.pid));
+      } catch {
+        // ignored — socket stop remains the primary teardown path
+      }
+    }
     let spawnErrorMessage: string | null = null;
     child.on("error", (error) => {
       spawnErrorMessage = error.message;
@@ -199,12 +272,12 @@ export class ChronicleController {
    */
   async setPendingEnable(pending: boolean): Promise<void> {
     if (pending) {
-      setChronicleMemoryPreference(this.stellaHome, {
+      this.writeMemoryPreference({
         enabled: false,
         pendingEnable: true,
       });
     } else {
-      setChronicleMemoryPreference(this.stellaHome, {
+      this.writeMemoryPreference({
         enabled: false,
         pendingEnable: false,
       });
@@ -235,6 +308,7 @@ export class ChronicleController {
   }
 
   async stop(): Promise<void> {
+    // Primary path: ask the daemon to shut itself down over the socket.
     await this.runCommand("stop");
     if (this.child && !this.child.killed) {
       try {
@@ -244,6 +318,44 @@ export class ChronicleController {
       }
     }
     this.child = null;
+
+    // Fallback: if the socket stop didn't actually take the process down (e.g.
+    // the daemon was orphaned across a restart, so `this.child` is null),
+    // SIGTERM the persisted pid, give it a beat, then SIGKILL — then drop the
+    // pidfile so the next launch never reaps a recycled pid.
+    //
+    // Guard against pid REUSE: a stale pidfile from an unclean prior quit can
+    // point at an unrelated process the OS recycled the pid for. Only signal it
+    // when we can confirm the live process is actually our chronicle helper
+    // (command-line match); otherwise leave it alone and just drop the pidfile.
+    const pidFile = chroniclePidFile(this.stellaHome);
+    const pid = readPidFile(pidFile);
+    const bin = this.resolveBin();
+    if (
+      pid !== null &&
+      isProcessAlive(pid) &&
+      bin !== null &&
+      pidMatchesHelperBinary(pid, bin, ["--root", this.stellaHome])
+    ) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+      await sleep(150);
+      if (isProcessAlive(pid)) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    }
+    try {
+      await fs.rm(pidFile, { force: true });
+    } catch {
+      // ignored — stale pidfile is harmless (next stop re-checks liveness)
+    }
   }
 
   /**
@@ -261,7 +373,7 @@ export class ChronicleController {
   }> {
     if (!enabled) {
       // Explicit disable: also clear any staged "pending sign-in" intent.
-      setChronicleMemoryPreference(this.stellaHome, {
+      this.writeMemoryPreference({
         enabled: false,
         pendingEnable: false,
       });
@@ -274,7 +386,7 @@ export class ChronicleController {
       };
     }
     if (process.platform !== "darwin") {
-      setChronicleMemoryPreference(this.stellaHome, {
+      this.writeMemoryPreference({
         enabled: false,
         pendingEnable: false,
       });
@@ -289,7 +401,7 @@ export class ChronicleController {
     if (process.platform === "darwin" && !hasMacPermission("screen", false)) {
       const result = await requestMacPermission("screen");
       if (!result.granted) {
-        setChronicleMemoryPreference(this.stellaHome, {
+        this.writeMemoryPreference({
           enabled: false,
           pendingEnable: false,
         });
@@ -303,13 +415,13 @@ export class ChronicleController {
       }
     }
     // Promote: clear pending intent and mark enabled.
-    setChronicleMemoryPreference(this.stellaHome, {
+    this.writeMemoryPreference({
       enabled: true,
       pendingEnable: false,
     });
     const startResult = await this.start();
     if (!startResult.started) {
-      setChronicleMemoryPreference(this.stellaHome, {
+      this.writeMemoryPreference({
         enabled: false,
         pendingEnable: false,
       });

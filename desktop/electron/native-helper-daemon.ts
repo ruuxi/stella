@@ -44,6 +44,13 @@ const UNSUPPORTED_COOLDOWN_MS = 30 * 60_000
 // Bound the in-flight set so a stalled daemon can't grow memory without bound;
 // excess callers fall back to one-shot spawns until it drains.
 const MAX_PENDING = 64
+// The daemon is spawned on first probe and otherwise stays resident for the
+// whole session, holding a process slot (and, on Windows, a Defender-scanned
+// image) through long idle stretches when the hot paths aren't probing. Evict
+// it after this much inactivity; `ensureChild()` re-spawns it on demand on the
+// next `request()`, so behavior is unchanged apart from a one-time respawn cost
+// after idle. Reset on every request so an active session keeps it warm.
+const IDLE_EVICT_MS = 3 * 60_000
 
 type PendingRequest = {
   resolve: (value: string | undefined) => void
@@ -59,6 +66,27 @@ class WindowInfoDaemon {
   private disabledUntil = 0
   private childSpawnedAt = 0
   private childAnswered = false
+  private idleTimer: ReturnType<typeof setTimeout> | null = null
+
+  // (Re)arm the idle-eviction timer. Unref so a pending eviction never keeps
+  // the event loop (and thus the app) alive on its own.
+  private armIdleTimer() {
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null
+      // Only evict when truly idle; an in-flight request will rearm the timer
+      // when it settles.
+      if (this.pending.size === 0) this.kill()
+    }, IDLE_EVICT_MS)
+    this.idleTimer.unref?.()
+  }
+
+  private clearIdleTimer() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+  }
 
   private ensureChild(): DaemonChild | null {
     if (this.child) return this.child
@@ -89,6 +117,9 @@ class WindowInfoDaemon {
     this.child = child
     this.childSpawnedAt = Date.now()
     this.childAnswered = false
+    // Start the idle clock immediately so a daemon that's spawned once and
+    // never probed again still gets evicted.
+    this.armIdleTimer()
     getFileLogger()?.process('native.helper.daemon.started', {
       helper: HELPER_NAME,
     })
@@ -102,6 +133,8 @@ class WindowInfoDaemon {
     this.stdoutBuf = ''
     this.childSpawnedAt = 0
     this.childAnswered = false
+    // No live child → no idle timer to keep around.
+    this.clearIdleTimer()
     // Any in-flight requests can no longer be answered — resolve them as
     // "unavailable" so callers fall back rather than hang.
     for (const [, p] of this.pending) {
@@ -183,6 +216,10 @@ class WindowInfoDaemon {
 
     const child = this.ensureChild()
     if (!child || !child.stdin.writable) return Promise.resolve(undefined)
+
+    // Active use keeps the daemon warm: push the idle eviction out on every
+    // request so it's only killed after a genuine lull, not mid-session.
+    this.armIdleTimer()
 
     const id = this.nextId++
     const payload = `${id}\t${tokens.join('\t')}\n`
