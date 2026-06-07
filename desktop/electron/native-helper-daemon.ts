@@ -20,6 +20,10 @@ type DaemonChild = ChildProcessByStdio<Writable, Readable, null>
  *   request:  `<id>\t<token>\t<token>...\n`   (tokens mirror the one-shot CLI)
  *   response: `<id>\t<json>\n`
  *
+ * Also carries the Windows capture fast paths (`--shot <x> <y>` window capture
+ * and `--region=x,y,w,h` region capture), whose JSON inlines a base64 JPEG —
+ * still a single line, so the same line-delimited transport applies.
+ *
  * `request()` returns the raw JSON response string (caller parses it the same
  * way it parses one-shot stdout), or `undefined` when the daemon is
  * unavailable / errored / timed out — callers treat `undefined` as "fall back

@@ -6,6 +6,7 @@ import path from 'path'
 import { runNativeHelper } from './native-helper.js'
 import { requestWindowInfoDaemon } from './native-helper-daemon.js'
 import { hasMacPermission } from './utils/macos-permissions.js'
+import type { ScreenshotCapture } from './types.js'
 
 export type WindowInfo = {
   title: string
@@ -291,11 +292,97 @@ export const moveResizeWindowAtPoint = (
   })
 }
 
+type NativeShotJson = {
+  title?: string
+  process?: string
+  pid?: number
+  bounds?: WindowBounds
+  image?: string
+  imageWidth?: number
+  imageHeight?: number
+  error?: string
+}
+
+const safeParseJson = (raw: string): NativeShotJson | null => {
+  try {
+    const parsed = JSON.parse(raw) as NativeShotJson
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const shotTokens = (
+  x: number,
+  y: number,
+  options?: QueryWindowInfoOptions,
+): string[] => {
+  const tokens = ['--shot', String(x), String(y)]
+  const exclude = excludePidsArg(options)
+  if (exclude) tokens.push(exclude)
+  return tokens
+}
+
+const buildWindowCaptureFromShot = (
+  data: NativeShotJson | null,
+): WindowCapture | null => {
+  if (!data || data.error || !data.image || !data.bounds) return null
+  return {
+    windowInfo: {
+      title: typeof data.title === 'string' ? data.title : '',
+      process: typeof data.process === 'string' ? data.process : '',
+      pid: typeof data.pid === 'number' ? data.pid : 0,
+      bounds: data.bounds,
+      axTree: null,
+    },
+    screenshot: {
+      dataUrl: data.image,
+      width:
+        typeof data.imageWidth === 'number'
+          ? data.imageWidth
+          : data.bounds.width,
+      height:
+        typeof data.imageHeight === 'number'
+          ? data.imageHeight
+          : data.bounds.height,
+    },
+    axTree: null,
+  }
+}
+
 /**
- * Capture a window screenshot using the native binary's --screenshot flag.
- * Returns window info + base64 PNG data URL, or null on failure.
- * Uses PrintWindow (Windows) / CGWindowListCreateImage (macOS) to capture
- * a single window directly — no desktopCapturer enumeration needed (~15ms vs 100-500ms).
+ * Windows window capture: ask the warm `--serve` daemon for a base64 JPEG of
+ * the window at the point (one pipe write, no spawn, no temp file, no PNG
+ * double-encode), falling back to a one-shot `--shot` spawn when the daemon is
+ * unavailable. Both emit the same JSON shape.
+ */
+const captureWindowScreenshotWin32 = async (
+  x: number,
+  y: number,
+  options?: QueryWindowInfoOptions,
+): Promise<WindowCapture | null> => {
+  const tokens = shotTokens(x, y, options)
+
+  const daemonResponse = await requestWindowInfoDaemon(tokens)
+  if (daemonResponse !== undefined) {
+    const built = buildWindowCaptureFromShot(safeParseJson(daemonResponse))
+    if (built) return built
+  }
+
+  const stdout = await runNativeHelper(WINDOW_INFO_HELPER, tokens, {
+    timeout: 5000,
+    onError: () => {},
+  })
+  if (!stdout) return null
+  return buildWindowCaptureFromShot(safeParseJson(stdout))
+}
+
+/**
+ * Capture a window screenshot. On Windows this uses the daemon/base64 fast
+ * path (no temp file, JPEG); on macOS it uses the Swift helper's
+ * `--screenshot=path` flag. Returns window info + image data URL, or null.
+ * Captures a single window directly via PrintWindow (Windows) /
+ * ScreenCaptureKit (macOS) — no desktopCapturer enumeration (~15ms vs 100-500ms).
  */
 export const captureWindowScreenshot = async (
   x: number,
@@ -303,6 +390,10 @@ export const captureWindowScreenshot = async (
   options?: QueryWindowInfoOptions,
 ): Promise<WindowCapture | null> => {
   if (!hasMacPermission('screen')) return null
+
+  if (process.platform === 'win32') {
+    return captureWindowScreenshotWin32(x, y, options)
+  }
 
   const tempPath = path.join(
     tmpdir(),
@@ -314,6 +405,52 @@ export const captureWindowScreenshot = async (
   }
 
   return runWindowCapture(WINDOW_INFO_HELPER, args, tempPath)
+}
+
+/**
+ * Windows-only native region capture: BitBlt a virtual-screen rectangle
+ * (physical pixels) straight from the screen DC via the native helper,
+ * returning a base64 JPEG. Far cheaper than capturing every display at full
+ * resolution and cropping (Electron's desktopCapturer). Tries the warm daemon
+ * first, then a one-shot spawn; returns null on any failure so the caller can
+ * fall back to desktopCapturer. No-op (null) off Windows.
+ */
+export const captureRegionScreenshotNative = async (
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<ScreenshotCapture | null> => {
+  if (process.platform !== 'win32') return null
+  if (width <= 0 || height <= 0) return null
+
+  const regionArg = `--region=${Math.round(x)},${Math.round(y)},${Math.round(
+    width,
+  )},${Math.round(height)}`
+
+  const daemonResponse = await requestWindowInfoDaemon([regionArg])
+  let data = daemonResponse !== undefined ? safeParseJson(daemonResponse) : null
+
+  if (!data || !data.image) {
+    const stdout = await runNativeHelper(WINDOW_INFO_HELPER, [regionArg], {
+      timeout: 5000,
+      onError: () => {},
+    })
+    data = stdout ? safeParseJson(stdout) : null
+  }
+
+  if (!data || data.error || !data.image) return null
+  return {
+    dataUrl: data.image,
+    width:
+      typeof data.imageWidth === 'number'
+        ? data.imageWidth
+        : Math.round(width),
+    height:
+      typeof data.imageHeight === 'number'
+        ? data.imageHeight
+        : Math.round(height),
+  }
 }
 
 const HOME_CAPTURE_HELPER = 'home_capture'

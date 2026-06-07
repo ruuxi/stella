@@ -17,7 +17,10 @@ import type {
   VisionScreenshotCapture,
 } from '../types.js'
 import { toChatContextWindow } from '../types.js'
-import { captureWindowScreenshot } from '../window-capture.js'
+import {
+  captureRegionScreenshotNative,
+  captureWindowScreenshot,
+} from '../window-capture.js'
 import { hasMacPermission } from '../utils/macos-permissions.js'
 import { computeTargetDims } from '../vision-coordinate-space.js'
 
@@ -411,6 +414,20 @@ export class CaptureService {
     display: Display,
     selection: RegionSelection,
   ): Promise<ScreenshotCapture | null> {
+    // Windows: BitBlt just the selected rect from the screen DC (native helper)
+    // instead of capturing every display at full resolution and cropping. Falls
+    // through to desktopCapturer below when the native path is unavailable.
+    if (process.platform === 'win32') {
+      const scaleFactor = this.getDisplayScaleFactor(display)
+      const native = await captureRegionScreenshotNative(
+        (display.bounds.x + selection.x) * scaleFactor,
+        (display.bounds.y + selection.y) * scaleFactor,
+        selection.width * scaleFactor,
+        selection.height * scaleFactor,
+      )
+      if (native) return native
+    }
+
     const result = await this.getDisplaySource(display)
     if (!result) return null
 
