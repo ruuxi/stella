@@ -6,7 +6,7 @@ import {
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { ChatRuntimeProvider } from "@/context/chat-runtime";
 import { useChatRuntime } from "@/context/use-chat-runtime";
@@ -17,10 +17,16 @@ import { ChatColumn } from "@/app/chat/ChatColumn";
 import { ComposerAreaSelectOverlay } from "@/app/chat/ComposerAreaSelectOverlay";
 import { setActiveLocalConversationId } from "@/features/chat/services/local-chat-store";
 import { writeActiveConversationIdCache } from "@/features/chat/services/active-conversation-cache";
-import {
-  DisplaySidebar,
-  type DisplaySidebarHandle,
-} from "@/shell/DisplaySidebar";
+import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
+// The workspace panel is a ~410-line surface not needed for first
+// interaction, so it is lazy-loaded to keep it out of the always-eager
+// shell's first-paint module graph. The imperative `ref` handle is null
+// until the chunk mounts; every consumer (`use-workspace-panel-events`,
+// `use-display-payload-routing`) already accesses it defensively with `?.`,
+// and only from event/async callbacks — never synchronously on mount.
+const DisplaySidebar = lazy(() =>
+  import("@/shell/DisplaySidebar").then((m) => ({ default: m.DisplaySidebar })),
+);
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import {
   displayTabs,
@@ -430,7 +436,9 @@ function RootChrome() {
         </div>
       </StellaContextMenu>
 
-      <DisplaySidebar ref={displaySidebarRef} />
+      <Suspense fallback={null}>
+        <DisplaySidebar ref={displaySidebarRef} />
+      </Suspense>
 
       <ComposerAreaSelectOverlay
         active={chat.annotation.active}

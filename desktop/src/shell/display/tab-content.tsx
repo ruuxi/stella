@@ -11,12 +11,9 @@
  * tile rail, etc.) and lives in `./media-tab/`.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
-import { PdfViewerCard } from "@/app/chat/PdfViewerCard";
-import { Markdown } from "@/app/chat/Markdown";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
-import { MediaPreviewCard } from "@/shell/MediaPreviewCard";
 import { openExternalUrl } from "@/platform/electron/open-external";
 import { useFilePreviewActions } from "@/features/chat/hooks/use-file-preview-actions";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
@@ -25,7 +22,30 @@ import {
   useSourceDiffBatches,
   type SourceDiffBatch,
 } from "@/features/workspace-display/source-diff-batches";
-import { OfficeArtifactPanel } from "./office-artifact-panel";
+
+// Heavy, payload-specific renderers are lazy-loaded so they stay out of the
+// always-eager shell's first-paint module graph (dev server transforms every
+// statically-reachable module before first paint). Their `createElement`
+// closures only run when a tab of the matching kind actually opens, so the
+// chunks are fetched on demand.
+const PdfViewerCard = lazy(() =>
+  import("@/app/chat/PdfViewerCard").then((m) => ({
+    default: m.PdfViewerCard,
+  })),
+);
+const Markdown = lazy(() =>
+  import("@/app/chat/Markdown").then((m) => ({ default: m.Markdown })),
+);
+const MediaPreviewCard = lazy(() =>
+  import("@/shell/MediaPreviewCard").then((m) => ({
+    default: m.MediaPreviewCard,
+  })),
+);
+const OfficeArtifactPanel = lazy(() =>
+  import("./office-artifact-panel").then((m) => ({
+    default: m.OfficeArtifactPanel,
+  })),
+);
 
 type WithMediaMeta = {
   prompt?: string;
@@ -94,7 +114,9 @@ export const OfficeTabContent = ({
   previewRef: OfficePreviewRef;
 }) => (
   <div className="display-sidebar__rich">
-    <OfficeArtifactPanel previewRef={previewRef} />
+    <Suspense fallback={null}>
+      <OfficeArtifactPanel previewRef={previewRef} />
+    </Suspense>
   </div>
 );
 
@@ -303,7 +325,9 @@ export const PdfTabContent = ({
   title?: string;
 }) => (
   <div className="display-sidebar__rich display-sidebar__rich--pdf">
-    <PdfViewerCard filePath={filePath} {...(title ? { title } : {})} />
+    <Suspense fallback={null}>
+      <PdfViewerCard filePath={filePath} {...(title ? { title } : {})} />
+    </Suspense>
   </div>
 );
 
@@ -356,7 +380,9 @@ export const MarkdownTabContent = ({
           ) : markdown.trim().length === 0 ? (
             <div className="display-file-preview__empty">No content found.</div>
           ) : (
-            <Markdown text={markdown} />
+            <Suspense fallback={null}>
+              <Markdown text={markdown} />
+            </Suspense>
           )}
         </div>
       </section>
@@ -655,11 +681,13 @@ export const ImageTabContent = ({
   capability,
 }: { filePaths: string[] } & WithMediaMeta) => (
   <div className="display-sidebar__rich display-sidebar__rich--media">
-    <MediaPreviewCard
-      asset={{ kind: "image", filePaths }}
-      {...(prompt ? { prompt } : {})}
-      {...(capability ? { capability } : {})}
-    />
+    <Suspense fallback={null}>
+      <MediaPreviewCard
+        asset={{ kind: "image", filePaths }}
+        {...(prompt ? { prompt } : {})}
+        {...(capability ? { capability } : {})}
+      />
+    </Suspense>
   </div>
 );
 
@@ -669,11 +697,13 @@ export const VideoTabContent = ({
   capability,
 }: { filePath: string } & WithMediaMeta) => (
   <div className="display-sidebar__rich display-sidebar__rich--media">
-    <MediaPreviewCard
-      asset={{ kind: "video", filePath }}
-      {...(prompt ? { prompt } : {})}
-      {...(capability ? { capability } : {})}
-    />
+    <Suspense fallback={null}>
+      <MediaPreviewCard
+        asset={{ kind: "video", filePath }}
+        {...(prompt ? { prompt } : {})}
+        {...(capability ? { capability } : {})}
+      />
+    </Suspense>
   </div>
 );
 
@@ -683,11 +713,13 @@ export const AudioTabContent = ({
   capability,
 }: { filePath: string } & WithMediaMeta) => (
   <div className="display-sidebar__rich display-sidebar__rich--media">
-    <MediaPreviewCard
-      asset={{ kind: "audio", filePath }}
-      {...(prompt ? { prompt } : {})}
-      {...(capability ? { capability } : {})}
-    />
+    <Suspense fallback={null}>
+      <MediaPreviewCard
+        asset={{ kind: "audio", filePath }}
+        {...(prompt ? { prompt } : {})}
+        {...(capability ? { capability } : {})}
+      />
+    </Suspense>
   </div>
 );
 
@@ -698,11 +730,13 @@ export const Model3dTabContent = ({
   capability,
 }: { filePath: string; label?: string } & WithMediaMeta) => (
   <div className="display-sidebar__rich display-sidebar__rich--media">
-    <MediaPreviewCard
-      asset={{ kind: "model3d", filePath, ...(label ? { label } : {}) }}
-      {...(prompt ? { prompt } : {})}
-      {...(capability ? { capability } : {})}
-    />
+    <Suspense fallback={null}>
+      <MediaPreviewCard
+        asset={{ kind: "model3d", filePath, ...(label ? { label } : {}) }}
+        {...(prompt ? { prompt } : {})}
+        {...(capability ? { capability } : {})}
+      />
+    </Suspense>
   </div>
 );
 
@@ -713,11 +747,13 @@ export const DownloadTabContent = ({
   capability,
 }: { filePath: string; label: string } & WithMediaMeta) => (
   <div className="display-sidebar__rich display-sidebar__rich--media">
-    <MediaPreviewCard
-      asset={{ kind: "download", filePath, label }}
-      {...(prompt ? { prompt } : {})}
-      {...(capability ? { capability } : {})}
-    />
+    <Suspense fallback={null}>
+      <MediaPreviewCard
+        asset={{ kind: "download", filePath, label }}
+        {...(prompt ? { prompt } : {})}
+        {...(capability ? { capability } : {})}
+      />
+    </Suspense>
   </div>
 );
 
@@ -727,10 +763,12 @@ export const TextTabContent = ({
   capability,
 }: { text: string } & WithMediaMeta) => (
   <div className="display-sidebar__rich display-sidebar__rich--media">
-    <MediaPreviewCard
-      asset={{ kind: "text", text }}
-      {...(prompt ? { prompt } : {})}
-      {...(capability ? { capability } : {})}
-    />
+    <Suspense fallback={null}>
+      <MediaPreviewCard
+        asset={{ kind: "text", text }}
+        {...(prompt ? { prompt } : {})}
+        {...(capability ? { capability } : {})}
+      />
+    </Suspense>
   </div>
 );
