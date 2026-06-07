@@ -1321,6 +1321,17 @@ export default defineConfig({
     },
   },
   server: {
+    // Pre-transform the renderer's first-paint module spine on cold start so
+    // Vite isn't serializing `main.tsx -> App -> AppProviders -> FullShell`
+    // transforms against the renderer's initial request (and window creation).
+    warmup: {
+      clientFiles: [
+        './src/main.tsx',
+        './src/App.tsx',
+        './src/context/AppProviders.tsx',
+        './src/shell/FullShell.tsx',
+      ],
+    },
     // Pin to a single IPv4 loopback port and publish that exact address via
     // the dev-url plugin above. The runtime worker reads that file for
     // self-mod HMR calls, so silently rolling to 57315 would split the UI and
