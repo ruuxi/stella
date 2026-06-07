@@ -43,12 +43,14 @@ import {
   collectBrowserData,
   formatBrowserDataForSynthesis,
 } from "../discovery/browser-data.js";
-import {
+// Runner subgraph imported as types only — the values are loaded lazily (see
+// loadOneShotCompletion / loadChatPromptContext and the dynamic import in
+// buildRunner) so this ~68%-of-bundle subgraph isn't parsed on the worker-ready
+// path.
+import type {
   createStellaHostRunner,
-  type StellaHostRunnerOptions,
+  StellaHostRunnerOptions,
 } from "../kernel/runner.js";
-import { runOneShotCompletion } from "../kernel/agent-runtime/one-shot-completion.js";
-import { buildChatPromptMessages } from "../kernel/chat-prompt-context.js";
 import { getDevServerUrl } from "./dev-url.js";
 import {
   startCliBridgeServer,
@@ -255,6 +257,9 @@ type WorkerState = {
   socialSessionService: SocialSessionService | null;
   voiceService: VoiceRuntimeService | null;
   runner: RuntimeRunner | null;
+  // Shared promise for the background runner build (lazy chunk import). Null
+  // when no build is in flight; resolves to the runner once constructed.
+  runnerReadyPromise: Promise<RuntimeRunner> | null;
   deviceId: string | null;
   selfModHmrController: SelfModHmrController | null;
   /**
@@ -467,6 +472,15 @@ const stopWorkerServices = async (state: WorkerState) => {
   // compaction scheduler so SQLite writes complete before we close
   // `state.db`. Without this await, an in-flight `compactThread` could
   // race the `db.close()` below.
+  // If the runner is still building in the background (lazy chunk import), wait
+  // for it to finish so we don't strand a started-but-unreferenced runner after
+  // nulling state.runner. The build's own supersede guard (state.db !== db) may
+  // already have stopped it; awaiting here is still safe (stop is idempotent).
+  const pendingRunnerReady = state.runnerReadyPromise;
+  state.runnerReadyPromise = null;
+  if (pendingRunnerReady) {
+    await pendingRunnerReady.catch(() => undefined);
+  }
   await state.runner?.stop();
   state.runner = null;
   state.chatStore = null;
@@ -498,6 +512,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     socialSessionService: null,
     voiceService: null,
     runner: null,
+    runnerReadyPromise: null,
     deviceId: null,
     selfModHmrController: null,
     revertSelfModWithMorph: null,
@@ -508,6 +523,25 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   };
   const pendingApplyBatches = new Map<string, PendingApplyBatch>();
   const selfModRunRootIds = new Map<string, string>();
+
+  // Lazy loaders for the runner subgraph. runner.ts, one-shot-completion.ts and
+  // chat-prompt-context.ts share ~80 files and together are ~68% of the worker
+  // bundle's eager parse, yet are only needed once a turn/review actually runs.
+  // Importing them on first use (and building the runner in the post-ready
+  // background slot) keeps that parse off the worker-ready path. The dynamic
+  // import()s are also what let esbuild split them into their own chunk.
+  let oneShotCompletionModule:
+    | Promise<typeof import("../kernel/agent-runtime/one-shot-completion.js")>
+    | null = null;
+  const loadOneShotCompletion = () =>
+    (oneShotCompletionModule ??= import(
+      "../kernel/agent-runtime/one-shot-completion.js"
+    ));
+  let chatPromptContextModule:
+    | Promise<typeof import("../kernel/chat-prompt-context.js")>
+    | null = null;
+  const loadChatPromptContext = () =>
+    (chatPromptContextModule ??= import("../kernel/chat-prompt-context.js"));
 
   // Hoisted out of initializeWorker so both the lifecycle hooks (declared
   // during init) and the INTERNAL_WORKER_RESUME_HMR handler (registered at
@@ -732,6 +766,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   };
 
   const ensureRunnerInitialized = async () => {
+    // The runner is built in the background after the worker reports ready, so
+    // the first turn can arrive before state.runner exists. Join the shared
+    // build promise, then ensureRunner() returns it (or throws if it failed or
+    // was superseded).
+    if (!state.runner && state.runnerReadyPromise) {
+      await state.runnerReadyPromise.catch(() => undefined);
+    }
     const runner = ensureRunner();
     await runner.waitUntilInitialized();
     return runner;
@@ -1275,7 +1316,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 : {}),
             },
             runReview: async ({ prompt }) => {
-              const review = await runOneShotCompletion({
+              const review = await (
+                await loadOneShotCompletion()
+              ).runOneShotCompletion({
                 request: {
                   agentType: "source_import_review",
                   fallbackAgentTypes: ["store_install_review", "general"],
@@ -1608,15 +1651,41 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }
     };
 
-    const runner = createStellaHostRunner(runnerOptions);
-    state.runner = runner;
-    runner.setConvexUrl(init.convexUrl);
-    runner.setConvexSiteUrl(init.convexSiteUrl);
-    runner.setAuthToken(init.authToken);
-    runner.setHasConnectedAccount(init.hasConnectedAccount);
-    runner.setCloudSyncEnabled(init.cloudSyncEnabled);
-    runner.setModelCatalogUpdatedAt(init.modelCatalogUpdatedAt);
-    runner.start();
+    // Build the runner in the background instead of on the worker-ready path:
+    // its module subgraph is ~68% of the bundle's eager parse and is only
+    // needed once a turn runs. initializeWorker returns "ready" without awaiting
+    // this; turn handlers join the same promise via ensureRunnerInitialized().
+    // The dynamic import() is also what lets esbuild split the runner into its
+    // own chunk (see dev-electron-build.mjs).
+    const buildRunner = async (): Promise<RuntimeRunner> => {
+      const { createStellaHostRunner } = await import("../kernel/runner.js");
+      const runner = createStellaHostRunner(runnerOptions);
+      // A re-init may have superseded this generation while the chunk imported.
+      // `db` is replaced only on re-init (config patches keep it), so it's the
+      // safe supersede token — discard rather than clobber the new generation.
+      if (state.db !== db) {
+        await runner.stop().catch(() => undefined);
+        return runner;
+      }
+      // Apply the latest config (config patches that arrived during the import
+      // no-op'd against a null state.runner, so re-apply from state.init).
+      const cfg = state.init ?? init;
+      runner.setConvexUrl(cfg.convexUrl);
+      runner.setConvexSiteUrl(cfg.convexSiteUrl);
+      runner.setAuthToken(cfg.authToken);
+      runner.setHasConnectedAccount(cfg.hasConnectedAccount);
+      runner.setCloudSyncEnabled(cfg.cloudSyncEnabled);
+      runner.setModelCatalogUpdatedAt(cfg.modelCatalogUpdatedAt);
+      state.runner = runner;
+      runner.start();
+      return runner;
+    };
+    const runnerReadyPromise = buildRunner();
+    state.runnerReadyPromise = runnerReadyPromise;
+    // Prevent an unobserved rejection from crashing the worker; real awaiters
+    // (ensureRunnerInitialized / stopWorkerServices / the post-ready block)
+    // surface the error.
+    runnerReadyPromise.catch(() => undefined);
 
     const socialSessionService = new SocialSessionService({
       getWorkspaceRoot: () => init.stellaWorkspacePath,
@@ -1693,12 +1762,15 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             return false;
           }),
           startCliBridge(),
-          runner.waitUntilInitialized().catch((error) => {
-            console.warn(
-              "[runtime-worker] Runner initialization finished with an error:",
-              (error as Error).message,
-            );
-          }),
+          (async () => {
+            const builtRunner = await runnerReadyPromise.catch(() => null);
+            await builtRunner?.waitUntilInitialized().catch((error) => {
+              console.warn(
+                "[runtime-worker] Runner initialization finished with an error:",
+                (error as Error).message,
+              );
+            });
+          })(),
         ]);
         getFileLogger()?.process("startup.post-ready-complete", {
           ms: Date.now() - startupStartedAt,
@@ -1836,7 +1908,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_GET_ACTIVE,
     async () => {
-      return ensureRunner().getActiveOrchestratorRun();
+      // Tolerate the runner still building (post-ready window): no runner ⇒ no
+      // active run.
+      return state.runner?.getActiveOrchestratorRun() ?? null;
     },
   );
 
@@ -1848,6 +1922,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         asTrimmedString(
           (payload as RuntimeChatPayload & { requestId?: string }).requestId,
         ) || undefined;
+      const { buildChatPromptMessages } = await loadChatPromptContext();
       const {
         visibleUserPrompt,
         windowContextLabel,
@@ -2516,7 +2591,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_CANCEL,
     async (params) => {
-      ensureRunner().cancelLocalChat((params as { runId: string }).runId);
+      // Tolerate the runner still building (post-ready window): nothing to
+      // cancel if it hasn't started yet.
+      state.runner?.cancelLocalChat((params as { runId: string }).runId);
       return { ok: true };
     },
   );
@@ -2524,9 +2601,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_CANCEL_BY_CONVERSATION,
     async (params) => {
-      const cancelled = ensureRunner().cancelLocalChatByConversation(
-        (params as { conversationId: string }).conversationId,
-      );
+      const cancelled =
+        state.runner?.cancelLocalChatByConversation(
+          (params as { conversationId: string }).conversationId,
+        ) ?? false;
       return { ok: true, cancelled };
     },
   );
@@ -2695,15 +2773,24 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_GET_AGENT_SNAPSHOT,
     async (params) => {
-      return await ensureRunner().getLocalAgentSnapshot(
-        (params as { agentId: string }).agentId,
-      );
+      // Tolerate the runner still building (post-ready window): a fresh worker
+      // has no in-memory agent yet, so a missing snapshot is the right answer.
+      return state.runner
+        ? await state.runner.getLocalAgentSnapshot(
+            (params as { agentId: string }).agentId,
+          )
+        : null;
     },
   );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_APPEND_THREAD_MESSAGE,
     async (params) => {
+      // Don't drop the message if the runner is still building (post-ready
+      // window) — wait for the background build, then append.
+      if (!state.runner && state.runnerReadyPromise) {
+        await state.runnerReadyPromise.catch(() => undefined);
+      }
       ensureRunner().appendThreadMessage(
         params as {
           threadKey: string;
@@ -3144,7 +3231,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           });
         }
 
-        const reviewResult = await runOneShotCompletion({
+        const reviewResult = await (
+        await loadOneShotCompletion()
+      ).runOneShotCompletion({
           request: {
             agentType: "store_install_review",
             fallbackAgentTypes: ["general"],
@@ -3989,7 +4078,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }
       const init = state.init;
       const request = params as RuntimeOneShotCompletionRequest;
-      return await runOneShotCompletion({
+      return await (await loadOneShotCompletion()).runOneShotCompletion({
         request,
         runtime: {
           stellaRoot: init.stellaRoot,
