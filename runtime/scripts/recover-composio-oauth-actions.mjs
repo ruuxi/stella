@@ -1,11 +1,13 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
+// The catalog is now a plain JSON data file (loaded lazily at runtime by
+// oauth-provider-catalog.ts). This generator reads and rewrites that JSON
+// directly instead of round-tripping a TS `export const` literal.
 const catalogPath = path.join(
   repoRoot,
-  "runtime/kernel/connectors/oauth-provider-catalog.ts",
+  "runtime/kernel/connectors/oauth-provider-catalog.json",
 );
 const endpoint =
   process.env.COMPOSIO_MCP_URL || "https://connect.composio.dev/mcp";
@@ -86,30 +88,11 @@ const titleFromSlug = (slug) =>
 
 const readCatalog = async () => {
   const text = await readFile(catalogPath, "utf8");
-  const marker =
-    "export const OAUTH_PROVIDER_CATALOG: OAuthCatalogProvider[] = ";
-  const start = text.indexOf(marker);
-  if (start < 0) throw new Error("Could not find catalog export.");
-  const prefix = text.slice(0, start + marker.length);
-  const bodyStart = start + marker.length;
-  const end = text.lastIndexOf("\n];");
-  if (end < bodyStart) throw new Error("Could not find catalog array end.");
-  const arrayText = text.slice(bodyStart, end + 2);
-  let catalog;
-  try {
-    catalog = JSON.parse(arrayText);
-  } catch {
-    const moduleUrl = pathToFileURL(catalogPath);
-    moduleUrl.searchParams.set("t", String(Date.now()));
-    const module = await import(moduleUrl.href);
-    catalog = JSON.parse(JSON.stringify(module.OAUTH_PROVIDER_CATALOG));
-  }
-  return {
-    prefix,
-    suffix: text.slice(end + 2),
-    catalog,
-  };
+  return { catalog: JSON.parse(text) };
 };
+
+const writeCatalog = (catalog) =>
+  writeFile(catalogPath, `${JSON.stringify(catalog, null, 2)}\n`, "utf8");
 
 const parseSseJson = (text) => {
   const messages = [];
@@ -293,7 +276,7 @@ const fillToolSchemas = async (provider) => {
   await Promise.all(Array.from({ length: workerCount }, runWorker));
 };
 
-const { prefix, suffix, catalog } = await readCatalog();
+const { catalog } = await readCatalog();
 const requested = new Set(providerArgs.map((id) => id.toLowerCase()));
 if (summary) {
   const rows = catalog
@@ -385,11 +368,7 @@ for (const [providerIndex, provider] of candidates.entries()) {
   }
   provider.catalogToolCount = provider.tools.length;
   if (apply) {
-    await writeFile(
-      catalogPath,
-      `${prefix}${JSON.stringify(catalog, null, 2)}${suffix}`,
-      "utf8",
-    );
+    await writeCatalog(catalog);
   }
   updated.push({
     id: provider.id,
@@ -400,11 +379,7 @@ for (const [providerIndex, provider] of candidates.entries()) {
 }
 
 if (apply) {
-  await writeFile(
-    catalogPath,
-    `${prefix}${JSON.stringify(catalog, null, 2)}${suffix}`,
-    "utf8",
-  );
+  await writeCatalog(catalog);
 }
 
 console.log(JSON.stringify({ apply, updated }, null, 2));
