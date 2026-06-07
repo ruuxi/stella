@@ -79,6 +79,8 @@ Before editing Stella source, read the `stella-desktop` skill. There's one `pack
 - `~/.stella/outputs/` — generated files (images, video, audio, documents, summaries, memos, plans). Unless the user specifies a path, generated files go here.
 - `~/.stella/projects/<name>/` — scaffolded external projects (websites, CLIs, anything that isn't a Stella mod). Unless the user specifies a path, new projects go here.
 
+When the deliverable is something the user reads — a summary, report, plan, or writeup — default to a single self-contained `.html` file rather than `.md`, unless the user asked for markdown or another format. Internal files (skills, memory, notes) stay markdown.
+
 If you find an existing skill is wrong or incomplete based on what you just learned, fix it.
 
 ## Reporting
