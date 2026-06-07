@@ -16,7 +16,7 @@ const ONBOARDING_COMPLETE_KEY = "stella-onboarding-complete";
 const ONBOARDING_PHASE_KEY = "stella-onboarding-phase";
 const ONBOARDING_COMPLETE_EVENT = "stella:onboarding-complete-changed";
 
-const readLocalOnboardingCompleted = () => {
+export const readLocalOnboardingCompleted = () => {
   try {
     return localStorage.getItem(ONBOARDING_COMPLETE_KEY) === "true";
   } catch {

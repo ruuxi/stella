@@ -16,7 +16,10 @@ import {
 } from "@/global/onboarding/onboarding-flow";
 import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
 import { useOnboardingOverlay } from "@/global/onboarding/use-onboarding-overlay";
-import { useOnboardingState } from "@/global/onboarding/use-onboarding-state";
+import {
+  readLocalOnboardingCompleted,
+  useOnboardingState,
+} from "@/global/onboarding/use-onboarding-state";
 import { useBootstrapState } from "@/bootstrap/bootstrap-state";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { preloadAllNavSurfaces } from "@/shell/topbar/nav-surface-preloads";
@@ -68,21 +71,6 @@ const OnboardingCanvas = lazy(() =>
 );
 
 const CREATION_PHASE_INDEX = SPLIT_STEP_ORDER.indexOf("creation");
-
-// Mirror of `readLocalOnboardingCompleted` in
-// `@/global/onboarding/use-onboarding-state` (the same read backing the
-// onboarding `getSnapshot`). Kept in sync by key + comparison so the
-// synchronous returning-user fast path below can't diverge from the
-// onboarding hydration snapshot. The key constant
-// (`stella-onboarding-complete`) is intentionally duplicated here because
-// the helper is not exported.
-const readLocalOnboardingCompleted = () => {
-  try {
-    return localStorage.getItem("stella-onboarding-complete") === "true";
-  } catch {
-    return false;
-  }
-};
 
 const dismissLaunchSplash = () => {
   const launch = document.getElementById("stella-launch");
