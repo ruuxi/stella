@@ -26,6 +26,8 @@ DEV-CONTEXT.md
 /.stella-dev-splash-main.cjs
 /.stella-dev-splash.lock
 /.stella-dev-splash.ready
+# V8 compile cache for the dev Electron main process (machine-specific bytecode).
+/.stella-dev/
 /.stella-launch.log
 /.stella-desktop-download.tar.zst
 /launch.sh

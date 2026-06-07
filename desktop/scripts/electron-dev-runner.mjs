@@ -1,5 +1,11 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -19,6 +25,17 @@ const viteBinPath = resolve(
 );
 const viteDevUrlPath = resolve(desktopDir, ".vite-dev-url");
 const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");
+// Stable per-repo V8 bytecode cache for the big (~14.5MB) electron-main bundle.
+// Lives OUTSIDE dist-electron so esbuild's clean + identical-byte rewrites do
+// not invalidate it; reused across launches and self-mod restarts so Node's V8
+// engine skips re-parsing/compiling the bundle every time.
+const v8CompileCacheDir = resolve(repoRootDir, ".stella-dev", "v8-compile-cache");
+try {
+  mkdirSync(v8CompileCacheDir, { recursive: true });
+} catch {
+  // Best-effort; if the cache dir can't be created we simply forgo the
+  // compile-cache speedup rather than fail dev startup.
+}
 const managedScriptPaths = [
   resolve(scriptDir, "dev-electron-build.mjs"),
   resolve(scriptDir, "dev-electron.mjs"),
@@ -253,7 +270,10 @@ const processSpecs = [
     command: process.execPath,
     args: [resolve(scriptDir, "dev-electron.mjs")],
     cwd: repoRootDir,
-    env: { ...process.env },
+    // NODE_COMPILE_CACHE is inherited by the spawned Electron binary (see
+    // startApp in dev-electron.mjs, which spreads process.env), so V8 reuses
+    // bytecode for the large electron-main bundle across launches/restarts.
+    env: { ...process.env, NODE_COMPILE_CACHE: v8CompileCacheDir },
   },
 ];
 

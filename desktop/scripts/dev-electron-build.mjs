@@ -173,6 +173,23 @@ const cleanOutdir = async () => {
   });
 };
 
+// The Electron launcher (dev-electron.mjs) gates startup on main.js/preload.js
+// existing, so wiping dist-electron forces a full cold esbuild before Electron
+// can start. On a warm dev restart where those outputs already exist, skip the
+// wipe and let esbuild's incremental watch reconcile only what changed. This is
+// safe for warm restarts because the launcher's content-hash gate restarts
+// Electron when the initial watch build rewrites main.js/preload.js with new
+// bytes (see seedLastBuildHashes / watchReady handling in dev-electron.mjs).
+// The --once (production-ish one-shot) path always cleans for a deterministic
+// from-scratch build.
+const requiredOutputsExist = () => {
+  const outBase = path.join(desktopDir, outdir, "desktop", "electron");
+  return (
+    existsSync(path.join(outBase, "main.js")) &&
+    existsSync(path.join(outBase, "preload.js"))
+  );
+};
+
 const shutdown = async (exitCode) => {
   if (shuttingDown) {
     return;
@@ -195,7 +212,9 @@ const shutdown = async (exitCode) => {
 };
 
 try {
-  await cleanOutdir();
+  if (buildOnce || !requiredOutputsExist()) {
+    await cleanOutdir();
+  }
   if (buildOnce) {
     await runOneShotBuild();
     await copyRuntimeStaticAssets();
