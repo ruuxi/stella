@@ -259,9 +259,7 @@ const fetchStellaModelCatalog = async (args: {
             })),
           defaults: data.defaults ?? [],
         };
-        catalogCache.set(request.cacheKey, {
-          ...catalog,
-        });
+        catalogCache.set(request.cacheKey, cloneCatalog(catalog));
         await writeCatalogToDisk(
           args.stellaHome,
           request.cacheKey,
