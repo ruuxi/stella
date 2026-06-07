@@ -111,6 +111,22 @@ type ConnectorFollowupTarget = {
   pendingFollowupTexts: string[];
 };
 
+type ConnectorStreamBuffer = {
+  requestId: string;
+  backendConversationId: string;
+  provider: string;
+  text: string;
+  revision: number;
+  lastSentRevision: number;
+  lastSentTextLength: number;
+  lastSentAt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  inFlight: Promise<void> | null;
+};
+
+const CONNECTOR_STREAM_FLUSH_INTERVAL_MS = 1_000;
+const CONNECTOR_STREAM_BUFFER_THRESHOLD = 80;
+
 export type RuntimeHostHandlers = {
   getActiveConversationId?: () => Promise<string | null> | string | null;
   getDeviceIdentity: () => Promise<HostDeviceIdentity>;
@@ -357,6 +373,10 @@ export class StellaRuntimeHost {
   private connectorTargetsByLocalConversation = new Map<
     string,
     ConnectorFollowupTarget
+  >();
+  private connectorStreamBuffersByRequestId = new Map<
+    string,
+    ConnectorStreamBuffer
   >();
   /**
    * Reverse index of `connectorTargetsByLocalConversation` keyed by
@@ -1066,6 +1086,11 @@ export class StellaRuntimeHost {
           pendingFollowupTexts: [],
         });
         this.localConversationByRequestId.set(requestId, localConversationId);
+        this.armConnectorStreamBuffer({
+          requestId,
+          backendConversationId: conversationId,
+          provider,
+        });
         await this.appendLocalChatEvent({
           conversationId: localConversationId,
           type: "user_message",
@@ -1123,7 +1148,13 @@ export class StellaRuntimeHost {
               payload: { text: result.finalText, source: "connector" },
             });
           }
+          if (result.status !== "ok") {
+            this.clearConnectorStreamBuffer(requestId);
+          }
           return result;
+        } catch (error) {
+          this.clearConnectorStreamBuffer(requestId);
+          throw error;
         } finally {
           if (isLinqTurn) {
             await this.executeLinqConnectorLifecycleOperation({
@@ -1166,6 +1197,7 @@ export class StellaRuntimeHost {
           requestId,
           backendConversationId: conversationId,
         });
+        this.clearConnectorStreamBuffer(requestId);
       },
       log: (level, message, error) => {
         const logger = level === "error" ? console.error : console.warn;
@@ -1240,6 +1272,151 @@ export class StellaRuntimeHost {
         error instanceof Error ? error.message : String(error),
       );
     }
+  }
+
+  private armConnectorStreamBuffer(args: {
+    requestId: string;
+    backendConversationId: string;
+    provider?: string;
+  }): void {
+    if (args.provider !== "telegram") {
+      return;
+    }
+    const existing = this.connectorStreamBuffersByRequestId.get(args.requestId);
+    if (existing?.timer) {
+      clearTimeout(existing.timer);
+    }
+    this.connectorStreamBuffersByRequestId.set(args.requestId, {
+      requestId: args.requestId,
+      backendConversationId: args.backendConversationId,
+      provider: args.provider,
+      text: "",
+      revision: 0,
+      lastSentRevision: 0,
+      lastSentTextLength: 0,
+      lastSentAt: 0,
+      timer: null,
+      inFlight: null,
+    });
+  }
+
+  private clearConnectorStreamBuffer(requestId: string): void {
+    const buffer = this.connectorStreamBuffersByRequestId.get(requestId);
+    if (buffer?.timer) {
+      clearTimeout(buffer.timer);
+    }
+    this.connectorStreamBuffersByRequestId.delete(requestId);
+  }
+
+  private clearAllConnectorStreamBuffers(): void {
+    for (const buffer of this.connectorStreamBuffersByRequestId.values()) {
+      if (buffer.timer) {
+        clearTimeout(buffer.timer);
+      }
+    }
+    this.connectorStreamBuffersByRequestId.clear();
+  }
+
+  private handleConnectorStreamRunEvent(event: RuntimeAgentEventPayload): void {
+    if (
+      event.type !== AGENT_STREAM_EVENT_TYPES.STREAM ||
+      !event.requestId ||
+      !event.chunk
+    ) {
+      return;
+    }
+    const buffer = this.connectorStreamBuffersByRequestId.get(event.requestId);
+    if (!buffer || buffer.provider !== "telegram") {
+      return;
+    }
+    buffer.text += event.chunk;
+    buffer.revision += 1;
+    this.scheduleConnectorStreamFlush(buffer);
+  }
+
+  private scheduleConnectorStreamFlush(buffer: ConnectorStreamBuffer): void {
+    if (buffer.timer) {
+      clearTimeout(buffer.timer);
+      buffer.timer = null;
+    }
+    const pendingChars = Math.max(
+      0,
+      buffer.text.length - buffer.lastSentTextLength,
+    );
+    const elapsed = Date.now() - buffer.lastSentAt;
+    if (
+      pendingChars >= CONNECTOR_STREAM_BUFFER_THRESHOLD ||
+      elapsed >= CONNECTOR_STREAM_FLUSH_INTERVAL_MS
+    ) {
+      void this.flushConnectorStreamBuffer(buffer);
+      return;
+    }
+    buffer.timer = setTimeout(
+      () => {
+        buffer.timer = null;
+        void this.flushConnectorStreamBuffer(buffer);
+      },
+      Math.max(0, CONNECTOR_STREAM_FLUSH_INTERVAL_MS - elapsed),
+    );
+    buffer.timer.unref?.();
+  }
+
+  private async flushConnectorStreamBuffer(
+    buffer: ConnectorStreamBuffer,
+  ): Promise<void> {
+    if (buffer.inFlight) {
+      await buffer.inFlight.catch(() => undefined);
+    }
+    const client = this.ensureHostConvexClient();
+    const text = buffer.text.trim();
+    if (
+      !client ||
+      !text ||
+      buffer.revision <= buffer.lastSentRevision ||
+      !this.connectorStreamBuffersByRequestId.has(buffer.requestId)
+    ) {
+      return;
+    }
+    const revision = buffer.revision;
+    buffer.inFlight = (async () => {
+      try {
+        await (client as any).mutation(
+          (
+            anyApi as unknown as {
+              channels: {
+                connector_delivery: { streamConnectorTurnUpdate: unknown };
+              };
+            }
+          ).channels.connector_delivery.streamConnectorTurnUpdate,
+          {
+            requestId: buffer.requestId,
+            conversationId: buffer.backendConversationId,
+            text,
+            revision,
+          },
+        );
+        buffer.lastSentRevision = Math.max(buffer.lastSentRevision, revision);
+        buffer.lastSentTextLength = Math.max(
+          buffer.lastSentTextLength,
+          text.length,
+        );
+        buffer.lastSentAt = Date.now();
+      } catch (error) {
+        console.warn(
+          "[runtime-host] streamConnectorTurnUpdate failed:",
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        buffer.inFlight = null;
+        if (
+          this.connectorStreamBuffersByRequestId.has(buffer.requestId) &&
+          buffer.revision > buffer.lastSentRevision
+        ) {
+          this.scheduleConnectorStreamFlush(buffer);
+        }
+      }
+    })();
+    await buffer.inFlight;
   }
 
   private markConnectorInitialTurnCompleted(args: {
@@ -1327,6 +1504,7 @@ export class StellaRuntimeHost {
       this.stopHostHeartbeatLoop();
       this.stopHostRemoteTurnCancelSubscription();
       this.hostRemoteTurnBridge?.stop();
+      this.clearAllConnectorStreamBuffers();
       void this.sendHostGoOffline().finally(() => {
         this.disposeHostConvexClient();
       });
@@ -1339,6 +1517,7 @@ export class StellaRuntimeHost {
       this.stopHostHeartbeatLoop();
       this.stopHostRemoteTurnCancelSubscription();
       this.hostRemoteTurnBridge?.stop();
+      this.clearAllConnectorStreamBuffers();
       this.hostDeviceRegistered = false;
       this.hostDeviceRegistering = false;
       this.disposeHostConvexClient();
@@ -1348,6 +1527,7 @@ export class StellaRuntimeHost {
       this.stopHostHeartbeatLoop();
       this.stopHostRemoteTurnCancelSubscription();
       this.hostRemoteTurnBridge?.stop();
+      this.clearAllConnectorStreamBuffers();
       void this.sendHostGoOffline().finally(() => {
         this.disposeHostConvexClient();
       });
@@ -1478,6 +1658,7 @@ export class StellaRuntimeHost {
     this.workerGeneration = 0;
     this.agentEventBuffers.clear();
     this.pendingRunEventAcks.clear();
+    this.clearAllConnectorStreamBuffers();
     if (this.runEventAckTimer) clearTimeout(this.runEventAckTimer);
     this.runEventAckTimer = null;
     this.pausedRuntimeReloadRuns.clear();
@@ -2872,6 +3053,7 @@ export class StellaRuntimeHost {
       const payload = params as RuntimeAgentEventPayload;
       bufferAgentEvent(this.agentEventBuffers, payload);
       pruneAgentEventBuffers(this.agentEventBuffers);
+      this.handleConnectorStreamRunEvent(payload);
       this.events.emit("run-event", payload);
       // Ack only ordinary recorder events. Terminal events must remain
       // replayable until the retention sweep, otherwise an Electron
