@@ -26,6 +26,17 @@ export type ChatContext = {
     app: string;
     bounds: WindowBounds;
   } | null;
+  activity?: {
+    id: string;
+    label: string;
+    agentType: string;
+    status: string;
+    runId?: string;
+    anchorTurnId?: string;
+    startedAtMs?: number;
+    completedAtMs?: number;
+    lastUpdatedAtMs?: number;
+  } | null;
   appSelection?: {
     label: string;
     snapshot: string;

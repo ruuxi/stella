@@ -19,6 +19,7 @@ export type UserRowViewModel = {
   windowLabel?: string;
   windowPreviewImageUrl?: string;
   appSelectionLabel?: string;
+  activityLabel?: string;
   attachments: Attachment[];
   channelEnvelope?: ChannelEnvelope;
 };

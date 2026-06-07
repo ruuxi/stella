@@ -127,6 +127,7 @@ export type ActivityHistoryDialogProps = {
   schedules: ReadonlyArray<ScheduleEntry>;
   conversationId: string | null;
   nowMs: number;
+  onSelectTask?: (task: TaskItem) => void;
   onOpenSchedule: (entry: ScheduleEntry) => void;
   onOpenFile: (entry: ActivityHistoryFile) => void;
 };
@@ -146,6 +147,7 @@ export function ActivityHistoryDialog({
   isLoadingMoreFiles,
   schedules,
   nowMs,
+  onSelectTask,
   onOpenSchedule,
   onOpenFile,
 }: ActivityHistoryDialogProps) {
@@ -247,17 +249,20 @@ export function ActivityHistoryDialog({
   const renderItem = ({ item }: LegendListRenderItemProps<ListItem>) => {
     if (item.kind === "done") {
       const { task } = item;
+      const label = taskLabel(task);
       return (
-        <div
-          className="activity-history-dialog__row"
-          data-status={task.status}
-        >
-          <span className="activity-history-dialog__row-text">
-            {taskLabel(task)}
-          </span>
-          <span className="activity-history-dialog__row-meta">
-            {taskBadge(task)}
-          </span>
+        <div className="activity-history-dialog__row" data-status={task.status}>
+          <button
+            type="button"
+            className="activity-history-dialog__row-button"
+            onClick={() => onSelectTask?.(task)}
+            aria-label={`Use ${label || "activity"} as context`}
+          >
+            <span className="activity-history-dialog__row-text">{label}</span>
+            <span className="activity-history-dialog__row-meta">
+              {taskBadge(task)}
+            </span>
+          </button>
         </div>
       );
     }

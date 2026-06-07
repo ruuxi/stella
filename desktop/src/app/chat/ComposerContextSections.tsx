@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import {
+  ActivityContextChip,
   AppSelectionChip,
   FileContextChips,
   PendingCaptureChip,
@@ -97,6 +98,23 @@ const appSelectionVariantClassNames = {
     containerClassName: null,
     chipClassName:
       "chat-composer-context-chip chat-composer-context-chip--app-selection mini-context-chip mini-context-chip--app-selection",
+    textClassName:
+      "chat-composer-context-text mini-context-text",
+  },
+} as const;
+
+const activityVariantClassNames = {
+  full: {
+    containerClassName: null,
+    chipClassName:
+      "chat-composer-context-chip chat-composer-context-chip--activity composer-context-chip composer-context-chip--activity",
+    textClassName:
+      "chat-composer-context-text composer-context-text",
+  },
+  mini: {
+    containerClassName: null,
+    chipClassName:
+      "chat-composer-context-chip chat-composer-context-chip--activity mini-context-chip mini-context-chip--activity",
     textClassName:
       "chat-composer-context-text mini-context-text",
   },
@@ -214,6 +232,29 @@ export function ComposerAppSelectionContextSection({
   const content = (
     <AppSelectionChip
       appSelection={chatContext.appSelection}
+      setChatContext={setChatContext}
+      className={classes.chipClassName}
+      textClassName={classes.textClassName}
+    />
+  );
+
+  if (!classes.containerClassName) return content;
+  return <div className={classes.containerClassName}>{content}</div>;
+}
+
+export function ComposerActivityContextSection({
+  variant,
+  chatContext,
+  setChatContext,
+}: SharedContextProps) {
+  if (!chatContext?.activity) {
+    return null;
+  }
+
+  const classes = activityVariantClassNames[variant];
+  const content = (
+    <ActivityContextChip
+      activity={chatContext.activity}
       setChatContext={setChatContext}
       className={classes.chipClassName}
       textClassName={classes.textClassName}

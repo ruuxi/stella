@@ -106,6 +106,7 @@ export type MessageMetadata = {
     windowLabel?: string;
     windowPreviewImageUrl?: string;
     appSelectionLabel?: string;
+    activityLabel?: string;
   };
   trigger?: {
     kind?: string;

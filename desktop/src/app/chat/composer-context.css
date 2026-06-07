@@ -224,6 +224,9 @@ button.mini-context-chip:hover {
 .chat-composer-context-chip--app-selection,
 .composer-context-chip--app-selection,
 .mini-context-chip--app-selection,
+.chat-composer-context-chip--activity,
+.composer-context-chip--activity,
+.mini-context-chip--activity,
 .chat-composer-context-chip--window,
 .composer-context-chip--window {
   padding: 4px 10px;
@@ -247,7 +250,10 @@ button.mini-context-chip:hover {
 
 .chat-composer-context-chip--app-selection,
 .composer-context-chip--app-selection,
-.mini-context-chip--app-selection {
+.mini-context-chip--app-selection,
+.chat-composer-context-chip--activity,
+.composer-context-chip--activity,
+.mini-context-chip--activity {
   background: color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 

@@ -1934,6 +1934,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         windowContextLabel,
         browserUrl,
         appSelectionLabel,
+        activityLabel,
         promptMessages,
         windowScreenshotAttachment,
       } = buildChatPromptMessages({
@@ -1973,6 +1974,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               windowContextLabel ||
               browserUrl ||
               appSelectionLabel ||
+              activityLabel ||
               windowPreviewImageUrl
                 ? {
                     metadata: {
@@ -1980,6 +1982,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                       ...(windowContextLabel ||
                       browserUrl ||
                       appSelectionLabel ||
+                      activityLabel ||
                       windowPreviewImageUrl
                         ? {
                             context: {
@@ -2002,6 +2005,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                               ...(appSelectionLabel
                                 ? {
                                     appSelectionLabel,
+                                  }
+                                : {}),
+                              ...(activityLabel
+                                ? {
+                                    activityLabel,
                                   }
                                 : {}),
                             },
@@ -2065,6 +2073,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         visibleUserPrompt,
         windowContextLabel,
         appSelectionLabel,
+        activityLabel,
         promptMessages: (promptMessages ?? []).map((message, index) => ({
           index,
           uiVisibility: message.uiVisibility ?? "visible",

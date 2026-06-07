@@ -231,7 +231,7 @@ function RootChrome() {
     const handleComposeText = (event: Event) => {
       const detail = (event as CustomEvent<StellaComposeTextDetail>).detail;
       const text = typeof detail?.text === "string" ? detail.text : "";
-      if (!text.trim()) return;
+      const hasPrefillText = Boolean(text.trim());
       const hasChatContext = Object.prototype.hasOwnProperty.call(
         detail,
         "chatContext",
@@ -240,11 +240,27 @@ function RootChrome() {
         detail,
         "selectedText",
       );
+      if (!hasPrefillText && !hasChatContext && !hasSelectedText) return;
+
+      const selectedTextContext =
+        hasSelectedText && detail.selectedText
+          ? {
+              window: null,
+              browserUrl: null,
+              selectedText: detail.selectedText,
+              regionScreenshots: [],
+            }
+          : null;
+      const nextChatContext = hasChatContext
+        ? (detail.chatContext ?? null)
+        : selectedTextContext;
 
       if (isOnChatRoute) {
-        chat.composer.setMessage(text);
-        if (hasChatContext) {
-          chat.composer.setChatContext(detail.chatContext ?? null);
+        if (hasPrefillText) {
+          chat.composer.setMessage(text);
+        }
+        if (hasChatContext || selectedTextContext) {
+          chat.composer.setChatContext(nextChatContext);
         }
         if (hasSelectedText) {
           chat.composer.setSelectedText(detail.selectedText ?? null);
@@ -255,8 +271,8 @@ function RootChrome() {
 
       openChatDisplayTab({
         id: Date.now(),
-        chatContext: detail.chatContext ?? null,
-        prefillText: text,
+        chatContext: nextChatContext,
+        ...(hasPrefillText ? { prefillText: text } : {}),
       });
     };
 

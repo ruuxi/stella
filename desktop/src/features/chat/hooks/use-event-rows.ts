@@ -265,6 +265,11 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           contextMetadata.appSelectionLabel.trim()
             ? contextMetadata.appSelectionLabel.trim()
             : undefined
+        const activityLabel =
+          typeof contextMetadata?.activityLabel === 'string' &&
+          contextMetadata.activityLabel.trim()
+            ? contextMetadata.activityLabel.trim()
+            : undefined
         const row: UserRowViewModel = {
           kind: 'user',
           id: message._id,
@@ -272,6 +277,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(windowLabel ? { windowLabel } : {}),
           ...(windowPreviewImageUrl ? { windowPreviewImageUrl } : {}),
           ...(appSelectionLabel ? { appSelectionLabel } : {}),
+          ...(activityLabel ? { activityLabel } : {}),
           attachments: getAttachments(message),
           ...(getChannelEnvelope(message)
             ? { channelEnvelope: getChannelEnvelope(message) }
