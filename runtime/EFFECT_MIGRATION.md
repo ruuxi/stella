@@ -596,7 +596,7 @@ in-flight loads, and `provide(conversationId, effect)` runs an effect with
 `conversation-registry.ts`.
 
 For Stella this is actually simpler than opencode: opencode supports many
-directories per process; Stella's worker runs against one `stellaRoot` but many
+directories per process; Stella's worker runs against one `stellaAppDir` but many
 conversations. The pattern is identical, only the key changes
 (`directory` → `conversationId`).
 
