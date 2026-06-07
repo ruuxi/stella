@@ -76,6 +76,10 @@ const HELPER_NAME_BY_ENGINE: Record<Engine, string> = {
 const TRANSCRIBE_TIMEOUT_MS = 120_000;
 const SERVICE_READY_TIMEOUT_MS = 120_000;
 const PROBE_TIMEOUT_MS = 10_000;
+// Perf: stop an idle serve process after this long with no transcription so an
+// unused/warmed-but-untouched model doesn't stay resident. The next dictation
+// re-warms transparently because startService/warmLocalParakeet are idempotent.
+const IDLE_EVICTION_MS = 5 * 60_000;
 
 type HelperResponse = {
   ok: boolean;
@@ -100,7 +104,35 @@ type PendingRequest = {
 let serviceProcess: ChildProcessWithoutNullStreams | null = null;
 let serviceReady: Promise<void> | null = null;
 let serviceBuffer = "";
+let idleEvictionTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
+
+// Perf: (re)arm the idle-eviction timer on each transcription. A serve process
+// the user warmed but never (or no longer) dictates with is torn down after
+// IDLE_EVICTION_MS so the model stops occupying memory; re-warming on the next
+// dictation is transparent (startService is idempotent).
+const armIdleEviction = () => {
+  if (idleEvictionTimer) clearTimeout(idleEvictionTimer);
+  idleEvictionTimer = setTimeout(() => {
+    idleEvictionTimer = null;
+    if (pendingRequests.size > 0) {
+      // A transcription is mid-flight (e.g. timer fired during a slow run);
+      // re-arm rather than killing the process out from under it.
+      armIdleEviction();
+      return;
+    }
+    stopService();
+  }, IDLE_EVICTION_MS);
+  // Don't let the eviction timer keep the event loop / process alive on its own.
+  idleEvictionTimer.unref?.();
+};
+
+const clearIdleEviction = () => {
+  if (idleEvictionTimer) {
+    clearTimeout(idleEvictionTimer);
+    idleEvictionTimer = null;
+  }
+};
 
 const parseHelperResponse = (raw: string): HelperResponse | null => {
   if (!raw) return null;
@@ -441,6 +473,7 @@ const failPending = (error: Error) => {
 };
 
 const stopService = () => {
+  clearIdleEviction();
   const child = serviceProcess;
   if (!child) return;
   failPending(new Error("Local Parakeet helper stopped."));
@@ -472,6 +505,9 @@ const transcribeWithService = async (
   if (!child || child.stdin.destroyed) {
     throw new Error("Local Parakeet helper is not running.");
   }
+  // Perf: each transcription is "activity" — reset the idle-eviction countdown
+  // so an actively-used model stays warm while an idle one gets evicted.
+  armIdleEviction();
   const id = randomUUID();
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -496,12 +532,17 @@ export const warmLocalParakeet = async (): Promise<LocalParakeetStatus> => {
   if (engine === "cpp" && !cppModelIsReady()) {
     void ensureCppModel()
       .then(() => startService(engine))
+      // Perf: a pure warm (no transcription) is still subject to idle eviction
+      // so warming and walking away doesn't leave the model resident forever.
+      .then(armIdleEviction)
       .catch(() => undefined);
     return { available: true, model: status.model };
   }
 
   try {
     await startService(engine);
+    // Perf: arm idle eviction so a warmed-but-unused model gets reclaimed.
+    armIdleEviction();
     return { available: true, model: status.model };
   } catch (error) {
     return {

@@ -80,6 +80,14 @@ interface UseDictationResult {
    * single tap.
    */
   commitAndSend: () => void;
+  /**
+   * Idempotent dictation warm-up. Wire this to first dictation *intent* (mic
+   * button focus/hover, push-to-talk keydown) so the local Parakeet helper is
+   * spawned just before it's needed instead of on composer mount — see the
+   * `warmedRef` perf note below. Safe to call repeatedly; only the first call
+   * does work.
+   */
+  warm: () => void;
   /** Rolling buffer of recent input levels in 0..1, oldest first. */
   levels: number[];
   /** Elapsed time of the current recording, in milliseconds. */
@@ -125,6 +133,15 @@ export const useDictation = ({
    * new recording.
    */
   const sendAfterCommitRef = useRef(false);
+  /**
+   * Perf: the local Parakeet helper used to be warmed on composer mount, which
+   * spawned the serve process + loaded the model on every launch even for users
+   * who never dictate. We now warm on first dictation *intent* instead. This ref
+   * makes warming idempotent so repeated focus/hover/keydown events only do the
+   * work once per hook lifecycle; the first dictation still works because
+   * `start()` warms before recording (warm-then-transcribe).
+   */
+  const warmedRef = useRef(false);
 
   useEffect(() => {
     messageRef.current = message;
@@ -160,7 +177,15 @@ export const useDictation = ({
     stateRef.current = state;
   }, [state]);
 
-  useEffect(() => {
+  /**
+   * Perf: warm on first dictation intent rather than on mount. Guarded by
+   * `warmedRef` so it's idempotent — wire `warm` (returned below) to mic-button
+   * focus/hover or a push-to-talk keydown, and `start()` also calls this so the
+   * very first dictation still warms before it records.
+   */
+  const warm = useCallback(() => {
+    if (warmedRef.current) return;
+    warmedRef.current = true;
     void warmLocalDictationModel().catch(() => undefined);
     if (!isDictationSuperFastEnabled()) return;
     void ensureDictationSuperFastWarm().catch(() => undefined);
@@ -203,6 +228,10 @@ export const useDictation = ({
   const start = useCallback(async (source: "button" | "shortcut") => {
     if (sessionRef.current) return;
     if (disabled) return;
+    // Perf: ensure the local model is warming before we record. Idempotent — if
+    // intent (focus/hover/keydown) already warmed it this is a no-op; otherwise
+    // this is the warm-then-transcribe path that keeps the first dictation working.
+    warm();
     const session = new InworldDictationSession();
     sessionRef.current = session;
     baseTextRef.current = messageRef.current;
@@ -258,7 +287,7 @@ export const useDictation = ({
       setShowControls(false);
       setShowRecordingBar(false);
     }
-  }, [disabled]);
+  }, [disabled, warm]);
 
   const toggle = useCallback(() => {
     const current = stateRef.current;
@@ -376,6 +405,7 @@ export const useDictation = ({
     toggle,
     cancel,
     commitAndSend,
+    warm,
     levels,
     elapsedMs,
     error,
