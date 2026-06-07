@@ -444,6 +444,14 @@ export function useAutoContextChips(
 
   // Polling — kept simple. The reducer absorbs identical payloads; the
   // visible state only changes when a lane actually shifts.
+  //
+  // Perf: each poll spawns native helpers (macOS home_apps AX enumeration +
+  // osascript). Gate the interval on window focus AND document visibility so
+  // we never spawn those helpers while Stella is hidden/backgrounded — the
+  // chips can't be seen then anyway. The interval is fully torn down when the
+  // surface goes inactive and re-created (with an immediate refresh) on
+  // focus/visibilitychange, so the visible content is identical to before the
+  // moment the surface is focused+visible.
   const cancelledRef = useRef(false)
   useEffect(() => {
     cancelledRef.current = false
@@ -466,9 +474,32 @@ export function useAutoContextChips(
       dispatch({ type: "reconcile", candidates })
     }
 
+    // Only poll while the document is visible and the window is focused;
+    // otherwise nobody can see the chips and the native helper spawns are
+    // pure idle-CPU drain.
+    const isSurfaceVisible = () =>
+      !document.hidden && document.hasFocus()
+
+    const stopInterval = () => {
+      if (interval) {
+        window.clearInterval(interval)
+        interval = null
+      }
+    }
+
     const startPolling = () => {
+      if (!isSurfaceVisible()) return
+      if (interval) return
       void refresh()
       interval = window.setInterval(refresh, pollIntervalMs)
+    }
+
+    // Pause on blur/hide, resume on focus/show. Resuming kicks an immediate
+    // refresh so the strip reflects the current foreground app right away
+    // rather than waiting a full interval after the user returns.
+    const handleVisibilityChange = () => {
+      if (isSurfaceVisible()) startPolling()
+      else stopInterval()
     }
 
     if (initialDelayMs > 0) {
@@ -477,10 +508,17 @@ export function useAutoContextChips(
       startPolling()
     }
 
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("focus", handleVisibilityChange)
+    window.addEventListener("blur", handleVisibilityChange)
+
     return () => {
       cancelledRef.current = true
       if (initialTimer) window.clearTimeout(initialTimer)
-      if (interval) window.clearInterval(interval)
+      stopInterval()
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("focus", handleVisibilityChange)
+      window.removeEventListener("blur", handleVisibilityChange)
     }
   }, [active])
 
