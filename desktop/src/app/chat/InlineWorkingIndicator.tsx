@@ -11,12 +11,11 @@
  *    "Thinking"; while a tool is running it shows that tool's friendly
  *    status. The moment answer text starts streaming, the indicator
  *    exits — it does NOT trail the growing message line by line.
- *  - Running agents ("tasks") are NOT surfaced here anymore; they live in
- *    the composer's task chip. This indicator only ever shows the
- *    orchestrator's own thinking / tool work.
- *  - When the work finishes (`active` flips false) the indicator plays a
- *    short grow-out/fade for `EXIT_ANIMATION_MS` showing its last-known
- *    label, then removes its inner content. The parent mounts the
+ *  - Long-running agent task presence lives in the composer's task chip; this
+ *    inline indicator only follows the orchestrator's thinking/tool lifecycle.
+ *  - When the work finishes (`active` flips false) the indicator stays visible
+ *    for at least `MIN_VISIBLE_MS`, then plays a short grow-out/fade for
+ *    `EXIT_ANIMATION_MS` showing its last-known label. The parent mounts the
  *    indicator unconditionally and toggles `active` so React doesn't rip
  *    the node out before the exit animation runs. If `active` flips back
  *    true mid-exit, the exit is canceled and live updates resume.
@@ -25,6 +24,10 @@
  *    idle chat carries no ghost gutter.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  getInlineWorkingIndicatorExitDelayMs,
+  INLINE_WORKING_INDICATOR_MIN_VISIBLE_MS,
+} from "@/features/chat/working-indicator-state";
 import { WorkingIndicator } from "./WorkingIndicator";
 import "./indicators.css";
 
@@ -54,6 +57,7 @@ export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
  * gone promptly, with just a short grow-out so it doesn't snap away.
  */
 const EXIT_ANIMATION_MS = 240;
+const MIN_VISIBLE_MS = INLINE_WORKING_INDICATOR_MIN_VISIBLE_MS;
 
 export function InlineWorkingIndicator({
   active,
@@ -83,6 +87,8 @@ export function InlineWorkingIndicator({
   const [renderShell, setRenderShell] = useState(active);
   const [leaving, setLeaving] = useState(false);
   const exitTimerRef = useRef<number | null>(null);
+  const activatedAtRef = useRef<number | null>(active ? Date.now() : null);
+  const wasActiveRef = useRef(active);
 
   useEffect(() => {
     const clearTimer = () => {
@@ -94,19 +100,37 @@ export function InlineWorkingIndicator({
 
     if (active) {
       clearTimer();
+      if (!wasActiveRef.current) {
+        activatedAtRef.current = Date.now();
+      }
+      wasActiveRef.current = true;
       setLeaving(false);
       setRenderShell(true);
       return;
     }
 
+    wasActiveRef.current = false;
     if (!renderShell) return;
 
-    setLeaving(true);
-    exitTimerRef.current = window.setTimeout(() => {
-      exitTimerRef.current = null;
-      setRenderShell(false);
-      setLeaving(false);
-    }, EXIT_ANIMATION_MS);
+    const startExit = () => {
+      setLeaving(true);
+      exitTimerRef.current = window.setTimeout(() => {
+        exitTimerRef.current = null;
+        setRenderShell(false);
+        setLeaving(false);
+      }, EXIT_ANIMATION_MS);
+    };
+    const activatedAt = activatedAtRef.current ?? Date.now();
+    const remainingMs = getInlineWorkingIndicatorExitDelayMs({
+      activatedAtMs: activatedAt,
+      nowMs: Date.now(),
+      minVisibleMs: MIN_VISIBLE_MS,
+    });
+    if (remainingMs > 0) {
+      exitTimerRef.current = window.setTimeout(startExit, remainingMs);
+    } else {
+      startExit();
+    }
 
     return () => {
       clearTimer();

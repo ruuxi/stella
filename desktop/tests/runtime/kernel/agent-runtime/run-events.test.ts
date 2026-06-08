@@ -1,9 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
+import { AssistantMessageEventStream } from "../../../../../runtime/ai/utils/event-stream.js";
+import type { AssistantMessage } from "../../../../../runtime/ai/types.js";
+import { runAgentLoop } from "../../../../../runtime/kernel/agent-core/agent-loop.js";
 import type { AgentEvent } from "../../../../../runtime/kernel/agent-core/types.js";
+import { createPiTools } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import type {
+  RuntimeStatusEvent,
+  RuntimeToolEndEvent,
+  RuntimeToolStartEvent,
+} from "../../../../../runtime/kernel/agent-runtime/types.js";
 import {
   createRunEventRecorder,
   subscribeRuntimeAgentEvents,
 } from "../../../../../runtime/kernel/agent-runtime/run-events.js";
+import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
+import {
+  initialStoreState,
+  streamStoreReducer,
+} from "@/features/chat/streaming/store";
+import {
+  getInlineWorkingIndicatorActive,
+  getWorkingIndicatorDisplayStatus,
+} from "@/features/chat/working-indicator-state";
 
 const usage = {
   input: 0,
@@ -38,7 +56,328 @@ const assistantMessage = {
   timestamp: 1,
 };
 
+const createToolCallMessage = (toolName: string): AssistantMessage => ({
+  role: "assistant",
+  content: [
+    {
+      type: "toolCall",
+      id: `call-${toolName}`,
+      name: toolName,
+      arguments: {},
+    },
+  ],
+  api: "openai-completions",
+  provider: "openai",
+  model: "test-model",
+  usage,
+  stopReason: "toolUse",
+  timestamp: 1,
+});
+
+const createTextMessage = (text: string): AssistantMessage => ({
+  role: "assistant",
+  content: [{ type: "text", text }],
+  api: "openai-completions",
+  provider: "openai",
+  model: "test-model",
+  usage,
+  stopReason: "stop",
+  timestamp: 2,
+});
+
+const streamMessage = (message: AssistantMessage): AssistantMessageEventStream => {
+  const stream = new AssistantMessageEventStream();
+  queueMicrotask(() => {
+    stream.push({
+      type: "start",
+      partial: message,
+    });
+    stream.push({
+      type: "done",
+      reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
+      message,
+    });
+    stream.end(message);
+  });
+  return stream;
+};
+
+const runToolStatusIntegration = async (toolName: string) => {
+  const runId = `run-${toolName}`;
+  const conversationId = `conversation-${toolName}`;
+  const userMessageId = `user-${toolName}`;
+  const listeners = new Set<(event: AgentEvent) => void>();
+  const agent = {
+    state: { messages: [] },
+    subscribe: (listener: (event: AgentEvent) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  const recordedRunEvents: unknown[] = [];
+  const statusEvents: RuntimeStatusEvent[] = [];
+  const toolStartEvents: RuntimeToolStartEvent[] = [];
+  const toolEndEvents: RuntimeToolEndEvent[] = [];
+  const store = {
+    recordRunEvent: (event: unknown) => {
+      recordedRunEvents.push(event);
+    },
+  };
+
+  subscribeRuntimeAgentEvents({
+    agent,
+    runId,
+    agentType: AGENT_IDS.ORCHESTRATOR,
+    recorder: createRunEventRecorder({
+      store: store as never,
+      runId,
+      conversationId,
+      agentType: AGENT_IDS.ORCHESTRATOR,
+      userMessageId,
+    }),
+    callbacks: {
+      onStatus: (event) => {
+        statusEvents.push(event);
+      },
+      onToolStart: (event) => {
+        toolStartEvents.push(event);
+      },
+      onToolEnd: (event) => {
+        toolEndEvents.push(event);
+      },
+    },
+  });
+
+  const tools = createPiTools({
+    runId,
+    conversationId,
+    agentType: AGENT_IDS.ORCHESTRATOR,
+    deviceId: "device-1",
+    toolsAllowlist: [toolName],
+    toolCatalog: [
+      {
+        name: toolName,
+        description: `${toolName} tool`,
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+    ],
+    store: store as never,
+    toolExecutor: async () => ({
+      result: "ok",
+    }),
+  });
+
+  let callCount = 0;
+  await runAgentLoop(
+    [{ role: "user", content: "Use the tool.", timestamp: 1 }],
+    {
+      systemPrompt: "Use the requested tool, then answer.",
+      messages: [],
+      tools,
+    },
+    {
+      model: {
+        provider: "openai",
+        id: "test-model",
+        contextWindow: 128_000,
+      },
+      convertToLlm: async (messages) => messages as never,
+      toolExecution: "sequential",
+    } as never,
+    async (event) => {
+      for (const listener of listeners) {
+        listener(event);
+      }
+    },
+    undefined,
+    async () => {
+      callCount += 1;
+      return streamMessage(
+        callCount === 1
+          ? createToolCallMessage(toolName)
+          : createTextMessage("Done."),
+      );
+    },
+  );
+
+  const statusEvent = statusEvents[0];
+  if (!statusEvent) {
+    throw new Error(`Expected ${toolName} to emit a status event`);
+  }
+
+  let state = streamStoreReducer(initialStoreState, {
+    type: "run-started",
+    runId,
+    conversationId,
+    userMessageId,
+  });
+  const activeBeforeTool = getInlineWorkingIndicatorActive({
+    isStreaming: true,
+    isStreamingResponseText: false,
+    hasToolActivity: state.runsById[runId]?.hasToolActivity ?? false,
+    isToolActive: Boolean(
+      Object.keys(state.runsById[runId]?.activeToolCalls ?? {}).length,
+    ),
+  });
+  state = streamStoreReducer(state, {
+    type: "run-status",
+    runId,
+    statusText: statusEvent.statusText,
+  });
+  const toolStartEvent = toolStartEvents[0];
+  if (!toolStartEvent) {
+    throw new Error(`Expected ${toolName} to emit a tool start event`);
+  }
+  state = streamStoreReducer(state, {
+    type: "tool-start",
+    runId,
+    conversationId,
+    ...(toolStartEvent.toolCallId
+      ? { toolCallId: toolStartEvent.toolCallId }
+      : {}),
+    ...(toolStartEvent.toolName ? { toolName: toolStartEvent.toolName } : {}),
+    statusText: toolStartEvent.statusText ?? null,
+  });
+  const toolActiveRun = state.runsById[runId];
+  const activeDuringTool = getInlineWorkingIndicatorActive({
+    isStreaming: true,
+    isStreamingResponseText: false,
+    hasToolActivity: toolActiveRun?.hasToolActivity ?? false,
+    isToolActive: Boolean(
+      Object.keys(toolActiveRun?.activeToolCalls ?? {}).length,
+    ),
+  });
+  const displayStatusDuringTool = getWorkingIndicatorDisplayStatus({
+    status: toolActiveRun?.statusText ?? undefined,
+    toolName: toolStartEvent.toolName,
+    toolCallId: toolStartEvent.toolCallId,
+  });
+  const toolEndEvent = toolEndEvents[0];
+  if (!toolEndEvent) {
+    throw new Error(`Expected ${toolName} to emit a tool end event`);
+  }
+  state = streamStoreReducer(state, {
+    type: "tool-end",
+    runId,
+    ...(toolEndEvent.toolCallId ? { toolCallId: toolEndEvent.toolCallId } : {}),
+    ...(toolEndEvent.toolName ? { toolName: toolEndEvent.toolName } : {}),
+  });
+  const toolEndedRun = state.runsById[runId];
+  const activeAfterToolBeforeAnswer = getInlineWorkingIndicatorActive({
+    isStreaming: true,
+    isStreamingResponseText: false,
+    hasToolActivity: toolEndedRun?.hasToolActivity ?? false,
+    isToolActive: Boolean(
+      Object.keys(toolEndedRun?.activeToolCalls ?? {}).length,
+    ),
+  });
+
+  return {
+    rawStatusText: statusEvent.statusText as string,
+    rawToolStartStatusText: toolStartEvent.statusText,
+    rawToolEndName: toolEndEvent.toolName,
+    activeBeforeTool,
+    activeDuringTool,
+    activeAfterToolBeforeAnswer,
+    statusAfterToolEnd: toolEndedRun?.statusText ?? null,
+    persistedToolEvent: recordedRunEvents.find(
+      (event) =>
+        typeof event === "object" &&
+        event !== null &&
+        (event as { type?: unknown }).type === "tool_start",
+    ),
+    displayStatus: displayStatusDuringTool,
+  };
+};
+
 describe("subscribeRuntimeAgentEvents", () => {
+  it("displays real runtime tool status text with friendly working indicator copy", async () => {
+    const web = await runToolStatusIntegration("web");
+    expect(web.rawStatusText).toBe("Running Web");
+    expect(web.rawToolStartStatusText).toBe("Running Web");
+    expect(web.rawToolEndName).toBe("web");
+    expect(web.persistedToolEvent).toEqual(
+      expect.objectContaining({ type: "tool_start", toolName: "web" }),
+    );
+    expect(web.activeBeforeTool).toBe(true);
+    expect(web.activeDuringTool).toBe(true);
+    expect(web.activeAfterToolBeforeAnswer).toBe(false);
+    expect(web.statusAfterToolEnd).toBeNull();
+    expect(web.displayStatus).toBe("Searching");
+
+    const spawnAgent = await runToolStatusIntegration("spawn_agent");
+    expect(spawnAgent.rawStatusText).toBe("Running Spawn Agent");
+    expect(spawnAgent.rawToolStartStatusText).toBe("Running Spawn Agent");
+    expect(spawnAgent.rawToolEndName).toBe("spawn_agent");
+    expect(spawnAgent.persistedToolEvent).toEqual(
+      expect.objectContaining({ type: "tool_start", toolName: "spawn_agent" }),
+    );
+    expect(spawnAgent.activeBeforeTool).toBe(true);
+    expect(spawnAgent.activeDuringTool).toBe(true);
+    expect(spawnAgent.activeAfterToolBeforeAnswer).toBe(false);
+    expect(spawnAgent.statusAfterToolEnd).toBeNull();
+    expect(spawnAgent.displayStatus).toBe("On it");
+
+    const sendInput = await runToolStatusIntegration("send_input");
+    expect(sendInput.rawStatusText).toBe("Running Send Input");
+    expect(sendInput.rawToolStartStatusText).toBe("Running Send Input");
+    expect(sendInput.rawToolEndName).toBe("send_input");
+    expect(sendInput.persistedToolEvent).toEqual(
+      expect.objectContaining({ type: "tool_start", toolName: "send_input" }),
+    );
+    expect(sendInput.activeBeforeTool).toBe(true);
+    expect(sendInput.activeDuringTool).toBe(true);
+    expect(sendInput.activeAfterToolBeforeAnswer).toBe(false);
+    expect(sendInput.statusAfterToolEnd).toBeNull();
+    expect(sendInput.displayStatus).toBe("On it");
+  });
+
+  it("does not keep pre-tool thinking pinned when agent activity arrives without a visible tool lifecycle", () => {
+    const runId = "run-update-agent";
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId,
+      conversationId: "conversation-1",
+      userMessageId: "user-1",
+    });
+    state = streamStoreReducer(state, {
+      type: "run-status",
+      runId,
+      statusText: "Resume current Nvidia web research test again",
+    });
+
+    expect(
+      getInlineWorkingIndicatorActive({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        hasToolActivity: state.runsById[runId]?.hasToolActivity ?? false,
+        isToolActive: Boolean(
+          Object.keys(state.runsById[runId]?.activeToolCalls ?? {}).length,
+        ),
+      }),
+    ).toBe(true);
+
+    state = streamStoreReducer(state, {
+      type: "tool-activity-observed",
+      runId,
+    });
+
+    const run = state.runsById[runId];
+    expect(run?.statusText).toBeNull();
+    expect(run?.hasToolActivity).toBe(true);
+    expect(
+      getInlineWorkingIndicatorActive({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        hasToolActivity: run?.hasToolActivity ?? false,
+        isToolActive: Boolean(Object.keys(run?.activeToolCalls ?? {}).length),
+      }),
+    ).toBe(false);
+  });
+
   it("records a completed assistant text event without a Pi message object", () => {
     const store = { recordRunEvent: vi.fn() };
     const recorder = createRunEventRecorder({
