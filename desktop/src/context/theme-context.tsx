@@ -141,10 +141,10 @@ function applyThemeToDocument(
   root.style.setProperty("--input", colors.border);
   root.style.setProperty("--ring", colors.interactive);
 
-  root.style.setProperty("--spinner-color-1", colors.interactive);
-  root.style.setProperty("--spinner-color-2", colors.success);
-  root.style.setProperty("--spinner-color-3", colors.warning);
-  root.style.setProperty("--spinner-color-4", colors.info);
+  root.style.setProperty("--stella-animation-color-1", colors.interactive);
+  root.style.setProperty("--stella-animation-color-2", colors.success);
+  root.style.setProperty("--stella-animation-color-3", colors.warning);
+  root.style.setProperty("--stella-animation-color-4", colors.info);
 
   const gradientTokens = getGradientTokens(
     {

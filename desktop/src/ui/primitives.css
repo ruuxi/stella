@@ -33,3 +33,24 @@
 .floating-selection-chip__label {
   white-space: nowrap;
 }
+
+.stella-loader-circle {
+  flex-shrink: 0;
+  color: var(--text-weak);
+  animation: stella-loader-circle-spin 1.1s linear infinite;
+}
+
+@keyframes stella-loader-circle-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stella-loader-circle {
+    animation: none;
+  }
+}

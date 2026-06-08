@@ -1,6 +1,6 @@
 import { createLazyFileRoute, useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useMemo } from "react";
-import { Spinner } from "@/ui/spinner";
+import { LoaderCircle } from "lucide-react";
 import { getUserApp } from "@/app/_user/user-apps-registry";
 
 function UserAppHost() {
@@ -98,7 +98,12 @@ function UserAppHost() {
             justifyContent: "center",
           }}
         >
-          <Spinner size="md" />
+          <LoaderCircle
+            className="stella-loader-circle"
+            size={18}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
         </div>
       }
     >

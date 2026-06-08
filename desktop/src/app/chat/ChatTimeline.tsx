@@ -64,7 +64,7 @@ import {
   type InlineWorkingIndicatorMountProps,
 } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
-import { Spinner } from "@/ui/spinner";
+import { LoaderCircle } from "lucide-react";
 
 type ChatTimelineProps = {
   rows: EventRowViewModel[];
@@ -248,7 +248,12 @@ export const ChatTimeline = memo(function ChatTimeline({
         aria-live="polite"
         aria-label="Loading conversation"
       >
-        <Spinner size="md" />
+        <LoaderCircle
+          className="stella-loader-circle"
+          size={18}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
       </div>
     );
   }

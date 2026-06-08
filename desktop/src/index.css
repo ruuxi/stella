@@ -137,11 +137,11 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --gradient-blur: 120px;
   --gradient-noise: 0.08;
 
-  /* Spinner colors - aligned to Carbon theme */
-  --spinner-color-1: #0f62fe;
-  --spinner-color-2: #42be65;
-  --spinner-color-3: #f1c21b;
-  --spinner-color-4: #4589ff;
+  /* Stella animation colors - aligned to Carbon theme */
+  --stella-animation-color-1: #0f62fe;
+  --stella-animation-color-2: #42be65;
+  --stella-animation-color-3: #f1c21b;
+  --stella-animation-color-4: #4589ff;
 
   /* Layered shadows.
    * Each token stacks a tight contact layer with progressively wider,
@@ -283,11 +283,11 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --gradient-blur: 140px;
   --gradient-noise: 0.12;
 
-  /* Dark mode spinner colors - aligned to Carbon theme */
-  --spinner-color-1: #78a9ff;
-  --spinner-color-2: #42be65;
-  --spinner-color-3: #f1c21b;
-  --spinner-color-4: #4589ff;
+  /* Dark mode Stella animation colors - aligned to Carbon theme */
+  --stella-animation-color-1: #78a9ff;
+  --stella-animation-color-2: #42be65;
+  --stella-animation-color-3: #f1c21b;
+  --stella-animation-color-4: #4589ff;
 
   /* Dark mode shadows — same layered strategy as light, with stronger
    * contact + mid layers since dark surfaces need more shadow weight to

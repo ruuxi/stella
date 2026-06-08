@@ -33,6 +33,7 @@
 .event-list-fallback[data-loading-history="true"] {
   flex: 1;
   justify-content: center;
+  align-items: center;
   min-height: 100%;
 }
 
