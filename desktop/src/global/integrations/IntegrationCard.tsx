@@ -7,6 +7,7 @@ import {
   type FormEvent,
 } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
+import QRCode from "qrcode";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
 import { Select } from "@/ui/select";
@@ -295,6 +296,7 @@ function BotSetupView({
     status: "loading",
     botLink: sanitizeExternalLinkUrl(integration.botLink),
   }));
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -380,6 +382,35 @@ function BotSetupView({
   const code = state.status === "ready" ? state.code : null;
   const botLink = state.botLink;
   const error = state.status === "error" ? state.message : null;
+
+  useEffect(() => {
+    if (!botLink) {
+      setQrDataUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+    QRCode.toDataURL(botLink, {
+      width: 140,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" },
+    })
+      .then((url) => {
+        if (!cancelled) {
+          setQrDataUrl(url);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQrDataUrl(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [botLink]);
+
   const handleCopy = useCallback(() => {
     if (code) {
       navigator.clipboard.writeText(code);
@@ -393,6 +424,20 @@ function BotSetupView({
       instructions={integration.instructions}
       error={error}
     >
+      {botLink ? (
+        <div className="connect-pair-qr-block">
+          {qrDataUrl ? (
+            <img
+              src={qrDataUrl}
+              alt={`Open ${integration.displayName}`}
+              className="connect-pair-qr"
+            />
+          ) : (
+            <div className="connect-skeleton connect-pair-qr" />
+          )}
+        </div>
+      ) : null}
+
       <div className="connect-pair-code-group">
         {code ? (
           <>
