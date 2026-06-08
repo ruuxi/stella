@@ -293,10 +293,6 @@ export function ChatWorkspaceStrip({
 
   const visibleDoneTasks = doneTasks.slice(0, DONE_VISIBLE);
   const hiddenDoneCount = doneTasks.length - visibleDoneTasks.length;
-  const visibleActivityTasks = useMemo(
-    () => [...runningTasks, ...visibleDoneTasks],
-    [runningTasks, visibleDoneTasks],
-  );
   const visibleFiles = allFiles.slice(0, FILES_VISIBLE);
   const hiddenFilesCount = allFiles.length - visibleFiles.length;
   const upNext = useMemo(
@@ -305,7 +301,11 @@ export function ChatWorkspaceStrip({
   );
   const hiddenScheduleCount = schedules.length - upNext.length;
 
-  const hasActivity = visibleActivityTasks.length > 0;
+  // In-progress work stays up top; completed work is pinned to the very
+  // bottom of the panel (its own section, below Files and Schedule) so the
+  // live items are always what's visible first.
+  const hasNow = runningTasks.length > 0;
+  const hasCompleted = visibleDoneTasks.length > 0;
   const hasFiles = allFiles.length > 0;
   const hasSchedule = upNext.length > 0;
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
@@ -351,23 +351,15 @@ export function ChatWorkspaceStrip({
               </div>
             </WorkspaceSection>
 
-            {hasActivity && (
+            {hasNow && (
               <>
                 <div
                   className="chat-workspace-strip__divider"
                   aria-hidden="true"
                 />
-                <WorkspaceSection
-                  title="Activity"
-                  onOpenHistory={
-                    hiddenDoneCount > 0
-                      ? () => setHistorySection("done")
-                      : undefined
-                  }
-                  historyLabel={`View all activity (${doneTasks.length})`}
-                >
+                <WorkspaceSection title="Activity">
                   <TasksList
-                    tasks={visibleActivityTasks}
+                    tasks={runningTasks}
                     selectedActivityId={chat.composer.chatContext?.activity?.id}
                     onSelectTask={handleSelectTask}
                   />
@@ -447,6 +439,30 @@ export function ChatWorkspaceStrip({
                       </li>
                     ))}
                   </ul>
+                </WorkspaceSection>
+              </>
+            )}
+
+            {hasCompleted && (
+              <>
+                <div
+                  className="chat-workspace-strip__divider"
+                  aria-hidden="true"
+                />
+                <WorkspaceSection
+                  title="Completed"
+                  onOpenHistory={
+                    hiddenDoneCount > 0
+                      ? () => setHistorySection("done")
+                      : undefined
+                  }
+                  historyLabel={`View all completed (${doneTasks.length})`}
+                >
+                  <TasksList
+                    tasks={visibleDoneTasks}
+                    selectedActivityId={chat.composer.chatContext?.activity?.id}
+                    onSelectTask={handleSelectTask}
+                  />
                 </WorkspaceSection>
               </>
             )}
