@@ -9,7 +9,10 @@ import type { SelfModHmrState } from '../../../runtime/contracts/index.js'
 import type { MorphVisualTiming } from '../../src/shared/contracts/morph-timing.js'
 import { loadWindow } from './window-load.js'
 import { createSharedWebPreferences } from './shared-window-preferences.js'
-import { getWindowInfoAtPoint } from '../window-capture.js'
+import {
+  STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
+  getWindowInfoAtPoint,
+} from '../window-capture.js'
 
 const getAllDisplaysBounds = () => {
   const displays = screen.getAllDisplays()
@@ -134,6 +137,7 @@ class OverlayWindow {
         ? { hiddenInMissionControl: true }
         : {}),
       hasShadow: false,
+      title: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES[0],
       focusable: false,
       show: false,
       backgroundColor: '#00000000',
@@ -143,6 +147,7 @@ class OverlayWindow {
         backgroundThrottling: false,
       }),
     })
+    this.window.setTitle(STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES[0])
 
     this.window.setAlwaysOnTop(true, 'screen-saver')
     // The overlay is a transparent, screen-spanning utility layer (radial dial,
@@ -501,6 +506,7 @@ export class OverlayWindowController {
     }
     void getWindowInfoAtPoint(screenPoint.x, screenPoint.y, {
       excludePids: [process.pid],
+      excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
     }).then((info) => {
       if (requestId !== this.windowHighlightRequestId) return
       void this.setWindowHighlight(info?.bounds ?? null, 'default')

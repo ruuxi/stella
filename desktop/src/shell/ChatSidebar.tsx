@@ -154,6 +154,7 @@ export function ChatPanelTab({
   const [inputText, setInputText] = useState("");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const restoredConversationScrollRef = useRef<string | null>(null);
 
   // Perf: the auto-context suggestion strip polls native window/AX
   // enumeration on an interval. Only treat the composer surface as "active"
@@ -195,6 +196,28 @@ export function ChatPanelTab({
     onLoadOlder,
     surface: "compact",
   });
+
+  useEffect(() => {
+    if (
+      !conversationId ||
+      isInitialLoading ||
+      messages.length === 0 ||
+      restoredConversationScrollRef.current === conversationId
+    ) {
+      return;
+    }
+    const restoredConversationId = conversationId;
+    const frame = window.requestAnimationFrame(() => {
+      sidebarScroll.scrollToBottom("instant");
+      restoredConversationScrollRef.current = restoredConversationId;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    conversationId,
+    isInitialLoading,
+    messages.length,
+    sidebarScroll.scrollToBottom,
+  ]);
 
   const assistantReplyPeek = useAssistantReplyPeek({
     messages,

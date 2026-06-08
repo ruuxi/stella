@@ -130,11 +130,39 @@ const NOISE_BUNDLE_ID_SUBSTRINGS = [
 ]
 
 const STELLA_BUNDLE_ID_PREFIXES = ['com.stella', 'ai.stella', 'org.stella']
-const STELLA_PROCESS_NAMES = new Set(['stella', 'stella helper'])
+const STELLA_PROCESS_NAMES = new Set([
+  'stella',
+  'stella helper',
+  'stella overlay',
+])
+const STELLA_EXECUTABLE_PATH_NEEDLES = [
+  '\\stella\\',
+  '/stella/',
+  '\\stella.app\\',
+  '/stella.app/',
+]
+const STELLA_WINDOW_TITLE_PREFIXES = [
+  'stella',
+  'stella overlay',
+]
+
+const hasStellaExecutablePath = (executablePath?: string | null): boolean => {
+  const exePath = executablePath?.toLowerCase().trim()
+  if (!exePath) return false
+  const normalized = exePath.replaceAll('/', '\\')
+  if (normalized.endsWith('\\stella.exe')) return true
+  if (normalized.endsWith('\\stella helper.exe')) return true
+  for (const needle of STELLA_EXECUTABLE_PATH_NEEDLES) {
+    if (exePath.includes(needle)) return true
+  }
+  return false
+}
 
 const isStellaApp = (
   rawName: string | undefined,
   bundleId: string | undefined | null,
+  executablePath?: string | null,
+  windowTitle?: string | null,
 ): boolean => {
   const lowerBundle = bundleId?.toLowerCase()
   if (lowerBundle) {
@@ -142,7 +170,26 @@ const isStellaApp = (
       if (lowerBundle.startsWith(prefix)) return true
     }
   }
-  return STELLA_PROCESS_NAMES.has((rawName ?? '').toLowerCase().trim())
+  const name = (rawName ?? '').toLowerCase().trim()
+  if (STELLA_PROCESS_NAMES.has(name)) return true
+
+  const hasStellaPath = hasStellaExecutablePath(executablePath)
+  if (hasStellaPath) return true
+
+  const title = windowTitle?.toLowerCase().trim()
+  if (title && (name === 'electron' || name.includes('stella') || hasStellaPath)) {
+    for (const prefix of STELLA_WINDOW_TITLE_PREFIXES) {
+      if (
+        title === prefix ||
+        title.startsWith(`${prefix} `) ||
+        title.startsWith(`${prefix} -`) ||
+        title.startsWith(`${prefix}:`)
+      )
+        return true
+    }
+  }
+
+  return false
 }
 
 const isNoiseName = (name: string): boolean =>
@@ -197,7 +244,8 @@ const listRecentAppsMac = async (
 
   for (const raw of parsed.apps) {
     if (typeof raw.name !== 'string' || typeof raw.pid !== 'number') continue
-    if (isStellaApp(raw.name, raw.bundleId ?? null)) continue
+    if (isStellaApp(raw.name, raw.bundleId ?? null, null, raw.windowTitle ?? null))
+      continue
     if (isNoiseName(raw.name)) continue
     if (isNoiseBundleId(raw.bundleId ?? null)) continue
     if (seenPids.has(raw.pid)) continue
@@ -423,12 +471,13 @@ const buildRecentAppsFromWinProcesses = async (
     const rawName = raw.ProcessName?.trim()
     const pid = typeof raw.Id === 'number' ? raw.Id : NaN
     if (!rawName || !Number.isFinite(pid)) continue
-    if (isStellaApp(rawName, null)) continue
+    const windowTitle = raw.MainWindowTitle?.trim() ?? ''
+    if (isStellaApp(rawName, null, raw.ExecutablePath ?? null, windowTitle))
+      continue
     if (isNoiseName(rawName)) continue
     if (seenPids.has(pid)) continue
     seenPids.add(pid)
 
-    const windowTitle = raw.MainWindowTitle?.trim() ?? ''
     const iconDataUrl = await resolveWindowsIconDataUrl(raw.ExecutablePath)
 
     cleaned.push({

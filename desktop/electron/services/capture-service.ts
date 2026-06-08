@@ -18,6 +18,7 @@ import type {
 } from '../types.js'
 import { toChatContextWindow } from '../types.js'
 import {
+  STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
   captureRegionScreenshotNative,
   captureWindowScreenshot,
 } from '../window-capture.js'
@@ -679,6 +680,7 @@ export class CaptureService {
 
     const capture = await captureWindowScreenshot(screenX, screenY, {
       excludePids: [process.pid],
+      excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
     })
     if (!capture) return null
 
@@ -713,6 +715,7 @@ export class CaptureService {
         const capturePoint = this.toScreenPoint(point)
         return captureWindowScreenshot(capturePoint.x, capturePoint.y, {
           excludePids: [process.pid],
+          excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
         })
       })
     } catch (error) {
@@ -738,7 +741,10 @@ export class CaptureService {
       const windowCapture = await captureWindowScreenshot(
         capturePoint.x,
         capturePoint.y,
-        { excludePids: [process.pid] },
+        {
+          excludePids: [process.pid],
+          excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
+        },
       )
       if (windowCapture?.screenshot) {
         return windowCapture.screenshot

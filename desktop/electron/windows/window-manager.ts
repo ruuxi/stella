@@ -5,6 +5,7 @@ import {
   MINI_SHELL_SIZE,
 } from '../layout-constants.js'
 import {
+  STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
   getWindowInfoAtPoint,
   moveResizeWindowAtPoint,
   type WindowInfo,
@@ -1052,6 +1053,7 @@ export class WindowManager {
       nativePoint.y,
       {
         excludePids: [process.pid],
+        excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
       },
     )
     if (!originalInfo) {
@@ -1080,6 +1082,7 @@ export class WindowManager {
 
     const moved = await moveResizeWindowAtPoint(nativePoint.x, nativePoint.y, {
       excludePids: [process.pid],
+      excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
       bounds: this.toNativeBounds(layout.targetBounds, nativePoint.display),
     })
     if (!moved?.moved) {
