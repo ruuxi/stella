@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { mkdirSync, writeFileSync } from "fs";
 import { hasMacPermission } from "../utils/macos-permissions.js";
 import path from "path";
 import { resolveStellaHome } from "../../../runtime/kernel/home/stella-home.js";
@@ -20,14 +21,43 @@ import { getMainLogger } from "../observability/main-logger.js";
 
 const DEFAULT_STELLA_WEB_URL = "https://stella.sh";
 
+const markDesktopReadyForLauncher = () => {
+  const readyFile = process.env.STELLA_ELECTRON_READY_FILE?.trim();
+  if (!readyFile) {
+    return;
+  }
+
+  try {
+    mkdirSync(path.dirname(readyFile), { recursive: true });
+    writeFileSync(
+      readyFile,
+      JSON.stringify(
+        {
+          pid: Number(process.env.STELLA_ELECTRON_DEV_RUNNER_PID || 0) || null,
+          readyAt: new Date().toISOString(),
+          elapsedMs: Math.round(process.uptime() * 1000),
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+  } catch (error) {
+    getMainLogger()?.process("startup.launcher-ready-marker.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
 const readStellaWebBaseUrl = () => {
-  const raw = (
-    process.env.STELLA_WEB_URL ??
-    process.env.VITE_STELLA_WEB_URL ??
-    process.env.STELLA_STORE_WEB_URL ??
-    process.env.VITE_STELLA_STORE_WEB_URL ??
-    DEFAULT_STELLA_WEB_URL
-  ).trim() || DEFAULT_STELLA_WEB_URL;
+  const raw =
+    (
+      process.env.STELLA_WEB_URL ??
+      process.env.VITE_STELLA_WEB_URL ??
+      process.env.STELLA_STORE_WEB_URL ??
+      process.env.VITE_STELLA_STORE_WEB_URL ??
+      DEFAULT_STELLA_WEB_URL
+    ).trim() || DEFAULT_STELLA_WEB_URL;
   try {
     const url = new URL(raw);
     return url.origin;
@@ -235,6 +265,7 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
       getMainLogger()?.process("startup.first-paint", {
         elapsedMs: Math.round(process.uptime() * 1000),
       });
+      markDesktopReadyForLauncher();
       triggerDeferredStartup("first-paint");
     });
   }
@@ -255,7 +286,6 @@ const finalizeWindowLaunch = (context: BootstrapContext) => {
       services.selectionWatcherService.start();
     });
   }
-
 };
 
 export const initializeBootstrapAppShell = async (
