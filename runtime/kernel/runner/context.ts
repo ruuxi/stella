@@ -725,6 +725,7 @@ export type BuildAgentContextArgs = {
     packageId?: string;
     releaseNumber?: number;
     mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+    expectedChangedFiles?: string[];
   };
 } & ResolvedAgentModelRoute;
 

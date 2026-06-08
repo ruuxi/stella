@@ -607,6 +607,7 @@ export type ElectronAgentApi = {
       packageId?: string;
       releaseNumber?: number;
       mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+      expectedChangedFiles?: string[];
     };
   }) => Promise<{ requestId: string }>;
   sendInput: (payload: {

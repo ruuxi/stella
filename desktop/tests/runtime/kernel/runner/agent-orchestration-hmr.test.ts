@@ -12,7 +12,10 @@ import {
   createShellState,
   handleExecCommand,
 } from "../../../../../runtime/kernel/tools/shell.js";
-import type { ToolContext, ToolResult } from "../../../../../runtime/kernel/tools/types.js";
+import type {
+  ToolContext,
+  ToolResult,
+} from "../../../../../runtime/kernel/tools/types.js";
 
 vi.mock("../../../../../runtime/kernel/model-routing.js", () => ({
   resolveLlmRoute: vi.fn(() => ({
@@ -63,191 +66,206 @@ const mockRuntime: MockRuntimeState = {
 };
 
 const getMockRuntime = (): MockRuntimeState =>
-  ((globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-    .__stellaOrchHmrMock ?? mockRuntime);
+  (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
+    .__stellaOrchHmrMock ?? mockRuntime;
 
 vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
   shutdownSubagentRuntimes: vi.fn(),
-  runSubagentTask: vi.fn(async (opts: {
-    toolExecutor: (
-      toolName: string,
-      args: Record<string, unknown>,
-      context: ToolContext,
-    ) => Promise<ToolResult>;
-    callbacks?: {
-      onToolEnd?: (event: {
-        runId: string;
-        seq: number;
-        toolCallId: string;
-        toolName: string;
-        resultPreview: string;
-        fileChanges?: ToolResult["fileChanges"];
-        producedFiles?: ToolResult["producedFiles"];
-      }) => void;
-    };
-    abortSignal?: AbortSignal;
-  }) => {
-    const runtime = getMockRuntime();
-    const runCount = runtime.runCount + 1;
-    runtime.runCount = runCount;
-    runtime.onRunStart?.(runCount);
-    const context: ToolContext = {
-      conversationId: "conversation-1",
-      deviceId: "device-1",
-      requestId: "request-1",
-      stellaRoot: runtime.root,
-    };
-    if (runtime.mode === "send_input_then_apply_patch" && runCount === 1) {
-      const result = await opts.toolExecutor(
-        "apply_patch",
-        { input: runtime.firstPatch ?? runtime.patch },
-        context,
-      );
-      opts.callbacks?.onToolEnd?.({
-        runId: "subagent-run-1",
-        seq: 1,
-        toolCallId: "tool-1",
-        toolName: "apply_patch",
-        resultPreview: result.error ?? "ok",
-        fileChanges: result.fileChanges,
-        producedFiles: result.producedFiles,
-      });
-      await new Promise<void>((resolve) => {
-        if (opts.abortSignal?.aborted) {
-          resolve();
-          return;
-        }
-        opts.abortSignal?.addEventListener("abort", () => resolve(), {
-          once: true,
+  runSubagentTask: vi.fn(
+    async (opts: {
+      toolExecutor: (
+        toolName: string,
+        args: Record<string, unknown>,
+        context: ToolContext,
+      ) => Promise<ToolResult>;
+      callbacks?: {
+        onToolEnd?: (event: {
+          runId: string;
+          seq: number;
+          toolCallId: string;
+          toolName: string;
+          resultPreview: string;
+          fileChanges?: ToolResult["fileChanges"];
+          producedFiles?: ToolResult["producedFiles"];
+        }) => void;
+      };
+      abortSignal?: AbortSignal;
+    }) => {
+      const runtime = getMockRuntime();
+      const runCount = runtime.runCount + 1;
+      runtime.runCount = runCount;
+      runtime.onRunStart?.(runCount);
+      const context: ToolContext = {
+        conversationId: "conversation-1",
+        deviceId: "device-1",
+        requestId: "request-1",
+        stellaRoot: runtime.root,
+      };
+      if (runtime.mode === "send_input_then_apply_patch" && runCount === 1) {
+        const result = await opts.toolExecutor(
+          "apply_patch",
+          { input: runtime.firstPatch ?? runtime.patch },
+          context,
+        );
+        opts.callbacks?.onToolEnd?.({
+          runId: "subagent-run-1",
+          seq: 1,
+          toolCallId: "tool-1",
+          toolName: "apply_patch",
+          resultPreview: result.error ?? "ok",
+          fileChanges: result.fileChanges,
+          producedFiles: result.producedFiles,
         });
-      });
-      return {
-        runId: "subagent-run-1",
-        result: "",
-        interrupted: true,
-      };
-    }
-    if (runtime.mode === "interrupted") {
-      return {
-        runId: "subagent-run",
-        result: "",
-        interrupted: true,
-      };
-    }
-    if (runtime.mode === "interrupt_after_apply_patch") {
-      const result = await opts.toolExecutor(
-        "apply_patch",
-        { input: runtime.patch },
-        context,
-      );
-      opts.callbacks?.onToolEnd?.({
-        runId: "subagent-run",
-        seq: 1,
-        toolCallId: "tool-1",
-        toolName: "apply_patch",
-        resultPreview: result.error ?? "ok",
-        fileChanges: result.fileChanges,
-        producedFiles: result.producedFiles,
-      });
-      return {
-        runId: "subagent-run",
-        result: "",
-        interrupted: true,
-      };
-    }
+        await new Promise<void>((resolve) => {
+          if (opts.abortSignal?.aborted) {
+            resolve();
+            return;
+          }
+          opts.abortSignal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        });
+        return {
+          runId: "subagent-run-1",
+          result: "",
+          interrupted: true,
+        };
+      }
+      if (runtime.mode === "interrupted") {
+        return {
+          runId: "subagent-run",
+          result: "",
+          interrupted: true,
+        };
+      }
+      if (runtime.mode === "interrupt_after_apply_patch") {
+        const result = await opts.toolExecutor(
+          "apply_patch",
+          { input: runtime.patch },
+          context,
+        );
+        opts.callbacks?.onToolEnd?.({
+          runId: "subagent-run",
+          seq: 1,
+          toolCallId: "tool-1",
+          toolName: "apply_patch",
+          resultPreview: result.error ?? "ok",
+          fileChanges: result.fileChanges,
+          producedFiles: result.producedFiles,
+        });
+        return {
+          runId: "subagent-run",
+          result: "",
+          interrupted: true,
+        };
+      }
 
-    const result =
-      runtime.mode === "apply_patch" ||
-      runtime.mode === "send_input_then_apply_patch"
-        ? await opts.toolExecutor("apply_patch", { input: runtime.patch }, context)
-        : runtime.mode === "running_shell"
+      const result =
+        runtime.mode === "apply_patch" ||
+        runtime.mode === "send_input_then_apply_patch"
           ? await opts.toolExecutor(
-              "exec_command",
-              { cmd: "bun run dev --watch desktop/src/foo.tsx" },
+              "apply_patch",
+              { input: runtime.patch },
               context,
             )
-          : runtime.mode === "parallel_running_shell"
+          : runtime.mode === "running_shell"
             ? await opts.toolExecutor(
-                "multi_tool_use_parallel",
-                {
-                  tool_uses: [
-                    {
-                      recipient_name: "functions.exec_command",
-                      parameters: { cmd: "bun run dev --watch desktop/src/a.tsx" },
-                    },
-                    {
-                      recipient_name: "functions.exec_command",
-                      parameters: { cmd: "bun run dev --watch desktop/src/b.tsx" },
-                    },
-                  ],
-                },
+                "exec_command",
+                { cmd: "bun run dev --watch desktop/src/foo.tsx" },
                 context,
               )
-            : runtime.mode === "safe_shell_alias"
+            : runtime.mode === "parallel_running_shell"
               ? await opts.toolExecutor(
-                  "exec_command",
-                  { command: "rg value desktop/src/foo.tsx" },
+                  "multi_tool_use_parallel",
+                  {
+                    tool_uses: [
+                      {
+                        recipient_name: "functions.exec_command",
+                        parameters: {
+                          cmd: "bun run dev --watch desktop/src/a.tsx",
+                        },
+                      },
+                      {
+                        recipient_name: "functions.exec_command",
+                        parameters: {
+                          cmd: "bun run dev --watch desktop/src/b.tsx",
+                        },
+                      },
+                    ],
+                  },
                   context,
                 )
-              : runtime.mode === "real_shell_write"
+              : runtime.mode === "safe_shell_alias"
                 ? await opts.toolExecutor(
                     "exec_command",
-                    {
-                      cmd: [
-                        "node",
-                        "-e",
-                        JSON.stringify(
-                          "const fs = require('fs'); fs.writeFileSync('desktop/src/foo.tsx', \"export const value = 'after';\\n\");",
-                        ),
-                      ].join(" "),
-                    },
+                    { command: "rg value desktop/src/foo.tsx" },
                     context,
                   )
-              : runtime.mode === "shell_suppressed_route_tree"
-                ? await opts.toolExecutor(
-                    "exec_command",
-                    { cmd: "cd desktop && bunx @tanstack/router-cli generate" },
-                    context,
-                  )
-              : runtime.mode === "shell_alias_write"
-                ? await opts.toolExecutor(
-                    "exec_command",
-                    { command: "perl -pi -e s/before/after/ desktop/src/foo.tsx" },
-                    context,
-                  )
-                : runtime.mode === "install_update_merge"
+                : runtime.mode === "real_shell_write"
                   ? await opts.toolExecutor(
                       "exec_command",
-                      { cmd: "git merge --no-edit -m Update abc123" },
+                      {
+                        cmd: [
+                          "node",
+                          "-e",
+                          JSON.stringify(
+                            "const fs = require('fs'); fs.writeFileSync('desktop/src/foo.tsx', \"export const value = 'after';\\n\");",
+                          ),
+                        ].join(" "),
+                      },
                       context,
                     )
-          : await opts.toolExecutor(
-              "exec_command",
-              { cmd: "rg value desktop/src/foo.tsx" },
-              context,
-            );
-    opts.callbacks?.onToolEnd?.({
-      runId: "subagent-run",
-      seq: 1,
-      toolCallId: "tool-1",
-      toolName:
-        runtime.mode === "apply_patch"
-          ? "apply_patch"
-          : runtime.mode === "parallel_running_shell"
-            ? "multi_tool_use_parallel"
-            : "exec_command",
-      resultPreview: result.error ?? "ok",
-      fileChanges: result.fileChanges,
-      producedFiles: result.producedFiles,
-    });
-    return {
-      runId: "subagent-run",
-      result: result.error ? "" : "done",
-      error: result.error,
-      fileChanges: result.fileChanges,
-      producedFiles: result.producedFiles,
-    };
-  }),
+                  : runtime.mode === "shell_suppressed_route_tree"
+                    ? await opts.toolExecutor(
+                        "exec_command",
+                        {
+                          cmd: "cd desktop && bunx @tanstack/router-cli generate",
+                        },
+                        context,
+                      )
+                    : runtime.mode === "shell_alias_write"
+                      ? await opts.toolExecutor(
+                          "exec_command",
+                          {
+                            command:
+                              "perl -pi -e s/before/after/ desktop/src/foo.tsx",
+                          },
+                          context,
+                        )
+                      : runtime.mode === "install_update_merge"
+                        ? await opts.toolExecutor(
+                            "exec_command",
+                            { cmd: "git merge --no-edit -m Update abc123" },
+                            context,
+                          )
+                        : await opts.toolExecutor(
+                            "exec_command",
+                            { cmd: "rg value desktop/src/foo.tsx" },
+                            context,
+                          );
+      opts.callbacks?.onToolEnd?.({
+        runId: "subagent-run",
+        seq: 1,
+        toolCallId: "tool-1",
+        toolName:
+          runtime.mode === "apply_patch"
+            ? "apply_patch"
+            : runtime.mode === "parallel_running_shell"
+              ? "multi_tool_use_parallel"
+              : "exec_command",
+        resultPreview: result.error ?? "ok",
+        fileChanges: result.fileChanges,
+        producedFiles: result.producedFiles,
+      });
+      return {
+        runId: "subagent-run",
+        result: result.error ? "" : "done",
+        error: result.error,
+        fileChanges: result.fileChanges,
+        producedFiles: result.producedFiles,
+      };
+    },
+  ),
 }));
 
 const tempRoots: string[] = [];
@@ -290,7 +308,10 @@ const waitForAgentStatus = async (
 
 const createTestContext = (root: string, hmrController: unknown) => {
   const runtimeStore = {
-    resolveOrCreateActiveThread: () => ({ threadId: "thread-1", reused: false }),
+    resolveOrCreateActiveThread: () => ({
+      threadId: "thread-1",
+      reused: false,
+    }),
     listActiveThreads: () => [],
     saveAgentRecord: vi.fn(),
     getAgentRecord: () => null,
@@ -364,14 +385,10 @@ const createTestContext = (root: string, hmrController: unknown) => {
           toolName === "exec_command" &&
           getMockRuntime().mode === "real_shell_write"
         ) {
-          return handleExecCommand(
-            createShellState(root),
-            args,
-            {
-              ...context,
-              stellaRoot: root,
-            },
-          );
+          return handleExecCommand(createShellState(root), args, {
+            ...context,
+            stellaRoot: root,
+          });
         }
         return Promise.resolve({ result: "ok" });
       },
@@ -394,8 +411,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     await writeFile(filePath, "export const value = 'before';\n");
     mockRuntime.root = root;
     mockRuntime.mode = "apply_patch";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     mockRuntime.patch = [
       "*** Begin Patch",
       "*** Update File: desktop/src/foo.tsx",
@@ -449,8 +467,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "safe_shell";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const controller = {
       beginRun: vi.fn(),
       recordWrite: vi.fn(),
@@ -489,8 +508,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "safe_shell_alias";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const controller = {
       beginRun: vi.fn(),
       recordWrite: vi.fn(),
@@ -532,8 +552,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "shell_alias_write";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const controller = {
       beginRun: vi.fn(),
       recordWrite: vi.fn(async () => undefined),
@@ -575,8 +596,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     await writeFile(filePath, "export const value = 'before';\n");
     mockRuntime.root = root;
     mockRuntime.mode = "real_shell_write";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const callOrder: string[] = [];
     const controller = {
       beginRun: vi.fn(),
@@ -636,8 +658,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     await writeFile(routeTreePath, "export const routeTree = 'before';\n");
     mockRuntime.root = root;
     mockRuntime.mode = "shell_suppressed_route_tree";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const callOrder: string[] = [];
     const controller = {
       beginRun: vi.fn(),
@@ -694,8 +717,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "interrupted";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const controller = {
       beginRun: vi.fn(),
       recordWrite: vi.fn(),
@@ -746,8 +770,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
       "*** End Patch",
       "",
     ].join("\n");
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
 
     const controller = createSelfModHmrController({
       enabled: false,
@@ -801,7 +826,10 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const fileNames = ["a.tsx", "b.tsx", "c.tsx", "d.tsx", "e.tsx"];
     await Promise.all(
       fileNames.map((fileName) =>
-        writeFile(path.join(srcDir, fileName), "export const value = 'before';\n"),
+        writeFile(
+          path.join(srcDir, fileName),
+          "export const value = 'before';\n",
+        ),
       ),
     );
     mockRuntime.root = root;
@@ -841,8 +869,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
         if (runCount === 1) resolve();
       };
     });
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
 
     const controller = createSelfModHmrController({
       enabled: false,
@@ -853,9 +882,7 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const context = createTestContext(root, controller);
     context.selfModLifecycle.finalizeRun = vi.fn(({ runId }) => {
       const result = controller.finalize(runId);
-      appliedPaths.push(
-        ...result.appliedRuns.flatMap((run) => run.paths),
-      );
+      appliedPaths.push(...result.appliedRuns.flatMap((run) => run.paths));
     });
     createAgentOrchestration(context, {
       buildAgentContext: async () => ({
@@ -887,9 +914,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(snapshot).toMatchObject({ status: "completed" });
     await Promise.all(
       fileNames.map(async (fileName) => {
-        await expect(readFile(path.join(srcDir, fileName), "utf-8")).resolves.toBe(
-          "export const value = 'after';\n",
-        );
+        await expect(
+          readFile(path.join(srcDir, fileName), "utf-8"),
+        ).resolves.toBe("export const value = 'after';\n");
       }),
     );
     expect(appliedPaths.sort()).toEqual(
@@ -903,8 +930,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "running_shell";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const releaseOrder: string[] = [];
     const controller = {
       beginRun: vi.fn(),
@@ -953,8 +981,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "parallel_running_shell";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const controller = {
       beginRun: vi.fn(),
       recordWrite: vi.fn(),
@@ -995,8 +1024,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "running_shell";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const controller = {
       beginRun: vi.fn(),
       recordWrite: vi.fn(),
@@ -1039,8 +1069,9 @@ describe("agent orchestration self-mod HMR tracking", () => {
     const root = await makeTempRoot();
     mockRuntime.root = root;
     mockRuntime.mode = "install_update_merge";
-    (globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState })
-      .__stellaOrchHmrMock = mockRuntime;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
     const controller = {
       beginRun: vi.fn(),
       recordWrite: vi.fn(),
@@ -1064,6 +1095,10 @@ describe("agent orchestration self-mod HMR tracking", () => {
       prompt: "apply update",
       agentType: AGENT_IDS.INSTALL_UPDATE,
       storageMode: "local",
+      selfModMetadata: {
+        mode: "desktop-update",
+        expectedChangedFiles: ["desktop/src/update-target.tsx"],
+      },
     });
     const snapshot = await waitForAgentStatus(
       context.state.localAgentManager,
@@ -1072,6 +1107,11 @@ describe("agent orchestration self-mod HMR tracking", () => {
 
     expect(snapshot).toMatchObject({ status: "completed" });
     expect(controller.beginShellMutationGuard).toHaveBeenCalledTimes(1);
+    expect(controller.recordWrite).toHaveBeenCalledWith(
+      expect.any(String),
+      [path.join(root, "desktop/src/update-target.tsx")],
+      { captureSnapshot: false },
+    );
     expect(controller.endShellMutationGuard).not.toHaveBeenCalled();
     expect(context.toolHost.killShell).not.toHaveBeenCalled();
     expect(context.toolHost.killAllShells).not.toHaveBeenCalled();

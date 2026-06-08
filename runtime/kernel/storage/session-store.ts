@@ -125,6 +125,7 @@ export type PersistedAgentRecord = {
     packageId?: string;
     releaseNumber?: number;
     mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+    expectedChangedFiles?: string[];
   };
   status: TaskLifecycleStatus;
   startedAt: number;
@@ -1525,8 +1526,10 @@ export class SessionStore {
     );
     const sourceEvents = rows.filter(
       (row) =>
-        compareTimelineCursor({ timestamp: row.timestamp, id: row._id }, after) >
-        0,
+        compareTimelineCursor(
+          { timestamp: row.timestamp, id: row._id },
+          after,
+        ) > 0,
     );
     return {
       ...this.limitChangedMessageWindow(

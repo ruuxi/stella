@@ -789,6 +789,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         packageId?: string;
         releaseNumber?: number;
         mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+        expectedChangedFiles?: string[];
       };
     }) =>
       ipcRenderer.invoke("agent:startChat", payload) as Promise<{

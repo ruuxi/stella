@@ -445,6 +445,7 @@ export type RuntimeChatPayload = {
     packageId?: string;
     releaseNumber?: number;
     mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+    expectedChangedFiles?: string[];
   };
 };
 
@@ -599,6 +600,7 @@ export type RuntimeLocalAgentRequest = {
     packageId?: string;
     releaseNumber?: number;
     mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+    expectedChangedFiles?: string[];
   };
 };
 
