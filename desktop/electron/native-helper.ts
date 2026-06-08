@@ -39,11 +39,14 @@ const CIRCUIT_FAILURE_THRESHOLD = 3
 const CIRCUIT_COOLDOWN_MS = 60_000
 const WIN32_SLOW_SUCCESS_COOLDOWN_MS = 60_000
 const WIN32_SLOW_SUCCESS_THRESHOLD_MS = 1_000
-const WIN32_HIGH_RISK_HELPERS = new Set([
-  'recent_apps',
-  'selected_text',
-  'window_info',
-])
+// Helpers whose one-shot spawns get extra per-helper in-flight backpressure on
+// Windows. `recent_apps` and `window_info` are intentionally NOT here: both now
+// run through the persistent `--serve` daemon (native-helper-daemon.ts) on their
+// hot paths, so they reach this one-shot path only as a rare fallback that the
+// global spawn governor + circuit breaker already cover. `selected_text` stays:
+// it deliberately has no daemon (its UIA/clipboard work can hang, so it relies
+// on a kill-the-process watchdog) and still spawns per qualifying selection.
+const WIN32_HIGH_RISK_HELPERS = new Set(['selected_text'])
 
 type HelperCircuit = { consecutiveFailures: number; openUntil: number }
 const circuits = new Map<string, HelperCircuit>()

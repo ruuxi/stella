@@ -9,6 +9,10 @@
 // Matches the field shape the renderer already parses from the PowerShell
 // path so the desktop-side cleaning/filtering code is shared.
 //
+// `recent_apps.exe --serve` keeps the process alive and answers many list
+// requests over stdin/stdout (line-delimited, see runServeLoop), so the home
+// poll costs a pipe write instead of a CreateProcess + Defender scan per tick.
+//
 // Compile: cl /O2 /EHsc recent_apps.cpp /link user32.lib dwmapi.lib /OUT:recent_apps.exe
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -16,6 +20,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -213,9 +218,13 @@ static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM /*lparam*/)
     return g_entries.size() < g_rawEntryLimit && !hasElapsedBudget();
 }
 
-int main(int argc, char* argv[])
+// Run one enumeration pass and return the JSON array. Resets all the file-scope
+// enumeration globals first so the same process can answer many --serve requests
+// without state from a prior request leaking in.
+static std::string listAppsJson(size_t requestedLimit)
 {
-    size_t requestedLimit = parseRequestedLimit(argc, argv);
+    g_entries.clear();
+    g_foregroundPid = 0;
     g_rawEntryLimit = clampSize(
         requestedLimit * 3,
         MIN_RAW_ENTRY_LIMIT,
@@ -252,6 +261,85 @@ int main(int argc, char* argv[])
         out += "\"}";
     }
     out += "]";
+    return out;
+}
+
+// Parse `--limit=N` from a single --serve request's tab-separated tokens.
+static size_t parseLimitFromTokens(const std::vector<std::string>& tokens)
+{
+    const char prefix[] = "--limit=";
+    const size_t prefixLen = sizeof(prefix) - 1;
+    for (const std::string& token : tokens)
+    {
+        if (token.compare(0, prefixLen, prefix) != 0)
+        {
+            continue;
+        }
+        const char* start = token.c_str() + prefixLen;
+        char* end = nullptr;
+        unsigned long parsed = strtoul(start, &end, 10);
+        if (end == start || parsed == 0)
+        {
+            continue;
+        }
+        return clampSize(static_cast<size_t>(parsed), 1, MAX_RAW_ENTRY_LIMIT);
+    }
+    return DEFAULT_REQUEST_LIMIT;
+}
+
+// Persistent daemon: answer many list requests over stdin/stdout instead of one
+// CreateProcess per poll (Windows spawn + AV scan is the cost). Protocol matches
+// window_info.cpp --serve: request `<id>\t<token>...`, response `<id>\t<json>\n`.
+static int runServeLoop()
+{
+    std::string line;
+    while (std::getline(std::cin, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+        {
+            line.pop_back();
+        }
+        if (line.empty())
+        {
+            continue;
+        }
+
+        const size_t tab = line.find('\t');
+        if (tab == std::string::npos)
+        {
+            continue;
+        }
+
+        const std::string id = line.substr(0, tab);
+        std::vector<std::string> tokens;
+        size_t start = tab + 1;
+        while (true)
+        {
+            const size_t next = line.find('\t', start);
+            if (next == std::string::npos)
+            {
+                tokens.push_back(line.substr(start));
+                break;
+            }
+            tokens.push_back(line.substr(start, next - start));
+            start = next + 1;
+        }
+
+        const std::string json = listAppsJson(parseLimitFromTokens(tokens));
+        printf("%s\t%s\n", id.c_str(), json.c_str());
+        fflush(stdout);
+    }
+    return 0;
+}
+
+int main(int argc, char* argv[])
+{
+    if (argc >= 2 && strcmp(argv[1], "--serve") == 0)
+    {
+        return runServeLoop();
+    }
+
+    const std::string out = listAppsJson(parseRequestedLimit(argc, argv));
     printf("%s\n", out.c_str());
     return 0;
 }

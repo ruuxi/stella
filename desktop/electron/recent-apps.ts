@@ -1,6 +1,7 @@
 import { execFile } from 'child_process'
 import { app as electronApp } from 'electron'
 import { runNativeHelper, runNativeHelperDetailed } from './native-helper.js'
+import { requestRecentAppsDaemon } from './native-helper-daemon.js'
 import type { RecentApp } from '../src/shared/contracts/home.js'
 
 // Dedicated home-suggestion helper. Lives in `home_apps.swift` (separate
@@ -359,9 +360,29 @@ const listRecentAppsWindows = async (
   return listRecentAppsWindowsPowerShell(limit)
 }
 
+const parseWinProcessesJson = (stdout: string): WinProcess[] | null => {
+  try {
+    const json = JSON.parse(stdout)
+    return Array.isArray(json) ? (json as WinProcess[]) : []
+  } catch {
+    return null
+  }
+}
+
 const listRecentAppsWindowsNative = async (
   limit: number,
 ): Promise<RecentApp[] | null> => {
+  // Fast path: the persistent `recent_apps --serve` daemon answers over a pipe
+  // (no CreateProcess, no per-spawn Defender scan). It self-gates by platform
+  // and returns undefined when unavailable / old (no --serve) / wedged, in
+  // which case we fall back to the one-shot spawn below, then PowerShell.
+  const daemonResponse = await requestRecentAppsDaemon([`--limit=${limit}`])
+  if (daemonResponse !== undefined) {
+    const parsed = parseWinProcessesJson(daemonResponse)
+    if (parsed) return buildRecentAppsFromWinProcesses(parsed, limit)
+    // Daemon answered with an unexpected shape — fall through to a one-shot.
+  }
+
   const now = Date.now()
   if (windowsRecentAppsNativeBackoffUntil > now) {
     return []
@@ -392,13 +413,8 @@ const listRecentAppsWindowsNative = async (
   }
   const stdout = result.stdout
   if (!stdout) return null
-  let parsed: WinProcess[]
-  try {
-    const json = JSON.parse(stdout)
-    parsed = Array.isArray(json) ? (json as WinProcess[]) : []
-  } catch {
-    return null
-  }
+  const parsed = parseWinProcessesJson(stdout)
+  if (!parsed) return null
   return buildRecentAppsFromWinProcesses(parsed, limit)
 }
 
