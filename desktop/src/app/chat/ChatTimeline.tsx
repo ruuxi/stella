@@ -279,7 +279,9 @@ export const ChatTimeline = memo(function ChatTimeline({
       initialScrollAtEnd
       onScroll={onListScroll}
       onStartReached={onStartReached}
-      onStartReachedThreshold={0.5}
+      // Prefetch older history ~2 viewports before the user hits the very
+      // top so it loads ahead of the scroll rather than at the edge.
+      onStartReachedThreshold={2}
       ListHeaderComponent={ListHeader ?? undefined}
       ListFooterComponent={ListFooter}
       ItemSeparatorComponent={ItemSeparator}
