@@ -823,7 +823,7 @@
   box-shadow: none;
 }
 .addon-share-card[data-loading] {
-  cursor: progress;
+  cursor: default;
   opacity: 0.7;
 }
 .addon-share-card[data-missing] {

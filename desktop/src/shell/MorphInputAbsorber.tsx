@@ -81,7 +81,7 @@ export function MorphInputAbsorber() {
         zIndex: 2147483646,
         background: "transparent",
         pointerEvents: "auto",
-        cursor: "wait",
+        cursor: "default",
       }}
     />
   );

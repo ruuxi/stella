@@ -2664,7 +2664,7 @@
 
 .onboarding-engine-provider[data-pending] {
   opacity: 0.6;
-  cursor: progress;
+  cursor: default;
 }
 
 .onboarding-engine-provider:disabled {
