@@ -27,6 +27,14 @@ export type RunRecord = {
   terminal: boolean
   outcome?: 'completed' | 'error' | 'canceled'
   statusText: string | null
+  hasToolActivity: boolean
+  activeToolCalls: Record<
+    string,
+    {
+      toolName: string
+      statusText: string | null
+    }
+  >
 }
 
 export type StreamStoreState = {
@@ -71,6 +79,24 @@ export type StreamStoreAction =
       type: 'run-status'
       runId: string
       statusText: string | null
+    }
+  | {
+      type: 'tool-start'
+      runId: string
+      conversationId: string
+      toolCallId?: string
+      toolName?: string
+      statusText?: string | null
+    }
+  | {
+      type: 'tool-end'
+      runId: string
+      toolCallId?: string
+      toolName?: string
+    }
+  | {
+      type: 'tool-activity-observed'
+      runId: string
     }
   | {
       type: 'run-finished'
@@ -125,6 +151,40 @@ export const MAX_AGENT_REASONING_CHARS = 8_000
 export const toRunTaskId = (runId: string, agentId: string) =>
   `${runId}:${agentId}`
 
+const toToolCallKey = (args: {
+  runId: string
+  toolCallId?: string
+  toolName?: string
+}) => {
+  const callId = args.toolCallId?.trim()
+  if (callId) return callId
+  const toolName = args.toolName?.trim()
+  if (toolName) return `${args.runId}:${toolName}`
+  return `${args.runId}:tool`
+}
+
+const createEmptyRunRecord = (args: {
+  runId: string
+  conversationId: string
+  requestId?: string | undefined
+  userMessageId?: string | undefined
+  uiVisibility?: 'visible' | 'hidden' | undefined
+  terminal?: boolean
+  outcome?: 'completed' | 'error' | 'canceled' | undefined
+  statusText?: string | null
+}): RunRecord => ({
+  runId: args.runId,
+  conversationId: args.conversationId,
+  ...(args.requestId ? { requestId: args.requestId } : {}),
+  ...(args.userMessageId ? { userMessageId: args.userMessageId } : {}),
+  ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
+  terminal: args.terminal ?? false,
+  ...(args.outcome ? { outcome: args.outcome } : {}),
+  statusText: args.statusText ?? null,
+  hasToolActivity: false,
+  activeToolCalls: {},
+})
+
 export function streamStoreReducer(
   state: StreamStoreState,
   action: StreamStoreAction,
@@ -132,15 +192,13 @@ export function streamStoreReducer(
   switch (action.type) {
     case 'run-started': {
       const current = state.runsById[action.runId]
-      const nextRun: RunRecord = {
+      const nextRun: RunRecord = createEmptyRunRecord({
         runId: action.runId,
         conversationId: action.conversationId,
         requestId: action.requestId ?? current?.requestId,
         userMessageId: action.userMessageId ?? current?.userMessageId,
         uiVisibility: action.uiVisibility ?? current?.uiVisibility,
-        terminal: false,
-        statusText: null,
-      }
+      })
       return {
         ...state,
         runsById: {
@@ -175,17 +233,87 @@ export function streamStoreReducer(
         },
       }
     }
+    case 'tool-start': {
+      const current =
+        state.runsById[action.runId] ??
+        createEmptyRunRecord({
+          runId: action.runId,
+          conversationId: action.conversationId,
+        })
+      if (current.terminal) {
+        return state
+      }
+      const toolCallKey = toToolCallKey(action)
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [action.runId]: {
+            ...current,
+            hasToolActivity: true,
+            statusText: action.statusText ?? current.statusText,
+            activeToolCalls: {
+              ...(current.activeToolCalls ?? {}),
+              [toolCallKey]: {
+                toolName: action.toolName ?? 'tool',
+                statusText: action.statusText ?? null,
+              },
+            },
+          },
+        },
+      }
+    }
+    case 'tool-end': {
+      const current = state.runsById[action.runId]
+      if (!current || current.terminal) {
+        return state
+      }
+      const toolCallKey = toToolCallKey(action)
+      const nextActiveToolCalls = { ...(current.activeToolCalls ?? {}) }
+      delete nextActiveToolCalls[toolCallKey]
+      const nextActiveTool = Object.values(nextActiveToolCalls).at(-1)
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [action.runId]: {
+            ...current,
+            hasToolActivity: true,
+            statusText: nextActiveTool?.statusText ?? null,
+            activeToolCalls: nextActiveToolCalls,
+          },
+        },
+      }
+    }
+    case 'tool-activity-observed': {
+      const current = state.runsById[action.runId]
+      if (!current || current.terminal) {
+        return state
+      }
+      const hasActiveTool =
+        Object.keys(current.activeToolCalls ?? {}).length > 0
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [action.runId]: {
+            ...current,
+            hasToolActivity: true,
+            statusText: hasActiveTool ? current.statusText : null,
+          },
+        },
+      }
+    }
     case 'run-finished': {
       const current = state.runsById[action.runId]
-      const nextRun: RunRecord = {
+      const nextRun: RunRecord = createEmptyRunRecord({
         runId: action.runId,
         conversationId: action.conversationId,
         requestId: current?.requestId,
         userMessageId: current?.userMessageId,
         terminal: true,
         outcome: action.outcome,
-        statusText: null,
-      }
+      })
       const activeRunId =
         state.activeRunIdByConversation[action.conversationId] ?? null
       const nextTasksByRunId = { ...state.tasksByRunId }
@@ -242,14 +370,12 @@ export function streamStoreReducer(
           ? state.runsById
           : {
               ...state.runsById,
-              [action.runId]: {
+              [action.runId]: createEmptyRunRecord({
                 runId: action.runId,
                 conversationId: action.conversationId,
                 userMessageId: action.userMessageId,
                 uiVisibility: 'hidden',
-                terminal: false,
-                statusText: null,
-              },
+              }),
             },
         tasksByRunId: {
           ...state.tasksByRunId,
@@ -279,14 +405,12 @@ export function streamStoreReducer(
           ? state.runsById
           : {
               ...state.runsById,
-              [action.runId]: {
+              [action.runId]: createEmptyRunRecord({
                 runId: action.runId,
                 conversationId: action.conversationId,
                 userMessageId: action.userMessageId,
                 uiVisibility: 'hidden',
-                terminal: false,
-                statusText: null,
-              },
+              }),
             },
         tasksByRunId: {
           ...state.tasksByRunId,
@@ -371,10 +495,10 @@ export function streamStoreReducer(
         const runId = task.runId
         if (!runId) continue
         nextRunsById[runId] = nextRunsById[runId] ?? {
-          runId,
-          conversationId: action.conversationId,
-          terminal: false,
-          statusText: null,
+          ...createEmptyRunRecord({
+            runId,
+            conversationId: action.conversationId,
+          }),
         }
         nextTasksByRunId[runId] = {
           ...(nextTasksByRunId[runId] ?? {}),
@@ -402,13 +526,13 @@ export function streamStoreReducer(
         runsById: {
           ...nextRunsById,
           [runId]: {
-            runId,
-            conversationId: action.conversationId,
-            requestId: action.activeRun.requestId,
-            userMessageId: action.activeRun.userMessageId,
-            uiVisibility: action.activeRun.uiVisibility,
-            terminal: false,
-            statusText: null,
+            ...createEmptyRunRecord({
+              runId,
+              conversationId: action.conversationId,
+              requestId: action.activeRun.requestId,
+              userMessageId: action.activeRun.userMessageId,
+              uiVisibility: action.activeRun.uiVisibility,
+            }),
           },
         },
         activeRunIdByConversation: {

@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { useWindowFocus } from "@/shared/hooks/use-window-focus";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { cn } from "@/shared/lib/utils";
-import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { SwapText } from "./SwapText";
 import { getWorkingIndicatorDisplayStatus } from "@/features/chat/working-indicator-state";
@@ -16,7 +15,6 @@ interface WorkingIndicatorProps {
    * friendly variation picker so the label doesn't flicker on each
    * re-render. */
   toolCallId?: string;
-  tasks?: TaskItem[];
   isReasoning?: boolean;
   className?: string;
 }
@@ -25,7 +23,6 @@ export function WorkingIndicator({
   status,
   toolName,
   toolCallId,
-  tasks,
   isReasoning,
   className,
 }: WorkingIndicatorProps) {
@@ -42,36 +39,12 @@ export function WorkingIndicator({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  const activeTask = tasks?.[0];
-  const shimmerActive = !activeTask || activeTask.status === "running";
   const displayStatus = getWorkingIndicatorDisplayStatus({
     status,
     toolName,
     toolCallId,
-    tasks,
     isReasoning,
   });
-  const taskDebug = useMemo(
-    () =>
-      tasks?.map((task) => ({
-        id: task.id,
-        description: task.description,
-        status: task.status,
-        statusText: task.statusText,
-      })) ?? [],
-    [tasks],
-  );
-
-  useEffect(() => {
-    console.debug("[stella:working-indicator:display]", {
-      displayStatus,
-      status,
-      toolName,
-      isReasoning,
-      tasks: taskDebug,
-    });
-  }, [displayStatus, isReasoning, status, taskDebug, toolName]);
-
   return (
     <div className={cn("working-indicator", className)}>
       <div className="indicator-stella">
@@ -89,7 +62,7 @@ export function WorkingIndicator({
       </div>
       <SwapText
         text={displayStatus}
-        active={shimmerActive}
+        active
         className="working-status"
       />
     </div>

@@ -7,6 +7,12 @@ import {
   mergeFooterTasks,
   type EventRecord,
 } from "@/features/chat/lib/event-transforms";
+import {
+  getInlineWorkingIndicatorActive,
+  getInlineWorkingIndicatorExitDelayMs,
+  getRunningTaskIndicatorText,
+  getWorkingIndicatorDisplayStatus,
+} from "@/features/chat/working-indicator-state";
 
 const event = (
   id: string,
@@ -40,11 +46,11 @@ describe("extractTasksFromEvents", () => {
       }),
       event("3", 250, "agent-progress", {
         agentId: "task-1",
-        statusText: "Using Read",
+        statusText: "Running read",
       }),
       event("4", 260, "agent-progress", {
         agentId: "task-1",
-        statusText: "Using Write",
+        statusText: "Running write",
       }),
     ];
 
@@ -78,16 +84,13 @@ describe("extractTasksFromEvents", () => {
       }),
       event("4", 350, "agent-progress", {
         agentId: "task-1",
-        statusText: "Using Read",
+        statusText: "Running read",
       }),
     ];
 
     const [task] = extractTasksFromEvents(events);
     expect(task.status).toBe("running");
-    // "Using <toolName>" is general-agent tool-call noise and must be
-    // filtered out of `statusText` so the stable user-visible task label
-    // stays put instead of leaking internal tool names into the UI.
-    expect(task.statusText).toBe("Open Spotify");
+    expect(task.statusText).toBe("Reading");
     expect(task.description).toBe("Open Spotify");
   });
 
@@ -110,19 +113,54 @@ describe("extractTasksFromEvents", () => {
     expect(getTaskDisplayText(task)).toBe("Switch to the playlist tab");
   });
 
-  it("filters legacy send_input Updating control text", () => {
+  it("humanizes raw tool status text", () => {
     const events = [
       event("1", 100, "agent-started", {
         agentId: "task-1",
         description: "Open Spotify",
         agentType: "general",
-        statusText: "Updating",
+        statusText: "Running web",
       }),
     ];
 
     const [task] = extractTasksFromEvents(events);
-    expect(task.statusText).toBe("Open Spotify");
-    expect(getTaskDisplayText(task)).toBe("Open Spotify");
+    expect(task.statusText).toBe("Searching");
+    expect(getTaskDisplayText(task)).toBe("Searching");
+  });
+
+  it("does not treat task descriptions as shared working indicator status", () => {
+    const footerTasks = getFooterTasksFromEvents([
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Research a current web-backed question",
+        agentType: "general",
+      }),
+    ]);
+
+    expect(footerTasks).toHaveLength(1);
+    expect(getRunningTaskIndicatorText(footerTasks[0]!)).toBeUndefined();
+  });
+
+  it("humanizes running agent tool progress for task-based status surfaces", () => {
+    const footerTasks = getFooterTasksFromEvents([
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Research a current web-backed question",
+        agentType: "general",
+      }),
+      event("2", 150, "agent-progress", {
+        agentId: "task-1",
+        statusText: "Running web",
+      }),
+    ]);
+
+    expect(footerTasks).toHaveLength(1);
+    expect(getRunningTaskIndicatorText(footerTasks[0]!)).toBe("Searching");
+    expect(
+      getWorkingIndicatorDisplayStatus({
+        tasks: footerTasks,
+      }),
+    ).toBe("Searching");
   });
 
   it("ignores agent-progress that arrives after agent-completed", () => {
@@ -138,7 +176,7 @@ describe("extractTasksFromEvents", () => {
       }),
       event("3", 250, "agent-progress", {
         agentId: "task-1",
-        statusText: "Using Write",
+        statusText: "Running write",
       }),
     ];
 
@@ -230,7 +268,7 @@ describe("mergeFooterTasks", () => {
           status: "running",
           startedAtMs: 100,
           lastUpdatedAtMs: 250,
-          statusText: "Using Write",
+          statusText: "Running write",
         },
       ],
     );
@@ -263,5 +301,54 @@ describe("mergeFooterTasks", () => {
     expect(task?.description).toBe("Build Tic Tac Toe app in Stella");
     expect(task?.statusText).toBe("Build Tic Tac Toe app in Stella");
     expect(getTaskDisplayText(task!)).toBe("Build Tic Tac Toe app in Stella");
+  });
+});
+
+describe("getInlineWorkingIndicatorActive", () => {
+  it("keeps pre-tool thinking but clears after a completed tool while the run remains open", () => {
+    expect(
+      getInlineWorkingIndicatorActive({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        hasToolActivity: false,
+        isToolActive: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      getInlineWorkingIndicatorActive({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        hasToolActivity: true,
+        isToolActive: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      getInlineWorkingIndicatorActive({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        hasToolActivity: true,
+        isToolActive: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("getInlineWorkingIndicatorExitDelayMs", () => {
+  it("holds fast tool calls long enough to be readable", () => {
+    expect(
+      getInlineWorkingIndicatorExitDelayMs({
+        activatedAtMs: 1_000,
+        nowMs: 1_250,
+      }),
+    ).toBe(1_750);
+
+    expect(
+      getInlineWorkingIndicatorExitDelayMs({
+        activatedAtMs: 1_000,
+        nowMs: 3_100,
+      }),
+    ).toBe(0);
   });
 });

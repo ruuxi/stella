@@ -412,13 +412,9 @@ export function useAgentEventHandler({
           if (!runId || !event.agentId) {
             return
           }
-          console.debug('[stella:working-indicator:event]', {
-            type: event.type,
+          dispatch({
+            type: 'tool-activity-observed',
             runId,
-            agentId: event.agentId,
-            description: event.description,
-            statusText: event.statusText,
-            rootRunId: event.rootRunId,
           })
 
           // Drop late progress/reasoning events for tasks that already
@@ -521,6 +517,26 @@ export function useAgentEventHandler({
           }
           break
         }
+        case AGENT_STREAM_EVENT_TYPES.TOOL_START: {
+          dispatch({
+            type: 'tool-start',
+            runId: event.runId,
+            conversationId,
+            ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+            ...(event.toolName ? { toolName: event.toolName } : {}),
+            statusText: event.statusText ?? null,
+          })
+          break
+        }
+        case AGENT_STREAM_EVENT_TYPES.TOOL_END: {
+          dispatch({
+            type: 'tool-end',
+            runId: event.runId,
+            ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+            ...(event.toolName ? { toolName: event.toolName } : {}),
+          })
+          break
+        }
         case AGENT_STREAM_EVENT_TYPES.RUN_FINISHED: {
           applyRunFinished({
             outcome: event.outcome ?? AGENT_RUN_FINISH_OUTCOMES.ERROR,
@@ -528,8 +544,6 @@ export function useAgentEventHandler({
           })
           break
         }
-        case AGENT_STREAM_EVENT_TYPES.TOOL_START:
-        case AGENT_STREAM_EVENT_TYPES.TOOL_END:
         default:
           break
       }

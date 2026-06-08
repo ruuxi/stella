@@ -70,6 +70,10 @@ function ChatDisplayTab({
         chat.conversation.streaming.isStreamingResponseText
       }
       runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
+      activeToolCallId={chat.conversation.streaming.activeToolCallId}
+      activeToolName={chat.conversation.streaming.activeToolName}
+      hasToolActivity={chat.conversation.streaming.hasToolActivity}
+      isToolActive={chat.conversation.streaming.isToolActive}
       pendingUserMessageId={chat.conversation.pendingUserMessageId}
       queuedUserMessages={chat.conversation.streaming.queuedUserMessages}
       liveTasks={chat.conversation.streaming.liveTasks}

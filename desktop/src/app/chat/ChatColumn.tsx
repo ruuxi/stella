@@ -29,7 +29,7 @@ import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
 import { ChatWorkspaceStrip } from "./ChatWorkspaceStrip";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
-import { getCurrentRunningTool } from "@/features/chat/lib/event-transforms";
+import { getInlineWorkingIndicatorActive } from "@/features/chat/working-indicator-state";
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import { useFooterTasks } from "@/features/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
@@ -157,35 +157,47 @@ export const ChatColumn = memo(function ChatColumn({
   }, [showHomeContent]);
 
   const appSessionStartedAtMs = useAgentSessionStartedAt();
-  const runningTool = useMemo(
-    () => getCurrentRunningTool(conversation.messages),
-    [conversation.messages],
-  );
   const footerTasks = useFooterTasks({
     activities: conversation.activity.activities,
     latestMessageTimestampMs: conversation.activity.latestMessageTimestampMs,
     liveTasks: conversation.streaming.liveTasks,
     appSessionStartedAtMs,
   });
-  // Running agents power the composer's task chip; the inline indicator no
-  // longer carries them.
   const runningTasks = useMemo(
     () => footerTasks.filter((task) => task.status === "running"),
     [footerTasks],
   );
   useReadAloud(conversation.messages);
-  // Inline indicator = the orchestrator's own thinking / tool work only.
-  // Show it while reasoning ("Thinking") or while a tool runs, and let it
-  // exit the moment answer text starts streaming (no line-by-line trailing).
+  // Initial thinking is pre-tool only. Once a tool lifecycle begins, the
+  // indicator follows live TOOL_START/TOOL_END state instead of the long-lived
+  // root run, so spawn_agent/send_input do not pin it while the agent works.
   const isStreaming = Boolean(conversation.streaming.isStreaming);
-  const hasActiveWork =
+  const hasToolActivity = Boolean(conversation.streaming.hasToolActivity);
+  const isToolActive = Boolean(conversation.streaming.isToolActive);
+  const isPreToolThinking =
     isStreaming &&
-    (!conversation.streaming.isStreamingResponseText || Boolean(runningTool));
+    !conversation.streaming.isStreamingResponseText &&
+    !hasToolActivity;
+  const hasActiveWork = getInlineWorkingIndicatorActive({
+    isStreaming,
+    isStreamingResponseText: Boolean(
+      conversation.streaming.isStreamingResponseText,
+    ),
+    hasToolActivity,
+    isToolActive,
+  });
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,
-    runningTool: runningTool?.tool,
-    runningToolId: runningTool?.id,
-    status: conversation.streaming.runtimeStatusText,
+    runningTool: isToolActive
+      ? (conversation.streaming.activeToolName ?? undefined)
+      : undefined,
+    runningToolId: isToolActive
+      ? (conversation.streaming.activeToolCallId ?? undefined)
+      : undefined,
+    status:
+      isPreToolThinking || isToolActive
+        ? conversation.streaming.runtimeStatusText
+        : null,
   };
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext: composer.setChatContext,

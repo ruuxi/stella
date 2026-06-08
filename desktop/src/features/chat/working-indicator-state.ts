@@ -1,10 +1,49 @@
 import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import {
-  getTaskWorkingIndicatorText,
   isStandaloneTaskStatusText,
+  normalizeTaskDisplayStatusText,
 } from "@/features/chat/lib/event-transforms";
-import { getAgentLabel } from "./agent-labels";
-import { computeStatus } from "./status-utils";
+import { computeStatus, normalizeDisplayStatusText } from "./status-utils";
+
+export const INLINE_WORKING_INDICATOR_MIN_VISIBLE_MS = 2000;
+
+export function getRunningTaskIndicatorText(
+  task: TaskItem,
+): string | undefined {
+  if (task.status !== "running") return undefined;
+  const statusText = normalizeTaskDisplayStatusText(task.statusText);
+  if (!statusText) return undefined;
+  if (statusText === task.description.trim()) return undefined;
+  return statusText;
+}
+
+export function getInlineWorkingIndicatorActive({
+  isStreaming,
+  isStreamingResponseText,
+  hasToolActivity,
+  isToolActive,
+}: {
+  isStreaming: boolean;
+  isStreamingResponseText: boolean;
+  hasToolActivity: boolean;
+  isToolActive: boolean;
+}): boolean {
+  const isPreToolThinking =
+    isStreaming && !isStreamingResponseText && !hasToolActivity;
+  return isPreToolThinking || isToolActive;
+}
+
+export function getInlineWorkingIndicatorExitDelayMs({
+  activatedAtMs,
+  nowMs,
+  minVisibleMs = INLINE_WORKING_INDICATOR_MIN_VISIBLE_MS,
+}: {
+  activatedAtMs: number;
+  nowMs: number;
+  minVisibleMs?: number;
+}): number {
+  return Math.max(0, minVisibleMs - (nowMs - activatedAtMs));
+}
 
 export function getWorkingIndicatorDisplayStatus({
   status,
@@ -20,29 +59,28 @@ export function getWorkingIndicatorDisplayStatus({
   isReasoning?: boolean;
 }): string {
   if (status) {
-    return status;
+    return normalizeDisplayStatusText(status) ?? status;
   }
 
   if (tasks && tasks.length > 0) {
     const task = tasks[0];
-    const taskText = getTaskWorkingIndicatorText(task);
     if (task.status === "completed") {
+      const taskText = normalizeTaskDisplayStatusText(task.statusText);
       return taskText ? `Done · ${taskText}` : "Done";
     }
-    if (task.status === "running" && isStandaloneTaskStatusText(task.statusText)) {
-      return taskText || getAgentLabel(task.agentType);
+    if (task.status === "running") {
+      const statusText = getRunningTaskIndicatorText(task);
+      if (statusText && !isStandaloneTaskStatusText(statusText)) {
+        return statusText;
+      }
+      if (statusText && isStandaloneTaskStatusText(statusText)) {
+        return statusText;
+      }
+      if (toolName) {
+        return computeStatus({ toolName, seed: toolCallId });
+      }
+      return computeStatus({ toolName: "spawn_agent", seed: "" });
     }
-    const label = getAgentLabel(task.agentType);
-    if (taskText) {
-      return `${label} · ${taskText}`;
-    }
-    // Task is running but has no usable subtitle yet (e.g. agent-started arrived
-    // before the first agent-progress and the description was generic). Prefer
-    // an orchestrator tool line over a bare "Working" label.
-    if (toolName) {
-      return `${label} · ${computeStatus({ toolName, seed: toolCallId })}`;
-    }
-    return label;
   }
 
   return computeStatus({ toolName, seed: toolCallId, isReasoning });

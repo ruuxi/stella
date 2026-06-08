@@ -124,6 +124,11 @@ export function useLocalAgentStream({
     : null
   const isStreaming = Boolean(activeRun && !activeRun.terminal)
   const runtimeStatusText = activeRun?.statusText ?? null
+  const activeToolEntry = Object.entries(activeRun?.activeToolCalls ?? {}).at(-1)
+  const activeToolCallId = activeToolEntry?.[0] ?? null
+  const activeToolName = activeToolEntry?.[1]?.toolName ?? null
+  const hasToolActivity = Boolean(activeRun?.hasToolActivity)
+  const isToolActive = Boolean(activeToolName)
 
   const reasoningText = ''
 
@@ -508,6 +513,10 @@ export function useLocalAgentStream({
   return {
     liveTasks,
     runtimeStatusText,
+    activeToolCallId,
+    activeToolName,
+    hasToolActivity,
+    isToolActive,
     reasoningText,
     streamingAssistants,
     isStreaming,

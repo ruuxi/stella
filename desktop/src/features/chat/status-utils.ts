@@ -95,13 +95,9 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
   ],
 
   // ── General-agent + subagent tools ──────────────────────────────────────
-  // These run inside spawned agents. Until now the runtime streamed a raw
-  // `Running <toolName>` status (see local-agent-manager.ts), which leaked the
-  // bare tool identifier into the working indicator. `humanizeToolStatusText`
-  // below maps those onto these friendly verbs; anything not listed falls back
-  // to a neutral phrase rather than the raw name. Keep the FIRST entry the best
-  // canonical verb — the task-indicator path picks it deterministically (no
-  // seed), so position 0 is what users usually see.
+  // These run inside spawned agents. Raw `Running <toolName>` status text maps
+  // through this same table so the bare tool identifier never reaches the
+  // working indicator. Keep the first entry as the canonical phrase.
   exec_command: [
     "Running it",
     "Working on it",
@@ -289,28 +285,36 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
   linq_share_contact_card: ["Sharing the contact", "Sending the card", "Passing it along", "Sharing details"],
 };
 
-// Verb-prefixed tool status emitted by spawned agents — e.g. the runtime's
-// `Running <toolName>` fallback (local-agent-manager.ts), plus legacy
-// `Using <toolName>`. Capturing group 1 is the bare tool identifier.
+// Verb-prefixed tool status emitted by the runtime when a tool does not
+// provide its own display text. Capturing group 1 is the bare tool identifier.
 const RAW_TOOL_STATUS_PATTERN =
-  /^(?:running|using|executing|calling|invoking)\s+([A-Za-z0-9_.:-]+)$/i;
+  /^(?:running|executing|calling|invoking)\s+(.+)$/i;
+
+const toToolStatusKey = (value: string): string =>
+  value
+    .trim()
+    .replace(/[_\s-]+/g, "_")
+    .replace(/:+$/g, "")
+    .toLowerCase();
 
 /**
- * Turn a raw `Running <toolName>` / `Using <toolName>` status string into a
- * friendly verb so the bare tool identifier never reaches the UI. Returns
- * `null` when the text isn't one of those single-token tool statuses (so
- * genuine human-readable phrases pass through untouched). For a recognized
- * pattern with an UNmapped tool, returns a neutral fallback verb rather than
- * the raw name — leaking the identifier is exactly the bug we're fixing.
+ * Turn raw tool status text into the same friendly copy as direct tool-name
+ * rendering, while leaving genuine human-readable status text untouched.
  */
-export function humanizeToolStatusText(
+export function normalizeDisplayStatusText(
   statusText: string | undefined,
-): string | null {
-  if (!statusText) return null;
+): string | undefined {
+  if (!statusText) return undefined;
+  const trimmed = statusText.trim();
+  if (!trimmed) return undefined;
   const match = RAW_TOOL_STATUS_PATTERN.exec(statusText.trim());
-  if (!match) return null;
-  const toolName = match[1]!;
-  return computeStatus({ toolName });
+  if (!match) return trimmed;
+  const rawToolName = match[1]!;
+  const toolName = toToolStatusKey(rawToolName);
+  if (rawToolName.includes(" ") && !TOOL_STATUS_BY_NAME[toolName]) {
+    return trimmed;
+  }
+  return computeStatus({ toolName, seed: "" });
 }
 
 const IDLE_VARIATIONS: readonly string[] = [

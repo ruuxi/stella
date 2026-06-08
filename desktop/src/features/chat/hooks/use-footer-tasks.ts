@@ -79,28 +79,5 @@ export function useFooterTasks({
     [liveTasks, persistedFooterTasks],
   )
 
-  useEffect(() => {
-    console.debug('[stella:working-indicator:footer-tasks]', {
-      persisted: persistedFooterTasks.map((task) => ({
-        id: task.id,
-        description: task.description,
-        status: task.status,
-        statusText: task.statusText,
-      })),
-      live: (liveTasks ?? []).map((task) => ({
-        id: task.id,
-        description: task.description,
-        status: task.status,
-        statusText: task.statusText,
-      })),
-      merged: footerTasks.map((task) => ({
-        id: task.id,
-        description: task.description,
-        status: task.status,
-        statusText: task.statusText,
-      })),
-    })
-  }, [footerTasks, liveTasks, persistedFooterTasks])
-
   return footerTasks
 }

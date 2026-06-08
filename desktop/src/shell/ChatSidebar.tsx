@@ -27,7 +27,7 @@ import {
   hasAttachedComposerChips,
 } from "@/features/chat/composer-context";
 import type { InlineWorkingIndicatorMountProps } from "@/app/chat/InlineWorkingIndicator";
-import { getCurrentRunningTool } from "@/features/chat/lib/event-transforms";
+import { getInlineWorkingIndicatorActive } from "@/features/chat/working-indicator-state";
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import { useFooterTasks } from "@/features/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
@@ -111,6 +111,10 @@ interface ChatPanelTabProps {
   /** True once the in-flight run has streamed any visible assistant text. */
   isStreamingResponseText?: boolean;
   runtimeStatusText?: string | null;
+  activeToolCallId?: string | null;
+  activeToolName?: string | null;
+  hasToolActivity?: boolean;
+  isToolActive?: boolean;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
   liveTasks?: TaskItem[];
@@ -140,6 +144,10 @@ export function ChatPanelTab({
   isStreaming,
   isStreamingResponseText,
   runtimeStatusText,
+  activeToolCallId,
+  activeToolName,
+  hasToolActivity,
+  isToolActive,
   pendingUserMessageId,
   queuedUserMessages,
   liveTasks,
@@ -250,33 +258,37 @@ export function ChatPanelTab({
   );
 
   const appSessionStartedAtMs = useAgentSessionStartedAt();
-  const runningTool = useMemo(
-    () => getCurrentRunningTool(messages),
-    [messages],
-  );
   const footerTasks = useFooterTasks({
     activities,
     latestMessageTimestampMs,
     liveTasks,
     appSessionStartedAtMs,
   });
-  // Running agents power the composer's task chip; the inline indicator no
-  // longer carries them.
   const runningTasks = useMemo(
     () => footerTasks.filter((task) => task.status === "running"),
     [footerTasks],
   );
   useReadAloud(messages);
-  // Inline indicator = the orchestrator's own thinking / tool work only.
-  // Exits the moment answer text starts streaming (no line-by-line trailing).
-  const hasActiveWork =
-    Boolean(isStreaming) &&
-    (!isStreamingResponseText || Boolean(runningTool));
+  // Initial thinking is pre-tool only. Once a tool lifecycle begins, the
+  // indicator follows live TOOL_START/TOOL_END state instead of the long-lived
+  // root run, so spawn_agent/send_input do not pin it while the agent works.
+  const hasActiveStreaming = Boolean(isStreaming);
+  const hasLiveToolActivity = Boolean(hasToolActivity);
+  const hasActiveTool = Boolean(isToolActive);
+  const isPreToolThinking =
+    hasActiveStreaming && !isStreamingResponseText && !hasLiveToolActivity;
+  const hasActiveWork = getInlineWorkingIndicatorActive({
+    isStreaming: hasActiveStreaming,
+    isStreamingResponseText: Boolean(isStreamingResponseText),
+    hasToolActivity: hasLiveToolActivity,
+    isToolActive: hasActiveTool,
+  });
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,
-    runningTool: runningTool?.tool,
-    runningToolId: runningTool?.id,
-    status: runtimeStatusText ?? null,
+    runningTool: hasActiveTool ? (activeToolName ?? undefined) : undefined,
+    runningToolId: hasActiveTool ? (activeToolCallId ?? undefined) : undefined,
+    status:
+      isPreToolThinking || hasActiveTool ? (runtimeStatusText ?? null) : null,
   };
 
   const { chatContext, setChatContext, selectedText, setSelectedText } =

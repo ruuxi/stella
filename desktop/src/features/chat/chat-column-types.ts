@@ -68,6 +68,10 @@ export type ChatColumnConversation = {
     /** True once the in-flight run has streamed any visible assistant text. */
     isStreamingResponseText: boolean;
     runtimeStatusText?: string | null;
+    activeToolCallId?: string | null;
+    activeToolName?: string | null;
+    hasToolActivity?: boolean;
+    isToolActive?: boolean;
     pendingUserMessageId: string | null;
     queuedUserMessages: QueuedUserMessage[];
     liveTasks?: TaskItem[];
