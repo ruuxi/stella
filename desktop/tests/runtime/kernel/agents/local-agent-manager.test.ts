@@ -5,10 +5,23 @@ import {
   LocalAgentManager,
 } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { AgentLifecycleEvent } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
+import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
+import {
+  createStateContext,
+  handleSendInput,
+} from "../../../../../runtime/kernel/tools/state.js";
 import type {
   ToolContext,
   ToolResult,
 } from "../../../../../runtime/kernel/tools/types.js";
+import {
+  getComposerTaskChipTasks,
+  type TaskItem,
+} from "@/features/chat/lib/event-transforms";
+import {
+  initialStoreState,
+  streamStoreReducer,
+} from "@/features/chat/streaming/store";
 import { waitForAgentSettled } from "../../../helpers/agent.js";
 
 const sleep = (ms: number) =>
@@ -167,6 +180,161 @@ describe("LocalAgentManager Exec fs locking", () => {
     releaseRun?.();
     await waitForAgentSettled(manager, task.threadId);
     expect(manager.listActiveAgentRuns()).toEqual([]);
+  });
+
+  it("routes send_input task lifecycle through the current root run and clears composer chip state on completion", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    let runCount = 0;
+    let secondRunStarted: (() => void) | null = null;
+    const secondRunStartedPromise = new Promise<void>((resolve) => {
+      secondRunStarted = resolve;
+    });
+    let finishSecondRun: (() => void) | null = null;
+    const finishSecondRunPromise = new Promise<void>((resolve) => {
+      finishSecondRun = resolve;
+    });
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        runCount += 1;
+        if (runCount === 2) {
+          secondRunStarted?.();
+          await finishSecondRunPromise;
+        }
+        return {
+          runId: args.runId,
+          result: `done-${runCount}`,
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        events.push(event);
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "Research current Nvidia news",
+      prompt: "Research current Nvidia news",
+      agentType: AGENT_IDS.GENERAL,
+      rootRunId: "root-original",
+      storageMode: "local",
+    });
+    await waitForAgentSettled(manager, task.threadId);
+
+    const eventOffset = events.length;
+    const toolContext = createStateContext("/tmp", {
+      createAgent: async (request) => manager.createAgent(request),
+      getAgent: async (threadId) => manager.getAgent(threadId),
+      cancelAgent: async (threadId, reason) =>
+        manager.cancelAgent(threadId, reason),
+      sendAgentMessage: async (threadId, message, from, options) =>
+        manager.sendAgentMessage(threadId, message, from, options),
+    });
+
+    await expect(
+      handleSendInput(
+        toolContext,
+        {
+          thread_id: task.threadId,
+          message: "resume the web research with the new requirement",
+          description: "Resume current Nvidia web research",
+        },
+        {
+          conversationId: "conv-1",
+          deviceId: "device-1",
+          requestId: "request-2",
+          rootRunId: "root-current",
+          agentType: AGENT_IDS.ORCHESTRATOR,
+        },
+      ),
+    ).resolves.toMatchObject({
+      result: {
+        thread_id: task.threadId,
+        status: "updated",
+        delivered: true,
+      },
+    });
+
+    await secondRunStartedPromise;
+    expect(manager.listActiveAgentRuns()).toEqual([
+      { runId: "root-current", conversationId: "conv-1" },
+    ]);
+
+    finishSecondRun?.();
+    await waitForAgentSettled(manager, task.threadId);
+
+    const resumedEvents = events.slice(eventOffset);
+    expect(resumedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "agent-started",
+          rootRunId: "root-current",
+          agentId: task.threadId,
+          statusText: "Resume current Nvidia web research",
+        }),
+        expect.objectContaining({
+          type: "agent-completed",
+          rootRunId: "root-current",
+          agentId: task.threadId,
+          result: "done-2",
+        }),
+      ]),
+    );
+    expect(resumedEvents.every((event) => event.rootRunId === "root-current"))
+      .toBe(true);
+
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId: "root-current",
+      conversationId: "conv-1",
+      userMessageId: "user-2",
+    });
+    resumedEvents.forEach((event, index) => {
+      if (!event.agentId || !event.rootRunId) return;
+      state = streamStoreReducer(state, {
+        type: "tool-activity-observed",
+        runId: event.rootRunId,
+      });
+      const terminal = event.type === "agent-completed";
+      const nowMs = 1_000 + index;
+      state = streamStoreReducer(state, {
+        type: "task-upsert",
+        runId: event.rootRunId,
+        conversationId: "conv-1",
+        userMessageId: "user-2",
+        task: {
+          id: event.agentId,
+          description: event.description ?? "Task",
+          agentType: event.agentType || AGENT_IDS.GENERAL,
+          status: terminal ? "completed" : "running",
+          anchorTurnId: "user-2",
+          parentAgentId: event.parentAgentId,
+          statusText: event.statusText,
+          startedAtMs: nowMs,
+          completedAtMs: terminal ? nowMs : undefined,
+          lastUpdatedAtMs: nowMs,
+          outputPreview: event.result,
+        },
+      });
+    });
+
+    const rootTasks = Object.values(
+      state.tasksByRunId["root-current"] ?? {},
+    ) as TaskItem[];
+    expect(rootTasks).toHaveLength(1);
+    expect(rootTasks[0]?.status).toBe("completed");
+    expect(getComposerTaskChipTasks(rootTasks)).toEqual([]);
   });
 
   it("emits failed terminal events when an engine turn throws", async () => {

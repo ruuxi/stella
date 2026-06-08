@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { getElectronApi } from "@/platform/electron/electron";
@@ -21,7 +21,10 @@ import {
   type SuggestionSlot,
 } from "@/features/chat/hooks/use-auto-context-chips";
 import { truncateChipLabel } from "@/features/chat/composer-context";
-import type { TaskItem } from "@/features/chat/lib/event-transforms";
+import {
+  getComposerTaskChipTasks,
+  type TaskItem,
+} from "@/features/chat/lib/event-transforms";
 import { ComposerTasksChip } from "./ComposerTasksChip";
 
 // ---------------------------------------------------------------------------
@@ -105,6 +108,10 @@ export function ComposerSuggestionContextRow({
   tasks,
 }: ComposerSuggestionRowProps) {
   const { lanes, dismissSlot } = useAutoContextChips(active);
+  const taskChipTasks = useMemo(
+    () => getComposerTaskChipTasks(tasks),
+    [tasks],
+  );
   const rowRef = useRef<HTMLDivElement | null>(null);
   const lanesRef = useRef<HTMLDivElement | null>(null);
   const [hiddenLaneIndexes, setHiddenLaneIndexes] = useState<Set<number>>(
@@ -119,14 +126,14 @@ export function ComposerSuggestionContextRow({
     chatContext?.window?.app?.toLowerCase().trim() ?? null;
   const attachedUrl = chatContext?.browserUrl ?? null;
 
-  const isChipAttached = (chip: SuggestionChip): boolean => {
+  const isChipAttached = useCallback((chip: SuggestionChip): boolean => {
     if (chip.kind === "tab") {
       return Boolean(attachedUrl && attachedUrl === chip.url);
     }
     return Boolean(
       attachedAppName && chip.name.toLowerCase().trim() === attachedAppName,
     );
-  };
+  }, [attachedAppName, attachedUrl]);
 
   const laneVisibilityKey = useMemo(
     () =>
@@ -142,7 +149,7 @@ export function ComposerSuggestionContextRow({
           return `${current}|${outgoing}`;
         })
         .join(","),
-    [lanes, attachedAppName, attachedUrl],
+    [lanes, isChipAttached],
   );
 
   useLayoutEffect(() => {
@@ -236,7 +243,7 @@ export function ComposerSuggestionContextRow({
       ref={rowRef}
       className="composer-context-actions composer-context-actions--suggestions"
     >
-      <ComposerTasksChip tasks={tasks ?? []} />
+      <ComposerTasksChip tasks={taskChipTasks} />
       <div ref={lanesRef} className="composer-context-suggestion-lanes">
         {lanes.map((lane, index) => (
           <SuggestionLaneView

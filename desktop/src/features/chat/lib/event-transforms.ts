@@ -156,6 +156,12 @@ export function getTaskWorkingIndicatorText(task: TaskItem): string {
   return getTaskDisplayText(task)
 }
 
+export function getComposerTaskChipTasks(
+  tasks: readonly TaskItem[] | undefined,
+): TaskItem[] {
+  return (tasks ?? []).filter((task) => task.status === 'running')
+}
+
 // Generic type guard factory — reduces per-event-type boilerplate.
 function createEventGuard<T extends Record<string, unknown>>(
   type: string,

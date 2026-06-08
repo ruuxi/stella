@@ -164,6 +164,7 @@ export type AgentToolApi = {
     from: "orchestrator" | "subagent",
     options?: {
       description?: string;
+      rootRunId?: string;
     },
   ) => Promise<{ delivered: boolean }>;
   drainAgentMessages?: (
