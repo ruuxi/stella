@@ -1483,6 +1483,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
           startedAt: string;
           finishedAt: string | null;
           reason: string | null;
+          operationId: string | null;
+          phase:
+            | "started"
+            | "source-pack-preflight"
+            | "source-pack-write"
+            | "source-pack-commit"
+            | "git-fetch"
+            | "git-merge"
+            | "dependency-install"
+            | "native-refresh"
+            | "record-complete"
+            | "agent-fallback"
+            | null;
+          mode: "source-pack" | "git" | "native-helpers" | "agent" | null;
+          recoveryAction: "resume" | "discard" | "needs-agent" | null;
+          startingHeadCommit: string | null;
+          updatedAt: string | null;
+          changedFiles: string[];
+          ownedTempPaths: string[];
+          nativeHelpersManifestUrl: string | null;
         } | null;
       } | null>,
     tryApplyCleanUpdate: (payload: {
@@ -1523,6 +1543,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
                 startedAt: string;
                 finishedAt: string | null;
                 reason: string | null;
+                operationId: string | null;
+                phase:
+                  | "started"
+                  | "source-pack-preflight"
+                  | "source-pack-write"
+                  | "source-pack-commit"
+                  | "git-fetch"
+                  | "git-merge"
+                  | "dependency-install"
+                  | "native-refresh"
+                  | "record-complete"
+                  | "agent-fallback"
+                  | null;
+                mode: "source-pack" | "git" | "native-helpers" | "agent" | null;
+                recoveryAction: "resume" | "discard" | "needs-agent" | null;
+                startingHeadCommit: string | null;
+                updatedAt: string | null;
+                changedFiles: string[];
+                ownedTempPaths: string[];
+                nativeHelpersManifestUrl: string | null;
               } | null;
             } | null;
             headCommit: string;
@@ -1599,6 +1639,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
           startedAt: string;
           finishedAt: string | null;
           reason: string | null;
+          operationId: string | null;
+          phase:
+            | "started"
+            | "source-pack-preflight"
+            | "source-pack-write"
+            | "source-pack-commit"
+            | "git-fetch"
+            | "git-merge"
+            | "dependency-install"
+            | "native-refresh"
+            | "record-complete"
+            | "agent-fallback"
+            | null;
+          mode: "source-pack" | "git" | "native-helpers" | "agent" | null;
+          recoveryAction: "resume" | "discard" | "needs-agent" | null;
+          startingHeadCommit: string | null;
+          updatedAt: string | null;
+          changedFiles: string[];
+          ownedTempPaths: string[];
+          nativeHelpersManifestUrl: string | null;
         } | null;
       } | null>,
     rollbackCanceledUpdate: (payload: {

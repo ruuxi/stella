@@ -282,13 +282,23 @@ const tmpExtractDir = path.join(
   repoRoot,
   `.stella-native-helpers-extract-${platformKey}-${process.pid}`,
 );
+const cleanupTempArtifacts = () => {
+  rmSync(tmpArchive, { force: true });
+  rmSync(tmpExtractDir, { recursive: true, force: true });
+};
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    cleanupTempArtifacts();
+    process.kill(process.pid, signal);
+  });
+}
 
 try {
   await withDownloadRetries(
     `Native helpers download for ${platformKey}`,
     asset.url,
     async () => {
-      rmSync(tmpArchive, { force: true });
+      cleanupTempArtifacts();
       process.stdout.write(
         `Downloading native helpers for ${platformKey} from ${asset.url}\n`,
       );
@@ -333,14 +343,14 @@ try {
         });
       } catch (error) {
         writeStream.destroy();
-        rmSync(tmpArchive, { force: true });
+        cleanupTempArtifacts();
         throw error;
       }
       process.stdout.write("\n");
 
       const actualSha = hash.digest("hex");
       if (actualSha.toLowerCase() !== String(asset.sha256).toLowerCase()) {
-        rmSync(tmpArchive, { force: true });
+        cleanupTempArtifacts();
         throw new Error(
           `Checksum mismatch for ${platformKey}: expected ${asset.sha256}, got ${actualSha}`,
         );
@@ -348,11 +358,11 @@ try {
     },
   );
 } catch (error) {
+  cleanupTempArtifacts();
   process.stderr.write(`Download failed: ${errorMessageWithCause(error)}\n`);
   process.exit(1);
 }
 
-await rm(tmpExtractDir, { recursive: true, force: true });
 await mkdir(tmpExtractDir, { recursive: true });
 
 process.stdout.write(`Extracting into ${tmpExtractDir}\n`);
@@ -376,8 +386,7 @@ const tarResult = spawnSync(
   },
 );
 if (tarResult.status !== 0) {
-  rmSync(tmpArchive, { force: true });
-  await rm(tmpExtractDir, { recursive: true, force: true });
+  cleanupTempArtifacts();
   if (existsSync(sentinel)) {
     process.stderr.write(
       `tar extraction failed; keeping existing native helpers at ${outDir}.\n`,
