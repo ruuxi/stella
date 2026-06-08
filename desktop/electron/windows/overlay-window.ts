@@ -569,6 +569,10 @@ export class OverlayWindowController {
     return this.ensureReady(timeoutMs)
   }
 
+  async warmForStartup(timeoutMs?: number) {
+    return this.ensureReady(timeoutMs)
+  }
+
   /**
    * Perf prerequisite for idle-reclaim: every show entrypoint funnels through
    * here so the overlay self-creates on demand even if it was never created or
