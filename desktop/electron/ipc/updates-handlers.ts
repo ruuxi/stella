@@ -580,6 +580,7 @@ const getNativeHelpersManifestUrl = (): string => {
 const nativeHelperTempPathPatterns = (platformKey: string): string[] => [
   ".stella-native-helpers-download.tar.zst",
   `.stella-native-helpers-extract-${platformKey}-*`,
+  `.stella-native-helpers-files-${platformKey}-*`,
 ];
 
 const resolveNativeHelpersManifestUrl = (
@@ -1352,7 +1353,9 @@ const isSafeOwnedTempPath = (value: string): boolean =>
   !value.split(/[\\/]+/).includes("..") &&
   (value === ".stella-native-helpers-download.tar.zst" ||
     /^\.stella-native-helpers-extract-[a-z0-9-]+-\*$/.test(value) ||
-    /^\.stella-native-helpers-extract-[a-z0-9-]+-\d+$/.test(value));
+    /^\.stella-native-helpers-extract-[a-z0-9-]+-\d+$/.test(value) ||
+    /^\.stella-native-helpers-files-[a-z0-9-]+-\*$/.test(value) ||
+    /^\.stella-native-helpers-files-[a-z0-9-]+-\d+$/.test(value));
 
 const cleanupOwnedUpdateTempPaths = async (
   stellaAppDir: string,

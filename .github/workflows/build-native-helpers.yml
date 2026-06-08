@@ -280,15 +280,50 @@ jobs:
 
           release_dir="native-helpers/${NATIVE_HELPERS_SHA}"
           manifest_path="$(mktemp)"
+          expanded_dir="$(mktemp -d)"
+          for archive in native-assets/stella-native-*.tar.zst; do
+            name="$(basename "$archive")"
+            platform="${name#stella-native-}"
+            platform="${platform%.tar.zst}"
+            mkdir -p "$expanded_dir/$platform"
+            tar --zstd -xf "$archive" -C "$expanded_dir/$platform"
+          done
 
-          node - "$manifest_path" "$NATIVE_HELPERS_SHA" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" native-assets/stella-native-*.tar.zst <<'NODE'
+          node - "$manifest_path" "$NATIVE_HELPERS_SHA" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$expanded_dir" native-assets/stella-native-*.tar.zst <<'NODE'
           const { createHash } = require("node:crypto");
-          const { readFileSync, statSync, writeFileSync } = require("node:fs");
-          const { basename } = require("node:path");
+          const { readdirSync, readFileSync, statSync, writeFileSync } = require("node:fs");
+          const { basename, join, relative, sep } = require("node:path");
 
-          const [manifestPath, sha, commit, publicBaseUrl, ...archivePaths] = process.argv.slice(2);
+          const [manifestPath, sha, commit, publicBaseUrl, expandedRoot, ...archivePaths] = process.argv.slice(2);
           const assets = {};
           const expected = new Set(["darwin-arm64", "darwin-x64", "win-x64"]);
+          const publicBase = publicBaseUrl.replace(/\/$/, "");
+          const encodePath = (value) =>
+            value.split("/").map((part) => encodeURIComponent(part)).join("/");
+          const fileRefsForPlatform = (platform) => {
+            const root = join(expandedRoot, platform);
+            const refs = [];
+            const walk = (dir) => {
+              for (const entry of readdirSync(dir, { withFileTypes: true })) {
+                const full = join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  walk(full);
+                  continue;
+                }
+                if (!entry.isFile()) continue;
+                const rel = relative(root, full).split(sep).join("/");
+                const bytes = readFileSync(full);
+                refs.push({
+                  path: rel,
+                  url: `${publicBase}/native-helpers/${sha}/files/${platform}/${encodePath(rel)}`,
+                  sha256: createHash("sha256").update(bytes).digest("hex"),
+                  size: statSync(full).size,
+                });
+              }
+            };
+            walk(root);
+            return refs.sort((a, b) => a.path.localeCompare(b.path));
+          };
 
           for (const archivePath of archivePaths) {
             const name = basename(archivePath);
@@ -300,14 +335,18 @@ jobs:
             }
             const bytes = readFileSync(archivePath);
             assets[platform] = {
-              url: `${publicBaseUrl.replace(/\/$/, "")}/native-helpers/${sha}/${name}`,
+              url: `${publicBase}/native-helpers/${sha}/${name}`,
               sha256: createHash("sha256").update(bytes).digest("hex"),
               size: statSync(archivePath).size,
+              files: fileRefsForPlatform(platform),
             };
           }
           for (const platform of expected) {
             if (!assets[platform]) {
               throw new Error(`Missing native helpers asset for ${platform}`);
+            }
+            if (!assets[platform].files.length) {
+              throw new Error(`Missing native helper file refs for ${platform}`);
             }
           }
           writeFileSync(
@@ -330,6 +369,10 @@ jobs:
             --recursive \
             --exclude "*" \
             --include "stella-native-*.tar.zst" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$expanded_dir/" "s3://${R2_BUCKET}/${release_dir}/files/" \
+            --recursive \
+            --cache-control "public, max-age=31536000, immutable" \
             --endpoint-url "$R2_ENDPOINT"
           aws s3 cp "$manifest_path" "s3://${R2_BUCKET}/${release_dir}/manifest.json" \
             --content-type "application/json" \

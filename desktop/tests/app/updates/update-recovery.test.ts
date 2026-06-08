@@ -144,6 +144,10 @@ describe("recoverInterruptedDesktopUpdate", () => {
       path.join(repoRoot, `.stella-native-helpers-extract-${platformKey}-123`),
       { recursive: true },
     );
+    await mkdir(
+      path.join(repoRoot, `.stella-native-helpers-files-${platformKey}-123`),
+      { recursive: true },
+    );
 
     await writeInstallManifest(repoRoot, {
       activeCommit: baseCommit,
@@ -164,6 +168,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
         ownedTempPaths: [
           ".stella-native-helpers-download.tar.zst",
           `.stella-native-helpers-extract-${platformKey}-*`,
+          `.stella-native-helpers-files-${platformKey}-*`,
         ],
         nativeHelpersManifestUrl: "https://helpers.test/current.json",
       },
@@ -188,6 +193,15 @@ describe("recoverInterruptedDesktopUpdate", () => {
         path.join(
           repoRoot,
           `.stella-native-helpers-extract-${platformKey}-123`,
+          "anything",
+        ),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      readFile(
+        path.join(
+          repoRoot,
+          `.stella-native-helpers-files-${platformKey}-123`,
           "anything",
         ),
       ),

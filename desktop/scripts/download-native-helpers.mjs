@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Downloads the platform-relevant native helpers tarball from R2 and extracts
-// it into desktop/native/out/<platform>/. Mirrors the launcher's install-time
-// step so dev contributors and the install-update agent can refresh native
-// helpers without rebuilding locally.
+// Downloads platform-relevant native helpers from R2 into
+// desktop/native/out/<platform>/. New manifests publish per-file refs so updates
+// only download changed files; older manifests still use the platform tarball
+// fallback.
 //
 // Usage:
 //   bun run native:download [--manifest-url <url>] [--platform <key>] [--force]
@@ -166,6 +166,132 @@ const existingHelpersMatch = (manifest, asset) => {
   );
 };
 
+const normalizeSha256 = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/^sha256:/i, "")
+    .toLowerCase();
+
+const normalizeManifestPath = (value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || path.isAbsolute(trimmed)) return null;
+  const normalized = path.posix.normalize(trimmed.replace(/\\/g, "/"));
+  if (
+    normalized === "." ||
+    normalized.startsWith("../") ||
+    normalized.includes("/../")
+  ) {
+    return null;
+  }
+  return normalized;
+};
+
+const manifestFilesForAsset = (asset) => {
+  if (!Array.isArray(asset.files)) return [];
+  const files = [];
+  const seen = new Set();
+  for (const item of asset.files) {
+    if (!item || typeof item !== "object") continue;
+    const relativePath = normalizeManifestPath(item.path);
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    const sha256 = normalizeSha256(item.sha256);
+    const size = Number(item.size);
+    if (
+      !relativePath ||
+      !/^https:\/\//i.test(url) ||
+      !/^[0-9a-f]{64}$/.test(sha256) ||
+      !Number.isInteger(size) ||
+      size < 0 ||
+      seen.has(relativePath)
+    ) {
+      return [];
+    }
+    seen.add(relativePath);
+    files.push({ path: relativePath, url, sha256, size });
+  }
+  return files.sort((a, b) => a.path.localeCompare(b.path));
+};
+
+const hashFileOrNull = (filePath) => {
+  try {
+    return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+  } catch {
+    return null;
+  }
+};
+
+const existingRelativeFiles = (dir) => {
+  const files = [];
+  if (!existsSync(dir)) return files;
+  const walk = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        files.push(path.relative(dir, full).split(path.sep).join("/"));
+      }
+    }
+  };
+  walk(dir);
+  return files;
+};
+
+const chmodNativeHelperFiles = (dir) => {
+  if (process.platform === "win32" || !existsSync(dir)) return;
+  const setExec = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        setExec(full);
+      } else if (entry.isFile()) {
+        try {
+          chmodSync(full, statSync(full).mode | 0o111);
+        } catch {}
+      }
+    }
+  };
+  setExec(dir);
+};
+
+const installedManifestPayload = (manifest, asset, installMode, files) => ({
+  schemaVersion: 1,
+  sourceManifestUrl: manifestUrl,
+  platform: platformKey,
+  helperPlatformDir: platformDir,
+  sha: manifest.sha ?? null,
+  commit: manifest.commit ?? null,
+  builtAt: manifest.builtAt ?? null,
+  installedAt: new Date().toISOString(),
+  installMode,
+  asset: {
+    url: asset.url,
+    sha256: asset.sha256,
+    size: asset.size ?? null,
+  },
+  ...(files.length
+    ? {
+        files: files.map((file) => ({
+          path: file.path,
+          sha256: file.sha256,
+          size: file.size,
+        })),
+      }
+    : {}),
+});
+
+const writeInstalledManifest = (manifest, asset, installMode, files = []) => {
+  writeFileSync(
+    installManifestPath,
+    `${JSON.stringify(
+      installedManifestPayload(manifest, asset, installMode, files),
+      null,
+      2,
+    )}\n`,
+  );
+};
+
 class RetryableDownloadError extends Error {
   constructor(message, status) {
     super(message);
@@ -282,9 +408,14 @@ const tmpExtractDir = path.join(
   repoRoot,
   `.stella-native-helpers-extract-${platformKey}-${process.pid}`,
 );
+const tmpFilesDir = path.join(
+  repoRoot,
+  `.stella-native-helpers-files-${platformKey}-${process.pid}`,
+);
 const cleanupTempArtifacts = () => {
   rmSync(tmpArchive, { force: true });
   rmSync(tmpExtractDir, { recursive: true, force: true });
+  rmSync(tmpFilesDir, { recursive: true, force: true });
 };
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
@@ -293,7 +424,76 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   });
 }
 
-try {
+const downloadVerifiedFile = async (file, destinationPath) => {
+  await withDownloadRetries(
+    `Native helper file ${file.path}`,
+    file.url,
+    async () => {
+      rmSync(destinationPath, { force: true });
+      await mkdir(path.dirname(destinationPath), { recursive: true });
+      const response = await fetch(file.url, {
+        headers: { "User-Agent": "stella-native-download" },
+      });
+      if (!response.ok || !response.body) {
+        if (isRetryableHttpStatus(response.status)) {
+          throw new RetryableDownloadError(
+            `HTTP ${response.status}`,
+            response.status,
+          );
+        }
+        throw new Error(`Download failed: HTTP ${response.status}`);
+      }
+
+      const hash = createHash("sha256");
+      const writeStream = createWriteStream(destinationPath);
+      const reader = response.body.getReader();
+      let downloaded = 0;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          downloaded += value.byteLength;
+          hash.update(value);
+          if (!writeStream.write(value)) {
+            await new Promise((resolve) => writeStream.once("drain", resolve));
+          }
+        }
+        await new Promise((resolve, reject) => {
+          writeStream.end((err) => (err ? reject(err) : resolve(undefined)));
+        });
+      } catch (error) {
+        writeStream.destroy();
+        rmSync(destinationPath, { force: true });
+        throw error;
+      }
+
+      const actualSha = hash.digest("hex");
+      if (downloaded !== file.size) {
+        rmSync(destinationPath, { force: true });
+        throw new Error(
+          `Size mismatch for ${file.path}: expected ${file.size}, got ${downloaded}`,
+        );
+      }
+      if (actualSha !== file.sha256) {
+        rmSync(destinationPath, { force: true });
+        throw new Error(
+          `Checksum mismatch for ${file.path}: expected ${file.sha256}, got ${actualSha}`,
+        );
+      }
+    },
+  );
+};
+
+const installFromArchive = async () => {
+  if (typeof asset.url !== "string" || !/^https:\/\//i.test(asset.url)) {
+    throw new Error("Native helper tarball URL is missing from the manifest.");
+  }
+  const expectedArchiveSha = normalizeSha256(asset.sha256);
+  if (!/^[0-9a-f]{64}$/.test(expectedArchiveSha)) {
+    throw new Error("Native helper tarball hash is invalid.");
+  }
+
   await withDownloadRetries(
     `Native helpers download for ${platformKey}`,
     asset.url,
@@ -349,100 +549,126 @@ try {
       process.stdout.write("\n");
 
       const actualSha = hash.digest("hex");
-      if (actualSha.toLowerCase() !== String(asset.sha256).toLowerCase()) {
+      if (actualSha.toLowerCase() !== expectedArchiveSha) {
         cleanupTempArtifacts();
         throw new Error(
-          `Checksum mismatch for ${platformKey}: expected ${asset.sha256}, got ${actualSha}`,
+          `Checksum mismatch for ${platformKey}: expected ${expectedArchiveSha}, got ${actualSha}`,
         );
       }
     },
   );
-} catch (error) {
-  cleanupTempArtifacts();
-  process.stderr.write(`Download failed: ${errorMessageWithCause(error)}\n`);
-  process.exit(1);
-}
 
-await mkdir(tmpExtractDir, { recursive: true });
+  await mkdir(tmpExtractDir, { recursive: true });
 
-process.stdout.write(`Extracting into ${tmpExtractDir}\n`);
-const tarArgs = [
-  ...(process.platform === "win32" ? ["--force-local"] : []),
-  "--zstd",
-  "-xf",
-  tarPath(tmpArchive),
-  "-C",
-  tarPath(tmpExtractDir),
-];
-const tarResult = spawnSync(
-  "tar",
-  tarArgs,
-  {
+  process.stdout.write(`Extracting into ${tmpExtractDir}\n`);
+  const tarArgs = [
+    ...(process.platform === "win32" ? ["--force-local"] : []),
+    "--zstd",
+    "-xf",
+    tarPath(tmpArchive),
+    "-C",
+    tarPath(tmpExtractDir),
+  ];
+  const tarResult = spawnSync("tar", tarArgs, {
     env: {
       ...process.env,
       PATH: nativeToolPath(),
     },
     stdio: "inherit",
-  },
-);
-if (tarResult.status !== 0) {
-  cleanupTempArtifacts();
-  if (existsSync(sentinel)) {
-    process.stderr.write(
-      `tar extraction failed; keeping existing native helpers at ${outDir}.\n`,
-    );
-    process.exit(0);
-  }
-  process.stderr.write("tar extraction failed.\n");
-  process.exit(tarResult.status ?? 1);
-}
-rmSync(tmpArchive, { force: true });
-
-await rm(outDir, { recursive: true, force: true });
-await mkdir(outDir, { recursive: true });
-for (const entry of readdirSync(tmpExtractDir)) {
-  renameSync(path.join(tmpExtractDir, entry), path.join(outDir, entry));
-}
-await rm(tmpExtractDir, { recursive: true, force: true });
-
-if (process.platform !== "win32") {
-  const setExec = (dir) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        setExec(full);
-      } else if (entry.isFile()) {
-        try {
-          chmodSync(full, statSync(full).mode | 0o111);
-        } catch {}
-      }
+  });
+  if (tarResult.status !== 0) {
+    cleanupTempArtifacts();
+    if (existsSync(sentinel)) {
+      process.stderr.write(
+        `tar extraction failed; keeping existing native helpers at ${outDir}.\n`,
+      );
+      process.exit(0);
     }
-  };
-  setExec(outDir);
-}
+    throw new Error(`tar extraction failed (${tarResult.status ?? 1}).`);
+  }
+  rmSync(tmpArchive, { force: true });
 
-writeFileSync(
-  installManifestPath,
-  `${JSON.stringify(
-    {
-      schemaVersion: 1,
-      sourceManifestUrl: manifestUrl,
-      platform: platformKey,
-      helperPlatformDir: platformDir,
-      sha: manifest.sha ?? null,
-      commit: manifest.commit ?? null,
-      builtAt: manifest.builtAt ?? null,
-      installedAt: new Date().toISOString(),
-      asset: {
-        url: asset.url,
-        sha256: asset.sha256,
-        size: asset.size ?? null,
-      },
-    },
-    null,
-    2,
-  )}\n`,
-);
+  await rm(outDir, { recursive: true, force: true });
+  await mkdir(outDir, { recursive: true });
+  for (const entry of readdirSync(tmpExtractDir)) {
+    renameSync(path.join(tmpExtractDir, entry), path.join(outDir, entry));
+  }
+  await rm(tmpExtractDir, { recursive: true, force: true });
+  chmodNativeHelperFiles(outDir);
+  writeInstalledManifest(manifest, asset, "archive", assetFiles);
+};
+
+const installFromFiles = async (files) => {
+  const changedFiles = files.filter(
+    (file) => hashFileOrNull(path.join(outDir, file.path)) !== file.sha256,
+  );
+  const manifestPathSet = new Set(files.map((file) => file.path));
+  const staleFiles = existingRelativeFiles(outDir).filter(
+    (file) =>
+      file !== ".stella-native-helpers.json" && !manifestPathSet.has(file),
+  );
+  if (changedFiles.length === 0 && staleFiles.length === 0) {
+    process.stdout.write(
+      `Native helpers for ${platformKey} already match file manifest at ${outDir}.\n`,
+    );
+    writeInstalledManifest(manifest, asset, "files", files);
+    return;
+  }
+
+  await rm(tmpFilesDir, { recursive: true, force: true });
+  await mkdir(tmpFilesDir, { recursive: true });
+  process.stdout.write(
+    `Downloading ${changedFiles.length} changed native helper file${changedFiles.length === 1 ? "" : "s"} for ${platformKey}.\n`,
+  );
+  for (const file of changedFiles) {
+    await downloadVerifiedFile(file, path.join(tmpFilesDir, file.path));
+  }
+
+  await mkdir(outDir, { recursive: true });
+  for (const staleFile of staleFiles) {
+    rmSync(path.join(outDir, staleFile), { force: true });
+  }
+  for (const file of changedFiles) {
+    const source = path.join(tmpFilesDir, file.path);
+    const destination = path.join(outDir, file.path);
+    await mkdir(path.dirname(destination), { recursive: true });
+    renameSync(source, destination);
+  }
+  chmodNativeHelperFiles(outDir);
+  await rm(tmpFilesDir, { recursive: true, force: true });
+  writeInstalledManifest(manifest, asset, "files", files);
+};
+
+const assetFiles = manifestFilesForAsset(asset);
+try {
+  if (assetFiles.length > 0) {
+    await installFromFiles(assetFiles);
+  } else {
+    process.stdout.write(
+      `Native helpers manifest has no file refs for ${platformKey}; using tarball fallback.\n`,
+    );
+    await installFromArchive();
+  }
+} catch (error) {
+  cleanupTempArtifacts();
+  if (assetFiles.length > 0) {
+    process.stderr.write(
+      `Incremental native helper update failed (${errorMessageWithCause(error)}); using tarball fallback.\n`,
+    );
+    try {
+      await installFromArchive();
+    } catch (fallbackError) {
+      cleanupTempArtifacts();
+      process.stderr.write(
+        `Download failed: ${errorMessageWithCause(fallbackError)}\n`,
+      );
+      process.exit(1);
+    }
+  } else {
+    process.stderr.write(`Download failed: ${errorMessageWithCause(error)}\n`);
+    process.exit(1);
+  }
+}
 
 process.stdout.write(
   `Native helpers for ${platformKey} installed (sha=${manifest.sha ?? "unknown"}).\n`,
