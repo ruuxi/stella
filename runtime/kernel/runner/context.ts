@@ -226,7 +226,10 @@ const buildConnectorTransitionReminder = (
   }
 
   if (currentSurface.isConnector) {
-    const providerLabel = currentSurface.provider ?? "an external chat channel";
+    const providerLabel =
+      currentSurface.provider === "linq"
+        ? "iPhone or iMessage"
+        : (currentSurface.provider ?? "an external chat channel");
     const connectorLines = [
       `The user just switched to messaging you from ${providerLabel} (not the desktop app).`,
       "Reply in plain text only — no markdown, no headers, no bullet lists, no code blocks. Write like a normal text message.",
@@ -236,7 +239,7 @@ const buildConnectorTransitionReminder = (
     ];
     if (currentSurface.provider === "linq") {
       connectorLines.push(
-        "The user is texting through Linq/iMessage. Search for and use the iMessage tools when you need intentional native chat affordances such as reactions, rich media or rich links, contact card sharing, voice memos, or message effects. Typing indicators and read receipts are handled automatically by Stella.",
+        "The user is texting through iPhone or iMessage. Search for and use the iMessage tools when you need intentional native chat affordances such as reactions, rich media or rich links, contact card sharing, voice memos, or message effects. Typing indicators and read receipts are handled automatically by Stella.",
       );
     }
     return connectorLines.join(" ");
