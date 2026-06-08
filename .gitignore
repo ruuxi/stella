@@ -31,6 +31,8 @@ DEV-CONTEXT.md
 /.stella-dev/
 /.stella-launch.log
 /.stella-desktop-download.tar.zst
+/.stella-native-helpers-download.tar.zst
+/.stella-native-helpers-extract-*/
 /launch.sh
 /stella-install.json
 /stella-install.log
