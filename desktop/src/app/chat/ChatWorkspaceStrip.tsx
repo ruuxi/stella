@@ -60,8 +60,7 @@ import { TextShimmer } from "./TextShimmer";
 import { WorkspaceActionsList } from "./WorkspaceActionsList";
 import "./chat-workspace-strip.css";
 
-const NOW_VISIBLE = 8;
-const DONE_VISIBLE = 8;
+const ACTIVITY_VISIBLE = 8;
 const FILES_VISIBLE = 5;
 const UPNEXT_VISIBLE = 4;
 const EMPTY_TASKS: TaskItem[] = [];
@@ -269,7 +268,7 @@ export function ChatWorkspaceStrip({
           (a, b) =>
             b.startedAtMs - a.startedAtMs || a.id.localeCompare(b.id),
         )
-        .slice(0, NOW_VISIBLE),
+        .slice(0, ACTIVITY_VISIBLE),
     [allTasks],
   );
 
@@ -291,9 +290,13 @@ export function ChatWorkspaceStrip({
 
   const nowMs = Date.now();
 
-  const visibleDoneTasks = doneTasks.slice(0, DONE_VISIBLE);
+  // One Activity list capped at ACTIVITY_VISIBLE total: in-progress tasks
+  // come first, completed ones fill whatever slots are left.
+  const visibleDoneTasks = doneTasks.slice(
+    0,
+    Math.max(0, ACTIVITY_VISIBLE - runningTasks.length),
+  );
   const hiddenDoneCount = doneTasks.length - visibleDoneTasks.length;
-  // One Activity list: in-progress tasks first, completed ones below them.
   const visibleActivityTasks = useMemo(
     () => [...runningTasks, ...visibleDoneTasks],
     [runningTasks, visibleDoneTasks],
