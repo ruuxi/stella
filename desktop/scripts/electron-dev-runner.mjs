@@ -464,6 +464,7 @@ function spawnProcess(spec) {
     env: spec.env,
     stdio: "inherit",
     detached: process.platform !== "win32",
+    windowsHide: process.platform === "win32",
   });
 
   activeChildren.set(spec.name, { child, spec });

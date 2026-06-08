@@ -51,6 +51,13 @@ const prebuiltDisclaimBinary = path.join(
   'darwin',
   'disclaim-spawn',
 )
+const windowsStartupFeedbackLauncher = path.join(
+  desktopDir,
+  'native',
+  'out',
+  'win32',
+  'startup_feedback_launcher.exe',
+)
 const legacyRuntimeElectronBinary = path.join(
   devRuntimeRoot,
   'Stella.app',
@@ -844,9 +851,20 @@ const startApp = () => {
     return
   }
 
-  const useDisclaim = disclaimBinary && existsSync(disclaimBinary)
-  const spawnCmd = useDisclaim ? disclaimBinary : electronBinary
-  const spawnArgs = useDisclaim ? [electronBinary, '.'] : ['.']
+  const useWindowsStartupFeedbackLauncher =
+    process.platform === 'win32' && existsSync(windowsStartupFeedbackLauncher)
+  const useDisclaim =
+    !useWindowsStartupFeedbackLauncher && disclaimBinary && existsSync(disclaimBinary)
+  const spawnCmd = useWindowsStartupFeedbackLauncher
+    ? windowsStartupFeedbackLauncher
+    : useDisclaim
+      ? disclaimBinary
+      : electronBinary
+  const spawnArgs = useWindowsStartupFeedbackLauncher
+    ? [electronBinary, '.']
+    : useDisclaim
+      ? [electronBinary, '.']
+      : ['.']
 
   const child = spawn(spawnCmd, spawnArgs, {
     cwd: repoRootDir,
