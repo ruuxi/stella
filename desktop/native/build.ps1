@@ -15,7 +15,6 @@ $windowInfoLibs = $defaultLibs + @("dwmapi.lib")
 $windowInfoGccLibs = $defaultGccLibs + @("-ldwmapi")
 
 $targets = @(
-    @{ kind = "cpp"; src = "src\startup_feedback_launcher.cpp"; out = (Join-Path $outputDir "startup_feedback_launcher.exe"); libs = @("shell32.lib"); gccLibs = @("-lshell32") },
     @{ kind = "cpp"; src = "src\window_info.cpp"; out = (Join-Path $outputDir "window_info.exe"); libs = $windowInfoLibs; gccLibs = $windowInfoGccLibs },
     @{ kind = "cpp"; src = "src\window_text.cpp"; out = (Join-Path $outputDir "window_text.exe"); libs = $defaultLibs; gccLibs = $defaultGccLibs },
     @{ kind = "cpp"; src = "src\selected_text.cpp"; out = (Join-Path $outputDir "selected_text.exe"); libs = $defaultLibs; gccLibs = $defaultGccLibs },
