@@ -39,15 +39,15 @@
 }
 
 .stella-animation-container .char-medium {
-  color: var(--ring, var(--spinner-color-1, var(--accent)));
+  color: var(--ring, var(--stella-animation-color-1, var(--accent)));
 }
 
 .stella-animation-container .char-bright {
-  color: var(--spinner-color-2, var(--accent));
+  color: var(--stella-animation-color-2, var(--accent));
 }
 
 .stella-animation-container .char-brightest {
-  color: var(--spinner-color-3, var(--accent));
+  color: var(--stella-animation-color-3, var(--accent));
 }
 
 .ascii-color-swatch {

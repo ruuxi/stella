@@ -7,7 +7,6 @@ import "./pill.css";
 import "./select.css";
 import "./popover.css";
 import "./primitives.css";
-import "./spinner.css";
 import "./switch.css";
 import "./text-field.css";
 import "./toast.css";
