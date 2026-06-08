@@ -32,6 +32,7 @@ export type { WindowCapture }
 
 type QueryWindowInfoOptions = {
   excludePids?: number[]
+  excludeTitlePrefixes?: string[]
 }
 
 type MoveResizeWindowAtPointOptions = QueryWindowInfoOptions & {
@@ -48,6 +49,7 @@ type WindowInfoByPidOptions = {
 }
 
 const WINDOW_INFO_HELPER = 'window_info'
+export const STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES = ['Stella Overlay']
 
 // Coalesce read-only "window at point" probes. The capture window-highlight
 // preview and the morph-visibility fallback can fire many near-identical point
@@ -69,12 +71,24 @@ const windowInfoPointKey = (
   y: number,
   options?: QueryWindowInfoOptions,
 ): string =>
-  `${Math.round(x)},${Math.round(y)}|${(options?.excludePids ?? []).join(',')}`
+  `${Math.round(x)},${Math.round(y)}|${(options?.excludePids ?? []).join(',')}|${(options?.excludeTitlePrefixes ?? []).join(',')}`
 
 const excludePidsArg = (options?: QueryWindowInfoOptions): string | null =>
   options?.excludePids?.length
     ? `--exclude-pids=${options.excludePids.join(',')}`
     : null
+
+const excludeTitlePrefixesArg = (
+  options?: QueryWindowInfoOptions,
+): string | null =>
+  options?.excludeTitlePrefixes?.length
+    ? `--exclude-title-prefixes=${options.excludeTitlePrefixes.join(',')}`
+    : null
+
+const exclusionArgs = (options?: QueryWindowInfoOptions): string[] =>
+  [excludePidsArg(options), excludeTitlePrefixesArg(options)].filter(
+    (arg): arg is string => Boolean(arg),
+  )
 
 const parseWindowInfoJson = (stdout: string): WindowInfo | null => {
   try {
@@ -116,10 +130,7 @@ const resolveWindowInfoAtPoint = async (
   y: number,
   options?: QueryWindowInfoOptions,
 ): Promise<WindowInfo | null> => {
-  const exclude = excludePidsArg(options)
-  const tokens = exclude
-    ? [String(x), String(y), exclude]
-    : [String(x), String(y)]
+  const tokens = [String(x), String(y), ...exclusionArgs(options)]
   const daemonResponse = await requestWindowInfoDaemon(tokens)
   if (daemonResponse !== undefined) {
     return parseWindowInfoJson(daemonResponse)
@@ -134,9 +145,7 @@ const queryWindowInfo = (
 ): Promise<WindowInfo | null> => {
   return new Promise((resolve) => {
     const args = [String(x), String(y)]
-    if (options?.excludePids?.length) {
-      args.push(`--exclude-pids=${options.excludePids.join(',')}`)
-    }
+    args.push(...exclusionArgs(options))
 
     void runNativeHelper(WINDOW_INFO_HELPER, args, {
       timeout: 3000,
@@ -222,8 +231,7 @@ export const getWindowInfoBatchAtPoints = async (
     .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
     .join(';')
   const tokens = [`--points=${pointsArg}`]
-  const exclude = excludePidsArg(options)
-  if (exclude) tokens.push(exclude)
+  tokens.push(...exclusionArgs(options))
 
   // Prefer the persistent daemon (one pipe write for all points). The client
   // self-gates by platform and returns undefined when it's unavailable.
@@ -252,9 +260,7 @@ export const moveResizeWindowAtPoint = (
 ): Promise<MoveResizeWindowAtPointResult | null> => {
   return new Promise((resolve) => {
     const args = [String(x), String(y)]
-    if (options.excludePids?.length) {
-      args.push(`--exclude-pids=${options.excludePids.join(',')}`)
-    }
+    args.push(...exclusionArgs(options))
     const { bounds } = options
     args.push(
       `--set-bounds=${[bounds.x, bounds.y, bounds.width, bounds.height]
@@ -318,8 +324,7 @@ const shotTokens = (
   options?: QueryWindowInfoOptions,
 ): string[] => {
   const tokens = ['--shot', String(x), String(y)]
-  const exclude = excludePidsArg(options)
-  if (exclude) tokens.push(exclude)
+  tokens.push(...exclusionArgs(options))
   return tokens
 }
 
@@ -400,9 +405,7 @@ export const captureWindowScreenshot = async (
     `stella_cap_${randomBytes(8).toString('hex')}.png`,
   )
   const args = [String(x), String(y), `--screenshot=${tempPath}`]
-  if (options?.excludePids?.length) {
-    args.push(`--exclude-pids=${options.excludePids.join(',')}`)
-  }
+  args.push(...exclusionArgs(options))
 
   return runWindowCapture(WINDOW_INFO_HELPER, args, tempPath)
 }

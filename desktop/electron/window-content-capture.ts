@@ -32,7 +32,11 @@ type WindowContentCapture = {
 export async function captureWindowContent(
   x: number,
   y: number,
-  options?: { excludePids?: number[]; windowInfo?: WindowInfo | null },
+  options?: {
+    excludePids?: number[]
+    excludeTitlePrefixes?: string[]
+    windowInfo?: WindowInfo | null
+  },
 ): Promise<{
   windowInfo: WindowInfo
   screenshot: WindowContentCapture
@@ -42,11 +46,15 @@ export async function captureWindowContent(
 
   const windowInfo =
     options?.windowInfo
-    ?? await getWindowInfoAtPoint(x, y, { excludePids: options?.excludePids })
+    ?? await getWindowInfoAtPoint(x, y, {
+      excludePids: options?.excludePids,
+      excludeTitlePrefixes: options?.excludeTitlePrefixes,
+    })
   if (!windowInfo) return null
 
   const windowCapture = await captureWindowScreenshot(x, y, {
     excludePids: options?.excludePids,
+    excludeTitlePrefixes: options?.excludeTitlePrefixes,
   })
   if (!windowCapture) return null
 

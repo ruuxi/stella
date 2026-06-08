@@ -34,6 +34,9 @@ const getLauncherProtectedStorageBin = () => {
 const useLauncherProtectedStorage = () =>
   getLauncherProtectedStorageBin() !== null
 
+const shouldUseLauncherProtectedStorage = () =>
+  useLauncherProtectedStorage() && process.platform !== 'win32'
+
 const launcherPrefixForScope = (scope: string) =>
   `${LAUNCHER_PROTECTED_PREFIX}:${scope}:v1:`
 
@@ -86,7 +89,7 @@ const getSafeStorage = (): SafeStorageLike => {
   // touch surfaces a "Stella wants to use your confidential information"
   // dialog. Hard-fail here so callers (`protectValue`/`unprotectValue`) take
   // the launcher path or surface a real error instead of silently prompting.
-  if (useLauncherProtectedStorage()) {
+  if (shouldUseLauncherProtectedStorage()) {
     throw new Error(
       'Protected storage is launcher-only; safeStorage must not be called.',
     )
@@ -122,7 +125,7 @@ const devPrefixForScope = (scope: string) =>
   `${DEV_PLAINTEXT_PREFIX}:${scope}:v1:`
 
 export const protectValue = (scope: string, plaintext: string): string => {
-  if (useLauncherProtectedStorage()) {
+  if (shouldUseLauncherProtectedStorage()) {
     // Launcher mode: the binary is the single source of truth. Surface its
     // failure rather than silently falling back to Electron `safeStorage`
     // (which would prompt the user via macOS Keychain on every call).
@@ -172,7 +175,7 @@ export const unprotectValue = (scope: string, value: string): string | null => {
   if (!value.startsWith(prefix)) {
     return null
   }
-  if (useLauncherProtectedStorage()) {
+  if (shouldUseLauncherProtectedStorage()) {
     return null
   }
 

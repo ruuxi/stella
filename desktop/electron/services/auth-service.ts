@@ -30,6 +30,7 @@ const RUNTIME_AUTH_REFRESH_TIMEOUT_MS = 12_000;
 const AUTH_STORAGE_SCOPE = "desktop-better-auth-storage";
 const AUTH_STORAGE_FILE = "better-auth-storage.json";
 const PLAINTEXT_PREFIX = "stella-main-plaintext:v1:";
+const LAUNCHER_PROTECTED_PREFIX = `stella-launcher-keychain:${AUTH_STORAGE_SCOPE}:v1:`;
 const BETTER_AUTH_COOKIE_STORAGE_KEY = "better-auth_cookie";
 const BETTER_AUTH_SESSION_DATA_STORAGE_KEY = "better-auth_session_data";
 const AUTH_BASE_PATH = "/api/auth";
@@ -120,6 +121,12 @@ export class AuthService {
     return unprotectValue(AUTH_STORAGE_SCOPE, value);
   }
 
+  private shouldReencodeAuthStorageValue(value: string): boolean {
+    return (
+      process.platform === "win32" && value.startsWith(LAUNCHER_PROTECTED_PREFIX)
+    );
+  }
+
   private readAuthStorage(): Record<string, string | null> {
     if (this.authStorageCache) {
       return this.authStorageCache;
@@ -128,13 +135,28 @@ export class AuthService {
       const raw = fs.readFileSync(this.getAuthStoragePath(), "utf8");
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       const next: Record<string, string | null> = {};
+      let needsReencode = false;
       for (const [key, value] of Object.entries(parsed)) {
         if (typeof value !== "string") {
           continue;
         }
-        next[key] = this.decodeAuthStorageValue(value);
+        const decoded = this.decodeAuthStorageValue(value);
+        next[key] = decoded;
+        if (decoded !== null && this.shouldReencodeAuthStorageValue(value)) {
+          needsReencode = true;
+        }
       }
       this.authStorageCache = next;
+      if (needsReencode) {
+        try {
+          this.reencodeDecodedAuthStorage(next);
+        } catch (error) {
+          console.warn(
+            "[auth] Failed to migrate Windows auth storage encoding:",
+            error,
+          );
+        }
+      }
       return next;
     } catch {
       this.authStorageCache = {};
@@ -165,9 +187,40 @@ export class AuthService {
       if (typeof value === "string") {
         const previousValue = previousEncoded[key];
         encoded[key] =
-          previousValue && this.decodeAuthStorageValue(previousValue) === value
+          previousValue &&
+          !this.shouldReencodeAuthStorageValue(previousValue) &&
+          this.decodeAuthStorageValue(previousValue) === value
             ? previousValue
             : this.encodeAuthStorageValue(value);
+      }
+    }
+    fs.mkdirSync(path.dirname(this.getAuthStoragePath()), { recursive: true });
+    fs.writeFileSync(
+      this.getAuthStoragePath(),
+      JSON.stringify(encoded, null, 2),
+      { mode: 0o600 },
+    );
+    const retained = new Set(Object.values(encoded));
+    for (const previousValue of Object.values(previousEncoded)) {
+      if (!retained.has(previousValue)) {
+        deleteProtectedValue(AUTH_STORAGE_SCOPE, previousValue);
+      }
+    }
+    this.authStorageCache = { ...values };
+  }
+
+  private reencodeDecodedAuthStorage(values: Record<string, string | null>) {
+    const previousEncoded = this.readEncodedAuthStorage();
+    const encoded: Record<string, string> = {};
+    for (const [key, previousValue] of Object.entries(previousEncoded)) {
+      const decoded = values[key];
+      if (
+        typeof decoded === "string" &&
+        this.shouldReencodeAuthStorageValue(previousValue)
+      ) {
+        encoded[key] = this.encodeAuthStorageValue(decoded);
+      } else {
+        encoded[key] = previousValue;
       }
     }
     fs.mkdirSync(path.dirname(this.getAuthStoragePath()), { recursive: true });

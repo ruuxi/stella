@@ -80,6 +80,7 @@ export function useFullShellChat({
     useState<AnnotationContextTarget | null>(null);
   const { chatContext, setChatContext, selectedText, setSelectedText } =
     useCapturedChatContext();
+  const restoredConversationScrollRef = useRef<string | null>(null);
 
   const {
     messages: persistedMessages,
@@ -290,6 +291,28 @@ export function useFullShellChat({
     const el = list.getScrollableNode();
     el?.scrollTo({ top: el.scrollHeight, behavior: "instant" });
   }, [activeConversationId, listRef]);
+
+  useEffect(() => {
+    if (
+      !activeConversationId ||
+      isInitialLoadingMessages ||
+      displayMessages.length === 0 ||
+      restoredConversationScrollRef.current === activeConversationId
+    ) {
+      return;
+    }
+    const conversationId = activeConversationId;
+    const frame = window.requestAnimationFrame(() => {
+      scrollToBottom("instant");
+      restoredConversationScrollRef.current = conversationId;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    activeConversationId,
+    displayMessages.length,
+    isInitialLoadingMessages,
+    scrollToBottom,
+  ]);
 
   const handleSend = useCallback(() => {
     // `getIsFollowing()` reads the follow latch (intent), not the

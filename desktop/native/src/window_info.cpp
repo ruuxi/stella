@@ -1,5 +1,5 @@
 // window_info.exe - Returns JSON info about the window at a given screen point
-// Usage: window_info.exe <x> <y> [--exclude-pids=1,2,3] [--screenshot=path.png] [--set-bounds=x,y,w,h]
+// Usage: window_info.exe <x> <y> [--exclude-pids=1,2,3] [--exclude-title-prefixes=Title] [--screenshot=path.png] [--set-bounds=x,y,w,h]
 // Output: {"title":"...","process":"...","pid":123,"bounds":{"x":0,"y":0,"width":800,"height":600}}
 // Compile: cl /O2 /EHsc window_info.cpp /link user32.lib gdi32.lib gdiplus.lib ole32.lib dwmapi.lib /OUT:window_info.exe
 
@@ -14,6 +14,7 @@
 #include <cstring>
 #include <iostream>
 #include <gdiplus.h>
+#include <cctype>
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "dwmapi.lib")
@@ -36,6 +37,24 @@ static std::string escapeJson(const char* s)
     return out;
 }
 
+struct WindowExclusions
+{
+    std::vector<DWORD> pids;
+    std::vector<std::string> titlePrefixes;
+};
+
+static std::string getWindowTitle(HWND hwnd);
+
+static std::string lowerAscii(const std::string& input)
+{
+    std::string out = input;
+    for (char& c : out)
+    {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return out;
+}
+
 static bool isPidExcluded(DWORD pid, const std::vector<DWORD>& excluded)
 {
     for (DWORD value : excluded)
@@ -43,6 +62,34 @@ static bool isPidExcluded(DWORD pid, const std::vector<DWORD>& excluded)
         if (value == pid)
         {
             return true;
+        }
+    }
+    return false;
+}
+
+static bool startsWith(const std::string& value, const std::string& prefix)
+{
+    return value.size() >= prefix.size()
+        && value.compare(0, prefix.size(), prefix) == 0;
+}
+
+static bool isWindowExcluded(HWND hwnd, const WindowExclusions& excluded)
+{
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (isPidExcluded(pid, excluded.pids))
+    {
+        return true;
+    }
+    if (!excluded.titlePrefixes.empty())
+    {
+        const std::string title = lowerAscii(getWindowTitle(hwnd));
+        for (const std::string& prefix : excluded.titlePrefixes)
+        {
+            if (!prefix.empty() && startsWith(title, prefix))
+            {
+                return true;
+            }
         }
     }
     return false;
@@ -111,6 +158,48 @@ static void parseExcludePidsArg(const char* arg, std::vector<DWORD>& excluded)
         while (*p && *p != ',')
         {
             ++p;
+        }
+    }
+}
+
+static void parseExcludeTitlePrefixesArg(const char* arg, std::vector<std::string>& excluded)
+{
+    const char* prefix = "--exclude-title-prefixes=";
+    const size_t prefixLen = strlen(prefix);
+    if (strncmp(arg, prefix, prefixLen) != 0)
+    {
+        return;
+    }
+
+    const char* p = arg + prefixLen;
+    while (*p)
+    {
+        while (*p == ',')
+        {
+            ++p;
+        }
+        if (!*p)
+        {
+            break;
+        }
+
+        const char* start = p;
+        while (*p && *p != ',')
+        {
+            ++p;
+        }
+        std::string value(start, p - start);
+        while (!value.empty() && value.front() == ' ')
+        {
+            value.erase(value.begin());
+        }
+        while (!value.empty() && value.back() == ' ')
+        {
+            value.pop_back();
+        }
+        if (!value.empty())
+        {
+            excluded.push_back(lowerAscii(value));
         }
     }
 }
@@ -243,7 +332,7 @@ static bool parsePointsArg(const char* arg, std::vector<POINT>& outPoints)
     return true;
 }
 
-static HWND findTopLevelWindowAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
+static HWND findTopLevelWindowAtPoint(POINT pt, const WindowExclusions& excluded)
 {
     for (HWND hwnd = GetTopWindow(NULL); hwnd; hwnd = GetWindow(hwnd, GW_HWNDNEXT))
     {
@@ -270,9 +359,7 @@ static HWND findTopLevelWindowAtPoint(POINT pt, const std::vector<DWORD>& exclud
             continue;
         }
 
-        DWORD pid = 0;
-        GetWindowThreadProcessId(hwnd, &pid);
-        if (isPidExcluded(pid, excludedPids))
+        if (isWindowExcluded(hwnd, excluded))
         {
             continue;
         }
@@ -288,9 +375,9 @@ static HWND findTopLevelWindowAtPoint(POINT pt, const std::vector<DWORD>& exclud
 // findTopLevelWindowAtPoint z-order walk as the single-point path; used by
 // the batch `--points` mode so one process invocation answers many points
 // (instead of one CreateProcess per point — the costly part on Windows).
-static std::string windowInfoJsonAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
+static std::string windowInfoJsonAtPoint(POINT pt, const WindowExclusions& excluded)
 {
-    HWND hwnd = findTopLevelWindowAtPoint(pt, excludedPids);
+    HWND hwnd = findTopLevelWindowAtPoint(pt, excluded);
     if (!hwnd)
     {
         return "null";
@@ -565,9 +652,9 @@ static bool captureWindowBase64(HWND hwnd, std::string& outB64, int& ow, int& oh
 // Resolve the top-level window at a point (z-order walk, then WindowFromPoint
 // fallback), honoring PID exclusion. Mirrors the one-shot main() resolution so
 // the served --shot path picks the same window the host would.
-static HWND resolveHwndAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
+static HWND resolveHwndAtPoint(POINT pt, const WindowExclusions& excluded)
 {
-    HWND hwnd = findTopLevelWindowAtPoint(pt, excludedPids);
+    HWND hwnd = findTopLevelWindowAtPoint(pt, excluded);
     if (hwnd)
     {
         HWND root = GetAncestor(hwnd, GA_ROOT);
@@ -580,18 +667,16 @@ static HWND resolveHwndAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
     HWND root = GetAncestor(hwnd, GA_ROOT);
     if (root) hwnd = root;
     if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || isWindowCloaked(hwnd)) return NULL;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (isPidExcluded(pid, excludedPids)) return NULL;
+    if (isWindowExcluded(hwnd, excluded)) return NULL;
     return hwnd;
 }
 
 // `{title,process,pid,bounds,image,imageWidth,imageHeight}` for the window at a
 // point, or an error object. Used by both the served --shot path and the
 // one-shot --shot fallback.
-static std::string windowShotJsonAtPoint(POINT pt, const std::vector<DWORD>& excludedPids)
+static std::string windowShotJsonAtPoint(POINT pt, const WindowExclusions& excluded)
 {
-    HWND hwnd = resolveHwndAtPoint(pt, excludedPids);
+    HWND hwnd = resolveHwndAtPoint(pt, excluded);
     if (!hwnd) return "{\"error\":\"no window at point\"}";
 
     std::string b64;
@@ -717,7 +802,7 @@ static bool captureWindowToFile(HWND hwnd, const wchar_t* filePath)
 // `--set-bounds` (which mutates window state) stays a one-shot spawn.
 static std::string serveHandleTokens(const std::vector<std::string>& tokens)
 {
-    std::vector<DWORD> excluded;
+    WindowExclusions excluded;
     std::vector<POINT> points;
     bool hasPoints = false;
     bool wantShot = false;
@@ -753,7 +838,12 @@ static std::string serveHandleTokens(const std::vector<std::string>& tokens)
         }
         if (strncmp(arg, "--exclude-pids=", 15) == 0)
         {
-            parseExcludePidsArg(arg, excluded);
+            parseExcludePidsArg(arg, excluded.pids);
+            continue;
+        }
+        if (strncmp(arg, "--exclude-title-prefixes=", 25) == 0)
+        {
+            parseExcludeTitlePrefixesArg(arg, excluded.titlePrefixes);
             continue;
         }
         if (coordCount < 2)
@@ -882,10 +972,11 @@ int main(int argc, char* argv[])
         POINT pt;
         pt.x = atol(argv[2]);
         pt.y = atol(argv[3]);
-        std::vector<DWORD> shotExcluded;
+        WindowExclusions shotExcluded;
         for (int i = 4; i < argc; ++i)
         {
-            parseExcludePidsArg(argv[i], shotExcluded);
+            parseExcludePidsArg(argv[i], shotExcluded.pids);
+            parseExcludeTitlePrefixesArg(argv[i], shotExcluded.titlePrefixes);
         }
         printf("%s\n", windowShotJsonAtPoint(pt, shotExcluded).c_str());
         return 0;
@@ -897,12 +988,13 @@ int main(int argc, char* argv[])
     // macOS helper's batch mode; used by the morph-visibility gate so a
     // transition probes N sample points with one spawn instead of N.
     {
-        std::vector<DWORD> batchExcluded;
+        WindowExclusions batchExcluded;
         std::vector<POINT> batchPoints;
         bool hasPoints = false;
         for (int i = 1; i < argc; ++i)
         {
-            parseExcludePidsArg(argv[i], batchExcluded);
+            parseExcludePidsArg(argv[i], batchExcluded.pids);
+            parseExcludeTitlePrefixesArg(argv[i], batchExcluded.titlePrefixes);
             if (parsePointsArg(argv[i], batchPoints))
             {
                 hasPoints = true;
@@ -935,14 +1027,15 @@ int main(int argc, char* argv[])
     pt.x = atol(argv[1]);
     pt.y = atol(argv[2]);
 
-    std::vector<DWORD> excludedPids;
+    WindowExclusions excluded;
     const char* screenshotPath = nullptr;
     RECT setBounds = {};
     bool hasSetBounds = false;
 
     for (int i = 3; i < argc; ++i)
     {
-        parseExcludePidsArg(argv[i], excludedPids);
+        parseExcludePidsArg(argv[i], excluded.pids);
+        parseExcludeTitlePrefixesArg(argv[i], excluded.titlePrefixes);
         if (parseSetBoundsArg(argv[i], setBounds))
         {
             hasSetBounds = true;
@@ -963,7 +1056,7 @@ int main(int argc, char* argv[])
         Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
     }
 
-    HWND hwnd = findTopLevelWindowAtPoint(pt, excludedPids);
+    HWND hwnd = findTopLevelWindowAtPoint(pt, excluded);
     if (!hwnd)
     {
         // Fallback: WindowFromPoint can find child/nested windows that the
@@ -979,11 +1072,9 @@ int main(int argc, char* argv[])
                 hwnd = NULL;
             }
 
-            DWORD fallbackPid = 0;
             if (hwnd)
             {
-                GetWindowThreadProcessId(hwnd, &fallbackPid);
-                if (isPidExcluded(fallbackPid, excludedPids))
+                if (isWindowExcluded(hwnd, excluded))
                 {
                     hwnd = NULL;
                 }

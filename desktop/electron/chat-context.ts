@@ -1,5 +1,9 @@
 import { getSelectedText } from './selected-text.js'
-import { captureWindowScreenshot, getWindowInfoAtPoint } from './window-capture.js'
+import {
+  STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
+  captureWindowScreenshot,
+  getWindowInfoAtPoint,
+} from './window-capture.js'
 import { captureWindowContent } from './window-content-capture.js'
 import type { ChatContext } from '../../runtime/contracts/index.js'
 
@@ -13,10 +17,13 @@ export const captureChatContext = async (
   options?: CaptureChatContextOptions,
 ): Promise<ChatContext> => {
   const excludePids = options?.excludeCurrentProcessWindows ? [process.pid] : undefined
+  const excludeTitlePrefixes = options?.excludeCurrentProcessWindows
+    ? STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES
+    : undefined
 
   const [selectedTextResult, windowInfo] = await Promise.all([
     getSelectedText(),
-    getWindowInfoAtPoint(point.x, point.y, { excludePids }),
+    getWindowInfoAtPoint(point.x, point.y, { excludePids, excludeTitlePrefixes }),
   ])
   const selectedText = selectedTextResult?.text ?? null
 
@@ -25,14 +32,21 @@ export const captureChatContext = async (
   let capturedWindowInfo = windowInfo
   if (windowInfo) {
     if (options?.cropToContentAtPoint) {
-      const capture = await captureWindowContent(point.x, point.y, { excludePids, windowInfo })
+      const capture = await captureWindowContent(point.x, point.y, {
+        excludePids,
+        excludeTitlePrefixes,
+        windowInfo,
+      })
       if (capture) {
         capturedWindowInfo = capture.windowInfo
         windowScreenshot = capture.screenshot
         windowAxTree = capture.axTree ?? capture.windowInfo.axTree ?? null
       }
     } else {
-      const capture = await captureWindowScreenshot(point.x, point.y, { excludePids })
+      const capture = await captureWindowScreenshot(point.x, point.y, {
+        excludePids,
+        excludeTitlePrefixes,
+      })
       if (capture) {
         capturedWindowInfo = capture.windowInfo
         windowScreenshot = capture.screenshot
