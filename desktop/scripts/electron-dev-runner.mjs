@@ -26,6 +26,7 @@ const viteBinPath = resolve(
 );
 const viteDevUrlPath = resolve(desktopDir, ".vite-dev-url");
 const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");
+const readyFilePath = resolve(desktopDir, ".electron-dev-runner.ready");
 const ensureCacheDir = (dir) => {
   try {
     mkdirSync(dir, { recursive: true });
@@ -38,7 +39,11 @@ const ensureCacheDir = (dir) => {
 // Lives OUTSIDE dist-electron so esbuild's clean + identical-byte rewrites do
 // not invalidate it; reused across launches and self-mod restarts so Node's V8
 // engine skips re-parsing/compiling the bundle every time.
-const v8CompileCacheDir = resolve(repoRootDir, ".stella-dev", "v8-compile-cache");
+const v8CompileCacheDir = resolve(
+  repoRootDir,
+  ".stella-dev",
+  "v8-compile-cache",
+);
 ensureCacheDir(v8CompileCacheDir);
 // Node's NODE_COMPILE_CACHE writes per-Node-version subdirs named like
 // `v<node>-<arch>-<hash>-<uid>` and never reclaims the ones left behind by a
@@ -105,8 +110,9 @@ if (!isElectronBinaryHealthy()) {
 
 try {
   rmSync(viteDevUrlPath, { force: true });
+  rmSync(readyFilePath, { force: true });
 } catch {
-  // Best-effort stale dev URL cleanup before Vite rewrites it for this run.
+  // Best-effort stale startup marker cleanup before this run rewrites them.
 }
 
 const writePidFile = () => {
@@ -331,7 +337,12 @@ const processSpecs = [
     // NODE_COMPILE_CACHE is inherited by the spawned Electron binary (see
     // startApp in dev-electron.mjs, which spreads process.env), so V8 reuses
     // bytecode for the large electron-main bundle across launches/restarts.
-    env: { ...process.env, NODE_COMPILE_CACHE: v8CompileCacheDir },
+    env: {
+      ...process.env,
+      NODE_COMPILE_CACHE: v8CompileCacheDir,
+      STELLA_ELECTRON_DEV_RUNNER_PID: String(process.pid),
+      STELLA_ELECTRON_READY_FILE: readyFilePath,
+    },
   },
 ];
 

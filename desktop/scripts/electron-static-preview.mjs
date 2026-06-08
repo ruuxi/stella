@@ -10,6 +10,13 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, "..");
 const repoRootDir = resolve(desktopDir, "..");
 const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");
+const readyFilePath = resolve(desktopDir, ".electron-dev-runner.ready");
+
+try {
+  rmSync(readyFilePath, { force: true });
+} catch {
+  // Best-effort stale ready marker cleanup before this run rewrites it.
+}
 
 const writePidFile = () => {
   writeFileSync(
@@ -45,6 +52,8 @@ const child = spawn(electronBinary, ["."], {
   env: {
     ...process.env,
     STELLA_STATIC_PREVIEW: "1",
+    STELLA_ELECTRON_DEV_RUNNER_PID: String(process.pid),
+    STELLA_ELECTRON_READY_FILE: readyFilePath,
   },
   stdio: "inherit",
   windowsHide: true,
@@ -69,6 +78,8 @@ child.on("exit", (code, signal) => {
 
 child.on("error", (error) => {
   removeOwnPidFile();
-  console.error(`[electron-static-preview] Failed to launch Electron: ${error.message}`);
+  console.error(
+    `[electron-static-preview] Failed to launch Electron: ${error.message}`,
+  );
   process.exit(1);
 });
