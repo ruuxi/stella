@@ -10,17 +10,27 @@ import {
   isMobileBridgeRequestChannel,
 } from "./bridge-policy.js";
 import type { MobileBridgeBootstrap } from "./bootstrap-payload.js";
+import {
+  BRIDGE_CRYPTO_PROTOCOL,
+  createBridgeKeyPair,
+  decryptBridgePayload,
+  deriveBridgeCryptoSession,
+  encryptBridgePayload,
+  isBridgeEncryptedEnvelope,
+  type BridgeCryptoSession,
+} from "./crypto.js";
 import { getHandler, getOnHandlers } from "./handler-registry.js";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 const REGISTRATION_REFRESH_MS = 60_000;
 const SESSION_TTL_MS = 15 * 60 * 1000;
+const CHALLENGE_TTL_MS = 60_000;
 const COOKIE_NAME = "stella_mobile_bridge";
 const MAX_BODY_SIZE = 5 * 1024 * 1024;
 const BODY_TIMEOUT_MS = 10_000;
 const ALLOW_METHODS = "GET, POST, OPTIONS";
 const ALLOW_HEADERS =
-  "Content-Type, Authorization, X-Stella-Mobile-Device-Id, X-Stella-Mobile-Pair-Secret";
+  "Content-Type, X-Stella-Bridge-Session-Id, X-Stella-Bridge-Session-Secret, X-Stella-Bridge-Challenge-Id, X-Stella-Bridge-Encrypted";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
 const DEVELOPER_RESOURCE_PREVIEWS_KEY = "stella-developer-resource-previews";
@@ -61,6 +71,14 @@ type MobileBridgeServiceOptions = {
 };
 
 type BridgeSessionRecord = {
+  expiresAt: number;
+  crypto?: BridgeCryptoSession;
+  mobileDeviceId?: string;
+  sessionSecret?: string;
+};
+
+type BridgeChallengeRecord = {
+  challenge: string;
   expiresAt: number;
 };
 
@@ -246,10 +264,17 @@ const createFakeIpcEvent = (
 };
 
 export class MobileBridgeService {
+  private readonly bridgeKeyPair = createBridgeKeyPair();
   private readonly sessions = new Map<string, BridgeSessionRecord>();
+  private readonly challenges = new Map<string, BridgeChallengeRecord>();
   private readonly wsClients = new Map<
     WebSocket,
-    { subscriptions: Set<string>; authenticated: boolean }
+    {
+      subscriptions: Set<string>;
+      authenticated: boolean;
+      session: BridgeSessionRecord;
+      encrypted: boolean;
+    }
   >();
 
   private server: http.Server | null = null;
@@ -377,7 +402,32 @@ export class MobileBridgeService {
     if (!session || session.expiresAt <= now) {
       return null;
     }
-    return { sessionId, expiresAt: session.expiresAt };
+    return session;
+  }
+
+  private pruneChallenges(now = Date.now()) {
+    for (const [challengeId, challenge] of this.challenges) {
+      if (challenge.expiresAt <= now) {
+        this.challenges.delete(challengeId);
+      }
+    }
+  }
+
+  private createBridgeChallenge() {
+    const now = Date.now();
+    this.pruneChallenges(now);
+    const challengeId = crypto.randomUUID();
+    const challenge = crypto.randomBytes(32).toString("base64url");
+    const expiresAt = now + CHALLENGE_TTL_MS;
+    this.challenges.set(challengeId, { challenge, expiresAt });
+    return {
+      challengeId,
+      challenge,
+      expiresAt,
+      desktopDeviceId: this.deviceId,
+      desktopPublicKey: this.bridgeKeyPair.publicKey,
+      protocol: BRIDGE_CRYPTO_PROTOCOL,
+    };
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -434,6 +484,7 @@ export class MobileBridgeService {
     }
     this.port = null;
     this.sessions.clear();
+    this.challenges.clear();
     void this.clearRegistration();
   }
 
@@ -455,14 +506,15 @@ export class MobileBridgeService {
       }
       return;
     }
-    const message = JSON.stringify({ type: "event", channel, data });
     for (const [ws, client] of this.wsClients) {
       if (
         client.authenticated &&
         client.subscriptions.has(channel) &&
         ws.readyState === WebSocket.OPEN
       ) {
-        ws.send(message);
+        ws.send(
+          this.serializeWsMessage(client, { type: "event", channel, data }),
+        );
       }
     }
   };
@@ -492,6 +544,7 @@ export class MobileBridgeService {
 
   private closeBridgeClients(reason: string) {
     this.sessions.clear();
+    this.challenges.clear();
     for (const [ws] of this.wsClients) {
       ws.close(4001, reason);
     }
@@ -575,6 +628,20 @@ export class MobileBridgeService {
       return;
     }
 
+    if (req.url === "/bridge/challenge") {
+      if (!this.isBridgeAccessEnabled()) {
+        sendJson(
+          res,
+          403,
+          { error: "Desktop bridge unavailable" },
+          requestOrigin,
+        );
+        return;
+      }
+      sendJson(res, 200, this.createBridgeChallenge(), requestOrigin);
+      return;
+    }
+
     // Bootstrap payload — requires auth
     if (req.url === "/bridge/bootstrap") {
       const authenticated = await this.ensureAuthorized(
@@ -595,7 +662,7 @@ export class MobileBridgeService {
         requestOrigin,
       );
       if (!authenticated) return;
-      await this.handleIpcRequest(req, res, requestOrigin);
+      await this.handleIpcRequest(req, res, requestOrigin, authenticated);
       return;
     }
 
@@ -612,10 +679,50 @@ export class MobileBridgeService {
 
   // ── IPC routing ───────────────────────────────────────────────────────
 
+  private decryptBridgePayload(
+    session: BridgeSessionRecord,
+    envelope: unknown,
+  ): unknown {
+    if (!session.crypto || !isBridgeEncryptedEnvelope(envelope)) {
+      throw new Error("Encrypted bridge session required");
+    }
+    return decryptBridgePayload(session.crypto, "m2d", envelope);
+  }
+
+  private sendMaybeEncryptedJson(
+    res: ServerResponse,
+    status: number,
+    data: unknown,
+    origin: string | null,
+    session: BridgeSessionRecord,
+    encrypted: boolean,
+  ) {
+    if (!encrypted) {
+      sendJson(res, status, data, origin);
+      return;
+    }
+    if (!session.crypto) {
+      sendJson(
+        res,
+        403,
+        { error: "Encrypted bridge session required" },
+        origin,
+      );
+      return;
+    }
+    sendJson(
+      res,
+      status,
+      { envelope: encryptBridgePayload(session.crypto, "d2m", data) },
+      origin,
+    );
+  }
+
   private async handleIpcRequest(
     req: IncomingMessage,
     res: ServerResponse,
     requestOrigin: string | null,
+    session: BridgeSessionRecord,
   ) {
     const url = new URL(req.url ?? "/", "http://localhost");
     const channel = decodeURIComponent(
@@ -634,18 +741,39 @@ export class MobileBridgeService {
 
     try {
       const body = req.method === "POST" ? JSON.parse(await readBody(req)) : {};
-      const args = body.args ?? [];
+      const encryptedRequest = isBridgeEncryptedEnvelope(body?.envelope);
+      const decodedBody = encryptedRequest
+        ? this.decryptBridgePayload(session, body.envelope)
+        : body;
       const dispatchResult = await dispatchCapturedIpc(
         channel,
-        args,
+        (decodedBody as { args?: unknown }).args ?? [],
         this.broadcastToMobile,
         { swallowEventHandlerErrors: true },
       );
       if (dispatchResult.kind === "handle") {
         const { result } = dispatchResult;
-        sendJson(res, 200, { result }, requestOrigin);
+        this.sendMaybeEncryptedJson(
+          res,
+          200,
+          { result },
+          requestOrigin,
+          session,
+          encryptedRequest,
+        );
       } else {
-        sendNoContent(res, requestOrigin);
+        if (encryptedRequest) {
+          this.sendMaybeEncryptedJson(
+            res,
+            200,
+            { result: undefined },
+            requestOrigin,
+            session,
+            true,
+          );
+        } else {
+          sendNoContent(res, requestOrigin);
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Internal error";
@@ -693,21 +821,21 @@ export class MobileBridgeService {
       return;
     }
 
-    const existingSession = this.getValidSession(req);
-    if (!existingSession) {
-      const authorization = req.headers.authorization?.trim();
-      if (
-        !authorization?.startsWith("Bearer ") ||
-        !(await this.authorizeBearer(authorization, req.headers))
-      ) {
-        ws.close(4001, "Unauthorized");
-        return;
-      }
+    let session = this.getValidSession(req);
+    if (!session) {
+      session = await this.authorizeBridgeSession(req.headers);
+    }
+    if (!session) {
+      ws.close(4001, "Unauthorized");
+      return;
     }
 
     const client = {
       subscriptions: new Set<string>(),
       authenticated: true,
+      session,
+      encrypted:
+        req.headers["x-stella-bridge-encrypted"] === BRIDGE_CRYPTO_PROTOCOL,
     };
     this.wsClients.set(ws, client);
     this.markClientActivity();
@@ -720,7 +848,17 @@ export class MobileBridgeService {
         return;
       }
       try {
-        const msg = JSON.parse(data.toString()) as {
+        const parsed = JSON.parse(data.toString()) as unknown;
+        const msg = (
+          isBridgeEncryptedEnvelope(
+            (parsed as { envelope?: unknown })?.envelope,
+          )
+            ? this.decryptWsMessage(
+                client,
+                (parsed as { envelope: unknown }).envelope,
+              )
+            : parsed
+        ) as {
           type: string;
           channel?: string;
           id?: string;
@@ -744,7 +882,7 @@ export class MobileBridgeService {
           if (!isMobileBridgeRequestChannel(msg.channel)) {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(
-                JSON.stringify({
+                this.serializeWsMessage(client, {
                   type: "response",
                   id: msg.id,
                   error: `Disallowed IPC channel: ${msg.channel}`,
@@ -753,7 +891,13 @@ export class MobileBridgeService {
             }
             return;
           }
-          void this.handleWsInvoke(ws, msg.channel, msg.id, msg.args ?? []);
+          void this.handleWsInvoke(
+            ws,
+            client,
+            msg.channel,
+            msg.id,
+            msg.args ?? [],
+          );
         }
       } catch {
         // Ignore malformed messages
@@ -770,8 +914,46 @@ export class MobileBridgeService {
     });
   }
 
+  private decryptWsMessage(
+    client: {
+      session: BridgeSessionRecord;
+      encrypted: boolean;
+    },
+    envelope: unknown,
+  ): unknown {
+    if (!client.session.crypto || !isBridgeEncryptedEnvelope(envelope)) {
+      throw new Error("Encrypted bridge session required");
+    }
+    client.encrypted = true;
+    return decryptBridgePayload(client.session.crypto, "m2d", envelope);
+  }
+
+  private serializeWsMessage(
+    client: {
+      session: BridgeSessionRecord;
+      encrypted: boolean;
+    },
+    payload: unknown,
+  ) {
+    if (!client.encrypted) {
+      return JSON.stringify(payload);
+    }
+    if (!client.session.crypto) {
+      throw new Error("Encrypted bridge session required");
+    }
+    return JSON.stringify({
+      envelope: encryptBridgePayload(client.session.crypto, "d2m", payload),
+    });
+  }
+
   private async handleWsInvoke(
     ws: WebSocket,
+    client: {
+      subscriptions: Set<string>;
+      authenticated: boolean;
+      session: BridgeSessionRecord;
+      encrypted: boolean;
+    },
     channel: string,
     id: string,
     args: unknown[],
@@ -785,17 +967,25 @@ export class MobileBridgeService {
       if (dispatchResult.kind === "handle") {
         const { result } = dispatchResult;
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "response", id, result }));
+          ws.send(
+            this.serializeWsMessage(client, { type: "response", id, result }),
+          );
         }
       } else {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "response", id, result: undefined }));
+          ws.send(
+            this.serializeWsMessage(client, {
+              type: "response",
+              id,
+              result: undefined,
+            }),
+          );
         }
       }
     } catch (error) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(
-          JSON.stringify({
+          this.serializeWsMessage(client, {
             type: "response",
             id,
             error: error instanceof Error ? error.message : "Internal error",
@@ -811,7 +1001,7 @@ export class MobileBridgeService {
     req: IncomingMessage,
     res: ServerResponse,
     requestOrigin: string | null,
-  ) {
+  ): Promise<BridgeSessionRecord | null> {
     const now = Date.now();
     for (const [sessionId, session] of this.sessions) {
       if (session.expiresAt <= now) this.sessions.delete(sessionId);
@@ -824,71 +1014,118 @@ export class MobileBridgeService {
         { error: "Desktop bridge unavailable" },
         requestOrigin,
       );
-      return false;
+      return null;
     }
 
     const existingSession = this.getValidSession(req);
     if (existingSession) {
       this.markClientActivity();
-      return true;
+      return existingSession;
     }
 
-    const authorization = req.headers.authorization?.trim();
-    if (!authorization?.startsWith("Bearer ")) {
-      sendJson(res, 401, { error: "Unauthorized" }, requestOrigin);
-      return false;
+    const bridgeSession = await this.authorizeBridgeSession(req.headers);
+    if (bridgeSession) {
+      const sessionCookieId = crypto.randomUUID();
+      this.sessions.set(sessionCookieId, bridgeSession);
+      res.setHeader(
+        "Set-Cookie",
+        `${COOKIE_NAME}=${sessionCookieId}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+      );
+      this.markClientActivity();
+      return bridgeSession;
     }
 
-    const authorized = await this.authorizeBearer(authorization, req.headers);
-    if (!authorized) {
-      sendJson(res, 403, { error: "Forbidden" }, requestOrigin);
-      return false;
-    }
-
-    const sessionId = crypto.randomUUID();
-    this.sessions.set(sessionId, { expiresAt: now + SESSION_TTL_MS });
-    res.setHeader(
-      "Set-Cookie",
-      `${COOKIE_NAME}=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
-    );
-    this.markClientActivity();
-    return true;
+    sendJson(res, 401, { error: "Unauthorized" }, requestOrigin);
+    return null;
   }
 
-  private async authorizeBearer(
-    authorization: string,
+  private async authorizeBridgeSession(
     requestHeaders: IncomingMessage["headers"],
-  ) {
+  ): Promise<BridgeSessionRecord | null> {
     const convexSiteUrl = this.convexSiteUrl;
     const deviceId = this.deviceId;
-    if (!convexSiteUrl || !deviceId) return false;
+    const hostAuthToken = this.hostAuthToken;
+    if (!convexSiteUrl || !deviceId || !hostAuthToken) return null;
 
-    const mobileDeviceId =
-      typeof requestHeaders["x-stella-mobile-device-id"] === "string"
-        ? requestHeaders["x-stella-mobile-device-id"].trim()
+    const sessionId =
+      typeof requestHeaders["x-stella-bridge-session-id"] === "string"
+        ? requestHeaders["x-stella-bridge-session-id"].trim()
         : "";
-    const pairSecret =
-      typeof requestHeaders["x-stella-mobile-pair-secret"] === "string"
-        ? requestHeaders["x-stella-mobile-pair-secret"].trim()
+    const sessionSecret =
+      typeof requestHeaders["x-stella-bridge-session-secret"] === "string"
+        ? requestHeaders["x-stella-bridge-session-secret"].trim()
         : "";
-    if (!mobileDeviceId || !pairSecret) {
-      return false;
+    const challengeId =
+      typeof requestHeaders["x-stella-bridge-challenge-id"] === "string"
+        ? requestHeaders["x-stella-bridge-challenge-id"].trim()
+        : "";
+    if (!sessionId || !sessionSecret || !challengeId) {
+      return null;
+    }
+
+    const existing = this.sessions.get(sessionId);
+    if (
+      existing?.crypto &&
+      existing.expiresAt > Date.now() &&
+      existing.sessionSecret === sessionSecret
+    ) {
+      return existing;
+    }
+
+    this.pruneChallenges();
+    const challenge = this.challenges.get(challengeId);
+    if (!challenge) {
+      return null;
     }
 
     try {
       const response = await this.postBridgeJson(
         convexSiteUrl,
-        "/api/mobile/desktop-bridge/authorize",
-        authorization,
-        { deviceId },
+        "/api/mobile/desktop-bridge/session/consume",
+        `Bearer ${hostAuthToken}`,
         {
-          "X-Stella-Mobile-Device-Id": mobileDeviceId,
-          "X-Stella-Mobile-Pair-Secret": pairSecret,
+          deviceId,
+          sessionId,
+          sessionSecret,
+          desktopChallenge: challenge.challenge,
         },
       );
-      return response.ok;
+      if (!response.ok) {
+        return null;
+      }
+      const body = (await response.json()) as {
+        mobileDeviceId?: unknown;
+        mobilePublicKey?: unknown;
+        desktopPublicKey?: unknown;
+        desktopChallenge?: unknown;
+        expiresAt?: unknown;
+      };
+      if (
+        body.desktopChallenge !== challenge.challenge ||
+        body.desktopPublicKey !== this.bridgeKeyPair.publicKey ||
+        typeof body.mobilePublicKey !== "string" ||
+        typeof body.mobileDeviceId !== "string" ||
+        typeof body.expiresAt !== "number"
+      ) {
+        return null;
+      }
+      const session = {
+        expiresAt: Math.min(body.expiresAt, Date.now() + SESSION_TTL_MS),
+        mobileDeviceId: body.mobileDeviceId,
+        sessionSecret,
+        crypto: deriveBridgeCryptoSession({
+          sessionId,
+          secretKey: this.bridgeKeyPair.secretKey,
+          peerPublicKey: body.mobilePublicKey,
+          mobilePublicKey: body.mobilePublicKey,
+          desktopPublicKey: this.bridgeKeyPair.publicKey,
+        }),
+      };
+      this.challenges.delete(challengeId);
+      this.sessions.set(sessionId, session);
+      return session;
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -1084,6 +1321,7 @@ export class MobileBridgeService {
           deviceId: this.deviceId,
           baseUrls,
           platform: getDesktopPlatformLabel(),
+          desktopPublicKey: this.bridgeKeyPair.publicKey,
         },
       );
       if (response.ok) {
