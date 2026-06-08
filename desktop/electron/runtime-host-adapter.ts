@@ -755,6 +755,7 @@ export class RuntimeHostAdapter {
       packageId?: string;
       releaseNumber?: number;
       mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+      expectedChangedFiles?: string[];
     };
   }) {
     return this.host.runBlockingLocalAgent(payload);
@@ -769,6 +770,7 @@ export class RuntimeHostAdapter {
       packageId?: string;
       releaseNumber?: number;
       mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+      expectedChangedFiles?: string[];
     };
   }) {
     return this.host.createBackgroundAgent(payload);

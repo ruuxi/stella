@@ -128,6 +128,7 @@ export type AgentToolRequest = {
     packageId?: string;
     releaseNumber?: number;
     mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
+    expectedChangedFiles?: string[];
   };
 };
 

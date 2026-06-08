@@ -724,6 +724,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
             | "update"
             | "uninstall"
             | "desktop-update";
+          expectedChangedFiles?: string[];
         };
       },
     ) => {

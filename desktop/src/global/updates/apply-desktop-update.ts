@@ -405,6 +405,9 @@ export const applyDesktopUpdate = async (
       storageMode: "local",
       selfModMetadata: {
         mode: "desktop-update",
+        ...(fastApplyFallback?.changedFiles?.length
+          ? { expectedChangedFiles: fastApplyFallback.changedFiles }
+          : {}),
       },
       messageMetadata: {
         installUpdate: {

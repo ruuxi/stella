@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import path from "node:path";
 import { resolveLlmRoute } from "../model-routing.js";
 import { withStellaModelCatalogMetadata } from "../stella-model-catalog.js";
 import {
@@ -101,6 +102,22 @@ const collectWrittenPaths = (
     }
   }
   return out;
+};
+
+const resolveExpectedSelfModWritePaths = (
+  metadata: AgentToolRequest["selfModMetadata"] | undefined,
+  stellaRoot: string | undefined,
+): string[] => {
+  const root = stellaRoot?.trim();
+  const expected = metadata?.expectedChangedFiles;
+  if (!root || !Array.isArray(expected) || expected.length === 0) return [];
+  const out = new Set<string>();
+  for (const filePath of expected) {
+    const trimmed = filePath.trim();
+    if (!trimmed) continue;
+    out.add(path.isAbsolute(trimmed) ? trimmed : path.join(root, trimmed));
+  }
+  return [...out];
 };
 
 const inferPreWritePaths = (
@@ -463,6 +480,26 @@ export const createAgentOrchestration = (
         // already-finalized runs, so beginRun must precede writes.
         if (!isContinuingSelfModRun) {
           await context.selfModHmrController?.beginRun(lifecycleRunId);
+          const expectedWritePaths = resolveExpectedSelfModWritePaths(
+            effectiveSelfModMetadata,
+            context.stellaRoot,
+          );
+          if (expectedWritePaths.length > 0) {
+            await Promise.resolve(
+              context.selfModHmrController?.recordWrite(
+                lifecycleRunId,
+                expectedWritePaths,
+                {
+                  captureSnapshot: false,
+                },
+              ),
+            ).catch((error) => {
+              console.warn(
+                "[self-mod-hmr] failed to pre-track expected self-mod update paths:",
+                (error as Error).message,
+              );
+            });
+          }
           await Promise.resolve(
             context.selfModLifecycle!.beginRun({
               runId: lifecycleRunId,

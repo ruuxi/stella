@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   runOrchestratorTurn,
@@ -6,7 +7,10 @@ import {
 } from "../agent-runtime.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { getOrCreateOrchestratorSession } from "../agent-runtime/orchestrator-session.js";
-import { resolveAgentModelRoute, type BuildAgentContextArgs } from "./context.js";
+import {
+  resolveAgentModelRoute,
+  type BuildAgentContextArgs,
+} from "./context.js";
 import { isReportedOrchestratorError } from "../agent-runtime/run-completion.js";
 import type { RunnerContext } from "./types.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
@@ -67,6 +71,22 @@ const collectWrittenPaths = (
     }
   }
   return out;
+};
+
+const resolveExpectedSelfModWritePaths = (
+  metadata: OrchestratorSelfModMetadata | undefined,
+  stellaRoot: string | undefined,
+): string[] => {
+  const root = stellaRoot?.trim();
+  const expected = metadata?.expectedChangedFiles;
+  if (!root || !Array.isArray(expected) || expected.length === 0) return [];
+  const out = new Set<string>();
+  for (const filePath of expected) {
+    const trimmed = filePath.trim();
+    if (!trimmed) continue;
+    out.add(path.isAbsolute(trimmed) ? trimmed : path.join(root, trimmed));
+  }
+  return [...out];
 };
 
 const inferPreWritePaths = (
@@ -571,6 +591,26 @@ export const launchPreparedOrchestratorRun = (args: {
     if (shouldAttachSelfModLifecycle) {
       const selfModMetadata = prepared.selfModMetadata ?? { mode: "update" };
       await context.selfModHmrController?.beginRun(prepared.runId);
+      const expectedWritePaths = resolveExpectedSelfModWritePaths(
+        selfModMetadata,
+        context.stellaRoot,
+      );
+      if (expectedWritePaths.length > 0) {
+        await Promise.resolve(
+          context.selfModHmrController?.recordWrite(
+            prepared.runId,
+            expectedWritePaths,
+            {
+              captureSnapshot: false,
+            },
+          ),
+        ).catch((error) => {
+          console.warn(
+            "[self-mod-hmr] failed to pre-track expected self-mod update paths:",
+            (error as Error).message,
+          );
+        });
+      }
       await Promise.resolve(
         context.selfModLifecycle!.beginRun({
           runId: prepared.runId,
