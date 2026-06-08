@@ -111,6 +111,20 @@ const EMPTY_SNAPSHOT: LocalMessageWindowSnapshot = {
 };
 
 const localMessageWindows = new Map<string, LocalMessageWindowEntry>();
+
+/**
+ * Last successfully-loaded window per conversation, retained across entry
+ * teardown. Growing the window (`loadOlder`) bumps `maxVisibleMessages`,
+ * which re-keys the subscription: React tears down the smaller-window
+ * entry (deleting it from `localMessageWindows`) *before* the larger one
+ * subscribes, so a live-entry seed lookup finds nothing and the new
+ * window would emit an empty snapshot for a frame. That empty flash makes
+ * the virtualized list treat the next non-empty render as a fresh mount
+ * (re-running its initial scroll-to-end), which throws away the user's
+ * scroll position when loading older history. Seeding from this cache
+ * keeps the prior messages on screen until the larger window resolves.
+ */
+const lastLoadedWindowByConversation = new Map<string, LocalMessageWindow>();
 let unsubscribeLocalChatUpdates: (() => void) | null = null;
 
 const localMessageWindowKey = (options: LocalMessageWindowOptions) =>
@@ -125,6 +139,9 @@ const setSnapshot = (
   snapshot: LocalMessageWindowSnapshot,
 ) => {
   entry.snapshot = snapshot;
+  if (snapshot.hasLoaded && !snapshot.error) {
+    lastLoadedWindowByConversation.set(entry.conversationId, snapshot.window);
+  }
   for (const listener of entry.listeners) {
     listener(cloneSnapshot(snapshot));
   }
@@ -201,12 +218,23 @@ const getOrCreateEntry = (
         entry.maxVisibleMessages < options.maxVisibleMessages,
     )
     .sort((a, b) => b.maxVisibleMessages - a.maxVisibleMessages)[0];
+  // Fall back to the retained last-loaded window when no live smaller-
+  // window entry survives (the common `loadOlder` teardown-before-setup
+  // case). `hasLoaded: false` keeps `isLoadingOlder` accurate until the
+  // larger window resolves, while showing the prior messages avoids the
+  // empty-flash → list-remount → scroll-reset.
+  const cachedWindow = lastLoadedWindowByConversation.get(
+    options.conversationId,
+  );
+  const seedSnapshot: LocalMessageWindowSnapshot | null = seed
+    ? { ...cloneSnapshot(seed.snapshot), hasLoaded: false }
+    : cachedWindow
+      ? { window: cachedWindow, hasLoaded: false, error: null }
+      : null;
   const entry: LocalMessageWindowEntry = {
     ...options,
     key,
-    snapshot: seed
-      ? { ...cloneSnapshot(seed.snapshot), hasLoaded: false }
-      : EMPTY_SNAPSHOT,
+    snapshot: seedSnapshot ?? EMPTY_SNAPSHOT,
     listeners: new Set(),
     loading: null,
     pendingRefetch: false,
@@ -243,5 +271,6 @@ export const __privateLocalMessageStore = {
     unsubscribeLocalChatUpdates?.();
     unsubscribeLocalChatUpdates = null;
     localMessageWindows.clear();
+    lastLoadedWindowByConversation.clear();
   },
 };

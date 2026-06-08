@@ -274,4 +274,73 @@ describe("local-message-store", () => {
       restore();
     }
   });
+
+  it("seeds the grown window from the retained snapshot when the smaller window was torn down first", async () => {
+    // Reproduces React's effect cleanup-before-setup ordering on
+    // `loadOlder`: the smaller-window subscription is removed before the
+    // larger one subscribes, so the live-entry seed lookup finds nothing.
+    // Without the retained per-conversation cache this emits an empty
+    // snapshot for a frame, remounting the list and resetting scroll.
+    let resolveSecond: ((value: WindowPayload) => void) | null = null;
+    const firstWindow = window([makeMessage("u-1", 1_000, "first")]);
+    const secondWindow = window([
+      makeMessage("u-0", 990, "older"),
+      makeMessage("u-1", 1_000, "first"),
+    ]);
+    const listMessages = vi.fn().mockImplementation(
+      async (payload: { maxVisibleMessages?: number }) => {
+        if (payload.maxVisibleMessages === 50) return firstWindow;
+        return await new Promise<WindowPayload>((resolve) => {
+          resolveSecond = resolve;
+        });
+      },
+    );
+    const onUpdated = vi.fn().mockImplementation(() => () => undefined);
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, onUpdated },
+    });
+
+    try {
+      const firstSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribeFirst = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => firstSnapshots.push(snapshot),
+      );
+
+      await waitFor(() => {
+        expect(firstSnapshots.at(-1)?.hasLoaded).toBe(true);
+        expect(
+          firstSnapshots.at(-1)?.window.messages.map((m) => m._id),
+        ).toEqual(["u-1"]);
+      });
+
+      // Tear the smaller window down FIRST (deletes its live entry), then
+      // subscribe the larger window — the order React uses on `loadOlder`.
+      unsubscribeFirst();
+
+      const largerSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribeLarger = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 250 },
+        (snapshot) => largerSnapshots.push(snapshot),
+      );
+
+      // The immediate seed must carry the prior messages — never empty.
+      expect(largerSnapshots[0]?.hasLoaded).toBe(false);
+      expect(largerSnapshots[0]?.window.messages.map((m) => m._id)).toEqual([
+        "u-1",
+      ]);
+      expect(largerSnapshots[0]?.window.messages).not.toHaveLength(0);
+
+      resolveSecond?.(secondWindow);
+      await waitFor(() =>
+        expect(
+          largerSnapshots.at(-1)?.window.messages.map((m) => m._id),
+        ).toEqual(["u-0", "u-1"]),
+      );
+
+      unsubscribeLarger();
+    } finally {
+      restore();
+    }
+  });
 });
