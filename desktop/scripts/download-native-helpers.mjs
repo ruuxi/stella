@@ -29,6 +29,7 @@ import { spawnSync } from "node:child_process";
 const DEFAULT_MANIFEST_URL =
   process.env.STELLA_NATIVE_HELPERS_MANIFEST_URL ??
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers/current.json";
+const DOWNLOAD_RETRY_DELAYS_MS = [750, 1_500, 3_000, 6_000];
 
 const __dirname = import.meta.dirname;
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -165,10 +166,88 @@ const existingHelpersMatch = (manifest, asset) => {
   );
 };
 
+class RetryableDownloadError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = "RetryableDownloadError";
+    this.status = status;
+  }
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableHttpStatus = (status) =>
+  status === 408 || status === 425 || status === 429 || status >= 500;
+
+const errorMessageWithCause = (error) => {
+  if (error instanceof Error) {
+    const cause =
+      typeof error.cause === "string"
+        ? error.cause
+        : error.cause instanceof Error
+          ? error.cause.message
+          : "";
+    return `${error.message} ${cause}`.trim();
+  }
+  return String(error);
+};
+
+const isRetryableDownloadError = (error) => {
+  if (error instanceof RetryableDownloadError) return true;
+  return /fetch failed|network|timeout|timed out|econnreset|etimedout|eai_again|enotfound|socket|terminated|aborted/i.test(
+    errorMessageWithCause(error),
+  );
+};
+
+const withDownloadRetries = async (label, url, operation) => {
+  let lastError;
+  for (
+    let attemptIndex = 0;
+    attemptIndex <= DOWNLOAD_RETRY_DELAYS_MS.length;
+    attemptIndex += 1
+  ) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const nextDelayMs = DOWNLOAD_RETRY_DELAYS_MS[attemptIndex];
+      if (nextDelayMs === undefined || !isRetryableDownloadError(error)) {
+        throw error;
+      }
+      process.stderr.write(
+        `${label} failed (${errorMessageWithCause(error)}); retrying in ${(nextDelayMs / 1000).toFixed(1)}s...\n`,
+      );
+      await wait(nextDelayMs);
+    }
+  }
+  throw lastError;
+};
+
 process.stdout.write(`Resolving native helpers manifest: ${manifestUrl}\n`);
-const manifestResp = await fetch(manifestUrl, {
-  headers: { "User-Agent": "stella-native-download" },
-});
+let manifestResp;
+try {
+  manifestResp = await withDownloadRetries(
+    "Native helpers manifest request",
+    manifestUrl,
+    async () => {
+      const response = await fetch(manifestUrl, {
+        headers: { "User-Agent": "stella-native-download" },
+      });
+      if (!response.ok && isRetryableHttpStatus(response.status)) {
+        throw new RetryableDownloadError(
+          `HTTP ${response.status}`,
+          response.status,
+        );
+      }
+      return response;
+    },
+  );
+} catch (error) {
+  process.stderr.write(
+    `Manifest request failed: ${errorMessageWithCause(error)}\n`,
+  );
+  process.exit(1);
+}
 if (!manifestResp.ok) {
   process.stderr.write(
     `Manifest request failed: HTTP ${manifestResp.status}\n`,
@@ -195,17 +274,6 @@ if (existingHelpersMatch(manifest, asset)) {
   process.exit(0);
 }
 
-process.stdout.write(
-  `Downloading native helpers for ${platformKey} from ${asset.url}\n`,
-);
-const archiveResp = await fetch(asset.url, {
-  headers: { "User-Agent": "stella-native-download" },
-});
-if (!archiveResp.ok || !archiveResp.body) {
-  process.stderr.write(`Download failed: HTTP ${archiveResp.status}\n`);
-  process.exit(1);
-}
-
 const tmpArchive = path.join(
   repoRoot,
   ".stella-native-helpers-download.tar.zst",
@@ -214,38 +282,73 @@ const tmpExtractDir = path.join(
   repoRoot,
   `.stella-native-helpers-extract-${platformKey}-${process.pid}`,
 );
-const hash = createHash("sha256");
-const writeStream = createWriteStream(tmpArchive);
-const reader = archiveResp.body.getReader();
-let downloaded = 0;
-const totalBytes =
-  Number(archiveResp.headers.get("content-length") ?? asset.size ?? 0) || 0;
-while (true) {
-  const { value, done } = await reader.read();
-  if (done) break;
-  if (!value) continue;
-  downloaded += value.byteLength;
-  hash.update(value);
-  if (!writeStream.write(value)) {
-    await new Promise((resolve) => writeStream.once("drain", resolve));
-  }
-  if (totalBytes > 0 && downloaded % (1024 * 1024) < value.byteLength) {
-    process.stdout.write(
-      `  ${(downloaded / 1024 / 1024).toFixed(1)} MiB / ${(totalBytes / 1024 / 1024).toFixed(1)} MiB\r`,
-    );
-  }
-}
-await new Promise((resolve, reject) => {
-  writeStream.end((err) => (err ? reject(err) : resolve(undefined)));
-});
-process.stdout.write("\n");
 
-const actualSha = hash.digest("hex");
-if (actualSha.toLowerCase() !== String(asset.sha256).toLowerCase()) {
-  rmSync(tmpArchive, { force: true });
-  process.stderr.write(
-    `Checksum mismatch for ${platformKey}: expected ${asset.sha256}, got ${actualSha}\n`,
+try {
+  await withDownloadRetries(
+    `Native helpers download for ${platformKey}`,
+    asset.url,
+    async () => {
+      rmSync(tmpArchive, { force: true });
+      process.stdout.write(
+        `Downloading native helpers for ${platformKey} from ${asset.url}\n`,
+      );
+      const archiveResp = await fetch(asset.url, {
+        headers: { "User-Agent": "stella-native-download" },
+      });
+      if (!archiveResp.ok || !archiveResp.body) {
+        if (isRetryableHttpStatus(archiveResp.status)) {
+          throw new RetryableDownloadError(
+            `HTTP ${archiveResp.status}`,
+            archiveResp.status,
+          );
+        }
+        throw new Error(`Download failed: HTTP ${archiveResp.status}`);
+      }
+
+      const hash = createHash("sha256");
+      const writeStream = createWriteStream(tmpArchive);
+      const reader = archiveResp.body.getReader();
+      let downloaded = 0;
+      const totalBytes =
+        Number(archiveResp.headers.get("content-length") ?? asset.size ?? 0) ||
+        0;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          downloaded += value.byteLength;
+          hash.update(value);
+          if (!writeStream.write(value)) {
+            await new Promise((resolve) => writeStream.once("drain", resolve));
+          }
+          if (totalBytes > 0 && downloaded % (1024 * 1024) < value.byteLength) {
+            process.stdout.write(
+              `  ${(downloaded / 1024 / 1024).toFixed(1)} MiB / ${(totalBytes / 1024 / 1024).toFixed(1)} MiB\r`,
+            );
+          }
+        }
+        await new Promise((resolve, reject) => {
+          writeStream.end((err) => (err ? reject(err) : resolve(undefined)));
+        });
+      } catch (error) {
+        writeStream.destroy();
+        rmSync(tmpArchive, { force: true });
+        throw error;
+      }
+      process.stdout.write("\n");
+
+      const actualSha = hash.digest("hex");
+      if (actualSha.toLowerCase() !== String(asset.sha256).toLowerCase()) {
+        rmSync(tmpArchive, { force: true });
+        throw new Error(
+          `Checksum mismatch for ${platformKey}: expected ${asset.sha256}, got ${actualSha}`,
+        );
+      }
+    },
   );
+} catch (error) {
+  process.stderr.write(`Download failed: ${errorMessageWithCause(error)}\n`);
   process.exit(1);
 }
 
