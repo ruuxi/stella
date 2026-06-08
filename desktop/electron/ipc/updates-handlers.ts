@@ -81,6 +81,7 @@ const UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS = 120_000;
 // update. Keep it out of renderer startup and wait for real runtime readiness
 // before issuing the worker RPC.
 const UPDATE_SOURCE_HISTORY_TIMEOUT_MS = 45_000;
+const UPDATE_DOWNLOAD_RETRY_DELAYS_MS = [750, 1_500, 3_000, 6_000];
 // The per-launch source-history reconciliation (`runner-ready`) is a background
 // safety net for the CURRENT install commit — nothing the user does in the first
 // seconds of a session depends on it. Firing it immediately on runner-ready (a
@@ -123,6 +124,77 @@ const logDesktopUpdateError = (
     ...(fields ?? {}),
     error,
   });
+};
+
+class RetryableDownloadError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = "RetryableDownloadError";
+  }
+}
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const isRetryableHttpStatus = (status: number) =>
+  status === 408 || status === 425 || status === 429 || status >= 500;
+
+const errorMessageWithCause = (error: unknown): string => {
+  if (error instanceof Error) {
+    const cause =
+      typeof error.cause === "string"
+        ? error.cause
+        : error.cause instanceof Error
+          ? error.cause.message
+          : "";
+    return `${error.message} ${cause}`.trim();
+  }
+  return String(error);
+};
+
+const isRetryableDownloadError = (error: unknown): boolean => {
+  if (error instanceof RetryableDownloadError) return true;
+  return /fetch failed|network|timeout|timed out|econnreset|etimedout|eai_again|enotfound|socket|terminated|aborted/i.test(
+    errorMessageWithCause(error),
+  );
+};
+
+const withDownloadRetries = async <T>(
+  label: string,
+  url: string,
+  operation: () => Promise<T>,
+): Promise<T> => {
+  let lastError: unknown;
+  for (
+    let attemptIndex = 0;
+    attemptIndex <= UPDATE_DOWNLOAD_RETRY_DELAYS_MS.length;
+    attemptIndex += 1
+  ) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const nextDelayMs = UPDATE_DOWNLOAD_RETRY_DELAYS_MS[attemptIndex];
+      if (nextDelayMs === undefined || !isRetryableDownloadError(error)) {
+        throw error;
+      }
+      logDesktopUpdateWarn("desktop-update.download.retry", {
+        label,
+        url,
+        attempt: attemptIndex + 1,
+        nextAttempt: attemptIndex + 2,
+        nextDelayMs,
+        error: errorMessageWithCause(error),
+      });
+      await wait(nextDelayMs);
+    }
+  }
+  throw lastError;
 };
 
 const withDesktopUpdateTimeout = async <T>(
@@ -1043,14 +1115,23 @@ const fetchDesktopSourcePackRef = async (
   ) {
     throw new Error(`${args.label} size is invalid.`);
   }
-  const response = await fetch(ref.url);
-  if (!response.ok) {
-    throw new Error(`${args.label} download failed (${response.status}).`);
-  }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength !== ref.sizeBytes) {
-    throw new Error(`${args.label} size did not match the release.`);
-  }
+  const bytes = await withDownloadRetries(args.label, ref.url, async () => {
+    const response = await fetch(ref.url);
+    if (!response.ok) {
+      const message = `${args.label} download failed (${response.status}).`;
+      if (isRetryableHttpStatus(response.status)) {
+        throw new RetryableDownloadError(message, response.status);
+      }
+      throw new Error(message);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength !== ref.sizeBytes) {
+      throw new RetryableDownloadError(
+        `${args.label} size did not match the release.`,
+      );
+    }
+    return bytes;
+  });
   if (hashBytes(bytes).toLowerCase() !== ref.sha256.toLowerCase()) {
     throw new Error(`${args.label} hash did not match the release.`);
   }
@@ -1088,7 +1169,20 @@ const fetchDesktopReleaseSourceHistoryRef = async (args: {
   targetCommit: string;
 }): Promise<DesktopReleaseSourceHistoryRef | null> => {
   const url = desktopReleaseManifestUrl(args.releaseTag);
-  const response = await fetch(url);
+  const response = await withDownloadRetries(
+    "Desktop release manifest",
+    url,
+    async () => {
+      const next = await fetch(url);
+      if (!next.ok && isRetryableHttpStatus(next.status)) {
+        throw new RetryableDownloadError(
+          `Desktop release manifest download failed (${next.status}).`,
+          next.status,
+        );
+      }
+      return next;
+    },
+  );
   if (!response.ok) {
     return null;
   }
@@ -1356,7 +1450,20 @@ export const writeAppliedReleaseManifest = async (
 ): Promise<boolean> => {
   if (!tag) return false;
   const url = desktopReleaseManifestUrl(tag, options?.releaseManifestBaseUrl);
-  const response = await fetch(url);
+  const response = await withDownloadRetries(
+    "Desktop release manifest",
+    url,
+    async () => {
+      const next = await fetch(url);
+      if (!next.ok && isRetryableHttpStatus(next.status)) {
+        throw new RetryableDownloadError(
+          `Release manifest download failed (${next.status}).`,
+          next.status,
+        );
+      }
+      return next;
+    },
+  );
   if (!response.ok) {
     throw new Error(`Release manifest download failed (${response.status}).`);
   }
