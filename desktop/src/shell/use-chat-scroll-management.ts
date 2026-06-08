@@ -176,6 +176,9 @@ export function useChatScrollManagement({
     visible: false,
   })
   const thumbFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollStateRafRef = useRef<number | null>(null)
+  const isAtBottomRef = useRef(true)
+  const showScrollButtonRef = useRef(false)
 
   /**
    * The follow latch. `true` means content growth should pull the
@@ -185,9 +188,17 @@ export function useChatScrollManagement({
    * scroll-to-bottom button).
    */
   const followRef = useRef(true)
+  const isFollowingLatestRef = useRef(true)
 
   const setFollow = useCallback((following: boolean) => {
+    if (
+      followRef.current === following &&
+      isFollowingLatestRef.current === following
+    ) {
+      return
+    }
     followRef.current = following
+    isFollowingLatestRef.current = following
     setIsFollowingLatest(following)
   }, [])
 
@@ -238,22 +249,33 @@ export function useChatScrollManagement({
 
   const onListScroll = useCallback(
     (_event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const list = listRef.current
-      if (!list) return
-      const state = list.getState()
-      const { scroll, scrollLength, contentLength, isAtEnd } = state
-      const distFromEnd = Math.max(0, contentLength - scrollLength - scroll)
-      // Booleans bail out on === inside React's setState, so these are
-      // effectively no-ops while nothing has changed.
-      setIsAtBottom(isAtEnd)
-      setShowScrollButton(distFromEnd > SCROLL_BUTTON_THRESHOLD)
-      updateThumb(scroll, scrollLength, contentLength)
+      if (scrollStateRafRef.current !== null) return
+      scrollStateRafRef.current = requestAnimationFrame(() => {
+        scrollStateRafRef.current = null
+        const list = listRef.current
+        if (!list) return
+        const state = list.getState()
+        const { scroll, scrollLength, contentLength, isAtEnd } = state
+        const distFromEnd = Math.max(0, contentLength - scrollLength - scroll)
+        const shouldShowScrollButton =
+          distFromEnd > SCROLL_BUTTON_THRESHOLD
 
-      // Re-arm follow when back in the normal reading position above the
-      // off-screen trailing footer (not only at the literal scroll end).
-      if (isAtEnd || distFromEnd <= followRearmThreshold) {
-        setFollow(true)
-      }
+        if (isAtBottomRef.current !== isAtEnd) {
+          isAtBottomRef.current = isAtEnd
+          setIsAtBottom(isAtEnd)
+        }
+        if (showScrollButtonRef.current !== shouldShowScrollButton) {
+          showScrollButtonRef.current = shouldShowScrollButton
+          setShowScrollButton(shouldShowScrollButton)
+        }
+        updateThumb(scroll, scrollLength, contentLength)
+
+        // Re-arm follow when back in the normal reading position above the
+        // off-screen trailing footer (not only at the literal scroll end).
+        if (isAtEnd || distFromEnd <= followRearmThreshold) {
+          setFollow(true)
+        }
+      })
     },
     [followRearmThreshold, setFollow, updateThumb],
   )
@@ -288,6 +310,10 @@ export function useChatScrollManagement({
   useEffect(() => {
     return () => {
       if (thumbFadeRef.current) clearTimeout(thumbFadeRef.current)
+      if (scrollStateRafRef.current !== null) {
+        cancelAnimationFrame(scrollStateRafRef.current)
+        scrollStateRafRef.current = null
+      }
     }
   }, [])
 
