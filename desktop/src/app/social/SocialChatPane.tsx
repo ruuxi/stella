@@ -591,7 +591,9 @@ export function SocialChatPane({
             initialScrollAtEnd
             onScroll={socialScroll.onListScroll}
             onStartReached={socialScroll.onStartReached}
-            onStartReachedThreshold={0.5}
+            // Prefetch older history ~2 viewports before the top, matching
+            // the main/sidebar/mini chat surfaces.
+            onStartReachedThreshold={2}
             ListHeaderComponent={
               isLoadingOlder ? (
                 <div
