@@ -125,7 +125,10 @@ export const handleSendInput = async (
     threadId,
     message,
     sender,
-    { description },
+    {
+      description,
+      ...(context.rootRunId ? { rootRunId: context.rootRunId } : {}),
+    },
   );
   if (!delivered.delivered) {
     return { error: `Thread not found: ${threadId}` };

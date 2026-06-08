@@ -1260,7 +1260,7 @@ export class LocalAgentManager implements AgentToolApi {
     agentId: string,
     message: string,
     from: "orchestrator" | "subagent",
-    options?: { description?: string },
+    options?: { description?: string; rootRunId?: string },
   ): Promise<{ delivered: boolean }> {
     const text = message.trim();
     if (!text) return { delivered: false };
@@ -1268,6 +1268,7 @@ export class LocalAgentManager implements AgentToolApi {
       ? options.description
       : text;
     const updateStatusText = formatTaskUpdateStatusText(updateStatusSource);
+    const rootRunId = options?.rootRunId?.trim() || undefined;
     const task = this.tasks.get(agentId);
     if (!task) {
       if (from !== "orchestrator") {
@@ -1282,6 +1283,9 @@ export class LocalAgentManager implements AgentToolApi {
         text,
         updateStatusText,
       );
+      if (rootRunId) {
+        resumedTask.rootRunId = rootRunId;
+      }
       resumedTask.messageLog.push({
         from,
         text: truncate(text, 500),
@@ -1308,6 +1312,9 @@ export class LocalAgentManager implements AgentToolApi {
           0,
           task.messageLog.length - LocalAgentManager.MAX_LOG_MESSAGES,
         );
+      }
+      if (rootRunId) {
+        task.rootRunId = rootRunId;
       }
       this.resetTaskForNextAttempt(task, text);
       task.pendingStartStatusText = updateStatusText;
@@ -1349,6 +1356,9 @@ export class LocalAgentManager implements AgentToolApi {
     }
 
     if (from === "orchestrator") {
+      if (rootRunId) {
+        task.rootRunId = rootRunId;
+      }
       task.pendingStartStatusText = updateStatusText;
       task.recentActivity = [updateStatusText];
       this.opts.onAgentEvent?.({

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
-import { createStateContext, handleSpawnAgent } from "../../../../../runtime/kernel/tools/state.js";
+import {
+  createStateContext,
+  handleSendInput,
+  handleSpawnAgent,
+} from "../../../../../runtime/kernel/tools/state.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { AgentToolRequest } from "../../../../../runtime/kernel/tools/types.js";
 
@@ -267,6 +271,59 @@ describe("state tools", () => {
         canceled: true,
       },
     });
+  });
+
+  it("passes the current root run through send_input", async () => {
+    const sendCalls: Array<{
+      threadId: string;
+      message: string;
+      from: string;
+      options: { description?: string; rootRunId?: string } | undefined;
+    }> = [];
+    const ctx = createStateContext("/tmp", {
+      createAgent: async () => ({ threadId: "thread-1" }),
+      getAgent: async () => null,
+      cancelAgent: async () => ({ canceled: false }),
+      sendAgentMessage: async (threadId, message, from, options) => {
+        sendCalls.push({ threadId, message, from, options });
+        return { delivered: true };
+      },
+    });
+
+    const result = await handleSendInput(
+      ctx,
+      {
+        thread_id: "thread-7",
+        message: "continue with the latest requirement",
+        description: "Apply latest requirement",
+      },
+      {
+        conversationId: "conversation-1",
+        deviceId: "device-1",
+        requestId: "request-1",
+        rootRunId: "root-current",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+      },
+    );
+
+    expect(result).toEqual({
+      result: {
+        thread_id: "thread-7",
+        status: "updated",
+        delivered: true,
+      },
+    });
+    expect(sendCalls).toEqual([
+      {
+        threadId: "thread-7",
+        message: "continue with the latest requirement",
+        from: "orchestrator",
+        options: {
+          description: "Apply latest requirement",
+          rootRunId: "root-current",
+        },
+      },
+    ]);
   });
 
   it("returns thread-not-found when pause_agent targets an unknown thread", async () => {

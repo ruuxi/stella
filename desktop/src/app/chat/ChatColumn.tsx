@@ -19,7 +19,6 @@ import {
   memo,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -163,10 +162,6 @@ export const ChatColumn = memo(function ChatColumn({
     liveTasks: conversation.streaming.liveTasks,
     appSessionStartedAtMs,
   });
-  const runningTasks = useMemo(
-    () => footerTasks.filter((task) => task.status === "running"),
-    [footerTasks],
-  );
   useReadAloud(conversation.messages);
   // Initial thinking is pre-tool only. Once a tool lifecycle begins, the
   // indicator follows live TOOL_START/TOOL_END state instead of the long-lived
@@ -238,7 +233,7 @@ export const ChatColumn = memo(function ChatColumn({
         isDragOver={isDragOver}
         replyPeek={replyPeek}
         suggestionsActive={isActiveSurface}
-        tasks={runningTasks}
+        tasks={footerTasks}
       />
     );
   };

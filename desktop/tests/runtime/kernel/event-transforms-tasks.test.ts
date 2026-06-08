@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractStepsFromEvents,
+  getComposerTaskChipTasks,
   extractTasksFromEvents,
   getTaskDisplayText,
   getFooterTasksFromEvents,
@@ -301,6 +302,34 @@ describe("mergeFooterTasks", () => {
     expect(task?.description).toBe("Build Tic Tac Toe app in Stella");
     expect(task?.statusText).toBe("Build Tic Tac Toe app in Stella");
     expect(getTaskDisplayText(task!)).toBe("Build Tic Tac Toe app in Stella");
+  });
+});
+
+describe("getComposerTaskChipTasks", () => {
+  it("keeps only running tasks for the composer chip", () => {
+    const tasks = [
+      {
+        id: "task-1",
+        description: "Still running",
+        agentType: "general",
+        status: "running",
+        startedAtMs: 100,
+        lastUpdatedAtMs: 100,
+      },
+      {
+        id: "task-2",
+        description: "Already done",
+        agentType: "general",
+        status: "completed",
+        startedAtMs: 100,
+        completedAtMs: 200,
+        lastUpdatedAtMs: 200,
+      },
+    ] as const;
+
+    expect(getComposerTaskChipTasks(tasks).map((task) => task.id)).toEqual([
+      "task-1",
+    ]);
   });
 });
 

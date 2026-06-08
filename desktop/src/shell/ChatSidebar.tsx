@@ -264,10 +264,6 @@ export function ChatPanelTab({
     liveTasks,
     appSessionStartedAtMs,
   });
-  const runningTasks = useMemo(
-    () => footerTasks.filter((task) => task.status === "running"),
-    [footerTasks],
-  );
   useReadAloud(messages);
   // Initial thinking is pre-tool only. Once a tool lifecycle begins, the
   // indicator follows live TOOL_START/TOOL_END state instead of the long-lived
@@ -512,7 +508,7 @@ export function ChatPanelTab({
                   active={surfaceActive}
                   chatContext={chatContext}
                   setChatContext={setChatContext}
-                  tasks={runningTasks}
+                  tasks={footerTasks}
                 />
               </div>
 
