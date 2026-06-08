@@ -571,6 +571,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   };
   const pendingApplyBatches = new Map<string, PendingApplyBatch>();
   const selfModRunRootIds = new Map<string, string>();
+  const selfModRunApplyModes = new Map<string, string | undefined>();
 
   // Lazy loaders for the runner subgraph. runner.ts, one-shot-completion.ts and
   // chat-prompt-context.ts share ~80 files and together are ~68% of the worker
@@ -630,6 +631,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     ];
     pendingApplyBatches.clear();
     selfModRunRootIds.clear();
+    selfModRunApplyModes.clear();
     if (runIds.length === 0) return;
     console.warn(
       `[self-mod-hmr] Releasing runtime reload pauses for pending apply batches: ${reason}.`,
@@ -1189,6 +1191,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             });
             for (const runId of applyResult.restartRelevantRunIds) {
               selfModRunRootIds.delete(runId);
+              selfModRunApplyModes.delete(runId);
             }
             return;
           }
@@ -1198,6 +1201,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           });
           for (const runId of applyResult.restartRelevantRunIds) {
             selfModRunRootIds.delete(runId);
+            selfModRunApplyModes.delete(runId);
           }
         }
       }
@@ -1240,6 +1244,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         }
         await releaseRuntimeReloadFor([runId]);
         selfModRunRootIds.delete(runId);
+        selfModRunApplyModes.delete(runId);
         externalSelfModPathsByRun.delete(runId);
         throw error;
       }
@@ -1259,6 +1264,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         });
         await releaseRuntimeReloadFor([runId]);
         selfModRunRootIds.delete(runId);
+        selfModRunApplyModes.delete(runId);
         externalSelfModPathsByRun.delete(runId);
         return { ok: true };
       }
@@ -1267,6 +1273,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         const cancelResult = await controller.cancel(runId);
         await releaseRuntimeReloadFor([runId]);
         selfModRunRootIds.delete(runId);
+        selfModRunApplyModes.delete(runId);
         externalSelfModPathsByRun.delete(runId);
         await dispatchApplyBatch(cancelResult);
         return { ok: true };
@@ -1290,6 +1297,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           });
           await releaseRuntimeReloadFor([runId]);
           selfModRunRootIds.delete(runId);
+          selfModRunApplyModes.delete(runId);
         }
         return { ok: true };
       }
@@ -1477,6 +1485,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           mode,
         }) => {
           selfModRunRootIds.set(runId, rootRunId ?? runId);
+          selfModRunApplyModes.set(runId, mode);
           await peer
             .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, {
               runId,
@@ -1530,6 +1539,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             });
             await releaseRuntimeReloadFor([runId]);
             selfModRunRootIds.delete(runId);
+            selfModRunApplyModes.delete(runId);
             return;
           }
 
@@ -1547,6 +1557,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               });
               await releaseRuntimeReloadFor([runId]);
               selfModRunRootIds.delete(runId);
+              selfModRunApplyModes.delete(runId);
               return;
             }
             // Run is held — another active run still owns at least one
@@ -1560,7 +1571,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           // by `commitHash === selfModApplied.featureId` (reliable; no run-id
           // correlation needed). A change that never gets clicked stays
           // committed on disk and goes live on the next restart.
-          if (finalized?.commitHash) {
+          const applyMode = selfModRunApplyModes.get(runId);
+          if (finalized?.commitHash && applyMode !== "desktop-update") {
             state.pendingSelfModApplies.set(finalized.commitHash, {
               featureId: finalized.commitHash,
               applyResult: decision,
@@ -1583,6 +1595,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             });
             await releaseRuntimeReloadFor([runId]);
             selfModRunRootIds.delete(runId);
+            selfModRunApplyModes.delete(runId);
             return;
           }
 
@@ -1593,6 +1606,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           const cancelResult = await selfModHmrController.cancel(runId);
           await releaseRuntimeReloadFor([runId]);
           selfModRunRootIds.delete(runId);
+          selfModRunApplyModes.delete(runId);
           await dispatchApplyBatch(cancelResult);
         },
       },
@@ -3752,6 +3766,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         );
         for (const runId of pending.applyResult.restartRelevantRunIds) {
           selfModRunRootIds.delete(runId);
+          selfModRunApplyModes.delete(runId);
         }
         return { ok: true, requiresClientFullReload: false };
       }
@@ -3790,6 +3805,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         );
         for (const runId of pending.applyResult.restartRelevantRunIds) {
           selfModRunRootIds.delete(runId);
+          selfModRunApplyModes.delete(runId);
         }
         return { ok: false, reason: "apply-failed" as const };
       }
@@ -3799,6 +3815,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       });
       for (const runId of pending.applyResult.restartRelevantRunIds) {
         selfModRunRootIds.delete(runId);
+        selfModRunApplyModes.delete(runId);
       }
       return {
         ok: true,
