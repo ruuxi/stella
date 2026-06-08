@@ -1,4 +1,5 @@
 import { stopAllDesktopAutomationDaemons } from "../services/desktop-automation-cleanup.js";
+import { stopOrphanedStellaBrowserDaemons } from "../services/stella-browser-bridge-service.js";
 import { stopLocalParakeet } from "../dictation/local-parakeet.js";
 import { stopNativeHelperDaemons } from "../native-helper-daemon.js";
 import { stopOfficePreviewSessions } from "./office-preview-bridge.js";
@@ -19,6 +20,7 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
   });
   processRuntime.registerCleanup("before-quit", "browser-bridge", async () => {
     await context.state.stellaBrowserBridgeService?.stop();
+    await stopOrphanedStellaBrowserDaemons();
   });
   processRuntime.registerCleanup("before-quit", "selection-watcher", () => {
     context.services.selectionWatcherService.stop();
