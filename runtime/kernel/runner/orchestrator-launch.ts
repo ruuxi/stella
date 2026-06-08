@@ -75,9 +75,9 @@ const collectWrittenPaths = (
 
 const resolveExpectedSelfModWritePaths = (
   metadata: OrchestratorSelfModMetadata | undefined,
-  stellaRoot: string | undefined,
+  stellaAppDir: string | undefined,
 ): string[] => {
-  const root = stellaRoot?.trim();
+  const root = stellaAppDir?.trim();
   const expected = metadata?.expectedChangedFiles;
   if (!root || !Array.isArray(expected) || expected.length === 0) return [];
   const out = new Set<string>();
@@ -593,7 +593,7 @@ export const launchPreparedOrchestratorRun = (args: {
       await context.selfModHmrController?.beginRun(prepared.runId);
       const expectedWritePaths = resolveExpectedSelfModWritePaths(
         selfModMetadata,
-        context.stellaRoot,
+        context.stellaAppDir,
       );
       if (expectedWritePaths.length > 0) {
         await Promise.resolve(

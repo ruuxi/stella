@@ -106,9 +106,9 @@ const collectWrittenPaths = (
 
 const resolveExpectedSelfModWritePaths = (
   metadata: AgentToolRequest["selfModMetadata"] | undefined,
-  stellaRoot: string | undefined,
+  stellaAppDir: string | undefined,
 ): string[] => {
-  const root = stellaRoot?.trim();
+  const root = stellaAppDir?.trim();
   const expected = metadata?.expectedChangedFiles;
   if (!root || !Array.isArray(expected) || expected.length === 0) return [];
   const out = new Set<string>();
@@ -482,7 +482,7 @@ export const createAgentOrchestration = (
           await context.selfModHmrController?.beginRun(lifecycleRunId);
           const expectedWritePaths = resolveExpectedSelfModWritePaths(
             effectiveSelfModMetadata,
-            context.stellaRoot,
+            context.stellaAppDir,
           );
           if (expectedWritePaths.length > 0) {
             await Promise.resolve(
