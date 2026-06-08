@@ -11,6 +11,7 @@ const CHRONICLE_6H_TICK_INTERVAL_MS = 60 * 60_000;
 // runs at app startup once Phase 1 catches up, not on a wall-clock interval.
 const CHRONICLE_FIRST_TICK_DELAY_MS = 30_000;
 const DREAM_READY_RETRY_MS = 5_000;
+const OVERLAY_STARTUP_WARM_DELAY_MS = 5_000;
 
 type DeferredStartupTask = {
   delayMs?: number;
@@ -107,6 +108,28 @@ const armChronicleTick = (
   }, intervalMs);
 };
 
+const scheduleOverlayWarmup = (context: BootstrapContext): void => {
+  const { state } = context;
+  state.processRuntime.setManagedTimeout(() => {
+    void (async () => {
+      if (state.isQuitting || state.processRuntime.isShuttingDown()) {
+        return;
+      }
+
+      const warmed = await state.overlayController?.warmForStartup();
+      getMainLogger()?.process("startup.overlay-warmup", {
+        warmed: warmed === true,
+        elapsedMs: Math.round(process.uptime() * 1000),
+      });
+    })().catch((error) => {
+      console.debug(
+        "[startup] Overlay warmup failed:",
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+  }, OVERLAY_STARTUP_WARM_DELAY_MS);
+};
+
 const createDeferredStartupTasks = (
   context: BootstrapContext,
 ): DeferredStartupTask[] => {
@@ -115,9 +138,8 @@ const createDeferredStartupTasks = (
   // Perf: the overlay's cold second-renderer is no longer eagerly built here.
   // Every overlay show entrypoint (radial/voice/region-capture/screen-guide/
   // selection-chip/morph/window-highlight) self-creates the window via
-  // `OverlayWindowController.ensureReady()`, and an idle overlay is reclaimed
-  // after OVERLAY_IDLE_DESTROY_DELAY_MS. A chat-only session therefore never
-  // pays for the second renderer; the first on-demand summon builds it.
+  // `OverlayWindowController.ensureReady()`. Startup schedules a delayed warm
+  // so first use is usually ready without competing with first paint.
   return [
     {
       // Spin up the runtime worker (and warm the model catalog) only after
@@ -130,6 +152,12 @@ const createDeferredStartupTasks = (
           elapsedMs: Math.round(process.uptime() * 1000),
         });
         state.startHostRunner?.();
+      },
+    },
+    {
+      label: "overlay-warmup-schedule",
+      run: () => {
+        scheduleOverlayWarmup(context);
       },
     },
     {
