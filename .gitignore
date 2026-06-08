@@ -22,6 +22,7 @@ DEV-CONTEXT.md
 /desktop/.low-resource-build-cache.json
 /desktop/.electron-dev-app.pid
 /desktop/.electron-dev-runner.pid
+/desktop/.electron-dev-runner.ready
 /.stella-dev-splash.html
 /.stella-dev-splash-main.cjs
 /.stella-dev-splash.lock
