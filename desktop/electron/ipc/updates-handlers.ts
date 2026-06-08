@@ -81,6 +81,15 @@ const UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS = 120_000;
 // update. Keep it out of renderer startup and wait for real runtime readiness
 // before issuing the worker RPC.
 const UPDATE_SOURCE_HISTORY_TIMEOUT_MS = 45_000;
+// The per-launch source-history reconciliation (`runner-ready`) is a background
+// safety net for the CURRENT install commit — nothing the user does in the first
+// seconds of a session depends on it. Firing it immediately on runner-ready (a
+// setTimeout(0)) lands its slow worker RPC (`hasSourceRevisionForCommit`, ~6s on
+// a cold Windows worker) right in the middle of worker warmup, so it competes
+// with first chat readiness. Delay it past the warmup window so it runs while
+// the app is idle. Post-update triggers (`clean-update-applied`,
+// `applied-commit-recorded`) stay immediate — those are genuinely time-sensitive.
+const OFFICIAL_SOURCE_HISTORY_STARTUP_DELAY_MS = 20_000;
 
 class DesktopUpdateRuntimeTimeoutError extends Error {
   constructor(
@@ -1306,10 +1315,13 @@ const createOfficialSourceHistoryReconciler = (
       releaseTag?: string | null;
       sourceHistoryRef?: DesktopReleaseSourceHistoryRef | null;
     },
+    opts?: { delayMs?: number },
   ) => {
+    // Concurrent/duplicate scheduled records are deduped by the inFlight key in
+    // record(), so a delayed timer that overlaps a later trigger is harmless.
     const timer = setTimeout(() => {
       void record({ ...(args ?? {}), reason }).catch(() => undefined);
-    }, 0);
+    }, opts?.delayMs ?? 0);
     timer.unref?.();
   };
 
@@ -2025,11 +2037,15 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
   const officialSourceHistory = createOfficialSourceHistoryReconciler(options);
   options.onStellaHostRunnerChanged?.((runner) => {
     if (runner) {
-      officialSourceHistory.schedule("runner-ready");
+      officialSourceHistory.schedule("runner-ready", undefined, {
+        delayMs: OFFICIAL_SOURCE_HISTORY_STARTUP_DELAY_MS,
+      });
     }
   });
   if (options.getStellaHostRunner?.()) {
-    officialSourceHistory.schedule("runner-ready");
+    officialSourceHistory.schedule("runner-ready", undefined, {
+      delayMs: OFFICIAL_SOURCE_HISTORY_STARTUP_DELAY_MS,
+    });
   }
 
   ipcMain.handle(

@@ -7,22 +7,23 @@ import { getFileLogger } from '../../runtime/observability/file-logger.js'
 type DaemonChild = ChildProcessByStdio<Writable, Readable, null>
 
 /**
- * Persistent `window_info --serve` client (Windows only).
+ * Persistent line-delimited helper daemon (`<helper> --serve`).
  *
- * Each one-shot `window_info` invocation is a full `CreateProcess`, which on
- * Windows is scanned by Defender and shows up as system-wide lag when the hot
- * paths (capture window-highlight hover, morph-visibility sample grid) probe
- * many points in quick succession. The daemon keeps a single helper process
- * alive and answers point/batch queries over stdin/stdout, so those probes
- * cost a pipe write instead of a process spawn.
+ * Each one-shot helper invocation is a full `CreateProcess`, which on Windows
+ * is scanned by Defender and shows up as system-wide lag when a hot path probes
+ * the same helper repeatedly (capture window-highlight hover, morph-visibility
+ * sample grid, recent-apps polling). The daemon keeps a single helper process
+ * alive and answers queries over stdin/stdout, so those probes cost a pipe
+ * write instead of a process spawn.
  *
- * Protocol (line-delimited, see `window_info.cpp` `--serve`):
+ * Protocol (line-delimited, see each helper's `--serve`):
  *   request:  `<id>\t<token>\t<token>...\n`   (tokens mirror the one-shot CLI)
  *   response: `<id>\t<json>\n`
  *
- * Also carries the Windows capture fast paths (`--shot <x> <y>` window capture
- * and `--region=x,y,w,h` region capture), whose JSON inlines a base64 JPEG —
- * still a single line, so the same line-delimited transport applies.
+ * `window_info` additionally serves the Windows capture fast paths
+ * (`--shot <x> <y>` window capture and `--region=x,y,w,h` region capture),
+ * whose JSON inlines a base64 JPEG — still a single line, so the same transport
+ * applies.
  *
  * `request()` returns the raw JSON response string (caller parses it the same
  * way it parses one-shot stdout), or `undefined` when the daemon is
@@ -31,7 +32,6 @@ type DaemonChild = ChildProcessByStdio<Writable, Readable, null>
  * missing, old (no `--serve`), or wedged.
  */
 
-const HELPER_NAME = 'window_info'
 const REQUEST_TIMEOUT_MS = 2_000
 // After this many consecutive failures (timeouts / write errors) stop using the
 // daemon for a cooldown and let callers spawn one-shot helpers, so a broken
@@ -61,7 +61,7 @@ type PendingRequest = {
   timer: ReturnType<typeof setTimeout>
 }
 
-class WindowInfoDaemon {
+class LineDelimitedHelperDaemon {
   private child: DaemonChild | null = null
   private readonly pending = new Map<number, PendingRequest>()
   private nextId = 1
@@ -71,6 +71,15 @@ class WindowInfoDaemon {
   private childSpawnedAt = 0
   private childAnswered = false
   private idleTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Both supported platforms pay a real per-spawn cost — Windows via
+  // CreateProcess + Defender (system-wide lag), macOS via Swift/dyld/framework
+  // load (~40ms). A helper whose `--serve` is only implemented for one platform
+  // passes a narrower set so the other platform keeps the one-shot path.
+  constructor(
+    private readonly helperName: string,
+    private readonly supportedPlatforms: ReadonlySet<NodeJS.Platform>,
+  ) {}
 
   // (Re)arm the idle-eviction timer. Unref so a pending eviction never keeps
   // the event loop (and thus the app) alive on its own.
@@ -96,7 +105,7 @@ class WindowInfoDaemon {
     if (this.child) return this.child
     if (Date.now() < this.disabledUntil) return null
 
-    const helperPath = resolveNativeHelperPath(HELPER_NAME)
+    const helperPath = resolveNativeHelperPath(this.helperName)
     if (!helperPath) return null
 
     let child: DaemonChild
@@ -125,7 +134,7 @@ class WindowInfoDaemon {
     // never probed again still gets evicted.
     this.armIdleTimer()
     getFileLogger()?.process('native.helper.daemon.started', {
-      helper: HELPER_NAME,
+      helper: this.helperName,
     })
     return child
   }
@@ -151,7 +160,7 @@ class WindowInfoDaemon {
     if (!answered && spawnedAt > 0 && Date.now() - spawnedAt < EARLY_EXIT_MS) {
       this.disabledUntil = Date.now() + UNSUPPORTED_COOLDOWN_MS
       getFileLogger()?.process('native.helper.daemon.unsupported', {
-        helper: HELPER_NAME,
+        helper: this.helperName,
         cooldownMs: UNSUPPORTED_COOLDOWN_MS,
       })
     }
@@ -189,7 +198,7 @@ class WindowInfoDaemon {
       this.disabledUntil = Date.now() + DISABLE_COOLDOWN_MS
       this.consecutiveFailures = 0
       getFileLogger()?.warn('native.helper.daemon.disabled', {
-        helper: HELPER_NAME,
+        helper: this.helperName,
         cooldownMs: DISABLE_COOLDOWN_MS,
       })
       this.kill()
@@ -210,10 +219,7 @@ class WindowInfoDaemon {
   }
 
   request(tokens: string[]): Promise<string | undefined> {
-    // Both platforms pay a real per-spawn cost — Windows via CreateProcess +
-    // Defender (system-wide lag), macOS via Swift/dyld/framework load (~40ms).
-    // Other platforms keep the one-shot path.
-    if (process.platform !== 'win32' && process.platform !== 'darwin') {
+    if (!this.supportedPlatforms.has(process.platform)) {
       return Promise.resolve(undefined)
     }
     if (this.pending.size >= MAX_PENDING) return Promise.resolve(undefined)
@@ -260,7 +266,18 @@ class WindowInfoDaemon {
   }
 }
 
-const windowInfoDaemon = new WindowInfoDaemon()
+// `window_info` serves both platforms (point/batch/capture queries are bounded
+// and fast). `recent_apps` is Windows-only: it's where the PowerShell/native
+// spawn cost actually bit, and its `--serve` mode is implemented only in the
+// win32 helper — macOS uses the separate `home_apps` helper where fork is cheap.
+const windowInfoDaemon = new LineDelimitedHelperDaemon(
+  'window_info',
+  new Set<NodeJS.Platform>(['win32', 'darwin']),
+)
+const recentAppsDaemon = new LineDelimitedHelperDaemon(
+  'recent_apps',
+  new Set<NodeJS.Platform>(['win32']),
+)
 
 /**
  * Ask the persistent `window_info` daemon for the JSON response to a set of
@@ -271,5 +288,17 @@ export const requestWindowInfoDaemon = (
   tokens: string[],
 ): Promise<string | undefined> => windowInfoDaemon.request(tokens)
 
-/** Tear down the daemon process (wired into app shutdown). */
-export const stopWindowInfoDaemon = (): void => windowInfoDaemon.stop()
+/**
+ * Ask the persistent `recent_apps` daemon (Windows only) for the JSON array of
+ * windowed processes. Returns `undefined` when unavailable so the caller falls
+ * back to a one-shot spawn and then the PowerShell snapshot.
+ */
+export const requestRecentAppsDaemon = (
+  tokens: string[],
+): Promise<string | undefined> => recentAppsDaemon.request(tokens)
+
+/** Tear down all persistent helper daemons (wired into app shutdown). */
+export const stopNativeHelperDaemons = (): void => {
+  windowInfoDaemon.stop()
+  recentAppsDaemon.stop()
+}

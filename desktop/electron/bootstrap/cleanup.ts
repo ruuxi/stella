@@ -1,6 +1,6 @@
 import { stopAllDesktopAutomationDaemons } from "../services/desktop-automation-cleanup.js";
 import { stopLocalParakeet } from "../dictation/local-parakeet.js";
-import { stopWindowInfoDaemon } from "../native-helper-daemon.js";
+import { stopNativeHelperDaemons } from "../native-helper-daemon.js";
 import { stopOfficePreviewSessions } from "./office-preview-bridge.js";
 import type { BootstrapContext } from "./context.js";
 
@@ -90,10 +90,10 @@ export const registerBootstrapProcessCleanups = (context: BootstrapContext) => {
       stopLocalParakeet();
     },
   );
-  // Long-lived `window_info --serve` helper (Windows). Kill it on quit so a
-  // rebuilt binary is picked up next launch and no orphan process lingers.
-  processRuntime.registerCleanup("before-quit", "window-info-daemon", () => {
-    stopWindowInfoDaemon();
+  // Long-lived `--serve` helper daemons (window_info, recent_apps). Kill them
+  // on quit so a rebuilt binary is picked up next launch and no orphan lingers.
+  processRuntime.registerCleanup("before-quit", "native-helper-daemons", () => {
+    stopNativeHelperDaemons();
   });
   processRuntime.registerCleanup("before-quit", "global-input-hooks", () => {
     context.services.radialGestureService.stop();
