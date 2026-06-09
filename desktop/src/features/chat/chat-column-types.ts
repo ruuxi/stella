@@ -15,12 +15,6 @@ import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js"
 export type { EventRecord };
 import type { ChatContext } from "@/shared/types/electron";
 
-type ChatColumnThumbState = {
-  top: number;
-  height: number;
-  visible: boolean;
-};
-
 export type ChatColumnConversation = {
   /**
    * Visible chat timeline source. Each `MessageRecord` carries the
@@ -121,7 +115,13 @@ export type ChatColumnScroll = {
   isFollowingLatest: boolean;
   getIsFollowing: () => boolean;
   scrollToBottom: (behavior?: "instant" | "smooth") => void;
-  thumbState: ChatColumnThumbState;
+  /**
+   * Callback ref for the custom scrollbar thumb node. The scroll hook
+   * writes the thumb's position/visibility straight to this element on
+   * each scroll frame (no React state) so panning stays smooth. Surfaces
+   * without a custom thumb just don't attach it.
+   */
+  thumbRef: (el: HTMLDivElement | null) => void;
 };
 
 export type ChatColumnProps = {
