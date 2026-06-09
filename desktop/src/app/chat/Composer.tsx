@@ -25,6 +25,7 @@ import {
   deriveComposerState,
   hasAttachedComposerChips,
 } from "@/features/chat/composer-context";
+import { handleComposerPaste } from "@/features/chat/lib/paste-context";
 import {
   useScreenshotPreview,
   ScreenshotPreviewOverlay,
@@ -219,6 +220,9 @@ export function Composer({
                       event.preventDefault();
                       onSend();
                     }
+                  }}
+                  onPaste={(event) => {
+                    handleComposerPaste(event, setChatContext);
                   }}
                   disabled={!conversationId}
                   rows={1}

@@ -108,6 +108,8 @@ export type MessageMetadata = {
     windowPreviewImageUrl?: string;
     appSelectionLabel?: string;
     activityLabel?: string;
+    /** Lightweight descriptors for each "Pasted text" chip on this turn. */
+    pastedTexts?: { lines: number; chars: number }[];
   };
   trigger?: {
     kind?: string;

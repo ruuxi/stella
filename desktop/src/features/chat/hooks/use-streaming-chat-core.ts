@@ -10,6 +10,7 @@ import { resolveComposerContextState } from '../composer-context'
 import {
   buildAllLocalAttachments,
 } from '../streaming/message-context'
+import { toPastedTextDescriptor } from '../lib/paste-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import {
   removeQueuedUserMessageById,
@@ -50,7 +51,13 @@ const buildContextMessageMetadata = (
 ): MessageMetadata | undefined => {
   const appSelectionLabel = chatContext?.appSelection?.label?.trim()
   const activityLabel = chatContext?.activity?.label?.trim()
-  if (!appSelectionLabel && !activityLabel) return base
+  const pastedTexts = (chatContext?.pastedTexts ?? [])
+    .map((text) => text?.trim() ?? '')
+    .filter((text) => text.length > 0)
+    .map(toPastedTextDescriptor)
+  if (!appSelectionLabel && !activityLabel && pastedTexts.length === 0) {
+    return base
+  }
 
   return {
     ...(base ?? {}),
@@ -58,6 +65,7 @@ const buildContextMessageMetadata = (
       ...(base?.context ?? {}),
       ...(appSelectionLabel ? { appSelectionLabel } : {}),
       ...(activityLabel ? { activityLabel } : {}),
+      ...(pastedTexts.length > 0 ? { pastedTexts } : {}),
     },
   }
 }

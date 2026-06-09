@@ -4,11 +4,16 @@ import { cn } from "@/shared/lib/utils";
 import { ChipPreviewPortal } from "./ChipPreviewPortal";
 import { useHoverPreview } from "./use-hover-preview";
 import {
+  describePastedText,
+  toPastedTextDescriptor,
+} from "@/features/chat/lib/paste-context";
+import {
   clearComposerActivityContext,
   clearComposerAppSelectionContext,
   clearComposerSelectedTextContext,
   clearComposerWindowContext,
   removeComposerFileContext,
+  removeComposerPastedTextContext,
   removeComposerScreenshotContext,
   truncateChipLabel,
 } from "@/features/chat/composer-context";
@@ -379,6 +384,85 @@ export function FileContextChips({
           </button>
         );
       })}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Pasted-text chips                                                 */
+/* ------------------------------------------------------------------ */
+
+const PASTED_TEXT_PREVIEW_MAX_CHARS = 600;
+
+function PastedTextChip({
+  text,
+  index,
+  setChatContext,
+  className,
+  textClassName,
+}: {
+  text: string;
+  index: number;
+  setChatContext: SetChatContext;
+  className?: string;
+  textClassName?: string;
+}) {
+  const { triggerRef, open } = useHoverPreview<HTMLButtonElement>();
+  const stats = describePastedText(toPastedTextDescriptor(text));
+  const preview =
+    text.length > PASTED_TEXT_PREVIEW_MAX_CHARS
+      ? `${text.slice(0, PASTED_TEXT_PREVIEW_MAX_CHARS)}…`
+      : text;
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={cn(className)}
+        title={`Pasted text — ${stats} — click to remove`}
+        onClick={(event) => {
+          removeComposerPastedTextContext(index, setChatContext);
+          event.currentTarget.blur();
+        }}
+      >
+        <span className={cn(textClassName)}>{`Pasted text · ${stats}`}</span>
+      </button>
+      <ChipPreviewPortal
+        triggerRef={triggerRef}
+        open={open}
+        className="composer-context-preview composer-context-preview--portal"
+      >
+        <div className="composer-context-preview-text">{preview}</div>
+      </ChipPreviewPortal>
+    </>
+  );
+}
+
+type PastedTextChipsProps = {
+  pastedTexts: string[];
+  setChatContext: SetChatContext;
+  className?: string;
+  textClassName?: string;
+};
+
+export function PastedTextChips({
+  pastedTexts,
+  setChatContext,
+  className,
+  textClassName,
+}: PastedTextChipsProps) {
+  return (
+    <>
+      {pastedTexts.map((text, index) => (
+        <PastedTextChip
+          key={index}
+          text={text}
+          index={index}
+          setChatContext={setChatContext}
+          className={className}
+          textClassName={textClassName}
+        />
+      ))}
     </>
   );
 }
