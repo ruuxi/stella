@@ -6,8 +6,7 @@
   cursor: crosshair;
 }
 
-.composer-area-select-overlay[data-state="annotating"] {
-  pointer-events: auto;
+.composer-area-select-overlay[data-state="captured"] {
   cursor: default;
 }
 
@@ -16,11 +15,6 @@
   inset: 0;
   z-index: 0;
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
-}
-
-.composer-area-select-overlay[data-state="annotating"]
-  .composer-area-select-scrim {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
 .composer-area-select-ring {
@@ -33,38 +27,4 @@
     0 0 0 1px color-mix(in oklch, var(--foreground) 35%, transparent),
     0 0 24px color-mix(in oklch, var(--primary) 26%, transparent);
   background: color-mix(in oklch, var(--primary) 5%, transparent);
-}
-
-.composer-area-annotation {
-  position: fixed;
-  z-index: 2;
-  pointer-events: auto;
-}
-
-.composer-area-annotation__shell {
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  max-width: 100%;
-  background: var(--surface-raised-stronger-non-alpha, var(--card));
-  box-shadow: var(--shadow-overlay);
-}
-
-.composer-area-annotation__form {
-  width: 100%;
-}
-
-.composer-area-annotation__input {
-  max-height: min(160px, calc(100vh - 96px));
-}
-
-.composer-area-annotation__cancel {
-  width: 30px;
-  height: 30px;
-  cursor: default;
-}
-
-.composer-area-annotation .composer-submit {
-  width: 30px;
-  height: 30px;
 }

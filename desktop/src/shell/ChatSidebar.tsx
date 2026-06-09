@@ -23,6 +23,7 @@ import {
 import { useDictation } from "@/features/dictation/hooks/use-dictation";
 import { DictationRecordingBar } from "@/features/dictation/components/DictationRecordingBar";
 import {
+  attachComposerAppSelectionContext,
   deriveComposerState,
   hasAttachedComposerChips,
 } from "@/features/chat/composer-context";
@@ -44,7 +45,7 @@ import type {
 } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
-import type { AnnotationSubmitPayload } from "./use-full-shell-chat";
+import type { AnnotationSelection } from "./use-full-shell-chat";
 import { useCapturedChatContext } from "./use-captured-chat-context";
 import {
   updateComposerTextareaExpansion,
@@ -75,20 +76,6 @@ const WIDE_PANEL_CONTENT_STYLE = {
   paddingTop: 16,
   paddingBottom: 4,
 } as const;
-
-const buildAnnotationChatContext = (
-  selection: AnnotationSubmitPayload["selection"],
-  base?: ChatContext | null,
-): ChatContext => ({
-  ...(base ?? {
-    window: null,
-    browserUrl: null,
-    selectedText: null,
-    regionScreenshots: [],
-  }),
-  selectedText: null,
-  appSelection: selection,
-});
 
 interface ChatSidebarOpenOptions {
   /** When provided, attaches/replaces the current chat context before opening. */
@@ -307,34 +294,18 @@ export function ChatPanelTab({
 
   const submitFromDictationRef = useRef<() => void>(() => {});
 
-  const submitAnnotation = useCallback(
-    ({ text, selection }: AnnotationSubmitPayload) => {
-      const trimmedText = text.trim();
-      if (!trimmedText) return;
-
-      const shouldNudgeAfterSend = sidebarScroll.getIsFollowing();
-      onSend(
-        trimmedText,
-        buildAnnotationChatContext(selection, chatContext),
-        null,
-      );
-      if (isStreaming) {
-        if (shouldNudgeAfterSend) {
-          sidebarScroll.nudgeQueuedMessagesIntoView();
-        }
-      } else if (shouldNudgeAfterSend) {
-        sidebarScroll.nudgeAfterSend();
-      } else {
-        sidebarScroll.releaseFollow();
-      }
+  const attachAnnotation = useCallback(
+    (selection: AnnotationSelection) => {
+      attachComposerAppSelectionContext(selection, setChatContext);
+      requestAnimationFrame(() => inputRef.current?.focus());
     },
-    [chatContext, isStreaming, onSend, sidebarScroll],
+    [setChatContext],
   );
 
   const handleSelectArea = useMemo(() => {
     if (!startAnnotation) return undefined;
-    return () => startAnnotation({ submit: submitAnnotation });
-  }, [startAnnotation, submitAnnotation]);
+    return () => startAnnotation({ submit: attachAnnotation });
+  }, [startAnnotation, attachAnnotation]);
 
   const dictation = useDictation({
     message: inputText,

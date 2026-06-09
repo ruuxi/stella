@@ -189,6 +189,21 @@ export const clearComposerAppSelectionContext = (setChatContext: SetChatContext)
   ));
 };
 
+export const attachComposerAppSelectionContext = (
+  selection: NonNullable<ChatContext["appSelection"]>,
+  setChatContext: SetChatContext,
+) => {
+  setChatContext((prev) => ({
+    ...(prev ?? {
+      window: null,
+      browserUrl: null,
+      selectedText: null,
+      regionScreenshots: [],
+    }),
+    appSelection: selection,
+  }));
+};
+
 export const clearComposerActivityContext = (setChatContext: SetChatContext) => {
   setChatContext((prev) => (
     prev ? { ...prev, activity: null } : prev
