@@ -498,12 +498,18 @@ export class OverlayWindowController {
     _event: unknown,
     point: { x: number; y: number },
   ) => {
-    const requestId = ++this.windowHighlightRequestId
     const origin = this.overlayWindow.getOverlayOrigin()
-    const screenPoint = {
+    this.previewWindowHighlightAtScreenPoint({
       x: Math.round(point.x + origin.x),
       y: Math.round(point.y + origin.y),
-    }
+    })
+  }
+
+  private previewWindowHighlightAtScreenPoint(screenPoint: {
+    x: number
+    y: number
+  }) {
+    const requestId = ++this.windowHighlightRequestId
     void getWindowInfoAtPoint(screenPoint.x, screenPoint.y, {
       excludePids: [process.pid],
       excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
@@ -820,6 +826,9 @@ export class OverlayWindowController {
       interactive: true,
       focusable: true,
     })
+    // Ring the window under the cursor right away — the renderer only probes
+    // on mousemove, which leaves the overlay blank until the user moves.
+    this.previewWindowHighlightAtScreenPoint(screen.getCursorScreenPoint())
   }
 
   suspendRegionCaptureForScreenshot() {

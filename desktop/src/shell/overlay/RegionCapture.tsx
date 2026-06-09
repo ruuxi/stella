@@ -32,9 +32,10 @@ type VacuumState = {
 
 const MIN_SELECTION_SIZE = 6;
 // Window-attach hover preview throttling. Each preview probe is a native
-// `window_info` spawn on the main side (a full CreateProcess on Windows), so we
-// trail at ~10/s instead of one-per-frame and skip probes when the cursor has
-// barely moved since the last one — the previous highlight is still valid.
+// `window_info` query on the main side (daemon pipe write, or a full
+// CreateProcess on Windows when the daemon is down), so we cap at ~10/s
+// (leading + trailing edge) instead of one-per-frame and skip probes when the
+// cursor has barely moved since the last one — the highlight is still valid.
 const HOVER_PREVIEW_DEBOUNCE_MS = 100;
 const HOVER_PREVIEW_MOVE_THRESHOLD_PX = 6;
 type RegionCaptureMode = "capture" | "window-attach";
@@ -58,6 +59,7 @@ export function RegionCapture({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hoverPointRef = useRef<Point | null>(null);
   const lastProbedPointRef = useRef<Point | null>(null);
+  const lastProbeAtRef = useRef(0);
   const hoverPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -88,31 +90,42 @@ export function RegionCapture({
     overlayApi?.hideWindowHighlight?.();
   }, [overlayApi]);
 
+  const probeLatestHoverPoint = useCallback(() => {
+    const latest = hoverPointRef.current;
+    if (!latest) return;
+    const prev = lastProbedPointRef.current;
+    if (
+      prev &&
+      Math.abs(prev.x - latest.x) + Math.abs(prev.y - latest.y) <
+        HOVER_PREVIEW_MOVE_THRESHOLD_PX
+    ) {
+      // Cursor barely moved since the last probe — existing highlight is
+      // still valid, so skip the spawn entirely.
+      return;
+    }
+    lastProbedPointRef.current = latest;
+    lastProbeAtRef.current = Date.now();
+    overlayApi?.previewWindowHighlightAtPoint?.(latest);
+  }, [overlayApi]);
+
   const previewWindowAtPoint = useCallback(
     (point: Point) => {
       hoverPointRef.current = point;
       // A trailing probe is already scheduled; it will pick up the latest
       // point when it fires, so don't stack a spawn per mouse-move event.
       if (hoverPreviewTimerRef.current) return;
+      // Leading edge: when the probe budget allows, fire immediately so the
+      // ring tracks the cursor without the trailing-debounce lag. Overall
+      // rate stays capped at one probe per debounce window.
+      if (Date.now() - lastProbeAtRef.current >= HOVER_PREVIEW_DEBOUNCE_MS) {
+        probeLatestHoverPoint();
+      }
       hoverPreviewTimerRef.current = setTimeout(() => {
         hoverPreviewTimerRef.current = null;
-        const latest = hoverPointRef.current;
-        if (!latest) return;
-        const prev = lastProbedPointRef.current;
-        if (
-          prev &&
-          Math.abs(prev.x - latest.x) + Math.abs(prev.y - latest.y) <
-            HOVER_PREVIEW_MOVE_THRESHOLD_PX
-        ) {
-          // Cursor barely moved since the last probe — existing highlight is
-          // still valid, so skip the spawn entirely.
-          return;
-        }
-        lastProbedPointRef.current = latest;
-        overlayApi?.previewWindowHighlightAtPoint?.(latest);
+        probeLatestHoverPoint();
       }, HOVER_PREVIEW_DEBOUNCE_MS);
     },
-    [overlayApi],
+    [probeLatestHoverPoint],
   );
 
   useEffect(() => {
