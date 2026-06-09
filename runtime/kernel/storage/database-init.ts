@@ -283,7 +283,7 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       revert_id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
       origin_thread_key TEXT,
-      feature_id TEXT NOT NULL,
+      commit_hash TEXT NOT NULL,
       files_json TEXT NOT NULL,
       reverted_at INTEGER NOT NULL,
       consumed_by_orchestrator INTEGER NOT NULL DEFAULT 0,

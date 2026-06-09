@@ -3323,7 +3323,7 @@ export class SessionStore {
   recordSelfModRevert(args: {
     conversationId: string;
     originThreadKey?: string | null;
-    featureId: string;
+    commitHash: string;
     files: string[];
     revertedAt?: number;
   }): SelfModRevertRecord {

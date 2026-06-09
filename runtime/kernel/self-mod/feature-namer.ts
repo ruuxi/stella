@@ -142,9 +142,11 @@ export const parseFeatureSnapshotItems = (
 
 /**
  * Prompt the rolling-window namer. The model sees the most recent
- * Stella self-mod commits (newest first) and returns a list of
- * normie-friendly named groups. The list replaces the side-panel
- * features wholesale on every successful self-mod commit.
+ * Stella self-mod commits (newest first) plus the previous snapshot,
+ * and returns a list of normie-friendly named groups. The list replaces
+ * the side-panel features wholesale on every successful self-mod
+ * commit; feeding the previous names back keeps labels stable instead
+ * of re-deriving (and visibly churning) every entry per commit.
  */
 export const buildFeatureSnapshotPrompt = (input: {
   commits: Array<{
@@ -155,6 +157,7 @@ export const buildFeatureSnapshotPrompt = (input: {
     timestampMs: number;
     files: string[];
   }>;
+  previousItems?: SelfModFeatureSnapshotItem[];
 }): string => {
   const lines = input.commits.map((commit) => {
     const date = new Date(commit.timestampMs).toISOString().slice(0, 10);
@@ -183,6 +186,21 @@ export const buildFeatureSnapshotPrompt = (input: {
       .join("\n");
   });
 
+  const previousItems = input.previousItems ?? [];
+  const previousBlock =
+    previousItems.length > 0
+      ? [
+          "",
+          "Current list (what the user sees right now):",
+          ...previousItems.map(
+            (item) =>
+              `- "${item.name}" → ${item.commitHashes.length > 0 ? item.commitHashes.join(", ") : "(no commits)"}`,
+          ),
+          "",
+          "Keep the existing name for any group whose commits are unchanged — only rename a group when its content genuinely changed, and add new entries for new commits.",
+        ]
+      : [];
+
   return [
     "You are naming the user's recent changes to the Stella app for a side-panel \"features\" list. The user is non-technical: each entry must read like a plain-English name a friend would understand.",
     "",
@@ -193,6 +211,7 @@ export const buildFeatureSnapshotPrompt = (input: {
     "- Use only commit hashes from the list below. Do not invent hashes.",
     "- Order: newest activity first.",
     "- No prose, no markdown fence labels — just the JSON array.",
+    ...previousBlock,
     "",
     "Recent commits:",
     ...lines,

@@ -61,7 +61,7 @@ type AgentEventPayload = {
   finalText?: string;
   persisted?: boolean;
   selfModApplied?: {
-    featureId: string;
+    commitHash: string;
     files: string[];
     batchIndex: number;
     status?: "pending" | "applied";
@@ -821,7 +821,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         finalText?: string;
         persisted?: boolean;
         selfModApplied?: {
-          featureId: string;
+          commitHash: string;
           files: string[];
           batchIndex: number;
           status?: "pending" | "applied";
@@ -1094,7 +1094,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   ipcMain.handle(
     "selfmod:apply",
-    async (event, payload: { featureId?: string }) => {
+    async (event, payload: { commitHash?: string }) => {
       if (!options.assertPrivilegedSender(event, "selfmod:apply")) {
         throw new Error("Blocked untrusted request.");
       }
@@ -1102,15 +1102,15 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       if (!stellaHostRunner) {
         throw new Error("Stella runtime not available");
       }
-      return await stellaHostRunner.applySelfModFeature({
-        featureId: payload.featureId,
+      return await stellaHostRunner.applySelfModCommit({
+        commitHash: payload.commitHash,
       });
     },
   );
 
   ipcMain.handle(
     "selfmod:revert",
-    async (event, payload: { featureId?: string; steps?: number }) => {
+    async (event, payload: { commitHash?: string; steps?: number }) => {
       if (!options.assertPrivilegedSender(event, "selfmod:revert")) {
         throw new Error("Blocked untrusted request.");
       }
@@ -1118,8 +1118,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       if (!stellaHostRunner) {
         throw new Error("Stella runtime not available");
       }
-      return await stellaHostRunner.revertSelfModFeature({
-        featureId: payload.featureId,
+      return await stellaHostRunner.revertSelfModCommit({
+        commitHash: payload.commitHash,
         steps: payload.steps,
       });
     },
@@ -1152,21 +1152,21 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     });
   });
 
-  ipcMain.handle("selfmod:lastFeature", async (event) => {
-    if (!options.assertPrivilegedSender(event, "selfmod:lastFeature")) {
+  ipcMain.handle("selfmod:lastCommit", async (event) => {
+    if (!options.assertPrivilegedSender(event, "selfmod:lastCommit")) {
       throw new Error("Blocked untrusted request.");
     }
     const stellaHostRunner = options.getStellaHostRunner();
     if (!stellaHostRunner) {
       throw new Error("Stella runtime not available");
     }
-    return await stellaHostRunner.getLastSelfModFeature();
+    return await stellaHostRunner.getLastSelfModCommit();
   });
 
   ipcMain.handle(
-    "selfmod:recentFeatures",
+    "selfmod:recentCommits",
     async (event, payload: { limit?: number } | undefined) => {
-      if (!options.assertPrivilegedSender(event, "selfmod:recentFeatures")) {
+      if (!options.assertPrivilegedSender(event, "selfmod:recentCommits")) {
         throw new Error("Blocked untrusted request.");
       }
       const limit = Number(payload?.limit ?? 8);
@@ -1174,7 +1174,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       if (!stellaHostRunner) {
         throw new Error("Stella runtime not available");
       }
-      return await stellaHostRunner.listRecentSelfModFeatures(limit);
+      return await stellaHostRunner.listRecentSelfModCommits(limit);
     },
   );
 

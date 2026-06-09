@@ -1,5 +1,5 @@
 export type SelfModApplied = {
-  featureId: string;
+  commitHash: string;
   files: string[];
   batchIndex: number;
   status?: "pending" | "applied";

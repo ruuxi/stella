@@ -55,7 +55,7 @@ describe("self-mod reverts ledger (via SessionStore)", () => {
     const recorded = store.recordSelfModRevert({
       conversationId,
       originThreadKey,
-      featureId: "abcdef0",
+      commitHash: "abcdef0",
       files: ["desktop/src/foo.tsx", "desktop/src/bar.tsx"],
       revertedAt: 1_000,
     });
@@ -77,7 +77,7 @@ describe("self-mod reverts ledger (via SessionStore)", () => {
     const recorded = store.recordSelfModRevert({
       conversationId: "conv-1",
       // omit originThreadKey
-      featureId: "old-commit",
+      commitHash: "old-commit",
       files: ["foo.ts"],
     });
 
@@ -93,7 +93,7 @@ describe("self-mod reverts ledger (via SessionStore)", () => {
     const recorded = store.recordSelfModRevert({
       conversationId: "conv-1",
       originThreadKey: "thread-x",
-      featureId: "abc",
+      commitHash: "abc",
       files: ["a.ts"],
     });
 
@@ -108,7 +108,7 @@ describe("self-mod reverts ledger (via SessionStore)", () => {
     const recorded = store.recordSelfModRevert({
       conversationId: "conv-1",
       originThreadKey: "thread-x",
-      featureId: "abc",
+      commitHash: "abc",
       files: ["a.ts"],
     });
 
@@ -124,13 +124,13 @@ describe("self-mod reverts ledger (via SessionStore)", () => {
     store.recordSelfModRevert({
       conversationId: "conv-a",
       originThreadKey: "thread-a",
-      featureId: "aaa",
+      commitHash: "aaa",
       files: ["a.ts"],
     });
     store.recordSelfModRevert({
       conversationId: "conv-b",
       originThreadKey: "thread-b",
-      featureId: "bbb",
+      commitHash: "bbb",
       files: ["b.ts"],
     });
 
@@ -148,23 +148,23 @@ describe("self-mod reverts ledger (via SessionStore)", () => {
     store.recordSelfModRevert({
       conversationId: "conv-1",
       originThreadKey: "thread-x",
-      featureId: "second",
+      commitHash: "second",
       files: [],
       revertedAt: 2_000,
     });
     store.recordSelfModRevert({
       conversationId: "conv-1",
       originThreadKey: "thread-x",
-      featureId: "first",
+      commitHash: "first",
       files: [],
       revertedAt: 1_000,
     });
 
     expect(
-      store.listPendingOrchestratorReverts("conv-1").map((r) => r.featureId),
+      store.listPendingOrchestratorReverts("conv-1").map((r) => r.commitHash),
     ).toEqual(["first", "second"]);
     expect(
-      store.listPendingOriginThreadReverts("thread-x").map((r) => r.featureId),
+      store.listPendingOriginThreadReverts("thread-x").map((r) => r.commitHash),
     ).toEqual(["first", "second"]);
   });
 
@@ -209,7 +209,7 @@ describe("mergeEventPayload", () => {
       eventId: `assistant-for-${userMessageId}`,
       patch: {
         selfModApplied: {
-          featureId: "abc1234",
+          commitHash: "abc1234",
           files: ["desktop/src/foo.css"],
           batchIndex: 0,
         },
@@ -220,7 +220,7 @@ describe("mergeEventPayload", () => {
     expect(updated?.payload?.text).toBe("Done.");
     expect(updated?.payload?.userMessageId).toBe(userMessageId);
     expect(updated?.payload?.selfModApplied).toEqual({
-      featureId: "abc1234",
+      commitHash: "abc1234",
       files: ["desktop/src/foo.css"],
       batchIndex: 0,
     });
@@ -231,7 +231,7 @@ describe("mergeEventPayload", () => {
       (event) => event._id === `assistant-for-${userMessageId}`,
     );
     expect(assistant?.payload?.selfModApplied).toEqual({
-      featureId: "abc1234",
+      commitHash: "abc1234",
       files: ["desktop/src/foo.css"],
       batchIndex: 0,
     });
@@ -244,7 +244,7 @@ describe("mergeEventPayload", () => {
     const result = store.mergeEventPayload({
       conversationId,
       eventId: "assistant-for-missing",
-      patch: { selfModApplied: { featureId: "x", files: [], batchIndex: 0 } },
+      patch: { selfModApplied: { commitHash: "x", files: [], batchIndex: 0 } },
     });
 
     expect(result).toBeNull();

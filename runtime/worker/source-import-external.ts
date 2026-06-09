@@ -9,9 +9,10 @@ import type {
   SourceImportToolSource,
   SourceImportToolTrust,
 } from "../kernel/tools/types.js";
-import { getGitHead } from "../kernel/self-mod/git.js";
+import { getGitHead } from "../kernel/self-mod/git/log.js";
 import type { StoreModService } from "../kernel/self-mod/store-mod-service.js";
 import type { SourceImportLifecycle } from "./source-import.js";
+import { runGitStatus } from "./git-exec.js";
 import {
   buildGitReferenceDiff,
   cloneGitSource,
@@ -19,7 +20,6 @@ import {
   listGitRecentCommitsForImport,
   listGitTreeFiles,
   resolveGitCommit,
-  runGitStatus,
   tryGitSourceImportFastPath,
   type GitImportReference,
 } from "./source-import-git.js";

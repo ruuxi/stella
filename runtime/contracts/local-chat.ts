@@ -75,7 +75,7 @@ export type ChannelEnvelope = {
  * row (survives renderer reload, no separate in-memory map).
  */
 export type SelfModAppliedPayload = {
-  featureId: string;
+  commitHash: string;
   files: string[];
   batchIndex: number;
   status?: "pending" | "applied";

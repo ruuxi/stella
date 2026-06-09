@@ -250,7 +250,7 @@ export type RuntimeRunEvent = {
   fatal?: boolean;
   finalText?: string;
   selfModApplied?: {
-    featureId: string;
+    commitHash: string;
     files: string[];
     batchIndex: number;
     status?: "pending" | "applied";
@@ -600,14 +600,15 @@ export const parseRuntimeSelfModApplied = (
 ): RuntimeSelfModApplied | undefined => {
   const record = parseJsonRecord(value);
   if (!record) return undefined;
-  const featureId = typeof record.featureId === "string" ? record.featureId.trim() : "";
+  const commitHash =
+    typeof record.commitHash === "string" ? record.commitHash.trim() : "";
   const batchIndex = typeof record.batchIndex === "number" && Number.isFinite(record.batchIndex)
     ? Math.floor(record.batchIndex)
     : null;
   const files = Array.isArray(record.files)
     ? record.files.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
     : [];
-  if (!featureId || batchIndex == null || files.length === 0) {
+  if (!commitHash || batchIndex == null || files.length === 0) {
     return undefined;
   }
   const status =
@@ -615,7 +616,7 @@ export const parseRuntimeSelfModApplied = (
       ? record.status
       : undefined;
   return {
-    featureId,
+    commitHash,
     files,
     batchIndex,
     ...(status ? { status } : {}),

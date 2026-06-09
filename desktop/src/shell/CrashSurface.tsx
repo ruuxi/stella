@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { SelfModFeatureSummary } from "@/shared/types/electron";
+import type { SelfModCommitSummary } from "@/shared/types/electron";
 import "./error-boundary.css";
 
 type Props = {
@@ -17,7 +17,7 @@ type CrashRecoveryStatus =
     }
   | {
       kind: "clean";
-      latestFeature: SelfModFeatureSummary | null;
+      latestSelfModCommit: SelfModCommitSummary | null;
     };
 
 const isBuildError = (error: Error) => error.name.startsWith("BuildError");
@@ -125,7 +125,7 @@ export function CrashSurface({ error, componentStack }: Props) {
       } else {
         await window.electronAPI?.agent.selfModRevert(
           recoveryStatus?.kind === "clean"
-            ? recoveryStatus.latestFeature?.featureId
+            ? recoveryStatus.latestSelfModCommit?.commitHash
             : undefined,
           1,
         );
@@ -244,11 +244,11 @@ export function CrashSurface({ error, componentStack }: Props) {
       : "Undo latest Stella update";
   const canRevert =
     recoveryStatus?.kind === "dirty"
-    || (recoveryStatus?.kind === "clean" && recoveryStatus.latestFeature);
+    || (recoveryStatus?.kind === "clean" && recoveryStatus.latestSelfModCommit);
   const recoveryTime =
     recoveryStatus?.kind === "dirty"
       ? formatRecoveryTime(recoveryStatus.latestChangedAtMs)
-      : formatRecoveryTime(recoveryStatus?.latestFeature?.latestTimestampMs);
+      : formatRecoveryTime(recoveryStatus?.latestSelfModCommit?.timestampMs);
   const revertContext = recoveryTime
     ? `Restores Stella to before ${recoveryTime}.`
     : null;

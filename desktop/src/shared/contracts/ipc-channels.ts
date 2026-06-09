@@ -166,8 +166,8 @@ export const IPC_AGENT_SELF_MOD_HMR_STATE = "agent:selfModHmrState" as const;
 export const IPC_RUNTIME_AVAILABILITY = "runtime:availability" as const;
 export const IPC_SELFMOD_APPLY = "selfmod:apply" as const;
 export const IPC_SELFMOD_REVERT = "selfmod:revert" as const;
-export const IPC_SELFMOD_LAST_FEATURE = "selfmod:lastFeature" as const;
-export const IPC_SELFMOD_RECENT_FEATURES = "selfmod:recentFeatures" as const;
+export const IPC_SELFMOD_LAST_COMMIT = "selfmod:lastCommit" as const;
+export const IPC_SELFMOD_RECENT_COMMITS = "selfmod:recentCommits" as const;
 export const IPC_DEVTEST_TRIGGER_VITE_ERROR =
   "devtest:triggerViteError" as const;
 export const IPC_DEVTEST_FIX_VITE_ERROR = "devtest:fixViteError" as const;

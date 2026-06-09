@@ -64,7 +64,7 @@ import {
   type RunResumeEventsResult,
   type ScheduledConversationEvent,
   type SelfModFeatureSnapshot,
-  type SelfModFeatureSummary,
+  type SelfModCommitSummary,
   type SelfModHmrState,
   type StoreInstallRecord,
   type StorePackageRecord,
@@ -2365,7 +2365,7 @@ export class StellaRuntimeHost {
     return health?.socialSessions ?? createEmptySocialSessionServiceSnapshot();
   }
 
-  async revertSelfModFeature(payload: { featureId?: string; steps?: number }) {
+  async revertSelfModCommit(payload: { commitHash?: string; steps?: number }) {
     return await this.requestWorker<RuntimeSelfModRevertResult>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_REVERT,
       payload,
@@ -2376,7 +2376,7 @@ export class StellaRuntimeHost {
     );
   }
 
-  async applySelfModFeature(payload: { featureId?: string }) {
+  async applySelfModCommit(payload: { commitHash?: string }) {
     return await this.requestWorker<RuntimeSelfModApplyResult>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY,
       payload,
@@ -2403,17 +2403,17 @@ export class StellaRuntimeHost {
     );
   }
 
-  async getLastSelfModFeature() {
+  async getLastSelfModCommit() {
     return await this.requestWorker<string | null>(
-      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_LAST_FEATURE,
+      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_LAST_COMMIT,
       undefined,
       { ensureWorker: true, recordActivity: true },
     );
   }
 
-  async listRecentSelfModFeatures(limit?: number) {
-    return await this.requestWorker<SelfModFeatureSummary[]>(
-      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_RECENT_FEATURES,
+  async listRecentSelfModCommits(limit?: number) {
+    return await this.requestWorker<SelfModCommitSummary[]>(
+      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_RECENT_COMMITS,
       { limit },
       { ensureWorker: true, recordActivity: true },
     );

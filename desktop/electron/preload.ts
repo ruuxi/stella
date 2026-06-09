@@ -861,7 +861,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           reason?: string;
           replacedByRunId?: string;
           selfModApplied?: {
-            featureId: string;
+            commitHash: string;
             files: string[];
             batchIndex: number;
             status?: "pending" | "applied";
@@ -924,7 +924,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       reason?: string;
       replacedByRunId?: string;
       selfModApplied?: {
-        featureId: string;
+        commitHash: string;
         files: string[];
         batchIndex: number;
         status?: "pending" | "applied";
@@ -949,24 +949,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ready: boolean;
       reason?: string;
     }>("runtime:availability"),
-    selfModApply: (featureId?: string) =>
-      ipcRenderer.invoke("selfmod:apply", { featureId }),
-    selfModRevert: (featureId?: string, steps?: number) =>
-      ipcRenderer.invoke("selfmod:revert", { featureId, steps }),
+    selfModApply: (commitHash?: string) =>
+      ipcRenderer.invoke("selfmod:apply", { commitHash }),
+    selfModRevert: (commitHash?: string, steps?: number) =>
+      ipcRenderer.invoke("selfmod:revert", { commitHash, steps }),
     getCrashRecoveryStatus: () =>
       ipcRenderer.invoke("selfmod:crashRecoveryStatus"),
     discardUnfinishedSelfModChanges: (conversationId?: string) =>
       ipcRenderer.invoke("selfmod:discardUnfinished", { conversationId }),
-    getLastSelfModFeature: () => ipcRenderer.invoke("selfmod:lastFeature"),
-    listSelfModFeatures: (limit?: number) =>
-      ipcRenderer.invoke("selfmod:recentFeatures", { limit }) as Promise<
+    getLastSelfModCommit: () => ipcRenderer.invoke("selfmod:lastCommit"),
+    listSelfModCommits: (limit?: number) =>
+      ipcRenderer.invoke("selfmod:recentCommits", { limit }) as Promise<
         Array<{
-          featureId: string;
+          commitHash: string;
           name: string;
           description: string;
-          latestCommit: string;
-          latestTimestampMs: number;
-          commitCount: number;
+          timestampMs: number;
           tainted?: boolean;
           taintedFiles?: string[];
         }>

@@ -17,7 +17,7 @@ import type {
   StoreReleaseGitArtifact,
   StoreReleaseGitObjectUpload,
 } from "../contracts/index.js";
-import { orderCommitHashesChronologically } from "../kernel/self-mod/git.js";
+import { orderCommitHashesChronologically } from "../kernel/self-mod/git/log.js";
 import type { StoreModStore } from "../kernel/storage/store-mod-store.js";
 
 const execFileAsync = promisify(execFile);

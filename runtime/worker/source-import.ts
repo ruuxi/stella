@@ -3,17 +3,14 @@ import type {
   StoreInstallRecord,
   StoreReleaseSourcePack,
 } from "../contracts/index.js";
-import { listGitDirtyFiles } from "../kernel/self-mod/git.js";
+import { listGitDirtyFiles } from "../kernel/self-mod/git/log.js";
 import type { StellaSourceApplyResult } from "../kernel/self-mod/stella-source-control.js";
 import type { StoreModService } from "../kernel/self-mod/store-mod-service.js";
 import {
   applyCleanSourceImportToWorkingTree,
   preflightSourcePackImport,
 } from "./source-import-core.js";
-import {
-  STORE_PUBLISH_DEPENDENCY_FILE_NAMES,
-  storePublishTouchesDependencyFiles,
-} from "./store-source-pack-install.js";
+import { runMechanicalApplyWithLifecycle } from "./mechanical-apply.js";
 
 export type SourceImportTrust = "trusted" | "untrusted";
 
@@ -69,16 +66,6 @@ export type SourceImportFastPathArgs = {
   applyMode: SourceImportApplyMode;
   lifecycle?: SourceImportLifecycle;
   log?: (event: string, fields?: Record<string, unknown>) => void;
-};
-
-const expandExternalSelfModPaths = (paths: string[]): string[] => {
-  const expanded = new Set(paths);
-  if (storePublishTouchesDependencyFiles(paths)) {
-    for (const dependencyFile of STORE_PUBLISH_DEPENDENCY_FILE_NAMES) {
-      expanded.add(dependencyFile);
-    }
-  }
-  return [...expanded];
 };
 
 export const trySourceImportFastPath = async (
@@ -152,68 +139,41 @@ export const trySourceImportFastPath = async (
     };
   }
 
-  const runId = `store-import-fast:${args.source.packageId}:${randomUUID()}`;
   const conversationId = `store-install:${args.source.packageId}`;
-  let hmrRunStarted = false;
-  await args.service.beginSelfModRun({
-    runId,
-    taskDescription: `${args.applyMode === "update" ? "Update" : "Install"} ${args.source.displayName} from Store`,
-    packageId: args.source.packageId,
-    releaseNumber: args.source.releaseNumber,
-    applyMode: args.applyMode,
+  const result = await runMechanicalApplyWithLifecycle({
+    runId: `store-import-fast:${args.source.packageId}:${randomUUID()}`,
+    conversationId,
+    repoRoot: args.repoRoot,
+    service: args.service,
+    begin: {
+      taskDescription: `${args.applyMode === "update" ? "Update" : "Install"} ${args.source.displayName} from Store`,
+      packageId: args.source.packageId,
+      releaseNumber: args.source.releaseNumber,
+      applyMode: args.applyMode,
+    },
+    changedPaths: preflight.sourceApply.appliedPaths,
+    lifecycle: args.lifecycle,
+    // The source-pack writer runs its own dependency install.
+    installDependencies: false,
+    apply: async () => {
+      await applyCleanSourceImportToWorkingTree({
+        repoRoot: args.repoRoot,
+        sourcePaths: preflight.sourcePaths,
+        sourceApply: preflight.sourceApply,
+      });
+    },
+    noCommitError:
+      "Source import fast path wrote changes but did not create an install commit.",
   });
-  try {
-    if (args.lifecycle?.beginExternalSelfMod) {
-      await args.lifecycle.beginExternalSelfMod({
-        runId,
-        paths: expandExternalSelfModPaths(preflight.sourceApply.appliedPaths),
-      });
-      hmrRunStarted = true;
-    }
 
-    await applyCleanSourceImportToWorkingTree({
-      repoRoot: args.repoRoot,
-      sourcePaths: preflight.sourcePaths,
-      sourceApply: preflight.sourceApply,
-    });
-
-    const finalized = await args.service.finalizeSelfModRun({
-      runId,
-      succeeded: true,
-      conversationId,
-      threadKey: conversationId,
-    });
-    if (!finalized?.commitHash) {
-      throw new Error(
-        "Source import fast path wrote changes but did not create an install commit.",
-      );
-    }
-
-    if (hmrRunStarted && args.lifecycle?.finishExternalSelfMod) {
-      await args.lifecycle.finishExternalSelfMod({
-        runId,
-        succeeded: true,
-      });
-      hmrRunStarted = false;
-    }
-
-    return {
-      status: "applied",
-      installRecord: args.service.recordInstall({
-        packageId: args.source.packageId,
-        releaseNumber: args.source.releaseNumber,
-        installCommitHash: finalized.commitHash,
-        sourceRevisionId: finalized.sourceRevisionId ?? null,
-        sourceRevisionIds: [args.source.sourcePack.revisionId],
-      }),
-    };
-  } catch (error) {
-    args.service.cancelSelfModRun(runId);
-    if (hmrRunStarted && args.lifecycle?.finishExternalSelfMod) {
-      await args.lifecycle
-        .finishExternalSelfMod({ runId, succeeded: false })
-        .catch(() => undefined);
-    }
-    throw error;
-  }
+  return {
+    status: "applied",
+    installRecord: args.service.recordInstall({
+      packageId: args.source.packageId,
+      releaseNumber: args.source.releaseNumber,
+      installCommitHash: result.commitHash,
+      sourceRevisionId: result.sourceRevisionId ?? null,
+      sourceRevisionIds: [args.source.sourcePack.revisionId],
+    }),
+  };
 };

@@ -34,7 +34,7 @@ export type SelfModRevertRecord = {
   revertId: string;
   conversationId: string;
   originThreadKey: string | null;
-  featureId: string;
+  commitHash: string;
   files: string[];
   revertedAt: number;
   consumedByOrchestrator: boolean;
@@ -45,7 +45,7 @@ type SelfModRevertRow = {
   revert_id: string;
   conversation_id: string;
   origin_thread_key: string | null;
-  feature_id: string;
+  commit_hash: string;
   files_json: string;
   reverted_at: number;
   consumed_by_orchestrator: number;
@@ -70,7 +70,7 @@ const toRecord = (row: SelfModRevertRow): SelfModRevertRecord => ({
   revertId: row.revert_id,
   conversationId: row.conversation_id,
   originThreadKey: row.origin_thread_key ?? null,
-  featureId: row.feature_id,
+  commitHash: row.commit_hash,
   files: parseFiles(row.files_json),
   revertedAt: row.reverted_at,
   consumedByOrchestrator: row.consumed_by_orchestrator === 1,
@@ -88,7 +88,7 @@ export const recordSelfModRevert = (
      * state never lingers.
      */
     originThreadKey?: string | null;
-    featureId: string;
+    commitHash: string;
     files: string[];
     revertedAt?: number;
   },
@@ -106,7 +106,7 @@ export const recordSelfModRevert = (
        revert_id,
        conversation_id,
        origin_thread_key,
-       feature_id,
+       commit_hash,
        files_json,
        reverted_at,
        consumed_by_orchestrator,
@@ -116,7 +116,7 @@ export const recordSelfModRevert = (
     revertId,
     args.conversationId,
     originThreadKey,
-    args.featureId,
+    args.commitHash,
     filesJson,
     revertedAt,
     consumedByOriginThread,
@@ -125,7 +125,7 @@ export const recordSelfModRevert = (
     revertId,
     conversationId: args.conversationId,
     originThreadKey,
-    featureId: args.featureId,
+    commitHash: args.commitHash,
     files: [...args.files],
     revertedAt,
     consumedByOrchestrator: false,
@@ -148,7 +148,7 @@ export const listPendingOrchestratorReverts = (
          revert_id,
          conversation_id,
          origin_thread_key,
-         feature_id,
+         commit_hash,
          files_json,
          reverted_at,
          consumed_by_orchestrator,
@@ -178,7 +178,7 @@ export const listPendingOriginThreadReverts = (
          revert_id,
          conversation_id,
          origin_thread_key,
-         feature_id,
+         commit_hash,
          files_json,
          reverted_at,
          consumed_by_orchestrator,

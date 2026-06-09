@@ -49,20 +49,20 @@ export function SelfModUndoButton({
         ? "pending"
         : "idle";
     });
-  }, [selfModApplied.featureId, selfModApplied.status]);
+  }, [selfModApplied.commitHash, selfModApplied.status]);
 
   const handleApply = useCallback(async () => {
     if (state !== "pending") return;
     setState("applying");
     try {
-      await window.electronAPI?.agent.selfModApply(selfModApplied.featureId);
+      await window.electronAPI?.agent.selfModApply(selfModApplied.commitHash);
       setState("idle");
     } catch (err) {
       console.error("Self-mod apply failed:", err);
       showToast({ title: "Failed to update Stella", variant: "error" });
       setState("pending");
     }
-  }, [selfModApplied.featureId, state]);
+  }, [selfModApplied.commitHash, state]);
 
   const handleUndo = useCallback(async () => {
     // First click arms the confirmation; auto-disarms after a few seconds.
@@ -80,14 +80,14 @@ export function SelfModUndoButton({
     clearConfirmTimer();
     setState("reverting");
     try {
-      await window.electronAPI?.agent.selfModRevert(selfModApplied.featureId, 1);
+      await window.electronAPI?.agent.selfModRevert(selfModApplied.commitHash, 1);
       setState("reverted");
     } catch (err) {
       console.error("Self-mod revert failed:", err);
       showToast({ title: "Failed to undo changes", variant: "error" });
       setState("idle");
     }
-  }, [selfModApplied.featureId, state, clearConfirmTimer]);
+  }, [selfModApplied.commitHash, state, clearConfirmTimer]);
 
   const label =
     state === "pending"

@@ -2,22 +2,11 @@ import {
   createStellaSourceChangeSet,
   hashSourceBlob,
   sourceBlobFromBuffer,
-  type StellaSourceBlob,
   type StellaSourceChange,
   type StellaSourceChangeSet,
 } from "./stella-source-control.js";
-import {
-  getCommitFileSnapshot,
-  getGitCommitParent,
-  listFilesForCommit,
-} from "./git.js";
-
-const snapshotToBlob = (
-  snapshot: Awaited<ReturnType<typeof getCommitFileSnapshot>>,
-): StellaSourceBlob | undefined => {
-  if (snapshot.deleted || !snapshot.contentBase64) return undefined;
-  return sourceBlobFromBuffer(Buffer.from(snapshot.contentBase64, "base64"));
-};
+import { getGitCommitParent, listFilesForCommit } from "./git/log.js";
+import { readGitObjectsBatch } from "./git/snapshots.js";
 
 export const buildStellaSourceChangeSetForGitCommit = async (args: {
   repoRoot: string;
@@ -38,23 +27,26 @@ export const buildStellaSourceChangeSetForGitCommit = async (args: {
     args.parentRevisionId?.trim() ||
     (parentCommitHash ? `git:${parentCommitHash}` : "stella-root");
   const files = await listFilesForCommit(args.repoRoot, commitHash);
-  const changes: StellaSourceChange[] = [];
 
+  // One `cat-file --batch` spawn covers every base+next blob instead of
+  // two `git show` subprocesses per touched file.
+  const specs = files.flatMap((filePath) => [
+    ...(parentCommitHash ? [`${parentCommitHash}:${filePath}`] : []),
+    `${commitHash}:${filePath}`,
+  ]);
+  const objects = await readGitObjectsBatch({
+    repoRoot: args.repoRoot,
+    specs,
+  });
+
+  const changes: StellaSourceChange[] = [];
   for (const filePath of files) {
-    const baseSnapshot = parentCommitHash
-      ? await getCommitFileSnapshot({
-          repoRoot: args.repoRoot,
-          commitHash: parentCommitHash,
-          filePath,
-        })
-      : { path: filePath, deleted: true as const };
-    const nextSnapshot = await getCommitFileSnapshot({
-      repoRoot: args.repoRoot,
-      commitHash,
-      filePath,
-    });
-    const base = snapshotToBlob(baseSnapshot);
-    const next = snapshotToBlob(nextSnapshot);
+    const baseBuffer = parentCommitHash
+      ? (objects.get(`${parentCommitHash}:${filePath}`) ?? null)
+      : null;
+    const nextBuffer = objects.get(`${commitHash}:${filePath}`) ?? null;
+    const base = baseBuffer ? sourceBlobFromBuffer(baseBuffer) : undefined;
+    const next = nextBuffer ? sourceBlobFromBuffer(nextBuffer) : undefined;
     const baseHash = hashSourceBlob(base);
     const nextHash = hashSourceBlob(next);
     if (baseHash === nextHash) continue;

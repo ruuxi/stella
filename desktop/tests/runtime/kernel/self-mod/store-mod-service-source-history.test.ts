@@ -78,8 +78,12 @@ describe("StoreModService source history", () => {
       threadKey: "thread-1",
     });
 
-    expect(first?.sourceRevisionId).toBeTruthy();
+    // Author-mode commits record source history in the background (off
+    // the apply critical path); the result carries no sourceRevisionId.
+    expect(first?.sourceRevisionId).toBeUndefined();
+    await service.waitForBackgroundTasks();
     const firstRecord = sourceHistory.findRevisionByCommit(first!.commitHash);
+    expect(firstRecord).toBeTruthy();
     expect(firstRecord?.origin).toBe("self-mod");
     expect(firstRecord?.featureId).toBe("self-mod:conv-1");
     expect(firstRecord?.parentRevisionIds).toEqual([`git:${initialCommit}`]);
@@ -101,6 +105,7 @@ describe("StoreModService source history", () => {
       conversationId: "conv-1",
       threadKey: "thread-1",
     });
+    await service.waitForBackgroundTasks();
 
     const secondRecord = sourceHistory.findRevisionByCommit(second!.commitHash);
     expect(secondRecord?.parentRevisionIds).toEqual([firstRecord!.revisionId]);
@@ -210,6 +215,7 @@ describe("StoreModService source history", () => {
       conversationId: "conv-after-update",
       threadKey: "thread-after-update",
     });
+    await service.waitForBackgroundTasks();
 
     const record = sourceHistory.findRevisionByCommit(result!.commitHash);
     expect(record?.parentRevisionIds).toEqual([changeSet.revisionId]);

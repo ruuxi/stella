@@ -6,15 +6,15 @@ import type {
   StoreInstallRecord,
 } from "../../contracts/index.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
+import { commitGitMessage, getStagedDiffPreview } from "./git/commit.js";
 import {
-  commitGitMessage,
   getGitCommitParent,
   getGitHeadCommitSequence,
-  getStagedDiffPreview,
   listGitDirtyFiles,
   listRecentGitCommits,
-  revertGitCommits,
-} from "./git.js";
+} from "./git/log.js";
+import { revertGitCommits } from "./git/revert.js";
+import { sanitizeStellaTrailerValue } from "./git/trailers.js";
 import { buildStellaSourceChangeSetForGitCommit } from "./stella-source-history.js";
 import type {
   StellaSourceRevisionOrigin,
@@ -44,9 +44,9 @@ export type CommitMessageProvider = (
 
 /**
  * Provider for the rolling-window feature namer. Receives the most
- * recent self-mod commits (excluding the repo's first-ever commit) and
- * returns a normie-friendly grouped list of names. Returning `null`
- * leaves the previous snapshot in place.
+ * recent self-mod commits (excluding the repo's first-ever commit) plus
+ * the previous snapshot items, and returns a normie-friendly grouped
+ * list of names. Returning `null` leaves the previous snapshot in place.
  */
 export type FeatureNamerProvider = (args: {
   commits: Array<{
@@ -57,20 +57,43 @@ export type FeatureNamerProvider = (args: {
     timestampMs: number;
     files: string[];
   }>;
+  /**
+   * The currently-displayed snapshot items. The namer should keep these
+   * names stable for groups whose commits did not change, instead of
+   * re-deriving every label from scratch on each commit.
+   */
+  previousItems: SelfModFeatureSnapshot["items"];
 }) => Promise<SelfModFeatureSnapshot["items"] | null>;
+
+type SelfModApplyMode =
+  | "author"
+  | "install"
+  | "update"
+  | "uninstall"
+  | "desktop-update";
 
 type ActiveSelfModRun = {
   baselineDirtyFiles: Set<string>;
   taskDescription: string;
   packageId?: string;
   releaseNumber?: number;
-  applyMode: "author" | "install" | "update" | "uninstall" | "desktop-update";
+  applyMode: SelfModApplyMode;
 };
 
 export type FinalizedSelfModCommit = {
   commitHash: string;
   files: string[];
+  /**
+   * Files left out of the commit: dirty before the run started (user
+   * work), or currently owned by another still-active self-mod run
+   * (concurrent-run attribution).
+   */
   blockedFiles: string[];
+  /**
+   * Present for store/update apply modes, where the install ledger needs
+   * it synchronously. Author-mode runs record source history in the
+   * background (off the apply critical path) and omit it here.
+   */
   sourceRevisionId?: string;
 };
 
@@ -82,17 +105,6 @@ const normalizeFileList = (files: string[]): string[] =>
       files.map((file) => file.trim().replace(/\\/g, "/")).filter(Boolean),
     ),
   ).sort();
-
-const sanitizeConversationTrailer = (
-  value: string | undefined,
-): string | undefined => {
-  const trimmed = value?.trim();
-  if (!trimmed) return undefined;
-  if (!/^[A-Za-z0-9._:\-]{1,200}$/.test(trimmed)) {
-    return undefined;
-  }
-  return trimmed;
-};
 
 const trimOrUndefined = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
@@ -106,6 +118,22 @@ const normalizeReleaseNumber = (
     ? Math.max(1, Math.floor(value))
     : undefined;
 
+const sanitizeTrailerOrWarn = (
+  value: string | undefined,
+  trailerName: string,
+): string | undefined => {
+  const sanitized = sanitizeStellaTrailerValue(value);
+  if (value?.trim() && !sanitized) {
+    // A dropped trailer silently degrades revert-notice routing to
+    // orchestrator-only. Surface it so a new caller with an unexpected
+    // key shape fails loudly instead of mysteriously mis-routing undos.
+    console.warn(
+      `[self-mod] Dropping invalid ${trailerName} trailer value: ${JSON.stringify(value)}`,
+    );
+  }
+  return sanitized;
+};
+
 /**
  * Owns the self-mod commit lifecycle and the install ledger. Per-commit
  * grouping/feature-roster stuff is gone — the side panel reads a
@@ -115,6 +143,13 @@ const normalizeReleaseNumber = (
 export class StoreModService {
   private readonly activeRuns = new Map<string, ActiveSelfModRun>();
   private firstRepoCommit: string | null | undefined = undefined;
+  /**
+   * Serialized queue for post-commit background work (source-history
+   * recording + feature-snapshot regeneration). Chained so revisions
+   * record in commit order — parent-revision lookup depends on the
+   * previous commit's revision already existing.
+   */
+  private backgroundQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly repoRoot: string,
@@ -127,12 +162,7 @@ export class StoreModService {
     taskDescription: string;
     packageId?: string;
     releaseNumber?: number;
-    applyMode?:
-      | "author"
-      | "install"
-      | "update"
-      | "uninstall"
-      | "desktop-update";
+    applyMode?: SelfModApplyMode;
   }): Promise<void> {
     const taskDescription = args.taskDescription.trim() || "Self mod update";
     const packageId = trimOrUndefined(args.packageId);
@@ -151,6 +181,29 @@ export class StoreModService {
     this.activeRuns.delete(runId);
   }
 
+  /**
+   * Resolves once all queued post-commit background work (source
+   * history, feature snapshot) has settled. Call before shutdown and
+   * from tests that assert on deferred side effects.
+   */
+  async waitForBackgroundTasks(): Promise<void> {
+    let tail: Promise<void>;
+    do {
+      tail = this.backgroundQueue;
+      await tail;
+      // New work may have been queued while awaiting; loop until stable.
+    } while (tail !== this.backgroundQueue);
+  }
+
+  private enqueueBackgroundTask(task: () => Promise<void>): void {
+    this.backgroundQueue = this.backgroundQueue.then(task).catch((error) => {
+      console.warn(
+        "[self-mod] background post-commit task failed (continuing):",
+        (error as Error).message,
+      );
+    });
+  }
+
   async finalizeSelfModRun(args: {
     runId: string;
     succeeded: boolean;
@@ -164,11 +217,19 @@ export class StoreModService {
      * notice back to the same thread when the orchestrator resumes it.
      */
     threadKey?: string;
+    /**
+     * Concurrent-run attribution guard: returns true when another
+     * still-active self-mod run owns `repoRelativePath`. Files owned by
+     * a concurrent run are excluded from THIS run's commit (they stay
+     * dirty and commit with their own run), so commit trailers never
+     * attribute another agent's work to this conversation.
+     */
+    isPathOwnedByAnotherActiveRun?: (repoRelativePath: string) => boolean;
     commitMessageProvider?: CommitMessageProvider;
     /**
-     * Optional rolling-window namer. Called after a successful commit
-     * with the most recent self-mod commits; the returned items replace
-     * the snapshot the side panel reads.
+     * Optional rolling-window namer. Regenerated in the background after
+     * a successful author-mode commit; the returned items replace the
+     * snapshot the side panel reads.
      */
     featureNamerProvider?: FeatureNamerProvider;
   }): Promise<FinalizedSelfModCommit | null> {
@@ -186,30 +247,29 @@ export class StoreModService {
     }
 
     const baselineDirty = activeRun.baselineDirtyFiles;
-    const blockedFiles = currentDirtyFiles.filter((file) =>
-      baselineDirty.has(file),
-    );
-    const safeFiles = currentDirtyFiles.filter(
-      (file) => !baselineDirty.has(file),
-    );
+    const blockedFiles: string[] = [];
+    const safeFiles: string[] = [];
+    for (const file of currentDirtyFiles) {
+      if (baselineDirty.has(file)) {
+        blockedFiles.push(file);
+      } else if (args.isPathOwnedByAnotherActiveRun?.(file)) {
+        blockedFiles.push(file);
+      } else {
+        safeFiles.push(file);
+      }
+    }
     if (safeFiles.length === 0) {
       return null;
     }
 
-    const conversationTrailer = sanitizeConversationTrailer(
+    const conversationTrailer = sanitizeTrailerOrWarn(
       args.conversationId,
+      "Stella-Conversation",
     );
-    // Reuses `sanitizeConversationTrailer`'s allowlist. The two
-    // upstream callers pass either (a) `conversationId` (orchestrator
-    // self-mod commits, `orchestrator-launch.ts`) or (b) `agentId`
-    // (resumable subagent commits, `agent-orchestration.ts`). Both
-    // fit the `[A-Za-z0-9._:\-]{1,200}` allowlist today. If a new
-    // caller wires the synthesized `buildRuntimeThreadKey` form
-    // (`${conversationId}::subagent::${agentType}::run:${runId}`) or
-    // anything else outside that allowlist, update the sanitizer in
-    // lockstep or the trailer silently drops and revert-routing falls
-    // back to orchestrator-only.
-    const threadTrailer = sanitizeConversationTrailer(args.threadKey);
+    const threadTrailer = sanitizeTrailerOrWarn(
+      args.threadKey,
+      "Stella-Thread",
+    );
     const subject =
       activeRun.applyMode === "author"
         ? await this.deriveCommitSubject({
@@ -249,6 +309,42 @@ export class StoreModService {
       return null;
     }
 
+    if (activeRun.applyMode === "author") {
+      // Author-mode commits run source-history recording and the namer
+      // LLM off the critical path: the worker's apply/morph (or pending
+      // "Update" card) only needs the commit hash, and waiting on a
+      // second LLM round-trip here visibly delays the change landing.
+      const namer = args.featureNamerProvider;
+      this.enqueueBackgroundTask(async () => {
+        await this.recordSourceRevisionForCommit({
+          activeRun,
+          commitHash,
+          subject,
+          conversationTrailer,
+        }).catch((error) => {
+          console.warn(
+            "[self-mod] source history recording failed (continuing):",
+            (error as Error).message,
+          );
+        });
+        if (namer) {
+          await this.regenerateFeatureSnapshot(namer).catch((error) => {
+            console.warn(
+              "[self-mod] feature snapshot regeneration failed (continuing):",
+              (error as Error).message,
+            );
+          });
+        }
+      });
+      return {
+        commitHash,
+        files: safeFiles,
+        blockedFiles,
+      };
+    }
+
+    // Store install/update/uninstall and desktop-update commits need the
+    // source revision id synchronously — it lands in the install ledger.
     const sourceRevisionId = await this.recordSourceRevisionForCommit({
       activeRun,
       commitHash,
@@ -261,17 +357,6 @@ export class StoreModService {
       );
       return null;
     });
-
-    if (activeRun.applyMode === "author" && args.featureNamerProvider) {
-      await this.regenerateFeatureSnapshot(args.featureNamerProvider).catch(
-        (error) => {
-          console.warn(
-            "[self-mod] feature snapshot regeneration failed (continuing):",
-            (error as Error).message,
-          );
-        },
-      );
-    }
 
     return {
       commitHash,
@@ -396,6 +481,7 @@ export class StoreModService {
     if (filtered.length === 0) {
       return;
     }
+    const previousItems = this.store.readFeatureSnapshot()?.items ?? [];
     const items = await provider({
       commits: filtered.map((commit) => ({
         commitHash: commit.commitHash,
@@ -405,6 +491,7 @@ export class StoreModService {
         timestampMs: commit.timestampMs,
         files: commit.files,
       })),
+      previousItems,
     });
     if (!items) return;
     this.store.writeFeatureSnapshot({
@@ -507,9 +594,13 @@ export class StoreModService {
         };
       }
       try {
+        // The tree was just verified clean, so a mid-stack revert
+        // failure can safely reset back to the pre-revert HEAD instead
+        // of leaving a half-uninstalled history.
         revertedCommits = await revertGitCommits({
           repoRoot: this.repoRoot,
           commitHashes: expectedHeadStack,
+          resetToPreRevertHeadOnFailure: true,
         });
       } catch (error) {
         throw new Error(

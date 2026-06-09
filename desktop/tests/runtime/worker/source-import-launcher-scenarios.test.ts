@@ -359,6 +359,8 @@ describe("launcher-style source import scenarios", () => {
     expect(lifecycle.finishCalls).toEqual([
       { runId: lifecycle.beginCalls[0]?.runId, succeeded: true },
     ]);
+    // Author-mode source history records in the background queue.
+    await install.service.waitForBackgroundTasks();
     expect(
       install.sourceHistory.findRevisionByCommit(result.commitHash)?.origin,
     ).toBe("self-mod");
@@ -458,6 +460,8 @@ describe("launcher-style source import scenarios", () => {
     await expect(
       readFile(path.join(install.root, "desktop", "src", "panel.ts"), "utf8"),
     ).resolves.toContain("adapted after conflict");
+    // Author-mode source history records in the background queue.
+    await install.service.waitForBackgroundTasks();
     expect(
       install.sourceHistory.findRevisionByCommit(result.commitHash)?.origin,
     ).toBe("self-mod");

@@ -10,8 +10,8 @@ import {
   type RunStatus,
 } from "./contention-tracker.js";
 import {
-  isFullReloadRelevantPath,
-  isRestartRelevantPath,
+  isFullWindowReloadRelevantPath,
+  isWorkerRestartRelevantPath,
   isRestartRequiredNonHmrPath,
   isViteTrackablePath,
   toSelfModRelevantKey,
@@ -147,50 +147,6 @@ const withTimeoutSignal = (timeoutMs: number): AbortSignal => {
   return controller.signal;
 };
 
-const postWithRetry = async (args: {
-  getDevServerUrl: () => string;
-  path: string;
-  maxWaitMs: number;
-  body?: unknown;
-}): Promise<boolean> => {
-  const startedAt = Date.now();
-  let attempt = 0;
-
-  while (Date.now() - startedAt < args.maxWaitMs) {
-    attempt += 1;
-    const baseUrl = args.getDevServerUrl().replace(/\/+$/, "");
-    const target = `${baseUrl}${args.path}`;
-
-    try {
-      const response = await fetch(target, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: args.body === undefined ? undefined : JSON.stringify(args.body),
-        signal: withTimeoutSignal(REQUEST_TIMEOUT_MS),
-      });
-
-      if (response.status === 401 || response.status === 403) {
-        return false;
-      }
-
-      if (response.ok) {
-        return true;
-      }
-
-      if (response.status === 404) {
-        return false;
-      }
-    } catch {
-      // Vite may be restarting (dependency install / optimize); retry until maxWait.
-    }
-
-    const backoffMs = Math.min(1_500, 250 * attempt);
-    await delay(backoffMs);
-  }
-
-  return false;
-};
-
 const postJsonWithRetry = async <T>(args: {
   getDevServerUrl: () => string;
   path: string;
@@ -218,7 +174,7 @@ const postJsonWithRetry = async <T>(args: {
       }
 
       if (response.ok) {
-        return (await response.json().catch(() => null)) as T | null;
+        return ((await response.json().catch(() => ({}))) ?? {}) as T;
       }
 
       if (response.status === 404) {
@@ -235,25 +191,33 @@ const postJsonWithRetry = async <T>(args: {
   return null;
 };
 
+const postWithRetry = async (args: {
+  getDevServerUrl: () => string;
+  path: string;
+  maxWaitMs: number;
+  body?: unknown;
+}): Promise<boolean> =>
+  (await postJsonWithRetry<unknown>(args)) !== null;
+
 const partitionRestartPaths = (paths: string[]): string[] =>
   paths.filter(
     (repoRelativePath) =>
-      isRestartRelevantPath(repoRelativePath) ||
+      isWorkerRestartRelevantPath(repoRelativePath) ||
       isRestartRequiredNonHmrPath(repoRelativePath),
   );
 
 const partitionRuntimeRestartPaths = (paths: string[]): string[] =>
-  paths.filter(isRestartRelevantPath);
+  paths.filter(isWorkerRestartRelevantPath);
 
 const partitionProcessRestartPaths = (paths: string[]): string[] =>
   paths.filter(
     (repoRelativePath) =>
       isRestartRequiredNonHmrPath(repoRelativePath) &&
-      !isRestartRelevantPath(repoRelativePath),
+      !isWorkerRestartRelevantPath(repoRelativePath),
   );
 
 const partitionFullReloadPaths = (paths: string[]): string[] =>
-  paths.filter(isFullReloadRelevantPath);
+  paths.filter(isFullWindowReloadRelevantPath);
 
 const readSnapshotContent = (
   repoRoot: string,
@@ -412,6 +376,16 @@ export type SelfModHmrController = {
   getStatus: () => Promise<HmrStatus | null>;
   hasRun: (runId: string) => boolean;
   getRunStatus: (runId: string) => RunStatus | null;
+  /**
+   * True when `repoRelativePath` is owned by an ACTIVE run other than
+   * `runId`. Used by the commit layer for concurrent-run attribution:
+   * a finalizing run must not sweep files a still-running concurrent
+   * agent is writing into its own commit.
+   */
+  isPathOwnedByAnotherActiveRun: (
+    repoRelativePath: string,
+    runId: string,
+  ) => boolean;
   // Exposed for tests and for surfaces that want to introspect contention.
   __tracker: ContentionTracker;
 };
@@ -770,6 +744,14 @@ export const createSelfModHmrController = (
 
     getRunStatus(runId) {
       return tracker.getRunStatus(runId);
+    },
+
+    isPathOwnedByAnotherActiveRun(repoRelativePath, runId) {
+      return tracker
+        .getOwners(repoRelativePath)
+        .some(
+          (owner) => owner.runId !== runId && owner.status === "active",
+        );
     },
 
     __tracker: tracker,

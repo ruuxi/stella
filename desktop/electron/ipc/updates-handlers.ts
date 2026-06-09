@@ -47,7 +47,7 @@ import {
   type StellaSourceApplyConflict,
   type StellaSourceBlob,
 } from "../../../runtime/kernel/self-mod/stella-source-control.js";
-import { rollbackGitChangesSince } from "../../../runtime/kernel/self-mod/git.js";
+import { rollbackGitChangesSince } from "../../../runtime/kernel/self-mod/git/revert.js";
 import {
   applyCleanSourceImportToWorkingTree,
   preflightSourcePackImport,
