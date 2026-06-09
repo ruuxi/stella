@@ -329,6 +329,12 @@ export type ElectronRadialApi = {
       data: { x: number; y: number; centerX: number; centerY: number },
     ) => void,
   ) => () => void;
+  onAddIcon: (
+    callback: (
+      event: unknown,
+      data: { iconDataUrl: string | null },
+    ) => void,
+  ) => () => void;
 };
 
 export type ElectronOverlayApi = {

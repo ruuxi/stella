@@ -177,6 +177,7 @@ function useRadialIPC(
   setSelectedWedge: React.Dispatch<React.SetStateAction<RadialWedge>>,
   setPhase: React.Dispatch<React.SetStateAction<Phase>>,
   setContentVisible: React.Dispatch<React.SetStateAction<boolean>>,
+  setAddIconDataUrl: React.Dispatch<React.SetStateAction<string | null>>,
 ) {
   const visibleRef = useRef(false)
   const phaseRef = useRef<Phase>('hidden')
@@ -197,6 +198,9 @@ function useRadialIPC(
     ) => {
       const transitionId = ++transitionIdRef.current
       visibleRef.current = true
+      // Reset to the Plus glyph; the icon of the app under the dial arrives
+      // asynchronously via radial:addIcon once the window lookup settles.
+      setAddIconDataUrl(null)
 
       if (typeof data.x === 'number' && typeof data.y === 'number') {
         setSelectedWedge(
@@ -295,11 +299,20 @@ function useRadialIPC(
       setSelectedWedge((prev) => (prev === wedge ? prev : wedge))
     }
 
+    const handleAddIcon = (
+      _event: unknown,
+      data: { iconDataUrl: string | null },
+    ) => {
+      if (!visibleRef.current) return
+      setAddIconDataUrl(data?.iconDataUrl ?? null)
+    }
+
     const electronAPI = window.electronAPI
     if (electronAPI?.radial.onShow) {
       const cleanupShow = electronAPI.radial.onShow(handleShow)
       const cleanupHide = electronAPI.radial.onHide(handleHide)
       const cleanupCursor = electronAPI.radial.onCursor(handleCursor)
+      const cleanupAddIcon = electronAPI.radial.onAddIcon(handleAddIcon)
 
       return () => {
         transitionIdRef.current += 1
@@ -309,9 +322,10 @@ function useRadialIPC(
         cleanupShow()
         cleanupHide()
         cleanupCursor()
+        cleanupAddIcon()
       }
     }
-  }, [blob, setSelectedWedge, setPhase, setContentVisible])
+  }, [blob, setSelectedWedge, setPhase, setContentVisible, setAddIconDataUrl])
 }
 
 export function RadialDial({
@@ -322,6 +336,7 @@ export function RadialDial({
   const [selectedWedge, setSelectedWedge] = useState<RadialWedge>('dismiss')
   const [phase, setPhase] = useState<Phase>('hidden')
   const [contentVisible, setContentVisible] = useState(false)
+  const [addIconDataUrl, setAddIconDataUrl] = useState<string | null>(null)
   const { colors } = useTheme()
   const wedges = useMemo(() => getWedges(closeChatWedge), [closeChatWedge])
   const wedgeLayout = useMemo(
@@ -341,7 +356,14 @@ export function RadialDial({
     [phase, selectedWedge, wedges],
   )
   const blob = useRadialBlob(colors, selectedBlobIndex)
-  useRadialIPC(blob, wedges, setSelectedWedge, setPhase, setContentVisible)
+  useRadialIPC(
+    blob,
+    wedges,
+    setSelectedWedge,
+    setPhase,
+    setContentVisible,
+    setAddIconDataUrl,
+  )
   const { canvasRef } = blob
   const palette = useMemo(() => {
     const interactive = toRgba(colors.interactive, 1)
@@ -443,6 +465,7 @@ export function RadialDial({
           const iconColor = treatIconEnabled
             ? (isSelected ? colors.primaryForeground : colors.mutedForeground)
             : toRgba(colors.mutedForeground, 0.45)
+          const appIcon = wedge.id === 'add' ? addIconDataUrl : null
 
           return (
             <div
@@ -454,7 +477,16 @@ export function RadialDial({
                 color: iconColor,
               }}
             >
-              {Icon ? (
+              {appIcon ? (
+                <img
+                  key={appIcon}
+                  className="radial-wedge-app-icon"
+                  src={appIcon}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                />
+              ) : Icon ? (
                 <Icon
                   aria-hidden="true"
                   width={16}

@@ -5,6 +5,11 @@ import {
   type LeftMouseUpEvent,
 } from "../input/mouse-hook.js";
 import { calculateSelectedWedge, type RadialWedge } from "../radial-wedge.js";
+import {
+  STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
+  getWindowInfoAtPoint,
+} from "../window-capture.js";
+import { getAppIconForWindow } from "../window-app-icon.js";
 import type { ChatContext } from "../../../runtime/contracts/index.js";
 import type { RadialTriggerCode } from "../../src/shared/lib/radial-trigger.js";
 import type { MiniDoubleTapModifier } from "../../src/shared/lib/mini-double-tap.js";
@@ -47,6 +52,7 @@ export type RadialOverlayBridge = {
   hideRadial: () => void;
   updateRadialCursor: (x: number, y: number) => void;
   getRadialBounds: () => { x: number; y: number } | null;
+  setRadialAddIcon: (iconDataUrl: string | null) => void;
 };
 
 export type RadialWindowBridge = {
@@ -114,6 +120,7 @@ export class RadialGestureService {
   private readonly deps: RadialGestureDeps;
   private scheduledRadialCaptureTimer: ReturnType<typeof setTimeout> | null =
     null;
+  private radialAddIconToken = 0;
   private dictationPushToTalkHandlers: DictationPushToTalkHandlers | null =
     null;
 
@@ -140,6 +147,31 @@ export class RadialGestureService {
         this.contextBeforeGesture,
       );
     }, RADIAL_CONTEXT_CAPTURE_DELAY_MS);
+  }
+
+  /**
+   * Resolve the icon of the app under the dial and surface it on the Add
+   * wedge. Fires at radial-open time (no 180ms capture delay) so the icon
+   * lands while the dial is still up; the point probe goes through the same
+   * window_info point-cache the staged context capture hits 180ms later, so
+   * the two share one native query. Failures keep the default Plus glyph.
+   */
+  private updateRadialAddWedgeIcon(point: { x: number; y: number }) {
+    const token = ++this.radialAddIconToken;
+    void (async () => {
+      try {
+        const info = await getWindowInfoAtPoint(point.x, point.y, {
+          excludePids: [process.pid],
+          excludeTitlePrefixes: STELLA_CAPTURE_EXCLUDED_TITLE_PREFIXES,
+        });
+        if (token !== this.radialAddIconToken) return;
+        const iconDataUrl = info ? await getAppIconForWindow(info) : null;
+        if (token !== this.radialAddIconToken || !iconDataUrl) return;
+        this.deps.overlay.setRadialAddIcon(iconDataUrl);
+      } catch {
+        // Keep the default Plus glyph.
+      }
+    })();
   }
 
   private restoreOrClearTransientContext() {
@@ -278,8 +310,10 @@ export class RadialGestureService {
           });
           const cursorPoint = screen.getCursorScreenPoint();
           this.scheduleRadialContextCapture(cursorPoint);
+          this.updateRadialAddWedgeIcon(cursorPoint);
         },
         onRadialHide: () => {
+          this.radialAddIconToken += 1;
           if (!this.selectionCommitted) {
             this.clearScheduledRadialCapture();
             capture.cancelRadialContextCapture();
@@ -351,6 +385,7 @@ export class RadialGestureService {
 
   stop() {
     this.clearScheduledRadialCapture();
+    this.radialAddIconToken += 1;
     this.selectionCommitted = false;
     this.startedInCompactMode = false;
     this.contextBeforeGesture = null;

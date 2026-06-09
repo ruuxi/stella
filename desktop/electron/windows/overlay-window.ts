@@ -824,6 +824,16 @@ export class OverlayWindowController {
     }, OverlayWindowController.CLOSE_ANIM_FALLBACK)
   }
 
+  /**
+   * Swap the Add wedge's Plus glyph for the icon of the app under the dial.
+   * Sent after the async window-info/icon lookup settles; the renderer resets
+   * to the Plus glyph on every `radial:show`, so stale icons never linger.
+   */
+  notifyRadialAddIcon(iconDataUrl: string | null) {
+    if (!this.activeRadial || !this.overlayWindow.getWindow()) return
+    this.overlayWindow.send('radial:addIcon', { iconDataUrl })
+  }
+
   updateRadialCursor() {
     if (!this.radialBounds) return
 
