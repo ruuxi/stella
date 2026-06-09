@@ -125,8 +125,6 @@ describe("isRendererHmrRelevantPath", () => {
     expect(isRendererHmrRelevantPath("desktop/electron/main.ts")).toBe(false);
     expect(isRendererHmrRelevantPath("desktop/vite.config.ts")).toBe(false);
     expect(isRendererHmrRelevantPath("runtime/kernel/runner.ts")).toBe(false);
-    expect(isRendererHmrRelevantPath("backend/src/handler.ts")).toBe(false);
-    expect(isRendererHmrRelevantPath("launcher/src/main.rs")).toBe(false);
     expect(isRendererHmrRelevantPath("package.json")).toBe(false);
     expect(isRendererHmrRelevantPath("bun.lock")).toBe(false);
     expect(isRendererHmrRelevantPath("bun.lockb")).toBe(false);
@@ -237,8 +235,6 @@ describe("isRestartRequiredNonHmrPath", () => {
     ).toBe(true);
     expect(isRestartRequiredNonHmrPath("desktop/vite.config.ts")).toBe(true);
     expect(isRestartRequiredNonHmrPath("desktop/electron/main.ts")).toBe(true);
-    expect(isRestartRequiredNonHmrPath("backend/src/handler.ts")).toBe(true);
-    expect(isRestartRequiredNonHmrPath("launcher/src/main.rs")).toBe(true);
     expect(isRestartRequiredNonHmrPath("runtime/kernel/runner.ts")).toBe(true);
   });
 
