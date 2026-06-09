@@ -12,17 +12,17 @@
   display: none;
 }
 
+/* Pre-React boot splash for the mini (Spotlight) window. Flat, calm surface
+   that matches the redesigned app — no gradient, no serif. */
 html[data-stella-window="mini"] #stella-mini-boot {
   display: flex !important;
   width: 100vw;
   height: 100vh;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(22, 22, 22, 0.1);
-  background:
-    radial-gradient(circle at 22% 12%, rgba(255, 255, 255, 0.92), transparent 34%),
-    linear-gradient(135deg, #f8fafc 0%, #eef2f7 46%, #e8edf3 100%);
-  color: #161616;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #f5f5f7;
+  color: #1d1d1f;
   font-family: "Manrope", "Manrope Fallback", system-ui, sans-serif;
   -webkit-app-region: drag;
 }
@@ -40,7 +40,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: rgba(22, 22, 22, 0.14);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .stella-mini-boot__body {
@@ -52,10 +52,10 @@ html[data-stella-window="mini"] #stella-mini-boot {
 }
 
 .stella-mini-boot__mark {
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: 18px;
-  font-weight: 400;
-  letter-spacing: -0.03em;
+  font-family: "Manrope", "Manrope Fallback", system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   line-height: 1;
 }
 
@@ -63,7 +63,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   width: 58%;
   height: 12px;
   border-radius: 999px;
-  background: rgba(22, 22, 22, 0.08);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .stella-mini-boot__line--wide {
@@ -71,15 +71,16 @@ html[data-stella-window="mini"] #stella-mini-boot {
 }
 
 @theme inline {
-  /* Aura-style smaller border radii */
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-  --radius-2xl: 12px;
-  --radius-3xl: 16px;
-  --radius-4xl: 20px;
+  /* Softer, macOS-native radii — generous enough to read as approachable,
+     restrained enough to stay precise. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+  --radius-3xl: 18px;
+  --radius-4xl: 24px;
   --radius-full: 9999px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -115,159 +116,145 @@ html[data-stella-window="mini"] #stella-mini-boot {
 }
 
 :root {
-  /* Base radius - Aura-style smaller */
-  --radius: 0.375rem;
+  /* Base radius — buttons / small controls */
+  --radius: 0.625rem;
 
-  /* Font families with metric-adjusted fallbacks */
+  /* Font families with metric-adjusted fallbacks. One sans voice (Manrope)
+     for all UI; mono only for code. The "display" family is intentionally
+     the same sans — no serif anywhere in the product. */
   --font-family-sans: "Manrope", "Manrope Fallback", system-ui, sans-serif;
   --font-family-sans--font-feature-settings: normal;
   --font-family-sans--default-weight: 400;
-  --font-family-sans--default-letter-spacing: -0.02em;
-  --font-family-sans--emphasis-weight: 500;
+  --font-family-sans--default-letter-spacing: -0.01em;
+  --font-family-sans--emphasis-weight: 600;
   --font-family-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
   --font-family-mono--font-feature-settings: "ss01" 1;
-  --font-family-display: "Cormorant Garamond", Georgia, serif;
+  --font-family-display: "Manrope", "Manrope Fallback", system-ui, sans-serif;
 
   /* Font feature settings (legacy) */
   --font-feature-settings: normal;
 
-  /* Gradient controls */
+  /* Gradient controls (retained for any legacy reference; the animated
+     background is removed in favor of a single flat surface). */
   --gradient-saturation: 100;
   --gradient-brightness: 100;
   --gradient-blur: 120px;
-  --gradient-noise: 0.08;
+  --gradient-noise: 0;
 
-  /* Stella animation colors - aligned to Carbon theme */
-  --stella-animation-color-1: #0f62fe;
-  --stella-animation-color-2: #42be65;
-  --stella-animation-color-3: #f1c21b;
-  --stella-animation-color-4: #4589ff;
+  /* Accent ramp for incidental data viz (Apple system colors). */
+  --stella-animation-color-1: #0a84ff;
+  --stella-animation-color-2: #34c759;
+  --stella-animation-color-3: #ff9f0a;
+  --stella-animation-color-4: #5e5ce6;
 
-  /* Layered shadows.
-   * Each token stacks a tight contact layer with progressively wider,
-   * lower-opacity layers. A single fat blur with a non-trivial alpha bands
-   * visibly at 8-bit color depth (the falloff quantizes into rings) —
-   * stacking layers keeps every per-step delta below the quantization
-   * threshold and yields a smooth Gaussian-like falloff. */
-  --shadow-subtle:
-    0 1px 1px rgba(0, 0, 0, 0.04),
-    0 1px 2px rgba(0, 0, 0, 0.03);
+  /* ── Elevation: one calm, soft family. No banding to fight now that the
+        substrate is a single flat surface, so a tight contact layer plus one
+        soft ambient layer is enough. ── */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-sm:
     0 1px 2px rgba(0, 0, 0, 0.05),
-    0 2px 6px rgba(0, 0, 0, 0.04);
+    0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-md:
-    0 1px 2px rgba(0, 0, 0, 0.06),
-    0 4px 8px rgba(0, 0, 0, 0.05),
-    0 8px 24px rgba(0, 0, 0, 0.04);
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg:
-    0 1px 2px rgba(0, 0, 0, 0.06),
-    0 4px 12px rgba(0, 0, 0, 0.06),
-    0 12px 32px rgba(0, 0, 0, 0.05),
-    0 20px 56px rgba(0, 0, 0, 0.04);
+    0 2px 6px rgba(0, 0, 0, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.12);
   --shadow-xl:
-    0 1px 2px rgba(0, 0, 0, 0.07),
-    0 6px 16px rgba(0, 0, 0, 0.07),
-    0 16px 40px rgba(0, 0, 0, 0.06),
-    0 28px 72px rgba(0, 0, 0, 0.05);
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 24px 56px rgba(0, 0, 0, 0.16);
 
-  /* Aura-style border shadows */
+  /* Hairline-bordered control elevation. */
   --shadow-xs-border:
-    0 0 0 1px rgba(11, 6, 0, 0.12),
-    0 1px 2px -1px rgba(19, 16, 16, 0.04),
-    0 1px 2px 0 rgba(19, 16, 16, 0.06),
-    0 1px 3px 0 rgba(19, 16, 16, 0.08);
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-xs-border-focus:
-    0 0 0 1px rgba(11, 6, 0, 0.12),
-    0 1px 2px -1px rgba(19, 16, 16, 0.25),
-    0 1px 2px 0 rgba(19, 16, 16, 0.08),
-    0 1px 3px 0 rgba(19, 16, 16, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.05),
     0 0 0 2px var(--background),
     0 0 0 4px var(--ring);
 
-  /* Apple-style elevation for transient overlay surfaces (dropdown
-     menus, popovers, future small floating panels). Layered: contact →
-     mid → soft ambient → inset glass lip. Always black-tinted; the
-     `.dark` override below boosts opacity. */
+  /* Transient overlay elevation (menus, popovers, dialogs). macOS-style
+     hairline lip + one soft drop. */
   --shadow-overlay:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 4px 10px -2px rgba(0, 0, 0, 0.08),
-    0 16px 32px -6px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    0 0 0 0.5px rgba(0, 0, 0, 0.06),
+    0 10px 30px -6px rgba(0, 0, 0, 0.16);
 
-  /* Button secondary colors - derived from theme */
-  --button-secondary-base: color-mix(in srgb, var(--muted) 40%, var(--background));
-  --button-secondary-hover: var(--muted);
+  /* Secondary button surface — subtle neutral fill that shifts on hover via
+     color, never opacity. */
+  --button-secondary-base: color-mix(in srgb, var(--foreground) 5%, var(--card));
+  --button-secondary-hover: color-mix(in srgb, var(--foreground) 9%, var(--card));
 
-  /* Frosted glass surface */
-  --glass-bg: color-mix(in srgb, var(--background) 40%, transparent);
-  --glass-blur: blur(40px) saturate(180%);
-  /* Softer panel glass — dialogs / popovers with real backdrop-filter only. */
-  --panel-glass-bg: color-mix(in srgb, var(--background) 22%, transparent);
-  --panel-glass-blur: blur(20px) saturate(150%);
-  /* Tint-only shell panels (sidebar, composer, workspace cards) — no
-     backdrop-filter; reads like soft glass over the shifting gradient. */
-  --panel-surface-bg: color-mix(in srgb, var(--background) 50%, transparent);
-  --panel-surface-bg-gradient: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--background) 12%, transparent),
-    color-mix(in srgb, var(--background) 18%, transparent)
-  );
-  --panel-surface-border: color-mix(in oklch, var(--border) 60%, transparent);
-  --panel-surface-highlight: inset 0 1px 0
-    color-mix(in oklch, white 42%, transparent);
-  --panel-elevated-shadow:
-    0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent),
-    0 2px 6px color-mix(in oklch, var(--foreground) 3%, transparent);
+  /* Glass is reserved ONLY for transient overlays (dropdowns, popovers,
+     dialogs, command palette). Every primary surface is flat + opaque. */
+  --glass-bg: color-mix(in srgb, var(--card) 82%, transparent);
+  --glass-blur: blur(24px) saturate(140%);
+  --panel-glass-bg: color-mix(in srgb, var(--card) 88%, transparent);
+  --panel-glass-blur: blur(20px) saturate(130%);
 
-  /* Aura-style surface colors - semi-transparent to show gradient */
-  --surface-inset: color-mix(in srgb, var(--card) 12%, transparent);
-  --surface-raised: color-mix(in srgb, var(--card) 65%, transparent);
-  --surface-raised-hover: color-mix(in srgb, var(--card) 80%, transparent);
-  --surface-overlay: color-mix(in srgb, var(--card) 85%, transparent);
+  /* Panel surfaces (sidebars, composer, cards) — flat, opaque, no blur. */
+  --panel-surface-bg: var(--card);
+  --panel-surface-bg-gradient: none;
+  --panel-surface-border: var(--border);
+  --panel-surface-highlight: none;
+  --panel-elevated-shadow: var(--shadow-sm);
+
+  /* Opaque surface ladder. */
+  --surface-inset: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --surface-raised: var(--card);
+  --surface-raised-hover: color-mix(in srgb, var(--foreground) 4%, var(--card));
+  --surface-overlay: var(--card);
   --surface-raised-stronger-non-alpha: var(--card);
 
-  /* Text hierarchy - derived from theme foreground */
-  --text-strong: color-mix(in srgb, var(--foreground) 95%, transparent);
-  --text-base: color-mix(in srgb, var(--foreground) 75%, transparent);
-  --text-weak: color-mix(in srgb, var(--foreground) 50%, transparent);
-  --text-weaker: color-mix(in srgb, var(--foreground) 35%, transparent);
+  /* Text hierarchy — SOLID, opaque colors mixed toward the background so
+     contrast is deterministic (always WCAG-checked), never composited over a
+     moving substrate. Still theme-tracking via --foreground/--background. */
+  --text-strong: var(--foreground);
+  --text-base: color-mix(in srgb, var(--foreground) 80%, var(--background));
+  --text-weak: color-mix(in srgb, var(--foreground) 52%, var(--background));
+  --text-weaker: color-mix(in srgb, var(--foreground) 38%, var(--background));
   --text-interactive-base: var(--primary);
 
-  /* Text blend mode - helps text render correctly over gradients */
-  --text-mix-blend-mode: multiply;
+  /* No blend mode — text paints normally on a stable opaque surface. */
+  --text-mix-blend-mode: normal;
 
   /* Color scheme */
   color-scheme: light;
 
-  /* Border tokens */
-  --border-strong: color-mix(in srgb, var(--foreground) 12%, transparent);
-  --border-base: color-mix(in srgb, var(--foreground) 8%, transparent);
-  --border-weak: color-mix(in srgb, var(--foreground) 5%, transparent);
+  /* Border tokens — derived from foreground over the opaque background so they
+     read as solid hairlines. */
+  --border-strong: color-mix(in srgb, var(--foreground) 20%, var(--background));
+  --border-base: color-mix(in srgb, var(--foreground) 12%, var(--background));
+  --border-weak: color-mix(in srgb, var(--foreground) 7%, var(--background));
 
-  /* Semantic colors - aligned to default theme (Carbon) */
-  --background: #f2f4f8;
-  --foreground: #161616;
-  --card: rgba(255, 255, 255, 0.9);
-  --card-foreground: #161616;
-  --popover: rgba(255, 255, 255, 0.9);
-  --popover-foreground: #161616;
-  --primary: #0f62fe;
+  /* ── Semantic colors — macOS-native light. ── */
+  --background: #ececec;
+  --background-base: #ececec;
+  --background-weak: #e3e3e8;
+  --background-strong: #ffffff;
+  --foreground: #1d1d1f;
+  --card: #ffffff;
+  --card-foreground: #1d1d1f;
+  --popover: #ffffff;
+  --popover-foreground: #1d1d1f;
+  --primary: #0a84ff;
   --primary-foreground: #ffffff;
-  --secondary: #dde1e6;
-  --secondary-foreground: #161616;
-  --muted: #dde1e6;
-  --muted-foreground: #4d5358;
-  --accent: #ee5396;
-  --accent-foreground: #ffffff;
-  --destructive: #da1e28;
-  --border: #c1c7cd;
-  --input: #c1c7cd;
-  --ring: #0f62fe;
-  --chart-1: var(--primary);
-  --chart-2: var(--accent);
-  --chart-3: var(--ring);
-  --chart-4: var(--muted-foreground);
-  --chart-5: color-mix(in srgb, var(--primary) 70%, var(--accent));
+  --secondary: #e3e3e8;
+  --secondary-foreground: #1d1d1f;
+  --muted: #e9e9ee;
+  --muted-foreground: #86868b;
+  --accent: #e8e8ed;
+  --accent-foreground: #1d1d1f;
+  --destructive: #ff3b30;
+  --border: #d6d6d6;
+  --input: #d6d6d6;
+  --ring: #0a84ff;
+  --info: #0a84ff;
+  --chart-1: #0a84ff;
+  --chart-2: #34c759;
+  --chart-3: #ff9f0a;
+  --chart-4: #ff375f;
+  --chart-5: #bf5af2;
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
@@ -279,33 +266,27 @@ html[data-stella-window="mini"] #stella-mini-boot {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   DESIGN SYSTEM — scales + semantic aliases (added 2026-06-08)
+   DESIGN SYSTEM — scales + semantic aliases
 
    Two jobs:
-   1. Semantic aliases: the codebase referenced many tokens that were never
-      defined (--interactive, --danger, --success, --shadow-soft, …). Each one
-      silently fell back to a generic Tailwind hex (red-500, green-500, web
-      blue, flat black) or to an *invalid* value (dropping the whole
-      declaration — e.g. Settings' primary button rendered invisible). Defining
-      them here, as var() aliases of the already-theme-driven tokens, lights up
-      every call site correctly in light / dark / pearl / noir at once.
-   2. Missing scales: type / spacing / weight / line-height / motion. The app
-      had radius/shadow/surface/color tokens but NO scale for these, so ~700
-      font-sizes, 16 line-heights and dozens of durations were picked ad hoc.
-      These tokens are the shared vocabulary; component CSS migrates onto them.
+   1. Semantic aliases: many tokens were referenced but never defined
+      (--interactive, --danger, --success, --shadow-soft, …). Each is defined
+      here as a theme-aware var() alias so every call site lights up correctly
+      in light / dark at once.
+   2. Scales: type / spacing / weight / line-height / motion — the shared
+      vocabulary every component CSS migrates onto. Never raw px/weights.
 
-   NOTE: do not reuse --text-base/-strong/-weak/-weaker — those are COLOR
-   tokens (text hierarchy) defined above. Type sizes use --font-size-*.
+   NOTE: --text-base/-strong/-weak/-weaker are COLOR tokens (text hierarchy)
+   defined above. Type sizes use --font-size-*.
    ═══════════════════════════════════════════════════════════════════════ */
 :root {
-  /* ── Semantic color aliases (resolve through the theme-driven tokens, so
-        they automatically track light/dark/pearl/noir/custom themes) ── */
-  --interactive: var(--ring); /* theme's interactive accent (== colors.interactive) */
+  /* ── Semantic color aliases (resolve through the theme-driven tokens) ── */
+  --interactive: var(--ring);
   --interactive-foreground: var(--primary-foreground);
-  --success: var(--stella-animation-color-2); /* Carbon green, theme-tracked */
+  --success: var(--stella-animation-color-2);
   --success-foreground: #ffffff;
-  --warning: var(--stella-animation-color-3); /* Carbon amber, theme-tracked */
-  --warning-foreground: #161616;
+  --warning: var(--stella-animation-color-3);
+  --warning-foreground: #1d1d1f;
   --destructive-foreground: var(--primary-foreground);
   --danger: var(--destructive);
   --error: var(--destructive);
@@ -323,8 +304,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --font-sans: var(--font-family-sans);
   --font-mono: var(--font-family-mono);
 
-  /* ── Type scale (fixed px — native, never viewport-scaled). Snapped to the
-        codebase's own size clusters so adoption is near size-preserving. ── */
+  /* ── Type scale (fixed px — native, never viewport-scaled). ── */
   --font-size-2xs: 10px; /* micro labels, badge counts, mono timestamps */
   --font-size-xs: 11px; /* secondary metadata, captions, chip sub-labels */
   --font-size-sm: 12px; /* dense UI: sidebar items, menus, buttons, labels */
@@ -333,7 +313,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --font-size-lg: 15px; /* inline subheadings, prominent rows, larger inputs */
   --font-size-xl: 17px; /* card / panel / dialog titles */
   --font-size-2xl: 20px; /* page / section headings */
-  --font-size-3xl: 24px; /* display headings (often Cormorant) */
+  --font-size-3xl: 24px; /* display headings */
   --font-size-4xl: 32px; /* hero / empty-state display type */
 
   /* ── Spacing scale (4px grid + the three half-steps that are too common to
@@ -352,9 +332,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --space-8: 32px;
   --space-10: 40px;
 
-  /* ── Weight scale. Manrope is variable (200–800); these are the real stops.
-        Oddballs map by intent: 450/550→medium, 620/650→semibold. Cormorant
-        display only ships 300/400/700, so 450 on the display font → 400. ── */
+  /* ── Weight scale. Manrope is variable (200–800); these are the real stops. ── */
   --weight-light: 300;
   --weight-regular: 400;
   --weight-medium: 500;
@@ -365,12 +343,11 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --lh-none: 1;
   --lh-tight: 1.2; /* headings */
   --lh-snug: 1.35; /* dense UI labels, list rows */
-  --lh-normal: 1.45; /* default body/UI (matches the prior .app default) */
+  --lh-normal: 1.45; /* default body/UI */
   --lh-relaxed: 1.55; /* reading prose, chat bodies */
   --lh-loose: 1.65; /* long-form documents */
 
-  /* ── Motion scale. Unifies the 0.15s/150ms notation mess + ~20 ad-hoc
-        durations. Easings collision-free with Tailwind's --ease-*. ── */
+  /* ── Motion scale. Animate only on user intent; one ease curve family. ── */
   --duration-instant: 80ms; /* button press, active-state flips */
   --duration-fast: 120ms; /* hover/focus tints, icon swaps */
   --duration-base: 150ms; /* DEFAULT UI transition (color/opacity/transform) */
@@ -381,125 +358,105 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --ease-decelerate: cubic-bezier(0.16, 1, 0.3, 1); /* entering / expanding */
   --ease-accelerate: cubic-bezier(0.4, 0, 1, 1); /* leaving / collapsing */
 
-  /* One canonical focus ring: offset background gap + ring (the polished macOS
-     look the Button already used; text-field/select/switch were flat). */
+  /* One canonical focus ring: offset background gap + ring. */
   --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
 }
 
 .dark {
-  /* Dark mode gradient controls */
-  --gradient-blur: 140px;
-  --gradient-noise: 0.12;
+  /* Dark mode accent ramp (Apple system colors, dark). */
+  --stella-animation-color-1: #0a84ff;
+  --stella-animation-color-2: #30d158;
+  --stella-animation-color-3: #ff9f0a;
+  --stella-animation-color-4: #5e5ce6;
 
-  /* Dark mode Stella animation colors - aligned to Carbon theme */
-  --stella-animation-color-1: #78a9ff;
-  --stella-animation-color-2: #42be65;
-  --stella-animation-color-3: #f1c21b;
-  --stella-animation-color-4: #4589ff;
-
-  /* Dark mode shadows — same layered strategy as light, with stronger
-   * contact + mid layers since dark surfaces need more shadow weight to
-   * read at all. Layering matters even more here: a single 0.3+ alpha
-   * blur over near-black backgrounds is where banding is most visible. */
-  --shadow-subtle:
-    0 1px 1px rgba(0, 0, 0, 0.18),
-    0 1px 2px rgba(0, 0, 0, 0.14);
+  /* Dark elevation — slightly stronger so soft shadows read on dark surfaces. */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-sm:
-    0 1px 2px rgba(0, 0, 0, 0.22),
-    0 2px 6px rgba(0, 0, 0, 0.16);
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md:
-    0 1px 2px rgba(0, 0, 0, 0.28),
-    0 4px 10px rgba(0, 0, 0, 0.20),
-    0 12px 28px rgba(0, 0, 0, 0.14);
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.35);
   --shadow-lg:
-    0 1px 2px rgba(0, 0, 0, 0.30),
-    0 6px 14px rgba(0, 0, 0, 0.22),
-    0 16px 36px rgba(0, 0, 0, 0.16),
-    0 28px 64px rgba(0, 0, 0, 0.12);
+    0 2px 6px rgba(0, 0, 0, 0.45),
+    0 12px 32px rgba(0, 0, 0, 0.5);
   --shadow-xl:
-    0 1px 2px rgba(0, 0, 0, 0.32),
-    0 8px 20px rgba(0, 0, 0, 0.26),
-    0 20px 48px rgba(0, 0, 0, 0.20),
-    0 36px 80px rgba(0, 0, 0, 0.14);
+    0 4px 12px rgba(0, 0, 0, 0.5),
+    0 24px 56px rgba(0, 0, 0, 0.6);
 
-  /* Dark mode Aura-style border shadows */
   --shadow-xs-border:
     0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 1px 2px -1px rgba(0, 0, 0, 0.15),
-    0 1px 2px 0 rgba(0, 0, 0, 0.2),
-    0 1px 3px 0 rgba(0, 0, 0, 0.25);
+    0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-xs-border-focus:
     0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 1px 2px -1px rgba(0, 0, 0, 0.25),
-    0 1px 2px 0 rgba(0, 0, 0, 0.2),
-    0 1px 3px 0 rgba(0, 0, 0, 0.25),
+    0 1px 2px rgba(0, 0, 0, 0.4),
     0 0 0 2px var(--background),
     0 0 0 4px var(--ring);
 
-  /* Dark-mode elevation: deeper opacities, faint white interior lip. */
   --shadow-overlay:
-    0 1px 2px rgba(0, 0, 0, 0.2),
-    0 4px 12px -2px rgba(0, 0, 0, 0.3),
-    0 18px 40px -6px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 0 0 0.5px rgba(0, 0, 0, 0.5),
+    0 12px 36px -6px rgba(0, 0, 0, 0.6);
 
-  --panel-surface-bg: color-mix(in srgb, var(--background) 62%, transparent);
-  --panel-surface-bg-gradient: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--background) 14%, transparent),
-    color-mix(in srgb, var(--background) 22%, transparent)
-  );
-  --panel-surface-highlight: inset 0 1px 0
-    color-mix(in oklch, white 10%, transparent);
+  --button-secondary-base: color-mix(in srgb, var(--foreground) 8%, var(--card));
+  --button-secondary-hover: color-mix(in srgb, var(--foreground) 14%, var(--card));
 
-  /* Dark mode button secondary colors - derived from theme */
-  --button-secondary-base: color-mix(in srgb, var(--muted) 40%, var(--background));
-  --button-secondary-hover: var(--muted);
+  --glass-bg: color-mix(in srgb, var(--card) 84%, transparent);
+  --panel-glass-bg: color-mix(in srgb, var(--card) 90%, transparent);
 
-  /* Dark mode surface colors */
-  --surface-inset: color-mix(in srgb, var(--card) 15%, transparent);
-  --surface-raised: color-mix(in srgb, var(--card) 50%, transparent);
-  --surface-raised-hover: color-mix(in srgb, var(--card) 65%, transparent);
-  --surface-overlay: color-mix(in srgb, var(--card) 75%, transparent);
+  --panel-surface-bg: var(--card);
+  --panel-surface-bg-gradient: none;
+  --panel-surface-border: var(--border);
+  --panel-surface-highlight: none;
+
+  --surface-inset: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  --surface-raised: var(--card);
+  --surface-raised-hover: color-mix(in srgb, var(--foreground) 6%, var(--card));
+  --surface-overlay: var(--card);
   --surface-raised-stronger-non-alpha: var(--card);
 
-  /* Text hierarchy - derived from theme foreground, alpha for gradient blending */
-  --text-strong: color-mix(in srgb, var(--foreground) 95%, transparent);
-  --text-base: color-mix(in srgb, var(--foreground) 72%, transparent);
-  --text-weak: color-mix(in srgb, var(--foreground) 45%, transparent);
-  --text-weaker: color-mix(in srgb, var(--foreground) 32%, transparent);
+  /* Solid, theme-tracking text ramp (mixed toward the dark background). */
+  --text-strong: var(--foreground);
+  --text-base: color-mix(in srgb, var(--foreground) 82%, var(--background));
+  --text-weak: color-mix(in srgb, var(--foreground) 56%, var(--background));
+  --text-weaker: color-mix(in srgb, var(--foreground) 40%, var(--background));
   --text-interactive-base: var(--primary);
 
-  /* Text blend mode - plus-lighter for dark mode gradient blending */
-  --text-mix-blend-mode: plus-lighter;
+  --text-mix-blend-mode: normal;
 
-  /* Color scheme */
   color-scheme: dark;
 
-  /* Semantic colors - aligned to default theme (Carbon) dark */
-  --background: #161616;
-  --foreground: #f2f4f8;
-  --card: rgba(38, 38, 38, 0.9);
-  --card-foreground: #f2f4f8;
-  --popover: rgba(38, 38, 38, 0.9);
-  --popover-foreground: #f2f4f8;
-  --primary: #78a9ff;
-  --primary-foreground: #161616;
-  --secondary: #262626;
-  --secondary-foreground: #f2f4f8;
-  --muted: #262626;
-  --muted-foreground: #b8bfc7;
-  --accent: #ff7eb6;
-  --accent-foreground: #161616;
-  --destructive: #ff8389;
-  --border: #393939;
-  --input: rgba(255, 255, 255, 0.15);
-  --ring: #78a9ff;
-  --chart-1: var(--primary);
-  --chart-2: var(--accent);
-  --chart-3: var(--ring);
-  --chart-4: var(--muted-foreground);
-  --chart-5: color-mix(in srgb, var(--primary) 70%, var(--accent));
+  --border-strong: color-mix(in srgb, var(--foreground) 24%, var(--background));
+  --border-base: color-mix(in srgb, var(--foreground) 16%, var(--background));
+  --border-weak: color-mix(in srgb, var(--foreground) 10%, var(--background));
+
+  /* ── Semantic colors — macOS-native dark. ── */
+  --background: #1c1c1e;
+  --background-base: #1c1c1e;
+  --background-weak: #161618;
+  --background-strong: #2c2c2e;
+  --foreground: #f5f5f7;
+  --card: #2c2c2e;
+  --card-foreground: #f5f5f7;
+  --popover: #2c2c2e;
+  --popover-foreground: #f5f5f7;
+  --primary: #0a84ff;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c2e;
+  --secondary-foreground: #f5f5f7;
+  --muted: #3a3a3c;
+  --muted-foreground: #98989d;
+  --accent: #3a3a3c;
+  --accent-foreground: #f5f5f7;
+  --destructive: #ff453a;
+  --border: #38383a;
+  --input: #38383a;
+  --ring: #0a84ff;
+  --info: #0a84ff;
+  --chart-1: #0a84ff;
+  --chart-2: #30d158;
+  --chart-3: #ff9f0a;
+  --chart-4: #ff375f;
+  --chart-5: #bf5af2;
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
@@ -508,50 +465,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
-}
-
-:root[data-theme="pearl"],
-:root[data-base-theme="pearl"] {
-  --border-strong: color-mix(in srgb, var(--foreground) 14%, var(--background));
-  --border-base: color-mix(in srgb, var(--foreground) 9%, var(--background));
-  --border-weak: color-mix(in srgb, var(--foreground) 5%, var(--background));
-  --glass-bg: color-mix(in srgb, var(--foreground) 4%, var(--background));
-  --panel-glass-bg: color-mix(in srgb, var(--foreground) 3%, var(--background));
-  --panel-surface-bg: color-mix(in srgb, var(--foreground) 3%, var(--background));
-  --panel-surface-bg-gradient: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--foreground) 2%, var(--background)),
-    color-mix(in srgb, var(--foreground) 4%, var(--background))
-  );
-  --panel-surface-border: color-mix(in srgb, var(--foreground) 9%, var(--background));
-  --panel-surface-highlight: inset 0 1px 0
-    color-mix(in srgb, white 70%, transparent);
-  --surface-inset: color-mix(in srgb, var(--foreground) 2%, var(--background));
-  --surface-raised: color-mix(in srgb, var(--foreground) 3%, var(--background));
-  --surface-raised-hover: color-mix(in srgb, var(--foreground) 5%, var(--background));
-  --surface-overlay: color-mix(in srgb, var(--foreground) 4%, var(--background));
-}
-
-:root[data-theme="noir"],
-:root[data-base-theme="noir"] {
-  --border-strong: color-mix(in srgb, var(--foreground) 18%, var(--background));
-  --border-base: color-mix(in srgb, var(--foreground) 11%, var(--background));
-  --border-weak: color-mix(in srgb, var(--foreground) 7%, var(--background));
-  --glass-bg: color-mix(in srgb, var(--foreground) 7%, var(--background));
-  --panel-glass-bg: color-mix(in srgb, var(--foreground) 5%, var(--background));
-  --panel-surface-bg: color-mix(in srgb, var(--foreground) 5%, var(--background));
-  --panel-surface-bg-gradient: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--foreground) 4%, var(--background)),
-    color-mix(in srgb, var(--foreground) 7%, var(--background))
-  );
-  --panel-surface-border: color-mix(in srgb, var(--foreground) 13%, var(--background));
-  --panel-surface-highlight: inset 0 1px 0
-    color-mix(in srgb, var(--foreground) 9%, transparent);
-  --surface-inset: color-mix(in srgb, var(--foreground) 4%, var(--background));
-  --surface-raised: color-mix(in srgb, var(--foreground) 6%, var(--background));
-  --surface-raised-hover: color-mix(in srgb, var(--foreground) 9%, var(--background));
-  --surface-overlay: color-mix(in srgb, var(--foreground) 8%, var(--background));
 }
 
 @layer base {
@@ -565,10 +478,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
     overflow: hidden;
     height: 100%;
   }
-  /* Native macOS font anti-aliasing. Forces grayscale AA to match what
-   * AppKit apps render since Mojave; without it Chromium falls back to
-   * its own smoothing on transparent surfaces and text looks slightly
-   * off from the surrounding system. Toggled from Settings → General. */
+  /* Native macOS font anti-aliasing. Forces grayscale AA to match what AppKit
+   * apps render; toggled from Settings → General. */
   html[data-native-font-smoothing="on"],
   html[data-native-font-smoothing="on"] body {
     -webkit-font-smoothing: antialiased;
@@ -583,11 +494,12 @@ html[data-stella-window="mini"] #stella-mini-boot {
     transition-duration: 0.001ms !important;
   }
   /* Follow the native macOS convention: hovering interactive elements shows
-   * the arrow, never the pointing-hand. Tailwind v4 preflight already resets
-   * `button { cursor: default }`, so we deliberately don't override it. */
+   * the arrow, never the pointing-hand. */
 }
 
-/* Transparent backgrounds for gradient to show through */
+/* The main window is a transparent, frameless Electron BrowserWindow so the
+   renderer can paint rounded corners. The shell itself paints the solid
+   surface (no gradient shows through anymore). */
 html:has(.window-shell),
 html:has(.window-shell) body,
 html:has(.window-shell) #root,
@@ -595,7 +507,12 @@ html:has(.window-shell) .app {
   background: transparent !important;
 }
 
-/* Transparent windows - overlay (unified), mini (Spotlight), region capture */
+.window-shell.full {
+  background: var(--background);
+}
+
+/* Transparent windows — overlay (unified), mini (Spotlight), region capture,
+   voice — keep their own shaped/floating surfaces. */
 html[data-stella-window="overlay"],
 html[data-stella-window="overlay"] body,
 html[data-stella-window="overlay"] #root,
