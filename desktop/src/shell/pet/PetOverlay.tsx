@@ -7,7 +7,6 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Maximize2, MessageSquare, Mic } from "lucide-react";
 import type {
   PetAnimationState,
   PetOverlayState,
@@ -17,7 +16,6 @@ import type { VoiceRuntimeSnapshot } from "@/shared/types/electron";
 import { DEFAULT_PET_ID } from "./built-in-pets";
 import { useSelectedPet } from "./pet-catalog-context";
 import { useSelectedPetId } from "./pet-preferences";
-import { PetChatPopover } from "./PetChatPopover";
 import { PetSprite } from "./PetSprite";
 import "./pet-overlay.css";
 
@@ -25,12 +23,6 @@ import "./pet-overlay.css";
 const MASCOT_SIZE = 76;
 /** Pointer drag threshold below which a release counts as a click. */
 const DRAG_THRESHOLD_PX = 4;
-/** Distance from the mascot center where action buttons sit on their arc. */
-const ACTION_ARC_RADIUS = 70;
-/** Action arc angles (degrees) around the mascot, fanning out to the left.
- *  Three buttons spread between 145° (upper-left) and 215° (lower-left)
- *  with even 35° spacing. */
-const ACTION_ANGLES = [145, 180, 215] as const;
 
 type VoicePetMode = "idle" | "listening" | "speaking";
 
@@ -146,10 +138,10 @@ const PetBubbleMessage = ({ message }: { message: string }) => {
  *   - Status bubble (title + latest message + streaming spinner) above
  *     the mascot, mirroring how the working indicator reads in the chat.
  *   - Mascot sprite sheet driven by `mapStateToAnimation(status.state)`.
- *   - Action arc curving around the left side of the sprite — Capture /
- *     Chat / Expand buttons, surfaced on hover so the resting pet stays
- *     clean.
- *   - Right-click context menu with Close pet + Pick another pet.
+ *   - Click the sprite to toggle the mini chat window (opened just to
+ *     the left of the pet via the `pet:toggleMiniWindow` IPC); the pet
+ *     stays on screen either way.
+ *   - Right-click context menu with Close pet.
  *   - Pointer drag to reposition the entire window via the
  *     `pet:moveWindow` IPC.
  *
@@ -169,10 +161,6 @@ export const PetOverlay = ({
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  /** Whether the inline chat composer is open. While open, main grows
-   *  the pet window leftward to make room and flips `focusable: true`
-   *  on so the textarea can take keystrokes. */
-  const [chatOpen, setChatOpen] = useState(false);
   /** Voice (RTC) state. The pet has replaced the standalone voice
    *  creature overlay: when voice is active, the sprite animates
    *  listening / speaking based on the broadcast `voice:runtimeState`,
@@ -183,16 +171,10 @@ export const PetOverlay = ({
   const voiceActiveRef = useRef(false);
   const [voiceMode, setVoiceMode] = useState<VoicePetMode>("idle");
   const [assistantBubbleVisible, setAssistantBubbleVisible] = useState(true);
-  /** Whether the pet-mic dictation overlay is actively recording.
-   *  Broadcast from main as `pet:dictationActive`. Drives the
-   *  "Sending to Stella…" status pill that complements the voice
-   *  "Listening" pill. */
-  const [petDictationActive, setPetDictationActive] = useState(false);
 
-  // Subscribe to the central UI state for `isVoiceRtcActive` (drives
-  // the mic button's active red styling) and the voice runtime state
-  // for listening / speaking transitions (drive the sprite animation
-  // override).
+  // Subscribe to the central UI state for `isVoiceRtcActive` and the
+  // voice runtime state for listening / speaking transitions, which
+  // drive the sprite animation override.
   useEffect(() => {
     const cleanups: Array<() => void> = [];
     const applyVoiceActive = (nextActive: boolean) => {
@@ -228,45 +210,10 @@ export const PetOverlay = ({
       const off = voice.onRuntimeState(applyRuntimeState);
       if (off) cleanups.push(off);
     }
-    const pet = window.electronAPI?.pet;
-    if (pet?.onDictationActive) {
-      const off = pet.onDictationActive((active) => {
-        setPetDictationActive(active);
-      });
-      if (off) cleanups.push(off);
-    }
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
   }, []);
-
-  // Open / close the composer in two steps so the user never sees a
-  // mismatched frame:
-  //   - Open:  resize the window first (grows leftward), THEN mount the
-  //            popover. If we mounted first, the 380px popover would
-  //            render inside the still-280px window and visibly jump
-  //            once the resize lands.
-  //   - Close: unmount the popover first, THEN shrink the window. If
-  //            we shrank first, the popover would briefly render
-  //            outside the window's new bounds.
-  // The sprite is anchored to the window's right edge in both states,
-  // so its absolute screen position never changes across the resize.
-  const requestChatOpen = useCallback(() => {
-    setContextMenu(null);
-    if (chatOpen) {
-      // Closing.
-      setChatOpen(false);
-      window.setTimeout(() => {
-        window.electronAPI?.pet?.setComposerActive?.(false);
-      }, 16);
-      return;
-    }
-    // Opening.
-    window.electronAPI?.pet?.setComposerActive?.(true);
-    window.setTimeout(() => {
-      setChatOpen(true);
-    }, 32);
-  }, [chatOpen]);
 
   // Mouse-passthrough hit testing. The pet `BrowserWindow` sits with
   // `setIgnoreMouseEvents(true, { forward: true })` by default so the
@@ -292,8 +239,8 @@ export const PetOverlay = ({
       if (!root) return false;
       const ownerDoc = root.ownerDocument ?? document;
       // `elementsFromPoint` walks the stacking order; any element along
-      // the way that wants clicks (popover, action arc, sprite, bubble,
-      // context menu, …) is tagged with `data-pet-hit`.
+      // the way that wants clicks (sprite, bubble, context menu, …) is
+      // tagged with `data-pet-hit`.
       const stack = ownerDoc.elementsFromPoint(clientX, clientY);
       for (const node of stack) {
         if (!(node instanceof HTMLElement)) continue;
@@ -318,24 +265,15 @@ export const PetOverlay = ({
     };
   }, [open]);
 
-  // The chat popover, context menu, and active drag state must always
-  // be interactive regardless of momentary cursor jitter. While any of
-  // these are showing we pin the window to interactive so a tiny gap
-  // between the dom rects and the cursor never drops the click.
+  // The context menu and active drag state must always be interactive
+  // regardless of momentary cursor jitter. While either is showing we
+  // pin the window to interactive so a tiny gap between the dom rects
+  // and the cursor never drops the click.
   useEffect(() => {
     if (!open) return;
-    if (!chatOpen && !contextMenu && !dragging) return;
+    if (!contextMenu && !dragging) return;
     window.electronAPI?.pet?.setInteractive?.(true);
-  }, [chatOpen, contextMenu, dragging, open]);
-
-  // When the pet itself is hidden, force the composer closed too so
-  // we never leave main in the wider footprint.
-  useEffect(() => {
-    if (!open && chatOpen) {
-      setChatOpen(false);
-      window.electronAPI?.pet?.setComposerActive?.(false);
-    }
-  }, [open, chatOpen]);
+  }, [contextMenu, dragging, open]);
 
   // Drag tracking. We compute the new screen-space window position
   // each pointermove from `event.screenX/Y` minus the offset within
@@ -416,6 +354,12 @@ export const PetOverlay = ({
           x: newWindowX,
           y: newWindowY,
         });
+      } else {
+        // A release with no meaningful movement is a click on the pet:
+        // toggle the mini chat window open/closed (positioned just to
+        // the left of the pet by main). The pet stays on screen.
+        setContextMenu(null);
+        window.electronAPI?.pet?.toggleMiniWindow?.();
       }
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);
@@ -425,41 +369,6 @@ export const PetOverlay = ({
     },
     [],
   );
-
-  // Toggling the chat button opens the inline composer to the LEFT of
-  // the sprite — explicitly NOT the full-window sidebar. The popover
-  // owns the textarea + auto-focus + submit; submission is one-shot
-  // and dismisses the popover (no follow-up window appears).
-  const handleChat = useCallback(() => {
-    requestChatOpen();
-  }, [requestChatOpen]);
-
-  // The popover calls `onSubmit` and then `onDismiss`. We deliberately
-  // only close in `onDismiss` so we don't toggle twice and end up
-  // re-opening the composer right after a successful send.
-  const handleChatSubmit = useCallback((text: string) => {
-    window.electronAPI?.pet?.sendMessage?.(text);
-  }, []);
-
-  const handleChatDismiss = useCallback(() => {
-    if (chatOpen) requestChatOpen();
-  }, [chatOpen, requestChatOpen]);
-
-  // The mic action button is dictation, not voice. Voice is wake-word
-  // gated ("Hey Stella") so the user can't accidentally start a
-  // realtime session by clicking. Pressing mic dictates a single
-  // utterance which is auto-sent to Stella's chat.
-  const handleDictate = useCallback(() => {
-    setContextMenu(null);
-    setChatOpen(false);
-    window.electronAPI?.pet?.requestDictation?.();
-  }, []);
-
-  const handleExpand = useCallback(() => {
-    setContextMenu(null);
-    setChatOpen(false);
-    window.electronAPI?.window?.show?.("full");
-  }, []);
 
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -586,34 +495,10 @@ export const PetOverlay = ({
       : hover && baseAnimation === "idle"
         ? "waving"
         : baseAnimation;
-  const showActions = hover && !dragging;
   const hasBubbleContent =
     Boolean(status.message?.trim()) || Boolean(status.title?.trim());
-  // Voice / dictation get a separate Apple-style status pill +
-  // sprite halo (see below) — not the chat bubble. The bubble keeps
-  // its original role: surfacing agent status messages.
   const showBubble =
     hasBubbleContent && (status.state !== "idle" || assistantBubbleVisible);
-
-  // Status pill mode. Voice listening / speaking takes precedence
-  // over dictation (the realtime session can't be active at the
-  // same time as a pet-mic dictation overlay anyway). The pill
-  // fades out via CSS when `mode === null` so saying "Bye" cleanly
-  // dissolves the indicator instead of cutting it.
-  type StatusPillMode = "listening" | "speaking" | "dictating";
-  const statusPillMode: StatusPillMode | null =
-    voiceMode === "speaking"
-      ? "speaking"
-      : voiceMode === "listening"
-        ? "listening"
-        : petDictationActive
-          ? "dictating"
-          : null;
-  const statusPillLabel: Record<StatusPillMode, string> = {
-    listening: "Listening",
-    speaking: "Stella is speaking",
-    dictating: "Sending to Stella",
-  };
 
   return (
     <div
@@ -640,110 +525,17 @@ export const PetOverlay = ({
          *  continuous surface instead of a hot-swap. */}
         <div
           className="pet-overlay-bubble"
-          data-visible={showBubble && !statusPillMode ? "true" : "false"}
-          data-pet-hit={showBubble && !statusPillMode ? "true" : "false"}
-          aria-hidden={showBubble && !statusPillMode ? "false" : "true"}
+          data-visible={showBubble ? "true" : "false"}
+          data-pet-hit={showBubble ? "true" : "false"}
+          aria-hidden={showBubble ? "false" : "true"}
         >
           <PetBubbleMessage message={status.message} />
         </div>
-        {/* Apple-style voice / dictation status pill. Always mounted
-         *  so the fade-out transition runs cleanly when `mode`
-         *  flips to null (e.g. user said "Bye"). The corresponding
-         *  halo sits behind the sprite. */}
-        <div
-          className="pet-overlay-status-pill"
-          data-mode={statusPillMode ?? "idle"}
-          data-visible={statusPillMode ? "true" : "false"}
-          aria-hidden={statusPillMode ? "false" : "true"}
-        >
-          <span
-            className="pet-overlay-status-pill__indicator"
-            data-mode={statusPillMode ?? "idle"}
-          >
-            <span className="pet-overlay-status-pill__bar" />
-            <span className="pet-overlay-status-pill__bar" />
-            <span className="pet-overlay-status-pill__bar" />
-          </span>
-          <span className="pet-overlay-status-pill__label">
-            {statusPillMode ? statusPillLabel[statusPillMode] : ""}
-          </span>
-        </div>
-        <div
-          className="pet-overlay-aura"
-          data-mode={statusPillMode ?? "idle"}
-          data-visible={statusPillMode ? "true" : "false"}
-          aria-hidden="true"
-        />
         <PetSprite
           spritesheetUrl={pet.spritesheetUrl}
           state={animationState}
           continuous={voiceAnimation != null}
           size={MASCOT_SIZE}
-        />
-        {(
-          [
-            {
-              key: "dictate",
-              label: "Dictate to Stella",
-              title: "Dictate",
-              icon: <Mic size={16} />,
-              onClick: handleDictate,
-              active: false,
-              angle: ACTION_ANGLES[0],
-            },
-            {
-              key: "chat",
-              label: "Send a message",
-              title: "Chat",
-              icon: <MessageSquare size={16} />,
-              onClick: handleChat,
-              active: chatOpen,
-              angle: ACTION_ANGLES[1],
-            },
-            {
-              key: "expand",
-              label: "Open Stella",
-              title: "Open Stella",
-              icon: <Maximize2 size={16} />,
-              onClick: handleExpand,
-              active: false,
-              angle: ACTION_ANGLES[2],
-            },
-          ] as const
-        ).map(({ key, label, title, icon, onClick, active, angle }) => {
-          const radians = (angle * Math.PI) / 180;
-          const x = Math.cos(radians) * ACTION_ARC_RADIUS;
-          const y = Math.sin(radians) * ACTION_ARC_RADIUS;
-          // The chat button stays visible whenever the composer is
-          // open so the user can always see the toggle target. The
-          // rest of the arc only appears on hover.
-          const visible = showActions || (key === "chat" && chatOpen);
-          return (
-            <button
-              key={key}
-              type="button"
-              className="pet-overlay-action"
-              data-visible={visible ? "true" : "false"}
-              data-pet-hit={visible ? "true" : "false"}
-              data-active={active ? "true" : "false"}
-              data-tone={undefined}
-              onClick={onClick}
-              aria-label={label}
-              aria-pressed={active}
-              title={title}
-              style={{
-                left: `calc(50% + ${x}px)`,
-                top: `calc(50% + ${y}px)`,
-              }}
-            >
-              {icon}
-            </button>
-          );
-        })}
-        <PetChatPopover
-          open={chatOpen}
-          onSubmit={handleChatSubmit}
-          onDismiss={handleChatDismiss}
         />
       </div>
 

@@ -12,10 +12,9 @@ type PetWindowControllerOptions = {
 
 /**
  * Width/height of the pet window in CSS pixels. Sized to comfortably
- * contain the 96px sprite plus the action arc fanning out to its left
- * and the status bubble floating above it. Anything bigger would
- * needlessly block clicks in surrounding screen pixels; anything
- * smaller would clip the bubble or arc.
+ * contain the sprite plus the status bubble floating above it. Anything
+ * bigger would needlessly block clicks in surrounding screen pixels;
+ * anything smaller would clip the bubble.
  */
 const PET_WINDOW_WIDTH = 280
 const PET_WINDOW_HEIGHT = 240

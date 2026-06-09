@@ -2214,6 +2214,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     openChat: () => ipcRenderer.send("pet:openChat"),
     sendMessage: (text: string) => ipcRenderer.send("pet:sendMessage", text),
     onSendMessage: onIpc<string>("pet:sendMessage"),
+    toggleMiniWindow: () => ipcRenderer.send("pet:toggleMiniWindow"),
   },
 
   nativeIntegrations: {

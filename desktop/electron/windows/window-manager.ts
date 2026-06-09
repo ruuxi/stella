@@ -624,6 +624,57 @@ export class WindowManager {
     }
   }
 
+  /**
+   * Pet-click entry point: toggle the mini chat window. When opening,
+   * the mini is positioned just to the left of the pet sprite (so it
+   * reads as belonging to the pet) and the pet itself is left untouched.
+   * On close we explicitly clear `miniShouldRestoreExternalApp` so the
+   * hide path never calls `app.hide()` — that would hide the pet window
+   * too, and the pet must stay on screen.
+   */
+  toggleMiniBesidePet(petBounds: Bounds | null) {
+    if (this.isMiniShowing()) {
+      this.miniShouldRestoreExternalApp = false
+      this.hideMiniWindow(true)
+      return
+    }
+    if (petBounds) {
+      this.miniWindowBounds = this.computeMiniBoundsBesidePet(petBounds)
+    }
+    this.showWindow('mini')
+  }
+
+  /**
+   * Place the mini just left of the pet sprite. The sprite sits at the
+   * bottom-right of the pet window (20px inset, ~76px tall — see
+   * `pet-window.ts` / `pet-overlay.css`), so we anchor off that corner
+   * rather than the window's transparent top-left, then clamp the result
+   * to the work area of the display the pet is on.
+   */
+  private computeMiniBoundsBesidePet(petBounds: Bounds): Bounds {
+    const width = compactSize.width
+    const height = compactSize.height
+    const gap = 16
+    const spriteInset = 20
+    const spriteSize = 76
+    const spriteLeft = petBounds.x + petBounds.width - spriteInset - spriteSize
+    const spriteCenterY =
+      petBounds.y + petBounds.height - spriteInset - spriteSize / 2
+
+    const display = screen.getDisplayNearestPoint({
+      x: spriteLeft,
+      y: Math.round(spriteCenterY),
+    })
+    const wa = display.workArea
+
+    let x = spriteLeft - gap - width
+    let y = Math.round(spriteCenterY - height / 2)
+    x = Math.max(wa.x, Math.min(x, wa.x + wa.width - width))
+    y = Math.max(wa.y, Math.min(y, wa.y + wa.height - height))
+
+    return { x, y, width, height }
+  }
+
   hideMiniWindow(_animate: boolean) {
     const miniWindow = this.getMiniWindow()
     if (!miniWindow || miniWindow.isDestroyed()) return
