@@ -19,8 +19,8 @@
 
 .provider-only-row[data-selected],
 .provider-only-row[data-expanded] {
-  border-color: var(--border);
-  background: color-mix(in oklch, var(--text-strong) 4%, transparent);
+  border-color: var(--select-border);
+  background: var(--select-fill);
 }
 
 .provider-only-row-main {

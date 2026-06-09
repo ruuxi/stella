@@ -1,19 +1,22 @@
 /* ============================================
-   Top-bar primary nav (Home / Store / Social ...)
-   Hover-only Apple-bar polish: no borders, no
-   persistent active pill, no decorative dots.
+   Top-bar primary nav (Home / Apps / Store / Social ...)
+   Bare segments with a sliding selection chip that marks
+   the current section ("you are here") — no enclosing
+   track around the group.
    ============================================ */
 
 .shell-topbar-nav {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 100%;
+  gap: 4px;
+  height: 28px;
   flex-shrink: 1;
   min-width: 0;
-  padding-right: 4px;
+  padding: 2px;
+  box-sizing: border-box;
   -webkit-app-region: no-drag;
-  /* When the window narrows, the nav collapses and scrolls instead of
+  /* When the window narrows, the nav scrolls internally instead of
      pushing the account / sidebar controls off the right edge. */
   overflow-x: auto;
   overflow-y: visible;
@@ -24,15 +27,55 @@
   display: none;
 }
 
+/* The raised selection thumb. Position + width are set inline from the
+   active item's measured geometry; the slide is purely CSS. */
+.shell-topbar-nav-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 0;
+  z-index: 0;
+  border-radius: var(--radius-sm, 6px);
+  /* Canonical selected chip (see --select-* tokens in index.css). A purely
+     neutral thumb is invisible on light themes (card == white) and inverts
+     on dark, so the selection leans on the accent to read on both. */
+  background: var(--select-fill-raised);
+  box-shadow:
+    var(--select-chip-shadow),
+    inset 0 0 0 0.5px var(--select-border);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.shell-topbar-nav-thumb[data-visible="true"] {
+  opacity: 1;
+}
+
+.shell-topbar-nav-thumb[data-animate="true"] {
+  transition:
+    transform 280ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    width 280ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    opacity 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-topbar-nav-thumb[data-animate="true"] {
+    transition: opacity 160ms ease;
+  }
+}
+
 .shell-topbar-nav-item {
   position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   flex-shrink: 0;
   height: 24px;
-  padding: 0 10px;
-  border-radius: var(--radius-sm, 5px);
-  color: var(--text-weak);
+  padding: 0 11px;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-base);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
   font-weight: var(--weight-medium);
@@ -43,31 +86,30 @@
   text-decoration: none;
   white-space: nowrap;
   cursor: default;
+  background: transparent;
   -webkit-app-region: no-drag;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
+  transition: color 0.12s ease;
 }
 
-.shell-topbar-nav-item:hover,
-.shell-topbar-nav-item:focus-visible {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+/* Hover on a non-selected segment only brightens the text — no fill, so it
+   never reads as a second thumb. */
+.shell-topbar-nav-item:hover {
   color: var(--text-strong);
-  outline: none;
 }
 
 .shell-topbar-nav-item:focus-visible {
+  outline: none;
   box-shadow: var(--focus-ring);
 }
 
-.shell-topbar-nav-item[data-active="true"] {
+.shell-topbar-nav-item[data-active="true"],
+.shell-topbar-nav-item[data-active="true"]:hover {
   color: var(--text-strong);
   font-weight: var(--weight-semibold);
 }
 
-.shell-topbar-nav-item[data-active="true"]:hover,
-.shell-topbar-nav-item[data-active="true"]:focus-visible {
-  color: var(--text-strong);
+.shell-topbar-nav-icon {
+  flex-shrink: 0;
 }
 
 .shell-topbar-nav-label {
@@ -134,7 +176,7 @@
   background: transparent;
   cursor: default;
   border-radius: var(--radius-sm, 5px);
-  color: var(--text-weak);
+  color: var(--text-base);
   -webkit-app-region: no-drag;
   transition:
     background 0.12s ease,
@@ -192,7 +234,7 @@
   border: none;
   border-radius: var(--radius-sm, 5px);
   background: transparent;
-  color: var(--text-weak);
+  color: var(--text-base);
   font-family: inherit;
   font-size: var(--font-size-base);
   font-weight: var(--weight-medium);
@@ -240,7 +282,7 @@
   border: none;
   border-radius: var(--radius-sm, 5px);
   background: transparent;
-  color: var(--text-weak);
+  color: var(--text-base);
   cursor: default;
   -webkit-app-region: no-drag;
   transition:

@@ -152,8 +152,8 @@
 }
 
 .settings-tab-rail-item--active {
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
-  color: var(--text-strong);
+  background: var(--select-fill);
+  color: var(--select-text);
 }
 
 /* ---- Settings search input ---- */

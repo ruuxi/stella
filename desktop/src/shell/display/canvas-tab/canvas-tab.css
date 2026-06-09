@@ -313,8 +313,8 @@
 }
 
 .canvas-tab__tile--active {
-  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
-  background: transparent;
+  border-color: var(--select-border);
+  background: var(--select-fill);
 }
 
 .canvas-tab__tile--active .canvas-tab__tile-main {
