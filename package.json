@@ -24,6 +24,7 @@
     "native:download": "node desktop/scripts/download-native-helpers.mjs",
     "workspace:create-app": "cd desktop && node scripts/create-workspace-app.mjs",
     "electron:install": "bun ./node_modules/electron/install.js",
+    "deps:prewarm": "node desktop/scripts/prewarm-vite-deps.mjs",
     "electron:dev": "node desktop/scripts/electron-dev-runner.mjs",
     "electron:typecheck": "cd desktop && tsgo -p tsconfig.electron.json --pretty false --noEmit && tsgo -p tsconfig.preload.json --pretty false --noEmit",
     "electron:typecheck:watch": "cd desktop && concurrently -k --kill-others-on-fail \"tsgo -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"tsgo -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
@@ -114,8 +115,7 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.60.0",
     "vite": "8.0.16",
-    "vitest": "^4.1.7",
-    "wait-on": "^9.0.10"
+    "vitest": "^4.1.7"
   },
   "overrides": {
     "axios": "^1.13.5",

@@ -8,6 +8,12 @@ import { selfModHmrControl } from "./vite/self-mod-hmr-plugin"
 
 
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
+// Written by the supervisor after every electron-bundle build; not a renderer
+// module, and its write cadence would only churn the watcher.
+const BUNDLE_FINGERPRINT_FILE = path.resolve(
+  __dirname,
+  '.dev-electron-bundle-fingerprint.json',
+)
 const STELLA_REPO_ROOT = path.resolve(__dirname, '..')
 const SELF_MOD_RUNTIME_RELOAD_STATE_FILE = path.resolve(
   STELLA_REPO_ROOT,
@@ -337,6 +343,7 @@ export default defineConfig({
         `${NATIVE_DIR.replace(/\\/g, '/')}/**`,
         `${RELEASE_DIR.replace(/\\/g, '/')}/**`,
         normalizeWatchedFilePath(DEV_URL_FILE),
+        normalizeWatchedFilePath(BUNDLE_FINGERPRINT_FILE),
         normalizeWatchedFilePath(SELF_MOD_RUNTIME_RELOAD_STATE_FILE),
       ],
     },

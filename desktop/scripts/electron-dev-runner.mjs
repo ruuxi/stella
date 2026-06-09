@@ -1,4 +1,24 @@
-import { execFileSync, spawn } from "node:child_process";
+/**
+ * Single-process supervisor for the dev/production launch path
+ * (`bun run electron:dev`).
+ *
+ * Historically this spawned three sibling Node processes (Vite dev server,
+ * esbuild watch service, Electron launcher) that were semantically one
+ * failure unit — any child exiting tore down the rest. They now run inside
+ * this one process:
+ *
+ *   - Vite is hosted in-process via its JS API (`createServer`), sharing this
+ *     process's heap instead of paying a second Node runtime.
+ *   - The electron bundles build on demand (startup freshness check + bare
+ *     fs.watch over their source roots) via `dev-electron-build.mjs`; no
+ *     esbuild watch contexts or resident service process.
+ *   - The Electron child lifecycle (spawn, content-gated restarts, stale-app
+ *     reaping) runs via `dev-electron.mjs`.
+ *
+ * Electron itself stays a separate child process, so Electron restarts never
+ * disturb the Vite server or the worker.
+ */
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -12,6 +32,11 @@ import {
   ensureElectronBinary,
   isElectronBinaryHealthy,
 } from "./ensure-electron-binary.mjs";
+import {
+  ensureElectronBundlesFresh,
+  watchElectronBundleSources,
+} from "./dev-electron-build.mjs";
+import { startElectronLifecycle } from "./dev-electron.mjs";
 
 const scriptDir = import.meta.dirname;
 const desktopDir = resolve(scriptDir, "..");
@@ -23,9 +48,16 @@ const viteBinPath = resolve(
   "bin",
   "vite.js",
 );
+const viteConfigPath = resolve(desktopDir, "vite.config.ts");
 const viteDevUrlPath = resolve(desktopDir, ".vite-dev-url");
 const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");
 const readyFilePath = resolve(desktopDir, ".electron-dev-runner.ready");
+
+// The whole launch stack (Vite server, bundle builds, Electron child) runs in
+// development mode; the previous multi-process runner set this on the Vite
+// child's env, and the in-process server reads it the same way.
+process.env.NODE_ENV = "development";
+
 const ensureCacheDir = (dir) => {
   try {
     mkdirSync(dir, { recursive: true });
@@ -34,9 +66,9 @@ const ensureCacheDir = (dir) => {
     // compile-cache speedup rather than fail dev startup.
   }
 };
-// Stable per-repo V8 bytecode cache for the big (~14.5MB) electron-main bundle.
-// Lives OUTSIDE dist-electron so esbuild's clean + identical-byte rewrites do
-// not invalidate it; reused across launches and self-mod restarts so Node's V8
+// Stable per-repo V8 bytecode cache for the electron-main bundle. Lives
+// OUTSIDE dist-electron so esbuild's clean + identical-byte rewrites do not
+// invalidate it; reused across launches and self-mod restarts so Node's V8
 // engine skips re-parsing/compiling the bundle every time.
 const v8CompileCacheDir = resolve(
   repoRootDir,
@@ -71,15 +103,27 @@ try {
 } catch {
   // Best-effort; a missing/unreadable cache dir just means nothing to prune.
 }
-// Dedicated V8 bytecode cache for the long-lived `vite` child, kept separate
-// from the electron-main cache so the two processes don't churn one shared
-// dir. Lets V8 reuse Vite's own compiled bytecode across launches/restarts.
+// Dedicated V8 bytecode cache for this supervisor process (which hosts Vite
+// in-process), kept separate from the electron-main cache so the two don't
+// churn one shared dir. Enabled programmatically since the launcher spawns us
+// without NODE_COMPILE_CACHE; guarded because Bun's node:module shim may not
+// implement it.
 const viteCompileCacheDir = resolve(
   repoRootDir,
   ".stella-dev",
   "vite-compile-cache",
 );
 ensureCacheDir(viteCompileCacheDir);
+try {
+  const { enableCompileCache } = await import("node:module");
+  enableCompileCache?.(viteCompileCacheDir);
+} catch {
+  // Compile cache is an optimization only.
+}
+
+// Old runner versions ran Vite and the Electron launcher as separate spawned
+// scripts; keep their command needles so an upgrade over an unclean shutdown
+// still reaps that generation's orphans.
 const managedScriptPaths = [
   resolve(scriptDir, "dev-electron-build.mjs"),
   resolve(scriptDir, "dev-electron.mjs"),
@@ -88,7 +132,7 @@ const managedCommandNeedles = [viteBinPath, ...managedScriptPaths];
 
 if (!existsSync(viteBinPath)) {
   console.error(
-    `[electron:dev] Missing Vite binary at ${viteBinPath}. Run \`bun install\` at the repo root first.`,
+    `[electron:dev] Missing Vite at ${viteBinPath}. Run \`bun install\` at the repo root first.`,
   );
   process.exit(1);
 }
@@ -299,56 +343,11 @@ if (existsSync(pidFilePath)) {
 }
 writePidFile();
 
-// Self-mod HMR endpoints are gated by Vite's localhost binding plus an
-// `Origin == null` check on the request -- not by a shared token. See
-// `isAuthorizedSelfModRequest` in `desktop/vite/self-mod-hmr-plugin.ts` for the gate
-// and `runtime/kernel/self-mod/hmr.ts` for the worker-side caller.
-const processSpecs = [
-  {
-    name: "vite",
-    command: process.execPath,
-    args: [viteBinPath],
-    cwd: desktopDir,
-    // NODE_COMPILE_CACHE lets V8 reuse Vite's own bytecode across launches and
-    // self-mod restarts, mirroring the electron-main spec below; the dedicated
-    // dir keeps it from contending with the electron-main compile cache.
-    env: {
-      ...process.env,
-      NODE_ENV: "development",
-      NODE_COMPILE_CACHE: viteCompileCacheDir,
-    },
-  },
-  {
-    name: "electron-build",
-    command: process.execPath,
-    args: [resolve(scriptDir, "dev-electron-build.mjs")],
-    cwd: repoRootDir,
-    env: {
-      ...process.env,
-      STELLA_ELECTRON_DEV_RUNNER_PID: String(process.pid),
-    },
-  },
-  {
-    name: "electron-main",
-    command: process.execPath,
-    args: [resolve(scriptDir, "dev-electron.mjs")],
-    cwd: repoRootDir,
-    // NODE_COMPILE_CACHE is inherited by the spawned Electron binary (see
-    // startApp in dev-electron.mjs, which spreads process.env), so V8 reuses
-    // bytecode for the large electron-main bundle across launches/restarts.
-    env: {
-      ...process.env,
-      NODE_COMPILE_CACHE: v8CompileCacheDir,
-      STELLA_ELECTRON_DEV_RUNNER_PID: String(process.pid),
-      STELLA_ELECTRON_READY_FILE: readyFilePath,
-    },
-  },
-];
-
-const activeChildren = new Map();
-let shuttingDown = false;
-let exitCode = 0;
-const childShutdownTimeoutMs = 3_000;
+// The Electron child reads these from its inherited env: the ready file is
+// how electron-main signals first paint back to the launcher, keyed by this
+// supervisor's pid.
+process.env.STELLA_ELECTRON_DEV_RUNNER_PID = String(process.pid);
+process.env.STELLA_ELECTRON_READY_FILE = readyFilePath;
 
 function log(message) {
   console.log(`[electron:dev] ${message}`);
@@ -358,75 +357,11 @@ function logError(message) {
   console.error(`[electron:dev] ${message}`);
 }
 
-function waitForChildExit(child, timeoutMs = childShutdownTimeoutMs) {
-  return new Promise((resolvePromise) => {
-    if (child.exitCode !== null || child.signalCode !== null) {
-      resolvePromise();
-      return;
-    }
-    const timer = setTimeout(() => {
-      resolvePromise();
-    }, timeoutMs);
-    timer.unref?.();
-    child.once("exit", () => {
-      clearTimeout(timer);
-      resolvePromise();
-    });
-  });
-}
-
-async function killChildTree(child) {
-  const pid = child.pid;
-  if (!pid || child.exitCode !== null || child.signalCode !== null) {
-    return;
-  }
-
-  if (process.platform === "win32") {
-    await new Promise((resolvePromise) => {
-      const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-        stdio: "ignore",
-        windowsHide: true,
-      });
-      killer.on("error", () => {
-        try {
-          child.kill("SIGTERM");
-        } catch {
-          // Ignore fallback kill errors during shutdown.
-        }
-        resolvePromise();
-      });
-      killer.on("exit", () => {
-        resolvePromise();
-      });
-    });
-    return;
-  }
-
-  try {
-    process.kill(-pid, "SIGTERM");
-  } catch {
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      // Ignore kill errors during shutdown.
-    }
-  }
-
-  setTimeout(() => {
-    if (child.exitCode !== null || child.signalCode !== null) {
-      return;
-    }
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // Ignore forced kill errors during shutdown.
-      }
-    }
-  }, childShutdownTimeoutMs).unref();
-}
+let shuttingDown = false;
+let exitCode = 0;
+let viteServer = null;
+let bundleSourceWatcher = null;
+let electronLifecycle = null;
 
 async function shutdownAll(trigger) {
   if (shuttingDown) {
@@ -437,55 +372,14 @@ async function shutdownAll(trigger) {
     log(trigger);
   }
 
-  const children = [...activeChildren.values()];
-  await Promise.all(
-    children.map(async ({ child }) => {
-      await killChildTree(child);
-      await waitForChildExit(child);
-    }),
-  );
+  await Promise.all([
+    electronLifecycle?.stop().catch(() => undefined),
+    bundleSourceWatcher?.close().catch(() => undefined),
+    viteServer?.close().catch(() => undefined),
+  ]);
 
   removeOwnPidFile();
   process.exit(exitCode);
-}
-
-function handleRequiredFailure(spec, detail) {
-  if (shuttingDown) {
-    return;
-  }
-  exitCode = 1;
-  void shutdownAll(`${spec.name} ${detail}; stopping electron dev.`);
-}
-
-function spawnProcess(spec) {
-  log(`starting ${spec.name}`);
-  const child = spawn(spec.command, spec.args, {
-    cwd: spec.cwd,
-    env: spec.env,
-    stdio: "inherit",
-    detached: process.platform !== "win32",
-    windowsHide: process.platform === "win32",
-  });
-
-  activeChildren.set(spec.name, { child, spec });
-
-  child.on("error", (error) => {
-    activeChildren.delete(spec.name);
-    const detail = `failed to start: ${error instanceof Error ? error.message : String(error)}`;
-    handleRequiredFailure(spec, detail);
-  });
-
-  child.on("exit", (code, signal) => {
-    activeChildren.delete(spec.name);
-    if (shuttingDown) {
-      return;
-    }
-
-    const detail = signal
-      ? `exited via ${signal}`
-      : `exited with code ${code ?? 0}`;
-    handleRequiredFailure(spec, detail);
-  });
 }
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
@@ -511,6 +405,54 @@ process.on("exit", () => {
   removeOwnPidFile();
 });
 
-for (const spec of processSpecs) {
-  spawnProcess(spec);
+// Self-mod HMR endpoints are gated by Vite's localhost binding plus an
+// `Origin == null` check on the request -- not by a shared token. See
+// `isAuthorizedSelfModRequest` in `desktop/vite/self-mod-hmr-plugin.ts` for the
+// gate and `runtime/kernel/self-mod/hmr.ts` for the worker-side caller.
+const startVite = async () => {
+  const { createServer } = await import("vite");
+  const server = await createServer({
+    configFile: viteConfigPath,
+    root: desktopDir,
+  });
+  await server.listen();
+  const address = server.httpServer?.address();
+  if (address && typeof address === "object") {
+    log(`vite listening on ${address.address}:${address.port}`);
+  }
+  return server;
+};
+
+try {
+  const [server] = await Promise.all([
+    startVite(),
+    ensureElectronBundlesFresh({ log }),
+  ]);
+  viteServer = server;
+} catch (error) {
+  exitCode = 1;
+  logError(
+    `startup failed: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  await shutdownAll("startup failure");
+}
+
+if (!shuttingDown) {
+  bundleSourceWatcher = watchElectronBundleSources({ log, logError });
+  electronLifecycle = startElectronLifecycle({
+    readiness: Promise.resolve(),
+    electronEnv: {
+      // Electron's main process gets its own V8 bytecode cache, separate from
+      // this supervisor's, so the two don't churn one shared dir.
+      NODE_COMPILE_CACHE: v8CompileCacheDir,
+    },
+    onExit: (code) => {
+      exitCode = code;
+      void shutdownAll(
+        code === 0
+          ? "electron exited; stopping electron dev."
+          : `electron exited with code ${code}; stopping electron dev.`,
+      );
+    },
+  });
 }
