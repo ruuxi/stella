@@ -156,8 +156,8 @@
 }
 
 .composer-stop {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
   color: var(--text-strong);
 }
@@ -176,8 +176,8 @@
 
 /* Add button - circular with border */
 .composer-add-button {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   cursor: default;
 }
 
@@ -192,14 +192,14 @@
 
 /* Submit button - circular, spring animation handled by motion */
 .composer-submit {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
 }
 
 /* Mic / dictation button — same footprint as add/submit */
 .composer-mic {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   cursor: default;
 }
 

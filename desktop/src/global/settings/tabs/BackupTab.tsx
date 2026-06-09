@@ -298,7 +298,7 @@ export function BackupTab() {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               onClick={() => void handleBackupNow()}
               disabled={
                 !backupLoaded || isRunningBackup || Boolean(restoringSnapshotId)
@@ -359,7 +359,7 @@ export function BackupTab() {
                   <Button
                     type="button"
                     variant="ghost"
-                    className="settings-btn"
+                    className="pill-btn"
                     onClick={() => void handleRestoreBackup(backup.snapshotId)}
                     disabled={
                       isRunningBackup ||

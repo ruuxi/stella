@@ -367,7 +367,7 @@ export function ShortcutsTab() {
         <Button
           type="button"
           variant="ghost"
-          className="settings-btn"
+          className="pill-btn"
           disabled={
             !loaded || savingShortcut !== null || capturingShortcut !== null
           }
@@ -380,7 +380,7 @@ export function ShortcutsTab() {
         <Button
           type="button"
           variant="ghost"
-          className="settings-btn"
+          className="pill-btn"
           disabled={
             !loaded ||
             savingShortcut !== null ||

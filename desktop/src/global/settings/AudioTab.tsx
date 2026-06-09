@@ -329,7 +329,7 @@ export function AudioTab() {
             <div className="settings-row-control settings-row-control--stacked">
               <button
                 type="button"
-                className="settings-btn"
+                className="pill-btn"
                 disabled={microphoneRecovery.isResetting}
                 onClick={microphoneRecovery.openSettings}
               >
@@ -337,7 +337,7 @@ export function AudioTab() {
               </button>
               <button
                 type="button"
-                className="settings-btn settings-btn--danger"
+                className="pill-btn pill-btn--danger"
                 disabled={microphoneRecovery.isResetting}
                 onClick={() => void microphoneRecovery.resetAndRestart()}
               >
