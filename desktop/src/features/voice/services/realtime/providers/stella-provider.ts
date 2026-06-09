@@ -140,8 +140,26 @@ export const stellaProvider: ProviderModule = {
       "/api/voice/session",
       body,
       {
-        errorMessage: (response) =>
-          `Failed to create voice session: ${response.status}`,
+        // Preserve the backend's human message so the renderer can route the
+        // right toast/CTA. Auth failures return a JSON `{ error }` body like
+        // "Sign in to Stella to use realtime voice." — surface that verbatim so
+        // the voice-error toast offers "Sign in" rather than a generic 401.
+        errorMessage: async (response) => {
+          const detail = await response.text().catch(() => "");
+          let parsed = "";
+          try {
+            const json = JSON.parse(detail) as { error?: unknown };
+            if (typeof json?.error === "string") parsed = json.error.trim();
+          } catch {
+            parsed = detail.trim();
+          }
+          if (response.status === 401 || response.status === 403) {
+            return parsed || "Sign in to Stella to use voice.";
+          }
+          return `Failed to create voice session: ${response.status}${
+            parsed ? ` ${parsed}` : ""
+          }`;
+        },
       },
     );
 
