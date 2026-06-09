@@ -49,6 +49,8 @@ const requiredOutputs = [
 
 const shouldIgnoreRelativePath = (relativePath) =>
   relativePath === path.join("desktop", ".low-resource-build-cache.json") ||
+  relativePath ===
+    path.join("desktop", ".dev-electron-bundle-fingerprint.json") ||
   relativePath
     .split(path.sep)
     .some((segment) => ignoredPathSegments.has(segment));

@@ -20,6 +20,7 @@ DEV-CONTEXT.md
 /runtime/node_modules/
 /.stella-runtime-reload-state.json
 /desktop/.low-resource-build-cache.json
+/desktop/.dev-electron-bundle-fingerprint.json
 /desktop/.electron-dev-app.pid
 /desktop/.electron-dev-runner.pid
 /desktop/.electron-dev-runner.ready
