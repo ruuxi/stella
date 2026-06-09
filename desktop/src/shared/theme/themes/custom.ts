@@ -1,5 +1,5 @@
 import type { Theme } from "./types";
-import pearl from "./pearl";
+import light from "./light";
 
 // The "Custom" overlay theme. Every user is on this by default. While it is
 // empty (`populated: false`) it is an invisible passthrough to its `base`
@@ -20,13 +20,13 @@ import pearl from "./pearl";
 const custom: Theme = {
   id: "custom",
   name: "Custom",
-  base: "pearl",
+  base: "light",
   overrides: { light: {}, dark: {} },
   populated: false,
   // Fallback colors if the base lookup ever fails; resolution normally derives
   // colors from `base` + `overrides`.
-  light: pearl.light,
-  dark: pearl.dark,
+  light: light.light,
+  dark: light.dark,
 };
 
 export default custom;
