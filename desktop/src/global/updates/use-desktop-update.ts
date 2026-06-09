@@ -69,7 +69,9 @@ type DesktopUpdateState = {
   installedCommit: string | null;
   publishedCommit: string | null;
   updateAvailable: boolean;
-  refreshManifest: () => Promise<void>;
+  refreshManifest: (
+    knownManifest?: InstallManifestSnapshot | null,
+  ) => Promise<void>;
 };
 
 export const useDesktopUpdate = (): DesktopUpdateState => {
@@ -77,19 +79,27 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   const [installManifest, setInstallManifest] =
     useState<InstallManifestSnapshot | null>(null);
 
-  const refreshManifest = useCallback(async () => {
-    const electronApi = window.electronAPI;
-    if (!electronApi?.updates?.getInstallManifest) {
-      setInstallManifest(null);
-      return;
-    }
-    try {
-      const next = await electronApi.updates.getInstallManifest();
-      setInstallManifest(next);
-    } catch {
-      setInstallManifest(null);
-    }
-  }, []);
+  const refreshManifest = useCallback(
+    async (knownManifest?: InstallManifestSnapshot | null) => {
+      if (knownManifest) {
+        setInstallManifest(knownManifest);
+        return;
+      }
+
+      const electronApi = window.electronAPI;
+      if (!electronApi?.updates?.getInstallManifest) {
+        setInstallManifest(null);
+        return;
+      }
+      try {
+        const next = await electronApi.updates.getInstallManifest();
+        setInstallManifest(next);
+      } catch {
+        setInstallManifest(null);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void refreshManifest();
