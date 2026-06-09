@@ -224,6 +224,9 @@ const userRowEqual = (a: UserRowViewModel, b: UserRowViewModel): boolean =>
   Boolean(a.justSent) === Boolean(b.justSent) &&
   (a.windowLabel ?? null) === (b.windowLabel ?? null) &&
   (a.windowPreviewImageUrl ?? null) === (b.windowPreviewImageUrl ?? null) &&
+  (a.appSelectionLabel ?? null) === (b.appSelectionLabel ?? null) &&
+  (a.activityLabel ?? null) === (b.activityLabel ?? null) &&
+  (a.pastedTexts?.length ?? 0) === (b.pastedTexts?.length ?? 0) &&
   attachmentsEqual(a.attachments, b.attachments) &&
   channelEnvelopeEqual(a.channelEnvelope, b.channelEnvelope);
 

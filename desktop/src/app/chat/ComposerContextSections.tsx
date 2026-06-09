@@ -4,6 +4,7 @@ import {
   ActivityContextChip,
   AppSelectionChip,
   FileContextChips,
+  PastedTextChips,
   PendingCaptureChip,
   ScreenshotContextChips,
   SelectedTextChip,
@@ -81,6 +82,23 @@ const selectedTextVariantClassNames = {
     containerClassName: null,
     chipClassName:
       "chat-composer-context-chip chat-composer-context-chip--text mini-context-chip mini-context-chip--text",
+    textClassName:
+      "chat-composer-context-text mini-context-text",
+  },
+} as const;
+
+const pastedTextVariantClassNames = {
+  full: {
+    containerClassName: null,
+    chipClassName:
+      "chat-composer-context-chip chat-composer-context-chip--pasted-text composer-context-chip composer-context-chip--pasted-text",
+    textClassName:
+      "chat-composer-context-text composer-context-text",
+  },
+  mini: {
+    containerClassName: null,
+    chipClassName:
+      "chat-composer-context-chip chat-composer-context-chip--pasted-text mini-context-chip mini-context-chip--pasted-text",
     textClassName:
       "chat-composer-context-text mini-context-text",
   },
@@ -212,6 +230,28 @@ export function ComposerFileContextSection({
       files={files}
       setChatContext={setChatContext}
       chipClassName={classes.chipClassName}
+    />
+  );
+
+  if (!classes.containerClassName) return content;
+  return <div className={classes.containerClassName}>{content}</div>;
+}
+
+export function ComposerPastedTextContextSection({
+  variant,
+  chatContext,
+  setChatContext,
+}: SharedContextProps) {
+  const pastedTexts = chatContext?.pastedTexts ?? [];
+  if (pastedTexts.length === 0) return null;
+
+  const classes = pastedTextVariantClassNames[variant];
+  const content = (
+    <PastedTextChips
+      pastedTexts={pastedTexts}
+      setChatContext={setChatContext}
+      className={classes.chipClassName}
+      textClassName={classes.textClassName}
     />
   );
 

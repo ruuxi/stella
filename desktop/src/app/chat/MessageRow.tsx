@@ -29,7 +29,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { AppWindowMac, ClipboardList, Crop, Paperclip } from "lucide-react";
+import {
+  AppWindowMac,
+  ClipboardList,
+  ClipboardPaste,
+  Crop,
+  Paperclip,
+} from "lucide-react";
+import { describePastedText } from "@/features/chat/lib/paste-context";
 import { ChipPreviewPortal } from "@/app/chat/ChipPreviewPortal";
 import { useHoverPreview } from "@/app/chat/use-hover-preview";
 import type {
@@ -274,6 +281,7 @@ export const UserMessageRow = memo(
     const { text, windowLabel, attachments, channelEnvelope } = row;
     const appSelectionLabel = row.appSelectionLabel?.trim();
     const activityLabel = row.activityLabel?.trim();
+    const pastedTexts = row.pastedTexts ?? [];
     const windowPreviewImageUrl = sanitizeAttachmentImageUrl(
       row.windowPreviewImageUrl,
     );
@@ -329,6 +337,25 @@ export const UserMessageRow = memo(
         ),
       });
     }
+    pastedTexts.forEach((descriptor, index) => {
+      chips.push({
+        key: `pasted-text-${index}`,
+        node: (
+          <span
+            className="event-context-chip event-context-chip--pasted-text"
+            title={`Pasted text — ${describePastedText(descriptor)}`}
+          >
+            <ClipboardPaste
+              className="event-context-chip__icon"
+              size={13}
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
+            <span className="event-context-chip__label">Pasted text</span>
+          </span>
+        ),
+      });
+    });
     if (channelEnvelope?.provider) {
       chips.push({
         key: "channel-provider",

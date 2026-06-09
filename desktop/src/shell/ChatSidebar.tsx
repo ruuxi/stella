@@ -31,6 +31,7 @@ import { getInlineWorkingIndicatorActive } from "@/features/chat/working-indicat
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import { useFooterTasks } from "@/features/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
+import { handleComposerPaste } from "@/features/chat/lib/paste-context";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import {
   useScreenshotPreview,
@@ -581,6 +582,9 @@ export function ChatPanelTab({
                               event.preventDefault();
                               handleSubmit(event);
                             }
+                          }}
+                          onPaste={(event) => {
+                            handleComposerPaste(event, setChatContext);
                           }}
                           placeholder={composerState.placeholder}
                         />

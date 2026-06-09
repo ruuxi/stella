@@ -66,6 +66,12 @@ export type ChatContext = {
     height: number;
   }[];
   files?: ChatContextFile[];
+  /**
+   * Long text the user pasted into the composer, lifted out of the
+   * textarea into collapsed "Pasted text" chips. Each entry is sent to
+   * the agent as user-provided content for the turn.
+   */
+  pastedTexts?: string[];
   capturePending?: boolean;
   windowScreenshot?: {
     dataUrl: string;

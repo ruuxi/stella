@@ -20,6 +20,8 @@ export type UserRowViewModel = {
   windowPreviewImageUrl?: string;
   appSelectionLabel?: string;
   activityLabel?: string;
+  /** Descriptors for the "Pasted text" chips lifted out of the composer. */
+  pastedTexts?: { lines: number; chars: number }[];
   attachments: Attachment[];
   channelEnvelope?: ChannelEnvelope;
 };

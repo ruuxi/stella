@@ -4,6 +4,7 @@ import type { ChatContext } from "@/shared/types/electron";
 type ComposerContextState = {
   hasScreenshotContext: boolean;
   hasFileContext: boolean;
+  hasPastedTextContext: boolean;
   hasAppSelectionContext: boolean;
   hasActivityContext: boolean;
   hasWindowContext: boolean;
@@ -64,6 +65,7 @@ export const hasAttachedComposerChips = (
   if (chatContext.regionScreenshots && chatContext.regionScreenshots.length > 0)
     return true;
   if (chatContext.files && chatContext.files.length > 0) return true;
+  if (chatContext.pastedTexts && chatContext.pastedTexts.length > 0) return true;
   if (chatContext.capturePending) return true;
   return false;
 };
@@ -78,6 +80,7 @@ export const resolveComposerContextState = (
   );
   const hasScreenshotContext = Boolean(chatContext?.regionScreenshots?.length);
   const hasFileContext = Boolean(chatContext?.files?.length);
+  const hasPastedTextContext = Boolean(chatContext?.pastedTexts?.length);
   const hasAppSelectionContext = Boolean(chatContext?.appSelection?.snapshot);
   const hasActivityContext = Boolean(chatContext?.activity?.id);
   const hasWindowContext = windowContextEnabled;
@@ -86,6 +89,7 @@ export const resolveComposerContextState = (
   const hasSubmittableContext = Boolean(
     hasScreenshotContext
       || hasFileContext
+      || hasPastedTextContext
       || hasAppSelectionContext
       || hasActivityContext
       || hasWindowContext
@@ -95,6 +99,7 @@ export const resolveComposerContextState = (
   return {
     hasScreenshotContext,
     hasFileContext,
+    hasPastedTextContext,
     hasAppSelectionContext,
     hasActivityContext,
     hasWindowContext,
@@ -119,6 +124,9 @@ const resolveComposerPlaceholder = ({
   }
   if (contextState.hasFileContext) {
     return "Ask about the file...";
+  }
+  if (contextState.hasPastedTextContext) {
+    return "Ask about the pasted text...";
   }
   if (contextState.hasAppSelectionContext) {
     return "Ask about the selected area...";
@@ -217,5 +225,17 @@ export const removeComposerFileContext = (
     const next = [...(prev.files ?? [])];
     next.splice(index, 1);
     return { ...prev, files: next };
+  });
+};
+
+export const removeComposerPastedTextContext = (
+  index: number,
+  setChatContext: SetChatContext,
+) => {
+  setChatContext((prev) => {
+    if (!prev) return prev;
+    const next = [...(prev.pastedTexts ?? [])];
+    next.splice(index, 1);
+    return { ...prev, pastedTexts: next };
   });
 };

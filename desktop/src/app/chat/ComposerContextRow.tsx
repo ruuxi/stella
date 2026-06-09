@@ -7,6 +7,7 @@ import {
   ComposerAppSelectionContextSection,
   ComposerCaptureContextSection,
   ComposerFileContextSection,
+  ComposerPastedTextContextSection,
   ComposerSelectedTextContextSection,
   ComposerWindowContextSection,
 } from "./ComposerContextSections";
@@ -58,6 +59,11 @@ export function ComposerContextRow({
         onPreviewScreenshot={onPreviewScreenshot}
       />
       <ComposerFileContextSection
+        variant={variant}
+        chatContext={chatContext}
+        setChatContext={setChatContext}
+      />
+      <ComposerPastedTextContextSection
         variant={variant}
         chatContext={chatContext}
         setChatContext={setChatContext}

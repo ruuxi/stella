@@ -224,11 +224,14 @@ button.mini-context-chip:hover {
 .chat-composer-context-chip--app-selection,
 .composer-context-chip--app-selection,
 .mini-context-chip--app-selection,
-.chat-composer-context-chip--activity,
-.composer-context-chip--activity,
-.mini-context-chip--activity,
-.chat-composer-context-chip--window,
-.composer-context-chip--window {
+  .chat-composer-context-chip--activity,
+  .composer-context-chip--activity,
+  .mini-context-chip--activity,
+  .chat-composer-context-chip--pasted-text,
+  .composer-context-chip--pasted-text,
+  .mini-context-chip--pasted-text,
+  .chat-composer-context-chip--window,
+  .composer-context-chip--window {
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
@@ -253,7 +256,10 @@ button.mini-context-chip:hover {
 .mini-context-chip--app-selection,
 .chat-composer-context-chip--activity,
 .composer-context-chip--activity,
-.mini-context-chip--activity {
+.mini-context-chip--activity,
+.chat-composer-context-chip--pasted-text,
+.composer-context-chip--pasted-text,
+.mini-context-chip--pasted-text {
   background: color-mix(in oklch, var(--foreground) 16%, transparent);
 }
 
@@ -383,6 +389,16 @@ button.mini-context-chip:hover {
   object-fit: contain;
 }
 
+.composer-context-preview-text {
+  overflow-y: auto;
+  min-height: 0;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 .composer-context-pending-inner {
   width: 56px;
   height: 42px;
@@ -408,6 +424,7 @@ button.mini-context-chip:hover {
 
 .composer-context-chip--text,
 .composer-context-chip--app-selection,
+.composer-context-chip--pasted-text,
 .composer-context-chip--window {
   max-width: min(320px, 45vw);
 }
