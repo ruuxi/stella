@@ -468,3 +468,7 @@ export const IPC_PET_SET_INTERACTIVE = "pet:setInteractive" as const;
 export const IPC_PET_STATUS = "pet:status" as const;
 export const IPC_PET_OPEN_CHAT = "pet:openChat" as const;
 export const IPC_PET_SEND_MESSAGE = "pet:sendMessage" as const;
+/** Pet click: toggle the mini chat window open/closed. When opening,
+ *  main positions the mini just to the left of the pet sprite; the pet
+ *  itself stays visible either way. */
+export const IPC_PET_TOGGLE_MINI = "pet:toggleMiniWindow" as const;

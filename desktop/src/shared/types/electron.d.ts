@@ -1922,6 +1922,9 @@ type ElectronPetApi = {
   sendMessage: (text: string) => void;
   /** Receive `pet:sendMessage` payloads (full window only). */
   onSendMessage: (callback: (text: string) => void) => () => void;
+  /** Toggle the mini chat window from a pet click. Main opens it just
+   *  to the left of the pet sprite, or hides it if already showing. */
+  toggleMiniWindow: () => void;
 };
 
 declare global {

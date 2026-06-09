@@ -11,6 +11,7 @@ import {
   IPC_PET_SET_INTERACTIVE,
   IPC_PET_SET_OPEN,
   IPC_PET_STATUS,
+  IPC_PET_TOGGLE_MINI,
 } from "../../src/shared/contracts/ipc-channels.js";
 import type { WindowManager } from "../windows/window-manager.js";
 import type { PetWindowController } from "../windows/pet-window.js";
@@ -197,6 +198,14 @@ export const registerPetHandlers = ({
     }
   };
 
+  const onToggleMini = (event: IpcMainEvent) => {
+    if (!assertPrivilegedSender(event, IPC_PET_TOGGLE_MINI)) return;
+    const petWindow = getPetController()?.getWindow() ?? null;
+    const petBounds =
+      petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null;
+    windowManager.toggleMiniBesidePet(petBounds);
+  };
+
   ipcMain.handle(IPC_PET_GET_STATE, onGetState);
   ipcMain.on(IPC_PET_SET_OPEN, onSetOpen);
   ipcMain.on(IPC_PET_MOVE_WINDOW, onMoveWindow);
@@ -207,6 +216,7 @@ export const registerPetHandlers = ({
   ipcMain.on(IPC_PET_STATUS, onStatus);
   ipcMain.on(IPC_PET_OPEN_CHAT, onOpenChat);
   ipcMain.on(IPC_PET_SEND_MESSAGE, onSendMessage);
+  ipcMain.on(IPC_PET_TOGGLE_MINI, onToggleMini);
 
   const dispose = () => {
     if (activeDisposer !== dispose) return;
@@ -221,6 +231,7 @@ export const registerPetHandlers = ({
     ipcMain.removeListener(IPC_PET_STATUS, onStatus);
     ipcMain.removeListener(IPC_PET_OPEN_CHAT, onOpenChat);
     ipcMain.removeListener(IPC_PET_SEND_MESSAGE, onSendMessage);
+    ipcMain.removeListener(IPC_PET_TOGGLE_MINI, onToggleMini);
     latestStatus = DEFAULT_STATUS;
   };
 
