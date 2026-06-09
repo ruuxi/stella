@@ -27,13 +27,7 @@ import type {
   FileChangeRecord,
   ProducedFileRecord,
 } from "../../contracts/file-changes.js";
-
-export type SelfModAppliedPayload = {
-  featureId: string;
-  files: string[];
-  batchIndex: number;
-  status?: "pending" | "applied";
-};
+import type { SelfModAppliedPayload } from "../../contracts/local-chat.js";
 
 export type SelfModMonitor = {
   getBaselineHead: (repoRoot: string) => Promise<string | null>;

@@ -33,7 +33,7 @@ import type {
   DiscoveredApp as SharedDiscoveredApp,
   AllUserSignals as SharedAllUserSignals,
   AllUserSignalsResult as SharedAllUserSignalsResult,
-  SelfModFeatureSummary as SharedSelfModFeatureSummary,
+  SelfModCommitSummary as SharedSelfModCommitSummary,
   StoreReleaseArtifact as SharedStoreReleaseArtifact,
   StoreReleaseManifest as SharedStoreReleaseManifest,
   StorePackageRecord as SharedStorePackageRecord,
@@ -110,7 +110,7 @@ export type DiscoveredApp = SharedDiscoveredApp;
 export type AllUserSignals = SharedAllUserSignals;
 export type AllUserSignalsResult = SharedAllUserSignalsResult;
 export type AgentStreamIpcEvent = AgentStreamEvent;
-export type SelfModFeatureSummary = SharedSelfModFeatureSummary;
+export type SelfModCommitSummary = SharedSelfModCommitSummary;
 export type StoreReleaseArtifact = SharedStoreReleaseArtifact;
 export type StoreReleaseManifest = SharedStoreReleaseManifest;
 export type StorePackageRecord = SharedStorePackageRecord;
@@ -670,8 +670,8 @@ export type ElectronAgentApi = {
       reason?: string;
     }) => void,
   ) => () => void;
-  selfModApply: (featureId?: string) => Promise<unknown>;
-  selfModRevert: (featureId?: string, steps?: number) => Promise<unknown>;
+  selfModApply: (commitHash?: string) => Promise<unknown>;
+  selfModRevert: (commitHash?: string, steps?: number) => Promise<unknown>;
   getCrashRecoveryStatus: () => Promise<
     | {
         kind: "dirty";
@@ -680,15 +680,15 @@ export type ElectronAgentApi = {
       }
     | {
         kind: "clean";
-        latestFeature: SelfModFeatureSummary | null;
+        latestSelfModCommit: SelfModCommitSummary | null;
       }
   >;
   discardUnfinishedSelfModChanges: (conversationId?: string) => Promise<{
     discardedFileCount: number;
     discardedFiles: string[];
   }>;
-  getLastSelfModFeature: () => Promise<string | null>;
-  listSelfModFeatures: (limit?: number) => Promise<SelfModFeatureSummary[]>;
+  getLastSelfModCommit: () => Promise<string | null>;
+  listSelfModCommits: (limit?: number) => Promise<SelfModCommitSummary[]>;
   triggerViteError: () => Promise<{ ok: boolean }>;
   fixViteError: () => Promise<{ ok: boolean }>;
 };

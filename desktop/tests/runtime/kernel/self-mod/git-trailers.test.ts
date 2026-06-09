@@ -3,13 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { commitGitMessage } from "../../../../../runtime/kernel/self-mod/git/commit.js";
+import { listFilesForCommit } from "../../../../../runtime/kernel/self-mod/git/log.js";
 import {
-  commitGitMessage,
-  listFilesForCommit,
-  parseStellaCommitTrailers,
-  revertGitFeature,
+  revertSelfModCommit,
   rollbackGitChangesSince,
-} from "../../../../../runtime/kernel/self-mod/git.js";
+} from "../../../../../runtime/kernel/self-mod/git/revert.js";
+import { parseStellaCommitTrailers } from "../../../../../runtime/kernel/self-mod/git/trailers.js";
 
 describe("parseStellaCommitTrailers — Stella-Thread", () => {
   it("parses Stella-Thread alongside Stella-Conversation", () => {
@@ -83,7 +83,7 @@ describe("git revert end-to-end with Stella-Thread trailer", () => {
     await rm(repoRoot, { recursive: true, force: true });
   });
 
-  it("writes Stella-Thread + Stella-Conversation trailers and revertGitFeature reads them back", async () => {
+  it("writes Stella-Thread + Stella-Conversation trailers and revertSelfModCommit reads them back", async () => {
     await writeFile(path.join(repoRoot, "feature.txt"), "v1\n", "utf8");
     git(repoRoot, ["add", "feature.txt"]);
     const commitHash = await commitGitMessage({
@@ -108,9 +108,9 @@ describe("git revert end-to-end with Stella-Thread trailer", () => {
     // Round-trip: revert reads both trailers and returns them, sampled
     // from the original commit (not the synthetic "Revert ..." commit
     // git creates at HEAD).
-    const revert = await revertGitFeature({
+    const revert = await revertSelfModCommit({
       repoRoot,
-      featureId: commitHash!,
+      commitHash: commitHash!,
       steps: 1,
     });
     expect(revert.conversationId).toBe("conv-abc");
@@ -132,9 +132,9 @@ describe("git revert end-to-end with Stella-Thread trailer", () => {
     });
     expect(commitHash).toBeTruthy();
 
-    const revert = await revertGitFeature({
+    const revert = await revertSelfModCommit({
       repoRoot,
-      featureId: commitHash!,
+      commitHash: commitHash!,
       steps: 1,
     });
     expect(revert.conversationId).toBe("conv-legacy");
@@ -170,7 +170,7 @@ describe("listFilesForCommit", () => {
 
   it("returns an empty list when there is no self-mod commit history", async () => {
     // Fresh repo with only the seed commit (not a Stella self-mod commit) →
-    // getLastGitFeatureId falls back to null, listFilesForCommit returns [].
+    // getLastSelfModCommitHash falls back to null, listFilesForCommit returns [].
     const files = await listFilesForCommit(repoRoot, null);
     expect(files).toEqual([]);
   });

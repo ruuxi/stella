@@ -14,7 +14,7 @@ import type {
   RuntimeVoiceChatPayload,
   RuntimeVoiceOrchestratorConfigRequest,
   RuntimeVoiceToolCallPayload,
-  SelfModFeatureSummary,
+  SelfModCommitSummary,
   StellaReleaseArtifactRef,
   StoreReleaseGitArtifact,
   StoreReleaseSourcePack,
@@ -1122,12 +1122,12 @@ export class RuntimeHostAdapter {
     return this.host.getSocialSessionStatus();
   }
 
-  revertSelfModFeature(payload: { featureId?: string; steps?: number }) {
-    return this.host.revertSelfModFeature(payload);
+  revertSelfModCommit(payload: { commitHash?: string; steps?: number }) {
+    return this.host.revertSelfModCommit(payload);
   }
 
-  applySelfModFeature(payload: { featureId?: string }) {
-    return this.host.applySelfModFeature(payload);
+  applySelfModCommit(payload: { commitHash?: string }) {
+    return this.host.applySelfModCommit(payload);
   }
 
   getCrashRecoveryStatus() {
@@ -1138,12 +1138,12 @@ export class RuntimeHostAdapter {
     return this.host.discardUnfinishedSelfModChanges(payload);
   }
 
-  getLastSelfModFeature() {
-    return this.host.getLastSelfModFeature();
+  getLastSelfModCommit() {
+    return this.host.getLastSelfModCommit();
   }
 
-  listRecentSelfModFeatures(limit?: number): Promise<SelfModFeatureSummary[]> {
-    return this.host.listRecentSelfModFeatures(limit);
+  listRecentSelfModCommits(limit?: number): Promise<SelfModCommitSummary[]> {
+    return this.host.listRecentSelfModCommits(limit);
   }
 
   killAllShells() {

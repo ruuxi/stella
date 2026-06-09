@@ -16,8 +16,6 @@ import {
   type RuntimeChatPayload,
   type RuntimeOneShotCompletionRequest,
   type RuntimeOneShotCompletionResult,
-  type RuntimeSelfModApplyResult,
-  type RuntimeSelfModRevertResult,
   type RuntimeVoiceToolCallPayload,
   type StorePublishArgs,
   type StorePublishSelectedFeaturesArgs,
@@ -59,25 +57,26 @@ import {
 } from "./cli-bridge-server.js";
 import { resolveRuntimePaths } from "./runtime-paths.js";
 import {
-  discardGitDirtyFiles,
   detectSelfModAppliedSince,
-  getLastGitFeatureId,
   getGitHead,
-  listGitCommitsBySelector,
+  getLastSelfModCommitHash,
   listGitDirtyFiles,
-  listFilesForCommit,
-  listRecentGitFeatures,
-  revertGitFeature,
+  listRecentSelfModCommits,
+} from "../kernel/self-mod/git/log.js";
+import {
+  discardGitDirtyFiles,
   rollbackGitChangesSince,
-} from "../kernel/self-mod/git.js";
+} from "../kernel/self-mod/git/revert.js";
 import {
   createSelfModHmrController,
-  deriveApplyTransitionRequirements,
   type ApplyOptions,
-  type ApplyResult,
-  type HmrApplyResponse,
   type SelfModHmrController,
 } from "../kernel/self-mod/hmr.js";
+import {
+  createSelfModCoordinator,
+  recordSelfModRevertNotice,
+  type PendingSelfModApply,
+} from "./self-mod-coordinator.js";
 import type { StellaSourcePack } from "../kernel/self-mod/stella-source-control.js";
 import { StoreModService } from "../kernel/self-mod/store-mod-service.js";
 import { createDesktopDatabase } from "../kernel/storage/database.js";
@@ -234,7 +233,7 @@ type AgentEventPayload = {
   finalText?: string;
   persisted?: boolean;
   selfModApplied?: {
-    featureId: string;
+    commitHash: string;
     files: string[];
     batchIndex: number;
     status?: "pending" | "applied";
@@ -271,32 +270,6 @@ type WorkerState = {
   selfModHmrController: SelfModHmrController | null;
   pendingSelfModApplies: Map<string, PendingSelfModApply>;
   /**
-   * Worker-internal handler that wraps `revertGitFeature` with the
-   * self-mod HMR lifecycle (snapshot pre-revert files, register run,
-   * `dispatchApplyBatch` for the morph cover + reload tiering).
-   * Declared inside `initializeWorker` so it has access to the
-   * closure-scoped `dispatchApplyBatch` + `releaseRuntimeReloadFor`;
-   * stored on `state` so the module-level
-   * `INTERNAL_WORKER_SELF_MOD_REVERT` handler can call it.
-   */
-  revertSelfModWithMorph:
-    | ((args: {
-        featureId?: string;
-        steps?: number;
-      }) => Promise<RuntimeSelfModRevertResult>)
-    | null;
-  applySelfModWithMorph:
-    | ((args: {
-        featureId?: string;
-      }) => Promise<RuntimeSelfModApplyResult>)
-    | null;
-  beginExternalSelfModWithMorph:
-    | ((args: { runId: string; paths: string[] }) => Promise<{ ok: true }>)
-    | null;
-  finishExternalSelfModWithMorph:
-    | ((args: { runId: string; succeeded: boolean }) => Promise<{ ok: true }>)
-    | null;
-  /**
    * Persistent ring buffer for streaming run events. Every event we emit
    * via NOTIFICATION_NAMES.RUN_EVENT also gets persisted here so that a
    * reconnecting host (post-Electron-restart, post-mini-window-open, etc.)
@@ -314,58 +287,12 @@ type WorkerState = {
   cliBridgeServer: CliBridgeServer | null;
 };
 
-/**
- * Per-transition state for an apply batch that the worker has handed to the
- * Electron host to wrap in a morph cover. The host calls back via
- * `INTERNAL_WORKER_RESUME_HMR` once the cover is on screen; we look up the
- * batch by transitionId and run the actual `selfModHmrController.apply`
- * + runtime-reload release at that point so the renderer never visibly
- * crosses the swap.
- */
-type PendingApplyBatch = {
-  applyResult: ApplyResult;
-  requiresFullReload: boolean;
-  requiresRuntimeRestart: boolean;
-  requiresProcessRestart: boolean;
-};
-
-type PendingSelfModApply = {
-  featureId: string;
-  applyResult: ApplyResult;
-  conversationId: string;
-  files: string[];
-  assistantMessageEventId?: string;
-};
-
 type StoredSelfModApplied = {
-  featureId?: string;
+  commitHash?: string;
   files?: string[];
   batchIndex?: number;
   status?: "pending" | "applied";
 };
-
-// Combine several deferred apply batches into a single transition so a
-// cumulative "Update" raises one morph cover and triggers one worker restart
-// (rather than one per pending change). `results` must be in commit order:
-// later entries' runs apply last, so they win for any overlapping path.
-const mergePendingApplyResults = (results: ApplyResult[]): ApplyResult => ({
-  appliedRuns: results.flatMap((result) => result.appliedRuns),
-  restartRelevantRunIds: [
-    ...new Set(results.flatMap((result) => result.restartRelevantRunIds)),
-  ],
-  hasRestartRelevantPaths: results.some(
-    (result) => result.hasRestartRelevantPaths,
-  ),
-  hasRuntimeRestartRelevantPaths: results.some(
-    (result) => result.hasRuntimeRestartRelevantPaths,
-  ),
-  hasProcessRestartRelevantPaths: results.some(
-    (result) => result.hasProcessRestartRelevantPaths,
-  ),
-  hasFullReloadRelevantPaths: results.some(
-    (result) => result.hasFullReloadRelevantPaths,
-  ),
-});
 
 // Resolve a runtime CLI bundled into desktop/dist-electron/runtime/kernel/cli/.
 const resolveRuntimeCliPath = (fileName: string) =>
@@ -373,31 +300,6 @@ const resolveRuntimeCliPath = (fileName: string) =>
 
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
-
-const recordSelfModRevertNotice = (args: {
-  runtimeStore: RuntimeStore | null;
-  conversationId?: string | null;
-  originThreadKey?: string | null;
-  featureId: string;
-  files?: string[];
-  logScope: string;
-}) => {
-  const conversationId = asTrimmedString(args.conversationId);
-  if (!conversationId || !args.runtimeStore) return;
-  try {
-    args.runtimeStore.recordSelfModRevert({
-      conversationId,
-      originThreadKey: args.originThreadKey ?? null,
-      featureId: args.featureId,
-      files: args.files ?? [],
-    });
-  } catch (error) {
-    console.warn(
-      `[${args.logScope}] failed to record revert notice:`,
-      (error as Error).message,
-    );
-  }
-};
 
 import {
   buildStoreReleaseRedactor,
@@ -511,7 +413,6 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.socialSessionService?.stop();
   state.socialSessionService = null;
   state.voiceService = null;
-  state.revertSelfModWithMorph = null;
   // `runner.stop()` now awaits a bounded drain of the background
   // compaction scheduler so SQLite writes complete before we close
   // `state.db`. Without this await, an in-flight `compactThread` could
@@ -535,7 +436,6 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.socialSessionStore = null;
   state.selfModHmrController = null;
   state.pendingSelfModApplies.clear();
-  state.applySelfModWithMorph = null;
   state.runEventLog?.stop();
   state.runEventLog = null;
   await state.cliBridgeServer?.stop().catch(() => undefined);
@@ -562,16 +462,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     deviceId: null,
     selfModHmrController: null,
     pendingSelfModApplies: new Map(),
-    revertSelfModWithMorph: null,
-    applySelfModWithMorph: null,
-    beginExternalSelfModWithMorph: null,
-    finishExternalSelfModWithMorph: null,
     runEventLog: null,
     cliBridgeServer: null,
   };
-  const pendingApplyBatches = new Map<string, PendingApplyBatch>();
-  const selfModRunRootIds = new Map<string, string>();
-  const selfModRunApplyModes = new Map<string, string | undefined>();
 
   // Lazy loaders for the runner subgraph. runner.ts, one-shot-completion.ts and
   // chat-prompt-context.ts share ~80 files and together are ~68% of the worker
@@ -591,83 +484,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     | null = null;
   const loadChatPromptContext = () =>
     (chatPromptContextModule ??= import("../kernel/chat-prompt-context.js"));
-
-  // Hoisted out of initializeWorker so both the lifecycle hooks (declared
-  // during init) and the INTERNAL_WORKER_RESUME_HMR handler (registered at
-  // module load) can share it. The helper is stateless beyond the captured
-  // `peer`.
-  const releaseRuntimeReloadFor = async (
-    runIds: string[],
-    options?: { allowDeferredReload?: boolean },
-  ) => {
-    await Promise.all(
-      runIds.map(async (runId) => {
-        try {
-          await peer.request(
-            METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME,
-            {
-              runId,
-              allowDeferredReload: options?.allowDeferredReload !== false,
-            },
-            { retryOnDisconnect: true },
-          );
-        } catch (error) {
-          console.warn(
-            "[self-mod-reload] Failed to resume host runtime reloads:",
-            (error as Error).message,
-          );
-        }
-      }),
-    );
-  };
-
-  const releasePendingApplyBatches = async (reason: string) => {
-    const runIds = [
-      ...new Set(
-        [...pendingApplyBatches.values()].flatMap(
-          (pending) => pending.applyResult.restartRelevantRunIds,
-        ),
-      ),
-    ];
-    pendingApplyBatches.clear();
-    selfModRunRootIds.clear();
-    selfModRunApplyModes.clear();
-    if (runIds.length === 0) return;
-    console.warn(
-      `[self-mod-hmr] Releasing runtime reload pauses for pending apply batches: ${reason}.`,
-    );
-    await releaseRuntimeReloadFor(runIds);
-  };
-
-  const discardFailedApplyState = async (
-    applyResult: ApplyResult,
-    reason: string,
-  ) => {
-    const controller = state.selfModHmrController;
-    if (!controller) return;
-    const discarded = await controller
-      .discard(applyResult.appliedRuns)
-      .catch((error) => {
-        console.warn(
-          `[self-mod-hmr] Failed to discard Vite self-mod state after ${reason}:`,
-          (error as Error).message,
-        );
-        return false;
-      });
-    if (!discarded) {
-      console.warn(
-        `[self-mod-hmr] Vite self-mod state may remain pinned after ${reason}.`,
-      );
-    }
-    await controller
-      .releaseRuns(applyResult.restartRelevantRunIds)
-      .catch((error) => {
-        console.warn(
-          `[self-mod-hmr] Failed to release Vite client update pauses after ${reason}:`,
-          (error as Error).message,
-        );
-      });
-  };
 
   const emitRunEvent = (event: AgentEventPayload) => {
     // Persist to the run event log BEFORE emitting on the wire so a host
@@ -716,7 +532,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       (state.voiceService?.isBusy() ?? false) ||
       (state.voiceService?.getPendingRequestCount() ?? 0) > 0;
     const requestPinned = (peer.activeRequestHandlerCount?.() ?? 0) > 0;
-    const pendingApplyPinned = pendingApplyBatches.size > 0;
+    const pendingApplyPinned = selfMod.hasPendingApplyBatches();
     return Boolean(
       state.runner?.getActiveOrchestratorRun() ||
         (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
@@ -797,7 +613,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     conversationId: string;
     eventId: string;
     selfModApplied: {
-      featureId: string;
+      commitHash: string;
       files: string[];
       batchIndex: number;
       status?: "pending" | "applied";
@@ -816,7 +632,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   const patchSelfModApplyStatus = (args: {
     conversationId: string;
     eventId?: string;
-    featureId: string;
+    commitHash: string;
     status: "pending" | "applied";
   }): void => {
     const current = state.chatStore
@@ -828,13 +644,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         const payload = event.payload as
           | { selfModApplied?: StoredSelfModApplied }
           | undefined;
-        return payload?.selfModApplied?.featureId === args.featureId;
+        return payload?.selfModApplied?.commitHash === args.commitHash;
       });
     const currentPayload = current?.payload as
       | { selfModApplied?: StoredSelfModApplied }
       | undefined;
     const currentSelfMod = currentPayload?.selfModApplied;
-    if (!current || currentSelfMod?.featureId !== args.featureId) {
+    if (!current || currentSelfMod?.commitHash !== args.commitHash) {
       return;
     }
     const updated = ensureChatStore().mergeEventPayload({
@@ -851,6 +667,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       notifyLocalChatUpdated(peer, args.conversationId, updated);
     }
   };
+
+  const selfMod = createSelfModCoordinator({
+    peer,
+    getController: () => state.selfModHmrController,
+    getStoreModService: () => state.storeModService,
+    getRuntimeStore: () => state.runtimeStore,
+    getRepoRoot: () => state.init?.stellaAppDir ?? null,
+    getPendingSelfModApplies: () => state.pendingSelfModApplies,
+    patchSelfModApplyStatus,
+  });
 
   const ensureRunner = () => {
     if (!state.runner) {
@@ -989,7 +815,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     // workspace itself changed -- a different root means a different
     // workspace and the pending apply is no longer valid.
     if (!sameRuntimeRoot) {
-      await releasePendingApplyBatches("worker initialization");
+      await selfMod.releasePendingApplyBatches("worker initialization");
     }
     state.init = init;
 
@@ -1123,189 +949,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       }
     };
 
-    // ---- self-mod apply orchestration ----
-    // The worker server owns morph orchestration: each finalize/cancel that
-    // produces an apply batch flows through `dispatchApplyBatch`, which
-    // raises the morph cover on the host (HOST_HMR_RUN_TRANSITION) and
-    // waits for the host's INTERNAL_WORKER_RESUME_HMR callback before
-    // running the actual `selfModHmrController.apply` and releasing the
-    // per-runId runtime-reload pauses.
-    const dispatchApplyBatch = async (applyResult: ApplyResult) => {
-      if (applyResult.appliedRuns.length === 0) {
-        return;
-      }
-      const transitionId = crypto.randomUUID();
-      const stateRunIds = [
-        ...new Set(
-          applyResult.restartRelevantRunIds.map(
-            (runId) => selfModRunRootIds.get(runId) ?? runId,
-          ),
-        ),
-      ];
-      const {
-        requiresFullReload,
-        requiresRuntimeRestart,
-        requiresProcessRestart,
-      } = deriveApplyTransitionRequirements(applyResult);
-      pendingApplyBatches.set(transitionId, {
-        applyResult,
-        requiresFullReload,
-        requiresRuntimeRestart,
-        requiresProcessRestart,
-      });
-      try {
-        await peer.request(
-          METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
-          {
-            transitionId,
-            runIds: applyResult.restartRelevantRunIds,
-            stateRunIds,
-            requiresFullReload,
-            requiresRuntimeRestart,
-            requiresProcessRestart,
-          },
-          { retryOnDisconnect: true },
-        );
-      } catch (error) {
-        console.warn(
-          "[self-mod-hmr] HOST_HMR_RUN_TRANSITION failed; applying without morph cover:",
-          (error as Error).message,
-        );
-        // Host couldn't drive the cover (no Electron, or shutting down). Try
-        // the apply directly, but only release runtime-reload pauses after
-        // Vite confirms it accepted the overlay update.
-        if (pendingApplyBatches.has(transitionId)) {
-          const applyResponse = await selfModHmrController
-            .apply(applyResult.appliedRuns, {
-              forceClientFullReload: true,
-            })
-            .catch(() => ({ ok: false }));
-          if (!applyResponse.ok) {
-            console.warn(
-              "[self-mod-hmr] Direct apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
-            );
-            await discardFailedApplyState(applyResult, "direct apply failure");
-            pendingApplyBatches.delete(transitionId);
-            await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
-              allowDeferredReload: requiresRuntimeRestart,
-            });
-            for (const runId of applyResult.restartRelevantRunIds) {
-              selfModRunRootIds.delete(runId);
-              selfModRunApplyModes.delete(runId);
-            }
-            return;
-          }
-          pendingApplyBatches.delete(transitionId);
-          await releaseRuntimeReloadFor(applyResult.restartRelevantRunIds, {
-            allowDeferredReload: requiresRuntimeRestart,
-          });
-          for (const runId of applyResult.restartRelevantRunIds) {
-            selfModRunRootIds.delete(runId);
-            selfModRunApplyModes.delete(runId);
-          }
-        }
-      }
-    };
-
-    const externalSelfModPathsByRun = new Map<string, string[]>();
-
-    state.beginExternalSelfModWithMorph = async ({ runId, paths }) => {
-      if (!state.selfModHmrController) {
-        throw new Error("Self-mod HMR controller is not initialized.");
-      }
-      selfModRunRootIds.set(runId, runId);
-      await peer
-        .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, { runId })
-        .catch((error) => {
-          console.warn(
-            "[self-mod-external] Failed to pause host runtime reloads:",
-            (error as Error).message,
-          );
-        });
-      try {
-        await state.selfModHmrController.beginRun(runId);
-        const absolutePaths = paths.map((filePath) =>
-          path.isAbsolute(filePath)
-            ? filePath
-            : path.join(init.stellaAppDir, filePath),
-        );
-        if (absolutePaths.length > 0) {
-          externalSelfModPathsByRun.set(runId, absolutePaths);
-          // Match agent self-mod pre-write tracking: own/pin the paths now,
-          // but capture the morph payload only after the external mutation.
-          await state.selfModHmrController.recordWrite(runId, absolutePaths, {
-            captureSnapshot: false,
-          });
-        }
-        return { ok: true };
-      } catch (error) {
-        if (state.selfModHmrController.hasRun(runId)) {
-          await state.selfModHmrController.cancel(runId).catch(() => undefined);
-        }
-        await releaseRuntimeReloadFor([runId]);
-        selfModRunRootIds.delete(runId);
-        selfModRunApplyModes.delete(runId);
-        externalSelfModPathsByRun.delete(runId);
-        throw error;
-      }
-    };
-
-    state.finishExternalSelfModWithMorph = async ({ runId, succeeded }) => {
-      const controller = state.selfModHmrController;
-      if (!controller) {
-        throw new Error("Self-mod HMR controller is not initialized.");
-      }
-      if (!controller.hasRun(runId)) {
-        await controller.releaseRuns([runId]).catch((error) => {
-          console.warn(
-            "[self-mod-external] Failed to release Vite client update pause:",
-            (error as Error).message,
-          );
-        });
-        await releaseRuntimeReloadFor([runId]);
-        selfModRunRootIds.delete(runId);
-        selfModRunApplyModes.delete(runId);
-        externalSelfModPathsByRun.delete(runId);
-        return { ok: true };
-      }
-
-      if (!succeeded) {
-        const cancelResult = await controller.cancel(runId);
-        await releaseRuntimeReloadFor([runId]);
-        selfModRunRootIds.delete(runId);
-        selfModRunApplyModes.delete(runId);
-        externalSelfModPathsByRun.delete(runId);
-        await dispatchApplyBatch(cancelResult);
-        return { ok: true };
-      }
-
-      const absolutePaths = externalSelfModPathsByRun.get(runId) ?? [];
-      if (absolutePaths.length > 0) {
-        // Capture the post-merge contents so the morph overlay cannot replay
-        // stale pre-update files over the freshly merged checkout.
-        await controller.recordWrite(runId, absolutePaths);
-      }
-      const decision = controller.finalize(runId);
-      externalSelfModPathsByRun.delete(runId);
-      if (decision.appliedRuns.length === 0) {
-        if (!controller.hasRun(runId)) {
-          await controller.releaseRuns([runId]).catch((error) => {
-            console.warn(
-              "[self-mod-external] Failed to release Vite client update pause:",
-              (error as Error).message,
-            );
-          });
-          await releaseRuntimeReloadFor([runId]);
-          selfModRunRootIds.delete(runId);
-          selfModRunApplyModes.delete(runId);
-        }
-        return { ok: true };
-      }
-
-      await dispatchApplyBatch(decision);
-      return { ok: true };
-    };
-
     const runnerOptions: StellaHostRunnerOptions = {
       deviceId: deviceIdentity.deviceId,
       stellaAppDir: init.stellaAppDir,
@@ -1411,16 +1054,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             conversationId: payload.conversationId,
             requestId: payload.requestId,
             service: storeModService,
-            lifecycle: {
-              ...(state.beginExternalSelfModWithMorph
-                ? { beginExternalSelfMod: state.beginExternalSelfModWithMorph }
-                : {}),
-              ...(state.finishExternalSelfModWithMorph
-                ? {
-                    finishExternalSelfMod: state.finishExternalSelfModWithMorph,
-                  }
-                : {}),
-            },
+            lifecycle: selfMod.externalLifecycle,
             runReview: async ({ prompt }) => {
               const review = await (
                 await loadOneShotCompletion()
@@ -1475,141 +1109,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         detectAppliedSince: detectSelfModAppliedSince,
       },
       selfModHmrController,
-      selfModLifecycle: {
-        beginRun: async ({
-          runId,
-          rootRunId,
-          taskDescription,
-          packageId,
-          releaseNumber,
-          mode,
-        }) => {
-          selfModRunRootIds.set(runId, rootRunId ?? runId);
-          selfModRunApplyModes.set(runId, mode);
-          await peer
-            .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, {
-              runId,
-            })
-            .catch((error) => {
-              console.warn(
-                "[self-mod-reload] Failed to pause host runtime reloads:",
-                (error as Error).message,
-              );
-            });
-          await storeModService.beginSelfModRun({
-            runId,
-            taskDescription,
-            ...(packageId ? { packageId } : {}),
-            ...(releaseNumber == null ? {} : { releaseNumber }),
-            ...(mode ? { applyMode: mode } : {}),
-          });
-        },
-        finalizeRun: async ({
-          runId,
-          succeeded,
-          conversationId,
-          threadKey,
-          commitMessageProvider,
-          featureNamerProvider,
-        }) => {
-          // Git commit happens BEFORE the apply so the overlay's
-          // "read from disk at apply time" sees the post-commit content.
-          // (For most cases the disk hasn't moved between write and
-          // commit, but this ordering is cheaper to reason about than
-          // racing them.)
-          const finalized = await storeModService.finalizeSelfModRun({
-            runId,
-            succeeded,
-            ...(conversationId ? { conversationId } : {}),
-            ...(threadKey ? { threadKey } : {}),
-            ...(commitMessageProvider ? { commitMessageProvider } : {}),
-            ...(featureNamerProvider ? { featureNamerProvider } : {}),
-          });
-
-          if (!selfModHmrController.hasRun(runId)) {
-            // Run was never registered with the contention tracker
-            // (e.g., the orchestrator skipped tracking for this run).
-            // Nothing to apply — just release the reload pause that
-            // beginRun installed.
-            await selfModHmrController.releaseRuns([runId]).catch((error) => {
-              console.warn(
-                "[self-mod-hmr] Failed to release Vite client update pause:",
-                (error as Error).message,
-              );
-            });
-            await releaseRuntimeReloadFor([runId]);
-            selfModRunRootIds.delete(runId);
-            selfModRunApplyModes.delete(runId);
-            return;
-          }
-
-          const decision = selfModHmrController.finalize(runId);
-          if (decision.appliedRuns.length === 0) {
-            if (!selfModHmrController.hasRun(runId)) {
-              // The run finalized with no tracked source writes. There is
-              // no renderer batch to apply, but beginRun still installed a
-              // runtime-reload pause that must be released.
-              await selfModHmrController.releaseRuns([runId]).catch((error) => {
-                console.warn(
-                  "[self-mod-hmr] Failed to release Vite client update pause:",
-                  (error as Error).message,
-                );
-              });
-              await releaseRuntimeReloadFor([runId]);
-              selfModRunRootIds.delete(runId);
-              selfModRunApplyModes.delete(runId);
-              return;
-            }
-            // Run is held — another active run still owns at least one
-            // touched path. Reload pause stays in place; it'll be
-            // released once the held batch finally drains and applies.
-            return;
-          }
-          // Defer the apply whenever the change produced a commit: the user
-          // applies it by clicking "Update" on the pending card. Nothing
-          // auto-applies. The card is matched back to this stash in `onEnd`
-          // by `commitHash === selfModApplied.featureId` (reliable; no run-id
-          // correlation needed). A change that never gets clicked stays
-          // committed on disk and goes live on the next restart.
-          const applyMode = selfModRunApplyModes.get(runId);
-          if (finalized?.commitHash && applyMode !== "desktop-update") {
-            state.pendingSelfModApplies.set(finalized.commitHash, {
-              featureId: finalized.commitHash,
-              applyResult: decision,
-              conversationId,
-              files: finalized.files,
-            });
-            return;
-          }
-          await dispatchApplyBatch(decision);
-        },
-        cancelRun: async (runId) => {
-          storeModService.cancelSelfModRun(runId);
-
-          if (!selfModHmrController.hasRun(runId)) {
-            await selfModHmrController.releaseRuns([runId]).catch((error) => {
-              console.warn(
-                "[self-mod-hmr] Failed to release Vite client update pause:",
-                (error as Error).message,
-              );
-            });
-            await releaseRuntimeReloadFor([runId]);
-            selfModRunRootIds.delete(runId);
-            selfModRunApplyModes.delete(runId);
-            return;
-          }
-
-          // Cancel may drain held runs whose only blocker was this one.
-          // Apply the drained batch under a morph cover, then release
-          // this run's pause separately (cancel is not part of the apply
-          // batch — it discards its writes rather than apply them).
-          const cancelResult = await selfModHmrController.cancel(runId);
-          await releaseRuntimeReloadFor([runId]);
-          selfModRunRootIds.delete(runId);
-          selfModRunApplyModes.delete(runId);
-          await dispatchApplyBatch(cancelResult);
-        },
-      },
+      selfModLifecycle: selfMod.lifecycle,
       stellaBrowserBinPath: resolveDesktopCliEntrypoint(
         init.stellaAppDir,
         "stella-browser",
@@ -1628,216 +1128,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       // path up front so shells spawned after the bridge comes online can call
       // back into the host without rebuilding the runner.
       cliBridgeSocketPath: bridgePaths.cliBridgeSocketPath,
-    };
-
-    // Install the morph-cover revert handler. Lives here (inside
-    // initializeWorker) so it captures `dispatchApplyBatch`,
-    // `releaseRuntimeReloadFor`, `selfModRunRootIds`, and
-    // `selfModHmrController` from the surrounding closure; the
-    // module-level `INTERNAL_WORKER_SELF_MOD_REVERT` handler calls it
-    // via `state.revertSelfModWithMorph`.
-    state.revertSelfModWithMorph = async (payload) => {
-      const repoRoot = init.stellaAppDir;
-      const syntheticRunId = `self-mod-revert:${crypto.randomUUID()}`;
-      let runRegisteredWithHmr = false;
-      let runtimeReloadPaused = false;
-
-      // Resolve the target commit hash ONCE up front. Both
-      // `listFilesForCommit` (snapshot) and `revertGitFeature` (the
-      // actual revert) fall back to `getLastGitFeatureId` when no
-      // featureId is supplied; resolving here pins both calls to the
-      // same commit in the common case where there IS a last feature
-      // id. Edge case: if `getLastGitFeatureId` returns null (fresh
-      // repo / no Stella commits yet), `resolvedFeatureId` collapses
-      // back to `undefined` and the two callsites resolve independently
-      // — `revertGitFeature` will then throw cleanly with "No commit
-      // found to revert" so we don't risk corruption, but the race
-      // protection only applies once at least one feature commit exists.
-      const resolvedFeatureId =
-        payload.featureId?.trim() ||
-        (await getLastGitFeatureId(repoRoot).catch(() => null)) ||
-        undefined;
-
-      try {
-        selfModRunRootIds.set(syntheticRunId, syntheticRunId);
-        await peer
-          .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, {
-            runId: syntheticRunId,
-          })
-          .then(() => {
-            runtimeReloadPaused = true;
-          })
-          .catch((error) => {
-            console.warn(
-              "[self-mod-revert] Failed to pause host runtime reloads:",
-              (error as Error).message,
-            );
-          });
-        await selfModHmrController.beginRun(syntheticRunId);
-        runRegisteredWithHmr = true;
-
-        // Snapshot pre-revert disk content for every file the revert
-        // will touch. Vite serves the snapshot until apply, then
-        // cross-fades into the reverted (live disk) content under the
-        // morph cover.
-        //
-        // Note: when `steps > 1`, we only snapshot files from the
-        // first reverted commit. Files touched by commits 2..N will
-        // change on disk without a morph cover (Vite's own watcher
-        // picks them up via the no-snapshot path). The current
-        // callsite always passes `steps: 1` so this is dormant; a
-        // future multi-step caller would need to union files across
-        // the whole reverted range.
-        let preRevertFiles: string[] = [];
-        try {
-          preRevertFiles = await listFilesForCommit(
-            repoRoot,
-            resolvedFeatureId ?? null,
-          );
-        } catch {
-          // Best-effort — without it Vite still reacts via its watcher
-          // post-revert, just without a morph cover.
-        }
-        if (preRevertFiles.length > 0) {
-          const absolutePaths = preRevertFiles.map((file) =>
-            path.join(repoRoot, file),
-          );
-          await selfModHmrController.recordWrite(syntheticRunId, absolutePaths);
-        }
-
-        const result = await revertGitFeature({
-          repoRoot,
-          featureId: resolvedFeatureId,
-          steps: payload.steps,
-        });
-
-        // Ledger the revert so the revert-notice hook can inject on
-        // the next user turn for orchestrator + originating subagent.
-        // Skipped when the commit had no `Stella-Conversation`
-        // trailer — without it, we have no conversation to route to.
-        recordSelfModRevertNotice({
-          runtimeStore: state.runtimeStore,
-          conversationId: result.conversationId,
-          originThreadKey: result.originThreadKey,
-          featureId: result.featureId,
-          files: result.files,
-          logScope: "self-mod-revert",
-        });
-
-        // Finalize through the shared apply pipeline — same code path
-        // an agent self-mod run takes. Handles HMR vs full reload vs
-        // worker restart based on path-relevance classification of the
-        // files we just snapshotted.
-        const decision = selfModHmrController.finalize(syntheticRunId);
-        runRegisteredWithHmr = false;
-        if (decision.appliedRuns.length === 0) {
-          await selfModHmrController
-            .releaseRuns([syntheticRunId])
-            .catch((error) => {
-              console.warn(
-                "[self-mod-revert] Failed to release Vite client update pause:",
-                (error as Error).message,
-              );
-            });
-          if (runtimeReloadPaused) {
-            await releaseRuntimeReloadFor([syntheticRunId]);
-            runtimeReloadPaused = false;
-          }
-          selfModRunRootIds.delete(syntheticRunId);
-        } else {
-          await dispatchApplyBatch(decision);
-          // dispatchApplyBatch owns the apply + runtime-reload release
-          // for `decision.restartRelevantRunIds`. Anything not in that
-          // set still needs its pause released here.
-          if (
-            runtimeReloadPaused &&
-            !decision.restartRelevantRunIds.includes(syntheticRunId)
-          ) {
-            await releaseRuntimeReloadFor([syntheticRunId]);
-            runtimeReloadPaused = false;
-          }
-          if (!decision.restartRelevantRunIds.includes(syntheticRunId)) {
-            selfModRunRootIds.delete(syntheticRunId);
-          }
-        }
-
-        return result;
-      } catch (err) {
-        if (runRegisteredWithHmr) {
-          await selfModHmrController
-            .releaseRuns([syntheticRunId])
-            .catch(() => undefined);
-        }
-        if (runtimeReloadPaused) {
-          await releaseRuntimeReloadFor([syntheticRunId]).catch(
-            () => undefined,
-          );
-        }
-        selfModRunRootIds.delete(syntheticRunId);
-        throw err;
-      }
-    };
-
-    state.applySelfModWithMorph = async ({ featureId }) => {
-      const resolvedFeatureId = featureId?.trim();
-      if (!resolvedFeatureId) {
-        throw new Error("Self-mod feature id is required.");
-      }
-      // Clicking "Update" brings Stella fully up to date: git is linear and the
-      // disk already holds the combined state, so drain every pending change in
-      // commit order, merge them into a single transition (one morph cover, one
-      // worker restart, all reload pauses released together), and flip every
-      // pending card to "applied". `Map` preserves insertion order, which
-      // matches commit order here.
-      const entries = [...state.pendingSelfModApplies.values()];
-
-      if (entries.length === 0) {
-        // Stash lost (e.g. the worker restarted since staging). The committed
-        // change is already on disk; adopt it with a clean reload and a
-        // best-effort status patch.
-        await selfModHmrController.forceResumeAll().catch((error) => {
-          console.warn(
-            "[self-mod-hmr] Failed to resume deferred self-mod state after apply miss:",
-            (error as Error).message,
-          );
-        });
-        const [summary] = await listGitCommitsBySelector(
-          init.stellaAppDir,
-          { commitHashes: [resolvedFeatureId] },
-          4_000,
-        ).catch(() => []);
-        if (summary?.conversationId) {
-          patchSelfModApplyStatus({
-            conversationId: summary.conversationId,
-            featureId: resolvedFeatureId,
-            status: "applied",
-          });
-        }
-        return {
-          featureId: resolvedFeatureId,
-          applied: false,
-          message: "Pending self-mod apply was not found.",
-        };
-      }
-
-      for (const entry of entries) {
-        state.pendingSelfModApplies.delete(entry.featureId);
-      }
-      await dispatchApplyBatch(
-        mergePendingApplyResults(entries.map((entry) => entry.applyResult)),
-      );
-      for (const entry of entries) {
-        patchSelfModApplyStatus({
-          conversationId: entry.conversationId,
-          eventId: entry.assistantMessageEventId,
-          featureId: entry.featureId,
-          status: "applied",
-        });
-      }
-      return {
-        featureId: resolvedFeatureId,
-        applied: true,
-      };
     };
 
     // Build the runner in the background instead of on the worker-ready path:
@@ -2641,7 +1931,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               // for this conversation onto the latest assistant reply.
               if (lastAssistantMessageEventId) {
                 for (const [
-                  featureId,
+                  commitHash,
                   pending,
                 ] of state.pendingSelfModApplies) {
                   if (
@@ -2655,7 +1945,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                     conversationId: payload.conversationId,
                     eventId: lastAssistantMessageEventId,
                     selfModApplied: {
-                      featureId,
+                      commitHash,
                       files: pending.files,
                       batchIndex: 0,
                       status: "pending",
@@ -3527,16 +2817,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 shas,
               ),
             applyMode: installApplyMode,
-            lifecycle: {
-              ...(state.beginExternalSelfModWithMorph
-                ? { beginExternalSelfMod: state.beginExternalSelfModWithMorph }
-                : {}),
-              ...(state.finishExternalSelfModWithMorph
-                ? {
-                    finishExternalSelfMod: state.finishExternalSelfModWithMorph,
-                  }
-                : {}),
-            },
+            lifecycle: selfMod.externalLifecycle,
             log: (event, fields) => logger.info(event, fields),
           });
           if (fastImportResult.status === "applied") {
@@ -3621,10 +2902,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_EXTERNAL_BEGIN,
     async (params) => {
-      const handler = state.beginExternalSelfModWithMorph;
-      if (!handler) {
-        throw new Error("External self-mod lifecycle is not initialized.");
-      }
       const payload = params as { runId?: unknown; paths?: unknown };
       const runId =
         typeof payload?.runId === "string" ? payload.runId.trim() : "";
@@ -3637,24 +2914,23 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               typeof filePath === "string" && filePath.length > 0,
           )
         : [];
-      return await handler({ runId, paths });
+      return await selfMod.externalLifecycle.beginExternalSelfMod({
+        runId,
+        paths,
+      });
     },
   );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_EXTERNAL_FINISH,
     async (params) => {
-      const handler = state.finishExternalSelfModWithMorph;
-      if (!handler) {
-        throw new Error("External self-mod lifecycle is not initialized.");
-      }
       const payload = params as { runId?: unknown; succeeded?: unknown };
       const runId =
         typeof payload?.runId === "string" ? payload.runId.trim() : "";
       if (!runId) {
         throw new Error("External self-mod finish requires a runId.");
       }
-      return await handler({
+      return await selfMod.externalLifecycle.finishExternalSelfMod({
         runId,
         succeeded: payload?.succeeded === true,
       });
@@ -3726,102 +3002,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
     async (params) => {
-      // Repurposed for the contended-apply pipeline: this is the host's
-      // signal that the morph cover for `transitionId` is on screen and
-      // we can safely run the actual overlay apply + release the
-      // runtime-reload pauses. The single-run `resume` API is gone.
+      // The host's signal that the morph cover for `transitionId` is on
+      // screen and the worker can safely run the actual overlay apply +
+      // release the runtime-reload pauses. The single-run `resume` API
+      // is gone.
       const payload = params as
         | { transitionId?: string; runIds?: string[]; options?: ApplyOptions }
         | undefined;
-      const transitionId = payload?.transitionId?.trim();
-      if (!transitionId) {
-        throw new Error("INTERNAL_WORKER_RESUME_HMR requires a transitionId.");
-      }
-      const pending = pendingApplyBatches.get(transitionId);
-      if (!pending) {
-        // Stale callback (e.g., worker restarted between dispatch and
-        // resume). Release the host-side runtime reload pauses using the
-        // runIds echoed back by the host; the worker's pending map may have
-        // been lost while the host kept its pause set alive.
-        const staleRunIds = Array.isArray(payload?.runIds)
-          ? payload.runIds.filter((runId) => typeof runId === "string")
-          : [];
-        await releaseRuntimeReloadFor(staleRunIds);
-        return { ok: false, reason: "unknown-transition" as const };
-      }
-      const controller = state.selfModHmrController;
-      if (pending.requiresProcessRestart) {
-        const discarded = controller
-          ? await controller.discard(pending.applyResult.appliedRuns)
-          : false;
-        if (!discarded) {
-          console.warn(
-            "[self-mod-hmr] Failed to discard Vite state before process restart.",
-          );
-        }
-        pendingApplyBatches.delete(transitionId);
-        await releaseRuntimeReloadFor(
-          pending.applyResult.restartRelevantRunIds,
-          { allowDeferredReload: false },
-        );
-        for (const runId of pending.applyResult.restartRelevantRunIds) {
-          selfModRunRootIds.delete(runId);
-          selfModRunApplyModes.delete(runId);
-        }
-        return { ok: true, requiresClientFullReload: false };
-      }
-
-      let applyResponse: HmrApplyResponse = controller
-        ? await controller
-            .apply(pending.applyResult.appliedRuns, payload?.options)
-            .catch(() => ({ ok: false }))
-        : { ok: false };
-      if (
-        !applyResponse.ok &&
-        controller &&
-        payload?.options?.forceClientFullReload !== true
-      ) {
-        applyResponse = await controller
-          .apply(pending.applyResult.appliedRuns, {
-            forceClientFullReload: true,
-          })
-          .catch(() => ({ ok: false }));
-        if (applyResponse.ok) {
-          applyResponse = {
-            ...applyResponse,
-            requiresClientFullReload: true,
-          };
-        }
-      }
-      if (!applyResponse.ok) {
-        console.warn(
-          "[self-mod-hmr] Apply failed; discarding Vite self-mod state before releasing runtime reload pause.",
-        );
-        await discardFailedApplyState(pending.applyResult, "apply failure");
-        pendingApplyBatches.delete(transitionId);
-        await releaseRuntimeReloadFor(
-          pending.applyResult.restartRelevantRunIds,
-          { allowDeferredReload: pending.requiresRuntimeRestart },
-        );
-        for (const runId of pending.applyResult.restartRelevantRunIds) {
-          selfModRunRootIds.delete(runId);
-          selfModRunApplyModes.delete(runId);
-        }
-        return { ok: false, reason: "apply-failed" as const };
-      }
-      pendingApplyBatches.delete(transitionId);
-      await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds, {
-        allowDeferredReload: pending.requiresRuntimeRestart,
-      });
-      for (const runId of pending.applyResult.restartRelevantRunIds) {
-        selfModRunRootIds.delete(runId);
-        selfModRunApplyModes.delete(runId);
-      }
-      return {
-        ok: true,
-        requiresClientFullReload:
-          applyResponse.requiresClientFullReload === true,
-      };
+      return await selfMod.resumeTransition(payload ?? {});
     },
   );
 
@@ -4147,8 +3335,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY,
     async (params) => {
-      const payload = params as { featureId?: string };
-      if (!state.applySelfModWithMorph) {
+      const payload = params as { commitHash?: string };
+      if (!state.init) {
         await state.selfModHmrController?.forceResumeAll().catch((error) => {
           console.warn(
             "[self-mod-hmr] Failed to resume deferred self-mod state without apply handler:",
@@ -4156,13 +3344,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           );
         });
         return {
-          featureId: payload.featureId,
+          commitHash: payload.commitHash,
           applied: false,
           message: "Self-mod apply handler is not available.",
         };
       }
-      return await state.applySelfModWithMorph({
-        featureId: payload.featureId,
+      return await selfMod.applyPendingWithMorph({
+        commitHash: payload.commitHash,
       });
     },
   );
@@ -4173,28 +3361,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
-      const payload = params as { featureId?: string; steps?: number };
-      if (!state.revertSelfModWithMorph) {
-        // Worker initialized without HMR wiring (test fixtures, e.g.).
-        // Fall back to the raw revert with no morph cover — better than
-        // refusing the user's undo entirely.
-        const result = await revertGitFeature({
-          repoRoot: state.init.stellaAppDir,
-          featureId: payload.featureId,
-          steps: payload.steps,
-        });
-        recordSelfModRevertNotice({
-          runtimeStore: state.runtimeStore,
-          conversationId: result.conversationId,
-          originThreadKey: result.originThreadKey,
-          featureId: result.featureId,
-          files: result.files,
-          logScope: "self-mod-revert",
-        });
-        return result;
-      }
-      return await state.revertSelfModWithMorph({
-        featureId: payload.featureId,
+      const payload = params as { commitHash?: string; steps?: number };
+      return await selfMod.revertWithMorph({
+        commitHash: payload.commitHash,
         steps: payload.steps,
       });
     },
@@ -4233,13 +3402,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           latestChangedAtMs,
         };
       }
-      const [latestFeature = null] = await listRecentGitFeatures(
+      const [latestSelfModCommit = null] = await listRecentSelfModCommits(
         state.init.stellaAppDir,
         1,
       );
       return {
         kind: "clean",
-        latestFeature,
+        latestSelfModCommit,
       };
     },
   );
@@ -4257,7 +3426,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           runtimeStore: state.runtimeStore,
           conversationId: asTrimmedString(payload?.conversationId),
           originThreadKey: null,
-          featureId: `unfinished:${crypto.randomUUID()}`,
+          commitHash: `unfinished:${crypto.randomUUID()}`,
           files: result.discardedFiles,
           logScope: "self-mod-discard-unfinished",
         });
@@ -4267,24 +3436,24 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_LAST_FEATURE,
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_LAST_COMMIT,
     async () => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
-      return await getLastGitFeatureId(state.init.stellaAppDir);
+      return await getLastSelfModCommitHash(state.init.stellaAppDir);
     },
   );
 
   peer.registerRequestHandler(
-    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_RECENT_FEATURES,
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_RECENT_COMMITS,
     async (params) => {
       if (!state.init) {
         throw new Error("Worker has not been initialized.");
       }
       const rawLimit = (params as { limit?: number } | undefined)?.limit;
       const limit = Number.isFinite(rawLimit) ? Number(rawLimit) : 8;
-      return await listRecentGitFeatures(state.init.stellaAppDir, limit);
+      return await listRecentSelfModCommits(state.init.stellaAppDir, limit);
     },
   );
 

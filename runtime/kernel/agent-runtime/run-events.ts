@@ -27,8 +27,8 @@ import type {
   RuntimeStreamEvent,
   RuntimeToolEndEvent,
   RuntimeToolStartEvent,
-  SelfModAppliedPayload,
 } from "./types.js";
+import type { SelfModAppliedPayload } from "../../contracts/local-chat.js";
 import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 
 const logger = createRuntimeLogger("agent-runtime.events");

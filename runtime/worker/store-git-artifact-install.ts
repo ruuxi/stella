@@ -10,18 +10,18 @@ import type {
   StoreInstallRecord,
   StoreReleaseGitArtifact,
 } from "../contracts/index.js";
-import { listGitDirtyFiles } from "../kernel/self-mod/git.js";
+import { listGitDirtyFiles } from "../kernel/self-mod/git/log.js";
 import type { StoreModService } from "../kernel/self-mod/store-mod-service.js";
-import {
-  STORE_PUBLISH_DEPENDENCY_FILE_NAMES,
-  runStorePublishDependencyInstall,
-  storePublishTouchesDependencyFiles,
-} from "./store-source-pack-install.js";
 import type {
   SourceImportApplyMode,
   SourceImportLifecycle,
 } from "./source-import.js";
-import { runGit, runGitStatus } from "./source-import-git.js";
+import { runGit, runGitStatus, toText } from "./git-exec.js";
+import {
+  applyMergedTreeToWorkingTree,
+  computeCleanMergeTree,
+  runMechanicalApplyWithLifecycle,
+} from "./mechanical-apply.js";
 
 const execFileAsync = promisify(execFile);
 const STORE_GIT_OBJECT_DOWNLOAD_CONCURRENCY = 8;
@@ -33,12 +33,6 @@ type GitObjectUrl = {
   downloadUrl: string;
 };
 
-type GitNameStatusChange = {
-  status: string;
-  path: string;
-  deleted: boolean;
-};
-
 type StoreGitArtifactFastPathResult =
   | {
       status: "applied";
@@ -48,19 +42,6 @@ type StoreGitArtifactFastPathResult =
       status: "needs-agent";
       reason: string;
     };
-
-const toText = (value: string | Buffer | undefined): string =>
-  Buffer.isBuffer(value) ? value.toString("utf8") : (value ?? "");
-
-const expandExternalSelfModPaths = (paths: string[]): string[] => {
-  const expanded = new Set(paths);
-  if (storePublishTouchesDependencyFiles(paths)) {
-    for (const dependencyFile of STORE_PUBLISH_DEPENDENCY_FILE_NAMES) {
-      expanded.add(dependencyFile);
-    }
-  }
-  return [...expanded];
-};
 
 const mapConcurrent = async <T, R>(
   values: T[],
@@ -81,46 +62,6 @@ const mapConcurrent = async <T, R>(
   );
   await Promise.all(workers);
   return results;
-};
-
-const parseNameStatus = (raw: string): GitNameStatusChange[] => {
-  const fields = raw.split("\0").filter(Boolean);
-  const changes: GitNameStatusChange[] = [];
-  for (let index = 0; index < fields.length; index += 2) {
-    const status = fields[index]?.trim();
-    const filePath = fields[index + 1]?.trim();
-    if (!status || !filePath) continue;
-    changes.push({
-      status,
-      path: filePath.replace(/\\/g, "/"),
-      deleted: status === "D",
-    });
-  }
-  return changes;
-};
-
-const applyMergedTreeToWorkingTree = async (args: {
-  repoRoot: string;
-  treeHash: string;
-  changes: GitNameStatusChange[];
-}): Promise<void> => {
-  const deleted = args.changes
-    .filter((change) => change.deleted)
-    .map((change) => change.path);
-  const present = args.changes
-    .filter((change) => !change.deleted)
-    .map((change) => change.path);
-
-  if (present.length > 0) {
-    await runGit(args.repoRoot, ["checkout", args.treeHash, "--", ...present]);
-  }
-
-  for (const filePath of deleted) {
-    await fsPromises.rm(path.join(args.repoRoot, filePath), {
-      recursive: true,
-      force: true,
-    });
-  }
 };
 
 const gitDirForRepo = async (repoRoot: string): Promise<string> => {
@@ -469,132 +410,57 @@ export const tryStoreGitArtifactFastPath = async (args: {
     };
   }
 
-  const mergeTreeResult = await runGitStatus(
-    args.repoRoot,
-    ["merge-tree", "--write-tree", "HEAD", args.gitArtifact.featureCommit],
-    { maxBuffer: 20 * 1024 * 1024 },
-  );
-  if (mergeTreeResult.exitCode !== 0) {
-    const details =
-      mergeTreeResult.stderr.trim() ||
-      mergeTreeResult.stdout.trim() ||
-      "git merge-tree reported conflicts";
-    return {
-      status: "needs-agent",
-      reason: `Native git merge-tree was not clean: ${details}`,
-    };
-  }
-
-  const treeHash = mergeTreeResult.stdout.trim().split(/\s+/)[0] ?? "";
-  if (!treeHash) {
-    return {
-      status: "needs-agent",
-      reason: "Native git merge-tree did not return a merged tree.",
-    };
-  }
-
-  const headTree = await runGit(args.repoRoot, ["rev-parse", "HEAD^{tree}"]);
-  if (headTree === treeHash) {
-    return {
-      status: "applied",
-      installRecord: args.service.recordInstall({
-        packageId: args.packageId,
-        releaseNumber: args.releaseNumber,
-        installCommitHash: null,
-        sourceRevisionId: `git:${args.gitArtifact.featureCommit}`,
-      }),
-    };
-  }
-
-  const rawNameStatus = await runGit(args.repoRoot, [
-    "diff",
-    "--name-status",
-    "--no-renames",
-    "-z",
-    "HEAD",
-    treeHash,
-  ]);
-  const changes = parseNameStatus(rawNameStatus);
-  const appliedPaths = Array.from(
-    new Set(changes.map((change) => change.path)),
-  );
-  if (appliedPaths.length === 0) {
-    return {
-      status: "applied",
-      installRecord: args.service.recordInstall({
-        packageId: args.packageId,
-        releaseNumber: args.releaseNumber,
-        installCommitHash: null,
-        sourceRevisionId: `git:${args.gitArtifact.featureCommit}`,
-      }),
-    };
-  }
-
-  const runId = `store-git-import:${args.packageId}:${randomUUID()}`;
-  const conversationId = `store-install:${args.packageId}`;
-  let hmrRunStarted = false;
-  await args.service.beginSelfModRun({
-    runId,
-    taskDescription: `${args.applyMode === "update" ? "Update" : "Install"} ${args.displayName} from Store`,
-    packageId: args.packageId,
-    releaseNumber: args.releaseNumber,
-    applyMode: args.applyMode,
+  const merge = await computeCleanMergeTree({
+    repoRoot: args.repoRoot,
+    mergeRef: args.gitArtifact.featureCommit,
   });
-  try {
-    if (args.lifecycle?.beginExternalSelfMod) {
-      await args.lifecycle.beginExternalSelfMod({
-        runId,
-        paths: expandExternalSelfModPaths(appliedPaths),
-      });
-      hmrRunStarted = true;
-    }
-
-    await applyMergedTreeToWorkingTree({
-      repoRoot: args.repoRoot,
-      treeHash,
-      changes,
-    });
-
-    const dependencyInstallRan =
-      storePublishTouchesDependencyFiles(appliedPaths);
-    if (dependencyInstallRan) {
-      await runStorePublishDependencyInstall(args.repoRoot);
-    }
-
-    const finalized = await args.service.finalizeSelfModRun({
-      runId,
-      succeeded: true,
-      conversationId,
-      threadKey: conversationId,
-    });
-    if (!finalized?.commitHash) {
-      throw new Error(
-        "Store git import wrote changes but did not create an install commit.",
-      );
-    }
-
-    if (hmrRunStarted && args.lifecycle?.finishExternalSelfMod) {
-      await args.lifecycle.finishExternalSelfMod({ runId, succeeded: true });
-      hmrRunStarted = false;
-    }
-
+  if (merge.status === "needs-agent") {
+    return merge;
+  }
+  if (merge.status === "no-changes") {
     return {
       status: "applied",
       installRecord: args.service.recordInstall({
         packageId: args.packageId,
         releaseNumber: args.releaseNumber,
-        installCommitHash: finalized.commitHash,
-        sourceRevisionId: finalized.sourceRevisionId ?? null,
-        sourceRevisionIds: [`git:${args.gitArtifact.featureCommit}`],
+        installCommitHash: null,
+        sourceRevisionId: `git:${args.gitArtifact.featureCommit}`,
       }),
     };
-  } catch (error) {
-    args.service.cancelSelfModRun(runId);
-    if (hmrRunStarted && args.lifecycle?.finishExternalSelfMod) {
-      await args.lifecycle
-        .finishExternalSelfMod({ runId, succeeded: false })
-        .catch(() => undefined);
-    }
-    throw error;
   }
+
+  const conversationId = `store-install:${args.packageId}`;
+  const result = await runMechanicalApplyWithLifecycle({
+    runId: `store-git-import:${args.packageId}:${randomUUID()}`,
+    conversationId,
+    repoRoot: args.repoRoot,
+    service: args.service,
+    begin: {
+      taskDescription: `${args.applyMode === "update" ? "Update" : "Install"} ${args.displayName} from Store`,
+      packageId: args.packageId,
+      releaseNumber: args.releaseNumber,
+      applyMode: args.applyMode,
+    },
+    changedPaths: merge.changedPaths,
+    lifecycle: args.lifecycle,
+    apply: () =>
+      applyMergedTreeToWorkingTree({
+        repoRoot: args.repoRoot,
+        treeHash: merge.treeHash,
+        changes: merge.changes,
+      }),
+    noCommitError:
+      "Store git import wrote changes but did not create an install commit.",
+  });
+
+  return {
+    status: "applied",
+    installRecord: args.service.recordInstall({
+      packageId: args.packageId,
+      releaseNumber: args.releaseNumber,
+      installCommitHash: result.commitHash,
+      sourceRevisionId: result.sourceRevisionId ?? null,
+      sourceRevisionIds: [`git:${args.gitArtifact.featureCommit}`],
+    }),
+  };
 };

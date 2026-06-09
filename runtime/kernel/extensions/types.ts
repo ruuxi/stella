@@ -178,7 +178,7 @@ export type AgentEndPayload = HookRuntimeContext & {
 
 export type AgentEndHookResult = {
   selfModApplied?: {
-    featureId: string;
+    commitHash: string;
     files: string[];
     batchIndex: number;
     status?: "pending" | "applied";

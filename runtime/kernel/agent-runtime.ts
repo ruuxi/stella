@@ -9,7 +9,6 @@ import { DEFAULT_MAX_TURNS } from "./agent-runtime/shared.js";
 import type { SubagentRunResult } from "./agent-runtime/types.js";
 
 export type {
-  SelfModAppliedPayload,
   SelfModMonitor,
   RuntimeExecutionSessionHandle,
   RuntimeReasoningEvent,

@@ -1,14 +1,13 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  isContentionRelevantPath,
-  isFullReloadRelevantPath,
-  isRestartRelevantPath,
+  isFullWindowReloadRelevantPath,
+  isRendererHmrRelevantPath,
   isRestartRequiredNonHmrPath,
   isSelfModRelevantPath,
   isViteTrackablePath,
+  isWorkerRestartRelevantPath,
   normalizeContentionPath,
-  toContentionKey,
   toSelfModRelevantKey,
 } from "../../../../../runtime/kernel/self-mod/path-relevance.js";
 
@@ -116,98 +115,98 @@ describe("normalizeContentionPath", () => {
   });
 });
 
-describe("isContentionRelevantPath", () => {
+describe("isRendererHmrRelevantPath", () => {
   it("accepts renderer modules that can be applied by the Vite overlay", () => {
-    expect(isContentionRelevantPath("desktop/src/app.tsx")).toBe(true);
-    expect(isContentionRelevantPath("desktop/src/icons/logo.svg")).toBe(true);
+    expect(isRendererHmrRelevantPath("desktop/src/app.tsx")).toBe(true);
+    expect(isRendererHmrRelevantPath("desktop/src/icons/logo.svg")).toBe(true);
   });
 
   it("rejects restart-required and non-renderer paths from renderer HMR contention", () => {
-    expect(isContentionRelevantPath("desktop/electron/main.ts")).toBe(false);
-    expect(isContentionRelevantPath("desktop/vite.config.ts")).toBe(false);
-    expect(isContentionRelevantPath("runtime/kernel/runner.ts")).toBe(false);
-    expect(isContentionRelevantPath("backend/src/handler.ts")).toBe(false);
-    expect(isContentionRelevantPath("launcher/src/main.rs")).toBe(false);
-    expect(isContentionRelevantPath("package.json")).toBe(false);
-    expect(isContentionRelevantPath("bun.lock")).toBe(false);
-    expect(isContentionRelevantPath("bun.lockb")).toBe(false);
+    expect(isRendererHmrRelevantPath("desktop/electron/main.ts")).toBe(false);
+    expect(isRendererHmrRelevantPath("desktop/vite.config.ts")).toBe(false);
+    expect(isRendererHmrRelevantPath("runtime/kernel/runner.ts")).toBe(false);
+    expect(isRendererHmrRelevantPath("backend/src/handler.ts")).toBe(false);
+    expect(isRendererHmrRelevantPath("launcher/src/main.rs")).toBe(false);
+    expect(isRendererHmrRelevantPath("package.json")).toBe(false);
+    expect(isRendererHmrRelevantPath("bun.lock")).toBe(false);
+    expect(isRendererHmrRelevantPath("bun.lockb")).toBe(false);
   });
 
   it("rejects unknown top-level files", () => {
-    expect(isContentionRelevantPath("README.md")).toBe(false);
-    expect(isContentionRelevantPath("notes.txt")).toBe(false);
+    expect(isRendererHmrRelevantPath("README.md")).toBe(false);
+    expect(isRendererHmrRelevantPath("notes.txt")).toBe(false);
   });
 
   it("rejects paths outside known source roots", () => {
-    expect(isContentionRelevantPath("docs/api.md")).toBe(false);
-    expect(isContentionRelevantPath("scripts/build.sh")).toBe(false);
+    expect(isRendererHmrRelevantPath("docs/api.md")).toBe(false);
+    expect(isRendererHmrRelevantPath("scripts/build.sh")).toBe(false);
   });
 });
 
-describe("isRestartRelevantPath", () => {
+describe("isWorkerRestartRelevantPath", () => {
   it("flags runtime/kernel paths that are not host-owned", () => {
-    expect(isRestartRelevantPath("runtime/kernel/runner.ts")).toBe(true);
+    expect(isWorkerRestartRelevantPath("runtime/kernel/runner.ts")).toBe(true);
     expect(
-      isRestartRelevantPath("runtime/kernel/agent-runtime/run-events.ts"),
+      isWorkerRestartRelevantPath("runtime/kernel/agent-runtime/run-events.ts"),
     ).toBe(true);
   });
 
   it("does not flag host-owned runtime/kernel paths", () => {
-    expect(isRestartRelevantPath("runtime/kernel/storage/foo.ts")).toBe(false);
-    expect(isRestartRelevantPath("runtime/kernel/shared/util.ts")).toBe(false);
+    expect(isWorkerRestartRelevantPath("runtime/kernel/storage/foo.ts")).toBe(false);
+    expect(isWorkerRestartRelevantPath("runtime/kernel/shared/util.ts")).toBe(false);
     expect(
-      isRestartRelevantPath("runtime/kernel/preferences/local-preferences.ts"),
+      isWorkerRestartRelevantPath("runtime/kernel/preferences/local-preferences.ts"),
     ).toBe(false);
   });
 
   it("flags runtime/ai, runtime/worker, runtime/protocol/jsonl paths", () => {
-    expect(isRestartRelevantPath("runtime/ai/index.ts")).toBe(true);
-    expect(isRestartRelevantPath("runtime/worker/server.ts")).toBe(true);
-    expect(isRestartRelevantPath("runtime/protocol/jsonl/peer.ts")).toBe(true);
+    expect(isWorkerRestartRelevantPath("runtime/ai/index.ts")).toBe(true);
+    expect(isWorkerRestartRelevantPath("runtime/worker/server.ts")).toBe(true);
+    expect(isWorkerRestartRelevantPath("runtime/protocol/jsonl/peer.ts")).toBe(true);
   });
 
   it("does not flag desktop/* paths", () => {
-    expect(isRestartRelevantPath("desktop/src/app.tsx")).toBe(false);
+    expect(isWorkerRestartRelevantPath("desktop/src/app.tsx")).toBe(false);
   });
 });
 
-describe("isFullReloadRelevantPath", () => {
+describe("isFullWindowReloadRelevantPath", () => {
   it("flags Vite-served browser resources that need a full window reload", () => {
-    expect(isFullReloadRelevantPath("desktop/index.html")).toBe(true);
-    expect(isFullReloadRelevantPath("desktop/mini.html")).toBe(true);
-    expect(isFullReloadRelevantPath("desktop/overlay.html")).toBe(true);
-    expect(isFullReloadRelevantPath("desktop/pet.html")).toBe(true);
+    expect(isFullWindowReloadRelevantPath("desktop/index.html")).toBe(true);
+    expect(isFullWindowReloadRelevantPath("desktop/mini.html")).toBe(true);
+    expect(isFullWindowReloadRelevantPath("desktop/overlay.html")).toBe(true);
+    expect(isFullWindowReloadRelevantPath("desktop/pet.html")).toBe(true);
   });
 
   it("flags sidebar app metadata because it changes the eager app glob", () => {
     expect(
-      isFullReloadRelevantPath("desktop/src/app/launch-checklist/metadata.ts"),
+      isFullWindowReloadRelevantPath("desktop/src/app/launch-checklist/metadata.ts"),
     ).toBe(true);
   });
 
   it("flags theme registry modules because the theme picker reads a glob snapshot", () => {
     expect(
-      isFullReloadRelevantPath(
+      isFullWindowReloadRelevantPath(
         "desktop/src/shared/theme/themes/interstellar.ts",
       ),
     ).toBe(true);
     expect(
-      isFullReloadRelevantPath("desktop/src/shared/theme/themes/index.ts"),
+      isFullWindowReloadRelevantPath("desktop/src/shared/theme/themes/index.ts"),
     ).toBe(true);
   });
 
   it("does not pretend manifests or Vite config can be fixed by browser reload", () => {
-    expect(isFullReloadRelevantPath("package.json")).toBe(false);
-    expect(isFullReloadRelevantPath("bun.lock")).toBe(false);
-    expect(isFullReloadRelevantPath("bun.lockb")).toBe(false);
-    expect(isFullReloadRelevantPath("tsconfig.json")).toBe(false);
-    expect(isFullReloadRelevantPath("desktop/vite.config.ts")).toBe(false);
+    expect(isFullWindowReloadRelevantPath("package.json")).toBe(false);
+    expect(isFullWindowReloadRelevantPath("bun.lock")).toBe(false);
+    expect(isFullWindowReloadRelevantPath("bun.lockb")).toBe(false);
+    expect(isFullWindowReloadRelevantPath("tsconfig.json")).toBe(false);
+    expect(isFullWindowReloadRelevantPath("desktop/vite.config.ts")).toBe(false);
   });
 
   it("does not flag ordinary desktop modules", () => {
-    expect(isFullReloadRelevantPath("desktop/src/app.tsx")).toBe(false);
+    expect(isFullWindowReloadRelevantPath("desktop/src/app.tsx")).toBe(false);
     expect(
-      isFullReloadRelevantPath(
+      isFullWindowReloadRelevantPath(
         "desktop/src/app/launch-checklist/LaunchChecklistView.tsx",
       ),
     ).toBe(false);
@@ -263,38 +262,6 @@ describe("isSelfModRelevantPath", () => {
   it("rejects unrelated docs and artifact paths", () => {
     expect(isSelfModRelevantPath("README.md")).toBe(false);
     expect(isSelfModRelevantPath("outputs/exports/report.csv")).toBe(false);
-  });
-});
-
-describe("toContentionKey", () => {
-  it("produces a key for in-scope source paths", () => {
-    expect(
-      toContentionKey(
-        path.join(repoRoot, "desktop", "src", "app.tsx"),
-        repoRoot,
-      ),
-    ).toBe("desktop/src/app.tsx");
-  });
-
-  it("returns null for in-repo but out-of-scope paths", () => {
-    expect(
-      toContentionKey(path.join(repoRoot, "docs", "guide.md"), repoRoot),
-    ).toBeNull();
-    expect(
-      toContentionKey(path.join(repoRoot, "package.json"), repoRoot),
-    ).toBeNull();
-    expect(
-      toContentionKey(path.join(repoRoot, "runtime", "kernel", "runner.ts"), repoRoot),
-    ).toBeNull();
-  });
-
-  it("returns null for excluded extensions inside source roots", () => {
-    expect(
-      toContentionKey(
-        path.join(repoRoot, "desktop", "src", "img", "logo.png"),
-        repoRoot,
-      ),
-    ).toBeNull();
   });
 });
 

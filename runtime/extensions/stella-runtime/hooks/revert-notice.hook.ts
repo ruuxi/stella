@@ -12,7 +12,7 @@ import type { SelfModRevertRecord } from "../../../kernel/storage/self-mod-rever
  * self-mod assistant turn (`desktop/src/app/chat/SelfModUndoButton.tsx`)
  * and the crash-recovery Undo update surface. When the user clicks undo,
  * the worker's
- * `INTERNAL_WORKER_SELF_MOD_REVERT` handler runs `revertGitFeature`
+ * `INTERNAL_WORKER_SELF_MOD_REVERT` handler runs `revertSelfModCommit`
  * and records a row in `self_mod_reverts` keyed by:
  *   - `conversationId` (from the commit's `Stella-Conversation` trailer)
  *   - `originThreadKey`  (from the commit's `Stella-Thread` trailer)

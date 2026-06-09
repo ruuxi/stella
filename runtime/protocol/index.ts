@@ -4,7 +4,7 @@ import type {
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
   SelfModFeatureSnapshot,
-  SelfModFeatureSummary,
+  SelfModCommitSummary,
   SelfModHmrState,
   SocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot,
@@ -33,7 +33,7 @@ export type {
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
   SelfModFeatureSnapshot,
-  SelfModFeatureSummary,
+  SelfModCommitSummary,
   SelfModHmrState,
   SocialSessionRuntimeRecord,
   SocialSessionServiceSnapshot,
@@ -148,8 +148,8 @@ export const METHOD_NAMES = {
   SELF_MOD_REVERT: "selfMod.revert",
   SELF_MOD_CRASH_RECOVERY_STATUS: "selfMod.crashRecoveryStatus",
   SELF_MOD_DISCARD_UNFINISHED: "selfMod.discardUnfinished",
-  SELF_MOD_LAST_FEATURE: "selfMod.lastFeature",
-  SELF_MOD_RECENT_FEATURES: "selfMod.recentFeatures",
+  SELF_MOD_LAST_COMMIT: "selfMod.lastCommit",
+  SELF_MOD_RECENT_COMMITS: "selfMod.recentCommits",
   SHELL_KILL_ALL: "shell.killAll",
   SHELL_KILL_BY_PORT: "shell.killByPort",
   DISCOVERY_COLLECT_BROWSER_DATA: "discovery.collectBrowserData",
@@ -285,9 +285,9 @@ export const METHOD_NAMES = {
     "internal.worker.selfMod.crashRecoveryStatus",
   INTERNAL_WORKER_SELF_MOD_DISCARD_UNFINISHED:
     "internal.worker.selfMod.discardUnfinished",
-  INTERNAL_WORKER_SELF_MOD_LAST_FEATURE: "internal.worker.selfMod.lastFeature",
-  INTERNAL_WORKER_SELF_MOD_RECENT_FEATURES:
-    "internal.worker.selfMod.recentFeatures",
+  INTERNAL_WORKER_SELF_MOD_LAST_COMMIT: "internal.worker.selfMod.lastCommit",
+  INTERNAL_WORKER_SELF_MOD_RECENT_COMMITS:
+    "internal.worker.selfMod.recentCommits",
   INTERNAL_STORE_LOAD_THREAD_MESSAGES: "internal.store.loadThreadMessages",
   INTERNAL_STORE_LIST_ACTIVE_THREADS: "internal.store.listActiveThreads",
   INTERNAL_STORE_GET_ORCHESTRATOR_REMINDER_STATE:
@@ -559,7 +559,7 @@ export type RuntimeAutomationTurnResult =
   | { status: "error"; finalText: ""; error: string };
 
 export type RuntimeSelfModRevertResult = {
-  featureId: string;
+  commitHash: string;
   revertedCommitHashes: string[];
   message: string;
   /** Conversation id parsed from the reverted commit's `Stella-Conversation` trailer (null when absent). */
@@ -571,7 +571,7 @@ export type RuntimeSelfModRevertResult = {
 };
 
 export type RuntimeSelfModApplyResult = {
-  featureId?: string;
+  commitHash?: string;
   applied: boolean;
   message?: string;
 };
@@ -584,13 +584,11 @@ export type RuntimeCrashRecoveryStatus =
     }
   | {
       kind: "clean";
-      latestFeature: {
-        featureId: string;
+      latestSelfModCommit: {
+        commitHash: string;
         name: string;
         description: string;
-        latestCommit: string;
-        latestTimestampMs: number;
-        commitCount: number;
+        timestampMs: number;
       } | null;
     };
 
@@ -649,7 +647,7 @@ export type RuntimeAgentEventPayload = {
   finalText?: string;
   persisted?: boolean;
   selfModApplied?: {
-    featureId: string;
+    commitHash: string;
     files: string[];
     batchIndex: number;
     status?: "pending" | "applied";

@@ -9,10 +9,10 @@ import {
 import { getThreadTokenEstimate } from "../thread-runtime.js";
 import type {
   OrchestratorRunOptions,
-  SelfModAppliedPayload,
   SubagentRunOptions,
   SubagentRunResult,
 } from "./types.js";
+import type { SelfModAppliedPayload } from "../../contracts/local-chat.js";
 
 const logger = createRuntimeLogger("agent-runtime.completion");
 const REPORTED_ORCHESTRATOR_ERROR = Symbol("reportedOrchestratorError");

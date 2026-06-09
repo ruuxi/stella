@@ -1,85 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
-import { setupEnvironment } from "dugite";
-import { listGitDirtyFiles } from "../kernel/self-mod/git.js";
+import { listGitDirtyFiles } from "../kernel/self-mod/git/log.js";
 import type { StoreModService } from "../kernel/self-mod/store-mod-service.js";
+import { runGit, runGitStatus } from "./git-exec.js";
 import {
-  STORE_PUBLISH_DEPENDENCY_FILE_NAMES,
-  runStorePublishDependencyInstall,
-  storePublishTouchesDependencyFiles,
-} from "./store-source-pack-install.js";
+  applyMergedTreeToWorkingTree,
+  computeCleanMergeTree,
+  runMechanicalApplyWithLifecycle,
+} from "./mechanical-apply.js";
 import type { SourceImportLifecycle } from "./source-import.js";
-
-const execFileAsync = promisify(execFile);
-
-type GitRunStatus = {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-};
-
-const toText = (value: string | Buffer | undefined): string =>
-  Buffer.isBuffer(value) ? value.toString("utf8") : (value ?? "");
-
-const expandExternalSelfModPaths = (paths: string[]): string[] => {
-  const expanded = new Set(paths);
-  if (storePublishTouchesDependencyFiles(paths)) {
-    for (const dependencyFile of STORE_PUBLISH_DEPENDENCY_FILE_NAMES) {
-      expanded.add(dependencyFile);
-    }
-  }
-  return [...expanded];
-};
-
-export const runGitStatus = async (
-  cwd: string,
-  args: string[],
-  options?: { maxBuffer?: number },
-): Promise<GitRunStatus> => {
-  const { env, gitLocation } = setupEnvironment({});
-  try {
-    const result = await execFileAsync(gitLocation, args, {
-      cwd,
-      env,
-      encoding: "utf8",
-      maxBuffer: options?.maxBuffer ?? 20 * 1024 * 1024,
-      windowsHide: true,
-    });
-    return {
-      exitCode: 0,
-      stdout: toText(result.stdout),
-      stderr: toText(result.stderr),
-    };
-  } catch (error) {
-    const err = error as {
-      code?: unknown;
-      stdout?: string | Buffer;
-      stderr?: string | Buffer;
-    };
-    return {
-      exitCode: typeof err.code === "number" ? err.code : 1,
-      stdout: toText(err.stdout),
-      stderr: toText(err.stderr),
-    };
-  }
-};
-
-export const runGit = async (
-  cwd: string,
-  args: string[],
-  options?: { maxBuffer?: number },
-): Promise<string> => {
-  const result = await runGitStatus(cwd, args, options);
-  if (result.exitCode === 0) {
-    return result.stdout.trim();
-  }
-  const details =
-    result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
-  throw new Error(`Git command failed (${args.join(" ")}): ${details}`);
-};
 
 export const getGitTopLevel = async (cwd: string): Promise<string | null> => {
   const result = await runGitStatus(cwd, ["rev-parse", "--show-toplevel"]);
@@ -205,52 +135,6 @@ export const buildGitReferenceDiff = async (args: {
   };
 };
 
-type GitNameStatusChange = {
-  status: string;
-  path: string;
-  deleted: boolean;
-};
-
-const parseNameStatus = (raw: string): GitNameStatusChange[] => {
-  const fields = raw.split("\0").filter(Boolean);
-  const changes: GitNameStatusChange[] = [];
-  for (let index = 0; index < fields.length; index += 2) {
-    const status = fields[index]?.trim();
-    const filePath = fields[index + 1]?.trim();
-    if (!status || !filePath) continue;
-    changes.push({
-      status,
-      path: filePath.replace(/\\/g, "/"),
-      deleted: status === "D",
-    });
-  }
-  return changes;
-};
-
-const applyMergedTreeToWorkingTree = async (args: {
-  repoRoot: string;
-  treeHash: string;
-  changes: GitNameStatusChange[];
-}): Promise<void> => {
-  const deleted = args.changes
-    .filter((change) => change.deleted)
-    .map((change) => change.path);
-  const present = args.changes
-    .filter((change) => !change.deleted)
-    .map((change) => change.path);
-
-  if (present.length > 0) {
-    await runGit(args.repoRoot, ["checkout", args.treeHash, "--", ...present]);
-  }
-
-  for (const filePath of deleted) {
-    await fsPromises.rm(path.join(args.repoRoot, filePath), {
-      recursive: true,
-      force: true,
-    });
-  }
-};
-
 export type GitSourceImportFastPathResult =
   | {
       status: "applied";
@@ -304,117 +188,43 @@ export const tryGitSourceImportFastPath = async (args: {
     };
   }
 
-  const mergeTreeResult = await runGitStatus(
-    args.repoRoot,
-    ["merge-tree", "--write-tree", "HEAD", "FETCH_HEAD"],
-    { maxBuffer: 20 * 1024 * 1024 },
-  );
-  if (mergeTreeResult.exitCode !== 0) {
-    const details =
-      mergeTreeResult.stderr.trim() ||
-      mergeTreeResult.stdout.trim() ||
-      "git merge-tree reported conflicts";
-    return {
-      status: "needs-agent",
-      reason: `Native git merge-tree was not clean: ${details}`,
-    };
-  }
-
-  const treeHash = mergeTreeResult.stdout.trim().split(/\s+/)[0] ?? "";
-  if (!treeHash) {
-    return {
-      status: "needs-agent",
-      reason: "Native git merge-tree did not return a merged tree.",
-    };
-  }
-
-  const headTree = await runGit(args.repoRoot, ["rev-parse", "HEAD^{tree}"]);
-  if (headTree === treeHash) {
-    return {
-      status: "no-changes",
-      reason: "The source ref is already represented in this tree.",
-    };
-  }
-
-  const rawNameStatus = await runGit(args.repoRoot, [
-    "diff",
-    "--name-status",
-    "--no-renames",
-    "-z",
-    "HEAD",
-    treeHash,
-  ]);
-  const changes = parseNameStatus(rawNameStatus);
-  const appliedPaths = Array.from(new Set(changes.map((change) => change.path)));
-  if (appliedPaths.length === 0) {
-    return {
-      status: "no-changes",
-      reason: "The source ref produced no file changes.",
-    };
-  }
-
-  const runId = `source-import-git:${randomUUID()}`;
-  let hmrRunStarted = false;
-  await args.service.beginSelfModRun({
-    runId,
-    taskDescription: args.taskDescription,
-    applyMode: "author",
+  const merge = await computeCleanMergeTree({
+    repoRoot: args.repoRoot,
+    mergeRef: "FETCH_HEAD",
   });
-  try {
-    if (args.lifecycle?.beginExternalSelfMod) {
-      await args.lifecycle.beginExternalSelfMod({
-        runId,
-        paths: expandExternalSelfModPaths(appliedPaths),
-      });
-      hmrRunStarted = true;
-    }
-
-    await applyMergedTreeToWorkingTree({
-      repoRoot: args.repoRoot,
-      treeHash,
-      changes,
-    });
-
-    const dependencyInstallRan =
-      storePublishTouchesDependencyFiles(appliedPaths);
-    if (dependencyInstallRan) {
-      await runStorePublishDependencyInstall(args.repoRoot);
-    }
-
-    const finalized = await args.service.finalizeSelfModRun({
-      runId,
-      succeeded: true,
-      conversationId: args.conversationId,
-      threadKey: args.conversationId,
-    });
-    if (!finalized?.commitHash) {
-      throw new Error(
-        "Native git import wrote changes but did not create an import commit.",
-      );
-    }
-
-    if (hmrRunStarted && args.lifecycle?.finishExternalSelfMod) {
-      await args.lifecycle.finishExternalSelfMod({ runId, succeeded: true });
-      hmrRunStarted = false;
-    }
-
-    args.log?.("source-import.git-fast.applied", {
-      commitHash: finalized.commitHash,
-      appliedPathCount: appliedPaths.length,
-    });
-    return {
-      status: "applied",
-      commitHash: finalized.commitHash,
-      appliedPaths,
-      dependencyInstallRan,
-    };
-  } catch (error) {
-    args.service.cancelSelfModRun(runId);
-    if (hmrRunStarted && args.lifecycle?.finishExternalSelfMod) {
-      await args.lifecycle
-        .finishExternalSelfMod({ runId, succeeded: false })
-        .catch(() => undefined);
-    }
-    throw error;
+  if (merge.status !== "merged") {
+    return merge;
   }
+
+  const result = await runMechanicalApplyWithLifecycle({
+    runId: `source-import-git:${randomUUID()}`,
+    conversationId: args.conversationId,
+    repoRoot: args.repoRoot,
+    service: args.service,
+    begin: {
+      taskDescription: args.taskDescription,
+      applyMode: "author",
+    },
+    changedPaths: merge.changedPaths,
+    lifecycle: args.lifecycle,
+    apply: () =>
+      applyMergedTreeToWorkingTree({
+        repoRoot: args.repoRoot,
+        treeHash: merge.treeHash,
+        changes: merge.changes,
+      }),
+    noCommitError:
+      "Native git import wrote changes but did not create an import commit.",
+  });
+
+  args.log?.("source-import.git-fast.applied", {
+    commitHash: result.commitHash,
+    appliedPathCount: merge.changedPaths.length,
+  });
+  return {
+    status: "applied",
+    commitHash: result.commitHash,
+    appliedPaths: merge.changedPaths,
+    dependencyInstallRan: result.dependencyInstallRan,
+  };
 };

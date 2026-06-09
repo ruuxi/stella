@@ -253,20 +253,18 @@ export type AllUserSignalsResult = {
 /**
  * Lightweight summary of one recent self-mod commit, surfaced to runtime
  * diagnostic UIs (Vite error overlay revert button, crash surface, taint
- * monitor toast). `featureId` carries the full commit hash so callers
- * can pass it straight back into revert APIs.
+ * monitor toast). `commitHash` can be passed straight back into revert
+ * APIs.
  *
  * Distinct from `SelfModFeatureSnapshot` below — this one is per-commit
  * and used by the diagnostic surface; the snapshot is the rolling
  * normie-friendly grouping used by the Store side panel.
  */
-export type SelfModFeatureSummary = {
-  featureId: string;
+export type SelfModCommitSummary = {
+  commitHash: string;
   name: string;
   description: string;
-  latestCommit: string;
-  latestTimestampMs: number;
-  commitCount: number;
+  timestampMs: number;
   tainted?: boolean;
   taintedFiles?: string[];
 };

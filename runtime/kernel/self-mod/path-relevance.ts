@@ -242,8 +242,6 @@ export const isRendererHmrRelevantPath = (repoRelativePath: string): boolean => 
   return false;
 };
 
-export const isContentionRelevantPath = isRendererHmrRelevantPath;
-
 /**
  * True for paths the Vite self-mod plugin can pin and later serve from the
  * overlay. This is narrower than the full self-mod relevance set: Vite cannot
@@ -287,8 +285,6 @@ export const isWorkerRestartRelevantPath = (repoRelativePath: string): boolean =
   return false;
 };
 
-export const isRestartRelevantPath = isWorkerRestartRelevantPath;
-
 /**
  * True for Vite-served browser resources that need a visible browser reload
  * instead of targeted module HMR. This intentionally excludes Vite config,
@@ -305,8 +301,6 @@ export const isFullWindowReloadRelevantPath = (repoRelativePath: string): boolea
   );
 };
 
-export const isFullReloadRelevantPath = isFullWindowReloadRelevantPath;
-
 export const isRestartRequiredNonHmrPath = (
   repoRelativePath: string,
 ): boolean => {
@@ -318,6 +312,9 @@ export const isRestartRequiredNonHmrPath = (
   return (
     isRestartRequiredManifestPath(normalized) ||
     normalized === "desktop/vite.config.ts" ||
+    // Vite config dependencies (the self-mod HMR plugin lives here);
+    // editing them restarts the dev server, so treat like vite.config.ts.
+    normalized.startsWith("desktop/vite/") ||
     normalized.startsWith("desktop/electron/") ||
     normalized.startsWith("backend/") ||
     normalized.startsWith("launcher/") ||
@@ -330,20 +327,6 @@ export const isSelfModRelevantPath = (repoRelativePath: string): boolean =>
   isFullWindowReloadRelevantPath(repoRelativePath) ||
   isWorkerRestartRelevantPath(repoRelativePath) ||
   isRestartRequiredNonHmrPath(repoRelativePath);
-
-/**
- * Helper that combines `normalizeContentionPath` + `isRendererHmrRelevantPath`,
- * for callers that have an absolute path and just want the repo-relative
- * key (or null to skip).
- */
-export const toContentionKey = (
-  absPath: string,
-  repoRoot: string,
-): string | null => {
-  const normalized = normalizeContentionPath(absPath, repoRoot);
-  if (!normalized) return null;
-  return isRendererHmrRelevantPath(normalized) ? normalized : null;
-};
 
 export const toSelfModRelevantKey = (
   absPath: string,

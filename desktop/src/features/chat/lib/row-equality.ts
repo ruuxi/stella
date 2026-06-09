@@ -78,7 +78,7 @@ const selfModAppliedEqual = (
 ): boolean => {
   if (a === b) return true;
   if (!a || !b) return a === b;
-  if (a.featureId !== b.featureId || a.batchIndex !== b.batchIndex) {
+  if (a.commitHash !== b.commitHash || a.batchIndex !== b.batchIndex) {
     return false;
   }
   if ((a.status ?? "applied") !== (b.status ?? "applied")) {
