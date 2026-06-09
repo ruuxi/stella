@@ -35,6 +35,7 @@ type StellaConfig = {
 const DEFAULT_CHRONICLE_INTERVAL_MS = 4_000;
 const CHRONICLE_STARTUP_TIMEOUT_MS = 3_000;
 const CHRONICLE_STARTUP_POLL_MS = 150;
+const CHRONICLE_STARTUP_POLL_MAX_MS = 1_200;
 const CHRONICLE_EXCLUDED_BUNDLE_IDS = ["com.stella.app", "com.github.Electron"];
 
 const readConfig = async (stellaDataDir: string): Promise<ChronicleConfig> => {
@@ -123,11 +124,15 @@ export class ChronicleController {
     timeoutMs = CHRONICLE_STARTUP_TIMEOUT_MS,
   ): Promise<boolean> {
     const startedAt = Date.now();
+    // Each ping is a full helper-process spawn (Defender-scanned on Windows),
+    // so back off exponentially instead of re-spawning every 150ms.
+    let pollMs = CHRONICLE_STARTUP_POLL_MS;
     while (Date.now() - startedAt < timeoutMs) {
       if ((await this.runCommand("ping")) === "pong") {
         return true;
       }
-      await new Promise((resolve) => setTimeout(resolve, CHRONICLE_STARTUP_POLL_MS));
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      pollMs = Math.min(pollMs * 2, CHRONICLE_STARTUP_POLL_MAX_MS);
     }
     return false;
   }

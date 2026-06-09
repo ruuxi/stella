@@ -24,6 +24,7 @@ import { hasMacPermission, requestMacPermission } from "../utils/macos-permissio
 
 const STARTUP_TIMEOUT_MS = 4_000;
 const STARTUP_POLL_MS = 150;
+const STARTUP_POLL_MAX_MS = 1_200;
 const DEFAULT_SEGMENT_SECONDS = 30;
 
 export type MeetingStartResult = {
@@ -110,11 +111,15 @@ export class MeetingCaptureController {
 
   private async waitForDaemonReady(timeoutMs = STARTUP_TIMEOUT_MS): Promise<boolean> {
     const startedAt = Date.now();
+    // Each ping is a full helper-process spawn (Defender-scanned on Windows),
+    // so back off exponentially instead of re-spawning every 150ms.
+    let pollMs = STARTUP_POLL_MS;
     while (Date.now() - startedAt < timeoutMs) {
       if ((await this.runCommand(["ping"])) === "pong") {
         return true;
       }
-      await new Promise((resolve) => setTimeout(resolve, STARTUP_POLL_MS));
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      pollMs = Math.min(pollMs * 2, STARTUP_POLL_MAX_MS);
     }
     return false;
   }

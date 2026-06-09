@@ -48,6 +48,7 @@ class OverlayWindow {
   private destroyed = false
   private overlayOrigin = { x: 0, y: 0 }
   private reloadTimer: ReturnType<typeof setTimeout> | null = null
+  private concealOnWarmPresent = false
 
   constructor(private readonly options: OverlayWindowControllerOptions) {}
 
@@ -187,6 +188,13 @@ class OverlayWindow {
         this.window.setOpacity(0)
         if (process.platform !== 'darwin') {
           this.window.showInactive()
+          // Warm-only create: the present above pre-pays first-show cost so
+          // the first real show() is instant, but the window must not stay
+          // resident in the compositor afterwards (see fadeOut).
+          if (this.concealOnWarmPresent) {
+            this.concealOnWarmPresent = false
+            this.window.hide()
+          }
         }
         this.window.setIgnoreMouseEvents(true, { forward: true })
       }
@@ -223,6 +231,7 @@ class OverlayWindow {
     this.window.on('closed', () => {
       this.window = null
       this.ready = false
+      this.concealOnWarmPresent = false
       this.clearReloadTimer()
     })
 
@@ -254,6 +263,7 @@ class OverlayWindow {
 
   show(options?: { focus?: boolean; inactive?: boolean }) {
     if (!this.window || !this.ready) return
+    this.concealOnWarmPresent = false
     if (!this.window.isVisible()) {
       this.respanDisplays()
       if (options?.inactive) {
@@ -301,6 +311,22 @@ class OverlayWindow {
     this.window.setFocusable(false)
     this.window.setOpacity(0)
     this.window.hide()
+  }
+
+  /**
+   * Drop a warm-only window from the compositor on Windows/Linux. The
+   * startup warm can resolve via did-finish-load before ready-to-show has
+   * presented the window — hiding right away would be undone by the
+   * showInactive() in that handler — so when the present hasn't happened
+   * yet, defer the hide to it instead.
+   */
+  concealAfterWarm() {
+    if (!this.window || this.window.isDestroyed()) return
+    if (this.window.isVisible()) {
+      this.fadeOut()
+      return
+    }
+    this.concealOnWarmPresent = true
   }
 
   setIgnoreMouseEvents(ignore: boolean) {
@@ -576,7 +602,16 @@ export class OverlayWindowController {
   }
 
   async warmForStartup(timeoutMs?: number) {
-    return this.ensureReady(timeoutMs)
+    const warmed = await this.ensureReady(timeoutMs)
+    // The warm-only create presents the window on Windows/Linux (see the
+    // ready-to-show handler) and nothing follows up to hide it, which would
+    // leave a screen-spanning layered surface composited all session (see
+    // OverlayWindow.fadeOut). Hide it once warm — the renderer stays alive,
+    // so the next summon is still instant — unless a surface beat us here.
+    if (warmed && process.platform !== 'darwin' && !this.isAnyActive) {
+      this.overlayWindow.concealAfterWarm()
+    }
+    return warmed
   }
 
   /**

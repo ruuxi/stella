@@ -16,6 +16,7 @@ $windowInfoGccLibs = $defaultGccLibs + @("-ldwmapi")
 
 $targets = @(
     @{ kind = "cpp"; src = "src\window_info.cpp"; out = (Join-Path $outputDir "window_info.exe"); libs = $windowInfoLibs; gccLibs = $windowInfoGccLibs },
+    @{ kind = "cpp"; src = "src\recent_apps.cpp"; out = (Join-Path $outputDir "recent_apps.exe"); libs = @("user32.lib", "dwmapi.lib"); gccLibs = @("-luser32", "-ldwmapi") },
     @{ kind = "cpp"; src = "src\window_text.cpp"; out = (Join-Path $outputDir "window_text.exe"); libs = $defaultLibs; gccLibs = $defaultGccLibs },
     @{ kind = "cpp"; src = "src\selected_text.cpp"; out = (Join-Path $outputDir "selected_text.exe"); libs = $defaultLibs; gccLibs = $defaultGccLibs },
     @{ kind = "cpp"; src = "src\dictation_bridge.cpp"; out = (Join-Path $outputDir "dictation_bridge.exe"); libs = @("ole32.lib", "oleaut32.lib", "uuid.lib", "user32.lib"); gccLibs = @("-lole32", "-loleaut32", "-luuid", "-luser32") },
@@ -108,36 +109,6 @@ foreach ($t in $targets) {
 }
 
 if (-not $allOk) { exit 1 }
-
-# Optional helpers: a build failure here logs a warning but does NOT fail the
-# job, so a compiler-specific quirk in a non-critical helper can never block
-# the required Windows native tarball. The desktop falls back to its previous
-# code path (e.g. the PowerShell snapshot for recent apps) when the binary is
-# absent.
-$optionalTargets = @(
-    @{ kind = "cpp"; src = "src\recent_apps.cpp"; out = (Join-Path $outputDir "recent_apps.exe"); libs = @("user32.lib", "dwmapi.lib"); gccLibs = @("-luser32", "-ldwmapi") }
-)
-foreach ($t in $optionalTargets) {
-    Write-Host "Building optional $(Split-Path $t.out -Leaf)..."
-    $built = $false
-    if ($vcvars -and -not $built) {
-        Write-Host "  Using MSVC..."
-        $built = Build-WithMSVC $vcvars $t.src $t.out $t.libs
-    }
-    if ($hasGpp -and -not $built) {
-        Write-Host "  Using MinGW g++..."
-        $built = Build-WithGpp $t.src $t.out $t.gccLibs
-    }
-    if ($hasClang -and -not $built) {
-        Write-Host "  Using clang++..."
-        $built = Build-WithClang $t.src $t.out $t.gccLibs
-    }
-    if ($built) {
-        Write-Host "  Build successful: $($t.out)"
-    } else {
-        Write-Host "  WARNING: optional helper failed to build (non-fatal): $($t.out)"
-    }
-}
 
 # parakeet_cpp_transcriber.exe — local on-device dictation (parakeet.cpp / ggml).
 # Best-effort and fully non-fatal: a failure here just leaves Windows users on

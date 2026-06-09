@@ -41,12 +41,14 @@ export const isProcessAlive = (pid: number): boolean => {
  * A bare `process.kill(pid, 0)` liveness check passes for that unrelated
  * process, so SIGTERM/SIGKILL would take down something random.
  *
- * This verifies the live process's full command line (macOS/Linux via `ps`,
- * Windows via PowerShell `Get-CimInstance Win32_Process`) matches the expected
- * helper binary. It returns
+ * This verifies the live process still looks like the expected helper.
+ * macOS/Linux match the full command line via `ps` (binary path plus
+ * `expectedCommandFragments`). Windows matches only the image name via
+ * `tasklist` — the command line would need a WMI query costing hundreds of ms
+ * on the quit path, and a pid recycled to an unrelated process won't share the
+ * helper's image name, which is all this guard exists to rule out. It returns
  * `false` whenever it cannot POSITIVELY confirm a match (process gone, tool
- * failed, mismatch) — callers MUST NOT kill on a `false` result. Mirrors the
- * command-line match already used in desktop-automation-cleanup.ts.
+ * failed, mismatch) — callers MUST NOT kill on a `false` result.
  */
 export const pidMatchesHelperBinary = (
   pid: number,
@@ -67,25 +69,21 @@ export const pidMatchesHelperBinary = (
   try {
     if (process.platform === "win32") {
       const output = execFileSync(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
-        ],
-        { encoding: "utf8", windowsHide: true, timeout: 4000 },
+        "tasklist.exe",
+        ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+        { encoding: "utf8", windowsHide: true, timeout: 2000 },
       );
-      const normalized = output.toLowerCase();
-      if (!normalized) {
+      // Matching row: "image_name","pid",... — a non-matching filter prints an
+      // INFO: message instead of a CSV row.
+      const row = output
+        .split(/\r?\n/)
+        .find((line) => line.startsWith('"'));
+      const imageName = row ? /^"([^"]*)"/.exec(row)?.[1] : undefined;
+      if (!imageName) {
         return false;
       }
-      return (
-        normalized.includes(stem.toLowerCase()) &&
-        requiredFragments.every((fragment) =>
-          normalized.includes(fragment.toLowerCase()),
-        )
-      );
+      const imageStem = imageName.replace(/\.[^.]+$/, "");
+      return imageStem.toLowerCase() === stem.toLowerCase();
     }
 
     // macOS / Linux: `ps -p <pid> -o command=` prints the full command line, or
