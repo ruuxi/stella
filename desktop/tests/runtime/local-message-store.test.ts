@@ -25,6 +25,12 @@ type FakeElectronApi = {
       conversationId: string;
       maxVisibleMessages?: number;
     }) => Promise<WindowPayload>;
+    listMessagesAfter?: (payload: {
+      conversationId: string;
+      afterTimestampMs: number;
+      afterId: string;
+      maxVisibleMessages?: number;
+    }) => Promise<WindowPayload>;
     onUpdated: (
       listener: (payload: LocalChatUpdatedPayload | null) => void,
     ) => () => void;
@@ -77,21 +83,16 @@ afterEach(() => {
 });
 
 describe("local-message-store", () => {
-  it("subscribes to the latest snapshot and refreshes on localChat:updated", async () => {
+  it("tail-refetches new rows via listMessagesAfter on localChat:updated", async () => {
     let updateListener:
       | ((payload: LocalChatUpdatedPayload | null) => void)
       | null = null;
-    let call = 0;
-    const listMessages = vi.fn().mockImplementation(async () => {
-      call += 1;
-      if (call === 1) {
-        return window([makeMessage("u-1", 1_000, "first")]);
-      }
-      return window([
-        makeMessage("u-1", 1_000, "first"),
-        makeMessage("a-2", 1_010, "second"),
-      ]);
-    });
+    const listMessages = vi
+      .fn()
+      .mockResolvedValue(window([makeMessage("u-1", 1_000, "first")]));
+    const listMessagesAfter = vi
+      .fn()
+      .mockResolvedValue(window([makeMessage("a-2", 1_010, "second")]));
     const onUpdated = vi.fn().mockImplementation((listener) => {
       updateListener = listener;
       return () => {
@@ -99,7 +100,7 @@ describe("local-message-store", () => {
       };
     });
     const restore = installFakeElectronApi({
-      localChat: { listMessages, onUpdated },
+      localChat: { listMessages, listMessagesAfter, onUpdated },
     });
 
     try {
@@ -125,11 +126,343 @@ describe("local-message-store", () => {
 
       await waitFor(() =>
         expect(
-          snapshots.some(
-            (snapshot) => snapshot.window.messages.length === 2,
-          ),
+          snapshots.some((snapshot) => snapshot.window.messages.length === 2),
         ).toBe(true),
       );
+
+      // The update read only the changed tail — never the whole window.
+      expect(listMessages).toHaveBeenCalledTimes(1);
+      expect(listMessagesAfter).toHaveBeenCalledTimes(1);
+      expect(listMessagesAfter).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "c1",
+          afterTimestampMs: 1_000,
+          afterId: "u-1",
+        }),
+      );
+      const latest = snapshots.at(-1);
+      expect(latest?.window.messages.map((m) => m._id)).toEqual([
+        "u-1",
+        "a-2",
+      ]);
+      expect(latest?.window.visibleMessageCount).toBe(2);
+
+      unsubscribe();
+    } finally {
+      restore();
+    }
+  });
+
+  it("falls back to a full refetch when the update carries no event", async () => {
+    let updateListener:
+      | ((payload: LocalChatUpdatedPayload | null) => void)
+      | null = null;
+    let call = 0;
+    const listMessages = vi.fn().mockImplementation(async () => {
+      call += 1;
+      if (call === 1) return window([makeMessage("u-1", 1_000, "first")]);
+      return window([
+        makeMessage("u-1", 1_000, "first"),
+        makeMessage("a-2", 1_010, "second"),
+      ]);
+    });
+    const listMessagesAfter = vi.fn();
+    const onUpdated = vi.fn().mockImplementation((listener) => {
+      updateListener = listener;
+      return () => {
+        updateListener = null;
+      };
+    });
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, listMessagesAfter, onUpdated },
+    });
+
+    try {
+      const snapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribe = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => snapshots.push(snapshot),
+      );
+      await waitFor(() => expect(snapshots.at(-1)?.hasLoaded).toBe(true));
+
+      updateListener?.({ conversationId: "c1" });
+
+      await waitFor(() =>
+        expect(
+          snapshots.some((snapshot) => snapshot.window.messages.length === 2),
+        ).toBe(true),
+      );
+      expect(listMessagesAfter).not.toHaveBeenCalled();
+
+      unsubscribe();
+    } finally {
+      restore();
+    }
+  });
+
+  it("falls back to a full refetch when the update patches an existing row", async () => {
+    let updateListener:
+      | ((payload: LocalChatUpdatedPayload | null) => void)
+      | null = null;
+    let call = 0;
+    const listMessages = vi.fn().mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        return window([
+          makeMessage("u-1", 1_000, "first"),
+          makeMessage("a-2", 1_010, "second"),
+        ]);
+      }
+      return window([
+        makeMessage("u-1", 1_000, "first"),
+        makeMessage("a-2", 1_010, "second (patched)"),
+      ]);
+    });
+    const listMessagesAfter = vi.fn();
+    const onUpdated = vi.fn().mockImplementation((listener) => {
+      updateListener = listener;
+      return () => {
+        updateListener = null;
+      };
+    });
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, listMessagesAfter, onUpdated },
+    });
+
+    try {
+      const snapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribe = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => snapshots.push(snapshot),
+      );
+      await waitFor(() => expect(snapshots.at(-1)?.hasLoaded).toBe(true));
+
+      // A payload patch (e.g. `selfModApplied`) re-announces the existing
+      // newest row — its `(timestamp, id)` is not strictly newer than the
+      // window cursor, so the after-cursor walk would miss it.
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "a-2", timestamp: 1_010, type: "assistant_message" },
+      });
+
+      await waitFor(() =>
+        expect(
+          (snapshots.at(-1)?.window.messages[1]?.payload as { text?: string })
+            ?.text,
+        ).toBe("second (patched)"),
+      );
+      expect(listMessagesAfter).not.toHaveBeenCalled();
+      expect(listMessages).toHaveBeenCalledTimes(2);
+
+      unsubscribe();
+    } finally {
+      restore();
+    }
+  });
+
+  it("replaces an anchor whose turn gained artifacts without growing the window", async () => {
+    let updateListener:
+      | ((payload: LocalChatUpdatedPayload | null) => void)
+      | null = null;
+    const listMessages = vi.fn().mockResolvedValue(
+      window([
+        makeMessage("u-1", 1_000, "first"),
+        makeMessage("a-2", 1_010, "second"),
+      ]),
+    );
+    const anchorWithArtifact: MessageRecord = {
+      ...makeMessage("a-2", 1_010, "second"),
+      toolEvents: [{ _id: "t-3", timestamp: 1_020, type: "tool_result" }],
+    };
+    const listMessagesAfter = vi.fn().mockResolvedValue({
+      messages: [anchorWithArtifact],
+      visibleMessageCount: 1,
+    });
+    const onUpdated = vi.fn().mockImplementation((listener) => {
+      updateListener = listener;
+      return () => {
+        updateListener = null;
+      };
+    });
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, listMessagesAfter, onUpdated },
+    });
+
+    try {
+      const snapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribe = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => snapshots.push(snapshot),
+      );
+      await waitFor(() => expect(snapshots.at(-1)?.hasLoaded).toBe(true));
+
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "t-3", timestamp: 1_020, type: "tool_result" },
+      });
+
+      await waitFor(() =>
+        expect(snapshots.at(-1)?.window.messages[1]?.toolEvents).toHaveLength(
+          1,
+        ),
+      );
+      const latest = snapshots.at(-1);
+      expect(latest?.window.messages.map((m) => m._id)).toEqual([
+        "u-1",
+        "a-2",
+      ]);
+      expect(latest?.window.visibleMessageCount).toBe(2);
+      expect(listMessages).toHaveBeenCalledTimes(1);
+
+      unsubscribe();
+    } finally {
+      restore();
+    }
+  });
+
+  it("trims the oldest rows when tail appends exceed the window cap", async () => {
+    let updateListener:
+      | ((payload: LocalChatUpdatedPayload | null) => void)
+      | null = null;
+    const listMessages = vi.fn().mockResolvedValue(
+      window([
+        makeMessage("u-1", 1_000, "first"),
+        makeMessage("a-2", 1_010, "second"),
+      ]),
+    );
+    const listMessagesAfter = vi
+      .fn()
+      .mockResolvedValue(window([makeMessage("a-3", 1_020, "third")]));
+    const onUpdated = vi.fn().mockImplementation((listener) => {
+      updateListener = listener;
+      return () => {
+        updateListener = null;
+      };
+    });
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, listMessagesAfter, onUpdated },
+    });
+
+    try {
+      const snapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribe = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 2 },
+        (snapshot) => snapshots.push(snapshot),
+      );
+      await waitFor(() => expect(snapshots.at(-1)?.hasLoaded).toBe(true));
+
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "a-3", timestamp: 1_020, type: "assistant_message" },
+      });
+
+      // Sliding window: the append pushes the visible count to 3, so the
+      // oldest row drops — same behavior a capped full refetch always had.
+      await waitFor(() =>
+        expect(snapshots.at(-1)?.window.messages.map((m) => m._id)).toEqual([
+          "a-2",
+          "a-3",
+        ]),
+      );
+      expect(snapshots.at(-1)?.window.visibleMessageCount).toBe(2);
+
+      unsubscribe();
+    } finally {
+      restore();
+    }
+  });
+
+  it("falls back to a full refetch when the tail result saturates its cap", async () => {
+    let updateListener:
+      | ((payload: LocalChatUpdatedPayload | null) => void)
+      | null = null;
+    let call = 0;
+    const listMessages = vi.fn().mockImplementation(async () => {
+      call += 1;
+      if (call === 1) return window([makeMessage("u-1", 1_000, "first")]);
+      return window([
+        makeMessage("u-1", 1_000, "first"),
+        makeMessage("a-2", 1_010, "second"),
+      ]);
+    });
+    // A saturated changed-set may have been truncated by the store's cap
+    // (TAIL_REFRESH_MAX_VISIBLE = 200) — merging it could lose rows.
+    const listMessagesAfter = vi.fn().mockResolvedValue({
+      messages: [makeMessage("a-2", 1_010, "second")],
+      visibleMessageCount: 200,
+    });
+    const onUpdated = vi.fn().mockImplementation((listener) => {
+      updateListener = listener;
+      return () => {
+        updateListener = null;
+      };
+    });
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, listMessagesAfter, onUpdated },
+    });
+
+    try {
+      const snapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribe = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => snapshots.push(snapshot),
+      );
+      await waitFor(() => expect(snapshots.at(-1)?.hasLoaded).toBe(true));
+
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "a-2", timestamp: 1_010, type: "assistant_message" },
+      });
+
+      await waitFor(() =>
+        expect(
+          snapshots.some((snapshot) => snapshot.window.messages.length === 2),
+        ).toBe(true),
+      );
+      expect(listMessages).toHaveBeenCalledTimes(2);
+
+      unsubscribe();
+    } finally {
+      restore();
+    }
+  });
+
+  it("skips the snapshot emission when the changed tail is empty", async () => {
+    let updateListener:
+      | ((payload: LocalChatUpdatedPayload | null) => void)
+      | null = null;
+    const listMessages = vi
+      .fn()
+      .mockResolvedValue(window([makeMessage("u-1", 1_000, "first")]));
+    const listMessagesAfter = vi.fn().mockResolvedValue(window([]));
+    const onUpdated = vi.fn().mockImplementation((listener) => {
+      updateListener = listener;
+      return () => {
+        updateListener = null;
+      };
+    });
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, listMessagesAfter, onUpdated },
+    });
+
+    try {
+      const snapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribe = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => snapshots.push(snapshot),
+      );
+      await waitFor(() => expect(snapshots.at(-1)?.hasLoaded).toBe(true));
+      const snapshotCountAfterLoad = snapshots.length;
+
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "x-2", timestamp: 1_010, type: "assistant_message" },
+      });
+
+      await waitFor(() => expect(listMessagesAfter).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      // No visible timeline change → no listener churn.
+      expect(snapshots.length).toBe(snapshotCountAfterLoad);
 
       unsubscribe();
     } finally {

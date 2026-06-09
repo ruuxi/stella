@@ -38,6 +38,7 @@ import {
   getAssistantScrollFollowKey,
   subscribeAssistantScrollFollow,
 } from '@/shell/chat-scroll-follow'
+import { registerChatAtRestProbe } from '@/features/chat/hooks/use-conversation-messages'
 
 const SCROLL_BUTTON_THRESHOLD = 180
 const THUMB_MIN_HEIGHT = 24
@@ -326,6 +327,12 @@ export function useChatScrollManagement({
    * off-screen) and when the next user message lands.
    */
   const getIsFollowing = useCallback(() => followRef.current, [])
+
+  // Report this surface's at-bottom state to the message-window decay
+  // gate: the grown loadOlder window only shrinks back to one page while
+  // every mounted chat scroll surface sits at the bottom, so history a
+  // user is reading in *any* surface is never trimmed out from under them.
+  useEffect(() => registerChatAtRestProbe(() => isAtBottomRef.current), [])
 
   useEffect(() => {
     return () => {

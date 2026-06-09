@@ -39,15 +39,51 @@ import type { MessageRecord } from "../../../../../runtime/contracts/local-chat.
 
 export const MESSAGE_PAGE_SIZE = 200;
 /**
- * Hard ceiling on `loadOlder` window growth. Every `localChat:updated`
- * refetches the *entire* window over IPC for each active subscription, so
- * an unbounded window makes per-event streaming cost (and the retained
- * seed-cache footprint) scale with how far the user once scrolled. In
- * practice users rarely scroll past a few hundred rows; 2000 keeps deep
- * history reachable while bounding the worst case.
+ * Hard ceiling on `loadOlder` window growth. A grown window costs memory
+ * for every row it retains (and IPC on the full-refetch fallback paths),
+ * so an unbounded window makes worst-case cost scale with how far the
+ * user once scrolled. In practice users rarely scroll past a few hundred
+ * rows; 2000 keeps deep history reachable while bounding the worst case.
  */
 export const MAX_VISIBLE_MESSAGES = 2_000;
 const LOCAL_MESSAGE_LOAD_RETRY_MS = 300;
+
+/**
+ * Window decay: once the window has been grown via `loadOlder`, shrink it
+ * back to one page after every chat surface has sat at the bottom of the
+ * timeline for this long. The grown window only exists to serve a
+ * scroll-up that's no longer happening; decaying frees the retained rows
+ * and returns refresh cost to baseline. If the user scrolls up again
+ * right after, `loadOlder` simply re-pages.
+ */
+const WINDOW_DECAY_AT_REST_MS = 90_000;
+const WINDOW_DECAY_CHECK_INTERVAL_MS = 5_000;
+
+/**
+ * At-rest probes registered by chat scroll surfaces (full chat, sidebar —
+ * each `useChatScrollManagement` instance). The window decays only while
+ * *every* registered surface reports it is at the bottom, so a sidebar
+ * scrolled deep into history is never yanked because the full chat
+ * happens to be at rest. No registered surfaces means no decay.
+ */
+const chatAtRestProbes = new Set<() => boolean>();
+
+export const registerChatAtRestProbe = (
+  probe: () => boolean,
+): (() => void) => {
+  chatAtRestProbes.add(probe);
+  return () => {
+    chatAtRestProbes.delete(probe);
+  };
+};
+
+const allChatSurfacesAtRest = (): boolean => {
+  if (chatAtRestProbes.size === 0) return false;
+  for (const probe of chatAtRestProbes) {
+    if (!probe()) return false;
+  }
+  return true;
+};
 
 const EMPTY_MESSAGES: MessageRecord[] = [];
 
@@ -233,6 +269,41 @@ export const useConversationMessages = (
     isLocalMode,
     maxVisibleMessages,
     pendingMaxVisibleMessages,
+  ]);
+
+  // Decay the grown window back to one page once every chat surface has
+  // been at the bottom continuously for the rest interval. At the bottom
+  // the visible rows are the newest page, so dropping the older prefix
+  // changes nothing on screen (the virtualized list holds its end
+  // anchor); the re-keyed subscription seeds from the retained window
+  // sliced to the new cap, so there is no flash either.
+  const windowGrown = maxVisibleMessages > MESSAGE_PAGE_SIZE;
+  useEffect(() => {
+    if (!windowGrown || !isLocalMode || !conversationId) return;
+    if (pendingMaxVisibleMessages !== null) return;
+    let atRestSince: number | null = null;
+    const interval = window.setInterval(() => {
+      if (!allChatSurfacesAtRest()) {
+        atRestSince = null;
+        return;
+      }
+      const now = Date.now();
+      atRestSince ??= now;
+      if (now - atRestSince < WINDOW_DECAY_AT_REST_MS) return;
+      window.clearInterval(interval);
+      startTransition(() => {
+        setMaxVisibleMessages(MESSAGE_PAGE_SIZE);
+      });
+    }, WINDOW_DECAY_CHECK_INTERVAL_MS);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [
+    conversationId,
+    isLocalMode,
+    pendingMaxVisibleMessages,
+    visitToken,
+    windowGrown,
   ]);
 
   const isInitialLoading =

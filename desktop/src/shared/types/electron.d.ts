@@ -1457,6 +1457,19 @@ export type ElectronLocalChatApi = {
     beforeId: string;
     maxVisibleMessages?: number;
   }) => Promise<{ messages: MessageRecord[]; visibleMessageCount: number }>;
+  /**
+   * Changed rows strictly after the `(afterTimestampMs, afterId)` cursor:
+   * new user/assistant messages plus existing rows whose turn gained
+   * tool-derived artifacts after the cursor. Drives the chat's tail-only
+   * refresh on `localChat:updated` so streaming doesn't re-serialize the
+   * whole loaded window per event.
+   */
+  listMessagesAfter: (payload: {
+    conversationId: string;
+    afterTimestampMs: number;
+    afterId: string;
+    maxVisibleMessages?: number;
+  }) => Promise<{ messages: MessageRecord[]; visibleMessageCount: number }>;
   listActivity: (payload: {
     conversationId: string;
     limit?: number;

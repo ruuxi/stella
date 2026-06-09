@@ -127,6 +127,34 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
+    "localChat:listMessagesAfter",
+    async (
+      event,
+      payload: {
+        conversationId?: string;
+        afterTimestampMs?: number;
+        afterId?: string;
+        maxVisibleMessages?: number;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:listMessagesAfter",
+        (client) =>
+          client.listMessagesAfter({
+            conversationId: payload?.conversationId ?? "",
+            afterTimestampMs:
+              typeof payload?.afterTimestampMs === "number"
+                ? payload.afterTimestampMs
+                : 0,
+            afterId: payload?.afterId ?? "",
+            maxVisibleMessages: payload?.maxVisibleMessages,
+          }),
+      ),
+  );
+
+  ipcMain.handle(
     "localChat:listActivity",
     async (
       event,
