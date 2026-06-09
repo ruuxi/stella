@@ -129,10 +129,10 @@
 .chat-sidebar-shell {
   position: relative;
   width: 100%;
-  background: var(--panel-surface-bg-gradient);
+  background: var(--panel-surface-bg);
   border: 1px solid var(--panel-surface-border);
   border-radius: 999px; /* fallback before JS; overridden by motion */
-  box-shadow: var(--shadow-md), var(--panel-surface-highlight);
+  box-shadow: var(--shadow-sm);
   overflow: clip;
   transition: box-shadow 200ms ease, border-color 200ms ease;
 }
@@ -159,8 +159,7 @@
 .chat-sidebar-shell--drag-over {
   border-color: color-mix(in oklch, var(--primary) 42%, var(--panel-surface-border));
   box-shadow:
-    var(--shadow-md),
-    var(--panel-surface-highlight),
+    var(--shadow-sm),
     0 0 0 2px color-mix(in oklch, var(--primary) 38%, transparent),
     0 0 0 6px color-mix(in oklch, var(--primary) 10%, transparent);
 }

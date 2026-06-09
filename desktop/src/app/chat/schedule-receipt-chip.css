@@ -10,9 +10,9 @@
   gap: 8px;
   margin-top: 8px;
   padding: 5px 10px 5px 9px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  background: var(--muted);
   color: var(--text-base);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
@@ -25,9 +25,14 @@
 }
 
 .schedule-receipt-chip:hover {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, var(--muted));
+  border-color: var(--border-strong);
   color: var(--text-strong);
+}
+
+.schedule-receipt-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .schedule-receipt-chip__icon {

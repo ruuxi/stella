@@ -1,12 +1,9 @@
 [data-component="popover-content"] {
   min-width: 200px;
   max-width: 320px;
-  border-radius: var(--radius-md, 10px);
-  /* Glass surface — same recipe as the connect dialog so transient
-     popovers (theme picker, model picker) live in the same visual
-     family as the larger glass surfaces. The backdrop-filter is the
-     one already used by every dropdown menu, so cost is in line with
-     existing chrome. */
+  border-radius: var(--radius-lg, 10px);
+  /* Light blur — popovers (theme picker, model picker) are transient
+     overlays, so they keep glass alongside dropdown menus and tooltips. */
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);

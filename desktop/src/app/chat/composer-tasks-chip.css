@@ -36,8 +36,8 @@
   gap: 6px;
   padding: 3px 6px 3px 8px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  border: 1px solid var(--border);
+  background: var(--muted);
   color: var(--text-base);
   font-family: inherit;
   font-size: var(--font-size-sm);
@@ -53,9 +53,14 @@
 
 .composer-tasks-chip:hover,
 .composer-tasks-chip[data-state="open"] {
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
-  border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, var(--muted));
+  border-color: var(--border-strong);
   color: var(--text-strong);
+}
+
+.composer-tasks-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .composer-tasks-chip__spinner {

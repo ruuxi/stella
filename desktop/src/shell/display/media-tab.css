@@ -157,6 +157,16 @@
   border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
 }
 
+.media-tab__action-btn:focus-visible,
+.media-tab__history-toggle:focus-visible,
+.media-tab__rail-import:focus-visible,
+.media-tab__tile:focus-visible,
+.media-tab__mode:focus-visible,
+.media-tab__attached-x:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .media-tab__action-btn--danger {
   color: var(--destructive);
   border-color: color-mix(
@@ -654,7 +664,12 @@
 }
 
 .media-tab__prompt-submit:hover:not(:disabled) {
-  opacity: 0.92;
+  background: color-mix(in srgb, var(--foreground) 12%, var(--primary));
+}
+
+.media-tab__prompt-submit:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .media-tab__prompt-submit:disabled {

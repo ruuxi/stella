@@ -58,8 +58,8 @@ export function ScreenshotPreviewOverlay({
           maxWidth: "92vw",
           maxHeight: "92vh",
           objectFit: "contain",
-          borderRadius: "12px",
-          boxShadow: "0 16px 60px rgba(0, 0, 0, 0.4)",
+          borderRadius: "var(--radius-xl)",
+          boxShadow: "var(--shadow-xl)",
         }}
       />
     </div>,

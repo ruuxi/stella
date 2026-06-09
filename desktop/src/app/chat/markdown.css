@@ -83,6 +83,12 @@
   text-underline-offset: 2px;
 }
 
+.markdown a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
 /* Lists */
 .markdown ul,
 .markdown ol {
@@ -146,9 +152,9 @@
 .markdown .shiki {
   font-size: var(--font-size-sm);
   padding: 12px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-weak, var(--border));
-  background-color: hsl(from var(--background) h s l / 0.6);
+  background-color: var(--surface-inset);
   overflow-x: auto;
   scrollbar-width: thin;
 }
@@ -215,8 +221,8 @@
   font-weight: var(--weight-medium);
   font-size: var(--font-size-sm);
   padding: 2px 4px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--surface-inset, var(--muted)) 50%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset, var(--muted));
 }
 
 /* Copy button */
@@ -232,7 +238,7 @@
   justify-content: center;
   background: var(--surface-raised, var(--card));
   border: 1px solid var(--border-weak, var(--border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: default;
   opacity: 0;
   transition: opacity 0.15s ease, background 0.15s ease;
@@ -245,6 +251,11 @@
 
 .markdown-copy-button:hover {
   background: var(--surface-raised-hover, var(--accent));
+}
+
+.markdown-copy-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .markdown-copy-button svg {

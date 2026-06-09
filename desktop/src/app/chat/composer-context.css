@@ -109,6 +109,11 @@
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
+.composer-context-suggestion:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* Empty-slot placeholder keeps the row from collapsing when one of the
  * three suggestion slots is currently empty (e.g. one app quit, no live
  * candidate to fill it yet). Zero-width — invisible but reserves no
@@ -168,7 +173,14 @@
 button.chat-composer-context-chip:hover,
 button.composer-context-chip:hover,
 button.mini-context-chip:hover {
-  filter: brightness(1.05);
+  background: color-mix(in oklch, var(--foreground) 6%, var(--card));
+}
+
+button.chat-composer-context-chip:focus-visible,
+button.composer-context-chip:focus-visible,
+button.mini-context-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .chat-composer-context-chip--screenshot,
@@ -179,8 +191,8 @@ button.mini-context-chip:hover {
 .mini-context-chip--pending {
   padding: 2px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px solid var(--border-strong);
+  background: var(--muted);
 }
 
 .chat-composer-context-chip--pending,
@@ -234,21 +246,21 @@ button.mini-context-chip:hover {
   .composer-context-chip--window {
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
+  border: 1px solid var(--border-strong);
 }
 
 .chat-composer-context-chip--text,
 .composer-context-chip--text,
 .mini-context-chip--text {
-  background: color-mix(in oklch, var(--primary) 12%, var(--background));
-  border-color: color-mix(in oklch, var(--primary) 28%, var(--background));
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  border-color: color-mix(in oklch, var(--primary) 28%, var(--border));
 }
 
 .dark .chat-composer-context-chip--text,
 .dark .composer-context-chip--text,
 .dark .mini-context-chip--text {
-  background: color-mix(in oklch, var(--primary) 18%, var(--background));
-  border-color: color-mix(in oklch, var(--primary) 42%, var(--background));
+  background: color-mix(in oklch, var(--primary) 18%, var(--card));
+  border-color: color-mix(in oklch, var(--primary) 42%, var(--border));
 }
 
 .chat-composer-context-chip--app-selection,
@@ -260,7 +272,7 @@ button.mini-context-chip:hover {
 .chat-composer-context-chip--pasted-text,
 .composer-context-chip--pasted-text,
 .mini-context-chip--pasted-text {
-  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+  background: var(--muted);
 }
 
 .chat-composer-context-chip--window,
@@ -268,12 +280,12 @@ button.mini-context-chip:hover {
   background: color-mix(
     in oklch,
     var(--primary, var(--foreground)) 10%,
-    transparent
+    var(--card)
   );
   border-color: color-mix(
     in oklch,
     var(--primary, var(--foreground)) 22%,
-    transparent
+    var(--border)
   );
 }
 
@@ -294,14 +306,14 @@ button.mini-context-chip:hover {
     border-color: color-mix(
       in oklch,
       var(--primary, var(--foreground)) 22%,
-      transparent
+      var(--border)
     );
   }
   50% {
     border-color: color-mix(
       in oklch,
       var(--primary, var(--foreground)) 50%,
-      transparent
+      var(--border)
     );
   }
 }
@@ -477,8 +489,8 @@ button.mini-context-chip:hover {
   gap: 8px;
   padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
-  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  border: 1px solid var(--border);
+  background: var(--muted);
   max-width: min(220px, 45vw);
   cursor: default;
   font: inherit;
@@ -490,8 +502,13 @@ button.mini-context-chip:hover {
 }
 
 button.chat-composer-file-chip:hover {
-  background: color-mix(in oklch, var(--foreground) 14%, transparent);
-  border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, var(--muted));
+  border-color: var(--border-strong);
+}
+
+button.chat-composer-file-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .chat-composer-file-icon {
@@ -501,8 +518,8 @@ button.chat-composer-file-chip:hover {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
   color: var(--primary);
 }
 

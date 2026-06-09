@@ -16,27 +16,21 @@
   place-items: center;
   pointer-events: none;
   opacity: 0;
+  /* Flat opaque page cover (no glass) — this placeholder fully covers the
+     Store/Billing area while a website loads, so it is a page surface, not a
+     transient menu/popover; it must read as solid app chrome. */
   background:
     radial-gradient(
       circle at 18% 12%,
-      color-mix(in srgb, var(--primary) 22%, transparent) 0,
-      transparent 36%
+      color-mix(in srgb, var(--primary) 10%, var(--background)) 0,
+      var(--background) 36%
     ),
     radial-gradient(
       circle at 82% 78%,
-      color-mix(in srgb, var(--foreground) 10%, transparent) 0,
-      transparent 42%
+      color-mix(in srgb, var(--foreground) 5%, var(--background)) 0,
+      var(--background) 42%
     ),
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--surface-raised-stronger-non-alpha, var(--background)) 92%, transparent),
-      color-mix(in srgb, var(--background) 84%, transparent)
-    );
-  /* Cheap blur radius — the global 40px + saturate(180%) glass blur is a
-     heavy backdrop pass that stutters on weaker Windows GPUs, and this
-     placeholder only flashes briefly over the Store/Billing area. */
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+    var(--surface-raised-stronger-non-alpha, var(--background));
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
@@ -54,7 +48,7 @@
 
 .embedded-website-glass-placeholder__message {
   max-width: min(520px, calc(100% - 48px));
-  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+  color: var(--text-weak);
   font-family: var(--font-family-display);
   font-size: 28px;
   font-weight: var(--weight-medium);
@@ -62,15 +56,9 @@
   line-height: 1.05;
   text-align: center;
   text-wrap: balance;
-  text-shadow: 0 1px 24px color-mix(in srgb, var(--background) 80%, transparent);
+  text-shadow: 0 1px 24px var(--background);
 }
 
 .embedded-website-glass-placeholder[data-active="true"] {
   opacity: 1;
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .embedded-website-glass-placeholder {
-    background: var(--surface-raised-stronger-non-alpha, var(--background));
-  }
 }

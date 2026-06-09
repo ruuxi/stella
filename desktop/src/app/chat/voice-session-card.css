@@ -12,9 +12,9 @@
   width: fit-content;
   gap: 8px;
   padding: 7px 13px 7px 11px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  background: var(--muted);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
   line-height: 1.2;

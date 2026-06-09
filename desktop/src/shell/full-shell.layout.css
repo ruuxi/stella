@@ -69,7 +69,7 @@
   z-index: 75;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   color: var(--text-base);
   background: transparent;
   -webkit-app-region: drag;
@@ -83,8 +83,8 @@
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 8px;
+  gap: 8px;
+  padding: 0 12px;
   box-sizing: border-box;
   overflow: visible;
 }
@@ -99,7 +99,7 @@
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   transform: translateX(-8px);
   -webkit-app-region: no-drag;
 }
@@ -209,6 +209,12 @@
   color: var(--text-strong);
 }
 
+.shell-topbar-icon-btn:focus-visible,
+.shell-topbar-wc-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .shell-topbar-icon-btn[aria-pressed="true"]:not(
     .shell-topbar-workspace-strip-btn
   ) {
@@ -295,8 +301,8 @@
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 4px;
+  gap: 6px;
+  padding: 0 6px;
   overflow-x: auto;
   overflow-y: visible;
   /* Hide the horizontal scrollbar entirely — when the tabs overflow
@@ -381,7 +387,7 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   max-width: 220px;
   padding: 3px 5px 3px 8px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-md, 8px);
   font-size: var(--font-size-sm);
   color: var(--text-base);
   background: transparent;
@@ -394,6 +400,12 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 .shell-topbar-tab:hover {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--text-strong);
+}
+
+.shell-topbar-tab:focus-visible,
+.shell-topbar-tab__button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .shell-topbar-tab--active {
@@ -433,7 +445,7 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-sm, 6px);
   background: transparent;
   color: var(--text-weak);
   cursor: default;
@@ -455,6 +467,12 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   opacity: 1;
   color: var(--text-strong);
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.shell-topbar-tab__close:focus-visible,
+.shell-topbar-tab__add:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* "+" affordance at the right of the tab strip — opens the
@@ -542,10 +560,10 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
   margin-left: auto;
-  padding-right: 8px;
+  padding-right: 12px;
   -webkit-app-region: no-drag;
 }
 
@@ -560,8 +578,8 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 }
 
 .shell-topbar-wc-close:hover {
-  background: #e81123;
-  color: white;
+  background: var(--destructive);
+  color: var(--primary-foreground);
 }
 
 .shell-topbar-history-btn {
@@ -873,12 +891,11 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: var(--weight-medium);
   color: var(--text-weaker);
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  mix-blend-mode: plus-lighter;
   opacity: 0.11;
 }
 

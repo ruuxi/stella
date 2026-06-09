@@ -11,7 +11,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm, 6px);
   background: var(--muted);
   border: 1px solid var(--border);
   color: var(--muted-foreground);

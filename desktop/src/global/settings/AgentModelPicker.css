@@ -154,7 +154,7 @@
 }
 
 .agent-model-picker-toggle-btn[data-active] {
-  background: var(--background, #fff);
+  background: var(--background);
   color: var(--text-strong);
   box-shadow: var(--shadow-subtle);
 }
@@ -193,7 +193,7 @@
 }
 
 .agent-model-picker-chronicle-link:hover {
-  opacity: 0.85;
+  color: var(--text-base);
 }
 
 .agent-model-picker .model-picker-shell {

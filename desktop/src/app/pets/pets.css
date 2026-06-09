@@ -420,9 +420,9 @@
 
 [data-slot="dialog-content"].pet-detail-dialog {
   --pet-dialog-pad-x: 28px;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   background-clip: padding-box;
   border: 1px solid var(--border-weak);
   min-height: 0;
@@ -450,7 +450,7 @@
 
 .pet-detail-title {
   margin: 0;
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-family: var(--font-family-display);
   font-size: 1.7rem;
   font-weight: var(--weight-regular);
   letter-spacing: -0.03em;
@@ -524,7 +524,6 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-weaker);
-  opacity: 0.85;
 }
 
 .pet-detail-states {
@@ -573,9 +572,9 @@
 
 [data-slot="dialog-content"].user-pet-create-dialog {
   --pet-create-pad-x: 28px;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   background-clip: padding-box;
   border: 1px solid var(--border-weak);
   min-height: 0;
@@ -603,7 +602,7 @@
 
 .user-pet-create-title {
   margin: 0;
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-family: var(--font-family-display);
   font-size: 1.7rem;
   font-weight: var(--weight-regular);
   letter-spacing: -0.03em;

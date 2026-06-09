@@ -2,9 +2,8 @@
   position: fixed;
   inset: 0;
   z-index: 50;
-  /* Softer scrim than the previous flat 20% black — pairs better with
-     the glass dialog surface below. */
-  background-color: color-mix(in oklch, var(--background) 30%, rgba(0, 0, 0, 0.35));
+  /* Calm modal scrim — a single soft dim behind the dialog surface. */
+  background-color: rgba(0, 0, 0, 0.35);
 }
 
 [data-component="dialog"] {
@@ -12,12 +11,10 @@
   --dialog-height: 512px;
   /*
    * Canonical dialog header identity — shared by EVERY dialog in the
-   * family so titles read as one system instead of four (was: 16px sans
-   * bar / hidden + centered Cormorant hero / overridden 1.5rem serif /
-   * plain bar). One font (Cormorant display, Stella's brand voice), one
-   * fixed size, one weight, one letter-spacing, one header padding.
-   * Per-dialog CSS should NOT redefine the title font/size/weight — only
-   * layout (padding/scroll) — so the surface stays uniform.
+   * family so titles read as one system. One sans font, one fixed size,
+   * one weight, one letter-spacing, one header padding. Per-dialog CSS
+   * should NOT redefine the title font/size/weight — only layout
+   * (padding/scroll) — so the surface stays uniform.
    */
   --dialog-title-font: var(--font-family-display);
   --dialog-title-size: var(--font-size-3xl); /* 24px */
@@ -62,21 +59,20 @@
   max-height: 100%;
   min-height: 280px;
   /*
-   * Canonical "Apple-polish" dialog surface — same glass treatment as
-   * the Connect dialog (see `ConnectDialog.css`). The Connect dialog
-   * is the reference for ALL dialogs/popovers/menus in the app per
-   * product direction, so we apply this background/border/blur as the
-   * DEFAULT here instead of forcing each dialog to opt in. Per-dialog
-   * CSS should only override layout (padding, sizing, scroll behavior)
-   * — not the background/border/shadow — so the surface stays uniform.
+   * Canonical dialog surface — opaque panel with a light blur (dialogs
+   * are transient overlays, so they keep the panel-glass treatment).
+   * Applied as the DEFAULT here instead of forcing each dialog to opt
+   * in. Per-dialog CSS should only override layout (padding, sizing,
+   * scroll behavior) — not the background/border/shadow — so the surface
+   * stays uniform.
    */
   border: 1px solid var(--border-weak);
-  border-radius: var(--radius-xl, 10px);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  border-radius: var(--radius-2xl, 14px);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   background-clip: padding-box;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-xl);
 }
 
 [data-component="dialog"] [data-slot="dialog-content"]:focus-visible {
@@ -139,7 +135,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm, 6px);
   background: transparent;
   border: none;
   color: var(--muted-foreground);
@@ -147,8 +143,13 @@
 }
 
 [data-component="dialog"] [data-slot="dialog-close-button"]:hover {
-  background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background-color: color-mix(in srgb, var(--foreground) 6%, transparent);
   color: var(--foreground);
+}
+
+[data-component="dialog"] [data-slot="dialog-close-button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 [data-component="dialog"][data-fit] [data-slot="dialog-container"] {

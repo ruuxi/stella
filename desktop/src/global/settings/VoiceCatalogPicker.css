@@ -68,7 +68,7 @@
 }
 
 .voice-catalog-subtoggle-btn[data-active] {
-  background: var(--background, #fff);
+  background: var(--background);
   color: var(--text-strong);
   box-shadow: var(--shadow-subtle);
 }
@@ -287,7 +287,7 @@
   height: 14px;
   border-radius: 50%;
   background: var(--text-strong);
-  border: 2px solid var(--background, #fff);
+  border: 2px solid var(--background);
   box-shadow: var(--shadow-sm);
   cursor: default;
   transition: transform 120ms ease;

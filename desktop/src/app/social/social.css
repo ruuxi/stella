@@ -8,7 +8,7 @@
 }
 
 .social-view {
-  --social-serif: var(--font-family-display, 'Cormorant Garamond', Georgia, serif);
+  --social-serif: var(--font-family-sans);
   --social-mono: var(--font-family-mono, 'IBM Plex Mono', monospace);
 
   display: flex;
@@ -43,7 +43,7 @@
 .social-sidebar-title {
   font-family: var(--social-serif);
   font-size: 1.5rem;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
@@ -60,28 +60,32 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: none;
   color: var(--text-weak);
   cursor: default;
-  transition: opacity 0.15s ease, color 0.15s ease;
-  opacity: 0.5;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .social-sidebar-action:hover {
-  opacity: 0.8;
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
   color: var(--text-strong);
 }
 
 .social-sidebar-action:active {
-  opacity: 1;
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  color: var(--text-strong);
+}
+
+.social-sidebar-action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .social-sidebar-action--badge-host {
   position: relative;
   overflow: visible;
-  opacity: 1;
   color: var(--text-strong);
 }
 
@@ -119,22 +123,27 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: none;
   width: 100%;
   text-align: left;
   cursor: default;
-  transition: opacity 0.15s ease, background 0.15s ease;
+  transition: background 0.15s ease;
   position: relative;
 }
 
 .social-room-item:hover {
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
 }
 
 .social-room-item[data-active] {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in srgb, var(--foreground) 9%, transparent);
+}
+
+.social-room-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .social-room-item-avatar {
@@ -189,8 +198,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--foreground);
-  opacity: 0.4;
+  background: var(--primary);
   flex-shrink: 0;
 }
 
@@ -225,15 +233,14 @@
 .social-profile-tag {
   font-size: var(--font-size-2xs);
   font-family: var(--social-mono);
-  color: var(--text-weak);
+  color: var(--text-weaker);
   letter-spacing: 0.04em;
   cursor: default;
-  transition: opacity 0.15s ease;
-  opacity: 0.5;
+  transition: color 0.15s ease;
 }
 
 .social-profile-tag:hover {
-  opacity: 0.8;
+  color: var(--text-weak);
 }
 
 /* Edit-name affordance on the profile card */
@@ -259,14 +266,19 @@
 
 .social-profile-name-button > svg {
   flex-shrink: 0;
-  color: var(--text-weak);
-  opacity: 0.5;
-  transition: opacity 0.15s ease;
+  color: var(--text-weaker);
+  transition: color 0.15s ease;
 }
 
 .social-profile-name-button:hover > svg,
 .social-profile-name-button:focus-visible > svg {
-  opacity: 0.85;
+  color: var(--text-weak);
+}
+
+.social-profile-name-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
 }
 
 .social-profile-name-input {
@@ -276,7 +288,7 @@
   letter-spacing: -0.01em;
   background: transparent;
   border: none;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 25%, transparent);
+  border-bottom: 1px solid var(--border);
   padding: 1px 0 2px;
   outline: none;
   font-family: inherit;
@@ -285,7 +297,7 @@
 }
 
 .social-profile-name-input:focus {
-  border-bottom-color: color-mix(in oklch, var(--foreground) 45%, transparent);
+  border-bottom-color: var(--border-strong);
 }
 
 .social-profile-name-input:disabled {
@@ -311,14 +323,12 @@
   padding: 0 8px;
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
-  border-radius: 6px;
-  opacity: 0.7;
+  border-radius: var(--radius-md);
 }
 
 .social-profile-edit-actions .social-sidebar-action--primary {
-  opacity: 1;
   color: var(--text-strong);
-  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  border: 1px solid var(--border);
 }
 
 .social-profile-edit-actions .social-sidebar-action:disabled {
@@ -355,7 +365,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: var(--muted);
   color: var(--text-weak);
   flex-shrink: 0;
 }
@@ -368,7 +378,7 @@
 .social-chat-header-name {
   font-family: var(--social-serif);
   font-size: 1.3rem;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
@@ -396,12 +406,17 @@
   font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
   flex-shrink: 0;
-  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .social-stella-pill:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.social-stella-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .social-stella-pill:disabled {
@@ -425,7 +440,7 @@
   gap: 16px;
   padding: 8px 24px;
   border-bottom: 1px solid var(--border-base);
-  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  background: var(--surface-inset);
 }
 
 .social-session-bar-info {
@@ -495,18 +510,23 @@
   justify-content: center;
   height: 32px;
   padding: 0 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-base);
   background: transparent;
   color: var(--text-strong);
   font-size: var(--font-size-sm);
   font-weight: var(--weight-medium);
-  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .social-session-button:hover:not(:disabled) {
-  opacity: 0.8;
-  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  border-color: var(--border-strong);
+}
+
+.social-session-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .social-session-button[data-variant="danger"] {
@@ -531,9 +551,9 @@
   max-height: 110px;
   padding: 10px 12px;
   resize: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-base);
-  background: transparent;
+  background: var(--surface-inset);
   color: var(--text-strong);
   font: inherit;
   line-height: 1.5;
@@ -541,13 +561,12 @@
 }
 
 .social-session-input:focus {
-  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 3%, transparent);
+  border-color: var(--border-strong);
+  box-shadow: var(--focus-ring);
 }
 
 .social-session-input::placeholder {
-  color: var(--text-weak);
-  opacity: 0.7;
+  color: var(--text-weaker);
 }
 
 .social-session-turns {
@@ -558,9 +577,9 @@
 
 .social-session-turn {
   padding: 12px 14px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-weak);
+  background: var(--surface-inset);
 }
 
 .social-session-turn-label {
@@ -675,33 +694,24 @@
 }
 
 .social-message-bubble[data-role="self"] {
-  background: color-mix(
-    in oklch,
-    var(--primary) 14%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--primary) 16%, var(--card));
   color: var(--text-strong);
   margin-left: auto;
 }
 
 .social-message-bubble[data-role="other"] {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  background: var(--muted);
 }
 
 .social-message-bubble[data-role="stella"] {
-  background: color-mix(
-    in oklch,
-    oklch(0.7 0.13 320) 14%,
-    color-mix(in oklch, var(--foreground) 4%, transparent)
-  );
-  border: 1px solid
-    color-mix(in oklch, oklch(0.7 0.13 320) 22%, transparent);
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
   color: var(--text-strong);
 }
 
 .social-message-sender-name[data-stella] {
   font-family: var(--social-serif);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.015em;
   font-size: var(--font-size-md);
 }
@@ -713,7 +723,7 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: color-mix(in oklch, oklch(0.7 0.13 320) 18%, transparent);
+  background: color-mix(in srgb, var(--primary) 18%, var(--card));
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -760,13 +770,19 @@
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
-  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease,
+  transition: border-color 0.15s ease, background 0.15s ease,
     color 0.15s ease, transform 0.15s ease;
 }
 
 .social-stella-arm-button:hover {
-  border-color: color-mix(in oklch, var(--foreground) 26%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  border-color: var(--border-strong);
   color: var(--text-strong);
+}
+
+.social-stella-arm-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .social-stella-arm-button-logo {
@@ -778,16 +794,8 @@
 }
 
 .social-stella-arm-button[data-active] {
-  background: color-mix(
-    in oklch,
-    var(--primary) 12%,
-    transparent
-  );
-  border-color: color-mix(
-    in oklch,
-    var(--primary) 36%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
   color: var(--text-strong);
 }
 
@@ -814,37 +822,20 @@
 }
 
 .social-composer-input-wrap:focus-within {
-  border-color: color-mix(in oklch, var(--foreground) 25%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 3%, transparent);
+  border-color: var(--border-strong);
+  box-shadow: var(--focus-ring);
 }
 
 /* Composer is "armed" to send the next message to Stella */
 .social-composer-input-wrap[data-armed] {
-  background: color-mix(
-    in oklch,
-    var(--primary) 7%,
-    transparent
-  );
-  border-color: color-mix(
-    in oklch,
-    var(--primary) 32%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
   padding-left: 8px;
 }
 
 .social-composer-input-wrap[data-armed]:focus-within {
-  border-color: color-mix(
-    in oklch,
-    var(--primary) 50%,
-    transparent
-  );
-  box-shadow: 0 0 0 3px
-    color-mix(
-      in oklch,
-      var(--primary) 12%,
-      transparent
-    );
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
+  box-shadow: var(--focus-ring);
 }
 
 .social-composer-stella-chip {
@@ -854,11 +845,7 @@
   height: 22px;
   padding: 0 9px 0 4px;
   border-radius: 999px;
-  background: color-mix(
-    in oklch,
-    var(--primary) 22%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--primary) 22%, var(--card));
   font-size: var(--font-size-xs);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.005em;
@@ -877,16 +864,8 @@
 }
 
 .social-composer-send[data-armed]:not(:disabled) {
-  background: color-mix(
-    in oklch,
-    var(--primary) 22%,
-    transparent
-  );
-  border-color: color-mix(
-    in oklch,
-    var(--primary) 45%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--primary) 28%, var(--card));
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
   color: var(--text-strong);
 }
 
@@ -911,8 +890,7 @@
 }
 
 .social-composer-input::placeholder {
-  color: var(--text-strong);
-  opacity: 0.25;
+  color: var(--text-weaker);
 }
 
 .social-composer-send {
@@ -923,15 +901,11 @@
   height: 30px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: color-mix(
-    in oklch,
-    var(--primary) 18%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--primary) 18%, var(--card));
   border: none;
   color: var(--text-strong);
   cursor: default;
-  transition: opacity 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
 .social-composer-send:disabled {
@@ -939,12 +913,13 @@
   cursor: not-allowed;
 }
 
+.social-composer-send:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .social-composer-send:not(:disabled):hover {
-  background: color-mix(
-    in oklch,
-    var(--primary) 28%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--primary) 28%, var(--card));
 }
 
 .social-composer-send:not(:disabled):active {
@@ -968,19 +943,18 @@
 .social-empty-icon {
   width: 48px;
   height: 48px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-base);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-weak);
-  opacity: 0.5;
+  color: var(--text-weaker);
 }
 
 .social-empty-title {
   font-family: var(--social-serif);
   font-size: 1.6rem;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
@@ -1010,7 +984,7 @@
 .social-signin-title {
   font-family: var(--social-serif);
   font-size: 2rem;
-  font-weight: var(--weight-light);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.03em;
 }
@@ -1037,29 +1011,34 @@
   gap: 8px;
   height: 48px;
   padding: 0 24px;
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--primary);
   color: var(--primary-foreground);
-  border: 1px solid color-mix(in oklch, var(--primary) 22%, transparent);
-  box-shadow: none;
+  border: 1px solid var(--primary);
+  box-shadow: var(--shadow-sm);
   font-family: inherit;
-  font-size: 16px;
+  font-size: var(--font-size-md);
   font-weight: var(--weight-medium);
   cursor: default;
   transition:
     background 0.15s ease,
     border-color 0.15s ease,
+    box-shadow 0.15s ease,
     transform 0.15s ease;
 }
 
-.social-signin-button:hover,
+.social-signin-button:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, var(--primary));
+  border-color: color-mix(in srgb, var(--foreground) 8%, var(--primary));
+}
+
 .social-signin-button:focus-visible {
-  background: color-mix(in oklch, var(--primary) 16%, transparent);
-  border-color: color-mix(in oklch, var(--primary) 28%, transparent);
   outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .social-signin-button:active {
+  background: color-mix(in srgb, var(--foreground) 14%, var(--primary));
   transform: scale(0.985);
 }
 
@@ -1103,9 +1082,9 @@
 .friends-dialog-title {
   margin: 0;
   color: var(--text-strong, var(--foreground));
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-family: var(--font-family-sans);
   font-size: 1.9rem;
-  font-weight: var(--weight-regular);
+  font-weight: var(--weight-semibold);
   line-height: 1.2;
   letter-spacing: -0.03em;
 }
@@ -1113,7 +1092,7 @@
 .friends-dialog-sub {
   margin: 0;
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
   line-height: 1.5;
   letter-spacing: -0.01em;
@@ -1126,7 +1105,7 @@
   gap: 12px;
   padding: 12px 16px;
   border-radius: var(--radius-lg, 12px);
-  background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
+  background: color-mix(in srgb, var(--foreground) 4%, var(--popover));
   border: 1px solid var(--border);
   text-align: left;
   cursor: default;
@@ -1135,7 +1114,12 @@
 }
 
 .friends-code-card:hover {
-  background: color-mix(in oklch, var(--foreground) 7%, var(--popover));
+  background: color-mix(in srgb, var(--foreground) 7%, var(--popover));
+}
+
+.friends-code-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .friends-code-card-info {
@@ -1163,7 +1147,7 @@
 }
 
 .friends-add-section [data-component="input"] [data-slot="input-wrapper"] {
-  background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
+  background: color-mix(in srgb, var(--foreground) 4%, var(--popover));
 }
 
 .friends-add-button {
@@ -1204,7 +1188,7 @@
 }
 
 .friends-item:hover {
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
 }
 
 .friends-item-info {
@@ -1250,12 +1234,12 @@
 }
 
 .friends-status-message[data-type="success"] {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
   color: var(--text-base, var(--foreground));
 }
 
 .friends-status-message[data-type="error"] {
-  background: color-mix(in oklch, var(--destructive) 10%, transparent);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
   color: var(--destructive);
 }
 
@@ -1298,11 +1282,16 @@
 }
 
 .new-chat-item:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.new-chat-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .new-chat-item[data-selected] {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground) 9%, transparent);
 }
 
 .new-chat-item:disabled {
@@ -1317,7 +1306,7 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md, 8px);
-  background: color-mix(in oklch, var(--foreground) 6%, var(--popover));
+  background: color-mix(in srgb, var(--foreground) 6%, var(--popover));
   color: var(--text-base, var(--foreground));
   flex-shrink: 0;
 }
@@ -1363,7 +1352,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   border: 1px solid var(--border-base);
   font-family: inherit;
@@ -1372,10 +1361,15 @@
   color: var(--text-strong);
   cursor: default;
   margin-top: 4px;
-  transition: opacity 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .social-no-rooms-action:hover {
-  opacity: 0.7;
-  border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  border-color: var(--border-strong);
+}
+
+.social-no-rooms-action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }

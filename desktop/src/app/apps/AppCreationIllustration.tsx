@@ -129,26 +129,24 @@ export function AppCreationIllustration({
 
       {/* Floating background shapes */}
       <g className="anim-float-1">
-        <circle cx="80" cy="70" r="10" fill="#ffffff" opacity="0.9" />
+        <circle cx="80" cy="70" r="10" fill="color-mix(in oklch, var(--foreground) 6%, transparent)" />
         <rect
           x="310"
           y="200"
           width="16"
           height="16"
           rx="4"
-          fill="#ffffff"
-          opacity="0.85"
+          fill="color-mix(in oklch, var(--foreground) 5%, transparent)"
           transform="rotate(25 318 208)"
         />
       </g>
       <g className="anim-float-2">
         <polygon
           points="320,70 308,90 332,90"
-          fill="#ffffff"
-          opacity="0.8"
+          fill="color-mix(in oklch, var(--foreground) 5%, transparent)"
           transform="rotate(-15 320 80)"
         />
-        <circle cx="90" cy="230" r="6" fill="#ffffff" opacity="0.9" />
+        <circle cx="90" cy="230" r="6" fill="color-mix(in oklch, var(--foreground) 6%, transparent)" />
       </g>
 
       {/* Ground/baseline */}
@@ -181,9 +179,9 @@ export function AppCreationIllustration({
           strokeWidth="1"
         />
         {/* Title bar buttons (traffic lights) */}
-        <circle cx="114" cy="86" r="3" fill="#ff5f56" />
-        <circle cx="122" cy="86" r="3" fill="#ffbd2e" />
-        <circle cx="130" cy="86" r="3" fill="#27c93f" />
+        <circle cx="114" cy="86" r="3" fill="var(--destructive)" />
+        <circle cx="122" cy="86" r="3" fill="var(--warning)" />
+        <circle cx="130" cy="86" r="3" fill="var(--success)" />
 
         {/* Inner layout container */}
         <g opacity="0.85">
@@ -275,7 +273,7 @@ export function AppCreationIllustration({
       <g className="anim-sparkle">
         <path
           d="M220 145 C 220 156, 205 160, 205 160 C 205 160, 220 164, 220 175 C 220 164, 235 160, 235 160 C 235 160, 220 156, 220 145 Z"
-          fill="#fbbf24"
+          fill="var(--warning)"
         />
       </g>
 
@@ -284,7 +282,7 @@ export function AppCreationIllustration({
         <path
           d="M0,0 L0,24 L6,18 L11,29 L14,27 L9,16 L18,16 Z"
           fill="var(--primary)"
-          stroke="#ffffff"
+          stroke="var(--primary-foreground, white)"
           strokeWidth="2"
           strokeLinejoin="round"
         />

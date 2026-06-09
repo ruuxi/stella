@@ -16,10 +16,10 @@
   position: relative;
   width: 100%;
   max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
-  background: var(--panel-surface-bg-gradient);
-  border: 1px solid var(--panel-surface-border);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 999px; /* CSS fallback; overridden by motion inline style */
-  box-shadow: var(--shadow-md), var(--panel-surface-highlight);
+  box-shadow: var(--shadow-sm);
   overflow: clip;
   transition: box-shadow 200ms ease, border-color 200ms ease;
 }
@@ -57,16 +57,15 @@
   width: 100%;
 }
 
-/* Focus — border tint only; avoid stacking a thick ring on shadow-md. */
+/* Focus — border tint only; avoid stacking a thick ring on the resting shadow. */
 .composer-shell:focus-within {
-  border-color: color-mix(in oklch, var(--primary) 18%, var(--panel-surface-border));
+  border-color: color-mix(in oklch, var(--primary) 18%, var(--border));
 }
 
 .composer-shell--drag-over {
-  border-color: color-mix(in oklch, var(--primary) 42%, var(--panel-surface-border));
+  border-color: color-mix(in oklch, var(--primary) 42%, var(--border));
   box-shadow:
-    var(--shadow-md),
-    var(--panel-surface-highlight),
+    var(--shadow-sm),
     0 0 0 2px color-mix(in oklch, var(--primary) 38%, transparent),
     0 0 0 6px color-mix(in oklch, var(--primary) 10%, transparent);
 }
@@ -165,6 +164,14 @@
 
 .composer-stop:hover {
   border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+}
+
+.composer-stop:focus-visible,
+.composer-add-button:focus-visible,
+.composer-submit:focus-visible,
+.composer-mic:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Add button - circular with border */

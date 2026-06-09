@@ -51,9 +51,9 @@
 
 [data-slot="dialog-content"].connect-dialog {
   --connect-dialog-pad-x: 24px;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   background-clip: padding-box;
   border: 1px solid var(--border-weak);
   min-height: 0;
@@ -117,7 +117,6 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-weaker);
-  opacity: 0.85;
 }
 
 .connect-section-title:not(:first-child) {
@@ -132,22 +131,25 @@
   text-align: left;
   padding: 16px 18px;
   gap: 14px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--card) 20%, transparent);
+  border-radius: var(--radius-2xl);
+  background: var(--card);
   border: 1px solid var(--border-weak);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .connect-grid-card--wide:hover {
-  background: color-mix(in srgb, var(--card) 32%, transparent);
+  background: var(--surface-raised-hover);
   border-color: var(--border-base);
 }
 
 .connect-grid-card--wide.connect-grid-card-selected {
-  background: color-mix(in srgb, var(--card) 36%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, var(--card));
   border-color: var(--border-base);
+}
+
+.connect-grid-card--wide:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .connect-grid-card--wide .connect-grid-card-icon {
@@ -217,6 +219,11 @@
 
 .connect-grid-card:not(.connect-grid-card--wide):active {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.connect-grid-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .connect-grid-card-selected:not(.connect-grid-card--wide) {
@@ -304,6 +311,11 @@
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
+.connect-back-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* Full view — replaces grid when a provider is selected */
 .connect-full-view {
   flex: 1;
@@ -331,11 +343,9 @@
   flex: 1;
   min-height: 0;
   padding: 28px 32px;
-  background: color-mix(in srgb, var(--card) 20%, transparent);
+  background: var(--card);
   border: 1px solid var(--border-weak);
-  border-radius: 14px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--radius-2xl);
 }
 
 @keyframes connect-view-enter {
@@ -388,6 +398,12 @@
 
 .connect-bot-link:hover {
   color: var(--text-base);
+}
+
+.connect-bot-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
 }
 
 .connect-status {
@@ -458,7 +474,7 @@
   font-size: var(--font-size-md);
   font-weight: var(--weight-medium);
   color: var(--text-strong);
-  background-color: color-mix(in srgb, var(--background) 60%, transparent);
+  background-color: var(--surface-inset);
   border: 1px solid var(--border-weak);
   border-radius: var(--radius-md, 10px);
   cursor: default;
@@ -468,8 +484,8 @@
 [data-slot="select-trigger"].connect-phone-dial[data-state="open"] {
   outline: none;
   border-color: var(--border-base);
-  background-color: color-mix(in srgb, var(--background) 80%, transparent);
-  box-shadow: none;
+  background-color: var(--surface-inset);
+  box-shadow: var(--focus-ring);
 }
 
 .connect-phone-input,
@@ -481,11 +497,11 @@
   font-size: 16px;
   font-weight: var(--weight-medium);
   color: var(--text-strong);
-  background: color-mix(in srgb, var(--background) 60%, transparent);
+  background: var(--surface-inset);
   border: 1px solid var(--border-weak);
   border-radius: var(--radius-md, 10px);
   outline: none;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .connect-phone-input::placeholder,
@@ -496,7 +512,13 @@
 .connect-phone-input:focus,
 .connect-code-input:focus {
   border-color: var(--border-base);
-  background: color-mix(in srgb, var(--background) 80%, transparent);
+  background: var(--surface-inset);
+}
+
+.connect-phone-input:focus-visible,
+.connect-code-input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .connect-code-input {
@@ -579,7 +601,7 @@
   letter-spacing: 0.18em;
   color: var(--text-strong);
   padding: 12px 24px;
-  background: color-mix(in srgb, var(--background) 60%, transparent);
+  background: var(--surface-inset);
   border-radius: var(--radius-md, 10px);
   border: 1px solid var(--border-weak);
   user-select: all;

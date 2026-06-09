@@ -5,7 +5,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm, 6px);
   border: 1px solid var(--border);
   font-family: var(--font-family-mono, "IBM Plex Mono", monospace);
   font-weight: var(--weight-medium);

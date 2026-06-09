@@ -35,12 +35,11 @@ function UserAppHost() {
         <h1
           style={{
             margin: 0,
-            fontFamily:
-              "var(--font-family-display, 'Cormorant Garamond', Georgia, serif)",
-            fontSize: "clamp(2rem, 4vw, 2.6rem)",
-            fontWeight: 300,
-            letterSpacing: "-0.04em",
-            lineHeight: 1,
+            fontFamily: "var(--font-family-sans, 'Manrope', sans-serif)",
+            fontSize: "clamp(1.5rem, 3vw, 2rem)",
+            fontWeight: 600,
+            letterSpacing: "-0.02em",
+            lineHeight: 1.1,
           }}
         >
           App not found

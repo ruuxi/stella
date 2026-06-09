@@ -31,14 +31,8 @@ html[data-stella-window="mini"] #root {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background:
-    radial-gradient(
-      circle at 18% 0%,
-      color-mix(in oklch, var(--background) 82%, white) 0,
-      transparent 34%
-    ),
-    var(--background);
+  border: 1px solid var(--border);
+  background: var(--background);
 }
 
 .mini-window-topbar {
@@ -78,20 +72,29 @@ html[data-stella-window="mini"] #root {
   height: 27px;
   padding: 0;
   border: 0;
-  border-radius: 7px;
-  color: color-mix(in oklch, var(--foreground) 78%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--text-base);
   background: transparent;
   -webkit-app-region: no-drag;
 }
 
 .mini-window-topbar__button:hover {
   color: var(--foreground);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground) 8%, var(--background));
+}
+
+.mini-window-topbar__button:active {
+  background: color-mix(in srgb, var(--foreground) 12%, var(--background));
+}
+
+.mini-window-topbar__button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .mini-window-topbar__button[aria-pressed="true"] {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--background));
 }
 
 .mini-chat-body {
@@ -127,7 +130,7 @@ html[data-stella-window="mini"] #root {
 }
 
 .mini-chat-content .chat-sidebar-shell {
-  box-shadow: var(--shadow-sm), var(--panel-surface-highlight);
+  box-shadow: var(--shadow-sm);
 }
 
 .mini-chat-content .composer-context-peek-anchor {
@@ -144,6 +147,6 @@ html[data-stella-window="mini"] #root {
 
 @media (prefers-color-scheme: dark) {
   html[data-stella-window="mini"]:not(.light) .mini-chat-shell {
-    border-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+    border-color: var(--border);
   }
 }

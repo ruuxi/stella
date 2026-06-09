@@ -119,7 +119,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: color-mix(in oklch, var(--background) 92%, white 8%);
+  background: var(--surface-raised);
   border-bottom: 1px solid
     color-mix(in oklch, var(--foreground) 8%, transparent);
 }
@@ -417,7 +417,7 @@
   opacity: 0.6;
   padding: 8px 12px 12px;
   border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  background: color-mix(in oklch, var(--background) 92%, white 8%);
+  background: var(--surface-raised);
 }
 
 .onboarding-memory-mock[data-variant="on"] .onboarding-memory-mock__caption {
@@ -468,6 +468,11 @@
 
 .onboarding-memory-toggle:active {
   transform: scale(0.98);
+}
+
+.onboarding-memory-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .onboarding-memory-toggle[aria-checked="true"] {

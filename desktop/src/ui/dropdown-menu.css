@@ -1,20 +1,16 @@
 /* ─────────────────────────────────────────────────────────────
-   Dropdown menu — glass surface that matches the top-bar nav / chat
-   composer chrome. Same backdrop-blur + foreground-overlay hover
-   states as `.shell-topbar-nav-item`, scaled down for menu density.
+   Dropdown menu — transient overlay surface. Keeps a light blur (one
+   of the few surfaces that does) with a hairline lip via the shared
+   overlay shadow, scaled down for menu density.
    ───────────────────────────────────────────────────────────── */
 
 [data-component="dropdown-menu-content"] {
   min-width: 180px;
   padding: 6px;
-  border-radius: var(--radius-md, 10px);
-  /* Hairline edge — slightly stronger than --border-weak so the menu
-     keeps a crisp boundary against the gradient backdrop. */
+  border-radius: var(--radius-lg, 10px);
+  /* Hairline edge keeps a crisp boundary against the page. */
   border: 1px solid var(--border-base);
-  /* Glass: same recipe as the popover surface (theme picker / Connect
-     dialog family). The 88% --popover mix that lived here read as a
-     near-solid pill against the gradient backdrop; --glass-bg is the
-     canonical Apple-polish surface this app uses everywhere else. */
+  /* Light blur — menus are transient overlays, so they keep glass. */
   background: var(--glass-bg);
   background-clip: padding-box;
   backdrop-filter: var(--glass-blur);
@@ -85,7 +81,7 @@
 [data-slot="dropdown-menu-radio-item"][data-highlighted],
 [data-slot="dropdown-menu-sub-trigger"][data-highlighted],
 [data-slot="dropdown-menu-sub-trigger"][data-state="open"] {
-  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
   color: var(--text-strong, var(--foreground));
 }
 
@@ -154,16 +150,16 @@
 }
 
 [data-slot="dropdown-menu-item"][data-variant="destructive"] [data-slot="dropdown-menu-item-icon"] {
-  color: color-mix(in oklch, var(--text-weak, var(--muted-foreground)) 60%, var(--destructive) 40%);
+  color: color-mix(in srgb, var(--text-weak, var(--muted-foreground)) 60%, var(--destructive) 40%);
 }
 
 [data-slot="dropdown-menu-item"][data-variant="destructive"][data-highlighted] {
-  background: color-mix(in oklch, var(--destructive) 14%, transparent);
-  color: color-mix(in oklch, var(--text-strong, var(--foreground)) 30%, var(--destructive) 70%);
+  background: color-mix(in srgb, var(--destructive) 14%, transparent);
+  color: color-mix(in srgb, var(--text-strong, var(--foreground)) 30%, var(--destructive) 70%);
 }
 
 [data-slot="dropdown-menu-item"][data-variant="destructive"][data-highlighted] [data-slot="dropdown-menu-item-icon"] {
-  color: color-mix(in oklch, var(--text-strong, var(--foreground)) 25%, var(--destructive) 75%);
+  color: color-mix(in srgb, var(--text-strong, var(--foreground)) 25%, var(--destructive) 75%);
 }
 
 @keyframes dropdown-menu-open {

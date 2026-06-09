@@ -172,8 +172,7 @@ export function PhoneAccessConnectCard() {
                     onClick={() => void handleCreate()}
                     disabled={!desktopDeviceId || isCreating}
                     style={{
-                      fontFamily:
-                        'var(--font-family-display, "Cormorant Garamond", Georgia, serif)',
+                      fontFamily: "var(--font-family-display)",
                       fontSize: 24,
                       fontWeight: 500,
                       letterSpacing: "0.01em",

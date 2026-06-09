@@ -38,7 +38,7 @@
   max-width: 150px;
   padding: 3px 4px 3px 7px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   color: var(--text-base);
   background: transparent;
@@ -47,13 +47,13 @@
 
 .mini-display-tab:hover {
   color: var(--text-strong);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--background));
 }
 
 .mini-display-tab--active {
   color: var(--text-strong);
-  border-color: color-mix(in oklch, var(--foreground) 9%, transparent);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--foreground) 8%, var(--background));
 }
 
 .mini-display-tab__button {
@@ -65,6 +65,12 @@
   border: 0;
   color: inherit;
   background: transparent;
+}
+
+.mini-display-tab__button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
 }
 
 .mini-display-tab__title {
@@ -83,14 +89,19 @@
   height: 17px;
   padding: 0;
   border: 0;
-  border-radius: 5px;
-  color: color-mix(in oklch, currentColor 62%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--text-weak);
   background: transparent;
 }
 
 .mini-display-tab__close:hover {
   color: var(--text-strong);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground) 8%, var(--background));
+}
+
+.mini-display-tab__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .mini-chat-body[data-display-panel-open="true"] .mini-chat-content {

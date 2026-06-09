@@ -5,7 +5,7 @@
   gap: 8px;
   padding: 8px 14px;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
+  background: var(--surface-inset);
   border: none;
   font-size: var(--font-size-md);
   color: var(--text-base);

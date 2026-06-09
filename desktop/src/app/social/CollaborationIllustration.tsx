@@ -122,64 +122,64 @@ export function CollaborationIllustration({
       </defs>
 
       <g className="anim-float-1">
-        <circle cx="90" cy="80" r="12" fill="#e2e8f0" />
+        <circle cx="90" cy="80" r="12" fill="color-mix(in oklch, var(--foreground) 6%, transparent)" />
         <rect
           x="290"
           y="210"
           width="20"
           height="20"
           rx="4"
-          fill="#e2e8f0"
+          fill="color-mix(in oklch, var(--foreground) 6%, transparent)"
           transform="rotate(15 300 220)"
         />
       </g>
       <g className="anim-float-2">
         <polygon
           points="320,80 305,105 335,105"
-          fill="#f1f5f9"
+          fill="color-mix(in oklch, var(--foreground) 4%, transparent)"
           transform="rotate(-20 320 95)"
         />
-        <circle cx="110" cy="220" r="8" fill="#f1f5f9" />
+        <circle cx="110" cy="220" r="8" fill="color-mix(in oklch, var(--foreground) 4%, transparent)" />
       </g>
 
       <path
         d="M120 235 L280 235"
-        stroke="#cbd5e1"
+        stroke="var(--border-strong, var(--border))"
         strokeWidth="4"
         strokeLinecap="round"
       />
 
       <g className="anim-body" filter="url(#shadow-sm)">
-        <rect x="160" y="155" width="80" height="80" rx="8" fill="#c084fc" />
-        <circle cx="200" cy="195" r="16" fill="#ffffff" opacity="0.9" />
+        <rect x="160" y="155" width="80" height="80" rx="8" fill="var(--chart-5, var(--primary))" />
+        <circle cx="200" cy="195" r="16" fill="color-mix(in oklch, var(--card) 90%, transparent)" />
       </g>
 
       <g className="anim-roof" filter="url(#shadow-sm)">
-        <path d="M145 155 L200 100 L255 155 Z" fill="#38bdf8" />
+        <path d="M145 155 L200 100 L255 155 Z" fill="var(--chart-1, var(--primary))" />
       </g>
 
       <g className="anim-sparkle">
         <path
           d="M200 120 C 200 145, 175 150, 175 150 C 175 150, 200 155, 200 180 C 200 155, 225 150, 225 150 C 225 150, 200 145, 200 120 Z"
-          fill="#fbbf24"
+          fill="var(--warning)"
         />
       </g>
 
       <g className="anim-cursor-a">
         <path
           d="M0,0 L0,24 L6,18 L11,29 L14,27 L9,16 L18,16 Z"
-          fill="#4f46e5"
-          stroke="#ffffff"
+          fill="var(--primary)"
+          stroke="var(--primary-foreground, white)"
           strokeWidth="2"
           strokeLinejoin="round"
         />
-        <rect x="16" y="22" width="40" height="18" rx="4" fill="#4f46e5" />
+        <rect x="16" y="22" width="40" height="18" rx="4" fill="var(--primary)" />
         <text
           x="36"
           y="34"
-          fontFamily="sans-serif"
+          fontFamily="var(--font-family-sans, sans-serif)"
           fontSize="10"
-          fill="white"
+          fill="var(--primary-foreground, white)"
           fontWeight="600"
           textAnchor="middle"
         >
@@ -190,18 +190,18 @@ export function CollaborationIllustration({
       <g className="anim-cursor-b">
         <path
           d="M0,0 L0,24 L6,18 L11,29 L14,27 L9,16 L18,16 Z"
-          fill="#e11d48"
-          stroke="#ffffff"
+          fill="var(--chart-4, var(--destructive))"
+          stroke="var(--primary-foreground, white)"
           strokeWidth="2"
           strokeLinejoin="round"
         />
-        <rect x="16" y="22" width="50" height="18" rx="4" fill="#e11d48" />
+        <rect x="16" y="22" width="50" height="18" rx="4" fill="var(--chart-4, var(--destructive))" />
         <text
           x="41"
           y="34"
-          fontFamily="sans-serif"
+          fontFamily="var(--font-family-sans, sans-serif)"
           fontSize="10"
-          fill="white"
+          fill="var(--primary-foreground, white)"
           fontWeight="600"
           textAnchor="middle"
         >

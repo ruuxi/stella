@@ -29,7 +29,7 @@
   height: 32px;
   padding: 0 10px 0 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-md, 8px);
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
@@ -47,11 +47,11 @@
 }
 
 [data-slot="select-trigger"]:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--foreground) 4%, var(--background));
+  background: color-mix(in srgb, var(--foreground) 7%, var(--background));
 }
 
 [data-slot="select-trigger"][data-state="open"] {
-  background: color-mix(in oklch, var(--foreground) 5%, var(--background));
+  background: color-mix(in srgb, var(--foreground) 9%, var(--background));
 }
 
 [data-slot="select-trigger"]:focus-visible {

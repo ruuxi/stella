@@ -32,12 +32,17 @@
   min-width: 86px;
   width: auto;
   border-radius: var(--radius-full);
-  border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
-  background: color-mix(in oklch, var(--background) 75%, transparent);
+  border: 1px solid var(--border);
+  background: var(--surface-inset);
   color: var(--text-strong);
   font: inherit;
   padding: 0 9px;
   cursor: default;
+}
+
+.model-picker-current-reasoning [data-slot="select-trigger"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .model-picker-current-reasoning [data-slot="select-trigger"]:disabled {
@@ -325,15 +330,13 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px 18px;
-  border-radius: 14px;
+  border-radius: var(--radius-2xl);
   border: 1px solid var(--border-weak);
-  background: color-mix(in srgb, var(--card) 22%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--card);
 }
 
 .model-picker-auth-headline {
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-family: var(--font-family-display);
   font-size: 1.15rem;
   font-weight: var(--weight-regular);
   letter-spacing: -0.03em;
@@ -361,19 +364,21 @@
 .model-picker-auth-row
   [data-component="text-field"]
   [data-slot="input-wrapper"] {
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-weak);
-  background: color-mix(in srgb, var(--background) 60%, transparent);
+  background: var(--surface-inset);
   transition:
     border-color 120ms ease,
-    background 120ms ease;
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .model-picker-auth-row
   [data-component="text-field"]
   [data-slot="input-wrapper"]:focus-within {
   border-color: var(--border-base);
-  background: color-mix(in srgb, var(--background) 80%, transparent);
+  background: var(--surface-inset);
+  box-shadow: var(--focus-ring);
 }
 
 .model-picker-auth-row [data-component="text-field"] [data-slot="input-input"] {
@@ -433,9 +438,14 @@
   gap: 8px;
   padding: 8px 10px;
   border-radius: var(--radius-full);
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  background: color-mix(in oklch, var(--background) 70%, transparent);
+  border: 1px solid var(--border);
+  background: var(--surface-inset);
   color: var(--text-weak);
+}
+
+.model-picker-search:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: var(--focus-ring);
 }
 
 .model-picker-search input {

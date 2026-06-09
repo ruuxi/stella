@@ -7,6 +7,8 @@
   --page-accent: var(--primary);
   --page-muted: var(--text-weak);
   --shadow-card: var(--shadow-lg);
+  --page-radius: var(--radius-lg);
+  --demo-panel-inner-padding: var(--space-4);
 }
 
 /* â”€â”€ Desktop mock frame â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */

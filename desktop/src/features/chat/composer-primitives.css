@@ -17,8 +17,7 @@
 }
 
 .chat-composer-field--orb::placeholder {
-  color: var(--foreground);
-  opacity: 0.35;
+  color: var(--text-weaker);
 }
 
 .chat-composer-textarea {
@@ -79,7 +78,7 @@
 }
 
 .chat-composer-icon-button--submit:hover:not(:disabled) {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--primary) 90%, var(--foreground));
 }
 
 .chat-composer-icon-button--submit:disabled {
