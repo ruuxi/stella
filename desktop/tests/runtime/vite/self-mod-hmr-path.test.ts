@@ -7,7 +7,7 @@ import {
   resolveSelfModOverlayImportPath,
   shouldPromoteSuppressedShellUpdatePath,
   shouldParkSelfModHmrClientUpdates,
-} from "../../../vite.config";
+} from "../../../vite/self-mod-hmr-plugin";
 
 const repoRoot = path
   .resolve(import.meta.dirname, "../../../..")
