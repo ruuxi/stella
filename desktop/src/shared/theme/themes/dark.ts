@@ -1,10 +1,11 @@
 import type { Theme, ThemeColors } from "./types";
 
-// "Dark" — the standardized macOS-native dark theme. Pinned to dark appearance
-// with a single flat, opaque surface (no gradient): near-black system chrome
-// (#1c1c1e) with elevated content (#2c2c2e), solid measured text colors, and
-// the same restrained system-blue accent as Light.
-const noir: ThemeColors = {
+// "Dark" — the macOS-native dark theme. Pinned to dark appearance with a
+// single flat, opaque surface (forcedMode → flat gradient = solid fill):
+// near-black system chrome (#1c1c1e) with elevated content (#2c2c2e), solid
+// measured text colors, and the same restrained system-blue accent as Light.
+// Replaces the old "Noir".
+const dark: ThemeColors = {
   background: "#1c1c1e",
   backgroundWeak: "#161618",
   backgroundStrong: "#2c2c2e",
@@ -32,11 +33,11 @@ const noir: ThemeColors = {
 };
 
 const theme: Theme = {
-  id: "noir",
+  id: "dark",
   name: "Dark",
   forcedMode: "dark",
-  light: noir,
-  dark: noir,
+  light: dark,
+  dark,
 };
 
 export default theme;

@@ -1,18 +1,36 @@
-import pearl from "./pearl";
-import noir from "./noir";
 import custom from "./custom";
+import light from "./light";
+import dark from "./dark";
+import oc1 from "./oc1";
+import dracula from "./dracula";
+import catppuccin from "./catppuccin";
+import monokai from "./monokai";
+import solarized from "./solarized";
+import shadesofpurple from "./shadesofpurple";
+import nightowl from "./nightowl";
+import vesper from "./vesper";
+import gruvbox from "./gruvbox";
+import ayu from "./ayu";
+import aura from "./aura";
+import sage from "./sage";
+import crimson from "./crimson";
+import slate from "./slate";
+import cocoa from "./cocoa";
 import type { Theme, ThemeColors } from "./types";
 
 export type { Theme, ThemeColors };
 
-// Curated to two impeccable, fully-tuned themes — Light (pearl) and Dark
-// (noir) — plus the invisible Custom overlay every user starts on. The wider
-// theme zoo (dracula, catppuccin, gruvbox, …) is intentionally unregistered:
-// the engine still supports it (the files remain on disk), but shipping ~18
-// uneven themes reads as immature. Re-add an import here to bring one back.
+// Two flat, macOS-native defaults — Light and Dark (forcedMode → solid, no
+// gradient) — plus the invisible Custom overlay every user starts on, and the
+// colorful character themes, which render the ShiftingGradient backdrop behind
+// clean opaque panels. (The old "Pearl"/"Noir" standardized themes were removed
+// — Light/Dark are their successors.)
 const themes: Theme[] = [
   custom,
-  pearl, noir,
+  light, dark,
+  oc1, dracula, catppuccin, monokai, solarized,
+  shadesofpurple, nightowl, vesper, gruvbox, ayu, aura,
+  sage, crimson, slate, cocoa,
 ];
 
 const listeners = new Set<() => void>();

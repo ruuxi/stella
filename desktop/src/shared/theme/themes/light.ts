@@ -1,10 +1,11 @@
 import type { Theme, ThemeColors } from "./types";
 
-// "Light" — the standardized macOS-native light theme and the product default.
-// Pinned to light appearance with a single flat, opaque surface (no gradient):
-// system-gray window chrome (#ececec) with white content (#ffffff), solid
-// measured text colors, and one restrained accent (system blue).
-const pearl: ThemeColors = {
+// "Light" — the macOS-native light theme and the product default. Pinned to
+// light appearance with a single flat, opaque surface (forcedMode → flat
+// gradient = solid fill): system-gray window chrome (#ececec) with white
+// content (#ffffff), solid measured text colors, and one restrained accent
+// (system blue). Replaces the old "Pearl".
+const light: ThemeColors = {
   background: "#ececec",
   backgroundWeak: "#e3e3e8",
   backgroundStrong: "#ffffff",
@@ -32,11 +33,11 @@ const pearl: ThemeColors = {
 };
 
 const theme: Theme = {
-  id: "pearl",
+  id: "light",
   name: "Light",
   forcedMode: "light",
-  light: pearl,
-  dark: pearl,
+  light,
+  dark: light,
 };
 
 export default theme;
