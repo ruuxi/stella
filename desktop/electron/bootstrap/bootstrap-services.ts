@@ -210,6 +210,8 @@ export const createBootstrapServices = (options: {
       hideRadial: () => state.overlayController?.hideRadial(),
       updateRadialCursor: () => state.overlayController?.updateRadialCursor(),
       getRadialBounds: () => state.overlayController?.getRadialBounds() ?? null,
+      setRadialAddIcon: (iconDataUrl) =>
+        state.overlayController?.notifyRadialAddIcon(iconDataUrl),
     },
     window: {
       isCompactMode: () => state.windowManager?.isCompactMode() ?? false,

@@ -464,6 +464,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       centerX: number;
       centerY: number;
     }>("radial:cursor"),
+    onAddIcon: onIpcWithEvent<{ iconDataUrl: string | null }>(
+      "radial:addIcon",
+    ),
   },
 
   overlay: {
