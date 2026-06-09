@@ -1,15 +1,11 @@
 .selection-chip-overlay {
   position: absolute;
-  border: 1px solid rgba(0, 0, 0, 0.18);
-  background: rgba(255, 255, 255, 0.96);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  color: #0a0a0a;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-base);
   cursor: default;
   pointer-events: auto;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.12),
-    0 6px 18px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-overlay);
   transition:
     background 120ms ease,
     border-color 120ms ease;
@@ -18,13 +14,19 @@
 }
 
 .selection-chip-overlay:hover {
-  background: rgba(255, 255, 255, 1);
-  border-color: rgba(0, 0, 0, 0.28);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--card));
+  border-color: var(--border-strong);
   transform: translateY(-1px);
 }
 
 .selection-chip-overlay:active {
+  background: color-mix(in srgb, var(--foreground) 10%, var(--card));
   transform: translateY(0);
+}
+
+.selection-chip-overlay:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 @keyframes selection-chip-overlay-in {

@@ -185,7 +185,7 @@
   outline: none;
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   color: var(--text-strong);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 25%, transparent);
+  box-shadow: var(--focus-ring);
 }
 
 .chat-home-launcher__entry-icon {

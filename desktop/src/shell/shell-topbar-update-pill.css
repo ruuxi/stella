@@ -31,10 +31,10 @@
   background: conic-gradient(
     from var(--shell-topbar-update-pill-angle),
     transparent 0deg,
-    oklch(70% 0.26 250 / 0.5) 40deg,
-    oklch(75% 0.3 250 / 0.9) 120deg,
-    oklch(82% 0.32 250) 180deg,
-    oklch(75% 0.3 250 / 0.65) 220deg,
+    color-mix(in oklch, var(--primary) 50%, transparent) 40deg,
+    color-mix(in oklch, var(--primary) 90%, transparent) 120deg,
+    var(--primary) 180deg,
+    color-mix(in oklch, var(--primary) 65%, transparent) 220deg,
     transparent 260deg,
     transparent 360deg
   );
@@ -79,6 +79,11 @@
   -webkit-app-region: no-drag;
 }
 
+.shell-topbar-update-pill__main:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .shell-topbar-update-pill__main:disabled {
   cursor: default;
   opacity: 1;
@@ -110,6 +115,11 @@
 .shell-topbar-update-pill__cancel:hover {
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
   color: var(--text-strong);
+}
+
+.shell-topbar-update-pill__cancel:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .shell-topbar-update-pill__cancel:disabled {

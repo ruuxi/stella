@@ -45,7 +45,18 @@
 .pill-btn:hover:not(:disabled),
 .pill-btn[data-component="button"]:hover:not(:disabled) {
   color: var(--text-base, var(--foreground));
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.pill-btn:active:not(:disabled),
+.pill-btn[data-component="button"]:active:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.pill-btn:focus-visible,
+.pill-btn[data-component="button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .pill-btn:disabled,
@@ -76,15 +87,20 @@
 
 .pill-btn--primary:hover:not(:disabled),
 .pill-btn--primary[data-component="button"]:hover:not(:disabled) {
-  background: var(--interactive);
+  background: color-mix(in srgb, var(--foreground) 10%, var(--interactive));
   color: var(--interactive-foreground);
-  border-color: var(--interactive);
-  opacity: 0.9;
+  border-color: color-mix(in srgb, var(--foreground) 10%, var(--interactive));
+}
+
+.pill-btn--primary:active:not(:disabled),
+.pill-btn--primary[data-component="button"]:active:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 16%, var(--interactive));
+  border-color: color-mix(in srgb, var(--foreground) 16%, var(--interactive));
 }
 
 .pill-btn--danger:hover:not(:disabled),
 .pill-btn--danger[data-component="button"]:hover:not(:disabled) {
   color: var(--destructive);
   border-color: var(--destructive);
-  background: color-mix(in oklch, var(--destructive) 6%, transparent);
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
 }

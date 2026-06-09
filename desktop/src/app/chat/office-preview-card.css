@@ -13,7 +13,7 @@
   width: 100%;
   min-height: 420px;
   border: 0;
-  background: white;
+  background: var(--card);
 }
 
 .office-preview-card__placeholder {

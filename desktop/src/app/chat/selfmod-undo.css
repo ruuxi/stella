@@ -10,11 +10,10 @@
   font-family: inherit;
   font-size: var(--font-size-base);
   line-height: 1.35;
-  border-radius: var(--radius-lg, 14px);
-  border: 1px solid var(--border-strong);
-  background: color-mix(in srgb, var(--card) 20%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
   color: var(--text-base);
 }
 
@@ -46,10 +45,10 @@
   min-width: 64px;
   min-height: 30px;
   appearance: none;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   padding: 6px 14px;
-  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--card));
   color: var(--text-strong);
   font: inherit;
   font-size: var(--font-size-sm);
@@ -63,8 +62,13 @@
 }
 
 .selfmod-card__action:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--foreground) 14%, transparent);
-  border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+  background: color-mix(in srgb, var(--foreground) 10%, var(--card));
+  border-color: var(--border-strong);
+}
+
+.selfmod-card__action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .selfmod-card__action:disabled {
@@ -72,14 +76,14 @@
 }
 
 .selfmod-card__action--confirm {
-  border-color: color-mix(in srgb, var(--destructive) 55%, var(--border-strong));
-  background: color-mix(in srgb, var(--destructive) 16%, transparent);
+  border-color: color-mix(in srgb, var(--destructive) 55%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 16%, var(--card));
   color: var(--destructive);
 }
 
 .selfmod-card__action--confirm:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--destructive) 78%, var(--border-strong));
-  background: color-mix(in srgb, var(--destructive) 24%, transparent);
+  border-color: color-mix(in srgb, var(--destructive) 78%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 24%, var(--card));
 }
 
 .selfmod-card__spinner {

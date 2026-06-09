@@ -438,7 +438,7 @@
     flex: 1;
   }
   .sam-home-title {
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-size: 2rem;
     font-weight: var(--weight-regular);
     letter-spacing: -0.03em;
@@ -628,7 +628,7 @@
   }
   .sam-cozy-rail-name {
     color: #8b6240;
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-size: var(--font-size-xl);
     font-weight: var(--weight-semibold);
     letter-spacing: 0.06em;
@@ -750,7 +750,7 @@
   }
   .sam-root[data-cozy="true"] .sam-body .sam-body-cozy { display: flex; }
   .sam-cozy-home-title {
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-size: 2rem;
     font-weight: var(--weight-regular);
     letter-spacing: -0.03em;
@@ -794,7 +794,7 @@
     padding: 0 24px;
   }
   .sam-cozy-home-report-idea {
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-size: 16px;
     font-weight: var(--weight-medium);
     color: #5c3d2e;
@@ -882,7 +882,7 @@
   }
   .sam-studio-name {
     margin: 0;
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-size: 28px;
     font-weight: var(--weight-medium);
     letter-spacing: -0.025em;
@@ -1099,7 +1099,6 @@
     );
     border: 1px solid color-mix(in oklch, var(--studio-accent) 38%, transparent);
     box-shadow:
-      0 1px 0 color-mix(in oklch, white 22%, transparent) inset,
       0 4px 12px -8px color-mix(in oklch, var(--studio-accent) 50%, transparent);
     color: var(--studio-accent);
     overflow: hidden;
@@ -1148,7 +1147,7 @@
     letter-spacing: -0.005em;
   }
   .sam-studio-card-prompt {
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-size: var(--font-size-base);
     color: var(--text-weak);
     line-height: 1.35;
@@ -1438,7 +1437,7 @@
   }
   .sam-cozy-zzz {
     position: absolute;
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-weight: var(--weight-semibold);
     color: #b08560;
     pointer-events: none;
@@ -1472,7 +1471,7 @@
   }
   .sam-cozy-state-dot { display: none; }
   .sam-cozy-line {
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-size: var(--font-size-xl);
     font-weight: var(--weight-medium);
     color: #5c3d2e;
@@ -1591,7 +1590,7 @@
     z-index: 3;
   }
   .sam-mochi__brand {
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-size: 22px;
     font-weight: var(--weight-semibold);
     letter-spacing: 0.02em;
@@ -1627,7 +1626,7 @@
   }
   .sam-mochi__headline {
     margin: 0;
-    font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+    font-family: var(--font-family-display);
     font-weight: var(--weight-light);
     font-size: 4.4rem;
     line-height: 0.95;
@@ -1769,7 +1768,7 @@
     box-shadow:
       0 4px 16px color-mix(in oklch, var(--foreground) 10%, transparent),
       0 0 0 0 color-mix(in oklch, var(--primary) 0%, transparent),
-      0 1px 0 color-mix(in oklch, white 12%, transparent) inset;
+      0 1px 0 transparent inset;
     animation:
       samPillIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
       samPillBorderPulse 2.4s ease-in-out infinite;
@@ -1843,14 +1842,14 @@
       box-shadow:
         0 4px 16px color-mix(in oklch, var(--foreground) 10%, transparent),
         0 0 0 0 color-mix(in oklch, var(--primary) 0%, transparent),
-        0 1px 0 color-mix(in oklch, white 12%, transparent) inset;
+        0 1px 0 transparent inset;
     }
     50% {
       border-color: color-mix(in oklch, var(--primary) 52%, transparent);
       box-shadow:
         0 5px 18px color-mix(in oklch, var(--foreground) 12%, transparent),
         0 0 0 6px color-mix(in oklch, var(--primary) 13%, transparent),
-        0 1px 0 color-mix(in oklch, white 12%, transparent) inset;
+        0 1px 0 transparent inset;
     }
   }
   @keyframes samCozyFloat {

@@ -28,9 +28,9 @@
   gap: 8px;
   margin: 4px 22px 8px;
   padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border);
+  background: var(--surface-inset);
   color: var(--text-weak);
 }
 
@@ -66,6 +66,11 @@
 .activity-history-dialog__search-clear:hover {
   background: color-mix(in oklch, var(--foreground) 16%, transparent);
   color: var(--text-strong);
+}
+
+.activity-history-dialog__search-clear:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Scroller wrapper. Hosts a virtualized LegendList (which manages its
@@ -146,7 +151,7 @@
   align-items: baseline;
   gap: 12px;
   padding: 8px 10px;
-  border-radius: 7px;
+  border-radius: var(--radius-md, 8px);
   font-size: var(--font-size-base);
   color: var(--text-base);
   min-width: 0;
@@ -195,7 +200,7 @@
   padding: 8px 10px;
   margin: -8px -10px;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--radius-md, 8px);
   background: transparent;
   text-align: left;
   cursor: default;
@@ -207,6 +212,11 @@
 
 .activity-history-dialog__row-button:hover {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.activity-history-dialog__row-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .activity-history-dialog__row-button--file {

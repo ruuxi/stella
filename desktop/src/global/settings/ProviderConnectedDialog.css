@@ -6,9 +6,9 @@
 [data-slot="dialog-content"].provider-connected-dialog {
   --provider-connected-pad-x: 24px;
   max-width: 440px;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   background-clip: padding-box;
   border: 1px solid var(--border-weak);
 }
@@ -24,7 +24,7 @@
 }
 
 .provider-connected-dialog [data-slot="dialog-title"] {
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-family: var(--font-family-display);
   font-size: 1.4rem;
   font-weight: var(--weight-regular);
   letter-spacing: -0.03em;
@@ -58,15 +58,15 @@
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-weak);
-  background: color-mix(in srgb, var(--card) 20%, transparent);
+  background: var(--card);
   cursor: default;
   transition: background 120ms ease, border-color 120ms ease;
 }
 
 .provider-connected-row:hover {
-  background: color-mix(in srgb, var(--card) 32%, transparent);
+  background: var(--surface-raised-hover);
   border-color: var(--border-base);
 }
 

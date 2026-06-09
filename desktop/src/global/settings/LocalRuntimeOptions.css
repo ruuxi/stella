@@ -80,7 +80,7 @@
 }
 
 .local-runtime-options-toggle-btn[data-active] {
-  background: var(--background, #fff);
+  background: var(--background);
   color: var(--text-strong);
   box-shadow: var(--shadow-subtle);
 }
@@ -98,7 +98,7 @@
   font-size: var(--font-size-sm);
   font-weight: var(--weight-medium);
   color: var(--text-strong);
-  background: var(--background, #fff);
+  background: var(--background);
   border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
   border-radius: var(--radius-md, 8px);
   text-align: center;
@@ -114,7 +114,7 @@
 }
 
 .local-runtime-options-number:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--text-strong) 12%, transparent);
+  box-shadow: var(--focus-ring);
 }
 
 .local-runtime-options-number:disabled {

@@ -7,7 +7,7 @@
 .shell-topbar-nav {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
   height: 100%;
   flex-shrink: 1;
   min-width: 0;
@@ -56,6 +56,10 @@
   outline: none;
 }
 
+.shell-topbar-nav-item:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
 .shell-topbar-nav-item[data-active="true"] {
   color: var(--text-strong);
   font-weight: var(--weight-semibold);
@@ -81,7 +85,7 @@
   padding: 0 3px;
   border-radius: 999px;
   background: var(--destructive);
-  color: #fff;
+  color: var(--primary-foreground);
   font-size: 9px;
   font-weight: var(--weight-semibold);
   line-height: 14px;
@@ -114,7 +118,7 @@
 .shell-topbar-account {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
   height: 100%;
   -webkit-app-region: no-drag;
 }
@@ -143,6 +147,10 @@
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
   color: var(--text-strong);
   outline: none;
+}
+
+.shell-topbar-account-trigger:focus-visible {
+  box-shadow: var(--focus-ring);
 }
 
 .shell-topbar-account-nickname {
@@ -204,6 +212,10 @@
   outline: none;
 }
 
+.shell-topbar-account-signin:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
 .shell-topbar-account-signin-icon {
   display: inline-flex;
   align-items: center;
@@ -241,6 +253,10 @@
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
   color: var(--text-strong);
   outline: none;
+}
+
+.shell-topbar-account-settings:focus-visible {
+  box-shadow: var(--focus-ring);
 }
 
 .shell-topbar-account-theme-anchor {

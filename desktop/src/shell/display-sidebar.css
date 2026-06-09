@@ -127,7 +127,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--panel-surface-bg-gradient);
+  background: var(--background);
   padding-top: var(--shell-topbar-height, 38px);
   box-sizing: border-box;
   /* Stay at the panel's "open" width even while the outer is animating
@@ -135,8 +135,7 @@
      the "roll away" effect on close instead of letting content reflow. */
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   min-width: 0;
-  border-left: 1px solid
-    color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
+  border-left: 1px solid var(--border);
   border-radius: 0 0 0 var(--display-sidebar-bottom-left-radius);
   transform: translate3d(12px, 0, 0);
   opacity: 0;
@@ -281,11 +280,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   bottom: var(--display-sidebar-bottom-left-radius);
   left: 0;
   width: 1px;
-  background: color-mix(
-    in oklch,
-    var(--foreground, #0f1728) 14%,
-    transparent
-  );
+  background: var(--border);
 }
 
 .display-sidebar__resize-handle::after {
@@ -294,10 +289,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   width: var(--display-sidebar-bottom-left-radius);
   height: var(--display-sidebar-bottom-left-radius);
   border-bottom-left-radius: var(--display-sidebar-bottom-left-radius);
-  border-left: 1px solid
-    color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
-  border-bottom: 1px solid
-    color-mix(in oklch, var(--foreground, #0f1728) 14%, transparent);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .display-sidebar--open .display-sidebar__resize-handle:hover,
@@ -332,6 +325,11 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   color: var(--text-strong);
   border-color: transparent;
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.display-sidebar__models-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .display-sidebar__active {
@@ -403,7 +401,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   width: 100%;
   min-height: 0;
   border: 0;
-  background: #ffffff;
+  background: var(--card);
   display: block;
 }
 
@@ -454,9 +452,9 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 
 .display-diff-file {
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--background) 72%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--card);
 }
 
 .display-diff-file + .display-diff-file {
@@ -468,8 +466,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   top: 0;
   z-index: 1;
   padding: 8px 10px;
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
-  background: color-mix(in oklch, var(--glass-bg) 92%, var(--background));
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
   color: var(--text-strong);
   font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--font-size-xs);
@@ -515,10 +513,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   display: flex;
   gap: 6px;
   padding: 8px 12px;
-  border-top: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
-  background: color-mix(in oklch, var(--glass-bg) 92%, var(--background));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  background: var(--background);
 }
 
 .display-diff-batches-chip {
@@ -604,9 +600,9 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--background) 94%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 10px);
+  background: var(--card);
   color: var(--foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
 }
@@ -619,8 +615,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   gap: 12px;
   min-height: 52px;
   padding: 9px 12px;
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
-  background: color-mix(in oklch, var(--background) 88%, var(--foreground) 3%);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-inset);
 }
 
 .display-artifact-panel__identity {
@@ -636,8 +632,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  border-radius: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
   color: var(--text-base);
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
@@ -686,9 +682,9 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 [data-slot="select-trigger"].display-artifact-panel__zoom,
 .display-artifact-panel__action {
   height: 28px;
-  border: 1px solid color-mix(in oklch, var(--border) 58%, transparent);
-  border-radius: 7px;
-  background: color-mix(in oklch, var(--background) 84%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-inset);
   color: var(--text-base);
   font: inherit;
   font-size: var(--font-size-sm);
@@ -716,13 +712,19 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   background: color-mix(in oklch, var(--foreground) 7%, transparent);
 }
 
+.display-artifact-panel__action:focus-visible,
+[data-slot="select-trigger"].display-artifact-panel__zoom:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .display-artifact-panel__body {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   overflow: hidden;
-  background: color-mix(in oklch, var(--background) 88%, #ffffff 12%);
+  background: var(--surface-inset);
 }
 
 .display-artifact-panel__frame {
@@ -732,7 +734,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   height: 100%;
   min-height: 0;
   border: 0;
-  background: #f7f7f8;
+  background: var(--card);
 }
 
 .display-artifact-panel__footer {
@@ -849,6 +851,11 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
+.display-file-preview__actions button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .display-file-preview__actions span {
   color: var(--text-weak);
   font-size: var(--font-size-xs);
@@ -876,9 +883,9 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--background) 82%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--card);
 }
 
 .display-file-preview__table {
@@ -1008,6 +1015,11 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   min-height: 0;
 }
 
+.display-media__primary-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .display-media__primary-img {
   display: block;
   max-width: 100%;
@@ -1042,6 +1054,11 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 
 .display-media__thumb:hover {
   border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+}
+
+.display-media__thumb:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .display-media__thumb--active {
@@ -1097,11 +1114,17 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
+  background: var(--glass-bg);
+  color: var(--text-strong);
   font-size: 18px;
   cursor: default;
-  backdrop-filter: blur(8px);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.display-media-lightbox__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Video variant */
@@ -1302,7 +1325,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   background: var(--accent, var(--foreground));
   color: var(--accent-foreground, var(--background));
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md, 8px);
   padding: 6px 12px;
   font-size: var(--font-size-sm);
   cursor: default;
@@ -1310,7 +1333,12 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 }
 
 .display-media__action-btn:hover {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--foreground) 10%, var(--accent, var(--foreground)));
+}
+
+.display-media__action-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .display-media__action-status {
@@ -1433,6 +1461,12 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 .display-trash__row-actions button:hover:not(:disabled),
 .display-trash__close:hover {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.display-trash__row-actions button:focus-visible,
+.display-trash__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .display-trash__row-actions button:disabled {

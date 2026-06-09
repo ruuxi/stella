@@ -43,6 +43,11 @@
   background: color-mix(in oklch, var(--text-strong) 5%, transparent);
 }
 
+.provider-only-row-main:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .provider-only-row-main:disabled {
   cursor: default;
 }

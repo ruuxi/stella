@@ -211,8 +211,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
      moving substrate. Still theme-tracking via --foreground/--background. */
   --text-strong: var(--foreground);
   --text-base: color-mix(in srgb, var(--foreground) 80%, var(--background));
-  --text-weak: color-mix(in srgb, var(--foreground) 52%, var(--background));
-  --text-weaker: color-mix(in srgb, var(--foreground) 38%, var(--background));
+  --text-weak: color-mix(in srgb, var(--foreground) 58%, var(--background));
+  --text-weaker: color-mix(in srgb, var(--foreground) 40%, var(--background));
   --text-interactive-base: var(--primary);
 
   /* No blend mode — text paints normally on a stable opaque surface. */
@@ -417,8 +417,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
   /* Solid, theme-tracking text ramp (mixed toward the dark background). */
   --text-strong: var(--foreground);
   --text-base: color-mix(in srgb, var(--foreground) 82%, var(--background));
-  --text-weak: color-mix(in srgb, var(--foreground) 56%, var(--background));
-  --text-weaker: color-mix(in srgb, var(--foreground) 40%, var(--background));
+  --text-weak: color-mix(in srgb, var(--foreground) 60%, var(--background));
+  --text-weaker: color-mix(in srgb, var(--foreground) 42%, var(--background));
   --text-interactive-base: var(--primary);
 
   --text-mix-blend-mode: normal;

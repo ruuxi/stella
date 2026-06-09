@@ -27,7 +27,7 @@
   padding: 14px 16px;
   pointer-events: auto;
   transition: all 150ms ease-out;
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-lg, 10px);
   border: 1px solid var(--border-base);
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
@@ -65,12 +65,10 @@
 
 [data-component="toast"][data-variant="success"]::before {
   background: var(--success);
-  box-shadow: 0 0 8px 1px color-mix(in oklch, var(--success) 35%, transparent);
 }
 
 [data-component="toast"][data-variant="error"]::before {
   background: var(--destructive);
-  box-shadow: 0 0 8px 1px color-mix(in oklch, var(--destructive) 35%, transparent);
 }
 
 [data-component="toast"][data-variant="loading"]::before {
@@ -117,7 +115,7 @@
   align-self: flex-start;
   min-height: 28px;
   padding: 0 12px;
-  border-radius: var(--radius-pill, 999px);
+  border-radius: var(--radius-full, 999px);
   border: 1px solid var(--interactive);
   background: var(--interactive);
   color: var(--interactive-foreground);
@@ -126,17 +124,20 @@
   font-weight: var(--weight-medium);
   line-height: 1;
   cursor: default;
-  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 [data-component="toast"] [data-slot="toast-action-button"]:hover {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--foreground) 10%, var(--interactive));
+  border-color: color-mix(in srgb, var(--foreground) 10%, var(--interactive));
+}
+
+[data-component="toast"] [data-slot="toast-action-button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 [data-component="toast"] [data-slot="toast-action-button"][data-variant="secondary"] {
-  position: absolute;
-  right: 22px;
-  bottom: 20px;
   margin: 0;
   min-height: 0;
   padding: 0;
@@ -173,8 +174,13 @@
 }
 
 [data-component="toast"] [data-slot="toast-close-button"]:hover {
-  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
   color: var(--text-strong, var(--foreground));
+}
+
+[data-component="toast"] [data-slot="toast-close-button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 @keyframes toast-pop-in {

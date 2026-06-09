@@ -20,7 +20,10 @@ function Waveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode |
   const rafRef = useRef<number>(0)
   const frameCountRef = useRef(0)
   const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
-  const colorRef = useRef("rgba(255,255,255,0.5)")
+  // Concrete fallback only; the live color is read from the canvas's computed
+  // `color` (token-driven) below. Canvas fillStyle cannot resolve CSS vars, so
+  // this must stay a literal — neutral gray reads on both light and dark.
+  const colorRef = useRef("rgba(128,128,128,0.5)")
   const dimensionsRef = useRef({ width: 0, height: 0, dpr: 1 })
 
   useEffect(() => {
@@ -74,7 +77,7 @@ function Waveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode |
 
       // Refresh computed styles occasionally to avoid per-frame style recalc.
       if (frameCountRef.current % 30 === 0) {
-        colorRef.current = getComputedStyle(canvas).color || "rgba(255,255,255,0.5)"
+        colorRef.current = getComputedStyle(canvas).color || "rgba(128,128,128,0.5)"
       }
       frameCountRef.current += 1
 

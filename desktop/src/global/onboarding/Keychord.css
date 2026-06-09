@@ -27,8 +27,8 @@
   min-width: 44px;
   height: 44px;
   padding: 0 12px;
-  border-radius: 9px;
-  background: color-mix(in oklch, var(--background) 88%, white 4%);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
   border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
   border-bottom-width: 3px;
   box-shadow: var(--shadow-sm);

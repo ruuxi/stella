@@ -1,40 +1,39 @@
 import type { Theme, ThemeColors } from "./types";
 
-// Pearl is a standardized "white" theme. It is pinned to light appearance
-// and ignores the gradient controls — same single palette regardless of
-// system Light/Dark or gradient settings. Background is the canonical
-// off-white that companies like Linear, Notion, and Stripe use rather
-// than pure #ffffff for the entire surface.
+// "Light" — the standardized macOS-native light theme and the product default.
+// Pinned to light appearance with a single flat, opaque surface (no gradient):
+// system-gray window chrome (#ececec) with white content (#ffffff), solid
+// measured text colors, and one restrained accent (system blue).
 const pearl: ThemeColors = {
-  background: "#ffffff",
-  backgroundWeak: "#ffffff",
+  background: "#ececec",
+  backgroundWeak: "#e3e3e8",
   backgroundStrong: "#ffffff",
-  foreground: "#111111",
-  foregroundWeak: "#737373",
+  foreground: "#1d1d1f",
+  foregroundWeak: "#86868b",
   foregroundStrong: "#000000",
-  primary: "#2563eb",
+  primary: "#0a84ff",
   primaryForeground: "#ffffff",
-  success: "#16a34a",
-  warning: "#a16207",
-  error: "#dc2626",
-  info: "#2563eb",
-  interactive: "#2563eb",
-  border: "#e8e8e8",
-  borderWeak: "#f0f0f0",
-  borderStrong: "#dcdcdc",
-  card: "#fbfbfb",
-  cardForeground: "#111111",
-  muted: "#f6f6f6",
-  mutedForeground: "#737373",
-  accent: "#f2f2f2",
-  accentForeground: "#111111",
-  // Match the background so the flat blob disappears into the surface.
-  gradientAnchor: "#ffffff",
+  success: "#34c759",
+  warning: "#ff9f0a",
+  error: "#ff3b30",
+  info: "#0a84ff",
+  interactive: "#0a84ff",
+  border: "#d6d6d6",
+  borderWeak: "#e5e5e5",
+  borderStrong: "#c4c4c4",
+  card: "#ffffff",
+  cardForeground: "#1d1d1f",
+  muted: "#e9e9ee",
+  mutedForeground: "#86868b",
+  accent: "#e8e8ed",
+  accentForeground: "#1d1d1f",
+  // Neutral anchor (background) — the flat substrate carries no visible blob.
+  gradientAnchor: "#ececec",
 };
 
 const theme: Theme = {
   id: "pearl",
-  name: "Pearl",
+  name: "Light",
   forcedMode: "light",
   light: pearl,
   dark: pearl,

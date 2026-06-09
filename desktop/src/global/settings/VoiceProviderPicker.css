@@ -58,6 +58,11 @@
   background: color-mix(in oklch, var(--text-strong) 5%, transparent);
 }
 
+.voice-picker-card-main:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .voice-picker-card-main:disabled {
   cursor: default;
 }
@@ -362,7 +367,7 @@
   height: 14px;
   border-radius: 50%;
   background: var(--text-strong);
-  border: 2px solid var(--background, #fff);
+  border: 2px solid var(--background);
   box-shadow: var(--shadow-sm);
   cursor: default;
   transition: transform 120ms ease;

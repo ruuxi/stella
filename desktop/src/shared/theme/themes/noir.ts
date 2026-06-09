@@ -1,39 +1,39 @@
 import type { Theme, ThemeColors } from "./types";
 
-// Noir is a standardized "black" theme. It is pinned to dark appearance
-// and ignores the gradient controls — same single palette regardless of
-// system Light/Dark or gradient settings. Near-black neutral surface that
-// stays just shy of pure #000000 to avoid OLED smear while reading as black.
+// "Dark" — the standardized macOS-native dark theme. Pinned to dark appearance
+// with a single flat, opaque surface (no gradient): near-black system chrome
+// (#1c1c1e) with elevated content (#2c2c2e), solid measured text colors, and
+// the same restrained system-blue accent as Light.
 const noir: ThemeColors = {
-  background: "#0a0a0a",
-  backgroundWeak: "#050505",
-  backgroundStrong: "#141414",
-  foreground: "#f0eee8",
-  foregroundWeak: "#9a958c",
-  foregroundStrong: "#fbfbf7",
-  primary: "#f0eee8",
-  primaryForeground: "#0a0a0a",
-  success: "#4ade80",
-  warning: "#fbbf24",
-  error: "#f87171",
-  info: "#60a5fa",
-  interactive: "#f0eee8",
-  border: "#242424",
-  borderWeak: "#171717",
-  borderStrong: "#333333",
-  card: "#111111",
-  cardForeground: "#f0eee8",
-  muted: "#181818",
-  mutedForeground: "#9a958c",
-  accent: "#202020",
-  accentForeground: "#f0eee8",
-  // Match the background so the flat blob disappears into the surface.
-  gradientAnchor: "#0a0a0a",
+  background: "#1c1c1e",
+  backgroundWeak: "#161618",
+  backgroundStrong: "#2c2c2e",
+  foreground: "#f5f5f7",
+  foregroundWeak: "#98989d",
+  foregroundStrong: "#ffffff",
+  primary: "#0a84ff",
+  primaryForeground: "#ffffff",
+  success: "#30d158",
+  warning: "#ff9f0a",
+  error: "#ff453a",
+  info: "#0a84ff",
+  interactive: "#0a84ff",
+  border: "#38383a",
+  borderWeak: "#2c2c2e",
+  borderStrong: "#48484a",
+  card: "#2c2c2e",
+  cardForeground: "#f5f5f7",
+  muted: "#3a3a3c",
+  mutedForeground: "#98989d",
+  accent: "#3a3a3c",
+  accentForeground: "#f5f5f7",
+  // Neutral anchor (background) — the flat substrate carries no visible blob.
+  gradientAnchor: "#1c1c1e",
 };
 
 const theme: Theme = {
   id: "noir",
-  name: "Noir",
+  name: "Dark",
   forcedMode: "dark",
   light: noir,
   dark: noir,

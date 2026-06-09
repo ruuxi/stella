@@ -157,7 +157,7 @@
   color: var(--foreground);
   opacity: 0.7;
   border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  background: color-mix(in oklch, var(--background) 92%, white 8%);
+  background: var(--surface-raised);
   flex-shrink: 0;
 }
 
@@ -201,7 +201,7 @@
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  background: color-mix(in oklch, var(--background) 94%, white 6%);
+  background: var(--surface-raised);
   box-shadow: var(--shadow-md);
   min-height: 0;
 }

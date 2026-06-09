@@ -116,7 +116,9 @@ function applyThemeToDocument(
     delete root.dataset.baseTheme;
   }
   root.style.setProperty("color-scheme", isDark ? "dark" : "light");
-  root.style.setProperty("--text-mix-blend-mode", isDark ? "plus-lighter" : "multiply");
+  // Text paints normally on a stable, opaque surface — no blend compositing
+  // over a moving gradient (that system is removed).
+  root.style.setProperty("--text-mix-blend-mode", "normal");
 
   root.style.setProperty("--background", colors.background);
   root.style.setProperty("--background-weak", colors.backgroundWeak);

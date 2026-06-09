@@ -23,7 +23,7 @@
 .welcome-dialog-message {
   margin: 0;
   color: var(--text-strong);
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-family: var(--font-family-display);
   font-size: 1.8rem;
   font-weight: var(--weight-regular);
   line-height: 1.3;
@@ -58,6 +58,11 @@
 .welcome-dialog-card--interactive:hover {
   background: color-mix(in oklch, var(--foreground) 7%, var(--popover));
   border-color: var(--border);
+}
+
+.welcome-dialog-card--interactive:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .welcome-dialog-card-icon {
@@ -127,9 +132,14 @@
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: -0.01em;
   cursor: default;
-  transition: opacity 0.15s ease;
+  transition: background 0.15s ease;
 }
 
 .welcome-dialog-cta:hover {
-  opacity: 0.9;
+  background: color-mix(in oklch, var(--background) 12%, var(--foreground));
+}
+
+.welcome-dialog-cta:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }

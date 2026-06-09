@@ -53,7 +53,7 @@
       color-mix(in oklch, var(--foreground) 5%, transparent),
       transparent 70%
     ),
-    color-mix(in oklch, var(--background) 96%, white 4%);
+    var(--surface-raised);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
   flex-shrink: 0;
@@ -204,6 +204,12 @@
   background: transparent;
   cursor: default;
   transition: opacity 0.2s ease;
+}
+
+.onboarding-cap-words__word:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
 }
 
 .onboarding-cap-words__label {
@@ -443,7 +449,7 @@
 }
 
 .onboarding-cap-shell__wordmark {
-  font-family: "Cormorant Garamond", Georgia, serif;
+  font-family: var(--font-family-display);
   font-size: 30px;
   font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
@@ -751,7 +757,7 @@
   height: 18px;
   border-radius: 999px;
   background: var(--cap-accent);
-  color: white;
+  color: var(--primary-foreground);
   opacity: 0;
   animation: capCheckIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) 2.1s forwards;
 }
@@ -789,7 +795,7 @@
   aspect-ratio: 9 / 19;
   border-radius: 36px;
   border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
-  background: color-mix(in oklch, var(--background) 92%, black 8%);
+  background: var(--surface-inset);
   box-shadow: var(--shadow-lg);
   padding: 22px 14px 16px;
   display: flex;
@@ -871,7 +877,7 @@
 .onboarding-cap-phone__msg[data-role="user"] {
   align-self: flex-end;
   background: var(--primary);
-  color: white;
+  color: var(--primary-foreground);
   border-bottom-right-radius: 6px;
 }
 
@@ -1492,7 +1498,7 @@
   height: 44px;
   border-radius: 999px;
   background: var(--primary);
-  color: white;
+  color: var(--primary-foreground);
   box-shadow: 0 4px 16px color-mix(in oklch, var(--primary) 35%, transparent);
   z-index: 1;
 }
@@ -1595,7 +1601,7 @@
 }
 
 .onboarding-cap-actions__rest-name {
-  font-family: "Cormorant Garamond", Georgia, serif;
+  font-family: var(--font-family-display);
   font-size: 22px;
   font-weight: var(--weight-medium);
   color: var(--foreground);
@@ -1636,7 +1642,7 @@
   position: relative;
   background: var(--primary);
   border-color: var(--primary);
-  color: white;
+  color: var(--primary-foreground);
   animation: capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
@@ -1672,7 +1678,7 @@
   padding: 8px 16px;
   border-radius: 999px;
   background: var(--success);
-  color: white;
+  color: var(--primary-foreground);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;

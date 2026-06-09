@@ -42,7 +42,7 @@
   justify-content: space-between;
   width: 100%;
   padding-right: 4px;
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-md, 8px);
   border: 1px solid var(--border);
   background: var(--background);
 }

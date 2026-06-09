@@ -22,7 +22,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px;
-  background: color-mix(in srgb, var(--background) 80%, transparent);
+  background: var(--background);
 }
 
 .pdf-viewer-card__document {
@@ -41,7 +41,7 @@
 .pdf-viewer-card__page {
   background: white;
   box-shadow: var(--shadow-sm);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 

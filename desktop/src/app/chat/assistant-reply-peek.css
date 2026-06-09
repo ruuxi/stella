@@ -8,12 +8,12 @@
   align-items: stretch;
   gap: 0;
   margin-bottom: 6px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-overlay);
   overflow: hidden;
   pointer-events: auto;
   animation: assistant-reply-peek-in 160ms ease-out;
@@ -46,7 +46,12 @@
 }
 
 .assistant-reply-peek__body:hover {
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.assistant-reply-peek__body:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .assistant-reply-peek__text {
@@ -64,7 +69,7 @@
   width: 32px;
   padding: 0;
   border: none;
-  border-left: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
+  border-left: 1px solid var(--border-weak);
   background: transparent;
   color: var(--text-weak);
   cursor: default;
@@ -72,7 +77,12 @@
 
 .assistant-reply-peek__dismiss:hover {
   color: var(--text-strong);
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.assistant-reply-peek__dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .composer-context-peek-anchor {

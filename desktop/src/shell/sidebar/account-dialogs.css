@@ -48,10 +48,10 @@
 .sidebar-signout-dialog [data-slot="dialog-title"],
 .sidebar-nickname-dialog [data-slot="dialog-title"] {
   color: var(--text-strong);
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: 1.8rem;
-  font-weight: var(--weight-regular);
-  line-height: 1.2;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--lh-tight, 1.2);
   letter-spacing: -0.03em;
 }
 
@@ -121,15 +121,15 @@
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"] {
   background-color: var(--destructive);
   border-color: color-mix(in oklch, var(--destructive) 80%, var(--foreground));
-  color: #fff;
+  color: var(--primary-foreground);
 }
 
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"]:hover:not(:disabled) {
-  background-color: color-mix(in oklch, var(--destructive) 92%, #000);
+  background-color: color-mix(in oklch, var(--destructive) 92%, var(--foreground));
   opacity: 1;
 }
 
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"]:active:not(:disabled) {
-  background-color: color-mix(in oklch, var(--destructive) 80%, #000);
+  background-color: color-mix(in oklch, var(--destructive) 80%, var(--foreground));
   opacity: 1;
 }

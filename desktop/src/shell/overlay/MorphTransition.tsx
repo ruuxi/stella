@@ -293,8 +293,8 @@ function compileProgram(
 }
 
 /**
- * Resolve the app's display serif (Cormorant Garamond) from the overlay's
- * theme CSS vars, falling back to the literal stack.
+ * Resolve the app's display font from the overlay's theme CSS vars, falling
+ * back to the sans stack.
  */
 function getDisplayFontFamily(): string {
   try {
@@ -305,7 +305,7 @@ function getDisplayFontFamily(): string {
   } catch {
     // overlay may not have computed styles yet; fall through
   }
-  return "'Cormorant Garamond', Georgia, serif";
+  return "'Manrope', system-ui, sans-serif";
 }
 
 /**
@@ -615,7 +615,7 @@ export function MorphTransition() {
     font: string;
   }>({
     fill: colors.foreground,
-    font: "'Cormorant Garamond', Georgia, serif",
+    font: "'Manrope', system-ui, sans-serif",
   });
   useEffect(() => {
     labelStyleRef.current = {
@@ -624,10 +624,10 @@ export function MorphTransition() {
     };
   }, [colors]);
 
-  // Warm Cormorant once so the baked label never falls back to a generic serif
-  // on the first morph.
+  // Warm the display font once so the baked label never falls back to a generic
+  // family on the first morph.
   useEffect(() => {
-    void document.fonts?.load("italic 400 80px 'Cormorant Garamond'");
+    void document.fonts?.load("italic 400 80px 'Manrope'");
   }, []);
 
   useEffect(() => {

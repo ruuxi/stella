@@ -90,9 +90,9 @@
   --compact-chat-user-radius: 14px;
   --compact-chat-user-tail-radius: 4px;
   --compact-chat-user-max-width: 88%;
-  --compact-chat-assistant-bg: var(--orb-assistant-surface);
+  --compact-chat-assistant-bg: var(--orb-assistant-surface, var(--surface-raised));
   --compact-chat-assistant-border-width: 1px;
-  --compact-chat-assistant-border-color: var(--orb-assistant-border-color);
+  --compact-chat-assistant-border-color: var(--orb-assistant-border-color, var(--border));
   --compact-chat-assistant-radius: 14px;
   --compact-chat-assistant-tail-radius: 4px;
 }

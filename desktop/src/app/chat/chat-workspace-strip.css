@@ -120,11 +120,10 @@
   flex: 0 0 auto;
   min-height: 0;
   max-height: 100%;
-  border-radius: 12px;
-  /* No real border. A tight, all-around 1px halo acts as the visible
-     edge (reads as a hairline border but is actually shadow), and a
-     wider downward cast supplies the floating depth. */
-  box-shadow: var(--panel-elevated-shadow);
+  border-radius: var(--radius-xl);
+  /* Single soft resting shadow supplies the floating depth; the panel's
+     own hairline border below is the visible edge. */
+  box-shadow: var(--shadow-sm);
   contain: layout paint;
 }
 
@@ -133,10 +132,9 @@
   flex-direction: column;
   max-height: 100%;
   min-height: 0;
-  background: var(--panel-surface-bg-gradient);
-  border: 1px solid var(--panel-surface-border);
-  box-shadow: var(--panel-surface-highlight);
-  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -145,7 +143,7 @@
   flex-shrink: 0;
   height: 1px;
   margin: 0 12px;
-  background: var(--panel-surface-border);
+  background: var(--border);
 }
 
 /* ── Section ──────────────────────────────────────────────────────── */

@@ -64,7 +64,7 @@
 
 .settings-tab-rail-title {
   flex-shrink: 0;
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-family: var(--font-family-display);
   font-size: 26px;
   font-weight: var(--weight-regular);
   letter-spacing: -0.02em;
@@ -591,17 +591,17 @@
 }
 
 [data-slot="dialog-content"].settings-confirm-dialog {
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   background-clip: padding-box;
   border: 1px solid var(--border-weak);
 }
 
 [data-slot="dialog-content"].settings-migration-dialog {
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
   background-clip: padding-box;
   border: 1px solid var(--border-weak);
 }
@@ -636,7 +636,7 @@
   padding: 0 28px;
   margin: 0;
   color: var(--text-base);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-family: var(--font-family-sans);
   font-size: var(--font-size-md);
   font-weight: var(--weight-medium);
   line-height: 1.55;
@@ -656,14 +656,14 @@
 }
 
 .settings-btn--primary:hover {
-  opacity: 0.9;
+  background: color-mix(in oklch, var(--foreground) 12%, var(--interactive));
+  border-color: color-mix(in oklch, var(--foreground) 12%, var(--interactive));
 }
 
 .settings-btn--primary[data-component="button"]:hover:not(:disabled) {
-  background: var(--interactive);
+  background: color-mix(in oklch, var(--foreground) 12%, var(--interactive));
   color: var(--primary-foreground);
-  border-color: var(--interactive);
-  opacity: 0.9;
+  border-color: color-mix(in oklch, var(--foreground) 12%, var(--interactive));
 }
 
 .settings-btn--reset-all {
@@ -898,7 +898,7 @@
 }
 
 .settings-search-results-empty-title {
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-family: var(--font-family-display);
   font-size: 22px;
   font-weight: var(--weight-regular);
   letter-spacing: -0.02em;

@@ -24,12 +24,14 @@
 
 .region-capture-hint {
   position: absolute;
-  top: 16px;
-  left: 16px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.45);
-  color: rgba(255, 255, 255, 0.9);
+  top: var(--space-4);
+  left: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-base);
+  box-shadow: var(--shadow-overlay);
   font-size: var(--font-size-sm);
   letter-spacing: 0.2px;
   pointer-events: none;
@@ -44,25 +46,25 @@
 .radial-window-ring {
   position: absolute;
   pointer-events: none;
-  border-radius: 10px;
-  border: 3px solid rgba(110, 165, 255, 0.82);
+  border-radius: var(--radius-lg);
+  border: 3px solid color-mix(in srgb, var(--primary) 82%, transparent);
   box-shadow:
-    0 0 0 1px rgba(170, 205, 255, 0.45),
-    0 0 30px 6px rgba(110, 165, 255, 0.28),
-    0 0 64px 14px rgba(110, 165, 255, 0.16),
-    inset 0 0 52px 14px rgba(110, 165, 255, 0.22),
-    inset 0 0 96px 24px rgba(110, 165, 255, 0.12);
+    0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent),
+    0 0 30px 6px color-mix(in srgb, var(--primary) 28%, transparent),
+    0 0 64px 14px color-mix(in srgb, var(--primary) 16%, transparent),
+    inset 0 0 52px 14px color-mix(in srgb, var(--primary) 22%, transparent),
+    inset 0 0 96px 24px color-mix(in srgb, var(--primary) 12%, transparent);
   animation: radial-ring-fade-in 0.25s ease-out both;
 }
 
 .radial-window-ring--subtle {
-  border-color: rgba(110, 165, 255, 0.42);
+  border-color: color-mix(in srgb, var(--primary) 42%, transparent);
   box-shadow:
-    0 0 0 1px rgba(170, 205, 255, 0.2),
-    0 0 18px 4px rgba(110, 165, 255, 0.12),
-    0 0 38px 8px rgba(110, 165, 255, 0.07),
-    inset 0 0 28px 8px rgba(110, 165, 255, 0.1),
-    inset 0 0 56px 14px rgba(110, 165, 255, 0.05);
+    0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent),
+    0 0 18px 4px color-mix(in srgb, var(--primary) 12%, transparent),
+    0 0 38px 8px color-mix(in srgb, var(--primary) 7%, transparent),
+    inset 0 0 28px 8px color-mix(in srgb, var(--primary) 10%, transparent),
+    inset 0 0 56px 14px color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 @keyframes radial-ring-fade-in {

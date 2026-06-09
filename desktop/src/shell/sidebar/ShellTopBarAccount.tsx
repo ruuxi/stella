@@ -476,7 +476,7 @@ export const ShellTopBarAccount = ({
                   width: 6,
                   height: 6,
                   borderRadius: 999,
-                  background: "var(--danger, #ef4444)",
+                  background: "var(--danger)",
                 }}
               />
             ) : null}

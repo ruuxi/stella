@@ -5,7 +5,7 @@
   box-sizing: border-box;
   border-style: solid;
   border-width: 1px;
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-md, 8px);
   text-decoration: none;
   user-select: none;
   cursor: default;
@@ -22,11 +22,16 @@
 }
 
 [data-component="button"][data-variant="primary"]:hover:not(:disabled) {
-  opacity: 0.9;
+  background-color: color-mix(in srgb, var(--foreground) 10%, var(--primary));
 }
 
 [data-component="button"][data-variant="primary"]:active:not(:disabled) {
-  opacity: 0.8;
+  background-color: color-mix(in srgb, var(--foreground) 16%, var(--primary));
+}
+
+[data-component="button"][data-variant="primary"]:focus-visible:not(:disabled) {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 [data-component="button"][data-variant="primary"]:disabled {
@@ -41,11 +46,16 @@
 }
 
 [data-component="button"][data-variant="ghost"]:hover:not(:disabled) {
-  background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background-color: color-mix(in srgb, var(--foreground) 6%, transparent);
 }
 
 [data-component="button"][data-variant="ghost"]:active:not(:disabled) {
-  background-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+  background-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+[data-component="button"][data-variant="ghost"]:focus-visible:not(:disabled) {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 [data-component="button"][data-variant="ghost"]:disabled {
