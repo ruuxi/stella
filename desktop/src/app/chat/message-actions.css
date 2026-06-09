@@ -1,0 +1,84 @@
+/* Per-message Copy / Read-aloud action row (see MessageActions.tsx).
+ *
+ * The row always reserves its height (it never collapses) so revealing it
+ * on hover never reflows neighbouring rows — the chat scroll-follow logic
+ * keys on stable row geometry. Visibility is purely an opacity fade. */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  /* Invisible state must not intercept clicks / hover. */
+  pointer-events: none;
+}
+
+.message-actions--start {
+  justify-content: flex-start;
+}
+
+/* User actions sit a hair below the right-aligned bubble. The user row's
+   flex `gap` is `--space-6`; pull the row back up to a tight 2px. */
+.message-actions--end {
+  justify-content: flex-end;
+  align-self: flex-end;
+  margin-top: calc(2px - var(--space-6));
+}
+
+.event-row:hover .message-actions,
+.event-row:focus-within .message-actions,
+.message-actions[data-active="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.message-actions__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.message-actions__btn:hover {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.message-actions__btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Active read-aloud toggle reads as "on". */
+.message-actions__btn[aria-pressed="true"] {
+  color: var(--primary);
+}
+
+.message-actions__spinner {
+  animation: message-actions-spin 0.8s linear infinite;
+}
+
+@keyframes message-actions-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-actions {
+    transition: none;
+  }
+  .message-actions__spinner {
+    animation-duration: 1.5s;
+  }
+}

@@ -56,6 +56,7 @@ import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import { VoiceSessionCard } from "@/app/chat/VoiceSessionCard";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
+import { MessageActions } from "@/app/chat/MessageActions";
 import { eventRowEqual } from "@/features/chat/lib/row-equality";
 import type {
   AssistantRowViewModel,
@@ -437,9 +438,12 @@ export const UserMessageRow = memo(
       >
         {chips.length > 0 && <UserContextChips chips={chips} />}
         {text.trim() && (
-          <div className="event-item user">
-            <UserMessageBody text={text} />
-          </div>
+          <>
+            <div className="event-item user">
+              <UserMessageBody text={text} />
+            </div>
+            <MessageActions text={text} messageKey={row.id} align="end" />
+          </>
         )}
       </div>
     );
@@ -546,6 +550,14 @@ export const AssistantMessageRow = memo(
             />
           )}
           {row.customSlot ? row.customSlot : null}
+          {hasText && !row.isStreaming && (
+            <MessageActions
+              text={text}
+              messageKey={row.id}
+              showReadAloud
+              align="start"
+            />
+          )}
         </div>
       </div>
     );
