@@ -301,7 +301,7 @@ writePidFile();
 
 // Self-mod HMR endpoints are gated by Vite's localhost binding plus an
 // `Origin == null` check on the request -- not by a shared token. See
-// `isAuthorizedSelfModRequest` in `desktop/vite.config.ts` for the gate
+// `isAuthorizedSelfModRequest` in `desktop/vite/self-mod-hmr-plugin.ts` for the gate
 // and `runtime/kernel/self-mod/hmr.ts` for the worker-side caller.
 const processSpecs = [
   {
