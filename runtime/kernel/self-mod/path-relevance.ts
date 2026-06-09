@@ -316,8 +316,6 @@ export const isRestartRequiredNonHmrPath = (
     // editing them restarts the dev server, so treat like vite.config.ts.
     normalized.startsWith("desktop/vite/") ||
     normalized.startsWith("desktop/electron/") ||
-    normalized.startsWith("backend/") ||
-    normalized.startsWith("launcher/") ||
     isWorkerRestartRelevantPath(normalized)
   );
 };
