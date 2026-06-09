@@ -1,12 +1,9 @@
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -18,10 +15,12 @@ import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import waitOn from "wait-on";
 import { shouldRestartElectronForBuildPath } from "./dev-electron-restart-filter.mjs";
+import {
+  prepareMacDevAppBundle,
+  resolveDisclaimBinary,
+} from "./lib/macos-dev-app.mjs";
 
 const require = createRequire(import.meta.url);
-const DEV_MACOS_APP_NAME = "Stella";
-const DEV_MACOS_BUNDLE_ID = "com.stella.app";
 const DEV_MACOS_RUNTIME_DIR_NAME = ".stella-dev-runtime";
 const DEV_BARE_RELAUNCH_EXECUTABLE = "StellaDevRelaunch";
 const LEGACY_DEV_PROTOCOL_APP_NAME = "stella-dev-protocol-app";
@@ -44,13 +43,6 @@ const devRestartRequestFile = path.join(
 // the pid and `taskkill /T` it on the next launch instead.
 const devAppPidFile = path.join(desktopDir, ".electron-dev-app.pid");
 const devRuntimeRoot = path.join(desktopDir, DEV_MACOS_RUNTIME_DIR_NAME);
-const prebuiltDisclaimBinary = path.join(
-  desktopDir,
-  "native",
-  "out",
-  "darwin",
-  "disclaim-spawn",
-);
 const legacyRuntimeElectronBinary = path.join(
   devRuntimeRoot,
   "Stella.app",
@@ -215,158 +207,13 @@ const seedLastBuildHashes = () => {
   visit(watchedDir);
 };
 
-/**
- * Packaged apps get NSMicrophoneUsageDescription from electron-builder extendInfo.
- * The stock Electron.app in node_modules does not, so macOS never shows the mic
- * prompt for getUserMedia in dev — inject the same string we ship in production.
- */
-const MIC_USAGE_DESCRIPTION =
-  "Stella uses your microphone for voice conversations.";
-
-const patchDevIcon = () => {
-  const appIcon = path.join(desktopDir, "build", "icon.icns");
-  const appBundle = path.join(path.dirname(electronBinary), "..");
-  const electronIcon = path.join(appBundle, "Resources", "electron.icns");
-  const infoPlist = path.join(appBundle, "Info.plist");
-  if (!existsSync(appIcon) || !existsSync(electronIcon)) {
-    return false;
-  }
-
-  const srcHash = readHash(appIcon);
-  const dstHash = readHash(electronIcon);
-  if (srcHash === dstHash) {
-    return false;
-  }
-
-  try {
-    copyFileSync(appIcon, electronIcon);
-    if (existsSync(infoPlist)) {
-      execSync(`touch "${path.join(appBundle, "..")}"`, { stdio: "ignore" });
-    }
-    return true;
-  } catch {
-    // Best-effort; may fail if node_modules is read-only.
-  }
-  return false;
-};
-
-const patchDevAppName = () => {
-  let changed = false;
-  const distDir = path.resolve(path.dirname(electronBinary), "..", "..", "..");
-  const oldBundle = path.join(distDir, "Electron.app");
-  const newBundle = path.join(distDir, "Stella.app");
-  const pathTxtFile = path.resolve(distDir, "..", "path.txt");
-  const hasOldBundle = existsSync(oldBundle);
-  const hasNewBundle = existsSync(newBundle);
-
-  if (!hasOldBundle && !hasNewBundle) {
-    return false;
-  }
-
-  try {
-    if (hasOldBundle && !hasNewBundle) {
-      renameSync(oldBundle, newBundle);
-      changed = true;
-    }
-    electronBinary = electronBinary.replace("Electron.app", "Stella.app");
-
-    if (existsSync(pathTxtFile)) {
-      const pathTxt = readFileSync(pathTxtFile, "utf8");
-      const nextPathTxt = pathTxt.replace("Electron.app", "Stella.app");
-      if (nextPathTxt !== pathTxt) {
-        writeFileSync(pathTxtFile, nextPathTxt);
-        changed = true;
-      }
-    }
-
-    const infoPlist = path.join(newBundle, "Contents", "Info.plist");
-    if (existsSync(infoPlist)) {
-      let plist = readFileSync(infoPlist, "utf8");
-      let plistChanged = false;
-
-      const replaceStringValue = (key, nextValue) => {
-        const pattern = new RegExp(
-          `(<key>${key}</key>\\s*<string>)([^<]+)(<\\/string>)`,
-        );
-        const match = plist.match(pattern);
-        if (match && match[2] !== nextValue) {
-          plist = plist.replace(pattern, `$1${nextValue}$3`);
-          plistChanged = true;
-        }
-      };
-
-      // Keep the dev Electron bundle identity aligned with Stella so macOS TCC
-      // permissions target the desktop app instead of the generic Electron app.
-      replaceStringValue("CFBundleName", DEV_MACOS_APP_NAME);
-      replaceStringValue("CFBundleDisplayName", DEV_MACOS_APP_NAME);
-      replaceStringValue("CFBundleIdentifier", DEV_MACOS_BUNDLE_ID);
-
-      if (plistChanged) {
-        writeFileSync(infoPlist, plist);
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      execSync(`touch "${distDir}"`, { stdio: "ignore" });
-    }
-  } catch {
-    // Best-effort; may fail if node_modules is read-only.
-  }
-  return changed;
-};
-
-const patchDevMicrophoneUsageDescription = () => {
-  if (process.platform !== "darwin") {
-    return false;
-  }
-
-  const contentsDir = path.resolve(path.dirname(electronBinary), "..");
-  const infoPlist = path.join(contentsDir, "Info.plist");
-  if (!existsSync(infoPlist)) {
-    return false;
-  }
-
-  try {
-    const existing = execFileSync(
-      "plutil",
-      ["-extract", "NSMicrophoneUsageDescription", "raw", infoPlist],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    ).trim();
-    if (existing === MIC_USAGE_DESCRIPTION) {
-      return false;
-    }
-  } catch {
-    // Missing key or unexpected plist; fall through to set it.
-  }
-
-  try {
-    execSync(
-      `plutil -replace NSMicrophoneUsageDescription -string ${JSON.stringify(MIC_USAGE_DESCRIPTION)} "${infoPlist}"`,
-      { stdio: "ignore" },
-    );
-    return true;
-  } catch {
-    try {
-      execSync(
-        `plutil -insert NSMicrophoneUsageDescription -string ${JSON.stringify(MIC_USAGE_DESCRIPTION)} "${infoPlist}"`,
-        { stdio: "ignore" },
-      );
-      return true;
-    } catch {
-      // Best-effort; read-only node_modules or unexpected plist shape.
-    }
-  }
-  return false;
-};
-
-const ensureDevBareRelaunchExecutable = () => {
+const ensureDevBareRelaunchExecutable = (electronBinaryPath) => {
   if (process.platform !== "darwin") {
     return false;
   }
 
   let changed = false;
-  const contentsDir = path.resolve(path.dirname(electronBinary), "..");
+  const contentsDir = path.resolve(path.dirname(electronBinaryPath), "..");
   const infoPlist = path.join(contentsDir, "Info.plist");
   const macosDir = path.join(contentsDir, "MacOS");
   const relaunchExecutablePath = path.join(
@@ -486,89 +333,22 @@ exec "$electron_bin" "\${non_launch_args[@]}"
   return changed;
 };
 
-/**
- * Re-apply an ad-hoc bundle signature after the patch helpers above mutate
- * `Info.plist`. Electron ships an ad-hoc Mach-O signature whose CodeDirectory
- * hashes the bundle resources; once we change `CFBundleName` /
- * `CFBundleIdentifier` / `NSMicrophoneUsageDescription` the recorded hash
- * stops matching and macOS surfaces a "Stella was modified or has a damaged
- * signature" notification on launch (and may invalidate TCC permissions).
- *
- * `codesign --force --deep --sign -` re-seals the bundle with a fresh ad-hoc
- * signature consistent with the modified contents. No certificate, keychain,
- * Apple ID, or Xcode CLT required — `codesign` is a base macOS binary at
- * `/usr/bin/codesign`. The trust level stays the same (ad-hoc, no developer
- * id), it's just internally consistent again. Same idiom as the wake-word
- * helper (`desktop/native/build.sh`).
- */
-const resignDevAppBundle = (force = false) => {
-  if (process.platform !== "darwin") {
-    return;
-  }
-  const appBundle = path.resolve(path.dirname(electronBinary), "..", "..");
-  if (!existsSync(appBundle) || !appBundle.endsWith(".app")) {
-    return;
-  }
-  if (!force) {
-    try {
-      execFileSync("codesign", ["--verify", "--no-strict", appBundle], {
-        stdio: "ignore",
-      });
-      return;
-    } catch (verifyError) {
-      if (verifyError?.code === "ENOENT") {
-        // codesign missing — no-op rather than fail dev startup.
-        return;
-      }
-      // Signature broken or missing; fall through to re-sign.
-    }
-  }
-  try {
-    execFileSync("codesign", ["--force", "--deep", "--sign", "-", appBundle], {
-      stdio: "ignore",
-    });
-  } catch {
-    // Best-effort; read-only node_modules or unsupported signing flags.
-  }
-};
-
+// Give the dev Electron bundle the Stella.app identity (icon, name, signature)
+// so the Dock shows Stella, then resolve `disclaim-spawn` so the launched
+// process adopts that identity. The bare-relaunch shim is bundle-specific to
+// this launcher, so it rides along as an extra patch under the same re-sign.
 if (process.platform === "darwin") {
-  const bundleChanged = [
-    patchDevIcon(),
-    patchDevAppName(),
-    patchDevMicrophoneUsageDescription(),
-    ensureDevBareRelaunchExecutable(),
-  ].some(Boolean);
-  resignDevAppBundle(bundleChanged);
+  const prepared = prepareMacDevAppBundle({
+    electronBinary,
+    desktopDir,
+    extraPatches: (electronBinaryPath) =>
+      ensureDevBareRelaunchExecutable(electronBinaryPath),
+  });
+  electronBinary = prepared.electronBinary;
 }
-let disclaimBinary = null;
 
-if (process.platform === "darwin") {
-  const disclaimSource = resolve(scriptDir, "disclaim-spawn.c");
-  const fallbackDisclaimBinary = resolve(devRuntimeRoot, "disclaim-spawn");
-
-  // Launcher-installed users should use a shipped helper so first launch does
-  // not depend on Xcode Command Line Tools being present.
-  if (existsSync(prebuiltDisclaimBinary)) {
-    disclaimBinary = prebuiltDisclaimBinary;
-  } else if (existsSync(disclaimSource)) {
-    disclaimBinary = fallbackDisclaimBinary;
-    try {
-      mkdirSync(devRuntimeRoot, { recursive: true });
-      execFileSync("clang", ["-O2", "-o", disclaimBinary, disclaimSource], {
-        stdio: "ignore",
-        timeout: 15_000,
-      });
-    } catch {
-      console.warn(
-        "[electron-main] Failed to compile disclaim-spawn; macOS TCC prompts may not appear.",
-      );
-      disclaimBinary = null;
-    }
-  } else {
-    disclaimBinary = null;
-  }
-}
+const disclaimBinary =
+  process.platform === "darwin" ? resolveDisclaimBinary({ desktopDir }) : null;
 
 const logError = (message) => {
   console.error(`[electron-main] ${message}`);
