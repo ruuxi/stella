@@ -249,20 +249,20 @@
 }
 
 .chat-sidebar-form .composer-stop {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
   color: var(--text-strong);
 }
 
 .chat-sidebar-form .composer-submit {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
 }
 
 .chat-sidebar-form .composer-add-button {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
 }
 
 .chat-sidebar-form .composer-add-button--toolbar {

@@ -554,7 +554,7 @@ export function GeneralTab() {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               disabled={
                 !permissionsLoaded ||
                 permissionStatus.accessibility ||
@@ -593,7 +593,7 @@ export function GeneralTab() {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               disabled={
                 !permissionsLoaded ||
                 permissionStatus.screen ||
@@ -628,7 +628,7 @@ export function GeneralTab() {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               disabled={
                 !permissionsLoaded ||
                 permissionStatus.microphone ||
@@ -664,7 +664,7 @@ export function GeneralTab() {
               <Button
                 type="button"
                 variant="ghost"
-                className="settings-btn settings-btn--danger"
+                className="pill-btn pill-btn--danger"
                 disabled={isRestartingAfterPermissions}
                 onClick={() => void handlePermissionRestart()}
               >
@@ -831,7 +831,7 @@ export function GeneralTab() {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               onClick={() => setMigrationDialogOpen(true)}
             >
               {t("settings.migration.action")}
@@ -849,7 +849,7 @@ export function GeneralTab() {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               onClick={() => openExternalUrl(STELLA_CHROME_EXTENSION_URL)}
             >
               {t("settings.browserExtension.action")}
@@ -891,7 +891,7 @@ function PermissionResetButton({
     <Button
       type="button"
       variant="ghost"
-      className="settings-btn settings-btn--reset-all"
+      className="pill-btn pill-btn--quiet pill-btn--danger"
       disabled={disabled}
       onClick={onClick}
       aria-label={label}

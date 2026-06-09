@@ -433,7 +433,7 @@ function ChronicleSettingsCard() {
           <Button
             type="button"
             variant="ghost"
-            className="settings-btn"
+            className="pill-btn"
             disabled={busy !== null || loading || accessLoading}
             onClick={() => handleToggle(!enabled)}
           >
@@ -466,7 +466,7 @@ function ChronicleSettingsCard() {
           <Button
             type="button"
             variant="ghost"
-            className="settings-btn"
+            className="pill-btn"
             disabled={busy !== null}
             onClick={handleOpenFolder}
           >
@@ -489,7 +489,7 @@ function ChronicleSettingsCard() {
           <Button
             type="button"
             variant="ghost"
-            className="settings-btn"
+            className="pill-btn"
             disabled={busy !== null}
             onClick={handleDreamNow}
           >
@@ -512,7 +512,7 @@ function ChronicleSettingsCard() {
           <Button
             type="button"
             variant="ghost"
-            className="settings-btn settings-btn--danger"
+            className="pill-btn pill-btn--danger"
             disabled={busy !== null}
             onClick={handleWipe}
           >

@@ -172,7 +172,7 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               onClick={onSignOut}
             >
               {t("settings.account.signOut.action")}
@@ -192,7 +192,7 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn settings-btn--danger"
+              className="pill-btn pill-btn--danger"
               onClick={() => setPendingDeleteAction("data")}
               disabled={isDeleting}
             >
@@ -215,7 +215,7 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn settings-btn--danger"
+              className="pill-btn pill-btn--danger"
               onClick={() => setPendingDeleteAction("account")}
               disabled={isDeleting || !hasConnectedAccount}
             >
@@ -240,7 +240,7 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               onClick={() => onOpenLegal?.("terms")}
             >
               {t("settings.account.legal.view")}
@@ -257,7 +257,7 @@ export function AccountTab({ onSignOut, onOpenLegal }: AccountTabProps) {
             <Button
               type="button"
               variant="ghost"
-              className="settings-btn"
+              className="pill-btn"
               onClick={() => onOpenLegal?.("privacy")}
             >
               {t("settings.account.legal.view")}
