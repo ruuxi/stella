@@ -53,6 +53,10 @@ const findOrphanedBundledDaemonPids = async (): Promise<number[]> => {
     const binaryPath = path.join(binDir, "stella-browser-win32-x64.exe");
     const quotedBinaryPath = binaryPath.replace(/'/g, "''");
     try {
+      // Exclude Chrome-spawned native messaging hosts: Chrome passes the
+      // extension origin (chrome-extension://...) as an argument and owns
+      // their lifecycle. Killing them disconnects the extension's native
+      // port and kicks off its respawn/reconnect loop.
       const { stdout } = await execFileAsync(
         "powershell",
         [
@@ -61,7 +65,7 @@ const findOrphanedBundledDaemonPids = async (): Promise<number[]> => {
           [
             `$target = '${quotedBinaryPath}'`,
             "Get-CimInstance Win32_Process -Filter \"Name = 'stella-browser-win32-x64.exe'\"",
-            "| Where-Object { $_.ExecutablePath -eq $target -and $_.ProcessId -ne $PID }",
+            "| Where-Object { $_.ExecutablePath -eq $target -and $_.ProcessId -ne $PID -and $_.CommandLine -notlike '*chrome-extension://*' }",
             "| Select-Object -ExpandProperty ProcessId -Unique",
           ].join("; "),
         ],

@@ -152,6 +152,7 @@ function doConnect() {
 function scheduleReconnect() {
   clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
     console.log('[connection] Reconnecting native messaging…');
     reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
     doConnect();
