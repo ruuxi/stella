@@ -13,6 +13,7 @@ import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import { ChatColumn } from "@/app/chat/ChatColumn";
 import { ComposerAreaSelectOverlay } from "@/app/chat/ComposerAreaSelectOverlay";
+import { OPEN_CONNECT_DIALOG_EVENT } from "@/global/integrations/connect-action";
 import { setActiveLocalConversationId } from "@/features/chat/services/local-chat-store";
 import { writeActiveConversationIdCache } from "@/features/chat/services/active-conversation-cache";
 import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
@@ -206,6 +207,12 @@ function RootChrome() {
     () => setDialogSearch(undefined),
     [setDialogSearch],
   );
+
+  useEffect(() => {
+    const handler = () => showConnectDialog();
+    window.addEventListener(OPEN_CONNECT_DIALOG_EVENT, handler);
+    return () => window.removeEventListener(OPEN_CONNECT_DIALOG_EVENT, handler);
+  }, [showConnectDialog]);
 
   useOnboardingMemoryPromotion({
     hasConnectedAccount,

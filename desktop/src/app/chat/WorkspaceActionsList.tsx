@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { MessageSquarePlus, Scan, Volume2, VolumeX } from "lucide-react";
-import {
-  readAloudPrefStore,
-  setReadAloudEnabled as persistReadAloudEnabled,
-} from "@/features/voice/services/read-aloud/read-aloud-pref";
-import { stopReadAloud } from "@/features/voice/services/read-aloud/read-aloud-player";
+import { useCallback, useEffect, useState } from "react";
+import { MessageSquarePlus, Scan } from "lucide-react";
+import { CustomDevice as Device } from "@/ui/nav-icons";
+import { openConnectDialog } from "@/global/integrations/connect-action";
+import { preloadConnectDialog } from "@/shell/topbar/nav-surface-preloads";
 import { showToast } from "@/ui/toast";
 import "./workspace-actions-list.css";
 
@@ -21,18 +19,12 @@ export function WorkspaceActionsList({
 }: WorkspaceActionsListProps) {
   const [newChatArmed, setNewChatArmed] = useState(false);
   const [newChatPending, setNewChatPending] = useState(false);
-  const readAloudEnabled = useSyncExternalStore(
-    readAloudPrefStore.subscribe,
-    readAloudPrefStore.getSnapshot,
-    readAloudPrefStore.getServerSnapshot,
-  );
 
-  const handleToggleReadAloud = useCallback(() => {
+  const handleConnect = useCallback(() => {
     setNewChatArmed(false);
-    const next = !readAloudEnabled;
-    void persistReadAloudEnabled(next);
-    if (!next) stopReadAloud();
-  }, [readAloudEnabled]);
+    preloadConnectDialog();
+    openConnectDialog();
+  }, []);
 
   const handleNewChat = useCallback(async () => {
     if (!onNewChat || newChatPending) return;
@@ -78,18 +70,14 @@ export function WorkspaceActionsList({
         <button
           type="button"
           className="workspace-actions-list__row"
-          onClick={handleToggleReadAloud}
+          onClick={handleConnect}
+          onMouseEnter={preloadConnectDialog}
+          onFocus={preloadConnectDialog}
         >
           <span className="workspace-actions-list__icon" aria-hidden="true">
-            {readAloudEnabled ? (
-              <Volume2 size={14} strokeWidth={1.85} />
-            ) : (
-              <VolumeX size={14} strokeWidth={1.85} />
-            )}
+            <Device size={14} />
           </span>
-          <span className="workspace-actions-list__label">
-            {readAloudEnabled ? "Stop reading aloud" : "Read replies aloud"}
-          </span>
+          <span className="workspace-actions-list__label">Connect</span>
         </button>
       </li>
       {onNewChat ? (
