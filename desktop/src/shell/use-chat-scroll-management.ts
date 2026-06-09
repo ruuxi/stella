@@ -4,7 +4,14 @@
  * The list owns scrolling and viewport measurement; this hook layers
  * surface-level UI concerns on top:
  *   - scroll-to-bottom button visibility from distance off the end,
- *   - custom scrollbar thumb position/height,
+ *   - custom scrollbar thumb position/height, written **imperatively** to
+ *     the thumb DOM node (via `thumbRef`) rather than through React state.
+ *     Middle-click autoscroll (and the scrollbar drag) are driven on the
+ *     main thread, not the compositor — re-rendering the whole chat tree
+ *     once per scroll frame just to reposition the thumb starves that
+ *     main-thread pan and makes it stutter. Writing `style.top`/`height`
+ *     straight to the node keeps every steady-state scroll frame
+ *     setState-free, so the pan stays smooth.
  *   - `scrollToBottom` via the list ref,
  *   - `onStartReached` → load older history,
  *   - **auto-follow** during streaming, driven by a continuous rAF lerp
@@ -31,12 +38,6 @@ import {
   getAssistantScrollFollowKey,
   subscribeAssistantScrollFollow,
 } from '@/shell/chat-scroll-follow'
-
-type ThumbState = {
-  top: number
-  height: number
-  visible: boolean
-}
 
 const SCROLL_BUTTON_THRESHOLD = 180
 const THUMB_MIN_HEIGHT = 24
@@ -170,11 +171,21 @@ export function useChatScrollManagement({
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [isFollowingLatest, setIsFollowingLatest] = useState(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
-  const [thumbState, setThumbState] = useState<ThumbState>({
-    top: 0,
-    height: 0,
-    visible: false,
-  })
+  /**
+   * Imperative scrollbar-thumb plumbing. The thumb is positioned by
+   * writing straight to the DOM node so a scroll frame never triggers a
+   * React render (see the module header). `thumbElRef` is the node the
+   * surface attaches via the returned `thumbRef` callback; surfaces that
+   * don't render a custom thumb (sidebar, social) simply never attach it
+   * and every thumb write below short-circuits.
+   */
+  const thumbElRef = useRef<HTMLDivElement | null>(null)
+  const thumbVisibleRef = useRef(false)
+  const thumbTopRef = useRef(0)
+  const thumbHeightRef = useRef(0)
+  const setThumbRef = useCallback((el: HTMLDivElement | null) => {
+    thumbElRef.current = el
+  }, [])
   const thumbFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollStateRafRef = useRef<number | null>(null)
   const isAtBottomRef = useRef(true)
@@ -210,12 +221,18 @@ export function useChatScrollManagement({
    */
   const followApi = useRef<FollowApi | null>(null)
 
+  const hideThumb = useCallback(() => {
+    if (!thumbVisibleRef.current) return
+    thumbVisibleRef.current = false
+    thumbElRef.current?.classList.remove('chat-scrollbar__thumb--visible')
+  }, [])
+
   const updateThumb = useCallback(
     (scroll: number, scrollLength: number, contentLength: number) => {
+      const el = thumbElRef.current
+      if (!el) return
       if (contentLength <= scrollLength || scrollLength <= 0) {
-        setThumbState((thumb) =>
-          thumb.visible ? { top: 0, height: 0, visible: false } : thumb,
-        )
+        hideThumb()
         return
       }
 
@@ -226,25 +243,28 @@ export function useChatScrollManagement({
       const maxThumbTop = Math.max(0, scrollLength - thumbHeight)
       const thumbTop = progress * maxThumbTop
 
-      setThumbState((prev) => {
-        if (
-          prev.visible &&
-          Math.abs(prev.top - thumbTop) < THUMB_EPSILON_PX &&
-          Math.abs(prev.height - thumbHeight) < THUMB_EPSILON_PX
-        ) {
-          return prev
-        }
-        return { top: thumbTop, height: thumbHeight, visible: true }
-      })
+      // Skip the style write when nothing visible has moved — Legend's
+      // sub-pixel content-length jitter during streaming would otherwise
+      // touch the node every frame for no visual change.
+      if (
+        !thumbVisibleRef.current ||
+        Math.abs(thumbTopRef.current - thumbTop) >= THUMB_EPSILON_PX ||
+        Math.abs(thumbHeightRef.current - thumbHeight) >= THUMB_EPSILON_PX
+      ) {
+        thumbTopRef.current = thumbTop
+        thumbHeightRef.current = thumbHeight
+        el.style.top = `${thumbTop}px`
+        el.style.height = `${thumbHeight}px`
+      }
+      if (!thumbVisibleRef.current) {
+        thumbVisibleRef.current = true
+        el.classList.add('chat-scrollbar__thumb--visible')
+      }
 
       if (thumbFadeRef.current) clearTimeout(thumbFadeRef.current)
-      thumbFadeRef.current = setTimeout(() => {
-        setThumbState((thumb) =>
-          thumb.visible ? { ...thumb, visible: false } : thumb,
-        )
-      }, THUMB_FADE_MS)
+      thumbFadeRef.current = setTimeout(hideThumb, THUMB_FADE_MS)
     },
-    [],
+    [hideThumb],
   )
 
   const onListScroll = useCallback(
@@ -756,6 +776,6 @@ export function useChatScrollManagement({
     nudgeQueuedMessagesIntoView,
     nudgeBy,
     getIsFollowing,
-    thumbState,
+    thumbRef: setThumbRef,
   }
 }

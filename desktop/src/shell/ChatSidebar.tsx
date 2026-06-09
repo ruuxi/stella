@@ -230,7 +230,7 @@ export function ChatPanelTab({
       isFollowingLatest: sidebarScroll.isFollowingLatest,
       getIsFollowing: sidebarScroll.getIsFollowing,
       scrollToBottom: sidebarScroll.scrollToBottom,
-      thumbState: sidebarScroll.thumbState,
+      thumbRef: sidebarScroll.thumbRef,
     }),
     [
       sidebarScroll.listRef,
@@ -241,7 +241,7 @@ export function ChatPanelTab({
       sidebarScroll.isFollowingLatest,
       sidebarScroll.getIsFollowing,
       sidebarScroll.scrollToBottom,
-      sidebarScroll.thumbState,
+      sidebarScroll.thumbRef,
     ],
   );
 

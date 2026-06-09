@@ -266,7 +266,7 @@ export function useFullShellChat({
     releaseFollow,
     nudgeAfterSend,
     nudgeQueuedMessagesIntoView,
-    thumbState,
+    thumbRef,
   } = useChatScrollManagement({
     hasOlderEvents: hasOlderMessages,
     isLoadingOlder: isLoadingOlderMessages,
@@ -494,7 +494,7 @@ export function useFullShellChat({
       isFollowingLatest,
       getIsFollowing,
       scrollToBottom,
-      thumbState,
+      thumbRef,
     }),
     [
       listRef,
@@ -505,7 +505,7 @@ export function useFullShellChat({
       isFollowingLatest,
       getIsFollowing,
       scrollToBottom,
-      thumbState,
+      thumbRef,
     ],
   );
 

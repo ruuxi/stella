@@ -120,7 +120,7 @@ export const ChatColumn = memo(function ChatColumn({
     onListScroll,
     showScrollButton,
     scrollToBottom,
-    thumbState,
+    thumbRef,
     listRef,
     isFollowingLatest,
   } = scroll;
@@ -330,11 +330,8 @@ export const ChatColumn = memo(function ChatColumn({
           rather than the inside edge of the chat column. */}
         <div className="chat-scrollbar">
           <div
-            className={`chat-scrollbar__thumb${thumbState.visible ? " chat-scrollbar__thumb--visible" : ""}`}
-            style={{
-              top: `${thumbState.top}px`,
-              height: `${thumbState.height}px`,
-            }}
+            ref={thumbRef}
+            className="chat-scrollbar__thumb"
             onPointerDown={handleThumbDown}
             onPointerMove={handleThumbMove}
             onPointerUp={handleThumbUp}
