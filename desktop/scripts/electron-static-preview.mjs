@@ -2,12 +2,29 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  prepareMacDevAppBundle,
+  resolveDisclaimBinary,
+} from "./lib/macos-dev-app.mjs";
 
 const require = createRequire(import.meta.url);
-const electronBinary = require("electron");
+let electronBinary = require("electron");
 const scriptDir = import.meta.dirname;
 const desktopDir = resolve(scriptDir, "..");
 const repoRootDir = resolve(desktopDir, "..");
+
+// Match `dev-electron.mjs`: give the Electron bundle the Stella.app identity
+// (icon, name, signature) and launch it through `disclaim-spawn` so the Dock
+// shows Stella instead of the generic Electron framework icon/name. Without
+// this the preview/low-resource path inherits the launching shell's identity.
+if (process.platform === "darwin") {
+  const prepared = prepareMacDevAppBundle({ electronBinary, desktopDir });
+  electronBinary = prepared.electronBinary;
+}
+const disclaimBinary =
+  process.platform === "darwin"
+    ? resolveDisclaimBinary({ desktopDir })
+    : null;
 const pidFilePath = resolve(desktopDir, ".electron-dev-runner.pid");
 const readyFilePath = resolve(desktopDir, ".electron-dev-runner.ready");
 
@@ -46,7 +63,11 @@ const removeOwnPidFile = () => {
 
 writePidFile();
 
-const child = spawn(electronBinary, ["."], {
+const useDisclaim = disclaimBinary && existsSync(disclaimBinary);
+const spawnCmd = useDisclaim ? disclaimBinary : electronBinary;
+const spawnArgs = useDisclaim ? [electronBinary, "."] : ["."];
+
+const child = spawn(spawnCmd, spawnArgs, {
   cwd: repoRootDir,
   env: {
     ...process.env,
