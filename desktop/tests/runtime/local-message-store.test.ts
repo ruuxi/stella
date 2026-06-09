@@ -343,4 +343,149 @@ describe("local-message-store", () => {
       restore();
     }
   });
+
+  it("evicts the retained window once the conversation has no live subscriptions", async () => {
+    const listMessages = vi
+      .fn()
+      .mockResolvedValue(window([makeMessage("u-1", 1_000, "first")]));
+    const onUpdated = vi.fn().mockImplementation(() => () => undefined);
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, onUpdated },
+    });
+
+    try {
+      const firstSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribe = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => firstSnapshots.push(snapshot),
+      );
+      await waitFor(() => expect(firstSnapshots.at(-1)?.hasLoaded).toBe(true));
+
+      // Tear down and let the deferred eviction microtask run (a re-key
+      // resubscribe would have happened synchronously before it fires).
+      unsubscribe();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // A later fresh subscription must NOT seed from the dead
+      // conversation's window — it starts empty like any cold mount.
+      const laterSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribeLater = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => laterSnapshots.push(snapshot),
+      );
+      expect(laterSnapshots[0]?.hasLoaded).toBe(false);
+      expect(laterSnapshots[0]?.window.messages).toHaveLength(0);
+
+      unsubscribeLater();
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the retained window when another subscription for the conversation is still live", async () => {
+    const listMessages = vi
+      .fn()
+      .mockResolvedValue(window([makeMessage("u-1", 1_000, "first")]));
+    const onUpdated = vi.fn().mockImplementation(() => () => undefined);
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, onUpdated },
+    });
+
+    try {
+      const sidebarSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribeSidebar = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => sidebarSnapshots.push(snapshot),
+      );
+      const fullSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribeFull = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 250 },
+        (snapshot) => fullSnapshots.push(snapshot),
+      );
+      await waitFor(() => expect(fullSnapshots.at(-1)?.hasLoaded).toBe(true));
+
+      // One surface closes; the other keeps the conversation live, so the
+      // eviction pass must leave the cache alone.
+      unsubscribeSidebar();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // A new smaller-window subscription can't seed from the surviving
+      // 250-entry (live seeding only consults *smaller* windows), so a
+      // non-empty first snapshot proves the cache survived the eviction
+      // pass above.
+      const smallSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribeSmall = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => smallSnapshots.push(snapshot),
+      );
+      expect(smallSnapshots[0]?.window.messages.map((m) => m._id)).toEqual([
+        "u-1",
+      ]);
+
+      unsubscribeSmall();
+      unsubscribeFull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("slices an oversized retained window down to the requested size when seeding", async () => {
+    const bigWindow = window([
+      makeMessage("u-1", 1_000, "one"),
+      makeMessage("a-2", 1_010, "two"),
+      makeMessage("u-3", 1_020, "three"),
+      makeMessage("a-4", 1_030, "four"),
+    ]);
+    let resolveSecond: ((value: WindowPayload) => void) | null = null;
+    const listMessages = vi.fn().mockImplementation(
+      async (payload: { maxVisibleMessages?: number }) => {
+        if (payload.maxVisibleMessages === 50) return bigWindow;
+        return await new Promise<WindowPayload>((resolve) => {
+          resolveSecond = resolve;
+        });
+      },
+    );
+    const onUpdated = vi.fn().mockImplementation(() => () => undefined);
+    const restore = installFakeElectronApi({
+      localChat: { listMessages, onUpdated },
+    });
+
+    try {
+      const firstSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribeFirst = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 50 },
+        (snapshot) => firstSnapshots.push(snapshot),
+      );
+      await waitFor(() => expect(firstSnapshots.at(-1)?.hasLoaded).toBe(true));
+
+      // Re-key to a SMALLER window (e.g. a second surface opening the
+      // conversation at one page). The seed must carry only the newest
+      // `maxVisibleMessages` rows, not the whole retained window.
+      unsubscribeFirst();
+      const smallSnapshots: LocalMessageWindowSnapshot[] = [];
+      const unsubscribeSmall = subscribeToLocalMessageWindow(
+        { conversationId: "c1", maxVisibleMessages: 2 },
+        (snapshot) => smallSnapshots.push(snapshot),
+      );
+
+      expect(smallSnapshots[0]?.hasLoaded).toBe(false);
+      expect(smallSnapshots[0]?.window.messages.map((m) => m._id)).toEqual([
+        "u-3",
+        "a-4",
+      ]);
+      expect(smallSnapshots[0]?.window.visibleMessageCount).toBe(2);
+
+      resolveSecond?.(
+        window([
+          makeMessage("u-3", 1_020, "three"),
+          makeMessage("a-4", 1_030, "four"),
+        ]),
+      );
+      await waitFor(() => expect(smallSnapshots.at(-1)?.hasLoaded).toBe(true));
+
+      unsubscribeSmall();
+    } finally {
+      restore();
+    }
+  });
 });
