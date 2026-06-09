@@ -27,7 +27,7 @@
   --compact-chat-gap: 8px;
   --compact-chat-item-padding: 10px 12px;
   --compact-chat-user-padding: 5px 12px;
-  --compact-chat-user-bg: color-mix(in oklch, var(--primary) 12%, transparent);
+  --compact-chat-user-bg: color-mix(in srgb, var(--primary) 12%, var(--card));
   --compact-chat-user-radius: 12px;
   --compact-chat-user-tail-radius: var(--compact-chat-user-radius);
   --compact-chat-user-max-width: 85%;
