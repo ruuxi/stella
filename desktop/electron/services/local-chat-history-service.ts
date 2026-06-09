@@ -158,6 +158,27 @@ export class LocalChatHistoryService {
     });
   }
 
+  /**
+   * Changed-rows query for the renderer's tail-only refresh: new
+   * user/assistant messages after the cursor plus existing rows whose turn
+   * gained tool-derived artifacts after it. The mobile-sync `sourceEvents`
+   * are dropped — the renderer merge only needs the message rows.
+   */
+  listMessagesAfter(args: {
+    conversationId: string;
+    afterTimestampMs: number;
+    afterId: string;
+    maxVisibleMessages?: number;
+  }): LocalChatMessageWindow {
+    const { messages, visibleMessageCount } =
+      this.getStore().listMessagesAfter(args.conversationId, {
+        afterTimestampMs: args.afterTimestampMs,
+        afterId: args.afterId,
+        maxVisibleMessages: args.maxVisibleMessages,
+      });
+    return { messages, visibleMessageCount };
+  }
+
   listActivity(args: {
     conversationId: string;
     limit?: number;

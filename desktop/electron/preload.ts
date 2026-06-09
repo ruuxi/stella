@@ -2123,6 +2123,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       beforeId: string;
       maxVisibleMessages?: number;
     }) => ipcRenderer.invoke("localChat:listMessagesBefore", payload),
+    listMessagesAfter: (payload: {
+      conversationId: string;
+      afterTimestampMs: number;
+      afterId: string;
+      maxVisibleMessages?: number;
+    }) => ipcRenderer.invoke("localChat:listMessagesAfter", payload),
     listActivity: (payload: {
       conversationId: string;
       limit?: number;
