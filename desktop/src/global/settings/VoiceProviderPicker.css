@@ -25,8 +25,8 @@
 }
 
 .voice-picker-card[data-selected] {
-  border-color: var(--border);
-  background: color-mix(in oklch, var(--text-strong) 4%, transparent);
+  border-color: var(--select-border);
+  background: var(--select-fill);
 }
 
 .voice-picker-card-head {

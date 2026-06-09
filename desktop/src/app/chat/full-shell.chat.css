@@ -182,11 +182,13 @@
 }
 
 .event-item.user {
-  /* Subtle primary tint over the opaque card surface so the user bubble —
-     with its hairline border — reads as "mine" at a glance against the
-     rail'd assistant turn, without a heavy saturated fill. */
-  background: color-mix(in srgb, var(--primary) 12%, var(--card));
-  border-color: color-mix(in srgb, var(--primary) 20%, var(--border));
+  /* Solid send-button fill so the user bubble reads as "mine" at a glance.
+     Text flips to the primary foreground to stay legible on the saturated
+     background. */
+  background: var(--primary);
+  --chat-text-color: var(--primary-foreground);
+  color: var(--primary-foreground);
+  border-color: transparent;
   margin-left: auto;
   max-width: 85%;
   width: fit-content;

@@ -4,6 +4,23 @@
   width: 256px;
 }
 
+/* Selected appearance / gradient / theme rows use the secondary variant;
+   re-skin them to the canonical accent selected state so theme selection
+   matches every other "you are here" surface. */
+[data-theme-picker] [data-component="button"][data-variant="secondary"] {
+  background-color: var(--select-fill);
+  border-color: var(--select-border);
+  color: var(--select-text);
+  box-shadow: none;
+}
+
+[data-theme-picker]
+  [data-component="button"][data-variant="secondary"]:hover:not(:disabled),
+[data-theme-picker]
+  [data-component="button"][data-variant="secondary"]:focus:not(:disabled) {
+  background-color: color-mix(in oklch, var(--primary) 20%, transparent);
+}
+
 [data-theme-picker] [data-slot="popover-body"] {
   padding: 0;
 }

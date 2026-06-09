@@ -136,7 +136,7 @@
   border: none;
   border-radius: var(--radius-sm, 4px);
   background: transparent;
-  color: var(--text-weak);
+  color: var(--text-base);
   cursor: default;
   -webkit-app-region: no-drag;
   transition:
@@ -409,9 +409,9 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
 }
 
 .shell-topbar-tab--active {
-  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
-  background: transparent;
-  color: var(--text-strong);
+  border-color: var(--select-border);
+  background: var(--select-fill);
+  color: var(--select-text);
 }
 
 .shell-topbar-tab__button {

@@ -305,6 +305,24 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --font-sans: var(--font-family-sans);
   --font-mono: var(--font-family-mono);
 
+  /* ── Canonical "selected" state ───────────────────────────────────────
+     One accent recipe shared by every selection surface (tabs, segmented
+     controls, picker rows, theme/option swatches) so "you are here" reads
+     the same everywhere.
+
+     The fill + border are OPAQUE (mixed into the raised surface, not an
+     alpha tint over transparent) on purpose: an alpha tint composites over
+     whatever sits behind each element — white cards, the darker inset
+     tracks, popovers, the transparent top bar — and the same token then
+     looks like a different shade on every surface ("desynced"). An opaque
+     fill renders the identical color everywhere. `--select-fill-raised` is
+     kept as an alias so segmented thumbs and rows match exactly. */
+  --select-fill: color-mix(in oklch, var(--primary) 15%, var(--surface-raised));
+  --select-fill-raised: var(--select-fill);
+  --select-border: color-mix(in oklch, var(--primary) 38%, var(--surface-raised));
+  --select-text: var(--text-strong);
+  --select-chip-shadow: var(--shadow-sm);
+
   /* ── Type scale (fixed px — native, never viewport-scaled). ── */
   --font-size-2xs: 10px; /* micro labels, badge counts, mono timestamps */
   --font-size-xs: 11px; /* secondary metadata, captions, chip sub-labels */

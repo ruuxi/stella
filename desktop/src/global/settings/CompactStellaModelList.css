@@ -34,7 +34,8 @@
 }
 
 .compact-stella-list-item[data-selected] {
-  background: color-mix(in oklch, var(--text-strong) 8%, transparent);
+  background: var(--select-fill);
+  color: var(--select-text);
 }
 
 .compact-stella-list-item:disabled {
