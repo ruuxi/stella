@@ -54,7 +54,7 @@
     0 0 64px 14px color-mix(in srgb, var(--primary) 16%, transparent),
     inset 0 0 52px 14px color-mix(in srgb, var(--primary) 22%, transparent),
     inset 0 0 96px 24px color-mix(in srgb, var(--primary) 12%, transparent);
-  animation: radial-ring-fade-in 0.25s ease-out both;
+  animation: radial-ring-fade-in 0.12s ease-out both;
 }
 
 .radial-window-ring--subtle {
