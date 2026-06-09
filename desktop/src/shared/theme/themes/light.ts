@@ -2,12 +2,12 @@ import type { Theme, ThemeColors } from "./types";
 
 // "Light" — the macOS-native light theme and the product default. Pinned to
 // light appearance with a single flat, opaque surface (forcedMode → flat
-// gradient = solid fill): system-gray window chrome (#ececec) with white
-// content (#ffffff), solid measured text colors, and one restrained accent
-// (system blue). Replaces the old "Pearl".
+// gradient = solid fill): white content (#ffffff) with a subtle-gray sidebar
+// chrome (via --panel-surface-bg in index.css), solid measured text colors,
+// and one restrained accent (system blue). Replaces the old "Pearl".
 const light: ThemeColors = {
-  background: "#ececec",
-  backgroundWeak: "#e3e3e8",
+  background: "#ffffff",
+  backgroundWeak: "#f5f5f7",
   backgroundStrong: "#ffffff",
   foreground: "#1d1d1f",
   foregroundWeak: "#86868b",

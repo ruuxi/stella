@@ -192,8 +192,9 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --panel-glass-bg: color-mix(in srgb, var(--card) 88%, transparent);
   --panel-glass-blur: blur(20px) saturate(130%);
 
-  /* Panel surfaces (sidebars, composer, cards) — flat, opaque, no blur. */
-  --panel-surface-bg: var(--card);
+  /* Sidebar chrome — a subtle gray so the rail reads as chrome against the
+     white content area (macOS Mail/Finder layout). Composer/cards use --card. */
+  --panel-surface-bg: #f2f2f4;
   --panel-surface-bg-gradient: none;
   --panel-surface-border: var(--border);
   --panel-surface-highlight: none;
@@ -228,9 +229,9 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --border-weak: color-mix(in srgb, var(--foreground) 7%, var(--background));
 
   /* ── Semantic colors — macOS-native light. ── */
-  --background: #ececec;
-  --background-base: #ececec;
-  --background-weak: #e3e3e8;
+  --background: #ffffff;
+  --background-base: #ffffff;
+  --background-weak: #f5f5f7;
   --background-strong: #ffffff;
   --foreground: #1d1d1f;
   --card: #ffffff;
