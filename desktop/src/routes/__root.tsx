@@ -491,7 +491,7 @@ function RootChrome() {
         active={chat.annotation.active}
         requestId={chat.annotation.requestId}
         onCancel={chat.annotation.cancel}
-        onSubmit={chat.annotation.submit}
+        onSelect={chat.annotation.submit}
       />
 
       <FullShellDialogs

@@ -5,7 +5,10 @@ import type {
   ChatColumnScroll,
 } from "@/features/chat/chat-column-types";
 import type { ChatContext } from "@/shared/types/electron";
-import { deriveComposerState } from "@/features/chat/composer-context";
+import {
+  attachComposerAppSelectionContext,
+  deriveComposerState,
+} from "@/features/chat/composer-context";
 import { createNewLocalConversationId } from "@/features/chat/services/local-chat-store";
 import { useConversationActivity } from "@/features/chat/hooks/use-conversation-activity";
 import { useConversationDisplayMessages } from "@/features/chat/hooks/use-conversation-display-messages";
@@ -38,33 +41,16 @@ type UseFullShellChatOptions = {
   traceEnabled: boolean;
 };
 
-export type AnnotationSubmitPayload = {
-  text: string;
-  selection: NonNullable<ChatContext["appSelection"]>;
-};
+export type AnnotationSelection = NonNullable<ChatContext["appSelection"]>;
 
 type AnnotationContextTarget = {
   id: number;
-  submit: (payload: AnnotationSubmitPayload) => void;
+  submit: (selection: AnnotationSelection) => void;
 };
 
 type StartAnnotationOptions = {
-  submit: (payload: AnnotationSubmitPayload) => void;
+  submit: (selection: AnnotationSelection) => void;
 };
-
-const buildAnnotationChatContext = (
-  selection: AnnotationSubmitPayload["selection"],
-  base?: ChatContext | null,
-): ChatContext => ({
-  ...(base ?? {
-    window: null,
-    browserUrl: null,
-    selectedText: null,
-    regionScreenshots: [],
-  }),
-  selectedText: null,
-  appSelection: selection,
-});
 
 export function useFullShellChat({
   activeConversationId,
@@ -245,7 +231,7 @@ export function useFullShellChat({
   }, []);
 
   const submitAnnotation = useCallback(
-    (payload: AnnotationSubmitPayload, requestId?: number | null) => {
+    (selection: AnnotationSelection, requestId?: number | null) => {
       const activeTarget = annotationTargetRef.current;
       const target =
         activeTarget && (requestId == null || activeTarget.id === requestId)
@@ -254,7 +240,7 @@ export function useFullShellChat({
 
       if (!target) return;
       try {
-        target.submit(payload);
+        target.submit(selection);
       } finally {
         annotationTargetRef.current = null;
         setAnnotationTarget(null);
@@ -382,44 +368,14 @@ export function useFullShellChat({
     showHomeContent,
   ]);
 
-  const submitFullChatAnnotation = useCallback(
-    ({ text, selection }: AnnotationSubmitPayload) => {
-      const trimmedText = text.trim();
-      if (!trimmedText) return;
-
-      const shouldKeepTailFramed = showHomeContent || getIsFollowing();
-      const shouldNudgeAfterSend = !isStreaming && shouldKeepTailFramed;
+  const attachFullChatAnnotation = useCallback(
+    (selection: AnnotationSelection) => {
       enterChatSurfaceForInteraction();
       resetIdleTimer();
-      void sendMessage({
-        text: trimmedText,
-        selectedText: null,
-        chatContext: buildAnnotationChatContext(selection, chatContext),
-        onClear: () => {},
-      });
-
-      if (isStreaming) {
-        if (shouldKeepTailFramed) {
-          nudgeQueuedMessagesIntoView();
-        }
-      } else if (shouldNudgeAfterSend) {
-        nudgeAfterSend();
-      } else {
-        releaseFollow();
-      }
+      attachComposerAppSelectionContext(selection, setChatContext);
+      setComposerFocusRequestId((id) => id + 1);
     },
-    [
-      chatContext,
-      enterChatSurfaceForInteraction,
-      getIsFollowing,
-      isStreaming,
-      nudgeAfterSend,
-      nudgeQueuedMessagesIntoView,
-      releaseFollow,
-      resetIdleTimer,
-      sendMessage,
-      showHomeContent,
-    ],
+    [enterChatSurfaceForInteraction, resetIdleTimer, setChatContext],
   );
 
   const { canSubmit } = deriveComposerState({
@@ -506,7 +462,7 @@ export function useFullShellChat({
       canSubmit,
       focusRequestId: composerFocusRequestId,
       requestFocus: () => setComposerFocusRequestId((id) => id + 1),
-      onSelectArea: () => startAnnotation({ submit: submitFullChatAnnotation }),
+      onSelectArea: () => startAnnotation({ submit: attachFullChatAnnotation }),
       onSend: handleSend,
       onStop: cancelCurrentStream,
       onNewChat: startNewChat,
@@ -521,7 +477,7 @@ export function useFullShellChat({
       canSubmit,
       composerFocusRequestId,
       startAnnotation,
-      submitFullChatAnnotation,
+      attachFullChatAnnotation,
       handleSend,
       cancelCurrentStream,
       startNewChat,
