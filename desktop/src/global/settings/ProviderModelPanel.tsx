@@ -20,8 +20,6 @@ import {
   sortByFavorites,
   toggleEngineModelFavorite,
 } from "@/features/workspace-display/engine-model-favorites";
-import { Button } from "@/ui/button";
-import { TextField } from "@/ui/text-field";
 import {
   getStellaDisplayName,
   getStellaSubtitle,
@@ -87,9 +85,9 @@ interface ProviderModelPanelProps {
   /** Empty string ⇒ default. Any other value ⇒ that model id. */
   onSelect: (value: string, anchor?: HTMLElement) => void;
   disabled?: boolean;
-  /** When set, only these provider keys appear in the rail. */
+  /** When set, only these provider keys appear in the list. */
   visibleProviders?: readonly string[];
-  /** When set, enables per-model favorites pinned to the top of each pane. */
+  /** When set, enables per-model favorites pinned to the top of each section. */
   favoriteScope?: string;
   /**
    * Current reasoning effort applied to the agent set. When
@@ -101,29 +99,29 @@ interface ProviderModelPanelProps {
   onSelectReasoning?: (modelId: string, effort: ReasoningEffort) => void;
   /**
    * When true, the user's plan can't override the default Stella model
-   * (anonymous / free / Go). Non-default rows on the Stella tab are
+   * (anonymous / free / Go). Non-default rows in the Stella section are
    * disabled; BYOK providers stay fully interactive.
    */
   restrictStellaPicks?: boolean;
   restrictedPlanLabel?: string | null;
   ariaLabel?: string;
   /**
-   * When true, the leading "Default …" row on the Stella tab is
+   * When true, the leading "Default …" row in the Stella section is
    * suppressed. Used by the global Models settings page, where the
    * picker has no single-agent context so "default" doesn't apply.
    */
   hideDefaultRow?: boolean;
   /**
-   * When set, replaces the "Selected …" header kicker on the right
-   * pane. The Models settings page uses this to swap the affordance
-   * from "currently selected" to "click a model to assign".
+   * When set, replaces the "Selected …" header kicker. The Models
+   * settings page uses this to swap the affordance from "currently
+   * selected" to "click a model to assign".
    */
   selectedHeaderKicker?: string;
-  /** When true, the "Selected …" title is hidden (badge still shows). */
+  /** When true, the "Selected …" title is hidden. */
   hideSelectedTitle?: boolean;
   /** When true, selected model rows omit the trailing checkmark. */
   hideSelectionCheck?: boolean;
-  /** When true, only the Stella provider can be picked; other provider tabs stay visible but disabled. */
+  /** When true, only the Stella provider can be picked; other provider sections stay visible but disabled. */
   disableNonStellaProviders?: boolean;
   disabledProviderReason?: string;
 }
@@ -149,11 +147,6 @@ function buildProviderTabs(
   return Array.from(tabs.values()).sort((a, b) =>
     compareProviderRailOrder(a.key, b.key, a.label, b.label),
   );
-}
-
-function providerOf(modelId: string): string {
-  const slash = modelId.indexOf("/");
-  return slash > 0 ? modelId.slice(0, slash) : STELLA_PROVIDER_KEY;
 }
 
 export function ProviderModelPanel({
@@ -197,22 +190,13 @@ export function ProviderModelPanel({
       ),
     [disableNonStellaProviders, tabs],
   );
-  const fallbackTab =
-    tabs.find((tab) => !disabledProviderSet.has(tab.key))?.key ??
-    tabs[0]?.key ??
-    STELLA_PROVIDER_KEY;
-  const initialTab = useMemo(() => {
-    if (!value) return fallbackTab;
-    const provider = providerOf(value);
-    return tabs.some(
-      (tab) => tab.key === provider && !disabledProviderSet.has(tab.key),
-    )
-      ? provider
-      : fallbackTab;
-  }, [disabledProviderSet, fallbackTab, tabs, value]);
 
-  const [activeProvider, setActiveProvider] = useState<string>(initialTab);
   const [query, setQuery] = useState("");
+  // Which provider's inline form (connect / API key, or the local /
+  // OpenRouter custom-model inputs) is expanded. Only one is open at a time
+  // so the shared draft/api-key state stays unambiguous, and nothing opens
+  // by default — sections collapse to just their model list.
+  const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
   const [draftKey, setDraftKey] = useState("");
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
   const [oauthProvider, setOauthProvider] = useState<string | null>(null);
@@ -221,39 +205,23 @@ export function ProviderModelPanel({
   const [localBaseUrl, setLocalBaseUrl] = useState(DEFAULT_LOCAL_BASE_URL);
   const [localModelId, setLocalModelId] = useState("");
 
-  // Whenever the externally-driven `value` switches to a different provider
-  // (e.g. the user toggles agents in the parent), re-anchor the rail to
-  // that model's provider so the right pane reflects the active selection.
-  // Done by comparing previous vs current `initialTab` during render rather
-  // than via a `setState`-in-`useEffect`, which would cause an extra render
-  // and could lag a frame behind the prop change.
-  const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
-  if (
-    prevInitialTab !== initialTab ||
-    (disabledProviderSet.has(activeProvider) && activeProvider !== initialTab)
-  ) {
-    setPrevInitialTab(initialTab);
-    setActiveProvider(initialTab);
-    setQuery("");
-    setDraftKey("");
-    setAuthError(null);
-    setOpenRouterCustomId("");
-    setLocalBaseUrl(DEFAULT_LOCAL_BASE_URL);
-    setLocalModelId("");
-  }
-
-  const activeTab = useMemo(
-    () => tabs.find((tab) => tab.key === activeProvider) ?? tabs[0],
-    [activeProvider, tabs],
-  );
-  const filteredModels = useMemo(() => {
-    if (!activeTab) return [];
+  const sections = useMemo(() => {
     const trimmed = query.trim();
-    const searched = trimmed
-      ? searchCatalogModels(activeTab.models, trimmed)
-      : activeTab.models;
-    return favoriteScope ? sortByFavorites(searched, favorites) : searched;
-  }, [activeTab, favoriteScope, favorites, query]);
+    const result: Array<{ tab: ProviderTab; models: CatalogModel[] }> = [];
+    for (const tab of tabs) {
+      const searched = trimmed
+        ? searchCatalogModels(tab.models, trimmed)
+        : tab.models;
+      const sorted = favoriteScope
+        ? sortByFavorites(searched, favorites)
+        : searched;
+      // Hide sections with no matching models while searching so the list
+      // narrows to relevant providers instead of leaving empty headers.
+      if (trimmed && sorted.length === 0) continue;
+      result.push({ tab, models: sorted });
+    }
+    return result;
+  }, [tabs, favoriteScope, favorites, query]);
 
   const toggleFavorite = useCallback(
     (modelId: string) => {
@@ -261,17 +229,6 @@ export function ProviderModelPanel({
       setFavorites(toggleEngineModelFavorite(favoriteScope, modelId));
     },
     [favoriteScope],
-  );
-
-  const isProviderConnected = useCallback(
-    (providerKey: string) => {
-      if (providerKey === STELLA_PROVIDER_KEY) return true;
-      if (findApiKey(credentials.apiKeys, providerKey)) return true;
-      if (findOauthCredential(credentials.oauthCredentials, providerKey))
-        return true;
-      return false;
-    },
-    [credentials.apiKeys, credentials.oauthCredentials],
   );
 
   const handlePick = useCallback(
@@ -282,14 +239,20 @@ export function ProviderModelPanel({
     [disabled, onSelect],
   );
 
-  // Rail sign-out: a connected provider shows a hover log-out icon on its
-  // right. First click arms it (visual confirm), a second click within the
+  const toggleExpanded = useCallback((providerKey: string | null) => {
+    setExpandedProvider(providerKey);
+    setDraftKey("");
+    setAuthError(null);
+  }, []);
+
+  // Sign-out: a connected provider shows a hover log-out icon in its section
+  // header. First click arms it (visual confirm), a second click within the
   // window actually drops the API key + OAuth session for that provider.
   const [signOutArmed, setSignOutArmed] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState<string | null>(null);
   const signOutTimerRef = useRef<number | null>(null);
 
-  const handleRailSignOut = useCallback(
+  const handleSignOut = useCallback(
     async (providerKey: string) => {
       if (signOutArmed !== providerKey) {
         setSignOutArmed(providerKey);
@@ -333,6 +296,7 @@ export function ProviderModelPanel({
       try {
         await credentials.saveApiKey(providerKey, label, trimmed);
         setDraftKey("");
+        setExpandedProvider(null);
       } catch (caught) {
         setAuthError(
           caught instanceof Error ? caught.message : "Failed to save API key.",
@@ -350,6 +314,7 @@ export function ProviderModelPanel({
       setAuthError(null);
       try {
         await credentials.loginOAuth(providerKey);
+        setExpandedProvider(null);
       } catch (caught) {
         setAuthError(
           caught instanceof Error ? caught.message : "OAuth login failed.",
@@ -382,57 +347,105 @@ export function ProviderModelPanel({
     );
   }, [localBaseUrl, localModelId, onSelect]);
 
-  return (
-    <div
-      className="model-picker-shell"
-      data-disabled={disabled || undefined}
-      role="group"
-      aria-label={ariaLabel}
-    >
-      <aside className="model-picker-rail" role="tablist">
-        {tabs.map((tab) => {
-          const isActive = tab.key === activeProvider;
-          const connected = isProviderConnected(tab.key);
-          // Only providers with a stored credential we can drop get a
-          // sign-out affordance — Stella (always-on) and Cursor (managed in
-          // its own pane) have nothing removable here.
-          const removable =
-            Boolean(findApiKey(credentials.apiKeys, tab.key)) ||
-            Boolean(findOauthCredential(credentials.oauthCredentials, tab.key));
-          const armed = signOutArmed === tab.key;
-          const isSigningOut = signingOut === tab.key;
-          return (
-            <div key={tab.key} className="model-picker-rail-item-wrap">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                className="model-picker-rail-item"
-                data-active={isActive || undefined}
-                title={
-                  disabledProviderSet.has(tab.key)
-                    ? disabledProviderReason
-                    : undefined
-                }
-                onClick={() => {
-                  setActiveProvider(tab.key);
-                  setQuery("");
-                  setDraftKey("");
-                  setAuthError(null);
-                }}
-                disabled={disabled || disabledProviderSet.has(tab.key)}
-              >
-                <span
-                  className="model-picker-rail-bar"
-                  data-on={connected || undefined}
-                  aria-hidden
-                />
-                <span className="model-picker-rail-label">{tab.label}</span>
-              </button>
+  const trimmedQuery = query.trim();
+  const isDefaultSelected = !value;
+
+  const renderSection = (tab: ProviderTab, models: CatalogModel[]) => {
+    const isStella = tab.key === STELLA_PROVIDER_KEY;
+    const isLocal = tab.key === LOCAL_PROVIDER_KEY;
+    const isGrok = tab.key === GROK_PROVIDER_KEY;
+    const isOpenRouter = tab.key === "openrouter";
+    const apiKey = findApiKey(credentials.apiKeys, tab.key);
+    const oauthCred = findOauthCredential(
+      credentials.oauthCredentials,
+      tab.key,
+    );
+    const oauthEntry = findOauthProvider(credentials.oauthProviders, tab.key);
+    const llmEntry =
+      tab.llmEntry ??
+      (!isStella
+        ? { key: tab.key, label: tab.label, placeholder: "API key" }
+        : undefined);
+    const connected = isStella || Boolean(apiKey) || Boolean(oauthCred);
+    const usesExternalLogin = isGrok;
+    const requiresAuth =
+      !isStella &&
+      !isLocal &&
+      !usesExternalLogin &&
+      !connected &&
+      Boolean(llmEntry);
+    const supportsApiKey =
+      Boolean(llmEntry) &&
+      !isApiKeyOnlyPlaceholder(llmEntry?.placeholder ?? "");
+    const supportsOAuth = Boolean(oauthEntry);
+    const sectionDisabled = disabled || disabledProviderSet.has(tab.key);
+    const removable = Boolean(apiKey) || Boolean(oauthCred);
+    const armed = signOutArmed === tab.key;
+    const isSigningOut = signingOut === tab.key;
+    const expanded = expandedProvider === tab.key;
+    // Local + connected OpenRouter offer a custom-model entry, tucked behind
+    // a header toggle so the section doesn't open expanded by default.
+    const hasCustomInputs = isLocal || isOpenRouter;
+
+    const authDescription =
+      supportsOAuth && supportsApiKey
+        ? "Sign in or paste an API key. Credentials stay on this device."
+        : supportsOAuth
+          ? "Credentials stay on this device."
+          : "Your API key stays on this device.";
+
+    const restrictThisStella = isStella && restrictStellaPicks;
+    const showDefaultRow = !hideDefaultRow && isStella && !trimmedQuery;
+
+    return (
+      <div
+        key={tab.key}
+        className="model-picker-group"
+        role="group"
+        aria-label={tab.label}
+      >
+        <div
+          className="model-picker-group-head"
+          title={
+            disabledProviderSet.has(tab.key)
+              ? disabledProviderReason
+              : undefined
+          }
+        >
+          <span
+            className="model-picker-group-bar"
+            data-on={connected || undefined}
+            aria-hidden
+          />
+          <span className="model-picker-group-label">{tab.label}</span>
+          <span className="model-picker-group-rule" aria-hidden />
+          {requiresAuth ? (
+            <button
+              type="button"
+              className="model-picker-group-connect"
+              data-open={expanded || undefined}
+              onClick={() => toggleExpanded(expanded ? null : tab.key)}
+              disabled={sectionDisabled}
+            >
+              {expanded ? "Cancel" : supportsOAuth ? "Sign in" : "Add key"}
+            </button>
+          ) : (
+            <>
+              {hasCustomInputs ? (
+                <button
+                  type="button"
+                  className="model-picker-group-connect"
+                  data-open={expanded || undefined}
+                  onClick={() => toggleExpanded(expanded ? null : tab.key)}
+                  disabled={sectionDisabled}
+                >
+                  {expanded ? "Cancel" : "Custom"}
+                </button>
+              ) : null}
               {removable ? (
                 <button
                   type="button"
-                  className="model-picker-rail-signout"
+                  className="model-picker-group-signout"
                   data-armed={armed || undefined}
                   disabled={isSigningOut}
                   aria-label={
@@ -447,7 +460,7 @@ export function ProviderModelPanel({
                   }
                   onClick={(event) => {
                     event.stopPropagation();
-                    void handleRailSignOut(tab.key);
+                    void handleSignOut(tab.key);
                   }}
                 >
                   {armed ? (
@@ -456,120 +469,257 @@ export function ProviderModelPanel({
                     <LogOut size={13} strokeWidth={1.75} aria-hidden />
                   )}
                 </button>
+              ) : isGrok ? (
+                <span className="model-picker-group-note">Uses grok login</span>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        {requiresAuth ? (
+          expanded ? (
+            <div className="model-picker-connect">
+              <p className="model-picker-connect-hint">{authDescription}</p>
+              {supportsOAuth ? (
+                <button
+                  type="button"
+                  className="model-picker-connect-oauth"
+                  onClick={() => handleLoginOAuth(tab.key)}
+                  disabled={oauthProvider === tab.key || sectionDisabled}
+                >
+                  <LogIn size={13} strokeWidth={1.75} aria-hidden />
+                  {oauthProvider === tab.key
+                    ? "Opening…"
+                    : `Sign in with ${tab.label}`}
+                </button>
+              ) : null}
+              {supportsApiKey ? (
+                <div className="model-picker-connect-field">
+                  <KeyRound size={13} strokeWidth={1.75} aria-hidden />
+                  <input
+                    type="password"
+                    placeholder={llmEntry?.placeholder ?? "API key"}
+                    value={draftKey}
+                    onChange={(e) => setDraftKey(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveKey(tab.key, tab.label);
+                    }}
+                    autoFocus={!supportsOAuth}
+                    disabled={sectionDisabled}
+                    aria-label={`${tab.label} API key`}
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="model-picker-connect-go"
+                    onClick={() => handleSaveKey(tab.key, tab.label)}
+                    disabled={
+                      !draftKey.trim() ||
+                      savingProvider === tab.key ||
+                      sectionDisabled
+                    }
+                  >
+                    {savingProvider === tab.key ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              ) : null}
+              {authError ? (
+                <p className="model-picker-connect-error" role="alert">
+                  {authError}
+                </p>
               ) : null}
             </div>
-          );
-        })}
-      </aside>
+          ) : null
+        ) : (
+          <>
+            {isLocal && expanded ? (
+              <div className="model-picker-connect">
+                <p className="model-picker-connect-hint">
+                  Use any local OpenAI-compatible server. Ollama usually runs at
+                  the URL below.
+                </p>
+                <div className="model-picker-connect-field">
+                  <input
+                    placeholder={DEFAULT_LOCAL_BASE_URL}
+                    value={localBaseUrl}
+                    onChange={(e) => setLocalBaseUrl(e.target.value)}
+                    disabled={sectionDisabled}
+                    aria-label="Local server URL"
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="model-picker-connect-field">
+                  <input
+                    placeholder="llama3.2"
+                    value={localModelId}
+                    onChange={(e) => setLocalModelId(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSubmitLocal();
+                    }}
+                    disabled={sectionDisabled}
+                    aria-label="Local model name"
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="model-picker-connect-go"
+                    onClick={handleSubmitLocal}
+                    disabled={!localModelId.trim() || sectionDisabled}
+                  >
+                    Use
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
-      <section className="model-picker-pane" aria-live="polite">
-        {activeTab ? (
-          <ProviderPane
-            tab={activeTab}
-            query={query}
-            onQueryChange={setQuery}
-            selectedModelId={value}
-            filteredModels={filteredModels}
-            onPick={handlePick}
-            isStella={activeTab.key === STELLA_PROVIDER_KEY}
-            restrictStellaPicks={
-              activeTab.key === STELLA_PROVIDER_KEY && restrictStellaPicks
-            }
-            restrictedPlanLabel={restrictedPlanLabel ?? null}
-            currentLabel={currentLabel}
-            defaultLabel={defaultLabel}
-            apiKey={findApiKey(credentials.apiKeys, activeTab.key)}
-            oauthProvider={findOauthProvider(
-              credentials.oauthProviders,
-              activeTab.key,
-            )}
-            oauthCredential={findOauthCredential(
-              credentials.oauthCredentials,
-              activeTab.key,
-            )}
-            draftKey={draftKey}
-            onDraftKeyChange={setDraftKey}
-            onSaveKey={() =>
-              activeTab.llmEntry
-                ? handleSaveKey(activeTab.key, activeTab.label)
-                : undefined
-            }
-            saving={savingProvider === activeTab.key}
-            oauthInFlight={oauthProvider === activeTab.key}
-            onLoginOAuth={() => handleLoginOAuth(activeTab.key)}
-            authError={authError}
-            openRouterCustomId={openRouterCustomId}
-            onOpenRouterCustomIdChange={setOpenRouterCustomId}
-            onSubmitOpenRouterCustomId={handleSubmitOpenRouter}
-            localBaseUrl={localBaseUrl}
-            onLocalBaseUrlChange={setLocalBaseUrl}
-            localModelId={localModelId}
-            onLocalModelIdChange={setLocalModelId}
-            onSubmitLocalModelId={handleSubmitLocal}
-            disabled={disabled || disabledProviderSet.has(activeTab.key)}
-            hideDefaultRow={hideDefaultRow}
-            selectedHeaderKicker={selectedHeaderKicker}
-            hideSelectedTitle={hideSelectedTitle}
-            hideSelectionCheck={hideSelectionCheck}
-            favoriteScope={favoriteScope}
-            favorites={favorites}
-            onToggleFavorite={toggleFavorite}
-            reasoningEffort={reasoningEffort}
-            onSelectReasoning={onSelectReasoning}
-            disabledProviderReason={disabledProviderReason}
+            {isOpenRouter && expanded ? (
+              <div className="model-picker-connect">
+                <p className="model-picker-connect-hint">
+                  OpenRouter accepts any <code>vendor/model</code> id. Type one
+                  to use it directly.
+                </p>
+                <div className="model-picker-connect-field">
+                  <input
+                    placeholder="anthropic/claude-opus-4.7"
+                    value={openRouterCustomId}
+                    onChange={(e) => setOpenRouterCustomId(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSubmitOpenRouter();
+                    }}
+                    disabled={sectionDisabled}
+                    aria-label="OpenRouter model id"
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="model-picker-connect-go"
+                    onClick={handleSubmitOpenRouter}
+                    disabled={!openRouterCustomId.trim() || sectionDisabled}
+                  >
+                    Use
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="model-picker-models">
+              {showDefaultRow ? (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={isDefaultSelected}
+                  className="model-picker-model model-picker-model--default"
+                  data-selected={isDefaultSelected || undefined}
+                  onClick={(event) =>
+                    handlePick(DEFAULT_TARGET, event.currentTarget)
+                  }
+                  disabled={sectionDisabled}
+                >
+                  <span className="model-picker-model-text">
+                    <span className="model-picker-model-name">
+                      {defaultLabel}
+                    </span>
+                  </span>
+                  {!hideSelectionCheck && isDefaultSelected ? (
+                    <Check size={13} className="model-picker-model-check" />
+                  ) : null}
+                </button>
+              ) : null}
+              {models.map((model) => {
+                const selected = !isDefaultSelected && model.id === value;
+                const rowRestricted =
+                  restrictThisStella &&
+                  model.provider === STELLA_PROVIDER_KEY &&
+                  !selected &&
+                  model.allowedForAudience === false;
+                return (
+                  <ModelRow
+                    key={model.id}
+                    model={model}
+                    selected={selected}
+                    rowRestricted={rowRestricted}
+                    restrictedPlanLabel={restrictedPlanLabel ?? null}
+                    restrictedReason={
+                      rowRestricted && !restrictedPlanLabel
+                        ? (disabledProviderReason ?? null)
+                        : null
+                    }
+                    onPick={handlePick}
+                    disabled={sectionDisabled}
+                    favorite={favorites.includes(model.id)}
+                    showFavorite={Boolean(favoriteScope)}
+                    onToggleFavorite={toggleFavorite}
+                    reasoningEffort={reasoningEffort}
+                    onSelectReasoning={onSelectReasoning}
+                    hideSelectionCheck={hideSelectionCheck}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className="model-picker-shell"
+      data-disabled={disabled || undefined}
+      role="group"
+      aria-label={ariaLabel}
+    >
+      <div className="model-picker-pane-inner">
+        {hideSelectedTitle ? null : (
+          <header className="model-picker-pane-header">
+            <div className="model-picker-pane-title">
+              <span className="model-picker-pane-kicker">
+                {selectedHeaderKicker ?? "Selected"}
+              </span>
+              <span className="model-picker-pane-current" title={currentLabel}>
+                {currentLabel}
+              </span>
+            </div>
+          </header>
+        )}
+
+        <div className="model-picker-search">
+          <Search size={13} strokeWidth={1.75} aria-hidden />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search models…"
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Search models"
+            disabled={disabled}
           />
-        ) : null}
-      </section>
+        </div>
+
+        <div className="model-picker-groups" role="listbox" aria-live="polite">
+          {sections.length === 0 ? (
+            <div className="model-picker-empty">
+              {tabs.length === 0
+                ? "No models available yet."
+                : "No models match."}
+            </div>
+          ) : (
+            sections.map(({ tab, models }) => renderSection(tab, models))
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Right pane
+// Model row
 // ---------------------------------------------------------------------------
-
-interface ProviderPaneProps {
-  tab: ProviderTab;
-  query: string;
-  onQueryChange: (next: string) => void;
-  selectedModelId: string;
-  filteredModels: CatalogModel[];
-  onPick: (modelId: string, anchor?: HTMLElement) => void;
-  isStella: boolean;
-  restrictStellaPicks: boolean;
-  restrictedPlanLabel: string | null;
-  currentLabel: string;
-  defaultLabel: string;
-  apiKey: ReturnType<typeof findApiKey>;
-  oauthProvider: ReturnType<typeof findOauthProvider>;
-  oauthCredential: ReturnType<typeof findOauthCredential>;
-  draftKey: string;
-  onDraftKeyChange: (next: string) => void;
-  onSaveKey: () => void;
-  saving: boolean;
-  oauthInFlight: boolean;
-  onLoginOAuth: () => void;
-  authError: string | null;
-  openRouterCustomId: string;
-  onOpenRouterCustomIdChange: (next: string) => void;
-  onSubmitOpenRouterCustomId: () => void;
-  localBaseUrl: string;
-  onLocalBaseUrlChange: (next: string) => void;
-  localModelId: string;
-  onLocalModelIdChange: (next: string) => void;
-  onSubmitLocalModelId: () => void;
-  disabled: boolean;
-  hideDefaultRow: boolean;
-  selectedHeaderKicker?: string;
-  hideSelectedTitle: boolean;
-  hideSelectionCheck: boolean;
-  favoriteScope?: string;
-  favorites: readonly string[];
-  onToggleFavorite: (modelId: string) => void;
-  reasoningEffort?: ReasoningEffort;
-  onSelectReasoning?: (modelId: string, effort: ReasoningEffort) => void;
-  disabledProviderReason?: string;
-}
 
 type ModelRowProps = {
   model: CatalogModel;
@@ -708,326 +858,3 @@ const ModelRow = memo(function ModelRow({
     </div>
   );
 });
-
-function ProviderPane({
-  tab,
-  query,
-  onQueryChange,
-  selectedModelId,
-  filteredModels,
-  onPick,
-  isStella,
-  restrictStellaPicks,
-  restrictedPlanLabel,
-  currentLabel,
-  defaultLabel,
-  apiKey,
-  oauthProvider,
-  oauthCredential,
-  draftKey,
-  onDraftKeyChange,
-  onSaveKey,
-  saving,
-  oauthInFlight,
-  onLoginOAuth,
-  authError,
-  openRouterCustomId,
-  onOpenRouterCustomIdChange,
-  onSubmitOpenRouterCustomId,
-  localBaseUrl,
-  onLocalBaseUrlChange,
-  localModelId,
-  onLocalModelIdChange,
-  onSubmitLocalModelId,
-  disabled,
-  hideDefaultRow,
-  selectedHeaderKicker,
-  hideSelectedTitle,
-  hideSelectionCheck,
-  favoriteScope,
-  favorites,
-  onToggleFavorite,
-  reasoningEffort,
-  onSelectReasoning,
-  disabledProviderReason,
-}: ProviderPaneProps) {
-  const llmEntry =
-    tab.llmEntry ??
-    (!isStella
-      ? {
-          key: tab.key,
-          label: tab.label,
-          placeholder: "API key",
-        }
-      : undefined);
-  const providerDisabled = disabled;
-  const isGrok = tab.key === GROK_PROVIDER_KEY;
-  const connected = isStella || Boolean(apiKey) || Boolean(oauthCredential);
-  const isLocal = tab.key === LOCAL_PROVIDER_KEY;
-  const usesExternalLogin = isGrok;
-  const requiresAuth =
-    !isStella &&
-    !isLocal &&
-    !usesExternalLogin &&
-    !connected &&
-    Boolean(llmEntry);
-  const supportsApiKey =
-    Boolean(llmEntry) && !isApiKeyOnlyPlaceholder(llmEntry?.placeholder ?? "");
-  const supportsOAuth = Boolean(oauthProvider);
-  const isOpenRouter = tab.key === "openrouter";
-  let authHeadline: string;
-  let authDescription: string;
-  if (supportsOAuth && supportsApiKey) {
-    authHeadline = `Connect ${tab.label}`;
-    authDescription = `Sign in or add an API key. Credentials stay on this device.`;
-  } else if (supportsOAuth) {
-    authHeadline = `Sign in to ${tab.label}`;
-    authDescription = `Credentials stay on this device.`;
-  } else {
-    authHeadline = `Add a ${tab.label} API key`;
-    authDescription = `The key stays on this device.`;
-  }
-
-  const isDefaultSelected = !selectedModelId;
-  const showDefaultRow = !hideDefaultRow && isStella;
-  const defaultRow = showDefaultRow ? (
-    <button
-      type="button"
-      role="option"
-      aria-selected={isDefaultSelected}
-      className="model-picker-model model-picker-model--default"
-      data-selected={isDefaultSelected || undefined}
-      onClick={(event) => onPick(DEFAULT_TARGET, event.currentTarget)}
-      disabled={disabled}
-    >
-      <span className="model-picker-model-text">
-        <span className="model-picker-model-name">{defaultLabel}</span>
-      </span>
-      {!hideSelectionCheck && isDefaultSelected ? (
-        <Check size={13} className="model-picker-model-check" />
-      ) : null}
-    </button>
-  ) : null;
-
-  return (
-    <div className="model-picker-pane-inner">
-      {hideSelectedTitle ? null : (
-        <header className="model-picker-pane-header">
-          <div className="model-picker-pane-title">
-            <span className="model-picker-pane-kicker">
-              {selectedHeaderKicker ?? "Selected"}
-            </span>
-            <span className="model-picker-pane-current" title={currentLabel}>
-              {currentLabel}
-            </span>
-          </div>
-        </header>
-      )}
-
-      {requiresAuth ? (
-        <div className="model-picker-auth">
-          <h4 className="model-picker-auth-headline">{authHeadline}</h4>
-          <p className="model-picker-pane-desc">{authDescription}</p>
-          {supportsOAuth ? (
-            <div className="model-picker-auth-row">
-              <LogIn size={13} aria-hidden />
-              <Button
-                type="button"
-                variant="ghost"
-                className="model-picker-signin"
-                onClick={onLoginOAuth}
-                disabled={oauthInFlight || disabled}
-              >
-                {oauthInFlight ? "Opening…" : "Sign in"}
-              </Button>
-            </div>
-          ) : null}
-          {supportsApiKey ? (
-            <div className="model-picker-auth-row">
-              <KeyRound size={13} aria-hidden />
-              <TextField
-                label={`${tab.label} API key`}
-                hideLabel
-                type="password"
-                placeholder={llmEntry?.placeholder ?? "API key"}
-                value={draftKey}
-                onChange={(e) => onDraftKeyChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onSaveKey();
-                }}
-                autoFocus={!supportsOAuth}
-                disabled={providerDisabled}
-              />
-              <Button
-                type="button"
-                variant="primary"
-                size="small"
-                className="model-picker-key-save"
-                aria-label={`Save ${tab.label} API key`}
-                onClick={onSaveKey}
-                disabled={!draftKey.trim() || saving || providerDisabled}
-              >
-                <Check size={15} aria-hidden />
-              </Button>
-            </div>
-          ) : null}
-          {authError ? (
-            <p className="model-picker-pane-error" role="alert">
-              {authError}
-            </p>
-          ) : null}
-        </div>
-      ) : (
-        <>
-          {isLocal ? (
-            <div className="model-picker-local">
-              <p className="model-picker-pane-desc">
-                Use any local OpenAI-compatible server. Ollama usually runs at
-                the URL below.
-              </p>
-              <div className="model-picker-auth-row">
-                <TextField
-                  label="Local URL"
-                  hideLabel
-                  placeholder={DEFAULT_LOCAL_BASE_URL}
-                  value={localBaseUrl}
-                  onChange={(e) => onLocalBaseUrlChange(e.target.value)}
-                  disabled={providerDisabled}
-                />
-              </div>
-              <div className="model-picker-auth-row">
-                <TextField
-                  label="Local model"
-                  hideLabel
-                  placeholder="llama3.2"
-                  value={localModelId}
-                  onChange={(e) => onLocalModelIdChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") onSubmitLocalModelId();
-                  }}
-                  disabled={disabled}
-                />
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={onSubmitLocalModelId}
-                  disabled={!localModelId.trim() || providerDisabled}
-                >
-                  Use model
-                </Button>
-              </div>
-              <div className="model-picker-pane-divider">
-                <span>or pick from the list</span>
-              </div>
-            </div>
-          ) : null}
-
-          {isOpenRouter ? (
-            <div className="model-picker-openrouter">
-              <div className="model-picker-pane-desc">
-                OpenRouter accepts any <code>vendor/model</code> id. Type one to
-                use it directly.
-              </div>
-              <div className="model-picker-auth-row">
-                <TextField
-                  label="OpenRouter model id"
-                  hideLabel
-                  placeholder="anthropic/claude-opus-4.7"
-                  value={openRouterCustomId}
-                  onChange={(e) => onOpenRouterCustomIdChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") onSubmitOpenRouterCustomId();
-                  }}
-                  disabled={providerDisabled}
-                />
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={onSubmitOpenRouterCustomId}
-                  disabled={!openRouterCustomId.trim() || providerDisabled}
-                >
-                  Use model
-                </Button>
-              </div>
-              <div className="model-picker-pane-divider">
-                <span>or pick from the list</span>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="model-picker-search">
-            <Search size={13} strokeWidth={1.75} aria-hidden />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-              placeholder={`Search ${tab.label}…`}
-              spellCheck={false}
-              autoComplete="off"
-              aria-label={`Search ${tab.label} models`}
-              disabled={disabled}
-            />
-          </div>
-          <div className="model-picker-models" role="listbox">
-            {defaultRow}
-            {filteredModels.length === 0 ? (
-              defaultRow ? null : (
-                <div className="model-picker-empty">
-                  {tab.models.length === 0
-                    ? `No ${tab.label} models available yet.`
-                    : "No models match."}
-                </div>
-              )
-            ) : (
-              filteredModels.map((model) => {
-                const selected =
-                  !isDefaultSelected && model.id === selectedModelId;
-                const rowRestricted =
-                  restrictStellaPicks &&
-                  model.provider === STELLA_PROVIDER_KEY &&
-                  !selected &&
-                  model.allowedForAudience === false;
-                return (
-                  <ModelRow
-                    key={model.id}
-                    model={model}
-                    selected={selected}
-                    rowRestricted={rowRestricted}
-                    restrictedPlanLabel={restrictedPlanLabel}
-                    restrictedReason={
-                      rowRestricted && !restrictedPlanLabel
-                        ? (disabledProviderReason ?? null)
-                        : null
-                    }
-                    onPick={onPick}
-                    disabled={providerDisabled}
-                    favorite={favorites.includes(model.id)}
-                    showFavorite={Boolean(favoriteScope)}
-                    onToggleFavorite={onToggleFavorite}
-                    reasoningEffort={reasoningEffort}
-                    onSelectReasoning={onSelectReasoning}
-                    hideSelectionCheck={hideSelectionCheck}
-                  />
-                );
-              })
-            )}
-          </div>
-        </>
-      )}
-
-      {!requiresAuth && llmEntry ? (
-        <footer className="model-picker-pane-footer">
-          {isGrok ? (
-            <span className="model-picker-pane-foot-text">Uses grok login</span>
-          ) : apiKey || oauthCredential ? (
-            <span className="model-picker-pane-foot-text">
-              {apiKey
-                ? "Using your saved API key"
-                : `Signed in as ${oauthCredential?.label ?? tab.label}`}
-            </span>
-          ) : null}
-        </footer>
-      ) : null}
-    </div>
-  );
-}

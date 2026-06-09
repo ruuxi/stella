@@ -123,13 +123,13 @@
 }
 
 .engine-tab__engine-option[data-selected] {
-  background: var(--surface-raised-stronger-non-alpha, var(--card));
-  border-color: var(--border);
-  box-shadow: var(--shadow-sm);
+  background: var(--select-fill-raised);
+  border-color: var(--select-border);
+  box-shadow: var(--select-chip-shadow);
 }
 
 .engine-tab__engine-option[data-selected] .engine-tab__engine-label {
-  color: var(--text-strong);
+  color: var(--select-text);
 }
 
 .engine-tab__engine-option:disabled {
@@ -300,8 +300,8 @@
 }
 
 .engine-tab__cursor-model-option[data-selected] {
-  border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
-  background: color-mix(in oklch, var(--primary) 8%, transparent);
+  border-color: var(--select-border);
+  background: var(--select-fill);
 }
 
 .engine-tab__cursor-model-option:disabled {
@@ -357,9 +357,9 @@
 }
 
 .engine-tab__segment[data-selected] {
-  color: var(--text-strong);
-  border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
-  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  color: var(--select-text);
+  border-color: var(--select-border);
+  background: var(--select-fill);
 }
 
 .engine-tab__segment:disabled {
@@ -554,13 +554,10 @@
   text-align: center;
 }
 
-/* Narrow-mode override for the embedded ProviderModelPanel: the
- * settings page version uses a 180px provider rail + 1fr models grid,
- * which feels cramped in the display sidebar. Trim the rail and let
- * the picker breathe a bit shorter so a typical 380–520 px sidebar
- * still shows the full set of agents in the assignment popover. */
+/* Embedded ProviderModelPanel in the display sidebar: let the flat
+ * provider-grouped list fill the available height and pick up the panel
+ * border so it reads as a contained surface. */
 .engine-tab__models-agents .model-picker-shell {
-  grid-template-columns: 124px minmax(0, 1fr);
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
@@ -576,10 +573,6 @@
   border: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
   border-radius: var(--radius-md, 8px);
   overflow: hidden;
-}
-
-.engine-tab__models-agents .model-picker-rail {
-  padding: 6px;
 }
 
 /* ── Engine runtime model panel (Codex / Claude Code) ──────────── */
@@ -722,8 +715,8 @@
 }
 
 .engine-runtime-model-panel__model[data-selected] {
-  background: color-mix(in oklch, var(--text-strong) 11%, transparent);
-  color: var(--text-strong);
+  background: var(--select-fill);
+  color: var(--select-text);
 }
 
 .engine-runtime-model-panel__model-text {
@@ -937,8 +930,8 @@
 }
 
 .engine-tab__assign-reasoning-btn[data-selected] {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-  color: var(--text-strong);
+  background: var(--select-fill);
+  color: var(--select-text);
   font-weight: var(--weight-semibold);
 }
 
