@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { diffArrays } from "diff";
 
 export type StellaSourceBlob =
   | { kind: "text"; content: string }
@@ -349,53 +350,42 @@ const splitTextLines = (content: string): string[] =>
 
 const joinTextLines = (lines: string[]): string => lines.join("");
 
+/**
+ * Line-level diff hunks via Myers diff (the `diff` package). The previous
+ * implementation built a full (base+1)×(target+1) LCS table — O(n·m)
+ * memory, which OOMs on multi-thousand-line files; Myers is linear in
+ * input size plus edit distance. Adjacent removed/added parts coalesce
+ * into one replacement hunk, matching the prior hunk semantics.
+ */
 const computeTextHunks = (base: string[], target: string[]): TextHunk[] => {
-  const dp = Array.from({ length: base.length + 1 }, () =>
-    Array<number>(target.length + 1).fill(0),
-  );
-  for (let i = base.length - 1; i >= 0; i -= 1) {
-    for (let j = target.length - 1; j >= 0; j -= 1) {
-      dp[i]![j] =
-        base[i] === target[j]
-          ? dp[i + 1]![j + 1]! + 1
-          : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
-    }
-  }
-
+  const parts = diffArrays(base, target);
   const hunks: TextHunk[] = [];
-  let i = 0;
-  let j = 0;
+  let baseIndex = 0;
   let active: TextHunk | null = null;
-  const ensureActive = () => {
-    active ??= { baseStart: i, baseEnd: i, replacement: [] };
-    return active;
-  };
   const flush = () => {
     if (!active) return;
     hunks.push(active);
     active = null;
   };
 
-  while (i < base.length || j < target.length) {
-    if (i < base.length && j < target.length && base[i] === target[j]) {
-      flush();
-      i += 1;
-      j += 1;
+  for (const part of parts) {
+    if (part.removed) {
+      active ??= { baseStart: baseIndex, baseEnd: baseIndex, replacement: [] };
+      active.baseEnd = baseIndex + part.value.length;
+      baseIndex += part.value.length;
       continue;
     }
-    if (
-      j < target.length &&
-      (i === base.length || dp[i]![j + 1]! >= dp[i + 1]![j]!)
-    ) {
-      ensureActive().replacement.push(target[j]!);
-      j += 1;
+    if (part.added) {
+      active ??= { baseStart: baseIndex, baseEnd: baseIndex, replacement: [] };
+      // Plain loop instead of spread: spreading a 100k-line part would
+      // overflow the argument stack.
+      for (const line of part.value) {
+        active.replacement.push(line);
+      }
       continue;
     }
-    if (i < base.length) {
-      ensureActive().baseEnd = i + 1;
-      i += 1;
-      continue;
-    }
+    flush();
+    baseIndex += part.value.length;
   }
   flush();
   return hunks;
