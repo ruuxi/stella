@@ -1,7 +1,7 @@
 .home-content {
   --home-scale-title: 42px;
-  --home-scale-category-text: 14px;
-  --home-scale-option-text: 17px;
+  --home-scale-category-text: var(--font-size-md);
+  --home-scale-option-text: var(--font-size-xl);
   --home-scale-option-gap: 8px;
   display: flex;
   flex-direction: column;
@@ -72,7 +72,7 @@
 .home-stella-title {
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: var(--home-scale-title);
-  font-weight: 450;
+  font-weight: var(--weight-regular);
   letter-spacing: -0.03em;
   line-height: 1.2;
   color: var(--text-strong);
@@ -101,7 +101,7 @@
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   font-size: 16px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   cursor: default;
   transition: color 0.15s ease;
@@ -132,8 +132,8 @@
   width: min(calc(100% - 48px), 360px);
   color: var(--text-weak);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   line-height: 1.4;
   letter-spacing: 0;
   text-align: center;

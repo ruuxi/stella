@@ -391,7 +391,7 @@ export function ComposerAreaSelectOverlay({
                       aria-label="Cancel"
                       title="Cancel"
                     >
-                      <X size={15} strokeWidth={2} />
+                      <X size={16} strokeWidth={1.75} />
                     </button>
                     <ComposerSubmitButton
                       className="composer-submit"

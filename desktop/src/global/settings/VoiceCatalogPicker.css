@@ -19,16 +19,16 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-weak);
 }
 
 .voice-catalog-picker-label-source {
-  font-size: 10.5px;
-  font-weight: 500;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   text-transform: none;
   color: color-mix(in oklch, var(--text-weak) 80%, transparent);
@@ -52,8 +52,8 @@
   padding: 2px 10px;
   border-radius: 6px;
   font-family: inherit;
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.02em;
   text-transform: none;
   color: var(--text-weak);
@@ -70,7 +70,7 @@
 .voice-catalog-subtoggle-btn[data-active] {
   background: var(--background, #fff);
   color: var(--text-strong);
-  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-subtle);
 }
 
 .voice-catalog-subtoggle-btn:disabled {
@@ -136,8 +136,8 @@
   gap: 6px;
   cursor: default;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   border-left: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
   border-right: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
@@ -175,7 +175,7 @@
 .voice-catalog-stepper-desc {
   margin: 0;
   padding: 0 2px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
   text-align: center;
 }
@@ -218,14 +218,14 @@
 }
 
 .voice-catalog-menu-item-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.005em;
 }
 
 .voice-catalog-menu-item-desc {
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   line-height: 1.35;
   color: var(--text-weak);
 }
@@ -255,8 +255,8 @@
 }
 
 .voice-catalog-speed-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-weak);
@@ -264,8 +264,8 @@
 
 .voice-catalog-speed-value {
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
 }
 
@@ -288,7 +288,7 @@
   border-radius: 50%;
   background: var(--text-strong);
   border: 2px solid var(--background, #fff);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-sm);
   cursor: default;
   transition: transform 120ms ease;
 }
@@ -305,7 +305,7 @@
 .voice-catalog-speed-marks {
   display: flex;
   justify-content: space-between;
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
 }
@@ -323,7 +323,7 @@
 
 .voice-catalog-readaloud-desc {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
   color: var(--text-weak);
 }

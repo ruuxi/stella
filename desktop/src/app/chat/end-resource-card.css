@@ -6,7 +6,7 @@
   padding: 6px 8px 6px 12px;
   min-height: 52px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.35;
   border-radius: var(--radius-lg, 14px);
   border: 1px solid var(--border-strong);
@@ -68,14 +68,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
 }
 
 .end-resource-card__subtitle {
   position: relative;
   display: inline-block;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   letter-spacing: 0.01em;
   color: var(--text-weak);
   min-height: 1em;
@@ -113,7 +113,7 @@
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.4;
   color: var(--text-base);
   text-decoration: underline;

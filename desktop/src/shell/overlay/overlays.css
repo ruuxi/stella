@@ -30,7 +30,7 @@
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.45);
   color: rgba(255, 255, 255, 0.9);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   letter-spacing: 0.2px;
   pointer-events: none;
 }
@@ -138,8 +138,8 @@
 }
 
 .radial-wedge-label {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
   line-height: 1;
 }
 
@@ -177,9 +177,7 @@
   /* Opaque surface — frosted `backdrop-filter` + `--surface-overlay` read
      semi-transparent over other apps; dictation should stay a solid pill. */
   background: var(--background);
-  box-shadow:
-    0 18px 48px rgba(0, 0, 0, 0.18),
-    0 2px 10px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-overlay);
   pointer-events: auto;
   -webkit-app-region: no-drag;
 }
@@ -202,5 +200,5 @@
 .dictation-overlay .composer-dictation-timer {
   flex: 0 0 auto;
   padding: 0 2px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }

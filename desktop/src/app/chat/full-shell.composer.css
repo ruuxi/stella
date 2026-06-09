@@ -89,7 +89,7 @@
   padding: 2px 4px;
 }
 
-/* Toolbar hidden in pill mode â€” buttons sit inline */
+/* Toolbar hidden in pill mode — buttons sit inline */
 .composer-toolbar {
   display: contents;
 }
@@ -174,7 +174,7 @@
   cursor: default;
 }
 
-/* Toolbar add button â€” hidden in pill mode, shown in expanded */
+/* Toolbar add button — hidden in pill mode, shown in expanded */
 .composer-add-button--toolbar {
   display: none;
 }

@@ -29,7 +29,7 @@
 
 .onboarding-dialogue[data-phase="double-tap"] .onboarding-split-title {
   text-align: center;
-  font-size: clamp(28px, 4vw, 42px);
+  font-size: 42px;
   line-height: 1.18;
   max-width: 760px;
 }
@@ -48,7 +48,7 @@
   max-width: 760px;
   margin: 0 auto;
   flex-shrink: 0;
-  font-size: clamp(20px, 2.4vw, 26px);
+  font-size: 26px;
   line-height: 1.45;
   opacity: 0.86;
 }
@@ -103,12 +103,12 @@
       90% 80% at 0% 100%,
       color-mix(
         in oklch,
-        var(--accent, var(--primary, var(--foreground))) 8%,
+        var(--accent) 8%,
         transparent
       ),
       transparent 55%
     );
-  box-shadow: 0 22px 50px color-mix(in oklch, black 12%, transparent);
+  box-shadow: var(--shadow-lg);
 }
 
 /* Faux app windows that sit behind the mini shell to give the demo a
@@ -121,7 +121,7 @@
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   background: color-mix(in oklch, var(--background) 92%, white 8%);
-  box-shadow: 0 12px 28px color-mix(in oklch, black 10%, transparent);
+  box-shadow: var(--shadow-md);
 }
 
 .onboarding-doubletap-window--bg {
@@ -151,7 +151,7 @@
   padding: 7px 12px;
   border-bottom: 1px solid
     color-mix(in oklch, var(--foreground) 8%, transparent);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   letter-spacing: 0.04em;
   color: var(--foreground);
   opacity: 0.6;
@@ -165,13 +165,13 @@
 }
 
 .onboarding-doubletap-window__bar span:nth-child(1) {
-  background: color-mix(in oklch, oklch(0.65 0.16 25) 70%, transparent);
+  background: color-mix(in oklch, var(--destructive) 70%, transparent);
 }
 .onboarding-doubletap-window__bar span:nth-child(2) {
-  background: color-mix(in oklch, oklch(0.78 0.12 75) 65%, transparent);
+  background: color-mix(in oklch, var(--warning) 65%, transparent);
 }
 .onboarding-doubletap-window__bar span:nth-child(3) {
-  background: color-mix(in oklch, oklch(0.72 0.16 145) 65%, transparent);
+  background: color-mix(in oklch, var(--success) 65%, transparent);
 }
 
 .onboarding-doubletap-window__bar strong {
@@ -220,14 +220,14 @@
 }
 
 .onboarding-doubletap-heading {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   margin: 2px 0 4px;
   color: var(--foreground);
 }
 
 .onboarding-doubletap-paragraph {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
   color: var(--foreground);
   opacity: 0.7;
@@ -252,9 +252,7 @@
   overflow: hidden;
   background: var(--background);
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  box-shadow:
-    0 18px 50px rgba(0, 0, 0, 0.18),
-    0 4px 14px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-overlay);
 
   /* Hidden by default until the user double-taps. The summon beat is
    * carried by `transform: scale + translateY` + `opacity` only — we
@@ -279,7 +277,7 @@
   padding: 8px 10px;
   border-bottom: 1px solid
     color-mix(in oklch, var(--foreground) 6%, transparent);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--foreground);
   opacity: 0.85;
@@ -322,7 +320,7 @@
 .onboarding-doubletap-mini__msg {
   padding: 7px 10px;
   border-radius: 12px;
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
   line-height: 1.45;
   color: var(--foreground);
 }
@@ -332,7 +330,7 @@
   max-width: 80%;
   background: color-mix(
     in oklch,
-    var(--primary, oklch(0.62 0.18 235)) 14%,
+    var(--primary) 14%,
     transparent
   );
   border-radius: 12px 12px 4px 12px;
@@ -353,7 +351,7 @@
   border-radius: 999px;
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   color: var(--foreground);
   opacity: 0.6;
 }
@@ -378,7 +376,7 @@
 /* ─── Hint copy under the desktop ──────────────────────────────────── */
 
 .onboarding-doubletap-hint {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   letter-spacing: 0.02em;
   color: var(--foreground);
   opacity: 0.7;
@@ -415,7 +413,7 @@
   background: color-mix(in oklch, var(--background) 88%, white 4%);
   border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
   border-bottom-width: 3px;
-  box-shadow: 0 2px 6px color-mix(in oklch, black 6%, transparent);
+  box-shadow: var(--shadow-sm);
   font-family: inherit;
   font-size: 19px;
   font-weight: 600;
@@ -432,19 +430,19 @@
 .onboarding-doubletap-keycap[data-state="second"] {
   background: color-mix(
     in oklch,
-    var(--primary, oklch(0.62 0.18 235)) 16%,
+    var(--primary) 16%,
     transparent
   );
   border-color: color-mix(
     in oklch,
-    var(--primary, oklch(0.62 0.18 235)) 38%,
+    var(--primary) 38%,
     transparent
   );
   box-shadow:
     0 0 0 4px
       color-mix(
         in oklch,
-        var(--primary, oklch(0.62 0.18 235)) 12%,
+        var(--primary) 12%,
         transparent
       );
   transform: translateY(1px) scale(0.97);
@@ -457,13 +455,13 @@
     0 0 0 6px
       color-mix(
         in oklch,
-        var(--primary, oklch(0.62 0.18 235)) 18%,
+        var(--primary) 18%,
         transparent
       );
 }
 
 .onboarding-doubletap-keycap-sep {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--foreground);
   opacity: 0.5;
 }

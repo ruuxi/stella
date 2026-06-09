@@ -32,22 +32,22 @@
 .apps-screen__title {
   margin: 0;
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(2.4rem, 4vw, 3rem);
-  font-weight: 300;
+  font-size: 3rem;
+  font-weight: var(--weight-light);
   line-height: 1;
   letter-spacing: -0.04em;
 }
 
 .apps-screen__title em {
   font-style: normal;
-  font-weight: 300;
+  font-weight: var(--weight-light);
 }
 
 .apps-screen__lead {
   margin: 0;
   max-width: 60ch;
-  color: color-mix(in oklch, var(--foreground) 70%, transparent);
-  font-size: 13px;
+  color: var(--text-base);
+  font-size: var(--font-size-base);
   line-height: 1.5;
 }
 
@@ -72,7 +72,7 @@
 .apps-screen__search-icon {
   position: absolute;
   left: 12px;
-  color: color-mix(in oklch, var(--foreground) 50%, transparent);
+  color: var(--text-weak);
   pointer-events: none;
 }
 
@@ -86,7 +86,7 @@
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
   color: var(--foreground);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   letter-spacing: -0.01em;
   outline: none;
   transition:
@@ -95,7 +95,7 @@
 }
 
 .apps-screen__search-input::placeholder {
-  color: color-mix(in oklch, var(--foreground) 45%, transparent);
+  color: var(--text-weaker);
 }
 
 .apps-screen__search-input:focus-visible {
@@ -115,8 +115,8 @@
 }
 
 .apps-screen__sort-label {
-  font-size: 12px;
-  color: color-mix(in oklch, var(--foreground) 60%, transparent);
+  font-size: var(--font-size-sm);
+  color: var(--text-weak);
   letter-spacing: -0.01em;
 }
 
@@ -126,7 +126,7 @@
   background: transparent;
   color: var(--foreground);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   letter-spacing: -0.01em;
   padding: 0 18px 0 0;
   cursor: default;
@@ -162,8 +162,8 @@
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   color: var(--foreground);
   font: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   cursor: default;
   transition:
@@ -185,7 +185,7 @@
 
 .apps-screen__cta--primary {
   background: color-mix(in oklch, var(--primary) 12%, transparent);
-  color: #111111;
+  color: var(--primary-foreground);
   border-color: color-mix(in oklch, var(--primary) 22%, transparent);
   box-shadow: none;
 }
@@ -196,14 +196,10 @@
   border-color: color-mix(in oklch, var(--primary) 28%, transparent);
 }
 
-.dark .apps-screen__cta--primary {
-  color: #ffffff;
-}
-
 .apps-screen__cta--lg {
   height: 44px;
   padding: 0 22px;
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 /* Grid */
@@ -254,7 +250,7 @@
 .apps-card__label {
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: 22px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   line-height: 1.1;
   letter-spacing: -0.02em;
   /* Truncate gracefully on narrow cards. */
@@ -265,8 +261,8 @@
 }
 
 .apps-card__meta {
-  font-size: 12px;
-  color: color-mix(in oklch, var(--foreground) 55%, transparent);
+  font-size: var(--font-size-sm);
+  color: var(--text-weak);
   letter-spacing: -0.01em;
 }
 
@@ -274,8 +270,8 @@
 
 .apps-screen__no-match {
   padding: 1.5rem 0;
-  font-size: 13px;
-  color: color-mix(in oklch, var(--foreground) 60%, transparent);
+  font-size: var(--font-size-base);
+  color: var(--text-weak);
 }
 
 .apps-screen__no-match-query {
@@ -301,8 +297,8 @@
 .apps-screen__empty-title {
   margin: 0;
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(2rem, 5vw, 2.4rem);
-  font-weight: 300;
+  font-size: 2.4rem;
+  font-weight: var(--weight-light);
   font-style: normal;
   line-height: 1;
   letter-spacing: -0.03em;
@@ -310,9 +306,9 @@
 
 .apps-screen__empty-body {
   margin: 0;
-  color: color-mix(in oklch, var(--foreground) 70%, transparent);
-  font-size: 17px;
-  font-weight: 500;
+  color: var(--text-base);
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-medium);
   line-height: 1.55;
   max-width: 340px;
 }
@@ -320,7 +316,7 @@
 .apps-screen__empty .pill-btn {
   min-height: 44px;
   padding: 10px 22px;
-  font-size: 15px;
+  font-size: var(--font-size-lg);
 }
 
 .apps-screen__empty-illustration {

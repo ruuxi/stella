@@ -8,7 +8,7 @@
   background: color-mix(in srgb, var(--card) 45%, transparent);
   color: var(--text-base);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1;
   cursor: default;
   transition:
@@ -24,11 +24,11 @@
 }
 
 .open-with-menu__trigger-label {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .open-with-menu__loading {
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-weak);
 }

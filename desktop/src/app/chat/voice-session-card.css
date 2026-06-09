@@ -15,8 +15,8 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   border-radius: 999px;
   background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
   line-height: 1.2;
   max-width: 100%;
 }
@@ -27,7 +27,7 @@
 }
 
 .voice-session-pill__label {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   overflow: hidden;
   text-overflow: ellipsis;

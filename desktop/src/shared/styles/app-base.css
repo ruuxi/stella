@@ -23,8 +23,11 @@
   font-family: var(--font-family-sans);
   font-feature-settings: var(--font-family-sans--font-feature-settings, normal);
   font-weight: var(--font-family-sans--default-weight, 500);
-  font-size: clamp(1rem, 1.4vw, 1.4rem);
-  line-height: 1.45;
+  /* Fixed native base size — never viewport-scaled. The previous
+     clamp(1rem,1.4vw,1.4rem) grew body text to ~22px on wide windows, the
+     single biggest "this is a web app, not native" tell. */
+  font-size: var(--font-size-lg);
+  line-height: var(--lh-normal);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   margin: 0;
   display: flex;

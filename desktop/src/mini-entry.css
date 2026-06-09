@@ -139,7 +139,7 @@ html[data-stella-window="mini"] #root {
 }
 
 .mini-chat-content .chat-conversation-surface--mini {
-  --chat-text-size: 15px;
+  --chat-text-size: var(--font-size-lg);
 }
 
 @media (prefers-color-scheme: dark) {

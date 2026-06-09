@@ -1,6 +1,6 @@
 .chat-composer-field {
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-md);
   line-height: 1.5;
   color: var(--text-strong);
   background: transparent;

@@ -93,7 +93,7 @@
 [data-component="button"][data-size="small"] {
   height: 22px;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   line-height: 1.67;
   gap: 4px;
@@ -103,7 +103,7 @@
   height: 24px;
   line-height: 24px;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   gap: 6px;
 }
@@ -111,7 +111,7 @@
 [data-component="button"][data-size="large"] {
   height: 32px;
   padding: 6px 12px;
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   line-height: 1.43;
   gap: 8px;

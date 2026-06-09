@@ -2,7 +2,7 @@
   position: relative;
   display: inline-flex;
   align-items: stretch;
-  height: 22px;
+  height: 24px;
   margin-left: 4px;
   border-radius: 999px;
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
@@ -72,8 +72,8 @@
   border: none;
   background: transparent;
   color: inherit;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   line-height: 1;
   cursor: default;
   -webkit-app-region: no-drag;

@@ -15,34 +15,24 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: color-mix(in oklch, oklch(0.18 0.01 255) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
 }
 
 .composer-area-select-overlay[data-state="annotating"]
   .composer-area-select-scrim {
-  background: color-mix(in oklch, oklch(0.18 0.01 255) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
 .composer-area-select-ring {
   position: fixed;
   z-index: 1;
   pointer-events: none;
-  border: 2px solid
-    color-mix(
-      in oklch,
-      var(--primary, oklch(0.7 0.12 250)) 78%,
-      oklch(0.98 0.006 250)
-    );
+  border: 2px solid var(--ring);
   border-radius: 10px;
   box-shadow:
-    0 0 0 1px color-mix(in oklch, oklch(0.18 0.01 255) 35%, transparent),
-    0 0 24px
-      color-mix(in oklch, var(--primary, oklch(0.7 0.12 250)) 26%, transparent);
-  background: color-mix(
-    in oklch,
-    var(--primary, oklch(0.7 0.12 250)) 5%,
-    transparent
-  );
+    0 0 0 1px color-mix(in oklch, var(--foreground) 35%, transparent),
+    0 0 24px color-mix(in oklch, var(--primary) 26%, transparent);
+  background: color-mix(in oklch, var(--primary) 5%, transparent);
 }
 
 .composer-area-annotation {
@@ -58,9 +48,8 @@
   max-width: 100%;
   background: var(--surface-raised-stronger-non-alpha, var(--card));
   box-shadow:
-    var(--shadow-md),
-    var(--panel-surface-highlight),
-    0 16px 38px color-mix(in oklch, oklch(0.18 0.01 255) 22%, transparent);
+    var(--shadow-overlay),
+    var(--panel-surface-highlight);
 }
 
 .composer-area-annotation__form {

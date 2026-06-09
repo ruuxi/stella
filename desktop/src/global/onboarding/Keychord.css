@@ -31,10 +31,10 @@
   background: color-mix(in oklch, var(--background) 88%, white 4%);
   border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
   border-bottom-width: 3px;
-  box-shadow: 0 2px 6px color-mix(in oklch, black 6%, transparent);
+  box-shadow: var(--shadow-sm);
   font-family: inherit;
   font-size: 19px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--foreground);
   letter-spacing: 0;
   transition:
@@ -45,7 +45,7 @@
 }
 
 .onboarding-keychord__sep {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   color: var(--foreground);
   opacity: 0.45;
   user-select: none;
@@ -59,7 +59,7 @@
   padding: 0 9px;
   border-radius: 7px;
   border-bottom-width: 2px;
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .onboarding-keychord[data-size="compact"] .onboarding-keychord__group {
@@ -71,7 +71,7 @@
 }
 
 .onboarding-keychord[data-size="compact"] .onboarding-keychord__sep {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 /* Highlight when the user just pressed the chord — same primary tint
@@ -79,19 +79,19 @@
 .onboarding-keychord[data-highlight] .onboarding-keychord__cap {
   background: color-mix(
     in oklch,
-    var(--primary, oklch(0.62 0.18 235)) 16%,
+    var(--primary) 16%,
     transparent
   );
   border-color: color-mix(
     in oklch,
-    var(--primary, oklch(0.62 0.18 235)) 38%,
+    var(--primary) 38%,
     transparent
   );
   box-shadow:
     0 0 0 4px
       color-mix(
         in oklch,
-        var(--primary, oklch(0.62 0.18 235)) 12%,
+        var(--primary) 12%,
         transparent
       );
   transform: translateY(1px) scale(0.97);

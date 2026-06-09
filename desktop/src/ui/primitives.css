@@ -6,7 +6,7 @@
   padding: 0 12px;
   border-radius: 999px;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   line-height: 1;
   white-space: nowrap;

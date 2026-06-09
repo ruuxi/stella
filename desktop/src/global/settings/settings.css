@@ -66,7 +66,7 @@
   flex-shrink: 0;
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: 26px;
-  font-weight: 450;
+  font-weight: var(--weight-regular);
   letter-spacing: -0.02em;
   line-height: 1;
   color: var(--text-strong);
@@ -138,8 +138,8 @@
   background: transparent;
   color: var(--text-base);
   font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.005em;
   white-space: nowrap;
   cursor: default;
@@ -202,14 +202,14 @@
   background: transparent;
   color: inherit;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   padding: 0;
 }
 
 .settings-search-input::placeholder {
   color: var(--text-weak);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 /* Hide the default WebKit/UA "x" on type=search — we render our own. */
@@ -359,8 +359,8 @@
 .settings-card-title {
   /* Section heading: bold sans, prominent. The row labels below are
      the small-caps eyebrows that group each individual setting. */
-  font-size: 17px;
-  font-weight: 700;
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-bold);
   letter-spacing: -0.01em;
   line-height: 1.2;
   color: var(--text-strong);
@@ -372,7 +372,7 @@
 }
 
 .settings-card-desc {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.55;
   /* Halfway between base and weak — readable without competing with
      the title above it. The old `--text-weak` made body copy hard to
@@ -414,15 +414,15 @@
 .settings-row-label {
   /* Primary row label — visually dominant. The sublabel below is the
      supporting description, not the headline. */
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.005em;
   line-height: 1.25;
   color: var(--text-strong);
 }
 
 .settings-row-sublabel {
-  font-size: 12.5px;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
   color: color-mix(in oklch, var(--text-base) 70%, var(--text-weak));
   margin-top: 3px;
@@ -520,8 +520,8 @@
   border-radius: var(--radius-full);
   background: transparent;
   color: var(--text-base);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   font-family: inherit;
   cursor: default;
   transition:
@@ -618,8 +618,8 @@
 }
 
 .settings-migration-dialog [data-slot="dialog-title"] {
-  font-size: 17px;
-  font-weight: 700;
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-bold);
   color: var(--text-strong);
   letter-spacing: 0;
 }
@@ -637,8 +637,8 @@
   margin: 0;
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
   line-height: 1.55;
   letter-spacing: -0.01em;
 }
@@ -667,7 +667,7 @@
 }
 
 .settings-btn--reset-all {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   min-width: 66px;
   padding: 3px 10px;
   border: none;
@@ -719,7 +719,7 @@
 .settings-key-status {
   display: inline-flex;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: color-mix(in oklch, var(--text-base) 70%, var(--text-weak));
 }
 
@@ -741,8 +741,8 @@
 }
 
 .settings-search-results-header {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: color-mix(in oklch, var(--text-base) 65%, var(--text-weak));
@@ -753,7 +753,7 @@
   color: var(--text-strong);
   text-transform: none;
   letter-spacing: 0;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .settings-search-results-list {
@@ -811,8 +811,8 @@
 }
 
 .settings-search-result-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.005em;
   overflow: hidden;
@@ -821,7 +821,7 @@
 }
 
 .settings-search-result-desc {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.45;
   color: color-mix(in oklch, var(--text-base) 65%, var(--text-weak));
   overflow: hidden;
@@ -847,8 +847,8 @@
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
   color: var(--text-base);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.005em;
   white-space: nowrap;
 }
@@ -900,13 +900,13 @@
 .settings-search-results-empty-title {
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: 22px;
-  font-weight: 450;
+  font-weight: var(--weight-regular);
   letter-spacing: -0.02em;
   color: var(--text-strong);
 }
 
 .settings-search-results-empty-body {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.55;
   color: var(--text-weak);
   max-width: 360px;
@@ -964,8 +964,8 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
   background: color-mix(in oklch, var(--foreground) 7%, transparent);
   color: var(--text-base);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
 }
 
 .settings-row--billing-usage {
@@ -1020,19 +1020,19 @@
 }
 
 .settings-billing-plan-name {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-bold);
   color: var(--text-strong);
 }
 
 .settings-billing-plan-price {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   color: var(--text-base);
 }
 
 .settings-billing-plan-tagline {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
   margin-bottom: 4px;
 }
@@ -1048,7 +1048,7 @@
 }
 
 .settings-billing-plan-features li {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-base);
   padding-left: 14px;
   position: relative;
@@ -1074,7 +1074,7 @@
 .settings-billing-plan-included {
   margin-top: auto;
   padding-top: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
   text-align: center;
 }

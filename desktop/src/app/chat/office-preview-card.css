@@ -4,7 +4,7 @@
 
 .office-preview-card__timestamp {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--muted-foreground);
 }
 

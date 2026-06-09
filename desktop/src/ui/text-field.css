@@ -6,7 +6,7 @@
   width: 100%;
   color: var(--foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: var(--font-family-sans--default-weight, 500);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.43;
@@ -30,7 +30,7 @@
 [data-component="input"][data-variant="normal"] [data-slot="input-label"] {
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
@@ -50,7 +50,7 @@
 [data-component="input"][data-variant="normal"]
   [data-slot="input-wrapper"]:focus-within {
   border-color: transparent;
-  box-shadow: 0 0 0 2px var(--ring);
+  box-shadow: var(--focus-ring);
 }
 
 [data-component="input"][data-variant="normal"]
@@ -81,7 +81,7 @@
 [data-component="input"][data-variant="normal"] [data-slot="input-error"] {
   color: var(--destructive);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
@@ -91,7 +91,7 @@
   [data-slot="input-description"] {
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-family-sans--default-weight, 500);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;

@@ -181,27 +181,27 @@ export function ComposerAddMenu({
           )}
           <DropdownMenuItem onSelect={handleCapture}>
             <span data-slot="dropdown-menu-item-icon">
-              <Camera size={14} strokeWidth={1.75} />
+              <Camera size={16} strokeWidth={1.75} />
             </span>
             Capture
           </DropdownMenuItem>
           {onSelectArea ? (
             <DropdownMenuItem onSelect={handleSelectArea}>
               <span data-slot="dropdown-menu-item-icon">
-                <Scan size={14} strokeWidth={1.75} />
+                <Scan size={16} strokeWidth={1.75} />
               </span>
               Select area
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem onSelect={handleAttachWindow}>
             <span data-slot="dropdown-menu-item-icon">
-              <PanelRight size={14} strokeWidth={1.75} />
+              <PanelRight size={16} strokeWidth={1.75} />
             </span>
             Attach Stella
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleAttachFiles}>
             <span data-slot="dropdown-menu-item-icon">
-              <Paperclip size={14} strokeWidth={1.75} />
+              <Paperclip size={16} strokeWidth={1.75} />
             </span>
             Attach files…
           </DropdownMenuItem>
@@ -221,8 +221,8 @@ export function ComposerAddMenu({
 function FileGlyphIcon() {
   return (
     <svg
-      width="14"
-      height="14"
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

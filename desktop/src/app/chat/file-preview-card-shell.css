@@ -23,16 +23,16 @@
   display: block;
   margin-bottom: 4px;
   color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .file-preview-card__title {
   color: var(--foreground);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -54,7 +54,7 @@
   color: var(--accent-foreground, var(--background));
   cursor: default;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .file-preview-card__action:hover {
@@ -63,12 +63,12 @@
 
 .file-preview-card__action-status {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .file-preview-card__placeholder {
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--font-size-base);
 }
 
 .file-preview-card__placeholder--error {

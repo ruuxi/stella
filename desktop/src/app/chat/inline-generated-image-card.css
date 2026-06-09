@@ -84,7 +84,7 @@
   display: grid;
   place-items: center;
   color: var(--text-weak);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   pointer-events: none;
 }
 
@@ -226,14 +226,14 @@
   height: 100%;
   place-items: center;
   color: var(--text-weak);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   overflow: hidden;
   isolation: isolate;
 }
 
 .inline-generated-image-card__placeholder--failed {
   color: color-mix(in oklch, var(--foreground) 62%, var(--destructive));
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .inline-generated-image-card__placeholder::before {

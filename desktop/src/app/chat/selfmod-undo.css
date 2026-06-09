@@ -8,7 +8,7 @@
   padding: 8px 10px 8px 14px;
   min-height: 48px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.35;
   border-radius: var(--radius-lg, 14px);
   border: 1px solid var(--border-strong);
@@ -33,7 +33,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
 }
 
@@ -52,8 +52,8 @@
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
   color: var(--text-strong);
   font: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
   cursor: default;
   white-space: nowrap;
   transition:

@@ -39,7 +39,7 @@
   padding: 3px 4px 3px 7px;
   border: 1px solid transparent;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-base);
   background: transparent;
   -webkit-app-region: no-drag;

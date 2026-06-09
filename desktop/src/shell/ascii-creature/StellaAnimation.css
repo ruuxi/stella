@@ -9,9 +9,7 @@
   align-items: center;
   justify-content: center;
   overflow: visible;
-  background: transparent; 
-  font-smooth: never;
-  -webkit-font-smoothing: none;
+  background: transparent;
   animation: breathing 8s ease-in-out infinite;
 }
 

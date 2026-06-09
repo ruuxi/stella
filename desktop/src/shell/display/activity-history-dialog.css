@@ -41,7 +41,7 @@
   outline: none;
   background: transparent;
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.4;
 }
 
@@ -113,7 +113,7 @@
 .activity-history-dialog__loading {
   padding: 16px 10px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-weak);
 }
 
@@ -128,7 +128,7 @@
 .activity-history-dialog__empty {
   margin: 12px 0;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--text-weak);
 }
 
@@ -147,7 +147,7 @@
   gap: 12px;
   padding: 8px 10px;
   border-radius: 7px;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--text-base);
   min-width: 0;
 }
@@ -156,7 +156,7 @@
   .activity-history-dialog__row-meta,
 .activity-history-dialog__row[data-status="canceled"]
   .activity-history-dialog__row-meta {
-  color: color-mix(in oklch, var(--foreground) 55%, #c33);
+  color: color-mix(in oklch, var(--foreground) 55%, var(--destructive));
 }
 
 .activity-history-dialog__row-text {
@@ -170,7 +170,7 @@
 
 .activity-history-dialog__row-meta {
   flex-shrink: 0;
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
 }

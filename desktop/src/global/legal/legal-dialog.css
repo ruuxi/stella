@@ -31,20 +31,23 @@
 
 .legal-dialog-title {
   margin: 0;
-  color: var(--text-strong, var(--foreground));
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(1.6rem, 3vw, 2rem);
-  font-weight: 450;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
+  /* Canonical dialog title identity (see dialog.css --dialog-title-*).
+   * The real <DialogTitle> is hidden for a11y; this visible headline
+   * mirrors the shared treatment so every dialog title matches. */
+  color: var(--text-strong);
+  font-family: var(--dialog-title-font);
+  font-size: var(--dialog-title-size);
+  font-weight: var(--dialog-title-weight);
+  line-height: var(--dialog-title-line);
+  letter-spacing: var(--dialog-title-spacing);
 }
 
 .legal-dialog-sub {
   margin: 0;
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   line-height: 1.5;
   letter-spacing: -0.01em;
 }
@@ -98,8 +101,8 @@
   display: block;
   white-space: pre-wrap;
   word-wrap: break-word;
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
   line-height: 1.7;
   letter-spacing: -0.005em;
   color: color-mix(in oklch, var(--foreground) 82%, transparent);

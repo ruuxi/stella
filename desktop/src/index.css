@@ -278,6 +278,114 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --sidebar-ring: var(--ring);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — scales + semantic aliases (added 2026-06-08)
+
+   Two jobs:
+   1. Semantic aliases: the codebase referenced many tokens that were never
+      defined (--interactive, --danger, --success, --shadow-soft, …). Each one
+      silently fell back to a generic Tailwind hex (red-500, green-500, web
+      blue, flat black) or to an *invalid* value (dropping the whole
+      declaration — e.g. Settings' primary button rendered invisible). Defining
+      them here, as var() aliases of the already-theme-driven tokens, lights up
+      every call site correctly in light / dark / pearl / noir at once.
+   2. Missing scales: type / spacing / weight / line-height / motion. The app
+      had radius/shadow/surface/color tokens but NO scale for these, so ~700
+      font-sizes, 16 line-heights and dozens of durations were picked ad hoc.
+      These tokens are the shared vocabulary; component CSS migrates onto them.
+
+   NOTE: do not reuse --text-base/-strong/-weak/-weaker — those are COLOR
+   tokens (text hierarchy) defined above. Type sizes use --font-size-*.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Semantic color aliases (resolve through the theme-driven tokens, so
+        they automatically track light/dark/pearl/noir/custom themes) ── */
+  --interactive: var(--ring); /* theme's interactive accent (== colors.interactive) */
+  --interactive-foreground: var(--primary-foreground);
+  --success: var(--stella-animation-color-2); /* Carbon green, theme-tracked */
+  --success-foreground: #ffffff;
+  --warning: var(--stella-animation-color-3); /* Carbon amber, theme-tracked */
+  --warning-foreground: #161616;
+  --destructive-foreground: var(--primary-foreground);
+  --danger: var(--destructive);
+  --error: var(--destructive);
+  --text-error: var(--destructive);
+  --diff-add: var(--success);
+  --diff-del: var(--destructive);
+
+  /* Aliases for tokens components reached for that didn't exist */
+  --text-muted: var(--text-weak);
+  --text-secondary: var(--text-base);
+  --text-tertiary: var(--text-weaker);
+  --surface-base: var(--background);
+  --border-subtle: var(--border-weak);
+  --shadow-soft: var(--shadow-overlay);
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
+
+  /* ── Type scale (fixed px — native, never viewport-scaled). Snapped to the
+        codebase's own size clusters so adoption is near size-preserving. ── */
+  --font-size-2xs: 10px; /* micro labels, badge counts, mono timestamps */
+  --font-size-xs: 11px; /* secondary metadata, captions, chip sub-labels */
+  --font-size-sm: 12px; /* dense UI: sidebar items, menus, buttons, labels */
+  --font-size-base: 13px; /* body / list rows / comfortable controls (macOS body) */
+  --font-size-md: 14px; /* emphasized body, prose */
+  --font-size-lg: 15px; /* inline subheadings, prominent rows, larger inputs */
+  --font-size-xl: 17px; /* card / panel / dialog titles */
+  --font-size-2xl: 20px; /* page / section headings */
+  --font-size-3xl: 24px; /* display headings (often Cormorant) */
+  --font-size-4xl: 32px; /* hero / empty-state display type */
+
+  /* ── Spacing scale (4px grid + the three half-steps that are too common to
+        round away: 2 / 6 / 10). ── */
+  --space-0: 0;
+  --space-px: 1px;
+  --space-0_5: 2px;
+  --space-1: 4px;
+  --space-1_5: 6px;
+  --space-2: 8px;
+  --space-2_5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ── Weight scale. Manrope is variable (200–800); these are the real stops.
+        Oddballs map by intent: 450/550→medium, 620/650→semibold. Cormorant
+        display only ships 300/400/700, so 450 on the display font → 400. ── */
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ── Line-height scale ── */
+  --lh-none: 1;
+  --lh-tight: 1.2; /* headings */
+  --lh-snug: 1.35; /* dense UI labels, list rows */
+  --lh-normal: 1.45; /* default body/UI (matches the prior .app default) */
+  --lh-relaxed: 1.55; /* reading prose, chat bodies */
+  --lh-loose: 1.65; /* long-form documents */
+
+  /* ── Motion scale. Unifies the 0.15s/150ms notation mess + ~20 ad-hoc
+        durations. Easings collision-free with Tailwind's --ease-*. ── */
+  --duration-instant: 80ms; /* button press, active-state flips */
+  --duration-fast: 120ms; /* hover/focus tints, icon swaps */
+  --duration-base: 150ms; /* DEFAULT UI transition (color/opacity/transform) */
+  --duration-moderate: 200ms; /* dropdown/menu open, small layout shifts */
+  --duration-slow: 280ms; /* popover/dialog enter, panel slide */
+  --duration-slower: 460ms; /* large overlays, deliberate emphasis */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* default for most transitions */
+  --ease-decelerate: cubic-bezier(0.16, 1, 0.3, 1); /* entering / expanding */
+  --ease-accelerate: cubic-bezier(0.4, 0, 1, 1); /* leaving / collapsing */
+
+  /* One canonical focus ring: offset background gap + ring (the polished macOS
+     look the Button already used; text-field/select/switch were flat). */
+  --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+}
+
 .dark {
   /* Dark mode gradient controls */
   --gradient-blur: 140px;

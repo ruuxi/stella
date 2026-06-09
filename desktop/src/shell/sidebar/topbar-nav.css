@@ -33,11 +33,9 @@
   padding: 0 10px;
   border-radius: var(--radius-sm, 5px);
   color: var(--text-weak);
-  font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui,
-    sans-serif;
-  font-size: 13px;
-  font-weight: 500;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   line-height: 24px;
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
@@ -60,7 +58,7 @@
 
 .shell-topbar-nav-item[data-active="true"] {
   color: var(--text-strong);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .shell-topbar-nav-item[data-active="true"]:hover,
@@ -82,10 +80,10 @@
   height: 14px;
   padding: 0 3px;
   border-radius: 999px;
-  background: #ef4444;
+  background: var(--destructive);
   color: #fff;
   font-size: 9px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   line-height: 14px;
   text-align: center;
   pointer-events: none;
@@ -100,8 +98,8 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #ef4444;
-  box-shadow: 0 0 0 2px var(--surface-base, var(--background));
+  background: var(--destructive);
+  box-shadow: 0 0 0 2px var(--surface-base);
   pointer-events: none;
 }
 
@@ -149,8 +147,8 @@
 
 .shell-topbar-account-nickname {
   font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
   white-space: nowrap;
   overflow: hidden;
@@ -164,15 +162,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 23px;
-  height: 23px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 1px solid var(--border-weak);
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--text-strong);
   font-family: inherit;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;
   pointer-events: none;
 }
@@ -188,8 +186,8 @@
   background: transparent;
   color: var(--text-weak);
   font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
   white-space: nowrap;
   cursor: default;

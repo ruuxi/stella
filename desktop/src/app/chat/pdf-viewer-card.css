@@ -11,7 +11,7 @@
 
 .pdf-viewer-card__page-counter {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
@@ -40,7 +40,7 @@
 
 .pdf-viewer-card__page {
   background: white;
-  box-shadow: 0 2px 12px color-mix(in srgb, var(--foreground) 12%, transparent);
+  box-shadow: var(--shadow-sm);
   border-radius: 4px;
   overflow: hidden;
 }

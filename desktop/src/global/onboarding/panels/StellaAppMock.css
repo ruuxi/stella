@@ -104,8 +104,8 @@
   }
   .sam-sidebar-brand-text {
     color: var(--text-weaker);
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--font-size-md);
+    font-weight: var(--weight-medium);
     letter-spacing: 0.2em;
     line-height: 1;
     text-transform: uppercase;
@@ -131,8 +131,8 @@
     border: none;
     color: var(--text-base);
     font-family: inherit;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--font-size-md);
+    font-weight: var(--weight-medium);
     text-align: left;
     width: 100%;
     cursor: default;
@@ -175,7 +175,7 @@
   .sam-nav-item-tag {
     margin-left: auto;
     font-size: 9px;
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     padding: 1px 6px;
@@ -248,7 +248,7 @@
     border-radius: var(--radius-md, 6px);
     background: color-mix(in oklch, var(--foreground) 5%, transparent);
     border: 1px solid var(--border-weak);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     color: var(--text-weak);
     margin-bottom: 8px;
   }
@@ -256,14 +256,14 @@
     margin-left: auto;
     padding: 1px 6px;
     font-family: var(--font-family-mono, monospace);
-    font-size: 9.5px;
+    font-size: var(--font-size-2xs);
     border-radius: 3px;
     background: color-mix(in oklch, var(--foreground) 8%, transparent);
     color: var(--text-weaker);
   }
   .sam-modern-section {
     font-size: 9px;
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--text-weaker);
@@ -275,7 +275,7 @@
     gap: 10px;
     padding: 7px 10px;
     border-radius: var(--radius-md, 6px);
-    font-size: 12.5px;
+    font-size: var(--font-size-sm);
     color: var(--text-base);
   }
   .sam-modern-item-icon {
@@ -288,8 +288,8 @@
     margin-left: auto;
     padding: 1px 6px;
     border-radius: 999px;
-    font-size: 9.5px;
-    font-weight: 600;
+    font-size: var(--font-size-2xs);
+    font-weight: var(--weight-semibold);
     background: color-mix(in oklch, var(--primary) 18%, transparent);
     color: var(--primary);
   }
@@ -348,8 +348,8 @@
     align-items: center;
     gap: 7px;
     padding: 7px 14px 7px 12px;
-    font-size: 11.5px;
-    font-weight: 500;
+    font-size: var(--font-size-xs);
+    font-weight: var(--weight-medium);
     color: var(--text-weak);
     border-radius: 7px 7px 0 0;
     border: 1px solid transparent;
@@ -369,7 +369,7 @@
     background: var(--background);
     color: var(--text-strong);
     border-color: var(--border-weak);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     margin-bottom: -1px;
     z-index: 1;
   }
@@ -409,8 +409,8 @@
     background: transparent;
     border: 1px dashed color-mix(in oklch, var(--foreground) 22%, transparent);
     color: var(--text-weak);
-    font-size: 13px;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: var(--weight-medium);
     flex-shrink: 0;
     align-self: center;
     line-height: 1;
@@ -439,8 +439,8 @@
   }
   .sam-home-title {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-size: clamp(1.4rem, 2.6vw, 2rem);
-    font-weight: 450;
+    font-size: 2rem;
+    font-weight: var(--weight-regular);
     letter-spacing: -0.03em;
     line-height: 1.2;
     color: var(--text-strong);
@@ -464,8 +464,8 @@
     box-shadow: var(--panel-surface-highlight);
     color: var(--text-base);
     font-family: inherit;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: var(--weight-medium);
     cursor: default;
   }
   .sam-home-category.active {
@@ -482,8 +482,8 @@
     padding: 0 24px;
   }
   .sam-home-report-idea {
-    font-size: 14.5px;
-    font-weight: 500;
+    font-size: var(--font-size-md);
+    font-weight: var(--weight-medium);
     color: var(--text-base);
     line-height: 1.45;
     letter-spacing: -0.01em;
@@ -533,20 +533,20 @@
   }
   .sam-card-head-label {
     font-size: 9px;
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--card-accent, var(--primary));
   }
   .sam-card-title {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: var(--font-size-base);
+    font-weight: var(--weight-semibold);
     color: var(--text-strong);
     line-height: 1.35;
     margin-bottom: 3px;
   }
   .sam-card-meta {
-    font-size: 10.5px;
+    font-size: var(--font-size-2xs);
     color: var(--text-weak);
   }
   .sam-card-bar {
@@ -629,8 +629,8 @@
   .sam-cozy-rail-name {
     color: #8b6240;
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-size: 17px;
-    font-weight: 600;
+    font-size: var(--font-size-xl);
+    font-weight: var(--weight-semibold);
     letter-spacing: 0.06em;
     line-height: 1;
   }
@@ -650,13 +650,13 @@
     border-radius: 10px;
     color: #5c3d2e;
     font-family: inherit;
-    font-size: 13.5px;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: var(--weight-medium);
   }
   .sam-cozy-rail-item.active {
     background: rgba(255, 252, 246, 0.6);
     color: #1c1c1c;
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     box-shadow:
       inset 0 0 0 1px rgba(139, 105, 75, 0.2),
       0 1px 2px rgba(139, 105, 75, 0.1);
@@ -693,14 +693,14 @@
   .sam-cozy-rail-avatar svg { width: 100%; height: 100%; }
   .sam-cozy-rail-meta { display: flex; flex-direction: column; min-width: 0; }
   .sam-cozy-rail-meta-name {
-    font-size: 12px;
-    font-weight: 600;
+    font-size: var(--font-size-sm);
+    font-weight: var(--weight-semibold);
     color: #1c1c1c;
     line-height: 1.2;
   }
   .sam-cozy-rail-meta-status {
-    font-size: 9.5px;
-    font-weight: 700;
+    font-size: var(--font-size-2xs);
+    font-weight: var(--weight-bold);
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: #b8845c;
@@ -751,8 +751,8 @@
   .sam-root[data-cozy="true"] .sam-body .sam-body-cozy { display: flex; }
   .sam-cozy-home-title {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-size: clamp(1.4rem, 2.6vw, 2rem);
-    font-weight: 450;
+    font-size: 2rem;
+    font-weight: var(--weight-regular);
     letter-spacing: -0.03em;
     line-height: 1.2;
     color: #5c3d2e;
@@ -775,8 +775,8 @@
     border-radius: 999px;
     color: #8b6240;
     font-family: inherit;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: var(--weight-medium);
   }
   .sam-cozy-home-category.active {
     background: #fef3e2;
@@ -796,7 +796,7 @@
   .sam-cozy-home-report-idea {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
     font-size: 16px;
-    font-weight: 500;
+    font-weight: var(--weight-medium);
     color: #5c3d2e;
     line-height: 1.4;
     letter-spacing: -0.005em;
@@ -808,7 +808,7 @@
     content: "\\2767";
     color: #d4869a;
     font-style: normal;
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     flex-shrink: 0;
     transform: translateY(-1px);
   }
@@ -875,7 +875,7 @@
   .sam-studio-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .sam-studio-eyebrow {
     font-size: 9px;
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--primary);
@@ -884,7 +884,7 @@
     margin: 0;
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
     font-size: 28px;
-    font-weight: 500;
+    font-weight: var(--weight-medium);
     letter-spacing: -0.025em;
     line-height: 1;
     color: var(--text-strong);
@@ -908,16 +908,16 @@
     min-width: 56px;
   }
   .sam-studio-meta-label {
-    font-size: 8.5px;
-    font-weight: 700;
+    font-size: 9px;
+    font-weight: var(--weight-bold);
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--text-weaker);
   }
   .sam-studio-meta-value {
     font-family: var(--font-family-mono, ui-monospace, monospace);
-    font-size: 12.5px;
-    font-weight: 600;
+    font-size: var(--font-size-sm);
+    font-weight: var(--weight-semibold);
     color: var(--text-strong);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
@@ -964,8 +964,8 @@
     padding-left: 6px;
     border-left: 1px solid var(--border-weak);
     font-family: var(--font-family-mono, ui-monospace, monospace);
-    font-size: 9.5px;
-    font-weight: 600;
+    font-size: var(--font-size-2xs);
+    font-weight: var(--weight-semibold);
     color: var(--text-weaker);
     letter-spacing: 0.02em;
   }
@@ -1024,8 +1024,8 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: var(--font-size-sm);
+    font-weight: var(--weight-semibold);
     color: var(--text-strong);
     letter-spacing: -0.005em;
   }
@@ -1040,8 +1040,8 @@
   .sam-studio-track-instrument {
     grid-column: 1;
     grid-row: 2;
-    font-size: 9.5px;
-    font-weight: 500;
+    font-size: var(--font-size-2xs);
+    font-weight: var(--weight-medium);
     color: var(--text-weaker);
     letter-spacing: 0.01em;
   }
@@ -1063,7 +1063,7 @@
     background: var(--background);
     font-family: var(--font-family-mono, ui-monospace, monospace);
     font-size: 9px;
-    font-weight: 700;
+    font-weight: var(--weight-bold);
     color: var(--text-weak);
     letter-spacing: 0.02em;
   }
@@ -1134,22 +1134,22 @@
     box-shadow: var(--shadow-md);
   }
   .sam-studio-card-eyebrow {
-    font-size: 8.5px;
-    font-weight: 700;
+    font-size: 9px;
+    font-weight: var(--weight-bold);
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--primary);
   }
   .sam-studio-card-title {
-    font-size: 12.5px;
-    font-weight: 600;
+    font-size: var(--font-size-sm);
+    font-weight: var(--weight-semibold);
     color: var(--text-strong);
     line-height: 1.35;
     letter-spacing: -0.005em;
   }
   .sam-studio-card-prompt {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-size: 13px;
+    font-size: var(--font-size-base);
     color: var(--text-weak);
     line-height: 1.35;
     letter-spacing: -0.005em;
@@ -1180,14 +1180,14 @@
     align-items: center;
     justify-content: center;
     font-family: var(--font-family-mono, ui-monospace, monospace);
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--font-size-xs);
+    font-weight: var(--weight-semibold);
     color: var(--text-strong);
     font-variant-numeric: tabular-nums;
   }
   .sam-studio-knob-label {
-    font-size: 9.5px;
-    font-weight: 600;
+    font-size: var(--font-size-2xs);
+    font-weight: var(--weight-semibold);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--text-weak);
@@ -1235,9 +1235,9 @@
     color: var(--text-strong);
     letter-spacing: -0.01em;
   }
-  .sam-studio-time-now { font-size: 14px; font-weight: 600; }
-  .sam-studio-time-sep { font-size: 12px; color: var(--text-weaker); }
-  .sam-studio-time-total { font-size: 12px; font-weight: 500; color: var(--text-weak); }
+  .sam-studio-time-now { font-size: var(--font-size-md); font-weight: var(--weight-semibold); }
+  .sam-studio-time-sep { font-size: var(--font-size-sm); color: var(--text-weaker); }
+  .sam-studio-time-total { font-size: var(--font-size-sm); font-weight: var(--weight-medium); color: var(--text-weak); }
 
   .sam-studio-meter {
     margin-left: auto;
@@ -1346,7 +1346,7 @@
     flex: 1;
     padding: 4px 4px;
     font-family: inherit;
-    font-size: 13.5px;
+    font-size: var(--font-size-base);
     color: var(--text-strong);
   }
   .sam-composer-input-placeholder {
@@ -1439,15 +1439,15 @@
   .sam-cozy-zzz {
     position: absolute;
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     color: #b08560;
     pointer-events: none;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
     z-index: 2;
   }
-  .sam-cozy-zzz-1 { top: 18px; left: 78px; font-size: 10px; opacity: 0.5; }
-  .sam-cozy-zzz-2 { top: 8px;  left: 86px; font-size: 13px; opacity: 0.65; }
-  .sam-cozy-zzz-3 { top: -2px; left: 96px; font-size: 17px; opacity: 0.78; }
+  .sam-cozy-zzz-1 { top: 18px; left: 78px; font-size: var(--font-size-2xs); opacity: 0.5; }
+  .sam-cozy-zzz-2 { top: 8px;  left: 86px; font-size: var(--font-size-base); opacity: 0.65; }
+  .sam-cozy-zzz-3 { top: -2px; left: 96px; font-size: var(--font-size-xl); opacity: 0.78; }
   /* Only float the zzz's when cozy mode is active. */
   .sam-root[data-cozy="true"] .sam-cozy-zzz-1 { animation: samCozyFloat 3.2s ease-in-out 0.0s infinite; }
   .sam-root[data-cozy="true"] .sam-cozy-zzz-2 { animation: samCozyFloat 3.2s ease-in-out 0.7s infinite; }
@@ -1464,8 +1464,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 9.5px;
-    font-weight: 700;
+    font-size: var(--font-size-2xs);
+    font-weight: var(--weight-bold);
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: #b8845c;
@@ -1473,8 +1473,8 @@
   .sam-cozy-state-dot { display: none; }
   .sam-cozy-line {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-size: 17px;
-    font-weight: 500;
+    font-size: var(--font-size-xl);
+    font-weight: var(--weight-medium);
     color: #5c3d2e;
     white-space: nowrap;
     overflow: hidden;
@@ -1485,8 +1485,8 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--font-size-xs);
+    font-weight: var(--weight-semibold);
     color: #8b6240;
     flex-shrink: 0;
     padding: 7px 12px;
@@ -1498,7 +1498,7 @@
   }
   .sam-cozy-heart {
     color: #d4869a;
-    font-size: 13px;
+    font-size: var(--font-size-base);
     line-height: 1;
   }
   /* Only beat the heart when cozy mode is active. */
@@ -1593,7 +1593,7 @@
   .sam-mochi__brand {
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
     font-size: 22px;
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     letter-spacing: 0.02em;
     color: #f5f6f9;
   }
@@ -1603,15 +1603,15 @@
     gap: 22px;
   }
   .sam-mochi__nav-item {
-    font-size: 12.5px;
-    font-weight: 500;
+    font-size: var(--font-size-sm);
+    font-weight: var(--weight-medium);
     letter-spacing: -0.005em;
     color: rgba(245, 246, 249, 0.55);
     transition: color 120ms ease;
   }
   .sam-mochi__nav-item.is-active {
     color: #f5f6f9;
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
   }
 
   /* COPY — oversized italic headline anchored mid-left. */
@@ -1628,8 +1628,8 @@
   .sam-mochi__headline {
     margin: 0;
     font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-    font-weight: 300;
-    font-size: clamp(2.6rem, 5.4vw, 4.4rem);
+    font-weight: var(--weight-light);
+    font-size: 4.4rem;
     line-height: 0.95;
     letter-spacing: -0.035em;
     color: #f5f6f9;
@@ -1641,7 +1641,7 @@
   }
   .sam-mochi__sub {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--font-size-md);
     line-height: 1.55;
     color: rgba(245, 246, 249, 0.62);
     max-width: 32ch;
@@ -1702,7 +1702,7 @@
     align-items: center;
     justify-content: center;
     font-size: 18px;
-    font-weight: 500;
+    font-weight: var(--weight-medium);
     line-height: 1;
     cursor: default;
   }
@@ -1710,7 +1710,7 @@
     flex: 1;
     padding: 6px 6px 6px 4px;
     font-family: var(--font-family-sans, system-ui);
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: #f5f6f9;
   }
   .sam-mochi__compose-placeholder { color: rgba(245, 246, 249, 0.45); }
@@ -1759,8 +1759,8 @@
     border: 1.5px solid color-mix(in oklch, var(--foreground) 18%, transparent);
     background: var(--panel-surface-bg);
     font-family: inherit;
-    font-size: 14px;
-    font-weight: 650;
+    font-size: var(--font-size-md);
+    font-weight: var(--weight-semibold);
     color: var(--text-strong);
     opacity: 0.95;
     cursor: default;

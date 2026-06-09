@@ -55,9 +55,9 @@
 .embedded-website-glass-placeholder__message {
   max-width: min(520px, calc(100% - 48px));
   color: color-mix(in srgb, var(--foreground) 78%, transparent);
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(18px, 2vw, 28px);
-  font-weight: 500;
+  font-family: var(--font-family-display);
+  font-size: 28px;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.035em;
   line-height: 1.05;
   text-align: center;

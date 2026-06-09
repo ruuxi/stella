@@ -25,9 +25,7 @@
   border-radius: 2px;
   border: 1px solid var(--border);
   background: var(--background);
-  box-shadow: 0 1px 2px -1px rgba(19, 16, 16, 0.04),
-    0 1px 2px 0 rgba(19, 16, 16, 0.06),
-    0 1px 3px 0 rgba(19, 16, 16, 0.08);
+  box-shadow: var(--shadow-subtle);
   transform: translateX(-1px);
   transition: transform 150ms, background-color 150ms;
 }
@@ -36,7 +34,7 @@
   user-select: none;
   color: var(--foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-family-sans--default-weight, 500);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.67;
@@ -45,7 +43,7 @@
 [data-component="switch"] [data-slot="switch-description"] {
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-family-sans--default-weight, 500);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
@@ -56,8 +54,7 @@
 }
 
 [data-component="switch"]:focus-within [data-slot="switch-control"] {
-  border-color: var(--ring);
-  box-shadow: 0 0 0 2px var(--ring);
+  box-shadow: var(--focus-ring);
 }
 
 [data-component="switch"] [data-slot="switch-control"][data-state="checked"] {
