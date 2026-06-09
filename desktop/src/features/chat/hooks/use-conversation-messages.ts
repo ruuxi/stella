@@ -38,6 +38,15 @@ import { showToast } from "@/ui/toast";
 import type { MessageRecord } from "../../../../../runtime/contracts/local-chat.js";
 
 export const MESSAGE_PAGE_SIZE = 200;
+/**
+ * Hard ceiling on `loadOlder` window growth. Every `localChat:updated`
+ * refetches the *entire* window over IPC for each active subscription, so
+ * an unbounded window makes per-event streaming cost (and the retained
+ * seed-cache footprint) scale with how far the user once scrolled. In
+ * practice users rarely scroll past a few hundred rows; 2000 keeps deep
+ * history reachable while bounding the worst case.
+ */
+export const MAX_VISIBLE_MESSAGES = 2_000;
 const LOCAL_MESSAGE_LOAD_RETRY_MS = 300;
 
 const EMPTY_MESSAGES: MessageRecord[] = [];
@@ -209,7 +218,11 @@ export const useConversationMessages = (
     if (!conversationId || !isLocalMode) return;
     if (!hasOlderMessages) return;
     if (pendingMaxVisibleMessages !== null) return;
-    const next = maxVisibleMessages + MESSAGE_PAGE_SIZE;
+    if (maxVisibleMessages >= MAX_VISIBLE_MESSAGES) return;
+    const next = Math.min(
+      maxVisibleMessages + MESSAGE_PAGE_SIZE,
+      MAX_VISIBLE_MESSAGES,
+    );
     setPendingMaxVisibleMessages(next);
     startTransition(() => {
       setMaxVisibleMessages(next);
