@@ -381,6 +381,13 @@ describe("recoverInterruptedDesktopUpdate", () => {
       finishExternalSelfMod: vi.fn(async (payload: { succeeded: boolean }) => {
         events.push(`finish:${await readFile(path.join(repoRoot, "app.txt"), "utf8")}`);
         expect(payload.succeeded).toBe(true);
+        await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+          installState: { desktopReleaseCommit: targetCommit },
+          lastUpdateAttempt: {
+            status: "complete",
+            targetCommit,
+          },
+        });
       }),
     } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
 
@@ -426,6 +433,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
     });
     const sourcePackRef = sourcePackRefFor(pack);
     const sourcePackRaw = JSON.stringify(pack);
+    const targetCommit = "d".repeat(40);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string | URL | Request) => {
@@ -446,12 +454,19 @@ describe("recoverInterruptedDesktopUpdate", () => {
       finishExternalSelfMod: vi.fn(async (payload: { succeeded: boolean }) => {
         events.push(`finish:${await readFile(path.join(repoRoot, "app.txt"), "utf8")}`);
         expect(payload.succeeded).toBe(true);
+        await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+          installState: { desktopReleaseCommit: targetCommit },
+          lastUpdateAttempt: {
+            status: "complete",
+            targetCommit,
+          },
+        });
       }),
     } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
 
     const result = await tryApplyCleanDesktopUpdate(repoRoot, repoRoot, runner, {
       baseCommit,
-      targetCommit: "d".repeat(40),
+      targetCommit,
       releaseTag: "desktop-v9.9.7",
       sourcePackRef,
     });

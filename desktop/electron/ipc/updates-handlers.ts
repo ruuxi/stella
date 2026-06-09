@@ -2340,6 +2340,7 @@ const tryApplySourcePackDesktopUpdate = async (
     .toString(36)
     .slice(2)}`;
   let hmrRunStarted = false;
+  let sourcePackCommitLanded = false;
   try {
     await withDesktopUpdateTimeout(
       "source-pack.begin-external-self-mod",
@@ -2420,6 +2421,7 @@ const tryApplySourcePackDesktopUpdate = async (
         gitFailureDetail(commitResult, "Could not commit source-pack update."),
       );
     }
+    sourcePackCommitLanded = true;
 
     logDesktopUpdateProcess("desktop-update.source-pack.commit.done", {
       runId,
@@ -2427,8 +2429,6 @@ const tryApplySourcePackDesktopUpdate = async (
       targetCommit: shortCommit(args.targetCommit),
     });
 
-    await runner.finishExternalSelfMod({ runId, succeeded: true });
-    hmrRunStarted = false;
     await recordSourceHistory(await readHeadCommit(stellaAppDir));
     await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs, {
       transaction: args.transaction,
@@ -2446,6 +2446,8 @@ const tryApplySourcePackDesktopUpdate = async (
       args.targetCommit,
       args.releaseTag,
     );
+    await runner.finishExternalSelfMod({ runId, succeeded: true });
+    hmrRunStarted = false;
     return {
       status: "applied",
       manifest,
@@ -2463,7 +2465,7 @@ const tryApplySourcePackDesktopUpdate = async (
     });
     if (hmrRunStarted) {
       await runner
-        .finishExternalSelfMod({ runId, succeeded: false })
+        .finishExternalSelfMod({ runId, succeeded: sourcePackCommitLanded })
         .catch(() => undefined);
     }
     throw error;
@@ -2789,11 +2791,6 @@ export const tryApplyCleanDesktopUpdate = async (
       releaseTag: args.releaseTag,
     });
 
-    if (hmrRunStarted && runner) {
-      await runner.finishExternalSelfMod({ runId, succeeded: true });
-      hmrRunStarted = false;
-    }
-
     logDesktopUpdateProcess("desktop-update.fast.applied", {
       runId,
       releaseTag: args.releaseTag,
@@ -2817,6 +2814,10 @@ export const tryApplyCleanDesktopUpdate = async (
       args.targetCommit,
       args.releaseTag,
     );
+    if (hmrRunStarted && runner) {
+      await runner.finishExternalSelfMod({ runId, succeeded: true });
+      hmrRunStarted = false;
+    }
     return {
       status: "applied",
       manifest,
