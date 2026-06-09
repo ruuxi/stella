@@ -30,12 +30,11 @@
  */
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { MessageRecord } from "../../../../../../runtime/contracts/local-chat.js";
-import { resolveReadAloudProvider } from "../../../../../../runtime/contracts/local-preferences.js";
-import { getDefaultRealtimeVoice } from "../../../../../../runtime/contracts/realtime-voice-catalog.js";
 import { stripMarkdownForTts } from "./markdown-strip";
-import { fetchReadAloudAudio, type ReadAloudVoiceFamily } from "./tts-client";
+import { fetchReadAloudAudio } from "./tts-client";
 import { playReadAloud, stopReadAloud } from "./read-aloud-player";
 import { readAloudPrefStore } from "./read-aloud-pref";
+import { resolveReadAloudVoicePrefs } from "./read-aloud-voice-prefs";
 
 const spokenTurnKeys = new Set<string>();
 
@@ -79,39 +78,6 @@ const getFinalizedReply = (message: MessageRecord): FinalizedReply | null => {
   return { text, key: `${turnId}\u0000${normalized}` };
 };
 
-const readVoicePrefs = async (): Promise<{
-  family: ReadAloudVoiceFamily;
-  voice?: string;
-  speed?: number;
-}> => {
-  try {
-    const prefs = await window.electronAPI?.system?.getLocalModelPreferences?.();
-    const rt = prefs?.realtimeVoice;
-    // Read-aloud is controlled by its own switch. Selecting a realtime
-    // voice provider should not silently change read-aloud; unset defaults
-    // to Inworld.
-    const family: ReadAloudVoiceFamily = resolveReadAloudProvider({
-      readAloudProvider: rt?.readAloudProvider,
-    });
-    const stored = rt?.voices?.[family];
-    // Fall back to the catalog default (e.g. Olivia for Inworld) rather
-    // than letting the backend pick its own default voice.
-    const voice =
-      typeof stored === "string" && stored.trim().length > 0
-        ? stored.trim()
-        : getDefaultRealtimeVoice(family);
-    const speed = family === "inworld" ? rt?.inworldSpeed : undefined;
-    return {
-      family,
-      voice,
-      speed:
-        typeof speed === "number" && Number.isFinite(speed) ? speed : undefined,
-    };
-  } catch {
-    return { family: "inworld" };
-  }
-};
-
 export function useReadAloud(messages: readonly MessageRecord[]): void {
   const enabled = useSyncExternalStore(
     readAloudPrefStore.subscribe,
@@ -149,7 +115,7 @@ export function useReadAloud(messages: readonly MessageRecord[]): void {
       if (!clean) continue;
       void (async () => {
         try {
-          const prefs = await readVoicePrefs();
+          const prefs = await resolveReadAloudVoicePrefs();
           if (!enabledRef.current) return;
           const { audio } = await fetchReadAloudAudio({
             text: clean,

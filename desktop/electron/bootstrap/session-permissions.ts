@@ -1,6 +1,12 @@
 import { session, type WebContents } from "electron";
 
-const APP_ALLOWED_PERMISSIONS = new Set(["media", "display-capture"]);
+const APP_ALLOWED_PERMISSIONS = new Set([
+  "media",
+  "display-capture",
+  // Lets the app's own copy buttons use the Async Clipboard API
+  // (`navigator.clipboard.writeText`) without the write being denied.
+  "clipboard-sanitized-write",
+]);
 
 const originFromUrl = (value: string): string | null => {
   try {
