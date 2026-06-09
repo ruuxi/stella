@@ -100,8 +100,14 @@ export const getSelectedText = async (
 ): Promise<SelectedTextResult | null> => {
   if (!hasMacPermission('accessibility')) return null
 
-  const clipboardAllowed =
-    process.platform !== 'win32' && options?.allowClipboardFallback !== false
+  // The synthetic-copy fallback is the expensive, side-effectful pass, so it's
+  // opt-in: callers (e.g. the selection watcher) only enable it after a real
+  // drag, and the cheap UIA/AX-only probe runs otherwise. It must stay reachable
+  // on Windows too — Chromium/Electron/custom text views don't expose
+  // `TextPattern.GetSelection`, so UIA-only returns nothing there and the global
+  // "Ask Stella" pill never appears. Spawn frequency is bounded by the win32
+  // governor + circuit breaker in native-helper.ts, not by disabling it here.
+  const clipboardAllowed = options?.allowClipboardFallback !== false
   const args = clipboardAllowed ? [] : ['--no-clipboard-fallback']
 
   const stdout = await runNativeHelper('selected_text', args, {
