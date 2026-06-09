@@ -89,8 +89,8 @@ export function ComposerTasksChip({ tasks }: ComposerTasksChipProps) {
               <span className="composer-tasks-chip__label">{countLabel}</span>
               <ChevronDown
                 className="composer-tasks-chip__chevron"
-                size={13}
-                strokeWidth={2}
+                size={16}
+                strokeWidth={1.75}
                 aria-hidden="true"
               />
             </button>

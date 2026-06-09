@@ -86,9 +86,7 @@
 .store-card:hover {
   transform: translateY(-2px);
   border-color: color-mix(in oklch, var(--foreground) 9%, transparent);
-  box-shadow:
-    0 8px 24px color-mix(in oklch, var(--foreground) 5%, transparent),
-    0 2px 6px color-mix(in oklch, var(--foreground) 3%, transparent);
+  box-shadow: var(--shadow-md);
 }
 
 .store-card[data-clickable="true"] {
@@ -114,8 +112,8 @@
 }
 
 .store-card-name {
-  font-size: 14px;
-  font-weight: 620;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;
@@ -124,7 +122,7 @@
 }
 
 .store-card-desc {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-weak);
   line-height: 1.5;
   display: -webkit-box;
@@ -134,7 +132,7 @@
 }
 
 .store-card-meta {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-weaker);
   margin-top: 2px;
 }
@@ -186,7 +184,7 @@
 .store-side-panel-empty-state-body {
   margin: 0;
   max-width: 240px;
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.5;
   color: var(--text-weak);
 }
@@ -211,7 +209,7 @@
   width: 6px;
 }
 .store-side-panel-list::-webkit-scrollbar-thumb {
-  background: var(--border-subtle);
+  background: var(--border-weak);
   border-radius: 3px;
 }
 
@@ -223,23 +221,23 @@
 .store-side-panel-publish-btn {
   width: 100%;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 620;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
   padding: 8px 16px;
   border-radius: var(--radius-full);
   border: 1px solid
     color-mix(
       in oklch,
-      var(--interactive, var(--primary, oklch(0.62 0.18 250))) 28%,
+      var(--primary) 28%,
       transparent
     );
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 12%,
+    var(--primary) 12%,
     transparent
   );
-  color: var(--interactive, var(--primary, oklch(0.62 0.18 250)));
+  color: var(--primary);
   cursor: default;
   transition:
     opacity 0.15s ease,
@@ -249,7 +247,7 @@
 .store-side-panel-publish-btn:hover:not(:disabled) {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 18%,
+    var(--primary) 18%,
     transparent
   );
 }
@@ -280,14 +278,14 @@
   box-shadow: 0 0 0 2px
     color-mix(
       in oklch,
-      var(--interactive, var(--primary, oklch(0.62 0.18 250))) 25%,
+      var(--primary) 25%,
       transparent
     );
 }
 .store-side-panel-row[data-selected] {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 5%,
+    var(--primary) 5%,
     transparent
   );
 }
@@ -311,10 +309,10 @@
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 .store-side-panel-row-glyph[data-selected] {
-  color: var(--interactive, var(--primary, oklch(0.62 0.18 250)));
+  color: var(--primary);
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 14%,
+    var(--primary) 14%,
     transparent
   );
 }
@@ -328,8 +326,8 @@
 }
 
 .store-side-panel-row-title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.005em;
   overflow: hidden;
@@ -338,7 +336,7 @@
   min-width: 0;
 }
 .store-side-panel-row-meta {
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: var(--text-weaker);
   letter-spacing: -0.005em;
 }
@@ -372,8 +370,8 @@
 }
 
 .store-publish-dialog [data-slot="dialog-title"] {
-  font-size: 15px;
-  font-weight: 620;
+  font-size: var(--font-size-lg);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.01em;
 }
@@ -419,7 +417,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--text-base);
 }
 
@@ -430,15 +428,15 @@
 }
 
 .store-publish-dialog-field-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-weaker);
 }
 
 .store-publish-dialog-field-hint {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: 0;
   text-transform: none;
   color: color-mix(in oklch, var(--text-weaker) 70%, transparent);
@@ -448,7 +446,7 @@
 .store-publish-dialog-field textarea,
 .store-publish-dialog-field select {
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: var(--font-size-base);
   padding: 9px 11px;
   border-radius: var(--radius-md, 10px);
   background: color-mix(in srgb, var(--background) 60%, transparent);
@@ -474,8 +472,8 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
   color: var(--text-strong);
   padding: 7px 16px;
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
 }
 .store-publish-dialog .pill-btn:hover:not(:disabled) {
   background: color-mix(in oklch, var(--foreground) 12%, transparent);
@@ -484,40 +482,40 @@
 .store-publish-dialog .pill-btn--danger {
   background: color-mix(
     in oklch,
-    var(--destructive, oklch(0.6 0.2 25)) 14%,
+    var(--destructive) 14%,
     transparent
   );
-  color: var(--destructive, oklch(0.6 0.2 25));
+  color: var(--destructive);
   border-color: color-mix(
     in oklch,
-    var(--destructive, oklch(0.6 0.2 25)) 32%,
+    var(--destructive) 32%,
     transparent
   );
 }
 .store-publish-dialog .pill-btn--danger:hover:not(:disabled) {
   background: color-mix(
     in oklch,
-    var(--destructive, oklch(0.6 0.2 25)) 22%,
+    var(--destructive) 22%,
     transparent
   );
 }
 .store-publish-dialog .pill-btn--primary {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 14%,
+    var(--primary) 14%,
     transparent
   );
   border-color: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 32%,
+    var(--primary) 32%,
     transparent
   );
-  color: var(--interactive, var(--primary, oklch(0.62 0.18 250)));
+  color: var(--primary);
 }
 .store-publish-dialog .pill-btn--primary:hover:not(:disabled) {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 250))) 20%,
+    var(--primary) 20%,
     transparent
   );
   opacity: 1;
@@ -536,22 +534,22 @@
 .store-creator-loading {
   padding: 48px 0;
   text-align: center;
-  color: var(--text-tertiary);
+  color: var(--text-weaker);
 }
 
 .store-creator-empty {
   padding: 48px 0;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--text-base);
 }
 .store-creator-empty-title {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   margin-bottom: 6px;
 }
 .store-creator-empty-body {
-  font-size: 13px;
+  font-size: var(--font-size-base);
 }
 
 .store-creator-header {
@@ -561,13 +559,13 @@
   gap: 4px;
 }
 .store-creator-handle {
-  font-family: var(--font-mono, ui-monospace);
-  font-size: 12px;
-  color: var(--text-tertiary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-weaker);
 }
 .store-creator-count {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  color: var(--text-base);
 }
 
 /* Owner kebab menu — leans entirely on the base Radix dropdown surface
@@ -588,16 +586,16 @@
 }
 
 .store-card-menu-item-title {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: inherit;
   letter-spacing: -0.01em;
   line-height: 1.25;
 }
 
 .store-card-menu-item-sub {
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   color: var(--text-weaker, var(--muted-foreground));
   letter-spacing: -0.005em;
   line-height: 1.3;
@@ -624,8 +622,8 @@
   padding: 0;
   margin: 0;
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(1.35rem, 2.4vw, 1.55rem);
-  font-weight: 450;
+  font-size: 1.55rem;
+  font-weight: var(--weight-regular);
   letter-spacing: -0.03em;
   line-height: 1.2;
   color: var(--text-strong);
@@ -638,8 +636,8 @@
   justify-content: flex-start;
   align-items: flex-start;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   line-height: 1.45;
   letter-spacing: -0.01em;
   color: var(--text-weak);
@@ -673,12 +671,12 @@
   gap: 2px;
 }
 .share-addon-private-banner-title {
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
 }
 .share-addon-private-banner-sub {
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
   line-height: 1.45;
 }
@@ -695,8 +693,8 @@
   padding: 8px 10px;
   border-radius: var(--radius-md, 8px);
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  font-family: var(--font-mono, ui-monospace);
-  font-size: 11.5px;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
   color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;
@@ -711,19 +709,19 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
 }
 .share-addon-friends-count {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   color: var(--text-weaker);
 }
 .share-addon-empty {
   padding: 14px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-weaker);
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
   border-radius: var(--radius-md, 8px);
@@ -753,13 +751,13 @@
 .share-addon-friend-row[data-selected] {
   background: color-mix(
     in oklch,
-    var(--interactive, oklch(0.62 0.2 250)) 12%,
+    var(--primary) 12%,
     transparent
   );
 }
 .share-addon-friend-name {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--text-strong);
 }
 .share-addon-friend-check {
@@ -768,7 +766,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--interactive, oklch(0.62 0.2 250));
+  color: var(--primary);
 }
 .share-addon-actions {
   display: flex;
@@ -816,7 +814,7 @@
 .addon-share-card:hover {
   border-color: color-mix(in oklch, var(--foreground) 18%, var(--border-weak));
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px color-mix(in oklch, black 10%, transparent);
+  box-shadow: var(--shadow-md);
 }
 .addon-share-card:active {
   transform: translateY(0);
@@ -854,7 +852,7 @@
   justify-content: center;
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
   font-size: 26px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-strong, var(--foreground));
   letter-spacing: -0.02em;
 }
@@ -875,8 +873,8 @@
  * uppercase labels and the dialog's "Add-on" hero affordance. Keeps
  * the embed clearly branded as a Stella add-on, not a generic link. */
 .addon-share-card-eyebrow {
-  font-size: 9.5px;
-  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--muted-foreground);
@@ -884,8 +882,8 @@
 }
 
 .addon-share-card-name {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong, var(--foreground));
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -894,7 +892,7 @@
   line-height: 1.25;
 }
 .addon-share-card-desc {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--muted-foreground);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -912,8 +910,8 @@
   gap: 8px;
 }
 .addon-share-card-handle {
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   color: var(--text-weak, var(--muted-foreground));
   white-space: nowrap;
   overflow: hidden;
@@ -923,8 +921,8 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong, var(--foreground));
   flex-shrink: 0;
   opacity: 0.7;
@@ -961,7 +959,7 @@
   .addon-share-card {
   border-color: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 22%,
+    var(--primary) 22%,
     var(--border-weak)
   );
 }

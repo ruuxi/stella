@@ -42,10 +42,10 @@
   border: 1px solid var(--border);
   border-radius: 999px;
   background: color-mix(in oklch, var(--foreground) 4%, var(--popover));
-  color: var(--text-strong, var(--foreground));
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
-  font-weight: 650;
+  color: var(--text-strong);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0;
   cursor: default;
   transition:
@@ -77,9 +77,9 @@
   align-items: center;
   gap: 12px;
   color: var(--muted-foreground);
-  font-family: var(--font-family-mono, monospace);
-  font-size: 10px;
-  font-weight: 500;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -102,21 +102,24 @@
 
 .auth-dialog-headline {
   margin: 0;
-  color: var(--text-strong, var(--foreground));
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(1.6rem, 3vw, 2rem);
-  font-weight: 450;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
+  /* Canonical dialog title identity (see dialog.css --dialog-title-*).
+   * This is the real title for this dialog — the <DialogTitle> is hidden
+   * for a11y, so we mirror the shared treatment here verbatim. */
+  color: var(--text-strong);
+  font-family: var(--dialog-title-font);
+  font-size: var(--dialog-title-size);
+  font-weight: var(--dialog-title-weight);
+  line-height: var(--dialog-title-line);
+  letter-spacing: var(--dialog-title-spacing);
   max-width: 360px;
 }
 
 .auth-dialog-sub {
   margin: 0;
   color: var(--muted-foreground);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   line-height: 1.5;
   letter-spacing: -0.01em;
   max-width: 320px;
@@ -136,7 +139,7 @@
 
 .auth-dialog-input [data-slot="input-input"] {
   height: 40px;
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .auth-dialog-cta {
@@ -150,9 +153,9 @@
   border-radius: var(--radius-md, 8px);
   background: color-mix(in oklch, var(--destructive) 10%, transparent);
   color: var(--destructive);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   line-height: 1.4;
   text-align: center;
 }
@@ -187,9 +190,9 @@
 
 .auth-dialog-sent {
   text-align: center;
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   line-height: 1.5;
   color: var(--muted-foreground);
   padding: 0 4px;

@@ -39,7 +39,7 @@
   border: none;
   background: transparent;
   color: var(--text-base);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.25;
   text-align: left;
   cursor: default;

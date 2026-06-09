@@ -18,9 +18,9 @@
   /* Mirror the `--chat-text-*` defaults from `.chat-viewport-region`
      so compact hosts that don't live inside a viewport region (most
      notably the Store side-panel thread) still resolve every token. */
-  --chat-text-size: 15px;
-  --chat-text-weight: 400;
-  --chat-text-strong-weight: 500;
+  --chat-text-size: var(--font-size-lg);
+  --chat-text-weight: var(--weight-regular);
+  --chat-text-strong-weight: var(--weight-medium);
   --chat-text-tracking: 0;
   --chat-text-line-height: 1.5;
   --chat-text-color: var(--text-strong);
@@ -82,7 +82,7 @@
 .chat-conversation-surface--mini,
 .chat-conversation-surface--orb,
 .chat-conversation-surface--sidebar {
-  --chat-text-size: 13px;
+  --chat-text-size: var(--font-size-base);
 }
 
 .chat-conversation-surface--orb {
@@ -170,7 +170,7 @@
   /* Compact bubbles are narrow; size headings to the body so the
      row doesn't blow out vertically on a leading `# Heading`. */
   font-size: var(--chat-text-size);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   line-height: 1.35;
   margin-top: 0.85rem;
   margin-bottom: 0.35rem;
@@ -181,7 +181,7 @@
 }
 
 .chat-conversation-surface .event-item.assistant .markdown :is(pre, code, .shiki, kbd, samp) {
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   letter-spacing: normal;
 }
 

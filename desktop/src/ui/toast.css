@@ -64,8 +64,8 @@
 }
 
 [data-component="toast"][data-variant="success"]::before {
-  background: #22c55e;
-  box-shadow: 0 0 8px 1px color-mix(in oklch, #22c55e 35%, transparent);
+  background: var(--success);
+  box-shadow: 0 0 8px 1px color-mix(in oklch, var(--success) 35%, transparent);
 }
 
 [data-component="toast"][data-variant="error"]::before {
@@ -88,8 +88,8 @@
 [data-component="toast"] [data-slot="toast-title"] {
   color: var(--text-strong, var(--foreground));
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   line-height: 1.43;
   margin: 0;
@@ -98,8 +98,8 @@
 [data-component="toast"] [data-slot="toast-description"] {
   color: var(--text-base, var(--muted-foreground));
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   line-height: 1.55;
   margin: 0;
@@ -118,12 +118,12 @@
   min-height: 28px;
   padding: 0 12px;
   border-radius: var(--radius-pill, 999px);
-  border: 1px solid var(--interactive, var(--foreground));
-  background: var(--interactive, var(--foreground));
-  color: var(--primary-foreground, var(--background));
+  border: 1px solid var(--interactive);
+  background: var(--interactive);
+  color: var(--interactive-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   line-height: 1;
   cursor: default;
   transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
@@ -142,9 +142,9 @@
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--text-muted, color-mix(in oklch, var(--foreground) 55%, transparent));
-  font-size: 11px;
-  font-weight: 500;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
 }
 

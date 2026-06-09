@@ -47,10 +47,10 @@
 .sidebar-feedback-dialog [data-slot="dialog-title"],
 .sidebar-signout-dialog [data-slot="dialog-title"],
 .sidebar-nickname-dialog [data-slot="dialog-title"] {
-  color: var(--text-strong, var(--foreground));
+  color: var(--text-strong);
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(1.45rem, 2.6vw, 1.8rem);
-  font-weight: 450;
+  font-size: 1.8rem;
+  font-weight: var(--weight-regular);
   line-height: 1.2;
   letter-spacing: -0.03em;
 }
@@ -62,8 +62,8 @@
   margin: 0;
   color: var(--text-base);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
   line-height: 1.5;
   letter-spacing: -0.01em;
 }
@@ -79,7 +79,7 @@
 }
 
 .sidebar-nickname-body input {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.5;
 }
 
@@ -114,22 +114,22 @@
 .sidebar-feedback-body textarea {
   min-height: 120px;
   resize: vertical;
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.5;
 }
 
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"] {
-  background-color: #ef4444;
-  border-color: color-mix(in oklch, #ef4444 80%, var(--foreground));
+  background-color: var(--destructive);
+  border-color: color-mix(in oklch, var(--destructive) 80%, var(--foreground));
   color: #fff;
 }
 
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"]:hover:not(:disabled) {
-  background-color: color-mix(in oklch, #ef4444 92%, #000);
+  background-color: color-mix(in oklch, var(--destructive) 92%, #000);
   opacity: 1;
 }
 
 .sidebar-confirm-actions [data-component="button"][data-tone="destructive"]:active:not(:disabled) {
-  background-color: color-mix(in oklch, #ef4444 80%, #000);
+  background-color: color-mix(in oklch, var(--destructive) 80%, #000);
   opacity: 1;
 }

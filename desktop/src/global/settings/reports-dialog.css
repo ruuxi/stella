@@ -29,8 +29,8 @@
   margin: 0;
   color: var(--text-strong, var(--foreground));
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(1.4rem, 3vw, 1.7rem);
-  font-weight: 450;
+  font-size: 1.7rem;
+  font-weight: var(--weight-regular);
   line-height: 1.2;
   letter-spacing: -0.03em;
 }
@@ -38,8 +38,8 @@
 .reports-dialog-subtitle {
   margin: 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   line-height: 1.5;
   color: var(--muted-foreground);
 }
@@ -71,7 +71,7 @@
 
 .reports-dialog-row-title {
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: -0.01em;
   color: var(--foreground);
@@ -80,8 +80,8 @@
 
 .reports-dialog-row-desc {
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   line-height: 1.45;
   color: var(--muted-foreground);
 }
@@ -109,8 +109,8 @@
   background: none;
   padding: 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--muted-foreground);
   cursor: default;
   transition: color 0.15s ease;
@@ -123,8 +123,8 @@
 .reports-dialog-hint {
   margin: 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   line-height: 1.45;
   color: var(--muted-foreground);
 }
@@ -132,15 +132,15 @@
 .reports-dialog-browser-current {
   margin: 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--foreground);
 }
 
 .reports-dialog-sublabel {
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
   color: var(--muted-foreground);
 }
@@ -157,8 +157,8 @@
   border: 1px solid var(--border);
   background: var(--popover);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--muted-foreground);
   cursor: default;
   transition:
@@ -187,7 +187,7 @@
   background: var(--foreground);
   color: var(--background);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: -0.01em;
   cursor: default;

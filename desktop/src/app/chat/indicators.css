@@ -7,13 +7,13 @@
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-inset) 15%, transparent);
   border: none;
-  font-size: 14px;
+  font-size: var(--font-size-md);
   color: var(--text-base);
   animation: stream-fade-in 0.4s ease-out both;
 }
 
 .working-status {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   overflow: hidden;
   text-overflow: ellipsis;

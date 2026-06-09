@@ -88,8 +88,8 @@
 .media-tab__hero-cap {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   color: var(--text-weak);
   overflow: hidden;
@@ -99,7 +99,7 @@
 
 .media-tab__hero-prompt {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.45;
   color: var(--text-strong);
   overflow: hidden;
@@ -158,10 +158,10 @@
 }
 
 .media-tab__action-btn--danger {
-  color: var(--destructive, var(--error, #ef5350));
+  color: var(--destructive);
   border-color: color-mix(
     in oklch,
-    var(--destructive, var(--error, #ef5350)) 40%,
+    var(--destructive) 40%,
     transparent
   );
 }
@@ -169,7 +169,7 @@
 .media-tab__action-btn--danger:hover {
   background: color-mix(
     in oklch,
-    var(--destructive, var(--error, #ef5350)) 8%,
+    var(--destructive) 8%,
     transparent
   );
 }
@@ -177,13 +177,13 @@
 .media-tab__action-btn--armed,
 .media-tab__action-btn--armed:hover {
   color: var(--primary-foreground, var(--background));
-  background: var(--destructive, var(--error, #ef5350));
-  border-color: var(--destructive, var(--error, #ef5350));
+  background: var(--destructive);
+  border-color: var(--destructive);
 }
 
 .media-tab__action-status {
   padding: 0 4px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
 }
 
@@ -244,14 +244,14 @@
 }
 
 .media-tab__empty-title {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
 }
 
 .media-tab__empty-body {
   max-width: 240px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
   color: var(--text-weak);
 }
@@ -509,8 +509,8 @@
   border: none;
   border-bottom: 2px solid transparent;
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   padding: 3px 9px 5px;
   margin-bottom: -1px;
@@ -529,7 +529,7 @@
 
 .media-tab__mode--active {
   color: var(--text-strong);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   border-bottom-color: var(--primary);
 }
 
@@ -619,7 +619,7 @@
   border: none;
   outline: none;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.45;
   color: var(--foreground);
   padding: 4px 0;

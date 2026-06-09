@@ -10,9 +10,6 @@
 .social-view {
   --social-serif: var(--font-family-display, 'Cormorant Garamond', Georgia, serif);
   --social-mono: var(--font-family-mono, 'IBM Plex Mono', monospace);
-  --social-fg: var(--foreground, #0f1728);
-  --social-muted: color-mix(in oklch, var(--social-fg) 78%, transparent);
-  --social-border: color-mix(in oklch, var(--social-fg) 12%, transparent);
 
   display: flex;
   flex-direction: row;
@@ -31,7 +28,7 @@
   flex-direction: column;
   width: 280px;
   flex-shrink: 0;
-  border-right: 1px solid var(--social-border);
+  border-right: 1px solid var(--border-base);
   background: transparent;
 }
 
@@ -46,7 +43,7 @@
 .social-sidebar-title {
   font-family: var(--social-serif);
   font-size: 1.5rem;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
@@ -66,7 +63,7 @@
   border-radius: 6px;
   background: transparent;
   border: none;
-  color: var(--social-muted);
+  color: var(--text-weak);
   cursor: default;
   transition: opacity 0.15s ease, color 0.15s ease;
   opacity: 0.5;
@@ -96,10 +93,10 @@
   height: 16px;
   padding: 0 4px;
   border-radius: 999px;
-  background: #ef4444;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   line-height: 16px;
   text-align: center;
   pointer-events: none;
@@ -133,11 +130,11 @@
 }
 
 .social-room-item:hover {
-  background: color-mix(in oklch, var(--social-fg) 4%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
 .social-room-item[data-active] {
-  background: color-mix(in oklch, var(--social-fg) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
 .social-room-item-avatar {
@@ -160,8 +157,8 @@
 }
 
 .social-room-item-name {
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;
@@ -173,15 +170,15 @@
 
 .social-room-item-time {
   font-family: var(--social-mono);
-  font-size: 10.5px;
-  color: var(--social-muted);
+  font-size: var(--font-size-2xs);
+  color: var(--text-weak);
   flex-shrink: 0;
   opacity: 0.5;
 }
 
 .social-room-item-preview {
-  font-size: 12px;
-  color: var(--social-muted);
+  font-size: var(--font-size-sm);
+  color: var(--text-weak);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -192,7 +189,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--social-fg);
+  background: var(--foreground);
   opacity: 0.4;
   flex-shrink: 0;
 }
@@ -203,7 +200,7 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  border-top: 1px solid var(--social-border);
+  border-top: 1px solid var(--border-base);
   flex-shrink: 0;
 }
 
@@ -216,8 +213,8 @@
 }
 
 .social-profile-name {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;
@@ -226,9 +223,9 @@
 }
 
 .social-profile-tag {
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
   font-family: var(--social-mono);
-  color: var(--social-muted);
+  color: var(--text-weak);
   letter-spacing: 0.04em;
   cursor: default;
   transition: opacity 0.15s ease;
@@ -248,8 +245,8 @@
   background: transparent;
   border: none;
   font: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.01em;
   cursor: default;
@@ -262,7 +259,7 @@
 
 .social-profile-name-button > svg {
   flex-shrink: 0;
-  color: var(--social-muted);
+  color: var(--text-weak);
   opacity: 0.5;
   transition: opacity 0.15s ease;
 }
@@ -273,13 +270,13 @@
 }
 
 .social-profile-name-input {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.01em;
   background: transparent;
   border: none;
-  border-bottom: 1px solid color-mix(in oklch, var(--social-fg) 25%, transparent);
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 25%, transparent);
   padding: 1px 0 2px;
   outline: none;
   font-family: inherit;
@@ -288,7 +285,7 @@
 }
 
 .social-profile-name-input:focus {
-  border-bottom-color: color-mix(in oklch, var(--social-fg) 45%, transparent);
+  border-bottom-color: color-mix(in oklch, var(--foreground) 45%, transparent);
 }
 
 .social-profile-name-input:disabled {
@@ -296,8 +293,8 @@
 }
 
 .social-profile-error {
-  font-size: 11px;
-  color: var(--destructive, #b91c1c);
+  font-size: var(--font-size-xs);
+  color: var(--destructive);
   line-height: 1.3;
 }
 
@@ -312,8 +309,8 @@
   width: auto;
   height: 26px;
   padding: 0 8px;
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   border-radius: 6px;
   opacity: 0.7;
 }
@@ -321,7 +318,7 @@
 .social-profile-edit-actions .social-sidebar-action--primary {
   opacity: 1;
   color: var(--text-strong);
-  border: 1px solid color-mix(in oklch, var(--social-fg) 18%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
 }
 
 .social-profile-edit-actions .social-sidebar-action:disabled {
@@ -347,7 +344,7 @@
   align-items: center;
   gap: 12px;
   padding: 16px 24px;
-  border-bottom: 1px solid var(--social-border);
+  border-bottom: 1px solid var(--border-base);
   flex-shrink: 0;
 }
 
@@ -358,8 +355,8 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: color-mix(in oklch, var(--social-fg) 6%, transparent);
-  color: var(--social-muted);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-weak);
   flex-shrink: 0;
 }
 
@@ -371,15 +368,15 @@
 .social-chat-header-name {
   font-family: var(--social-serif);
   font-size: 1.3rem;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
 
 .social-chat-header-meta {
   font-family: var(--social-mono);
-  font-size: 11px;
-  color: var(--social-muted);
+  font-size: var(--font-size-xs);
+  color: var(--text-weak);
   opacity: 0.5;
 }
 
@@ -391,20 +388,20 @@
   height: 30px;
   padding: 0 12px 0 6px;
   border-radius: 999px;
-  border: 1px solid var(--social-border);
+  border: 1px solid var(--border-base);
   background: transparent;
-  color: var(--social-fg);
+  color: var(--text-strong);
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
   flex-shrink: 0;
   transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .social-stella-pill:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--social-fg) 28%, transparent);
-  background: color-mix(in oklch, var(--social-fg) 3%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
 }
 
 .social-stella-pill:disabled {
@@ -427,8 +424,8 @@
   justify-content: space-between;
   gap: 16px;
   padding: 8px 24px;
-  border-bottom: 1px solid var(--social-border);
-  background: color-mix(in oklch, var(--social-fg) 2.5%, transparent);
+  border-bottom: 1px solid var(--border-base);
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
 }
 
 .social-session-bar-info {
@@ -447,9 +444,9 @@
 }
 
 .social-session-header-hint {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.4;
-  color: var(--social-muted);
+  color: var(--text-weak);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -472,20 +469,20 @@
   height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid var(--social-border);
+  border: 1px solid var(--border-base);
   font-family: var(--social-mono);
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--social-muted);
+  color: var(--text-weak);
 }
 
 .social-session-badge[data-status="active"] {
-  color: color-mix(in oklch, var(--social-fg) 80%, #1f7a45 20%);
+  color: var(--success);
 }
 
 .social-session-badge[data-status="paused"] {
-  color: color-mix(in oklch, var(--social-fg) 70%, #9a6a12 30%);
+  color: var(--warning);
 }
 
 .social-session-badge[data-status="ended"] {
@@ -499,21 +496,21 @@
   height: 32px;
   padding: 0 14px;
   border-radius: 6px;
-  border: 1px solid var(--social-border);
+  border: 1px solid var(--border-base);
   background: transparent;
-  color: var(--social-fg);
-  font-size: 12.5px;
-  font-weight: 500;
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .social-session-button:hover:not(:disabled) {
   opacity: 0.8;
-  border-color: color-mix(in oklch, var(--social-fg) 28%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
 }
 
 .social-session-button[data-variant="danger"] {
-  color: color-mix(in oklch, var(--social-fg) 70%, #9b2020 30%);
+  color: var(--destructive);
 }
 
 .social-session-button:disabled {
@@ -535,7 +532,7 @@
   padding: 10px 12px;
   resize: none;
   border-radius: 8px;
-  border: 1px solid var(--social-border);
+  border: 1px solid var(--border-base);
   background: transparent;
   color: var(--text-strong);
   font: inherit;
@@ -544,12 +541,12 @@
 }
 
 .social-session-input:focus {
-  border-color: color-mix(in oklch, var(--social-fg) 24%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--social-fg) 3%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 3%, transparent);
 }
 
 .social-session-input::placeholder {
-  color: var(--social-muted);
+  color: var(--text-weak);
   opacity: 0.7;
 }
 
@@ -562,30 +559,30 @@
 .social-session-turn {
   padding: 12px 14px;
   border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--social-fg) 8%, transparent);
-  background: color-mix(in oklch, var(--social-fg) 2%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
 }
 
 .social-session-turn-label {
   font-family: var(--social-mono);
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--social-muted);
+  color: var(--text-weak);
 }
 
 .social-session-turn-prompt {
   margin-top: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--text-strong);
   white-space: pre-wrap;
 }
 
 .social-session-turn-response {
   margin-top: 8px;
-  font-size: 12.5px;
+  font-size: var(--font-size-sm);
   line-height: 1.55;
-  color: var(--social-muted);
+  color: var(--text-weak);
   white-space: pre-wrap;
 }
 
@@ -594,8 +591,8 @@
 }
 
 .social-session-empty {
-  font-size: 12.5px;
-  color: var(--social-muted);
+  font-size: var(--font-size-sm);
+  color: var(--text-weak);
 }
 
 /*
@@ -626,8 +623,8 @@
   align-self: center;
   padding: 6px 12px;
   margin-bottom: 12px;
-  font-size: 12px;
-  color: var(--text-muted, #888);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
   opacity: 0.8;
   text-align: center;
 }
@@ -651,23 +648,23 @@
 }
 
 .social-message-sender-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.01em;
 }
 
 .social-message-sender-time {
   font-family: var(--social-mono);
-  font-size: 10.5px;
-  color: var(--social-muted);
+  font-size: var(--font-size-2xs);
+  color: var(--text-weak);
   opacity: 0.5;
 }
 
 .social-message-bubble {
   padding: 8px 14px;
   border-radius: 18px;
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.4;
   color: var(--text-strong);
   white-space: pre-wrap;
@@ -680,7 +677,7 @@
 .social-message-bubble[data-role="self"] {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 14%,
+    var(--primary) 14%,
     transparent
   );
   color: var(--text-strong);
@@ -688,14 +685,14 @@
 }
 
 .social-message-bubble[data-role="other"] {
-  background: color-mix(in oklch, var(--social-fg) 5%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .social-message-bubble[data-role="stella"] {
   background: color-mix(
     in oklch,
     oklch(0.7 0.13 320) 14%,
-    color-mix(in oklch, var(--social-fg) 4%, transparent)
+    color-mix(in oklch, var(--foreground) 4%, transparent)
   );
   border: 1px solid
     color-mix(in oklch, oklch(0.7 0.13 320) 22%, transparent);
@@ -704,9 +701,9 @@
 
 .social-message-sender-name[data-stella] {
   font-family: var(--social-serif);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: -0.015em;
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .social-message-sender-avatar--stella {
@@ -730,8 +727,8 @@
 
 .social-message-bubble[data-role="system"] {
   background: transparent;
-  color: var(--social-muted);
-  font-size: 12px;
+  color: var(--text-weak);
+  font-size: var(--font-size-sm);
   text-align: center;
   margin: 8px auto;
   max-width: 100%;
@@ -756,20 +753,20 @@
   padding: 0 12px 0 6px;
   margin: 0 24px 0;
   border-radius: 999px;
-  border: 1px solid var(--social-border);
+  border: 1px solid var(--border-base);
   background: transparent;
-  color: var(--social-muted);
+  color: var(--text-weak);
   font: inherit;
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
   transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease,
     color 0.15s ease, transform 0.15s ease;
 }
 
 .social-stella-arm-button:hover {
-  border-color: color-mix(in oklch, var(--social-fg) 26%, transparent);
-  color: var(--social-fg);
+  border-color: color-mix(in oklch, var(--foreground) 26%, transparent);
+  color: var(--text-strong);
 }
 
 .social-stella-arm-button-logo {
@@ -783,12 +780,12 @@
 .social-stella-arm-button[data-active] {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 12%,
+    var(--primary) 12%,
     transparent
   );
   border-color: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 36%,
+    var(--primary) 36%,
     transparent
   );
   color: var(--text-strong);
@@ -809,7 +806,7 @@
   display: flex;
   align-items: flex-end;
   background: transparent;
-  border: 1px solid var(--social-border);
+  border: 1px solid var(--border-base);
   border-radius: 22px;
   padding: 4px 6px 4px 16px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease,
@@ -817,20 +814,20 @@
 }
 
 .social-composer-input-wrap:focus-within {
-  border-color: color-mix(in oklch, var(--social-fg) 25%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--social-fg) 3%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 25%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 3%, transparent);
 }
 
 /* Composer is "armed" to send the next message to Stella */
 .social-composer-input-wrap[data-armed] {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 7%,
+    var(--primary) 7%,
     transparent
   );
   border-color: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 32%,
+    var(--primary) 32%,
     transparent
   );
   padding-left: 8px;
@@ -839,13 +836,13 @@
 .social-composer-input-wrap[data-armed]:focus-within {
   border-color: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 50%,
+    var(--primary) 50%,
     transparent
   );
   box-shadow: 0 0 0 3px
     color-mix(
       in oklch,
-      var(--interactive, var(--primary, oklch(0.62 0.18 235))) 12%,
+      var(--primary) 12%,
       transparent
     );
 }
@@ -859,11 +856,11 @@
   border-radius: 999px;
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 22%,
+    var(--primary) 22%,
     transparent
   );
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.005em;
   color: var(--text-strong);
   flex-shrink: 0;
@@ -882,12 +879,12 @@
 .social-composer-send[data-armed]:not(:disabled) {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 22%,
+    var(--primary) 22%,
     transparent
   );
   border-color: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 45%,
+    var(--primary) 45%,
     transparent
   );
   color: var(--text-strong);
@@ -901,7 +898,7 @@
   max-height: 120px;
   padding: 4px 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.5;
   color: var(--text-strong);
   background: transparent;
@@ -914,7 +911,7 @@
 }
 
 .social-composer-input::placeholder {
-  color: var(--social-fg);
+  color: var(--text-strong);
   opacity: 0.25;
 }
 
@@ -928,7 +925,7 @@
   border-radius: 50%;
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 18%,
+    var(--primary) 18%,
     transparent
   );
   border: none;
@@ -945,7 +942,7 @@
 .social-composer-send:not(:disabled):hover {
   background: color-mix(
     in oklch,
-    var(--interactive, var(--primary, oklch(0.62 0.18 235))) 28%,
+    var(--primary) 28%,
     transparent
   );
 }
@@ -972,25 +969,25 @@
   width: 48px;
   height: 48px;
   border-radius: 6px;
-  border: 1px solid var(--social-border);
+  border: 1px solid var(--border-base);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--social-muted);
+  color: var(--text-weak);
   opacity: 0.5;
 }
 
 .social-empty-title {
   font-family: var(--social-serif);
   font-size: 1.6rem;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.02em;
 }
 
 .social-empty-subtitle {
-  font-size: 13px;
-  color: var(--social-muted);
+  font-size: var(--font-size-base);
+  color: var(--text-weak);
   text-align: center;
   max-width: 280px;
   line-height: 1.55;
@@ -1013,15 +1010,15 @@
 .social-signin-title {
   font-family: var(--social-serif);
   font-size: 2rem;
-  font-weight: 300;
+  font-weight: var(--weight-light);
   color: var(--text-strong);
   letter-spacing: -0.03em;
 }
 
 .social-signin-subtitle {
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--social-muted);
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-medium);
+  color: var(--text-weak);
   text-align: center;
   max-width: 340px;
   line-height: 1.55;
@@ -1030,7 +1027,7 @@
 .social-signin-gate .pill-btn {
   min-height: 44px;
   padding: 10px 22px;
-  font-size: 15px;
+  font-size: var(--font-size-lg);
 }
 
 .social-signin-button {
@@ -1042,12 +1039,12 @@
   padding: 0 24px;
   border-radius: 8px;
   background: color-mix(in oklch, var(--primary) 12%, transparent);
-  color: #111111;
+  color: var(--primary-foreground);
   border: 1px solid color-mix(in oklch, var(--primary) 22%, transparent);
   box-shadow: none;
   font-family: inherit;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   cursor: default;
   transition:
     background 0.15s ease,
@@ -1064,10 +1061,6 @@
 
 .social-signin-button:active {
   transform: scale(0.985);
-}
-
-.dark .social-signin-button {
-  color: #ffffff;
 }
 
 /* ============================================
@@ -1111,8 +1104,8 @@
   margin: 0;
   color: var(--text-strong, var(--foreground));
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(1.5rem, 2.8vw, 1.9rem);
-  font-weight: 450;
+  font-size: 1.9rem;
+  font-weight: var(--weight-regular);
   line-height: 1.2;
   letter-spacing: -0.03em;
 }
@@ -1121,7 +1114,7 @@
   margin: 0;
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.5;
   letter-spacing: -0.01em;
 }
@@ -1154,7 +1147,7 @@
 
 .friends-code-card-value {
   font-family: var(--social-mono);
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   letter-spacing: 0.06em;
   color: var(--text-strong, var(--foreground));
 }
@@ -1186,8 +1179,8 @@
 
 .friends-section-label {
   font-family: var(--social-mono);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted-foreground);
@@ -1220,14 +1213,14 @@
 }
 
 .friends-item-name {
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.01em;
 }
 
 .friends-item-tag {
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
   font-family: var(--social-mono);
   color: var(--muted-foreground);
   opacity: 0.7;
@@ -1242,7 +1235,7 @@
 .friends-empty {
   padding: 20px 8px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--muted-foreground);
   line-height: 1.55;
 }
@@ -1251,7 +1244,7 @@
   padding: 10px 12px;
   border-radius: var(--radius-md, 8px);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 12.5px;
+  font-size: var(--font-size-sm);
   line-height: 1.4;
   text-align: center;
 }
@@ -1330,8 +1323,8 @@
 }
 
 .new-chat-item-name {
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.01em;
   flex: 1;
@@ -1340,7 +1333,7 @@
 
 .new-chat-item-check {
   margin-left: auto;
-  color: var(--interactive, var(--foreground));
+  color: var(--primary);
 }
 
 /* ============================================
@@ -1359,8 +1352,8 @@
 }
 
 .social-no-rooms-text {
-  font-size: 13px;
-  color: var(--social-muted);
+  font-size: var(--font-size-base);
+  color: var(--text-weak);
   line-height: 1.55;
   max-width: 200px;
 }
@@ -1372,11 +1365,11 @@
   padding: 8px 14px;
   border-radius: 6px;
   background: transparent;
-  border: 1px solid var(--social-border);
+  border: 1px solid var(--border-base);
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--social-fg);
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
   cursor: default;
   margin-top: 4px;
   transition: opacity 0.15s ease, border-color 0.15s ease;
@@ -1384,5 +1377,5 @@
 
 .social-no-rooms-action:hover {
   opacity: 0.7;
-  border-color: color-mix(in oklch, var(--social-fg) 30%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
 }

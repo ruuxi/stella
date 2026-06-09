@@ -58,8 +58,8 @@
   user-select: none;
   outline: none;
   font-family: var(--font-family-sans, "Manrope", inherit);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   line-height: 1.3;
   color: var(--text-base, var(--popover-foreground));
@@ -109,8 +109,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-weak, var(--muted-foreground));
 }
 
@@ -138,8 +138,8 @@
 [data-slot="dropdown-menu-group-label"] {
   padding: 6px 10px 4px;
   font-family: var(--font-family-sans, "Manrope", inherit);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-weaker, var(--muted-foreground));
@@ -154,16 +154,16 @@
 }
 
 [data-slot="dropdown-menu-item"][data-variant="destructive"] [data-slot="dropdown-menu-item-icon"] {
-  color: color-mix(in oklch, var(--text-weak, var(--muted-foreground)) 60%, #ef4444 40%);
+  color: color-mix(in oklch, var(--text-weak, var(--muted-foreground)) 60%, var(--destructive) 40%);
 }
 
 [data-slot="dropdown-menu-item"][data-variant="destructive"][data-highlighted] {
-  background: color-mix(in oklch, #ef4444 14%, transparent);
-  color: color-mix(in oklch, var(--text-strong, var(--foreground)) 30%, #ef4444 70%);
+  background: color-mix(in oklch, var(--destructive) 14%, transparent);
+  color: color-mix(in oklch, var(--text-strong, var(--foreground)) 30%, var(--destructive) 70%);
 }
 
 [data-slot="dropdown-menu-item"][data-variant="destructive"][data-highlighted] [data-slot="dropdown-menu-item-icon"] {
-  color: color-mix(in oklch, var(--text-strong, var(--foreground)) 25%, #ef4444 75%);
+  color: color-mix(in oklch, var(--text-strong, var(--foreground)) 25%, var(--destructive) 75%);
 }
 
 @keyframes dropdown-menu-open {

@@ -22,15 +22,15 @@
 
 .trash-tab__title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--font-size-lg);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
   color: var(--text-strong);
 }
 
 .trash-tab__subtitle {
   margin: 4px 0 0;
-  font-size: 12.5px;
+  font-size: var(--font-size-sm);
   color: var(--text-weak);
   line-height: 1.4;
 }
@@ -42,8 +42,8 @@
 }
 
 .trash-tab__errors {
-  font-size: 12.5px;
-  color: color-mix(in oklch, var(--foreground) 55%, #c33);
+  font-size: var(--font-size-sm);
+  color: color-mix(in oklch, var(--foreground) 55%, var(--destructive));
   background: color-mix(in oklch, var(--foreground) 4%, transparent);
   border-radius: 8px;
   padding: 10px 12px;
@@ -81,8 +81,8 @@
 }
 
 .trash-tab__name {
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   letter-spacing: -0.005em;
   overflow: hidden;
@@ -91,7 +91,7 @@
 }
 
 .trash-tab__path {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-weak);
   font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, monospace);
   overflow: hidden;
@@ -104,7 +104,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-weaker);
 }
 

@@ -16,21 +16,14 @@
 .subscription-upgrade-dialog [data-slot="dialog-header"] {
   /* Base dialog header is a horizontal space-between row (title + close
    * button). Here we stack the title above the description instead so the
-   * copy reads as a block and doesn't get squeezed beside the title. */
+   * copy reads as a block and doesn't get squeezed beside the title.
+   * Title font/size/weight come from the canonical base (--dialog-title-*);
+   * only the column layout + padding deviate. */
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding: 22px var(--subscription-upgrade-pad-x) 14px;
+  padding: var(--space-5) var(--subscription-upgrade-pad-x) var(--space-4);
   border-bottom: 1px solid var(--border-weak);
-}
-
-.subscription-upgrade-dialog [data-slot="dialog-title"] {
-  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: 1.5rem;
-  font-weight: 450;
-  letter-spacing: -0.03em;
-  line-height: 1.2;
-  color: var(--text-strong);
 }
 
 .subscription-upgrade-dialog [data-slot="dialog-description"] {
@@ -39,8 +32,8 @@
   display: block;
   padding: 0;
   margin: 8px 0 0;
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 13px;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
   line-height: 1.55;
   color: var(--text-base);
   letter-spacing: -0.01em;

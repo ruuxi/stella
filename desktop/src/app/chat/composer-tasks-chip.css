@@ -40,8 +40,8 @@
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   color: var(--text-base);
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   line-height: 1.3;
   white-space: nowrap;
   cursor: default;

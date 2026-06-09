@@ -10,6 +10,21 @@
 [data-component="dialog"] {
   --dialog-width: 480px;
   --dialog-height: 512px;
+  /*
+   * Canonical dialog header identity — shared by EVERY dialog in the
+   * family so titles read as one system instead of four (was: 16px sans
+   * bar / hidden + centered Cormorant hero / overridden 1.5rem serif /
+   * plain bar). One font (Cormorant display, Stella's brand voice), one
+   * fixed size, one weight, one letter-spacing, one header padding.
+   * Per-dialog CSS should NOT redefine the title font/size/weight — only
+   * layout (padding/scroll) — so the surface stays uniform.
+   */
+  --dialog-title-font: var(--font-family-display);
+  --dialog-title-size: var(--font-size-3xl); /* 24px */
+  --dialog-title-weight: var(--weight-regular);
+  --dialog-title-spacing: -0.03em;
+  --dialog-title-line: 1.2;
+  --dialog-header-pad: var(--space-5) var(--space-4) var(--space-4) var(--space-6);
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -70,7 +85,7 @@
 
 [data-component="dialog"] [data-slot="dialog-header"] {
   display: flex;
-  padding: 16px 16px 16px 24px;
+  padding: var(--dialog-header-pad);
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
@@ -78,12 +93,12 @@
 }
 
 [data-component="dialog"] [data-slot="dialog-title"] {
-  color: var(--foreground);
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 16px;
-  font-weight: var(--font-family-sans--emphasis-weight, 600);
-  letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
-  line-height: 1.5;
+  color: var(--text-strong);
+  font-family: var(--dialog-title-font);
+  font-size: var(--dialog-title-size);
+  font-weight: var(--dialog-title-weight);
+  letter-spacing: var(--dialog-title-spacing);
+  line-height: var(--dialog-title-line);
 }
 
 [data-component="dialog"] [data-slot="dialog-description"] {
@@ -98,7 +113,7 @@
   align-self: stretch;
   color: var(--muted-foreground);
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: var(--font-family-sans--default-weight, 500);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.43;
@@ -132,7 +147,7 @@
 }
 
 [data-component="dialog"] [data-slot="dialog-close-button"]:hover {
-  background-color: var(--accent);
+  background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
   color: var(--foreground);
 }
 

@@ -28,8 +28,8 @@
 }
 
 .drop-overlay-label {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
   user-select: none;
   -webkit-user-select: none;

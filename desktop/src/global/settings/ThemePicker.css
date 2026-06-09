@@ -33,7 +33,7 @@
   padding: 4px 8px;
   margin-top: 4px;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-family-sans--emphasis-weight, 600);
   letter-spacing: var(--font-family-sans--default-letter-spacing, -0.02em);
   line-height: 1.5;
@@ -90,8 +90,8 @@
 /* Trigger button styling */
 [data-slot="theme-picker-trigger"] {
   padding: 0 12px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--muted-foreground);
 }
 

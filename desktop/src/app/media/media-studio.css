@@ -6,10 +6,6 @@
 }
 
 .ms {
-  --ms-fg: var(--foreground, #0f1728);
-  --ms-muted: color-mix(in oklch, var(--ms-fg) 78%, transparent);
-  --ms-faint: color-mix(in oklch, var(--ms-fg) 12%, transparent);
-  --ms-border: color-mix(in oklch, var(--ms-fg) 18%, transparent);
   --ms-serif: var(--font-family-display, 'Cormorant Garamond', Georgia, serif);
   --ms-mono: var(--font-family-mono, 'IBM Plex Mono', monospace);
 
@@ -26,7 +22,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  border-right: 1px solid var(--ms-border);
+  border-right: 1px solid var(--border-base);
   overflow: hidden;
 }
 
@@ -36,23 +32,23 @@
 }
 
 .ms-title {
-  font-family: var(--ms-serif) !important;
-  font-size: 2.4rem !important;
-  font-weight: 300 !important;
-  letter-spacing: -0.05em !important;
-  line-height: 1 !important;
-  margin: 0 0 0.4rem !important;
+  font-family: var(--ms-serif);
+  font-size: 2.4rem;
+  font-weight: var(--weight-light);
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: 0 0 0.4rem;
 }
 
 .ms-title em {
-  font-weight: 300;
+  font-weight: var(--weight-light);
   font-style: normal;
 }
 
 .ms-lead {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.45;
-  color: var(--ms-muted);
+  color: var(--text-weak);
   margin: 0;
   letter-spacing: -0.01em;
 }
@@ -65,26 +61,26 @@
   gap: 0;
   padding: 0 1.5rem;
   margin-top: 1.25rem;
-  border-bottom: 1px solid var(--ms-border);
+  border-bottom: 1px solid var(--border-base);
 }
 
 .ms-category {
   font-family: var(--ms-mono);
-  font-size: 10.5px;
-  font-weight: 500;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 0.6rem 0.9rem;
   background: none;
   border: none;
-  color: var(--ms-muted);
+  color: var(--text-weak);
   cursor: default;
   position: relative;
   transition: color 0.15s;
 }
 
-.ms-category:hover { color: var(--ms-fg); }
-.ms-category--active { color: var(--ms-fg); }
+.ms-category:hover { color: var(--text-strong); }
+.ms-category--active { color: var(--text-strong); }
 
 .ms-category--active::after {
   content: "";
@@ -93,7 +89,7 @@
   left: 0;
   right: 0;
   height: 1.5px;
-  background: var(--ms-fg);
+  background: var(--foreground);
 }
 
 /* ── Scrollable body ── */
@@ -118,7 +114,7 @@
   flex-direction: column;
   gap: 0.15rem;
   padding: 0.7rem 0;
-  border-bottom: 1px solid var(--ms-border);
+  border-bottom: 1px solid var(--border-base);
   background: none;
   border-left: none;
   border-right: none;
@@ -132,18 +128,18 @@
 .ms-capability:first-child { padding-top: 0.85rem; }
 .ms-capability:hover { opacity: 0.7; }
 .ms-capability--active { opacity: 1 !important; }
-.ms-capability--active .ms-capability-name { font-weight: 600; }
+.ms-capability--active .ms-capability-name { font-weight: var(--weight-semibold); }
 
 .ms-capability-name {
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.02em;
-  color: var(--ms-fg);
+  color: var(--text-strong);
 }
 
 .ms-capability-desc {
-  font-size: 12px;
-  color: var(--ms-muted);
+  font-size: var(--font-size-sm);
+  color: var(--text-weak);
   line-height: 1.35;
 }
 
@@ -151,7 +147,7 @@
 
 .ms-rule {
   border: none;
-  border-top: 1px solid var(--ms-border);
+  border-top: 1px solid var(--border-base);
   margin: 1.25rem 0;
 }
 
@@ -170,22 +166,22 @@
 
 .ms-label {
   font-family: var(--ms-mono);
-  font-size: 10.5px;
-  font-weight: 500;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--ms-muted);
+  color: var(--text-weak);
 }
 
 .ms-textarea {
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: var(--font-size-base);
   line-height: 1.55;
   padding: 10px 12px;
-  border: 1px solid var(--ms-border);
+  border: 1px solid var(--border-base);
   border-radius: 4px;
   background: transparent;
-  color: var(--ms-fg);
+  color: var(--text-strong);
   resize: vertical;
   min-height: 72px;
   outline: none;
@@ -193,11 +189,11 @@
 }
 
 .ms-textarea:focus {
-  border-color: color-mix(in oklch, var(--ms-fg) 40%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 40%, transparent);
 }
 
 .ms-textarea::placeholder {
-  color: var(--ms-muted);
+  color: var(--text-weak);
   opacity: 0.5;
 }
 
@@ -211,65 +207,65 @@
 
 .ms-tag {
   font-family: var(--ms-mono);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   padding: 4px 9px;
-  border: 1px solid var(--ms-border);
+  border: 1px solid var(--border-base);
   border-radius: 3px;
-  color: var(--ms-muted);
+  color: var(--text-weak);
   background: transparent;
   cursor: default;
   transition: border-color 0.15s, color 0.15s;
 }
 
 .ms-tag:hover {
-  border-color: color-mix(in oklch, var(--ms-fg) 35%, transparent);
-  color: var(--ms-fg);
+  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+  color: var(--text-strong);
 }
 
 .ms-tag--active {
-  border-color: var(--ms-fg);
-  color: var(--ms-fg);
-  font-weight: 500;
+  border-color: var(--text-strong);
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
 }
 
 /* ── Number input ── */
 
 .ms-number-input {
   font-family: var(--ms-mono);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   padding: 7px 10px;
-  border: 1px solid var(--ms-border);
+  border: 1px solid var(--border-base);
   border-radius: 4px;
   background: transparent;
-  color: var(--ms-fg);
+  color: var(--text-strong);
   width: 90px;
   outline: none;
 }
 
 .ms-number-input:focus {
-  border-color: color-mix(in oklch, var(--ms-fg) 40%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 40%, transparent);
 }
 
 /* ── File upload ── */
 
 .ms-upload {
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   padding: 8px 16px;
-  border: 1px dashed var(--ms-border);
+  border: 1px dashed var(--border-base);
   border-radius: 4px;
   background: transparent;
-  color: var(--ms-muted);
+  color: var(--text-weak);
   cursor: default;
   transition: border-color 0.15s, color 0.15s;
   align-self: flex-start;
 }
 
 .ms-upload:hover {
-  border-color: color-mix(in oklch, var(--ms-fg) 35%, transparent);
-  color: var(--ms-fg);
+  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+  color: var(--text-strong);
 }
 
 .ms-file-input { display: none; }
@@ -285,13 +281,13 @@
   height: 48px;
   object-fit: cover;
   border-radius: 3px;
-  border: 1px solid var(--ms-border);
+  border: 1px solid var(--border-base);
 }
 
 .ms-source-name {
   font-family: var(--ms-mono);
-  font-size: 11.5px;
-  color: var(--ms-muted);
+  font-size: var(--font-size-xs);
+  color: var(--text-weak);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -299,10 +295,10 @@
 }
 
 .ms-source-clear {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   background: none;
   border: none;
-  color: var(--ms-muted);
+  color: var(--text-weak);
   cursor: default;
   padding: 2px 4px;
   opacity: 0.6;
@@ -314,14 +310,14 @@
 /* ── Generate button ── */
 
 .ms-generate {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.01em;
   padding: 10px 24px;
-  border: 1px solid var(--ms-border);
+  border: 1px solid var(--border-base);
   border-radius: 6px;
   background: transparent;
-  color: var(--ms-fg);
+  color: var(--text-strong);
   cursor: default;
   transition: opacity 0.15s, border-color 0.15s;
   align-self: flex-start;
@@ -330,7 +326,7 @@
 
 .ms-generate:hover:not(:disabled) {
   opacity: 0.7;
-  border-color: color-mix(in oklch, var(--ms-fg) 35%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
 }
 
 .ms-generate:disabled {
@@ -341,8 +337,8 @@
 /* ── Error ── */
 
 .ms-error {
-  font-size: 12.5px;
-  color: #c44;
+  font-size: var(--font-size-sm);
+  color: var(--destructive);
   line-height: 1.45;
 }
 
@@ -359,7 +355,7 @@
 
 .ms-strip {
   flex-shrink: 0;
-  border-top: 1px solid var(--ms-border);
+  border-top: 1px solid var(--border-base);
   padding: 0.75rem 1rem;
   overflow-x: auto;
   overflow-y: hidden;
@@ -371,7 +367,7 @@
 }
 
 .ms-strip::-webkit-scrollbar-thumb {
-  background: var(--ms-border);
+  background: var(--border-base);
   border-radius: 2px;
 }
 
@@ -413,37 +409,37 @@
 }
 
 .ms-strip-item--active .ms-strip-thumb {
-  border-color: var(--ms-fg);
+  border-color: var(--text-strong);
 }
 
 .ms-strip-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ms-border);
-  font-size: 14px;
-  color: var(--ms-muted);
-  background: var(--ms-faint);
+  border: 1px solid var(--border-base);
+  font-size: var(--font-size-md);
+  color: var(--text-weak);
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
   font-family: var(--ms-mono);
   transition: border-color 0.15s;
 }
 
 .ms-strip-item--active .ms-strip-placeholder {
-  border-color: var(--ms-fg);
+  border-color: var(--text-strong);
 }
 
 .ms-strip-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ms-fg);
+  background: var(--foreground);
   animation: msPulse 1.5s ease infinite;
 }
 
 .ms-strip-label {
-  font-size: 9.5px;
+  font-size: var(--font-size-2xs);
   font-family: var(--ms-mono);
-  color: var(--ms-muted);
+  color: var(--text-weak);
   letter-spacing: 0.02em;
   white-space: nowrap;
   max-width: 56px;
@@ -452,8 +448,8 @@
 }
 
 .ms-strip-item--active .ms-strip-label {
-  color: var(--ms-fg);
-  font-weight: 500;
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
 }
 
 .ms-strip-folder {
@@ -463,7 +459,7 @@
   flex-shrink: 0;
   width: 52px;
   height: 52px;
-  border: 1px dashed var(--ms-border);
+  border: 1px dashed var(--border-base);
   border-radius: 4px;
   background: none;
   cursor: default;
@@ -472,16 +468,16 @@
 }
 
 .ms-strip-folder:hover {
-  border-color: color-mix(in oklch, var(--ms-fg) 35%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
 }
 
 .ms-strip-folder svg {
-  color: var(--ms-muted);
+  color: var(--text-weak);
   transition: color 0.15s;
 }
 
 .ms-strip-folder:hover svg {
-  color: var(--ms-fg);
+  color: var(--text-strong);
 }
 
 /* ── Drag overlay ── */
@@ -494,8 +490,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in oklch, var(--ms-fg) 4%, transparent);
-  border: 2px dashed var(--ms-border);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 2px dashed var(--border-base);
   border-radius: 8px;
   margin: 1rem;
   z-index: 10;
@@ -505,11 +501,11 @@
 
 .ms-drop-label {
   font-family: var(--ms-mono);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--ms-muted);
+  color: var(--text-weak);
 }
 
 /* ── Right panel (output) ── */
@@ -534,7 +530,7 @@
 .ms-empty-title {
   font-family: var(--ms-serif);
   font-size: 1.4rem;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   font-style: normal;
   letter-spacing: -0.02em;
   opacity: 0.25;
@@ -542,8 +538,8 @@
 }
 
 .ms-empty-desc {
-  font-size: 13px;
-  color: var(--ms-muted);
+  font-size: var(--font-size-base);
+  color: var(--text-weak);
   opacity: 0.4;
   line-height: 1.45;
 }
@@ -566,13 +562,13 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--ms-fg);
+  background: var(--foreground);
   animation: msPulse 1.5s ease infinite;
 }
 
 .ms-status-text {
-  font-size: 13px;
-  color: var(--ms-muted);
+  font-size: var(--font-size-base);
+  color: var(--text-weak);
   letter-spacing: -0.01em;
 }
 
@@ -613,9 +609,9 @@
 }
 
 .ms-output-text {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.7;
-  color: var(--ms-fg);
+  color: var(--text-strong);
   max-width: 520px;
   text-align: left;
 }
@@ -632,15 +628,15 @@
 
 .ms-output-download {
   font-family: var(--ms-mono);
-  font-size: 13px;
-  color: var(--ms-fg);
+  font-size: var(--font-size-base);
+  color: var(--text-strong);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ms-border);
+  text-decoration-color: var(--border-base);
 }
 
 .ms-output-download:hover {
-  text-decoration-color: var(--ms-fg);
+  text-decoration-color: var(--text-strong);
 }
 
 /* ── Actions ── */
@@ -653,21 +649,21 @@
 
 .ms-action {
   font-family: var(--ms-mono);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   padding: 5px 12px;
-  border: 1px solid var(--ms-border);
+  border: 1px solid var(--border-base);
   border-radius: 3px;
   background: transparent;
-  color: var(--ms-muted);
+  color: var(--text-weak);
   cursor: default;
   transition: border-color 0.15s, color 0.15s;
 }
 
 .ms-action:hover {
-  border-color: color-mix(in oklch, var(--ms-fg) 35%, transparent);
-  color: var(--ms-fg);
+  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+  color: var(--text-strong);
 }
 
 /* ── Lightbox ── */
@@ -679,7 +675,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in oklch, var(--ms-fg) 60%, transparent);
+  background: color-mix(in oklch, var(--foreground) 60%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   cursor: zoom-out;
@@ -692,7 +688,7 @@
   object-fit: contain;
   border-radius: 6px;
   cursor: default;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-lg);
 }
 
 .ms-lightbox-close {

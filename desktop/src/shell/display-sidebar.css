@@ -315,8 +315,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   gap: 6px;
   min-height: 0;
   padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
   color: var(--text-base);
   border-color: transparent;
@@ -356,14 +356,14 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   scrollbar-width: thin;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   color: var(--foreground);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.55;
 }
 
 .display-sidebar__content h1,
 .display-sidebar__content h2,
 .display-sidebar__content h3 {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* Wrapper for non-HTML payloads (office preview, PDF viewer). Fills the
@@ -391,7 +391,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   padding: 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface-base, #0f1117);
+  background: var(--surface-base);
 }
 
 .display-sidebar__rich--url > .display-file-preview__header {
@@ -438,7 +438,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   color: var(--text-base);
   /* `.markdown` itself inherits font-size (see markdown.css); the viewer
      is a full-bleed reading surface, so size up from the chat default. */
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   line-height: 1.7;
 }
 
@@ -472,8 +472,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   background: color-mix(in oklch, var(--glass-bg) 92%, var(--background));
   color: var(--text-strong);
   font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -488,7 +488,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   grid-template-columns: 28px minmax(0, 1fr);
   min-width: max-content;
   font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   line-height: 1.55;
   color: var(--text-base);
 }
@@ -530,7 +530,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
   background: transparent;
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: var(--text-base);
   cursor: default;
   transition:
@@ -550,11 +550,11 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 }
 
 .display-diff-batches-chip__label {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .display-diff-batches-chip__time {
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
   color: var(--text-weak);
 }
 
@@ -576,19 +576,19 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 }
 
 .display-diff-line--add {
-  background: color-mix(in oklch, #16a34a 13%, transparent);
+  background: color-mix(in oklch, var(--diff-add) 13%, transparent);
 }
 
 .display-diff-line--add .display-diff-line__marker {
-  color: #16a34a;
+  color: var(--diff-add);
 }
 
 .display-diff-line--delete {
-  background: color-mix(in oklch, #dc2626 12%, transparent);
+  background: color-mix(in oklch, var(--diff-del) 12%, transparent);
 }
 
 .display-diff-line--delete .display-diff-line__marker {
-  color: #dc2626;
+  color: var(--diff-del);
 }
 
 .display-diff-line--meta {
@@ -648,8 +648,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 
 .display-artifact-panel__eyebrow {
   color: var(--text-weak);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.08em;
   line-height: 1.1;
   text-transform: uppercase;
@@ -659,8 +659,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   margin-top: 3px;
   overflow: hidden;
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -669,7 +669,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 .display-artifact-panel__center {
   min-width: 0;
   color: var(--text-base);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
   text-align: center;
   white-space: nowrap;
@@ -691,7 +691,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   background: color-mix(in oklch, var(--background) 84%, transparent);
   color: var(--text-base);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 [data-component="select"]:has(> [data-slot="select-trigger"].display-artifact-panel__zoom) {
@@ -745,12 +745,12 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   padding: 6px 12px;
   border-top: 1px solid color-mix(in oklch, var(--border) 38%, transparent);
   color: var(--text-weak);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .display-artifact-panel__footer strong {
   color: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .display-artifact-status {
@@ -763,7 +763,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 .display-artifact-status__text {
   max-width: 26rem;
   color: var(--text-weak);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.45;
   text-align: center;
 }
@@ -807,8 +807,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   display: block;
   margin-bottom: 2px;
   color: var(--text-weak);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -816,8 +816,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 .display-file-preview__title {
   overflow: hidden;
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -841,7 +841,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   color: var(--text-base);
   cursor: default;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   padding: 5px 9px;
 }
 
@@ -851,7 +851,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 
 .display-file-preview__actions span {
   color: var(--text-weak);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .display-file-preview__error,
@@ -859,7 +859,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   margin: auto;
   max-width: 32rem;
   color: var(--text-weak);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.45;
   text-align: center;
 }
@@ -867,7 +867,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 .display-file-preview__error {
   color: color-mix(
     in oklch,
-    var(--destructive, #c43c3c) 82%,
+    var(--destructive) 82%,
     var(--foreground) 18%
   );
 }
@@ -886,7 +886,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.35;
 }
 
@@ -909,7 +909,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   z-index: 1;
   background: color-mix(in oklch, var(--background) 92%, var(--foreground) 8%);
   color: var(--text-strong);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .display-file-preview__table tr:hover td {
@@ -936,7 +936,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 }
 
 .display-media-meta__cap {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   opacity: 0.55;
@@ -944,7 +944,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 
 .display-media-meta__prompt {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.5;
   opacity: 0.85;
 }
@@ -953,13 +953,13 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
-  background: color-mix(in oklch, var(--destructive, #c43c3c) 12%, transparent);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
   color: color-mix(
     in oklch,
-    var(--destructive, #c43c3c) 85%,
+    var(--destructive) 85%,
     var(--foreground) 15%
   );
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .display-media__loading {
@@ -967,7 +967,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   align-items: center;
   justify-content: center;
   min-height: 160px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   opacity: 0.55;
 }
 
@@ -978,14 +978,14 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   text-align: center;
   min-height: 160px;
   padding: 16px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
   color: var(--text-weak, currentColor);
   opacity: 0.7;
 }
 
 .display-media__filename {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   opacity: 0.55;
   font-family: var(--font-family-mono, "JetBrains Mono", monospace);
   word-break: break-all;
@@ -1086,7 +1086,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   object-fit: contain;
   cursor: default;
   border-radius: 8px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-xl);
 }
 
 .display-media-lightbox__close {
@@ -1126,7 +1126,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 }
 
 .display-media__audio-name {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-weak);
   text-align: center;
   overflow: hidden;
@@ -1242,7 +1242,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 .audio-player__time {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
   color: var(--text-weak);
@@ -1284,8 +1284,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 }
 
 .display-media__download-label {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
 }
 
 .display-media__actions {
@@ -1304,7 +1304,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   border: none;
   border-radius: 8px;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: default;
   font-family: inherit;
 }
@@ -1314,7 +1314,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 }
 
 .display-media__action-status {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--muted-foreground, var(--text-weak));
 }
 
@@ -1333,7 +1333,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   border-radius: 12px;
   border: none;
   background: transparent;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -1384,8 +1384,8 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 
 .display-trash__name {
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1393,7 +1393,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 
 .display-trash__path {
   color: var(--text-weak);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1406,7 +1406,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   align-items: center;
   gap: 6px;
   color: var(--text-weak);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .display-trash__sep {
@@ -1426,7 +1426,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   color: var(--text-base);
   cursor: default;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   padding: 5px 9px;
 }
 

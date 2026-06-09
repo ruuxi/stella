@@ -72,8 +72,8 @@
 /* ═══ Shared text ═══ */
 
 .onboarding-text {
-  font-size: clamp(20px, 3.5vw, 28px);
-  font-weight: 300;
+  font-size: 28px;
+  font-weight: var(--weight-light);
   letter-spacing: 0.06em;
   color: var(--foreground);
   opacity: 0.9;
@@ -144,8 +144,8 @@
   background: none;
   border: none;
   padding: 18px 48px;
-  font-size: clamp(19px, 3.1vw, 26px);
-  font-weight: 300;
+  font-size: 26px;
+  font-weight: var(--weight-light);
   letter-spacing: 0.12em;
   color: var(--foreground);
   opacity: 0.45;
@@ -190,7 +190,7 @@
 
 .onboarding-legal-footer {
   margin-top: 16px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--foreground);
   opacity: 0.35;
   text-align: center;
@@ -250,7 +250,7 @@
 /* ═══ Moment 1: Auth ═══ */
 
 .onboarding-moment--auth .onboarding-text {
-  font-size: clamp(12px, 1.9vw, 15px);
+  font-size: var(--font-size-lg);
   letter-spacing: 0.06em;
   opacity: 0.45;
   margin-bottom: 0;
@@ -317,8 +317,8 @@
   background: none;
   border: none;
   padding: 14px 0;
-  font-size: clamp(18px, 2.8vw, 22px);
-  font-weight: 300;
+  font-size: 22px;
+  font-weight: var(--weight-light);
   letter-spacing: 0.1em;
   color: var(--foreground);
   opacity: 0.45;
@@ -376,8 +376,8 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
   border-radius: 6px;
   padding: 12px 32px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.1em;
   color: var(--foreground);
   cursor: default;
@@ -566,7 +566,7 @@
   text-align: center;
   max-width: 480px;
   margin: 0 auto;
-  font-size: clamp(17px, 2vw, 22px);
+  font-size: 22px;
   line-height: 1.45;
 }
 
@@ -608,8 +608,8 @@
 }
 
 .onboarding-split-title {
-  font-size: clamp(18px, 2.5vw, 24px);
-  font-weight: 300;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--weight-light);
   letter-spacing: 0.06em;
   color: var(--foreground);
   opacity: 0.9;
@@ -664,8 +664,8 @@
 }
 
 .onboarding-step-desc {
-  font-size: 15px;
-  font-weight: 300;
+  font-size: var(--font-size-lg);
+  font-weight: var(--weight-light);
   letter-spacing: 0.02em;
   color: var(--foreground);
   opacity: 0.8;
@@ -674,8 +674,8 @@
 }
 
 .onboarding-step-subdesc {
-  font-size: 12px;
-  font-weight: 300;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-light);
   letter-spacing: 0.02em;
   color: var(--foreground);
   opacity: 0.65;
@@ -684,8 +684,8 @@
 }
 
 .onboarding-step-label {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
   color: var(--foreground);
   opacity: 0.65;
@@ -706,8 +706,8 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   border-radius: 100px;
   padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.04em;
   color: var(--foreground);
   opacity: 0.35;
@@ -759,7 +759,7 @@
 
 .onboarding-pill--sm {
   padding: 6px 14px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 @keyframes onboardingPillStaggerIn {
@@ -841,7 +841,7 @@
 
 .onboarding-theme-row .onboarding-pill {
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .onboarding-theme-grid {
@@ -852,7 +852,7 @@
 
 .onboarding-theme-grid .onboarding-pill {
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 /* Theme step: each sub-row (Appearance → Gradient Style → Color) grows open
@@ -948,8 +948,8 @@
 .onboarding-voice-description {
   --onboarding-collapse-gap: 16px;
   box-sizing: border-box;
-  font-size: 13px;
-  font-weight: 300;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-light);
   letter-spacing: 0.02em;
   color: var(--foreground);
   line-height: 1.4;
@@ -1179,8 +1179,8 @@
 }
 
 .onboarding-discovery-row-label {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   color: var(--foreground);
   display: flex;
@@ -1190,7 +1190,7 @@
 
 .onboarding-discovery-recommended {
   font-size: 9px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--foreground);
@@ -1202,8 +1202,8 @@
 }
 
 .onboarding-discovery-row-desc {
-  font-size: 12px;
-  font-weight: 300;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-light);
   letter-spacing: 0.01em;
   color: var(--foreground);
   opacity: 0.7;
@@ -1211,12 +1211,12 @@
 }
 
 .onboarding-dialogue[data-phase="browser"] .onboarding-step-label {
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .onboarding-dialogue[data-phase="browser"] .onboarding-pill--sm {
   padding: 10px 18px;
-  font-size: 15px;
+  font-size: var(--font-size-lg);
 }
 
 .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row {
@@ -1229,25 +1229,25 @@
 }
 
 .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-desc {
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   line-height: 1.48;
 }
 
 .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-recommended {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
 }
 
 .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-warning-badge {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-warning-text {
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .onboarding-dialogue[data-phase="permissions"] .onboarding-step-label,
 .onboarding-dialogue[data-phase="theme"] .onboarding-step-label {
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .onboarding-dialogue[data-phase="permissions"] .onboarding-step-desc {
@@ -1267,18 +1267,18 @@
 
 .onboarding-dialogue[data-phase="permissions"]
   .onboarding-permission-card__desc {
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   line-height: 1.48;
 }
 
 .onboarding-dialogue[data-phase="permissions"]
   .onboarding-permission-card__meta {
-  font-size: 13px;
+  font-size: var(--font-size-base);
 }
 
 .onboarding-dialogue[data-phase="permissions"]
   .onboarding-permission-card__action {
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .onboarding-dialogue[data-phase="theme"] .onboarding-theme-row .onboarding-pill,
@@ -1287,7 +1287,7 @@
   .onboarding-pill,
 .onboarding-dialogue[data-phase="personality"] .onboarding-pill {
   padding: 10px 18px;
-  font-size: 15px;
+  font-size: var(--font-size-lg);
 }
 
 .onboarding-discovery-warning {
@@ -1296,23 +1296,23 @@
   gap: 6px;
   margin: 0;
   padding: 10px 14px;
-  border-left: 2px solid oklch(0.55 0.2 25);
+  border-left: 2px solid var(--destructive);
 }
 
 .onboarding-discovery-warning-badge {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: oklch(0.55 0.2 25);
+  color: var(--destructive);
   opacity: 0.9;
 }
 
 .onboarding-discovery-warning-text {
-  font-size: 13px;
-  font-weight: 300;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-light);
   letter-spacing: 0.02em;
-  color: oklch(0.55 0.2 25);
+  color: var(--destructive);
   opacity: 0.85;
   line-height: 1.5;
   margin: 0;
@@ -1332,8 +1332,8 @@
   border-radius: 10px;
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
   line-height: 1.4;
   color: var(--foreground);
@@ -1382,8 +1382,8 @@
   flex: 0 0 auto;
   background: var(--foreground);
   border: none;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   color: var(--background);
   cursor: default;
@@ -1574,8 +1574,8 @@
 }
 
 .onboarding-mock-window-title {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.04em;
   color: var(--foreground);
   opacity: 0.4;
@@ -1598,7 +1598,7 @@
 
 .mock-window-section-label {
   font-size: 9px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--foreground);
@@ -1614,8 +1614,8 @@
 }
 
 .mock-window-tag {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   color: var(--foreground);
   opacity: 0.6;
@@ -1634,15 +1634,15 @@
 }
 
 .mock-window-detail-name {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   color: var(--foreground);
   opacity: 0.65;
 }
 
 .mock-window-detail-value {
-  font-size: 10px;
-  font-weight: 300;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-light);
   color: var(--foreground);
   opacity: 0.4;
   font-variant-numeric: tabular-nums;
@@ -1728,14 +1728,14 @@
 }
 
 .onboarding-shortcut-demo__copy .onboarding-step-label {
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   letter-spacing: 0.1em;
 }
 
 .onboarding-shortcut-demo__title {
   margin: 0;
-  font-size: clamp(22px, 2.5vw, 28px);
-  font-weight: 300;
+  font-size: 28px;
+  font-weight: var(--weight-light);
   letter-spacing: 0.04em;
   color: var(--foreground);
   opacity: 0.9;
@@ -1743,7 +1743,7 @@
 }
 
 .onboarding-shortcut-demo__copy .onboarding-step-subdesc {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.6;
   opacity: 0.55;
 }
@@ -1771,9 +1771,7 @@
       color-mix(in oklch, var(--background) 88%, white 12%),
       color-mix(in oklch, var(--background) 94%, black 6%)
     );
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklch, white 45%, transparent),
-    0 24px 60px color-mix(in oklch, black 10%, transparent);
+  box-shadow: var(--shadow-lg);
   user-select: none;
 }
 
@@ -1817,7 +1815,7 @@
 .scene-effect__mini-shell-msg {
   padding: 7px 10px;
   border-radius: 12px;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   line-height: 1.45;
   color: var(--foreground);
 }
@@ -1827,7 +1825,7 @@
   max-width: 80%;
   background: color-mix(
     in oklch,
-    var(--primary, oklch(0.62 0.18 235)) 12%,
+    var(--primary) 12%,
     transparent
   );
   border-radius: 12px 12px 4px 12px;
@@ -1906,17 +1904,17 @@
 }
 
 .onboarding-shortcut-result-description strong {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;
   color: var(--foreground);
   opacity: 0.85;
 }
 
 .onboarding-shortcut-result-description span {
-  font-size: 20px;
+  font-size: var(--font-size-2xl);
   line-height: 1.55;
-  font-weight: 300;
+  font-weight: var(--weight-light);
   color: var(--foreground);
   opacity: 0.6;
 }
@@ -1970,10 +1968,7 @@
   background: color-mix(in oklch, var(--background) 98%, white 2%);
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
   border-radius: 16px;
-  box-shadow:
-    0 1px 0 color-mix(in oklch, white 60%, transparent) inset,
-    -8px 0 24px color-mix(in oklch, black 14%, transparent),
-    0 18px 32px color-mix(in oklch, black 12%, transparent);
+  box-shadow: var(--shadow-overlay);
   animation: sidebarSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   z-index: 4;
   overflow: hidden;
@@ -2006,15 +2001,15 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: color-mix(in oklch, oklch(0.62 0.18 235) 18%, transparent);
-  color: oklch(0.55 0.18 235);
+  background: color-mix(in oklch, var(--primary) 18%, transparent);
+  color: var(--ring);
   flex-shrink: 0;
 }
 
 .onboarding-shortcut-sidebar-demo__title {
   flex: 1;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
   color: var(--foreground);
   opacity: 0.85;
@@ -2060,7 +2055,7 @@
   border-radius: 999px;
   background: var(--background);
   border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  box-shadow: 0 4px 12px color-mix(in oklch, black 6%, transparent);
+  box-shadow: var(--shadow-sm);
 }
 
 .onboarding-shortcut-sidebar-demo__composer-add,
@@ -2081,14 +2076,14 @@
 
 .onboarding-shortcut-sidebar-demo__composer-input {
   flex: 1;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: color-mix(in oklch, var(--foreground) 38%, transparent);
   letter-spacing: -0.01em;
 }
 
 .onboarding-shortcut-sidebar-demo__composer-submit {
-  background: color-mix(in oklch, oklch(0.62 0.18 235) 22%, transparent);
-  color: color-mix(in oklch, oklch(0.55 0.18 235) 80%, var(--foreground));
+  background: color-mix(in oklch, var(--primary) 22%, transparent);
+  color: color-mix(in oklch, var(--ring) 80%, var(--foreground));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2328,15 +2323,15 @@
 }
 
 .onboarding-permission-card__title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   color: var(--foreground);
 }
 
 .onboarding-permission-card__desc {
-  font-size: 12px;
-  font-weight: 300;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-light);
   letter-spacing: 0.01em;
   color: var(--foreground);
   opacity: 0.7;
@@ -2344,8 +2339,8 @@
 }
 
 .onboarding-permission-card__meta {
-  font-size: 11px;
-  font-weight: 300;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-light);
   color: var(--foreground);
   opacity: 0.55;
   line-height: 1.4;
@@ -2357,8 +2352,8 @@
   border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
   border-radius: 6px;
   padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   font-family: inherit;
   color: var(--foreground);
   cursor: default;
@@ -2445,15 +2440,15 @@
 }
 
 .onboarding-extension-card__title {
-  font-size: 15px;
-  font-weight: 500;
+  font-size: var(--font-size-lg);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   color: var(--foreground);
 }
 
 .onboarding-extension-card__desc {
-  font-size: 13px;
-  font-weight: 300;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-light);
   letter-spacing: 0.01em;
   color: var(--foreground);
   opacity: 0.7;
@@ -2461,7 +2456,7 @@
 }
 
 .onboarding-dialogue[data-phase="extension"] .onboarding-step-label {
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .onboarding-dialogue[data-phase="extension"] .onboarding-step-desc {
@@ -2476,14 +2471,14 @@
 
 .onboarding-dialogue[data-phase="extension"]
   .onboarding-extension-card__desc {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.5;
 }
 
 .onboarding-dialogue[data-phase="extension"]
   .onboarding-extension-card
   .onboarding-permission-card__action {
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 /* ── Engine phase ───────────────────────────────────────────────────── */
@@ -2535,14 +2530,14 @@
 
 .onboarding-engine-tile[data-variant="hero"]
   .onboarding-selection-tile-label {
-  font-size: 17px;
+  font-size: var(--font-size-xl);
   letter-spacing: 0.02em;
 }
 
 .onboarding-engine-tile[data-variant="hero"]
   .onboarding-selection-tile-desc {
-  font-size: 13.5px;
-  font-weight: 300;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-light);
   opacity: 0.75;
 }
 
@@ -2566,14 +2561,14 @@
 
 .onboarding-engine-tile[data-variant="compact"]
   .onboarding-selection-tile-label {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   letter-spacing: 0.02em;
 }
 
 .onboarding-engine-tile[data-variant="compact"]
   .onboarding-selection-tile-desc {
-  font-size: 11.5px;
-  font-weight: 300;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-light);
   opacity: 0.65;
   line-height: 1.35;
 }
@@ -2638,7 +2633,7 @@
   background: none;
   color: var(--foreground);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   letter-spacing: 0.02em;
   cursor: default;
   transition:
@@ -2703,14 +2698,14 @@
 }
 
 .onboarding-engine-auth-title {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   letter-spacing: 0.02em;
   color: var(--foreground);
 }
 
 .onboarding-engine-auth-desc {
-  font-size: 12px;
-  font-weight: 300;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-light);
   letter-spacing: 0.01em;
   color: var(--foreground);
   opacity: 0.65;
@@ -2736,8 +2731,8 @@
 
 .onboarding-engine-error {
   margin-top: 10px;
-  font-size: 12px;
-  color: color-mix(in oklch, var(--foreground) 70%, var(--destructive, #c0392b));
+  font-size: var(--font-size-sm);
+  color: color-mix(in oklch, var(--foreground) 70%, var(--destructive));
 }
 
 /* "I'll set this up later" sits flush under the Continue button as a
@@ -2755,7 +2750,7 @@
   border: none;
   color: var(--foreground);
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-md);
   letter-spacing: 0.02em;
   cursor: default;
   height: 0;
@@ -2789,7 +2784,7 @@
 }
 
 .onboarding-dialogue[data-phase="engine"] .onboarding-step-label {
-  font-size: 14px;
+  font-size: var(--font-size-md);
 }
 
 .onboarding-dialogue[data-phase="engine"] .onboarding-step-desc {
@@ -2877,7 +2872,7 @@
   }
 
   .onboarding-split-title {
-    font-size: clamp(16px, 2vw, 20px);
+    font-size: var(--font-size-2xl);
     margin-top: 12px;
   }
 
@@ -2889,17 +2884,17 @@
 
   .onboarding-dialogue[data-phase="permissions"]
     .onboarding-permission-card__title {
-    font-size: 14px;
+    font-size: var(--font-size-md);
   }
 
   .onboarding-dialogue[data-phase="permissions"]
     .onboarding-permission-card__desc {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     line-height: 1.4;
   }
 
   .onboarding-dialogue[data-phase="permissions"] .onboarding-step-desc {
-    font-size: 13px;
+    font-size: var(--font-size-base);
     line-height: 1.5;
   }
 
@@ -2920,7 +2915,7 @@
   }
 
   .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-desc {
-    font-size: 13px;
+    font-size: var(--font-size-base);
     line-height: 1.4;
   }
 
@@ -2977,11 +2972,11 @@
   }
 
   .onboarding-cap-title {
-    font-size: clamp(18px, 2vw, 24px);
+    font-size: var(--font-size-3xl);
   }
 
   .onboarding-cap-caption__body {
-    font-size: clamp(13px, 1.1vw, 15px);
+    font-size: var(--font-size-lg);
     line-height: 1.45;
   }
 
@@ -3026,14 +3021,14 @@
   }
 
   .onboarding-doubletap-step__lede {
-    font-size: clamp(17px, 2vw, 22px);
+    font-size: 22px;
     line-height: 1.4;
   }
 
   .onboarding-doubletap-keycap {
     min-width: 38px;
     height: 38px;
-    font-size: 17px;
+    font-size: var(--font-size-xl);
   }
 
   /* Theme — 4 stacked option groups. Tighten the row spacing only. */
@@ -3044,7 +3039,7 @@
   .onboarding-dialogue[data-phase="theme"] .onboarding-theme-row .onboarding-pill,
   .onboarding-dialogue[data-phase="theme"] .onboarding-theme-grid .onboarding-pill {
     padding: 8px 14px;
-    font-size: 13px;
+    font-size: var(--font-size-base);
   }
 }
 
@@ -3130,7 +3125,7 @@
 
   .onboarding-dialogue[data-phase="permissions"]
     .onboarding-permission-card__desc {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
   }
 
   .onboarding-dialogue[data-phase="permissions"]
@@ -3139,7 +3134,7 @@
   }
 
   .onboarding-dialogue[data-phase="permissions"] .onboarding-step-desc {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
   }
 
   /* Browser rows tighter still. */
@@ -3148,11 +3143,11 @@
   }
 
   .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-label {
-    font-size: 14px;
+    font-size: var(--font-size-md);
   }
 
   .onboarding-dialogue[data-phase="browser"] .onboarding-discovery-row-desc {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
   }
 
   /* Extension — shrink the icon and copy. */
@@ -3163,19 +3158,19 @@
   }
 
   .onboarding-dialogue[data-phase="extension"] .onboarding-step-desc {
-    font-size: 13px;
+    font-size: var(--font-size-base);
   }
 
   /* Double-tap — shrink the lede + keycaps. */
   .onboarding-doubletap-step__lede {
-    font-size: 15px;
+    font-size: var(--font-size-lg);
     line-height: 1.4;
   }
 
   .onboarding-doubletap-keycap {
     min-width: 32px;
     height: 32px;
-    font-size: 15px;
+    font-size: var(--font-size-lg);
   }
 
   .onboarding-doubletap-step,
@@ -3221,8 +3216,8 @@
 }
 
 .onboarding-enter-step__status {
-  font-size: clamp(15px, 1.6vw, 17px);
-  font-weight: 300;
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-light);
   letter-spacing: 0.04em;
   color: var(--foreground);
   opacity: 0.85;
@@ -3297,8 +3292,8 @@
 
 .onboarding-enter-step__suggestion {
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(28px, 3.6vw, 40px);
-  font-weight: 450;
+  font-size: 40px;
+  font-weight: var(--weight-regular);
   letter-spacing: -0.02em;
   line-height: 1.2;
   color: var(--text-strong, var(--foreground));
@@ -3373,8 +3368,8 @@
 
 .onboarding-enter-step[data-ready] .onboarding-enter-step__cta {
   font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
-  font-size: clamp(40px, 5.4vw, 64px);
-  font-weight: 450;
+  font-size: 64px;
+  font-weight: var(--weight-regular);
   letter-spacing: -0.025em;
   line-height: 1.15;
   color: var(--text-strong, var(--foreground));
@@ -3461,8 +3456,8 @@
   padding-inline-start: 12px;
   padding-inline-end: 10px;
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-base);
   opacity: 0.72;
   cursor: default;

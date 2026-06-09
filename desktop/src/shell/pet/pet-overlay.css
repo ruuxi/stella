@@ -19,7 +19,7 @@
   pointer-events: auto;
   user-select: none;
   -webkit-user-select: none;
-  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-family: var(--font-family-sans);
   z-index: 30;
 }
 
@@ -64,8 +64,8 @@ html[data-stella-window="pet"] #root {
   background: var(--background);
   color: var(--text-strong);
   border: 1px solid var(--border-base);
-  box-shadow: var(--shadow-md);
-  font-size: 14px;
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--font-size-md);
   line-height: 1.45;
   pointer-events: auto;
   opacity: 0;
@@ -89,8 +89,8 @@ html[data-stella-window="pet"] #root {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 600;
-  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  font-size: var(--font-size-xs);
   letter-spacing: 0.01em;
   text-transform: uppercase;
   color: var(--text-weak);
@@ -142,8 +142,8 @@ html[data-stella-window="pet"] #root {
   border-radius: 8px;
   background: var(--surface-overlay);
   border: 1px solid var(--border-base);
-  box-shadow: var(--shadow-md);
-  font-size: 12px;
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--font-size-sm);
   color: var(--text-strong);
   z-index: 40;
 }
@@ -160,7 +160,7 @@ html[data-stella-window="pet"] #root {
   color: inherit;
   cursor: default;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-family: inherit;
 }
 

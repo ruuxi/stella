@@ -70,13 +70,13 @@
 }
 
 .voice-picker-card-name {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
 }
 
 .voice-picker-card-desc {
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -161,8 +161,8 @@
 
 .voice-picker-auth-error {
   margin: 0;
-  font-size: 11.5px;
-  color: var(--danger, #c2410c);
+  font-size: var(--font-size-xs);
+  color: var(--destructive);
 }
 
 /* ── Voice stepper ────────────────────────────────────────────── */
@@ -223,8 +223,8 @@
   gap: 6px;
   cursor: default;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   border-left: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
   border-right: 1px solid color-mix(in oklch, var(--border) 40%, transparent);
@@ -260,7 +260,7 @@
 .voice-picker-stepper-desc {
   margin: 0;
   padding: 0 2px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
   text-align: center;
 }
@@ -296,14 +296,14 @@
 }
 
 .voice-picker-menu-item-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
   letter-spacing: -0.005em;
 }
 
 .voice-picker-menu-item-desc {
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   line-height: 1.35;
   color: var(--text-weak);
 }
@@ -330,8 +330,8 @@
 }
 
 .voice-picker-speed-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-weak);
@@ -339,8 +339,8 @@
 
 .voice-picker-speed-value {
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
 }
 
@@ -363,7 +363,7 @@
   border-radius: 50%;
   background: var(--text-strong);
   border: 2px solid var(--background, #fff);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-sm);
   cursor: default;
   transition: transform 120ms ease;
 }
@@ -380,7 +380,7 @@
 .voice-picker-speed-marks {
   display: flex;
   justify-content: space-between;
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
 }
@@ -401,14 +401,14 @@
 
 .voice-picker-readaloud [data-component="switch"] [data-slot="switch-label"] {
   flex: 1 1 auto;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
 }
 
 .voice-picker-readaloud-desc {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
   color: var(--text-weak);
 }

@@ -7,8 +7,8 @@
 }
 
 .local-runtime-options-title {
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-weak);
@@ -16,8 +16,8 @@
 
 .local-runtime-options-error {
   margin: 0;
-  font-size: 11.5px;
-  color: var(--danger, #c2410c);
+  font-size: var(--font-size-xs);
+  color: var(--destructive);
 }
 
 .local-runtime-options-row {
@@ -32,21 +32,21 @@
 }
 
 .local-runtime-options-row-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
   color: var(--text-strong);
 }
 
 .local-runtime-options-row-sublabel {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-weak);
 }
 
 .local-runtime-options-row-sublabel code {
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10.5px;
+  font-size: var(--font-size-2xs);
 }
 
 .local-runtime-options-toggle {
@@ -66,8 +66,8 @@
   padding: 4px 14px;
   border-radius: var(--radius-full);
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-weak);
   cursor: default;
   transition:
@@ -82,7 +82,7 @@
 .local-runtime-options-toggle-btn[data-active] {
   background: var(--background, #fff);
   color: var(--text-strong);
-  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-subtle);
 }
 
 .local-runtime-options-toggle-btn:disabled {
@@ -95,8 +95,8 @@
   width: 72px;
   padding: 5px 8px;
   font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   background: var(--background, #fff);
   border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);

@@ -12,11 +12,12 @@
 }
 
 .schedule-details-dialog [data-slot="dialog-header"] {
-  padding: 18px 18px 6px 22px;
+  padding: var(--dialog-header-pad);
+  padding-bottom: var(--space-1_5);
 }
 
 .schedule-details-dialog [data-slot="dialog-description"] {
-  padding: 0 22px 4px;
+  padding: 0 var(--space-6) var(--space-1);
   margin-top: 0;
 }
 
@@ -35,7 +36,7 @@
 
 .schedule-details-dialog__empty {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--text-weak);
 }
 
@@ -61,8 +62,8 @@
 }
 
 .schedule-details-dialog__row-name {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
   color: var(--text-strong);
   line-height: 1.35;
   overflow: hidden;
@@ -78,7 +79,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: var(--font-size-sm);
   color: var(--text-weak);
   font-variant-numeric: tabular-nums;
 }
@@ -96,6 +97,6 @@
 
 .schedule-details-dialog__row-error {
   margin: 0;
-  font-size: 12px;
-  color: var(--destructive, #c33);
+  font-size: var(--font-size-sm);
+  color: var(--destructive);
 }

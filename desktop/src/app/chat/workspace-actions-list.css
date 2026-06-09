@@ -7,7 +7,7 @@
   gap: 2px;
   width: 100%;
   min-width: 0;
-  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-family: var(--font-family-sans);
   pointer-events: auto;
   user-select: none;
 }
@@ -32,8 +32,8 @@
   margin: 0 -6px;
   color: var(--text-base);
   font: inherit;
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-regular);
   line-height: 1.35;
   letter-spacing: 0;
   text-align: left;
