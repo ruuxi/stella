@@ -180,6 +180,53 @@ const coalesceInlineImageRows = (
   return out
 }
 
+const isVoiceOnlyRow = (row: AssistantRowViewModel): boolean =>
+  !!row.voiceSession &&
+  row.text.trim().length === 0 &&
+  !row.officePreviewRef &&
+  !row.resourcePayload &&
+  !(row.inlineImagePayloads?.length) &&
+  !(row.sourceDiffPayloads?.length) &&
+  !row.selfModApplied &&
+  !row.scheduleReceipt &&
+  !row.customSlot
+
+/**
+ * Collapse a run of back-to-back voice-session summary rows (no user
+ * message or other assistant content between them) into a single
+ * "Talked with Stella" chip whose duration is the sum of the run, rather
+ * than stacking one chip per session.
+ */
+const coalesceVoiceSessionRows = (
+  rows: EventRowViewModel[],
+): EventRowViewModel[] => {
+  const out: EventRowViewModel[] = []
+  for (const row of rows) {
+    if (row.kind !== 'assistant' || !isVoiceOnlyRow(row)) {
+      out.push(row)
+      continue
+    }
+    const prev = out[out.length - 1]
+    if (
+      prev?.kind === 'assistant' &&
+      isVoiceOnlyRow(prev) &&
+      prev.voiceSession &&
+      row.voiceSession
+    ) {
+      out[out.length - 1] = {
+        ...prev,
+        voiceSession: {
+          ...prev.voiceSession,
+          durationMs: prev.voiceSession.durationMs + row.voiceSession.durationMs,
+        },
+      }
+      continue
+    }
+    out.push(row)
+  }
+  return out
+}
+
 /**
  * Stable React key for an assistant row. Live-streaming overlays and
  * their eventual persisted counterparts share this key (both anchor
@@ -397,7 +444,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
     }
 
-    return coalesceInlineImageRows(computed)
+    return coalesceVoiceSessionRows(coalesceInlineImageRows(computed))
   }, [
     developerResourcePreviewsEnabled,
     displayMessages,

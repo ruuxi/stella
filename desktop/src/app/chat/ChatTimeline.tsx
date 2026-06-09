@@ -135,9 +135,61 @@ type ChatTimelineProps = {
   contentContainerStyle?: CSSProperties;
 };
 
-const ItemSeparator = () => <div style={{ height: 20 }} aria-hidden="true" />;
+/** Default spacing between two chat rows. */
+const ROW_GAP = 20;
+/**
+ * Spacing between two consecutive assistant rows (no user message or
+ * other content between them) — tightened so a multi-message assistant
+ * reply reads as one continuous block rather than separate turns.
+ */
+const ASSISTANT_RUN_GAP = 8;
+/**
+ * Spacing between two consecutive card/artifact-only assistant rows
+ * (resource cards, source diffs, inline images, schedule receipts, …).
+ * Zero so a run of stacked cards reads as a single grouped list.
+ */
+const CARD_RUN_GAP = 0;
 
-type TimelineListItem = { id: string; row: EventRowViewModel };
+/**
+ * A "card row" is an assistant row whose body is purely an inline
+ * artifact card with no message text — these are the rows we want to
+ * stack flush when several land back to back.
+ */
+const isCardRow = (row: EventRowViewModel): boolean =>
+  row.kind === "assistant" &&
+  row.text.trim().length === 0 &&
+  Boolean(
+    row.resourcePayload ||
+      row.sourceDiffPayloads?.length ||
+      row.inlineImagePayloads?.length ||
+      row.officePreviewRef ||
+      row.scheduleReceipt ||
+      row.selfModApplied ||
+      row.customSlot,
+  );
+
+const gapAfterRow = (
+  current: EventRowViewModel,
+  next: EventRowViewModel | undefined,
+): number => {
+  if (!next) return ROW_GAP;
+  if (isCardRow(current) && isCardRow(next)) return CARD_RUN_GAP;
+  if (current.kind === "assistant" && next.kind === "assistant") {
+    return ASSISTANT_RUN_GAP;
+  }
+  return ROW_GAP;
+};
+
+type TimelineListItem = {
+  id: string;
+  row: EventRowViewModel;
+  /** Pre-computed spacing rendered below this row by the separator. */
+  gapAfter: number;
+};
+
+const ItemSeparator = ({ leadingItem }: { leadingItem: TimelineListItem }) => (
+  <div style={{ height: leadingItem.gapAfter }} aria-hidden="true" />
+);
 
 const renderRow = (
   row: EventRowViewModel,
@@ -183,7 +235,12 @@ export const ChatTimeline = memo(function ChatTimeline({
   contentContainerStyle,
 }: ChatTimelineProps) {
   const listItems = useMemo<TimelineListItem[]>(
-    () => rows.map((row) => ({ id: row.id, row })),
+    () =>
+      rows.map((row, index) => ({
+        id: row.id,
+        row,
+        gapAfter: gapAfterRow(row, rows[index + 1]),
+      })),
     [rows],
   );
 
