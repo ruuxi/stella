@@ -767,6 +767,54 @@ const maybeTrashNativeWindowsDeletes = async (
   };
 };
 
+// dugite's setupEnvironment rebuilds the entire environment map on every call
+// just to graft the embedded git onto it. Its contribution depends only on a
+// handful of input keys — plus PATH, which it prepends the embedded-git bin
+// dirs to on Windows — so compute the delta once per distinct input tuple and
+// merge the cached result into each shell env instead.
+const DUGITE_ENV_INPUT_KEYS = [
+  "LOCAL_GIT_DIRECTORY",
+  "GIT_EXEC_PATH",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_SSL_CAINFO",
+] as const;
+
+type DugiteEnvContribution = {
+  pathPrefix: string;
+  vars: [string, string][];
+};
+
+const dugiteEnvContributions = new Map<string, DugiteEnvContribution>();
+
+const getDugiteEnvContribution = (
+  mergedEnv: NodeJS.ProcessEnv,
+): DugiteEnvContribution => {
+  const inputs = DUGITE_ENV_INPUT_KEYS.map((key) => mergedEnv[key]);
+  const cacheKey = JSON.stringify(inputs);
+  const cached = dugiteEnvContributions.get(cacheKey);
+  if (cached) return cached;
+
+  const probe: Record<string, string> = { PATH: "" };
+  DUGITE_ENV_INPUT_KEYS.forEach((key, index) => {
+    const value = inputs[index];
+    if (value !== undefined) probe[key] = value;
+  });
+  const { env } = setupEnvironment(probe, {});
+  const vars: [string, string][] = [];
+  for (const [key, value] of Object.entries(env)) {
+    if (key === "PATH" || value === undefined || probe[key] === value) continue;
+    vars.push([key, value]);
+  }
+  const contribution: DugiteEnvContribution = {
+    // With an empty probe PATH the output PATH is exactly the prefix dugite
+    // prepends ("" on platforms where it leaves PATH alone).
+    pathPrefix: env.PATH ?? "",
+    vars,
+  };
+  dugiteEnvContributions.set(cacheKey, contribution);
+  return contribution;
+};
+
 const buildShellEnv = (
   envOverrides?: Record<string, string>,
   options?: {
@@ -824,7 +872,27 @@ const buildShellEnv = (
     mergedEnv.STELLA_WINDOWS_CLI_SHIM_DIR = options.windowsCliShimDir;
   }
 
-  return setupEnvironment(mergedEnv).env;
+  const dugite = getDugiteEnvContribution(mergedEnv);
+  for (const [key, value] of dugite.vars) {
+    mergedEnv[key] = value;
+  }
+  if (dugite.pathPrefix) {
+    // Mirror dugite's case-insensitive env map on Windows: when PATH appears
+    // under several casings, the last assignment wins and the first-seen
+    // casing is kept.
+    const pathKeys = Object.keys(mergedEnv).filter(
+      (key) => key.toLowerCase() === "path",
+    );
+    const existingPath = pathKeys.length
+      ? mergedEnv[pathKeys[pathKeys.length - 1]]
+      : "";
+    for (const key of pathKeys.slice(1)) {
+      delete mergedEnv[key];
+    }
+    mergedEnv[pathKeys[0] ?? "PATH"] =
+      `${dugite.pathPrefix}${typeof existingPath === "string" ? existingPath : ""}`;
+  }
+  return mergedEnv;
 };
 
 // macOS ships /bin/bash on every install. Linux's FHS guarantees /bin/bash

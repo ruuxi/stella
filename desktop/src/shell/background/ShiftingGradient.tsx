@@ -6,6 +6,7 @@ import {
 } from "react";
 import { useTheme } from "@/context/theme-context";
 import { cssToRgb } from "@/shared/lib/color";
+import { shouldUseLowPowerEffects } from "@/shared/lib/device-perf";
 import { generateGradientTokens } from "@/shared/theme/color";
 import { cn } from "@/shared/lib/utils";
 import "./ShiftingGradient.css";
@@ -183,9 +184,12 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   className,
   mode = "soft",
   colorMode = "relative",
-  lightweight = false,
+  lightweight: lightweightProp = false,
   contained = false,
 }: ShiftingGradientProps) {
+  // The canvas path runs a per-pixel CPU blend loop on the main thread at
+  // paint time, so low-power devices always take the CSS-gradient path.
+  const lightweight = lightweightProp || shouldUseLowPowerEffects();
   const { resolvedColorMode, theme, colors, forcedMode } = useTheme();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);

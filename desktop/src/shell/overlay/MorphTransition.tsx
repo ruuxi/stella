@@ -6,6 +6,7 @@ import {
   type MorphVisualTiming,
 } from "../../shared/contracts/morph-timing";
 import { useTheme } from "@/context/theme-context";
+import { shouldUseLowPowerEffects } from "@/shared/lib/device-perf";
 
 /** Onboarding demo morph — stronger distortion + slower timing (see `flavor` IPC). */
 const ONBOARDING_MORPH_STEADY_STRENGTH = 0.65;
@@ -85,6 +86,10 @@ void main() {
  * painting a color, the band acts as a saturation lens: it pushes the
  * underlying content's own colors more vivid as the sweep passes over it.
  */
+// Low-power devices drop to 16 taps; the IGN per-pixel spiral rotation turns
+// the undersampling into film grain rather than visible rings.
+const BLUR_TAPS = shouldUseLowPowerEffects() ? 16 : 48;
+
 const BLUR_FRAG = `
 precision highp float;
 uniform sampler2D u_tex;
@@ -99,7 +104,7 @@ uniform sampler2D u_label;
 uniform float u_has_label;
 varying vec2 v_uv;
 
-const int BLUR_TAPS = 48;
+const int BLUR_TAPS = ${BLUR_TAPS};
 const float TWO_PI = 6.28318530718;
 const float PI = 3.14159265359;
 const float GOLDEN_ANGLE = 2.39996323;

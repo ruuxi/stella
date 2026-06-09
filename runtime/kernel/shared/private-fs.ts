@@ -22,52 +22,56 @@ const chmodBestEffortSync = (targetPath: string, mode: number) => {
   }
 };
 
-const tightenWindowsAcl = async (targetPath: string) => {
+// The (OI)(CI) flags make the grant inheritable by files and subdirectories
+// created inside, so one icacls per directory covers every subsequent private
+// file write — no per-file spawn. Hardened paths are memoized per process;
+// every CreateProcess on Windows is Defender-scanned, so repeat
+// ensurePrivateDir calls must not re-spawn.
+const hardenedWindowsDirs = new Set<string>();
+
+const windowsDirAclArgs = (dirPath: string): string[] | null => {
   if (process.platform !== "win32") {
-    return;
+    return null;
   }
   const username = process.env.USERNAME;
   if (!username) {
+    return null;
+  }
+  const resolved = path.resolve(dirPath);
+  if (hardenedWindowsDirs.has(resolved)) {
+    return null;
+  }
+  hardenedWindowsDirs.add(resolved);
+  return [resolved, "/grant", `${username}:(OI)(CI)F`];
+};
+
+const tightenWindowsDirAcl = async (dirPath: string) => {
+  const args = windowsDirAclArgs(dirPath);
+  if (!args) {
     return;
   }
 
   await new Promise<void>((resolve) => {
-    const child = spawn(
-      "icacls",
-      [
-        targetPath,
-        "/grant",
-        `${username}:F`,
-      ],
-      {
-        stdio: "ignore",
-        windowsHide: true,
-      },
-    );
+    const child = spawn("icacls", args, {
+      stdio: "ignore",
+      windowsHide: true,
+    });
     child.on("close", () => resolve());
     child.on("error", () => resolve());
   });
 };
 
-const tightenWindowsAclSync = (targetPath: string) => {
-  if (process.platform !== "win32") {
-    return;
-  }
-  const username = process.env.USERNAME;
-  if (!username) {
+const tightenWindowsDirAclSync = (dirPath: string) => {
+  const args = windowsDirAclArgs(dirPath);
+  if (!args) {
     return;
   }
 
   try {
-    const child = spawnSync("icacls", [
-      targetPath,
-      "/grant",
-      `${username}:F`,
-    ], {
+    spawnSync("icacls", args, {
       stdio: "ignore",
       windowsHide: true,
     });
-    void child;
   } catch {
     // Ignore ACL hardening failures.
   }
@@ -76,13 +80,13 @@ const tightenWindowsAclSync = (targetPath: string) => {
 export const ensurePrivateDir = async (dirPath: string) => {
   await fsPromises.mkdir(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE });
   await chmodBestEffort(dirPath, PRIVATE_DIR_MODE);
-  await tightenWindowsAcl(dirPath);
+  await tightenWindowsDirAcl(dirPath);
 };
 
 export const ensurePrivateDirSync = (dirPath: string) => {
   fs.mkdirSync(dirPath, { recursive: true, mode: PRIVATE_DIR_MODE });
   chmodBestEffortSync(dirPath, PRIVATE_DIR_MODE);
-  tightenWindowsAclSync(dirPath);
+  tightenWindowsDirAclSync(dirPath);
 };
 
 export const writePrivateFile = async (
@@ -95,7 +99,6 @@ export const writePrivateFile = async (
     mode: PRIVATE_FILE_MODE,
   });
   await chmodBestEffort(filePath, PRIVATE_FILE_MODE);
-  await tightenWindowsAcl(filePath);
 };
 
 export const writePrivateFileSync = (
@@ -108,5 +111,4 @@ export const writePrivateFileSync = (
     mode: PRIVATE_FILE_MODE,
   });
   chmodBestEffortSync(filePath, PRIVATE_FILE_MODE);
-  tightenWindowsAclSync(filePath);
 };

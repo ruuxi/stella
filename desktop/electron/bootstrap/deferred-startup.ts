@@ -1,6 +1,10 @@
 import { ChronicleController } from "../services/chronicle-controller.js";
 import { type BootstrapContext } from "./context.js";
 import { getMainLogger } from "../observability/main-logger.js";
+import {
+  getTotalSystemMemoryMb,
+  isLowMemoryWindowsDevice,
+} from "../resource-profile.js";
 
 // Chronicle refreshes the rolling 10-min summary once per minute and the
 // rolling 6-hour summary once per hour.
@@ -110,6 +114,15 @@ const armChronicleTick = (
 
 const scheduleOverlayWarmup = (context: BootstrapContext): void => {
   const { state } = context;
+  // The overlay self-creates on demand via `ensureReady()`, so skipping the
+  // warm on a low-memory Windows device only trades first-summon latency for
+  // not carrying a second renderer the session may never use.
+  if (isLowMemoryWindowsDevice()) {
+    getMainLogger()?.process("startup.overlay-warmup.skipped-low-memory-windows", {
+      totalMemoryMb: getTotalSystemMemoryMb(),
+    });
+    return;
+  }
   state.processRuntime.setManagedTimeout(() => {
     void (async () => {
       if (state.isQuitting || state.processRuntime.isShuttingDown()) {
@@ -134,6 +147,12 @@ const createDeferredStartupTasks = (
   context: BootstrapContext,
 ): DeferredStartupTask[] => {
   const { config, state } = context;
+
+  // Chronicle is macOS-only (`ChronicleController.start()` reports
+  // unsupported-platform elsewhere); skip its daemon and tick tasks entirely
+  // on other platforms so the tick intervals never arm — they would wake the
+  // main process forever for no-op work.
+  const chronicleSupported = process.platform === "darwin";
 
   // Perf: the overlay's cold second-renderer is no longer eagerly built here.
   // Every overlay show entrypoint (radial/voice/region-capture/screen-guide/
@@ -160,21 +179,29 @@ const createDeferredStartupTasks = (
         scheduleOverlayWarmup(context);
       },
     },
-    {
-      label: "chronicle-daemon",
-      delayMs: config.startupStageDelayMs,
-      run: async () => {
-        const stellaDataDir = state.stellaDataDirPath;
-        if (!stellaDataDir) return;
-        if (!state.chronicleController) {
-          state.chronicleController = new ChronicleController(stellaDataDir);
-        }
-        const result = await state.chronicleController.start();
-        if (!result.started) {
-          console.log(`[chronicle] not started: ${result.reason ?? "unknown"}`);
-        }
-      },
-    },
+    ...(chronicleSupported
+      ? [
+          {
+            label: "chronicle-daemon",
+            delayMs: config.startupStageDelayMs,
+            run: async () => {
+              const stellaDataDir = state.stellaDataDirPath;
+              if (!stellaDataDir) return;
+              if (!state.chronicleController) {
+                state.chronicleController = new ChronicleController(
+                  stellaDataDir,
+                );
+              }
+              const result = await state.chronicleController.start();
+              if (!result.started) {
+                console.log(
+                  `[chronicle] not started: ${result.reason ?? "unknown"}`,
+                );
+              }
+            },
+          },
+        ]
+      : []),
     {
       // One-shot catch-up sweep: anything left in thread_summaries or
       // memories_extensions/ from the prior session should get folded
@@ -185,23 +212,30 @@ const createDeferredStartupTasks = (
         triggerDreamWhenAgentReady(context, "startup_catchup");
       },
     },
-    {
-      // Chronicle 10-minute rolling summary: distill the last ~10 min of OCR
-      // deltas every minute and write the file. Dream is not poked here — the
-      // refreshed file just accumulates and is folded on the next
-      // orchestrator-driven Dream run (token-interval / pre-compaction).
-      label: "chronicle-10m-tick",
-      delayMs: CHRONICLE_FIRST_TICK_DELAY_MS,
-      run: () => armChronicleTick(context, "10m", CHRONICLE_10M_TICK_INTERVAL_MS),
-    },
-    {
-      // Chronicle 6-hour rolling summary: hourly distillation of the last
-      // ~6 h of activity. Same pattern as the 10m tick but at a slower
-      // cadence and a longer window. Also does not poke Dream.
-      label: "chronicle-6h-tick",
-      delayMs: CHRONICLE_FIRST_TICK_DELAY_MS,
-      run: () => armChronicleTick(context, "6h", CHRONICLE_6H_TICK_INTERVAL_MS),
-    },
+    ...(chronicleSupported
+      ? [
+          {
+            // Chronicle 10-minute rolling summary: distill the last ~10 min of
+            // OCR deltas every minute and write the file. Dream is not poked
+            // here — the refreshed file just accumulates and is folded on the
+            // next orchestrator-driven Dream run (token-interval /
+            // pre-compaction).
+            label: "chronicle-10m-tick",
+            delayMs: CHRONICLE_FIRST_TICK_DELAY_MS,
+            run: () =>
+              armChronicleTick(context, "10m", CHRONICLE_10M_TICK_INTERVAL_MS),
+          },
+          {
+            // Chronicle 6-hour rolling summary: hourly distillation of the
+            // last ~6 h of activity. Same pattern as the 10m tick but at a
+            // slower cadence and a longer window. Also does not poke Dream.
+            label: "chronicle-6h-tick",
+            delayMs: CHRONICLE_FIRST_TICK_DELAY_MS,
+            run: () =>
+              armChronicleTick(context, "6h", CHRONICLE_6H_TICK_INTERVAL_MS),
+          },
+        ]
+      : []),
   ];
 };
 

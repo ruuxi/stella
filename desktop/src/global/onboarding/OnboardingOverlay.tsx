@@ -26,6 +26,7 @@ import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { LegalDialog } from "@/global/legal/LegalDialog";
 import { CREATURE_INITIAL_SIZE } from "@/global/onboarding/use-onboarding-overlay";
+import { shouldUseLowPowerEffects } from "@/shared/lib/device-perf";
 import {
   LOCALE_NATIVE_LABELS,
   useI18n,
@@ -154,6 +155,10 @@ export function OnboardingView({
   const t = useT();
   const { locale, setLocale, supportedLocales } = useI18n();
 
+  // The creature is a hero visual, but onboarding is long-lived — on
+  // low-power devices cap it to the WorkingIndicator's render budget.
+  const lowPowerCreature = shouldUseLowPowerEffects();
+
   // The language switch is only relevant on the very first screen —
   // once the user starts, every other phase has its own layout and
   // settings already exposes the picker afterwards.
@@ -206,6 +211,8 @@ export function OnboardingView({
           ref={stellaAnimationRef}
           width={70}
           height={39}
+          maxDpr={lowPowerCreature ? 1 : undefined}
+          frameSkip={lowPowerCreature ? 2 : 0}
           initialBirthProgress={
             creatureInitialBirth ??
             (onboardingDone ? 1 : CREATURE_INITIAL_SIZE)

@@ -465,13 +465,13 @@ $procs | ConvertTo-Json -Compress
  * Shared cleaning/filtering for Windows windowed-process snapshots, used by
  * both the native `recent_apps` helper and the PowerShell fallback (both emit
  * the same `WinProcess` field shape). Sorts foreground-first, drops Stella /
- * OS-chrome noise, dedups by pid, resolves icons, and caps to `limit`.
+ * OS-chrome noise, dedups by pid, resolves icons concurrently, and caps to
+ * `limit`.
  */
 const buildRecentAppsFromWinProcesses = async (
   parsed: WinProcess[],
   limit: number,
 ): Promise<RecentApp[]> => {
-  const cleaned: RecentApp[] = []
   const seenPids = new Set<number>()
   // Foreground window first, then by name (case-insensitive) for stable order.
   parsed.sort((a, b) => {
@@ -483,6 +483,8 @@ const buildRecentAppsFromWinProcesses = async (
     return aName.localeCompare(bName)
   })
 
+  const kept: { raw: WinProcess; name: string; pid: number; windowTitle: string }[] =
+    []
   for (const raw of parsed) {
     const rawName = raw.ProcessName?.trim()
     const pid = typeof raw.Id === 'number' ? raw.Id : NaN
@@ -493,20 +495,35 @@ const buildRecentAppsFromWinProcesses = async (
     if (isNoiseName(rawName)) continue
     if (seenPids.has(pid)) continue
     seenPids.add(pid)
-
-    const iconDataUrl = await resolveWindowsIconDataUrl(raw.ExecutablePath)
-
-    cleaned.push({
-      name: cleanWindowsName(rawName),
-      pid,
-      isActive: Boolean(raw.IsActive),
-      windowTitle: windowTitle || undefined,
-      iconDataUrl,
-    })
-    if (cleaned.length >= limit) break
+    kept.push({ raw, name: rawName, pid, windowTitle })
+    if (kept.length >= limit) break
   }
 
-  return cleaned.slice(0, Math.max(0, limit))
+  // Each cache miss is a getFileIcon + resize + toDataURL round trip, so
+  // resolve all icons concurrently; share one promise per executable path so
+  // multiple processes of the same app don't decode the icon twice.
+  const iconPromisesByPath = new Map<string, Promise<string | undefined>>()
+  const icons = await Promise.all(
+    kept.map(({ raw }) => {
+      const exePath =
+        typeof raw.ExecutablePath === 'string' ? raw.ExecutablePath.trim() : ''
+      if (!exePath) return Promise.resolve<string | undefined>(undefined)
+      let promise = iconPromisesByPath.get(exePath)
+      if (!promise) {
+        promise = resolveWindowsIconDataUrl(raw.ExecutablePath)
+        iconPromisesByPath.set(exePath, promise)
+      }
+      return promise
+    }),
+  )
+
+  return kept.map((entry, index) => ({
+    name: cleanWindowsName(entry.name),
+    pid: entry.pid,
+    isActive: Boolean(entry.raw.IsActive),
+    windowTitle: entry.windowTitle || undefined,
+    iconDataUrl: icons[index],
+  }))
 }
 
 // ---------------------------------------------------------------------------

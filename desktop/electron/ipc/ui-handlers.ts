@@ -112,15 +112,16 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
           win.setBounds(work, false);
           win.setWindowButtonVisibility(false);
         } else if (process.platform === "win32") {
-          if (!win.isFullScreen()) win.setFullScreen(true);
+          // Work-area bounds rather than setFullScreen: exclusive fullscreen
+          // forces a display-topology change and heavier DWM compositing for
+          // a surface that only needs to look edge-to-edge.
+          win.setBounds(work, false);
         } else {
           win.setBounds(display.bounds, false);
         }
       } else {
         if (process.platform === "darwin") {
           win.setWindowButtonVisibility(true);
-        } else if (process.platform === "win32") {
-          if (win.isFullScreen()) win.setFullScreen(false);
         }
         const width = Math.min(DEFAULT_WIDTH, work.width);
         const height = Math.min(DEFAULT_HEIGHT, work.height);
