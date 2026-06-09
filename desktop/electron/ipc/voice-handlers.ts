@@ -34,6 +34,8 @@ import {
   IPC_VOICE_ORCHESTRATOR_CONFIG,
   IPC_VOICE_CREATE_XAI_SESSION,
   IPC_VOICE_CREATE_INWORLD_SESSION,
+  IPC_VOICE_REPORT_SESSION_ERROR,
+  IPC_VOICE_SESSION_ERROR,
 } from "../../src/shared/contracts/ipc-channels.js";
 
 type VoiceHandlersOptions = {
@@ -247,6 +249,35 @@ export const registerVoiceHandlers = (options: VoiceHandlersOptions) => {
     }
     options.getBroadcastToMobile?.()?.("voice:runtimeState", runtimeState);
   };
+
+  // The voice runtime lives in the hidden, screen-spanning overlay window, so
+  // a toast raised there is painted where the user can never see it. Route
+  // actionable voice errors to the visible app window instead (full/mini),
+  // where the toast — and its sign-in / settings CTA — work as expected.
+  const emitVoiceSessionErrorToast = (message: unknown) => {
+    const trimmed = typeof message === "string" ? message.trim() : "";
+    if (!trimmed) return;
+    const fullWindow = options.windowManager.getFullWindow();
+    const miniWindow = options.windowManager.getMiniWindow();
+    const preferred =
+      options.uiState.window === "mini" ? miniWindow : fullWindow;
+    const fallback =
+      options.uiState.window === "mini" ? fullWindow : miniWindow;
+    const candidates = [preferred, fallback].filter(
+      (w): w is BrowserWindow => Boolean(w) && !w!.isDestroyed(),
+    );
+    // Prefer a window the user can actually see; otherwise fall back to the
+    // preferred app window so the error still lands somewhere sensible.
+    const target =
+      candidates.find((w) => w.isVisible()) ?? candidates[0] ?? null;
+    if (target && !target.isDestroyed()) {
+      target.webContents.send(IPC_VOICE_SESSION_ERROR, trimmed);
+    }
+  };
+
+  ipcMain.on(IPC_VOICE_REPORT_SESSION_ERROR, (_event, message: string) => {
+    emitVoiceSessionErrorToast(message);
+  });
 
   const toggleVoiceRtc = () => {
     if (!options.getAppReady()) return;

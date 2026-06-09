@@ -7,49 +7,7 @@ import {
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
 import { computeAnalyserEnergy } from "@/features/voice/services/audio-energy";
-import { showToast } from "@/ui/toast";
-import {
-  OPEN_SETTINGS_TOAST_ACTION,
-  SIGN_IN_TOAST_ACTION,
-} from "@/shared/lib/auth-cta";
-
-/**
- * Realtime voice retries transient connection blips silently, so we only want
- * to interrupt the user with a toast when the failure is something *they* must
- * act on — they aren't signed in, or the chosen provider isn't connected.
- * These are the messages the voice backend raises (voice-handlers.ts), e.g.
- * "Connect OpenAI in Settings to use it for voice." Anything else stays silent
- * and rides the existing auto-retry.
- */
-const VOICE_NEEDS_SIGN_IN = /sign[\s-]?in|not signed in|log[\s-]?in/i;
-const VOICE_NEEDS_SETUP =
-  /connect .* in settings|in settings|api key|not configured|no .* key|add .* key|unauthor|unauthenticated|\b401\b|\b403\b/i;
-
-const resolveVoiceErrorToast = (
-  errorMessage: string | undefined,
-): Parameters<typeof showToast>[0] | null => {
-  const message = (errorMessage ?? "").trim();
-  if (!message) return null;
-  if (VOICE_NEEDS_SIGN_IN.test(message)) {
-    return {
-      title: "Sign in to use voice",
-      description: message,
-      variant: "error",
-      duration: 8000,
-      action: SIGN_IN_TOAST_ACTION,
-    };
-  }
-  if (VOICE_NEEDS_SETUP.test(message)) {
-    return {
-      title: "Voice needs setup",
-      description: message,
-      variant: "error",
-      duration: 8000,
-      action: OPEN_SETTINGS_TOAST_ACTION,
-    };
-  }
-  return null;
-};
+import { resolveVoiceErrorToast } from "@/features/voice/runtime/voice-error-toast";
 
 type RuntimeVoiceState = {
   sessionState: VoiceSessionState;
@@ -282,14 +240,18 @@ export function VoiceRuntimeRoot() {
       onStateChange: (sessionState, errorMessage) => {
         sessionStateRef.current = sessionState;
         if (sessionState === "error") {
-          // Only interrupt the user when the failure is theirs to fix (not
-          // signed in / provider not connected). Otherwise the silent
-          // auto-retry handles it. Dedupe per distinct message so retries
+          // This runtime lives in the hidden overlay window, so a local
+          // `showToast` would paint where the user can't see it. Forward
+          // actionable errors to the main process, which shows the toast in
+          // the visible app window (where the sign-in / settings CTA also
+          // routes correctly). Only forward failures the user must act on
+          // (not signed in / provider not connected) — transient blips ride
+          // the silent auto-retry. Dedupe per distinct message so retries
           // don't restack the toast.
           const toast = resolveVoiceErrorToast(errorMessage);
           if (toast && lastVoiceErrorToastRef.current !== (errorMessage ?? "")) {
             lastVoiceErrorToastRef.current = errorMessage ?? "";
-            showToast(toast);
+            window.electronAPI?.voice.reportSessionError(errorMessage ?? "");
           }
         } else {
           lastVoiceErrorToastRef.current = null;

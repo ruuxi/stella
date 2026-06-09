@@ -502,6 +502,13 @@ export type ElectronVoiceApi = {
     shortcut: string,
   ) => Promise<VoiceShortcutRegistrationResult>;
   getRtcShortcut: () => Promise<string>;
+  /**
+   * Report an actionable voice session error from the (hidden) overlay voice
+   * runtime so the main process can surface a toast in the visible app window.
+   */
+  reportSessionError: (message: string) => void;
+  /** Subscribe to voice session error toasts routed to this window. */
+  onSessionError: (callback: (message: string) => void) => () => void;
 };
 
 export type ElectronDictationApi = {

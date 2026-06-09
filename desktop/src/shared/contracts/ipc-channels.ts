@@ -129,6 +129,11 @@ export const IPC_VOICE_GET_RUNTIME_STATE = "voice:getRuntimeState" as const;
 export const IPC_VOICE_RUNTIME_STATE = "voice:runtimeState" as const;
 export const IPC_VOICE_RTC_SET_SHORTCUT = "voice-rtc:setShortcut" as const;
 export const IPC_VOICE_RTC_GET_SHORTCUT = "voice-rtc:getShortcut" as const;
+/** Renderer (overlay voice runtime) → main: an actionable voice session error. */
+export const IPC_VOICE_REPORT_SESSION_ERROR =
+  "voice:reportSessionError" as const;
+/** Main → renderer (visible app window): show a voice session error toast. */
+export const IPC_VOICE_SESSION_ERROR = "voice:sessionError" as const;
 
 // ── Dictation ───────────────────────────────────────────────────────────────
 
