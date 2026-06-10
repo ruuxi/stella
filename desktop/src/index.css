@@ -13,7 +13,7 @@
 }
 
 /* Pre-React boot splash for the mini (Spotlight) window. Flat, calm surface
-   that matches the redesigned app — no gradient, no serif. */
+   that matches the redesigned app — no gradient. */
 html[data-stella-window="mini"] #stella-mini-boot {
   display: flex !important;
   width: 100vw;
@@ -52,10 +52,10 @@ html[data-stella-window="mini"] #stella-mini-boot {
 }
 
 .stella-mini-boot__mark {
-  font-family: "Manrope", "Manrope Fallback", system-ui, sans-serif;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: var(--font-family-display, "Cormorant Garamond", Georgia, serif);
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: -0.03em;
   line-height: 1;
 }
 
@@ -119,9 +119,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
   /* Base radius — buttons / small controls */
   --radius: 0.625rem;
 
-  /* Font families with metric-adjusted fallbacks. One sans voice (Manrope)
-     for all UI; mono only for code. The "display" family is intentionally
-     the same sans — no serif anywhere in the product. */
+  /* Font families with metric-adjusted fallbacks. Manrope for UI/body;
+     Cormorant Garamond for display headings and brand voice. */
   --font-family-sans: "Manrope", "Manrope Fallback", system-ui, sans-serif;
   --font-family-sans--font-feature-settings: normal;
   --font-family-sans--default-weight: 400;
@@ -129,7 +128,7 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --font-family-sans--emphasis-weight: 600;
   --font-family-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, monospace;
   --font-family-mono--font-feature-settings: "ss01" 1;
-  --font-family-display: "Manrope", "Manrope Fallback", system-ui, sans-serif;
+  --font-family-display: "Cormorant Garamond", Georgia, serif;
 
   /* Font feature settings (legacy) */
   --font-feature-settings: normal;

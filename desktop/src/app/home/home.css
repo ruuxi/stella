@@ -70,7 +70,7 @@
 }
 
 .home-stella-title {
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-display);
   font-size: var(--home-scale-title);
   font-weight: var(--weight-regular);
   letter-spacing: -0.03em;

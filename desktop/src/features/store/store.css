@@ -585,7 +585,7 @@
   .share-addon-dialog-title[data-slot="dialog-title"] {
   padding: 0;
   margin: 0;
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-display);
   font-size: 1.55rem;
   font-weight: var(--weight-semibold);
   letter-spacing: -0.03em;
@@ -816,7 +816,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-display);
   font-size: 26px;
   font-weight: var(--weight-semibold);
   color: var(--text-strong, var(--foreground));
