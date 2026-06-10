@@ -184,9 +184,6 @@ export const ChatColumn = memo(function ChatColumn({
   });
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,
-    // Once answer text streams, the indicator exits right away instead of
-    // holding its min-visible beat below the growing message.
-    exitImmediately: Boolean(conversation.streaming.isStreamingResponseText),
     runningTool: isToolActive
       ? (conversation.streaming.activeToolName ?? undefined)
       : undefined,
