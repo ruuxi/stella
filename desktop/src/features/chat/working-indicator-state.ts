@@ -51,12 +51,16 @@ export function getWorkingIndicatorDisplayStatus({
   toolCallId,
   tasks,
   isReasoning,
+  reasoningSeed,
 }: {
   status?: string;
   toolName?: string;
   toolCallId?: string;
   tasks?: TaskItem[];
   isReasoning?: boolean;
+  /** Per-turn seed for the no-tool reasoning/idle label so it rotates
+   * across turns instead of always reading "Thinking". */
+  reasoningSeed?: string;
 }): string {
   if (status) {
     return normalizeDisplayStatusText(status) ?? status;
@@ -83,5 +87,9 @@ export function getWorkingIndicatorDisplayStatus({
     }
   }
 
-  return computeStatus({ toolName, seed: toolCallId, isReasoning });
+  return computeStatus({
+    toolName,
+    seed: toolCallId ?? reasoningSeed,
+    isReasoning,
+  });
 }
