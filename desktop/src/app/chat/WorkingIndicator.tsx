@@ -16,6 +16,9 @@ interface WorkingIndicatorProps {
    * re-render. */
   toolCallId?: string;
   isReasoning?: boolean;
+  /** Per-turn seed so the reasoning/idle label varies across turns
+   * instead of always landing on the first variation ("Thinking"). */
+  reasoningSeed?: string;
   className?: string;
 }
 
@@ -24,6 +27,7 @@ export function WorkingIndicator({
   toolName,
   toolCallId,
   isReasoning,
+  reasoningSeed,
   className,
 }: WorkingIndicatorProps) {
   const { state } = useUiState();
@@ -44,6 +48,7 @@ export function WorkingIndicator({
     toolName,
     toolCallId,
     isReasoning,
+    reasoningSeed,
   });
   return (
     <div className={cn("working-indicator", className)}>

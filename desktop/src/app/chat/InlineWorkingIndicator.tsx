@@ -7,10 +7,12 @@
  * messages.
  *
  * Behavior:
- *  - While the assistant is reasoning (no answer text yet) it reads
- *    "Thinking"; while a tool is running it shows that tool's friendly
+ *  - While the assistant is reasoning (no answer text yet) it shows a
+ *    rotating thinking label ("Thinking", "Mulling it over", …) seeded
+ *    per turn; while a tool is running it shows that tool's friendly
  *    status. The moment answer text starts streaming, the indicator
- *    exits — it does NOT trail the growing message line by line.
+ *    exits immediately (`exitImmediately` skips the min-visible hold) —
+ *    it does NOT trail the growing message line by line.
  *  - Long-running agent task presence lives in the composer's task chip; this
  *    inline indicator only follows the orchestrator's thinking/tool lifecycle.
  *  - When the work finishes (`active` flips false) the indicator stays visible
@@ -49,6 +51,12 @@ export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
    * indicator resumes live updates.
    */
   active: boolean;
+  /**
+   * Skip the `MIN_VISIBLE_MS` hold on deactivation. Set when answer text
+   * has started streaming — the indicator must get out of the way right
+   * away instead of trailing the growing message for the hold duration.
+   */
+  exitImmediately?: boolean;
 };
 
 /**
@@ -61,6 +69,7 @@ const MIN_VISIBLE_MS = INLINE_WORKING_INDICATOR_MIN_VISIBLE_MS;
 
 export function InlineWorkingIndicator({
   active,
+  exitImmediately,
   runningTool,
   runningToolId,
   status,
@@ -89,6 +98,11 @@ export function InlineWorkingIndicator({
   const exitTimerRef = useRef<number | null>(null);
   const activatedAtRef = useRef<number | null>(active ? Date.now() : null);
   const wasActiveRef = useRef(active);
+  // Per-activation seed so the reasoning label ("Thinking" / "Mulling it
+  // over" / …) varies across turns but stays stable within one.
+  const [reasoningSeed, setReasoningSeed] = useState(() =>
+    String(Date.now()),
+  );
 
   useEffect(() => {
     const clearTimer = () => {
@@ -102,6 +116,7 @@ export function InlineWorkingIndicator({
       clearTimer();
       if (!wasActiveRef.current) {
         activatedAtRef.current = Date.now();
+        setReasoningSeed(String(Date.now()));
       }
       wasActiveRef.current = true;
       setLeaving(false);
@@ -120,12 +135,15 @@ export function InlineWorkingIndicator({
         setLeaving(false);
       }, EXIT_ANIMATION_MS);
     };
-    const activatedAt = activatedAtRef.current ?? Date.now();
-    const remainingMs = getInlineWorkingIndicatorExitDelayMs({
-      activatedAtMs: activatedAt,
-      nowMs: Date.now(),
-      minVisibleMs: MIN_VISIBLE_MS,
-    });
+    // When answer text has started streaming, the indicator must not trail
+    // the growing message — skip the min-visible hold and exit now.
+    const remainingMs = exitImmediately
+      ? 0
+      : getInlineWorkingIndicatorExitDelayMs({
+          activatedAtMs: activatedAtRef.current ?? Date.now(),
+          nowMs: Date.now(),
+          minVisibleMs: MIN_VISIBLE_MS,
+        });
     if (remainingMs > 0) {
       exitTimerRef.current = window.setTimeout(startExit, remainingMs);
     } else {
@@ -135,7 +153,7 @@ export function InlineWorkingIndicator({
     return () => {
       clearTimer();
     };
-  }, [active, renderShell]);
+  }, [active, renderShell, exitImmediately]);
 
   // The wrapper itself is always rendered with a fixed height once the
   // indicator has appeared — `renderShell` only gates the inner content,
@@ -157,6 +175,7 @@ export function InlineWorkingIndicator({
           toolName={displayProps.runningTool}
           toolCallId={displayProps.runningToolId}
           isReasoning={!displayProps.runningTool}
+          reasoningSeed={reasoningSeed}
         />
       )}
     </div>

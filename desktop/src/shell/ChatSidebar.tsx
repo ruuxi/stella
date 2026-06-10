@@ -269,6 +269,9 @@ export function ChatPanelTab({
   });
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,
+    // Once answer text streams, the indicator exits right away instead of
+    // holding its min-visible beat below the growing message.
+    exitImmediately: Boolean(isStreamingResponseText),
     runningTool: hasActiveTool ? (activeToolName ?? undefined) : undefined,
     runningToolId: hasActiveTool ? (activeToolCallId ?? undefined) : undefined,
     status:
