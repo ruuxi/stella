@@ -1,6 +1,6 @@
 # Dream — Manual Skill Consolidation Protocol
 
-Run this protocol periodically or on demand to review skill health and prune stale entries. This is a _manual_ protocol the General agent can execute on request — it is separate from the background Dream agent that consolidates `thread_summaries` into `memories/MEMORY.md` automatically.
+Run this protocol periodically or on demand to review skill health and prune stale entries. This is a _manual_ protocol the General agent can execute on request — it is separate from the background Dream agent that consolidates the Dream inbox into `memories/MEMORY.md` automatically.
 
 ## When to Dream
 

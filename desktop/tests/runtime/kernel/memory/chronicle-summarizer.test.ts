@@ -257,7 +257,7 @@ describe("chronicle-summarizer", () => {
     }
   });
 
-  it("writes a summary file and ensures instructions when LLM returns content", async () => {
+  it("writes a summary file and queues the digest in the Dream inbox", async () => {
     const { rootPath } = createTestContext();
     const now = Date.now();
     await writeCaptures(rootPath, [
@@ -280,10 +280,19 @@ describe("chronicle-summarizer", () => {
       },
     ]);
     const summaryBody = "- User is editing Stella's chronicle pipeline";
+    const enqueued: Array<{ window: string; content: string }> = [];
+    const fakeStore = {
+      dreamInboxStore: {
+        recordChronicleSummary: (args: { window: string; content: string }) => {
+          enqueued.push(args);
+        },
+      },
+    } as unknown as import("../../../../../runtime/kernel/storage/runtime-store.js").RuntimeStore;
     const result = await runChronicleSummary({
       stellaDataDir: rootPath,
       window: "10m",
       resolvedLlm: buildFakeRoute(fakeAssistant(summaryBody)),
+      store: fakeStore,
     });
 
     if (expectWrote(result)) {
@@ -299,17 +308,9 @@ describe("chronicle-summarizer", () => {
     expect(written).toContain("# Chronicle 10m summary");
     expect(written).toContain(summaryBody);
 
-    const instructions = await readFile(
-      path.join(
-        rootPath,
-        "memories_extensions",
-        "chronicle",
-        "instructions.md",
-      ),
-      "utf-8",
-    );
-    expect(instructions).toContain("10m-current.md");
-    expect(instructions).toContain("6h-current.md");
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.window).toBe("10m");
+    expect(enqueued[0]?.content).toContain(summaryBody);
   });
 
   it("skips unchanged windows before making another LLM call", async () => {

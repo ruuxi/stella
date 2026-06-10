@@ -31,7 +31,7 @@ import type {
   LocalChatRecentActivityRecord,
 } from "../storage/shared.js";
 import { eventTextFromPayload } from "../storage/shared.js";
-import type { ThreadSummaryRow } from "../memory/thread-summaries-store.js";
+import type { DreamInboxRow } from "../memory/dream-inbox-store.js";
 import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
@@ -390,7 +390,7 @@ ${trimmed}
 };
 
 const formatThreadSummaries = (
-  summaries: ThreadSummaryRow[],
+  summaries: DreamInboxRow[],
   sinceMs: number,
 ): string => {
   const matching = summaries
@@ -400,7 +400,7 @@ const formatThreadSummaries = (
   return matching
     .map((row) => {
       const summary = truncate(
-        row.rolloutSummary.trim(),
+        row.content.trim(),
         MAX_THREAD_SUMMARY_CHARS,
       );
       return `- [${new Date(row.sourceUpdatedAt).toISOString()}] ${summary}`;
@@ -492,7 +492,7 @@ const buildUserPrompt = (args: {
   cadence: CadenceConfig;
   sinceMs: number;
   nowMs: number;
-  summaries: ThreadSummaryRow[];
+  summaries: DreamInboxRow[];
   activity: string;
   browserWindow: BrowserActivityWindow | null;
 }): string => {
@@ -532,7 +532,7 @@ const generateReport = async (args: {
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
   cadence: CadenceConfig;
-  summaries: ThreadSummaryRow[];
+  summaries: DreamInboxRow[];
   browserWindow: BrowserActivityWindow | null;
   nowMs: number;
   slotAt: number;
@@ -701,7 +701,7 @@ export const spawnOpenPanelCadenceReports = (deps: {
 
     for (const { cadence } of dueWithActivity) inFlightCadences.add(cadence.id);
     try {
-      const summaries = deps.store.threadSummariesStore.listRecent({
+      const summaries = deps.store.dreamInboxStore.listRecentThreadSummaries({
         limit: MAX_THREAD_SUMMARIES,
       });
       const browserWindows = await collectBrowserActivityWindows(

@@ -10,8 +10,8 @@
  *      the last review), only user and assistant text.
  *   2. Applies a conversational-continuity gate (what the user would expect
  *      Stella to recall later), excluding restated delegated agent work.
- *   3. Writes a small candidate file under memories_extensions for Dream to
- *      consolidate later.
+ *   3. Queues a candidate row in the Dream inbox for Dream to consolidate
+ *      later.
  *
  * Errors are swallowed - this is best-effort; user already has their reply
  * by the time this fires.
@@ -26,11 +26,7 @@ import {
   redactMemoryText,
   redactMemoryStringArray,
 } from "../memory/redaction.js";
-import {
-  readRecentOrchestratorReviewNotes,
-  writeOrchestratorReviewMemoryNote,
-  type OrchestratorReviewMemoryNote,
-} from "../memory/orchestrator-review-notes.js";
+import type { MemoryNoteCandidate } from "../memory/dream-inbox-store.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import { parseThreadCheckpoint } from "../thread-runtime.js";
@@ -186,16 +182,21 @@ export const buildMemoryReviewUserPrompt = (
  * notes (which may not be consolidated yet). Best-effort and bounded; returns
  * an empty string when nothing is available.
  */
-export const buildKnownMemoryContext = async (
-  stellaDataDir: string,
-): Promise<string> => {
-  const [summary, recentNotes] = await Promise.all([
-    readMemorySummary(stellaDataDir).catch(() => null),
-    readRecentOrchestratorReviewNotes(
-      stellaDataDir,
+export const buildKnownMemoryContext = async (args: {
+  stellaDataDir: string;
+  store: RuntimeStore;
+}): Promise<string> => {
+  const summary = await readMemorySummary(args.stellaDataDir).catch(
+    () => null,
+  );
+  let recentNotes: string[] = [];
+  try {
+    recentNotes = args.store.dreamInboxStore.listRecentMemoryNotes(
       KNOWN_MEMORY_RECENT_NOTE_LIMIT,
-    ).catch(() => [] as string[]),
-  ]);
+    );
+  } catch {
+    recentNotes = [];
+  }
 
   const blocks: string[] = [];
   const trimmedSummary = summary ? redactMemoryText(summary.trim()) : "";
@@ -254,7 +255,7 @@ const toStringArray = (value: unknown, maxItems: number): string[] =>
 
 export const parseMemoryReviewCandidate = (
   text: string,
-): OrchestratorReviewMemoryNote | null => {
+): MemoryNoteCandidate | null => {
   const parsed = parseJsonWithRepair<MemoryReviewModelOutput>(
     extractJsonObject(text),
   );
@@ -320,9 +321,10 @@ const runReview = async (args: {
     return true;
   }
 
-  const knownMemory = await buildKnownMemoryContext(args.stellaDataDir).catch(
-    () => "",
-  );
+  const knownMemory = await buildKnownMemoryContext({
+    stellaDataDir: args.stellaDataDir,
+    store: args.store,
+  }).catch(() => "");
   const reviewSystemPrompt = buildMemoryReviewSystemPrompt();
   const messages: Message[] = [
     {
@@ -378,7 +380,7 @@ const runReview = async (args: {
     finalText = readAssistantText(response);
   }
 
-  let candidate: OrchestratorReviewMemoryNote | null = null;
+  let candidate: MemoryNoteCandidate | null = null;
   try {
     candidate = parseMemoryReviewCandidate(finalText);
   } catch (error) {
@@ -397,15 +399,12 @@ const runReview = async (args: {
   }
 
   try {
-    const written = await writeOrchestratorReviewMemoryNote({
-      stellaDataDir: args.stellaDataDir,
-      note: candidate,
-    });
+    const written = args.store.dreamInboxStore.recordMemoryNote(candidate);
     logger.debug("memory-review.completed.candidate-written", {
-      path: written.path,
+      inboxId: written.id,
       title: candidate.title,
     });
-    // The candidate persists as a durable extension file; Dream folds it on its
+    // The candidate persists as a durable inbox row; Dream folds it on its
     // next token-interval or pre-compaction run. We deliberately do not ping
     // Dream here — consolidation cadence is driven by orchestrator context
     // growth, not by each candidate write.

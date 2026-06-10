@@ -233,10 +233,10 @@ export type ToolHostOptions = {
     signal?: AbortSignal;
   }) => Promise<string>;
   /**
-   * Optional ThreadSummariesStore + stellaDataDir used by the background Dream
+   * Optional DreamInboxStore + stellaDataDir used by the background Dream
    * agent's consolidation pass.
    */
-  threadSummariesStore?: import("../memory/thread-summaries-store.js").ThreadSummariesStore;
+  dreamInboxStore?: import("../memory/dream-inbox-store.js").DreamInboxStore;
   stellaDataDir?: string;
   requestCredential?: (payload: {
     provider: string;

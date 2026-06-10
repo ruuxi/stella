@@ -117,7 +117,7 @@ describe("maybeSpawnDreamRun", () => {
     const result = await maybeSpawnDreamRun({
       stellaDataDir: rootPath,
       store: {
-        threadSummariesStore: {
+        dreamInboxStore: {
           countUnprocessed: () => 1,
         },
       } as RuntimeStore,
@@ -133,8 +133,7 @@ describe("maybeSpawnDreamRun", () => {
     expect(result).toMatchObject({
       scheduled: true,
       reason: "scheduled",
-      pendingThreadSummaries: 1,
-      pendingExtensions: 0,
+      pendingItems: 1,
     });
 
     await waitFor(() => providerCalls > 0);
@@ -144,7 +143,7 @@ describe("maybeSpawnDreamRun", () => {
 
   const pendingStore = (): RuntimeStore =>
     ({
-      threadSummariesStore: { countUnprocessed: () => 1 },
+      dreamInboxStore: { countUnprocessed: () => 1 },
     }) as RuntimeStore;
 
   it("skips token_interval runs below the growth threshold", async () => {
@@ -214,7 +213,7 @@ describe("maybeSpawnDreamRun", () => {
     const result = await maybeSpawnDreamRun({
       stellaDataDir: rootPath,
       store: {
-        threadSummariesStore: { countUnprocessed: () => 0 },
+        dreamInboxStore: { countUnprocessed: () => 0 },
       } as RuntimeStore,
       resolvedLlm: buildFakeRoute({
         response: fakeAssistant("noop"),

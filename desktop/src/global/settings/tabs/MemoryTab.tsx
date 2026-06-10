@@ -26,36 +26,18 @@ type ChronicleStatus = {
 };
 
 function formatPendingDreamInputs(
-  pendingThreadSummaries: number,
-  pendingExtensions: number,
+  pendingItems: number,
   t: TFunction,
 ): string | undefined {
-  const parts: string[] = [];
-  if (pendingThreadSummaries > 0) {
-    parts.push(
-      t(
-        pendingThreadSummaries === 1
-          ? "settings.memory.dreamResults.pendingThreadSummary"
-          : "settings.memory.dreamResults.pendingThreadSummaries",
-        { count: pendingThreadSummaries },
-      ),
-    );
-  }
-  if (pendingExtensions > 0) {
-    parts.push(
-      t(
-        pendingExtensions === 1
-          ? "settings.memory.dreamResults.pendingExtension"
-          : "settings.memory.dreamResults.pendingExtensions",
-        { count: pendingExtensions },
-      ),
-    );
-  }
-  return parts.length > 0
-    ? t("settings.memory.dreamResults.pendingPrefix", {
-        items: parts.join(t("settings.memory.dreamResults.pendingJoin")),
-      })
-    : undefined;
+  if (pendingItems <= 0) return undefined;
+  return t("settings.memory.dreamResults.pendingPrefix", {
+    items: t(
+      pendingItems === 1
+        ? "settings.memory.dreamResults.pendingItem"
+        : "settings.memory.dreamResults.pendingItems",
+      { count: pendingItems },
+    ),
+  });
 }
 
 function formatChronicleEnableFailure(
@@ -89,17 +71,12 @@ function formatDreamRunResult(
   args: {
     ok: boolean;
     reason?: string;
-    pendingThreadSummaries: number;
-    pendingExtensions: number;
+    pendingItems: number;
     detail?: string;
   },
   t: TFunction,
 ): string | undefined {
-  const pending = formatPendingDreamInputs(
-    args.pendingThreadSummaries,
-    args.pendingExtensions,
-    t,
-  );
+  const pending = formatPendingDreamInputs(args.pendingItems, t);
   switch (args.reason) {
     case "scheduled":
       return pending ?? t("settings.memory.dreamResults.scheduled");

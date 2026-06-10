@@ -1,5 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,34 +12,19 @@ import {
   parseMemoryReviewCandidate,
   sliceMessagesSinceReview,
 } from "../../../../../runtime/kernel/agent-runtime/memory-review.js";
-import {
-  ORCHESTRATOR_REVIEW_MEMORY_EXTENSION,
-  orchestratorReviewNotesDir,
-  writeOrchestratorReviewMemoryNote,
-} from "../../../../../runtime/kernel/memory/orchestrator-review-notes.js";
+import { DreamInboxStore } from "../../../../../runtime/kernel/memory/dream-inbox-store.js";
+import type { RuntimeStore } from "../../../../../runtime/kernel/storage/runtime-store.js";
+import { createSqliteTestContextFactory } from "../../../helpers/sqlite-test-context.js";
 
-type TestContext = {
-  rootPath: string;
-};
+const testContexts = createSqliteTestContextFactory(
+  "stella-memory-review-prompt",
+  (db) => new DreamInboxStore(db),
+);
+const createTestContext = testContexts.create;
+const asRuntimeStore = (store: DreamInboxStore): RuntimeStore =>
+  ({ dreamInboxStore: store }) as unknown as RuntimeStore;
 
-const activeContexts = new Set<TestContext>();
-
-const createTestContext = (): TestContext => {
-  const rootPath = path.join(
-    os.tmpdir(),
-    `stella-memory-review-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
-  const context = { rootPath };
-  activeContexts.add(context);
-  return context;
-};
-
-afterEach(async () => {
-  for (const context of activeContexts) {
-    await rm(context.rootPath, { recursive: true, force: true });
-  }
-  activeContexts.clear();
-});
+afterEach(() => testContexts.cleanup());
 
 describe("buildMemoryReviewSystemPrompt", () => {
   it("gates on conversational continuity and excludes restating agent work", () => {
@@ -233,30 +217,35 @@ describe("buildMemoryReviewUserPrompt", () => {
 
 describe("buildKnownMemoryContext", () => {
   it("returns an empty string when no memory exists yet", async () => {
-    const { rootPath } = createTestContext();
-    expect(await buildKnownMemoryContext(rootPath)).toBe("");
+    const { rootPath, store } = createTestContext();
+    expect(
+      await buildKnownMemoryContext({
+        stellaDataDir: rootPath,
+        store: asRuntimeStore(store),
+      }),
+    ).toBe("");
   });
 
   it("combines the consolidated summary with recent candidate notes", async () => {
-    const { rootPath } = createTestContext();
+    const { rootPath, store } = createTestContext();
     await mkdir(path.join(rootPath, "memories"), { recursive: true });
     await writeFile(
       path.join(rootPath, "memories", "memory_summary.md"),
       "- User prefers terse summaries.\n",
       "utf-8",
     );
-    await writeOrchestratorReviewMemoryNote({
-      stellaDataDir: rootPath,
-      note: {
-        title: "Dark mode default",
-        category: "user_preference",
-        memory: "The user wants dark mode as the default theme.",
-        recallHooks: ["dark mode", "theme"],
-        evidence: ["User said: remember I want dark mode"],
-      },
+    store.recordMemoryNote({
+      title: "Dark mode default",
+      category: "user_preference",
+      memory: "The user wants dark mode as the default theme.",
+      recallHooks: ["dark mode", "theme"],
+      evidence: ["User said: remember I want dark mode"],
     });
 
-    const context = await buildKnownMemoryContext(rootPath);
+    const context = await buildKnownMemoryContext({
+      stellaDataDir: rootPath,
+      store: asRuntimeStore(store),
+    });
     expect(context).toContain("consolidated_memory");
     expect(context).toContain("terse summaries");
     expect(context).toContain("recent_candidates");
@@ -264,91 +253,27 @@ describe("buildKnownMemoryContext", () => {
   });
 
   it("redacts existing known memory before feeding it into review", async () => {
-    const { rootPath } = createTestContext();
+    const { rootPath, store } = createTestContext();
     await mkdir(path.join(rootPath, "memories"), { recursive: true });
     await writeFile(
       path.join(rootPath, "memories", "memory_summary.md"),
       "- OPENAI_API_KEY=sk-testsecret12345678901234567890\n",
       "utf-8",
     );
-    await writeOrchestratorReviewMemoryNote({
-      stellaDataDir: rootPath,
-      note: {
-        title: "Already redacted",
-        category: "active_focus",
-        memory: "Authorization: Bearer sk-testsecret12345678901234567890",
-        recallHooks: ["token"],
-        evidence: ["token"],
-      },
+    store.recordMemoryNote({
+      title: "Already redacted",
+      category: "active_focus",
+      memory: "Authorization: Bearer sk-testsecret12345678901234567890",
+      recallHooks: ["token"],
+      evidence: ["token"],
     });
 
-    const context = await buildKnownMemoryContext(rootPath);
+    const context = await buildKnownMemoryContext({
+      stellaDataDir: rootPath,
+      store: asRuntimeStore(store),
+    });
     expect(context).not.toContain("sk-testsecret12345678901234567890");
     expect(context).toContain("OPENAI_API_KEY=");
     expect(context).toContain("***");
-  });
-});
-
-describe("writeOrchestratorReviewMemoryNote", () => {
-  it("writes a Dream extension note and instructions file", async () => {
-    const { rootPath } = createTestContext();
-
-    const result = await writeOrchestratorReviewMemoryNote({
-      stellaDataDir: rootPath,
-      note: {
-        title: "Read-only constraints",
-        category: "user_preference",
-        memory:
-          "Treat 'just investigate' as read-only unless the user later asks to implement.",
-        recallHooks: ["just investigate", "read-only"],
-        evidence: [
-          "User corrected the agent after an unwanted implementation.",
-        ],
-        createdAt: new Date("2026-05-28T12:00:00.000Z"),
-      },
-    });
-
-    expect(result.extension).toBe(ORCHESTRATOR_REVIEW_MEMORY_EXTENSION);
-    const files = await readdir(orchestratorReviewNotesDir(rootPath));
-    expect(files).toEqual(["2026-05-28T12-00-00-read-only-constraints.md"]);
-
-    const note = await readFile(result.path, "utf-8");
-    expect(note).toContain("# Orchestrator review memory candidate");
-    expect(note).toContain("Treat 'just investigate' as read-only");
-    expect(note).toContain("## Recall hooks");
-
-    const instructions = await readFile(
-      path.join(
-        rootPath,
-        "memories_extensions",
-        "orchestrator_review",
-        "instructions.md",
-      ),
-      "utf-8",
-    );
-    expect(instructions).toContain(
-      "the user would expect Stella to recall it in a later conversation",
-    );
-  });
-
-  it("redacts secrets when formatting an orchestrator review note", async () => {
-    const { rootPath } = createTestContext();
-
-    const result = await writeOrchestratorReviewMemoryNote({
-      stellaDataDir: rootPath,
-      note: {
-        title: "Secret note",
-        category: "active_focus",
-        memory: "User pasted OPENAI_API_KEY=sk-testsecret12345678901234567890",
-        recallHooks: ["sk-testsecret12345678901234567890"],
-        evidence: ["Authorization: Bearer sk-testsecret12345678901234567890"],
-        createdAt: new Date("2026-05-28T12:00:00.000Z"),
-      },
-    });
-
-    const note = await readFile(result.path, "utf-8");
-    expect(note).not.toContain("sk-testsecret12345678901234567890");
-    expect(note).toContain("OPENAI_API_KEY=");
-    expect(note).toContain("***");
   });
 });

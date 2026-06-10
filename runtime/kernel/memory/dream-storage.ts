@@ -12,7 +12,6 @@ import path from "node:path";
 
 export const MEMORY_FILE = "MEMORY.md";
 export const MEMORY_SUMMARY_FILE = "memory_summary.md";
-export const RAW_MEMORIES_FILE = "raw_memories.md";
 
 const MEMORY_TEMPLATE = `# MEMORY
 
@@ -49,22 +48,6 @@ const MEMORY_SUMMARY_TEMPLATE = `# Memory summary
 <!-- DREAM:SUMMARY_END -->
 `;
 
-const RAW_MEMORIES_TEMPLATE = `# Raw memories
-
-> Flat append-only routing layer. New entries land under Unprocessed; once the
-> Dream agent has folded them into MEMORY.md they are moved to Processed.
-
-## Unprocessed
-
-<!-- DREAM:RAW_UNPROCESSED_START -->
-<!-- DREAM:RAW_UNPROCESSED_END -->
-
-## Processed
-
-<!-- DREAM:RAW_PROCESSED_START -->
-<!-- DREAM:RAW_PROCESSED_END -->
-`;
-
 export const memoriesRoot = (stellaDataDir: string): string =>
   path.join(stellaDataDir, "memories");
 
@@ -73,9 +56,6 @@ export const memoryFilePath = (stellaDataDir: string): string =>
 
 export const memorySummaryPath = (stellaDataDir: string): string =>
   path.join(memoriesRoot(stellaDataDir), MEMORY_SUMMARY_FILE);
-
-export const rawMemoriesPath = (stellaDataDir: string): string =>
-  path.join(memoriesRoot(stellaDataDir), RAW_MEMORIES_FILE);
 
 const writeIfMissing = async (target: string, contents: string): Promise<void> => {
   try {
@@ -92,7 +72,6 @@ export const ensureDreamMemoryLayout = async (
   await fs.mkdir(root, { recursive: true });
   await writeIfMissing(memoryFilePath(stellaDataDir), MEMORY_TEMPLATE);
   await writeIfMissing(memorySummaryPath(stellaDataDir), MEMORY_SUMMARY_TEMPLATE);
-  await writeIfMissing(rawMemoriesPath(stellaDataDir), RAW_MEMORIES_TEMPLATE);
 };
 
 export const readMemoryFile = async (

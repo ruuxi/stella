@@ -447,27 +447,36 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     ON social_session_files(session_id, updated_at);
   `);
 
+  // Unified Dream inbox: every durable input Dream consolidates flows through
+  // this one queue — subagent rollout summaries, orchestrator memory-review
+  // notes, and chronicle screen-activity digests. `processed_by_dream_at IS
+  // NULL` is the entire queue state; there is no separate watermark file.
+  // Replaces the pre-launch `thread_summaries` table (hard cut, no migration).
+  db.exec("DROP TABLE IF EXISTS thread_summaries;");
   db.exec(`
-    CREATE TABLE IF NOT EXISTS thread_summaries (
-      thread_id TEXT NOT NULL,
-      run_id TEXT NOT NULL,
-      agent_type TEXT NOT NULL,
-      rollout_summary TEXT NOT NULL,
-      raw_memory TEXT,
+    CREATE TABLE IF NOT EXISTS dream_inbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      source_key TEXT NOT NULL,
+      thread_id TEXT,
+      run_id TEXT,
+      agent_type TEXT,
+      title TEXT,
+      content TEXT NOT NULL,
+      metadata TEXT,
       source_updated_at INTEGER NOT NULL,
       processed_by_dream_at INTEGER,
-      dream_watermark INTEGER,
       usage_count INTEGER NOT NULL DEFAULT 0,
       last_usage INTEGER,
-      PRIMARY KEY (thread_id, run_id)
+      UNIQUE (kind, source_key)
     );
   `);
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_thread_summaries_unprocessed
-    ON thread_summaries(processed_by_dream_at, source_updated_at);
+    CREATE INDEX IF NOT EXISTS idx_dream_inbox_unprocessed
+    ON dream_inbox(processed_by_dream_at, source_updated_at);
   `);
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_thread_summaries_source_updated
-    ON thread_summaries(source_updated_at);
+    CREATE INDEX IF NOT EXISTS idx_dream_inbox_kind_updated
+    ON dream_inbox(kind, source_updated_at);
   `);
 };

@@ -20,8 +20,7 @@ export type ChronicleHandlersOptions = {
   triggerDreamNow: () => Promise<{
     ok: boolean;
     reason?: string;
-    pendingThreadSummaries: number;
-    pendingExtensions: number;
+    pendingItems: number;
     detail?: string;
   }>;
 };
@@ -38,13 +37,13 @@ const ensureController = (
   return next;
 };
 
-const clearDreamThreadSummaries = (stellaDataDir: string): void => {
+const clearDreamInbox = (stellaDataDir: string): void => {
   const db = new DatabaseSync(getDesktopDatabasePath(stellaDataDir), {
     timeout: 5_000,
   }) as unknown as SqliteDatabase;
   try {
     initializeDesktopDatabase(db);
-    db.exec("DELETE FROM thread_summaries;");
+    db.exec("DELETE FROM dream_inbox;");
   } finally {
     db.close();
   }
@@ -160,7 +159,7 @@ export const registerChronicleHandlers = (
         // best-effort
       }
     }
-    clearDreamThreadSummaries(root);
+    clearDreamInbox(root);
     if (restartChronicle && controller) {
       const result = await controller.start();
       if (!result.started) {

@@ -241,11 +241,8 @@
         "noRunner": "The local runtime is not ready yet.",
         "unavailable": "Dream is currently unavailable.",
         "pendingPrefix": "Pending: {items}.",
-        "pendingThreadSummary": "{count} task summary",
-        "pendingThreadSummaries": "{count} task summaries",
-        "pendingExtension": "{count} Chronicle file",
-        "pendingExtensions": "{count} Chronicle files",
-        "pendingJoin": " and "
+        "pendingItem": "{count} memory item",
+        "pendingItems": "{count} memory items"
       },
       "errors": {
         "loadStatus": "Failed to load Chronicle status.",

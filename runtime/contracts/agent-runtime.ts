@@ -50,7 +50,7 @@ export type AgentCapabilities = {
   injectsSkillCatalog?: boolean;
   /** Inject the available-subagents roster block into the dynamic context. */
   injectsSubagentRoster?: boolean;
-  /** Record a `thread_summaries` row on successful run completion. */
+  /** Queue a Dream-inbox thread-summary row on successful run completion. */
   recordsThreadSummary?: boolean;
   /** Notify the Dream scheduler on successful run completion. */
   triggersDreamScheduler?: boolean;
@@ -163,7 +163,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     },
     capabilities: {
       injectsSkillCatalog: true,
-      // Subagents record thread_summaries rows for Dream to consume, but they
+      // Subagents queue Dream-inbox thread summaries for Dream to consume, but they
       // do not trigger Dream — consolidation is driven by orchestrator context
       // growth, so these rows are folded on the next orchestrator-driven run.
       recordsThreadSummary: true,
@@ -243,7 +243,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
     id: AGENT_IDS.DREAM,
     name: "Dream",
     description:
-      "Background memory consolidator. Reads thread_summaries + memories_extensions and surgically updates ~/.stella/memories/ markdown files.",
+      "Background memory consolidator. Reads the Dream inbox and surgically updates ~/.stella/memories/ markdown files.",
     activityLabel: "Dreaming",
     bundledCore: true,
     runsAsSubagent: false,

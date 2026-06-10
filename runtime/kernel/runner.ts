@@ -389,9 +389,6 @@ export const createStellaHostRunner = (
 
     triggerDreamNow: async (trigger = "manual") => {
       try {
-        const { countPendingDreamExtensions } = await import(
-          "./memory/dream-core.js"
-        );
         const { maybeSpawnDreamRun } = await import(
           "./agent-runtime/dream-scheduler.js"
         );
@@ -399,17 +396,13 @@ export const createStellaHostRunner = (
           "./runner/model-selection.js"
         );
         const { AGENT_IDS } = await import("../contracts/agent-runtime.js");
-        const pendingThreadSummaries =
-          context.runtimeStore.threadSummariesStore.countUnprocessed();
-        const pendingExtensions = await countPendingDreamExtensions(
-          context.stellaDataDir,
-        );
-        if (pendingThreadSummaries + pendingExtensions === 0) {
+        const pendingItems =
+          context.runtimeStore.dreamInboxStore.countUnprocessed();
+        if (pendingItems === 0) {
           return {
             scheduled: false,
             reason: "no_inputs" as const,
-            pendingThreadSummaries,
-            pendingExtensions,
+            pendingItems,
           };
         }
         const dreamAgent = resolveAgent(context, AGENT_IDS.DREAM);
@@ -434,8 +427,7 @@ export const createStellaHostRunner = (
         return {
           scheduled: false,
           reason: "unavailable" as const,
-          pendingThreadSummaries: 0,
-          pendingExtensions: 0,
+          pendingItems: 0,
           detail: error instanceof Error ? error.message : String(error),
         };
       }
@@ -465,6 +457,7 @@ export const createStellaHostRunner = (
           stellaDataDir: context.stellaDataDir,
           window,
           resolvedLlm,
+          store: context.runtimeStore,
         });
       } catch (error) {
         console.warn("[runner] runChronicleSummaryTick failed", error);
