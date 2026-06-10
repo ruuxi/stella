@@ -392,7 +392,9 @@ export function FileContextChips({
 /*  Pasted-text chips                                                 */
 /* ------------------------------------------------------------------ */
 
-const PASTED_TEXT_PREVIEW_MAX_CHARS = 600;
+// The preview is scrollable (the pointer can move onto it), so show a
+// generous slice rather than a tooltip-sized one.
+const PASTED_TEXT_PREVIEW_MAX_CHARS = 4000;
 
 function PastedTextChip({
   text,
@@ -407,7 +409,7 @@ function PastedTextChip({
   className?: string;
   textClassName?: string;
 }) {
-  const { triggerRef, open } = useHoverPreview<HTMLButtonElement>();
+  const { triggerRef, open, previewProps } = useHoverPreview<HTMLButtonElement>();
   const stats = describePastedText(toPastedTextDescriptor(text));
   const preview =
     text.length > PASTED_TEXT_PREVIEW_MAX_CHARS
@@ -431,6 +433,7 @@ function PastedTextChip({
         triggerRef={triggerRef}
         open={open}
         className="composer-context-preview composer-context-preview--portal"
+        {...previewProps}
       >
         <div className="composer-context-preview-text">{preview}</div>
       </ChipPreviewPortal>
