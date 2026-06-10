@@ -31,7 +31,7 @@
 
 .apps-screen__title {
   margin: 0;
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-display);
   font-size: 3rem;
   font-weight: var(--weight-semibold);
   line-height: 1;
@@ -277,7 +277,7 @@
 }
 
 .apps-card__label {
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-display);
   font-size: var(--font-size-xl);
   font-weight: var(--weight-semibold);
   line-height: 1.1;
@@ -325,7 +325,7 @@
 
 .apps-screen__empty-title {
   margin: 0;
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-display);
   font-size: 2.4rem;
   font-weight: var(--weight-semibold);
   font-style: normal;

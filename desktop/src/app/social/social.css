@@ -8,7 +8,7 @@
 }
 
 .social-view {
-  --social-serif: var(--font-family-sans);
+  --social-serif: var(--font-family-display);
   --social-mono: var(--font-family-mono, 'IBM Plex Mono', monospace);
 
   display: flex;
@@ -1082,7 +1082,7 @@
 .friends-dialog-title {
   margin: 0;
   color: var(--text-strong, var(--foreground));
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-display);
   font-size: 1.9rem;
   font-weight: var(--weight-semibold);
   line-height: 1.2;
