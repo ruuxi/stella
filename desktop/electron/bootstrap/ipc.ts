@@ -226,8 +226,7 @@ export const registerBootstrapIpcHandlers = (
         return {
           ok: false,
           reason: "no-stella-root",
-          pendingThreadSummaries: 0,
-          pendingExtensions: 0,
+          pendingItems: 0,
         };
       }
       const runner = lifecycle.getRunner();
@@ -235,8 +234,7 @@ export const registerBootstrapIpcHandlers = (
         return {
           ok: false,
           reason: "no-runner",
-          pendingThreadSummaries: 0,
-          pendingExtensions: 0,
+          pendingItems: 0,
         };
       }
       try {
@@ -246,8 +244,7 @@ export const registerBootstrapIpcHandlers = (
         return {
           ok: false,
           reason: "unavailable",
-          pendingThreadSummaries: 0,
-          pendingExtensions: 0,
+          pendingItems: 0,
           detail: error instanceof Error ? error.message : String(error),
         };
       }

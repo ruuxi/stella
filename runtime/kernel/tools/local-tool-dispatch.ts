@@ -2,18 +2,16 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { TOOL_IDS } from "../../contracts/agent-runtime.js";
-import { dreamList, dreamMarkProcessed } from "../memory/dream-core.js";
 import {
   memoryFilePath,
   memorySummaryPath,
-  rawMemoriesPath,
 } from "../memory/dream-storage.js";
 import { redactMemoryText } from "../memory/redaction.js";
-import type { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
+import type { DreamInboxStore } from "../memory/dream-inbox-store.js";
 import { localNoResponse } from "./local-tool-overrides.js";
 
 export type LocalToolStore = {
-  threadSummariesStore?: ThreadSummariesStore;
+  dreamInboxStore?: DreamInboxStore;
 };
 
 export type LocalDreamConfig = {
@@ -74,30 +72,18 @@ const ensureDreamWritePath = async (
   const allowedFiles = await Promise.all([
     normalizePath(memoryFilePath(dream.stellaDataDir)),
     normalizePath(memorySummaryPath(dream.stellaDataDir)),
-    normalizePath(rawMemoriesPath(dream.stellaDataDir)),
   ]);
   if (allowedFiles.includes(resolved)) {
     return resolved;
   }
   throw new Error(
-    "Dream StrReplace may only edit MEMORY.md, memory_summary.md, and raw_memories.md.",
+    "Dream StrReplace may only edit MEMORY.md and memory_summary.md.",
   );
 };
 
-const isThreadKeyArray = (
-  value: unknown,
-): value is Array<{ threadId: string; runId: string }> =>
+const isNumberArray = (value: unknown): value is number[] =>
   Array.isArray(value) &&
-  value.every(
-    (entry) =>
-      entry != null &&
-      typeof entry === "object" &&
-      typeof (entry as { threadId?: unknown }).threadId === "string" &&
-      typeof (entry as { runId?: unknown }).runId === "string",
-  );
-
-const isStringArray = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((entry) => typeof entry === "string");
+  value.every((entry) => typeof entry === "number" && Number.isFinite(entry));
 
 export type LocalToolDeps = {
   conversationId: string;
@@ -249,8 +235,8 @@ export async function dispatchLocalTool(
 
   if (toolName === TOOL_IDS.DREAM) {
     const dream = deps.dream;
-    const summariesStore = deps.store?.threadSummariesStore;
-    if (!dream || !summariesStore) {
+    const inbox = deps.store?.dreamInboxStore;
+    if (!dream || !inbox) {
       return {
         handled: true,
         text: JSON.stringify({
@@ -261,37 +247,39 @@ export async function dispatchLocalTool(
     }
     const action = typeof args.action === "string" ? args.action : "";
     if (action === "list") {
-      const sinceWatermark =
-        typeof args.sinceWatermark === "number"
-          ? args.sinceWatermark
-          : undefined;
       const limit = typeof args.limit === "number" ? args.limit : undefined;
-      const result = await dreamList({
-        stellaDataDir: dream.stellaDataDir,
-        store: summariesStore,
-        ...(sinceWatermark !== undefined ? { sinceWatermark } : {}),
-        ...(limit !== undefined ? { limit } : {}),
-      });
+      const rows = inbox.listUnprocessed(
+        limit !== undefined ? { limit } : undefined,
+      );
       return {
         handled: true,
-        text: JSON.stringify({ success: true, ...result }),
+        text: JSON.stringify({
+          success: true,
+          items: rows.map((row) => ({
+            id: row.id,
+            kind: row.kind,
+            ...(row.threadId ? { threadId: row.threadId } : {}),
+            ...(row.runId ? { runId: row.runId } : {}),
+            ...(row.agentType ? { agentType: row.agentType } : {}),
+            ...(row.title ? { title: row.title } : {}),
+            content: redactMemoryText(row.content),
+            ...(row.metadata ? { metadata: row.metadata } : {}),
+            sourceUpdatedAt: row.sourceUpdatedAt,
+          })),
+        }),
       };
     }
     if (action === "markProcessed") {
-      const result = await dreamMarkProcessed({
-        stellaDataDir: dream.stellaDataDir,
-        store: summariesStore,
-        ...(isThreadKeyArray(args.threadKeys)
-          ? { threadKeys: args.threadKeys }
-          : {}),
-        ...(isStringArray(args.threadIds) ? { threadIds: args.threadIds } : {}),
-        ...(isStringArray(args.extensionPaths)
-          ? { extensionPaths: args.extensionPaths }
-          : {}),
-        ...(typeof args.watermark === "number"
-          ? { watermark: args.watermark }
-          : {}),
-      });
+      if (!isNumberArray(args.ids) || args.ids.length === 0) {
+        return {
+          handled: true,
+          text: JSON.stringify({
+            success: false,
+            error: "markProcessed requires a non-empty ids array.",
+          }),
+        };
+      }
+      const result = inbox.markProcessed({ ids: args.ids });
       return {
         handled: true,
         text: JSON.stringify({ success: true, ...result }),

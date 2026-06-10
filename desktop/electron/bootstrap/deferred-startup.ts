@@ -203,9 +203,9 @@ const createDeferredStartupTasks = (
         ]
       : []),
     {
-      // One-shot catch-up sweep: anything left in thread_summaries or
-      // memories_extensions/ from the prior session should get folded
-      // immediately on startup, not 60 seconds later.
+      // One-shot catch-up sweep: anything left in the Dream inbox from the
+      // prior session should get folded immediately on startup, not 60
+      // seconds later.
       label: "dream-startup-sweep",
       delayMs: config.startupStageDelayMs,
       run: () => {

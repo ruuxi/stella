@@ -8,12 +8,10 @@ const logger = createRuntimeLogger("stella-runtime.thread-summaries-record");
 /**
  * Thread-summaries record (stella-runtime).
  *
- * Stage 1 of the Chronicle/Dream memory pipeline: write a row per
- * finalized subagent run into the durable thread-summaries store
- * (`store.threadSummariesStore`). Dream's scheduler later consumes
- * these rows to build longer-horizon summaries; the
- * dream-scheduler-notify hook is the trigger, this hook is the
- * source.
+ * Queues one Dream-inbox row per finalized subagent run
+ * (`store.dreamInboxStore`, kind `thread_summary`). Dream's scheduler later
+ * consumes the inbox to build longer-horizon summaries; the
+ * dream-scheduler-notify hook is the trigger, this hook is the source.
  *
  * Pre-migration this was an inline branch inside
  * `finalizeSubagentSuccess` gated on
@@ -37,7 +35,7 @@ export const createThreadSummariesRecordHook = (opts: {
     if (!payload.services) return;
 
     try {
-      opts.store.threadSummariesStore.record({
+      opts.store.dreamInboxStore.recordThreadSummary({
         threadId: payload.threadKey,
         runId: payload.runId,
         agentType: payload.agentType,

@@ -11,12 +11,10 @@
  *   4. Otherwise call a single LLM completion to distill the OCR window into
  *      a short markdown block.
  *   5. Atomically overwrite
- *      `~/.stella/memories_extensions/chronicle/{prefix}-current.md`.
- *
- * The Dream scheduler picks up the file's bumped mtime via the existing
- * `extension_files` watermark in `dream-core.ts`. Each tick that actually
- * writes a fresh summary should be paired with a `triggerDreamNow` call by
- * the caller, but Dream's eligibility gate is the source of truth.
+ *      `~/.stella/memories_extensions/chronicle/{prefix}-current.md`
+ *      (read directly by live context surfaces) and upsert the digest into
+ *      the Dream inbox (kind `chronicle`, coalesced per window) so Dream
+ *      consolidates it on its next run.
  *
  * Single-flight per (stellaDataDir, window) via a mkdir lock under
  * `~/.stella/locks/chronicle-summary-{window}/`, mirroring `dream-scheduler.ts`.
@@ -36,6 +34,7 @@ import {
 } from "../model-routing.js";
 import { createRuntimeLogger } from "../debug.js";
 import { getChronicleEnabled } from "../preferences/local-preferences.js";
+import type { RuntimeStore } from "../storage/runtime-store.js";
 import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
@@ -82,50 +81,6 @@ const summaryMetaPath = (
   window: ChronicleSummaryWindow,
 ): string =>
   path.join(chronicleExtensionDir(stellaDataDir), `${window}-current.meta.json`);
-
-const instructionsFilePath = (stellaDataDir: string): string =>
-  path.join(chronicleExtensionDir(stellaDataDir), "instructions.md");
-
-const INSTRUCTIONS_TEMPLATE = `# Chronicle extension
-
-The Chronicle sidecar samples the user's screen every few seconds, runs Vision
-OCR, and writes the *changes* (added/removed text lines) to
-\`captures.jsonl\`. The Node-side summarizer then produces three views of that
-data, all dropped in this folder:
-
-- \`<DATE>.md\`         — daily append-only log of newly-observed OCR lines
-                         (raw, written by the Swift daemon).
-- \`10m-current.md\`     — distilled summary of the **last ~10 minutes** of
-                         activity. Refreshed every minute by chronicle-summarizer.
-- \`6h-current.md\`      — distilled summary of the **last ~6 hours** of
-                         activity. Refreshed every hour.
-
-For the Dream agent: prefer \`10m-current.md\` and \`6h-current.md\` — they are
-already paraphrased and grouped. Use \`<DATE>.md\` only as raw evidence when
-the rolling summaries leave a gap. Ignore single-line spikes in the raw log;
-trust repeated patterns. Do NOT quote raw OCR text verbatim into MEMORY.md —
-it's noisy. Distill into one or two sentences per material context shift.
-`;
-
-const ensureInstructions = async (stellaDataDir: string): Promise<void> => {
-  const target = instructionsFilePath(stellaDataDir);
-  try {
-    const existing = await fsp.readFile(target, "utf-8");
-    if (existing === INSTRUCTIONS_TEMPLATE) {
-      return;
-    }
-  } catch {
-    // missing or unreadable; fall through to write
-  }
-  try {
-    await fsp.mkdir(path.dirname(target), { recursive: true });
-    await fsp.writeFile(target, INSTRUCTIONS_TEMPLATE, "utf-8");
-  } catch (error) {
-    logger.debug("chronicle.instructions.write-failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-};
 
 const isChronicleEnabled = async (stellaDataDir: string): Promise<boolean> => {
   return getChronicleEnabled(stellaDataDir);
@@ -335,7 +290,6 @@ const renderSummaryFile = (
     "",
     `> Distilled by the chronicle-summarizer at ${generatedAt}.`,
     `> Window: last ${horizon}. Source: ${uniqueLineCount} unique OCR lines.`,
-    `> Consumed by the Dream agent (see ./instructions.md).`,
     "",
     body.trim(),
     "",
@@ -375,6 +329,8 @@ export const runChronicleSummary = async (args: {
   stellaDataDir: string;
   window: ChronicleSummaryWindow;
   resolvedLlm: ResolvedLlmRoute;
+  /** Dream-inbox handle; when present the digest is queued for consolidation. */
+  store?: RuntimeStore;
 }): Promise<ChronicleSummaryResult> => {
   if (!(await isChronicleEnabled(args.stellaDataDir))) {
     return {
@@ -416,8 +372,6 @@ export const runChronicleSummary = async (args: {
   }
 
   try {
-    await ensureInstructions(args.stellaDataDir);
-
     const entries = await readCapturesInWindow(
       args.stellaDataDir,
       WINDOW_MS[args.window],
@@ -535,6 +489,18 @@ export const runChronicleSummary = async (args: {
         uniqueLines: uniqueLines.length,
         detail: error instanceof Error ? error.message : String(error),
       };
+    }
+    try {
+      args.store?.dreamInboxStore.recordChronicleSummary({
+        window: args.window,
+        content: rendered,
+        uniqueLines: uniqueLines.length,
+      });
+    } catch (error) {
+      logger.debug("chronicle.summary.inbox-enqueue-failed", {
+        window: args.window,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
     try {
       await writeFileAtomic(

@@ -158,11 +158,6 @@ const MEMORY_FILE_SOURCES = (stellaDataDir: string): MemoryFileSource[] => [
     path: path.join(stellaDataDir, "memories", "MEMORY.md"),
     includeByDefault: true,
   },
-  {
-    displayPath: "~/.stella/memories/raw_memories.md",
-    path: path.join(stellaDataDir, "memories", "raw_memories.md"),
-    includeByDefault: false,
-  },
 ];
 
 const readMemoryFiles = async (

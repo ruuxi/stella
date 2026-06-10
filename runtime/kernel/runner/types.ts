@@ -496,17 +496,16 @@ export type RunnerPublicApi = {
       | "lock_busy"
       | "no_api_key"
       | "unavailable";
-    pendingThreadSummaries: number;
-    pendingExtensions: number;
+    pendingItems: number;
     detail?: string;
   }>;
   /**
    * Run one Chronicle rolling-summary pass for the given window. Reads the
    * tail of `~/.stella/chronicle/captures.jsonl`, calls a single cheap LLM
-   * completion, and atomically rewrites
-   * `~/.stella/memories_extensions/chronicle/{window}-current.md`. Designed to
-   * be called by Electron on a fixed cadence (every 1 minute for "10m",
-   * every 1 hour for "6h").
+   * completion, atomically rewrites
+   * `~/.stella/memories_extensions/chronicle/{window}-current.md`, and queues
+   * the digest in the Dream inbox. Designed to be called by Electron on a
+   * fixed cadence (every 1 minute for "10m", every 1 hour for "6h").
    */
   runChronicleSummaryTick: (window: "10m" | "6h") => Promise<
     | {

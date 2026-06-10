@@ -16,10 +16,10 @@ const logger = createRuntimeLogger("stella-runtime.dream-notify");
  *   - the thread is at/over the compaction trigger, so a consolidation flush
  *     should happen before the middle is summarized (`pre_compaction`).
  *
- * Dream reads durable queues (thread_summaries, memory-extension files), so it
+ * Dream reads the durable Dream inbox, so it
  * still self-skips via its own eligibility gate when nothing is pending. Only
  * the orchestrator declares `triggersDreamScheduler`; subagent rollouts just
- * accumulate as `thread_summaries` rows and get folded on the next
+ * accumulate as Dream-inbox rows and get folded on the next
  * orchestrator-driven Dream run.
  *
  * Service deps:

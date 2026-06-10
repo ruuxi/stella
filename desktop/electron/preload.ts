@@ -1884,8 +1884,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("chronicle:dreamNow") as Promise<{
         ok: boolean;
         reason?: string;
-        pendingThreadSummaries: number;
-        pendingExtensions: number;
+        pendingItems: number;
         detail?: string;
       }>,
     wipeMemories: () =>

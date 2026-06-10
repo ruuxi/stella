@@ -5,7 +5,7 @@
  * that captures the screen and runs OCR, with periodic distillation ticks
  * folding the deltas into markdown summaries.
  *
- * Dream — the background memory consolidator that folds thread_summaries
+ * Dream — the background memory consolidator that folds the Dream inbox
  * into `~/.stella/memories/MEMORY.md` — is a separate concern and is on by
  * default. It does not key off this toggle.
  *

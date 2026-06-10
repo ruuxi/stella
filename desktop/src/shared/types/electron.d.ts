@@ -1837,8 +1837,7 @@ export type ElectronApi = {
     dreamNow: () => Promise<{
       ok: boolean;
       reason?: string;
-      pendingThreadSummaries: number;
-      pendingExtensions: number;
+      pendingItems: number;
       detail?: string;
     }>;
     wipeMemories: () => Promise<{ ok: boolean; reason?: string }>;

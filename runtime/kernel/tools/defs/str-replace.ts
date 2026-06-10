@@ -3,9 +3,9 @@
  * subagent.
  *
  * Dream's runtime intercepts via `dispatchLocalTool` (which enforces
- * path-restricted writes to `MEMORY.md`, `memory_summary.md`, and
- * `raw_memories.md`). The host doesn't have an unrestricted handler for
- * this tool — calling it outside the Dream subagent returns an error.
+ * path-restricted writes to `MEMORY.md` and `memory_summary.md`). The host
+ * doesn't have an unrestricted handler for this tool — calling it outside
+ * the Dream subagent returns an error.
  */
 
 import type { ToolDefinition } from "../types.js";

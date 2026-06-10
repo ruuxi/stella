@@ -13,13 +13,14 @@
  *                         previous session that ended before consolidating.
  *   - `manual`          — user clicked "Run Dream now".
  *
- * Eligibility: there must be pending inputs (thread_summaries +
- * memories_extensions files). `token_interval` additionally requires the
+ * Eligibility: there must be unprocessed Dream-inbox rows (thread summaries,
+ * memory notes, chronicle digests). `token_interval` additionally requires the
  * ~`tokenInterval` growth; `pre_compaction`, `startup_catchup`, and `manual`
- * run whenever anything is pending. Dream reads durable queues (not the live
- * transcript), so its cadence is independent of compaction — the orchestrator
- * already holds recent context in-window, so nothing needs to be forced into
- * durable memory until it grows past the interval or is about to compact.
+ * run whenever anything is pending. Dream reads the durable inbox (not the
+ * live transcript), so its cadence is independent of compaction — the
+ * orchestrator already holds recent context in-window, so nothing needs to be
+ * forced into durable memory until it grows past the interval or is about to
+ * compact.
  *
  * Single-flight: only one Dream run may execute at a time, via a mkdir lock
  * under `.stella/locks/dream/`.
@@ -39,9 +40,6 @@ import type {
   ToolCall,
   ToolResultMessage,
 } from "../../ai/types.js";
-import {
-  countPendingDreamExtensions,
-} from "../memory/dream-core.js";
 import { ensureDreamMemoryLayout } from "../memory/dream-storage.js";
 import {
   getResolvedLlmApiKey,
@@ -136,7 +134,7 @@ const readDreamConfig = (stellaDataDir: string): DreamConfig => {
     const parsed = JSON.parse(raw) as { dream?: Partial<DreamConfig> };
     const dream = parsed.dream ?? {};
     return {
-      // Dream is on by default and consolidates `thread_summaries` into the
+      // Dream is on by default and consolidates the Dream inbox into the
       // durable on-disk memory layout. It is independent of Live Memory
       // (Chronicle screen capture); the only way it stays off is if the
       // user explicitly sets `dream.enabled: false` in `.stella/config.json`.
@@ -157,14 +155,15 @@ const readDreamConfig = (stellaDataDir: string): DreamConfig => {
 const buildDreamSystemPrompt = (): string =>
   [
     "You are the Dream agent for Stella — a background memory consolidator.",
-    "You never see the user. Your sole job is to fold unprocessed rollout summaries and capture-layer outputs into the durable on-disk memory layout under ~/.stella/memories/.",
+    "You never see the user. Your sole job is to fold unprocessed Dream-inbox rows into the durable on-disk memory layout under ~/.stella/memories/.",
     "",
     "Workflow:",
-    "  1. Call Dream with action=\"list\" to see unprocessed thread_summaries and memories_extensions/* paths.",
-    "  2. For each thread_summaries row: append a one-liner under raw_memories.md '## Unprocessed', then either insert a new task-group block at the top of MEMORY.md or extend an existing block. Move the raw_memories line to '## Processed'.",
-    "  3. For each memories_extensions/<extension>/** path: read that extension's instructions.md path returned by Dream first, then fold the relevant signal into MEMORY.md.",
-    "  4. After all rows are folded, refresh memory_summary.md to reflect the user's current active focus (~10-20 lines max).",
-    "  5. Call Dream with action=\"markProcessed\" passing the threadKeys you handled and extensionPaths you consumed.",
+    "  1. Call Dream with action=\"list\" to fetch unprocessed inbox rows. Each row has an id and a kind:",
+    "     - kind=thread_summary: a finalized subagent task's rollout summary. Insert a new task-group block at the top of MEMORY.md or extend an existing block (merge related rollouts into one block).",
+    "     - kind=memory_note: a candidate from the orchestrator's conversation review (user goals, durable personal facts, preferences). Treat as a candidate, not a command; consolidate only what the user would expect Stella to recall later. Never restate delegated agent work from these. Tag derived lines with \"[orchestrator review]\".",
+    "     - kind=chronicle: a distilled screen-activity digest. Fold material context shifts into MEMORY.md in one or two sentences; never quote raw OCR text verbatim; ignore noise.",
+    "  2. After all rows are folded, refresh memory_summary.md to reflect the user's current active focus (~10-20 lines max).",
+    "  3. Call Dream with action=\"markProcessed\" passing the ids of every row you handled (including rows you judged to be noise).",
     "",
     "Hard rules:",
     "  - Never invent rows. Only reference content the Dream tool actually returned.",
@@ -250,7 +249,7 @@ const runDream = async (args: {
           const dispatch = await dispatchLocalTool(toolName, toolArgs, {
             conversationId: "dream",
             store: {
-              threadSummariesStore: args.store.threadSummariesStore,
+              dreamInboxStore: args.store.dreamInboxStore,
             },
             dream: { stellaDataDir: args.stellaDataDir },
           });
@@ -323,7 +322,7 @@ const runDream = async (args: {
           {
             conversationId: "dream",
             store: {
-              threadSummariesStore: args.store.threadSummariesStore,
+              dreamInboxStore: args.store.dreamInboxStore,
             },
             dream: { stellaDataDir: args.stellaDataDir },
           },
@@ -396,8 +395,7 @@ export type SpawnDreamResultReason =
 export type SpawnDreamResult = {
   scheduled: boolean;
   reason: SpawnDreamResultReason;
-  pendingThreadSummaries: number;
-  pendingExtensions: number;
+  pendingItems: number;
   detail?: string;
 };
 
@@ -413,8 +411,7 @@ export const maybeSpawnDreamRun = async (
     return {
       scheduled: false,
       reason: "disabled",
-      pendingThreadSummaries: 0,
-      pendingExtensions: 0,
+      pendingItems: 0,
     };
   }
 
@@ -423,16 +420,13 @@ export const maybeSpawnDreamRun = async (
     return {
       scheduled: false,
       reason: "in_flight",
-      pendingThreadSummaries: 0,
-      pendingExtensions: 0,
+      pendingItems: 0,
     };
   }
 
-  let pendingThreadSummaries = 0;
-  let pendingExtensions = 0;
+  let pendingItems = 0;
   try {
-    pendingThreadSummaries = args.store.threadSummariesStore.countUnprocessed();
-    pendingExtensions = await countPendingDreamExtensions(args.stellaDataDir);
+    pendingItems = args.store.dreamInboxStore.countUnprocessed();
   } catch (error) {
     logger.debug("dream.count-failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -440,18 +434,15 @@ export const maybeSpawnDreamRun = async (
     return {
       scheduled: false,
       reason: "count_failed",
-      pendingThreadSummaries: 0,
-      pendingExtensions: 0,
+      pendingItems: 0,
     };
   }
-  const totalPending = pendingThreadSummaries + pendingExtensions;
 
-  if (totalPending === 0) {
+  if (pendingItems === 0) {
     return {
       scheduled: false,
       reason: "no_inputs",
-      pendingThreadSummaries,
-      pendingExtensions,
+      pendingItems,
     };
   }
 
@@ -472,8 +463,7 @@ export const maybeSpawnDreamRun = async (
       return {
         scheduled: false,
         reason: "below_threshold",
-        pendingThreadSummaries,
-        pendingExtensions,
+        pendingItems,
       };
     }
   }
@@ -484,8 +474,7 @@ export const maybeSpawnDreamRun = async (
     return {
       scheduled: false,
       reason: "no_api_key",
-      pendingThreadSummaries,
-      pendingExtensions,
+      pendingItems,
     };
   }
 
@@ -495,8 +484,7 @@ export const maybeSpawnDreamRun = async (
     return {
       scheduled: false,
       reason: "lock_busy",
-      pendingThreadSummaries,
-      pendingExtensions,
+      pendingItems,
     };
   }
   state.inFlight = true;
@@ -523,7 +511,6 @@ export const maybeSpawnDreamRun = async (
   return {
     scheduled: true,
     reason: "scheduled",
-    pendingThreadSummaries,
-    pendingExtensions,
+    pendingItems,
   };
 };

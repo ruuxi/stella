@@ -46,7 +46,7 @@ import {
   toJsonValueString,
 } from "./shared.js";
 import { isUiHiddenChatMessagePayload } from "../../chat-event-visibility.js";
-import { ThreadSummariesStore } from "../memory/thread-summaries-store.js";
+import { DreamInboxStore } from "../memory/dream-inbox-store.js";
 
 /**
  * Upper bound on the user/assistant rows scanned per `listMessages` /
@@ -770,20 +770,20 @@ const buildThreadMessagesFromEntries = (
 };
 
 export class SessionStore {
-  private threadSummariesStoreInstance: ThreadSummariesStore | null = null;
+  private dreamInboxStoreInstance: DreamInboxStore | null = null;
 
   constructor(private readonly db: SqliteDatabase) {}
 
   /**
-   * Lazily-constructed singleton ThreadSummariesStore. Stage 1 of the
-   * Chronicle/Dream memory pipeline — receives one row per finalized
-   * subagent run (see {@link finalizeSubagentSuccess}).
+   * Lazily-constructed singleton DreamInboxStore — the unified queue of
+   * everything Dream consolidates: subagent rollout summaries, orchestrator
+   * memory-review notes, and chronicle digests.
    */
-  get threadSummariesStore(): ThreadSummariesStore {
-    if (!this.threadSummariesStoreInstance) {
-      this.threadSummariesStoreInstance = new ThreadSummariesStore(this.db);
+  get dreamInboxStore(): DreamInboxStore {
+    if (!this.dreamInboxStoreInstance) {
+      this.dreamInboxStoreInstance = new DreamInboxStore(this.db);
     }
-    return this.threadSummariesStoreInstance;
+    return this.dreamInboxStoreInstance;
   }
 
   private withTransaction(work: () => void): void {

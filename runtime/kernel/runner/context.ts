@@ -562,8 +562,8 @@ export const createRunnerContext = ({
         ...(payload.signal ? { signal: payload.signal } : {}),
       });
     },
-    ...(runtimeStore?.threadSummariesStore
-      ? { threadSummariesStore: runtimeStore.threadSummariesStore }
+    ...(runtimeStore?.dreamInboxStore
+      ? { dreamInboxStore: runtimeStore.dreamInboxStore }
       : {}),
     agentApi: {
       createAgent: async (request) => {

@@ -14,8 +14,8 @@ import { THREAD_COMPACTION_TRIGGER_TOKENS } from "../../../kernel/thread-runtime
  * memory-review counter (`prepareOrchestratorRun` increments it on
  * every real user turn for agents that declare `triggersMemoryReview`)
  * has reached threshold. The review is a fire-and-forget LLM pass that
- * sees the recent user/assistant transcript and may write a gated memory
- * candidate under `memories_extensions/orchestrator_review` for Dream to
+ * sees the recent user/assistant transcript and may queue a gated memory
+ * candidate in the Dream inbox (kind `memory_note`) for Dream to
  * consolidate.
  *
  * Pre-migration this was an inline branch inside

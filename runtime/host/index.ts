@@ -2642,8 +2642,7 @@ export class StellaRuntimeHost {
       | "lock_busy"
       | "no_api_key"
       | "unavailable";
-    pendingThreadSummaries: number;
-    pendingExtensions: number;
+    pendingItems: number;
     detail?: string;
   }> {
     return await this.requestWorker<{
@@ -2658,8 +2657,7 @@ export class StellaRuntimeHost {
         | "lock_busy"
         | "no_api_key"
         | "unavailable";
-      pendingThreadSummaries: number;
-      pendingExtensions: number;
+      pendingItems: number;
       detail?: string;
     }>(
       METHOD_NAMES.INTERNAL_WORKER_DREAM_TRIGGER_NOW,
