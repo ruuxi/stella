@@ -5,6 +5,8 @@ export type AttachmentRef = {
   id?: string
   url?: string
   mimeType?: string
+  /** Downscaled data URL used for display; `url` stays full-resolution for the model. */
+  previewUrl?: string
 }
 
 export type SendMessageArgs = {

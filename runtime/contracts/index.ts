@@ -64,6 +64,13 @@ export type ChatContext = {
     dataUrl: string;
     width: number;
     height: number;
+    /**
+     * Downscaled data URL for chip thumbnails and message-row rendering.
+     * Full-resolution `dataUrl` is reserved for the model request and the
+     * explicit zoom overlay — rendering it in chips forces Chromium to
+     * decode multi-megabyte images for ~50px thumbs.
+     */
+    previewUrl?: string;
   }[];
   files?: ChatContextFile[];
   /**

@@ -16,6 +16,7 @@ type AttachedScreenshot = {
   dataUrl: string;
   width: number;
   height: number;
+  previewUrl?: string;
 };
 
 type AttachedFile = ChatContextFile;
@@ -49,16 +50,59 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function getImageDimensions(
-  dataUrl: string,
-): Promise<{ width: number; height: number }> {
+/** Longest edge of the downscaled preview rendered in chips and rows. */
+const PREVIEW_MAX_EDGE_PX = 1024;
+
+function loadImageElement(dataUrl: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () =>
-      resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => resolve({ width: 0, height: 0 });
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
     img.src = dataUrl;
   });
+}
+
+function encodePreview(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+): string | undefined {
+  const scale = Math.min(1, PREVIEW_MAX_EDGE_PX / Math.max(width, height, 1));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return undefined;
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/webp", 0.8);
+}
+
+/**
+ * Single decode pass per attached image: dimensions plus a downscaled
+ * preview data URL. `createImageBitmap` decodes off the main thread;
+ * SVG (unsupported there in Chromium) falls back to an `<img>` decode.
+ * Full-resolution decode happens once here instead of on every render
+ * of every chip — attaching ~10 full-res screenshots used to freeze the
+ * composer because each chip `<img>` rasterized the original.
+ */
+async function decodeImageAttachment(
+  file: File,
+  dataUrl: string,
+): Promise<{ width: number; height: number; previewUrl?: string }> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const { width, height } = bitmap;
+    const previewUrl = encodePreview(bitmap, width, height);
+    bitmap.close();
+    return { width, height, ...(previewUrl ? { previewUrl } : {}) };
+  } catch {
+    const img = await loadImageElement(dataUrl);
+    if (!img) return { width: 0, height: 0 };
+    const width = img.naturalWidth;
+    const height = img.naturalHeight;
+    const previewUrl = encodePreview(img, width, height);
+    return { width, height, ...(previewUrl ? { previewUrl } : {}) };
+  }
 }
 
 function isAttachableImage(mimeType: string): boolean {
@@ -84,8 +128,7 @@ async function processInputFiles(
   const imageResults = await Promise.allSettled(
     imageFiles.map(async (file): Promise<AttachedScreenshot> => {
       const dataUrl = await readFileAsDataUrl(file);
-      const { width, height } = await getImageDimensions(dataUrl);
-      return { dataUrl, width, height };
+      return { dataUrl, ...(await decodeImageAttachment(file, dataUrl)) };
     }),
   );
 

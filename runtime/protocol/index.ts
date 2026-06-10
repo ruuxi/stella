@@ -410,6 +410,13 @@ export type RuntimeAttachmentRef = {
   size?: number;
   transcript?: string;
   extractedText?: string;
+  /**
+   * Downscaled data URL generated at attach time. The model path always
+   * uses the full-resolution `url`; the chat display store persists the
+   * preview instead so user-message rows never decode (or store) tens of
+   * megabytes of base64 per turn.
+   */
+  previewUrl?: string;
 };
 
 export type RuntimePromptMessage = {

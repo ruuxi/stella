@@ -715,6 +715,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         attachments?: Array<{
           url: string;
           mimeType?: string;
+          previewUrl?: string;
         }>;
         userMessageEventId?: string;
         agentType?: string;
