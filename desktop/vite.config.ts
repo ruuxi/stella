@@ -1,4 +1,5 @@
 import fs from "fs"
+import type { Socket } from "node:net"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite"
@@ -148,6 +149,54 @@ function devCspRelax(): Plugin {
   }
 }
 
+/**
+ * Bun's node:http never settles `server.close(callback)` once a WebSocket
+ * upgrade has happened on the server (zombie upgrade sockets keep the
+ * connection count from draining — oven-sh/bun#13184). The production
+ * launcher runs this whole supervisor under Bun, and Vite's config-change
+ * restart awaits exactly that callback inside `server.close()`, so an update
+ * that rewrites vite.config.ts while the renderer's HMR socket is connected
+ * hangs the restart forever and leaves the app headless. Deliver the close
+ * callback ourselves: destroy every tracked connection, then settle as soon
+ * as the listener is down and all sockets are gone.
+ */
+function bunHttpServerCloseFix(): Plugin {
+  return {
+    name: 'bun-http-server-close-fix',
+    apply: 'serve',
+    configureServer(server) {
+      if (!process.versions.bun) return
+      const httpServer = server.httpServer
+      if (!httpServer) return
+
+      const openSockets = new Set<Socket>()
+      httpServer.on('connection', (socket) => {
+        openSockets.add(socket)
+        socket.once('close', () => openSockets.delete(socket))
+      })
+
+      const originalClose = httpServer.close.bind(httpServer)
+      httpServer.close = ((callback?: (err?: Error) => void) => {
+        let settled = false
+        const settle = (err?: Error) => {
+          if (settled) return
+          settled = true
+          callback?.(err)
+        }
+        originalClose(settle)
+        for (const socket of openSockets) socket.destroy()
+        const poll = setInterval(() => {
+          if (httpServer.listening || openSockets.size > 0) return
+          clearInterval(poll)
+          settle()
+        }, 10)
+        poll.unref()
+        return httpServer
+      }) as typeof httpServer.close
+    },
+  }
+}
+
 function devServerUrl(): Plugin {
   return {
     name: 'dev-server-url',
@@ -213,6 +262,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     devCspRelax(),
+    bunHttpServerCloseFix(),
     devServerUrl(),
     selfModHmrControl(),
     pdfWorkerAsset(),
