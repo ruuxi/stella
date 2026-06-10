@@ -1,17 +1,9 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { useTheme } from "@/context/theme-context";
 import { useUiState } from "@/context/ui-state";
-import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import {
-  SPLIT_STEP_ORDER,
+  CREATURE_HIDDEN_PHASES,
   type Phase as OnboardingPhase,
 } from "@/global/onboarding/onboarding-flow";
 import { useDiscoveryFlow } from "@/global/onboarding/DiscoveryFlow";
@@ -29,33 +21,24 @@ import { AskStellaSelectionChip } from "./selection/AskStellaSelectionChip";
 import "./full-shell.layout.css";
 import "./mobile.css";
 
-/* Onboarding is loaded as a dynamic chunk that contains the flow:
+/* Onboarding is loaded as a dynamic chunk that contains the whole flow:
  * every phase component, the StellaAnimation creature, the legal dialog,
- * and all onboarding CSS. The demo canvas (`OnboardingCanvas` + the
- * StellaAppMock subtree) is a separate sibling chunk preloaded in
- * parallel so it's ready by the time the user reaches the creation phase;
- * it also lives under its own Suspense boundary so a cold-load race can't
- * hide the active phase's Continue button.
+ * and all onboarding CSS.
  *
- * Returning users (`appReady === true` at first paint) never fetch these
- * chunks. After completion the React subtree unmounts and the lazy
- * imports are never re-evaluated, so onboarding code is genuinely gone
+ * Returning users (`appReady === true` at first paint) never fetch this
+ * chunk. After completion the React subtree unmounts and the lazy
+ * import is never re-evaluated, so onboarding code is genuinely gone
  * for the remainder of the session and absent from the next cold start. */
 const onboardingChunkPromise: { current: Promise<unknown> | null } = {
   current: null,
 };
 const loadOnboardingChunk = () => {
   if (!onboardingChunkPromise.current) {
-    onboardingChunkPromise.current = Promise.all([
-      import("@/global/onboarding/OnboardingOverlay"),
-      import("@/global/onboarding/OnboardingCanvas"),
-    ]);
+    onboardingChunkPromise.current = import(
+      "@/global/onboarding/OnboardingOverlay"
+    );
   }
   return onboardingChunkPromise.current;
-};
-
-const preloadOnboardingCanvas = () => {
-  void import("@/global/onboarding/OnboardingCanvas");
 };
 
 const OnboardingView = lazy(() =>
@@ -63,13 +46,6 @@ const OnboardingView = lazy(() =>
     default: module.OnboardingView,
   })),
 );
-const OnboardingCanvas = lazy(() =>
-  import("@/global/onboarding/OnboardingCanvas").then((module) => ({
-    default: module.OnboardingCanvas,
-  })),
-);
-
-const CREATION_PHASE_INDEX = SPLIT_STEP_ORDER.indexOf("creation");
 
 const dismissLaunchSplash = () => {
   const launch = document.getElementById("stella-launch");
@@ -90,14 +66,9 @@ function OnboardingExperience({
   activeConversationId,
   onEnteredApp,
 }: OnboardingExperienceProps) {
-  const [activeDemo, setActiveDemo] = useState<OnboardingDemo>(null);
-  const [demoClosing, setDemoClosing] = useState(false);
-  const onboardingDemoMorphing = false;
   const [stellaHiddenByPhase, setStellaHiddenByPhase] = useState(false);
   const [onboardingPhase, setOnboardingPhase] =
     useState<OnboardingPhase>("intro");
-  const demoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeDemoRef = useRef<OnboardingDemo>(null);
   const onboarding = useOnboardingOverlay();
   const {
     handleDiscoveryConfirm,
@@ -106,32 +77,6 @@ function OnboardingExperience({
   } = useDiscoveryFlow({
     conversationId: activeConversationId,
   });
-
-  const handleDemoChange = useCallback((demo: OnboardingDemo) => {
-    if (demo) {
-      if (demoCloseTimerRef.current) {
-        clearTimeout(demoCloseTimerRef.current);
-        demoCloseTimerRef.current = null;
-      }
-
-      setDemoClosing(false);
-      setActiveDemo(demo);
-      activeDemoRef.current = demo;
-      return;
-    }
-
-    if (activeDemoRef.current === null) {
-      return;
-    }
-
-    activeDemoRef.current = null;
-    setDemoClosing(true);
-    demoCloseTimerRef.current = setTimeout(() => {
-      setActiveDemo(null);
-      setDemoClosing(false);
-      demoCloseTimerRef.current = null;
-    }, 400);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,49 +89,23 @@ function OnboardingExperience({
     };
   }, []);
 
-  useEffect(() => {
-    const splitIndex = SPLIT_STEP_ORDER.indexOf(onboardingPhase);
-    if (
-      splitIndex >= 0 &&
-      CREATION_PHASE_INDEX >= 0 &&
-      splitIndex >= CREATION_PHASE_INDEX - 1
-    ) {
-      preloadOnboardingCanvas();
-    }
-  }, [onboardingPhase]);
-
-  useEffect(() => {
-    return () => {
-      if (demoCloseTimerRef.current) {
-        clearTimeout(demoCloseTimerRef.current);
-      }
-    };
-  }, []);
-
   const handleOnboardingPhaseChange = useCallback(
     (phase: OnboardingPhase) => {
       setOnboardingPhase(phase);
       onboarding.persistPhase(phase);
-      const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
-      setStellaHiddenByPhase(
-        CREATION_PHASE_INDEX >= 0 && splitIndex >= CREATION_PHASE_INDEX,
-      );
+      setStellaHiddenByPhase(CREATURE_HIDDEN_PHASES.has(phase));
     },
     [onboarding],
   );
 
   // Phases whose own animations dominate the frame budget; we keep the
   // creature visible but pause its rAF canvas loop so the heavy phase
-  // gets the full frame budget. (`creation` and later are already covered
-  // by `stellaHiddenByPhase` above, which both hides AND pauses.)
+  // gets the full frame budget. (CREATURE_HIDDEN_PHASES both hide AND
+  // pause via `stellaHiddenByPhase`.)
   const stellaPausedByHeavyPhase = onboardingPhase === "capabilities";
 
-  const showOnboardingDemos = activeDemo || demoClosing;
-  const pauseOnboardingMotion =
-    onboardingDemoMorphing || onboarding.onboardingExiting;
   const pauseStellaAnimation =
-    pauseOnboardingMotion ||
-    Boolean(activeDemo) ||
+    onboarding.onboardingExiting ||
     stellaHiddenByPhase ||
     stellaPausedByHeavyPhase;
 
@@ -196,58 +115,38 @@ function OnboardingExperience({
   }, [onEnteredApp, onboarding.onboardingDone]);
 
   return (
-    <>
-      <div
-        className="onboarding-layout"
-        data-split={onboarding.splitMode || undefined}
-        data-demo={showOnboardingDemos || undefined}
-      >
-        <Suspense fallback={null}>
-          <OnboardingView
-            hasExpanded={onboarding.hasExpanded}
-            onboardingDone={onboarding.onboardingDone}
-            onboardingExiting={onboarding.onboardingExiting}
-            isAuthenticated={onboarding.isAuthenticated}
-            splitMode={onboarding.splitMode}
-            splitEntering={onboarding.splitEntering}
-            hasDiscoverySelections={onboarding.hasDiscoverySelections}
-            hasStarted={onboarding.hasStarted}
-            stellaAnimationRef={onboarding.stellaAnimationRef}
-            stellaAnimationPaused={pauseStellaAnimation}
-            stellaAnimationHidden={stellaHiddenByPhase}
-            onboardingKey={onboarding.onboardingKey}
-            initialPhase={onboarding.initialPhase}
-            creatureInitialBirth={onboarding.creatureInitialBirth}
-            triggerFlash={onboarding.triggerFlash}
-            startOnboarding={onboarding.startOnboarding}
-            completeOnboarding={onboarding.completeOnboarding}
-            handleEnterSplit={onboarding.handleEnterSplit}
-            onDiscoveryConfirm={handleDiscoveryConfirm}
-            onSelectionChange={onboarding.setHasDiscoverySelections}
-            onDemoChange={handleDemoChange}
-            onPhaseChange={handleOnboardingPhaseChange}
-            activeDemo={activeDemo}
-            discoveryWelcomeExpected={discoveryWelcomeExpected}
-            discoveryWelcomeReady={discoveryWelcomeReady}
-          />
-        </Suspense>
-        {/* Canvas is its own Suspense boundary so a cold lazy-chunk load
-         * on entering the `creation` phase can't suspend the overlay above
-         * and momentarily hide the Continue button. */}
-        <Suspense fallback={null}>
-          <div
-            className="onboarding-demo-area"
-            data-visible={showOnboardingDemos ? true : undefined}
-            data-closing={demoClosing || undefined}
-            aria-hidden={!showOnboardingDemos}
-          >
-            {showOnboardingDemos ? (
-              <OnboardingCanvas activeDemo={activeDemo} />
-            ) : null}
-          </div>
-        </Suspense>
-      </div>
-    </>
+    <div
+      className="onboarding-layout"
+      data-split={onboarding.splitMode || undefined}
+    >
+      <Suspense fallback={null}>
+        <OnboardingView
+          hasExpanded={onboarding.hasExpanded}
+          onboardingDone={onboarding.onboardingDone}
+          onboardingExiting={onboarding.onboardingExiting}
+          isAuthenticated={onboarding.isAuthenticated}
+          splitMode={onboarding.splitMode}
+          splitEntering={onboarding.splitEntering}
+          hasDiscoverySelections={onboarding.hasDiscoverySelections}
+          hasStarted={onboarding.hasStarted}
+          stellaAnimationRef={onboarding.stellaAnimationRef}
+          stellaAnimationPaused={pauseStellaAnimation}
+          stellaAnimationHidden={stellaHiddenByPhase}
+          onboardingKey={onboarding.onboardingKey}
+          initialPhase={onboarding.initialPhase}
+          creatureInitialBirth={onboarding.creatureInitialBirth}
+          triggerFlash={onboarding.triggerFlash}
+          startOnboarding={onboarding.startOnboarding}
+          completeOnboarding={onboarding.completeOnboarding}
+          handleEnterSplit={onboarding.handleEnterSplit}
+          onDiscoveryConfirm={handleDiscoveryConfirm}
+          onSelectionChange={onboarding.setHasDiscoverySelections}
+          onPhaseChange={handleOnboardingPhaseChange}
+          discoveryWelcomeExpected={discoveryWelcomeExpected}
+          discoveryWelcomeReady={discoveryWelcomeReady}
+        />
+      </Suspense>
+    </div>
   );
 }
 

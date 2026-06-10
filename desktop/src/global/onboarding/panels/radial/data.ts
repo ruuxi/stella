@@ -1,4 +1,10 @@
-import { Camera, MessageSquare, Mic, Plus, type IconComponent } from "@/ui/icons";
+import {
+  Camera,
+  MessageSquare,
+  Mic,
+  Plus,
+  type IconComponent,
+} from "@/ui/icons";
 
 type RadialWedgeId = "capture" | "chat" | "add" | "voice";
 
@@ -16,32 +22,28 @@ export const RADIAL_WEDGES: RadialWedge[] = [
     id: "capture",
     label: "Capture",
     icon: Camera,
-    heading: "Grab what's on your screen",
-    detail:
-      "Capture whatever you're looking at — a webpage, a document, anything — and Stella instantly understands it.",
+    heading: "Grab what's on screen",
+    detail: "Capture any page or document and Stella instantly gets it.",
   },
   {
     id: "chat",
     label: "Chat",
     icon: MessageSquare,
-    heading: "Chat that already knows what you're doing",
-    detail:
-      "Stella sees what app or page you're on and picks up the conversation from there. No need to explain the context.",
+    heading: "Chat with context",
+    detail: "The conversation opens already knowing what you're looking at.",
   },
   {
     id: "add",
     label: "Add",
     icon: Plus,
     heading: "Add to your conversation",
-    detail:
-      "Pin what you grabbed to the current chat as context — no need to leave the app you're in.",
+    detail: "Pin what you grabbed to the current chat without switching apps.",
   },
   {
     id: "voice",
     label: "Voice",
     icon: Mic,
-    heading: "Just talk to Stella",
-    detail:
-      "Speak naturally and Stella listens. Dictate notes, ask questions, or give instructions — hands-free, from anywhere.",
+    heading: "Just talk",
+    detail: "Dictate notes, ask questions, give instructions, hands-free.",
   },
 ];

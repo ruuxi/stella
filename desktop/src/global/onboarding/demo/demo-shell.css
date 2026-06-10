@@ -1,0 +1,502 @@
+/* ──────────────────────────────────────────────────────────────────────
+ * Onboarding demo shell — the one faithful Stella-window mock shared by
+ * the capabilities, shapeshift, and summon demos. Visibility is driven
+ * by `use-choreography` cues through data attributes; this file only
+ * describes how each state looks and how states transition.
+ * ────────────────────────────────────────────────────────────────────── */
+
+.odemo-shell {
+  --odemo-accent: var(--primary);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  background:
+    radial-gradient(
+      120% 90% at 80% 0%,
+      color-mix(in oklch, var(--foreground) 4%, transparent),
+      transparent 55%
+    ),
+    color-mix(in oklch, var(--background) 98%, transparent);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  font-family: var(--font-family-sans, "Manrope", system-ui, sans-serif);
+  transition: border-color 0.6s ease;
+}
+
+/* Accent tint wash — a theme-morph (e.g. shapeshift's "dusk") fades
+ * this in by raising `--odemo-tint-opacity`; opacity transitions where
+ * gradient/custom-property changes can't. */
+.odemo-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    130% 100% at 85% 0%,
+    color-mix(in oklch, var(--odemo-accent) 20%, transparent),
+    transparent 62%
+  );
+  opacity: var(--odemo-tint-opacity, 0);
+  transition: opacity 0.7s ease;
+}
+
+.odemo-shell__topbar,
+.odemo-shell__body {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────── */
+
+.odemo-shell__topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  /* Fixed height so morphs that add chrome (the shapeshift tab strip)
+   * never change the bar's size and shift the body below. */
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.odemo-shell__lights {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.odemo-shell__lights span {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+/* Tab strip (the "Give me tabs" morph) grows in from zero width. */
+.odemo-shell__tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.odemo-shell__tab {
+  padding: 3px 12px;
+  border-radius: 6px;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+  opacity: 0;
+  transform: translateY(-6px);
+  animation: odemoTabIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.odemo-shell__tab:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.odemo-shell__tab:nth-child(3) {
+  animation-delay: 140ms;
+}
+
+@keyframes odemoTabIn {
+  to {
+    opacity: 0.55;
+    transform: translateY(0);
+  }
+}
+
+.odemo-shell__tab[data-active] {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.odemo-shell__tab[data-active] {
+  animation-name: odemoTabInActive;
+}
+
+@keyframes odemoTabInActive {
+  to {
+    opacity: 0.95;
+    transform: translateY(0);
+  }
+}
+
+/* ── Body: sidebar + main ─────────────────────────────────────────── */
+
+.odemo-shell__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.odemo-shell__sidebar {
+  width: 124px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px 12px;
+  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.odemo-shell__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.odemo-shell__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
+  color: var(--foreground);
+  opacity: 0.5;
+  white-space: nowrap;
+}
+
+.odemo-shell__nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.odemo-shell__nav-item[data-active] {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  opacity: 0.92;
+}
+
+/* A feature the demo just "built" — grows in and glows briefly. */
+.odemo-shell__nav-item[data-fresh] {
+  opacity: 0;
+  transform: translateX(-6px);
+  animation: odemoNavItemIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  color: color-mix(in oklch, var(--odemo-accent) 70%, var(--foreground));
+}
+
+@keyframes odemoNavItemIn {
+  to {
+    opacity: 0.95;
+    transform: translateX(0);
+  }
+}
+
+.odemo-shell__account {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+}
+
+.odemo-shell__account-avatar {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  flex-shrink: 0;
+}
+
+.odemo-shell__account-name {
+  height: 6px;
+  width: 52px;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.odemo-shell__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 22px 16px;
+  gap: 10px;
+  position: relative;
+}
+
+.odemo-shell__wordmark {
+  font-family: var(--font-family-display);
+  font-size: 26px;
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+/* ── Chat column ──────────────────────────────────────────────────── */
+
+.odemo-chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  overflow: hidden;
+}
+
+.odemo-bubble {
+  max-width: 78%;
+  padding: 8px 13px;
+  border-radius: 15px;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  color: var(--foreground);
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition:
+    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.odemo-bubble[data-visible] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.odemo-bubble[data-role="user"] {
+  align-self: flex-end;
+  background: color-mix(in oklch, var(--odemo-accent) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--odemo-accent) 22%, transparent);
+  border-bottom-right-radius: 6px;
+}
+
+.odemo-bubble[data-role="assistant"] {
+  align-self: flex-start;
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-bottom-left-radius: 6px;
+}
+
+.odemo-bubble[data-role="assistant"][data-visible] {
+  opacity: 0.92;
+}
+
+/* ── Working indicator (Claude-style inline status) ───────────────── */
+
+.odemo-working {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 2px 0;
+  opacity: 0;
+  transform: translate3d(0, 6px, 0);
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.odemo-working[data-visible] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.odemo-working svg {
+  opacity: 0.75;
+}
+
+.odemo-working__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
+  background: linear-gradient(
+    100deg,
+    color-mix(in oklch, var(--foreground) 45%, transparent) 35%,
+    color-mix(in oklch, var(--foreground) 95%, transparent) 50%,
+    color-mix(in oklch, var(--foreground) 45%, transparent) 65%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: odemoShimmer 1.7s linear infinite;
+}
+
+@keyframes odemoShimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+/* ── Work receipt cards ───────────────────────────────────────────── */
+
+.odemo-workcard {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  align-self: flex-start;
+  min-width: 240px;
+  max-width: 84%;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  font-size: var(--font-size-xs);
+  color: var(--foreground);
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition:
+    opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.odemo-workcard[data-visible] {
+  opacity: 0.92;
+  transform: translate3d(0, 0, 0);
+}
+
+.odemo-workcard__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.65;
+}
+
+.odemo-workcard__label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Shimmer while running; settle once done. */
+.odemo-workcard:not([data-done]) .odemo-workcard__label {
+  background: linear-gradient(
+    100deg,
+    color-mix(in oklch, var(--foreground) 50%, transparent) 35%,
+    color-mix(in oklch, var(--foreground) 95%, transparent) 50%,
+    color-mix(in oklch, var(--foreground) 50%, transparent) 65%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: odemoShimmer 1.7s linear infinite;
+}
+
+.odemo-workcard__check {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--success);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.odemo-workcard[data-done] .odemo-workcard__check {
+  opacity: 0.9;
+  transform: scale(1);
+}
+
+/* ── Composer pill ────────────────────────────────────────────────── */
+
+.odemo-composer {
+  margin-top: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  transition: border-color 0.3s ease;
+}
+
+.odemo-composer[data-filled] {
+  border-color: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+.odemo-composer__add,
+.odemo-composer__send,
+.odemo-composer__mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.odemo-composer__add {
+  color: color-mix(in oklch, var(--foreground) 60%, transparent);
+}
+
+.odemo-composer__mic {
+  color: color-mix(in oklch, var(--foreground) 45%, transparent);
+}
+
+.odemo-composer__input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: color-mix(in oklch, var(--foreground) 88%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.odemo-composer__placeholder {
+  color: color-mix(in oklch, var(--foreground) 38%, transparent);
+}
+
+.odemo-composer__caret {
+  display: inline-block;
+  width: 1px;
+  height: 0.95em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: color-mix(in oklch, var(--foreground) 70%, transparent);
+  animation: odemoCaretBlink 1s steps(2, start) infinite;
+}
+
+@keyframes odemoCaretBlink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.odemo-composer__send {
+  background: color-mix(in oklch, var(--odemo-accent) 22%, transparent);
+  color: color-mix(in oklch, var(--ring) 80%, var(--foreground));
+  transition:
+    background 0.25s ease,
+    transform 0.25s ease;
+}
+
+.odemo-composer__send[data-sending] {
+  background: color-mix(in oklch, var(--odemo-accent) 45%, transparent);
+  transform: scale(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .odemo-shell__tab,
+  .odemo-shell__nav-item[data-fresh] {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+
+  .odemo-working__label,
+  .odemo-workcard:not([data-done]) .odemo-workcard__label {
+    animation: none;
+    background: none;
+    color: color-mix(in oklch, var(--foreground) 70%, transparent);
+    -webkit-background-clip: initial;
+    background-clip: initial;
+  }
+}

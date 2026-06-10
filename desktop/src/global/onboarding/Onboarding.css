@@ -1,6 +1,8 @@
 /* ===== Onboarding — 3-phase flow ===== */
-/* Phase 1: Center (start, auth, intro) */
-/* Phase 2: Split (browser, discovery, memory, creation, phone, theme, personality) */
+/* Phase 1: Center (start, intro) */
+/* Phase 2: Split (capabilities, shapeshift, theme, personality, import,
+ *          permissions, browser, extension, engine, summon, voice,
+ *          memory, enter) */
 /* Phase 3: Complete */
 
 /* Ripple animation for reveal */
@@ -373,8 +375,8 @@
 
 /* Per-phase override for the parent flex `gap` we have to negate when the
  * Continue button is collapsed. Defaults to `.onboarding-step-content`'s
- * 20px; phases that wrap the button in a different container (shortcuts'
- * 24px, etc.) can re-set this on their own scope. */
+ * 20px; phases that wrap the button in a different container can re-set
+ * this on their own scope. */
 .onboarding-confirm {
   --onboarding-collapse-gap: 20px;
   box-sizing: border-box;
@@ -439,7 +441,8 @@
    * (permissions, theme, browser, personality) read as balanced instead of
    * floating near the top with empty space below. `safe center` keeps the
    * stage scrollable from the top if its content ever exceeds the pane.
-   * Mock phases (memory, creation, shortcuts) override this further down. */
+   * Full-stage demo phases (capabilities, shapeshift, summon, memory)
+   * override this further down. */
   justify-content: safe center;
   align-items: flex-start;
   position: relative;
@@ -495,10 +498,9 @@
   }
 }
 
-/* Capabilities phase: full-width auto-cycling showcase (title → frame → continue).
- * Mirrors the creation-phase pattern so the stage spans the canvas instead of
- * being clamped to the right pane, but stays interactive (no pointer-events: none
- * trickery) since the dots/Continue inside the frame are clickable. */
+/* Capabilities phase: full-width demo player (title → frame → continue).
+ * The stage spans the canvas instead of being clamped to the right pane,
+ * and stays interactive since the word nav/Continue inside are clickable. */
 .onboarding-dialogue[data-phase="capabilities"] .onboarding-split-right {
   width: 100%;
   min-width: 100%;
@@ -528,58 +530,110 @@
   max-width: none;
 }
 
-/* Creation phase: full-width vertical layout (title → demo → options) */
-.onboarding-dialogue[data-phase="creation"] {
-  pointer-events: none;
-}
-
-.onboarding-dialogue[data-phase="creation"] .onboarding-split-right {
+/* Shapeshift + summon: full-width demo stages, same pattern as
+ * capabilities — the creature is hidden for these (CREATURE_HIDDEN_PHASES)
+ * so the demo owns the canvas. */
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-right,
+.onboarding-dialogue[data-phase="summon"] .onboarding-split-right {
   width: 100%;
   min-width: 100%;
   margin-left: 0;
-  padding: clamp(20px, 3vh, 36px) 40px 24px;
-  z-index: 5;
-  pointer-events: none;
+  padding: clamp(20px, 3vh, 36px) 40px 32px;
+  align-items: center;
   background: transparent;
   backdrop-filter: none;
-  align-items: center;
+  transform: none;
 }
 
-.onboarding-dialogue[data-phase="creation"] .onboarding-split-right::before {
-  display: none;
-}
-
-.onboarding-dialogue[data-phase="creation"] .onboarding-split-stage {
-  flex: 1;
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-stage,
+.onboarding-dialogue[data-phase="summon"] .onboarding-split-stage {
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   max-width: none;
   min-height: 0;
+  width: 100%;
+  gap: 14px;
 }
 
-.onboarding-dialogue[data-phase="creation"] .onboarding-split-title {
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-split-title,
+.onboarding-dialogue[data-phase="summon"] .onboarding-split-title {
   text-align: center;
-  pointer-events: auto;
 }
 
-.onboarding-dialogue[data-phase="creation"] .onboarding-step-content {
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-step-content,
+.onboarding-dialogue[data-phase="summon"] .onboarding-step-content {
   align-items: center;
-  pointer-events: auto;
   max-width: none;
 }
 
-.onboarding-dialogue[data-phase="creation"] .onboarding-step-desc {
-  text-align: center;
-  max-width: 480px;
-  margin: 0 auto;
-  font-size: 22px;
-  line-height: 1.45;
+/* ═══ Act eyebrow + progress strip ═══ */
+
+/* The five-act story chrome: a quiet uppercase eyebrow above each step
+ * title, and a grouped dot strip at the bottom of the canvas. Both are
+ * orientation only — navigation stays on the chevrons. */
+.onboarding-act-label {
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.42;
+  margin-bottom: -12px;
 }
 
-.onboarding-step-content--creation {
+.onboarding-dialogue[data-phase="capabilities"] .onboarding-act-label,
+.onboarding-dialogue[data-phase="shapeshift"] .onboarding-act-label,
+.onboarding-dialogue[data-phase="summon"] .onboarding-act-label {
+  text-align: center;
+  margin-bottom: -6px;
+}
+
+.onboarding-progress {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
   align-items: center;
-  gap: 18px;
-  transform: translateY(-72px);
+  gap: 14px;
+  z-index: 11;
+  pointer-events: none;
+  animation: onboardingProgressIn var(--onboarding-duration-enter)
+    var(--onboarding-ease-standard) both;
+}
+
+@keyframes onboardingProgressIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.onboarding-progress__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.onboarding-progress__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 18%, transparent);
+  transition:
+    width 0.35s var(--onboarding-ease-standard),
+    background 0.35s ease;
+}
+
+.onboarding-progress__dot[data-state="done"] {
+  background: color-mix(in oklch, var(--foreground) 40%, transparent);
+}
+
+.onboarding-progress__dot[data-state="current"] {
+  width: 18px;
+  background: color-mix(in oklch, var(--foreground) 62%, transparent);
 }
 
 .onboarding-split-stage {
@@ -588,8 +642,8 @@
   /* Center the stage's own children vertically so a short step-content
    * (e.g. permissions, theme, browser) sits in the middle of the 520px
    * stage block rather than pinned to the top. Phases that need a
-   * top-aligned or distributed layout (creation: space-between,
-   * shortcuts/memory: flex children) override this further down. */
+   * top-aligned or distributed layout (memory: flex children) override
+   * this further down. */
   justify-content: center;
   gap: 24px;
   width: 100%;
@@ -636,8 +690,8 @@
  * async content (data fetch with a real loading state, etc.), give that
  * phase a stable min-height on its own stage/step-content overrides
  * rather than baking a global floor here — phase shapes diverge enough
- * (shortcuts/memory use min-height: 0 + flex stretch) that a global
- * floor causes more layout bugs than it prevents. */
+ * (memory uses min-height: 0 + flex stretch) that a global floor
+ * causes more layout bugs than it prevents. */
 .onboarding-step-content {
   display: flex;
   flex-direction: column;
@@ -1439,61 +1493,6 @@
   box-shadow: var(--focus-ring);
 }
 
-/* ═══ Onboarding canvas panel ═══ */
-
-.onboarding-canvas {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  position: relative;
-}
-
-.onboarding-canvas > .selfmod-layout {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  pointer-events: auto;
-}
-
-.onboarding-canvas > .selfmod-layout > .sam-root {
-  min-height: 100%;
-}
-
-.onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
-  width: min(1280px, calc(100vw - 80px));
-  height: clamp(560px, calc(100vh - 220px), 860px);
-  min-height: 0;
-  overflow: visible;
-  flex: 0 1 auto;
-  pointer-events: auto;
-}
-
-.onboarding-dialogue[data-phase="creation"] .selfmod-layout {
-  width: 100%;
-  height: 100%;
-  min-height: inherit;
-  pointer-events: auto;
-}
-
-.onboarding-dialogue[data-phase="creation"] .sam-root {
-  min-height: inherit;
-}
-
-/* Electron's transparent onboarding window makes blur/continuous decorative
- * animations noticeably heavier than the website. Keep the same states, but
- * stop the always-running meter/purr/cat loops inside this onboarding mock. */
-.onboarding-dialogue[data-phase="creation"] .sam-studio-meter-bar,
-.onboarding-dialogue[data-phase="creation"] .sam-cozy-cat-body,
-.onboarding-dialogue[data-phase="creation"] .sam-cozy-cat-tail,
-.onboarding-dialogue[data-phase="creation"] .sam-cozy-zzz,
-.onboarding-dialogue[data-phase="creation"] .sam-cozy-heart,
-.onboarding-dialogue[data-phase="creation"] .sam-mochi__purr-bar {
-  animation: none !important;
-}
-
 /* ═══ Mock data preview windows (left side) ═══ */
 
 .onboarding-mock-windows {
@@ -1565,8 +1564,7 @@
 .onboarding-mock-window[data-fading] {
   position: absolute;
   inset: 0 0 auto 0;
-  animation: mockWindowSwitchOut 0.26s
-    cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: mockWindowSwitchOut 0.26s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   pointer-events: none;
 }
 
@@ -1680,475 +1678,6 @@
 }
 
 /* ═══ Phase navigation chevrons (bottom-right) ═══ */
-
-.onboarding-dialogue[data-phase="shortcuts-global"] .onboarding-split-right,
-.onboarding-dialogue[data-phase="shortcuts-local"] .onboarding-split-right {
-  width: 100%;
-  min-width: 0;
-  margin-left: 0;
-  padding: 40px 40px 48px;
-  align-items: center;
-  /* Was `justify-content: center` which left the stage at its content height
-   * surrounded by empty space. We now stack from the top and let the stage
-   * stretch via flex so the mock can fill the available middle. */
-  justify-content: flex-start;
-}
-
-.onboarding-dialogue[data-phase="shortcuts-global"] .onboarding-split-stage,
-.onboarding-dialogue[data-phase="shortcuts-local"] .onboarding-split-stage {
-  max-width: min(1420px, calc(100vw - 80px));
-  min-height: 0;
-  align-items: center;
-  /* Stretch into the right pane so the demo/surface below can flex into
-   * the middle while the result text + Continue anchor at the bottom. */
-  flex: 1 1 auto;
-  gap: 24px;
-}
-
-.onboarding-dialogue[data-phase="shortcuts-global"] .onboarding-split-title,
-.onboarding-dialogue[data-phase="shortcuts-local"] .onboarding-split-title {
-  display: none;
-}
-
-.onboarding-shortcuts-phase {
-  width: 100%;
-  max-width: none;
-  align-items: center;
-  gap: 24px;
-  /* Fill the parent stage so children distribute top → middle → bottom:
-   * copy label sticks at top, the surface flexes into the middle, the
-   * result text + Continue anchor at the bottom. */
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.onboarding-shortcuts-phase > .onboarding-step-desc {
-  display: none;
-}
-
-.onboarding-shortcuts-grid {
-  display: grid;
-  gap: 20px;
-  width: 100%;
-  align-items: stretch;
-  /* Let the grid grow into the middle so the surface inside can fill. */
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.onboarding-shortcut-demo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  /* Demo column fills the grid cell so the surface (last child) can flex. */
-  min-height: 0;
-}
-
-.onboarding-shortcut-demo__copy {
-  flex-shrink: 0;
-}
-
-.onboarding-shortcut-demo__copy {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  text-align: center;
-  max-width: 34rem;
-}
-
-.onboarding-shortcut-demo__copy .onboarding-step-label {
-  font-size: var(--font-size-lg);
-  letter-spacing: 0.1em;
-}
-
-.onboarding-shortcut-demo__title {
-  margin: 0;
-  font-size: 28px;
-  font-weight: var(--weight-light);
-  letter-spacing: 0.04em;
-  color: var(--foreground);
-  opacity: 0.9;
-  line-height: 1.3;
-}
-
-.onboarding-shortcut-demo__copy .onboarding-step-subdesc {
-  font-size: var(--font-size-md);
-  line-height: 1.6;
-  opacity: 0.55;
-}
-
-.onboarding-shortcut-surface {
-  position: relative;
-  /* Floor for very short windows; on roomy windows the parent demo column
-   * (now flex: 1) drives the height so the mock fills the middle instead
-   * of being capped at 560px. */
-  min-height: 280px;
-  flex: 1 1 auto;
-  width: 100%;
-  max-width: 800px;
-  overflow: hidden;
-  border-radius: 20px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background:
-    radial-gradient(
-      circle at 18% 18%,
-      color-mix(in oklch, var(--foreground) 8%, transparent) 0,
-      transparent 22%
-    ),
-    linear-gradient(
-      180deg,
-      var(--surface-raised),
-      var(--background)
-    );
-  box-shadow: var(--shadow-lg);
-  user-select: none;
-}
-
-.onboarding-shortcut-hint {
-  display: none;
-}
-
-/* Pulsing border on the surface — we set the highlight border once and
- * animate `opacity` so the pulse runs on the compositor instead of
- * forcing per-frame paint via `border-color`. */
-.onboarding-shortcut-surface::after {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: 21px;
-  border: 2px solid color-mix(in oklch, var(--foreground) 28%, transparent);
-  pointer-events: none;
-  opacity: 0;
-  animation: surfacePulse 2s ease-in-out 0.6s 5;
-  z-index: 1;
-}
-
-/* Hide pulse once user has interacted */
-.onboarding-shortcut-surface[data-result]::after,
-.onboarding-shortcut-surface[data-menu-result]::after {
-  opacity: 0;
-  animation: none;
-  transition: opacity 0.3s ease;
-}
-
-@keyframes surfacePulse {
-  0%,
-  100% {
-    opacity: 0;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.scene-effect__mini-shell-msg {
-  padding: 7px 10px;
-  border-radius: 12px;
-  font-size: var(--font-size-2xs);
-  line-height: 1.45;
-  color: var(--foreground);
-}
-
-.scene-effect__mini-shell-msg--user {
-  align-self: flex-end;
-  max-width: 80%;
-  background: color-mix(
-    in oklch,
-    var(--primary) 12%,
-    transparent
-  );
-  border-radius: 12px 12px 4px 12px;
-}
-
-.scene-effect__mini-shell-msg--assistant {
-  align-self: flex-start;
-  max-width: 90%;
-  opacity: 0.8;
-}
-
-.onboarding-shortcut-result-description {
-  --onboarding-collapse-gap: 24px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-align: center;
-  max-width: 32rem;
-  /* Collapse so the surface + Continue stay vertically centered until
-   * the user has triggered the demo and a result lands. Grows in via
-   * the same single-property pattern as `.onboarding-confirm`. */
-  height: 0;
-  margin: calc(-1 * var(--onboarding-collapse-gap)) auto 0;
-  overflow: hidden;
-  opacity: 0;
-  transition:
-    height var(--onboarding-duration-enter) var(--onboarding-ease-soft),
-    margin-top var(--onboarding-duration-enter) var(--onboarding-ease-soft),
-    opacity var(--onboarding-duration-enter) var(--onboarding-ease-soft);
-  flex-shrink: 0;
-}
-
-/* The shortcuts phase wraps Continue in a 24px-gap container, not the
- * default 20px-gap `.onboarding-step-content`, so widen the negative-
- * margin compensation so the column re-centers cleanly. */
-.onboarding-shortcuts-phase > .onboarding-confirm {
-  --onboarding-collapse-gap: 24px;
-  flex-shrink: 0;
-  /* Sit above the radial mock so an overflowing dial/visual can't paint
-   * over the Continue button on smaller viewports. */
-  position: relative;
-  z-index: 2;
-}
-
-/* The radial demo column hosts `.radial-hero` which carries website-scale
- * padding/transforms; clip its spillover so the mock can't paint over the
- * Continue button when the column is shorter than the hero's natural size. */
-.onboarding-shortcut-demo--radial {
-  min-height: 0;
-  overflow: hidden;
-  width: 100%;
-}
-
-.onboarding-shortcut-demo--radial .radial-hero {
-  /* The website hero reserves 5–8rem top / 4–6.5rem bottom; in onboarding
-   * the surrounding split-pane already provides that breathing room, and
-   * the extra padding is what was pushing the mock down into Continue. */
-  padding: 0;
-  gap: clamp(1rem, 2.5vw, 2rem);
-}
-
-/* The website hero pulls the dial and mock upward with negative translates
- * so they tuck into the surrounding hero padding. With that padding zeroed
- * out for onboarding, those translates clip the top of the dial against the
- * column's `overflow: hidden`. Drop the translates in this context. */
-.onboarding-shortcut-demo--radial .radial-hero__dial,
-.onboarding-shortcut-demo--radial .radial-hero__mock {
-  transform: none;
-}
-
-.onboarding-shortcut-result-description[data-visible="true"] {
-  height: auto;
-  margin-top: 0;
-  opacity: 1;
-}
-
-.onboarding-shortcut-result-description strong {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.04em;
-  color: var(--foreground);
-  opacity: 0.85;
-}
-
-.onboarding-shortcut-result-description span {
-  font-size: var(--font-size-2xl);
-  line-height: 1.55;
-  font-weight: var(--weight-light);
-  color: var(--foreground);
-  opacity: 0.6;
-}
-
-/* ── Sidebar demo (local mode right-click tutorial) ──
- * The local-mode shortcut surface embeds the real `<StellaAppMock />`
- * underneath, so this sidebar slides in over a faithful mock of the
- * actual desktop app. The chrome below mirrors Stella's chat/composer
- * styling (rounded panel + pill composer + soft drop shadow). */
-
-.onboarding-shortcut-stella-frame {
-  position: absolute;
-  inset: 0;
-  border-radius: 19px;
-  overflow: hidden;
-  isolation: isolate;
-  pointer-events: none;
-  transition:
-    filter 0.35s ease,
-    opacity 0.35s ease;
-}
-
-/* Subtly dim the underlying app while the chat panel is open so the
- * sidebar reads as the focused surface. */
-.onboarding-shortcut-stella-frame[data-sidebar-open] {
-  filter: brightness(0.92) saturate(0.9);
-}
-
-/* The embedded mock injects its own chrome (border + shadow + radius);
- * the parent surface already provides those, so flatten the inner mock
- * to avoid a doubled border. */
-.onboarding-shortcut-stella-frame .sam-root {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  width: 100%;
-  height: 100%;
-}
-
-.onboarding-shortcut-sidebar-demo {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  bottom: 6px;
-  width: 44%;
-  display: flex;
-  flex-direction: column;
-  /* Near-opaque background instead of `backdrop-filter: blur(12px)` so the
-   * 320ms slide-in doesn't force the compositor to re-sample the backdrop
-   * for every frame of the translate. */
-  background: var(--surface-raised);
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  border-radius: 16px;
-  box-shadow: var(--shadow-overlay);
-  animation: sidebarSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
-  z-index: 4;
-  overflow: hidden;
-}
-
-@keyframes sidebarSlideIn {
-  from {
-    transform: translateX(8%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.onboarding-shortcut-sidebar-demo__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid
-    color-mix(in oklch, var(--foreground) 6%, transparent);
-}
-
-.onboarding-shortcut-sidebar-demo__avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--primary) 18%, transparent);
-  color: var(--ring);
-  flex-shrink: 0;
-}
-
-.onboarding-shortcut-sidebar-demo__title {
-  flex: 1;
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.01em;
-  color: var(--foreground);
-  opacity: 0.85;
-}
-
-.onboarding-shortcut-sidebar-demo__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  border: none;
-  color: var(--text-weak);
-  cursor: default;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.onboarding-shortcut-sidebar-demo__close:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, var(--background));
-  color: var(--text-base);
-}
-
-.onboarding-shortcut-sidebar-demo__messages {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 10px;
-  overflow: hidden;
-}
-
-.onboarding-shortcut-sidebar-demo__composer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 10px 12px;
-  padding: 5px 6px 5px 8px;
-  border-radius: 999px;
-  background: var(--background);
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  box-shadow: var(--shadow-sm);
-}
-
-.onboarding-shortcut-sidebar-demo__composer-add,
-.onboarding-shortcut-sidebar-demo__composer-submit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.onboarding-shortcut-sidebar-demo__composer-add {
-  border: 1.4px solid color-mix(in oklch, var(--foreground) 55%, transparent);
-  color: color-mix(in oklch, var(--foreground) 70%, transparent);
-}
-
-.onboarding-shortcut-sidebar-demo__composer-input {
-  flex: 1;
-  font-size: var(--font-size-xs);
-  color: color-mix(in oklch, var(--foreground) 38%, transparent);
-  letter-spacing: -0.01em;
-}
-
-.onboarding-shortcut-sidebar-demo__composer-submit {
-  background: color-mix(in oklch, var(--primary) 22%, transparent);
-  color: color-mix(in oklch, var(--ring) 80%, var(--foreground));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .onboarding-shortcut-sidebar-demo {
-    animation: none;
-  }
-  .onboarding-shortcut-stella-frame {
-    transition: none;
-  }
-}
-
-/* ── Menu visual effects (local mode) ── */
-
-@media (max-width: 1024px) {
-  .onboarding-dialogue[data-phase="shortcuts-global"] .onboarding-split-right,
-  .onboarding-dialogue[data-phase="shortcuts-local"] .onboarding-split-right {
-    padding-left: 24px;
-    padding-right: 24px;
-  }
-
-  .onboarding-dialogue[data-phase="shortcuts-global"] .onboarding-split-stage,
-  .onboarding-dialogue[data-phase="shortcuts-local"] .onboarding-split-stage {
-    max-width: calc(100vw - 48px);
-    min-height: auto;
-  }
-
-  .onboarding-shortcuts-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .onboarding-shortcut-demo {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-  }
-}
 
 .onboarding-phase-nav {
   position: fixed;
@@ -2501,13 +2030,11 @@
   line-height: 1.62;
 }
 
-.onboarding-dialogue[data-phase="extension"]
-  .onboarding-extension-card__title {
+.onboarding-dialogue[data-phase="extension"] .onboarding-extension-card__title {
   font-size: 18px;
 }
 
-.onboarding-dialogue[data-phase="extension"]
-  .onboarding-extension-card__desc {
+.onboarding-dialogue[data-phase="extension"] .onboarding-extension-card__desc {
   font-size: var(--font-size-md);
   line-height: 1.5;
 }
@@ -2565,14 +2092,12 @@
   height: 40px;
 }
 
-.onboarding-engine-tile[data-variant="hero"]
-  .onboarding-selection-tile-label {
+.onboarding-engine-tile[data-variant="hero"] .onboarding-selection-tile-label {
   font-size: var(--font-size-xl);
   letter-spacing: 0.02em;
 }
 
-.onboarding-engine-tile[data-variant="hero"]
-  .onboarding-selection-tile-desc {
+.onboarding-engine-tile[data-variant="hero"] .onboarding-selection-tile-desc {
   font-size: var(--font-size-base);
   font-weight: var(--weight-light);
   opacity: 0.75;
@@ -2649,8 +2174,7 @@
 
 .onboarding-engine-byok {
   padding: 14px;
-  border: 1px dashed
-    color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--foreground) 12%, transparent);
   border-radius: 10px;
 }
 
@@ -2722,8 +2246,7 @@
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid
-    color-mix(in oklch, var(--foreground) 8%, transparent);
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
   animation: onboardingInstantFadeIn var(--onboarding-duration-text)
     var(--onboarding-ease-standard) both;
 }
@@ -2866,8 +2389,7 @@
     transform: none !important;
   }
 
-  .onboarding-start-button,
-  .onboarding-shortcut-surface::after {
+  .onboarding-start-button {
     animation: none !important;
   }
 
@@ -2875,7 +2397,6 @@
    * smooth transition, but keep the layout collapse so the parent stage
    * still re-centers when they appear. */
   .onboarding-confirm,
-  .onboarding-shortcut-result-description,
   .onboarding-fda-note {
     transition: none !important;
     transform: none !important;
@@ -2885,14 +2406,14 @@
 /* ═══ Short-viewport rescale ═══
  *
  * On short windows several phases (permissions, theme, browser, capabilities,
- * creation, double-tap, memory, shortcuts) stack a heavy "above" surface — a
- * fixed-aspect frame, a tall mock canvas, or a column of cards — that pushes
+ * shapeshift, summon, memory) stack a heavy "above" surface — a fixed-aspect
+ * frame, a tall mock canvas, or a column of cards — that pushes
  * the Continue button below the fold or against fixed chrome (`.onboarding-
  * phase-nav`). The split pane has `overflow-y: auto`, but requiring users to
  * scroll just to find Continue reads as broken. Instead, we shrink the
  * heavy content above when vertical space is tight: tighter pane padding,
- * smaller gaps, and a height-aware width cap on the capabilities frame +
- * lower floors on the creation canvas / mock windows. Two breakpoints:
+ * smaller gaps, and a height-aware width cap on the demo frames +
+ * lower floors on the mock windows. Two breakpoints:
  *
  *   ≤ 820px  — tighten paddings, gaps, and the largest illustrations.
  *   ≤ 680px  — aggressive: shrink cards, drop section gaps, scale mocks.
@@ -2973,7 +2494,8 @@
     margin-top: 12px;
   }
 
-  .onboarding-dialogue[data-phase="extension"] .onboarding-extension-card__icon {
+  .onboarding-dialogue[data-phase="extension"]
+    .onboarding-extension-card__icon {
     width: 72px;
     height: 72px;
   }
@@ -3028,50 +2550,30 @@
     gap: clamp(8px, 1.2vw, 18px);
   }
 
-  /* Creation — keep reserving space for the title, button, gaps, and
-   * split-pane padding instead of sizing the mock directly from `vh`. */
-  .onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
-    height: clamp(420px, calc(100vh - 180px), 760px);
-    min-height: 0;
+  /* Shapeshift — same height-bounding treatment as capabilities. */
+  .oshape-stage {
+    width: min(880px, calc(100vw - 108px), calc((100vh - 320px) * 16 / 9));
   }
 
-  .onboarding-dialogue[data-phase="creation"] .onboarding-split-stage {
-    min-height: 0;
+  .oshape-caption-slot {
+    min-height: 4rem;
+    margin-top: 12px;
   }
 
-  .onboarding-step-content--creation {
-    transform: translateY(-32px);
-  }
-
-  /* Memory / double-tap / shortcuts mocks share a 280px floor that
-   * doesn't pay off on short windows — the mocks read fine smaller and
-   * the toggle/keycap row + Continue need the headroom. */
-  .onboarding-memory-mock,
-  .onboarding-doubletap-desktop,
-  .onboarding-shortcut-surface {
+  /* Memory mocks share a 280px floor that doesn't pay off on short
+   * windows — the mocks read fine smaller and the toggle row +
+   * Continue need the headroom. */
+  .onboarding-memory-mock {
     min-height: 200px;
   }
 
-  .onboarding-dialogue[data-phase="memory"] .onboarding-split-right,
-  .onboarding-dialogue[data-phase="double-tap"] .onboarding-split-right {
+  .onboarding-dialogue[data-phase="memory"] .onboarding-split-right {
     padding-top: clamp(28px, 4vh, 56px);
     padding-bottom: 28px;
   }
 
-  .onboarding-memory-step,
-  .onboarding-doubletap-step {
+  .onboarding-memory-step {
     gap: 16px;
-  }
-
-  .onboarding-doubletap-step__lede {
-    font-size: 22px;
-    line-height: 1.4;
-  }
-
-  .onboarding-doubletap-keycap {
-    min-width: 38px;
-    height: 38px;
-    font-size: var(--font-size-xl);
   }
 
   /* Theme — 4 stacked option groups. Tighten the row spacing only. */
@@ -3079,8 +2581,12 @@
     margin-bottom: 4px;
   }
 
-  .onboarding-dialogue[data-phase="theme"] .onboarding-theme-row .onboarding-pill,
-  .onboarding-dialogue[data-phase="theme"] .onboarding-theme-grid .onboarding-pill {
+  .onboarding-dialogue[data-phase="theme"]
+    .onboarding-theme-row
+    .onboarding-pill,
+  .onboarding-dialogue[data-phase="theme"]
+    .onboarding-theme-grid
+    .onboarding-pill {
     padding: 8px 14px;
     font-size: var(--font-size-base);
   }
@@ -3142,21 +2648,8 @@
     padding-bottom: 14px;
   }
 
-  /* Creation — tighter floor still. */
-  .onboarding-dialogue[data-phase="creation"] .onboarding-canvas {
-    height: clamp(320px, calc(100vh - 160px), 560px);
-    min-height: 0;
-  }
-
-  .onboarding-step-content--creation {
-    transform: translateY(-16px);
-    gap: 12px;
-  }
-
   /* Mock floors drop further. */
-  .onboarding-memory-mock,
-  .onboarding-doubletap-desktop,
-  .onboarding-shortcut-surface {
+  .onboarding-memory-mock {
     min-height: 160px;
   }
 
@@ -3194,7 +2687,8 @@
   }
 
   /* Extension — shrink the icon and copy. */
-  .onboarding-dialogue[data-phase="extension"] .onboarding-extension-card__icon {
+  .onboarding-dialogue[data-phase="extension"]
+    .onboarding-extension-card__icon {
     width: 56px;
     height: 56px;
     border-radius: 14px;
@@ -3204,19 +2698,6 @@
     font-size: var(--font-size-base);
   }
 
-  /* Double-tap — shrink the lede + keycaps. */
-  .onboarding-doubletap-step__lede {
-    font-size: var(--font-size-lg);
-    line-height: 1.4;
-  }
-
-  .onboarding-doubletap-keycap {
-    min-width: 32px;
-    height: 32px;
-    font-size: var(--font-size-lg);
-  }
-
-  .onboarding-doubletap-step,
   .onboarding-memory-step {
     gap: 12px;
   }
@@ -3437,7 +2918,8 @@
     text-decoration-color 0.32s ease;
 }
 
-.onboarding-enter-step[data-ready] .onboarding-enter-step__cta[data-visible="true"] {
+.onboarding-enter-step[data-ready]
+  .onboarding-enter-step__cta[data-visible="true"] {
   opacity: 0.92;
 }
 
@@ -3458,8 +2940,7 @@
     transparent
   );
   text-decoration-thickness: 1.5px;
-  text-shadow: 0 0 24px
-    color-mix(in oklch, var(--foreground) 22%, transparent);
+  text-shadow: 0 0 24px color-mix(in oklch, var(--foreground) 22%, transparent);
 }
 
 .onboarding-enter-step[data-ready] .onboarding-enter-step__cta:active {
@@ -3489,7 +2970,8 @@
   width: auto;
 }
 
-.onboarding-language-switch [data-slot="select-trigger"].onboarding-language-switch-select {
+.onboarding-language-switch
+  [data-slot="select-trigger"].onboarding-language-switch-select {
   width: auto;
   height: auto;
   background: transparent;
@@ -3510,15 +2992,20 @@
     background 0.15s ease;
 }
 
-.onboarding-language-switch [data-slot="select-trigger"].onboarding-language-switch-select:hover,
-.onboarding-language-switch [data-slot="select-trigger"].onboarding-language-switch-select:focus-visible,
-.onboarding-language-switch [data-slot="select-trigger"].onboarding-language-switch-select[data-state="open"] {
+.onboarding-language-switch
+  [data-slot="select-trigger"].onboarding-language-switch-select:hover,
+.onboarding-language-switch
+  [data-slot="select-trigger"].onboarding-language-switch-select:focus-visible,
+.onboarding-language-switch
+  [data-slot="select-trigger"].onboarding-language-switch-select[data-state="open"] {
   opacity: 1;
   border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   outline: none;
 }
 
-.onboarding-language-switch [data-slot="select-trigger"].onboarding-language-switch-select [data-slot="select-icon"] {
+.onboarding-language-switch
+  [data-slot="select-trigger"].onboarding-language-switch-select
+  [data-slot="select-icon"] {
   opacity: 0.6;
 }

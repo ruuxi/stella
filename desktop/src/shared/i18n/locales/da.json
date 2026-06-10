@@ -472,17 +472,22 @@
       "secondary": "Stella er ikke for alle. Stella er til dig."
     },
     "stepTitles": {
+      "shapeshift": "Denne app kan omskrive sig selv.",
       "extension": "Tilføj Stella til din browser.",
       "browser": "Lad Stella lære dig at kende.",
-      "creation": "Stella ændrer sig, når du beder om det. Klik på knapperne for at prøve.",
       "theme": "Hvordan skal Stella se ud?",
       "personality": "Hvordan skal Stella tale?",
-      "shortcutsGlobal": "Overalt på skrivebordet.",
-      "shortcutsLocal": "Inde i Stella.",
-      "doubleTap": "Tryk to gange. Tilkald Stella.",
+      "summon": "Tilkald Stella hvor som helst.",
       "voice": "Tal i stedet for at skrive.",
       "memory": "Hjælp Stella med at huske.",
       "enter": "Stella er næsten klar."
+    },
+    "acts": {
+      "discover": "Opdag",
+      "personalize": "Gør den til din",
+      "connect": "Forbind",
+      "flow": "Dit flow",
+      "ready": "Klar"
     },
     "discovery": {
       "appsSystem": {
@@ -504,10 +509,7 @@
     "plans": {
       "free": {
         "tagline": "Kom i gang med Stella",
-        "features": [
-          "Grundlæggende chat og hjælp",
-          "Begrænset daglig brug"
-        ]
+        "features": ["Grundlæggende chat og hjælp", "Begrænset daglig brug"]
       },
       "go": {
         "tagline": "Til daglig personlig brug",

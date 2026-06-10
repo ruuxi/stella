@@ -472,17 +472,22 @@
       "secondary": "Stella není pro každého. Stella je pro vás."
     },
     "stepTitles": {
+      "shapeshift": "Tahle aplikace se umí sama přepsat.",
       "extension": "Přidejte Stellu do prohlížeče.",
       "browser": "Nechte Stellu, ať vás pozná.",
-      "creation": "Stella se mění, když ji o to požádáte. Vyzkoušejte to kliknutím na tlačítka.",
       "theme": "Jak by Stella měla vypadat?",
       "personality": "Jak by Stella měla mluvit?",
-      "shortcutsGlobal": "Kdekoli na ploše.",
-      "shortcutsLocal": "Uvnitř Stelly.",
-      "doubleTap": "Klepněte dvakrát. Přivolejte Stellu.",
+      "summon": "Přivolej Stellu odkudkoli.",
       "voice": "Mluvte místo psaní.",
       "memory": "Pomozte Stelle si pamatovat.",
       "enter": "Stella je téměř připravena."
+    },
+    "acts": {
+      "discover": "Objevuj",
+      "personalize": "Udělej si ji svou",
+      "connect": "Propoj",
+      "flow": "Tvůj rytmus",
+      "ready": "Připraveno"
     },
     "discovery": {
       "appsSystem": {
@@ -504,10 +509,7 @@
     "plans": {
       "free": {
         "tagline": "Začněte se Stellou",
-        "features": [
-          "Základní chat a pomoc",
-          "Omezené denní využití"
-        ]
+        "features": ["Základní chat a pomoc", "Omezené denní využití"]
       },
       "go": {
         "tagline": "Pro každodenní osobní použití",

@@ -472,17 +472,22 @@
       "secondary": "Stella is niet voor iedereen. Stella is voor jou."
     },
     "stepTitles": {
+      "shapeshift": "Deze app kan zichzelf herschrijven.",
       "extension": "Voeg Stella toe aan je browser.",
       "browser": "Laat Stella je leren kennen.",
-      "creation": "Stella verandert wanneer je het vraagt. Klik op de knoppen om het te proberen.",
       "theme": "Hoe moet Stella eruitzien?",
       "personality": "Hoe moet Stella praten?",
-      "shortcutsGlobal": "Overal op je bureaublad.",
-      "shortcutsLocal": "Binnen Stella.",
-      "doubleTap": "Tik twee keer. Roep Stella op.",
+      "summon": "Roep Stella overal op.",
       "voice": "Praat in plaats van typen.",
       "memory": "Help Stella onthouden.",
       "enter": "Stella is bijna klaar."
+    },
+    "acts": {
+      "discover": "Ontdekken",
+      "personalize": "Maak het van jou",
+      "connect": "Verbinden",
+      "flow": "Jouw flow",
+      "ready": "Klaar"
     },
     "discovery": {
       "appsSystem": {
@@ -504,10 +509,7 @@
     "plans": {
       "free": {
         "tagline": "Begin met Stella",
-        "features": [
-          "Basischat en hulp",
-          "Beperkt dagelijks gebruik"
-        ]
+        "features": ["Basischat en hulp", "Beperkt dagelijks gebruik"]
       },
       "go": {
         "tagline": "Voor dagelijks persoonlijk gebruik",

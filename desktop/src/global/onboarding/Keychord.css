@@ -66,7 +66,9 @@
   gap: 6px;
 }
 
-.onboarding-keychord[data-size="compact"] .onboarding-keychord__group + .onboarding-keychord__group {
+.onboarding-keychord[data-size="compact"]
+  .onboarding-keychord__group
+  + .onboarding-keychord__group {
   margin-left: 6px;
 }
 
@@ -75,24 +77,10 @@
 }
 
 /* Highlight when the user just pressed the chord — same primary tint
- * the double-tap demo used for its keycap pulse. */
+ * the summon practice cards use for their keycap pulse. */
 .onboarding-keychord[data-highlight] .onboarding-keychord__cap {
-  background: color-mix(
-    in oklch,
-    var(--primary) 16%,
-    transparent
-  );
-  border-color: color-mix(
-    in oklch,
-    var(--primary) 38%,
-    transparent
-  );
-  box-shadow:
-    0 0 0 4px
-      color-mix(
-        in oklch,
-        var(--primary) 12%,
-        transparent
-      );
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 38%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 12%, transparent);
   transform: translateY(1px) scale(0.97);
 }

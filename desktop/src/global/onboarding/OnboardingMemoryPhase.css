@@ -78,7 +78,7 @@
   flex-direction: column;
   border-radius: 14px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  /* Match the other onboarding mocks (`.sam-root`, `.onboarding-shortcut-window`):
+  /* Match the other onboarding mocks (`.odemo-shell`):
    * opaque background with a subtle radial tint so it reads as "the real app
    * window" sitting in front of the onboarding gradient, not a glass overlay. */
   background-color: var(--background);
@@ -90,11 +90,7 @@
     ),
     radial-gradient(
       90% 80% at 0% 100%,
-      color-mix(
-        in oklch,
-        var(--accent) 6%,
-        transparent
-      ),
+      color-mix(in oklch, var(--accent) 6%, transparent),
       transparent 55%
     );
   box-shadow: var(--shadow-md);

@@ -20,9 +20,9 @@ export function OnboardingExtensionPhase({
     <div className="onboarding-step-content onboarding-extension-step">
       <div className="onboarding-step-label">Browser extension</div>
       <p className="onboarding-step-desc">
-        Add the Stella extension to Chrome so Stella can read the page you're
-        on, follow links, and act on your behalf inside the browser. Works in
-        Chrome and Chromium-based browsers like Arc, Brave, and Edge.
+        Add the extension so Stella can read the page you're on, follow links,
+        and act on your behalf inside the browser. Works in Chrome and
+        Chromium-based browsers like Arc, Brave, and Edge.
       </p>
 
       <div className="onboarding-extension-card">

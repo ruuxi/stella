@@ -8,7 +8,7 @@ type KeychordProps = {
 };
 
 /**
- * Shared keychord visual used across onboarding phases (voice, double-tap,
+ * Shared keychord visual used across onboarding phases (voice, summon,
  * radial). The look is the raised-Mac-key style introduced in the voice
  * phase: large keycaps with a slightly thicker bottom border and a small
  * `+` separator between groups. Standardizing on this shape so the user

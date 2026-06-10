@@ -472,17 +472,22 @@
       "secondary": "Stella ist nicht für alle. Stella ist für dich."
     },
     "stepTitles": {
+      "shapeshift": "Diese App kann sich selbst umschreiben.",
       "extension": "Füge Stella zu deinem Browser hinzu.",
       "browser": "Lass Stella dich kennenlernen.",
-      "creation": "Stella kann sich auf Zuruf verändern. Klicke die Buttons, um es auszuprobieren.",
       "theme": "Wie soll Stella aussehen?",
       "personality": "Wie soll Stella sprechen?",
-      "shortcutsGlobal": "Überall auf deinem Desktop.",
-      "shortcutsLocal": "Innerhalb von Stella.",
-      "doubleTap": "Zweimal tippen. Stella herbeirufen.",
+      "summon": "Ruf Stella von überall.",
       "voice": "Sprich, statt zu tippen.",
       "memory": "Hilf Stella, sich zu erinnern.",
       "enter": "Stella ist fast bereit."
+    },
+    "acts": {
+      "discover": "Entdecken",
+      "personalize": "Mach es zu deinem",
+      "connect": "Verbinden",
+      "flow": "Dein Flow",
+      "ready": "Bereit"
     },
     "discovery": {
       "appsSystem": {

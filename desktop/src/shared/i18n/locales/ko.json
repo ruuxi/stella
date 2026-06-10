@@ -472,17 +472,22 @@
       "secondary": "Stella는 모두를 위한 것이 아닙니다. 당신을 위한 것입니다."
     },
     "stepTitles": {
+      "shapeshift": "이 앱은 스스로를 다시 쓸 수 있어요.",
       "extension": "브라우저에 Stella를 추가하세요.",
       "browser": "Stella가 당신을 알 수 있게 해주세요.",
-      "creation": "요청하면 Stella가 바뀝니다. 버튼을 눌러 보세요.",
       "theme": "Stella는 어떤 모습이어야 할까요?",
       "personality": "Stella는 어떻게 말해야 할까요?",
-      "shortcutsGlobal": "데스크톱 어디에서나.",
-      "shortcutsLocal": "Stella 안에서.",
-      "doubleTap": "두 번 탭. Stella를 불러오세요.",
+      "summon": "어디서든 Stella를 불러내세요.",
       "voice": "타이핑 대신 말하세요.",
       "memory": "Stella가 기억하도록 도와주세요.",
       "enter": "Stella가 거의 준비됐어요."
+    },
+    "acts": {
+      "discover": "발견",
+      "personalize": "나만의 것으로",
+      "connect": "연결",
+      "flow": "나의 흐름",
+      "ready": "준비 완료"
     },
     "discovery": {
       "appsSystem": {
@@ -504,26 +509,15 @@
     "plans": {
       "free": {
         "tagline": "Stella 시작하기",
-        "features": [
-          "기본 채팅 및 도움말",
-          "하루 사용량 제한"
-        ]
+        "features": ["기본 채팅 및 도움말", "하루 사용량 제한"]
       },
       "go": {
         "tagline": "일상적인 개인 사용을 위해",
-        "features": [
-          "하루 더 많은 대화",
-          "브라우저 자동화",
-          "음성 대화"
-        ]
+        "features": ["하루 더 많은 대화", "브라우저 자동화", "음성 대화"]
       },
       "pro": {
         "tagline": "헤비 유저를 위해",
-        "features": [
-          "Go의 3배 사용량",
-          "우선 응답 속도",
-          "모든 자동화 기능"
-        ]
+        "features": ["Go의 3배 사용량", "우선 응답 속도", "모든 자동화 기능"]
       },
       "plus": {
         "tagline": "전문가를 위해",

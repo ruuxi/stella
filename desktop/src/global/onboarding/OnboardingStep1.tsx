@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "@/ui/icons";
 import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
-import { SPLIT_PHASES, SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
+import {
+  PHASE_ACTS,
+  SPLIT_PHASES,
+  SPLIT_STEP_ORDER,
+  type OnboardingAct,
+  type Phase,
+} from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
 import { useOnboardingAppearance } from "./use-onboarding-appearance";
 import { useOnboardingDiscovery } from "./use-onboarding-discovery";
@@ -23,16 +29,15 @@ import "./Onboarding.css";
  * `Onboarding.css` so any future async content (data fetches, etc.)
  * can't reproduce the jump. */
 import { OnboardingCapabilitiesPhase } from "./OnboardingCapabilitiesPhase";
+import { OnboardingShapeshiftPhase } from "./OnboardingShapeshiftPhase";
 import { OnboardingMigrationPhase } from "./OnboardingMigrationPhase";
 import { OnboardingEnginePhase } from "./OnboardingEnginePhase";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 import { OnboardingExtensionPhase } from "./OnboardingExtensionPhase";
 import { OnboardingBrowserPhase } from "./OnboardingBrowserPhase";
-import { OnboardingCreationPhase } from "./OnboardingCreationPhase";
 import { OnboardingThemePhase } from "./OnboardingThemePhase";
 import { OnboardingPersonalityPhase } from "./OnboardingPersonalityPhase";
-import { OnboardingShortcutsPhase } from "./OnboardingShortcutsPhase";
-import { OnboardingDoubleTapPhase } from "./OnboardingDoubleTapPhase";
+import { OnboardingSummonPhase } from "./OnboardingSummonPhase";
 import { OnboardingVoicePhase } from "./OnboardingVoicePhase";
 import { OnboardingMemoryPhase } from "./OnboardingMemoryPhase";
 import { OnboardingEnterPhase } from "./OnboardingEnterPhase";
@@ -40,24 +45,30 @@ import { OnboardingMockWindows } from "./OnboardingMockWindows";
 
 /**
  * Translation keys for each split-phase title. The capabilities phase
- * renders its own per-scene title inside the phase body so the
- * changing line ("Text Stella from anywhere.", …) sits where the
- * static step title would otherwise be — that's why it's omitted here.
+ * renders its own per-chapter title inside the phase body so the
+ * changing line sits where the static step title would otherwise be —
+ * that's why it's omitted here.
  */
 const STEP_TITLE_KEYS: Partial<Record<Phase, string>> = {
+  shapeshift: "onboarding.stepTitles.shapeshift",
   engine: "onboarding.stepTitles.engine",
   extension: "onboarding.stepTitles.extension",
   browser: "onboarding.stepTitles.browser",
-  creation: "onboarding.stepTitles.creation",
   theme: "onboarding.stepTitles.theme",
   personality: "onboarding.stepTitles.personality",
-  "shortcuts-global": "onboarding.stepTitles.shortcutsGlobal",
-  "shortcuts-local": "onboarding.stepTitles.shortcutsLocal",
-  "double-tap": "onboarding.stepTitles.doubleTap",
+  summon: "onboarding.stepTitles.summon",
   voice: "onboarding.stepTitles.voice",
   memory: "onboarding.stepTitles.memory",
   import: "onboarding.stepTitles.import",
   enter: "onboarding.stepTitles.enter",
+};
+
+const ACT_LABEL_KEYS: Record<OnboardingAct, string> = {
+  discover: "onboarding.acts.discover",
+  personalize: "onboarding.acts.personalize",
+  connect: "onboarding.acts.connect",
+  flow: "onboarding.acts.flow",
+  ready: "onboarding.acts.ready",
 };
 
 interface OnboardingStep1Props {
@@ -66,7 +77,6 @@ interface OnboardingStep1Props {
   initialPhase?: Phase;
   onDiscoveryConfirm?: (categories: DiscoveryCategory[]) => void;
   onEnterSplit?: () => void;
-  onDemoChange?: (demo: "default" | null) => void;
   onPhaseChange?: (phase: Phase) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
   isAuthenticated?: boolean;
@@ -81,7 +91,6 @@ export const OnboardingStep1 = ({
   onDiscoveryConfirm,
   onEnterSplit,
   onSelectionChange,
-  onDemoChange,
   onPhaseChange,
   isAuthenticated,
   discoveryWelcomeExpected = false,
@@ -94,9 +103,7 @@ export const OnboardingStep1 = ({
   // filesystem probe in the main process — see
   // `system:detectTechnicalUserSignals` — and defaults to "skip" until
   // resolved so non-technical users never even see the phase. Detection
-  // completes in milliseconds; capabilities cycles for ~38s before the
-  // user can click Continue, so the result is always known by the time
-  // navigation reaches `engine`.
+  // completes in milliseconds, long before navigation can reach `engine`.
   const [showEnginePhase, setShowEnginePhase] = useState(false);
   const [showMigrationPhase, setShowMigrationPhase] = useState(false);
   const [migrationDetectionResolved, setMigrationDetectionResolved] =
@@ -129,7 +136,9 @@ export const OnboardingStep1 = ({
       try {
         const result = await window.electronAPI?.migration?.detectSources?.();
         if (cancelled) return;
-        setShowMigrationPhase(Boolean(result?.some((preview) => preview.found)));
+        setShowMigrationPhase(
+          Boolean(result?.some((preview) => preview.found)),
+        );
       } catch {
         // Best-effort; users can still import later from Settings.
       } finally {
@@ -146,7 +155,8 @@ export const OnboardingStep1 = ({
     const skipped = new Set<Phase>();
     if (!discoveryWelcomeExpected) skipped.add("enter");
     if (!showEnginePhase) skipped.add("engine");
-    if (!migrationDetectionResolved || !showMigrationPhase) skipped.add("import");
+    if (!migrationDetectionResolved || !showMigrationPhase)
+      skipped.add("import");
     if (personalityImported) skipped.add("personality");
     return skipped.size > 0 ? skipped : undefined;
   }, [
@@ -161,6 +171,7 @@ export const OnboardingStep1 = ({
     leaving,
     rippleActive,
     maxVisitedSplitStepIndex,
+    visibleSteps,
     nextSplitStep,
     prevSplitStep,
     continueIntro,
@@ -219,13 +230,25 @@ export const OnboardingStep1 = ({
     };
   }, []);
 
-  useEffect(() => {
-    if (phase === "creation" && !leaving) {
-      onDemoChange?.("default");
-    } else {
-      onDemoChange?.(null);
+  /**
+   * The progress strip groups its dots by act so the bottom of the
+   * screen quietly mirrors the five-act story. Only steps the user
+   * will actually see contribute dots.
+   */
+  const progressGroups = useMemo(() => {
+    const groups: { act: OnboardingAct; steps: Phase[] }[] = [];
+    for (const step of visibleSteps) {
+      const act = PHASE_ACTS[step];
+      if (!act) continue;
+      const last = groups[groups.length - 1];
+      if (last && last.act === act) {
+        last.steps.push(step);
+      } else {
+        groups.push({ act, steps: [step] });
+      }
     }
-  }, [leaving, onDemoChange, phase]);
+    return groups;
+  }, [visibleSteps]);
 
   if (phase === "done") {
     return null;
@@ -239,12 +262,20 @@ export const OnboardingStep1 = ({
   const canReturnNext =
     canGoNext && maxVisitedSplitStepIndex >= splitStepIndex + 1;
   const platform = getPlatform();
+  const phaseAct = PHASE_ACTS[phase];
 
   const renderActiveSplitPhase = (activePhase: Phase) => {
     switch (activePhase) {
       case "capabilities":
         return (
           <OnboardingCapabilitiesPhase
+            splitTransitionActive={leaving}
+            onContinue={nextSplitStep}
+          />
+        );
+      case "shapeshift":
+        return (
+          <OnboardingShapeshiftPhase
             splitTransitionActive={leaving}
             onContinue={nextSplitStep}
           />
@@ -305,13 +336,6 @@ export const OnboardingStep1 = ({
             onToggleCategory={discovery.toggleCategory}
           />
         );
-      case "creation":
-        return (
-          <OnboardingCreationPhase
-            splitTransitionActive={leaving}
-            onContinue={nextSplitStep}
-          />
-        );
       case "theme":
         return (
           <OnboardingThemePhase
@@ -342,25 +366,9 @@ export const OnboardingStep1 = ({
             onSelectVoice={appearance.selectPersonalityVoice}
           />
         );
-      case "shortcuts-global":
+      case "summon":
         return (
-          <OnboardingShortcutsPhase
-            mode="global"
-            splitTransitionActive={leaving}
-            onFinish={nextSplitStep}
-          />
-        );
-      case "shortcuts-local":
-        return (
-          <OnboardingShortcutsPhase
-            mode="local"
-            splitTransitionActive={leaving}
-            onFinish={nextSplitStep}
-          />
-        );
-      case "double-tap":
-        return (
-          <OnboardingDoubleTapPhase
+          <OnboardingSummonPhase
             splitTransitionActive={leaving}
             onContinue={nextSplitStep}
           />
@@ -438,6 +446,11 @@ export const OnboardingStep1 = ({
               data-phase={phase}
               key={phase}
             >
+              {phaseAct ? (
+                <div className="onboarding-act-label">
+                  {t(ACT_LABEL_KEYS[phaseAct])}
+                </div>
+              ) : null}
               {STEP_TITLE_KEYS[phase] ? (
                 <div className="onboarding-split-title">
                   {t(STEP_TITLE_KEYS[phase] as string)}
@@ -445,6 +458,29 @@ export const OnboardingStep1 = ({
               ) : null}
               {renderActiveSplitPhase(phase)}
             </div>
+          </div>
+
+          <div className="onboarding-progress" aria-hidden="true">
+            {progressGroups.map((group) => (
+              <div className="onboarding-progress__group" key={group.act}>
+                {group.steps.map((step) => {
+                  const stepIndex = SPLIT_STEP_ORDER.indexOf(step);
+                  const state =
+                    step === phase
+                      ? "current"
+                      : stepIndex < splitStepIndex
+                        ? "done"
+                        : "todo";
+                  return (
+                    <span
+                      key={step}
+                      className="onboarding-progress__dot"
+                      data-state={state}
+                    />
+                  );
+                })}
+              </div>
+            ))}
           </div>
 
           <div className="onboarding-phase-nav">

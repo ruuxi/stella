@@ -472,17 +472,22 @@
       "secondary": "Stella tidak untuk semua orang. Stella untuk Anda."
     },
     "stepTitles": {
+      "shapeshift": "Aplikasi ini bisa menulis ulang dirinya sendiri.",
       "extension": "Tambahkan Stella ke peramban Anda.",
       "browser": "Biarkan Stella mengenal Anda.",
-      "creation": "Stella berubah saat Anda meminta. Klik tombol untuk mencoba.",
       "theme": "Bagaimana Stella seharusnya terlihat?",
       "personality": "Bagaimana Stella seharusnya berbicara?",
-      "shortcutsGlobal": "Di mana saja di desktop Anda.",
-      "shortcutsLocal": "Di dalam Stella.",
-      "doubleTap": "Ketuk dua kali. Panggil Stella.",
+      "summon": "Panggil Stella dari mana saja.",
       "voice": "Bicaralah, jangan mengetik.",
       "memory": "Bantu Stella mengingat.",
       "enter": "Stella hampir siap."
+    },
+    "acts": {
+      "discover": "Jelajahi",
+      "personalize": "Jadikan milikmu",
+      "connect": "Hubungkan",
+      "flow": "Ritmemu",
+      "ready": "Siap"
     },
     "discovery": {
       "appsSystem": {
@@ -504,10 +509,7 @@
     "plans": {
       "free": {
         "tagline": "Mulai dengan Stella",
-        "features": [
-          "Obrolan dan bantuan dasar",
-          "Penggunaan harian terbatas"
-        ]
+        "features": ["Obrolan dan bantuan dasar", "Penggunaan harian terbatas"]
       },
       "go": {
         "tagline": "Untuk penggunaan pribadi sehari-hari",

@@ -472,17 +472,22 @@
       "secondary": "Stella nu este pentru toată lumea. Stella este pentru tine."
     },
     "stepTitles": {
+      "shapeshift": "Această aplicație se poate rescrie singură.",
       "extension": "Adaugă Stella în browser.",
       "browser": "Lasă Stella să te cunoască.",
-      "creation": "Stella se schimbă când ceri. Apasă pe butoane ca să încerci.",
       "theme": "Cum ar trebui să arate Stella?",
       "personality": "Cum ar trebui să vorbească Stella?",
-      "shortcutsGlobal": "Oriunde pe desktop.",
-      "shortcutsLocal": "În interiorul Stellei.",
-      "doubleTap": "Atinge de două ori. Cheam-o pe Stella.",
+      "summon": "Cheamă Stella de oriunde.",
       "voice": "Vorbește în loc să tastezi.",
       "memory": "Ajută Stella să țină minte.",
       "enter": "Stella e aproape gata."
+    },
+    "acts": {
+      "discover": "Descoperă",
+      "personalize": "Fă-o a ta",
+      "connect": "Conectează",
+      "flow": "Ritmul tău",
+      "ready": "Gata"
     },
     "discovery": {
       "appsSystem": {
@@ -504,10 +509,7 @@
     "plans": {
       "free": {
         "tagline": "Începe cu Stella",
-        "features": [
-          "Chat și asistență de bază",
-          "Utilizare zilnică limitată"
-        ]
+        "features": ["Chat și asistență de bază", "Utilizare zilnică limitată"]
       },
       "go": {
         "tagline": "Pentru uz personal zilnic",

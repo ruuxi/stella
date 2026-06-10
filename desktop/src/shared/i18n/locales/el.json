@@ -472,17 +472,22 @@
       "secondary": "Η Stella δεν είναι για όλους. Η Stella είναι για εσάς."
     },
     "stepTitles": {
+      "shapeshift": "Αυτή η εφαρμογή μπορεί να ξαναγράψει τον εαυτό της.",
       "extension": "Προσθέστε τη Stella στον περιηγητή σας.",
       "browser": "Αφήστε τη Stella να σας γνωρίσει.",
-      "creation": "Η Stella αλλάζει όταν της ζητήσετε. Πατήστε τα κουμπιά για να δοκιμάσετε.",
       "theme": "Πώς πρέπει να μοιάζει η Stella;",
       "personality": "Πώς πρέπει να μιλάει η Stella;",
-      "shortcutsGlobal": "Οπουδήποτε στην επιφάνεια εργασίας.",
-      "shortcutsLocal": "Μέσα στη Stella.",
-      "doubleTap": "Διπλό άγγιγμα. Καλέστε τη Stella.",
+      "summon": "Κάλεσε τη Stella από οπουδήποτε.",
       "voice": "Μιλήστε αντί να πληκτρολογείτε.",
       "memory": "Βοηθήστε τη Stella να θυμάται.",
       "enter": "Η Stella είναι σχεδόν έτοιμη."
+    },
+    "acts": {
+      "discover": "Ανακάλυψε",
+      "personalize": "Κάν' την δική σου",
+      "connect": "Σύνδεσε",
+      "flow": "Ο ρυθμός σου",
+      "ready": "Έτοιμο"
     },
     "discovery": {
       "appsSystem": {

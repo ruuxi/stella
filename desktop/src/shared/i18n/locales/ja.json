@@ -472,17 +472,22 @@
       "secondary": "Stella はみんなのためのものではありません。あなたのためのものです。"
     },
     "stepTitles": {
+      "shapeshift": "このアプリは自らを書き換えられます。",
       "extension": "ブラウザに Stella を追加しましょう。",
       "browser": "Stella にあなたを知ってもらいましょう。",
-      "creation": "頼めば Stella は変わります。ボタンをクリックして試してみてください。",
       "theme": "Stella の見た目はどうしますか？",
       "personality": "Stella の話し方はどうしますか？",
-      "shortcutsGlobal": "デスクトップのどこからでも。",
-      "shortcutsLocal": "Stella の中で。",
-      "doubleTap": "2 回タップして Stella を呼び出します。",
+      "summon": "どこからでも Stella を呼び出せます。",
       "voice": "入力ではなく声で話しかける。",
       "memory": "Stella の記憶を手伝ってください。",
       "enter": "Stella の準備はもうすぐ整います。"
+    },
+    "acts": {
+      "discover": "発見",
+      "personalize": "自分仕様に",
+      "connect": "つなぐ",
+      "flow": "あなたのフロー",
+      "ready": "準備完了"
     },
     "discovery": {
       "appsSystem": {
@@ -504,18 +509,11 @@
     "plans": {
       "free": {
         "tagline": "Stella を始めよう",
-        "features": [
-          "基本的なチャットとサポート",
-          "1 日の利用量に制限あり"
-        ]
+        "features": ["基本的なチャットとサポート", "1 日の利用量に制限あり"]
       },
       "go": {
         "tagline": "毎日の個人利用に",
-        "features": [
-          "1 日あたりの会話数を増加",
-          "ブラウザ自動操作",
-          "音声会話"
-        ]
+        "features": ["1 日あたりの会話数を増加", "ブラウザ自動操作", "音声会話"]
       },
       "pro": {
         "tagline": "パワーユーザーへ",

@@ -1,23 +1,16 @@
 /* ──────────────────────────────────────────────────────────────────────
- * OnboardingCapabilitiesPhase — auto-cycling "what Stella can do" tour.
+ * OnboardingCapabilitiesPhase — user-paced, prompt-first demo player.
  *
- * Each scene crossfades over a fixed-aspect stage that mirrors the real
- * Stella surface (sidebar + italic wordmark + pill composer). Scenes are
- * stacked in the same grid cell so transitions are CSS opacity/blur only.
+ * Layout: title slot → stage frame (chapters stacked in one grid cell,
+ * crossfading) → word nav with timed underline fills → caption slot →
+ * Continue. All chapter motion is driven by data attributes set from
+ * `use-choreography` cue state; this file only describes how each state
+ * looks and transitions. Compositor-only: opacity + transform.
  * ────────────────────────────────────────────────────────────────────── */
 
 :root {
-  --cap-frame-radius: 22px;
   --cap-frame-max-width: 960px;
   --cap-frame-viewport-gutter: 108px;
-  --cap-stage-aspect: 16 / 8;
-  --cap-frame-outer-gap: 20px;
-  --cap-title-slot-min-height: 5.5rem;
-  --cap-caption-slot-min-height: 5.75rem;
-  --cap-excel: oklch(0.66 0.16 145);
-  --cap-word: oklch(0.62 0.18 245);
-  --cap-ppt: oklch(0.7 0.18 35);
-  --cap-web: oklch(0.7 0.16 295);
 }
 
 .onboarding-cap-step {
@@ -25,90 +18,12 @@
   max-width: none;
   align-items: center;
   gap: 0;
-  /* The capabilities phase is full-width like creation — let it fill the
-   * stage rather than being clamped to the 540px right-pane content. */
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.onboarding-cap-step > .onboarding-step-desc {
-  display: none;
-}
-
-.onboarding-cap-frame {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: min(
-    var(--cap-frame-max-width),
-    calc(100vw - var(--cap-frame-viewport-gutter)),
-    calc((100vh - 380px) * 16 / 8)
-  );
-  max-width: var(--cap-frame-max-width);
-  border-radius: var(--cap-frame-radius);
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background:
-    radial-gradient(
-      120% 80% at 50% 0%,
-      color-mix(in oklch, var(--foreground) 5%, transparent),
-      transparent 70%
-    ),
-    var(--surface-raised);
-  box-shadow: var(--shadow-xl);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-/* ── Stage (scene canvas) ─────────────────────────────────────────── */
-
-.onboarding-cap-stage {
-  position: relative;
-  width: 100%;
-  aspect-ratio: var(--cap-stage-aspect);
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-  isolation: isolate;
-}
-
-.onboarding-cap-scene {
-  grid-row: 1;
-  grid-column: 1;
-  display: flex;
-  align-items: stretch;
-  justify-content: stretch;
-  padding: clamp(12px, 1.5vw, 20px);
-  opacity: 0;
-  transform: scale(0.985);
-  /* Compositor-only crossfade. We dropped the parent `filter: blur()` —
-   * the resulting reveal still reads as soft because the inner cards
-   * themselves carry their own opacity/transform staggers, and the GPU
-   * no longer pays the radius²-area filter cost for the lifetime of
-   * every scene. */
-  transition:
-    opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
-  pointer-events: none;
-  overflow: hidden;
-  backface-visibility: hidden;
-}
-
-.onboarding-cap-scene[data-active] {
-  opacity: 1;
-  transform: scale(1);
-}
-
-/* Every scene root fills the stage so shells / grids share one width. */
-.onboarding-cap-scene > * {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  flex: 1 1 auto;
-}
-
-/* ── Title + caption slots (fixed height above/below the frame) ───── *
- * Reserved vertical space so cycling copy never nudges the mock card.
- * ────────────────────────────────────────────────────────────────── */
+/* ── Title + caption slots (fixed heights so copy swaps never shift
+ *    the frame) ─────────────────────────────────────────────────── */
 
 .onboarding-cap-title-slot,
 .onboarding-cap-caption-slot {
@@ -122,14 +37,14 @@
 
 .onboarding-cap-title-slot {
   align-items: center;
-  min-height: var(--cap-title-slot-min-height);
-  margin-bottom: var(--cap-frame-outer-gap);
+  min-height: 5.5rem;
+  margin-bottom: 16px;
 }
 
 .onboarding-cap-caption-slot {
   align-items: flex-start;
-  min-height: var(--cap-caption-slot-min-height);
-  margin-top: var(--cap-frame-outer-gap);
+  min-height: 5rem;
+  margin-top: 16px;
 }
 
 .onboarding-cap-title {
@@ -142,59 +57,144 @@
   color: var(--foreground);
   opacity: 0.92;
   line-height: 1.25;
-  /* React re-keys this element on every scene change, so the entrance
-   * animation runs exactly once per scene without needing JS to drive
-   * the swap. */
-  animation: capCaptionFadeIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes capCaptionFadeIn {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 6px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
+  /* Re-keyed per chapter, so the entrance runs exactly once per swap. */
+  animation: capCopyIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .onboarding-cap-caption__body {
   margin: 0;
   width: 100%;
+  max-width: 640px;
   text-align: center;
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.55;
   font-weight: var(--weight-light);
   color: var(--foreground);
   opacity: 0.7;
   padding: 0 24px;
-  animation: capCaptionFadeIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: capCopyIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.onboarding-cap-continue {
-  margin-top: 14px;
+@keyframes capCopyIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
 }
 
-/* ── Words (scene navigator) ──────────────────────────────────────── *
- * Replaces the old dot strip — each scene's category word sits at the
- * bottom of the frame and the active word fills with a thin underline
- * over the scene's `durationMs`. Hovering the stage pauses the cycle,
- * which freezes the underline animation via the parent `[data-paused]`
- * marker so the visual progress and the timer stay in lockstep.
- * ────────────────────────────────────────────────────────────────── */
+/* ── Stage frame ──────────────────────────────────────────────────── */
+
+.onboarding-cap-frame {
+  position: relative;
+  width: min(
+    var(--cap-frame-max-width),
+    calc(100vw - var(--cap-frame-viewport-gutter)),
+    calc((100vh - 380px) * 16 / 8)
+  );
+  border-radius: 22px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background:
+    radial-gradient(
+      120% 80% at 50% 0%,
+      color-mix(in oklch, var(--foreground) 5%, transparent),
+      transparent 70%
+    ),
+    color-mix(in oklch, var(--foreground) 2%, var(--background));
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.onboarding-cap-stage {
+  width: 100%;
+  aspect-ratio: 16 / 8;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  isolation: isolate;
+}
+
+/* Chapters stack in the same grid cell and crossfade — opacity + a
+ * slight scale, both compositor-only. */
+.onboarding-cap-chapter {
+  grid-row: 1;
+  grid-column: 1;
+  display: flex;
+  padding: clamp(12px, 1.5vw, 20px);
+  opacity: 0;
+  transform: scale(0.985);
+  transition:
+    opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  overflow: hidden;
+  backface-visibility: hidden;
+}
+
+.onboarding-cap-chapter[data-active] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.onboarding-cap-chapter > * {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* ── Replay control (top-right of the frame, post-script) ─────────── */
+
+.onboarding-cap-replay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.3s ease,
+    background 0.2s ease;
+}
+
+.onboarding-cap-replay[data-visible] {
+  opacity: 0.5;
+  pointer-events: auto;
+}
+
+.onboarding-cap-replay[data-visible]:hover:not(:disabled) {
+  opacity: 0.9;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+.onboarding-cap-replay:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Word nav (chapter tabs with timed underline fill) ────────────── */
 
 .onboarding-cap-words {
   display: flex;
   justify-content: center;
   align-items: stretch;
   gap: clamp(10px, 1.6vw, 22px);
-  padding: 4px 16px 14px;
+  margin-top: 14px;
+  padding: 0 16px;
   flex-wrap: wrap;
 }
 
 .onboarding-cap-words__word {
-  position: relative;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -203,7 +203,6 @@
   border: none;
   background: transparent;
   cursor: default;
-  transition: opacity 0.2s ease;
 }
 
 .onboarding-cap-words__word:focus-visible {
@@ -219,21 +218,19 @@
   text-transform: uppercase;
   color: var(--foreground);
   opacity: 0.4;
-  transition:
-    opacity 0.25s ease,
-    color 0.25s ease;
+  transition: opacity 0.25s ease;
 }
 
 .onboarding-cap-words__word[data-completed] .onboarding-cap-words__label {
   opacity: 0.55;
 }
 
-.onboarding-cap-words__word[data-active] .onboarding-cap-words__label {
-  opacity: 0.95;
+.onboarding-cap-words__word:hover:not(:disabled) .onboarding-cap-words__label {
+  opacity: 0.85;
 }
 
-.onboarding-cap-words__word:hover .onboarding-cap-words__label {
-  opacity: 0.85;
+.onboarding-cap-words__word[data-active] .onboarding-cap-words__label {
+  opacity: 0.95;
 }
 
 .onboarding-cap-words__track {
@@ -251,10 +248,8 @@
   background: color-mix(in oklch, var(--foreground) 22%, transparent);
 }
 
-.onboarding-cap-words__word[data-active] .onboarding-cap-words__track {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-}
-
+/* Keyed per play in JS (`playNonce`), with `animationDuration` set to
+ * the chapter's script length, so the fill always tracks the run. */
 .onboarding-cap-words__fill {
   position: absolute;
   inset: 0;
@@ -267,10 +262,6 @@
   animation: capWordFill linear forwards;
 }
 
-.onboarding-cap-frame[data-paused] .onboarding-cap-words__fill {
-  animation-play-state: paused;
-}
-
 @keyframes capWordFill {
   from {
     transform: scaleX(0);
@@ -280,7 +271,11 @@
   }
 }
 
-/* ── Continue button ──────────────────────────────────────────────── */
+/* ── Continue ─────────────────────────────────────────────────────── */
+
+.onboarding-cap-continue {
+  margin-top: 12px;
+}
 
 .onboarding-cap-continue[data-emphasized] {
   opacity: 1 !important;
@@ -289,9 +284,7 @@
   position: relative;
 }
 
-/* Compositor-friendly halo — `transform: scale + opacity` instead of an
- * animated `box-shadow` ring, so the pulse runs on the GPU compositor
- * rather than forcing per-frame paint. */
+/* Compositor-friendly halo — scale + opacity, not animated box-shadow. */
 .onboarding-cap-continue[data-emphasized]::after {
   content: "";
   position: absolute;
@@ -317,620 +310,136 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────────
- * Stella shell mock — shared chrome reused by Creation, Productivity,
- * Store, Together, and the "Full" Modes scene. Mirrors the real app:
- * sidebar (brand + nav + footer) + italic Cormorant wordmark.
+ * Phone chapter — slim phone thread → connecting line → small desktop.
  * ────────────────────────────────────────────────────────────────────── */
 
-.onboarding-cap-shell {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  border-radius: 16px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
-  background:
-    radial-gradient(
-      120% 90% at 80% 0%,
-      color-mix(in oklch, var(--foreground) 4%, transparent),
-      transparent 55%
-    ),
-    color-mix(in oklch, var(--background) 98%, transparent);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  font-family: var(--font-family-sans, "Manrope", system-ui, sans-serif);
-  transition: filter 0.45s ease;
-}
-
-.onboarding-cap-shell[data-variant="themed"] {
-  background:
-    radial-gradient(
-      130% 100% at 100% 0%,
-      color-mix(in oklch, var(--success) 22%, transparent),
-      transparent 60%
-    ),
-    color-mix(in oklch, var(--background) 96%, var(--success) 4%);
-}
-
-.onboarding-cap-shell__sidebar {
-  width: 132px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 12px;
-  border-right: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  background: color-mix(in oklch, var(--foreground) 2%, transparent);
-}
-
-.onboarding-cap-shell__brand {
+.onboarding-cap-phone-scene {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.18em;
-  color: var(--foreground);
-  opacity: 0.55;
-  padding: 4px 8px 16px;
-}
-
-.onboarding-cap-shell__brand svg {
-  opacity: 0.7;
-}
-
-.onboarding-cap-shell__nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-
-.onboarding-cap-shell__nav-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: 7px;
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.005em;
-  color: var(--foreground);
-  opacity: 0.5;
-}
-
-.onboarding-cap-shell__nav-item[data-active] {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  opacity: 0.92;
-}
-
-.onboarding-cap-shell__nav-item--new {
-  color: var(--success);
-  opacity: 0;
-  transform: translateX(-4px);
-  animation: capNavItemIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 1.6s forwards;
-}
-
-@keyframes capNavItemIn {
-  to {
-    opacity: 0.95;
-    transform: translateX(0);
-  }
-}
-
-.onboarding-cap-shell__footer {
-  display: flex;
-  gap: 8px;
-  padding: 6px 8px;
-  margin-top: 6px;
-}
-
-.onboarding-cap-shell__footer span {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-}
-
-.onboarding-cap-shell__main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 16px 22px 18px;
-  gap: 14px;
-  position: relative;
-}
-
-.onboarding-cap-shell__title {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-
-.onboarding-cap-shell__wordmark {
-  font-family: var(--font-family-display);
-  font-size: 30px;
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.01em;
-  color: var(--foreground);
-  opacity: 0.85;
-}
-
-.onboarding-cap-shell__badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--primary);
-  background: color-mix(in oklch, var(--primary) 12%, transparent);
-  border: 1px solid color-mix(in oklch, var(--primary) 25%, transparent);
-}
-
-.onboarding-cap-shell__body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* ── Chat bubbles ─────────────────────────────────────────────────── */
-
-.onboarding-cap-bubble {
-  align-self: flex-start;
-  max-width: 78%;
-  padding: 9px 14px;
-  border-radius: 16px;
-  font-size: var(--font-size-base);
-  line-height: 1.45;
-  color: var(--foreground);
-  opacity: 0;
-  transform: translate3d(0, 8px, 0);
-  font-family: var(--font-family-sans, "Manrope", system-ui, sans-serif);
-}
-
-.onboarding-cap-bubble[data-visible] {
-  animation: capBubbleIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-/* Inner elements use opacity + translate only — no per-element filter blur.
- * The scene-level crossfade already softens its children, and stacking 10+
- * concurrent blur animations inside an already-blurred parent is what was
- * making the reveal feel laggy. Translate+opacity composite for free. */
-@keyframes capBubbleIn {
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-.onboarding-cap-bubble[data-role="user"] {
-  align-self: flex-end;
-  background: color-mix(in oklch, var(--primary) 16%, transparent);
-  border: 1px solid color-mix(in oklch, var(--primary) 22%, transparent);
-  border-bottom-right-radius: 6px;
-}
-
-.onboarding-cap-bubble[data-role="assistant"] {
-  align-self: flex-start;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  border-bottom-left-radius: 6px;
-  opacity: 0.92;
-}
-
-.onboarding-cap-bubble__wand {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--font-size-sm);
-  color: var(--foreground);
-  opacity: 0.7;
-}
-
-/* ── Pill composer ────────────────────────────────────────────────── */
-
-.onboarding-cap-composer {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
-}
-
-.onboarding-cap-composer__add,
-.onboarding-cap-composer__send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-
-.onboarding-cap-composer__add {
-  border: 1.4px solid color-mix(in oklch, var(--foreground) 35%, transparent);
-  color: color-mix(in oklch, var(--foreground) 60%, transparent);
-}
-
-.onboarding-cap-composer__input {
-  flex: 1;
-  font-size: var(--font-size-sm);
-  color: color-mix(in oklch, var(--foreground) 38%, transparent);
-}
-
-.onboarding-cap-composer__send {
-  background: color-mix(in oklch, var(--primary) 22%, transparent);
-  color: color-mix(in oklch, var(--ring) 80%, var(--foreground));
-}
-
-/* ──────────────────────────────────────────────────────────────────────
- * Scene 1 — Creation
- * ────────────────────────────────────────────────────────────────────── */
-
-.onboarding-cap-creation {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  height: 100%;
-  width: 100%;
-}
-
-.onboarding-cap-creation__artifact {
-  display: flex;
-  justify-content: flex-start;
-  opacity: 0;
-  transform: translate3d(0, 8px, 0);
-  transition:
-    opacity 0.5s ease,
-    transform 0.5s ease;
-  transition-delay: 1.8s;
-}
-
-.onboarding-cap-creation__artifact[data-visible] {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-}
-
-.onboarding-cap-creation__habit {
-  width: 100%;
-  max-width: 320px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--success) 30%, transparent);
-  background: color-mix(in oklch, var(--success) 10%, var(--background));
-}
-
-.onboarding-cap-creation__habit-title {
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--success);
-  margin-bottom: 4px;
-}
-
-.onboarding-cap-creation__habit-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-  color: var(--foreground);
-  opacity: 0.85;
-}
-
-.onboarding-cap-creation__habit-row span {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--success);
-}
-
-.onboarding-cap-creation__habit-row[data-pending] span {
-  background: transparent;
-  border: 1.5px solid color-mix(in oklch, var(--foreground) 30%, transparent);
-}
-
-.onboarding-cap-creation__habit-row[data-pending] {
-  opacity: 0.5;
-}
-
-.onboarding-cap-creation__habit-row svg {
-  margin-left: auto;
-  opacity: 0.7;
-  color: var(--success);
-}
-
-/* ──────────────────────────────────────────────────────────────────────
- * Scene 2 — Productivity
- * ────────────────────────────────────────────────────────────────────── */
-
-.onboarding-cap-productivity {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  height: 100%;
-  width: 100%;
-}
-
-.onboarding-cap-productivity__row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.onboarding-cap-app-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--cap-accent) 22%, transparent);
-  background: color-mix(in oklch, var(--cap-accent) 6%, var(--background));
-  opacity: 0;
-  transform: translate3d(0, 8px, 0);
-}
-
-.onboarding-cap-app-card[data-visible] {
-  animation: capCardIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes capCardIn {
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-.onboarding-cap-app-card__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--cap-accent) 18%, transparent);
-  color: var(--cap-accent);
-  flex-shrink: 0;
-}
-
-.onboarding-cap-app-card__meta {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-
-.onboarding-cap-app-card__name {
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
-  color: var(--foreground);
-  opacity: 0.85;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.onboarding-cap-app-card__bar {
-  position: relative;
-  height: 4px;
-  border-radius: 4px;
-  background: color-mix(in oklch, var(--cap-accent) 12%, transparent);
-  overflow: hidden;
-}
-
-.onboarding-cap-app-card__bar-fill {
-  position: absolute;
-  inset: 0;
-  background: var(--cap-accent);
-  transform-origin: left center;
-  transform: scaleX(0);
-  animation: capBarFill 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes capBarFill {
-  to {
-    transform: scaleX(1);
-  }
-}
-
-.onboarding-cap-app-card__check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--cap-accent);
-  color: var(--primary-foreground);
-  opacity: 0;
-  animation: capCheckIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) 2.1s forwards;
-}
-
-@keyframes capCheckIn {
-  from {
-    opacity: 0;
-    transform: scale(0.4);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* ──────────────────────────────────────────────────────────────────────
- * Scene 3 — Connection (phone <-> desktop)
- * ────────────────────────────────────────────────────────────────────── */
-
-.onboarding-cap-connection {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  grid-template-columns: minmax(160px, 22%) auto 1fr;
-  gap: clamp(16px, 2.5vw, 32px);
-  align-items: center;
-  justify-content: stretch;
+  gap: clamp(14px, 2vw, 26px);
 }
 
 .onboarding-cap-phone {
   position: relative;
-  width: auto;
-  height: min(100%, 380px);
-  max-width: 210px;
-  aspect-ratio: 9 / 19;
-  border-radius: 36px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
-  background: var(--surface-inset);
+  height: min(100%, 320px);
+  aspect-ratio: 9 / 17;
+  flex-shrink: 0;
+  border-radius: 30px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, var(--background));
   box-shadow: var(--shadow-lg);
-  padding: 22px 14px 16px;
+  padding: 26px 12px 14px;
   display: flex;
   flex-direction: column;
-  opacity: 0;
-  transform: translateY(10px) scale(0.96);
-  transition:
-    opacity 0.6s ease,
-    transform 0.6s ease;
-}
-
-.onboarding-cap-phone[data-visible] {
-  opacity: 1;
-  transform: translateY(0) scale(1);
 }
 
 .onboarding-cap-phone__notch {
   position: absolute;
-  top: 8px;
+  top: 9px;
   left: 50%;
   transform: translateX(-50%);
-  width: 60px;
-  height: 14px;
+  width: 52px;
+  height: 12px;
   border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 90%, transparent);
+  background: color-mix(in oklch, var(--foreground) 85%, transparent);
 }
 
-.onboarding-cap-phone__header {
+/* Contact header — grounds the empty space above the thread the way a
+ * real messages app does. */
+.onboarding-cap-phone__contact {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 0 4px 8px;
+  gap: 4px;
+  padding: 8px 0 10px;
   border-bottom: 1px solid
-    color-mix(in oklch, var(--foreground) 8%, transparent);
+    color-mix(in oklch, var(--foreground) 7%, transparent);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--foreground);
+  opacity: 0.75;
 }
 
 .onboarding-cap-phone__avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--primary) 25%, transparent);
-  color: var(--ring);
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
 }
 
-.onboarding-cap-phone__name {
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--foreground);
-  opacity: 0.85;
-}
-
-.onboarding-cap-phone__messages {
+.onboarding-cap-phone__thread {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 4px;
-  overflow: hidden;
   justify-content: flex-end;
+  gap: 7px;
+  padding: 0 2px 4px;
+  overflow: hidden;
 }
 
 .onboarding-cap-phone__msg {
-  max-width: 84%;
+  max-width: 88%;
   padding: 7px 10px;
-  border-radius: 16px;
-  font-size: var(--font-size-xs);
+  border-radius: 14px;
+  font-size: var(--font-size-2xs);
   line-height: 1.45;
   opacity: 0;
   transform: translate3d(0, 6px, 0);
+  transition:
+    opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .onboarding-cap-phone__msg[data-visible] {
-  animation: capBubbleIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
 }
 
 .onboarding-cap-phone__msg[data-role="user"] {
   align-self: flex-end;
   background: var(--primary);
   color: var(--primary-foreground);
-  border-bottom-right-radius: 6px;
+  border-bottom-right-radius: 5px;
 }
 
 .onboarding-cap-phone__msg[data-role="assistant"] {
   align-self: flex-start;
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
   color: var(--foreground);
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: 5px;
 }
 
-.onboarding-cap-phone__composer {
+/* Connecting line: a quiet track with a traveling streak plus a small
+ * arrowhead, lighting up once the desktop picks the request up. */
+.onboarding-cap-phone-link {
   display: flex;
   align-items: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  font-size: var(--font-size-xs);
-  color: color-mix(in oklch, var(--foreground) 40%, transparent);
-}
-
-.onboarding-cap-bridge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--primary);
+  flex: 0 0 clamp(40px, 6vw, 76px);
   opacity: 0;
-  transform: translateX(-8px);
-  transition:
-    opacity 0.5s ease 0.6s,
-    transform 0.5s ease 0.6s;
+  transition: opacity 0.45s ease;
 }
 
-.onboarding-cap-bridge[data-visible] {
-  opacity: 0.85;
-  transform: translateX(0);
+.onboarding-cap-phone-link[data-active] {
+  opacity: 1;
 }
 
-.onboarding-cap-bridge__line {
+.onboarding-cap-phone-link__line {
   position: relative;
-  display: inline-block;
-  width: clamp(40px, 8vw, 80px);
+  flex: 1;
   height: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
   overflow: hidden;
-  background: color-mix(in oklch, var(--primary) 12%, transparent);
 }
 
-/* Compositor-friendly flow: a streak slides via `transform: translateX`
- * inside the parent's `overflow: hidden` clip instead of animating
- * `background-position` (which forces paint of the whole element every
- * frame). Scoped to the active scene so the loop doesn't keep ticking
- * after the scene cross-fades out. */
-.onboarding-cap-bridge__line::after {
+/* Streak slides via transform inside the line's clip — no painted
+ * background-position animation. Scoped to the active chapter so it
+ * stops ticking once the chapter cross-fades out. */
+.onboarding-cap-phone-link__line::after {
   content: "";
   position: absolute;
   top: 0;
@@ -940,17 +449,19 @@
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in oklch, var(--primary) 80%, transparent),
+    color-mix(in oklch, var(--primary) 75%, transparent),
     transparent
   );
   transform: translateX(-100%);
 }
 
-.onboarding-cap-scene[data-active] .onboarding-cap-bridge__line::after {
-  animation: capBridgeFlow 1.6s linear infinite;
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-phone-link[data-active]
+  .onboarding-cap-phone-link__line::after {
+  animation: capLinkFlow 1.5s linear infinite;
 }
 
-@keyframes capBridgeFlow {
+@keyframes capLinkFlow {
   from {
     transform: translateX(-100%);
   }
@@ -959,428 +470,110 @@
   }
 }
 
-.onboarding-cap-desktop {
-  width: 100%;
-  max-width: 440px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--background) 97%, transparent);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  opacity: 0;
-  transform: translateX(8px);
-  transition:
-    opacity 0.6s ease 0.4s,
-    transform 0.6s ease 0.4s;
-}
-
-.onboarding-cap-desktop[data-visible] {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.onboarding-cap-desktop__bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-bottom: 1px solid
-    color-mix(in oklch, var(--foreground) 6%, transparent);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-}
-
-.onboarding-cap-desktop__bar span {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 18%, transparent);
-}
-
-.onboarding-cap-desktop__bar span:nth-child(1) {
-  background: var(--warning);
-}
-.onboarding-cap-desktop__bar span:nth-child(2) {
-  background: var(--primary);
-}
-.onboarding-cap-desktop__bar span:nth-child(3) {
-  background: var(--success);
-}
-
-.onboarding-cap-desktop__bar strong {
-  margin-left: 4px;
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
-  color: var(--foreground);
-  opacity: 0.6;
-}
-
-.onboarding-cap-desktop__body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 18px;
-}
-
-.onboarding-cap-desktop__step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-  color: var(--foreground);
-  opacity: 0;
-  transform: translate3d(-6px, 0, 0);
-  animation: capStepIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes capStepIn {
-  to {
-    opacity: 0.78;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-.onboarding-cap-desktop__step svg {
+.onboarding-cap-phone-link__head {
   flex-shrink: 0;
-  opacity: 0.65;
-  color: var(--primary);
+  width: 6px;
+  height: 6px;
+  margin-left: -2px;
+  border-top: 2px solid color-mix(in oklch, var(--foreground) 35%, transparent);
+  border-right: 2px solid
+    color-mix(in oklch, var(--foreground) 35%, transparent);
+  transform: rotate(45deg);
+}
+
+.onboarding-cap-phone-desktop {
+  flex: 1;
+  min-width: 0;
+  height: min(100%, 330px);
+  align-self: center;
 }
 
 /* ──────────────────────────────────────────────────────────────────────
- * Scene 4 — Store
+ * Everywhere chapter — montage of three small surfaces.
  * ────────────────────────────────────────────────────────────────────── */
 
-.onboarding-cap-store {
+.onboarding-cap-everywhere {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
-  width: 100%;
-}
-
-.onboarding-cap-store__header {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.onboarding-cap-store__title {
-  font-size: var(--font-size-md);
-  font-weight: var(--weight-semibold);
-  color: var(--foreground);
-  opacity: 0.85;
-}
-
-.onboarding-cap-store__subtitle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-light);
-  color: var(--foreground);
-  opacity: 0.55;
-}
-
-.onboarding-cap-store__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  flex: 1;
-}
-
-.onboarding-cap-store__card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
-  background: color-mix(in oklch, var(--background) 96%, var(--foreground) 4%);
-  opacity: 0;
-  transform: translate3d(0, 8px, 0);
-}
-
-.onboarding-cap-store__card[data-visible] {
-  animation: capCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.onboarding-cap-store__card[data-action="publish"] {
-  border-color: color-mix(in oklch, var(--success) 30%, transparent);
-  background: color-mix(in oklch, var(--success) 8%, var(--background));
-}
-
-.onboarding-cap-store__card[data-action="install"] {
-  border-color: color-mix(in oklch, var(--primary) 30%, transparent);
-  background: color-mix(in oklch, var(--primary) 8%, var(--background));
-}
-
-.onboarding-cap-store__card-art {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-  opacity: 0.7;
-  flex-shrink: 0;
+  gap: clamp(28px, 5vw, 64px);
 }
 
-.onboarding-cap-store__card[data-action="publish"]
-  .onboarding-cap-store__card-art {
-  background: color-mix(in oklch, var(--success) 22%, transparent);
-  color: var(--success);
-  opacity: 1;
-}
-
-.onboarding-cap-store__card[data-action="install"]
-  .onboarding-cap-store__card-art {
-  background: color-mix(in oklch, var(--primary) 22%, transparent);
-  color: var(--ring);
-  opacity: 1;
-}
-
-.onboarding-cap-store__card-meta {
-  flex: 1;
+.onboarding-cap-float {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.onboarding-cap-store__card-name {
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-medium);
-  color: var(--foreground);
-  opacity: 0.88;
-}
-
-.onboarding-cap-store__card-author {
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-light);
-  color: var(--foreground);
-  opacity: 0.5;
-}
-
-.onboarding-cap-store__card-tag {
-  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.onboarding-cap-store__card[data-action="publish"]
-  .onboarding-cap-store__card-tag {
-  color: var(--success);
-  background: color-mix(in oklch, var(--success) 14%, transparent);
-}
-
-.onboarding-cap-store__card[data-action="install"]
-  .onboarding-cap-store__card-tag {
-  color: var(--ring);
-  background: color-mix(in oklch, var(--primary) 14%, transparent);
-}
-
-.onboarding-cap-store__card-tag[data-quiet] {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  opacity: 0.5;
-}
-
-/* ──────────────────────────────────────────────────────────────────────
- * Scene 5 — Together
- * ────────────────────────────────────────────────────────────────────── */
-
-.onboarding-cap-together {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  height: 100%;
-  width: 100%;
-}
-
-.onboarding-cap-together__people {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.onboarding-cap-together__avatar {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
-  color: var(--foreground);
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-}
-
-.onboarding-cap-together__avatar[data-color="a"] {
-  border-color: color-mix(in oklch, var(--primary) 35%, transparent);
-  color: var(--ring);
-  background: color-mix(in oklch, var(--primary) 10%, transparent);
-}
-
-.onboarding-cap-together__avatar[data-color="b"] {
-  border-color: color-mix(in oklch, oklch(0.7 0.18 35) 35%, transparent);
-  color: oklch(0.6 0.18 35);
-  background: color-mix(in oklch, oklch(0.7 0.18 35) 10%, transparent);
-}
-
-.onboarding-cap-together__avatar[data-color="stella"] {
-  border-color: color-mix(in oklch, oklch(0.78 0.13 295) 35%, transparent);
-  color: oklch(0.55 0.16 295);
-  background: color-mix(in oklch, oklch(0.78 0.13 295) 10%, transparent);
-}
-
-.onboarding-cap-together__chat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.onboarding-cap-together__friend-msg {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.onboarding-cap-together__friend-msg [data-name] {
-  font-size: 9px;
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: oklch(0.6 0.18 35);
-}
-
-.onboarding-cap-together__cursors {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.onboarding-cap-together__cursor {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50% 50% 50% 0;
-  transform: rotate(-45deg);
-  opacity: 0.85;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.18));
-}
-
-.onboarding-cap-together__cursor[data-color="a"] {
-  background: var(--primary);
-  top: 30%;
-  left: 65%;
-}
-
-.onboarding-cap-together__cursor[data-color="b"] {
-  background: oklch(0.7 0.18 35);
-  top: 60%;
-  left: 30%;
-}
-
-/* Scoped — see comment on capBridgeFlow above. */
-.onboarding-cap-scene[data-active]
-  .onboarding-cap-together__cursor[data-color="a"] {
-  animation: capCursorA 6s ease-in-out infinite;
-}
-
-.onboarding-cap-scene[data-active]
-  .onboarding-cap-together__cursor[data-color="b"] {
-  animation: capCursorB 6s ease-in-out infinite;
-}
-
-@keyframes capCursorA {
-  0%,
-  100% {
-    transform: rotate(-45deg) translate(0, 0);
-  }
-  50% {
-    transform: rotate(-45deg) translate(-30px, 20px);
-  }
-}
-
-@keyframes capCursorB {
-  0%,
-  100% {
-    transform: rotate(-45deg) translate(0, 0);
-  }
-  50% {
-    transform: rotate(-45deg) translate(40px, -25px);
-  }
-}
-
-/* ──────────────────────────────────────────────────────────────────────
- * Scene 6 — Modes
- * ────────────────────────────────────────────────────────────────────── */
-
-.onboarding-cap-modes {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  grid-template-columns: 1.7fr 1fr 1fr;
-  gap: clamp(12px, 1.6vw, 20px);
-}
-
-.onboarding-cap-mode {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  min-height: 0;
+  gap: 14px;
   opacity: 0;
-  transform: translate3d(0, 10px, 0);
-  animation: capModeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform: translate3d(0, 14px, 0);
+  transition:
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@keyframes capModeIn {
-  to {
-    opacity: 1;
+.onboarding-cap-float[data-visible] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Vertical offsets via margins so they never fight the entrance
+ * transform. */
+.onboarding-cap-float--mini {
+  margin-bottom: 28px;
+}
+
+.onboarding-cap-float--keys {
+  margin-top: 32px;
+}
+
+/* Ambient drift on an inner wrapper, scoped to the active chapter. */
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-float[data-visible]
+  .onboarding-cap-float__body {
+  animation: capFloatDrift 7s ease-in-out infinite;
+}
+
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-float--voice[data-visible]
+  .onboarding-cap-float__body {
+  animation-delay: -2.3s;
+}
+
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-float--keys[data-visible]
+  .onboarding-cap-float__body {
+  animation-delay: -4.6s;
+}
+
+@keyframes capFloatDrift {
+  0%,
+  100% {
     transform: translate3d(0, 0, 0);
   }
+  50% {
+    transform: translate3d(0, -5px, 0);
+  }
 }
 
-.onboarding-cap-mode__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.onboarding-cap-float__label {
   font-size: var(--font-size-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.08em;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--foreground);
-  opacity: 0.55;
+  opacity: 0.45;
 }
 
-.onboarding-cap-modes__bubbles {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  height: 100%;
-}
-
-.onboarding-cap-mode--full .onboarding-cap-shell {
-  flex: 1;
-}
+/* ── Mini chat window mock ────────────────────────────────────────── */
 
 .onboarding-cap-mini {
-  flex: 1;
+  width: 232px;
   display: flex;
   flex-direction: column;
   border-radius: 14px;
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--background) 96%, transparent);
-  box-shadow: var(--shadow-md);
+  background: color-mix(in oklch, var(--foreground) 2%, var(--background));
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 
@@ -1391,32 +584,29 @@
   padding: 8px 10px;
   border-bottom: 1px solid
     color-mix(in oklch, var(--foreground) 6%, transparent);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-2xs);
   font-weight: var(--weight-semibold);
   color: var(--foreground);
   opacity: 0.85;
 }
 
-.onboarding-cap-mini__actions {
+.onboarding-cap-mini__bar-actions {
   margin-left: auto;
   display: inline-flex;
   gap: 6px;
   opacity: 0.4;
 }
 
-.onboarding-cap-mini__messages {
+.onboarding-cap-mini__thread {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 10px;
-  flex: 1;
-  overflow: hidden;
-  justify-content: flex-end;
 }
 
 .onboarding-cap-mini__msg {
   padding: 6px 10px;
-  border-radius: 12px;
+  border-radius: 11px;
   font-size: var(--font-size-2xs);
   line-height: 1.45;
   color: var(--foreground);
@@ -1424,13 +614,13 @@
 
 .onboarding-cap-mini__msg[data-role="user"] {
   align-self: flex-end;
-  max-width: 80%;
+  max-width: 84%;
   background: color-mix(in oklch, var(--primary) 14%, transparent);
 }
 
 .onboarding-cap-mini__msg[data-role="assistant"] {
   align-self: flex-start;
-  max-width: 90%;
+  max-width: 92%;
   opacity: 0.75;
 }
 
@@ -1438,11 +628,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   margin: 0 8px 8px;
   border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
   font-size: var(--font-size-2xs);
   color: color-mix(in oklch, var(--foreground) 38%, transparent);
 }
@@ -1451,42 +641,17 @@
   flex: 1;
 }
 
+/* ── Voice / dictation pill ───────────────────────────────────────── */
+
 .onboarding-cap-voice {
-  position: relative;
-  flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in oklch, var(--primary) 18%, transparent);
-  background: color-mix(in oklch, var(--primary) 5%, var(--background));
-}
-
-.onboarding-cap-voice__ring {
-  position: absolute;
-  width: 80px;
-  height: 80px;
+  gap: 13px;
+  padding: 9px 20px 9px 10px;
   border-radius: 999px;
-  border: 2px solid color-mix(in oklch, var(--primary) 30%, transparent);
-}
-
-/* Scoped — see comment on capBridgeFlow above. */
-.onboarding-cap-scene[data-active] .onboarding-cap-voice__ring {
-  animation: capVoicePulse 2s ease-out infinite;
-}
-
-@keyframes capVoicePulse {
-  from {
-    transform: scale(0.5);
-    opacity: 0.8;
-  }
-  to {
-    transform: scale(1.6);
-    opacity: 0;
-  }
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, var(--background));
+  box-shadow: var(--shadow-lg);
 }
 
 .onboarding-cap-voice__mic {
@@ -1494,338 +659,188 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  box-shadow: 0 4px 16px color-mix(in oklch, var(--primary) 35%, transparent);
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+
+.onboarding-cap-voice__mic svg {
+  position: relative;
   z-index: 1;
 }
 
-.onboarding-cap-voice__caption {
-  font-size: var(--font-size-xs);
-  line-height: 1.45;
-  text-align: center;
-  color: var(--ring);
-  font-style: italic;
-  z-index: 1;
-}
-
-/* ──────────────────────────────────────────────────────────────────────
- * Scene 7 — Actions (browser + desktop cleanup)
- * ────────────────────────────────────────────────────────────────────── */
-
-.onboarding-cap-actions {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: clamp(14px, 2vw, 24px);
-}
-
-.onboarding-cap-actions__browser {
-  display: flex;
-  flex-direction: column;
-  border-radius: 14px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--background) 97%, transparent);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(8px);
-  transition:
-    opacity 0.5s ease,
-    transform 0.5s ease;
-}
-
-.onboarding-cap-actions__browser[data-visible] {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.onboarding-cap-actions__browser-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid
-    color-mix(in oklch, var(--foreground) 6%, transparent);
-}
-
-.onboarding-cap-actions__browser-bar span:nth-child(1),
-.onboarding-cap-actions__browser-bar span:nth-child(2),
-.onboarding-cap-actions__browser-bar span:nth-child(3) {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-}
-
-.onboarding-cap-actions__browser-bar span:nth-child(1) {
-  background: var(--warning);
-}
-.onboarding-cap-actions__browser-bar span:nth-child(2) {
-  background: var(--primary);
-}
-.onboarding-cap-actions__browser-bar span:nth-child(3) {
-  background: var(--success);
-}
-
-.onboarding-cap-actions__url {
-  margin-left: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: var(--font-size-2xs);
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  color: var(--foreground);
-  opacity: 0.65;
-}
-
-.onboarding-cap-actions__browser-body {
-  position: relative;
-  flex: 1;
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow: hidden;
-}
-
-.onboarding-cap-actions__rest {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.onboarding-cap-actions__rest-name {
-  font-family: var(--font-family-display);
-  font-size: 22px;
-  font-weight: var(--weight-medium);
-  color: var(--foreground);
-  opacity: 0.85;
-  letter-spacing: -0.01em;
-}
-
-.onboarding-cap-actions__rest-meta {
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
-  color: var(--foreground);
-  opacity: 0.55;
-}
-
-.onboarding-cap-actions__time-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.onboarding-cap-actions__time {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-medium);
-  color: var(--foreground);
-  opacity: 0;
-  transform: translate3d(0, 6px, 0);
-  animation: capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.onboarding-cap-actions__time[data-stella-click] {
-  position: relative;
-  background: var(--primary);
-  border-color: var(--primary);
-  color: var(--primary-foreground);
-  animation: capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-/* Compositor-only click halo: a sized pseudo-element scales out and fades
- * via opacity instead of animating box-shadow on the chip itself. */
-.onboarding-cap-actions__time[data-stella-click]::after {
-  content: "";
+.onboarding-cap-voice__ring {
   position: absolute;
   inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: color-mix(in oklch, var(--primary) 18%, transparent);
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in oklch, var(--primary) 35%, transparent);
   opacity: 0;
-  transform: scale(1);
-  animation: capStellaClick 0.6s ease-out 1.7s 1;
 }
 
-@keyframes capStellaClick {
-  0%,
-  100% {
-    opacity: 0;
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-float[data-visible]
+  .onboarding-cap-voice__ring {
+  animation: capVoiceRing 2.6s ease-out infinite;
+}
+
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-float[data-visible]
+  .onboarding-cap-voice__ring[data-late] {
+  animation-delay: 0.9s;
+}
+
+@keyframes capVoiceRing {
+  0% {
+    opacity: 0.65;
     transform: scale(1);
   }
-  50% {
-    opacity: 1;
-    transform: scale(1.4);
-  }
-}
-
-.onboarding-cap-actions__confirm {
-  align-self: flex-start;
-  margin-top: 10px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  background: var(--success);
-  color: var(--primary-foreground);
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.04em;
-  opacity: 0;
-  transform: translateY(8px);
-  animation: capCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.onboarding-cap-actions__cursor {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50% 50% 50% 0;
-  background: var(--primary);
-  /* Plain box-shadow instead of `filter: drop-shadow()` so the cursor
-   * doesn't sit on its own filter layer for the entire scene. */
-  box-shadow: var(--shadow-sm);
-  top: 65%;
-  left: 25%;
-  opacity: 0;
-  transform: translate3d(0, 0, 0) rotate(-45deg);
-}
-
-.onboarding-cap-actions__cursor[data-visible] {
-  animation: capActionsCursor 2.4s cubic-bezier(0.4, 0, 0.2, 1) 0.6s forwards;
-}
-
-@keyframes capActionsCursor {
-  0% {
-    opacity: 0;
-    transform: translate3d(-72px, 36px, 0) rotate(-45deg);
-  }
-  20% {
-    opacity: 1;
-  }
-  60% {
-    transform: translate3d(62px, 0, 0) rotate(-45deg);
-    opacity: 1;
-  }
+  70%,
   100% {
-    transform: translate3d(24px, 34px, 0) rotate(-45deg);
     opacity: 0;
+    transform: scale(2.1);
   }
 }
 
-.onboarding-cap-actions__desktop {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--background) 97%, transparent);
-  box-shadow: var(--shadow-md);
-  opacity: 0;
-  transform: translateY(8px);
-  transition:
-    opacity 0.5s ease 0.2s,
-    transform 0.5s ease 0.2s;
-}
-
-.onboarding-cap-actions__desktop[data-visible] {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.onboarding-cap-actions__desktop-label {
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--foreground);
-  opacity: 0.55;
-}
-
-.onboarding-cap-actions__file-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.onboarding-cap-actions__file {
+.onboarding-cap-voice__bars {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-medium);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--foreground);
-  opacity: 0;
-  transform: translate3d(0, 8px, 0);
-  animation:
-    capCardIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards,
-    capFileSweep 0.5s cubic-bezier(0.5, 0, 0.5, 1) forwards;
-  animation-delay: var(--delay, 0ms), calc(1100ms + var(--delay, 0ms));
+  gap: 3px;
 }
 
-@keyframes capFileSweep {
-  to {
-    opacity: 0.5;
-    transform: translate3d(20px, 30px, 0) scale(0.9);
+.onboarding-cap-voice__bars span {
+  width: 3px;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--foreground) 35%, transparent);
+  transform-origin: center;
+}
+
+/* Static heights read as a waveform even with the pulse disabled. */
+.onboarding-cap-voice__bars span:nth-child(1) {
+  height: 7px;
+}
+.onboarding-cap-voice__bars span:nth-child(2) {
+  height: 12px;
+  animation-delay: 0.15s;
+}
+.onboarding-cap-voice__bars span:nth-child(3) {
+  height: 16px;
+  animation-delay: 0.3s;
+}
+.onboarding-cap-voice__bars span:nth-child(4) {
+  height: 10px;
+  animation-delay: 0.45s;
+}
+.onboarding-cap-voice__bars span:nth-child(5) {
+  height: 13px;
+  animation-delay: 0.6s;
+}
+
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-float[data-visible]
+  .onboarding-cap-voice__bars
+  span {
+  animation-name: capVoiceBar;
+  animation-duration: 1.6s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+@keyframes capVoiceBar {
+  0%,
+  100% {
+    transform: scaleY(0.55);
+  }
+  50% {
+    transform: scaleY(1);
   }
 }
 
-.onboarding-cap-actions__folders {
+/* ── Summon keycaps ───────────────────────────────────────────────── */
+
+.onboarding-cap-keys {
   display: flex;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px dashed color-mix(in oklch, var(--foreground) 10%, transparent);
+  gap: 10px;
 }
 
-.onboarding-cap-actions__folder {
-  flex: 1;
+.onboarding-cap-key {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklch, oklch(0.7 0.16 80) 25%, transparent);
-  background: color-mix(in oklch, oklch(0.84 0.12 80) 12%, var(--background));
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-semibold);
-  color: oklch(0.5 0.16 60);
-  opacity: 0;
-  transform: translateY(6px);
-  animation: capCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, var(--background));
+  box-shadow: 0 1.5px 0 color-mix(in oklch, var(--foreground) 12%, transparent);
+  font-size: var(--font-size-md);
+  color: var(--foreground);
+  opacity: 0.85;
+}
+
+/* Double-tap pulse: each key dips briefly, the second a beat behind. */
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-float[data-visible]
+  .onboarding-cap-key {
+  animation: capKeyTap 3.6s ease-in-out infinite;
+}
+
+.onboarding-cap-chapter[data-active]
+  .onboarding-cap-float[data-visible]
+  .onboarding-cap-key[data-late] {
+  animation-delay: 0.18s;
+}
+
+@keyframes capKeyTap {
+  0%,
+  12%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  4% {
+    transform: translate3d(0, 1.5px, 0) scale(0.94);
+  }
+  8% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────────────
- * Reduced motion — keep disclosure but kill loops.
+ * Reduced motion — the choreography hook fast-forwards to end states;
+ * snap reveals into place and kill the ambient loops.
  * ────────────────────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .onboarding-cap-words__fill,
-  .onboarding-cap-bridge__line,
-  .onboarding-cap-voice__ring,
-  .onboarding-cap-together__cursor,
-  .onboarding-cap-actions__cursor,
-  .onboarding-cap-actions__time[data-stella-click] {
-    animation: none !important;
-  }
-
-  .onboarding-cap-scene {
+  .onboarding-cap-chapter {
     transition: opacity 0.2s ease;
     transform: none;
-    filter: none;
+  }
+
+  .onboarding-cap-title,
+  .onboarding-cap-caption__body {
+    animation: none;
+  }
+
+  .onboarding-cap-words__fill {
+    animation: none;
+    transform: scaleX(1);
+  }
+
+  .onboarding-cap-continue[data-emphasized]::after {
+    animation: none;
+  }
+
+  .onboarding-cap-phone__msg,
+  .onboarding-cap-float {
+    transition: none;
+  }
+
+  .onboarding-cap-phone-link__line::after,
+  .onboarding-cap-float__body,
+  .onboarding-cap-voice__ring,
+  .onboarding-cap-voice__bars span,
+  .onboarding-cap-key {
+    animation: none !important;
   }
 }

@@ -35,7 +35,6 @@ html[data-low-power] .onboarding-split-stage,
 html[data-low-power] .onboarding-mock-window,
 html[data-low-power] .onboarding-dialogue,
 html[data-low-power] .onboarding-start-button,
-html[data-low-power] .onboarding-shortcut-surface::after,
 html[data-low-power] .onboarding-confirm,
 html[data-low-power] .onboarding-confirm-row,
 html[data-low-power] .onboarding-engine-step,
@@ -47,8 +46,7 @@ html[data-low-power] .inline-working-indicator--leaving,
 html[data-low-power] .inline-generated-image-cards--strip-pending::before,
 html[data-low-power] .inline-generated-image-card__placeholder::before,
 html[data-low-power] .assistant-reply-peek,
-html[data-low-power] .pet-overlay-aura,
-html[data-low-power] .sam-mochi {
+html[data-low-power] .pet-overlay-aura {
   filter: none !important;
 }
 
@@ -87,19 +85,17 @@ html[data-low-power] .anim-pulse {
   animation: none !important;
 }
 
-/* Onboarding capabilities carousel */
+/* Onboarding capabilities demo player */
 html[data-low-power]
-  .onboarding-cap-scene[data-active]
-  .onboarding-cap-bridge__line::after,
+  .onboarding-cap-chapter[data-active]
+  .onboarding-cap-phone-link__line::after,
 html[data-low-power]
-  .onboarding-cap-scene[data-active]
-  .onboarding-cap-together__cursor[data-color="a"],
+  .onboarding-cap-chapter[data-active]
+  .onboarding-cap-voice__ring,
 html[data-low-power]
-  .onboarding-cap-scene[data-active]
-  .onboarding-cap-together__cursor[data-color="b"],
-html[data-low-power]
-  .onboarding-cap-scene[data-active]
-  .onboarding-cap-voice__ring {
+  .onboarding-cap-chapter[data-active]
+  .onboarding-cap-voice__bars
+  span {
   animation: none !important;
 }
 
@@ -109,27 +105,18 @@ html[data-low-power]
   .onboarding-memory-mock__pill-dot,
 html[data-low-power]
   .onboarding-dialogue[data-phase="voice"]
-  .onboarding-voice-app__caret,
+  .ovoice-app__caret,
 html[data-low-power]
   .onboarding-dialogue[data-phase="voice"]
-  .onboarding-voice-waveform__bar {
+  .ovoice-waveform__bar,
+html[data-low-power]
+  .onboarding-dialogue[data-phase="voice"]
+  .ovoice-talk__ring {
   animation: none !important;
 }
 
 /* Radial voice result demo */
 html[data-low-power] .radial-result-voice__bars span {
-  animation: none !important;
-}
-
-/* Stella app mock cozy / studio demos */
-html[data-low-power] .sam-body[data-create-app="true"] .sam-studio-meter-bar,
-html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy .sam-cozy-cat-body,
-html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy .sam-cozy-cat-tail,
-html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy-zzz-1,
-html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy-zzz-2,
-html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy-zzz-3,
-html[data-low-power] .sam-root[data-cozy="true"] .sam-cozy-heart,
-html[data-low-power] .sam-mochi__drop {
   animation: none !important;
 }
 
@@ -176,9 +163,8 @@ html[data-low-power] .inline-generated-image-card__placeholder::before {
 }
 
 /* Creature idle breathing (WorkingIndicator / onboarding) */
-html[data-low-power] .stella-animation-container:not(
-    .stella-animation-container--paused
-  ) {
+html[data-low-power]
+  .stella-animation-container:not(.stella-animation-container--paused) {
   animation: none !important;
 }
 
