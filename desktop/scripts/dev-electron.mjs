@@ -847,6 +847,11 @@ exec "$electron_bin" "\${non_launch_args[@]}"
       }
       await wait(50);
     }
+    if (!shuttingDown) {
+      logError(
+        `.vite-dev-url did not reappear within ${devUrlFileWaitTimeoutMs}ms — the in-process Vite restart likely hung or failed; Electron will crash at bootstrap without it.`,
+      );
+    }
   };
 
   const run = async () => {
