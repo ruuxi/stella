@@ -779,6 +779,12 @@ exec "$electron_bin" "\${non_launch_args[@]}"
         .then(async () => {
           await stopApp();
           await waitForBuildOutputsToSettle();
+          // A restart-relevant change set can also rewrite vite.config.ts
+          // (e.g. a desktop update), which makes Vite restart its server and
+          // unlink `.vite-dev-url` until the new server is listening. Electron
+          // reads that file synchronously at bootstrap, so spawning inside the
+          // unlink window crashes main with ENOENT — wait it out first.
+          await waitForDevUrlFile();
           if (!shuttingDown) {
             restartRequestedByWatcher = false;
             startApp();
