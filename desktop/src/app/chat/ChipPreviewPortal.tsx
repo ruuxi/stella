@@ -36,6 +36,12 @@ type ChipPreviewPortalProps = {
   preferredPlacement?: Placement
   /** Visual className for the preview shell — caller controls styling. */
   className?: string
+  /**
+   * Hover handlers (from `useHoverPreview().previewProps`). When supplied the
+   * preview accepts pointer events so the user can move onto it and scroll.
+   */
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
   children: ReactNode
 }
 
@@ -62,8 +68,11 @@ export function ChipPreviewPortal({
   gap = DEFAULT_GAP,
   preferredPlacement = "top",
   className,
+  onMouseEnter,
+  onMouseLeave,
   children,
 }: ChipPreviewPortalProps) {
+  const interactive = Boolean(onMouseEnter || onMouseLeave)
   const containerRef = useRef<HTMLDivElement | null>(null)
   // We always render the portal box while `open` is true and let the
   // position state decide what's visible. Default to off-screen so the
@@ -138,6 +147,8 @@ export function ChipPreviewPortal({
       ref={containerRef}
       className={className}
       role="tooltip"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{
         position: "fixed",
         top: `${position.top}px`,
@@ -150,7 +161,7 @@ export function ChipPreviewPortal({
             ? "translateY(4px)"
             : "translateY(-4px)",
         transition: "opacity 140ms ease, transform 140ms ease",
-        pointerEvents: "none",
+        pointerEvents: interactive ? "auto" : "none",
       }}
       data-placement={position.placement}
     >
