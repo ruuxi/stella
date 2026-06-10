@@ -46,3 +46,6 @@ DEV-CONTEXT.md
 runtime/kernel/exec/.exec-worker-cache/
 
 .env.local
+
+# Local strategy notes (never commit).
+/strategy/
